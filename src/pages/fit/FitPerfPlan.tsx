@@ -59,6 +59,48 @@ function DifficultyStars({ level, accent = "#ffd66b", size = 12 }: { level?: str
   );
 }
 
+
+function MuscleFilterIcon({ muscle, active }: { muscle: FitMuscle | "Tous"; active: boolean }) {
+  const hot = active ? "#5ce9ff" : "#ff4f6f";
+  const neutral = "rgba(220,225,232,.72)";
+  const dim = "rgba(133,141,153,.50)";
+  const selected = (name: string) => muscle === "Tous" || muscle === name;
+  const fill = (name: string) => selected(name) ? hot : neutral;
+  const backOnly = ["Dos","Lombaires","Triceps","Fessiers","Ischios"].includes(String(muscle));
+  return (
+    <svg width="34" height="34" viewBox="0 0 48 48" aria-hidden="true" style={{ overflow: "visible", filter: active ? `drop-shadow(0 0 5px ${hot}66)` : "none" }}>
+      <g transform={backOnly ? "translate(8 1)" : "translate(8 1)"} stroke={dim} strokeWidth="1" strokeLinejoin="round">
+        <circle cx="16" cy="5" r="3.2" fill={neutral}/><path d="M13.8 8.3h4.4l2.8 6.4-2 10.2H13l-2-10.2z" fill={muscle === "Full body" || muscle === "Tous" ? hot : neutral}/>
+        <path d="M11.2 10.2 7.6 12.6 5.4 22l3 1.1 4-8.2" fill={fill(muscle === "Biceps" || muscle === "Triceps" ? String(muscle) : "Épaules")}/>
+        <path d="M20.8 10.2 24.4 12.6 26.6 22l-3 1.1-4-8.2" fill={fill(muscle === "Biceps" || muscle === "Triceps" ? String(muscle) : "Épaules")}/>
+        <path d="M8.3 23 6.2 32l3 1 3.2-9" fill={fill("Avant-bras")}/><path d="M23.7 23 25.8 32l-3 1-3.2-9" fill={fill("Avant-bras")}/>
+        <path d="M13 24.8 11.2 35l3.6 8h3.1l-1.7-9.2 1.6-9z" fill={fill(backOnly ? "Ischios" : "Quadriceps")}/>
+        <path d="M19 24.8 20.8 35l-3.6 8h-3.1l1.7-9.2-1.6-9z" fill={fill(backOnly ? "Ischios" : "Quadriceps")}/>
+        <path d="M12.2 34.8 11 44h3.5l1.2-8.5" fill={fill("Mollets")}/><path d="M19.8 34.8 21 44h-3.5l-1.2-8.5" fill={fill("Mollets")}/>
+        {!backOnly ? <><path d="M12.4 10.4h7.2v5.8h-7.2z" fill={fill("Pectoraux")}/><path d="M13.4 16.8h5.2v7h-5.2z" fill={fill("Abdos")}/><path d="M13.2 8.3h5.6v2.4h-5.6z" fill={fill("Cou")}/><path d="M11.6 24.2h3.1v5h-3.1zM17.3 24.2h3.1v5h-3.1z" fill={fill("Adducteurs")}/><path d="M10.2 23.2h2.4v6h-2.4zM19.4 23.2h2.4v6h-2.4z" fill={fill("Abducteurs")}/></> : <><path d="M12.2 10.3h7.6v9.3h-7.6z" fill={fill("Dos")}/><path d="M13.6 19.4h4.8v5.5h-4.8z" fill={fill("Lombaires")}/><path d="M12 23.5h8v5.7h-8z" fill={fill("Fessiers")}/><path d="M13.2 8.3h5.6v2.4h-5.6z" fill={fill("Cou")}/></>}
+      </g>
+    </svg>
+  );
+}
+
+function EquipmentFilterIcon({ equipment, active }: { equipment: FitEquipment | "Tous"; active: boolean }) {
+  const map: Record<string, any> = {
+    "Tous": "filter", "Poids du corps": "body", "Haltères": "dumbbell", "Barre": "barbell", "Poulie": "cable", "Machine": "machine",
+    "Kettlebell": "kettlebell", "Élastique": "band", "TRX": "band", "Banc": "workout", "Médecine ball": "medicine", "Autre": "settings",
+  };
+  return <FitIcon name={map[equipment] || "strength"} size={26}/>;
+}
+
+function LevelFilterIcon({ level, active }: { level: FitLevelFilter; active: boolean }) {
+  const count = level === "Tous" ? 1 : level === "Débutant" ? 1 : level === "Intermédiaire" ? 2 : 3;
+  if (level === "Tous") return <span style={{ width: 34, height: 34, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${active ? "currentColor" : "rgba(255,255,255,.25)"}` }}><span style={{ fontSize: 22, lineHeight: 1 }}>★</span></span>;
+  return <span style={{ minHeight: 34, display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>{Array.from({ length: count }, (_, i) => <span key={i} style={{ fontSize: 20, lineHeight: 1 }}>★</span>)}</span>;
+}
+
+function FilterChoiceTile({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 70, borderRadius: 14, border: `1px solid ${active ? "#5ce9ff88" : "rgba(255,255,255,.09)"}`, background: active ? "linear-gradient(145deg,rgba(92,233,255,.18),rgba(9,14,22,.98))" : "linear-gradient(180deg,rgba(20,25,34,.99),rgba(12,16,24,.99))", color: active ? "#5ce9ff" : "rgba(255,255,255,.78)", boxShadow: active ? "0 0 15px rgba(92,233,255,.12)" : "none", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "6px 4px", cursor: "pointer" }}><span style={{ display: "grid", placeItems: "center", minHeight: 34 }}>{children}</span><span style={{ maxWidth: "100%", fontSize: 6.7, fontWeight: 1000, letterSpacing: .25, lineHeight: 1.05, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span></button>;
+}
+
 export default function FitPerfPlan({ go }: Props) {
   const { theme } = useTheme();
   const langApi = useLang() as any;
@@ -307,14 +349,21 @@ export default function FitPerfPlan({ go }: Props) {
             {([
               ["zone", t("Zone", "Area", "Zona"), "muscles"],
               ["equipment", t("Matériel", "Equipment", "Material"), "strength"],
-              ["level", t("Niveau", "Level", "Nivel"), "progress"],
-            ] as [FilterTab, string, any][]).map(([id, label, icon]) => { const active = filterTab === id; return <button key={id} type="button" onClick={() => setFilterTab(id)} style={{ height: 46, borderRadius: 13, border: `1px solid ${active ? accent + "66" : "rgba(255,255,255,.07)"}`, background: active ? `linear-gradient(135deg,${accent}1f,rgba(255,255,255,.05))` : "rgba(255,255,255,.025)", color: active ? accent : "rgba(255,255,255,.66)", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 8, fontWeight: 1000, cursor: "pointer" }}><FitIcon name={icon} size={18} />{label.toUpperCase()}</button>; })}
+              ["level", t("Niveau", "Level", "Nivel"), "star"],
+            ] as [FilterTab, string, any][]).map(([id, label, icon]) => { const active = filterTab === id; return <button key={id} type="button" onClick={() => setFilterTab(id)} style={{ height: 58, borderRadius: 14, border: `1px solid ${active ? accent + "66" : "rgba(255,255,255,.09)"}`, background: active ? `linear-gradient(145deg,${accent}20,rgba(10,15,23,.99))` : "linear-gradient(180deg,rgba(18,23,31,.99),rgba(10,14,21,.99))", color: active ? accent : "rgba(255,255,255,.68)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 7, fontWeight: 1000, cursor: "pointer" }}><FitIcon name={icon} size={21} /><span>{label.toUpperCase()}</span></button>; })}
           </div>
 
-          <div style={{ marginTop: 9, padding: 9, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}>
-            {filterTab === "zone" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{filterChip(t("Toutes", "All", "Todas"), muscle === "Tous", () => setMuscle("Tous"))}{FIT_MUSCLE_ORDER.filter((item) => counts[item] > 0).map((item) => filterChip(FIT_MUSCLE_LABELS[item][langKey], muscle === item, () => setMuscle(item)))}</div> : null}
-            {filterTab === "equipment" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{filterChip(t("Tous", "All", "Todos"), equipment === "Tous", () => setEquipment("Tous"))}{FIT_EQUIPMENT_ORDER.filter((item) => allExercises.some((exercise) => exercise.equipment === item)).map((item) => filterChip(item, equipment === item, () => setEquipment(item)))}</div> : null}
-            {filterTab === "level" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{(["Tous", "Débutant", "Intermédiaire", "Avancé"] as FitLevelFilter[]).map((item) => filterChip(item === "Tous" ? t("Tous niveaux", "All levels", "Todos niveles") : levelLabel(item, t), level === item, () => setLevel(item)))}</div> : null}
+          <div style={{ marginTop: 9, padding: 9, borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg,rgba(15,19,27,.995),rgba(9,12,18,.995))", maxHeight: "42vh", overflowY: "auto" }}>
+            {filterTab === "zone" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+              <FilterChoiceTile label={t("Toutes", "All", "Todas")} active={muscle === "Tous"} onClick={() => setMuscle("Tous")}><MuscleFilterIcon muscle="Tous" active={muscle === "Tous"}/></FilterChoiceTile>
+              {FIT_MUSCLE_ORDER.filter((item) => counts[item] > 0).map((item) => <FilterChoiceTile key={item} label={FIT_MUSCLE_LABELS[item][langKey]} active={muscle === item} onClick={() => setMuscle(item)}><MuscleFilterIcon muscle={item} active={muscle === item}/></FilterChoiceTile>)}
+            </div> : null}
+            {filterTab === "equipment" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+              {(["Tous", ...FIT_EQUIPMENT_ORDER.filter((item) => allExercises.some((exercise) => exercise.equipment === item))] as (FitEquipment | "Tous")[]).map((item) => <FilterChoiceTile key={item} label={item === "Tous" ? t("Tous", "All", "Todos") : item} active={equipment === item} onClick={() => setEquipment(item)}><EquipmentFilterIcon equipment={item} active={equipment === item}/></FilterChoiceTile>)}
+            </div> : null}
+            {filterTab === "level" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+              {(["Tous", "Débutant", "Intermédiaire", "Avancé"] as FitLevelFilter[]).map((item) => <FilterChoiceTile key={item} label={item === "Tous" ? t("Tous niveaux", "All levels", "Todos niveles") : levelLabel(item, t)} active={level === item} onClick={() => setLevel(item)}><LevelFilterIcon level={item} active={level === item}/></FilterChoiceTile>)}
+            </div> : null}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 7, marginTop: 10 }}><button type="button" onClick={clearFilters} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: "rgba(255,255,255,.72)", padding: "0 12px", fontWeight: 950 }}>{t("EFFACER", "CLEAR", "BORRAR")}</button><button type="button" onClick={() => setFiltersOpen(false)} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${accent}62`, background: `linear-gradient(135deg,${accent},#dffaff)`, color: "#071016", fontWeight: 1000 }}>{t("APPLIQUER · VOIR LES RÉSULTATS", "APPLY · VIEW RESULTS", "APLICAR · VER RESULTADOS")}</button></div>
@@ -323,7 +372,7 @@ export default function FitPerfPlan({ go }: Props) {
 
       {tab === "programs" ? <>
         <FitSectionTitle eyebrow={t("PROGRAMMES", "PROGRAMS", "PROGRAMAS")} title={t("Démarrage rapide", "Quick start", "Inicio rápido")} />
-        <div style={{ display: "grid", gap: 7 }}>{FIT_TEMPLATES.map((program) => <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 10, display: "grid", gridTemplateColumns: "40px 1fr 38px", gap: 9, alignItems: "center" }}><div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", color: program.accent, background: `${program.accent}10`, border: `1px solid ${program.accent}30`, fontWeight: 1000 }}>{program.icon}</div><div style={{ minWidth: 0 }}><div style={{ color: program.accent, fontSize: 11, fontWeight: 1000 }}>{program.name}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.8 }}>{program.exerciseIds.length} {t("exercices", "exercises", "ejercicios")} · {program.subtitle}</div></div><button type="button" aria-label={t("Démarrer", "Start", "Empezar")} onClick={() => go("games", { fitTemplateId: program.id })} style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${program.accent}50`, background: `${program.accent}10`, color: program.accent, display: "grid", placeItems: "center" }}><FitIcon name="chevron" size={18} /></button></FitGlassCard>)}</div>
+        <div style={{ display: "grid", gap: 8 }}>{FIT_TEMPLATES.map((program) => { const icon = program.id === "push" ? "push" : program.id === "pull" ? "pull" : program.id === "legs" ? "legs" : "fullbody"; return <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 12, display: "grid", gridTemplateColumns: "50px 1fr 42px", gap: 11, alignItems: "center", background: `linear-gradient(135deg,${program.accent}12,rgba(8,11,18,.985) 30%,rgba(5,8,14,.995))`, borderColor: `${program.accent}42`, boxShadow: "0 12px 28px rgba(0,0,0,.46)" }}><div style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", color: program.accent, background: `${program.accent}10`, border: `1px solid ${program.accent}38` }}><FitIcon name={icon as any} size={27}/></div><div style={{ minWidth: 0 }}><div style={{ color: program.accent, fontSize: 12, fontWeight: 1000 }}>{program.name}</div><div style={{ marginTop: 4, color: "rgba(255,255,255,.72)", fontSize: 8.2, lineHeight: 1.35 }}>{program.exerciseIds.length} {t("exercices", "exercises", "ejercicios")} · {program.subtitle}</div></div><button type="button" aria-label={t("Démarrer", "Start", "Empezar")} onClick={() => go("games", { fitTemplateId: program.id })} style={{ width: 40, height: 40, borderRadius: 13, border: `1px solid ${program.accent}60`, background: `${program.accent}12`, color: program.accent, display: "grid", placeItems: "center" }}><FitIcon name="chevron" size={20} /></button></FitGlassCard>; })}</div>
       </> : null}
 
       {detail ? <div role="dialog" aria-modal="true" onClick={() => setDetail(null)} style={{ position: "fixed", inset: 0, zIndex: 140, background: "rgba(2,4,8,.78)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>

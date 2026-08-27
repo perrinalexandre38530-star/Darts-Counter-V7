@@ -23,7 +23,8 @@ import {
   type FitSet,
   type FitTemplate,
 } from "../../fit/fitStore";
-import { getCachedFreeExerciseCatalog, loadFreeExerciseCatalog } from "../../fit/freeExerciseCatalog";
+import { freeExerciseImageUrl, getCachedFreeExerciseCatalog, loadFreeExerciseCatalog } from "../../fit/freeExerciseCatalog";
+import { getAwenaPremiumMotion } from "../../fit/awenaPremiumMotions";
 import { FIT_MUSCLE_ORDER, exerciseMatchesMuscle } from "../../fit/fitExerciseTaxonomy";
 import { FitGlassCard, FitGhostButton, FitIcon, FitIconTabs, FitPill, FitPrimaryButton, FitProgress, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
@@ -81,6 +82,14 @@ export default function FitPerfModule({ go, store, params }: Props) {
     }
   };
 
+
+  React.useEffect(() => {
+    if (view !== "setup" || freeExercises.length || freeCatalogLoading) return;
+    void activateFreeCatalog();
+    // The catalogue is used only to resolve static exercise thumbnails in the setup preview.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
   React.useEffect(() => {
     if (view !== "workout") return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -117,6 +126,23 @@ export default function FitPerfModule({ go, store, params }: Props) {
     // One-shot navigation params only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+
+  const selectedTemplate = FIT_TEMPLATES.find((item) => item.id === selectedTemplateId) || null;
+  const selectedTemplateExerciseIds = selectedTemplate?.exerciseIds || [];
+  const previewQueryById: Record<string, string[]> = {
+    bench: ["bench press"], "incline-db": ["incline dumbbell"], "cable-fly": ["cable crossover", "cable fly"], pullup: ["pullup", "pull-up"], row: ["barbell row"],
+    "lat-pulldown": ["lat pulldown"], ohp: ["military press", "overhead press"], "lateral-raise": ["lateral raise"], curl: ["hammer curl", "biceps curl"],
+    "triceps-push": ["triceps pushdown"], squat: ["squat"], "leg-press": ["leg press"], rdl: ["romanian deadlift"], "hip-thrust": ["hip thrust"], calf: ["calf raise"], deadlift: ["deadlift"], plank: ["plank"], goblet: ["goblet squat"],
+  };
+  const exercisePreviewUrl = (exerciseId: string) => {
+    const premium = getAwenaPremiumMotion(exerciseId);
+    const premiumPoster = premium?.video?.poster || premium?.frameSequence?.poster;
+    if (premiumPoster) return premiumPoster;
+    const queries = previewQueryById[exerciseId] || [];
+    const match = freeExercises.find((item) => queries.some((query) => item.name.toLowerCase().includes(query)));
+    return match ? freeExerciseImageUrl(match) : null;
+  };
 
   const updateExercise = React.useCallback((exerciseRowId: string, updater: (row: FitSessionExercise) => FitSessionExercise) => {
     setSession((current) => current ? { ...current, exercises: current.exercises.map((row) => row.id === exerciseRowId ? updater(row) : row) } : current);
@@ -220,7 +246,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
       <div style={{ minHeight: "100%", color: "#fff", background: (theme as any)?.pageBackground || (theme as any)?.bg || "#05060b" }}>
         <FitShell>
           <style>{fitUiCss}</style>
-          <FitGlassCard accent={accent} style={{ marginTop: 4, padding: 10, position: "sticky", top: "calc(env(safe-area-inset-top, 0px) + 6px)", zIndex: 30, background: "rgba(8,10,15,.94)", backdropFilter: "blur(18px)" }}>
+          <FitGlassCard accent={accent} style={{ marginTop: 4, padding: 10, position: "sticky", top: "calc(env(safe-area-inset-top, 0px) + 6px)", zIndex: 30, background: "rgba(6,8,13,.985)", backdropFilter: "blur(18px)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={{ minWidth: 0 }}>
                 <FitPill accent="#75ed9a">● LIVE</FitPill>
@@ -232,7 +258,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
             <div style={{ marginTop: 10 }}><FitProgress value={progress} accent={accent} height={8} /></div>
           </FitGlassCard>
 
-          {restLeft > 0 ? <FitGlassCard accent="#75ed9a" style={{ marginTop: 10, padding: 13, background: "linear-gradient(145deg,rgba(117,237,154,.08),rgba(255,255,255,.02))" }}>
+          {restLeft > 0 ? <FitGlassCard accent="#75ed9a" style={{ marginTop: 10, padding: 13, background: "linear-gradient(145deg,rgba(25,48,36,.985),rgba(7,11,16,.995))" }}>
             <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, alignItems: "center" }}>
               <div style={{ width: 48, height: 48, borderRadius: 16, display: "grid", placeItems: "center", background: "rgba(117,237,154,.10)", border: "1px solid rgba(117,237,154,.28)", color: "#75ed9a", fontSize: 18, fontWeight: 1000 }}>⏱</div>
               <div><div style={{ color: "#75ed9a", fontSize: 9, fontWeight: 1000, letterSpacing: 1 }}>RÉCUPÉRATION</div><div style={{ marginTop: 4, fontSize: 25, lineHeight: 1, fontWeight: 1000 }}>{Math.floor(restLeft / 60)}:{String(restLeft % 60).padStart(2, "0")}</div></div>
@@ -249,7 +275,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
               if (!exercise) return null;
               const rowDone = row.sets.filter((set) => set.completed).length;
               const expanded = expandedExerciseRowId === row.id;
-              return <FitGlassCard key={row.id} accent={exercise.accent} style={{ overflow: "hidden", borderColor: expanded ? `${exercise.accent}50` : undefined }}>
+              return <FitGlassCard key={row.id} accent={exercise.accent} style={{ overflow: "hidden", borderColor: expanded ? `${exercise.accent}66` : "rgba(255,255,255,.13)", background: expanded ? `linear-gradient(145deg,${exercise.accent}12,rgba(7,10,16,.99) 28%,rgba(4,6,11,.995))` : "linear-gradient(180deg,rgba(9,12,18,.985),rgba(5,8,13,.995))", boxShadow: "0 10px 28px rgba(0,0,0,.48)" }}>
                 <div role="button" tabIndex={0} onClick={() => setExpandedExerciseRowId(expanded ? null : row.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setExpandedExerciseRowId(expanded ? null : row.id); }} style={{ display: "grid", gridTemplateColumns: "38px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, cursor: "pointer" }}>
                   <div style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}30`, fontSize: 16, fontWeight: 1000 }}>{exercise.icon}</div>
                   <div style={{ minWidth: 0 }}><div style={{ color: exercise.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .7 }}>{String(exerciseIndex + 1).padStart(2, "0")} · {exercise.muscle.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 11.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.8 }}>{rowDone}/{row.sets.length} {t("séries", "sets", "series")}</div></div>
@@ -270,7 +296,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
           <FitPrimaryButton onClick={() => setShowExercisePicker(true)} accent={accent} style={{ width: "100%", marginTop: 10 }}>＋ {t("AJOUTER UN EXERCICE", "ADD EXERCISE", "AÑADIR EJERCICIO")}</FitPrimaryButton>
 
           <FitSectionTitle eyebrow={t("RÉCUPÉRATION", "RECOVERY", "RECUPERACIÓN")} title={t("Chronomètre automatique", "Automatic rest timer", "Temporizador automático")} />
-          <FitGlassCard accent="#75ed9a" style={{ padding: 13 }}>
+          <FitGlassCard accent="#75ed9a" style={{ padding: 13, background: "linear-gradient(180deg,rgba(8,14,13,.99),rgba(5,8,12,.995))" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={{ fontSize: 11.5, fontWeight: 950 }}>{t("Repos après chaque série validée", "Rest after each completed set", "Descanso tras cada serie completada")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 9.5 }}>{t("Réglage mémorisé pour les prochaines séances.", "Setting is saved for future workouts.", "Ajuste guardado para futuras sesiones.")}</div></div><b style={{ color: "#75ed9a", fontSize: 18 }}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, "0")}</b></div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginTop: 10 }}>{[60, 90, 120, 180].map((seconds) => <button key={seconds} type="button" onClick={() => changeRestSeconds(seconds)} style={{ minHeight: 36, borderRadius: 11, border: `1px solid ${restSeconds === seconds ? "rgba(117,237,154,.55)" : "rgba(255,255,255,.07)"}`, background: restSeconds === seconds ? "rgba(117,237,154,.12)" : "rgba(255,255,255,.03)", color: restSeconds === seconds ? "#75ed9a" : "#fff", fontWeight: 900, cursor: "pointer" }}>{seconds < 60 ? `${seconds}s` : `${seconds / 60}m`}</button>)}</div>
           </FitGlassCard>
@@ -303,26 +329,33 @@ export default function FitPerfModule({ go, store, params }: Props) {
           { id: "setup", label: t("Démarrer", "Start", "Empezar"), icon: "workout" },
           { id: "history", label: t("Historique", "History", "Historial"), icon: "history", badge: fitSessionsForProfile(loadFitSessions(), activeProfile?.id).length || undefined },
         ]}/>
-        <FitGlassCard accent={accent} style={{ marginTop: 2, padding: 11, display: "grid", gridTemplateColumns: "40px 1fr", gap: 10, alignItems: "center" }}>
+        <FitGlassCard accent={accent} style={{ marginTop: 2, padding: 12, display: "grid", gridTemplateColumns: "44px 1fr", gap: 11, alignItems: "center", background: "linear-gradient(180deg,rgba(8,11,18,.99),rgba(5,8,13,.995))", borderColor: "rgba(255,255,255,.12)" }}>
           <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", color: accent, background: `${accent}10`, border: `1px solid ${accent}32` }}><FitIcon name="workout" size={20}/></div>
           <div><div style={{ color: accent, fontSize: 7.8, fontWeight: 1000, letterSpacing: .9 }}>FIT PERF · TRAINING</div><div style={{ marginTop: 2, fontSize: 14, fontWeight: 1000 }}>{t("Prépare ta séance", "Prepare your workout", "Prepara tu sesión")}</div></div>
         </FitGlassCard>
 
         <FitSectionTitle eyebrow={t("DÉMARRAGE RAPIDE", "QUICK START", "INICIO RÁPIDO")} title={t("Choisis ta séance", "Choose your workout", "Elige tu sesión")} />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
-          <TemplateCard template={null} selected={selectedTemplateId === "free"} accent={accent} title={t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE")} subtitle={t("Tu choisis les exercices", "You choose the exercises", "Tú eliges los ejercicios")} onClick={() => setSelectedTemplateId("free")} />
-          {FIT_TEMPLATES.map((template) => <TemplateCard key={template.id} template={template} selected={selectedTemplateId === template.id} accent={template.accent} title={template.name} subtitle={template.subtitle} onClick={() => setSelectedTemplateId(template.id)} />)}
+        <div style={{ display: "grid", gap: 9 }}>
+          <TemplateCard template={null} selected={selectedTemplateId === "free"} accent={accent} title={t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE")} subtitle={t("Construis ta séance exercice par exercice", "Build your workout exercise by exercise", "Construye tu sesión ejercicio por ejercicio")} onClick={() => setSelectedTemplateId("free")} wide />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
+            {FIT_TEMPLATES.map((template) => <TemplateCard key={template.id} template={template} selected={selectedTemplateId === template.id} accent={template.accent} title={template.name} subtitle={template.subtitle} onClick={() => setSelectedTemplateId(template.id)} />)}
+          </div>
         </div>
+
+        {selectedTemplate ? <FitGlassCard accent={selectedTemplate.accent} style={{ marginTop: 11, padding: 12, background: `linear-gradient(145deg,${selectedTemplate.accent}10,rgba(6,9,15,.99) 28%,rgba(3,6,10,.995))`, borderColor: `${selectedTemplate.accent}46`, boxShadow: "0 14px 34px rgba(0,0,0,.48)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: selectedTemplate.accent, fontSize: 8, fontWeight: 1000, letterSpacing: .9 }}>{t("PROGRAMME SÉLECTIONNÉ", "SELECTED PROGRAM", "PROGRAMA SELECCIONADO")}</div><div style={{ marginTop: 3, fontSize: 15, fontWeight: 1000 }}>{selectedTemplate.name}</div><div style={{ marginTop: 3, color: "rgba(255,255,255,.68)", fontSize: 8.4 }}>{selectedTemplate.subtitle}</div></div><FitPill accent={selectedTemplate.accent}>{selectedTemplate.exerciseIds.length} EXOS</FitPill></div>
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>{selectedTemplateExerciseIds.map((exerciseId) => { const ex = exerciseById(exerciseId); const image = exercisePreviewUrl(exerciseId); if (!ex) return null; return <div key={exerciseId} style={{ minWidth: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${ex.accent}30`, background: "rgba(12,16,23,.99)" }}><div style={{ height: 72, display: "grid", placeItems: "center", background: `radial-gradient(circle at center,${ex.accent}18,#05080d 72%)`, overflow: "hidden" }}>{image ? <img src={image} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <div style={{ color: ex.accent, fontSize: 26, fontWeight: 1000 }}>{ex.icon}</div>}</div><div style={{ padding: "6px 6px 7px", fontSize: 7.2, lineHeight: 1.15, fontWeight: 950, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ex.name}</div></div>; })}</div>
+        </FitGlassCard> : null}
 
         <FitPrimaryButton onClick={() => startWorkout()} accent={accent} style={{ width: "100%", marginTop: 11, minHeight: 58, fontSize: 13 }}>▶ {t("DÉMARRER LA SÉANCE", "START WORKOUT", "INICIAR SESIÓN")}</FitPrimaryButton>
 
-        <FitGlassCard accent="#72def4" style={{ marginTop: 12, padding: 12, display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center" }}>
+        <FitGlassCard accent="#72def4" style={{ marginTop: 12, padding: 12, display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center", background: "linear-gradient(180deg,rgba(7,12,18,.99),rgba(4,8,13,.995))", borderColor: "rgba(114,222,244,.24)" }}>
           <div style={{ width: 40, height: 40, borderRadius: 13, display: "grid", placeItems: "center", color: "#72def4", background: "rgba(114,222,244,.10)", border: "1px solid rgba(114,222,244,.30)" }}><FitIcon name="library" size={20}/></div>
           <div><div style={{ fontSize: 11.5, fontWeight: 950 }}>{t("Bibliothèque d’exercices", "Exercise library", "Biblioteca de ejercicios")}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8.8 }}>{t("Exercices, favoris, programmes et guides AWENA sont regroupés dans l’onglet EXERCICES.", "Exercises, favorites, programs and AWENA guides are grouped in the EXERCISES tab.", "Ejercicios, favoritos, programas y guías AWENA están en la pestaña EJERCICIOS.")}</div></div>
           <button type="button" onClick={() => go("fit_plan")} style={{ width: 38, height: 38, borderRadius: 12, border: "1px solid rgba(114,222,244,.35)", background: "rgba(114,222,244,.08)", color: "#72def4" }}>›</button>
         </FitGlassCard>
 
-        <details style={{ marginTop: 10, borderRadius: 14, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.02)", overflow: "hidden" }}>
+        <details style={{ marginTop: 10, borderRadius: 14, border: "1px solid rgba(255,255,255,.10)", background: "rgba(6,9,14,.985)", overflow: "hidden" }}>
           <summary style={{ listStyle: "none", minHeight: 44, padding: "0 11px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer", fontSize: 10.5, fontWeight: 1000 }}><span style={{ color: "#72def4", display: "grid" }}><FitIcon name="info" size={17}/></span>{t("Calculs automatiques", "Automatic calculations", "Cálculos automáticos")}<span style={{ marginLeft: "auto", color: textSoft }}>＋</span></summary>
           <div style={{ padding: "0 9px 9px", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>{[{ icon: "∑", title: t("Volume", "Volume", "Volumen"), sub: "charge × reps × séries", accent: "#76e4f7" }, { icon: "1", title: "1RM", sub: t("estimation Epley", "Epley estimate", "estimación Epley"), accent: "#b59cff" }, { icon: "PR", title: t("Records", "Records", "Récords"), sub: t("par exercice", "per exercise", "por ejercicio"), accent }, { icon: "⏱", title: t("Repos", "Rest", "Descanso"), sub: t("automatique", "automatic", "automático"), accent: "#75ed9a" }].map((item) => <div key={item.title} style={{ padding: 9, borderRadius: 11, background: "rgba(255,255,255,.025)" }}><div style={{ color: item.accent, fontSize: 14, fontWeight: 1000 }}>{item.icon}</div><div style={{ marginTop: 4, fontSize: 9.5, fontWeight: 1000 }}>{item.title}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.5 }}>{item.sub}</div></div>)}</div>
         </details>
@@ -331,11 +364,12 @@ export default function FitPerfModule({ go, store, params }: Props) {
   );
 }
 
-function TemplateCard({ template, selected, accent, title, subtitle, onClick }: { template: FitTemplate | null; selected: boolean; accent: string; title: string; subtitle: string; onClick: () => void }) {
-  return <button type="button" onClick={onClick} style={{ minHeight: selected ? 92 : 68, borderRadius: 15, textAlign: "left", color: "#fff", padding: 9, border: `1px solid ${selected ? accent + "70" : "rgba(255,255,255,.06)"}`, background: selected ? `linear-gradient(145deg,${accent}16,rgba(255,255,255,.025))` : "rgba(255,255,255,.022)", boxShadow: selected ? `0 8px 22px ${accent}10` : "none", cursor: "pointer", display: "grid", gridTemplateColumns: "36px 1fr", gap: 8, alignItems: "center", transition: "min-height .18s ease,border-color .18s ease,background .18s ease" }}><span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", color: accent, background: `${accent}10`, border: `1px solid ${accent}32`, fontSize: 15, fontWeight: 1000 }}>{template?.icon || "+"}</span><span style={{ minWidth: 0 }}><b style={{ display: "block", color: selected ? accent : "#fff", fontSize: 10.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</b>{selected ? <small style={{ display: "block", marginTop: 4, color: "rgba(255,255,255,.48)", fontSize: 7.8, lineHeight: 1.25 }}>{subtitle}</small> : null}</span></button>;
+function TemplateCard({ template, selected, accent, title, subtitle, onClick, wide = false }: { template: FitTemplate | null; selected: boolean; accent: string; title: string; subtitle: string; onClick: () => void; wide?: boolean }) {
+  const icon = !template ? "free" : template.id === "push" ? "push" : template.id === "pull" ? "pull" : template.id === "legs" ? "legs" : "fullbody";
+  return <button type="button" onClick={onClick} style={{ minHeight: wide ? 104 : 118, borderRadius: 18, textAlign: "center", color: "#fff", padding: "11px 9px", border: `1px solid ${selected ? accent + "78" : "rgba(255,255,255,.12)"}`, background: selected ? `linear-gradient(160deg,${accent}18,rgba(8,12,19,.99) 38%,rgba(4,7,12,.995))` : "linear-gradient(180deg,rgba(10,14,21,.985),rgba(5,8,13,.995))", boxShadow: selected ? `0 10px 28px ${accent}16` : "0 8px 22px rgba(0,0,0,.34)", cursor: "pointer", display: "flex", flexDirection: wide ? "row" : "column", alignItems: "center", justifyContent: "center", gap: wide ? 13 : 7, transition: "border-color .18s ease,background .18s ease,transform .18s ease" }}><span style={{ width: wide ? 58 : 52, height: wide ? 58 : 52, flex: "0 0 auto", borderRadius: 16, display: "grid", placeItems: "center", color: accent, background: `${accent}10`, border: `1px solid ${accent}3d`, boxShadow: selected ? `0 0 18px ${accent}18` : "none" }}><FitIcon name={icon as any} size={wide ? 31 : 28}/></span><span style={{ minWidth: 0, textAlign: wide ? "left" : "center" }}><b style={{ display: "block", color: selected ? accent : "#fff", fontSize: wide ? 13 : 11.5, lineHeight: 1.05 }}>{title}</b><small style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,.68)", fontSize: 7.8, lineHeight: 1.25 }}>{subtitle}</small></span></button>;
 }
 
 function SetRow({ index, set, accent, onWeight, onReps, onToggle, onRemove }: { index: number; set: FitSet; accent: string; onWeight: (value: number) => void; onReps: (value: number) => void; onToggle: () => void; onRemove: () => void }) {
-  const inputStyle: React.CSSProperties = { width: "100%", minWidth: 0, height: 38, borderRadius: 10, border: `1px solid ${set.completed ? accent + "55" : "rgba(255,255,255,.07)"}`, background: set.completed ? `${accent}0c` : "rgba(255,255,255,.035)", color: "#fff", textAlign: "center", fontSize: 13, fontWeight: 900, outline: "none", boxSizing: "border-box" };
-  return <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 40px", gap: 6, alignItems: "center", opacity: set.completed ? .92 : 1 }} onContextMenu={(event) => { event.preventDefault(); onRemove(); }}><div style={{ width: 32, height: 38, borderRadius: 10, display: "grid", placeItems: "center", color: set.completed ? accent : "rgba(255,255,255,.55)", background: set.completed ? `${accent}10` : "rgba(255,255,255,.025)", border: `1px solid ${set.completed ? accent + "35" : "rgba(255,255,255,.06)"}`, fontWeight: 950, fontSize: 11 }}>{index + 1}</div><input inputMode="decimal" type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => onWeight(Math.max(0, Number(event.target.value) || 0))} style={inputStyle}/><input inputMode="numeric" type="number" min="0" step="1" value={set.reps} onChange={(event) => onReps(Math.max(0, Math.round(Number(event.target.value) || 0)))} style={inputStyle}/><button type="button" onClick={onToggle} aria-label={set.completed ? "Annuler la série" : "Valider la série"} style={{ width: 40, height: 38, borderRadius: 10, border: `1px solid ${set.completed ? accent + "66" : "rgba(255,255,255,.08)"}`, background: set.completed ? accent : "rgba(255,255,255,.035)", color: set.completed ? "#090b0d" : "#fff", fontWeight: 1000, cursor: "pointer", boxShadow: set.completed ? `0 0 16px ${accent}28` : "none" }}>{set.completed ? "✓" : "○"}</button></div>;
+  const inputStyle: React.CSSProperties = { width: "100%", minWidth: 0, height: 38, borderRadius: 10, border: `1px solid ${set.completed ? accent + "55" : "rgba(255,255,255,.07)"}`, background: set.completed ? `${accent}14` : "rgba(16,21,29,.98)", color: "#fff", textAlign: "center", fontSize: 13, fontWeight: 900, outline: "none", boxSizing: "border-box" };
+  return <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 40px", gap: 6, alignItems: "center", opacity: set.completed ? .92 : 1 }} onContextMenu={(event) => { event.preventDefault(); onRemove(); }}><div style={{ width: 32, height: 38, borderRadius: 10, display: "grid", placeItems: "center", color: set.completed ? accent : "rgba(255,255,255,.55)", background: set.completed ? `${accent}12` : "rgba(14,19,27,.98)", border: `1px solid ${set.completed ? accent + "35" : "rgba(255,255,255,.06)"}`, fontWeight: 950, fontSize: 11 }}>{index + 1}</div><input inputMode="decimal" type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => onWeight(Math.max(0, Number(event.target.value) || 0))} style={inputStyle}/><input inputMode="numeric" type="number" min="0" step="1" value={set.reps} onChange={(event) => onReps(Math.max(0, Math.round(Number(event.target.value) || 0)))} style={inputStyle}/><button type="button" onClick={onToggle} aria-label={set.completed ? "Annuler la série" : "Valider la série"} style={{ width: 40, height: 38, borderRadius: 10, border: `1px solid ${set.completed ? accent + "66" : "rgba(255,255,255,.08)"}`, background: set.completed ? accent : "rgba(255,255,255,.035)", color: set.completed ? "#090b0d" : "#fff", fontWeight: 1000, cursor: "pointer", boxShadow: set.completed ? `0 0 16px ${accent}28` : "none" }}>{set.completed ? "✓" : "○"}</button></div>;
 }

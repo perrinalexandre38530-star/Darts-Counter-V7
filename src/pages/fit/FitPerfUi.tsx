@@ -7,7 +7,9 @@ export type FitIconName =
   | "workout" | "program" | "live" | "history" | "library"
   | "muscles" | "favorite" | "guide" | "search" | "settings"
   | "timer" | "volume" | "strength" | "profile" | "coach" | "plus"
-  | "chevron" | "info" | "filter";
+  | "chevron" | "info" | "filter"
+  | "body" | "dumbbell" | "barbell" | "cable" | "machine" | "kettlebell" | "band" | "medicine" | "star"
+  | "free" | "push" | "pull" | "legs" | "fullbody";
 
 export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -37,6 +39,20 @@ export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number 
     case "chevron": return <svg {...common}><path {...p} d="m9 6 6 6-6 6"/></svg>;
     case "info": return <svg {...common}><circle {...p} cx="12" cy="12" r="9"/><path {...p} d="M12 10v6M12 7h.01"/></svg>;
     case "filter": return <svg {...common}><path {...p} d="M4 6h16M7 12h10M10 18h4"/><circle {...p} cx="8" cy="6" r="1.6"/><circle {...p} cx="15" cy="12" r="1.6"/><circle {...p} cx="12" cy="18" r="1.6"/></svg>;
+    case "body": return <svg {...common}><circle {...p} cx="12" cy="4.2" r="2.2"/><path {...p} d="M9.2 7.2 7.6 12l1.8 2.2-.8 6M14.8 7.2l1.6 4.8-1.8 2.2.8 6M9.2 7.4c1.8 1 3.8 1 5.6 0M9.4 14.2h5.2"/></svg>;
+    case "dumbbell": return <svg {...common}><path {...p} d="M7 9v6M17 9v6M4 7v10M20 7v10M7 12h10"/></svg>;
+    case "barbell": return <svg {...common}><path {...p} d="M3 10v4M6 8v8M18 8v8M21 10v4M6 12h12"/></svg>;
+    case "cable": return <svg {...common}><path {...p} d="M5 4h14M7 4v4l3 3M17 4v4l-3 3M10 11v7M14 11v7M8 20h8"/></svg>;
+    case "machine": return <svg {...common}><path {...p} d="M5 20V5h4v5h6V5h4v15M9 14h6M7 20h10"/></svg>;
+    case "kettlebell": return <svg {...common}><path {...p} d="M9 7a3 3 0 0 1 6 0M8 8h8l2 5a6 6 0 0 1-12 0z"/></svg>;
+    case "band": return <svg {...common}><path {...p} d="M7 5c-3 3-3 11 0 14M17 5c3 3 3 11 0 14M7 12h10"/></svg>;
+    case "medicine": return <svg {...common}><circle {...p} cx="12" cy="12" r="8"/><path {...p} d="M4.5 9h15M4.5 15h15M9 4.5c2 3 2 12 0 15M15 4.5c-2 3-2 12 0 15"/></svg>;
+    case "star": return <svg {...common}><path {...p} d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6-5.4-2.9-5.4 2.9 1-6-4.4-4.3 6.1-.9z"/></svg>;
+    case "free": return <svg {...common}><circle {...p} cx="12" cy="12" r="8"/><path {...p} d="M12 8v8M8 12h8"/></svg>;
+    case "push": return <svg {...common}><path {...p} d="M5 12h12M13 8l4 4-4 4M5 8v8"/></svg>;
+    case "pull": return <svg {...common}><path {...p} d="M19 12H7M11 8l-4 4 4 4M19 8v8"/></svg>;
+    case "legs": return <svg {...common}><path {...p} d="M8 4h3l1 7-2 9H6l2-9zM16 4h-3l-1 7 2 9h4l-2-9z"/></svg>;
+    case "fullbody": return <svg {...common}><circle {...p} cx="12" cy="4" r="2"/><path {...p} d="M9 7h6l2 5-2 2 1 7M15 14H9l-1 7M9 7 6 13M15 7l3 6"/></svg>;
     default: return null;
   }
 }

@@ -9,7 +9,7 @@ const checks = [
   ["multi route OSM overview map", ui.includes("ScoutOverviewMap") && ui.includes("tile.openstreetmap.org")],
   ["clickable route traces", ui.includes("onClick={() => route && onSelect(route)}")],
   ["visual route cards", ui.includes("ScoutRouteCard") && ui.includes("fetchOutdoorRouteCoverPhoto")],
-  ["lightweight cover photo API", media.includes("export async function fetchOutdoorRouteCoverPhoto") && media.includes("mss-route-cover-photo-cache-v1")],
+  ["lightweight cover photo API", media.includes("export async function fetchOutdoorRouteCoverPhoto") && (media.includes("mss-route-cover-photo-cache-v1") || media.includes("mss-route-cover-photo-cache-v2"))],
   ["sort filters", ui.includes('recommended') && ui.includes('nearby') && ui.includes('climb')],
   ["distance filters", ui.includes('short') && ui.includes('medium') && ui.includes('long')],
   ["loop filter", ui.includes("loopOnly")],

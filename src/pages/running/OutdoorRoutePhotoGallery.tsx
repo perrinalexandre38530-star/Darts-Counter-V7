@@ -9,6 +9,8 @@ export default function OutdoorRoutePhotoGallery({ route, lang, accent, textSoft
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [openIndex, setOpenIndex] = React.useState<number | null>(null);
+  const [activeImageLoading, setActiveImageLoading] = React.useState(false);
+  const swipeStartRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -27,6 +29,18 @@ export default function OutdoorRoutePhotoGallery({ route, lang, accent, textSoft
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openIndex, photos.length]);
+
+  React.useEffect(() => {
+    if (openIndex == null || !photos.length) return;
+    setActiveImageLoading(true);
+    const preload = [photos[(openIndex + 1) % photos.length], photos[(openIndex - 1 + photos.length) % photos.length]].filter(Boolean);
+    for (const photo of preload) { try { const image = new Image(); image.src = photo.imageUrl || photo.thumbUrl; } catch {} }
+  }, [openIndex, photos]);
+
+  const movePhoto = React.useCallback((direction: -1 | 1) => {
+    if (!photos.length) return;
+    setOpenIndex((value) => value == null ? 0 : (value + direction + photos.length) % photos.length);
+  }, [photos.length]);
 
   const copy = lang.startsWith("fr") ? {
     title: "DÉCOUVRIR LE LIEU", loading: "Recherche des meilleurs visuels du parcours…", empty: "Aucun visuel suffisamment pertinent n'a été trouvé autour de ce parcours.",
@@ -88,10 +102,11 @@ export default function OutdoorRoutePhotoGallery({ route, lang, accent, textSoft
           <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 9, fontWeight: 1000 }}>{openIndex! + 1}/{photos.length} · {sourceLabel(activePhoto)}</div><div style={{ marginTop: 2, fontSize: 8.2, color: "rgba(255,255,255,.76)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activePhoto.placeName || activePhoto.description || activePhoto.title}</div></div>
           <button className="btn" onClick={() => setOpenIndex(null)} style={{ minHeight: 34, fontSize: 7.4, fontWeight: 1000 }}>{copy.close}</button>
         </div>
-        <div style={{ position: "relative", minHeight: 240, maxHeight: "74vh", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: 15, background: "#050608" }}>
-          <img src={activePhoto.imageUrl} alt={activePhoto.description || activePhoto.title} style={{ maxWidth: "100%", maxHeight: "74vh", objectFit: "contain" }}/>
-          {photos.length > 1 ? <><button className="btn" onClick={() => setOpenIndex((openIndex! - 1 + photos.length) % photos.length)} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", minWidth: 40, minHeight: 44, padding: 0, background: "rgba(5,6,8,.82)", fontSize: 18 }}>‹</button><button className="btn" onClick={() => setOpenIndex((openIndex! + 1) % photos.length)} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", minWidth: 40, minHeight: 44, padding: 0, background: "rgba(5,6,8,.82)", fontSize: 18 }}>›</button></> : null}
+        <div onTouchStart={(event) => { swipeStartRef.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => { const start = swipeStartRef.current; const end = event.changedTouches[0]?.clientX; swipeStartRef.current = null; if (start == null || end == null) return; const delta = end - start; if (Math.abs(delta) > 42) movePhoto(delta > 0 ? -1 : 1); }} style={{ position: "relative", minHeight: 240, maxHeight: "74vh", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: 15, background: "#050608", touchAction: "pan-y" }}>
+          <img key={activePhoto.id} src={activePhoto.imageUrl || activePhoto.thumbUrl} alt={activePhoto.description || activePhoto.title} loading="eager" decoding="async" onLoad={() => setActiveImageLoading(false)} onError={(event) => { const img = event.currentTarget; if (img.src !== activePhoto.thumbUrl) img.src = activePhoto.thumbUrl; setActiveImageLoading(false); }} style={{ maxWidth: "100%", maxHeight: "74vh", objectFit: "contain", opacity: activeImageLoading ? .18 : 1, transition: "opacity .12s ease" }}/>{activeImageLoading ? <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: accent, fontSize: 10, fontWeight: 1000 }}>◌</div> : null}
+          {photos.length > 1 ? <><button className="btn" onClick={() => movePhoto(-1)} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", minWidth: 40, minHeight: 44, padding: 0, background: "rgba(5,6,8,.82)", fontSize: 18 }}>‹</button><button className="btn" onClick={() => movePhoto(1)} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", minWidth: 40, minHeight: 44, padding: 0, background: "rgba(5,6,8,.82)", fontSize: 18 }}>›</button></> : null}
         </div>
+        <div style={{ display: "flex", gap: 5, overflowX: "auto", padding: "1px 0 3px" }}>{photos.map((photo, index) => <button key={`${photo.id}:dialog-thumb`} type="button" onClick={() => setOpenIndex(index)} style={{ flex: "0 0 62px", width: 62, height: 46, padding: 0, borderRadius: 8, overflow: "hidden", border: index === openIndex ? `2px solid ${accent}` : "1px solid rgba(255,255,255,.12)", background: "#080a0d", opacity: index === openIndex ? 1 : .62 }}><img src={photo.thumbUrl} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }}/></button>)}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
           <div style={{ color: "rgba(255,255,255,.62)", fontSize: 7.2, lineHeight: 1.4 }}>{[activePhoto.description, activePhoto.author, activePhoto.license, activePhoto.distanceToRouteM != null ? `${activePhoto.distanceToRouteM < 100 ? "<100 m" : formatDistance(activePhoto.distanceToRouteM)} ${copy.near}` : null].filter(Boolean).join(" · ")}</div>
           <a href={activePhoto.pageUrl} target="_blank" rel="noreferrer" className="btn" style={{ minHeight: 32, display: "grid", placeItems: "center", padding: "4px 8px", color: accent, borderColor: `${accent}55`, fontSize: 7.2, fontWeight: 1000, textDecoration: "none" }}>{copy.sourceLink}</a>

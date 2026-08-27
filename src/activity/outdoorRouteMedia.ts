@@ -20,13 +20,16 @@ export type OutdoorRoutePhoto = {
   placeName?: string;
 };
 
-const CACHE_KEY = "mss-route-photo-cache-v3";
-const COVER_CACHE_KEY = "mss-route-cover-photo-cache-v1";
+const CACHE_KEY = "mss-route-photo-cache-v4";
+const COVER_CACHE_KEY = "mss-route-cover-photo-cache-v2";
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000;
 
 type CacheRow = { routeKey: string; photos: OutdoorRoutePhoto[]; updatedAt: number };
 
 type CoverCacheRow = { routeKey: string; photo: OutdoorRoutePhoto | null; updatedAt: number };
+
+const inflightPhotoRequests = new Map<string, Promise<OutdoorRoutePhoto[]>>();
+
 function loadCoverCache(): CoverCacheRow[] {
   try { const value = JSON.parse(localStorage.getItem(COVER_CACHE_KEY) || "[]"); return Array.isArray(value) ? value : []; } catch { return []; }
 }
@@ -190,12 +193,16 @@ function dedupePhotos(photos: OutdoorRoutePhoto[]) {
   const output: OutdoorRoutePhoto[] = [];
   const ids = new Set<string>();
   const titles = new Set<string>();
+  const urls = new Set<string>();
   for (const photo of [...photos].sort((a, b) => photoScore(a) - photoScore(b))) {
     const titleKey = normalizeTitle(photo.title || photo.placeName || "");
-    const urlKey = photo.thumbUrl.split("?")[0];
-    if (ids.has(photo.id) || (titleKey && titles.has(titleKey)) || output.some((row) => row.thumbUrl.split("?")[0] === urlKey)) continue;
+    const thumbKey = String(photo.thumbUrl || "").split("?")[0];
+    const imageKey = String(photo.imageUrl || "").split("?")[0];
+    if (ids.has(photo.id) || (titleKey && titles.has(titleKey)) || (thumbKey && urls.has(thumbKey)) || (imageKey && urls.has(imageKey))) continue;
     ids.add(photo.id);
     if (titleKey) titles.add(titleKey);
+    if (thumbKey) urls.add(thumbKey);
+    if (imageKey) urls.add(imageKey);
     output.push(photo);
   }
   return output;
@@ -205,24 +212,55 @@ export async function fetchOutdoorRoutePhotos(route: RunningRouteTemplate, limit
   const routeKey = outdoorRouteKey(route);
   const cached = loadCache().find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
   if (cached?.photos?.length) return cached.photos.slice(0, limit);
-  const anchors = routeAnchors(route);
-  if (!anchors.length) return [];
 
-  const contextPromise = fetchOutdoorRoutePlaceContext(route, lang).catch(() => null);
-  const geoSettled = await Promise.allSettled(anchors.flatMap((anchor) => [
-    fetchWikipediaNearby(route, anchor, lang, 9),
-    fetchCommonsGeoPhotos(route, anchor, Math.max(8, Math.ceil(limit / anchors.length) + 5)),
-  ]));
-  const context = await contextPromise;
-  const scenicPlaces = (context?.places || []).filter((place) => ["viewpoint", "peak", "attraction", "shelter", "information"].includes(place.category) && place.distanceToRouteM < 1200).slice(0, 5);
-  const placeSettled = await Promise.allSettled(scenicPlaces.map((place) => fetchCommonsNamedPlace(route, place, 6)));
+  const requestKey = `${routeKey}:${String(lang || "fr").slice(0,2)}`;
+  const running = inflightPhotoRequests.get(requestKey);
+  if (running) return (await running).slice(0, limit);
 
+  const request = (async () => {
+    const anchors = routeAnchors(route);
+    if (!anchors.length) return [];
+
+    // Fast first pass: focus on only the most useful parts of the route instead of
+    // waiting for a dozen geo-search calls before showing anything.
+    const preferredAnchors = [
+      anchors.find((row) => row.kind === "middle"),
+      anchors.find((row) => row.kind === "summit"),
+      anchors.find((row) => row.kind === "start"),
+      anchors.find((row) => row.kind === "finish"),
+    ].filter(Boolean).filter((row, index, list) => list.findIndex((item) => item!.kind === row!.kind) === index).slice(0, 4) as ReturnType<typeof routeAnchors>;
+
+    const contextPromise = fetchOutdoorRoutePlaceContext(route, lang).catch(() => null);
+    const geoSettled = await Promise.allSettled(preferredAnchors.flatMap((anchor) => [
+      fetchWikipediaNearby(route, anchor, lang, 7),
+      fetchCommonsGeoPhotos(route, anchor, 8),
+    ]));
+    const context = await contextPromise;
+    const scenicPlaces = (context?.places || []).filter((place) => ["viewpoint", "peak", "attraction", "shelter", "information"].includes(place.category) && place.distanceToRouteM < 1100).slice(0, 3);
+    const placeSettled = await Promise.allSettled(scenicPlaces.map((place) => fetchCommonsNamedPlace(route, place, 5)));
+
+    const pool: OutdoorRoutePhoto[] = [];
+    for (const result of [...geoSettled, ...placeSettled]) if (result.status === "fulfilled") pool.push(...result.value);
+    const photos = dedupePhotos(pool).filter((photo) => photo.distanceToRouteM == null || photo.distanceToRouteM < 9000).slice(0, Math.max(limit, 18));
+    const current = loadCache().filter((row) => row.routeKey !== routeKey);
+    saveCache([{ routeKey, photos, updatedAt: Date.now() }, ...current]);
+    return photos;
+  })();
+
+  inflightPhotoRequests.set(requestKey, request);
+  try { return (await request).slice(0, limit); } finally { inflightPhotoRequests.delete(requestKey); }
+}
+
+export async function fetchOutdoorPlacePhotos(route: RunningRouteTemplate, place: OutdoorRoutePlace, lang = "fr", limit = 4): Promise<OutdoorRoutePhoto[]> {
+  const anchor = { kind: "place" as const, point: { lat: place.lat, lon: place.lon, timestamp: Date.now() } };
+  const settled = await Promise.allSettled([
+    fetchCommonsNamedPlace(route, place, Math.max(4, limit + 2)),
+    fetchWikipediaNearby(route, anchor as any, lang, Math.max(4, limit + 2)),
+    fetchCommonsGeoPhotos(route, anchor as any, Math.max(5, limit + 3)),
+  ]);
   const pool: OutdoorRoutePhoto[] = [];
-  for (const result of [...geoSettled, ...placeSettled]) if (result.status === "fulfilled") pool.push(...result.value);
-  const photos = dedupePhotos(pool).filter((photo) => photo.distanceToRouteM == null || photo.distanceToRouteM < 9000).slice(0, limit);
-  const current = loadCache().filter((row) => row.routeKey !== routeKey);
-  saveCache([{ routeKey, photos, updatedAt: Date.now() }, ...current]);
-  return photos;
+  for (const result of settled) if (result.status === "fulfilled") pool.push(...result.value.map((photo) => ({ ...photo, anchor: "place" as const, placeName: photo.placeName || place.name })));
+  return dedupePhotos(pool).filter((photo) => photo.distanceToRouteM == null || photo.distanceToRouteM < 2500).slice(0, limit);
 }
 
 

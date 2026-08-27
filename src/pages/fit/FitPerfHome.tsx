@@ -22,6 +22,7 @@ import {
   type FitSession,
 } from "../../fit/fitStore";
 import { FitIcon, FitMiniBars, FitProgress, FitRing, fitUiCss, type FitIconName } from "./FitPerfUi";
+import fitPerfLogo from "../../assets/games/logo-fit-performance.webp";
 
 type Props = { store?: any; go: (route: any, params?: any) => void };
 type HomeTab = "overview" | "today" | "progress" | "records" | "goals" | "profile";
@@ -105,7 +106,7 @@ export default function FitPerfHome({ store, go }: Props) {
   const textSoft = (theme as any)?.textSoft || "#9ea4af";
   const profile = activeProfile(store);
   const [sessions, setSessions] = React.useState<FitSession[]>(() => loadFitSessions());
-  const [tab, setTab] = React.useState<HomeTab>("overview");
+  const [tab, setTab] = React.useState<HomeTab>("profile");
   const [tickerIndex, setTickerIndex] = React.useState(0);
 
   React.useEffect(() => {
@@ -315,13 +316,23 @@ export default function FitPerfHome({ store, go }: Props) {
   ]);
 
   const tabs: Array<{ id: HomeTab; label: string; icon: FitIconName }> = [
+    { id: "profile", label: t("PROFIL", "PROFILE", "PERFIL"), icon: "profile" },
     { id: "overview", label: t("VUE", "VIEW", "VISTA"), icon: "home" },
     { id: "today", label: t("AUJOURD'HUI", "TODAY", "HOY"), icon: "today" },
     { id: "progress", label: t("PROGRESSION", "PROGRESS", "PROGRESO"), icon: "progress" },
     { id: "records", label: t("RECORDS", "RECORDS", "RÉCORDS"), icon: "records" },
     { id: "goals", label: t("OBJECTIFS", "GOALS", "OBJETIVOS"), icon: "goals" },
-    { id: "profile", label: t("PROFIL", "PROFILE", "PERFIL"), icon: "profile" },
   ];
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      setTab((current) => {
+        const index = tabs.findIndex((item) => item.id === current);
+        return tabs[(index + 1 + tabs.length) % tabs.length]?.id || "profile";
+      });
+    }, 3800);
+    return () => window.clearInterval(timer);
+  }, [lang]);
 
   const panelTitle =
     tab === "overview" ? t("VUE GLOBALE", "OVERVIEW", "VISTA GLOBAL") :
@@ -345,7 +356,7 @@ export default function FitPerfHome({ store, go }: Props) {
       <style>{fitUiCss}</style>
       <style>{`
         .fit-home-shell{height:100%;width:100%;max-width:520px;margin:0 auto;padding:12px 12px 8px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;overflow:hidden}
-        .fit-home-header{flex:0 0 auto;border-radius:25px;padding:12px 16px;background:linear-gradient(135deg,rgba(8,10,20,.98),rgba(14,18,34,.98));border:1px solid rgba(255,255,255,.10);box-shadow:0 20px 40px rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center}
+        .fit-home-header{position:relative;overflow:hidden;isolation:isolate;flex:0 0 auto;border-radius:25px;padding:12px 16px;background:linear-gradient(135deg,rgba(8,10,20,.99),rgba(14,18,34,.985));border:1px solid rgba(255,255,255,.10);box-shadow:0 20px 40px rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center}.fit-home-header>*:not(.fit-home-logo-watermark){position:relative;z-index:2}.fit-home-logo-watermark{position:absolute;z-index:0;left:-52px;top:50%;width:190px;height:190px;transform:translateY(-50%) scale(1.25);object-fit:contain;opacity:.13;filter:saturate(1.25) contrast(1.08);pointer-events:none}
         .fit-home-panel{flex:0 0 clamp(205px,28vh,260px);min-height:0;border-radius:22px;padding:11px 12px;background:radial-gradient(circle at top,rgba(255,255,255,.045),rgba(0,0,0,.95));border:1px solid rgba(255,255,255,.10);box-shadow:0 0 24px rgba(0,0,0,.8),0 0 30px ${accent}26;display:flex;flex-direction:column;overflow:hidden}
         .fit-home-panel-title{font-size:13px;font-weight:950;letter-spacing:1.15px;text-transform:uppercase;text-align:center;color:${accent};text-shadow:0 0 12px ${accent}55;flex:0 0 auto}
         .fit-home-panel-body{flex:1 1 auto;min-height:0;margin-top:7px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
@@ -389,6 +400,7 @@ export default function FitPerfHome({ store, go }: Props) {
       <div className="fit-home-shell">
         {/* Même en-tête que la HOME DARTS SCORING : BIENVENUE + titre, sans logo. */}
         <div className="fit-home-header">
+          <img className="fit-home-logo-watermark" src={fitPerfLogo} alt="" aria-hidden="true" />
           <div
             style={{
               display: "inline-flex",
@@ -447,9 +459,6 @@ export default function FitPerfHome({ store, go }: Props) {
                   <MiniStat label={t("séries", "sets", "series")} value={weekSets} accent="#72def4" />
                   <MiniStat label="1RM" value={formatKg(summary.bestOneRm)} accent="#b59cff" />
                 </div>
-                <button className="fit-home-cta" type="button" onClick={() => go("games", { fitTemplateId: "free" })}>
-                  {t("Démarrer une séance", "Start workout", "Iniciar sesión")}
-                </button>
               </>
             )}
 

@@ -17,10 +17,7 @@ import OutdoorRoutePlannerPanel from "./OutdoorRoutePlannerPanel";
 import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
 import OutdoorOfflineRoutePanel from "./OutdoorOfflineRoutePanel";
 import OutdoorSafetyPanel from "./OutdoorSafetyPanel";
-import OutdoorRoutePhotoGallery from "./OutdoorRoutePhotoGallery";
-import OutdoorRouteCommunityPanel from "./OutdoorRouteCommunityPanel";
-import OutdoorRoutePlaceInfoPanel from "./OutdoorRoutePlaceInfoPanel";
-import OutdoorRouteSocialPanel from "./OutdoorRouteSocialPanel";
+import OutdoorRouteDetailPage, { type OutdoorRouteDetailTab } from "./OutdoorRouteDetailPage";
 import OutdoorRouteScoutDiscover from "./OutdoorRouteScoutDiscover";
 import { RunningGlyph, RunningHubCard, RunningSurface } from "./RunningUi";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
@@ -56,7 +53,6 @@ type SimpleGoalMode = "free" | "distance" | "duration";
 type SetupPanel = "menu" | "workout" | "route" | "ready";
 type RoutePanelTab = "menu" | "choose" | "guide" | "offline";
 type RouteChooseMode = "showcase" | "scout" | "discover" | "generate" | "library";
-type RouteDetailsTab = "details" | "performance" | "photos" | "community";
 type LivePage = "cockpit" | "route" | "splits" | "details";
 type WorkoutType = NonNullable<ActivityRecord["workoutType"]>;
 type WorkoutStep = {
@@ -258,7 +254,8 @@ export default function RunningModule({ go, params }: Props) {
     const [routePanelTab, setRoutePanelTab] = React.useState<RoutePanelTab>("menu");
     const [routeChooseMode, setRouteChooseMode] = React.useState<RouteChooseMode>("showcase");
     const [routeListOpen, setRouteListOpen] = React.useState(false);
-    const [routeDetailsTab, setRouteDetailsTab] = React.useState<RouteDetailsTab>("details");
+    const [routeDetailOpen, setRouteDetailOpen] = React.useState(false);
+    const [routeDetailInitialTab, setRouteDetailInitialTab] = React.useState<OutdoorRouteDetailTab>("overview");
     const [routeElevationOverrides, setRouteElevationOverrides] = React.useState<Record<string, RunningRouteTemplate>>({});
     const [routeElevationMessage, setRouteElevationMessage] = React.useState("");
     const [livePage, setLivePage] = React.useState<LivePage>("cockpit");
@@ -411,7 +408,7 @@ export default function RunningModule({ go, params }: Props) {
             return false;
         }).slice().sort((a, b) => Number(a.elapsedMs || 0) - Number(b.elapsedMs || 0));
     }, [activities, selectedRoute]);
-    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteChooseMode((current) => current === "scout" ? "scout" : selectedRoute ? "showcase" : "discover"); setRouteDetailsTab("details"); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
+    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteChooseMode((current) => current === "scout" ? "scout" : selectedRoute ? "showcase" : "discover"); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
     const selectedTerrain = React.useMemo(() => selectedRoute ? analyzeRunningTerrain(selectedRoute.route) : null, [selectedRoute]);
     const selectedTerrainAdvice = React.useMemo(() => selectedTerrain ? terrainAdvice(selectedTerrain, lang) : null, [lang, selectedTerrain]);
     const selectedSportRouteDetails = React.useMemo(() => selectedRoute ? buildSportRouteDetails(selectedRoute, selectedTerrain, activitySport, lang) : null, [activitySport, lang, selectedRoute, selectedTerrain]);
@@ -1393,6 +1390,11 @@ export default function RunningModule({ go, params }: Props) {
         setGhostEnabled(Number(route.referenceElapsedMs || 0) > 0);
     }, []);
     const resolveRoutePosition = React.useCallback(async (): Promise<GeoPoint> => {
+        const cachedPoint = routeDiscoveryCenter;
+        if (cachedPoint && Date.now() - Number(cachedPoint.timestamp || 0) < 90_000 && (!Number.isFinite(cachedPoint.accuracy) || Number(cachedPoint.accuracy) <= 100)) {
+            setAccuracy(Number.isFinite(cachedPoint.accuracy) ? Number(cachedPoint.accuracy) : null);
+            return cachedPoint;
+        }
         let point: GeoPoint | null = null;
         if (isNativeActivityTrackingAvailable()) {
             const permissions: any = await requestNativeTrackingPermissions();
@@ -1405,7 +1407,7 @@ export default function RunningModule({ go, params }: Props) {
                 await openNativeLocationSettings();
                 throw new Error(pickLegacyLocalizedText(lang, "Active le GPS Android puis réessaie.", "Turn on Android location then try again.", "Activa la ubicación Android y vuelve a intentarlo."));
             }
-            point = await getNativeCurrentPosition(15000);
+            point = await getNativeCurrentPosition(10000);
         } else if (navigator.geolocation) {
             point = await new Promise<GeoPoint | null>((resolve) => navigator.geolocation.getCurrentPosition((position) => resolve({
                 lat: position.coords.latitude,
@@ -1413,13 +1415,13 @@ export default function RunningModule({ go, params }: Props) {
                 timestamp: position.timestamp || Date.now(),
                 accuracy: Number.isFinite(position.coords.accuracy) ? Number(position.coords.accuracy) : undefined,
                 altitude: Number.isFinite(position.coords.altitude) ? Number(position.coords.altitude) : undefined,
-            }), () => resolve(null), { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }));
+            }), () => resolve(null), { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 }));
         }
         if (!point) throw new Error(pickLegacyLocalizedText(lang, "Impossible d'obtenir ta position GPS.", "Unable to get your GPS position.", "No se pudo obtener tu posición GPS."));
         setRouteDiscoveryCenter(point);
         setAccuracy(Number.isFinite(point.accuracy) ? Number(point.accuracy) : null);
         return point;
-    }, [lang]);
+    }, [lang, routeDiscoveryCenter]);
 
     const scoutExistingRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;
@@ -1550,6 +1552,26 @@ export default function RunningModule({ go, params }: Props) {
         setView("setup");
     }, []);
     const infoDot = <InfoDot title={copy.title} color={accent} glow={`${accent}88`} content={<div style={{ lineHeight: 1.6 }}>{copy.info}<br /><br /><b>{copy.local}</b></div>}/>;
+    if (routeDetailOpen && selectedRoute) {
+        const favorite = savedRoutes.some((item) => item.id === selectedRoute.id || (!!selectedRoute.externalId && item.externalId === selectedRoute.externalId) || (!!selectedRoute.sourceActivityId && item.sourceActivityId === selectedRoute.sourceActivityId));
+        return <OutdoorRouteDetailPage
+          route={selectedRoute}
+          sport={activitySport}
+          lang={lang}
+          accent={accent}
+          textSoft={textSoft}
+          favorite={favorite}
+          localAttempts={selectedRouteAttempts}
+          initialTab={routeDetailInitialTab}
+          onBack={() => setRouteDetailOpen(false)}
+          onClose={() => setRouteDetailOpen(false)}
+          onGuide={() => { setRouteDetailOpen(false); setSetupPanel("route"); setRoutePanelTab("guide"); }}
+          onToggleFavorite={() => toggleFavoriteRoute(selectedRoute)}
+          onOpenMaps={() => openRouteInMaps(selectedRoute)}
+          onSearchImages={() => searchRouteImages(selectedRoute)}
+          onOfflineChanged={() => void refreshOfflineRoutes()}
+        />;
+    }
     if (countdown != null)
         return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH, minHeight: "78vh", display: "grid", placeItems: "center" }}><div style={{ textAlign: "center" }}><div style={{ fontSize: 12, color: textSoft, fontWeight: 1000, letterSpacing: 2 }}>{copy.countdown}</div><div style={{ marginTop: 8, fontSize: "clamp(88px,28vw,150px)", lineHeight: 1, fontWeight: 1000, color: accent, textShadow: `0 0 34px ${accent}77` }}>{countdown === 0 ? copy.go : countdown}</div><div style={{ marginTop: 14, fontWeight: 900 }}>{presetLabel(effectivePreset, lang)}</div></div></div>;
     if (view === "record") {
@@ -1661,7 +1683,7 @@ export default function RunningModule({ go, params }: Props) {
         if (setupPanel !== "menu") { setSetupPanel("menu"); return; }
         go("home");
     };
-    return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={setupPageTitle} subtitle={setupPageSubtitle} left={<BackDot onClick={backFromSetup}/>} right={infoDot}/>
+    return <div className="container" style={{ maxWidth: setupPanel === "route" ? 1280 : PAGE_MAX_WIDTH, paddingLeft: setupPanel === "route" ? "clamp(6px,1.1vw,14px)" : undefined, paddingRight: setupPanel === "route" ? "clamp(6px,1.1vw,14px)" : undefined }}><PageHeader title={setupPageTitle} subtitle={setupPageSubtitle} left={<BackDot onClick={backFromSetup}/>} right={infoDot}/>
 
     {setupPanel === "menu" ? <>
       <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/>
@@ -1816,7 +1838,7 @@ export default function RunningModule({ go, params }: Props) {
             onTargetDistanceChange={setRouteGenerationDistanceKm}
             onSearch={() => void scoutExistingRoutes()}
             onSelect={(route) => selectRoute(route)}
-            onOpenDetails={(route) => { selectRoute(route); setRouteDetailsTab("details"); setRouteChooseMode("showcase"); }}
+            onOpenDetails={(route) => { selectRoute(route); setRouteDetailInitialTab("overview"); setRouteDetailOpen(true); }}
             onGuide={(route) => { selectRoute(route); setRoutePanelTab("guide"); }}
             onToggleFavorite={toggleFavoriteRoute}
             onOpenMaps={openRouteInMaps}
@@ -1837,49 +1859,34 @@ export default function RunningModule({ go, params }: Props) {
 
               {selectedRoute ? <div style={{ display: "grid", gap: 10 }}>
                 <div style={{ position: "relative", touchAction: "pan-y" }} onTouchStart={onRouteSwipeStart} onTouchEnd={onRouteSwipeEnd}>
-                  <RouteMap points={selectedRoute.route} accent={accent} waiting={copy.waiting} showRouteNetwork zoomable immersive route={selectedRoute} terrain={selectedTerrain}/>
-                  <div style={{ position: "absolute", inset: 10, display: "grid", gridTemplateRows: "auto 1fr auto", pointerEvents: "none" }}>
+                  <RouteMap points={selectedRoute.route} accent={accent} waiting={copy.waiting} showRouteNetwork zoomable immersive route={selectedRoute} terrain={selectedTerrain} onOpen={() => { setRouteDetailInitialTab("overview"); setRouteDetailOpen(true); }}/>
+                  <div style={{ position: "absolute", inset: 10, display: "grid", gridTemplateRows: "auto 1fr", pointerEvents: "none" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.78)", border: `1px solid ${accent}35`, color: accent, fontSize: 7.3, fontWeight: 1000 }}>{selectedTerrain?.hasElevation ? terrainLabel(selectedTerrain.terrain, lang) : outdoorSportLabel(activitySport, lang)}</div>
                         <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.78)", border: "1px solid rgba(255,255,255,.10)", color: "#fff", fontSize: 7.3, fontWeight: 1000 }}>{selectedRouteIndex + 1}/{routeOptions.length}</div>
                         {selectedRoute.scout ? <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.82)", border: `1px solid ${accent}44`, color: accent, fontSize: 7.3, fontWeight: 1000 }}>✦ {selectedRoute.scout.score}%</div> : null}
-                        {routeGenerationMessage && routeChooseMode === "generate" ? <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.78)", border: `1px solid ${accent}25`, color: "#fff", fontSize: 7.1, fontWeight: 900, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pickLegacyLocalizedText(lang, "généré", "generated", "generado")}</div> : null}
                       </div>
                       <div style={{ display: "grid", gap: 6, pointerEvents: "auto" }}>
-                        <button className="btn" onClick={() => toggleFavoriteRoute(selectedRoute)} style={{ minWidth: 36, minHeight: 36, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, color: savedRoutes.some((item) => item.id === selectedRoute.id || (!!selectedRoute.externalId && item.externalId === selectedRoute.externalId) || (!!selectedRoute.sourceActivityId && item.sourceActivityId === selectedRoute.sourceActivityId)) ? accent : undefined }}>{savedRoutes.some((item) => item.id === selectedRoute.id || (!!selectedRoute.externalId && item.externalId === selectedRoute.externalId) || (!!selectedRoute.sourceActivityId && item.sourceActivityId === selectedRoute.sourceActivityId)) ? "★" : "☆"}</button>
-                        <button className="btn" onClick={() => openRouteGpsActions(selectedRoute)} style={{ minWidth: 36, minHeight: 36, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, fontSize: 12 }}>📍</button>
+                        <button className="btn" onClick={(event) => { event.stopPropagation(); toggleFavoriteRoute(selectedRoute); }} style={{ minWidth: 36, minHeight: 36, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, color: savedRoutes.some((item) => item.id === selectedRoute.id || (!!selectedRoute.externalId && item.externalId === selectedRoute.externalId) || (!!selectedRoute.sourceActivityId && item.sourceActivityId === selectedRoute.sourceActivityId)) ? accent : undefined }}>{savedRoutes.some((item) => item.id === selectedRoute.id || (!!selectedRoute.externalId && item.externalId === selectedRoute.externalId) || (!!selectedRoute.sourceActivityId && item.sourceActivityId === selectedRoute.sourceActivityId)) ? "★" : "☆"}</button>
+                        <button className="btn" onClick={(event) => { event.stopPropagation(); setRouteDetailInitialTab("overview"); setRouteDetailOpen(true); }} style={{ minWidth: 36, minHeight: 36, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, fontSize: 12 }} title={pickLegacyLocalizedText(lang, "Plein écran", "Fullscreen", "Pantalla completa")}>⛶</button>
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 40px", alignItems: "center" }}>
-                      <div style={{ pointerEvents: "auto" }}><button className="btn" onClick={() => selectAdjacentRoute(-1)} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, fontSize: 16 }}>‹</button></div>
+                      <div style={{ pointerEvents: "auto" }}><button className="btn" onClick={(event) => { event.stopPropagation(); selectAdjacentRoute(-1); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, fontSize: 16 }}>‹</button></div>
                       <div />
-                      <div style={{ justifySelf: "end", pointerEvents: "auto" }}><button className="btn" onClick={() => selectAdjacentRoute(1)} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, fontSize: 16 }}>›</button></div>
-                    </div>
-                    <div style={{ alignSelf: "end", pointerEvents: "auto", padding: 11, borderRadius: 18, background: "rgba(6,9,14,.84)", backdropFilter: "blur(18px)", border: `1px solid ${accent}32`, boxShadow: "0 18px 40px rgba(0,0,0,.42)" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ color: "#fff", fontSize: 10.2, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{buildRouteDisplayName(selectedRoute, selectedTerrain, lang)}</div>
-                          <div style={{ marginTop: 4, display: "flex", gap: 5, flexWrap: "wrap" }}>
-                            <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}32`, color: accent, fontSize: 6.6, fontWeight: 1000 }}>{selectedTerrain?.hasElevation ? terrainLabel(selectedTerrain.terrain, lang) : outdoorSportLabel(activitySport, lang)}</span>
-                            {selectedTerrain?.hasElevation ? <span style={{ padding: "4px 7px", borderRadius: 999, border: "1px solid rgba(255,255,255,.10)", color: textSoft, fontSize: 6.6, fontWeight: 900 }}>{pickLegacyLocalizedText(lang, "DIFF.", "DIFF.", "DIF.")} {selectedTerrain.difficultyScore}/100</span> : null}
-                            {selectedRoute.scout ? <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}32`, color: accent, fontSize: 6.6, fontWeight: 1000 }}>✦ {selectedRoute.scout.score}%</span> : null}
-                          </div>
-                        </div>
-                        <div style={{ padding: "5px 8px", borderRadius: 999, border: `1px solid ${accent}30`, color: accent, fontSize: 7.1, fontWeight: 1000 }}>{formatDistance(selectedRoute.distanceM)}</div>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 9 }}>
-                        <MiniStat label="D+" value={selectedTerrain?.hasElevation ? `+${Math.round(selectedTerrain.gainM)} m` : `+${Math.round(selectedRoute.elevationGainM || 0)} m`} accent={accent}/>
-                        <MiniStat label={pickLegacyLocalizedText(lang, "SOMMET", "HIGH POINT", "CIMA")} value={selectedTerrain?.maxAltitudeM != null ? `${Math.round(selectedTerrain.maxAltitudeM)} m` : "—"} accent={accent}/>
-                        <MiniStat label={pickLegacyLocalizedText(lang, "DURÉE", "TIME", "TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(selectedRoute, activitySport))} accent={accent}/>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 36px", gap: 6, marginTop: 8 }}>
-                        <button className="btn" onClick={() => setRouteDetailsTab("details")} style={{ minHeight: 35, fontSize: 7.1, fontWeight: 1000, color: accent, borderColor: `${accent}55` }}>{pickLegacyLocalizedText(lang, "VOIR LA FICHE", "VIEW ROUTE", "VER FICHA")}</button>
-                        <button className="btn" onClick={() => setRoutePanelTab("guide")} style={{ minHeight: 35, fontSize: 7.1, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "GUIDER", "GUIDE", "GUIAR")}</button>
-                        <button className="btn" onClick={() => openRouteGpsActions(selectedRoute)} style={{ minHeight: 35, padding: 0 }}>↗</button>
-                      </div>
+                      <div style={{ justifySelf: "end", pointerEvents: "auto" }}><button className="btn" onClick={(event) => { event.stopPropagation(); selectAdjacentRoute(1); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, fontSize: 16 }}>›</button></div>
                     </div>
                   </div>
+                </div>
+
+                <div style={{ padding: 10, borderRadius: 17, background: "linear-gradient(145deg,rgba(255,255,255,.04),rgba(5,8,13,.90))", border: `1px solid ${accent}28` }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
+                    <div style={{ minWidth: 0 }}><div style={{ color: "#fff", fontSize: 10.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{buildRouteDisplayName(selectedRoute, selectedTerrain, lang)}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 7.3 }}>{pickLegacyLocalizedText(lang, "Touchez la carte pour ouvrir la fiche complète et la carte interactive.", "Tap the map to open the full route page and interactive map.", "Toca el mapa para abrir la ficha completa y el mapa interactivo.")}</div></div>
+                    <div style={{ padding: "5px 8px", borderRadius: 999, border: `1px solid ${accent}30`, color: accent, fontSize: 7.2, fontWeight: 1000 }}>{formatDistance(selectedRoute.distanceM)}</div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}><MiniStat label="D+" value={selectedTerrain?.hasElevation ? `+${Math.round(selectedTerrain.gainM)} m` : `+${Math.round(selectedRoute.elevationGainM || 0)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "SOMMET", "HIGH POINT", "CIMA")} value={selectedTerrain?.maxAltitudeM != null ? `${Math.round(selectedTerrain.maxAltitudeM)} m` : "—"} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "DURÉE", "TIME", "TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(selectedRoute, activitySport))} accent={accent}/></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 6, marginTop: 8 }}><button className="btn" onClick={() => { setRouteDetailInitialTab("overview"); setRouteDetailOpen(true); }} style={{ minHeight: 37, color: accent, borderColor: `${accent}55`, fontSize: 7.2, fontWeight: 1000 }}>▤ {pickLegacyLocalizedText(lang, "FICHE COMPLÈTE", "FULL ROUTE", "FICHA COMPLETA")}</button><button className="btn" onClick={() => setRoutePanelTab("guide")} style={{ minHeight: 37, fontSize: 7.2, fontWeight: 1000 }}>▶ {pickLegacyLocalizedText(lang, "GUIDER", "GUIDE", "GUIAR")}</button><button className="btn" onClick={() => { setRouteDetailInitialTab("plan"); setRouteDetailOpen(true); }} style={{ minHeight: 37, fontSize: 7.2, fontWeight: 1000 }}>◷ {pickLegacyLocalizedText(lang, "PLANIFIER", "PLAN", "PLANIFICAR")}</button></div>
                 </div>
 
                 <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4, scrollSnapType: "x mandatory" }}>
@@ -1914,33 +1921,9 @@ export default function RunningModule({ go, params }: Props) {
 
                 {routeElevationMessage ? <div style={{ color: selectedTerrain?.hasElevation ? accent : textSoft, fontSize: 7.6, lineHeight: 1.35 }}>⛰️ {routeElevationMessage}{routeElevationOverrides[selectedRoute.id] ? <span style={{ opacity: .65 }}> · Open-Meteo / Copernicus DEM</span> : null}</div> : null}
 
-                <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>{([['details','▤', pickLegacyLocalizedText(lang, 'DÉTAILS', 'DETAILS', 'DETALLES')], ['performance','↗', pickLegacyLocalizedText(lang, 'PERFORMANCE', 'PERFORMANCE', 'RENDIMIENTO')], ['photos','▧', pickLegacyLocalizedText(lang, 'PHOTOS', 'PHOTOS', 'FOTOS')], ['community','◉', pickLegacyLocalizedText(lang, 'COMMUNAUTÉ', 'COMMUNITY', 'COMUNIDAD')]] as Array<[RouteDetailsTab, string, string]>).map(([id, icon, label]) => { const active = routeDetailsTab === id; return <button key={id} className="btn" title={label} onClick={() => setRouteDetailsTab(id)} style={{ flex: active ? "1 0 auto" : "0 0 38px", minWidth: active ? 86 : 38, minHeight: 38, padding: active ? '4px 10px' : 0, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: active ? 7.3 : 12, fontWeight: 1000, color: active ? accent : undefined, borderColor: active ? `${accent}60` : 'rgba(255,255,255,.065)', background: active ? `${accent}0d` : 'rgba(255,255,255,.018)', transition: 'all .18s ease' }}><span>{icon}</span>{active ? <span style={{ whiteSpace: 'nowrap' }}>{label}</span> : null}</button>; })}</div>
-
-                {routeDetailsTab === 'details' ? <>
-                  <RunningSurface accent={accent} style={{ marginTop: 0 }}>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 7 }}>
-                        <MiniStat label={pickLegacyLocalizedText(lang, 'DISTANCE', 'DISTANCE', 'DISTANCIA')} value={formatDistance(selectedRoute.distanceM)} accent={accent}/>
-                        <MiniStat label='D−' value={selectedTerrain?.hasElevation ? `-${Math.round(selectedTerrain.lossM)} m` : '—'} accent={accent}/>
-                        <MiniStat label={pickLegacyLocalizedText(lang, 'ALT. MIN', 'MIN ALT', 'ALT. MIN')} value={selectedTerrain?.minAltitudeM != null ? `${Math.round(selectedTerrain.minAltitudeM)} m` : '—'} accent={accent}/>
-                        <MiniStat label={pickLegacyLocalizedText(lang, 'ALT. MAX', 'MAX ALT', 'ALT. MAX')} value={selectedTerrain?.maxAltitudeM != null ? `${Math.round(selectedTerrain.maxAltitudeM)} m` : '—'} accent={accent}/>
-                        <MiniStat label={pickLegacyLocalizedText(lang, 'PENTE MAX', 'MAX GRADE', 'PEND. MAX')} value={selectedTerrain?.hasElevation ? `${selectedTerrain.maxGradePct.toFixed(1)}%` : '—'} accent={accent}/>
-                        <MiniStat label={pickLegacyLocalizedText(lang, 'TYPE', 'TYPE', 'TIPO')} value={selectedTerrain ? terrainLabel(selectedTerrain.terrain, lang) : outdoorSportLabel(activitySport, lang)} accent={accent}/>
-                      </div>
-                      <div>
-                        <div style={{ color: accent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, 'PROFIL ALTIMÉTRIQUE', 'ELEVATION PROFILE', 'PERFIL DE ELEVACIÓN')}</div>
-                        <div style={{ marginTop: 6 }}><RunningElevationProfile points={selectedRoute.route} accent={accent} textSoft={textSoft} height={132}/></div>
-                      </div>
-                      {selectedSportRouteDetails ? <><div style={{ fontSize: 7.5, color: accent, fontWeight: 1000, letterSpacing: .5 }}>{selectedSportRouteDetails.title}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 6 }}>{selectedSportRouteDetails.metrics.map((metric) => <MiniStat key={metric.label} label={metric.label} value={metric.value} accent={accent}/>)}</div><div style={{ color: textSoft, fontSize: 8.1, lineHeight: 1.45 }}>{selectedSportRouteDetails.note}</div></> : null}
-                      <div style={{ color: textSoft, fontSize: 8.2, lineHeight: 1.45 }}>{selectedTerrainAdvice ? <><b style={{ color: accent }}>{terrainLabel(selectedTerrain.terrain, lang)}</b> · {selectedTerrainAdvice.text}</> : pickLegacyLocalizedText(lang, 'Départ, arrivée, dénivelé et point culminant sont regroupés ici pour mieux préparer la sortie.', 'Start, finish, elevation and high point are grouped here to better prepare the outing.', 'Salida, llegada, desnivel y punto más alto se agrupan aquí para preparar mejor la salida.')}</div>
-                      {selectedTerrainAdvice ? <button className="btn" onClick={applyTerrainRecommendation} style={{ width: '100%', minHeight: 36, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, 'UTILISER LA SÉANCE CONSEILLÉE', 'USE RECOMMENDED WORKOUT', 'USAR SESIÓN RECOMENDADA')}</button> : null}
-                    </div>
-                  </RunningSurface>
-                  <OutdoorRoutePlaceInfoPanel route={selectedRoute} lang={lang} accent={accent} textSoft={textSoft}/>
-                </> : null}
-                {routeDetailsTab === 'performance' ? <><RunningSurface accent={accent} style={{ marginTop: 0 }}><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, 'MES DONNÉES SUR CE PARCOURS', 'MY DATA ON THIS ROUTE', 'MIS DATOS EN ESTA RUTA')}</div><div style={{ marginTop: 7, display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 6 }}><MiniStat label={pickLegacyLocalizedText(lang, 'TENTATIVES', 'ATTEMPTS', 'INTENTOS')} value={String(selectedRouteAttempts.length)} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'MEILLEUR TEMPS', 'BEST TIME', 'MEJOR TIEMPO')} value={selectedRouteAttempts[0] ? formatDuration(selectedRouteAttempts[0].elapsedMs) : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'ALLURE MOY.', 'AVG PACE', 'RITMO MEDIO')} value={selectedRouteAttempts.length && selectedRouteAttempts.some((item) => item.avgPaceSecPerKm != null) ? `${formatPace(Math.round(selectedRouteAttempts.reduce((sum, item) => sum + Number(item.avgPaceSecPerKm || 0), 0) / Math.max(1, selectedRouteAttempts.filter((item) => item.avgPaceSecPerKm != null).length)))}/km` : '—'} accent={accent}/></div></RunningSurface><OutdoorRouteCommunityPanel route={selectedRoute} localAttempts={selectedRouteAttempts} lang={lang} accent={accent} textSoft={textSoft}/></> : null}
-                {routeDetailsTab === 'photos' ? <><OutdoorRoutePlaceInfoPanel route={selectedRoute} lang={lang} accent={accent} textSoft={textSoft} compact/><OutdoorRoutePhotoGallery route={selectedRoute} lang={lang} accent={accent} textSoft={textSoft} onSearchImages={() => searchRouteImages(selectedRoute)}/><button className="btn" onClick={() => openRouteInMaps(selectedRoute)} style={{ width: '100%', minHeight: 38, marginTop: 0, fontSize: 8.1, fontWeight: 1000, color: accent, borderColor: `${accent}55` }}>🗺️ {pickLegacyLocalizedText(lang, 'OUVRIR LE DÉPART DANS MAPS', 'OPEN START IN MAPS', 'ABRIR SALIDA EN MAPS')}</button></> : null}
-                {routeDetailsTab === 'community' ? <OutdoorRouteSocialPanel route={selectedRoute} lang={lang} accent={accent} textSoft={textSoft}/> : null}
+                <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
+                  {([['overview','▤', pickLegacyLocalizedText(lang, 'FICHE', 'ROUTE', 'FICHA')], ['places','⌖', pickLegacyLocalizedText(lang, 'LIEUX', 'PLACES', 'LUGARES')], ['photos','▧', pickLegacyLocalizedText(lang, 'PHOTOS', 'PHOTOS', 'FOTOS')], ['performance','↗', pickLegacyLocalizedText(lang, 'PERF', 'PERF', 'REND.')], ['community','◉', pickLegacyLocalizedText(lang, 'COMMUNAUTÉ', 'COMMUNITY', 'COMUNIDAD')], ['plan','◷', pickLegacyLocalizedText(lang, 'PLANIFIER', 'PLAN', 'PLANIFICAR')]] as Array<[OutdoorRouteDetailTab, string, string]>).map(([id, icon, label], index) => <button key={id} className="btn" title={label} onClick={() => { setRouteDetailInitialTab(id); setRouteDetailOpen(true); }} style={{ flex: index === 0 ? "1 0 auto" : "0 0 40px", minWidth: index === 0 ? 90 : 40, minHeight: 40, padding: index === 0 ? '4px 10px' : 0, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: index === 0 ? 7.4 : 13, fontWeight: 1000, color: index === 0 ? accent : undefined, borderColor: index === 0 ? `${accent}55` : 'rgba(255,255,255,.065)', background: index === 0 ? `${accent}0b` : 'rgba(255,255,255,.018)' }}><span>{icon}</span>{index === 0 ? <span>{label}</span> : null}</button>)}
+                </div>
               </div> : <div style={{ textAlign: "center", color: textSoft, fontSize: 9.2, lineHeight: 1.5, padding: 12 }}>{pickLegacyLocalizedText(lang, "Sélectionne un parcours dans le carrousel pour afficher la grande carte et tous les onglets dédiés.", "Select a route in the carousel to display the large map and all dedicated tabs.", "Selecciona una ruta en el carrusel para mostrar el gran mapa y todas las pestañas dedicadas.")}</div>}
             </div>
           </RunningSurface> : <RunningSurface accent={accent} style={{ marginTop: 0 }}><div style={{ textAlign: "center", color: textSoft, fontSize: 9.5, lineHeight: 1.5, padding: 12 }}>{pickLegacyLocalizedText(lang, "Aucun parcours enregistré. Lance d’abord « Autour de moi » ou « Générer » pour obtenir de vraies cartes de parcours.", "No route saved yet. Start with “Around me” or “Generate” to get real route map cards.", "Todavía no hay rutas guardadas. Empieza con «Cerca de mí» o «Generar» para obtener verdaderas tarjetas de rutas con mapa.")}</div></RunningSurface>}
@@ -2138,7 +2121,7 @@ function buildSportRouteDetails(route: RunningRouteTemplate, terrain: ReturnType
         note: pickLegacyLocalizedText(lang, "Pour la course, compare surtout distance, D+/km et profil général avant de choisir ton allure ou ta séance.", "For running, compare distance, elevation per km and the overall profile before choosing pace or workout.", "Para running, compara distancia, desnivel/km y perfil general antes de elegir ritmo o sesión."),
     };
 }
-function RouteMap({ points, accent, waiting, showRouteNetwork = false, zoomable = false, immersive = false, route, terrain }: {
+function RouteMap({ points, accent, waiting, showRouteNetwork = false, zoomable = false, immersive = false, route, terrain, onOpen }: {
     points: GeoPoint[];
     accent: string;
     waiting: string;
@@ -2147,12 +2130,13 @@ function RouteMap({ points, accent, waiting, showRouteNetwork = false, zoomable 
     immersive?: boolean;
     route?: RunningRouteTemplate | null;
     terrain?: ReturnType<typeof analyzeRunningTerrain> | null;
+    onOpen?: () => void;
 }) {
     const [zoomDelta, setZoomDelta] = React.useState(0);
     React.useEffect(() => { setZoomDelta(0); }, [points]);
     const layout = React.useMemo(() => buildMapLayout(points, zoomDelta), [points, zoomDelta]);
-    return <div style={{ width: "100%", aspectRatio: immersive ? "4/3" : "5/3", maxHeight: immersive ? 480 : 360, minHeight: immersive ? 270 : 190, position: "relative", overflow: "hidden", borderRadius: immersive ? 21 : 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)", boxShadow: immersive ? "0 22px 52px rgba(0,0,0,.30)" : undefined }}>{layout ? <>{layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>{showRouteNetwork ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/> : null}</React.Fragment>)}<svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}><polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/><polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>{layout.start ? <g><circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/><text x={layout.start.x} y={layout.start.y - 12} textAnchor="middle" fontSize="18">🚩</text></g> : null}{layout.end ? <g><circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/><text x={layout.end.x} y={layout.end.y - 12} textAnchor="middle" fontSize="18">🏁</text></g> : null}{terrain?.maxAltitudeM != null ? (() => { const summit = highestPointOnRoute(points); if (!summit)
-        return null; const summitScreen = mercatorScreen(summit, layout.center, layout.zoom, layout.width, layout.height); return <g><circle cx={summitScreen.x} cy={summitScreen.y} r="6" fill="#ffcf57" stroke="#fff" strokeWidth="2"/><text x={summitScreen.x} y={summitScreen.y - 10} textAnchor="middle" fontSize="16">⛰️</text></g>; })() : null}</svg></> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}{zoomable ? <div style={{ position: "absolute", right: 8, top: 8, display: "grid", gap: 6, zIndex: 4 }}><button className="btn" onClick={() => setZoomDelta((value) => Math.max(-3, value - 1))} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>−</button><button className="btn" onClick={() => setZoomDelta((value) => Math.min(4, value + 1))} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>+</button><button className="btn" onClick={() => route && openRouteInMaps(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>↗</button></div> : null}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap · routes Waymarked Trails</a></div>;
+    return <div onClick={onOpen} style={{ width: "100%", cursor: onOpen ? "pointer" : undefined, aspectRatio: immersive ? "4/3" : "5/3", maxHeight: immersive ? 480 : 360, minHeight: immersive ? 270 : 190, position: "relative", overflow: "hidden", borderRadius: immersive ? 21 : 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)", boxShadow: immersive ? "0 22px 52px rgba(0,0,0,.30)" : undefined }}>{layout ? <>{layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>{showRouteNetwork ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/> : null}</React.Fragment>)}<svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}><polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/><polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>{layout.start ? <g><circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/><text x={layout.start.x} y={layout.start.y - 12} textAnchor="middle" fontSize="18">🚩</text></g> : null}{layout.end ? <g><circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/><text x={layout.end.x} y={layout.end.y - 12} textAnchor="middle" fontSize="18">🏁</text></g> : null}{terrain?.maxAltitudeM != null ? (() => { const summit = highestPointOnRoute(points); if (!summit)
+        return null; const summitScreen = mercatorScreen(summit, layout.center, layout.zoom, layout.width, layout.height); return <g><circle cx={summitScreen.x} cy={summitScreen.y} r="6" fill="#ffcf57" stroke="#fff" strokeWidth="2"/><text x={summitScreen.x} y={summitScreen.y - 10} textAnchor="middle" fontSize="16">⛰️</text></g>; })() : null}</svg></> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}{zoomable ? <div style={{ position: "absolute", right: 8, top: 8, display: "grid", gap: 6, zIndex: 4 }}><button className="btn" onClick={(event) => { event.stopPropagation(); setZoomDelta((value) => Math.max(-3, value - 1)); }} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>−</button><button className="btn" onClick={(event) => { event.stopPropagation(); setZoomDelta((value) => Math.min(4, value + 1)); }} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>+</button><button className="btn" onClick={(event) => { event.stopPropagation(); route && openRouteInMaps(route); }} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>↗</button></div> : null}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap · routes Waymarked Trails</a></div>;
 }
 type MapLayout = {
     width: number;

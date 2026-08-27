@@ -186,15 +186,25 @@ function SelectedRouteStrip({ route, favorite, sport, lang, accent, textSoft, on
 }
 
 function ScoutRouteCard({ route, rank, active, favorite, sport, lang, accent, textSoft, onSelect, onDetails, onGuide, onFavorite, onMaps }: { route: RunningRouteTemplate; rank: number; active: boolean; favorite: boolean; sport: OutdoorPerformanceSport; lang: string; accent: string; textSoft: string; onSelect: () => void; onDetails: () => void; onGuide: () => void; onFavorite: () => void; onMaps: () => void }) {
+  const articleRef = React.useRef<HTMLElement | null>(null);
   const [photo, setPhoto] = React.useState<OutdoorRoutePhoto | null>(null);
-  React.useEffect(() => { let alive = true; setPhoto(null); void fetchOutdoorRouteCoverPhoto(route, lang).then((value) => { if (alive) setPhoto(value); }).catch(() => {}); return () => { alive = false; }; }, [lang, route.id]);
+  const [loadCover, setLoadCover] = React.useState(active);
+  React.useEffect(() => {
+    if (active) { setLoadCover(true); return; }
+    const node = articleRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") { setLoadCover(true); return; }
+    const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { setLoadCover(true); observer.disconnect(); } }, { rootMargin: "240px 0px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [active, route.id]);
+  React.useEffect(() => { if (!loadCover) return; let alive = true; setPhoto(null); void fetchOutdoorRouteCoverPhoto(route, lang).then((value) => { if (alive) setPhoto(value); }).catch(() => {}); return () => { alive = false; }; }, [lang, loadCover, route.id]);
   const terrain = React.useMemo(() => analyzeRunningTerrain(route.route), [route.route]);
   const score = Math.round(Number(route.scout?.score || 0));
   const near = Number(route.scout?.distanceFromCenterM || 0);
-  return <article style={{ overflow: "hidden", borderRadius: 21, background: "linear-gradient(145deg,rgba(255,255,255,.052),rgba(4,7,11,.94))", border: `1px solid ${active ? `${accent}70` : "rgba(255,255,255,.085)"}`, boxShadow: active ? `0 22px 48px ${accent}16` : "0 17px 38px rgba(0,0,0,.24)", transform: active ? "translateY(-2px)" : undefined, transition: "transform .18s ease, box-shadow .18s ease" }}>
+  return <article ref={articleRef} style={{ overflow: "hidden", borderRadius: 21, background: "linear-gradient(145deg,rgba(255,255,255,.052),rgba(4,7,11,.94))", border: `1px solid ${active ? `${accent}70` : "rgba(255,255,255,.085)"}`, boxShadow: active ? `0 22px 48px ${accent}16` : "0 17px 38px rgba(0,0,0,.24)", transform: active ? "translateY(-2px)" : undefined, transition: "transform .18s ease, box-shadow .18s ease" }}>
     <button onClick={onSelect} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer" }}>
       <div style={{ height: 176, position: "relative", overflow: "hidden", background: "linear-gradient(135deg,#17222c,#0d1219)" }}>
-        {photo ? <img src={photo.thumbUrl} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <ScoutMiniMap route={route} accent={accent}/>} 
+        {photo ? <img src={photo.thumbUrl} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <ScoutMiniMap route={route} accent={accent}/>} 
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,.04),rgba(0,0,0,.08) 45%,rgba(0,0,0,.76))" }}/>
         <div style={{ position: "absolute", left: 10, top: 10, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={`✦ ${score}%`} accent={accent}/>{route.scout?.loop ? <Pill text={`↻ ${pickText(lang,"BOUCLE","LOOP","BUCLE")}`} accent={accent} muted/> : null}{terrain.hasElevation ? <Pill text={`◒ ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div>
         <div style={{ position: "absolute", right: 10, top: 10, width: 31, height: 31, display: "grid", placeItems: "center", borderRadius: 999, background: "rgba(5,8,13,.80)", border: "1px solid rgba(255,255,255,.14)", color: "#fff", fontSize: 8, fontWeight: 1000 }}>#{rank}</div>

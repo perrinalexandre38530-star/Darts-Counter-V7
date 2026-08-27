@@ -5,6 +5,7 @@ const places = fs.readFileSync('src/activity/outdoorRoutePlaces.ts', 'utf8');
 const gallery = fs.readFileSync('src/pages/running/OutdoorRoutePhotoGallery.tsx', 'utf8');
 const panel = fs.readFileSync('src/pages/running/OutdoorRoutePlaceInfoPanel.tsx', 'utf8');
 const module = fs.readFileSync('src/pages/running/RunningModule.tsx', 'utf8');
+const detail = fs.existsSync('src/pages/running/OutdoorRouteDetailPage.tsx') ? fs.readFileSync('src/pages/running/OutdoorRouteDetailPage.tsx', 'utf8') : ''; 
 const checks = [
   ['route place context service', places.includes('fetchOutdoorRoutePlaceContext')],
   ['reverse geocoding', places.includes('nominatim.openstreetmap.org/reverse')],
@@ -19,8 +20,8 @@ const checks = [
   ['full-resolution photo', gallery.includes('activePhoto.imageUrl')],
   ['photo source attribution', gallery.includes('activePhoto.pageUrl') && gallery.includes('activePhoto.license')],
   ['place info panel', panel.includes('LE LIEU') && panel.includes('outdoorRoutePlaceIcon')],
-  ['place panel in details', module.includes('<OutdoorRoutePlaceInfoPanel route={selectedRoute}') && module.includes('compact')],
-  ['photo gallery remains integrated', module.includes('<OutdoorRoutePhotoGallery route={selectedRoute}')],
+  ['place panel in details', (module.includes('<OutdoorRoutePlaceInfoPanel route={selectedRoute}') && module.includes('compact')) || (detail.includes('<OutdoorRoutePlaceInfoPanel route={route}') && detail.includes('compact'))],
+  ['photo gallery remains integrated', module.includes('<OutdoorRoutePhotoGallery route={selectedRoute}') || detail.includes('<OutdoorRoutePhotoGallery route={route}')],
 ];
 let ok = 0;
 for (const [label, pass] of checks) {
