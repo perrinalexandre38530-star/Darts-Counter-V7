@@ -7,7 +7,7 @@ import { freeExerciseImageUrl } from "../../fit/freeExerciseCatalog";
 import { FIT_MUSCLE_COLORS, FIT_MUSCLE_LABELS, inferGoalTags, inferMovementPattern, normalizeLevel } from "../../fit/fitExerciseTaxonomy";
 import FitBodyMap from "./FitBodyMap";
 import FitExerciseMotion from "./FitExerciseMotion";
-import { FitGlassCard, FitIcon, FitIconTabs, FitPill, FitPrimaryButton } from "./FitPerfUi";
+import { FitGlassCard, FitIcon, FitIconTabs, FitPill } from "./FitPerfUi";
 import LOGO from "../../assets/LOGO.png";
 
 type DetailTab = "zone" | "details" | "goal" | "type" | "records";
@@ -46,6 +46,34 @@ function tr(lang: string, fr: string, en: string, es: string) {
 
 function titleCase(value: string) {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+function localizeInstructionText(text: string, lang: string) {
+  const value = String(text || "").trim();
+  if (!value || !lang.startsWith("fr")) return value;
+  const exact: Record<string, string> = {
+    "Lie on the floor face down and place your hands about 36 inches apart while holding your torso up at arms length.": "Allonge-toi face au sol et place les mains à environ 90 cm l'une de l'autre tout en maintenant le buste bras tendus.",
+    "Next, lower yourself downward until your chest almost touches the floor as you inhale.": "Ensuite, descends de manière contrôlée jusqu'à ce que la poitrine frôle presque le sol en inspirant.",
+    "Now breathe out and press your upper body back up to the starting position while squeezing your chest.": "Souffle puis repousse le haut du corps vers la position de départ en contractant les pectoraux.",
+    "After a brief pause at the top contracted position, you can begin to lower yourself downward again for as many repetitions as needed.": "Après une courte pause en haut, recommence la descente et enchaîne le nombre de répétitions prévu.",
+    "This exercise requires a sturdy box or a chair.": "Cet exercice demande un box stable ou une chaise solide.",
+    "Simple stand ~6 inches in front of it and balance yourself on one leg.": "Place-toi à environ 15 cm devant le support et tiens l'équilibre sur une seule jambe.",
+    "From here, begin squatting down in a smooth controlled motion while keeping your other leg straight out in front of you for balance.": "Depuis cette position, fléchis la jambe d'appui en descendant de manière lente et contrôlée tout en gardant l'autre jambe tendue devant toi pour l'équilibre.",
+    "Slowly sit down on the box, pause for a 1 count and push back up with the working leg, while never letting your other leg touch the ground.": "Assieds-toi lentement sur le box, marque une courte pause puis repousse avec la jambe d'appui sans laisser l'autre jambe toucher le sol.",
+  };
+  if (exact[value]) return exact[value];
+  return value
+    .replace(/body weight/gi, "poids du corps")
+    .replace(/bodyweight/gi, "poids du corps")
+    .replace(/chest/gi, "poitrine")
+    .replace(/shoulders/gi, "épaules")
+    .replace(/triceps/gi, "triceps")
+    .replace(/inhale/gi, "inspirant")
+    .replace(/exhale|breathe out/gi, "souffle")
+    .replace(/starting position/gi, "position de départ")
+    .replace(/one leg/gi, "une jambe")
+    .replace(/box or a chair/gi, "box ou une chaise")
+    .replace(/working leg/gi, "jambe d'appui");
 }
 
 function translateEquipment(value: string, lang: string) {
@@ -110,15 +138,16 @@ function equipmentIconName(value: string): "body" | "barbell" | "dumbbell" | "ca
 
 function collectExercisePhotos(exercise: FitExercise) {
   if (exercise.id === "pushup") {
-    return [
+    return Array.from(new Set([
       PUSHUP_AWENA_HIGH,
       PUSHUP_AWENA_LOW,
       freeExerciseImageUrl(exercise, 0),
       freeExerciseImageUrl(exercise, 1),
-    ].filter((item): item is string => Boolean(item));
+    ].filter((item): item is string => Boolean(item))));
   }
   const urls = (exercise.imagePaths || []).map((_, index) => freeExerciseImageUrl(exercise, index)).filter((item): item is string => Boolean(item));
-  return urls.length ? urls.slice(0, 6) : [];
+  const fallback = freeExerciseImageUrl(exercise);
+  return Array.from(new Set([fallback, ...urls].filter((item): item is string => Boolean(item)))).slice(0, 6);
 }
 
 function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
@@ -186,18 +215,18 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
   const instructions = (exercise.instructions || []).slice(0, 4);
   const fallbackSteps: GuideStep[] = instructions.map((item, index) => ({
     title: tr(lang, `Étape ${index + 1}`, `Step ${index + 1}`, `Paso ${index + 1}`),
-    body: item,
+    body: localizeInstructionText(item, lang),
     image: freeExerciseImageUrl(exercise, Math.min(index, Math.max(0, (exercise.imagePaths?.length || 1) - 1))),
   }));
   const goalTags = inferGoalTags(exercise);
   return {
     summary: tr(lang, `Mouvement ${inferMovementPattern(exercise).toLowerCase()} pour ${FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} avec ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`, `A ${inferMovementPattern(exercise).toLowerCase()} movement for ${FIT_MUSCLE_LABELS[exercise.muscle].en} using ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`, `Un movimiento de ${inferMovementPattern(exercise).toLowerCase()} para ${FIT_MUSCLE_LABELS[exercise.muscle].es} con ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`),
     steps: fallbackSteps,
-    placement: exercise.tips?.slice(0, 3) || [],
+    placement: (exercise.tips?.slice(0, 3) || []).map((item) => localizeInstructionText(item, lang)),
     breathing: [],
     intensityMap: { [exercise.muscle]: 3, ...Object.fromEntries((exercise.secondary || []).slice(0, 4).map((item) => [item, 1])) } as Partial<Record<FitMuscle, 0 | 1 | 2 | 3>>,
     zoneSpeech: tr(lang, `La zone principale travaillée est ${FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]}.`, `The primary area worked is ${FIT_MUSCLE_LABELS[exercise.muscle].en}.`, `La zona principal trabajada es ${FIT_MUSCLE_LABELS[exercise.muscle].es}.`),
-    detailSpeech: instructions.join(" ") || tr(lang, "Awena détaillera bientôt ce mouvement.", "Awena will detail this movement soon.", "Awena detallará pronto este movimiento."),
+    detailSpeech: instructions.map((item) => localizeInstructionText(item, lang)).join(" ") || tr(lang, "Awena détaillera bientôt ce mouvement.", "Awena will detail this movement soon.", "Awena detallará pronto este movimiento."),
     goalSpeech: goalTags.join(", "),
     typeSpeech: `${translateMovement(inferMovementPattern(exercise), lang)}. ${translateEquipment(exercise.equipment, lang)}.`,
     goalParagraphs: goalTags.length ? goalTags.map((item) => tr(lang, `Objectif possible : ${item}.`, `Possible goal: ${item}.`, `Objetivo posible: ${item}.`)) : [tr(lang, "Objectif détaillé à venir.", "Detailed goal coming soon.", "Objetivo detallado próximamente.")],
@@ -214,7 +243,7 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
 function FilterGlyphRow({ exercise, lang, accent }: { exercise: FitExercise; lang: string; accent: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 18, color: accent }}>
-      <div title={FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} style={{ display: "grid", placeItems: "center", color: exercise.accent || accent }}><FitIcon name="body" size={20} /></div>
+      <div title={FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} style={{ display: "grid", placeItems: "center", color: exercise.accent || accent }}><FitIcon name="muscles" size={20} /></div>
       <div title={levelText(exercise.level, lang)} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "#ffd869" }}>
         {Array.from({ length: 3 }, (_, index) => <span key={index} style={{ color: index < (normalizeLevel(exercise.level) === "Débutant" ? 1 : normalizeLevel(exercise.level) === "Intermédiaire" ? 2 : 3) ? "#ffd869" : "rgba(255,255,255,.18)", fontSize: 17, lineHeight: 1 }}>★</span>)}
       </div>
@@ -240,7 +269,7 @@ function AwenaVoiceButton({ accent, text, label }: { accent: string; text: strin
     }
     synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = label.includes("ZONE") || label.includes("GUIDE") || label.includes("OBJECTIF") || label.includes("TYPE") ? "fr-FR" : "fr-FR";
+    utterance.lang = label.includes("ES") ? "es-ES" : label.includes("EN") ? "en-US" : "fr-FR";
     utterance.rate = 1;
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
@@ -249,19 +278,17 @@ function AwenaVoiceButton({ accent, text, label }: { accent: string; text: strin
   }, [speaking, text, label]);
 
   return (
-    <button type="button" onClick={handleClick} style={{ display: "inline-flex", alignItems: "center", gap: 9, minHeight: 42, padding: "0 14px 0 8px", borderRadius: 999, border: `1px solid ${accent}4a`, background: `linear-gradient(135deg,${accent}14,rgba(255,255,255,.04))`, color: accent, boxShadow: `0 0 18px ${accent}12`, cursor: "pointer" }}>
-      <div style={{ width: 28, height: 28, borderRadius: 999, background: `radial-gradient(circle at 35% 30%,rgba(255,255,255,.16),rgba(255,255,255,.03))`, border: `1px solid ${accent}46`, display: "grid", placeItems: "center", overflow: "hidden", flex: "0 0 28px" }}>
-        <FitIcon name="coach" size={16} />
-      </div>
-      <span style={{ fontSize: 8.4, fontWeight: 1000, letterSpacing: .7, textTransform: "uppercase", whiteSpace: "nowrap" }}>{speaking ? tr("fr", "AWENA PARLE…", "AWENA SPEAKS…", "AWENA HABLA…") : label}</span>
-      <span style={{ opacity: .9, display: "grid", placeItems: "center" }}><FitIcon name="volume" size={14} /></span>
+    <button type="button" onClick={handleClick} title={label} aria-label={label} style={{ width: 46, height: 46, borderRadius: 999, border: `1px solid ${accent}56`, background: `radial-gradient(circle at 35% 30%,rgba(255,255,255,.18),${accent}10 55%,rgba(255,255,255,.02))`, color: accent, boxShadow: `0 0 18px ${accent}16, inset 0 0 0 1px rgba(255,255,255,.03)`, cursor: "pointer", display: "grid", placeItems: "center", position: "relative", overflow: "hidden" }}>
+      <img src="/awena/awena-avatar.webp" alt="" aria-hidden="true" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", opacity: speaking ? 1 : .96 }} />
+      <span style={{ position: "absolute", right: 8, bottom: 8, color: accent, display: "grid", placeItems: "center", opacity: .92 }}><FitIcon name="volume" size={12} /></span>
     </button>
   );
 }
 
-function ActionCircle({ accent, onClick, children, active = false }: { accent: string; onClick?: () => void; children: React.ReactNode; active?: boolean }) {
+function ActionCircle({ accent, onClick, children, active = false, passiveGray = false }: { accent: string; onClick?: () => void; children: React.ReactNode; active?: boolean; passiveGray?: boolean }) {
+  const color = passiveGray && !active ? "rgba(255,255,255,.72)" : accent;
   return (
-    <button type="button" onClick={onClick} style={{ width: 48, height: 48, borderRadius: 16, border: `1px solid ${active ? accent + "72" : "rgba(255,255,255,.08)"}`, background: active ? `linear-gradient(135deg,${accent}18,rgba(255,255,255,.05))` : "rgba(255,255,255,.03)", color: active ? accent : "#fff", display: "grid", placeItems: "center", cursor: "pointer", boxShadow: active ? `0 0 18px ${accent}14` : "none" }}>{children}</button>
+    <button type="button" onClick={onClick} style={{ width: 48, height: 48, borderRadius: 16, border: `1px solid ${active ? accent + "82" : color + "3c"}`, background: active ? `linear-gradient(180deg,${accent}18,rgba(255,255,255,.05))` : `linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.02))`, color, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: active ? `0 0 20px ${accent}18, inset 0 0 0 1px ${accent}10` : `0 0 16px ${color}08`, backdropFilter: "blur(8px)" }}>{children}</button>
   );
 }
 
@@ -279,7 +306,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   const totalSessions = detailRecord ? 1 : 0;
 
   const tabItems = [
-    { id: "zone" as const, label: tr(lang, "ZONE", "ZONE", "ZONA"), icon: "body" as const },
+    { id: "zone" as const, label: tr(lang, "ZONE", "ZONE", "ZONA"), icon: "muscles" as const },
     { id: "details" as const, label: tr(lang, "DÉTAILS", "DETAILS", "DETALLES"), icon: "guide" as const },
     { id: "goal" as const, label: tr(lang, "OBJECTIF", "GOAL", "OBJETIVO"), icon: "goals" as const },
     { id: "type" as const, label: tr(lang, "TYPE", "TYPE", "TIPO"), icon: "workout" as const },
@@ -289,8 +316,8 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   return (
     <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 140, background: "rgba(2,4,8,.82)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
       <div onClick={(event) => event.stopPropagation()} style={{ position: "relative", width: "100%", maxWidth: 760, maxHeight: "94vh", overflowY: "auto", borderRadius: 30, padding: 14, background: `linear-gradient(180deg, rgba(7,10,17,.985), rgba(8,11,18,.995))`, border: `1px solid ${accent}40`, boxShadow: `0 30px 90px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.04), 0 0 30px ${accent}10` }}>
-        <img src={LOGO} alt="" aria-hidden="true" style={{ position: "absolute", right: -80, bottom: -70, width: 330, opacity: .08, pointerEvents: "none", filter: "grayscale(1)", transform: "rotate(-18deg)" }} />
-        <img src={LOGO} alt="" aria-hidden="true" style={{ position: "absolute", right: -110, top: 40, width: 290, opacity: .055, pointerEvents: "none", filter: "grayscale(1)", transform: "rotate(14deg)" }} />
+        <img src={LOGO} alt="" aria-hidden="true" style={{ position: "absolute", right: -150, bottom: -130, width: 470, opacity: .095, pointerEvents: "none", filter: "grayscale(1)", transform: "rotate(-18deg)" }} />
+        <img src={LOGO} alt="" aria-hidden="true" style={{ position: "absolute", right: -180, top: 18, width: 410, opacity: .07, pointerEvents: "none", filter: "grayscale(1)", transform: "rotate(14deg)" }} />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "start" }}>
           <div>
@@ -298,9 +325,11 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
             <div style={{ marginTop: 10 }}><FilterGlyphRow exercise={exercise} lang={lang} accent={accent} /></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <ActionCircle accent="#ffd869" onClick={onToggleFavorite} active={isFavorite}><FitIcon name="favorite" size={22} /></ActionCircle>
+            <ActionCircle accent="#ffd869" onClick={onToggleFavorite} active={isFavorite} passiveGray>
+              {isFavorite ? <span style={{ fontSize: 22, lineHeight: 1, color: "#ffd869" }}>★</span> : <FitIcon name="favorite" size={22} />}
+            </ActionCircle>
             <ActionCircle accent={accent} onClick={() => go("games", { fitTemplateId: "free", fitExerciseId: exercise.id })}><FitIcon name="plus" size={22} /></ActionCircle>
-            <ActionCircle accent={accentSoft} onClick={onClose}><FitIcon name="close" size={22} /></ActionCircle>
+            <ActionCircle accent={accent} onClick={onClose}><FitIcon name="close" size={22} /></ActionCircle>
           </div>
         </div>
 
@@ -324,9 +353,9 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
 
         {tab === "zone" ? (
           <FitGlassCard accent={accent} style={{ position: "relative", padding: 16, borderRadius: 24, overflow: "hidden", background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>{tr(lang, "Zones travaillées", "Worked areas", "Zonas trabajadas")}</div>
-              <AwenaVoiceButton accent={accent} text={guide.zoneSpeech} label={tr(lang, "AWENA LIT LA ZONE", "AWENA READS THE AREA", "AWENA LEE LA ZONA")} />
+            <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
+              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Zones travaillées", "Worked areas", "Zonas trabajadas")}</div>
+              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.zoneSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <FitBodyMap lang={lang} intensityMap={guide.intensityMap} interactive={false} />
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, color: textSoft, fontSize: 8.5 }}>
@@ -343,9 +372,9 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
 
         {tab === "details" ? (
           <FitGlassCard accent={accent} style={{ position: "relative", padding: 16, borderRadius: 24, overflow: "hidden", background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>{tr(lang, "Détails de l'exercice", "Exercise details", "Detalles del ejercicio")}</div>
-              <AwenaVoiceButton accent={accent} text={guide.detailSpeech} label={tr(lang, "AWENA LIT LE GUIDE", "AWENA READS THE GUIDE", "AWENA LEE LA GUÍA")} />
+            <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
+              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Détails de l'exercice", "Exercise details", "Detalles del ejercicio")}</div>
+              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.detailSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <FitGlassCard accent={accent} style={{ padding: 14, borderRadius: 20, background: "rgba(255,255,255,.02)" }}>
               <div style={{ color: accent, fontSize: 8.8, fontWeight: 1000, letterSpacing: .7 }}>{tr(lang, "Résumé du mouvement", "Movement summary", "Resumen del movimiento")}</div>
@@ -386,9 +415,9 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
 
         {tab === "goal" ? (
           <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 24, background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>{tr(lang, "Objectif", "Goal", "Objetivo")}</div>
-              <AwenaVoiceButton accent={accent} text={guide.goalSpeech} label={tr(lang, "AWENA EXPLIQUE L'OBJECTIF", "AWENA EXPLAINS THE GOAL", "AWENA EXPLICA EL OBJETIVO")} />
+            <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
+              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Objectif", "Goal", "Objetivo")}</div>
+              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.goalSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>{guide.goalTags.map((item) => <FitPill key={item} accent={accent}>{item}</FitPill>)}</div>
             <div style={{ display: "grid", gap: 10 }}>
@@ -401,9 +430,9 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
 
         {tab === "type" ? (
           <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 24, background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>{tr(lang, "Type de mouvement", "Movement type", "Tipo de movimiento")}</div>
-              <AwenaVoiceButton accent={accent} text={guide.typeSpeech} label={tr(lang, "AWENA EXPLIQUE LE TYPE", "AWENA EXPLAINS THE TYPE", "AWENA EXPLICA EL TIPO")} />
+            <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
+              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Type de mouvement", "Movement type", "Tipo de movimiento")}</div>
+              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.typeSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
               {guide.typeCards.map((item) => (
@@ -418,7 +447,10 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
 
         {tab === "records" ? (
           <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 24, background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
-            <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>{tr(lang, "Records", "Records", "Récords")}</div>
+            <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
+              <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Records", "Records", "Récords")}</div>
+              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={detailRecord ? `${formatKg(detailRecord.weightKg)} ${tr(lang, "pour", "for", "para")} ${detailRecord.reps} ${tr(lang, "répétitions", "repetitions", "repeticiones")}.` : tr(lang, "Aucun record enregistré pour le moment.", "No record logged yet.", "Todavía no hay récord registrado.")} label={tr(lang, "FR", "EN", "ES")} /></div>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
               <FitGlassCard accent="#7df29a" style={{ padding: 14, borderRadius: 18, background: "rgba(255,255,255,.02)" }}>
                 <div style={{ fontSize: 8.5, fontWeight: 1000, letterSpacing: .8, opacity: .5, textTransform: "uppercase" }}>{tr(lang, "Record personnel", "Personal record", "Récord personal")}</div>
@@ -453,11 +485,6 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
             {exercise.mediaLicense && exercise.mediaLicense !== exercise.sourceLicense ? ` · Média: ${exercise.mediaLicense}${exercise.mediaAuthor ? ` (${exercise.mediaAuthor})` : ""}` : ""}
           </div>
         ) : null}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
-          <FitPrimaryButton accent={accent} onClick={() => go("games", { fitTemplateId: "free", fitExerciseId: exercise.id })}>{tr(lang, "＋ AJOUTER À MA SÉANCE", "+ ADD TO MY WORKOUT", "+ AÑADIR A MI SESIÓN")}</FitPrimaryButton>
-          <button type="button" onClick={onClose} style={{ minHeight: 44, borderRadius: 13, padding: "0 14px", border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#fff", fontWeight: 1000, cursor: "pointer" }}>{tr(lang, "FERMER", "CLOSE", "CERRAR")}</button>
-        </div>
 
         {viewerImage ? (
           <div onClick={() => setViewerImage(null)} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.84)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
