@@ -5,10 +5,12 @@ export default function FitPremiumMotionPlayer({
   slot,
   compact = false,
   onFail,
+  showBadge = true,
 }: {
   slot: AwenaPremiumMotionSlot;
   compact?: boolean;
   onFail?: () => void;
+  showBadge?: boolean;
 }) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = React.useState(true);
@@ -99,7 +101,7 @@ export default function FitPremiumMotionPlayer({
           style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
         />
       ) : null}
-      <div style={{ position: "absolute", left: 7, top: 7, padding: compact ? "3px 6px" : "4px 7px", borderRadius: 999, background: "rgba(3,5,10,.78)", border: "1px solid rgba(246,194,86,.26)", color: "#f6c256", fontSize: compact ? 6 : 7, fontWeight: 1000, letterSpacing: .8, pointerEvents: "none" }}>AWENA · PREMIUM MOTION</div>
+      {showBadge ? <div style={{ position: "absolute", left: 7, top: 7, padding: compact ? "3px 6px" : "4px 7px", borderRadius: 999, background: "rgba(3,5,10,.78)", border: "1px solid rgba(246,194,86,.26)", color: "#f6c256", fontSize: compact ? 6 : 7, fontWeight: 1000, letterSpacing: .8, pointerEvents: "none" }}>AWENA · PREMIUM MOTION</div> : null}
     </div>
   );
 }

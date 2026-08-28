@@ -18,8 +18,8 @@ import {
   type FitLevelFilter,
 } from "../../fit/fitExerciseTaxonomy";
 import FitBodyMap from "./FitBodyMap";
-import FitExerciseMotion from "./FitExerciseMotion";
-import { FitGlassCard, FitIcon, FitIconTabs, FitMetric, FitPageHeader, FitPill, FitPrimaryButton, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
+import FitExerciseDetailDialog from "./FitExerciseDetailDialog";
+import { FitGlassCard, FitIcon, FitIconTabs, FitPageHeader, FitPill, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
 type Props = { go: (route: any, params?: any) => void };
 type Tab = "body" | "library" | "favorites" | "programs";
@@ -190,7 +190,6 @@ export default function FitPerfPlan({ go }: Props) {
   }, []);
 
   const detailRecord = detail ? recordByExercise.get(detail.id) : null;
-  const detailImages = detail ? (detail.imagePaths || []).map((_, index) => freeExerciseImageUrl(detail, index)).filter((url): url is string => Boolean(url)).slice(0, 4) : [];
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / EXERCISES_PER_PAGE));
   const pagedExercises = React.useMemo(() => filtered.slice(page * EXERCISES_PER_PAGE, page * EXERCISES_PER_PAGE + EXERCISES_PER_PAGE), [filtered, page]);
@@ -208,9 +207,11 @@ export default function FitPerfPlan({ go }: Props) {
 
   const renderExerciseTile = (exercise: FitExercise) => {
     const fav = favorites.includes(exercise.id);
-    const premium = getAwenaPremiumMotion(exercise.id);
+    const motionId = exercise.motionKey || exercise.id;
+    const premium = getAwenaPremiumMotion(motionId);
     const video = premium?.video?.sources?.[0]?.src || null;
-    const poster = premium?.video?.poster || premium?.frameSequence?.poster || freeExerciseImageUrl(exercise) || null;
+    const awenaSelectorImage = motionId === "pushup" ? "/fit/exercise-media/pushup/awena-high.webp" : null;
+    const poster = awenaSelectorImage || premium?.video?.poster || premium?.frameSequence?.poster || freeExerciseImageUrl(exercise) || null;
     return (
       <div
         key={exercise.id}
@@ -234,7 +235,7 @@ export default function FitPerfPlan({ go }: Props) {
         }}
       >
         <div style={{ position: "relative", height: 102, background: `radial-gradient(circle at 50% 36%,${exercise.accent}18,#070a10 70%)`, overflow: "hidden" }}>
-          {video ? (
+          {video && !awenaSelectorImage ? (
             <video src={video} poster={poster || undefined} muted loop autoPlay playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           ) : poster ? (
             <img src={poster} alt="" loading="lazy" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -381,63 +382,17 @@ export default function FitPerfPlan({ go }: Props) {
         <div style={{ display: "grid", gap: 8 }}>{FIT_TEMPLATES.map((program) => { const icon = program.id === "push" ? "push" : program.id === "pull" ? "pull" : program.id === "legs" ? "legs" : "fullbody"; return <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 12, display: "grid", gridTemplateColumns: "50px 1fr 42px", gap: 11, alignItems: "center", background: `linear-gradient(135deg,${program.accent}12,rgba(8,11,18,.985) 30%,rgba(5,8,14,.995))`, borderColor: `${program.accent}42`, boxShadow: "0 12px 28px rgba(0,0,0,.46)" }}><div style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", color: program.accent, background: `${program.accent}10`, border: `1px solid ${program.accent}38` }}><FitIcon name={icon as any} size={27}/></div><div style={{ minWidth: 0 }}><div style={{ color: program.accent, fontSize: 12, fontWeight: 1000 }}>{program.name}</div><div style={{ marginTop: 4, color: "rgba(255,255,255,.72)", fontSize: 8.2, lineHeight: 1.35 }}>{program.exerciseIds.length} {t("exercices", "exercises", "ejercicios")} · {program.subtitle}</div></div><button type="button" aria-label={t("Démarrer", "Start", "Empezar")} onClick={() => go("games", { fitTemplateId: program.id })} style={{ width: 40, height: 40, borderRadius: 13, border: `1px solid ${program.accent}60`, background: `${program.accent}12`, color: program.accent, display: "grid", placeItems: "center" }}><FitIcon name="chevron" size={20} /></button></FitGlassCard>; })}</div>
       </> : null}
 
-      {detail ? <div role="dialog" aria-modal="true" onClick={() => setDetail(null)} style={{ position: "fixed", inset: 0, zIndex: 140, background: "rgba(2,4,8,.78)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-        <div onClick={(event) => event.stopPropagation()} style={{ width: "100%", maxWidth: 760, maxHeight: "90vh", overflowY: "auto", borderRadius: 28, padding: 14, background: `linear-gradient(180deg, rgba(8,11,18,.98), rgba(10,13,20,.98))`, border: `1px solid ${detail.accent}45`, boxShadow: `0 30px 90px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05), 0 0 30px ${detail.accent}12` }}>
-          <div style={{ padding: 4 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "start" }}>
-              <div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <FitPill accent={detail.accent}>{FIT_MUSCLE_LABELS[detail.muscle][langKey]}</FitPill>
-                  <FitPill accent="#ffd869"><DifficultyStars level={detail.level} accent="#ffd869" size={11} /> {levelLabel(detail.level, t)}</FitPill>
-                  <FitPill accent="#72def4">{detail.equipment}</FitPill>
-                </div>
-                <div style={{ marginTop: 10, fontSize: 24, lineHeight: 1.04, fontWeight: 1000, letterSpacing: -.6 }}>{detail.name}</div>
-                <div style={{ marginTop: 6, color: textSoft, fontSize: 8.7 }}>{inferMovementPattern(detail)} · {inferGoalTags(detail).join(" · ") || t("Mouvement libre", "Open movement", "Movimiento libre")}</div>
-              </div>
-              <button type="button" onClick={() => setDetail(null)} style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: 18, cursor: "pointer" }}>×</button>
-            </div>
+      {detail ? <FitExerciseDetailDialog
+        exercise={detail}
+        themeAccent={accent}
+        favorite={favorites.includes(detail.id)}
+        record={detailRecord}
+        langKey={langKey}
+        onClose={() => setDetail(null)}
+        onToggleFavorite={() => toggleFavorite(detail.id)}
+        onAddToWorkout={() => go("games", { fitTemplateId: "free", fitExerciseId: detail.id })}
+      /> : null}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-              <FitMetric label={t("Difficulté", "Difficulty", "Dificultad")} value={<DifficultyStars level={detail.level} accent="#ffd869" size={14} />} sub={levelLabel(detail.level, t)} accent="#ffd869" />
-              <FitMetric label={t("Record perso", "Personal record", "Récord personal")} value={detailRecord ? `${formatKg(detailRecord.weightKg)} × ${detailRecord.reps}` : "—"} sub={detailRecord ? `1RM ${formatKg(detailRecord.oneRm)}` : t("Aucun record enregistré", "No record logged", "Sin récord registrado")} accent="#7df29a" />
-              <FitMetric label={t("Type", "Type", "Tipo")} value={inferMovementPattern(detail)} sub={detail.equipment} accent={detail.accent} />
-            </div>
-
-            <div style={{ marginTop: 14, padding: 12, borderRadius: 22, background: `linear-gradient(180deg, ${detail.accent}09, rgba(255,255,255,.015))`, border: `1px solid ${detail.accent}26` }}>
-              <div style={{ marginBottom: 7, color: detail.accent, fontSize: 7.3, fontWeight: 1000, letterSpacing: .9 }}>AWENA COACH · GUIDE MOUVEMENT</div>
-              <FitExerciseMotion exercise={detail} />
-              {detailImages.length ? <>
-                <div style={{ marginTop: 10, color: "rgba(255,255,255,.7)", fontSize: 7.2, fontWeight: 1000, letterSpacing: .8 }}>{t("PHOTOS REPÈRES", "REFERENCE PHOTOS", "FOTOS DE REFERENCIA")}</div>
-                <div style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 7, paddingBottom: 2 }}>
-                  {detailImages.map((url, index) => <img key={`${detail.id}-${index}`} src={url} alt={`${detail.name} ${index + 1}`} style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 14, border: `1px solid ${detail.accent}26`, background: "rgba(255,255,255,.03)" }} />)}
-                </div>
-              </> : null}
-            </div>
-
-            <FitSectionTitle eyebrow={t("MUSCLES", "MUSCLES", "MÚSCULOS")} title={t("Zones sollicitées", "Muscles involved", "Zonas implicadas")} />
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><FitPill accent={FIT_MUSCLE_COLORS[detail.muscle]}>{t("PRINCIPAL", "PRIMARY", "PRINCIPAL")} · {FIT_MUSCLE_LABELS[detail.muscle][langKey]}</FitPill>{(detail.secondary || []).map((item) => <FitPill key={item} accent={FIT_MUSCLE_COLORS[item]} muted>{FIT_MUSCLE_LABELS[item][langKey]}</FitPill>)}</div>
-
-            <FitSectionTitle eyebrow={t("OBJECTIF", "GOAL", "OBJETIVO")} title={t("Type de travail", "Training focus", "Tipo de trabajo")} />
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{inferGoalTags(detail).map((item) => <FitPill key={item} accent={detail.accent}>{item}</FitPill>)}<FitPill muted>{inferMovementPattern(detail)}</FitPill></div>
-
-            <FitSectionTitle eyebrow={t("EXÉCUTION", "EXECUTION", "EJECUCIÓN")} title={t("Consignes techniques", "Technique instructions", "Instrucciones técnicas")} />
-            {detail.instructions?.length ? <FitGlassCard accent={detail.accent} style={{ padding: 13, borderRadius: 18, background: `linear-gradient(180deg, ${detail.accent}09, rgba(255,255,255,.015))` }}><ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8, color: "rgba(255,255,255,.86)", fontSize: 8.8, lineHeight: 1.5 }}>{detail.instructions.slice(0, 8).map((instruction, index) => <li key={index}>{instruction}</li>)}</ol></FitGlassCard> : <FitGlassCard accent={detail.accent} style={{ padding: 12, color: textSoft, fontSize: 8.5 }}>{t("La fiche technique AWENA détaillée sera ajoutée à ce mouvement.", "The detailed AWENA technique guide will be added to this movement.", "La guía técnica detallada de AWENA se añadirá a este movimiento.")}</FitGlassCard>}
-
-            {(detail.tips?.length || detail.commonMistakes?.length) ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-              <FitGlassCard accent="#7df29a" style={{ padding: 12, borderRadius: 18, background: "linear-gradient(180deg,rgba(125,242,154,.08),rgba(255,255,255,.015))" }}>
-                <div style={{ color: "#7df29a", fontSize: 7.1, fontWeight: 1000, letterSpacing: .9 }}>{t("À RETENIR", "KEY TIPS", "CLAVES")}</div>
-                <ul style={{ margin: "8px 0 0", paddingLeft: 16, display: "grid", gap: 7, fontSize: 8.4, lineHeight: 1.45, color: "rgba(255,255,255,.84)" }}>{(detail.tips || []).slice(0, 4).map((item, index) => <li key={index}>{item}</li>)}</ul>
-              </FitGlassCard>
-              <FitGlassCard accent="#ff8c8c" style={{ padding: 12, borderRadius: 18, background: "linear-gradient(180deg,rgba(255,140,140,.08),rgba(255,255,255,.015))" }}>
-                <div style={{ color: "#ff8c8c", fontSize: 7.1, fontWeight: 1000, letterSpacing: .9 }}>{t("ERREURS À ÉVITER", "COMMON MISTAKES", "ERRORES A EVITAR")}</div>
-                <ul style={{ margin: "8px 0 0", paddingLeft: 16, display: "grid", gap: 7, fontSize: 8.4, lineHeight: 1.45, color: "rgba(255,255,255,.84)" }}>{(detail.commonMistakes || []).slice(0, 4).map((item, index) => <li key={index}>{item}</li>)}</ul>
-              </FitGlassCard>
-            </div> : null}
-
-            <div style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 8, marginTop: 14 }}><button type="button" aria-label={t("Favori", "Favorite", "Favorito")} onClick={() => toggleFavorite(detail.id)} style={{ borderRadius: 15, border: `1px solid ${favorites.includes(detail.id) ? detail.accent + "55" : "rgba(255,255,255,.075)"}`, background: favorites.includes(detail.id) ? `${detail.accent}10` : "rgba(255,255,255,.03)", color: favorites.includes(detail.id) ? detail.accent : textSoft, display: "grid", placeItems: "center", minHeight: 50 }}><FitIcon name="favorite" size={19} /></button><FitPrimaryButton accent={detail.accent} onClick={() => go("games", { fitTemplateId: "free", fitExerciseId: detail.id })} style={{ minHeight: 50, fontSize: 16 }}>{t("＋ AJOUTER À MA SÉANCE", "+ ADD TO MY WORKOUT", "+ AÑADIR A MI SESIÓN")}</FitPrimaryButton></div>
-          </div>
-        </div>
-      </div> : null}
     </FitShell>
   </div>;
 }

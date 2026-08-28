@@ -11,7 +11,7 @@ const checks = [
   ['pagination wraps', plan.includes('(current - 1 + pageCount) % pageCount') && plan.includes('(current + 1) % pageCount')],
   ['first and last page buttons', plan.includes('setPage(0)') && plan.includes('setPage(pageCount - 1)')],
   ['photo or video media', plan.includes('premium?.video?.sources?.[0]?.src') && plan.includes('freeExerciseImageUrl(exercise)')],
-  ['filter icon', ui.includes('| "filter";') && ui.includes('case "filter"')],
+  ['filter icon', ui.includes('\"filter\"') && ui.includes('case \"filter\"')],
 ];
 let failed = 0;
 for (const [label, ok] of checks) {

@@ -6,15 +6,16 @@ import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 import { listActivities } from "../../activity/activityStore";
 import { buildRunningStats } from "../../activity/runningInsights";
-import { formatDistance, formatDuration, formatPace } from "../../activity/activityMath";
+import { formatDistance, formatDuration, formatPace, routeDistanceMeters } from "../../activity/activityMath";
 import type { ActivityRecord } from "../../activity/activityTypes";
 import { activePlanWeekIndex, buildTrainingStatus, loadRunningPlan, nextPlanSession, planCompletionPct, planDurationWeeks } from "../../activity/runningTraining";
 import { buildRunningRaceGoalSnapshot, distanceGoalLabel, loadRunningRaceGoal } from "../../activity/runningGoals";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import { RunningActionTile, RunningGlyph, RunningSectionHeading, RunningStatusChip, RunningSurface } from "./RunningUi";
-import { loadRunningActiveSessions, runningActiveElapsedMs, subscribeRunningActiveSessions, type RunningActiveSession } from "../../activity/runningActiveSessions";
-import { OUTDOOR_SPORT_PROFILES, loadOutdoorPerformanceSport, outdoorSportLabel, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
+import { loadRunningActiveSessions, runningActiveElapsedMs, subscribeRunningActiveSessions, upsertRunningActiveSession, type RunningActiveSession } from "../../activity/runningActiveSessions";
+import { OUTDOOR_SPORT_PROFILES, canonicalOutdoorPerformanceSport, loadOutdoorPerformanceSport, outdoorAverageMetricLabel, outdoorAverageMetricValue, outdoorAverageSpeedKmh, outdoorSportLabel, outdoorUsesSpeedMetric, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
+import { listRecoverableRunningSessionDrafts } from "../../activity/runningSessionDrafts";
 const PAGE_MAX_WIDTH = 620;
 const sectionWrap: React.CSSProperties = { width: "100%", boxSizing: "border-box" };
 const GOAL_KEY = "mss-running-weekly-goal-km-v1";
@@ -52,9 +53,9 @@ function useAutoFitTitle(deps: any[] = []) {
 function svgDataUri(svg: string) { return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`; }
 function tickerSvg(kind: "hero" | "coach" | "pacer" | "records", accent: string) {
     const c = {
-        hero: ["RUNNING", "COURS.", "PROGRESSE.", "RUN"],
+        hero: ["PERFORMANCE", "BOUGE.", "PROGRESSE.", "GO"],
         coach: ["COACH", "UN PLAN.", "UNE MISSION.", "GO"],
-        pacer: ["PACER", "GARDE TON", "ALLURE CIBLE", "±"],
+        pacer: ["PACER", "GARDE TON", "RYTHME CIBLE", "±"],
         records: ["RECORDS", "CHAQUE KM", "PEUT COMPTER", "PR"],
     }[kind];
     return svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360"><defs><radialGradient id="b" cx="72%" cy="28%" r="86%"><stop offset="0" stop-color="${accent}" stop-opacity=".24"/><stop offset=".46" stop-color="#111722"/><stop offset="1" stop-color="#05070d"/></radialGradient></defs><rect width="1200" height="360" fill="url(#b)"/><path d="M0 300 C160 240 320 330 500 265 C700 192 824 110 1200 206" fill="none" stroke="${accent}" stroke-opacity=".35" stroke-width="4"/><circle cx="930" cy="180" r="112" fill="none" stroke="${accent}" stroke-opacity=".32" stroke-width="3"/><text x="930" y="202" text-anchor="middle" font-family="Arial" font-size="72" font-weight="900" fill="${accent}">${c[3]}</text><text x="70" y="92" font-family="Arial" font-size="24" font-weight="900" letter-spacing="5" fill="${accent}">${c[0]}</text><text x="70" y="170" font-family="Arial" font-size="57" font-weight="900" fill="#fff">${c[1]}</text><text x="70" y="232" font-family="Arial" font-size="48" font-weight="900" fill="#fff" opacity=".82">${c[2]}</text></svg>`);
@@ -78,30 +79,74 @@ export default function RunningHome({ store, go }: Props) {
     });
     React.useEffect(() => { saveOutdoorPerformanceSport(activitySport); let live = true; void listActivities(activitySport).then((r) => live && setActivities(r)); return () => { live = false; }; }, [activitySport]);
     React.useEffect(() => subscribeRunningActiveSessions(setActiveSessions), []);
+    React.useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            const active = loadRunningActiveSessions();
+            const drafts = await listRecoverableRunningSessionDrafts(active.map((session) => session.id));
+            if (cancelled || !drafts.length) return;
+            for (const draft of drafts) {
+                const current = loadRunningActiveSessions();
+                if (current.length >= 3) break;
+                const sport = canonicalOutdoorPerformanceSport(draft.sport);
+                const lastPoint = draft.route[draft.route.length - 1];
+                const elapsedFromRoute = Number(lastPoint?.elapsedMs || 0);
+                const fallbackElapsed = draft.startedAt ? Math.max(0, draft.updatedAt - draft.startedAt - Number(draft.pausedTotalMs || 0)) : 0;
+                upsertRunningActiveSession({
+                    id: draft.sessionId,
+                    activityId: draft.activityId,
+                    sport,
+                    title: draft.title || `${outdoorSportLabel(sport, lang)} · ${pickLegacyLocalizedText(lang, "Sortie récupérée", "Recovered activity", "Salida recuperada")}`,
+                    presetId: draft.presetId || "goal-free",
+                    workoutType: draft.workoutType,
+                    startedAt: Number(draft.startedAt || draft.updatedAt || Date.now()),
+                    paused: true,
+                    pausedAt: Date.now(),
+                    pausedTotalMs: Number(draft.pausedTotalMs || 0),
+                    status: "paused",
+                    mode: draft.mode || "web-gps",
+                    targetDistanceM: draft.targetDistanceM,
+                    targetDurationMs: draft.targetDurationMs,
+                    targetPaceSecPerKm: draft.targetPaceSecPerKm,
+                    routeReferenceId: draft.routeReferenceId,
+                    shoeId: draft.shoeId,
+                    lastDistanceM: draft.route.length > 1 ? routeDistanceMeters(draft.route) : Number(draft.treadmillDistanceM || 0),
+                    lastElapsedMs: Math.max(elapsedFromRoute, fallbackElapsed),
+                    lastDraftAt: draft.updatedAt,
+                    recoveredAt: Date.now(),
+                    lastUpdatedAt: Date.now(),
+                });
+            }
+            if (!cancelled) setActiveSessions(loadRunningActiveSessions());
+        })();
+        return () => { cancelled = true; };
+    }, [lang]);
     const stats = useMemo(() => buildRunningStats(activities, Date.now(), localeForLang(lang)), [activities, lang]);
+    const canonicalSport = canonicalOutdoorPerformanceSport(activitySport);
+    const speedPrimary = outdoorUsesSpeedMetric(canonicalSport);
+    const bestAverageSpeedKmh = activities.reduce((best, activity) => Math.max(best, outdoorAverageSpeedKmh(activity)), 0);
     const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
     const { wrapRef, textRef, scale } = useAutoFitTitle([accent, lang]);
     const copy = pickLegacyLocalizedValue(lang, {
-        welcome: "Bienvenue", title: "RUNNING PERF", overview: "Vue globale Running", distance: "Distance", sessions: "Sorties", best: "Meilleure allure", climb: "D+ cumulé", longest: "Plus longue", time: "Temps total",
-        start: "LANCE TA SORTIE", free: "COURSE LIBRE", freeSub: "GPS · carte · splits · tours", easy: "EASY RUN", easySub: "30 min faciles · endurance", intervals: "INTERVALLES", intervalsSub: "6 × 1 min rapide / 1 min récup", pacer: "PACER", pacerSub: "Objectif d’allure · avance / retard", five: "5 KM", fiveSub: "Course objectif · meilleur effort",
-        coach: "COACH RUNNING", weekGoal: "OBJECTIF HEBDO", thisWeek: "Cette semaine", previous: "vs semaine précédente", streak: "Série active", weeks: "semaines", days: "jours", plan: "RECOMMANDATION", open: "OUVRIR",
+        welcome: "Bienvenue", title: "RUNNING PERF", overview: "Vue globale", distance: "Distance", sessions: "Sorties", best: "Meilleure allure", climb: "D+ cumulé", longest: "Plus longue", time: "Temps total",
+        start: "LANCE TA SORTIE", free: "SORTIE LIBRE", freeSub: "GPS · carte · stats · tours", easy: "EASY RUN", easySub: "30 min faciles · endurance", intervals: "INTERVALLES", intervalsSub: "6 × 1 min rapide / 1 min récup", pacer: "PACER", pacerSub: "Objectif d’allure · avance / retard", five: "5 KM", fiveSub: "Objectif distance · meilleur effort",
+        coach: "COACH SPORT", weekGoal: "OBJECTIF HEBDO", thisWeek: "Cette semaine", previous: "vs semaine précédente", streak: "Série active", weeks: "semaines", days: "jours", plan: "RECOMMANDATION", open: "OUVRIR",
         trend: "RYTHME DES 7 DERNIERS JOURS", month: "VOLUME SUR 4 SEMAINES", records: "MEILLEURS EFFORTS", recent: "DERNIÈRES SORTIES", allRuns: "VOIR TOUT", challenges: "CHALLENGES", threeRuns: "3 sorties dans la semaine", goalChallenge: "Atteindre l’objectif distance", devices: "MONTRES & CAPTEURS", devicesSub: "BLE cardio/cadence/FTMS · GPS Android natif · Synchro Health Connect", soon: "BIENTÔT", trainingStatus: "ÉTAT D’ENTRAÎNEMENT", freshness: "Fraîcheur estimée", load7: "Charge 7 jours", load28: "Base hebdo 28 j", balanced: "ÉQUILIBRÉE", high: "ÉLEVÉE", low: "FAIBLE", indicative: "Indicateur basé sur tes sorties et ton ressenti, pas une mesure médicale.", program: "PROGRAMME ACTIF", noProgram: "Aucun programme actif", createProgram: "CRÉER UN PLAN", nextWorkout: "Prochaine séance", zones: "ZONES D’ALLURE", predictions: "PRÉDICTIONS DE COURSE", basedOn: "Basé sur tes meilleurs efforts GPS",
     }, {
-        welcome: "Welcome", title: "RUNNING PERF", overview: "Running overview", distance: "Distance", sessions: "Runs", best: "Best pace", climb: "Total climb", longest: "Longest", time: "Total time",
-        start: "START YOUR RUN", free: "FREE RUN", freeSub: "GPS · map · splits · laps", easy: "EASY RUN", easySub: "30 easy min · aerobic base", intervals: "INTERVALS", intervalsSub: "6 × 1 min fast / 1 min easy", pacer: "PACER", pacerSub: "Target pace · ahead / behind", five: "5 KM", fiveSub: "Goal race · best effort",
-        coach: "RUNNING COACH", weekGoal: "WEEKLY GOAL", thisWeek: "This week", previous: "vs previous week", streak: "Active streak", weeks: "weeks", days: "days", plan: "RECOMMENDATION", open: "OPEN",
+        welcome: "Welcome", title: "RUNNING PERF", overview: "Overview", distance: "Distance", sessions: "Runs", best: "Best pace", climb: "Total climb", longest: "Longest", time: "Total time",
+        start: "START ACTIVITY", free: "FREE ACTIVITY", freeSub: "GPS · map · stats · laps", easy: "EASY RUN", easySub: "30 easy min · aerobic base", intervals: "INTERVALS", intervalsSub: "6 × 1 min fast / 1 min easy", pacer: "PACER", pacerSub: "Target pace · ahead / behind", five: "5 KM", fiveSub: "Distance goal · best effort",
+        coach: "SPORT COACH", weekGoal: "WEEKLY GOAL", thisWeek: "This week", previous: "vs previous week", streak: "Active streak", weeks: "weeks", days: "days", plan: "RECOMMENDATION", open: "OPEN",
         trend: "LAST 7 DAYS", month: "4-WEEK VOLUME", records: "BEST EFFORTS", recent: "RECENT RUNS", allRuns: "VIEW ALL", challenges: "CHALLENGES", threeRuns: "3 runs this week", goalChallenge: "Complete distance goal", devices: "WATCHES & SENSORS", devicesSub: "BLE HR/cadence/FTMS · native Android GPS · Health Connect sync", soon: "SOON", trainingStatus: "TRAINING STATUS", freshness: "Estimated freshness", load7: "7-day load", load28: "28-day weekly base", balanced: "BALANCED", high: "HIGH", low: "LOW", indicative: "Indicator based on your runs and feedback, not a medical measurement.", program: "ACTIVE PLAN", noProgram: "No active plan", createProgram: "CREATE PLAN", nextWorkout: "Next workout", zones: "PACE ZONES", predictions: "RACE PREDICTIONS", basedOn: "Based on your GPS best efforts",
     }, {
-        welcome: "Bienvenido", title: "RUNNING PERF", overview: "Vista global Running", distance: "Distancia", sessions: "Carreras", best: "Mejor ritmo", climb: "D+ total", longest: "Más larga", time: "Tiempo total",
-        start: "INICIA TU CARRERA", free: "CARRERA LIBRE", freeSub: "GPS · mapa · splits · vueltas", easy: "EASY RUN", easySub: "30 min suaves · resistencia", intervals: "INTERVALOS", intervalsSub: "6 × 1 min rápido / 1 min suave", pacer: "PACER", pacerSub: "Ritmo objetivo · adelanto / retraso", five: "5 KM", fiveSub: "Carrera objetivo · mejor esfuerzo",
-        coach: "COACH RUNNING", weekGoal: "OBJETIVO SEMANAL", thisWeek: "Esta semana", previous: "vs semana anterior", streak: "Racha activa", weeks: "semanas", days: "días", plan: "RECOMENDACIÓN", open: "ABRIR",
+        welcome: "Bienvenido", title: "RUNNING PERF", overview: "Vista global", distance: "Distancia", sessions: "Carreras", best: "Mejor ritmo", climb: "D+ total", longest: "Más larga", time: "Tiempo total",
+        start: "INICIA TU SALIDA", free: "SALIDA LIBRE", freeSub: "GPS · mapa · estadísticas · vueltas", easy: "EASY RUN", easySub: "30 min suaves · resistencia", intervals: "INTERVALOS", intervalsSub: "6 × 1 min rápido / 1 min suave", pacer: "PACER", pacerSub: "Ritmo objetivo · adelanto / retraso", five: "5 KM", fiveSub: "Objetivo de distancia · mejor esfuerzo",
+        coach: "COACH SPORT", weekGoal: "OBJETIVO SEMANAL", thisWeek: "Esta semana", previous: "vs semana anterior", streak: "Racha activa", weeks: "semanas", days: "días", plan: "RECOMENDACIÓN", open: "ABRIR",
         trend: "RITMO DE LOS ÚLTIMOS 7 DÍAS", month: "VOLUMEN EN 4 SEMANAS", records: "MEJORES ESFUERZOS", recent: "ÚLTIMAS CARRERAS", allRuns: "VER TODO", challenges: "RETOS", threeRuns: "3 carreras esta semana", goalChallenge: "Completar el objetivo de distancia", devices: "RELOJES Y SENSORES", devicesSub: "BLE cardio/cadencia/FTMS · GPS Android nativo · Sincronización Health Connect", soon: "PRONTO", trainingStatus: "ESTADO DE ENTRENAMIENTO", freshness: "Frescura estimada", load7: "Carga 7 días", load28: "Base semanal 28 d", balanced: "EQUILIBRADA", high: "ALTA", low: "BAJA", indicative: "Indicador basado en tus carreras y sensaciones, no es una medida médica.", program: "PLAN ACTIVO", noProgram: "Sin plan activo", createProgram: "CREAR PLAN", nextWorkout: "Próxima sesión", zones: "ZONAS DE RITMO", predictions: "PREDICCIONES DE CARRERA", basedOn: "Basado en tus mejores esfuerzos GPS",
     });
     const recommendation = useMemo(() => {
         if (activitySport === "trail") return stats.weekSessions >= 2 ? { id: "long", icon: "⛰️", title: pickLegacyLocalizedText(lang, "SORTIE TRAIL LONGUE", "LONG TRAIL", "TRAIL LARGO"), text: pickLegacyLocalizedText(lang, "Endurance et D+ sur terrain naturel.", "Endurance and elevation on natural terrain.", "Resistencia y desnivel en terreno natural.") } : { id: "hills", icon: "⛰️", title: pickLegacyLocalizedText(lang, "CÔTES / TRAIL", "HILLS / TRAIL", "CUESTAS / TRAIL"), text: pickLegacyLocalizedText(lang, "Travaille la montée, la relance et la technique.", "Build climbing, turnover and trail technique.", "Trabaja subida, reactividad y técnica.") };
         if (activitySport === "hiking") return { id: stats.weekSessions ? "long" : "easy", icon: "🥾", title: pickLegacyLocalizedText(lang, "RANDONNÉE ENDURANCE", "ENDURANCE HIKE", "SENDERISMO DE RESISTENCIA"), text: pickLegacyLocalizedText(lang, "Privilégie le temps de mouvement et le dénivelé.", "Focus on moving time and elevation.", "Prioriza tiempo en movimiento y desnivel.") };
         if (activitySport === "walking") return { id: "easy", icon: "🚶", title: pickLegacyLocalizedText(lang, "MARCHE ACTIVE", "ACTIVE WALK", "CAMINATA ACTIVA"), text: pickLegacyLocalizedText(lang, "30 à 45 min régulières en aisance.", "30–45 steady comfortable minutes.", "30 a 45 min regulares y cómodos.") };
-        if (activitySport === "nordic-walking") return { id: stats.weekSessions >= 2 ? "long" : "tempo", icon: "🥢", title: pickLegacyLocalizedText(lang, "MARCHE NORDIQUE", "NORDIC WALK", "MARCHA NÓRDICA"), text: pickLegacyLocalizedText(lang, "Cadence, coordination et endurance active.", "Cadence, coordination and active endurance.", "Cadencia, coordinación y resistencia activa.") };
         if (activitySport === "treadmill") return stats.weekSessions >= 2 ? { id: "intervals", icon: "⚡", title: pickLegacyLocalizedText(lang, "INTERVALLES TAPIS", "TREADMILL INTERVALS", "INTERVALOS EN CINTA"), text: pickLegacyLocalizedText(lang, "Alterne vitesse et récupération sans dépendre du GPS.", "Alternate speed and recovery without GPS.", "Alterna velocidad y recuperación sin GPS.") } : { id: "easy", icon: "🏃‍♂️", title: pickLegacyLocalizedText(lang, "ENDURANCE TAPIS", "TREADMILL ENDURANCE", "RESISTENCIA EN CINTA"), text: pickLegacyLocalizedText(lang, "30 à 45 min régulières, mesure FTMS/footpod ou vitesse manuelle.", "30–45 steady minutes using FTMS, footpod or manual speed.", "30–45 min regulares con FTMS, footpod o velocidad manual.") };
         if (!stats.sessions)
             return { id: "easy", icon: "🌱", title: copy.easy, text: copy.easySub };
@@ -124,13 +169,23 @@ export default function RunningHome({ store, go }: Props) {
     const xp = Math.round(stats.totalDistanceM / 10);
     const level = Math.floor(xp / 1000) + 1;
     const levelXp = xp % 1000;
-    const tickers: ArcadeTickerItem[] = useMemo(() => [
-        { id: "hero", title: "Running Performance", text: `${(stats.weekDistanceM / 1000).toFixed(1)} km · ${stats.weekSessions} ${copy.sessions.toLowerCase()} · ${levelXp}/1000 XP`, detail: `${copy.streak}: ${stats.activeWeekStreak} ${copy.weeks}`, backgroundImage: tickerSvg("hero", accent), accentColor: accent },
-        { id: "coach", title: copy.coach, text: `${recommendation.title} — ${recommendation.text}`, detail: copy.plan, backgroundImage: tickerSvg("coach", accent), accentColor: accent },
-        { id: "pacer", title: copy.pacer, text: copy.pacerSub, detail: pickLegacyLocalizedText(lang, "Allure cible · projection · delta live", "Target pace · projection · live delta", "Ritmo objetivo · proyección · delta live"), backgroundImage: tickerSvg("pacer", accent), accentColor: accent },
-        { id: "records", title: copy.records, text: `1K ${stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—"} · 5K ${stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—"} · 10K ${stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—"}`, detail: pickLegacyLocalizedText(lang, "Meilleurs efforts calculés sur tous les tracés", "Best efforts across all routes", "Mejores esfuerzos calculados en todas las rutas"), backgroundImage: tickerSvg("records", accent), accentColor: accent },
-    ], [accent, copy.coach, copy.pacer, copy.pacerSub, copy.plan, copy.records, copy.sessions, copy.streak, copy.weeks, lang, levelXp, recommendation.text, recommendation.title, stats.activeWeekStreak, stats.best10k, stats.best1k, stats.best5k, stats.weekDistanceM, stats.weekSessions]);
-    const profileSlides = [{ id: "running-records", title: copy.records, rows: [
+    const tickers: ArcadeTickerItem[] = useMemo(() => {
+        const rows: ArcadeTickerItem[] = [
+            { id: "hero", title: `${outdoorSportLabel(canonicalSport, lang)} Performance`, text: `${(stats.weekDistanceM / 1000).toFixed(1)} km · ${stats.weekSessions} ${copy.sessions.toLowerCase()} · ${levelXp}/1000 XP`, detail: `${copy.streak}: ${stats.activeWeekStreak} ${copy.weeks}`, backgroundImage: tickerSvg("hero", accent), accentColor: accent },
+            { id: "coach", title: `${copy.coach} · ${outdoorSportLabel(canonicalSport, lang).toUpperCase()}`, text: `${recommendation.title} — ${recommendation.text}`, detail: copy.plan, backgroundImage: tickerSvg("coach", accent), accentColor: accent },
+        ];
+        if (OUTDOOR_SPORT_PROFILES[canonicalSport].supportsPacer) rows.push({ id: "pacer", title: copy.pacer, text: copy.pacerSub, detail: pickLegacyLocalizedText(lang, "Rythme cible · projection · delta live", "Target pace · projection · live delta", "Ritmo objetivo · proyección · delta live"), backgroundImage: tickerSvg("pacer", accent), accentColor: accent });
+        rows.push(speedPrimary
+            ? { id: "records", title: copy.records, text: `${pickLegacyLocalizedText(lang, "Vitesse moyenne max", "Best average speed", "Mejor velocidad media")}: ${bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—"} · ${copy.longest}: ${formatDistance(stats.longestM)}`, detail: pickLegacyLocalizedText(lang, "Repères adaptés à la discipline sélectionnée", "Metrics adapted to the selected sport", "Métricas adaptadas al deporte seleccionado"), backgroundImage: tickerSvg("records", accent), accentColor: accent }
+            : { id: "records", title: copy.records, text: `1K ${stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—"} · 5K ${stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—"} · 10K ${stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—"}`, detail: pickLegacyLocalizedText(lang, "Meilleurs efforts calculés sur tous les tracés", "Best efforts across all routes", "Mejores esfuerzos calculados en todas las rutas"), backgroundImage: tickerSvg("records", accent), accentColor: accent });
+        return rows;
+    }, [accent, activitySport, bestAverageSpeedKmh, canonicalSport, copy.coach, copy.longest, copy.pacer, copy.pacerSub, copy.plan, copy.records, copy.sessions, copy.streak, copy.weeks, lang, levelXp, recommendation.text, recommendation.title, speedPrimary, stats.activeWeekStreak, stats.best10k, stats.best1k, stats.best5k, stats.longestM, stats.weekDistanceM, stats.weekSessions]);
+    const profileSlides = [{ id: "running-records", title: `${outdoorSportLabel(canonicalSport, lang)} · ${copy.records}`, rows: speedPrimary ? [
+                { label: pickLegacyLocalizedText(lang, "VITESSE MOY. MAX", "BEST AVG SPEED", "MEJOR VEL. MEDIA"), value: bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—" },
+                { label: copy.longest, value: formatDistance(stats.longestM) },
+                { label: copy.time, value: formatDuration(stats.totalElapsedMs) },
+                { label: copy.streak, value: `${stats.activeWeekStreak} ${copy.weeks}` },
+            ] : [
                 { label: "1 KM", value: stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—" },
                 { label: "5 KM", value: stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—" },
                 { label: "10 KM", value: stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—" },
@@ -152,6 +207,8 @@ export default function RunningHome({ store, go }: Props) {
         ? go("games", { runningResumeSessionId: currentSession.id, runningActivitySport: currentSession.sport })
         : go("games", presetParams(recommendation.id, null, activitySport));
     const weekLabel = `${(stats.weekDistanceM / 1000).toFixed(1)} / ${weeklyGoalKm} km`;
+    const bestMetricLabel = speedPrimary ? pickLegacyLocalizedText(lang, "Meilleure vitesse", "Best speed", "Mejor velocidad") : copy.best;
+    const bestMetricValue = speedPrimary ? (bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—") : `${formatPace(stats.bestPaceSecPerKm)} /km`;
     return <div style={{ minHeight: "100%", background: (theme as any).pageBackground || (theme as any).bg || "#05060C", color: "#FFFFFF", display: "flex", justifyContent: "center", padding: "16px 12px 96px", boxSizing: "border-box" }}>
     <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH }}>
       <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}}`}</style>
@@ -165,7 +222,7 @@ export default function RunningHome({ store, go }: Props) {
       <div style={sectionWrap}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>
 
       <div style={sectionWrap}>{activeProfile ? <ActiveProfileCard hideStatus hideStarRing profile={activeProfile as any} stats={{} as any} suppressDefaultStatsSlides customSlides={profileSlides as any} globalTitle={`${outdoorSportLabel(activitySport, lang)} · ${copy.overview}`} globalKpis={[
-        { label: copy.distance, value: formatDistance(stats.totalDistanceM) }, { label: copy.sessions, value: stats.sessions }, { label: copy.best, value: `${formatPace(stats.bestPaceSecPerKm)} /km` }, { label: copy.climb, value: `+${Math.round(stats.totalElevationM)} m` }, { label: copy.longest, value: formatDistance(stats.longestM) }, { label: copy.time, value: formatDuration(stats.totalElapsedMs) },
+        { label: copy.distance, value: formatDistance(stats.totalDistanceM) }, { label: copy.sessions, value: stats.sessions }, { label: bestMetricLabel, value: bestMetricValue }, { label: copy.climb, value: `+${Math.round(stats.totalElevationM)} m` }, { label: copy.longest, value: formatDistance(stats.longestM) }, { label: copy.time, value: formatDuration(stats.totalElapsedMs) },
       ]}/> : null}</div>
 
       <div style={{ ...sectionWrap, marginTop: 12 }}>
@@ -173,7 +230,7 @@ export default function RunningHome({ store, go }: Props) {
           featured
           accent={accent}
           onClick={mainAction}
-          icon={<RunningGlyph name={currentSession ? "recover" : activitySport === "trail" ? "sport-trail" : activitySport === "hiking" ? "sport-hiking" : activitySport === "walking" ? "sport-walking" : activitySport === "nordic-walking" ? "sport-nordic" : activitySport === "treadmill" ? "sport-treadmill" : "sport-running"} size={24}/>}
+          icon={<RunningGlyph name={currentSession ? "recover" : activitySport === "trail" ? "sport-trail" : activitySport === "hiking" ? "sport-hiking" : activitySport === "walking" ? "sport-walking" : activitySport === "treadmill" ? "sport-treadmill" : "sport-running"} size={24}/>}
           title={mainActionTitle}
           subtitle={mainActionSub}
           meta={currentSession ? <span style={{ padding: "4px 7px", borderRadius: 999, border: "1px solid rgba(109,255,157,.30)", color: "#6dff9d", fontSize: 7, fontWeight: 1000 }}>{currentSession.paused ? "PAUSE" : "EN COURS"}</span> : <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}30`, color: accent, fontSize: 7, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "AUJOURD'HUI", "TODAY", "HOY")}</span>}
@@ -207,7 +264,7 @@ export default function RunningHome({ store, go }: Props) {
 
       <div style={{ ...sectionWrap, marginTop: 12 }}><ArcadeTicker items={tickers} activeIndex={tickerIndex} onIndexChange={setTickerIndex} intervalMs={7000}/></div>
 
-      {activities.length ? <div style={{ ...sectionWrap, marginTop: 12 }}><RunningSurface accent={accent} padding={12}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO")} title={copy.recent} action={<button className="btn" style={{ minHeight: 30, fontSize: 8 }} onClick={() => go("stats", { runningStatsTab: "history" })}>{copy.allRuns}</button>}/><div style={{ display: "grid", gap: 7 }}>{activities.slice(0, 2).map((a) => <RecentRun key={a.id} activity={a} accent={accent} textSoft={textSoft}/>)}</div></RunningSurface></div> : null}
+      {activities.length ? <div style={{ ...sectionWrap, marginTop: 12 }}><RunningSurface accent={accent} padding={12}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO")} title={copy.recent} action={<button className="btn" style={{ minHeight: 30, fontSize: 8 }} onClick={() => go("stats", { runningStatsTab: "history" })}>{copy.allRuns}</button>}/><div style={{ display: "grid", gap: 7 }}>{activities.slice(0, 2).map((a) => <RecentRun key={a.id} activity={a} accent={accent} textSoft={textSoft} lang={lang}/>)}</div></RunningSurface></div> : null}
     </div>
   </div>;
 }
@@ -235,11 +292,21 @@ function Challenge({ label, value, progress, accent }: {
     accent: string;
 }) { return <div style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontSize: 9.5 }}><span style={{ opacity: .72 }}>{label}</span><b style={{ color: accent }}>{value}</b></div><Progress value={progress} accent={accent}/></div>; }
 function TrainingKpi({ label, value, accent }: { label: string; value: string; accent: string }) { return <div style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", textAlign: "center" }}><div style={{ fontSize: 8.2, opacity: .58, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000, color: accent }}>{value}</div></div>; }
-function RecentRun({ activity, accent, textSoft }: {
+function RecentRun({ activity, accent, textSoft, lang }: {
     activity: ActivityRecord;
     accent: string;
     textSoft: string;
-}) { return <div style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center", padding: 9, borderRadius: 13, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", color: accent, background: `${accent}12`, border: `1px solid ${accent}2e` }}><RunningGlyph name="sport-running" size={18}/></div><div><b style={{ fontSize: 10.5 }}>{formatDistance(activity.distanceM)}</b><div style={{ color: textSoft, fontSize: 9, marginTop: 2 }}>{new Date(activity.startedAt).toLocaleDateString()} · {formatDuration(activity.elapsedMs)}</div></div><div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>{formatPace(activity.avgPaceSecPerKm)}<small style={{ fontSize: 7 }}>/km</small></div></div>; }
+    lang: string;
+}) {
+    const sport = canonicalOutdoorPerformanceSport(activity.sport);
+    const glyph = sport === "trail" ? "sport-trail" : sport === "hiking" ? "sport-hiking" : sport === "walking" ? "sport-walking" : sport === "treadmill" ? "sport-treadmill" : "sport-running";
+    return <div style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center", padding: 9, borderRadius: 13, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>
+        <div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", color: accent, background: `${accent}12`, border: `1px solid ${accent}2e` }}><RunningGlyph name={glyph as any} size={18}/></div>
+        <div><div style={{ color: accent, fontSize: 7.5, fontWeight: 1000 }}>{outdoorSportLabel(sport, lang).toUpperCase()}</div><b style={{ fontSize: 10.5 }}>{formatDistance(activity.distanceM)}</b><div style={{ color: textSoft, fontSize: 9, marginTop: 2 }}>{new Date(activity.startedAt).toLocaleDateString()} · {formatDuration(activity.elapsedMs)}</div></div>
+        <div style={{ color: accent, fontSize: 10, fontWeight: 1000, textAlign: "right" }}>{outdoorAverageMetricValue(activity, sport)}<small style={{ display: "block", fontSize: 7 }}>{outdoorAverageMetricLabel(sport, lang)}</small></div>
+    </div>;
+}
+
 function PerformanceRing({ value, accent, label }: { value: number; accent: string; label: string }) { return <div style={{ width: 88, height: 88, borderRadius: 999, display: "grid", placeItems: "center", background: `conic-gradient(${accent} ${Math.max(0, Math.min(100, value))}%,rgba(255,255,255,.07) 0)`, boxShadow: `0 0 25px ${accent}20` }}><div style={{ width: 70, height: 70, borderRadius: 999, display: "grid", placeItems: "center", alignContent: "center", background: "rgba(5,7,12,.96)", border: "1px solid rgba(255,255,255,.07)", textAlign: "center" }}><b style={{ color: accent, fontSize: 21, lineHeight: 1 }}>{value}</b><span style={{ marginTop: 3, fontSize: 7, opacity: .55, fontWeight: 1000 }}>{label}</span></div></div>; }
 function PulseKpi({ label, value, accent }: { label: string; value: string; accent: string }) { return <div style={{ minWidth: 0, padding: "8px 7px", borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ fontSize: 7, opacity: .52, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 1000, color: accent, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>; }
 const goalBtn: React.CSSProperties = { width: 30, minWidth: 30, minHeight: 30, padding: 0, borderRadius: 9, fontWeight: 1000 };

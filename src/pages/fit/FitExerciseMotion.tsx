@@ -30,7 +30,7 @@ function detectMediaKind(src: string, kind?: MotionMediaOverride["kind"]) {
   return /\.(mp4|webm|mov)$/i.test(src) ? "video" : "image";
 }
 
-export default function FitExerciseMotion({ exercise, accent, compact = false }: { exercise: FitExercise; accent?: string; compact?: boolean }) {
+export default function FitExerciseMotion({ exercise, accent, compact = false, cleanBranding = false }: { exercise: FitExercise; accent?: string; compact?: boolean; cleanBranding?: boolean }) {
   const color = accent || exercise.accent || "#f6c256";
   const media = MEDIA_OVERRIDES[exercise.id];
   const mediaKind = detectMediaKind(media?.src || "", media?.kind);
@@ -67,7 +67,7 @@ export default function FitExerciseMotion({ exercise, accent, compact = false }:
           <img src={media.src} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 82 : 154, objectFit: "contain", display: "block" }}/>
         )
       ) : hasAwenaPremiumMotion(motionExerciseId) && premiumMotion && !premiumFailed ? (
-        <FitPremiumMotionPlayer slot={premiumMotion} compact={compact} onFail={markPremiumFailed}/>
+        <FitPremiumMotionPlayer slot={premiumMotion} compact={compact} onFail={markPremiumFailed} showBadge={!cleanBranding}/>
       ) : hasFitAwena3DMotion(exercise) && !threeDFailed ? (
         <FitAwena3DStage exercise={exercise} compact={compact} onFail={mark3DFailed}/>
       ) : hasFitAwenaMotion(exercise) ? (
@@ -83,9 +83,9 @@ export default function FitExerciseMotion({ exercise, accent, compact = false }:
             <img src={AWENA_AVATAR} alt="Awena Coach" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", animation: "fitAwenaFloat 2.2s ease-in-out infinite" }}/>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, color, fontSize: 7.6, fontWeight: 1000, letterSpacing: .9 }}><FitIcon name="coach" size={13}/> AWENA COACH</div>
-            <div style={{ marginTop: 4, fontSize: compact ? 10 : 11.5, fontWeight: 1000, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div>
-            {!compact ? <div style={{ marginTop: 4, color: "rgba(255,255,255,.46)", fontSize: 8 }}>{exercise.muscle} · {exercise.equipment}</div> : null}
+            {!cleanBranding ? <div style={{ display: "flex", alignItems: "center", gap: 5, color, fontSize: 7.6, fontWeight: 1000, letterSpacing: .9 }}><FitIcon name="coach" size={13}/> AWENA COACH</div> : null}
+            <div style={{ marginTop: cleanBranding ? 0 : 4, fontSize: compact ? 10 : 11.5, fontWeight: 1000, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cleanBranding ? "" : exercise.name}</div>
+            {!compact && !cleanBranding ? <div style={{ marginTop: 4, color: "rgba(255,255,255,.46)", fontSize: 8 }}>{exercise.muscle} · {exercise.equipment}</div> : null}
           </div>
           <div title="Animation AWENA à ajouter" style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", color, background: `${color}0f`, border: `1px solid ${color}32` }}><FitIcon name="live" size={14}/></div>
         </div>

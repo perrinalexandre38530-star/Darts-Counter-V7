@@ -158,11 +158,13 @@ export async function saveRunningSessionDraft(draft: RunningSessionDraft): Promi
       tx.onabort = () => reject(tx.error || new Error("Running draft save aborted"));
     });
     db.close();
-  } catch {
-    const rows = fallbackRead().filter((row) => row.sessionId !== clean.sessionId);
-    rows.unshift(clean);
-    fallbackWrite(rows);
-  }
+  } catch {}
+
+  // Toujours conserver un miroir local compact. Un crash, une purge WebView ou
+  // un IndexedDB temporairement indisponible ne doit pas faire perdre la sortie.
+  const rows = fallbackRead().filter((row) => row.sessionId !== clean.sessionId);
+  rows.unshift(clean);
+  fallbackWrite(rows);
 }
 
 export async function patchRunningSessionDraft(sessionId: string, patch: Partial<RunningSessionDraft>): Promise<RunningSessionDraft | null> {
@@ -185,13 +187,14 @@ export async function loadRunningSessionDraft(sessionId: string): Promise<Runnin
       request.onerror = () => reject(request.error || new Error("Unable to read running draft"));
     });
     db.close();
-    return sanitizeDraft(result);
+    return sanitizeDraft(result) || fallbackRead().find((row) => row.sessionId === sessionId) || null;
   } catch {
     return fallbackRead().find((row) => row.sessionId === sessionId) || null;
   }
 }
 
 export async function listRunningSessionDrafts(): Promise<RunningSessionDraft[]> {
+  let primary: RunningSessionDraft[] = [];
   try {
     const db = await openDb();
     const rows = await new Promise<RunningSessionDraft[]>((resolve, reject) => {
@@ -201,10 +204,12 @@ export async function listRunningSessionDrafts(): Promise<RunningSessionDraft[]>
       request.onerror = () => reject(request.error || new Error("Unable to list running drafts"));
     });
     db.close();
-    return rows.map(sanitizeDraft).filter(Boolean).sort((a: any, b: any) => b.updatedAt - a.updatedAt) as RunningSessionDraft[];
-  } catch {
-    return fallbackRead().sort((a, b) => b.updatedAt - a.updatedAt);
-  }
+    primary = rows.map(sanitizeDraft).filter(Boolean) as RunningSessionDraft[];
+  } catch {}
+  const merged = new Map<string, RunningSessionDraft>();
+  for (const row of fallbackRead()) merged.set(row.sessionId, row);
+  for (const row of primary) merged.set(row.sessionId, row);
+  return [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function deleteRunningSessionDraft(sessionId: string): Promise<void> {
@@ -218,9 +223,8 @@ export async function deleteRunningSessionDraft(sessionId: string): Promise<void
       tx.onerror = () => reject(tx.error || new Error("Unable to delete running draft"));
     });
     db.close();
-  } catch {
-    fallbackWrite(fallbackRead().filter((row) => row.sessionId !== sessionId));
-  }
+  } catch {}
+  fallbackWrite(fallbackRead().filter((row) => row.sessionId !== sessionId));
 }
 
 

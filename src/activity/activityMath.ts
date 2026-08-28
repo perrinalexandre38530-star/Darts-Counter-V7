@@ -100,7 +100,7 @@ export function averageSpeedMps(distanceM: number, elapsedMs: number): number {
         return 0;
     return distanceM / (elapsedMs / 1000);
 }
-export function shouldAcceptRunningPoint(previous: GeoPoint | undefined, next: GeoPoint): boolean {
+export function shouldAcceptRunningPoint(previous: GeoPoint | undefined, next: GeoPoint, maxSpeedMps = 12): boolean {
     if (!Number.isFinite(next.lat) || !Number.isFinite(next.lon))
         return false;
     if (Number.isFinite(next.accuracy) && Number(next.accuracy) > 100)
@@ -111,11 +111,21 @@ export function shouldAcceptRunningPoint(previous: GeoPoint | undefined, next: G
     const distance = haversineMeters(previous, next);
     if (distance < 2 && dt < 5)
         return false;
-    // Garde-fou anti-saut GPS : 72 km/h est déjà largement au-delà d'une course à pied.
-    if (distance / dt > 20)
+    // Garde-fou anti-saut GPS. La limite est adaptée au sport par l'appelant.
+    if (distance / dt > Math.max(1, maxSpeedMps))
         return false;
     return true;
 }
+
+export function filterRouteOutliers(points: GeoPoint[], maxSpeedMps = 12): GeoPoint[] {
+    const accepted: GeoPoint[] = [];
+    for (const point of points || []) {
+        const previous = accepted[accepted.length - 1];
+        if (shouldAcceptRunningPoint(previous, point, maxSpeedMps)) accepted.push(point);
+    }
+    return accepted;
+}
+
 export function movingTimeMs(points: GeoPoint[]): number {
     if (points.length < 2)
         return 0;
