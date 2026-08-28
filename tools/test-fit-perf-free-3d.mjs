@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 const read = (path) => fs.readFileSync(path, "utf8");
 const fitStore = read("src/fit/fitStore.ts");
 const freeDb = read("src/fit/freeExerciseCatalog.ts");
+const catalogEngine = read("src/fit/fitCatalogEngine.ts");
 const mocap = read("src/fit/awenaMocapRegistry.ts");
 const stage3d = read("src/pages/fit/FitAwena3DStage.tsx");
 const renderer = read("src/pages/fit/FitExerciseMotion.tsx");
@@ -15,8 +16,8 @@ assert.ok(freeDb.includes("yuhonas/free-exercise-db/main/dist/exercises.json"), 
 assert.ok(freeDb.includes("Unlicense / public domain"), "Licence Free Exercise DB non enregistrée");
 assert.ok(freeDb.includes("registerExternalFitExercises"), "Catalogue libre non enregistré dans FIT PERF");
 assert.ok(fitStore.includes("FREE_EXERCISE_CACHE_KEY") && fitStore.includes("externalExerciseRegistry"), "Cache/registre exercices externes absent");
-assert.ok(plan.includes("loadFreeExerciseCatalog") && plan.includes("OPEN EXERCISE DB"), "Catalogue libre non branché dans la page Exercices");
-assert.ok(module.includes("loadFreeExerciseCatalog") && module.includes("pickerExercises"), "Catalogue libre non branché dans le sélecteur de séance");
+assert.ok(plan.includes("loadFitCatalog") && catalogEngine.includes("loadFreeExerciseCatalog") && catalogEngine.includes("loadWgerExerciseCatalog"), "Catalogue multi-sources non branché dans la page Exercices");
+assert.ok(module.includes("loadFitCatalog") && module.includes("pickerExercises"), "Catalogue multi-sources non branché dans le sélecteur de séance");
 assert.ok(renderer.includes("FitAwena3DStage") && renderer.includes("hasFitAwena3DMotion"), "Rendu 3D non branché avant le fallback 2D");
 assert.ok(renderer.includes("freeExerciseImageUrl"), "Référence visuelle open DB absente pour les mouvements non mappés");
 assert.ok(stage3d.includes("three@0.180.0") && stage3d.includes("WebGLRenderer"), "Runtime Three.js 3D absent");

@@ -2,8 +2,9 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
-import { FIT_EXERCISES, FIT_TEMPLATES, buildFitRecords, formatKg, loadFitSessions, type FitEquipment, type FitExercise, type FitMuscle } from "../../fit/fitStore";
-import { freeExerciseImageUrl, getCachedFreeExerciseCatalog, loadFreeExerciseCatalog } from "../../fit/freeExerciseCatalog";
+import { FIT_TEMPLATES, buildFitRecords, formatKg, loadFitSessions, type FitEquipment, type FitExercise, type FitMuscle } from "../../fit/fitStore";
+import { freeExerciseImageUrl } from "../../fit/freeExerciseCatalog";
+import { getCachedFitCatalog, loadFitCatalog, type FitCatalogSnapshot } from "../../fit/fitCatalogEngine";
 import { getAwenaPremiumMotion } from "../../fit/awenaPremiumMotions";
 import {
   FIT_EQUIPMENT_ORDER,
@@ -118,7 +119,7 @@ export default function FitPerfPlan({ go }: Props) {
   const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
   const textSoft = (theme as any)?.textSoft || "#9ca3af";
 
-  const cachedAtStart = React.useMemo(() => getCachedFreeExerciseCatalog(), []);
+  const cachedAtStart = React.useMemo(() => getCachedFitCatalog(), []);
   const [tab, setTab] = React.useState<Tab>("body");
   const [search, setSearch] = React.useState("");
   const [muscle, setMuscle] = React.useState<FitMuscle | "Tous">("Tous");
@@ -129,30 +130,22 @@ export default function FitPerfPlan({ go }: Props) {
   const [page, setPage] = React.useState(0);
   const [detail, setDetail] = React.useState<FitExercise | null>(null);
   const [favorites, setFavorites] = React.useState<string[]>(readFavorites);
-  const [freeExercises, setFreeExercises] = React.useState<FitExercise[]>(cachedAtStart);
-  const [catalogStatus, setCatalogStatus] = React.useState<"idle" | "loading" | "ready" | "error">(cachedAtStart.length ? "ready" : "idle");
+  const [catalog, setCatalog] = React.useState<FitCatalogSnapshot>(cachedAtStart);
+  const [catalogStatus, setCatalogStatus] = React.useState<"idle" | "loading" | "ready" | "error">(cachedAtStart.exercises.length > 20 ? "ready" : "idle");
 
-  // OPEN EXERCISE DB remains the open catalogue source; its vendor label is intentionally hidden from the compact UI.
+  // FIT CATALOG ENGINE loads and deduplicates all open catalogue sources in parallel.
   React.useEffect(() => {
-    if (freeExercises.length || catalogStatus === "loading") return;
     let cancelled = false;
     setCatalogStatus("loading");
-    void loadFreeExerciseCatalog(false).then((loaded) => {
+    void loadFitCatalog(false).then((loaded) => {
       if (cancelled) return;
-      setFreeExercises(loaded);
+      setCatalog(loaded);
       setCatalogStatus("ready");
     }).catch(() => { if (!cancelled) setCatalogStatus("error"); });
     return () => { cancelled = true; };
   }, []);
 
-  const allExercises = React.useMemo(() => {
-    const seen = new Set<string>();
-    return [...FIT_EXERCISES, ...freeExercises].filter((exercise) => {
-      if (seen.has(exercise.id)) return false;
-      seen.add(exercise.id);
-      return true;
-    });
-  }, [freeExercises]);
+  const allExercises = catalog.exercises;
 
   const toggleFavorite = (id: string) => {
     setFavorites((current) => {

@@ -37,7 +37,7 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
   const [mediaOk, setMediaOk] = React.useState(Boolean(media?.src));
   const [threeDFailed, setThreeDFailed] = React.useState(false);
   const [premiumFailed, setPremiumFailed] = React.useState(false);
-  const freeReferenceImage = exercise.source === "free-exercise-db" ? freeExerciseImageUrl(exercise) : null;
+  const freeReferenceImage = exercise.source === "free-exercise-db" || exercise.source === "wger" ? freeExerciseImageUrl(exercise) : null;
   const [freeImageOk, setFreeImageOk] = React.useState(Boolean(freeReferenceImage));
   const mark3DFailed = React.useCallback(() => setThreeDFailed(true), []);
   const markPremiumFailed = React.useCallback(() => setPremiumFailed(true), []);

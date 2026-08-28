@@ -36,8 +36,8 @@ assert.ok(fitModule.includes("RÉCUPÉRATION"), "Chronomètre récupération FIT
 assert.ok(fitModule.includes("appendFitSession"), "Sauvegarde des séances FIT PERF absente");
 assert.ok(fitHome.includes("FIT SCORE"), "Dashboard performance FIT PERF incomplet");
 assert.ok(fitPlan.includes("FitExerciseDetailDialog") && fitPlan.includes("FIT_TEMPLATES") && fitPlan.includes("favorites"), "Centre exercices/programmes FIT PERF incomplet");
-assert.ok(fitDetail.includes("fit-detail-tabs") && fitDetail.includes("MUSCLES") && fitDetail.includes("DÉTAILS") && fitDetail.includes("OBJECTIF") && fitDetail.includes("RECORDS"), "Nouvelle fiche exercice compacte incomplète");
-assert.ok(fitDetail.includes("PUSHUP_HIGH") && fitDetail.includes("fit-detail-lightbox") && fitDetail.includes("MULTISPORTS") && fitDetail.includes("fit-detail-page-watermark"), "Médias/branding de la fiche exercice incomplets");
+assert.ok(fitDetail.includes("FitIconTabs") && fitDetail.includes("ZONE") && fitDetail.includes("DÉTAILS") && fitDetail.includes("OBJECTIF") && fitDetail.includes("RECORDS"), "Nouvelle fiche exercice compacte incomplète");
+assert.ok(fitDetail.includes("PUSHUP_AWENA_HIGH") && fitDetail.includes("setViewerImage") && fitDetail.includes("LOGO") && fitDetail.includes("grayscale(1)"), "Médias/branding de la fiche exercice incomplets");
 assert.ok(!fitDetail.includes("AWENA COACH · GUIDE MOUVEMENT") && !fitDetail.includes("AWENA PREMIUM MOTION"), "Anciens libellés AWENA encore visibles dans la fiche exercice");
 assert.ok(fitBodyMap.includes("body-muscles@1.0.0") && fitBodyMap.includes("BodyChart") && fitBodyMap.includes("fitBodyMusclePulse"), "Carte anatomique Body Muscles FIT PERF absente");
 assert.ok(!fitBodyMap.includes("FRONT_HOTSPOTS") && !fitBodyMap.includes("anatomyImage"), "Ancien mannequin/hotspots FIT PERF encore actif");

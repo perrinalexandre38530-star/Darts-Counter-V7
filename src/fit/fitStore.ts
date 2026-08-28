@@ -38,9 +38,14 @@ export type FitExercise = {
   icon: string;
   accent: string;
   /** Optional metadata used by the open FIT PERF catalogue. */
-  source?: "mss" | "free-exercise-db";
+  source?: "mss" | "free-exercise-db" | "wger";
   sourceId?: string;
   sourceLicense?: string;
+  sourceUrl?: string;
+  sourceAuthor?: string;
+  mediaLicense?: string;
+  mediaAuthor?: string;
+  mediaSourceUrl?: string;
   level?: string;
   category?: string;
   force?: string;
@@ -53,6 +58,7 @@ export type FitExercise = {
   tips?: string[];
   commonMistakes?: string[];
   imagePaths?: string[];
+  videoUrls?: string[];
   /** Motion family used to reuse one AWENA/mocap movement across exercise variants. */
   motionKey?: string;
 };
@@ -93,6 +99,7 @@ export type FitTemplate = {
 
 const STORAGE_KEY = "mss-fit-perf-sessions-v1";
 export const FREE_EXERCISE_CACHE_KEY = "mss-fit-perf-free-exercise-db-v1";
+export const WGER_EXERCISE_CACHE_KEY = "mss-fit-perf-wger-exercises-v1";
 
 const externalExerciseRegistry = new Map<string, FitExercise>();
 let externalCacheHydrated = false;
@@ -107,8 +114,10 @@ function hydrateExternalExerciseCache() {
   if (externalCacheHydrated || typeof window === "undefined") return;
   externalCacheHydrated = true;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(FREE_EXERCISE_CACHE_KEY) || "null") as { exercises?: FitExercise[] } | null;
-    if (Array.isArray(parsed?.exercises)) registerExternalFitExercises(parsed.exercises);
+    for (const cacheKey of [FREE_EXERCISE_CACHE_KEY, WGER_EXERCISE_CACHE_KEY]) {
+      const parsed = JSON.parse(window.localStorage.getItem(cacheKey) || "null") as { exercises?: FitExercise[] } | null;
+      if (Array.isArray(parsed?.exercises)) registerExternalFitExercises(parsed.exercises);
+    }
   } catch {}
 }
 

@@ -444,6 +444,16 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
           </FitGlassCard>
         ) : null}
 
+        {exercise.source === "free-exercise-db" || exercise.source === "wger" ? (
+          <div style={{ marginTop: 14, padding: "9px 11px", borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(5,8,13,.72)", color: textSoft, fontSize: 7.4, lineHeight: 1.45 }}>
+            <b style={{ color: "rgba(255,255,255,.72)" }}>{tr(lang, "Source", "Source", "Fuente")} :</b>{" "}
+            {exercise.sourceUrl ? <a href={exercise.sourceUrl} target="_blank" rel="noreferrer" style={{ color: accent, textDecoration: "none" }}>{exercise.source === "wger" ? "wger" : "Free Exercise DB"}</a> : (exercise.source === "wger" ? "wger" : "Free Exercise DB")}
+            {exercise.sourceLicense ? ` · ${exercise.sourceLicense}` : ""}
+            {exercise.sourceAuthor ? ` · ${exercise.sourceAuthor}` : ""}
+            {exercise.mediaLicense && exercise.mediaLicense !== exercise.sourceLicense ? ` · Média: ${exercise.mediaLicense}${exercise.mediaAuthor ? ` (${exercise.mediaAuthor})` : ""}` : ""}
+          </div>
+        ) : null}
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
           <FitPrimaryButton accent={accent} onClick={() => go("games", { fitTemplateId: "free", fitExerciseId: exercise.id })}>{tr(lang, "＋ AJOUTER À MA SÉANCE", "+ ADD TO MY WORKOUT", "+ AÑADIR A MI SESIÓN")}</FitPrimaryButton>
           <button type="button" onClick={onClose} style={{ minHeight: 44, borderRadius: 13, padding: "0 14px", border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#fff", fontWeight: 1000, cursor: "pointer" }}>{tr(lang, "FERMER", "CLOSE", "CERRAR")}</button>

@@ -146,6 +146,7 @@ function normalizeRow(row: FreeExerciseDbRow): FitExercise | null {
     source: "free-exercise-db",
     sourceId,
     sourceLicense: FREE_EXERCISE_DB_LICENSE,
+    sourceUrl: `${FREE_EXERCISE_DB_REPOSITORY}/blob/main/exercises/${encodeURIComponent(sourceId)}`,
     level: asString(row.level) || undefined,
     category: asString(row.category) || undefined,
     force: asString(row.force) || undefined,
@@ -211,5 +212,6 @@ export async function loadFreeExerciseCatalog(force = false): Promise<FitExercis
 export function freeExerciseImageUrl(exercise: FitExercise, index = 0): string | null {
   const path = exercise.imagePaths?.[index];
   if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
   return `${FREE_EXERCISE_IMAGE_ROOT}${path.split("/").map(encodeURIComponent).join("/")}`;
 }

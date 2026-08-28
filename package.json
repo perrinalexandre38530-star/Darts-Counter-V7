@@ -95,7 +95,8 @@
     "awena:motion:build": "node ./tools/build-awena-premium-motion.mjs",
     "test:fit-perf:free3d": "node ./tools/test-fit-perf-free-3d.mjs",
     "test:fit-perf:bvh": "node ./tools/test-fit-perf-bvh-runtime.mjs",
-    "fit:mocap:vendor": "node ./tools/vendor-fit-mocap.mjs"
+    "fit:mocap:vendor": "node ./tools/vendor-fit-mocap.mjs",
+    "test:fit-catalog": "node ./tools/test-fit-catalog-engine-v107.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
