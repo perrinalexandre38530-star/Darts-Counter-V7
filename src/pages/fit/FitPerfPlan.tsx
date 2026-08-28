@@ -116,7 +116,13 @@ export default function FitPerfPlan({ go }: Props) {
   const lang = String(langApi?.lang || "fr").toLowerCase();
   const langKey = lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr";
   const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
-  const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
+  const accent = React.useMemo(() => {
+    if (typeof window !== "undefined") {
+      const cssAccent = window.getComputedStyle(document.documentElement).getPropertyValue("--dc-accent").trim();
+      if (cssAccent) return cssAccent;
+    }
+    return (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
+  }, [(theme as any)?.primary, (theme as any)?.accent]);
   const textSoft = (theme as any)?.textSoft || "#9ca3af";
 
   const cachedAtStart = React.useMemo(() => getCachedFitCatalog(), []);
@@ -224,8 +230,8 @@ export default function FitPerfPlan({ go }: Props) {
           position: "relative",
         }}
       >
-        <div style={{ position: "relative", height: 128, background: `radial-gradient(circle at 50% 36%,${exercise.accent}18,#070a10 70%)`, overflow: "hidden" }}>
-          <FitExerciseMotion exercise={exercise} accent={exercise.accent} compact />
+        <div style={{ position: "relative", height: 128, background: `radial-gradient(circle at 50% 36%,${accent}18,#070a10 70%)`, overflow: "hidden" }}>
+          <FitExerciseMotion exercise={exercise} accent={accent} compact />
           <button
             type="button"
             aria-label={fav ? t("Retirer des favoris", "Remove favorite", "Quitar favorito") : t("Ajouter aux favoris", "Add favorite", "Añadir favorito")}
@@ -234,10 +240,10 @@ export default function FitPerfPlan({ go }: Props) {
           ><FitIcon name="favorite" size={13} /></button>
         </div>
         <div style={{ padding: "9px 9px 10px" }}>
-          <div style={{ minHeight: 29, fontSize: 9.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", color: exercise.accent, justifyContent: "center" }}>{exercise.name}</div>
+          <div style={{ minHeight: 29, fontSize: 9.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", color: accent, justifyContent: "center" }}>{exercise.name}</div>
           <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-            <DifficultyStars level={exercise.level} accent={exercise.accent} size={9} />
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: exercise.accent }} title={FIT_MUSCLE_LABELS[exercise.muscle][langKey]}><MuscleFilterIcon muscle={exercise.muscle} active size={18} accentColor={exercise.accent} /></span>
+            <DifficultyStars level={exercise.level} accent={accent} size={9} />
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: accent }} title={FIT_MUSCLE_LABELS[exercise.muscle][langKey]}><MuscleFilterIcon muscle={exercise.muscle} active size={18} accentColor={accent} /></span>
           </div>
         </div>
       </div>

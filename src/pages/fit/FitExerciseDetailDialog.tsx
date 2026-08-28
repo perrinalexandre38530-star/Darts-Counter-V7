@@ -147,11 +147,34 @@ function equipmentIconName(value: string): "body" | "barbell" | "dumbbell" | "ca
 }
 
 function specialExerciseKey(exercise: FitExercise) {
-  const raw = `${exercise.motionKey || ""} ${exercise.id || ""} ${exercise.name || ""}`.toLowerCase();
+  const motionKey = String(exercise.motionKey || "").toLowerCase().trim();
+  if (motionKey === "pushup" || motionKey === "bench") return motionKey;
+  if (motionKey) return motionKey;
+
+  const raw = `${exercise.id || ""} ${exercise.name || ""}`.toLowerCase();
   const compact = raw.replace(/[^a-z0-9]+/g, " ").trim();
   if (["push up", "push ups", "pushup", "pushups"].includes(compact) || compact.includes("push up") || compact.includes("pushup")) return "pushup";
-  if (compact.includes("bench press") || compact === "bench" || compact.includes("bench")) return "bench";
-  return exercise.motionKey || exercise.id;
+
+  const isExactBenchFamily = (
+    compact === "bench press" ||
+    compact === "barbell bench press" ||
+    compact.includes(" bench press") ||
+    compact.startsWith("bench press ")
+  ) && ![
+    "incline",
+    "decline",
+    "guillotine",
+    "floor press",
+    "smith",
+    "dumbbell",
+    "with bands",
+    "band",
+    "close grip",
+    "wide grip",
+  ].some((token) => compact.includes(token));
+
+  if (isExactBenchFamily) return "bench";
+  return exercise.id;
 }
 
 function collectExercisePhotos(exercise: FitExercise) {
@@ -495,7 +518,13 @@ function ActionCircle({ accent, onClick, children, active = false, passiveGray =
 export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavorite, onToggleFavorite, detailRecord }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang();
-  const accent = theme?.primary || exercise.accent || "#5ce9ff";
+  const accent = React.useMemo(() => {
+    if (typeof window !== "undefined") {
+      const cssAccent = window.getComputedStyle(document.documentElement).getPropertyValue("--dc-accent").trim();
+      if (cssAccent) return cssAccent;
+    }
+    return theme?.primary || exercise.accent || "#5ce9ff";
+  }, [theme?.primary, exercise.accent]);
   const accentSoft = theme?.accent1 || accent;
   const textSoft = "rgba(255,255,255,.68)";
   const langKey = lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr";
