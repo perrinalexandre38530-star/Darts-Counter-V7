@@ -50,7 +50,10 @@ export const AWENA_PREMIUM_MOTION_SLOTS: Record<string, AwenaPremiumMotionSlot> 
   bench: {
     exerciseId: "bench",
     label: "Développé couché",
-    frameSequence: frames("bench", 5, 3.2, [0, 1, 2, 1]),
+    video: {
+      sources: [{ src: `${ROOT}/bench/motion.mp4`, type: "video/mp4" }],
+      poster: `${ROOT}/bench/poster.webp`,
+    },
   },
   "incline-db": { exerciseId: "incline-db", label: "Développé incliné" },
   "cable-fly": { exerciseId: "cable-fly", label: "Écarté poulie" },

@@ -28,6 +28,11 @@ const PUSHUP_AWENA_STEP_1 = "/fit/exercise-media/pushup/awena-step-01-start.webp
 const PUSHUP_AWENA_STEP_2 = "/fit/exercise-media/pushup/awena-step-02-descent.webp";
 const PUSHUP_AWENA_STEP_3 = "/fit/exercise-media/pushup/awena-step-03-bottom.webp";
 const PUSHUP_AWENA_STEP_4 = "/fit/exercise-media/pushup/awena-step-04-press.webp";
+const BENCH_AWENA_SETUP = "/fit/exercise-media/bench/awena-step-00-setup.webp";
+const BENCH_AWENA_STEP_1 = "/fit/exercise-media/bench/awena-step-01-start.webp";
+const BENCH_AWENA_STEP_2 = "/fit/exercise-media/bench/awena-step-02-descent.webp";
+const BENCH_AWENA_STEP_3 = "/fit/exercise-media/bench/awena-step-03-bottom.webp";
+const BENCH_AWENA_STEP_4 = "/fit/exercise-media/bench/awena-step-04-press.webp";
 
 type GuideStep = { title: string; body: string; image: string | null };
 type ExerciseGuide = {
@@ -154,6 +159,17 @@ function collectExercisePhotos(exercise: FitExercise) {
       freeExerciseImageUrl(exercise, 1),
     ].filter((item): item is string => Boolean(item)))).slice(0, 6);
   }
+  if (exercise.id === "bench") {
+    return Array.from(new Set([
+      BENCH_AWENA_SETUP,
+      BENCH_AWENA_STEP_1,
+      BENCH_AWENA_STEP_2,
+      BENCH_AWENA_STEP_3,
+      BENCH_AWENA_STEP_4,
+      freeExerciseImageUrl(exercise, 0),
+      freeExerciseImageUrl(exercise, 1),
+    ].filter((item): item is string => Boolean(item)))).slice(0, 6);
+  }
   const urls = (exercise.imagePaths || []).map((_, index) => freeExerciseImageUrl(exercise, index)).filter((item): item is string => Boolean(item));
   const fallback = freeExerciseImageUrl(exercise);
   return Array.from(new Set([fallback, ...urls].filter((item): item is string => Boolean(item)))).slice(0, 6);
@@ -220,6 +236,68 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
       ],
     };
   }
+
+  if (exercise.id === "bench") {
+    const summary = tr(
+      lang,
+      "Exercice de poussée à la barre qui développe surtout les pectoraux, les triceps et l'avant des épaules, avec un fort accent sur la stabilité du haut du dos.",
+      "A barbell pressing exercise that mainly develops the chest, triceps and front delts while demanding upper-back stability.",
+      "Ejercicio de empuje con barra que desarrolla sobre todo el pecho, los tríceps y la parte frontal de los hombros, exigiendo estabilidad de la espalda alta.",
+    );
+    const steps: GuideStep[] = [
+      {
+        title: tr(lang, "Mise en place", "Setup", "Colocación"),
+        body: tr(lang, "Installe-toi sur le banc, yeux sous la barre, pieds bien ancrés au sol et omoplates serrées pour créer une base stable avant de décrocher la barre.", "Set up on the bench with your eyes under the bar, feet firmly planted and shoulder blades squeezed together to create a stable base before unracking the bar.", "Colócate en el banco con los ojos bajo la barra, los pies bien apoyados y las escápulas retraídas para crear una base estable antes de sacar la barra."),
+        image: BENCH_AWENA_SETUP,
+      },
+      {
+        title: tr(lang, "Descente contrôlée", "Controlled descent", "Descenso controlado"),
+        body: tr(lang, "Depuis la position haute, abaisse la barre lentement vers le milieu de la poitrine en gardant les avant-bras verticaux et les coudes environ à 45 degrés du buste.", "From the top position, lower the bar slowly toward the mid chest while keeping the forearms vertical and the elbows roughly 45 degrees from the torso.", "Desde la posición alta, baja la barra lentamente hacia la parte media del pecho manteniendo los antebrazos verticales y los codos a unos 45 grados del torso."),
+        image: BENCH_AWENA_STEP_2,
+      },
+      {
+        title: tr(lang, "Position basse", "Bottom position", "Posición baja"),
+        body: tr(lang, "La barre effleure ou touche légèrement la poitrine, les poignets restent solides et le haut du dos conserve toute sa tension.", "The bar lightly touches or nearly touches the chest, the wrists stay solid and the upper back keeps its tension.", "La barra roza o toca suavemente el pecho, las muñecas se mantienen firmes y la espalda alta conserva toda su tensión."),
+        image: BENCH_AWENA_STEP_3,
+      },
+      {
+        title: tr(lang, "Poussée vers le haut", "Press back up", "Empuje hacia arriba"),
+        body: tr(lang, "Pousse fort dans la barre pour revenir en haut sur la trajectoire de départ jusqu'à l'extension complète des bras, sans perdre ton gainage.", "Drive hard into the bar to return to the starting bar path and full arm extension without losing your brace.", "Empuja con fuerza la barra para volver a la trayectoria inicial y a la extensión completa de los brazos sin perder el bloqueo del cuerpo."),
+        image: BENCH_AWENA_STEP_1,
+      },
+    ];
+    return {
+      summary,
+      steps,
+      placement: [
+        tr(lang, "Serre les omoplates et garde la cage thoracique haute pour protéger les épaules.", "Pinch the shoulder blades together and keep the chest high to protect the shoulders.", "Junta las escápulas y mantén el pecho alto para proteger los hombros."),
+        tr(lang, "Plante les pieds au sol pour créer un appui stable et transmettre la force.", "Drive the feet into the floor to create a stable base and transfer force.", "Apoya firmemente los pies en el suelo para crear una base estable y transferir fuerza."),
+        tr(lang, "Garde les poignets neutres au-dessus des avant-bras et la barre sous contrôle sur tout le trajet.", "Keep the wrists neutral over the forearms and control the bar through the whole range.", "Mantén las muñecas neutras sobre los antebrazos y controla la barra durante todo el recorrido."),
+      ],
+      breathing: [
+        tr(lang, "Inspire et gaine avant de descendre la barre.", "Inhale and brace before lowering the bar.", "Inspira y bloquea el tronco antes de bajar la barra."),
+        tr(lang, "Souffle pendant la poussée ou juste après le point difficile.", "Exhale during the press or just after the sticking point.", "Exhala durante el empuje o justo después del punto más difícil."),
+      ],
+      intensityMap: { Pectoraux: 3, Épaules: 2, Triceps: 2, Abdos: 1 },
+      zoneSpeech: tr(lang, "Le développé couché cible surtout les pectoraux. Les triceps et l'avant des épaules assistent fortement la poussée, tandis que le gainage aide à stabiliser tout le mouvement.", "The bench press mainly targets the chest. The triceps and front delts strongly assist the press, while bracing stabilizes the whole movement.", "El press de banca trabaja principalmente el pecho. Los tríceps y la parte frontal de los hombros ayudan con fuerza en el empuje, mientras el bloqueo estabiliza todo el movimiento."),
+      detailSpeech: tr(lang, "Installe-toi solidement sur le banc, serre les omoplates, décroche la barre bras tendus, descends-la sous contrôle vers la poitrine puis repousse jusqu'à l'extension complète.", "Set up firmly on the bench, squeeze the shoulder blades, unrack the bar with straight arms, lower it under control to the chest and press back to full extension.", "Colócate con firmeza en el banco, junta las escápulas, saca la barra con los brazos extendidos, bájala con control al pecho y vuelve a empujar hasta la extensión completa."),
+      goalSpeech: tr(lang, "Le développé couché sert surtout à développer la force et l'hypertrophie des pectoraux, des triceps et des épaules, tout en améliorant la coordination de la poussée horizontale.", "The bench press is mainly used to build strength and hypertrophy in the chest, triceps and shoulders while improving horizontal pressing coordination.", "El press de banca se utiliza sobre todo para desarrollar fuerza e hipertrofia en pecho, tríceps y hombros, además de mejorar la coordinación del empuje horizontal."),
+      typeSpeech: tr(lang, "Le développé couché est un mouvement de poussée à la barre, de catégorie renforcement, avec une mécanique polyarticulaire.", "The bench press is a barbell pressing movement in the strength category with a compound mechanic.", "El press de banca es un movimiento de empuje con barra, de categoría fuerza y con mecánica compuesta."),
+      goalParagraphs: [
+        tr(lang, "C'est l'un des exercices de base les plus efficaces pour progresser en force sur le haut du corps.", "It is one of the most effective foundational exercises for building upper-body strength.", "Es uno de los ejercicios base más eficaces para desarrollar fuerza en el tren superior."),
+        tr(lang, "Avec un volume adapté, il contribue fortement à l'hypertrophie des pectoraux, des triceps et des épaules antérieures.", "With appropriate volume, it strongly contributes to hypertrophy of the chest, triceps and front delts.", "Con un volumen adecuado, contribuye mucho a la hipertrofia del pecho, tríceps y deltoides anteriores."),
+        tr(lang, "Il aide aussi à améliorer la coordination, la stabilité et la maîtrise de la poussée horizontale chargée.", "It also improves coordination, stability and control in loaded horizontal pressing.", "También mejora la coordinación, la estabilidad y el control en el empuje horizontal con carga."),
+      ],
+      goalTags: [tr(lang, "Force", "Strength", "Fuerza"), tr(lang, "Hypertrophie", "Hypertrophy", "Hipertrofia"), tr(lang, "Technique", "Technique", "Técnica")],
+      typeCards: [
+        { label: tr(lang, "Mouvement", "Movement", "Movimiento"), value: tr(lang, "Poussée", "Push", "Empuje") },
+        { label: tr(lang, "Matériel", "Equipment", "Material"), value: tr(lang, "Barre", "Barbell", "Barra") },
+        { label: tr(lang, "Catégorie", "Category", "Categoría"), value: tr(lang, "Renforcement", "Strength", "Fuerza") },
+        { label: tr(lang, "Mécanique", "Mechanic", "Mecánica"), value: tr(lang, "Polyarticulaire", "Compound", "Compuesto") },
+      ],
+    };
+  }
+
 
   const instructions = (exercise.instructions || []).slice(0, 4);
   const fallbackSteps: GuideStep[] = instructions.map((item, index) => ({
@@ -410,7 +488,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
           <FitGlassCard accent={accent} style={{ position: "relative", padding: 16, borderRadius: 24, overflow: "hidden", background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
             <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
               <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Zones travaillées", "Worked areas", "Zonas trabajadas")}</div>
-              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.zoneSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
+              <div style={{ position: "absolute", right: 0, top: 0, zIndex: 6, pointerEvents: "auto" }}><AwenaVoiceButton accent={accent} text={guide.zoneSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <FitBodyMap lang={lang} intensityMap={guide.intensityMap} interactive={false} />
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, color: textSoft, fontSize: 8.5 }}>
@@ -429,7 +507,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
           <FitGlassCard accent={accent} style={{ position: "relative", padding: 16, borderRadius: 24, overflow: "hidden", background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
             <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
               <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Détails de l'exercice", "Exercise details", "Detalles del ejercicio")}</div>
-              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.detailSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
+              <div style={{ position: "absolute", right: 0, top: 0, zIndex: 6, pointerEvents: "auto" }}><AwenaVoiceButton accent={accent} text={guide.detailSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <FitGlassCard accent={accent} style={{ padding: 14, borderRadius: 20, background: "rgba(255,255,255,.02)" }}>
               <div style={{ color: accent, fontSize: 8.8, fontWeight: 1000, letterSpacing: .7 }}>{tr(lang, "Résumé du mouvement", "Movement summary", "Resumen del movimiento")}</div>
@@ -472,7 +550,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
           <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 24, background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
             <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
               <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Objectif", "Goal", "Objetivo")}</div>
-              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.goalSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
+              <div style={{ position: "absolute", right: 0, top: 0, zIndex: 6, pointerEvents: "auto" }}><AwenaVoiceButton accent={accent} text={guide.goalSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>{guide.goalTags.map((item) => <FitPill key={item} accent={accent}>{item}</FitPill>)}</div>
             <div style={{ display: "grid", gap: 10 }}>
@@ -487,7 +565,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
           <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 24, background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
             <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
               <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Type de mouvement", "Movement type", "Tipo de movimiento")}</div>
-              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={guide.typeSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
+              <div style={{ position: "absolute", right: 0, top: 0, zIndex: 6, pointerEvents: "auto" }}><AwenaVoiceButton accent={accent} text={guide.typeSpeech} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
               {guide.typeCards.map((item) => (
@@ -504,7 +582,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
           <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 24, background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
             <div style={{ position: "relative", minHeight: 46, marginBottom: 12 }}>
               <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", paddingRight: 62 }}>{tr(lang, "Records", "Records", "Récords")}</div>
-              <div style={{ position: "absolute", right: 0, top: 0 }}><AwenaVoiceButton accent={accent} text={detailRecord ? `${formatKg(detailRecord.weightKg)} ${tr(lang, "pour", "for", "para")} ${detailRecord.reps} ${tr(lang, "répétitions", "repetitions", "repeticiones")}.` : tr(lang, "Aucun record enregistré pour le moment.", "No record logged yet.", "Todavía no hay récord registrado.")} label={tr(lang, "FR", "EN", "ES")} /></div>
+              <div style={{ position: "absolute", right: 0, top: 0, zIndex: 6, pointerEvents: "auto" }}><AwenaVoiceButton accent={accent} text={detailRecord ? `${formatKg(detailRecord.weightKg)} ${tr(lang, "pour", "for", "para")} ${detailRecord.reps} ${tr(lang, "répétitions", "repetitions", "repeticiones")}.` : tr(lang, "Aucun record enregistré pour le moment.", "No record logged yet.", "Todavía no hay récord registrado.")} label={tr(lang, "FR", "EN", "ES")} /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
               <FitGlassCard accent="#7df29a" style={{ padding: 14, borderRadius: 18, background: "rgba(255,255,255,.02)" }}>
