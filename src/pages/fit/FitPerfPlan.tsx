@@ -1,4 +1,5 @@
 import React from "react";
+import LOGO from "../../assets/LOGO.png";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
@@ -55,8 +56,8 @@ function DifficultyStars({ level, accent = "#ffd66b", size = 12 }: { level?: str
   const active = difficultyValue(level);
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 3 }} aria-label={`difficulty-${active}`}>
-      {Array.from({ length: 3 }, (_, index) => (
-        <span key={index} style={{ color: index < active ? accent : "rgba(255,255,255,.18)", fontSize: size, lineHeight: 1, textShadow: index < active ? `0 0 10px ${accent}55` : "none" }}>★</span>
+      {Array.from({ length: active }, (_, index) => (
+        <span key={index} style={{ color: accent, fontSize: size, lineHeight: 1, textShadow: `0 0 10px ${accent}55` }}>★</span>
       ))}
     </div>
   );
@@ -231,7 +232,10 @@ export default function FitPerfPlan({ go }: Props) {
         }}
       >
         <div style={{ position: "relative", height: 128, background: `radial-gradient(circle at 50% 36%,${accent}18,#070a10 70%)`, overflow: "hidden" }}>
-          <FitExerciseMotion exercise={exercise} accent={accent} compact />
+          <FitExerciseMotion exercise={exercise} accent={accent} compact cleanBranding />
+          <div aria-hidden="true" style={{ position: "absolute", left: 7, top: 7, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,5,10,.84)", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 3px 12px rgba(0,0,0,.38)", pointerEvents: "none", zIndex: 2 }}>
+            <img src={LOGO} alt="" style={{ width: 19, height: 19, objectFit: "contain", display: "block" }} />
+          </div>
           <button
             type="button"
             aria-label={fav ? t("Retirer des favoris", "Remove favorite", "Quitar favorito") : t("Ajouter aux favoris", "Add favorite", "Añadir favorito")}

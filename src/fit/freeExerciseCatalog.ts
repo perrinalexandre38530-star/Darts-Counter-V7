@@ -12,7 +12,7 @@ export const FREE_EXERCISE_IMAGE_ROOT = "https://raw.githubusercontent.com/yuhon
 export const FREE_EXERCISE_DB_REPOSITORY = "https://github.com/yuhonas/free-exercise-db";
 export const FREE_EXERCISE_DB_LICENSE = "Unlicense / public domain";
 
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FreeExerciseDbRow = {
@@ -113,7 +113,7 @@ function inferMotionKey(name: string): string | undefined {
   const compact = cleanEnglishTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup"].includes(compact)) return "pushup";
   if (["burpee", "burpees", "standard burpee"].includes(compact)) return "burpee";
-  if (["bench press", "barbell bench press", "flat barbell bench press"].includes(compact)) return "bench";
+  if (["bench press", "barbell bench press", "flat barbell bench press", "barbell bench press medium grip"].includes(compact)) return "bench";
   if (["squat", "barbell squat", "back squat", "barbell back squat"].includes(compact)) return "squat";
   if (["goblet squat", "kettlebell goblet squat"].includes(compact)) return "goblet";
   if (["romanian deadlift", "barbell romanian deadlift"].includes(compact)) return "rdl";
@@ -136,7 +136,8 @@ function inferMotionKey(name: string): string | undefined {
 
 function normalizeRow(row: FreeExerciseDbRow): FitExercise | null {
   const sourceId = asString(row.id);
-  const name = cleanEnglishTitle(asString(row.name));
+  const sourceName = cleanEnglishTitle(asString(row.name));
+  const name = sourceName.toLowerCase() === "barbell bench press - medium grip" ? "Bench Press" : sourceName;
   if (!sourceId || !name) return null;
   const primary = asStringArray(row.primaryMuscles);
   const secondary = asStringArray(row.secondaryMuscles);

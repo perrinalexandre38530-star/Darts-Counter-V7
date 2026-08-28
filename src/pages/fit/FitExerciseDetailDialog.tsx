@@ -33,6 +33,11 @@ const BENCH_AWENA_STEP_1 = "/fit/exercise-media/bench/awena-step-01-start.webp";
 const BENCH_AWENA_STEP_2 = "/fit/exercise-media/bench/awena-step-02-descent.webp";
 const BENCH_AWENA_STEP_3 = "/fit/exercise-media/bench/awena-step-03-bottom.webp";
 const BENCH_AWENA_STEP_4 = "/fit/exercise-media/bench/awena-step-04-press.webp";
+const BURPEE_AWENA_STEP_1 = "/fit/exercise-media/burpee/awena-01.webp";
+const BURPEE_AWENA_STEP_2 = "/fit/exercise-media/burpee/awena-03.webp";
+const BURPEE_AWENA_STEP_3 = "/fit/exercise-media/burpee/awena-05.webp";
+const BURPEE_AWENA_STEP_4 = "/fit/exercise-media/burpee/awena-02.webp";
+const BURPEE_AWENA_PLANK = "/fit/exercise-media/burpee/awena-04.webp";
 
 type GuideStep = { title: string; body: string; image: string | null };
 type ExerciseGuide = {
@@ -184,6 +189,17 @@ function collectExercisePhotos(exercise: FitExercise) {
       ...sourceUrls,
     ].filter((item): item is string => Boolean(item))));
   }
+  if (key === "burpee") {
+    return Array.from(new Set([
+      BURPEE_AWENA_STEP_1,
+      BURPEE_AWENA_STEP_2,
+      BURPEE_AWENA_PLANK,
+      BURPEE_AWENA_STEP_3,
+      BURPEE_AWENA_STEP_4,
+      fallback,
+      ...sourceUrls,
+    ].filter((item): item is string => Boolean(item))));
+  }
   return Array.from(new Set([fallback, ...sourceUrls].filter((item): item is string => Boolean(item))));
 }
 
@@ -306,6 +322,68 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
         { label: tr(lang, "Mouvement", "Movement", "Movimiento"), value: tr(lang, "Poussée", "Push", "Empuje") },
         { label: tr(lang, "Matériel", "Equipment", "Material"), value: tr(lang, "Barre", "Barbell", "Barra") },
         { label: tr(lang, "Catégorie", "Category", "Categoría"), value: tr(lang, "Renforcement", "Strength", "Fuerza") },
+        { label: tr(lang, "Mécanique", "Mechanic", "Mecánica"), value: tr(lang, "Polyarticulaire", "Compound", "Compuesto") },
+      ],
+    };
+  }
+
+
+  if (key === "burpee") {
+    const summary = tr(
+      lang,
+      "Exercice complet au poids du corps qui enchaîne flexion, appui au sol, gainage dynamique et retour explosif debout. Il sollicite fortement le cardio tout en recrutant les jambes, le tronc, les épaules, les pectoraux et les triceps.",
+      "A full-body bodyweight exercise combining a squat, floor support, dynamic plank and an explosive return to standing. It strongly challenges cardio while recruiting the legs, trunk, shoulders, chest and triceps.",
+      "Ejercicio completo con peso corporal que combina sentadilla, apoyo en el suelo, plancha dinámica y regreso explosivo de pie. Exige mucho al cardio y trabaja piernas, tronco, hombros, pecho y tríceps.",
+    );
+    const steps: GuideStep[] = [
+      {
+        title: tr(lang, "Position de départ", "Start position", "Posición inicial"),
+        body: tr(lang, "Tiens-toi debout, pieds environ largeur d'épaules, buste droit et abdos légèrement gainés. Prépare-toi à descendre rapidement mais sous contrôle.", "Stand tall with feet about shoulder-width apart, torso upright and abs lightly braced. Get ready to descend quickly but under control.", "Ponte de pie con los pies al ancho de los hombros, torso erguido y abdomen ligeramente activo. Prepárate para bajar rápido pero con control."),
+        image: BURPEE_AWENA_STEP_1,
+      },
+      {
+        title: tr(lang, "Mains au sol", "Hands to the floor", "Manos al suelo"),
+        body: tr(lang, "Fléchis les genoux et les hanches, pose les deux mains au sol devant toi puis transfère ton poids sur les bras sans arrondir excessivement le dos.", "Bend the knees and hips, place both hands on the floor in front of you and shift your weight onto the arms without excessively rounding the back.", "Flexiona rodillas y caderas, coloca ambas manos en el suelo delante de ti y transfiere el peso a los brazos sin redondear demasiado la espalda."),
+        image: BURPEE_AWENA_STEP_2,
+      },
+      {
+        title: tr(lang, "Planche et pompe", "Plank and push-up", "Plancha y flexión"),
+        body: tr(lang, "Envoie les pieds vers l'arrière pour former une planche solide. Garde le bassin aligné et, selon la variante, descends la poitrine vers le sol avant de repousser.", "Kick the feet back into a solid plank. Keep the hips aligned and, depending on the variation, lower the chest toward the floor before pressing back up.", "Lleva los pies hacia atrás hasta una plancha firme. Mantén la cadera alineada y, según la variante, baja el pecho hacia el suelo antes de volver a empujar."),
+        image: BURPEE_AWENA_STEP_3,
+      },
+      {
+        title: tr(lang, "Retour explosif", "Explosive return", "Regreso explosivo"),
+        body: tr(lang, "Ramène les pieds sous le bassin, redresse-toi puis termine par une extension dynamique. Sur la version complète, ajoute un saut vertical avant d'enchaîner la répétition suivante.", "Bring the feet back under the hips, stand up and finish with a dynamic extension. In the full version, add a vertical jump before starting the next repetition.", "Lleva los pies de nuevo bajo la cadera, ponte de pie y termina con una extensión dinámica. En la versión completa, añade un salto vertical antes de la siguiente repetición."),
+        image: BURPEE_AWENA_STEP_4,
+      },
+    ];
+    return {
+      summary,
+      steps,
+      placement: [
+        tr(lang, "Pose les mains complètement au sol avant d'envoyer les jambes vers l'arrière.", "Plant the hands fully on the floor before sending the legs back.", "Apoya completamente las manos en el suelo antes de llevar las piernas atrás."),
+        tr(lang, "En position de planche, garde les épaules au-dessus des mains et le bassin dans l'axe.", "In the plank, keep the shoulders over the hands and the hips aligned.", "En la plancha, mantén los hombros sobre las manos y la cadera alineada."),
+        tr(lang, "À la remontée, rapproche les pieds des mains avant de te redresser pour limiter la contrainte lombaire.", "On the way up, bring the feet close to the hands before standing to reduce lower-back stress.", "Al subir, acerca los pies a las manos antes de incorporarte para reducir la tensión lumbar."),
+      ],
+      breathing: [
+        tr(lang, "Expire pendant la phase explosive et reprends une inspiration contrôlée pendant la transition au sol.", "Exhale during the explosive phase and take a controlled breath during the floor transition.", "Exhala durante la fase explosiva y toma una inspiración controlada durante la transición al suelo."),
+        tr(lang, "Sur des séries longues, cherche surtout un rythme respiratoire régulier plutôt qu'une apnée.", "On long sets, prioritize a regular breathing rhythm rather than holding your breath.", "En series largas, prioriza un ritmo respiratorio regular en lugar de contener la respiración."),
+      ],
+      intensityMap: { Quadriceps: 3, Fessiers: 2, Abdos: 2, Épaules: 2, Pectoraux: 2, Triceps: 2, Mollets: 1 },
+      zoneSpeech: tr(lang, "Le burpee est un exercice corps entier. Les quadriceps travaillent fortement lors des descentes et remontées. Les fessiers, les abdos, les épaules, les pectoraux et les triceps stabilisent et propulsent le mouvement, tandis que les mollets participent à la phase explosive.", "The burpee is a full-body exercise. The quadriceps work hard during the descent and return. The glutes, abs, shoulders, chest and triceps stabilize and drive the movement, while the calves contribute to the explosive phase.", "El burpee es un ejercicio de cuerpo completo. Los cuádriceps trabajan intensamente al bajar y subir. Glúteos, abdominales, hombros, pecho y tríceps estabilizan e impulsan el movimiento, y los gemelos ayudan en la fase explosiva."),
+      detailSpeech: tr(lang, "Depuis la position debout, descends les mains au sol, envoie les pieds vers l'arrière en planche, réalise la phase basse selon la variante, ramène les pieds vers les mains puis redresse-toi de façon explosive.", "From standing, place the hands on the floor, kick the feet back to a plank, perform the low phase depending on the variation, bring the feet back to the hands and stand explosively.", "Desde de pie, lleva las manos al suelo, envía los pies atrás a una plancha, realiza la fase baja según la variante, acerca los pies a las manos y levántate de forma explosiva."),
+      goalSpeech: tr(lang, "Le burpee développe surtout le conditionnement cardio-respiratoire, l'endurance musculaire et la capacité à produire des efforts explosifs répétés avec tout le corps.", "The burpee mainly develops cardiovascular conditioning, muscular endurance and the ability to produce repeated explosive full-body efforts.", "El burpee desarrolla principalmente el acondicionamiento cardiovascular, la resistencia muscular y la capacidad de repetir esfuerzos explosivos de cuerpo completo."),
+      typeSpeech: tr(lang, "Le burpee est un mouvement polyarticulaire au poids du corps, de type corps entier, orienté conditionnement et endurance.", "The burpee is a compound bodyweight full-body movement focused on conditioning and endurance.", "El burpee es un movimiento compuesto de cuerpo completo con peso corporal, orientado al acondicionamiento y la resistencia."),
+      goalParagraphs: [
+        tr(lang, "Augmente rapidement la fréquence cardiaque et permet de construire une forte capacité de travail sans matériel.", "It quickly raises heart rate and builds a high work capacity without equipment.", "Eleva rápidamente la frecuencia cardíaca y permite desarrollar una gran capacidad de trabajo sin material."),
+        tr(lang, "En séries courtes et rapides, il développe l'explosivité et la puissance répétée. En séries longues, il cible davantage l'endurance cardio-musculaire.", "In short fast sets it develops explosiveness and repeated power. In longer sets it targets cardio-muscular endurance more strongly.", "En series cortas y rápidas desarrolla explosividad y potencia repetida. En series largas trabaja más la resistencia cardio-muscular."),
+        tr(lang, "La qualité du gainage reste prioritaire : ralentis le rythme si le bassin s'affaisse ou si la technique se dégrade.", "Bracing quality remains the priority: slow down if the hips sag or technique deteriorates.", "La calidad del bloqueo del tronco sigue siendo prioritaria: reduce el ritmo si la cadera cae o la técnica se deteriora."),
+      ],
+      goalTags: [tr(lang, "Cardio", "Cardio", "Cardio"), tr(lang, "Endurance", "Endurance", "Resistencia"), tr(lang, "Explosivité", "Explosiveness", "Explosividad")],
+      typeCards: [
+        { label: tr(lang, "Mouvement", "Movement", "Movimiento"), value: tr(lang, "Corps entier", "Full body", "Cuerpo completo") },
+        { label: tr(lang, "Matériel", "Equipment", "Material"), value: tr(lang, "Poids du corps", "Bodyweight", "Peso corporal") },
+        { label: tr(lang, "Catégorie", "Category", "Categoría"), value: tr(lang, "Conditionnement", "Conditioning", "Acondicionamiento") },
         { label: tr(lang, "Mécanique", "Mechanic", "Mecánica"), value: tr(lang, "Polyarticulaire", "Compound", "Compuesto") },
       ],
     };

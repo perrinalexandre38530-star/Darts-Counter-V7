@@ -67,6 +67,8 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
         ) : (
           <img src={media.src} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 82 : 154, objectFit: "contain", display: "block" }}/>
         )
+      ) : hasAwenaPremiumMotion(motionExerciseId) && premiumMotion && !premiumFailed ? (
+        <FitPremiumMotionPlayer slot={premiumMotion} compact={compact} onFail={markPremiumFailed} showBadge={!cleanBranding}/>
       ) : compact && freeReferenceImage && freeImageOk ? (
         <div style={{ position: "relative", minHeight: 100, display: "grid", placeItems: "center", padding: 4, boxSizing: "border-box" }}>
           <img src={freeReferenceImage} alt={`Référence technique ${exercise.name}`} loading="lazy" onError={() => setFreeImageOk(false)} style={{ width: "100%", height: 122, objectFit: "contain", display: "block", borderRadius: 10 }}/>
@@ -75,8 +77,6 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
         <div style={{ position: "relative", minHeight: 100, display: "grid", placeItems: "center", padding: 4, boxSizing: "border-box" }}>
           <img src={premiumPoster} alt={`Aperçu Awena ${exercise.name}`} loading="lazy" style={{ width: "100%", height: 122, objectFit: "contain", display: "block", borderRadius: 10 }}/>
         </div>
-      ) : hasAwenaPremiumMotion(motionExerciseId) && premiumMotion && !premiumFailed ? (
-        <FitPremiumMotionPlayer slot={premiumMotion} compact={compact} onFail={markPremiumFailed} showBadge={!cleanBranding}/>
       ) : freeReferenceImage && freeImageOk ? (
         <div style={{ position: "relative", minHeight: compact ? 100 : 170, display: "grid", placeItems: "center", padding: compact ? 4 : 6, boxSizing: "border-box" }}>
           <img src={freeReferenceImage} alt={`Référence technique ${exercise.name}`} loading="lazy" onError={() => setFreeImageOk(false)} style={{ width: "100%", height: compact ? 122 : 248, objectFit: "contain", display: "block", borderRadius: 10 }}/>
