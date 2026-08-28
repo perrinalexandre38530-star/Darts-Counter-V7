@@ -2,7 +2,7 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
-import { FIT_EXERCISES, FIT_TEMPLATES, buildFitRecords, loadFitSessions, type FitEquipment, type FitExercise, type FitMuscle } from "../../fit/fitStore";
+import { FIT_EXERCISES, FIT_TEMPLATES, buildFitRecords, formatKg, loadFitSessions, type FitEquipment, type FitExercise, type FitMuscle } from "../../fit/fitStore";
 import { freeExerciseImageUrl, getCachedFreeExerciseCatalog, loadFreeExerciseCatalog } from "../../fit/freeExerciseCatalog";
 import { getAwenaPremiumMotion } from "../../fit/awenaPremiumMotions";
 import {
@@ -18,14 +18,16 @@ import {
   type FitLevelFilter,
 } from "../../fit/fitExerciseTaxonomy";
 import FitBodyMap from "./FitBodyMap";
+import FitExerciseMotion from "./FitExerciseMotion";
 import FitExerciseDetailDialog from "./FitExerciseDetailDialog";
-import { FitGlassCard, FitIcon, FitIconTabs, FitPageHeader, FitPill, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
+import { FitGlassCard, FitIcon, FitIconTabs, FitMetric, FitPageHeader, FitPill, FitPrimaryButton, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
 type Props = { go: (route: any, params?: any) => void };
 type Tab = "body" | "library" | "favorites" | "programs";
 type FilterTab = "zone" | "equipment" | "level";
 const EXERCISES_PER_PAGE = 9;
 const FAVORITES_KEY = "mss-fit-perf-favorite-exercises-v1";
+// AWENA COACH detail dialog and premium motions are wired from this FIT PERF library shell.
 
 function readFavorites(): string[] {
   try { const raw = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]"); return Array.isArray(raw) ? raw.map(String) : []; } catch { return []; }
@@ -207,11 +209,6 @@ export default function FitPerfPlan({ go }: Props) {
 
   const renderExerciseTile = (exercise: FitExercise) => {
     const fav = favorites.includes(exercise.id);
-    const premium = getAwenaPremiumMotion(exercise.motionKey || exercise.id);
-    const video = premium?.video?.sources?.[0]?.src || null;
-    const poster = exercise.id === "pushup"
-      ? "/fit/exercise-media/pushup/awena-high.png"
-      : premium?.video?.poster || premium?.frameSequence?.poster || freeExerciseImageUrl(exercise) || null;
     return (
       <div
         key={exercise.id}
@@ -234,14 +231,8 @@ export default function FitPerfPlan({ go }: Props) {
           position: "relative",
         }}
       >
-        <div style={{ position: "relative", height: 102, background: `radial-gradient(circle at 50% 36%,${exercise.accent}18,#070a10 70%)`, overflow: "hidden" }}>
-          {video ? (
-            <video src={video} poster={poster || undefined} muted loop autoPlay playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-          ) : poster ? (
-            <img src={poster} alt="" loading="lazy" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-          ) : (
-            <div style={{ height: "100%", display: "grid", placeItems: "center", color: exercise.accent, fontSize: 28, fontWeight: 1000 }}>{exercise.icon}</div>
-          )}
+        <div style={{ position: "relative", height: 128, background: `radial-gradient(circle at 50% 36%,${exercise.accent}18,#070a10 70%)`, overflow: "hidden" }}>
+          <FitExerciseMotion exercise={exercise} accent={exercise.accent} compact />
           <button
             type="button"
             aria-label={fav ? t("Retirer des favoris", "Remove favorite", "Quitar favorito") : t("Ajouter aux favoris", "Add favorite", "Añadir favorito")}
@@ -382,7 +373,14 @@ export default function FitPerfPlan({ go }: Props) {
         <div style={{ display: "grid", gap: 8 }}>{FIT_TEMPLATES.map((program) => { const icon = program.id === "push" ? "push" : program.id === "pull" ? "pull" : program.id === "legs" ? "legs" : "fullbody"; return <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 12, display: "grid", gridTemplateColumns: "50px 1fr 42px", gap: 11, alignItems: "center", background: `linear-gradient(135deg,${program.accent}12,rgba(8,11,18,.985) 30%,rgba(5,8,14,.995))`, borderColor: `${program.accent}42`, boxShadow: "0 12px 28px rgba(0,0,0,.46)" }}><div style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", color: program.accent, background: `${program.accent}10`, border: `1px solid ${program.accent}38` }}><FitIcon name={icon as any} size={27}/></div><div style={{ minWidth: 0 }}><div style={{ color: program.accent, fontSize: 12, fontWeight: 1000 }}>{program.name}</div><div style={{ marginTop: 4, color: "rgba(255,255,255,.72)", fontSize: 8.2, lineHeight: 1.35 }}>{program.exerciseIds.length} {t("exercices", "exercises", "ejercicios")} · {program.subtitle}</div></div><button type="button" aria-label={t("Démarrer", "Start", "Empezar")} onClick={() => go("games", { fitTemplateId: program.id })} style={{ width: 40, height: 40, borderRadius: 13, border: `1px solid ${program.accent}60`, background: `${program.accent}12`, color: program.accent, display: "grid", placeItems: "center" }}><FitIcon name="chevron" size={20} /></button></FitGlassCard>; })}</div>
       </> : null}
 
-      {detail ? <FitExerciseDetailDialog exercise={detail} onClose={() => setDetail(null)} go={go} isFavorite={favorites.includes(detail.id)} onToggleFavorite={() => toggleFavorite(detail.id)} detailRecord={detailRecord || null} /> : null}
+      {detail ? <FitExerciseDetailDialog
+        exercise={detail}
+        onClose={() => setDetail(null)}
+        go={go}
+        isFavorite={favorites.includes(detail.id)}
+        onToggleFavorite={() => toggleFavorite(detail.id)}
+        detailRecord={detailRecord || null}
+      /> : null}
     </FitShell>
   </div>;
 }

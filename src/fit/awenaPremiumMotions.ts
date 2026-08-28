@@ -73,7 +73,14 @@ export const AWENA_PREMIUM_MOTION_SLOTS: Record<string, AwenaPremiumMotionSlot> 
       poster: `${ROOT}/pushup/poster.webp`,
     },
   },
-  burpee: { exerciseId: "burpee", label: "Burpee" },
+  burpee: {
+    exerciseId: "burpee",
+    label: "Burpee",
+    video: {
+      sources: [{ src: `${ROOT}/burpee/motion.webm`, type: "video/webm" }],
+      poster: `${ROOT}/burpee/poster.webp`,
+    },
+  },
   squat: {
     exerciseId: "squat",
     label: "Squat",

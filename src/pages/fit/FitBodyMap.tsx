@@ -1,11 +1,14 @@
 import React from "react";
 import type { FitMuscle } from "../../fit/fitStore";
-import { FIT_MUSCLE_LABELS } from "../../fit/fitExerciseTaxonomy";
+
+type MuscleIntensity = 0 | 1 | 2 | 3;
 
 type Props = {
-  selected: FitMuscle | "Tous";
-  onSelect: (muscle: FitMuscle) => void;
+  selected?: FitMuscle | "Tous";
+  onSelect?: (muscle: FitMuscle) => void;
   lang?: string;
+  intensityMap?: Partial<Record<FitMuscle, MuscleIntensity>>;
+  interactive?: boolean;
 };
 
 type BodyChartInstance = {
@@ -19,13 +22,16 @@ type BodyMusclesModule = {
 };
 
 const BODY_MUSCLES_ESM = "https://esm.sh/body-muscles@1.0.0?bundle";
-const SELECTED_INTENSITY = 7; // Body Muscles intensity 7 = red.
 
-/**
- * Body Muscles exposes 70+ anatomical SVG regions. FIT PERF intentionally maps
- * those fine-grained paths back to the exercise taxonomy used by the app.
- * Symmetric/sub-regions therefore light up together (e.g. all chest pieces).
- */
+const NEUTRAL_FILL = "rgba(216,219,226,.26)";
+const NEUTRAL_STROKE = "rgba(125,131,142,.44)";
+const INTENSITY_COLORS: Record<MuscleIntensity, { fill: string; stroke: string; glow: string }> = {
+  0: { fill: NEUTRAL_FILL, stroke: NEUTRAL_STROKE, glow: "transparent" },
+  1: { fill: "#f2d36b", stroke: "#ffe38f", glow: "rgba(242,211,107,.30)" },
+  2: { fill: "#ff9a38", stroke: "#ffb064", glow: "rgba(255,154,56,.34)" },
+  3: { fill: "#ff5d73", stroke: "#ff9aa9", glow: "rgba(255,93,115,.40)" },
+};
+
 function fitMuscleForBodyMusclesId(id: string): FitMuscle | null {
   const value = String(id || "").toLowerCase();
   if (!value) return null;
@@ -45,41 +51,45 @@ function fitMuscleForBodyMusclesId(id: string): FitMuscle | null {
   if (value.startsWith("hamstrings-")) return "Ischios";
   if (value.startsWith("adductors-")) return "Adducteurs";
   if (value.startsWith("calves-") || value.startsWith("tibialis-anterior-")) return "Mollets";
-  // Iliopsoas/hip flexors are closest to the upper anterior thigh in the current FIT taxonomy.
   if (value.startsWith("hip-flexor-")) return "Quadriceps";
-
-  // Head, face, hands, feet and knees are rendered for anatomical continuity,
-  // but are not exercise filters in FIT PERF V1.
   return null;
 }
 
-function selectedBodyState(selected: FitMuscle | "Tous") {
-  if (selected === "Tous") return {};
-
-  // BodyChart accepts a sparse state, but it needs concrete ids. We create the
-  // state after render by reading the library's own muscle path map (normal TS
-  // private field, not a JS #private field). If that implementation detail ever
-  // changes, click selection still works and the map simply falls back to neutral.
-  return { __fitSelectedGroup: selected } as Record<string, unknown>;
+function intensityForMuscle(
+  muscle: FitMuscle | null,
+  selected: FitMuscle | "Tous",
+  intensityMap?: Partial<Record<FitMuscle, MuscleIntensity>>,
+): MuscleIntensity {
+  if (!muscle) return 0;
+  if (intensityMap) return intensityMap[muscle] ?? 0;
+  return selected !== "Tous" && muscle === selected ? 3 : 0;
 }
 
-function applySelectedGroup(chart: BodyChartInstance | null, selected: FitMuscle | "Tous") {
+function applyChartState(
+  chart: BodyChartInstance | null,
+  selected: FitMuscle | "Tous",
+  intensityMap?: Partial<Record<FitMuscle, MuscleIntensity>>,
+) {
   if (!chart) return;
   const rawMap = (chart as any).musclePaths as Map<string, SVGPathElement> | undefined;
   if (!rawMap || typeof rawMap.forEach !== "function") {
-    chart.update({ bodyState: selectedBodyState(selected) });
+    chart.update({ bodyState: {} });
     return;
   }
 
-  const bodyState: Record<string, { intensity: number; selected: boolean }> = {};
-  rawMap.forEach((_path, id) => {
+  chart.update({ bodyState: {} });
+  rawMap.forEach((path, id) => {
     const fitMuscle = fitMuscleForBodyMusclesId(id);
-    bodyState[id] = {
-      intensity: selected !== "Tous" && fitMuscle === selected ? SELECTED_INTENSITY : 0,
-      selected: selected !== "Tous" && fitMuscle === selected,
-    };
+    const intensity = intensityForMuscle(fitMuscle, selected, intensityMap);
+    const color = INTENSITY_COLORS[intensity];
+    path.style.fill = color.fill;
+    path.style.stroke = color.stroke;
+    path.style.strokeWidth = intensity > 0 ? ".28" : ".16";
+    path.style.fillOpacity = intensity > 0 ? "1" : ".95";
+    path.style.filter = intensity > 0 ? `drop-shadow(0 0 6px ${color.glow})` : "none";
+    path.style.transition = "fill .18s ease, stroke .18s ease, filter .18s ease, opacity .18s ease";
+    path.style.cursor = fitMuscle ? "pointer" : "default";
   });
-  chart.update({ bodyState });
 }
 
 function BodyMusclesPanel({
@@ -88,12 +98,16 @@ function BodyMusclesPanel({
   selected,
   onSelect,
   module,
+  intensityMap,
+  interactive = true,
 }: {
   view: "FRONT" | "BACK";
   label: string;
   selected: FitMuscle | "Tous";
-  onSelect: (muscle: FitMuscle) => void;
+  onSelect?: (muscle: FitMuscle) => void;
   module: BodyMusclesModule | null;
+  intensityMap?: Partial<Record<FitMuscle, MuscleIntensity>>;
+  interactive?: boolean;
 }) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<BodyChartInstance | null>(null);
@@ -111,22 +125,22 @@ function BodyMusclesPanel({
       ariaLabel: label,
       onMuscleClick: (id: string) => {
         const target = fitMuscleForBodyMusclesId(id);
-        if (target) onSelect(target);
+        if (interactive && target && onSelect) onSelect(target);
       },
       onMuscleHover: () => {},
     });
     chartRef.current = chart;
-    applySelectedGroup(chart, selected);
+    applyChartState(chart, selected, intensityMap);
 
     return () => {
       chart.destroy();
       chartRef.current = null;
     };
-  }, [module, view]);
+  }, [module, view, label, interactive, onSelect]);
 
   React.useEffect(() => {
-    applySelectedGroup(chartRef.current, selected);
-  }, [selected]);
+    applyChartState(chartRef.current, selected, intensityMap);
+  }, [selected, intensityMap]);
 
   return (
     <div style={{ minWidth: 0 }}>
@@ -136,7 +150,7 @@ function BodyMusclesPanel({
   );
 }
 
-export default function FitBodyMap({ selected, onSelect, lang = "fr" }: Props) {
+export default function FitBodyMap({ selected = "Tous", onSelect, lang = "fr", intensityMap, interactive = true }: Props) {
   const key = lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr";
   const [module, setModule] = React.useState<BodyMusclesModule | null>(null);
   const [loadState, setLoadState] = React.useState<"loading" | "ready" | "error">("loading");
@@ -170,8 +184,8 @@ export default function FitBodyMap({ selected, onSelect, lang = "fr" }: Props) {
     <div className="fit-body-muscles-map" style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,.075)", background: "linear-gradient(180deg,rgba(10,13,22,.96),rgba(6,9,16,.91))", boxShadow: "0 15px 38px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.035)", overflow: "hidden", padding: 9 }}>
       <style>{`
         @keyframes fitBodyMusclePulse {
-          0%,100% { stroke-opacity:1; filter:drop-shadow(0 0 3px rgba(255,61,98,.66)) drop-shadow(0 0 9px rgba(255,61,98,.32)); }
-          50% { stroke-opacity:.28; filter:drop-shadow(0 0 6px rgba(255,61,98,.95)) drop-shadow(0 0 15px rgba(255,61,98,.56)); }
+          0%,100% { filter:brightness(1); }
+          50% { filter:brightness(1.08); }
         }
         .fit-body-muscles-grid {
           display:grid;
@@ -199,28 +213,12 @@ export default function FitBodyMap({ selected, onSelect, lang = "fr" }: Props) {
           height:100% !important;
           max-width:none !important;
           max-height:100% !important;
-          filter:none !important;
           overflow:visible !important;
         }
-        .fit-body-muscles-host .body-chart-background { opacity:.11 !important; }
+        .fit-body-muscles-host .body-chart-background { opacity:.09 !important; }
         .fit-body-muscles-host .body-chart-muscle {
-          fill:#d8dbe2 !important;
-          fill-opacity:.90 !important;
-          stroke:#686c76 !important;
-          stroke-width:.13 !important;
-          filter:none !important;
-          transition:fill .15s ease,stroke .15s ease,filter .15s ease,opacity .15s ease !important;
-        }
-        .fit-body-muscles-host .body-chart-muscle:hover:not([stroke="#ffffff"]) {
-          fill:#eef0f4 !important;
-          stroke:#9297a2 !important;
-        }
-        .fit-body-muscles-host .body-chart-muscle[stroke="#ffffff"] {
-          fill:#ff3d62 !important;
-          fill-opacity:1 !important;
-          stroke:#ffffff !important;
-          stroke-width:.32 !important;
-          animation:fitBodyMusclePulse 1.05s ease-in-out infinite !important;
+          transition:fill .18s ease, stroke .18s ease, filter .18s ease, opacity .18s ease !important;
+          animation:fitBodyMusclePulse 1.25s ease-in-out infinite;
         }
         @media (max-width:560px) {
           .fit-body-muscles-host { height:255px; }
@@ -230,8 +228,8 @@ export default function FitBodyMap({ selected, onSelect, lang = "fr" }: Props) {
 
       {loadState === "ready" && module ? (
         <div className="fit-body-muscles-grid">
-          <BodyMusclesPanel view="FRONT" label={frontLabel} selected={selected} onSelect={onSelect} module={module} />
-          <BodyMusclesPanel view="BACK" label={backLabel} selected={selected} onSelect={onSelect} module={module} />
+          <BodyMusclesPanel view="FRONT" label={frontLabel} selected={selected} onSelect={onSelect} module={module} intensityMap={intensityMap} interactive={interactive} />
+          <BodyMusclesPanel view="BACK" label={backLabel} selected={selected} onSelect={onSelect} module={module} intensityMap={intensityMap} interactive={interactive} />
         </div>
       ) : (
         <div style={{ minHeight: 280, borderRadius: 18, border: "1px solid rgba(255,255,255,.05)", background: "rgba(255,255,255,.014)", display: "grid", placeItems: "center", padding: 18, textAlign: "center" }}>
