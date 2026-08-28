@@ -9,6 +9,7 @@ import FitBodyMap from "./FitBodyMap";
 import FitExerciseMotion from "./FitExerciseMotion";
 import { FitGlassCard, FitIcon, FitIconTabs, FitPill } from "./FitPerfUi";
 import LOGO from "../../assets/LOGO.png";
+import { useAwenaOptional } from "../../awena/AwenaProvider";
 
 type DetailTab = "zone" | "details" | "goal" | "type" | "records";
 
@@ -23,6 +24,10 @@ type Props = {
 
 const PUSHUP_AWENA_HIGH = "/fit/exercise-media/pushup/awena-high.png";
 const PUSHUP_AWENA_LOW = "/fit/exercise-media/pushup/awena-low.png";
+const PUSHUP_AWENA_STEP_1 = "/fit/exercise-media/pushup/awena-step-01-start.webp";
+const PUSHUP_AWENA_STEP_2 = "/fit/exercise-media/pushup/awena-step-02-descent.webp";
+const PUSHUP_AWENA_STEP_3 = "/fit/exercise-media/pushup/awena-step-03-bottom.webp";
+const PUSHUP_AWENA_STEP_4 = "/fit/exercise-media/pushup/awena-step-04-press.webp";
 
 type GuideStep = { title: string; body: string; image: string | null };
 type ExerciseGuide = {
@@ -139,11 +144,15 @@ function equipmentIconName(value: string): "body" | "barbell" | "dumbbell" | "ca
 function collectExercisePhotos(exercise: FitExercise) {
   if (exercise.id === "pushup") {
     return Array.from(new Set([
+      PUSHUP_AWENA_STEP_1,
+      PUSHUP_AWENA_STEP_2,
+      PUSHUP_AWENA_STEP_3,
+      PUSHUP_AWENA_STEP_4,
       PUSHUP_AWENA_HIGH,
       PUSHUP_AWENA_LOW,
       freeExerciseImageUrl(exercise, 0),
       freeExerciseImageUrl(exercise, 1),
-    ].filter((item): item is string => Boolean(item))));
+    ].filter((item): item is string => Boolean(item)))).slice(0, 6);
   }
   const urls = (exercise.imagePaths || []).map((_, index) => freeExerciseImageUrl(exercise, index)).filter((item): item is string => Boolean(item));
   const fallback = freeExerciseImageUrl(exercise);
@@ -162,22 +171,22 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
       {
         title: tr(lang, "Position de départ", "Start position", "Posición inicial"),
         body: tr(lang, "Mains légèrement plus larges que les épaules, bras tendus, jambes serrées, corps aligné de la tête aux talons.", "Hands slightly wider than shoulder width, arms straight, legs together, body aligned from head to heels.", "Manos un poco más abiertas que los hombros, brazos extendidos, piernas juntas y cuerpo alineado de la cabeza a los talones."),
-        image: PUSHUP_AWENA_HIGH,
+        image: PUSHUP_AWENA_STEP_1,
       },
       {
         title: tr(lang, "Descente contrôlée", "Controlled descent", "Descenso controlado"),
         body: tr(lang, "Fléchis les coudes à environ 30 à 45° du buste et descends la poitrine vers le sol sans casser ta ligne corporelle.", "Bend the elbows at roughly 30 to 45° from the torso and lower the chest toward the floor without breaking body alignment.", "Flexiona los codos unos 30 a 45° del torso y baja el pecho hacia el suelo sin perder la alineación corporal."),
-        image: freeExerciseImageUrl(exercise, 0) || PUSHUP_AWENA_LOW,
+        image: PUSHUP_AWENA_STEP_2,
       },
       {
         title: tr(lang, "Position basse", "Bottom position", "Posición baja"),
         body: tr(lang, "La poitrine approche du sol, la nuque reste neutre et les hanches ne s'affaissent pas.", "The chest approaches the floor, the neck stays neutral and the hips do not sag.", "El pecho se acerca al suelo, el cuello permanece neutro y las caderas no se hunden."),
-        image: PUSHUP_AWENA_LOW,
+        image: PUSHUP_AWENA_STEP_3,
       },
       {
         title: tr(lang, "Poussée vers le haut", "Press back up", "Empuje hacia arriba"),
         body: tr(lang, "Repousse le sol avec les paumes pour revenir en haut en gardant le gainage et l'alignement du corps.", "Push the floor away with your palms to return to the top while keeping your brace and full-body alignment.", "Empuja el suelo con las palmas para volver arriba manteniendo la tensión del cuerpo y la alineación."),
-        image: freeExerciseImageUrl(exercise, 1) || PUSHUP_AWENA_HIGH,
+        image: PUSHUP_AWENA_STEP_4,
       },
     ];
     return {
@@ -253,32 +262,78 @@ function FilterGlyphRow({ exercise, lang, accent }: { exercise: FitExercise; lan
 }
 
 function AwenaVoiceButton({ accent, text, label }: { accent: string; text: string; label: string }) {
-  const [speaking, setSpeaking] = React.useState(false);
+  const awena = useAwenaOptional();
+  const localId = React.useId().replace(/:/g, "");
+  const speechId = `fit-exercise-card-${localId}`;
+  const [fallbackSpeaking, setFallbackSpeaking] = React.useState(false);
+  const speaking = Boolean(awena?.speechCue?.messageId === speechId && awena?.speechCue?.phase !== "done") || fallbackSpeaking;
 
   React.useEffect(() => () => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
   }, []);
 
-  const handleClick = React.useCallback(() => {
+  const handleClick = React.useCallback(async (event?: React.MouseEvent<HTMLButtonElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+
+    if (awena) {
+      if (awena.speechCue?.messageId === speechId && awena.speechCue?.phase !== "done") {
+        await awena.stop();
+        return;
+      }
+      await awena.say(text, speechId);
+      return;
+    }
+
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     const synth = window.speechSynthesis;
-    if (speaking) {
+    if (fallbackSpeaking) {
       synth.cancel();
-      setSpeaking(false);
+      setFallbackSpeaking(false);
       return;
     }
     synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = label.includes("ES") ? "es-ES" : label.includes("EN") ? "en-US" : "fr-FR";
     utterance.rate = 1;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    setSpeaking(true);
+    utterance.onend = () => setFallbackSpeaking(false);
+    utterance.onerror = () => setFallbackSpeaking(false);
+    setFallbackSpeaking(true);
     synth.speak(utterance);
-  }, [speaking, text, label]);
+  }, [awena, fallbackSpeaking, label, speechId, text]);
+
+  React.useEffect(() => {
+    if (!awena && fallbackSpeaking) return;
+    if (awena?.speechCue?.messageId !== speechId || awena?.speechCue?.phase === "done") {
+      setFallbackSpeaking(false);
+    }
+  }, [awena, speechId, fallbackSpeaking]);
 
   return (
-    <button type="button" onClick={handleClick} title={label} aria-label={label} style={{ width: 46, height: 46, borderRadius: 999, border: `1px solid ${accent}56`, background: `radial-gradient(circle at 35% 30%,rgba(255,255,255,.18),${accent}10 55%,rgba(255,255,255,.02))`, color: accent, boxShadow: `0 0 18px ${accent}16, inset 0 0 0 1px rgba(255,255,255,.03)`, cursor: "pointer", display: "grid", placeItems: "center", position: "relative", overflow: "hidden" }}>
+    <button
+      type="button"
+      onClick={(event) => { void handleClick(event); }}
+      title={label}
+      aria-label={label}
+      style={{
+        width: 46,
+        height: 46,
+        borderRadius: 999,
+        border: `1px solid ${accent}56`,
+        background: `radial-gradient(circle at 35% 30%,rgba(255,255,255,.18),${accent}10 55%,rgba(255,255,255,.02))`,
+        color: accent,
+        boxShadow: speaking ? `0 0 22px ${accent}2a, inset 0 0 0 1px ${accent}26` : `0 0 18px ${accent}16, inset 0 0 0 1px rgba(255,255,255,.03)`,
+        cursor: "pointer",
+        display: "grid",
+        placeItems: "center",
+        position: "relative",
+        overflow: "hidden",
+        zIndex: 3,
+        pointerEvents: "auto",
+        touchAction: "manipulation",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
       <img src="/awena/awena-avatar.webp" alt="" aria-hidden="true" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", opacity: speaking ? 1 : .96 }} />
       <span style={{ position: "absolute", right: 8, bottom: 8, color: accent, display: "grid", placeItems: "center", opacity: .92 }}><FitIcon name="volume" size={12} /></span>
     </button>
