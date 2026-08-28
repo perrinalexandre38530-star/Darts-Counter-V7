@@ -9,7 +9,7 @@ export type FitIconName =
   | "timer" | "volume" | "strength" | "profile" | "coach" | "plus"
   | "chevron" | "info" | "filter"
   | "body" | "dumbbell" | "barbell" | "cable" | "machine" | "kettlebell" | "band" | "medicine" | "star"
-  | "free" | "push" | "pull" | "legs" | "fullbody" | "shuffle" | "close";
+  | "free" | "push" | "pull" | "legs" | "fullbody" | "shuffle" | "close" | "camera";
 
 export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -55,6 +55,7 @@ export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number 
     case "fullbody": return <svg {...common}><circle {...p} cx="12" cy="4" r="2"/><path {...p} d="M9 7h6l2 5-2 2 1 7M15 14H9l-1 7M9 7 6 13M15 7l3 6"/></svg>;
     case "shuffle": return <svg {...common}><path {...p} d="M4 7h3c4 0 5 10 9 10h4M17 14l3 3-3 3M4 17h3c1.7 0 2.9-1.8 4-4M14 7c.7 0 1.3 0 2 0h4M17 4l3 3-3 3"/></svg>;
     case "close": return <svg {...common}><path {...p} d="M6 6l12 12M18 6 6 18"/></svg>;
+    case "camera": return <svg {...common}><path {...p} d="M4 8h4l1.6-2h4.8L16 8h4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/><circle {...p} cx="12" cy="14" r="4"/><path {...p} d="M7 11h.01"/></svg>;
     default: return null;
   }
 }

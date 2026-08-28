@@ -156,6 +156,8 @@ function specialExerciseKey(exercise: FitExercise) {
 
 function collectExercisePhotos(exercise: FitExercise) {
   const key = specialExerciseKey(exercise);
+  const sourceUrls = (exercise.imagePaths || []).map((_, index) => freeExerciseImageUrl(exercise, index)).filter((item): item is string => Boolean(item));
+  const fallback = freeExerciseImageUrl(exercise);
   if (key === "pushup") {
     return Array.from(new Set([
       PUSHUP_AWENA_STEP_1,
@@ -164,9 +166,9 @@ function collectExercisePhotos(exercise: FitExercise) {
       PUSHUP_AWENA_STEP_4,
       PUSHUP_AWENA_HIGH,
       PUSHUP_AWENA_LOW,
-      freeExerciseImageUrl(exercise, 0),
-      freeExerciseImageUrl(exercise, 1),
-    ].filter((item): item is string => Boolean(item)))).slice(0, 6);
+      fallback,
+      ...sourceUrls,
+    ].filter((item): item is string => Boolean(item))));
   }
   if (key === "bench") {
     return Array.from(new Set([
@@ -175,13 +177,11 @@ function collectExercisePhotos(exercise: FitExercise) {
       BENCH_AWENA_STEP_2,
       BENCH_AWENA_STEP_3,
       BENCH_AWENA_STEP_4,
-      freeExerciseImageUrl(exercise, 0),
-      freeExerciseImageUrl(exercise, 1),
-    ].filter((item): item is string => Boolean(item)))).slice(0, 6);
+      fallback,
+      ...sourceUrls,
+    ].filter((item): item is string => Boolean(item))));
   }
-  const urls = (exercise.imagePaths || []).map((_, index) => freeExerciseImageUrl(exercise, index)).filter((item): item is string => Boolean(item));
-  const fallback = freeExerciseImageUrl(exercise);
-  return Array.from(new Set([fallback, ...urls].filter((item): item is string => Boolean(item)))).slice(0, 6);
+  return Array.from(new Set([fallback, ...sourceUrls].filter((item): item is string => Boolean(item))));
 }
 
 function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
@@ -337,11 +337,40 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
   };
 }
 
+function ExerciseMuscleIcon({ muscle, accent, size = 20 }: { muscle: FitMuscle; accent: string; size?: number }) {
+  const hot = accent;
+  const neutral = `${accent}22`;
+  const stroke = accent;
+  const common = { fill: neutral, stroke, strokeWidth: 1.7, strokeLinejoin: "round" as const, strokeLinecap: "round" as const };
+  const shape = (() => {
+    switch (muscle) {
+      case "Pectoraux": return <><path {...common} d="M8 15c4-5 10-6 16-2v13c-6 3-12 1-16-3Z"/><path {...common} d="M40 15c-4-5-10-6-16-2v13c6 3 12 1 16-3Z"/></>;
+      case "Dos": return <path {...common} d="M13 10 24 6l11 4 5 8-7 18-9 6-9-6-7-18Z"/>;
+      case "Lombaires": return <><path {...common} d="m17 8 6 3-2 27-7 4-3-9Z"/><path {...common} d="m31 8-6 3 2 27 7 4 3-9Z"/></>;
+      case "Épaules": return <><path {...common} d="M5 23c0-8 5-14 13-14l3 8-7 10Z"/><path {...common} d="M43 23c0-8-5-14-13-14l-3 8 7 10Z"/></>;
+      case "Biceps": return <><path {...common} d="M10 8c7 2 9 10 7 18l-5 14-6-4 2-14Z"/><path {...common} d="M38 8c-7 2-9 10-7 18l5 14 6-4-2-14Z"/></>;
+      case "Triceps": return <><path {...common} d="M9 9c7 1 10 8 9 17l-5 15-7-5 3-14Z"/><path {...common} d="M39 9c-7 1-10 8-9 17l5 15 7-5-3-14Z"/></>;
+      case "Avant-bras": return <><path {...common} d="M12 6h6l-4 34-8 3 3-19Z"/><path {...common} d="M36 6h-6l4 34 8 3-3-19Z"/></>;
+      case "Abdos": return <><rect {...common} x="14" y="7" width="8" height="9" rx="3"/><rect {...common} x="26" y="7" width="8" height="9" rx="3"/><rect {...common} x="14" y="19" width="8" height="9" rx="3"/><rect {...common} x="26" y="19" width="8" height="9" rx="3"/><rect {...common} x="14" y="31" width="8" height="9" rx="3"/><rect {...common} x="26" y="31" width="8" height="9" rx="3"/></>;
+      case "Fessiers": return <><path {...common} d="M8 12c9-7 16 0 16 10v13c-7 7-17 6-20-3Z"/><path {...common} d="M40 12c-9-7-16 0-16 10v13c7 7 17 6 20-3Z"/></>;
+      case "Quadriceps": return <><path {...common} d="M10 5c9 3 11 12 9 23-2 9-5 14-9 15-5-6-6-16-5-25Z"/><path {...common} d="M38 5c-9 3-11 12-9 23 2 9 5 14 9 15 5-6 6-16 5-25Z"/></>;
+      case "Ischios": return <><path {...common} d="M12 5c8 5 9 13 7 23-1 8-4 13-8 15-6-8-6-18-4-28Z"/><path {...common} d="M36 5c-8 5-9 13-7 23 1 8 4 13 8 15 6-8 6-18 4-28Z"/></>;
+      case "Adducteurs": return <><path {...common} d="m12 7 10 6-2 29-8-12Z"/><path {...common} d="m36 7-10 6 2 29 8-12Z"/></>;
+      case "Abducteurs": return <><path {...common} d="M6 10c8-5 13 1 14 9l-7 23-8-9Z"/><path {...common} d="M42 10c-8-5-13 1-14 9l7 23 8-9Z"/></>;
+      case "Mollets": return <><path {...common} d="M12 5c7 5 8 15 4 26l-5 12-6-8 2-20Z"/><path {...common} d="M36 5c-7 5-8 15-4 26l5 12 6-8-2-20Z"/></>;
+      case "Cou": return <><path {...common} d="m15 7 7 5-4 29-9-12Z"/><path {...common} d="m33 7-7 5 4 29 9-12Z"/></>;
+      case "Full body": return <><circle {...common} cx="24" cy="8" r="4"/><path {...common} d="M17 13h14l5 12-5 3-2-8-2 22h-6l-2-22-2 8-5-3Z"/></>;
+      default: return <><circle {...common} cx="24" cy="9" r="4"/><path {...common} d="M16 14h16l4 10-6 3-2 15h-8l-2-15-6-3Z"/></>;
+    }
+  })();
+  return <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ overflow: "visible", filter: `drop-shadow(0 0 6px ${hot}44)` }}>{shape}</svg>;
+}
+
 function FilterGlyphRow({ exercise, lang, accent }: { exercise: FitExercise; lang: string; accent: string }) {
   const level = normalizeLevel(exercise.level) === "Débutant" ? 1 : normalizeLevel(exercise.level) === "Intermédiaire" ? 2 : 3;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 18, color: accent }}>
-      <div title={FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} style={{ display: "grid", placeItems: "center", color: accent }}><FitIcon name="muscles" size={20} /></div>
+      <div title={FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} style={{ display: "grid", placeItems: "center", color: accent }}><ExerciseMuscleIcon muscle={exercise.muscle} accent={accent} size={20} /></div>
       <div title={levelText(exercise.level, lang)} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: accent }}>
         {Array.from({ length: 3 }, (_, index) => <span key={index} style={{ color: index < level ? accent : `${accent}44`, fontSize: 17, lineHeight: 1 }}>★</span>)}
       </div>
@@ -450,7 +479,7 @@ function AwenaVoiceButton({ accent, text, label }: { accent: string; text: strin
         WebkitTapHighlightColor: "transparent",
       }}
     >
-      <img src="/awena/awena-avatar.webp" alt="" aria-hidden="true" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", objectPosition: "center 24%", opacity: speaking ? 1 : .97 }} />
+      <img src="/awena/awena-avatar.webp" alt="" aria-hidden="true" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", objectPosition: "center 18%", transform: "scale(1.08)", opacity: speaking ? 1 : .98 }} />
       <span style={{ position: "absolute", right: 7, bottom: 7, width: 16, height: 16, borderRadius: 999, color: accent, display: "grid", placeItems: "center", opacity: .96, background: "rgba(7,9,14,.84)", boxShadow: `0 2px 8px rgba(0,0,0,.4), 0 0 0 1px ${accent}28` }}><FitIcon name="volume" size={10} /></span>
     </button>
   );
@@ -488,7 +517,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   const tabItems = [
     { id: "zone" as const, label: tr(lang, "ZONE", "ZONE", "ZONA"), icon: "muscles" as const },
     { id: "details" as const, label: tr(lang, "DÉTAILS", "DETAILS", "DETALLES"), icon: "guide" as const },
-    { id: "photos" as const, label: tr(lang, "PHOTOS", "PHOTOS", "FOTOS"), icon: "library" as const },
+    { id: "photos" as const, label: tr(lang, "PHOTOS", "PHOTOS", "FOTOS"), icon: "camera" as const },
     { id: "goal" as const, label: tr(lang, "OBJECTIF", "GOAL", "OBJETIVO"), icon: "goals" as const },
     { id: "type" as const, label: tr(lang, "TYPE", "TYPE", "TIPO"), icon: "workout" as const },
     { id: "records" as const, label: tr(lang, "RECORDS", "RECORDS", "RÉCORDS"), icon: "records" as const },
@@ -553,7 +582,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
               {guide.steps.map((step, index) => (
                 <FitGlassCard key={index} accent={accent} style={{ overflow: "hidden", borderRadius: 22, background: "rgba(255,255,255,.018)" }}>
-                  {step.image ? <img src={step.image} alt={step.title} onClick={() => setViewerImage(step.image)} style={{ width: "100%", height: 150, objectFit: "cover", display: "block", cursor: "pointer" }} /> : null}
+                  {step.image ? <button type="button" onClick={() => setViewerImage(step.image)} style={{ width: "100%", padding: 0, border: 0, background: "#000", display: "block", cursor: "pointer" }}><img src={step.image} alt={step.title} style={{ width: "100%", height: 164, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} /></button> : null}
                   <div style={{ padding: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 28, height: 28, borderRadius: 999, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, display: "grid", placeItems: "center", fontWeight: 1000, flex: "0 0 28px" }}>{index + 1}</div>
@@ -591,7 +620,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
                 {photos.map((url, index) => (
                   <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: `1px solid ${accent}2e`, background: "rgba(255,255,255,.02)", borderRadius: 18, overflow: "hidden", minWidth: 0, cursor: "pointer", boxShadow: `0 0 16px ${accent}10` }}>
-                    <img src={url} alt={`${exercise.name} ${index + 1}`} style={{ width: "100%", height: 154, objectFit: "cover", display: "block" }} />
+                    <img src={url} alt={`${exercise.name} ${index + 1}`} style={{ width: "100%", height: 166, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} />
                   </button>
                 ))}
               </div>

@@ -102,9 +102,9 @@ export default function FitPremiumMotionPlayer({
           style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
         />
       ) : null}
-      {showBadge ? <div style={{ position: "absolute", left: 8, top: 8, display: "inline-flex", alignItems: "center", gap: 7, minHeight: compact ? 24 : 28, padding: compact ? "0 7px 0 4px" : "0 9px 0 4px", borderRadius: 999, background: "rgba(3,5,10,.82)", border: "1px solid rgba(246,194,86,.26)", color: "#f6c256", pointerEvents: "none" }}>
+      {showBadge ? <div style={{ position: "absolute", left: 8, top: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: compact ? 0 : 7, minHeight: compact ? 24 : 28, minWidth: compact ? 24 : undefined, padding: compact ? "4px" : "0 9px 0 4px", borderRadius: 999, background: "rgba(3,5,10,.82)", border: "1px solid rgba(246,194,86,.26)", color: "#f6c256", pointerEvents: "none" }}>
         <img src={LOGO} alt="" aria-hidden="true" style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, borderRadius: 999, objectFit: "contain" }} />
-        <span style={{ fontSize: compact ? 5.9 : 6.8, fontWeight: 1000, letterSpacing: .75, lineHeight: 1.05 }}>MULTISPORTS<br/>SCORING</span>
+        {!compact ? <span style={{ fontSize: 6.8, fontWeight: 1000, letterSpacing: .75, lineHeight: 1.05 }}>MULTISPORTS<br/>SCORING</span> : null}
       </div> : null}
     </div>
   );

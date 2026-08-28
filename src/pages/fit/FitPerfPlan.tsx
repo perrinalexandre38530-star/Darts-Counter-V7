@@ -63,9 +63,9 @@ function DifficultyStars({ level, accent = "#ffd66b", size = 12 }: { level?: str
 }
 
 
-function MuscleFilterIcon({ muscle, active, size = 42 }: { muscle: FitMuscle | "Tous"; active: boolean; size?: number }) {
-  const hot = active ? "#5ce9ff" : "#ff4f6f";
-  const neutral = active ? "rgba(92,233,255,.22)" : "rgba(220,225,232,.16)";
+function MuscleFilterIcon({ muscle, active, size = 42, accentColor }: { muscle: FitMuscle | "Tous"; active: boolean; size?: number; accentColor?: string }) {
+  const hot = active ? (accentColor || "#5ce9ff") : "#ff4f6f";
+  const neutral = active ? `${(accentColor || "#5ce9ff")}22` : "rgba(220,225,232,.16)";
   const stroke = active ? hot : "rgba(225,230,238,.78)";
   const common = { fill: neutral, stroke, strokeWidth: 1.7, strokeLinejoin: "round" as const, strokeLinecap: "round" as const };
   const shape = (() => {
@@ -230,14 +230,14 @@ export default function FitPerfPlan({ go }: Props) {
             type="button"
             aria-label={fav ? t("Retirer des favoris", "Remove favorite", "Quitar favorito") : t("Ajouter aux favoris", "Add favorite", "Añadir favorito")}
             onClick={(event) => { event.stopPropagation(); toggleFavorite(exercise.id); }}
-            style={{ position: "absolute", right: 6, top: 6, width: 27, height: 27, borderRadius: 9, border: `1px solid ${fav ? exercise.accent + "88" : "rgba(255,255,255,.13)"}`, background: "rgba(5,8,13,.88)", color: fav ? exercise.accent : "rgba(255,255,255,.78)", display: "grid", placeItems: "center", cursor: "pointer" }}
+            style={{ position: "absolute", right: 6, top: 6, width: 27, height: 27, borderRadius: 9, border: `1px solid ${fav ? "#ffd86988" : "rgba(255,255,255,.13)"}`, background: "rgba(5,8,13,.88)", color: fav ? "#ffd869" : "rgba(255,255,255,.58)", display: "grid", placeItems: "center", cursor: "pointer" }}
           ><FitIcon name="favorite" size={13} /></button>
         </div>
         <div style={{ padding: "9px 9px 10px" }}>
-          <div style={{ minHeight: 29, fontSize: 9.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{exercise.name}</div>
-          <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5 }}>
-            <DifficultyStars level={exercise.level} accent="#ffd869" size={9} />
-            <span style={{ minWidth: 0, color: exercise.accent, fontSize: 6.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{FIT_MUSCLE_LABELS[exercise.muscle][langKey]}</span>
+          <div style={{ minHeight: 29, fontSize: 9.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", color: exercise.accent, justifyContent: "center" }}>{exercise.name}</div>
+          <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <DifficultyStars level={exercise.level} accent={exercise.accent} size={9} />
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: exercise.accent }} title={FIT_MUSCLE_LABELS[exercise.muscle][langKey]}><MuscleFilterIcon muscle={exercise.muscle} active size={18} accentColor={exercise.accent} /></span>
           </div>
         </div>
       </div>
