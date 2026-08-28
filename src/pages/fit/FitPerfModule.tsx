@@ -425,18 +425,10 @@ export default function FitPerfModule({ go, store, params }: Props) {
   );
 }
 
-function TemplateBackdrop({ imageUrl, imagePosition = "center center", selected, contentSide = "right" }: { imageUrl?: string; imagePosition?: string; selected: boolean; contentSide?: "left" | "right" }) {
+function TemplateBackdrop({ imageUrl, imagePosition = "center center", selected }: { imageUrl?: string; imagePosition?: string; selected: boolean; contentSide?: "left" | "right" }) {
   if (!imageUrl) return null;
-  const sideGradient = contentSide === "left"
-    ? (selected
-      ? "linear-gradient(90deg,rgba(4,7,12,.88),rgba(4,7,12,.50) 40%,rgba(4,7,12,.18) 72%,rgba(4,7,12,.18))"
-      : "linear-gradient(90deg,rgba(4,7,12,.92),rgba(4,7,12,.62) 40%,rgba(4,7,12,.24) 72%,rgba(4,7,12,.24))")
-    : (selected
-      ? "linear-gradient(90deg,rgba(4,7,12,.18),rgba(4,7,12,.18) 28%,rgba(4,7,12,.52) 60%,rgba(4,7,12,.88))"
-      : "linear-gradient(90deg,rgba(4,7,12,.24),rgba(4,7,12,.24) 28%,rgba(4,7,12,.62) 60%,rgba(4,7,12,.92))");
   return <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: "inherit", pointerEvents: "none" }}>
-    <img src={imageUrl} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: imagePosition, filter: `saturate(${selected ? 1 : .95}) contrast(1.05) brightness(${selected ? .9 : .76})`, transform: selected ? "scale(1.02)" : "scale(1)", transition: "transform .18s ease, filter .18s ease" }} />
-    <div style={{ position: "absolute", inset: 0, background: `${selected ? "linear-gradient(180deg,rgba(4,7,12,.14),rgba(4,7,12,.76))" : "linear-gradient(180deg,rgba(4,7,12,.24),rgba(4,7,12,.84))"},${sideGradient}` }} />
+    <img src={imageUrl} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: imagePosition, filter: "saturate(1) contrast(1.04) brightness(1)", transform: selected ? "scale(1.01)" : "scale(1)", transition: "transform .18s ease" }} />
   </div>;
 }
 
@@ -444,9 +436,9 @@ function TemplateCard({ selected, accent, title, titleLines, onClick, wide = fal
   const alignRight = contentSide === "right";
   const lines = titleLines?.length ? titleLines : [title];
   return <button type="button" onClick={onClick} style={{ minHeight: wide ? 104 : 124, borderRadius: 18, textAlign: alignRight ? "right" : "left", color: "#fff", padding: wide ? "16px 16px" : "12px 12px", border: `1px solid ${selected ? accent + "88" : "rgba(255,255,255,.12)"}`, background: "linear-gradient(180deg,rgba(8,12,18,.99),rgba(4,7,12,.995))", boxShadow: selected ? `0 10px 28px ${accent}18` : "0 8px 22px rgba(0,0,0,.34)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: alignRight ? "flex-end" : "flex-start", justifyContent: "center", transition: "border-color .18s ease,background .18s ease,transform .18s ease", position: "relative", overflow: "hidden", isolation: "isolate" }}>
-    <TemplateBackdrop imageUrl={imageUrl} imagePosition={imagePosition} selected={selected} contentSide={contentSide} />
+    <TemplateBackdrop imageUrl={imageUrl} imagePosition={imagePosition} selected={selected} />
     <span style={{ position: "relative", zIndex: 2, width: wide ? "min(58%, 320px)" : "58%", minWidth: 0, display: "flex", flexDirection: "column", alignItems: alignRight ? "flex-end" : "flex-start", justifyContent: "center" }}>
-      {lines.map((line) => <b key={line} style={{ display: "block", width: "100%", color: accent, fontSize: wide ? 13 : 11.5, lineHeight: lines.length > 1 ? 1.02 : 1.08, fontWeight: 1000, letterSpacing: .25, textShadow: `0 0 14px ${accent}45, 0 2px 10px rgba(0,0,0,.7)` }}>{line}</b>)}
+      {lines.map((line) => <b key={line} style={{ display: "block", width: "100%", color: accent, fontSize: wide ? 14.5 : 13, lineHeight: lines.length > 1 ? 1.04 : 1.1, fontWeight: 1000, letterSpacing: .28, textShadow: `0 0 14px ${accent}45, 0 2px 10px rgba(0,0,0,.7)` }}>{line}</b>)}
     </span>
   </button>;
 }

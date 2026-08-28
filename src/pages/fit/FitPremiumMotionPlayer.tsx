@@ -1,16 +1,15 @@
 import React from "react";
 import type { AwenaPremiumMotionSlot } from "../../fit/awenaPremiumMotions";
+import LOGO from "../../assets/LOGO.png";
 
 export default function FitPremiumMotionPlayer({
   slot,
   compact = false,
   onFail,
-  showBadge = true,
 }: {
   slot: AwenaPremiumMotionSlot;
   compact?: boolean;
   onFail?: () => void;
-  showBadge?: boolean;
 }) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = React.useState(true);
@@ -39,7 +38,7 @@ export default function FitPremiumMotionPlayer({
   const frameSequence = slot.frameSequence?.frames?.length ? slot.frameSequence : undefined;
   const canUseVideo = Boolean(video && !videoFailed);
   const canUseFrames = Boolean(frameSequence && !frameFailed);
-  const playing = !compact && visible && pageVisible && !reduced;
+  const playing = visible && pageVisible && !reduced;
 
   React.useEffect(() => {
     if (!canUseFrames || canUseVideo || !frameSequence) return;
@@ -69,7 +68,7 @@ export default function FitPremiumMotionPlayer({
     onFail?.();
   }, [canUseVideo, canUseFrames, onFail]);
 
-  const height = compact ? 168 : 260;
+  const height = compact ? 130 : 260;
   const frameSrc = frameSequence?.frames[Math.min(frameIndex, Math.max(0, (frameSequence?.frames.length || 1) - 1))];
 
   return (
@@ -101,7 +100,10 @@ export default function FitPremiumMotionPlayer({
           style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
         />
       ) : null}
-      {showBadge ? <div style={{ position: "absolute", left: 7, top: 7, padding: compact ? "3px 6px" : "4px 7px", borderRadius: 999, background: "rgba(3,5,10,.78)", border: "1px solid rgba(246,194,86,.26)", color: "#f6c256", fontSize: compact ? 6 : 7, fontWeight: 1000, letterSpacing: .8, pointerEvents: "none" }}>AWENA · PREMIUM MOTION</div> : null}
+      <div style={{ position: "absolute", left: 8, top: 8, display: "inline-flex", alignItems: "center", gap: 7, minHeight: compact ? 24 : 28, padding: compact ? "0 7px 0 4px" : "0 9px 0 4px", borderRadius: 999, background: "rgba(3,5,10,.82)", border: "1px solid rgba(246,194,86,.26)", color: "#f6c256", pointerEvents: "none" }}>
+        <img src={LOGO} alt="" aria-hidden="true" style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, borderRadius: 999, objectFit: "contain" }} />
+        <span style={{ fontSize: compact ? 5.9 : 6.8, fontWeight: 1000, letterSpacing: .75, lineHeight: 1.05 }}>MULTISPORTS<br/>SCORING</span>
+      </div>
     </div>
   );
 }
