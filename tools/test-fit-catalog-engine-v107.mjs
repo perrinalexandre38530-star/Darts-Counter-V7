@@ -17,7 +17,10 @@ assert.ok(wger.includes("/exerciseinfo/?limit=250") && wger.includes("MAX_PAGES 
 assert.ok(wger.includes("normalizeWgerExerciseRow") && wger.includes('source: "wger"'), "Normalisation wger absente");
 assert.ok(wger.includes("rawPrimaryMuscles") && wger.includes("sourceLicense") && wger.includes("mediaLicense"), "Métadonnées/licences wger incomplètes");
 assert.ok(wger.includes("imagePaths: images") && wger.includes("videoUrls: videos"), "Médias wger non conservés");
-assert.ok(engine.includes("mergeFitExerciseCatalogs") && engine.includes("signature(exercise)") && engine.includes("richness(exercise)"), "Déduplication multi-sources absente");
+assert.ok(engine.includes("mergeFitExerciseCatalogs") && engine.includes("signature(exercise)") && engine.includes("richness(candidate)"), "Déduplication multi-sources absente");
+assert.ok(engine.includes("canonicalVariantName") && engine.includes("REDUNDANT_VARIANT_WORDS"), "Nettoyage des variantes redondantes absent");
+assert.ok(wger.includes("wger language id 2 = English") && !wger.includes("translations.find((item) => Boolean(text(item?.name)))"), "wger peut encore injecter des titres non anglais");
+assert.ok(free.includes("flat barbell bench press") && free.includes("standard push up"), "Mapping premium strict absent : risque de vidéos dupliquées sur variantes");
 assert.ok(engine.includes("Promise.allSettled") && engine.includes("loadFreeExerciseCatalog") && engine.includes("loadWgerExerciseCatalog"), "Chargement parallèle multi-sources absent");
 assert.ok(free.includes('/^https?:\\/\\//i.test(path)'), "Les médias absolus wger ne sont pas supportés par le résolveur d'image");
 assert.ok(plan.includes("getCachedFitCatalog") && plan.includes("loadFitCatalog") && !plan.includes("loadFreeExerciseCatalog"), "La bibliothèque principale n'utilise pas le moteur multi-sources");

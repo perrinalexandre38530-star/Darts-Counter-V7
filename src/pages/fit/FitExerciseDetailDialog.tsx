@@ -151,29 +151,9 @@ function specialExerciseKey(exercise: FitExercise) {
   if (motionKey === "pushup" || motionKey === "bench") return motionKey;
   if (motionKey) return motionKey;
 
-  const raw = `${exercise.id || ""} ${exercise.name || ""}`.toLowerCase();
-  const compact = raw.replace(/[^a-z0-9]+/g, " ").trim();
-  if (["push up", "push ups", "pushup", "pushups"].includes(compact) || compact.includes("push up") || compact.includes("pushup")) return "pushup";
-
-  const isExactBenchFamily = (
-    compact === "bench press" ||
-    compact === "barbell bench press" ||
-    compact.includes(" bench press") ||
-    compact.startsWith("bench press ")
-  ) && ![
-    "incline",
-    "decline",
-    "guillotine",
-    "floor press",
-    "smith",
-    "dumbbell",
-    "with bands",
-    "band",
-    "close grip",
-    "wide grip",
-  ].some((token) => compact.includes(token));
-
-  if (isExactBenchFamily) return "bench";
+  const compact = String(exercise.name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup"].includes(compact)) return "pushup";
+  if (["bench press", "barbell bench press", "flat barbell bench press"].includes(compact)) return "bench";
   return exercise.id;
 }
 

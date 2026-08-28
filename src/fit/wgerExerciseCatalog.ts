@@ -12,7 +12,7 @@ export const WGER_EXERCISE_INFO_URL = `${WGER_API_ROOT}/exerciseinfo/?limit=250`
 export const WGER_REPOSITORY = "https://github.com/wger-project/wger";
 export const WGER_DATA_LICENSE = "wger exercise data — Creative Commons / per-item license metadata";
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_PAGES = 12;
 
@@ -131,10 +131,44 @@ function mapEquipment(value: unknown): FitEquipment {
   return "Autre";
 }
 
+function cleanEnglishTitle(value: string): string {
+  return value
+    .replace(/[_]+/g, " ")
+    .replace(/\s*[-–—]\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function chooseTranslation(value: unknown): WgerTranslation | null {
   const translations = array<WgerTranslation>(value);
   if (!translations.length) return null;
-  return translations.find((item) => Number(item?.language) === 2) || translations.find((item) => Boolean(text(item?.name))) || null;
+  // wger language id 2 = English. Never fall back to Spanish/German/etc.
+  return translations.find((item) => Number(item?.language) === 2 && Boolean(text(item?.name))) || null;
+}
+
+function inferMotionKey(name: string): string | undefined {
+  const compact = cleanEnglishTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup"].includes(compact)) return "pushup";
+  if (["burpee", "burpees", "standard burpee"].includes(compact)) return "burpee";
+  if (["bench press", "barbell bench press", "flat barbell bench press"].includes(compact)) return "bench";
+  if (["squat", "barbell squat", "back squat", "barbell back squat"].includes(compact)) return "squat";
+  if (["goblet squat", "kettlebell goblet squat"].includes(compact)) return "goblet";
+  if (["romanian deadlift", "barbell romanian deadlift"].includes(compact)) return "rdl";
+  if (["deadlift", "barbell deadlift", "conventional deadlift"].includes(compact)) return "deadlift";
+  if (["hip thrust", "barbell hip thrust"].includes(compact)) return "hip-thrust";
+  if (["leg press", "machine leg press"].includes(compact)) return "leg-press";
+  if (["standing calf raise", "calf raise", "machine calf raise"].includes(compact)) return "calf";
+  if (["plank", "front plank"].includes(compact)) return "plank";
+  if (["pull up", "pullup", "pull ups", "pullups"].includes(compact)) return "pullup";
+  if (["lat pulldown", "wide grip lat pulldown"].includes(compact)) return "lat-pulldown";
+  if (["barbell row", "bent over barbell row", "bent over row"].includes(compact)) return "row";
+  if (["lateral raise", "dumbbell lateral raise", "side lateral raise"].includes(compact)) return "lateral-raise";
+  if (["overhead press", "military press", "barbell overhead press", "shoulder press"].includes(compact)) return "ohp";
+  if (["triceps pushdown", "tricep pushdown", "cable triceps pushdown"].includes(compact)) return "triceps-push";
+  if (["biceps curl", "dumbbell biceps curl", "dumbbell curl"].includes(compact)) return "curl";
+  if (["incline dumbbell press", "incline dumbbell bench press"].includes(compact)) return "incline-db";
+  if (["cable fly", "cable chest fly", "cable crossover"].includes(compact)) return "cable-fly";
+  return undefined;
 }
 
 function mediaUrls(value: unknown, key: "image" | "video"): string[] {
@@ -154,7 +188,7 @@ function licenseLabel(row: WgerRow, translation: WgerTranslation | null): string
 export function normalizeWgerExerciseRow(input: unknown): FitExercise | null {
   const row = (input || {}) as WgerRow;
   const translation = chooseTranslation(row.translations);
-  const name = text(translation?.name);
+  const name = cleanEnglishTitle(text(translation?.name));
   const sourceId = text(row.uuid) || String(Number(row.id) || "");
   if (!name || !sourceId) return null;
   const rawPrimary = namedMuscles(row.muscles);
@@ -190,6 +224,7 @@ export function normalizeWgerExerciseRow(input: unknown): FitExercise | null {
     instructions: instructionsFrom(description),
     imagePaths: images,
     videoUrls: videos,
+    motionKey: inferMotionKey(name),
   };
   exercise.movementPattern = inferMovementPattern(exercise);
   exercise.goalTags = inferGoalTags(exercise);

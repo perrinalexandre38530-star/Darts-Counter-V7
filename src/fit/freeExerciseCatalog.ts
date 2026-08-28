@@ -12,7 +12,7 @@ export const FREE_EXERCISE_IMAGE_ROOT = "https://raw.githubusercontent.com/yuhon
 export const FREE_EXERCISE_DB_REPOSITORY = "https://github.com/yuhonas/free-exercise-db";
 export const FREE_EXERCISE_DB_LICENSE = "Unlicense / public domain";
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FreeExerciseDbRow = {
@@ -101,35 +101,42 @@ function mapEquipment(value: string): FitEquipment {
   return "Autre";
 }
 
+function cleanEnglishTitle(value: string): string {
+  return value
+    .replace(/[_]+/g, " ")
+    .replace(/\s*[-–—]\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function inferMotionKey(name: string): string | undefined {
-  const value = name.toLowerCase().trim();
-  const compact = value.replace(/[^a-z0-9]+/g, " ").trim();
-  if (["push up", "push ups", "pushup", "pushups"].includes(compact)) return "pushup";
-  if (["burpee", "burpees"].includes(compact)) return "burpee";
-  if (value.includes("goblet") && value.includes("squat")) return "goblet";
-  if (value.includes("squat")) return "squat";
-  if (value.includes("romanian") && (value.includes("deadlift") || value.includes("stiff"))) return "rdl";
-  if (value.includes("deadlift")) return "deadlift";
-  if (value.includes("hip thrust") || value.includes("glute bridge")) return "hip-thrust";
-  if (value.includes("leg press")) return "leg-press";
-  if (value.includes("calf raise")) return "calf";
-  if (value.includes("plank")) return "plank";
-  if (value.includes("pull-up") || value.includes("pull up") || value.includes("chin-up") || value.includes("chin up")) return "pullup";
-  if (value.includes("pulldown") || value.includes("pull-down")) return "lat-pulldown";
-  if (value.includes("row")) return "row";
-  if (value.includes("lateral raise") || value.includes("side lateral")) return "lateral-raise";
-  if (value.includes("shoulder press") || value.includes("military press") || value.includes("overhead press")) return "ohp";
-  if (value.includes("tricep") && (value.includes("pushdown") || value.includes("push-down"))) return "triceps-push";
-  if (value.includes("curl")) return "curl";
-  if (value.includes("incline") && (value.includes("press") || value.includes("bench"))) return "incline-db";
-  if ((value.includes("fly") || value.includes("flye")) && value.includes("cable")) return "cable-fly";
-  if (value.includes("bench press") || value === "bench press") return "bench";
+  const compact = cleanEnglishTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup"].includes(compact)) return "pushup";
+  if (["burpee", "burpees", "standard burpee"].includes(compact)) return "burpee";
+  if (["bench press", "barbell bench press", "flat barbell bench press"].includes(compact)) return "bench";
+  if (["squat", "barbell squat", "back squat", "barbell back squat"].includes(compact)) return "squat";
+  if (["goblet squat", "kettlebell goblet squat"].includes(compact)) return "goblet";
+  if (["romanian deadlift", "barbell romanian deadlift"].includes(compact)) return "rdl";
+  if (["deadlift", "barbell deadlift", "conventional deadlift"].includes(compact)) return "deadlift";
+  if (["hip thrust", "barbell hip thrust"].includes(compact)) return "hip-thrust";
+  if (["leg press", "machine leg press"].includes(compact)) return "leg-press";
+  if (["standing calf raise", "calf raise", "machine calf raise"].includes(compact)) return "calf";
+  if (["plank", "front plank"].includes(compact)) return "plank";
+  if (["pull up", "pullup", "pull ups", "pullups"].includes(compact)) return "pullup";
+  if (["lat pulldown", "wide grip lat pulldown"].includes(compact)) return "lat-pulldown";
+  if (["barbell row", "bent over barbell row", "bent over row"].includes(compact)) return "row";
+  if (["lateral raise", "dumbbell lateral raise", "side lateral raise"].includes(compact)) return "lateral-raise";
+  if (["overhead press", "military press", "barbell overhead press", "shoulder press"].includes(compact)) return "ohp";
+  if (["triceps pushdown", "tricep pushdown", "cable triceps pushdown"].includes(compact)) return "triceps-push";
+  if (["biceps curl", "dumbbell biceps curl", "dumbbell curl"].includes(compact)) return "curl";
+  if (["incline dumbbell press", "incline dumbbell bench press"].includes(compact)) return "incline-db";
+  if (["cable fly", "cable chest fly", "cable crossover"].includes(compact)) return "cable-fly";
   return undefined;
 }
 
 function normalizeRow(row: FreeExerciseDbRow): FitExercise | null {
   const sourceId = asString(row.id);
-  const name = asString(row.name);
+  const name = cleanEnglishTitle(asString(row.name));
   if (!sourceId || !name) return null;
   const primary = asStringArray(row.primaryMuscles);
   const secondary = asStringArray(row.secondaryMuscles);
