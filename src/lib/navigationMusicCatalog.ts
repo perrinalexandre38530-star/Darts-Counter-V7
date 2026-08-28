@@ -16,6 +16,10 @@ import steelReactorUrl from "../assets/audio/navigation/steel_reactor_nav.m4a";
 import arenaUprisingUrl from "../assets/audio/navigation/arena_uprising_nav.m4a";
 import stoneReverieUrl from "../assets/audio/navigation/stone_reverie_nav.m4a";
 import obsidianFlowUrl from "../assets/audio/navigation/obsidian_flow_nav.m4a";
+import heartwaveAnthemUrl from "../assets/audio/navigation/heartwave_anthem_nav.m4a";
+import linearSkylineUrl from "../assets/audio/navigation/linear_skyline_nav.m4a";
+import orientalSurgeUrl from "../assets/audio/navigation/oriental_surge_nav.m4a";
+import neonCaravanUrl from "../assets/audio/navigation/neon_caravan_nav.m4a";
 
 export const NAVIGATION_MUSIC_TRACKS = [
   {
@@ -125,6 +129,30 @@ export const NAVIGATION_MUSIC_TRACKS = [
     name: "Obsidian Flow",
     subtitle: { fr: "Ambiance profonde, minérale et hypnotique", en: "Deep, mineral and hypnotic atmosphere", es: "Atmósfera profunda, mineral e hipnótica" },
     url: obsidianFlowUrl,
+  },
+  {
+    id: "heartwave_anthem",
+    name: "Heartwave Anthem",
+    subtitle: { fr: "House mélodique, pulsation lumineuse et montée émotionnelle", en: "Melodic house, bright pulse and emotional build", es: "House melódico, pulso luminoso y subida emocional" },
+    url: heartwaveAnthemUrl,
+  },
+  {
+    id: "linear_skyline",
+    name: "Linear Skyline",
+    subtitle: { fr: "Progressive house aérienne et trajectoire régulière", en: "Airy progressive house with a steady trajectory", es: "Progressive house aérea con trayectoria constante" },
+    url: linearSkylineUrl,
+  },
+  {
+    id: "oriental_surge",
+    name: "Oriental Surge",
+    subtitle: { fr: "Lead oriental, énergie club et rythme incisif", en: "Oriental lead, club energy and a sharp rhythm", es: "Melodía oriental, energía de club y ritmo incisivo" },
+    url: orientalSurgeUrl,
+  },
+  {
+    id: "neon_caravan",
+    name: "Neon Caravan",
+    subtitle: { fr: "Cordes orientales, basses électro et groove nomade", en: "Oriental strings, electro bass and nomadic groove", es: "Cuerdas orientales, bajos electro y groove nómada" },
+    url: neonCaravanUrl,
   },
 ] as const;
 
