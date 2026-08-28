@@ -11,7 +11,7 @@ import { FitGlassCard, FitIcon, FitIconTabs, FitPill } from "./FitPerfUi";
 import LOGO from "../../assets/LOGO.png";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 
-type DetailTab = "zone" | "details" | "goal" | "type" | "records";
+type DetailTab = "zone" | "details" | "photos" | "goal" | "type" | "records";
 
 type Props = {
   exercise: FitExercise;
@@ -146,8 +146,17 @@ function equipmentIconName(value: string): "body" | "barbell" | "dumbbell" | "ca
   return "body";
 }
 
+function specialExerciseKey(exercise: FitExercise) {
+  const raw = `${exercise.motionKey || ""} ${exercise.id || ""} ${exercise.name || ""}`.toLowerCase();
+  const compact = raw.replace(/[^a-z0-9]+/g, " ").trim();
+  if (["push up", "push ups", "pushup", "pushups"].includes(compact) || compact.includes("push up") || compact.includes("pushup")) return "pushup";
+  if (compact.includes("bench press") || compact === "bench" || compact.includes("bench")) return "bench";
+  return exercise.motionKey || exercise.id;
+}
+
 function collectExercisePhotos(exercise: FitExercise) {
-  if (exercise.id === "pushup") {
+  const key = specialExerciseKey(exercise);
+  if (key === "pushup") {
     return Array.from(new Set([
       PUSHUP_AWENA_STEP_1,
       PUSHUP_AWENA_STEP_2,
@@ -159,7 +168,7 @@ function collectExercisePhotos(exercise: FitExercise) {
       freeExerciseImageUrl(exercise, 1),
     ].filter((item): item is string => Boolean(item)))).slice(0, 6);
   }
-  if (exercise.id === "bench") {
+  if (key === "bench") {
     return Array.from(new Set([
       BENCH_AWENA_SETUP,
       BENCH_AWENA_STEP_1,
@@ -176,7 +185,8 @@ function collectExercisePhotos(exercise: FitExercise) {
 }
 
 function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
-  if (exercise.id === "pushup") {
+  const key = specialExerciseKey(exercise);
+  if (key === "pushup") {
     const summary = tr(
       lang,
       "Exercice de poussée au poids du corps qui développe surtout les pectoraux, les triceps et les épaules, tout en demandant un gainage propre du tronc.",
@@ -237,7 +247,7 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
     };
   }
 
-  if (exercise.id === "bench") {
+  if (key === "bench") {
     const summary = tr(
       lang,
       "Exercice de poussée à la barre qui développe surtout les pectoraux, les triceps et l'avant des épaules, avec un fort accent sur la stabilité du haut du dos.",
@@ -328,11 +338,12 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
 }
 
 function FilterGlyphRow({ exercise, lang, accent }: { exercise: FitExercise; lang: string; accent: string }) {
+  const level = normalizeLevel(exercise.level) === "Débutant" ? 1 : normalizeLevel(exercise.level) === "Intermédiaire" ? 2 : 3;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 18, color: accent }}>
-      <div title={FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} style={{ display: "grid", placeItems: "center", color: exercise.accent || accent }}><FitIcon name="muscles" size={20} /></div>
-      <div title={levelText(exercise.level, lang)} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "#ffd869" }}>
-        {Array.from({ length: 3 }, (_, index) => <span key={index} style={{ color: index < (normalizeLevel(exercise.level) === "Débutant" ? 1 : normalizeLevel(exercise.level) === "Intermédiaire" ? 2 : 3) ? "#ffd869" : "rgba(255,255,255,.18)", fontSize: 17, lineHeight: 1 }}>★</span>)}
+      <div title={FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} style={{ display: "grid", placeItems: "center", color: accent }}><FitIcon name="muscles" size={20} /></div>
+      <div title={levelText(exercise.level, lang)} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: accent }}>
+        {Array.from({ length: 3 }, (_, index) => <span key={index} style={{ color: index < level ? accent : `${accent}44`, fontSize: 17, lineHeight: 1 }}>★</span>)}
       </div>
       <div title={translateEquipment(exercise.equipment, lang)} style={{ display: "grid", placeItems: "center", color: accent }}><FitIcon name={equipmentIconName(exercise.equipment)} size={20} /></div>
     </div>
@@ -344,22 +355,28 @@ function AwenaVoiceButton({ accent, text, label }: { accent: string; text: strin
   const localId = React.useId().replace(/:/g, "");
   const speechId = `fit-exercise-card-${localId}`;
   const [fallbackSpeaking, setFallbackSpeaking] = React.useState(false);
-  const speaking = Boolean(awena?.speechCue?.messageId === speechId && awena?.speechCue?.phase !== "done") || fallbackSpeaking;
+  const [localSpeaking, setLocalSpeaking] = React.useState(false);
+  const lastTriggerRef = React.useRef(0);
+  const speaking = Boolean(awena?.speechCue?.messageId === speechId && awena?.speechCue?.phase !== "done") || fallbackSpeaking || localSpeaking;
 
-  React.useEffect(() => () => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try { window.speechSynthesis.getVoices(); } catch {}
+    }
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    };
   }, []);
 
-  const handleClick = React.useCallback(async (event?: React.MouseEvent<HTMLButtonElement>) => {
-    event?.preventDefault();
-    event?.stopPropagation();
-
+  const triggerSpeech = React.useCallback(() => {
     if (awena) {
       if (awena.speechCue?.messageId === speechId && awena.speechCue?.phase !== "done") {
-        await awena.stop();
+        setLocalSpeaking(false);
+        void awena.stop();
         return;
       }
-      await awena.say(text, speechId);
+      setLocalSpeaking(true);
+      void awena.say(text, speechId).catch(() => setLocalSpeaking(false));
       return;
     }
 
@@ -380,17 +397,38 @@ function AwenaVoiceButton({ accent, text, label }: { accent: string; text: strin
     synth.speak(utterance);
   }, [awena, fallbackSpeaking, label, speechId, text]);
 
+  const queueTrigger = React.useCallback((event?: React.SyntheticEvent<HTMLButtonElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const now = Date.now();
+    if (now - lastTriggerRef.current < 250) return;
+    lastTriggerRef.current = now;
+    triggerSpeech();
+  }, [triggerSpeech]);
+
   React.useEffect(() => {
     if (!awena && fallbackSpeaking) return;
+    if (awena?.speechCue?.messageId === speechId && awena?.speechCue?.phase === "speaking") {
+      setLocalSpeaking(false);
+      return;
+    }
     if (awena?.speechCue?.messageId !== speechId || awena?.speechCue?.phase === "done") {
       setFallbackSpeaking(false);
+      setLocalSpeaking(false);
     }
   }, [awena, speechId, fallbackSpeaking]);
 
   return (
     <button
       type="button"
-      onClick={(event) => { void handleClick(event); }}
+      onPointerDown={(event) => queueTrigger(event)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") queueTrigger(event);
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       title={label}
       aria-label={label}
       style={{
@@ -412,8 +450,8 @@ function AwenaVoiceButton({ accent, text, label }: { accent: string; text: strin
         WebkitTapHighlightColor: "transparent",
       }}
     >
-      <img src="/awena/awena-avatar.webp" alt="" aria-hidden="true" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", opacity: speaking ? 1 : .96 }} />
-      <span style={{ position: "absolute", right: 8, bottom: 8, color: accent, display: "grid", placeItems: "center", opacity: .92 }}><FitIcon name="volume" size={12} /></span>
+      <img src="/awena/awena-avatar.webp" alt="" aria-hidden="true" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", objectPosition: "center 24%", opacity: speaking ? 1 : .97 }} />
+      <span style={{ position: "absolute", right: 7, bottom: 7, width: 16, height: 16, borderRadius: 999, color: accent, display: "grid", placeItems: "center", opacity: .96, background: "rgba(7,9,14,.84)", boxShadow: `0 2px 8px rgba(0,0,0,.4), 0 0 0 1px ${accent}28` }}><FitIcon name="volume" size={10} /></span>
     </button>
   );
 }
@@ -437,24 +475,33 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   const [viewerImage, setViewerImage] = React.useState<string | null>(null);
   const photos = React.useMemo(() => collectExercisePhotos(exercise), [exercise]);
   const totalSessions = detailRecord ? 1 : 0;
+  const assistZones = React.useMemo(() => {
+    const mapped = Object.entries(guide.intensityMap || {})
+      .filter(([muscle, intensity]) => muscle !== exercise.muscle && Number(intensity || 0) > 0)
+      .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+      .map(([muscle]) => FIT_MUSCLE_LABELS[muscle as FitMuscle]?.[langKey])
+      .filter(Boolean);
+    if (mapped.length) return mapped;
+    return (exercise.secondary || []).map((item) => FIT_MUSCLE_LABELS[item]?.[langKey]).filter(Boolean);
+  }, [exercise, guide.intensityMap, langKey]);
 
   const tabItems = [
     { id: "zone" as const, label: tr(lang, "ZONE", "ZONE", "ZONA"), icon: "muscles" as const },
     { id: "details" as const, label: tr(lang, "DÉTAILS", "DETAILS", "DETALLES"), icon: "guide" as const },
+    { id: "photos" as const, label: tr(lang, "PHOTOS", "PHOTOS", "FOTOS"), icon: "library" as const },
     { id: "goal" as const, label: tr(lang, "OBJECTIF", "GOAL", "OBJETIVO"), icon: "goals" as const },
     { id: "type" as const, label: tr(lang, "TYPE", "TYPE", "TIPO"), icon: "workout" as const },
     { id: "records" as const, label: tr(lang, "RECORDS", "RECORDS", "RÉCORDS"), icon: "records" as const },
   ];
 
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 140, background: "rgba(2,4,8,.82)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ position: "relative", width: "100%", maxWidth: 760, maxHeight: "94vh", overflowY: "auto", borderRadius: 30, padding: 14, background: `linear-gradient(180deg, rgba(7,10,17,.985), rgba(8,11,18,.995))`, border: `1px solid ${accent}40`, boxShadow: `0 30px 90px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.04), 0 0 30px ${accent}10` }}>
-        <img src={LOGO} alt="" aria-hidden="true" style={{ position: "absolute", right: -150, bottom: -130, width: 470, opacity: .095, pointerEvents: "none", filter: "grayscale(1)", transform: "rotate(-18deg)" }} />
-        <img src={LOGO} alt="" aria-hidden="true" style={{ position: "absolute", right: -180, top: 18, width: 410, opacity: .07, pointerEvents: "none", filter: "grayscale(1)", transform: "rotate(14deg)" }} />
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 140, background: "rgba(2,4,8,.82)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12, overflowX: "hidden" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ position: "relative", width: "100%", maxWidth: 760, maxHeight: "94vh", overflowY: "auto", overflowX: "hidden", overscrollBehaviorX: "none", touchAction: "pan-y", boxSizing: "border-box", borderRadius: 30, padding: 14, background: `linear-gradient(180deg, rgba(7,10,17,.985), rgba(8,11,18,.995))`, border: `1px solid ${accent}40`, boxShadow: `0 30px 90px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.04), 0 0 30px ${accent}10` }}>
+        <img src={LOGO} alt="" aria-hidden="true" style={{ position: "absolute", right: -190, bottom: -170, width: 500, opacity: .085, pointerEvents: "none", filter: "grayscale(1)", transform: "rotate(-18deg)" }} />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "start" }}>
           <div>
-            <div style={{ fontSize: 26, lineHeight: 1.03, fontWeight: 1000, letterSpacing: -.7 }}>{exercise.name}</div>
+            <div style={{ fontSize: 26, lineHeight: 1.03, fontWeight: 1000, letterSpacing: -.7, color: accent }}>{exercise.name}</div>
             <div style={{ marginTop: 10 }}><FilterGlyphRow exercise={exercise} lang={lang} accent={accent} /></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -467,22 +514,12 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
         </div>
 
         <div style={{ marginTop: 12, borderRadius: 26, overflow: "hidden", border: `1px solid ${accent}35`, background: `radial-gradient(circle at 50% 24%,${accent}10,rgba(3,6,11,.96) 72%)`, boxShadow: `inset 0 0 24px ${accent}08` }}>
-          <FitExerciseMotion exercise={exercise} accent={accent} />
+          <FitExerciseMotion exercise={exercise} accent={accent} cleanBranding />
         </div>
 
         <div style={{ marginTop: 10 }}>
           <FitIconTabs items={tabItems} value={tab} onChange={setTab} accent={accent} />
         </div>
-
-        {photos.length ? (
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "thin", marginBottom: 8 }}>
-            {photos.map((url, index) => (
-              <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: `1px solid ${index === 0 ? accent + "55" : "rgba(255,255,255,.07)"}`, background: "rgba(255,255,255,.02)", borderRadius: 16, overflow: "hidden", minWidth: 118, width: 118, height: 88, flex: "0 0 118px", cursor: "pointer", boxShadow: index === 0 ? `0 0 18px ${accent}14` : "none" }}>
-                <img src={url} alt={`${exercise.name} ${index + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              </button>
-            ))}
-          </div>
-        ) : null}
 
         {tab === "zone" ? (
           <FitGlassCard accent={accent} style={{ position: "relative", padding: 16, borderRadius: 24, overflow: "hidden", background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
@@ -498,7 +535,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
             </div>
             <div style={{ marginTop: 12, display: "grid", gap: 7, fontSize: 8.8, color: "rgba(255,255,255,.82)" }}>
               <div><span style={{ color: FIT_MUSCLE_COLORS[exercise.muscle], fontWeight: 1000 }}>{tr(lang, "Zone principale", "Primary zone", "Zona principal")}</span> — {FIT_MUSCLE_LABELS[exercise.muscle][langKey]}</div>
-              {exercise.secondary?.length ? <div><span style={{ color: accent, fontWeight: 1000 }}>{tr(lang, "Zones d'assistance", "Assist zones", "Zonas de asistencia")}</span> — {exercise.secondary.map((item) => FIT_MUSCLE_LABELS[item][langKey]).join(", ")}</div> : null}
+              {assistZones.length ? <div><span style={{ color: accent, fontWeight: 1000 }}>{tr(lang, "Zones d'assistance", "Assist zones", "Zonas de asistencia")}</span> — {assistZones.join(", ")}</div> : null}
             </div>
           </FitGlassCard>
         ) : null}
@@ -543,6 +580,26 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
                 </ul>
               </FitGlassCard>
             ) : null}
+          </FitGlassCard>
+        ) : null}
+
+
+        {tab === "photos" ? (
+          <FitGlassCard accent={accent} style={{ position: "relative", padding: 16, borderRadius: 24, overflow: "hidden", background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
+            <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>{tr(lang, "Photos de l'exercice", "Exercise photos", "Fotos del ejercicio")}</div>
+            {photos.length ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                {photos.map((url, index) => (
+                  <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: `1px solid ${accent}2e`, background: "rgba(255,255,255,.02)", borderRadius: 18, overflow: "hidden", minWidth: 0, cursor: "pointer", boxShadow: `0 0 16px ${accent}10` }}>
+                    <img src={url} alt={`${exercise.name} ${index + 1}`} style={{ width: "100%", height: 154, objectFit: "cover", display: "block" }} />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 18, background: "rgba(255,255,255,.018)", color: "rgba(255,255,255,.72)", fontSize: 9.2, lineHeight: 1.45 }}>
+                {tr(lang, "Aucune photo supplémentaire disponible pour le moment.", "No extra photos available yet.", "Todavía no hay fotos adicionales disponibles.")}
+              </FitGlassCard>
+            )}
           </FitGlassCard>
         ) : null}
 
