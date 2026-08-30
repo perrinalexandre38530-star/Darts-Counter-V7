@@ -16,6 +16,7 @@ import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
 import OutdoorOfflineRoutePanel from "./OutdoorOfflineRoutePanel";
 import RunningElevationProfile from "./RunningElevationProfile";
 import { RunningSurface } from "./RunningUi";
+import "./runningResponsive.css";
 
 export type OutdoorRouteDetailTab = "overview" | "places" | "photos" | "performance" | "community" | "plan";
 type DetailTab = OutdoorRouteDetailTab;
@@ -62,16 +63,20 @@ export default function OutdoorRouteDetailPage(props: Props) {
 
   if (mapFullscreen) return <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#070a0f" }}><OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} fullscreen activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint} onCloseFullscreen={() => setMapFullscreen(false)}/></div>;
 
-  const tabs: Array<[DetailTab, string, string]> = [
-    ["overview", "▤", pickText(lang, "APERÇU", "OVERVIEW", "RESUMEN")],
+  const primaryTab = tab === "places" || tab === "photos" || tab === "community" ? "discover" : tab;
+  const primaryTabs: Array<["overview" | "discover" | "performance" | "plan", string, string, DetailTab]> = [
+    ["overview", "▤", pickText(lang, "APERÇU", "OVERVIEW", "RESUMEN"), "overview"],
+    ["discover", "⌖", pickText(lang, "DÉCOUVRIR", "EXPLORE", "DESCUBRIR"), "places"],
+    ["performance", "↗", pickText(lang, "TERRAIN & PERF", "TERRAIN & PERF", "TERRENO Y REND."), "performance"],
+    ["plan", "◷", pickText(lang, "PLANIFIER", "PLAN", "PLANIFICAR"), "plan"],
+  ];
+  const discoverTabs: Array<[DetailTab, string, string]> = [
     ["places", "⌖", pickText(lang, "LIEUX", "PLACES", "LUGARES")],
     ["photos", "▧", pickText(lang, "PHOTOS", "PHOTOS", "FOTOS")],
-    ["performance", "↗", pickText(lang, "PERF", "PERF", "REND.")],
     ["community", "◉", pickText(lang, "COMMUNAUTÉ", "COMMUNITY", "COMUNIDAD")],
-    ["plan", "◷", pickText(lang, "PLANIFIER", "PLAN", "PLANIFICAR")],
   ];
 
-  return <div style={{ minHeight: "100dvh", width: "100%", maxWidth: 1440, margin: "0 auto", padding: "max(6px,env(safe-area-inset-top)) clamp(6px,1.2vw,16px) max(88px,calc(76px + env(safe-area-inset-bottom)))" }}>
+  return <div className="running-route-detail" style={{ minHeight: "100dvh", width: "100%", maxWidth: 1080, margin: "0 auto", overflowX: "clip", padding: "max(6px,env(safe-area-inset-top)) clamp(6px,1.2vw,16px) max(88px,calc(76px + env(safe-area-inset-bottom)))" }}>
     <header style={{ position: "sticky", top: 0, zIndex: 80, display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center", padding: "6px 0 9px", background: "linear-gradient(180deg,rgba(5,8,13,.98),rgba(5,8,13,.86) 78%,transparent)", backdropFilter: "blur(14px)" }}>
       <button className="btn" title={pickText(lang,"Retour","Back","Volver")} onClick={props.onBack} style={headerIcon}>←</button>
       <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>{outdoorSportLabel(sport, lang).toUpperCase()} · {pickText(lang,"FICHE PARCOURS","ROUTE PAGE","FICHA DE RUTA")}</div><div style={{ marginTop: 2, color: "#fff", fontSize: "clamp(13px,2vw,18px)", fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{route.name}</div></div>
@@ -86,13 +91,17 @@ export default function OutdoorRouteDetailPage(props: Props) {
           <div style={{ minWidth: 0 }}><div style={{ fontSize: "clamp(13px,2.4vw,19px)", lineHeight: 1.15, fontWeight: 1000 }}>{route.name}</div><div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={terrain.hasElevation ? terrainLabel(terrain.terrain, lang) : outdoorSportLabel(sport, lang)} accent={accent}/>{route.scout ? <Pill text={`✦ ${route.scout.score}%`} accent={accent}/> : null}{terrain.hasElevation ? <Pill text={`${pickText(lang,"DIFF.","DIFF.","DIF.")} ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div></div>
           <button className="btn" onClick={() => setMapFullscreen(true)} title={pickText(lang,"Carte plein écran","Fullscreen map","Mapa a pantalla completa")} style={{ minWidth: 42, minHeight: 42, padding: 0, color: accent, borderColor: `${accent}55`, fontSize: 15 }}>⛶</button>
         </div>
-        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><Metric label={pickText(lang,"DISTANCE","DISTANCE","DISTANCIA")} value={formatDistance(route.distanceM)} accent={accent}/><Metric label="D+" value={terrain.hasElevation ? `+${Math.round(terrain.gainM)} m` : route.elevationGainM ? `+${Math.round(route.elevationGainM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"SOMMET","HIGH","CIMA")} value={terrain.maxAltitudeM != null ? `${Math.round(terrain.maxAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"DURÉE","TIME","TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(route, sport))} accent={accent}/></div>
-        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><Action icon="▶" label={pickText(lang,"GUIDER","GUIDE","GUIAR")} accent={accent} active onClick={props.onGuide}/><Action icon={props.favorite ? "★" : "☆"} label={pickText(lang,"FAVORI","FAVORITE","FAVORITO")} accent={accent} active={props.favorite} onClick={props.onToggleFavorite}/><Action icon="◷" label={pickText(lang,"PLANIFIER","PLAN","PLANIFICAR")} accent={accent} onClick={() => setTab("plan")}/><Action icon="↗" label="MAPS" accent={accent} onClick={props.onOpenMaps}/></div>
+        <div className="running-metrics-4" style={{ marginTop: 10 }}><Metric label={pickText(lang,"DISTANCE","DISTANCE","DISTANCIA")} value={formatDistance(route.distanceM)} accent={accent}/><Metric label="D+" value={terrain.hasElevation ? `+${Math.round(terrain.gainM)} m` : route.elevationGainM ? `+${Math.round(route.elevationGainM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"SOMMET","HIGH","CIMA")} value={terrain.maxAltitudeM != null ? `${Math.round(terrain.maxAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"DURÉE","TIME","TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(route, sport))} accent={accent}/></div>
+        <div className="running-actions-4" style={{ marginTop: 9 }}><Action icon="▶" label={pickText(lang,"GUIDER","GUIDE","GUIAR")} accent={accent} active onClick={props.onGuide}/><Action icon={props.favorite ? "★" : "☆"} label={pickText(lang,"FAVORI","FAVORITE","FAVORITO")} accent={accent} active={props.favorite} onClick={props.onToggleFavorite}/><Action icon="◷" label={pickText(lang,"PLANIFIER","PLAN","PLANIFICAR")} accent={accent} onClick={() => setTab("plan")}/><Action icon="↗" label="MAPS" accent={accent} onClick={props.onOpenMaps}/></div>
       </section>
 
-      <nav style={{ position: "sticky", top: 58, zIndex: 70, display: "flex", gap: 5, overflowX: "auto", padding: 6, borderRadius: 16, background: "rgba(6,9,14,.90)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,.075)", boxShadow: "0 12px 30px rgba(0,0,0,.24)" }}>
-        {tabs.map(([id, icon, label]) => { const active = tab === id; return <button key={id} className="btn" title={label} onClick={() => setTab(id)} style={{ flex: active ? "1 0 auto" : "0 0 42px", minWidth: active ? 94 : 42, minHeight: 40, padding: active ? "4px 11px" : 0, display: "flex", justifyContent: "center", alignItems: "center", gap: 6, borderRadius: 13, color: active ? accent : undefined, borderColor: active ? `${accent}5a` : "rgba(255,255,255,.06)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: active ? 7.4 : 13, fontWeight: 1000, transition: "all .17s ease" }}><span>{icon}</span>{active ? <span style={{ whiteSpace: "nowrap" }}>{label}</span> : null}</button>; })}
+      <nav style={{ position: "sticky", top: 58, zIndex: 70, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, padding: 6, borderRadius: 16, background: "rgba(6,9,14,.92)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,.075)", boxShadow: "0 12px 30px rgba(0,0,0,.24)" }}>
+        {primaryTabs.map(([id, icon, label, target]) => { const active = primaryTab === id; return <button key={id} className="btn" title={label} onClick={() => setTab(target)} style={{ minWidth: 0, minHeight: 44, padding: "5px 4px", display: "grid", placeItems: "center", gap: 2, borderRadius: 13, color: active ? accent : undefined, borderColor: active ? `${accent}5a` : "rgba(255,255,255,.06)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: 8.2, fontWeight: 1000 }}><span style={{ fontSize: 13 }}>{icon}</span><span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span></button>; })}
       </nav>
+
+      {primaryTab === "discover" ? <div className="running-detail-discover-tabs">
+        {discoverTabs.map(([id,icon,label]) => <button key={id} className="btn" onClick={() => setTab(id)} style={{ minHeight: 38, color: tab === id ? accent : undefined, borderColor: tab === id ? `${accent}55` : undefined, fontSize: 8.5, fontWeight: 1000 }}>{icon} {label}</button>)}
+      </div> : null}
 
       {tab === "overview" ? <div style={{ display: "grid", gap: 9 }}>
         <RunningSurface accent={accent}>
@@ -112,7 +121,7 @@ export default function OutdoorRouteDetailPage(props: Props) {
   </div>;
 }
 
-function Pill({ text, accent, muted = false }: { text: string; accent: string; muted?: boolean }) { return <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${muted ? "rgba(255,255,255,.10)" : `${accent}32`}`, color: muted ? "rgba(255,255,255,.7)" : accent, fontSize: 6.7, fontWeight: 1000 }}>{text}</span>; }
-function Metric({ label, value, accent }: { label: string; value: string; accent: string }) { return <div style={{ minWidth: 0, padding: "8px 5px", textAlign: "center", borderRadius: 12, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ color: "rgba(255,255,255,.43)", fontSize: 6, fontWeight: 1000, whiteSpace: "nowrap" }}>{label}</div><div style={{ marginTop: 3, color: accent, fontSize: "clamp(8px,1.5vw,10px)", fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>; }
-function Action({ icon, label, accent, active = false, onClick }: { icon: string; label: string; accent: string; active?: boolean; onClick: () => void }) { return <button className="btn" title={label} onClick={onClick} style={{ minHeight: 42, padding: "4px 5px", display: "grid", placeItems: "center", gap: 2, color: active ? accent : undefined, borderColor: active ? `${accent}55` : undefined, background: active ? `${accent}08` : undefined }}><span style={{ fontSize: 13 }}>{icon}</span><span style={{ fontSize: 6.2, fontWeight: 1000, whiteSpace: "nowrap" }}>{label}</span></button>; }
+function Pill({ text, accent, muted = false }: { text: string; accent: string; muted?: boolean }) { return <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${muted ? "rgba(255,255,255,.10)" : `${accent}32`}`, color: muted ? "rgba(255,255,255,.7)" : accent, fontSize: 7.8, fontWeight: 1000 }}>{text}</span>; }
+function Metric({ label, value, accent }: { label: string; value: string; accent: string }) { return <div style={{ minWidth: 0, padding: "8px 5px", textAlign: "center", borderRadius: 12, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ color: "rgba(255,255,255,.43)", fontSize: 7.2, fontWeight: 1000, whiteSpace: "nowrap" }}>{label}</div><div style={{ marginTop: 3, color: accent, fontSize: "clamp(9.5px,1.7vw,11px)", fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>; }
+function Action({ icon, label, accent, active = false, onClick }: { icon: string; label: string; accent: string; active?: boolean; onClick: () => void }) { return <button className="btn" title={label} onClick={onClick} style={{ minHeight: 42, padding: "4px 5px", display: "grid", placeItems: "center", gap: 2, color: active ? accent : undefined, borderColor: active ? `${accent}55` : undefined, background: active ? `${accent}08` : undefined }}><span style={{ fontSize: 13 }}>{icon}</span><span style={{ fontSize: 7.5, fontWeight: 1000, whiteSpace: "nowrap" }}>{label}</span></button>; }
 const headerIcon: React.CSSProperties = { minWidth: 40, minHeight: 40, padding: 0, borderRadius: 13, fontSize: 15, background: "rgba(255,255,255,.025)" };

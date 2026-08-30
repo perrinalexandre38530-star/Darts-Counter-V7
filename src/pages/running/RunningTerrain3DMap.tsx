@@ -3,6 +3,7 @@ import { formatDuration, formatPace, haversineMeters } from "../../activity/acti
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
+import "./runningResponsive.css";
 
 const MAPLIBRE_VERSION = "6.6.0";
 const MAPLIBRE_MODULE = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`;
@@ -137,7 +138,7 @@ function markerElement(content: string, border: string, title: string, size = 30
   return el;
 }
 
-export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(330px,54vh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true }: Props) {
+export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true }: Props) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
   const maplibreRef = React.useRef<any>(null);
@@ -352,7 +353,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
 
   const stopReplay = () => setReplaying(false);
 
-  return <div style={{ position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
+  return <div className="running-map-shell" style={{ position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
     <div ref={hostRef} style={{ position: "absolute", inset: 0 }}/>
     {status === "loading" ? <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "grid", placeItems: "center", background: "linear-gradient(145deg,#101821,#070b10)", color: textSoft }}><div style={{ textAlign: "center", fontSize: 9 }}><div style={{ color: accent, fontSize: 20, marginBottom: 8 }}>⛰</div>{pickText(lang, "Chargement du relief 3D…", "Loading 3D terrain…", "Cargando relieve 3D…")}</div></div> : null}
     {status === "error" ? <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "grid", placeItems: "center", padding: 18, background: "linear-gradient(145deg,#101821,#070b10)" }}><div style={{ maxWidth: 360, textAlign: "center" }}><div style={{ color: "#ff9a92", fontSize: 22 }}>△</div><div style={{ marginTop: 6, fontSize: 10, fontWeight: 1000 }}>{pickText(lang, "3D indisponible", "3D unavailable", "3D no disponible")}</div><div style={{ marginTop: 5, color: textSoft, fontSize: 7.5, lineHeight: 1.45 }}>{error}</div>{onFallback2D ? <button className="btn" onClick={onFallback2D} style={{ marginTop: 10, minHeight: 36, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{pickText(lang, "REVENIR EN 2D", "BACK TO 2D", "VOLVER A 2D")}</button> : null}</div></div> : null}
@@ -360,13 +361,13 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     {status === "ready" ? <>
       <div style={{ position: "absolute", left: 10, top: 10, zIndex: 15, display: "flex", gap: 6, pointerEvents: "auto" }}>
         <button className="btn" onClick={() => fitRoute(64)} style={controlStyle} title={pickText(lang,"Recentrer","Recenter","Centrar")}>◎</button>
-        <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: `1px solid ${accent}38`, color: accent, fontSize: 7, fontWeight: 1000, backdropFilter: "blur(12px)" }}>3D · DEM</div>
+        <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: `1px solid ${accent}38`, color: accent, fontSize: 8.4, fontWeight: 1000, backdropFilter: "blur(12px)" }}>3D · DEM</div>
       </div>
 
-      {showReplay ? <div style={{ position: "absolute", left: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 16, maxWidth: "calc(100% - 20px)", pointerEvents: "auto" }}>
+      {showReplay ? <div className="running-3d-replay" style={{ position: "absolute", left: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 16, maxWidth: "calc(100% - 20px)", pointerEvents: "auto" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "stretch", flexWrap: "wrap" }}>
-          <button className="btn" onClick={replaying ? stopReplay : startReplay} style={{ minHeight: 38, padding: "6px 10px", color: accent, borderColor: `${accent}55`, background: "rgba(5,8,13,.88)", backdropFilter: "blur(12px)", fontSize: 7.4, fontWeight: 1000 }}>{replaying ? "Ⅱ " : "▶ "}{replaying ? pickText(lang,"PAUSE","PAUSE","PAUSA") : pickText(lang,"SURVOL 3D","3D FLYOVER","VUELO 3D")}</button>
-          {effectiveIndex != null ? <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(54px,auto))", gap: 4, padding: 5, borderRadius: 13, background: "rgba(5,8,13,.84)", border: "1px solid rgba(255,255,255,.10)", backdropFilter: "blur(12px)", overflowX: "auto", maxWidth: "min(680px,calc(100vw - 118px))" }}>
+          <button className="btn" onClick={replaying ? stopReplay : startReplay} style={{ minHeight: 38, padding: "6px 10px", color: accent, borderColor: `${accent}55`, background: "rgba(5,8,13,.88)", backdropFilter: "blur(12px)", fontSize: 8.5, fontWeight: 1000 }}>{replaying ? "Ⅱ " : "▶ "}{replaying ? pickText(lang,"PAUSE","PAUSE","PAUSA") : pickText(lang,"SURVOL 3D","3D FLYOVER","VUELO 3D")}</button>
+          {effectiveIndex != null ? <div className="running-3d-replay-metrics" style={{ display: "grid", gap: 4, padding: 5, borderRadius: 13, background: "rgba(5,8,13,.84)", border: "1px solid rgba(255,255,255,.10)", backdropFilter: "blur(12px)" }}>
             <ReplayMetric label={pickText(lang,"DIST.","DIST.","DIST.")} value={`${((distances[currentIndex] || 0) / 1000).toFixed(2)} km`} accent={accent}/>
             <ReplayMetric label={pickText(lang,"TEMPS","TIME","TIEMPO")} value={elapsedMs == null ? "—" : formatDuration(elapsedMs)} accent={accent}/>
             <ReplayMetric label={pickText(lang,"ALT.","ELEV.","ALT.")} value={Number.isFinite(currentPoint?.altitude) ? `${Math.round(Number(currentPoint.altitude))} m` : currentTerrain ? `${Math.round(currentTerrain.altitudeM)} m` : "—"} accent={accent}/>
@@ -376,13 +377,13 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         </div>
       </div> : null}
 
-      {routeName ? <div style={{ position: "absolute", left: "50%", top: 10, transform: "translateX(-50%)", zIndex: 10, maxWidth: "52%", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.70)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.8)", fontSize: 7, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none", backdropFilter: "blur(10px)" }}>{routeName}</div> : null}
+      {routeName ? <div className="running-map-route-name" style={{ position: "absolute", left: "50%", top: 10, transform: "translateX(-50%)", zIndex: 10, maxWidth: "52%", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.70)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.8)", fontSize: 7, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none", backdropFilter: "blur(10px)" }}>{routeName}</div> : null}
     </> : null}
   </div>;
 }
 
 function ReplayMetric({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return <div style={{ minWidth: 54, padding: "4px 6px", textAlign: "center" }}><div style={{ color: "rgba(255,255,255,.45)", fontSize: 5.8, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 2, color: accent, fontSize: 7.5, fontWeight: 1000, whiteSpace: "nowrap" }}>{value}</div></div>;
+  return <div className="running-3d-replay-metric" style={{ padding: "5px 6px", textAlign: "center" }}><div style={{ color: "rgba(255,255,255,.48)", fontSize: 6.6, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 2, color: accent, fontSize: 8.2, fontWeight: 1000, whiteSpace: "nowrap" }}>{value}</div></div>;
 }
 
 const controlStyle: React.CSSProperties = { minWidth: 38, minHeight: 38, padding: 0, borderRadius: 13, background: "rgba(5,8,13,.86)", borderColor: "rgba(255,255,255,.14)", backdropFilter: "blur(12px)", fontSize: 13 };

@@ -13,6 +13,7 @@ import { outdoorRerouteMatchedDistanceM, rerouteAsRunningRoute, type OutdoorRout
 import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import type { OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
+import "./runningResponsive.css";
 
 type Props = {
   route: RunningRouteTemplate;
@@ -204,7 +205,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
 
     <div style={{ position: "absolute", left: 10, right: 10, bottom: "max(12px,env(safe-area-inset-bottom))", zIndex: 12, padding: 10, borderRadius: 17, background: "rgba(7,10,15,.92)", border: "1px solid rgba(255,255,255,.13)", backdropFilter: "blur(18px)", boxShadow: "0 -12px 35px rgba(0,0,0,.28)" }}>
       <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}><div style={{ width: `${progress.progressPct}%`, height: "100%", background: isAlert ? "#ff6b62" : accent, borderRadius: 999 }}/></div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8 }}>{[
+      <div className="running-metrics-4" style={{ marginTop: 8 }}>{[
         [copy.remaining, formatDistance(progress.remainingM)],
         [copy.eta, progress.etaMs != null ? formatDuration(progress.etaMs) : "—"],
         [copy.next, progress.nextCheckpoint ? checkpointText(progress.nextCheckpoint.kind, progress.nextCheckpoint.name, lang) : "—"],

@@ -6,6 +6,7 @@ import { compareRunningActivities } from "../../activity/runningComparison";
 import { createSegmentFromActivity, loadRunningSegments, removeRunningSegment, segmentImprovementMs, segmentLeaderboard, upsertRunningSegment, type RunningSegment } from "../../activity/runningSegments";
 import RunningSegmentMap from "./RunningSegmentMap";
 import type { ActivityRecord } from "../../activity/activityTypes";
+import "./runningResponsive.css";
 
 type Props = { activities: ActivityRecord[]; lang: string; accent: string; textSoft: string };
 

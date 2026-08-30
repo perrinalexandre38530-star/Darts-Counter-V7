@@ -12,6 +12,7 @@ import { activePlanWeekIndex, buildTrainingStatus, loadRunningPlan, nextPlanSess
 import { buildRunningRaceGoalSnapshot, distanceGoalLabel, loadRunningRaceGoal } from "../../activity/runningGoals";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import { RunningActionTile, RunningGlyph, RunningSectionHeading, RunningStatusChip, RunningSurface } from "./RunningUi";
+import "./runningResponsive.css";
 import { loadRunningActiveSessions, runningActiveElapsedMs, subscribeRunningActiveSessions, upsertRunningActiveSession, type RunningActiveSession } from "../../activity/runningActiveSessions";
 import { OUTDOOR_SPORT_PROFILES, canonicalOutdoorPerformanceSport, loadOutdoorPerformanceSport, outdoorAverageMetricLabel, outdoorAverageMetricValue, outdoorAverageSpeedKmh, outdoorSportLabel, outdoorUsesSpeedMetric, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
@@ -210,7 +211,7 @@ export default function RunningHome({ store, go }: Props) {
     const weekLabel = `${(stats.weekDistanceM / 1000).toFixed(1)} / ${weeklyGoalKm} km`;
     const bestMetricLabel = speedPrimary ? pickLegacyLocalizedText(lang, "Meilleure vitesse", "Best speed", "Mejor velocidad") : copy.best;
     const bestMetricValue = speedPrimary ? (bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—") : `${formatPace(stats.bestPaceSecPerKm)} /km`;
-    return <div style={{ minHeight: "100%", background: (theme as any).pageBackground || (theme as any).bg || "#05060C", color: "#FFFFFF", display: "flex", justifyContent: "center", padding: "16px 12px 96px", boxSizing: "border-box" }}>
+    return <div className="running-page" style={{ minHeight: "100%", background: (theme as any).pageBackground || (theme as any).bg || "#05060C", color: "#FFFFFF", display: "flex", justifyContent: "center", padding: "16px 12px 96px", boxSizing: "border-box" }}>
     <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH }}>
       <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}}`}</style>
 

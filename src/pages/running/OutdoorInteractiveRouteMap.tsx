@@ -5,6 +5,7 @@ import { fetchOutdoorRoutePlaceContext, outdoorRoutePlaceIcon, type OutdoorRoute
 import type { GeoPoint } from "../../activity/activityTypes";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import RunningTerrain3DMap from "./RunningTerrain3DMap";
+import "./runningResponsive.css";
 
 function pickText(lang: string, fr: string, en: string, es: string) {
   const lower = String(lang || "fr").toLowerCase();
@@ -33,7 +34,7 @@ const TILE = 256;
 const MIN_ZOOM = 3;
 const MAX_ZOOM = 19;
 
-export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSoft, height = "clamp(330px,54vh,620px)", fullscreen = false, showPoi = true, onFullscreen, onCloseFullscreen, activePointIndex = null, onActivePointChange }: Props) {
+export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSoft, height = "clamp(320px,58svh,620px)", fullscreen = false, showPoi = true, onFullscreen, onCloseFullscreen, activePointIndex = null, onActivePointChange }: Props) {
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const [size, setSize] = React.useState<Size>({ width: 1000, height: 620 });
   const [viewport, setViewport] = React.useState<Viewport>(() => fitViewport(route.route, 1000, 620));
@@ -147,11 +148,11 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
     setSelectedPlace(place);
   };
 
-  if (mapMode === "3d") return <div ref={wrapRef} style={{ position: "relative", width: "100%", height: fullscreen ? "100dvh" : height, minHeight: fullscreen ? undefined : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
+  if (mapMode === "3d") return <div ref={wrapRef} className="running-map-shell" style={{ position: "relative", width: "100%", height: fullscreen ? "100dvh" : height, minHeight: fullscreen ? undefined : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
     <RunningTerrain3DMap points={route.route} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route.name} places={visiblePlaces} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onPlaceSelect={setSelectedPlace} onFallback2D={() => setMapMode("2d")} showReplay/>
     <div style={{ position: "absolute", left: 58, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, zIndex: 30, display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(5,8,13,.86)", border: "1px solid rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}>
-      <button className="btn" onClick={() => setMapMode("2d")} style={{ minWidth: 34, minHeight: 32, padding: "0 7px", fontSize: 7, fontWeight: 1000 }}>2D</button>
-      <button className="btn" style={{ minWidth: 34, minHeight: 32, padding: "0 7px", fontSize: 7, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>3D</button>
+      <button className="btn" onClick={() => setMapMode("2d")} style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000 }}>2D</button>
+      <button className="btn" style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>3D</button>
     </div>
     <div style={{ position: "absolute", right: 54, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, zIndex: 30 }}>
       {fullscreen && onCloseFullscreen ? <button className="btn" onClick={onCloseFullscreen} style={mapControlStyle}>×</button> : onFullscreen ? <button className="btn" onClick={onFullscreen} style={mapControlStyle}>⛶</button> : null}
@@ -159,7 +160,7 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
     {selectedPlace ? <PlacePopup place={selectedPlace} photos={placePhotos} busy={placePhotoBusy} accent={accent} textSoft={textSoft} lang={lang} onClose={() => setSelectedPlace(null)}/> : null}
   </div>;
 
-  return <div ref={wrapRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={onWheel} style={{ position: "relative", width: "100%", height: fullscreen ? "100dvh" : height, minHeight: fullscreen ? undefined : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", touchAction: "none", userSelect: "none", cursor: "grab", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
+  return <div ref={wrapRef} className="running-map-shell" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={onWheel} style={{ position: "relative", width: "100%", height: fullscreen ? "100dvh" : height, minHeight: fullscreen ? undefined : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", touchAction: "none", userSelect: "none", cursor: "grab", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
     {layout.tiles.map((tile) => <img key={tile.key} src={tile.url} alt="" draggable={false} loading="eager" decoding="async" style={{ position: "absolute", left: tile.left, top: tile.top, width: TILE + 1, height: TILE + 1, objectFit: "cover", pointerEvents: "none" }}/>) }
     <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(3,7,11,.015),rgba(3,7,11,.08))", pointerEvents: "none" }}/>
     <svg viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
@@ -175,13 +176,13 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
       return <button key={place.id} type="button" title={place.name} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => openPlace(event, place)} style={{ position: "absolute", left: screen.x, top: screen.y, transform: "translate(-50%,-50%)", width: 34, height: 34, borderRadius: 999, display: "grid", placeItems: "center", border: selectedPlace?.id === place.id ? `2px solid ${accent}` : "1px solid rgba(255,255,255,.8)", background: selectedPlace?.id === place.id ? "rgba(6,10,15,.98)" : "rgba(6,10,15,.88)", color: "#fff", fontSize: 16, zIndex: selectedPlace?.id === place.id ? 14 : 9, boxShadow: "0 5px 16px rgba(0,0,0,.45)", cursor: "pointer" }}>{outdoorRoutePlaceIcon(place.category)}</button>;
     })}
 
-    <div style={{ position: "absolute", left: 10, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, display: "flex", gap: 6, zIndex: 18, pointerEvents: "auto" }}>
+    <div className="running-map-toolbar" style={{ position: "absolute", left: 10, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, display: "flex", gap: 6, zIndex: 18, pointerEvents: "auto" }}>
       <button className="btn" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); recenter(); }} style={mapControlStyle}>◎</button>
       <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(5,8,13,.86)", border: "1px solid rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}>
-        <button className="btn" style={{ minWidth: 34, minHeight: 30, padding: "0 7px", fontSize: 7, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>2D</button>
-        <button className="btn" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setMapMode("3d"); }} style={{ minWidth: 34, minHeight: 30, padding: "0 7px", fontSize: 7, fontWeight: 1000 }}>3D</button>
+        <button className="btn" style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>2D</button>
+        <button className="btn" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setMapMode("3d"); }} style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000 }}>3D</button>
       </div>
-      <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.82)", border: `1px solid ${accent}38`, color: accent, fontSize: 7, fontWeight: 1000, backdropFilter: "blur(12px)" }}>{pickText(lang,"GLISSER · ZOOMER","DRAG · ZOOM","MOVER · ZOOM")}</div>
+      <div className="running-map-hint" style={{ padding: "7px 10px", borderRadius: 999, background: "rgba(5,8,13,.82)", border: `1px solid ${accent}38`, color: accent, fontSize: 8.2, fontWeight: 1000, backdropFilter: "blur(12px)" }}>{pickText(lang,"GLISSER · ZOOMER","DRAG · ZOOM","MOVER · ZOOM")}</div>
     </div>
 
     <div style={{ position: "absolute", right: 10, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, display: "grid", gap: 6, zIndex: 18, pointerEvents: "auto" }}>
@@ -192,21 +193,21 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
 
     {selectedPlace ? <PlacePopup place={selectedPlace} photos={placePhotos} busy={placePhotoBusy} accent={accent} textSoft={textSoft} lang={lang} onClose={() => setSelectedPlace(null)}/> : null}
 
-    {!selectedPlace && fullscreen ? <div style={{ position: "absolute", left: 12, right: 12, bottom: "max(12px,env(safe-area-inset-bottom))", zIndex: 8, display: "flex", justifyContent: "center", pointerEvents: "none" }}><div style={{ padding: "7px 11px", borderRadius: 999, background: "rgba(5,8,13,.74)", border: "1px solid rgba(255,255,255,.10)", backdropFilter: "blur(12px)", color: textSoft, fontSize: 6.9 }}>{pickText(lang,"Touchez une icône pour voir le lieu · pincez ou utilisez la molette pour zoomer","Tap an icon for details · pinch or use mouse wheel to zoom","Toca un icono para ver detalles · pellizca o usa la rueda para hacer zoom")}</div></div> : null}
+    {!selectedPlace && fullscreen ? <div style={{ position: "absolute", left: 12, right: 12, bottom: "max(12px,env(safe-area-inset-bottom))", zIndex: 8, display: "flex", justifyContent: "center", pointerEvents: "none" }}><div style={{ padding: "7px 11px", borderRadius: 999, background: "rgba(5,8,13,.74)", border: "1px solid rgba(255,255,255,.10)", backdropFilter: "blur(12px)", color: textSoft, fontSize: 8 }}>{pickText(lang,"Touchez une icône pour voir le lieu · pincez ou utilisez la molette pour zoomer","Tap an icon for details · pinch or use mouse wheel to zoom","Toca un icono para ver detalles · pellizca o usa la rueda para hacer zoom")}</div></div> : null}
     <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" onPointerDown={(event) => event.stopPropagation()} style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.62)", color: "#fff", fontSize: 6, textDecoration: "none", zIndex: 20 }}>© OpenStreetMap</a>
   </div>;
 }
 
 function PlacePopup({ place, photos, busy, accent, textSoft, lang, onClose }: { place: OutdoorRoutePlace; photos: OutdoorRoutePhoto[]; busy: boolean; accent: string; textSoft: string; lang: string; onClose: () => void }) {
-  return <div onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} style={{ position: "absolute", left: 10, right: 10, bottom: "max(12px,env(safe-area-inset-bottom))", zIndex: 24, padding: 10, borderRadius: 18, background: "rgba(6,9,14,.94)", border: `1px solid ${accent}35`, boxShadow: "0 18px 48px rgba(0,0,0,.55)", backdropFilter: "blur(18px)" }}>
-    <div style={{ display: "grid", gridTemplateColumns: photos.length ? "minmax(105px,28%) 1fr auto" : "1fr auto", gap: 10, alignItems: "stretch" }}>
-      {photos.length ? <div style={{ display: "grid", gridTemplateColumns: photos.length > 1 ? "1.4fr 1fr" : "1fr", gap: 3, minHeight: 92, maxHeight: 120, borderRadius: 12, overflow: "hidden", background: "#10151b" }}>{photos.slice(0, 3).map((photo, index) => <img key={photo.id} src={photo.thumbUrl} alt="" loading="eager" decoding="async" style={{ width: "100%", height: "100%", minHeight: index === 0 ? 92 : 44, objectFit: "cover", gridRow: index === 0 && photos.length > 2 ? "1 / span 2" : undefined }}/>)}</div> : null}
+  return <div className="running-map-popup" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} style={{ position: "absolute", left: 10, right: 10, bottom: "max(12px,env(safe-area-inset-bottom))", zIndex: 24, padding: 10, borderRadius: 18, background: "rgba(6,9,14,.94)", border: `1px solid ${accent}35`, boxShadow: "0 18px 48px rgba(0,0,0,.55)", backdropFilter: "blur(18px)" }}>
+    <div className={`running-map-popup-grid${photos.length ? " has-photos" : ""}`} style={{ display: "grid", gridTemplateColumns: photos.length ? "minmax(105px,28%) minmax(0,1fr)" : "1fr", gap: 10, alignItems: "stretch" }}>
+      {photos.length ? <div className="running-map-popup-photos" style={{ display: "grid", gridTemplateColumns: photos.length > 1 ? "1.4fr 1fr" : "1fr", gap: 3, minHeight: 92, maxHeight: 120, borderRadius: 12, overflow: "hidden", background: "#10151b" }}>{photos.slice(0, 3).map((photo, index) => <img key={photo.id} src={photo.thumbUrl} alt="" loading="eager" decoding="async" style={{ width: "100%", height: "100%", minHeight: index === 0 ? 92 : 44, objectFit: "cover", gridRow: index === 0 && photos.length > 2 ? "1 / span 2" : undefined }}/>)}</div> : null}
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ fontSize: 19 }}>{outdoorRoutePlaceIcon(place.category)}</span><div style={{ minWidth: 0 }}><div style={{ color: "#fff", fontSize: 9.4, fontWeight: 1000, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{place.name}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 6.9 }}>{place.distanceToRouteM < 100 ? "<100 m" : formatDistance(place.distanceToRouteM)} {pickText(lang,"du parcours","from route","de la ruta")}{place.elevationM != null ? ` · ${Math.round(place.elevationM)} m` : ""}</div></div></div>
-        <div style={{ marginTop: 7, color: textSoft, fontSize: 7.1, lineHeight: 1.4 }}>{busy ? pickText(lang,"Recherche des photos du lieu…","Finding place photos…","Buscando fotos del lugar…") : photos.length ? pickText(lang,"Photos publiques trouvées autour de ce point.","Public imagery found around this point.","Imágenes públicas encontradas alrededor de este punto.") : pickText(lang,"Aucune photo publique trouvée pour ce point.","No public photo found for this point.","No se encontró una foto pública de este punto.")}</div>
-        <button className="btn" onClick={() => { try { window.open(`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lon}`, "_blank", "noopener,noreferrer"); } catch {} }} style={{ minHeight: 32, marginTop: 7, padding: "4px 9px", color: accent, borderColor: `${accent}55`, fontSize: 6.8, fontWeight: 1000 }}>↗ MAPS</button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ fontSize: 19 }}>{outdoorRoutePlaceIcon(place.category)}</span><div style={{ minWidth: 0 }}><div style={{ color: "#fff", fontSize: 9.4, fontWeight: 1000, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{place.name}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 8 }}>{place.distanceToRouteM < 100 ? "<100 m" : formatDistance(place.distanceToRouteM)} {pickText(lang,"du parcours","from route","de la ruta")}{place.elevationM != null ? ` · ${Math.round(place.elevationM)} m` : ""}</div></div></div>
+        <div style={{ marginTop: 7, color: textSoft, fontSize: 8.2, lineHeight: 1.45 }}>{busy ? pickText(lang,"Recherche des photos du lieu…","Finding place photos…","Buscando fotos del lugar…") : photos.length ? pickText(lang,"Photos publiques trouvées autour de ce point.","Public imagery found around this point.","Imágenes públicas encontradas alrededor de este punto.") : pickText(lang,"Aucune photo publique trouvée pour ce point.","No public photo found for this point.","No se encontró una foto pública de este punto.")}</div>
+        <button className="btn" onClick={() => { try { window.open(`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lon}`, "_blank", "noopener,noreferrer"); } catch {} }} style={{ minHeight: 32, marginTop: 7, padding: "4px 9px", color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>↗ MAPS</button>
       </div>
-      <button className="btn" onClick={onClose} style={{ alignSelf: "start", minWidth: 32, minHeight: 32, padding: 0 }}>×</button>
+      <button className="btn running-map-popup-close" onClick={onClose} style={{ position: "absolute", right: 8, top: 8, minWidth: 34, minHeight: 34, padding: 0 }}>×</button>
     </div>
   </div>;
 }

@@ -5,6 +5,7 @@ import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance"
 import type { OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import { RunningSurface } from "./RunningUi";
+import "./runningResponsive.css";
 
 type Props = { route: RunningRouteTemplate; sport: OutdoorPerformanceSport; extras: OutdoorRouteExtras; lang: string; accent: string; textSoft: string; onPrefsChange?: (prefs: OutdoorLongDistancePrefs) => void };
 
@@ -53,7 +54,7 @@ export default function OutdoorLongDistancePanel({ route, sport, extras, lang, a
   return <RunningSurface accent={accent} style={{ marginTop: 8 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .8 }}>🧭 {copy.title}</div><span style={{ padding: "3px 7px", borderRadius: 999, border: `1px solid ${accent}44`, color: accent, fontSize: 7, fontWeight: 1000 }}>{formatDistance(route.distanceM)}</span></div>
     <div style={{ marginTop: 4, color: textSoft, fontSize: 8, lineHeight: 1.4 }}>{copy.sub}</div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, marginTop: 8 }}>
+    <div className="running-metrics-4" style={{ marginTop: 8 }}>
       <Mini label={copy.time} value={formatDuration(plan.expectedMs)} accent={accent}/><Mini label={copy.stages} value={String(plan.stages.length)} accent={accent}/><Mini label={copy.battery} value={batteryLabel(prefs.batteryMode)} accent={accent}/><Mini label={batteryPct == null ? copy.gpsEvery : copy.batteryLevel} value={batteryPct == null ? `~${gpsIntervalSecForBatteryMode(prefs.batteryMode)} s` : `${batteryPct}%`} accent={batteryPct != null && batteryPct < 20 ? "#ff756d" : accent}/>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8 }}>{(["normal","eco","ultra"] as OutdoorBatteryMode[]).map((mode) => <button key={mode} className="btn" onClick={() => update({ batteryMode: mode })} style={{ minHeight: 31, padding: 4, fontSize: 7.2, fontWeight: 1000, color: prefs.batteryMode === mode ? accent : undefined, borderColor: prefs.batteryMode === mode ? `${accent}66` : undefined }}>{batteryLabel(mode)}</button>)}</div>

@@ -384,7 +384,7 @@ export function RunningTabs<T extends string>({
                 boxShadow: active ? `0 8px 18px ${accent}12, inset 0 1px 0 ${accent}18` : "none",
                 cursor: "pointer",
                 font: "inherit",
-                fontSize: 8.8,
+                fontSize: 9.6,
                 fontWeight: 1000,
                 letterSpacing: .25,
                 whiteSpace: "nowrap",
@@ -539,7 +539,7 @@ export function RunningActionTile({ icon, title, subtitle, accent, onClick, feat
     <span aria-hidden style={{ position: "absolute", width: 120, height: 120, right: -50, bottom: -65, borderRadius: 999, border: `1px solid ${accent}18` }} />
     <div style={{ position: "relative", display: "grid", gridTemplateColumns: "44px 1fr auto", gap: 10, alignItems: "center" }}>
       <span style={{ width: 42, height: 42, borderRadius: 14, display: "grid", placeItems: "center", color: accent, background: `${accent}12`, border: `1px solid ${accent}30` }}>{icon}</span>
-      <span style={{ minWidth: 0 }}><b style={{ display: "block", fontSize: featured ? 13 : 11.2, lineHeight: 1.15, color: featured ? accent : "#fff" }}>{title}</b>{subtitle ? <small style={{ display: "block", marginTop: 5, fontSize: 8.5, lineHeight: 1.4, color: "rgba(255,255,255,.58)" }}>{subtitle}</small> : null}</span>
+      <span style={{ minWidth: 0 }}><b style={{ display: "block", fontSize: featured ? 14 : 12, lineHeight: 1.15, color: featured ? accent : "#fff" }}>{title}</b>{subtitle ? <small style={{ display: "block", marginTop: 5, fontSize: 9.5, lineHeight: 1.4, color: "rgba(255,255,255,.58)" }}>{subtitle}</small> : null}</span>
       <span style={{ display: "grid", justifyItems: "end", gap: 6 }}>{meta}<span style={{ color: accent, fontSize: 18, fontWeight: 1000 }}>›</span></span>
     </div>
   </button>;
@@ -598,11 +598,11 @@ export function RunningHubCard({
         {icon}
       </span>
       <span style={{ minWidth: 0 }}>
-        <b style={{ display: "block", fontSize: 10.4, letterSpacing: .3 }}>{title}</b>
-        {subtitle ? <small style={{ display: "block", marginTop: 4, fontSize: 8.3, lineHeight: 1.4, color: "rgba(255,255,255,.52)" }}>{subtitle}</small> : null}
+        <b style={{ display: "block", fontSize: 11.5, letterSpacing: .25, lineHeight: 1.15 }}>{title}</b>
+        {subtitle ? <small style={{ display: "block", marginTop: 4, fontSize: 9.4, lineHeight: 1.38, color: "rgba(255,255,255,.52)" }}>{subtitle}</small> : null}
       </span>
       <span style={{ display: "grid", placeItems: "center", gap: 4, color: disabled ? "rgba(255,255,255,.24)" : accent }}>
-        {badge ? <small style={{ fontSize: 7.2, fontWeight: 1000 }}>{badge}</small> : null}
+        {badge ? <small style={{ fontSize: 7.8, fontWeight: 1000 }}>{badge}</small> : null}
         {!disabled ? (
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="m9 5 7 7-7 7" />
@@ -611,6 +611,56 @@ export function RunningHubCard({
       </span>
     </button>
   );
+}
+
+
+export type RunningSetupStepId = "workout" | "route" | "ready";
+
+export function RunningSetupSteps({
+  value,
+  accent,
+  onChange,
+  routeOptional = false,
+  routeSelected = false,
+  labels,
+}: {
+  value: "menu" | RunningSetupStepId;
+  accent: string;
+  onChange: (value: RunningSetupStepId) => void;
+  routeOptional?: boolean;
+  routeSelected?: boolean;
+  labels: {
+    workout: string;
+    workoutSub: string;
+    route: string;
+    routeSub: string;
+    ready: string;
+    readySub: string;
+  };
+}) {
+  const active = value === "menu" ? "workout" : value;
+  const steps: Array<[RunningSetupStepId, string, string]> = [
+    ["workout", labels.workout, labels.workoutSub],
+    ["route", labels.route, labels.routeSub],
+    ["ready", labels.ready, labels.readySub],
+  ];
+  return <div className="running-setup-steps" style={{ ["--running-accent" as any]: accent }} aria-label="Préparation de la sortie">
+    {steps.map(([id, title, sub], index) => {
+      const disabled = routeOptional && id === "route";
+      const done = id === "workout" ? active !== "workout" : id === "route" ? routeSelected || active === "ready" : false;
+      return <button
+        key={id}
+        type="button"
+        className={`running-setup-step ${active === id ? "is-active" : ""} ${done ? "is-done" : ""}`}
+        onClick={() => onChange(id)}
+        aria-current={active === id ? "step" : undefined}
+        title={disabled ? sub : title}
+      >
+        <span className="running-step-index">{done ? "✓" : index + 1}</span>
+        <span><span className="running-step-title">{title}</span><span className="running-step-sub">{sub}</span></span>
+      </button>;
+    })}
+  </div>;
 }
 
 export function RunningSubpageHeader({

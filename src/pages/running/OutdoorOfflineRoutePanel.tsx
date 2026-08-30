@@ -7,6 +7,7 @@ import type { OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import type { GeoPoint } from "../../activity/activityTypes";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import { RunningSurface } from "./RunningUi";
+import "./runningResponsive.css";
 
 type Props = { route: RunningRouteTemplate; sport: OutdoorPerformanceSport; extras: OutdoorRouteExtras; lang: string; accent: string; textSoft: string; onChange?: () => void };
 
@@ -71,7 +72,7 @@ export default function OutdoorOfflineRoutePanel({ route, sport, extras, lang, a
     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ color: pack ? "#71ff9a" : accent, fontSize: 9, fontWeight: 1000, letterSpacing: .8 }}>⬇ {copy.title}</div>{pack ? <span style={{ padding: "3px 7px", borderRadius: 999, border: "1px solid rgba(113,255,154,.35)", color: "#71ff9a", fontSize: 7, fontWeight: 1000 }}>{copy.ready}</span> : null}</div>
     <div style={{ marginTop: 4, color: textSoft, fontSize: 7.8, lineHeight: 1.4 }}>{copy.sub}</div>
     <MiniOfflineMap route={shownRoute} extras={shownExtras} accent={accent}/>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, marginTop: 7 }}>
+    <div className="running-metrics-4" style={{ marginTop: 7 }}>
       <Mini label={copy.trace} value={`${(shownRoute.distanceM / 1000).toFixed(1)} km`} accent={accent}/><Mini label={copy.points} value={String(shownRoute.route.length)} accent={accent}/><Mini label={copy.waypoints} value={String(shownExtras.waypoints.length)} accent={accent}/><Mini label={copy.size} value={pack ? formatOfflinePackSize(pack.approxBytes) : "—"} accent={accent}/>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: pack ? "1fr auto" : "1fr", gap: 6, marginTop: 8 }}><button className="btn" disabled={busy} onClick={prepare} style={{ minHeight: 36, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{busy ? "…" : pack ? copy.update : copy.prepare}</button>{pack ? <button className="btn" disabled={busy} onClick={remove} style={{ minHeight: 36, padding: "4px 10px", fontSize: 8, fontWeight: 1000 }}>{copy.remove}</button> : null}</div>

@@ -20,6 +20,7 @@ import RunningConnectionsPanel from "./RunningConnectionsPanel";
 import OutdoorAdventureStatsPanel from "./OutdoorAdventureStatsPanel";
 import { RunningGlyph, RunningHubCard, RunningMetricCard, RunningSubpageHeader, RunningSurface } from "./RunningUi";
 import { buildSensorSummary } from "../../activity/activitySensorInsights";
+import "./runningResponsive.css";
 
 type Props = { go: (route: any, params?: any) => void; params?: any };
 type StatsTab = "hub" | "overview" | "performance" | "history" | "gear" | "sync";
@@ -87,7 +88,7 @@ export default function RunningStatsPage({ go, params }: Props) {
   };
 
   return (
-    <div className="container" style={{ maxWidth: 620, paddingBottom: 92 }}>
+    <div className="container running-page" style={{ maxWidth: 620, paddingBottom: 92 }}>
       <PageHeader title={pageTitle} subtitle={`${outdoorSportLabel(activitySport, String(lang || "fr"))}${tab === "hub" ? ` · ${copy.sub}` : ""}`} left={<BackDot onClick={backFromPage} />} right={<InfoDot title={copy.title} color={accent} glow={`${accent}88`} content={<div style={{ lineHeight: 1.55 }}>{copy.info}</div>} />} />
       {tab === "hub" ? <>
         <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={String(lang || "fr")} accent={accent} compact />

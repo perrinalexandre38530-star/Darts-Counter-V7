@@ -3,6 +3,7 @@ import Section from "../../components/Section";
 import { defaultGoalTimeMs, distanceGoalLabel, type RunningRaceGoalDistance } from "../../activity/runningGoals";
 import { createRunningRace, loadRunningRaces, raceDaysLeft, removeRunningRace, setPrimaryRunningRace, upsertRunningRace, type RunningRaceEntry } from "../../activity/runningRaceCalendar";
 import { formatDuration, formatPace } from "../../activity/activityMath";
+import "./runningResponsive.css";
 
 const DISTANCES: RunningRaceGoalDistance[] = [5000, 10000, 21097, 42195];
 
@@ -37,7 +38,7 @@ export default function RunningRaceCalendarView({ lang, accent, textSoft }: Prop
 
   return <Section title={copy.title}>
     <div style={{ color: textSoft, fontSize: 9.3, lineHeight: 1.45 }}>{copy.sub}</div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+    <div className="running-metrics-4" style={{ marginTop: 10 }}>
       {DISTANCES.map((value) => <button key={value} className="btn" onClick={() => chooseDistance(value)} style={{ minHeight: 40, padding: 4, fontSize: 8.5, fontWeight: 1000, color: distanceM === value ? accent : undefined, borderColor: distanceM === value ? `${accent}77` : undefined }}>{value === 21097 ? "21.1K" : value === 42195 ? "42.2K" : `${value / 1000}K`}</button>)}
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 8 }}>

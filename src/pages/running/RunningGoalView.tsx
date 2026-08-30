@@ -11,6 +11,7 @@ import {
   type RunningRaceGoalDistance,
 } from "../../activity/runningGoals";
 import { formatDuration, formatPace } from "../../activity/activityMath";
+import "./runningResponsive.css";
 
 const DISTANCES: RunningRaceGoalDistance[] = [5000, 10000, 21097, 42195];
 
@@ -66,7 +67,7 @@ export default function RunningGoalView({ stats, lang, accent, textSoft, onChang
     <div className="card" style={{ padding: 14, borderColor: `${accent}44`, background: `linear-gradient(145deg,${accent}12,rgba(255,255,255,.018))` }}>
       <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1, color: accent }}>{copy.title}</div>
       <div style={{ marginTop: 5, color: textSoft, fontSize: 9.5, lineHeight: 1.45 }}>{copy.sub}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 12 }}>
+      <div className="running-metrics-4" style={{ marginTop: 12 }}>
         {DISTANCES.map((value) => <button key={value} className="btn" onClick={() => chooseDistance(value)} style={{ minHeight: 44, padding: 4, fontSize: 8.5, fontWeight: 1000, borderColor: distanceM === value ? `${accent}88` : undefined, color: distanceM === value ? accent : undefined }}>{value === 21097 ? "21.1K" : value === 42195 ? "42.2K" : `${value / 1000}K`}</button>)}
       </div>
     </div>
