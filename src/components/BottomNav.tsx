@@ -24,6 +24,11 @@ type TabKey =
   | "games"
   | "running_plan"
   | "fit_plan"
+  | "esports_rooms"
+  | "esports_matches"
+  | "esports_tournaments"
+  | "esports_profile"
+  | "esports_stats"
   | "tournaments"
   | "tournament_create"
   | "tournament_list"
@@ -114,6 +119,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "tournaments":
+    case "esports_tournaments":
     case "tournament_create":
     case "tournament_list":
     case "tournament_view":
@@ -130,6 +136,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "profiles":
+    case "esports_profile":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <path {...p} d="M4 20a6.5 6.5 0 0 1 16 0" />
@@ -167,6 +174,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
 
     case "stats":
     case "statsHub":
+    case "esports_stats":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <path {...p} d="M4 20V7" />
@@ -185,6 +193,26 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
           <path d="M3 13a8 8 0 0 1 8 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           <path d="M3 8a13 13 0 0 1 13 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           <path d="M5 5h14v10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+
+    case "esports_rooms":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M4 5h16v10H8l-4 4V5Z" />
+          <circle {...p} cx="9" cy="10" r="1" />
+          <circle {...p} cx="15" cy="10" r="1" />
+        </svg>
+      );
+
+    case "esports_matches":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M4 7h4l2 3h4l2-3h4" />
+          <path {...p} d="M7 7 4 19M17 7l3 12" />
+          <path {...p} d="M8 15h3M9.5 13.5v3" />
+          <circle cx="16" cy="14" r="1" fill="currentColor" />
+          <circle cx="18" cy="16" r="1" fill="currentColor" />
         </svg>
       );
 
@@ -318,7 +346,17 @@ export default function BottomNav({
     };
   }, [hideOnline]);
 
-  const tabs: NavItem[] = sportLc === "running"
+  const tabs: NavItem[] = sportLc === "esports"
+    ? [
+        { k: "home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="home" /> },
+        { k: "games", label: tr("Jeux", "Games", "Juegos"), icon: <Icon name="games" /> },
+        { k: "esports_rooms", label: tr("Salons", "Rooms", "Salas"), icon: <Icon name="esports_rooms" /> },
+        { k: "esports_matches", label: tr("Matchs", "Matches", "Partidos"), icon: <Icon name="esports_matches" /> },
+        { k: "esports_tournaments", label: tr("Tournois", "Tournaments", "Torneos"), icon: <Icon name="esports_tournaments" /> },
+        { k: "esports_profile", label: tr("Profil", "Profile", "Perfil"), icon: <Icon name="esports_profile" /> },
+        { k: "settings", label: tr("Réglages", "Settings", "Ajustes"), icon: <Icon name="settings" /> },
+      ]
+    : sportLc === "running"
     ? [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
         { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },

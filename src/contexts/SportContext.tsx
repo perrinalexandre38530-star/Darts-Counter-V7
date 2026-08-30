@@ -9,7 +9,7 @@ import React from "react";
 import { isAndroidStoreV1Runtime, isAndroidStoreV1SportAllowed } from "../config/androidStoreV1";
 
 // ✅ Ajout MÖLKKY + DICE GAME (sports locaux)
-export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running" | "fit";
+export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running" | "fit" | "esports";
 
 const LS_KEY = "dc-start-game"; // on réutilise ta clé existante
 
@@ -25,6 +25,7 @@ function normalizeSport(x: any): SportId {
   else if (s === "foot" || s === "soccer") next = "foot";
   else if (s === "running" || s === "run") next = "running";
   else if (s === "fit" || s === "fitness" || s === "fitperf" || s === "fit_perf") next = "fit";
+  else if (s === "esports" || s === "e-sports" || s === "gaming") next = "esports";
 
   // Une ancienne préférence Web ne doit pas rouvrir un sport BETA dans l'APK V1.
   if (isAndroidStoreV1Runtime() && !isAndroidStoreV1SportAllowed(next)) return "darts";

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { assetKey, loadCatalog } from "./fit-awena-catalog-source.mjs";
+import { resolveCatalogImageUrls } from "./fit-awena-driver-utils.mjs";
 
 const ROOT = process.cwd();
 const MEDIA_ROOT = path.join(ROOT, "public/fit/awena-library");
@@ -104,12 +105,13 @@ for(const exercise of catalog.exercises){
     level:exercise.level||"",
     category:exercise.category||"",
     existingReferenceImages:exercise.imagePaths||[],
+    resolvedReferenceImages:resolveCatalogImageUrls(exercise),
     existingReferenceVideos:exercise.videoUrls||[],
     motionDriver:{
       required:true,
       existingVideoCandidates:exercise.videoUrls||[],
-      photoCandidates:exercise.imagePaths||[],
-      strategy:(exercise.videoUrls||[]).length?"existing-video":"needs-generated-driver",
+      photoCandidates:resolveCatalogImageUrls(exercise),
+      strategy:(exercise.videoUrls||[]).length?"existing-video":resolveCatalogImageUrls(exercise).length>=2?"photo-pair-driver":"needs-generated-driver",
     },
     instructions:exercise.instructions||[],
     output:{
@@ -129,7 +131,7 @@ for(const exercise of catalog.exercises){
     },
   });
 }
-const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,alreadyComplete:complete,partial,queued:jobs.length,withExistingMotionVideo:jobs.filter((j)=>j.existingReferenceVideos?.length).length,withReferencePhotos:jobs.filter((j)=>j.existingReferenceImages?.length).length,needsGeneratedMotionDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length).length,sources:catalog.sources,sourceErrors:catalog.errors||[]};
+const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,alreadyComplete:complete,partial,queued:jobs.length,withExistingMotionVideo:jobs.filter((j)=>j.existingReferenceVideos?.length).length,withReferencePhotos:jobs.filter((j)=>j.resolvedReferenceImages?.length).length,withPhotoPairDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)>=2).length,needsGeneratedMotionDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)<2).length,sources:catalog.sources,sourceErrors:catalog.errors||[]};
 await fs.writeFile(QUEUE_FILE,JSON.stringify({version:1,createdAt:new Date().toISOString(),catalogCount:catalog.exercises.length,jobs},null,2));
 await fs.writeFile(REPORT_FILE,JSON.stringify(report,null,2));
 console.log(JSON.stringify(report,null,2));

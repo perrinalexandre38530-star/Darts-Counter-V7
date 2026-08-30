@@ -4,6 +4,7 @@ import { FitIcon } from "./FitPerfUi";
 import FitAwenaMotionStage, { hasFitAwenaMotion } from "./FitAwenaMotionStage";
 import FitAwena3DStage, { hasFitAwena3DMotion } from "./FitAwena3DStage";
 import { fitAwenaGeneratedMedia, fitAwenaKnownPoster, fitAwenaKnownVideo } from "../../fit/fitAwenaMedia";
+import { freeExerciseImageUrl } from "../../fit/freeExerciseCatalog";
 import FitPremiumMotionPlayer from "./FitPremiumMotionPlayer";
 import { getAwenaPremiumMotion, hasAwenaPremiumMotion } from "../../fit/awenaPremiumMotions";
 
@@ -43,6 +44,10 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
   const motionExerciseId = exercise.motionKey || exercise.id;
   const premiumMotion = getAwenaPremiumMotion(motionExerciseId);
   const premiumPoster = premiumMotion?.video?.poster || premiumMotion?.frameSequence?.poster || premiumMotion?.frameSequence?.frames?.[0] || null;
+  const referenceVideo = exercise.videoUrls?.find(Boolean) || null;
+  const referenceImage = freeExerciseImageUrl(exercise, 0);
+  const [referenceVideoOk, setReferenceVideoOk] = React.useState(Boolean(referenceVideo));
+  const [referenceImageOk, setReferenceImageOk] = React.useState(Boolean(referenceImage));
 
   React.useEffect(() => { setMediaOk(Boolean(media?.src)); }, [media?.src]);
   React.useEffect(() => {
@@ -50,7 +55,9 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
     setPremiumFailed(false);
     setGeneratedVideoOk(true);
     setKnownVideoOk(Boolean(knownVideo));
-  }, [exercise.id, generatedMedia.videoUrl, knownVideo]);
+    setReferenceVideoOk(Boolean(referenceVideo));
+    setReferenceImageOk(Boolean(referenceImage));
+  }, [exercise.id, generatedMedia.videoUrl, knownVideo, referenceVideo, referenceImage]);
 
   return (
     <div style={{ position: "relative", overflow: "hidden", borderRadius: compact ? 12 : 16, minHeight: compact ? 100 : 180, border: `1px solid ${color}30`, background: `radial-gradient(circle at 50% 30%,${color}14,rgba(3,5,10,.96) 66%)`, boxShadow: `inset 0 0 24px ${color}09` }}>
@@ -94,6 +101,16 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
         <FitAwena3DStage exercise={exercise} compact={compact} onFail={() => setThreeDFailed(true)}/>
       ) : hasFitAwenaMotion(exercise) ? (
         <FitAwenaMotionStage exercise={exercise} compact={compact}/>
+      ) : referenceVideo && referenceVideoOk ? (
+        <div style={{ position: "relative", minHeight: compact ? 100 : 180, display: "grid", placeItems: "center", padding: 4, boxSizing: "border-box" }}>
+          <video src={referenceVideo} muted loop autoPlay playsInline preload="metadata" onError={() => setReferenceVideoOk(false)} style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block", borderRadius: 10 }} />
+          {!cleanBranding ? <span style={{ position: "absolute", left: 7, bottom: 7, borderRadius: 999, padding: "3px 6px", background: "rgba(3,6,10,.82)", border: "1px solid rgba(255,255,255,.14)", color: "rgba(255,255,255,.72)", fontSize: 5.8, fontWeight: 1000, letterSpacing: .45 }}>SOURCE · AWENA EN COURS</span> : null}
+        </div>
+      ) : referenceImage && referenceImageOk ? (
+        <div style={{ position: "relative", minHeight: compact ? 100 : 180, display: "grid", placeItems: "center", padding: 4, boxSizing: "border-box" }}>
+          <img src={referenceImage} alt={`Référence ${exercise.name}`} loading="lazy" onError={() => setReferenceImageOk(false)} style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block", borderRadius: 10 }} />
+          {!cleanBranding ? <span style={{ position: "absolute", left: 7, bottom: 7, borderRadius: 999, padding: "3px 6px", background: "rgba(3,6,10,.82)", border: "1px solid rgba(255,255,255,.14)", color: "rgba(255,255,255,.72)", fontSize: 5.8, fontWeight: 1000, letterSpacing: .45 }}>SOURCE · AWENA EN COURS</span> : null}
+        </div>
       ) : (
         <div style={{ minHeight: compact ? 100 : 180, display: "grid", gridTemplateColumns: compact ? "48px 1fr auto" : "62px 1fr auto", gap: 9, alignItems: "center", padding: compact ? 8 : 11, boxSizing: "border-box" }}>
           <div style={{ width: compact ? 46 : 58, height: compact ? 46 : 58, borderRadius: "50%", border: `2px solid ${color}70`, boxShadow: `0 0 14px ${color}2b`, overflow: "hidden", background: "#07090d" }}>

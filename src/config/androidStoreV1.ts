@@ -37,8 +37,26 @@ export function isAndroidStoreV1Runtime(): boolean {
   return getRuntimePlatform() === "android";
 }
 
+
+/**
+ * E-SPORTS reste volontairement caché dans l'APK Android public tant que le
+ * module n'est pas prêt. Le Web/PWA l'expose pour le développement.
+ * Un build Android de preview peut l'activer explicitement avec
+ * VITE_ENABLE_ESPORTS_ANDROID_PREVIEW=true sans modifier la whitelist Store.
+ */
+export function isEsportsEnabledForCurrentRuntime(): boolean {
+  if (!isAndroidStoreV1Runtime()) return true;
+  try {
+    return String(import.meta.env.VITE_ENABLE_ESPORTS_ANDROID_PREVIEW || "").trim().toLowerCase() === "true";
+  } catch {
+    return false;
+  }
+}
+
 export function isAndroidStoreV1SportAllowed(sportId: unknown): boolean {
-  return SPORT_IDS.has(String(sportId || "").toLowerCase().trim());
+  const id = String(sportId || "").toLowerCase().trim();
+  if (id === "esports" && isEsportsEnabledForCurrentRuntime()) return true;
+  return SPORT_IDS.has(id);
 }
 
 export function isAndroidStoreV1DartsGameAllowed(gameId: unknown): boolean {

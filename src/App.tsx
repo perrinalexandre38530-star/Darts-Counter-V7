@@ -318,6 +318,8 @@ import RunningStatsPage from "./pages/running/RunningStatsPage";
 
 // ✅ FIT PERF — musculation / salle / performance
 import FitPerfHome from "./pages/fit/FitPerfHome";
+import EsportsHub from "./pages/esports/EsportsHub";
+import { isEsportsEnabledForCurrentRuntime } from "./config/androidStoreV1";
 import FitPerfModule from "./pages/fit/FitPerfModule";
 import FitPerfPlan from "./pages/fit/FitPerfPlan";
 import FitPerfStatsPage from "./pages/fit/FitPerfStatsPage";
@@ -961,6 +963,11 @@ type Tab =
   | "games"
   | "running_plan"
   | "fit_plan"
+  | "esports_rooms"
+  | "esports_matches"
+  | "esports_tournaments"
+  | "esports_profile"
+  | "esports_stats"
   | "cast_join"
   | "cast_host"
   | "cast_room"
@@ -4395,6 +4402,8 @@ const unifiedStats = (() => {
             <RunningHome store={store} go={go} />
           ) : activeSport === "fit" ? (
             <FitPerfHome store={store} go={go} />
+          ) : activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+            <EsportsHub store={store} go={go} section="overview" />
           ) : (
             <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
           );
@@ -4419,9 +4428,51 @@ const unifiedStats = (() => {
             <RunningModule go={go} store={store} params={routeParams} />
           ) : activeSport === "fit" ? (
             <FitPerfModule go={go} store={store} params={routeParams} />
+          ) : activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+            <EsportsHub store={store} go={go} section="games" />
           ) : (
             <Games setTab={(t: any, p?: any) => go(t, p)} params={routeParams} />
           );
+        break;
+
+      case "esports_rooms":
+        page = activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+          <EsportsHub store={store} go={go} section="rooms" />
+        ) : (
+          <GameSelect go={go} />
+        );
+        break;
+
+      case "esports_matches":
+        page = activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+          <EsportsHub store={store} go={go} section="matches" />
+        ) : (
+          <GameSelect go={go} />
+        );
+        break;
+
+      case "esports_tournaments":
+        page = activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+          <EsportsHub store={store} go={go} section="tournaments" />
+        ) : (
+          <GameSelect go={go} />
+        );
+        break;
+
+      case "esports_profile":
+        page = activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+          <EsportsHub store={store} go={go} section="profile" />
+        ) : (
+          <GameSelect go={go} />
+        );
+        break;
+
+      case "esports_stats":
+        page = activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+          <EsportsHub store={store} go={go} section="stats" />
+        ) : (
+          <GameSelect go={go} />
+        );
         break;
 
       case "running_plan":
@@ -4725,6 +4776,8 @@ case "babyfoot_team_edit":
             <RunningStatsPage go={go} params={routeParams} />
           ) : activeSport === "fit" ? (
             <StatsShell store={store} go={go} sportOverride={activeSport} />
+          ) : activeSport === "esports" && isEsportsEnabledForCurrentRuntime() ? (
+            <EsportsHub store={store} go={go} section="stats" />
           ) : (
             <StatsShell store={store} go={go} sportOverride={activeSport} />
           );

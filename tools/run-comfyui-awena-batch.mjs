@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import fssync from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { spawnSync } from "node:child_process";
+import { buildMotionDriverFromImages } from "./fit-awena-driver-utils.mjs";
+import { requireMediaTools, runFfmpeg, runFfprobe } from "./fit-awena-media-tools.mjs";
 
 function arg(name, fallback="") { const i=process.argv.indexOf(name); return i>=0 ? (process.argv[i+1] ?? fallback) : fallback; }
 function flag(name){return process.argv.includes(name);}
@@ -65,6 +66,15 @@ async function resolveDriver(job){
       try{if(!await exists(dst))await download(candidate,dst); return {path:dst,mode:"catalog-url",source:candidate};}catch(error){console.warn(`  Driver vidéo inaccessible: ${candidate} (${error?.message||error})`);}
     }
   }
+  const photoCandidates=[...(job.resolvedReferenceImages||[]),...(job.motionDriver?.photoCandidates||[])].filter(Boolean);
+  if(photoCandidates.length>=2){
+    try{
+      const built=await buildMotionDriverFromImages({assetKey:job.assetKey,imageCandidates:photoCandidates,outputDir:driverDir,overwrite:false,fps});
+      if(built?.ok)return {path:built.path,mode:built.mode||"generated-photo-driver",source:(built.sources||[]).join(" | ")};
+    }catch(error){
+      console.warn(`  Driver photo impossible: ${job.name} (${error?.message||error})`);
+    }
+  }
   return null;
 }
 
@@ -92,8 +102,7 @@ async function materializeRef(ref,dst){
   const res=await fetch(`${server}/view?${qs.toString()}`); if(!res.ok)throw new Error(`ComfyUI /view ${res.status}: ${ref.filename}`);
   await fs.writeFile(dst,Buffer.from(await res.arrayBuffer())); return dst;
 }
-function runFfmpeg(args,label){const r=spawnSync("ffmpeg",["-y","-loglevel","error",...args],{stdio:"inherit"});if(r.status!==0)throw new Error(`${label} échoué (ffmpeg ${r.status})`);}
-function alphaInfo(file){const r=spawnSync("ffprobe",["-v","error","-show_entries","stream=pix_fmt:stream_tags=alpha_mode","-of","json",file],{encoding:"utf8"});if(r.status!==0)return {verified:false,raw:""};const raw=r.stdout||"";return {verified:/yuva|alpha_mode\"\s*:\s*\"?1/i.test(raw),raw};}
+function alphaInfo(file){const r=runFfprobe(["-v","error","-show_entries","stream=pix_fmt:stream_tags=alpha_mode","-of","json",file],{encoding:"utf8"});if(r.status!==0)return {verified:false,raw:""};const raw=r.stdout||"";return {verified:/yuva|alpha_mode"\s*:\s*"?1/i.test(raw),raw};}
 function makeAlphaVideo(rgbPattern,maskPattern,dst){
   const maskFilter=invertMask?"[1:v]format=gray,negate[alpha]":"[1:v]format=gray[alpha]";
   runFfmpeg(["-framerate",String(fps),"-i",rgbPattern,"-framerate",String(fps),"-i",maskPattern,"-filter_complex",`${maskFilter};[0:v][alpha]alphamerge`,"-c:v","libvpx-vp9","-pix_fmt","yuva420p","-auto-alt-ref","0","-b:v","0","-crf","28",dst],"Encodage WebM alpha");
@@ -128,6 +137,7 @@ async function syncJobOutputs(job,h){
 }
 
 if(!await exists(queueFile))throw new Error(`Queue absente: ${queueFile}. Lance d'abord npm run fit:awena:queue -- --refresh`);
+if(!dryRun){const mediaTools=requireMediaTools({needProbe:true});console.log(`FFmpeg OK: ${mediaTools.ffmpeg}`);console.log(`FFprobe OK: ${mediaTools.ffprobe}`);}
 if(!dryRun&&!await exists(workflowFile))throw new Error(`Workflow ComfyUI API absent: ${workflowFile}`);
 const queue=JSON.parse(await fs.readFile(queueFile,"utf8")); let jobs=(queue.jobs||[]); if(match)jobs=jobs.filter((job)=>`${job.name} ${job.exerciseId} ${job.assetKey}`.toLowerCase().includes(match)); jobs=jobs.slice(from); if(limit)jobs=jobs.slice(0,limit);
 if(dryRun){console.log(JSON.stringify({server,workflowFile,referenceFile,driverDir,jobs:jobs.length,first:jobs[0]?.name},null,2));process.exit(0);}
@@ -137,7 +147,7 @@ let ok=0,failed=0,blocked=0; const blockedJobs=[];
 for(const [index,jobOriginal] of jobs.entries()){
   const job=structuredClone(jobOriginal); const target=path.resolve(job.output.directory,"awena-preview.webm"); if(!overwrite&&await exists(target)){console.log(`[${index+1}/${jobs.length}] SKIP ${job.name}`);continue;}
   try{
-    const driver=await resolveDriver(job); if(!driver){blocked++;blockedJobs.push({exerciseId:job.exerciseId,assetKey:job.assetKey,name:job.name,reason:"NO_MOTION_DRIVER",photoCandidates:(job.existingReferenceImages||[]).length});console.warn(`[${index+1}/${jobs.length}] BLOCKED ${job.name} — aucune vidéo de mouvement de référence`);continue;}
+    const driver=await resolveDriver(job); if(!driver){blocked++;blockedJobs.push({exerciseId:job.exerciseId,assetKey:job.assetKey,name:job.name,reason:"NO_MOTION_DRIVER",photoCandidates:(job.resolvedReferenceImages||job.existingReferenceImages||[]).length});console.warn(`[${index+1}/${jobs.length}] BLOCKED ${job.name} — aucune vidéo de mouvement de référence`);continue;}
     const driverName=await uploadMedia(driver.path,`fit-driver-${safeName(job.assetKey)}${path.extname(driver.path)||".mp4"}`); job.__driverMeta={mode:driver.mode,source:driver.source||driver.path};
     const tokens={
       "__AWENA_REFERENCE__":referenceName,"__MOTION_REFERENCE_VIDEO__":driverName,"__POSITIVE_PROMPT__":job.comfyui.prompt,"__NEGATIVE_PROMPT__":job.comfyui.negativePrompt,"__MOTION_PROMPT__":job.comfyui.motionPrompt,

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFD34E"/><stop offset="1" stop-color="#7C3AED"/></linearGradient>
+    <filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-opacity=".45"/></filter>
+  </defs>
+  <rect x="58" y="58" width="604" height="604" rx="150" fill="#070A12" stroke="url(#g)" stroke-width="24" filter="url(#s)"/>
+  <path d="M222 278c-54 0-94 42-101 102l-15 126c-6 51 55 76 84 35l51-73h238l51 73c29 41 90 16 84-35l-15-126c-7-60-47-102-101-102H222Z" fill="none" stroke="url(#g)" stroke-width="30" stroke-linejoin="round"/>
+  <path d="M221 347v86M178 390h86" stroke="#fff" stroke-width="26" stroke-linecap="round"/>
+  <circle cx="492" cy="367" r="18" fill="#fff"/><circle cx="540" cy="415" r="18" fill="#fff"/>
+  <text x="360" y="590" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-weight="900" font-size="72" letter-spacing="7">E-SPORTS</text>
+</svg>

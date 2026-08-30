@@ -65,3 +65,52 @@ Puis :
 npm run fit:awena:index
 npm run fit:awena:audit
 ```
+
+## V110 — drivers automatiques depuis les photos
+
+Le catalogue Free Exercise DB contient surtout des photos de début/fin et peu de vidéos. C'était le principal blocage du batch précédent : sans vidéo guide, Wan Animate n'avait aucun mouvement à transférer.
+
+V110 ajoute une étape automatique :
+
+1. si une vraie vidéo guide existe, elle reste prioritaire ;
+2. sinon, si au moins deux photos de l'exercice existent, FIT PERF télécharge les deux poses ;
+3. FFmpeg construit automatiquement un clip A -> B -> A avec interpolation de mouvement ;
+4. DWPose extrait le mouvement de ce clip ;
+5. Wan Animate applique ce mouvement à AWENA ;
+6. SAM2 détoure AWENA ;
+7. le runner produit le WebM alpha + le poster + quatre étapes WebP.
+
+Préparer les drivers à l'avance :
+
+```bash
+npm run fit:awena:queue -- --refresh
+npm run fit:awena:drivers
+```
+
+Cette commande génère `var/fit-awena/driver-report.json`.
+
+Elle est optionnelle : `npm run fit:awena:run` sait désormais fabriquer le driver photo automatiquement si aucun driver vidéo n'est disponible.
+
+Pipeline recommandé :
+
+```bash
+npm run fit:awena:queue -- --refresh
+npm run fit:awena:drivers
+npm run fit:awena:run -- --limit 3 --overwrite
+npm run fit:awena:index
+npm run fit:awena:audit
+```
+
+Une fois les trois premiers rendus validés visuellement :
+
+```bash
+npm run fit:awena:run -- --overwrite
+npm run fit:awena:index
+npm run fit:awena:audit
+```
+
+Les exercices qui n'ont ni vidéo ni au moins deux photos restent volontairement dans `var/fit-awena/blocked-no-motion-driver.json`. Ils nécessiteront le dernier étage T2V/I2V de génération de mouvement, mais ils ne bloquent plus tous les exercices documentés par deux poses.
+
+### Affichage transitoire dans l'application
+
+Tant que le fichier AWENA d'un exercice n'a pas encore été produit, la bibliothèque réutilise temporairement sa meilleure vidéo/photo source au lieu d'afficher une carte vide. Dès que `public/fit/awena-library/<assetKey>/awena-preview.webm` existe, AWENA reprend automatiquement la priorité.

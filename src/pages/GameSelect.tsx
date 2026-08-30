@@ -22,6 +22,7 @@ import logoPingPong from "../assets/games/logo-pingpong.webp";
 import logoBabyFoot from "../assets/games/logo-babyfoot.webp";
 import logoRunning from "../assets/games/logo-running-performance.webp";
 import logoFitPerf from "../assets/games/logo-fit-performance.webp";
+import logoEsports from "../assets/games/logo-esports.svg";
 
 // ✅ Sports à venir (affichés en SOON dans le GameSelect)
 import logoArchery from "../assets/games/logo-archery.png";
@@ -51,6 +52,7 @@ type GameId =
   | "babyfoot"
   | "running"
   | "fit"
+  | "esports"
   | "archery"
   | "molkky"
   | "padel"
@@ -150,6 +152,16 @@ export default function GameSelect({ go }: Props) {
       enabled: true,
       onClick: () => {
         setSport("fit");
+        go(HOME_ROUTE);
+      },
+    },
+    {
+      id: "esports",
+      label: "E-SPORTS HUB",
+      logo: logoEsports,
+      enabled: true,
+      onClick: () => {
+        setSport("esports");
         go(HOME_ROUTE);
       },
     },
