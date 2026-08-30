@@ -4,7 +4,7 @@ export type NavigationPlaybackMode = "random" | "ordered";
 export type AudioSfxCategory = "gameplay" | "impact" | "arcade" | "ui";
 
 export type AudioPreferences = {
-  version: 7;
+  version: 9;
   masterEnabled: boolean;
   navigationMusicEnabled: boolean;
   navigationVolume: number;
@@ -62,8 +62,25 @@ const VERSION_6_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
   "obsidian_flow",
 ];
 
+const VERSION_7_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
+  ...VERSION_6_DEFAULT_TRACK_IDS,
+  "heartwave_anthem",
+  "linear_skyline",
+  "oriental_surge",
+  "neon_caravan",
+];
+
+const VERSION_8_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
+  ...VERSION_7_DEFAULT_TRACK_IDS,
+  "bassline_jackpot",
+  "pulse_wager",
+  "distorted_horizon",
+  "temporal_drive",
+  "scoring_overture",
+];
+
 export const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = {
-  version: 7,
+  version: 9,
   masterEnabled: true,
   navigationMusicEnabled: true,
   navigationVolume: 0.22,
@@ -119,12 +136,18 @@ export function sanitizeAudioPreferences(value: unknown): AudioPreferences {
   const hadVersion6DefaultPlaylist = rawVersion === 6
     && storedEnabledTrackIds.length === VERSION_6_DEFAULT_TRACK_IDS.length
     && VERSION_6_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
-  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist || hadVersion5DefaultPlaylist || hadVersion6DefaultPlaylist
+  const hadVersion7DefaultPlaylist = rawVersion === 7
+    && storedEnabledTrackIds.length === VERSION_7_DEFAULT_TRACK_IDS.length
+    && VERSION_7_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const hadVersion8DefaultPlaylist = rawVersion === 8
+    && storedEnabledTrackIds.length === VERSION_8_DEFAULT_TRACK_IDS.length
+    && VERSION_8_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist || hadVersion5DefaultPlaylist || hadVersion6DefaultPlaylist || hadVersion7DefaultPlaylist || hadVersion8DefaultPlaylist
     ? [...NAVIGATION_MUSIC_TRACK_IDS]
     : storedEnabledTrackIds;
 
   return {
-    version: 7,
+    version: 9,
     masterEnabled: raw.masterEnabled !== false,
     navigationMusicEnabled: raw.navigationMusicEnabled !== false,
     navigationVolume: clamp01(raw.navigationVolume, DEFAULT_AUDIO_PREFERENCES.navigationVolume),
@@ -177,7 +200,7 @@ export function setAudioPreferences(nextValue: unknown): AudioPreferences {
 }
 
 export function updateAudioPreferences(patch: Partial<AudioPreferences>): AudioPreferences {
-  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 7 });
+  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 9 });
 }
 
 export function resetAudioPreferences(): AudioPreferences {

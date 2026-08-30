@@ -12,9 +12,7 @@ export type SocialAuthProvider =
   | "instagram"
   | "snapchat"
   | "tiktok"
-  | "linkedin"
   | "github"
-  | "spotify"
   | "twitch"
   | "kakao";
 
@@ -48,9 +46,7 @@ export const SOCIAL_AUTH_CONFIG: Record<SocialAuthProvider, SocialAuthConfig> = 
   snapchat: { label: "Snapchat", oauthProvider: "snapchat", settingsKeys: ["snapchat"] },
   // TikTok Login Kit n'est pas un provider natif Supabase : Custom OAuth/OIDC.
   tiktok: { label: "TikTok", oauthProvider: "custom:tiktok", custom: true },
-  linkedin: { label: "LinkedIn", oauthProvider: "linkedin_oidc", settingsKeys: ["linkedin_oidc", "linkedin"] },
   github: { label: "GitHub", oauthProvider: "github", settingsKeys: ["github"] },
-  spotify: { label: "Spotify", oauthProvider: "spotify", settingsKeys: ["spotify"] },
   twitch: { label: "Twitch", oauthProvider: "twitch", settingsKeys: ["twitch"] },
   kakao: { label: "Kakao", oauthProvider: "kakao", settingsKeys: ["kakao"] },
 };
@@ -65,9 +61,7 @@ export const SOCIAL_AUTH_PROVIDERS: readonly SocialAuthProvider[] = [
   "instagram",
   "snapchat",
   "tiktok",
-  "linkedin",
   "github",
-  "spotify",
   "twitch",
   "kakao",
 ] as const;
@@ -85,9 +79,7 @@ export const SOCIAL_AUTH_SECONDARY_PROVIDERS: readonly SocialAuthProvider[] = [
   "instagram",
   "snapchat",
   "tiktok",
-  "linkedin",
   "github",
-  "spotify",
   "twitch",
   "kakao",
 ] as const;

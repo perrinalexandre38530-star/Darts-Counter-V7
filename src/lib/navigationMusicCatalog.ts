@@ -20,6 +20,13 @@ import heartwaveAnthemUrl from "../assets/audio/navigation/heartwave_anthem_nav.
 import linearSkylineUrl from "../assets/audio/navigation/linear_skyline_nav.m4a";
 import orientalSurgeUrl from "../assets/audio/navigation/oriental_surge_nav.m4a";
 import neonCaravanUrl from "../assets/audio/navigation/neon_caravan_nav.m4a";
+import basslineJackpotUrl from "../assets/audio/navigation/bass_bet_nav.m4a";
+import pulseWagerUrl from "../assets/audio/navigation/bet_bass_nav.m4a";
+import distortedHorizonUrl from "../assets/audio/navigation/distorted_bed_nav.m4a";
+import temporalDriveUrl from "../assets/audio/navigation/temporal_drive_nav.m4a";
+import scoringOvertureUrl from "../assets/audio/navigation/scoring_overture_nav.m4a";
+import dartsVanguardUrl from "../assets/audio/navigation/darts_vanguard_nav.m4a";
+import temporalResolveUrl from "../assets/audio/navigation/temporal_resolve_nav.m4a";
 
 export const NAVIGATION_MUSIC_TRACKS = [
   {
@@ -153,6 +160,48 @@ export const NAVIGATION_MUSIC_TRACKS = [
     name: "Neon Caravan",
     subtitle: { fr: "Cordes orientales, basses électro et groove nomade", en: "Oriental strings, electro bass and nomadic groove", es: "Cuerdas orientales, bajos electro y groove nómada" },
     url: neonCaravanUrl,
+  },
+  {
+    id: "bassline_jackpot",
+    name: "Bassline Jackpot",
+    subtitle: { fr: "Basses nerveuses, tension club et montée progressive", en: "Driving bass, club tension and a progressive build", es: "Bajos intensos, tensión club y subida progresiva" },
+    url: basslineJackpotUrl,
+  },
+  {
+    id: "pulse_wager",
+    name: "Pulse Wager",
+    subtitle: { fr: "Électro rythmée, pulsation directe et énergie compétitive", en: "Rhythmic electro, direct pulse and competitive energy", es: "Electro rítmica, pulso directo y energía competitiva" },
+    url: pulseWagerUrl,
+  },
+  {
+    id: "distorted_horizon",
+    name: "Distorted Horizon",
+    subtitle: { fr: "Synthés saturés, batterie massive et tension futuriste", en: "Distorted synths, massive drums and futuristic tension", es: "Sintetizadores saturados, batería masiva y tensión futurista" },
+    url: distortedHorizonUrl,
+  },
+  {
+    id: "temporal_drive",
+    name: "Temporal Drive",
+    subtitle: { fr: "Progression hypnotique, pulsation cinématique et voyage temporel", en: "Hypnotic progression, cinematic pulse and temporal journey", es: "Progresión hipnótica, pulso cinematográfico y viaje temporal" },
+    url: temporalDriveUrl,
+  },
+  {
+    id: "scoring_overture",
+    name: "Scoring Overture",
+    subtitle: { fr: "Ouverture épique, percussions sportives et montée orchestrale", en: "Epic overture, sporting percussion and orchestral build", es: "Obertura épica, percusión deportiva y subida orquestal" },
+    url: scoringOvertureUrl,
+  },
+  {
+    id: "darts_vanguard",
+    name: "Darts Vanguard",
+    subtitle: { fr: "Percussions cinématiques, tension sombre et montée de tournoi", en: "Cinematic percussion, dark tension and tournament build", es: "Percusión cinematográfica, tensión oscura y subida de torneo" },
+    url: dartsVanguardUrl,
+  },
+  {
+    id: "temporal_resolve",
+    name: "Temporal Resolve",
+    subtitle: { fr: "Cordes épiques, pulsation urbaine et progression héroïque", en: "Epic strings, urban pulse and heroic progression", es: "Cuerdas épicas, pulso urbano y progresión heroica" },
+    url: temporalResolveUrl,
   },
 ] as const;
 

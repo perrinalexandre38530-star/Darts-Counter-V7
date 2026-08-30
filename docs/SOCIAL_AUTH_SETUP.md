@@ -16,13 +16,11 @@
 - Instagram Pro — provider OAuth personnalisé Supabase (`custom:instagram`)
 - Snapchat
 - TikTok — provider OAuth personnalisé Supabase (`custom:tiktok`)
-- LinkedIn (OIDC)
 - GitHub
-- Spotify
 - Twitch
 - Kakao
 
-L'écran de connexion n'affiche que les 4 principaux par défaut : Facebook, Google, Microsoft et Apple. Le bouton **Plus de connexions** déplie les 10 autres.
+L'écran de connexion n'affiche que les 4 principaux par défaut : Facebook, Google, Microsoft et Apple. Le bouton **Plus de connexions** déplie les 8 autres.
 
 ## Audit V16 — sécurité de lancement OAuth
 
@@ -117,11 +115,6 @@ Provider runtime : `snapchat`
 
 Le moteur Supabase Auth/GoTrue prend en charge Snapchat. Selon la version du dashboard Supabase hébergé, Snapchat peut ne pas apparaître dans la liste simplifiée des providers alors qu'il est supporté côté Auth. Le code utilise volontairement le provider runtime.
 
-### LinkedIn
-
-Provider Supabase : `linkedin_oidc`
-
-Utiliser la configuration LinkedIn OIDC actuelle plutôt que l'ancien flux LinkedIn historique.
 
 ### GitHub
 
@@ -129,11 +122,6 @@ Provider Supabase : `github`
 
 Créer une OAuth App GitHub et utiliser le callback Supabase commun.
 
-### Spotify
-
-Provider Supabase : `spotify`
-
-Créer une application dans le Spotify Developer Dashboard et déclarer le callback Supabase.
 
 ### Twitch
 
@@ -223,7 +211,7 @@ Important : Google, Facebook, Microsoft, Apple et les autres providers ne fourni
 
 ## Verrou global de session / vraie déconnexion
 
-Le portail `AccountStart` affiche maintenant directement les 4 connexions principales (Facebook, Google, Microsoft, Apple) ainsi que **Plus de connexions (10)**.
+Le portail `AccountStart` affiche maintenant directement les 4 connexions principales (Facebook, Google, Microsoft, Apple) ainsi que **Plus de connexions (8)**.
 
 Une session authentifiée est désormais obligatoire pour accéder à l'application principale. Tant que `useAuthOnline()` n'est pas en état `signed_in` :
 

@@ -5,14 +5,15 @@ const root=process.cwd(); const read=p=>fs.readFileSync(path.join(root,p),"utf8"
 const checks=[]; const check=(name,ok)=>checks.push({name,ok:!!ok});
 const social=read("src/lib/socialAuth.ts"), panel=read("src/components/auth/SocialLoginPanel.tsx"), login=read("src/pages/AuthV7Login.tsx"), accountStart=read("src/pages/AccountStart.tsx"), setup=read("docs/SOCIAL_AUTH_SETUP.md");
 const app=read("src/App.tsx"), onlineApi=read("src/lib/onlineApi.ts"), authHook=read("src/hooks/useAuthOnline.tsx"), settings=read("src/pages/Settings.tsx"), settingsAccount=read("src/pages/SettingsAccount.tsx"), main=read("src/main.tsx"), manifest=read("android/app/src/main/AndroidManifest.xml"), activity=read("android/app/src/main/java/com/multisportsscoring/app/MainActivity.java"), plugin=read("android/app/src/main/java/com/multisportsscoring/app/SocialAuthPlugin.java"), callback=read("public/auth-callback.html"), profileImport=read("src/lib/socialProfileImport.ts"), accountBridge=read("src/lib/accountBridge.ts");
-const providers=["google","apple","facebook","azure","x","discord","instagram","snapchat","tiktok","linkedin","github","spotify","twitch","kakao"];
+const providers=["google","apple","facebook","azure","x","discord","instagram","snapchat","tiktok","github","twitch","kakao"];
 for(const p of providers) check(`provider ${p}`, social.includes(`"${p}"`));
+check("LinkedIn and Spotify removed", !social.includes('"linkedin"') && !social.includes('"spotify"') && !panel.includes("linkedin:") && !panel.includes("spotify:"));
 check("4 primary providers", social.includes('"facebook",\n  "google",\n  "azure",\n  "apple",'));
-check("10 secondary providers", social.includes('"x",\n  "discord",\n  "instagram",\n  "snapchat",\n  "tiktok",\n  "linkedin",\n  "github",\n  "spotify",\n  "twitch",\n  "kakao",'));
+check("8 secondary providers", social.includes('"x",\n  "discord",\n  "instagram",\n  "snapchat",\n  "tiktok",\n  "github",\n  "twitch",\n  "kakao",'));
 check("Shared logo-only panel used on welcome", accountStart.includes("<SocialLoginPanel") && !accountStart.includes("function SocialButton"));
 check("Shared logo-only panel used on email login", login.includes("<SocialLoginPanel") && !login.includes("function SocialButton"));
 check("Primary UI 4 icon grid", panel.includes('gridTemplateColumns: "repeat(4') && panel.includes("SocialProviderLogo"));
-check("Secondary UI 5x2 icon grid", panel.includes('gridTemplateColumns: "repeat(5'));
+check("Secondary UI 5-column icon grid", panel.includes('gridTemplateColumns: "repeat(5'));
 check("Provider names only accessibility/title", panel.includes("aria-label={`Continuer avec ${label}") && panel.includes("title={`${label}"));
 check("Real Google vector logo", panel.includes("M12.48 10.92v3.28"));
 check("Real Facebook vector logo", panel.includes("M9.101 23.691v-7.98"));
@@ -25,7 +26,6 @@ check("OAuth URL preflight", social.includes("preflightOAuthUrl") && social.incl
 check("Canonical web callback", social.includes("https://multisports-scoring.pages.dev") && setup.includes("https://multisports-scoring.pages.dev/auth-callback.html"));
 check("Canonical callback domain only", social.includes("https://multisports-scoring.pages.dev") && setup.includes("https://multisports-scoring.pages.dev/auth-callback.html"));
 check("Microsoft uses Azure", social.includes('oauthProvider: "azure"') && social.includes('scopes: "email"'));
-check("LinkedIn OIDC", social.includes('oauthProvider: "linkedin_oidc"'));
 check("X OAuth2 runtime", social.includes('oauthProvider: "x"'));
 check("Instagram custom OAuth", social.includes('oauthProvider: "custom:instagram"'));
 check("TikTok custom OAuth", social.includes('oauthProvider: "custom:tiktok"'));
