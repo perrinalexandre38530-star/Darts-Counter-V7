@@ -24,10 +24,10 @@ function detectMediaKind(src: string, kind?: MotionMediaOverride["kind"]) {
 }
 
 /**
- * AWENA is always the pedagogical media shown by FIT PERF. Source photos and
- * source videos are intentionally kept out of this component: they remain in
- * the exercise detail reference gallery, while this renderer stays visually
- * consistent across the complete catalogue.
+ * AWENA is the pedagogical media shown by FIT PERF. Hand-authored/manual AWENA
+ * media is authoritative. Generated AWENA is read only from the /approved gate;
+ * REVIEW and REJECTED generations can never leak into the application. Source
+ * photos/videos remain fallback references while a missing exercise awaits AWENA.
  */
 export default function FitExerciseMotion({ exercise, accent, compact = false, cleanBranding = false }: { exercise: FitExercise; accent?: string; compact?: boolean; cleanBranding?: boolean }) {
   const color = accent || exercise.accent || "#f6c256";
@@ -67,18 +67,6 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
         ) : (
           <img src={media.src} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block" }}/>
         )
-      ) : generatedVideoOk ? (
-        <video
-          src={generatedMedia.videoUrl}
-          poster={generatedMedia.posterUrl}
-          muted
-          loop
-          autoPlay
-          playsInline
-          preload={compact ? "metadata" : "auto"}
-          onError={() => setGeneratedVideoOk(false)}
-          style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block", background: "transparent" }}
-        />
       ) : knownVideo && knownVideoOk ? (
         <video
           src={knownVideo}
@@ -97,6 +85,18 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
         <div style={{ minHeight: 100, display: "grid", placeItems: "center", padding: 4, boxSizing: "border-box" }}>
           <img src={premiumPoster} alt={`Aperçu Awena ${exercise.name}`} loading="lazy" style={{ width: "100%", height: 122, objectFit: "contain", display: "block", borderRadius: 10 }}/>
         </div>
+      ) : generatedVideoOk ? (
+        <video
+          src={generatedMedia.videoUrl}
+          poster={generatedMedia.posterUrl}
+          muted
+          loop
+          autoPlay
+          playsInline
+          preload={compact ? "metadata" : "auto"}
+          onError={() => setGeneratedVideoOk(false)}
+          style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block", background: "transparent" }}
+        />
       ) : hasFitAwena3DMotion(exercise) && !threeDFailed ? (
         <FitAwena3DStage exercise={exercise} compact={compact} onFail={() => setThreeDFailed(true)}/>
       ) : hasFitAwenaMotion(exercise) ? (

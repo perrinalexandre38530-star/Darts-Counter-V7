@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { assetKey, loadCatalog } from "./fit-awena-catalog-source.mjs";
 import { resolveCatalogImageUrls } from "./fit-awena-driver-utils.mjs";
+import { AWENA_STATUS, ensureAwenaRegistryDirectories, generatedDirectory, resolveAwenaRegistryState } from "./fit-awena-registry.mjs";
 
 const ROOT = process.cwd();
 const MEDIA_ROOT = path.join(ROOT, "public/fit/awena-library");
@@ -9,7 +10,8 @@ const OUT_DIR = path.join(ROOT, "var/fit-awena");
 const QUEUE_FILE = path.join(OUT_DIR, "comfyui-queue.json");
 const CATALOG_FILE = path.join(OUT_DIR, "catalog.json");
 const REPORT_FILE = path.join(OUT_DIR, "queue-report.json");
-const forceAll = process.argv.includes("--all");
+const includeApproved = process.argv.includes("--include-approved");
+const retryRejected = process.argv.includes("--retry-rejected");
 const refresh = process.argv.includes("--refresh");
 
 async function exists(file) { try { await fs.access(file); return true; } catch { return false; } }
@@ -75,25 +77,21 @@ function motionPrompt(exercise) {
   return `AWENA performs one technically correct complete repetition of ${exercise.name}, from setup through full range and back to the start. Controlled educational tempo, stable camera, consistent face/body/outfit/equipment, no cuts, seamless short loop, whole body always visible.`;
 }
 
-async function mediaState(key) {
-  const dir=path.join(MEDIA_ROOT,key);
-  const video=path.join(dir,"awena-preview.webm");
-  const poster=path.join(dir,"awena-poster.webp");
-  const steps=Array.from({length:4},(_,i)=>path.join(dir,`awena-step-${String(i+1).padStart(2,"0")}.webp`));
-  return { video:await exists(video), poster:await exists(poster), steps:await Promise.all(steps.map(exists)) };
-}
 
 const catalog=await loadCatalog({refresh,allowCache:true});
 await fs.mkdir(OUT_DIR,{recursive:true});
-await fs.mkdir(MEDIA_ROOT,{recursive:true});
+await ensureAwenaRegistryDirectories();
 await fs.writeFile(CATALOG_FILE,JSON.stringify(catalog,null,2));
 
-const jobs=[]; let complete=0; let partial=0;
+const jobs=[];
+const statusCounts={ APPROVED:0, REVIEW:0, MISSING:0, REJECTED:0 };
 for(const exercise of catalog.exercises){
-  const key=assetKey(exercise); const state=await mediaState(key); const stepCount=state.steps.filter(Boolean).length;
-  const isComplete=state.video&&state.poster&&stepCount>=4;
-  if(isComplete&&!forceAll){complete++;continue;}
-  if(state.video||state.poster||stepCount)partial++;
+  const key=assetKey(exercise);
+  const registryState=await resolveAwenaRegistryState(exercise,key);
+  statusCounts[registryState.status]=(statusCounts[registryState.status]||0)+1;
+  if(registryState.status===AWENA_STATUS.APPROVED && !includeApproved) continue;
+  if(registryState.status===AWENA_STATUS.REVIEW) continue;
+  if(registryState.status===AWENA_STATUS.REJECTED && !retryRejected) continue;
   jobs.push({
     version:1,
     exerciseId:exercise.id,
@@ -114,8 +112,9 @@ for(const exercise of catalog.exercises){
       strategy:(exercise.videoUrls||[]).length?"existing-video":resolveCatalogImageUrls(exercise).length>=2?"photo-pair-driver":"needs-generated-driver",
     },
     instructions:exercise.instructions||[],
+    registryStatus: registryState.status,
     output:{
-      directory:`public/fit/awena-library/${key}`,
+      directory:path.relative(ROOT,generatedDirectory(AWENA_STATUS.REVIEW,key)).replaceAll("\\","/"),
       video:"awena-preview.webm",
       poster:"awena-poster.webp",
       steps:["awena-step-01.webp","awena-step-02.webp","awena-step-03.webp","awena-step-04.webp"],
@@ -131,8 +130,8 @@ for(const exercise of catalog.exercises){
     },
   });
 }
-const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,alreadyComplete:complete,partial,queued:jobs.length,withExistingMotionVideo:jobs.filter((j)=>j.existingReferenceVideos?.length).length,withReferencePhotos:jobs.filter((j)=>j.resolvedReferenceImages?.length).length,withPhotoPairDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)>=2).length,needsGeneratedMotionDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)<2).length,sources:catalog.sources,sourceErrors:catalog.errors||[]};
-await fs.writeFile(QUEUE_FILE,JSON.stringify({version:1,createdAt:new Date().toISOString(),catalogCount:catalog.exercises.length,jobs},null,2));
+const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,statusCounts,queued:jobs.length,withExistingMotionVideo:jobs.filter((j)=>j.existingReferenceVideos?.length).length,withReferencePhotos:jobs.filter((j)=>j.resolvedReferenceImages?.length).length,withPhotoPairDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)>=2).length,needsGeneratedMotionDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)<2).length,policy:{approvedNeverRegeneratedByDefault:true,reviewNeverQueued:true,rejectedRequiresRetryFlag:true,generatedDestination:"REVIEW"},sources:catalog.sources,sourceErrors:catalog.errors||[]};
+await fs.writeFile(QUEUE_FILE,JSON.stringify({version:2,createdAt:new Date().toISOString(),catalogCount:catalog.exercises.length,jobs},null,2));
 await fs.writeFile(REPORT_FILE,JSON.stringify(report,null,2));
 console.log(JSON.stringify(report,null,2));
 console.log(`Queue: ${QUEUE_FILE}`);

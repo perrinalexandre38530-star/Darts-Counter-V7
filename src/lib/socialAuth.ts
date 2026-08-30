@@ -30,7 +30,12 @@ export const SOCIAL_AUTH_CONFIG: Record<SocialAuthProvider, SocialAuthConfig> = 
   apple: { label: "Apple", oauthProvider: "apple", settingsKeys: ["apple"] },
   facebook: { label: "Facebook", oauthProvider: "facebook", settingsKeys: ["facebook"] },
   azure: { label: "Microsoft", oauthProvider: "azure", scopes: "email", settingsKeys: ["azure"] },
-  x: { label: "X / Twitter", oauthProvider: "x", settingsKeys: ["x", "twitter"] },
+  // X OAuth 2.0 est distinct de l’ancien provider Twitter OAuth 1.0a.
+  // /auth/v1/settings de Supabase peut encore exposer uniquement `twitter`
+  // (legacy) et pas `x`. Ne jamais utiliser `twitter=false` pour masquer X :
+  // si `x` n’est pas publié par l’endpoint public, on garde un état `unknown`
+  // et le vrai preflight OAuth valide la configuration au clic.
+  x: { label: "X / Twitter", oauthProvider: "x", settingsKeys: ["x"] },
   discord: { label: "Discord", oauthProvider: "discord", settingsKeys: ["discord"] },
   // Meta ne propose pas un login Instagram grand public équivalent à Facebook Login.
   // Ce bouton est prêt pour un provider OAuth personnalisé Supabase et vise les

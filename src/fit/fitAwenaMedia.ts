@@ -1,6 +1,11 @@
 import type { FitExercise } from "./fitStore";
 
+/**
+ * Generated media is never consumed from the raw/review area. Only files that
+ * have been explicitly promoted to /approved are visible to the application.
+ */
 export const FIT_AWENA_LIBRARY_ROOT = "/fit/awena-library";
+export const FIT_AWENA_APPROVED_ROOT = `${FIT_AWENA_LIBRARY_ROOT}/approved`;
 export const FIT_AWENA_STEP_COUNT_DEFAULT = 4;
 
 export type FitAwenaMedia = {
@@ -10,6 +15,7 @@ export type FitAwenaMedia = {
   stepImages: string[];
   transparent: true;
   generated: boolean;
+  status: "APPROVED";
 };
 
 function cleanAssetPart(value: string) {
@@ -28,9 +34,13 @@ export function fitAwenaAssetKey(exercise: Pick<FitExercise, "id" | "name">): st
   return id || name || "exercise";
 }
 
+/**
+ * Deterministic paths for a HUMAN-APPROVED generated AWENA pack.
+ * REVIEW/REJECTED folders deliberately have no runtime resolver.
+ */
 export function fitAwenaGeneratedMedia(exercise: Pick<FitExercise, "id" | "name">, stepCount = FIT_AWENA_STEP_COUNT_DEFAULT): FitAwenaMedia {
   const assetKey = fitAwenaAssetKey(exercise);
-  const root = `${FIT_AWENA_LIBRARY_ROOT}/${assetKey}`;
+  const root = `${FIT_AWENA_APPROVED_ROOT}/${assetKey}`;
   return {
     assetKey,
     videoUrl: `${root}/awena-preview.webm`,
@@ -38,23 +48,23 @@ export function fitAwenaGeneratedMedia(exercise: Pick<FitExercise, "id" | "name"
     stepImages: Array.from({ length: Math.max(2, Math.min(8, stepCount)) }, (_, index) => `${root}/awena-step-${String(index + 1).padStart(2, "0")}.webp`),
     transparent: true,
     generated: true,
+    status: "APPROVED",
   };
 }
 
 function motionKey(exercise: FitExercise) {
   const explicit = String(exercise.motionKey || "").toLowerCase().trim();
   if (explicit) return explicit;
-  const compact = String(exercise.name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup"].includes(compact)) return "pushup";
+  const compact = String(exercise.name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup", "pompes"].includes(compact)) return "pushup";
   if (["bench press", "barbell bench press", "flat barbell bench press", "developpe couche"].includes(compact)) return "bench";
-  if (compact.includes("burpee")) return "burpee";
+  if (["burpee", "burpees"].includes(compact)) return "burpee";
+  if (["squat", "back squat", "barbell back squat"].includes(compact)) return "squat";
+  if (["curl biceps", "biceps curl", "barbell curl"].includes(compact)) return "curl";
   return "";
 }
 
-/**
- * Existing hand-authored AWENA step images stay authoritative. New catalogue
- * entries follow the generated /fit/awena-library/<exercise-id>/ convention.
- */
+/** Existing hand-authored AWENA step images are authoritative. */
 export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_AWENA_STEP_COUNT_DEFAULT): string[] {
   const key = motionKey(exercise);
   if (key === "pushup") {
@@ -76,9 +86,17 @@ export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_A
   if (key === "burpee") {
     return [
       "/fit/exercise-media/burpee/awena-01.webp",
-      "/fit/exercise-media/burpee/awena-03.webp",
-      "/fit/exercise-media/burpee/awena-05.webp",
       "/fit/exercise-media/burpee/awena-02.webp",
+      "/fit/exercise-media/burpee/awena-03.webp",
+      "/fit/exercise-media/burpee/awena-04.webp",
+    ];
+  }
+  if (key === "curl") {
+    return [
+      "/fit/motions/awena/premium/curl/frames/frame-01.webp",
+      "/fit/motions/awena/premium/curl/frames/frame-02.webp",
+      "/fit/motions/awena/premium/curl/frames/frame-04.webp",
+      "/fit/motions/awena/premium/curl/frames/frame-05.webp",
     ];
   }
   return fitAwenaGeneratedMedia(exercise, requestedCount).stepImages;
@@ -86,7 +104,7 @@ export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_A
 
 export function fitAwenaKnownPoster(exercise: FitExercise): string | null {
   const key = motionKey(exercise);
-  if (["pushup", "bench", "squat", "curl", "burpee", "deadlift"].includes(key)) return `/fit/motions/awena/premium/${key}/poster.webp`;
+  if (["pushup", "bench", "squat", "curl", "burpee"].includes(key)) return `/fit/motions/awena/premium/${key}/poster.webp`;
   return null;
 }
 
@@ -95,4 +113,8 @@ export function fitAwenaKnownVideo(exercise: FitExercise): string | null {
   if (key === "pushup" || key === "burpee") return `/fit/motions/awena/premium/${key}/motion.webm`;
   if (key === "bench" || key === "squat") return `/fit/motions/awena/premium/${key}/motion.mp4`;
   return null;
+}
+
+export function fitAwenaManualKey(exercise: FitExercise): string {
+  return motionKey(exercise);
 }
