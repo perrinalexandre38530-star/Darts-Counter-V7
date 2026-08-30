@@ -11,6 +11,7 @@ const stage3d = read("src/pages/fit/FitAwena3DStage.tsx");
 const renderer = read("src/pages/fit/FitExerciseMotion.tsx");
 const plan = read("src/pages/fit/FitPerfPlan.tsx");
 const module = read("src/pages/fit/FitPerfModule.tsx");
+const detail = read("src/pages/fit/FitExerciseDetailDialog.tsx");
 
 assert.ok(freeDb.includes("yuhonas/free-exercise-db/main/dist/exercises.json"), "URL Free Exercise DB absente");
 assert.ok(freeDb.includes("Unlicense / public domain"), "Licence Free Exercise DB non enregistrée");
@@ -19,7 +20,7 @@ assert.ok(fitStore.includes("FREE_EXERCISE_CACHE_KEY") && fitStore.includes("ext
 assert.ok(plan.includes("loadFitCatalog") && catalogEngine.includes("loadFreeExerciseCatalog") && catalogEngine.includes("loadWgerExerciseCatalog"), "Catalogue multi-sources non branché dans la page Exercices");
 assert.ok(module.includes("loadFitCatalog") && module.includes("pickerExercises"), "Catalogue multi-sources non branché dans le sélecteur de séance");
 assert.ok(renderer.includes("FitAwena3DStage") && renderer.includes("hasFitAwena3DMotion"), "Rendu 3D non branché avant le fallback 2D");
-assert.ok(renderer.includes("freeExerciseImageUrl"), "Référence visuelle open DB absente pour les mouvements non mappés");
+assert.ok(renderer.includes("fitAwenaGeneratedMedia") && detail.includes("freeExerciseImageUrl") && detail.includes("collectExercisePhotos"), "AWENA doit rester prioritaire et les références open DB doivent rester accessibles dans la fiche");
 assert.ok(stage3d.includes("three@0.180.0") && stage3d.includes("WebGLRenderer"), "Runtime Three.js 3D absent");
 assert.ok(stage3d.includes("pointerdown") && stage3d.includes("GLISSER ↔"), "Rotation interactive 3D absente");
 assert.ok(stage3d.includes("setPaused") && stage3d.includes("PAUSE"), "Contrôle pause 3D absent");

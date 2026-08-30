@@ -17,47 +17,175 @@ type Props = {
 
 type SocialPanelCopy = {
   quickTitle: string;
-  showMore: (count: number) => string;
-  hideMore: string;
+  otherConnections: string;
+  openMore: string;
   continueWith: (label: string, blocked: boolean) => string;
   titleWith: (label: string, blocked: boolean) => string;
 };
 
-const SOCIAL_PANEL_COPY: Record<"fr" | "en" | "es", SocialPanelCopy> = {
+const SOCIAL_PANEL_COPY: Record<Lang, SocialPanelCopy> = {
   fr: {
     quickTitle: "Connexion rapide",
-    showMore: (count) => `Plus de connexions (${count})`,
-    hideMore: "Masquer les autres connexions",
+    otherConnections: "Autres connexions",
+    openMore: "Afficher les autres connexions",
     continueWith: (label, blocked) => `Continuer avec ${label}${blocked ? " — à configurer" : ""}`,
     titleWith: (label, blocked) => `${label}${blocked ? " — à configurer dans Supabase" : ""}`,
   },
   en: {
     quickTitle: "Quick sign in",
-    showMore: (count) => `More connections (${count})`,
-    hideMore: "Hide other connections",
+    otherConnections: "Other connections",
+    openMore: "Show other connections",
     continueWith: (label, blocked) => `Continue with ${label}${blocked ? " — needs setup" : ""}`,
     titleWith: (label, blocked) => `${label}${blocked ? " — configure in Supabase" : ""}`,
   },
   es: {
     quickTitle: "Conexión rápida",
-    showMore: (count) => `Más conexiones (${count})`,
-    hideMore: "Ocultar las otras conexiones",
+    otherConnections: "Otras conexiones",
+    openMore: "Mostrar otras conexiones",
     continueWith: (label, blocked) => `Continuar con ${label}${blocked ? " — por configurar" : ""}`,
     titleWith: (label, blocked) => `${label}${blocked ? " — configurar en Supabase" : ""}`,
   },
+  de: {
+    quickTitle: "Schnellanmeldung",
+    otherConnections: "Weitere Verbindungen",
+    openMore: "Weitere Verbindungen anzeigen",
+    continueWith: (label, blocked) => `Mit ${label} fortfahren${blocked ? " — Einrichtung nötig" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — in Supabase konfigurieren" : ""}`,
+  },
+  it: {
+    quickTitle: "Accesso rapido",
+    otherConnections: "Altri accessi",
+    openMore: "Mostra altri accessi",
+    continueWith: (label, blocked) => `Continua con ${label}${blocked ? " — da configurare" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — configura in Supabase" : ""}`,
+  },
+  pt: {
+    quickTitle: "Ligação rápida",
+    otherConnections: "Outras ligações",
+    openMore: "Mostrar outras ligações",
+    continueWith: (label, blocked) => `Continuar com ${label}${blocked ? " — por configurar" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — configurar no Supabase" : ""}`,
+  },
+  nl: {
+    quickTitle: "Snel aanmelden",
+    otherConnections: "Andere verbindingen",
+    openMore: "Andere verbindingen tonen",
+    continueWith: (label, blocked) => `Doorgaan met ${label}${blocked ? " — nog te configureren" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — configureren in Supabase" : ""}`,
+  },
+  ru: {
+    quickTitle: "Быстрый вход",
+    otherConnections: "Другие способы входа",
+    openMore: "Показать другие способы входа",
+    continueWith: (label, blocked) => `Продолжить через ${label}${blocked ? " — требуется настройка" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — настройте в Supabase" : ""}`,
+  },
+  zh: {
+    quickTitle: "快速登录",
+    otherConnections: "其他登录方式",
+    openMore: "显示其他登录方式",
+    continueWith: (label, blocked) => `使用 ${label} 继续${blocked ? " — 需配置" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — 请在 Supabase 中配置" : ""}`,
+  },
+  ja: {
+    quickTitle: "クイックログイン",
+    otherConnections: "その他の接続",
+    openMore: "その他の接続を表示",
+    continueWith: (label, blocked) => `${label} で続行${blocked ? " — 設定が必要" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — Supabase で設定してください" : ""}`,
+  },
+  ar: {
+    quickTitle: "اتصال سريع",
+    otherConnections: "اتصالات أخرى",
+    openMore: "عرض الاتصالات الأخرى",
+    continueWith: (label, blocked) => `المتابعة عبر ${label}${blocked ? " — يحتاج إلى إعداد" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — قم بإعداده في Supabase" : ""}`,
+  },
+  hi: {
+    quickTitle: "त्वरित साइन-इन",
+    otherConnections: "अन्य कनेक्शन",
+    openMore: "अन्य कनेक्शन दिखाएँ",
+    continueWith: (label, blocked) => `${label} से जारी रखें${blocked ? " — सेटअप आवश्यक" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — Supabase में कॉन्फ़िगर करें" : ""}`,
+  },
+  tr: {
+    quickTitle: "Hızlı giriş",
+    otherConnections: "Diğer bağlantılar",
+    openMore: "Diğer bağlantıları göster",
+    continueWith: (label, blocked) => `${label} ile devam et${blocked ? " — kurulum gerekli" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — Supabase'te yapılandır" : ""}`,
+  },
+  da: {
+    quickTitle: "Hurtig login",
+    otherConnections: "Andre forbindelser",
+    openMore: "Vis andre forbindelser",
+    continueWith: (label, blocked) => `Fortsæt med ${label}${blocked ? " — kræver opsætning" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — konfigurer i Supabase" : ""}`,
+  },
+  no: {
+    quickTitle: "Rask innlogging",
+    otherConnections: "Andre tilkoblinger",
+    openMore: "Vis andre tilkoblinger",
+    continueWith: (label, blocked) => `Fortsett med ${label}${blocked ? " — krever oppsett" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — konfigurer i Supabase" : ""}`,
+  },
+  sv: {
+    quickTitle: "Snabbinloggning",
+    otherConnections: "Andra anslutningar",
+    openMore: "Visa andra anslutningar",
+    continueWith: (label, blocked) => `Fortsätt med ${label}${blocked ? " — kräver konfiguration" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — konfigurera i Supabase" : ""}`,
+  },
+  is: {
+    quickTitle: "Flýtiskráning",
+    otherConnections: "Aðrar tengingar",
+    openMore: "Sýna aðrar tengingar",
+    continueWith: (label, blocked) => `Halda áfram með ${label}${blocked ? " — þarf uppsetningu" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — stilla í Supabase" : ""}`,
+  },
+  pl: {
+    quickTitle: "Szybkie logowanie",
+    otherConnections: "Inne połączenia",
+    openMore: "Pokaż inne połączenia",
+    continueWith: (label, blocked) => `Kontynuuj z ${label}${blocked ? " — wymaga konfiguracji" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — skonfiguruj w Supabase" : ""}`,
+  },
+  ro: {
+    quickTitle: "Conectare rapidă",
+    otherConnections: "Alte conexiuni",
+    openMore: "Afișează alte conexiuni",
+    continueWith: (label, blocked) => `Continuă cu ${label}${blocked ? " — necesită configurare" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — configurează în Supabase" : ""}`,
+  },
+  sr: {
+    quickTitle: "Брза пријава",
+    otherConnections: "Остале везе",
+    openMore: "Прикажи остале везе",
+    continueWith: (label, blocked) => `Настави преко ${label}${blocked ? " — потребно подешавање" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — подеси у Supabase-у" : ""}`,
+  },
+  hr: {
+    quickTitle: "Brza prijava",
+    otherConnections: "Druge prijave",
+    openMore: "Prikaži druge prijave",
+    continueWith: (label, blocked) => `Nastavi s ${label}${blocked ? " — potrebno postavljanje" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — postavi u Supabaseu" : ""}`,
+  },
+  cs: {
+    quickTitle: "Rychlé přihlášení",
+    otherConnections: "Další připojení",
+    openMore: "Zobrazit další připojení",
+    continueWith: (label, blocked) => `Pokračovat přes ${label}${blocked ? " — vyžaduje nastavení" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — nastavte v Supabase" : ""}`,
+  },
 };
-
-function getQuickCopy(lang: Lang): SocialPanelCopy {
-  if (lang === "en") return SOCIAL_PANEL_COPY.en;
-  if (lang === "es") return SOCIAL_PANEL_COPY.es;
-  return SOCIAL_PANEL_COPY.fr;
-}
 
 export default function SocialLoginPanel({ busyProvider, disabled = false, onProvider }: Props) {
   const [showMore, setShowMore] = React.useState(false);
   const [availability, setAvailability] = React.useState<Partial<Record<SocialAuthProvider, SocialProviderAvailability>>>({});
   const { lang } = useLang();
-  const copy = getQuickCopy(lang);
+  const copy = SOCIAL_PANEL_COPY[lang] || SOCIAL_PANEL_COPY.fr;
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -71,18 +199,29 @@ export default function SocialLoginPanel({ busyProvider, disabled = false, onPro
     };
   }, []);
 
+  React.useEffect(() => {
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!panelRef.current) return;
+      const target = event.target as Node | null;
+      if (target && !panelRef.current.contains(target)) setShowMore(false);
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    return () => document.removeEventListener("mousedown", closeOnOutside);
+  }, []);
+
   const orderedVisibleProviders = [...SOCIAL_AUTH_PRIMARY_PROVIDERS, ...SOCIAL_AUTH_SECONDARY_PROVIDERS].filter(
     (provider) => availability[provider] !== "disabled"
   );
-  const primaryProviders = orderedVisibleProviders.slice(0, 4);
-  const secondaryProviders = orderedVisibleProviders.slice(4);
+  const primaryProviders = orderedVisibleProviders.slice(0, 3);
+  const secondaryProviders = orderedVisibleProviders.slice(3);
+  const hasMore = secondaryProviders.length > 0;
 
   React.useEffect(() => {
-    if (!secondaryProviders.length && showMore) setShowMore(false);
-  }, [secondaryProviders.length, showMore]);
+    if (!hasMore && showMore) setShowMore(false);
+  }, [hasMore, showMore]);
 
   return (
-    <div style={panelStyle}>
+    <div ref={panelRef} style={panelStyle}>
       <div style={headerStyle}>{copy.quickTitle}</div>
 
       <div style={primaryGridStyle}>
@@ -98,35 +237,38 @@ export default function SocialLoginPanel({ busyProvider, disabled = false, onPro
             onClick={() => onProvider(provider)}
           />
         ))}
+
+        {hasMore ? (
+          <button
+            type="button"
+            onClick={() => setShowMore((value) => !value)}
+            disabled={disabled || !!busyProvider}
+            aria-label={copy.openMore}
+            title={copy.openMore}
+            style={plusButtonStyle}
+          >
+            <span style={plusGlyphStyle}>+</span>
+          </button>
+        ) : null}
       </div>
 
-      {secondaryProviders.length ? (
-        <button
-          type="button"
-          onClick={() => setShowMore((value) => !value)}
-          disabled={disabled || !!busyProvider}
-          style={moreButtonStyle}
-          aria-expanded={showMore}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>{showMore ? "−" : "+"}</span>
-          <span>{showMore ? copy.hideMore : copy.showMore(secondaryProviders.length)}</span>
-        </button>
-      ) : null}
-
       {showMore ? (
-        <div style={secondaryGridStyle}>
-          {secondaryProviders.map((provider) => (
-            <SocialLogoButton
-              key={provider}
-              provider={provider}
-              busy={busyProvider === provider}
-              blocked={availability[provider] === "disabled"}
-              disabled={disabled || (!!busyProvider && busyProvider !== provider)}
-              size="secondary"
-              labels={copy}
-              onClick={() => onProvider(provider)}
-            />
-          ))}
+        <div style={floatingMenuStyle}>
+          <div style={floatingMenuHeaderStyle}>{copy.otherConnections}</div>
+          <div style={secondaryGridStyle}>
+            {secondaryProviders.map((provider) => (
+              <SocialLogoButton
+                key={provider}
+                provider={provider}
+                busy={busyProvider === provider}
+                blocked={availability[provider] === "disabled"}
+                disabled={disabled || (!!busyProvider && busyProvider !== provider)}
+                size="secondary"
+                labels={copy}
+                onClick={() => onProvider(provider)}
+              />
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
@@ -145,7 +287,7 @@ type LogoButtonProps = {
 
 function SocialLogoButton({ provider, busy, blocked, disabled, size, labels, onClick }: LogoButtonProps) {
   const theme = SOCIAL_TILE_THEME[provider];
-  const px = size === "primary" ? 62 : 52;
+  const px = size === "primary" ? 62 : 54;
   const iconPx = size === "primary" ? 31 : 26;
   const isDisabled = disabled && !busy;
   const label = SOCIAL_AUTH_LABELS[provider];
@@ -238,19 +380,21 @@ const SOCIAL_ICON_PATHS: Record<Exclude<SocialAuthProvider, "azure">, string> & 
 
 const panelStyle: React.CSSProperties = {
   display: "grid",
-  gap: 11,
+  gap: 12,
   padding: 12,
-  borderRadius: 18,
-  border: "1px solid rgba(54,241,255,.13)",
-  background: "linear-gradient(180deg, rgba(54,241,255,.055), rgba(255,255,255,.025))",
+  borderRadius: 20,
+  border: "1px solid rgba(255,198,58,.18)",
+  background: "linear-gradient(180deg, rgba(255,198,58,.06), rgba(255,255,255,.025))",
+  position: "relative",
 };
 
 const headerStyle: React.CSSProperties = {
   fontSize: 11.5,
   fontWeight: 950,
-  letterSpacing: 0.8,
-  opacity: 0.78,
+  letterSpacing: 0.9,
+  opacity: 0.9,
   textTransform: "uppercase",
+  color: "#ffd45a",
 };
 
 const primaryGridStyle: React.CSSProperties = {
@@ -267,20 +411,49 @@ const secondaryGridStyle: React.CSSProperties = {
   gap: 9,
 };
 
-const moreButtonStyle: React.CSSProperties = {
-  minHeight: 36,
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,.11)",
-  background: "rgba(255,255,255,.04)",
-  color: "rgba(255,255,255,.88)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 7,
-  padding: "7px 10px",
-  fontSize: 11.5,
+const floatingMenuStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% - 8px)",
+  left: 12,
+  right: 12,
+  zIndex: 8,
+  padding: 10,
+  borderRadius: 18,
+  border: "1px solid rgba(255,198,58,.18)",
+  background: "rgba(7,9,12,.98)",
+  boxShadow: "0 18px 36px rgba(0,0,0,.48)",
+  display: "grid",
+  gap: 10,
+};
+
+const floatingMenuHeaderStyle: React.CSSProperties = {
+  fontSize: 11,
   fontWeight: 900,
+  letterSpacing: 0.7,
+  textTransform: "uppercase",
+  color: "#ffd45a",
+};
+
+const plusButtonStyle: React.CSSProperties = {
+  width: 62,
+  height: 62,
+  borderRadius: 18,
+  border: "1px solid rgba(255,198,58,.32)",
+  background: "linear-gradient(180deg, rgba(255,198,58,.14), rgba(255,198,58,.08))",
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  margin: "0 auto",
   cursor: "pointer",
+  boxShadow: "0 9px 22px rgba(0,0,0,.30)",
+};
+
+const plusGlyphStyle: React.CSSProperties = {
+  fontSize: 34,
+  lineHeight: 1,
+  fontWeight: 500,
+  color: "#ffd45a",
+  marginTop: -2,
 };
 
 const spinnerStyle: React.CSSProperties = {

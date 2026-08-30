@@ -46,6 +46,8 @@ export type FitExercise = {
   mediaLicense?: string;
   mediaAuthor?: string;
   mediaSourceUrl?: string;
+  /** All data/media providers that contributed to the merged catalogue card. */
+  sourceContributors?: Array<{ source: "mss" | "free-exercise-db" | "wger"; sourceUrl?: string; license?: string; author?: string }>;
   level?: string;
   category?: string;
   force?: string;

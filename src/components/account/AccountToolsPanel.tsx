@@ -784,7 +784,7 @@ const [autoBusy, setAutoBusy] = React.useState(false);
           <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => go?.("auth_start" as any)}
+              onClick={() => go?.("account_start" as any)}
               style={{
                 borderRadius: 999,
                 border: `1px solid ${theme.borderSoft}`,

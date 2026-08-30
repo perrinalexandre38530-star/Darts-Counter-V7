@@ -85,7 +85,6 @@ import SportQuickSwitch from "./components/SportQuickSwitch";
 // MONETIZATION_V1
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
 
-import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
 import AuthV7Login from "./pages/AuthV7Login";
 import AuthV7Signup from "./pages/AuthV7Signup";
@@ -4330,7 +4329,14 @@ const unifiedStats = (() => {
         break;
 
       case "auth_start":
-        page = <AuthStart go={go} />;
+        // Legacy alias kept for compatibility: render the current unified auth portal.
+        page = (
+          <AccountStart
+            onLogin={() => go("auth_v7_login")}
+            onCreate={() => go("auth_v7_signup")}
+            onForgot={() => go("auth_forgot")}
+          />
+        );
         break;
 
       case "auth_v7_login":

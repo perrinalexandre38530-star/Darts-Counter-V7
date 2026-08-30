@@ -96,7 +96,12 @@
     "test:fit-perf:free3d": "node ./tools/test-fit-perf-free-3d.mjs",
     "test:fit-perf:bvh": "node ./tools/test-fit-perf-bvh-runtime.mjs",
     "fit:mocap:vendor": "node ./tools/vendor-fit-mocap.mjs",
-    "test:fit-catalog": "node ./tools/test-fit-catalog-engine-v107.mjs"
+    "test:fit-catalog": "node ./tools/test-fit-catalog-engine-v107.mjs",
+    "fit:awena:queue": "node ./tools/build-fit-awena-jobs.mjs",
+    "fit:awena:run": "node ./tools/run-comfyui-awena-batch.mjs",
+    "fit:awena:index": "node ./tools/build-fit-awena-index.mjs",
+    "fit:awena:audit": "node ./tools/audit-fit-awena-media.mjs",
+    "test:fit-awena-library": "node ./tools/test-fit-awena-full-library-v108.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

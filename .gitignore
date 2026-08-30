@@ -42,3 +42,6 @@ android/key.properties
 android/upload-keystore.jks
 *.jks
 *.keystore
+
+# FIT PERF AWENA batch working files (generated locally)
+var/fit-awena/

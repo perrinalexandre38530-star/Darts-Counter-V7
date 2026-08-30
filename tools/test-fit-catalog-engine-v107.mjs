@@ -25,7 +25,7 @@ assert.ok(engine.includes("Promise.allSettled") && engine.includes("loadFreeExer
 assert.ok(free.includes('/^https?:\\/\\//i.test(path)'), "Les médias absolus wger ne sont pas supportés par le résolveur d'image");
 assert.ok(plan.includes("getCachedFitCatalog") && plan.includes("loadFitCatalog") && !plan.includes("loadFreeExerciseCatalog"), "La bibliothèque principale n'utilise pas le moteur multi-sources");
 assert.ok(module.includes("getCachedFitCatalog") && module.includes("loadFitCatalog") && module.includes("pickerExercises = catalog.exercises"), "La séance n'utilise pas le catalogue fusionné");
-assert.ok(motion.includes('exercise.source === "wger"'), "Les images wger ne sont pas utilisables dans le rendu exercice");
+assert.ok(!motion.includes("freeExerciseImageUrl") && detail.includes("collectExercisePhotos") && detail.includes("freeExerciseImageUrl"), "Les médias externes doivent rester en référence sans remplacer AWENA dans la carte");
 assert.ok(detail.includes("exercise.sourceLicense") && detail.includes("exercise.mediaLicense"), "Attribution des sources externes absente de la fiche");
 
 console.log("✅ FIT CATALOG ENGINE V107 OK");

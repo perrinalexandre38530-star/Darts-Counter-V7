@@ -4,6 +4,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { FitExercise, FitMuscle, FitRecord } from "../../fit/fitStore";
 import { formatKg } from "../../fit/fitStore";
 import { freeExerciseImageUrl } from "../../fit/freeExerciseCatalog";
+import { fitAwenaStepImages } from "../../fit/fitAwenaMedia";
 import { FIT_MUSCLE_COLORS, FIT_MUSCLE_LABELS, inferGoalTags, inferMovementPattern, normalizeLevel } from "../../fit/fitExerciseTaxonomy";
 import FitBodyMap from "./FitBodyMap";
 import FitExerciseMotion from "./FitExerciseMotion";
@@ -39,7 +40,7 @@ const BURPEE_AWENA_STEP_3 = "/fit/exercise-media/burpee/awena-05.webp";
 const BURPEE_AWENA_STEP_4 = "/fit/exercise-media/burpee/awena-02.webp";
 const BURPEE_AWENA_PLANK = "/fit/exercise-media/burpee/awena-04.webp";
 
-type GuideStep = { title: string; body: string; image: string | null };
+type GuideStep = { title: string; body: string; image: string | null; fallbackImage?: string | null };
 type ExerciseGuide = {
   summary: string;
   steps: GuideStep[];
@@ -152,54 +153,17 @@ function equipmentIconName(value: string): "body" | "barbell" | "dumbbell" | "ca
 }
 
 function specialExerciseKey(exercise: FitExercise) {
-  const motionKey = String(exercise.motionKey || "").toLowerCase().trim();
-  if (motionKey === "pushup" || motionKey === "bench") return motionKey;
-  if (motionKey) return motionKey;
-
+  if (exercise.id === "bench") return "bench";
   const compact = String(exercise.name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup"].includes(compact)) return "pushup";
-  if (["bench press", "barbell bench press", "flat barbell bench press"].includes(compact)) return "bench";
+  if (["bench press", "barbell bench press", "flat barbell bench press", "developpe couche"].includes(compact)) return "bench";
+  if (["burpee", "burpees"].includes(compact)) return "burpee";
   return exercise.id;
 }
 
 function collectExercisePhotos(exercise: FitExercise) {
-  const key = specialExerciseKey(exercise);
   const sourceUrls = (exercise.imagePaths || []).map((_, index) => freeExerciseImageUrl(exercise, index)).filter((item): item is string => Boolean(item));
   const fallback = freeExerciseImageUrl(exercise);
-  if (key === "pushup") {
-    return Array.from(new Set([
-      PUSHUP_AWENA_STEP_1,
-      PUSHUP_AWENA_STEP_2,
-      PUSHUP_AWENA_STEP_3,
-      PUSHUP_AWENA_STEP_4,
-      PUSHUP_AWENA_HIGH,
-      PUSHUP_AWENA_LOW,
-      fallback,
-      ...sourceUrls,
-    ].filter((item): item is string => Boolean(item))));
-  }
-  if (key === "bench") {
-    return Array.from(new Set([
-      BENCH_AWENA_SETUP,
-      BENCH_AWENA_STEP_1,
-      BENCH_AWENA_STEP_2,
-      BENCH_AWENA_STEP_3,
-      BENCH_AWENA_STEP_4,
-      fallback,
-      ...sourceUrls,
-    ].filter((item): item is string => Boolean(item))));
-  }
-  if (key === "burpee") {
-    return Array.from(new Set([
-      BURPEE_AWENA_STEP_1,
-      BURPEE_AWENA_STEP_2,
-      BURPEE_AWENA_PLANK,
-      BURPEE_AWENA_STEP_3,
-      BURPEE_AWENA_STEP_4,
-      fallback,
-      ...sourceUrls,
-    ].filter((item): item is string => Boolean(item))));
-  }
   return Array.from(new Set([fallback, ...sourceUrls].filter((item): item is string => Boolean(item))));
 }
 
@@ -391,26 +355,47 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
 
 
   const instructions = (exercise.instructions || []).slice(0, 4);
-  const fallbackSteps: GuideStep[] = instructions.map((item, index) => ({
+  const genericInstructions = instructions.length ? instructions : [
+    tr(lang, "Installe-toi dans la position de départ indiquée en stabilisant le tronc et le matériel.", "Set up in the indicated start position while stabilizing your trunk and the equipment.", "Colócate en la posición inicial indicada estabilizando el tronco y el material."),
+    tr(lang, "Initie le mouvement avec contrôle en respectant l'amplitude adaptée à ta mobilité.", "Initiate the movement under control using a range of motion that suits your mobility.", "Inicia el movimiento con control respetando un rango adaptado a tu movilidad."),
+    tr(lang, "Atteins la position de contraction ou la position finale sans perdre l'alignement.", "Reach the contracted or end position without losing alignment.", "Alcanza la posición de contracción o final sin perder la alineación."),
+    tr(lang, "Reviens lentement à la position de départ et garde la tension jusqu'à la répétition suivante.", "Return slowly to the start position and keep tension until the next repetition.", "Vuelve lentamente a la posición inicial y mantén la tensión hasta la siguiente repetición."),
+  ];
+  const awenaSteps = fitAwenaStepImages(exercise, Math.max(2, genericInstructions.length));
+  const fallbackSteps: GuideStep[] = genericInstructions.map((item, index) => ({
     title: tr(lang, `Étape ${index + 1}`, `Step ${index + 1}`, `Paso ${index + 1}`),
     body: localizeInstructionText(item, lang),
-    image: freeExerciseImageUrl(exercise, Math.min(index, Math.max(0, (exercise.imagePaths?.length || 1) - 1))),
+    image: awenaSteps[Math.min(index, awenaSteps.length - 1)] || null,
+    fallbackImage: freeExerciseImageUrl(exercise, Math.min(index, Math.max(0, (exercise.imagePaths?.length || 1) - 1))),
   }));
   const goalTags = inferGoalTags(exercise);
+  const movement = inferMovementPattern(exercise);
+  const automaticPlacement = (exercise.tips?.length ? exercise.tips.slice(0, 3).map((item) => localizeInstructionText(item, lang)) : [
+    tr(lang, "Stabilise le tronc et place les articulations dans une position neutre avant de lancer la répétition.", "Brace the trunk and place the joints in a neutral position before starting the repetition.", "Estabiliza el tronco y coloca las articulaciones en posición neutra antes de iniciar la repetición."),
+    tr(lang, `Garde le ${translateEquipment(exercise.equipment, lang).toLowerCase()} sous contrôle et évite de créer de l'élan inutile.`, `Keep the ${translateEquipment(exercise.equipment, lang).toLowerCase()} under control and avoid unnecessary momentum.`, `Mantén ${translateEquipment(exercise.equipment, lang).toLowerCase()} bajo control y evita crear impulso innecesario.`),
+    tr(lang, "Utilise une amplitude que tu peux conserver sans douleur et sans perdre l'alignement.", "Use a range of motion you can maintain without pain or losing alignment.", "Usa un rango de movimiento que puedas mantener sin dolor ni perder la alineación."),
+  ]);
+  const staticExercise = /plank|hold|stretch|mobility|isometric|gainage/i.test(`${exercise.name} ${exercise.category || ""}`);
+  const automaticBreathing = staticExercise ? [
+    tr(lang, "Respire de façon régulière pendant toute la tenue et évite de bloquer la respiration.", "Breathe steadily throughout the hold and avoid holding your breath.", "Respira de forma regular durante toda la posición y evita contener la respiración."),
+  ] : [
+    tr(lang, "Inspire généralement pendant la phase de retour ou la phase excentrique contrôlée.", "Generally inhale during the controlled return or eccentric phase.", "Inspira generalmente durante la fase de retorno o excéntrica controlada."),
+    tr(lang, "Expire pendant l'effort principal ou la phase concentrique tout en gardant le tronc stable.", "Exhale during the main effort or concentric phase while keeping the trunk stable.", "Exhala durante el esfuerzo principal o la fase concéntrica manteniendo el tronco estable."),
+  ];
   return {
-    summary: tr(lang, `Mouvement ${inferMovementPattern(exercise).toLowerCase()} pour ${FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} avec ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`, `A ${inferMovementPattern(exercise).toLowerCase()} movement for ${FIT_MUSCLE_LABELS[exercise.muscle].en} using ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`, `Un movimiento de ${inferMovementPattern(exercise).toLowerCase()} para ${FIT_MUSCLE_LABELS[exercise.muscle].es} con ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`),
+    summary: tr(lang, `Mouvement ${movement.toLowerCase()} pour ${FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]} avec ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`, `A ${movement.toLowerCase()} movement for ${FIT_MUSCLE_LABELS[exercise.muscle].en} using ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`, `Un movimiento de ${movement.toLowerCase()} para ${FIT_MUSCLE_LABELS[exercise.muscle].es} con ${translateEquipment(exercise.equipment, lang).toLowerCase()}.`),
     steps: fallbackSteps,
-    placement: (exercise.tips?.slice(0, 3) || []).map((item) => localizeInstructionText(item, lang)),
-    breathing: [],
+    placement: automaticPlacement,
+    breathing: automaticBreathing,
     intensityMap: { [exercise.muscle]: 3, ...Object.fromEntries((exercise.secondary || []).slice(0, 4).map((item) => [item, 1])) } as Partial<Record<FitMuscle, 0 | 1 | 2 | 3>>,
     zoneSpeech: tr(lang, `La zone principale travaillée est ${FIT_MUSCLE_LABELS[exercise.muscle][lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr"]}.`, `The primary area worked is ${FIT_MUSCLE_LABELS[exercise.muscle].en}.`, `La zona principal trabajada es ${FIT_MUSCLE_LABELS[exercise.muscle].es}.`),
     detailSpeech: instructions.map((item) => localizeInstructionText(item, lang)).join(" ") || tr(lang, "Awena détaillera bientôt ce mouvement.", "Awena will detail this movement soon.", "Awena detallará pronto este movimiento."),
     goalSpeech: goalTags.join(", "),
-    typeSpeech: `${translateMovement(inferMovementPattern(exercise), lang)}. ${translateEquipment(exercise.equipment, lang)}.`,
+    typeSpeech: `${translateMovement(movement, lang)}. ${translateEquipment(exercise.equipment, lang)}.`,
     goalParagraphs: goalTags.length ? goalTags.map((item) => tr(lang, `Objectif possible : ${item}.`, `Possible goal: ${item}.`, `Objetivo posible: ${item}.`)) : [tr(lang, "Objectif détaillé à venir.", "Detailed goal coming soon.", "Objetivo detallado próximamente.")],
     goalTags: goalTags.length ? goalTags : [tr(lang, "Travail libre", "Open work", "Trabajo libre")],
     typeCards: [
-      { label: tr(lang, "Mouvement", "Movement", "Movimiento"), value: translateMovement(inferMovementPattern(exercise), lang) },
+      { label: tr(lang, "Mouvement", "Movement", "Movimiento"), value: translateMovement(movement, lang) },
       { label: tr(lang, "Matériel", "Equipment", "Material"), value: translateEquipment(exercise.equipment, lang) },
       { label: tr(lang, "Catégorie", "Category", "Categoría"), value: translateCategory((exercise as any).category || "strength", lang) },
       { label: tr(lang, "Mécanique", "Mechanic", "Mecánica"), value: translateMechanic((exercise as any).mechanic || "compound", lang) },
@@ -566,6 +551,22 @@ function AwenaVoiceButton({ accent, text, label }: { accent: string; text: strin
   );
 }
 
+function AwenaStepImage({ step, onOpen }: { step: GuideStep; onOpen: (url: string) => void }) {
+  const [src, setSrc] = React.useState(step.image || step.fallbackImage || "");
+  React.useEffect(() => setSrc(step.image || step.fallbackImage || ""), [step.image, step.fallbackImage]);
+  if (!src) return null;
+  return (
+    <button type="button" onClick={() => onOpen(src)} style={{ width: "100%", padding: 0, border: 0, background: "#000", display: "block", cursor: "pointer" }}>
+      <img
+        src={src}
+        alt={step.title}
+        onError={() => { if (step.fallbackImage && src !== step.fallbackImage) setSrc(step.fallbackImage); else setSrc(""); }}
+        style={{ width: "100%", height: 164, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }}
+      />
+    </button>
+  );
+}
+
 function ActionCircle({ accent, onClick, children, active = false, passiveGray = false }: { accent: string; onClick?: () => void; children: React.ReactNode; active?: boolean; passiveGray?: boolean }) {
   const color = passiveGray && !active ? "rgba(255,255,255,.72)" : accent;
   return (
@@ -590,6 +591,8 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   const [tab, setTab] = React.useState<DetailTab>("zone");
   const [viewerImage, setViewerImage] = React.useState<string | null>(null);
   const photos = React.useMemo(() => collectExercisePhotos(exercise), [exercise]);
+  const referenceVideos = React.useMemo(() => Array.from(new Set((exercise.videoUrls || []).filter(Boolean))), [exercise.videoUrls]);
+  const externalContributors = React.useMemo(() => (exercise.sourceContributors || []).filter((item) => item.source !== "mss"), [exercise.sourceContributors]);
   const totalSessions = detailRecord ? 1 : 0;
   const assistZones = React.useMemo(() => {
     const mapped = Object.entries(guide.intensityMap || {})
@@ -600,6 +603,14 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
     if (mapped.length) return mapped;
     return (exercise.secondary || []).map((item) => FIT_MUSCLE_LABELS[item]?.[langKey]).filter(Boolean);
   }, [exercise, guide.intensityMap, langKey]);
+  const mistakes = React.useMemo(() => {
+    if (exercise.commonMistakes?.length) return exercise.commonMistakes.slice(0, 4).map((item) => localizeInstructionText(item, lang));
+    return [
+      tr(lang, "Évite de sacrifier l'alignement ou l'amplitude simplement pour terminer une répétition.", "Do not sacrifice alignment or range of motion just to finish a repetition.", "No sacrifiques la alineación ni el recorrido solo para terminar una repetición."),
+      tr(lang, "N'utilise pas d'élan excessif : ralentis si le matériel ou le corps devient incontrôlable.", "Avoid excessive momentum: slow down if the equipment or your body becomes uncontrolled.", "Evita el impulso excesivo: reduce la velocidad si el material o el cuerpo dejan de estar controlados."),
+      tr(lang, "Réduis la charge ou l'amplitude si une douleur articulaire apparaît.", "Reduce the load or range if joint pain appears.", "Reduce la carga o el recorrido si aparece dolor articular."),
+    ];
+  }, [exercise.commonMistakes, lang]);
 
   const tabItems = [
     { id: "zone" as const, label: tr(lang, "ZONE", "ZONE", "ZONA"), icon: "muscles" as const },
@@ -669,7 +680,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
               {guide.steps.map((step, index) => (
                 <FitGlassCard key={index} accent={accent} style={{ overflow: "hidden", borderRadius: 22, background: "rgba(255,255,255,.018)" }}>
-                  {step.image ? <button type="button" onClick={() => setViewerImage(step.image)} style={{ width: "100%", padding: 0, border: 0, background: "#000", display: "block", cursor: "pointer" }}><img src={step.image} alt={step.title} style={{ width: "100%", height: 164, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} /></button> : null}
+                  <AwenaStepImage step={step} onOpen={setViewerImage} />
                   <div style={{ padding: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 28, height: 28, borderRadius: 999, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, display: "grid", placeItems: "center", fontWeight: 1000, flex: "0 0 28px" }}>{index + 1}</div>
@@ -696,26 +707,46 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
                 </ul>
               </FitGlassCard>
             ) : null}
+            {mistakes.length ? (
+              <FitGlassCard accent="#ff7a8f" style={{ marginTop: 12, padding: 14, borderRadius: 20, background: "rgba(255,91,115,.035)" }}>
+                <div style={{ color: "#ff8da0", fontSize: 9.2, fontWeight: 1000, letterSpacing: .7 }}>{tr(lang, "À éviter", "Avoid", "A evitar")}</div>
+                <ul style={{ margin: "10px 0 0", paddingLeft: 18, display: "grid", gap: 8, color: "rgba(255,255,255,.84)", fontSize: 8.9, lineHeight: 1.45 }}>
+                  {mistakes.map((item, index) => <li key={index}>{item}</li>)}
+                </ul>
+              </FitGlassCard>
+            ) : null}
           </FitGlassCard>
         ) : null}
 
 
         {tab === "photos" ? (
           <FitGlassCard accent={accent} style={{ position: "relative", padding: 16, borderRadius: 24, overflow: "hidden", background: `linear-gradient(180deg, ${accent}08, rgba(255,255,255,.015))` }}>
-            <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>{tr(lang, "Photos de l'exercice", "Exercise photos", "Fotos del ejercicio")}</div>
+            <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>{tr(lang, "Médias de référence", "Reference media", "Medios de referencia")}</div>
             {photos.length ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                {photos.map((url, index) => (
-                  <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: `1px solid ${accent}2e`, background: "rgba(255,255,255,.02)", borderRadius: 18, overflow: "hidden", minWidth: 0, cursor: "pointer", boxShadow: `0 0 16px ${accent}10` }}>
-                    <img src={url} alt={`${exercise.name} ${index + 1}`} style={{ width: "100%", height: 166, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} />
-                  </button>
-                ))}
+              <>
+                <div style={{ color: "rgba(255,255,255,.52)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .6, marginBottom: 8 }}>{tr(lang, "PHOTOS EXISTANTES", "EXISTING PHOTOS", "FOTOS EXISTENTES")}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                  {photos.map((url, index) => (
+                    <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: `1px solid ${accent}2e`, background: "rgba(255,255,255,.02)", borderRadius: 18, overflow: "hidden", minWidth: 0, cursor: "pointer", boxShadow: `0 0 16px ${accent}10` }}>
+                      <img src={url} alt={`${exercise.name} ${index + 1}`} style={{ width: "100%", height: 166, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} />
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+            {referenceVideos.length ? (
+              <div style={{ marginTop: photos.length ? 14 : 0 }}>
+                <div style={{ color: "rgba(255,255,255,.52)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .6, marginBottom: 8 }}>{tr(lang, "VIDÉOS EXISTANTES", "EXISTING VIDEOS", "VÍDEOS EXISTENTES")}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                  {referenceVideos.map((url, index) => <video key={`${url}-${index}`} src={url} controls playsInline preload="metadata" style={{ width: "100%", minHeight: 150, maxHeight: 220, objectFit: "contain", background: "#000", borderRadius: 18, border: `1px solid ${accent}2e` }} />)}
+                </div>
               </div>
-            ) : (
+            ) : null}
+            {!photos.length && !referenceVideos.length ? (
               <FitGlassCard accent={accent} style={{ padding: 16, borderRadius: 18, background: "rgba(255,255,255,.018)", color: "rgba(255,255,255,.72)", fontSize: 9.2, lineHeight: 1.45 }}>
-                {tr(lang, "Aucune photo supplémentaire disponible pour le moment.", "No extra photos available yet.", "Todavía no hay fotos adicionales disponibles.")}
+                {tr(lang, "Aucun média de référence supplémentaire. Le guide AWENA reste disponible dans l'onglet DÉTAILS.", "No additional reference media. The AWENA guide remains available in DETAILS.", "No hay medios de referencia adicionales. La guía AWENA sigue disponible en DETALLES.")}
               </FitGlassCard>
-            )}
+            ) : null}
           </FitGlassCard>
         ) : null}
 
@@ -782,12 +813,16 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
           </FitGlassCard>
         ) : null}
 
-        {exercise.source === "free-exercise-db" || exercise.source === "wger" ? (
-          <div style={{ marginTop: 14, padding: "9px 11px", borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(5,8,13,.72)", color: textSoft, fontSize: 7.4, lineHeight: 1.45 }}>
-            <b style={{ color: "rgba(255,255,255,.72)" }}>{tr(lang, "Source", "Source", "Fuente")} :</b>{" "}
-            {exercise.sourceUrl ? <a href={exercise.sourceUrl} target="_blank" rel="noreferrer" style={{ color: accent, textDecoration: "none" }}>{exercise.source === "wger" ? "wger" : "Free Exercise DB"}</a> : (exercise.source === "wger" ? "wger" : "Free Exercise DB")}
-            {exercise.sourceLicense ? ` · ${exercise.sourceLicense}` : ""}
-            {exercise.sourceAuthor ? ` · ${exercise.sourceAuthor}` : ""}
+        {externalContributors.length || exercise.source === "free-exercise-db" || exercise.source === "wger" ? (
+          <div style={{ marginTop: 14, padding: "9px 11px", borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(5,8,13,.72)", color: textSoft, fontSize: 7.4, lineHeight: 1.55 }}>
+            <b style={{ color: "rgba(255,255,255,.72)" }}>{tr(lang, "Sources de référence", "Reference sources", "Fuentes de referencia")} :</b>{" "}
+            {(externalContributors.length ? externalContributors : [{ source: exercise.source || "mss", sourceUrl: exercise.sourceUrl, license: exercise.sourceLicense, author: exercise.sourceAuthor }]).map((item, index) => (
+              <React.Fragment key={`${item.source}-${index}`}>
+                {index ? " · " : ""}
+                {item.sourceUrl ? <a href={item.sourceUrl} target="_blank" rel="noreferrer" style={{ color: accent, textDecoration: "none" }}>{item.source === "wger" ? "wger" : item.source === "free-exercise-db" ? "Free Exercise DB" : "FIT PERF"}</a> : <span>{item.source === "wger" ? "wger" : item.source === "free-exercise-db" ? "Free Exercise DB" : "FIT PERF"}</span>}
+                {item.license ? ` — ${item.license}` : ""}{item.author ? ` (${item.author})` : ""}
+              </React.Fragment>
+            ))}
             {exercise.mediaLicense && exercise.mediaLicense !== exercise.sourceLicense ? ` · Média: ${exercise.mediaLicense}${exercise.mediaAuthor ? ` (${exercise.mediaAuthor})` : ""}` : ""}
           </div>
         ) : null}
