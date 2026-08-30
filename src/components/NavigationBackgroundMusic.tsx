@@ -18,6 +18,10 @@ import {
   isGameplayRouteName,
   type GameplayRouteStateDetail,
 } from "../lib/gameplayRoutes";
+import {
+  AWENA_NAVIGATION_MUSIC_REQUEST_EVENT,
+  type AwenaNavigationMusicRequestDetail,
+} from "../lib/navigationMusicControl";
 
 type NavigationMusicZone = "navigation" | null;
 
@@ -81,6 +85,7 @@ export default function NavigationBackgroundMusic({
   const cycleRef = React.useRef<NavigationMusicTrackId[]>([]);
   const cursorRef = React.useRef(0);
   const currentTrackIdRef = React.useRef<NavigationMusicTrackId | null>(null);
+  const explicitTrackActiveRef = React.useRef(false);
   const pausedByPreviewRef = React.useRef(false);
   const pendingAutoplayRef = React.useRef(false);
   const playRequestSerialRef = React.useRef(0);
@@ -181,7 +186,7 @@ export default function NavigationBackgroundMusic({
       && !muted
       && settings.masterEnabled
       && settings.navigationMusicEnabled
-      && getEnabledTrackIds(settings).length > 0
+      && (explicitTrackActiveRef.current || getEnabledTrackIds(settings).length > 0)
       && !pausedByPreviewRef.current;
   }, [muted]);
 
@@ -215,6 +220,22 @@ export default function NavigationBackgroundMusic({
     try { audio.load(); } catch {}
     return true;
   }, [takeNextTrackId]);
+
+  const loadRequestedTrack = React.useCallback((audio: HTMLAudioElement, trackId: NavigationMusicTrackId) => {
+    const track = getNavigationMusicTrack(trackId);
+    if (!track) return false;
+    playRequestSerialRef.current += 1;
+    pendingAutoplayRef.current = false;
+    explicitTrackActiveRef.current = true;
+    currentTrackIdRef.current = trackId;
+    audio.pause();
+    audio.src = track.url;
+    trackLoadSerialRef.current += 1;
+    audio.preload = "auto";
+    try { audio.currentTime = 0; } catch {}
+    try { audio.load(); } catch {}
+    return true;
+  }, []);
 
   const requestPlay = React.useCallback(async () => {
     const audio = audioRef.current;
@@ -252,6 +273,7 @@ export default function NavigationBackgroundMusic({
     cycleRef.current = [];
     cursorRef.current = 0;
     currentTrackIdRef.current = null;
+    explicitTrackActiveRef.current = false;
     zoneRef.current = keepZone;
     pendingAutoplayRef.current = false;
     if (keepZone) {
@@ -272,6 +294,7 @@ export default function NavigationBackgroundMusic({
     cycleRef.current = [];
     cursorRef.current = 0;
     currentTrackIdRef.current = null;
+    explicitTrackActiveRef.current = false;
     announcedTrackSerialRef.current = trackLoadSerialRef.current;
     clearNowPlayingTimers();
     setNowPlayingVisible(false);
@@ -297,7 +320,13 @@ export default function NavigationBackgroundMusic({
 
     const onEnded = () => {
       if (!mountedRef.current || !zoneRef.current) return;
-      if (loadNextTrack(audio)) void requestPlay();
+      if (explicitTrackActiveRef.current) explicitTrackActiveRef.current = false;
+      if (getEnabledTrackIds(prefsRef.current).length > 0 && loadNextTrack(audio)) {
+        void requestPlay();
+        return;
+      }
+      currentTrackIdRef.current = null;
+      try { audio.removeAttribute("src"); } catch {}
     };
     audio.addEventListener("ended", onEnded);
     return () => {
@@ -322,6 +351,24 @@ export default function NavigationBackgroundMusic({
     window.addEventListener(GAMEPLAY_ROUTE_STATE_EVENT, onGameplayRouteState as EventListener);
     return () => window.removeEventListener(GAMEPLAY_ROUTE_STATE_EVENT, onGameplayRouteState as EventListener);
   }, [hardStopForGameplay]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onAwenaMusicRequest = (event: Event) => {
+      const detail = (event as CustomEvent<AwenaNavigationMusicRequestDetail>).detail;
+      if (detail?.action !== "play" || !detail.trackId) return;
+      // Never let an Awena command bypass the PLAY silence contract.
+      if (!zoneRef.current || gameplayActive || isGameplayRouteName(route)) return;
+      const settings = prefsRef.current;
+      if (muted || !settings.masterEnabled || !settings.navigationMusicEnabled) return;
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (!loadRequestedTrack(audio, detail.trackId)) return;
+      void requestPlay();
+    };
+    window.addEventListener(AWENA_NAVIGATION_MUSIC_REQUEST_EVENT, onAwenaMusicRequest as EventListener);
+    return () => window.removeEventListener(AWENA_NAVIGATION_MUSIC_REQUEST_EVENT, onAwenaMusicRequest as EventListener);
+  }, [gameplayActive, loadRequestedTrack, muted, requestPlay, route]);
 
   React.useEffect(() => {
     const previousZone = zoneRef.current;
@@ -356,7 +403,10 @@ export default function NavigationBackgroundMusic({
   React.useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const allowed = !muted && prefs.masterEnabled && prefs.navigationMusicEnabled && getEnabledTrackIds(prefs).length > 0;
+    const allowed = !muted
+      && prefs.masterEnabled
+      && prefs.navigationMusicEnabled
+      && (explicitTrackActiveRef.current || getEnabledTrackIds(prefs).length > 0);
     if (!allowed) {
       try { audio.pause(); } catch {}
       clearNowPlayingTimers();

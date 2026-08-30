@@ -10,6 +10,10 @@ import { awenaVoice } from "./AwenaVoice";
 import { loadAwenaSettings, saveAwenaSettings } from "./AwenaSettings";
 import { awenaLine } from "./AwenaVoiceCatalog";
 import { awenaUi } from "./AwenaLocale";
+import { parseAwenaMusicIntent, awenaMusicCatalogText, awenaMusicTrackCount } from "./AwenaMusicCommands";
+import { getAudioPreferences } from "../lib/audioPreferences";
+import { requestNavigationMusicTrackFromAwena } from "../lib/navigationMusicControl";
+import { isGameplayRouteName } from "../lib/gameplayRoutes";
 import { buildAwenaRecordsReply, warmAwenaRecordsCache } from "./AwenaRecords";
 import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaSpeechCue, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
 
@@ -249,18 +253,61 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     };
     const contextForReply = explicitMode ? { ...baseContext, mode: explicitMode.id } : baseContext;
 
+    // Commandes musique : on tente d'abord le texte brut (pour rester fiable
+    // même sans modèle de traduction), puis la version canonique française.
+    const rawMusicIntent = parseAwenaMusicIntent(clean);
+    const canonicalMusicIntent = parseAwenaMusicIntent(canonicalQuestion);
+    const musicIntent = rawMusicIntent.kind !== "none" ? rawMusicIntent : canonicalMusicIntent;
+
+    let canonicalReply = null as ReturnType<typeof buildAwenaReply> | null;
+    if (musicIntent.kind === "list") {
+      canonicalReply = {
+        text: `## MUSIQUES DISPONIBLES\nJ'ai **${awenaMusicTrackCount()} titres intégrés** dans MULTISPORTS SCORING. Je peux lancer directement n'importe lequel :\n\n- ${awenaMusicCatalogText().replace(/, /g, "\n- ")}\n\nDis simplement : **« Awena, lance Stadium Pulse »** ou remplace le titre par celui que tu veux.`,
+      };
+    } else if (musicIntent.kind === "play") {
+      const gameplay = !!runtime.inGame || isGameplayRouteName(runtime.route);
+      const audioPrefs = getAudioPreferences();
+      if (gameplay) {
+        canonicalReply = {
+          text: `Je connais bien **${musicIntent.trackName}**, mais je ne lance jamais la musique de fond pendant un écran **PLAY** ou un entraînement actif. C'est volontaire pour préserver les sons, annonces et bruitages de la partie. Dès ton retour dans les menus, tu peux me redemander ce titre.`,
+        };
+      } else if (!audioPrefs.masterEnabled) {
+        canonicalReply = {
+          text: `Je peux lancer **${musicIntent.trackName}**, mais le **son général est désactivé** dans Réglages > Audio. Je respecte ce réglage et je ne le réactive pas sans toi. Réactive le son général, puis redemande-moi le morceau.`,
+        };
+      } else if (!audioPrefs.navigationMusicEnabled) {
+        canonicalReply = {
+          text: `Je peux lancer **${musicIntent.trackName}**, mais les **musiques de navigation sont désactivées** dans Réglages > Audio. Je ne contourne pas ce choix. Réactive les musiques de navigation, puis redemande-moi le titre.`,
+        };
+      } else {
+        requestNavigationMusicTrackFromAwena(musicIntent.trackId);
+        canonicalReply = {
+          text: `Je lance **${musicIntent.trackName}**.`,
+        };
+      }
+    } else if (musicIntent.kind === "missing-title") {
+      canonicalReply = {
+        text: `Dis-moi simplement **le nom du morceau intégré** que tu veux écouter. Je connais actuellement ${awenaMusicTrackCount()} titres. Tu peux aussi me demander : **« Quels sont les morceaux disponibles ? »**`,
+      };
+    } else if (musicIntent.kind === "unavailable") {
+      const requested = musicIntent.requestedTitle ? ` **${musicIntent.requestedTitle}**` : " ce titre";
+      canonicalReply = {
+        text: `Je ne trouve pas${requested} dans les **${awenaMusicTrackCount()} morceaux intégrés** à MULTISPORTS SCORING. Je peux lancer uniquement les musiques fournies avec l'application : je n'accède pas aux fichiers audio du téléphone, aux dossiers locaux ni aux bibliothèques externes comme Spotify, Deezer, YouTube ou Apple Music. Demande-moi **« Quels sont les morceaux disponibles ? »** pour voir toute la liste.`,
+      };
+    }
+
     let recordsReply = null;
     // Séparation stricte des trois boutons de mode : une demande RÈGLES ou
     // CONFIGURATION ne passe jamais par le moteur Records, même si un libellé
     // statistique apparaît accidentellement dans la phrase traduite.
-    if (options?.modeTopic !== "rules" && options?.modeTopic !== "config") {
+    if (!canonicalReply && options?.modeTopic !== "rules" && options?.modeTopic !== "config") {
       try {
         recordsReply = await buildAwenaRecordsReply(canonicalQuestion, contextForReply);
       } catch (error) {
         console.warn("[AwenaRecords] réponse records interrompue, fallback conversationnel", error);
       }
     }
-    const canonicalReply = recordsReply ?? buildAwenaReply(canonicalQuestion, contextForReply);
+    canonicalReply = canonicalReply ?? recordsReply ?? buildAwenaReply(canonicalQuestion, contextForReply);
     const reply = await awenaTranslation.replyFromFrench(canonicalReply, String(lang || "fr"));
 
     if (canonicalReply.modeId || canonicalReply.knowledgeTopic) {
