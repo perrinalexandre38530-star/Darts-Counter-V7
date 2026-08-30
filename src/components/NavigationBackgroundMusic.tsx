@@ -237,6 +237,15 @@ export default function NavigationBackgroundMusic({
     return true;
   }, []);
 
+  const announceCurrentTrack = React.useCallback(() => {
+    if (!mountedRef.current || !zoneRef.current) return;
+    const trackId = currentTrackIdRef.current;
+    if (!trackId) return;
+    if (announcedTrackSerialRef.current === trackLoadSerialRef.current) return;
+    announcedTrackSerialRef.current = trackLoadSerialRef.current;
+    showNowPlayingBanner(trackId);
+  }, [showNowPlayingBanner]);
+
   const requestPlay = React.useCallback(async () => {
     const audio = audioRef.current;
     if (!audio || !canPlay()) return;
@@ -252,19 +261,15 @@ export default function NavigationBackgroundMusic({
         return;
       }
       pendingAutoplayRef.current = false;
-      if (announcedTrackSerialRef.current !== trackLoadSerialRef.current) {
-        const trackId = currentTrackIdRef.current;
-        if (trackId) {
-          announcedTrackSerialRef.current = trackLoadSerialRef.current;
-          showNowPlayingBanner(trackId);
-        }
-      }
+      // The "playing" event below is the source of truth for the banner.
+      // Keep this fallback for WebViews that occasionally skip that event.
+      announceCurrentTrack();
     } catch {
       if (requestSerial === playRequestSerialRef.current && canPlay()) {
         pendingAutoplayRef.current = true;
       }
     }
-  }, [canPlay, getTargetVolume, rampVolume, showNowPlayingBanner]);
+  }, [announceCurrentTrack, canPlay, getTargetVolume, rampVolume]);
 
   const resetPlaylist = React.useCallback((keepZone: NavigationMusicZone = zoneRef.current) => {
     const audio = audioRef.current;
@@ -312,12 +317,22 @@ export default function NavigationBackgroundMusic({
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     mountedRef.current = true;
-    const audio = new Audio();
+
+    // Reuse the persistent splash player whenever possible.
+    // On Android/Chrome this is important: the intro has already unlocked this
+    // exact media element, while creating a brand-new Audio() after the splash
+    // can be blocked by autoplay policy until the user touches the screen.
+    const splashPlayer = document.getElementById("dc-splash-audio");
+    const audio = splashPlayer instanceof HTMLAudioElement ? splashPlayer : new Audio();
     audio.preload = "auto";
     audio.loop = false;
     audio.volume = getTargetVolume();
     audioRef.current = audio;
 
+    const onPlaying = () => {
+      pendingAutoplayRef.current = false;
+      announceCurrentTrack();
+    };
     const onEnded = () => {
       if (!mountedRef.current || !zoneRef.current) return;
       if (explicitTrackActiveRef.current) explicitTrackActiveRef.current = false;
@@ -328,11 +343,13 @@ export default function NavigationBackgroundMusic({
       currentTrackIdRef.current = null;
       try { audio.removeAttribute("src"); } catch {}
     };
+    audio.addEventListener("playing", onPlaying);
     audio.addEventListener("ended", onEnded);
     return () => {
       mountedRef.current = false;
       cancelVolumeRamp();
       clearNowPlayingTimers();
+      audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("ended", onEnded);
       try { audio.pause(); } catch {}
       audioRef.current = null;
@@ -443,11 +460,21 @@ export default function NavigationBackgroundMusic({
       if (!pendingAutoplayRef.current || !canPlay()) return;
       void requestPlay();
     };
+    const retryWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      retry();
+    };
     window.addEventListener("pointerdown", retry, { passive: true });
     window.addEventListener("keydown", retry);
+    window.addEventListener("pageshow", retry);
+    window.addEventListener("focus", retry);
+    document.addEventListener("visibilitychange", retryWhenVisible);
     return () => {
       window.removeEventListener("pointerdown", retry);
       window.removeEventListener("keydown", retry);
+      window.removeEventListener("pageshow", retry);
+      window.removeEventListener("focus", retry);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
     };
   }, [canPlay, requestPlay]);
 

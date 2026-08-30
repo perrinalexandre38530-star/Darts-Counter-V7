@@ -18,6 +18,15 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SocialAuthPlugin.class);
         registerPlugin(KeepAwakePlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Background navigation music must be able to start immediately after
+        // the intro without waiting for a tap on the Android WebView.
+        try {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
+            }
+        } catch (Throwable ignored) {}
+
         KeepAwakePlugin.applyToActivity(this, KeepAwakePlugin.getStoredEnabled(this));
     }
 
