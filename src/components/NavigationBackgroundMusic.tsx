@@ -1,6 +1,7 @@
 import React from "react";
 import { useAudio } from "../contexts/AudioContext";
 import { useAwenaOptional } from "../awena/AwenaProvider";
+import { useTheme } from "../contexts/ThemeContext";
 import {
   getAudioPreferences,
   getEnabledTrackIds,
@@ -19,6 +20,11 @@ import {
 } from "../lib/gameplayRoutes";
 
 type NavigationMusicZone = "navigation" | null;
+
+type NowPlayingBanner = {
+  trackId: NavigationMusicTrackId;
+  title: string;
+};
 
 export function isNavigationGameplayRoute(routeLike: unknown): boolean {
   return isGameplayRouteName(routeLike);
@@ -64,8 +70,11 @@ export default function NavigationBackgroundMusic({
 }) {
   const { muted } = useAudio();
   const awena = useAwenaOptional();
+  const { theme } = useTheme();
   const zone = navigationMusicZoneForRoute(route, gameplayActive);
   const [prefs, setPrefs] = React.useState<AudioPreferences>(() => getAudioPreferences());
+  const [nowPlaying, setNowPlaying] = React.useState<NowPlayingBanner | null>(null);
+  const [nowPlayingVisible, setNowPlayingVisible] = React.useState(false);
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const zoneRef = React.useRef<NavigationMusicZone>(null);
@@ -75,6 +84,11 @@ export default function NavigationBackgroundMusic({
   const pausedByPreviewRef = React.useRef(false);
   const pendingAutoplayRef = React.useRef(false);
   const playRequestSerialRef = React.useRef(0);
+  const trackLoadSerialRef = React.useRef(0);
+  const announcedTrackSerialRef = React.useRef(0);
+  const nowPlayingShowRafRef = React.useRef<number | null>(null);
+  const nowPlayingHideTimerRef = React.useRef<number | null>(null);
+  const nowPlayingClearTimerRef = React.useRef<number | null>(null);
   const volumeRafRef = React.useRef<number | null>(null);
   const mountedRef = React.useRef(false);
   const prefsRef = React.useRef(prefs);
@@ -90,6 +104,46 @@ export default function NavigationBackgroundMusic({
       volumeRafRef.current = null;
     }
   }, []);
+
+  const clearNowPlayingTimers = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (nowPlayingShowRafRef.current != null) {
+      window.cancelAnimationFrame(nowPlayingShowRafRef.current);
+      nowPlayingShowRafRef.current = null;
+    }
+    if (nowPlayingHideTimerRef.current != null) {
+      window.clearTimeout(nowPlayingHideTimerRef.current);
+      nowPlayingHideTimerRef.current = null;
+    }
+    if (nowPlayingClearTimerRef.current != null) {
+      window.clearTimeout(nowPlayingClearTimerRef.current);
+      nowPlayingClearTimerRef.current = null;
+    }
+  }, []);
+
+  const showNowPlayingBanner = React.useCallback((trackId: NavigationMusicTrackId) => {
+    if (typeof window === "undefined") return;
+    const track = getNavigationMusicTrack(trackId);
+    if (!track) return;
+
+    clearNowPlayingTimers();
+    setNowPlaying({ trackId, title: track.name });
+    setNowPlayingVisible(false);
+    nowPlayingShowRafRef.current = window.requestAnimationFrame(() => {
+      nowPlayingShowRafRef.current = window.requestAnimationFrame(() => {
+        nowPlayingShowRafRef.current = null;
+        setNowPlayingVisible(true);
+      });
+    });
+    nowPlayingHideTimerRef.current = window.setTimeout(() => {
+      nowPlayingHideTimerRef.current = null;
+      setNowPlayingVisible(false);
+    }, 4200);
+    nowPlayingClearTimerRef.current = window.setTimeout(() => {
+      nowPlayingClearTimerRef.current = null;
+      setNowPlaying(null);
+    }, 4700);
+  }, [clearNowPlayingTimers]);
 
   const getTargetVolume = React.useCallback((settings = prefsRef.current) => {
     const base = Math.max(0, Math.min(1, settings.navigationVolume));
@@ -155,6 +209,7 @@ export default function NavigationBackgroundMusic({
     const track = getNavigationMusicTrack(nextId);
     if (!track) return false;
     audio.src = track.url;
+    trackLoadSerialRef.current += 1;
     audio.preload = "auto";
     try { audio.currentTime = 0; } catch {}
     try { audio.load(); } catch {}
@@ -176,12 +231,19 @@ export default function NavigationBackgroundMusic({
         return;
       }
       pendingAutoplayRef.current = false;
+      if (announcedTrackSerialRef.current !== trackLoadSerialRef.current) {
+        const trackId = currentTrackIdRef.current;
+        if (trackId) {
+          announcedTrackSerialRef.current = trackLoadSerialRef.current;
+          showNowPlayingBanner(trackId);
+        }
+      }
     } catch {
       if (requestSerial === playRequestSerialRef.current && canPlay()) {
         pendingAutoplayRef.current = true;
       }
     }
-  }, [canPlay, getTargetVolume, rampVolume]);
+  }, [canPlay, getTargetVolume, rampVolume, showNowPlayingBanner]);
 
   const resetPlaylist = React.useCallback((keepZone: NavigationMusicZone = zoneRef.current) => {
     const audio = audioRef.current;
@@ -210,6 +272,10 @@ export default function NavigationBackgroundMusic({
     cycleRef.current = [];
     cursorRef.current = 0;
     currentTrackIdRef.current = null;
+    announcedTrackSerialRef.current = trackLoadSerialRef.current;
+    clearNowPlayingTimers();
+    setNowPlayingVisible(false);
+    setNowPlaying(null);
     cancelVolumeRamp();
 
     const audio = audioRef.current;
@@ -218,7 +284,7 @@ export default function NavigationBackgroundMusic({
     try { audio.currentTime = 0; } catch {}
     try { audio.removeAttribute("src"); } catch {}
     try { audio.load(); } catch {}
-  }, [cancelVolumeRamp]);
+  }, [cancelVolumeRamp, clearNowPlayingTimers]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -237,6 +303,7 @@ export default function NavigationBackgroundMusic({
     return () => {
       mountedRef.current = false;
       cancelVolumeRamp();
+      clearNowPlayingTimers();
       audio.removeEventListener("ended", onEnded);
       try { audio.pause(); } catch {}
       audioRef.current = null;
@@ -292,10 +359,13 @@ export default function NavigationBackgroundMusic({
     const allowed = !muted && prefs.masterEnabled && prefs.navigationMusicEnabled && getEnabledTrackIds(prefs).length > 0;
     if (!allowed) {
       try { audio.pause(); } catch {}
+      clearNowPlayingTimers();
+      setNowPlayingVisible(false);
+      setNowPlaying(null);
       return;
     }
     if (zoneRef.current && !pausedByPreviewRef.current) void requestPlay();
-  }, [muted, prefs.masterEnabled, prefs.navigationMusicEnabled, prefs.enabledTrackIds, requestPlay]);
+  }, [muted, prefs.masterEnabled, prefs.navigationMusicEnabled, prefs.enabledTrackIds, clearNowPlayingTimers, requestPlay]);
 
   React.useEffect(() => {
     rampVolume(getTargetVolume(prefs), awenaSpeaking ? 180 : 520);
@@ -331,5 +401,83 @@ export default function NavigationBackgroundMusic({
     };
   }, [canPlay, requestPlay]);
 
-  return null;
+  if (!nowPlaying) return null;
+
+  const accent = (theme as any)?.navAccent ?? theme.primary ?? "#22e6ff";
+  const panel = theme.navBackground
+    ?? (theme as any)?.navBg
+    ?? `linear-gradient(135deg, ${theme.card ?? "#090b12"}, ${theme.bg ?? "#05060a"})`;
+  const text = theme.text ?? "#ffffff";
+
+  return (
+    <div
+      aria-live="polite"
+      aria-atomic="true"
+      style={{
+        position: "fixed",
+        zIndex: 10050,
+        top: "calc(env(safe-area-inset-top, 0px) + 7px)",
+        left: "50%",
+        maxWidth: "min(calc(100vw - 28px), 360px)",
+        transform: nowPlayingVisible ? "translate(-50%, 0) scale(1)" : "translate(-50%, -10px) scale(.97)",
+        opacity: nowPlayingVisible ? 1 : 0,
+        transition: "opacity 240ms ease, transform 280ms cubic-bezier(.2,.8,.2,1)",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minHeight: 30,
+          padding: "5px 11px 5px 7px",
+          borderRadius: 999,
+          border: `1px solid ${accent}88`,
+          background: panel,
+          color: text,
+          boxShadow: `0 8px 24px rgba(0,0,0,.34), 0 0 18px ${accent}35`,
+          backdropFilter: "blur(14px) saturate(1.18)",
+          WebkitBackdropFilter: "blur(14px) saturate(1.18)",
+          overflow: "hidden",
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 22,
+            height: 22,
+            flex: "0 0 22px",
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 999,
+            color: accent,
+            background: `${accent}18`,
+            boxShadow: `inset 0 0 0 1px ${accent}48, 0 0 12px ${accent}25`,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18V5l10-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="16" cy="16" r="3" />
+          </svg>
+        </span>
+        <span
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontSize: 11.5,
+            lineHeight: 1.1,
+            fontWeight: 950,
+            letterSpacing: .2,
+            textShadow: `0 0 10px ${accent}35`,
+          }}
+        >
+          {nowPlaying.title}
+        </span>
+      </div>
+    </div>
+  );
 }
