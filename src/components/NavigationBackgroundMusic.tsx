@@ -55,11 +55,6 @@ export function createRandomTrackOrder<T>(trackIds: readonly T[], avoidFirst?: T
   return order;
 }
 
-function isAudibleVideo(target: EventTarget | null): target is HTMLVideoElement {
-  if (!(target instanceof HTMLVideoElement)) return false;
-  return !target.muted && Number(target.volume ?? 1) > 0;
-}
-
 export default function NavigationBackgroundMusic({
   route,
   gameplayActive = false,
@@ -77,9 +72,7 @@ export default function NavigationBackgroundMusic({
   const cycleRef = React.useRef<NavigationMusicTrackId[]>([]);
   const cursorRef = React.useRef(0);
   const currentTrackIdRef = React.useRef<NavigationMusicTrackId | null>(null);
-  const pausedByVideoRef = React.useRef(false);
   const pausedByPreviewRef = React.useRef(false);
-  const activeVideoRefs = React.useRef<Set<HTMLVideoElement>>(new Set());
   const pendingAutoplayRef = React.useRef(false);
   const playRequestSerialRef = React.useRef(0);
   const volumeRafRef = React.useRef<number | null>(null);
@@ -125,6 +118,9 @@ export default function NavigationBackgroundMusic({
     volumeRafRef.current = window.requestAnimationFrame(tick);
   }, [cancelVolumeRamp]);
 
+  // MENU MUSIC CONTRACT: navigation/configuration must never pause the playlist.
+  // Only an actual gameplay route (handled by zone/hardStopForGameplay) or an
+  // explicit music preview/mute setting may suspend this persistent player.
   const canPlay = React.useCallback(() => {
     const settings = prefsRef.current;
     return !!zoneRef.current
@@ -132,7 +128,6 @@ export default function NavigationBackgroundMusic({
       && settings.masterEnabled
       && settings.navigationMusicEnabled
       && getEnabledTrackIds(settings).length > 0
-      && !pausedByVideoRef.current
       && !pausedByPreviewRef.current;
   }, [muted]);
 
@@ -225,16 +220,6 @@ export default function NavigationBackgroundMusic({
     try { audio.load(); } catch {}
   }, [cancelVolumeRamp]);
 
-  const resumeAfterBlockingMedia = React.useCallback(() => {
-    const connected = new Set<HTMLVideoElement>();
-    activeVideoRefs.current.forEach((video) => {
-      if (video.isConnected && !video.ended) connected.add(video);
-    });
-    activeVideoRefs.current = connected;
-    pausedByVideoRef.current = connected.size > 0;
-    if (!pausedByVideoRef.current && !pausedByPreviewRef.current) void requestPlay();
-  }, [requestPlay]);
-
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     mountedRef.current = true;
@@ -309,7 +294,7 @@ export default function NavigationBackgroundMusic({
       try { audio.pause(); } catch {}
       return;
     }
-    if (zoneRef.current && !pausedByVideoRef.current && !pausedByPreviewRef.current) void requestPlay();
+    if (zoneRef.current && !pausedByPreviewRef.current) void requestPlay();
   }, [muted, prefs.masterEnabled, prefs.navigationMusicEnabled, prefs.enabledTrackIds, requestPlay]);
 
   React.useEffect(() => {
@@ -323,7 +308,7 @@ export default function NavigationBackgroundMusic({
       pausedByPreviewRef.current = active;
       if (active) {
         try { audioRef.current?.pause(); } catch {}
-      } else if (!pausedByVideoRef.current) {
+      } else {
         void requestPlay();
       }
     };
@@ -331,43 +316,6 @@ export default function NavigationBackgroundMusic({
     return () => window.removeEventListener(NAVIGATION_MUSIC_PREVIEW_EVENT, onPreview as EventListener);
   }, [requestPlay]);
 
-  React.useEffect(() => {
-    if (typeof document === "undefined" || typeof window === "undefined") return;
-    const onPlay = (event: Event) => {
-      if (!isAudibleVideo(event.target) || !zoneRef.current) return;
-      const video = event.target;
-      activeVideoRefs.current.add(video);
-      pausedByVideoRef.current = true;
-      pendingAutoplayRef.current = false;
-      try { audioRef.current?.pause(); } catch {}
-    };
-    const onEnded = (event: Event) => {
-      if (!(event.target instanceof HTMLVideoElement)) return;
-      activeVideoRefs.current.delete(event.target);
-      resumeAfterBlockingMedia();
-    };
-    const onPause = (event: Event) => {
-      if (!(event.target instanceof HTMLVideoElement)) return;
-      const video = event.target;
-      window.setTimeout(() => {
-        if (!video.isConnected || video.ended) {
-          activeVideoRefs.current.delete(video);
-          resumeAfterBlockingMedia();
-        }
-      }, 80);
-    };
-    document.addEventListener("play", onPlay, true);
-    document.addEventListener("ended", onEnded, true);
-    document.addEventListener("pause", onPause, true);
-    const observer = new MutationObserver(() => resumeAfterBlockingMedia());
-    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
-    return () => {
-      document.removeEventListener("play", onPlay, true);
-      document.removeEventListener("ended", onEnded, true);
-      document.removeEventListener("pause", onPause, true);
-      observer.disconnect();
-    };
-  }, [resumeAfterBlockingMedia]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;

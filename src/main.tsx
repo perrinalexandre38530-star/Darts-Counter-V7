@@ -18,9 +18,13 @@ import { isCapacitorNativeRuntime } from "./lib/nativePlatform";
 import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
+import { initKeepAwakeRuntime } from "./lib/keepAwake";
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
+
+// Écran actif par défaut : natif Android + Screen Wake Lock web/PWA.
+initKeepAwakeRuntime();
 
 // Android uniquement : initialise AdMob + UMP tôt dans la session.
 // Aucun SDK publicitaire n'est appelé dans la PWA/web.

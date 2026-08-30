@@ -16,7 +16,15 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ActivityTrackingPlugin.class);
         registerPlugin(HealthConnectPlugin.class);
         registerPlugin(SocialAuthPlugin.class);
+        registerPlugin(KeepAwakePlugin.class);
         super.onCreate(savedInstanceState);
+        KeepAwakePlugin.applyToActivity(this, KeepAwakePlugin.getStoredEnabled(this));
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        KeepAwakePlugin.applyToActivity(this, KeepAwakePlugin.getStoredEnabled(this));
     }
 
     @Override

@@ -57,6 +57,7 @@ import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
 import AudioSettingsPanel from "../components/settings/AudioSettingsPanel";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { getAudioPreferences } from "../lib/audioPreferences";
+import { getKeepScreenAwakePreference, setKeepScreenAwakePreference, subscribeKeepScreenAwakePreference } from "../lib/keepAwake";
 
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -2168,9 +2169,108 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
   );
 }
 
+function DisplaySleepSettingsSection() {
+  const { theme } = useTheme();
+  const { lang } = useLang();
+  const L = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
+  const [keepAwake, setKeepAwake] = React.useState<boolean>(() => getKeepScreenAwakePreference());
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => subscribeKeepScreenAwakePreference(setKeepAwake), []);
+
+  async function updateKeepAwake(next: boolean) {
+    setBusy(true);
+    setKeepAwake(next);
+    try {
+      await setKeepScreenAwakePreference(next);
+    } finally {
+      setKeepAwake(getKeepScreenAwakePreference());
+      setBusy(false);
+    }
+  }
+
+  const card: React.CSSProperties = {
+    borderRadius: 18,
+    border: `1px solid ${theme.borderSoft}`,
+    background: theme.card,
+    padding: 14,
+    boxShadow: `0 14px 28px rgba(0,0,0,.34), 0 0 18px ${theme.primary}14`,
+  };
+
+  const optionButton = (active: boolean): React.CSSProperties => ({
+    minHeight: 46,
+    borderRadius: 14,
+    border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
+    background: active ? `${theme.primary}18` : "rgba(255,255,255,.025)",
+    color: active ? theme.primary : theme.textSoft,
+    fontWeight: 1000,
+    cursor: busy ? "default" : "pointer",
+    opacity: busy ? .7 : 1,
+  });
+
+  return (
+    <section style={{ display: "grid", gap: 12, paddingBottom: 72 }}>
+      <div style={card}>
+        <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
+          <div style={{ width: 48, height: 48, borderRadius: 15, border: `1px solid ${theme.primary}55`, background: `${theme.primary}10`, color: theme.primary, display: "grid", placeItems: "center" }}>
+            <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="13" rx="2" />
+              <path d="M8 21h8M12 17v4" />
+              <path d="M8.5 10.5 11 13l4.5-5" />
+            </svg>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: theme.primary, fontSize: 14.5, fontWeight: 1000, letterSpacing: .25 }}>
+              {L("GARDER L’ÉCRAN ALLUMÉ", "KEEP SCREEN AWAKE", "MANTENER LA PANTALLA ENCENDIDA")}
+            </div>
+            <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10.8, lineHeight: 1.42 }}>
+              {L(
+                "Empêche la mise en veille automatique tant que MULTISPORTS SCORING est affiché au premier plan.",
+                "Prevents automatic screen sleep while MULTISPORTS SCORING is visible in the foreground.",
+                "Evita que la pantalla se apague automáticamente mientras MULTISPORTS SCORING está en primer plano."
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+          <button type="button" disabled={busy} onClick={() => void updateKeepAwake(true)} style={optionButton(keepAwake)}>
+            ON
+          </button>
+          <button type="button" disabled={busy} onClick={() => void updateKeepAwake(false)} style={optionButton(!keepAwake)}>
+            OFF
+          </button>
+        </div>
+
+        <div style={{ marginTop: 11, borderRadius: 13, border: `1px solid ${keepAwake ? theme.primary + "44" : theme.borderSoft}`, background: "rgba(0,0,0,.22)", padding: "10px 11px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <span style={{ color: theme.textSoft, fontSize: 10.5, lineHeight: 1.35 }}>
+            {L("État actuel", "Current status", "Estado actual")}
+          </span>
+          <span style={{ color: keepAwake ? theme.primary : theme.textSoft, fontSize: 11, fontWeight: 1000 }}>
+            {keepAwake ? L("ACTIVÉ", "ENABLED", "ACTIVADO") : L("DÉSACTIVÉ", "DISABLED", "DESACTIVADO")}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ ...card, padding: 12 }}>
+        <div style={{ color: theme.text, fontSize: 11, fontWeight: 950 }}>
+          {L("Comportement", "Behavior", "Comportamiento")}
+        </div>
+        <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.45 }}>
+          {L(
+            "Ce réglage est activé par défaut. Il bloque l’extinction automatique de l’écran, mais ne peut pas empêcher un verrouillage manuel avec le bouton d’alimentation ni maintenir l’application au premier plan si tu ouvres une autre application.",
+            "This setting is enabled by default. It blocks automatic screen timeout, but it cannot override a manual power-button lock or keep the app in the foreground after you switch to another app.",
+            "Este ajuste está activado por defecto. Bloquea el apagado automático, pero no puede impedir un bloqueo manual con el botón de encendido ni mantener la app en primer plano si abres otra aplicación."
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "advertising" | "shop" | "privacy" | "theme" | "lang" | "audio" | "general" | "sport" | "castViewer" | "developer" | "awena";
+type SettingsTab = "menu" | "account" | "advertising" | "shop" | "privacy" | "theme" | "lang" | "audio" | "display" | "general" | "sport" | "castViewer" | "developer" | "awena";
 type DeveloperSub = "menu" | "diagnostics" | "tests" | "onlineCleanup" | "nas" | "logs" | "security";
 
 const PRIVACY_POLICY_URL = "https://multisports-scoring.pages.dev/privacy-policy";
@@ -4631,7 +4731,7 @@ export function Settings({ go, params }: Props) {
     ? "linear-gradient(180deg, rgba(15,34,55,0.96), rgba(6,17,31,0.98))"
     : LEGACY_CARD_BG);
 
-  const validSettingsTabs: SettingsTab[] = ["menu", "account", "advertising", "shop", "privacy", "theme", "lang", "audio", "general", "sport", "castViewer", "developer", "awena"];
+  const validSettingsTabs: SettingsTab[] = ["menu", "account", "advertising", "shop", "privacy", "theme", "lang", "audio", "display", "general", "sport", "castViewer", "developer", "awena"];
   const validAccountPages: AccountPage[] = ["account_menu", "account_storage", "account_notifications", "account_danger"];
   const initialSettingsTab = validSettingsTabs.includes(String(params?.settingsTab || "") as SettingsTab)
     ? (String(params?.settingsTab) as SettingsTab)
@@ -5767,6 +5867,8 @@ export function Settings({ go, params }: Props) {
       ? t("settings.menu.lang", "Langues")
       : tab === "audio"
       ? t("settings.menu.audio", "AUDIO")
+      : tab === "display"
+      ? L("ÉCRAN & VEILLE", "SCREEN & SLEEP", "PANTALLA Y REPOSO")
       : tab === "general"
       ? L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")
       : tab === "castViewer"
@@ -5812,6 +5914,8 @@ export function Settings({ go, params }: Props) {
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
       : tab === "audio"
       ? t("settings.audio.pageSubtitle", "Musiques, playlist, volumes, bruitages et intro de démarrage.")
+      : tab === "display"
+      ? L("Écran actif, mise en veille et comportement d’affichage.", "Screen awake, sleep timeout and display behavior.", "Pantalla activa, reposo y comportamiento de visualización.")
       : tab === "sport"
       ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
       : tab === "castViewer"
@@ -5935,6 +6039,13 @@ export function Settings({ go, params }: Props) {
               onClick={() => setTab("audio")}
             />
             <SettingsMenuCard
+              title={L("ÉCRAN & VEILLE", "SCREEN & SLEEP", "PANTALLA Y REPOSO")}
+              subtitle={L("Garder l’écran allumé pendant l’utilisation de l’application. Activé par défaut.", "Keep the screen awake while using the app. Enabled by default.", "Mantener la pantalla encendida mientras se usa la aplicación. Activado por defecto.")}
+              theme={theme}
+              rightHint={getKeepScreenAwakePreference() ? "ON" : "OFF"}
+              onClick={() => setTab("display")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.castViewer", "Cast / Viewer")}
               subtitle={L("Cast TV, Viewer tablette et réglages d’écran dans une interface simplifiée.", "Cast TV, tablet Viewer and screen settings in a simplified interface.", "Cast TV, Viewer para tableta y ajustes de pantalla en una interfaz simplificada.")}
               theme={theme}
@@ -5994,6 +6105,7 @@ export function Settings({ go, params }: Props) {
           />
         )}
         {tab === "audio" && <StartupIntroSection />}
+        {tab === "display" && <DisplaySleepSettingsSection />}
         {tab === "sport" && <SportSection />}
         {tab === "castViewer" && <CastViewerSettingsSection go={go} />}
         {tab === "developer" && <DeveloperSection />}
