@@ -16,7 +16,7 @@ import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/Arcad
 import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { useHistory } from "../../hooks/useHistory";
-import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
+import SportHomeWelcomeHeader from "../../components/home/SportHomeWelcomeHeader";
 
 type Props = {
   store: Store;
@@ -247,69 +247,16 @@ export default function MolkkyHome({ store, go }: Props) {
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      {/* ===== HEADER ===== */}
-      <div style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 8 }}>
-        <div
-          style={{
-            ...sectionWrap,
-            borderRadius: 18,
-            border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
-            background: "rgba(0,0,0,0.22)",
-            boxShadow: "0 18px 70px rgba(0,0,0,0.55)",
-            padding: 14,
-            position: "relative",
-            overflow: "hidden",
-            isolation: "isolate",
-          }}
-        >
-          <SportWelcomeWatermark sport="molkky" opacity={0.12} size={185} />
-          <div style={{ position: "relative", zIndex: 2, display: "flex", justifyContent: "center", marginBottom: 8 }}>
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
-                background: "rgba(255,255,255,0.06)",
-                boxShadow: "0 6px 22px rgba(0,0,0,0.28)",
-                fontWeight: 950,
-                letterSpacing: 0.25,
-                color: theme.text,
-                userSelect: "none",
-              }}
-            >
-              <span style={{ opacity: 0.95 }}>👋</span>
-              <span>{t("home.welcome", "Bienvenue")}</span>
-            </div>
-          </div>
-
-          <div ref={titleWrapRef} style={{ position: "relative", zIndex: 2, width: "100%", display: "flex", justifyContent: "center" }}>
-            <div
-              ref={titleTextRef}
-              style={{
-                transform: `scale(${titleScale})`,
-                transformOrigin: "center",
-                fontSize: 28,
-                fontWeight: 1000,
-                letterSpacing: 1.2,
-                textTransform: "uppercase",
-                lineHeight: 1.05,
-                paddingInline: 6,
-                backgroundImage: `linear-gradient(90deg, ${theme.primary} 0%, #ffffff 35%, ${theme.primary} 70%, #ffffff 100%)`,
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-                color: "transparent",
-                backgroundSize: "200% 100%",
-                animation: "dcTitleShimmer 3.6s linear infinite, dcTitlePulse 2.8s ease-in-out infinite",
-                textShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {t("molkky.title", "Mölkky")}
-            </div>
-          </div>
+      {/* ===== HEADER — référence DARTS SCORING ===== */}
+      <div style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: 16 }}>
+        <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
+          <SportHomeWelcomeHeader
+            sport="molkky"
+            title={t("molkky.title", "Mölkky")}
+            welcome={t("home.welcome", "Bienvenue")}
+            accent={theme.primary ?? "#F6C256"}
+            borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+          />
         </div>
       </div>
 

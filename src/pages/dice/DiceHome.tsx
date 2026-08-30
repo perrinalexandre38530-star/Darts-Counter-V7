@@ -13,7 +13,7 @@ import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 import { PageAdBanner } from "../../monetization/AdSlot";
-import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
+import SportHomeWelcomeHeader from "../../components/home/SportHomeWelcomeHeader";
 
 const PAGE_MAX_WIDTH = 620;
 const SECTION_PAD_X = 10;
@@ -154,27 +154,14 @@ export default function DiceHome({ store, update, go }: Props) {
         gap: 14,
       }}
     >
-      <div style={{ ...sectionWrap, position: "relative", overflow: "hidden", isolation: "isolate", borderRadius: 18, paddingTop: 12, paddingBottom: 12 }}>
-        <SportWelcomeWatermark sport="dicegame" opacity={0.12} size={185} />
-        <div style={{ position: "relative", zIndex: 2 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.78 }}>{t?.("home.welcome", "Bienvenue")}</div>
-        <div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}>
-          <div
-            ref={textRef}
-            style={{
-              transformOrigin: "left center",
-              transform: `scale(${scale})`,
-              fontSize: 34,
-              fontWeight: 1000,
-              letterSpacing: 0.2,
-              lineHeight: 1.08,
-              textShadow: `0 0 18px ${(theme.primary ?? "#8b5cf6") + "55"}`,
-            }}
-          >
-            Dice Scoring
-          </div>
-        </div>
-        </div>
+      <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
+        <SportHomeWelcomeHeader
+          sport="dicegame"
+          title="DICE SCORING"
+          welcome={t?.("home.welcome", "Bienvenue")}
+          accent={theme.primary ?? "#8b5cf6"}
+          borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+        />
       </div>
 
       <div style={{ ...sectionWrap, marginBottom: 0 }}>

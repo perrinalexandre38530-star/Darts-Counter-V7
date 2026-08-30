@@ -36,7 +36,7 @@ import tickerPetanqueEvenements3 from "../../assets/tickers/ticker_petanque_even
 import tickerPetanqueAstuce1 from "../../assets/tickers/ticker_petanque_astuce.png";
 import tickerPetanqueAstuce2 from "../../assets/tickers/ticker_petanque_astuce_2.png";
 import tickerPetanqueAstuce3 from "../../assets/tickers/ticker_petanque_astuce_3.png";
-import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
+import SportHomeWelcomeHeader from "../../components/home/SportHomeWelcomeHeader";
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
@@ -835,58 +835,15 @@ const secondaryTicker = tickerItems.length
         @keyframes dcTitleShimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }
       `}</style>
 
-      {/* ===== HEADER (même "Bienvenue" que Darts + titre jamais coupé) ===== */}
-      <div style={{ ...sectionWrap, marginBottom: 10, position: "relative", overflow: "hidden", isolation: "isolate" }}>
-        <SportWelcomeWatermark sport="petanque" opacity={0.12} size={185} />
-        <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          {/* ✅ Bienvenue = pill/badge (comme Darts) */}
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "5px 12px",
-              borderRadius: 999,
-              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-              background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.28))",
-              boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-              color: primary,
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-            }}
-          >
-            {t("home.welcome", "Bienvenue")}
-          </div>
-
-          {/* ✅ Container + auto-fit scale */}
-          <div ref={titleWrapRef} style={{ width: "100%", overflow: "hidden" }}>
-            <div
-              ref={titleTextRef}
-              style={{
-                width: "fit-content",
-                marginInline: "auto",
-                textAlign: "center",
-                textTransform: "uppercase",
-                fontWeight: 1000,
-                fontSize: "clamp(18px, 6.2vw, 30px)",
-                letterSpacing: "clamp(0.6px, 0.75vw, 3px)",
-                lineHeight: 1.05,
-                whiteSpace: "nowrap",
-                backgroundImage: `linear-gradient(120deg, ${primary}, #ffffff, ${primary})`,
-                backgroundSize: "200% 100%",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
-                animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
-                transform: `scale(${titleScale})`,
-                transformOrigin: "center",
-              }}
-            >
-              PETANQUE SCORING
-            </div>
-          </div>
-        </div>
+      {/* ===== HEADER — référence DARTS SCORING ===== */}
+      <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
+        <SportHomeWelcomeHeader
+          sport="petanque"
+          title="PETANQUE SCORING"
+          welcome={t("home.welcome", "Bienvenue")}
+          accent={primary}
+          borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+        />
       </div>
 
       <div style={{ ...sectionWrap, marginBottom: 0 }}>

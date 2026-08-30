@@ -16,7 +16,7 @@ import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 import { PageAdBanner } from "../../monetization/AdSlot";
-import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
+import SportHomeWelcomeHeader from "../../components/home/SportHomeWelcomeHeader";
 
 import { loadBabyFootState } from "../../lib/babyfootStore";
 import { History } from "../../lib/history";
@@ -778,56 +778,15 @@ export default function BabyFootHome({ store, go }: Props) {
         @keyframes bfMarquee { 0% { transform: translateX(0%); } 100% { transform: translateX(-50%); } }
       `}</style>
 
-      {/* ===== HEADER ===== */}
-      <div style={{ ...sectionWrap, marginBottom: 10, position: "relative", overflow: "hidden", isolation: "isolate" }}>
-        <SportWelcomeWatermark sport="babyfoot" opacity={0.12} size={185} />
-        <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "5px 12px",
-              borderRadius: 999,
-              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-              background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.28))",
-              boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-              color: primary,
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-            }}
-          >
-            {t("home.welcome", "Bienvenue")}
-          </div>
-
-          <div ref={titleWrapRef} style={{ width: "100%", overflow: "hidden" }}>
-            <div
-              ref={titleTextRef}
-              style={{
-                width: "fit-content",
-                marginInline: "auto",
-                textAlign: "center",
-                textTransform: "uppercase",
-                fontWeight: 1000,
-                fontSize: "clamp(18px, 6.2vw, 30px)",
-                letterSpacing: "clamp(0.6px, 0.75vw, 3px)",
-                lineHeight: 1.05,
-                whiteSpace: "nowrap",
-                backgroundImage: `linear-gradient(120deg, ${primary}, #ffffff, ${primary})`,
-                backgroundSize: "200% 100%",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
-                animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
-                transform: `scale(${titleScale})`,
-                transformOrigin: "center",
-              }}
-            >
-              BABYFOOT SCORING
-            </div>
-          </div>
-        </div>
+      {/* ===== HEADER — référence DARTS SCORING ===== */}
+      <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
+        <SportHomeWelcomeHeader
+          sport="babyfoot"
+          title="BABYFOOT SCORING"
+          welcome={t("home.welcome", "Bienvenue")}
+          accent={primary}
+          borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+        />
       </div>
 
       <div style={{ ...sectionWrap, marginBottom: 0 }}>

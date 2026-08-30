@@ -15,6 +15,7 @@ import { RunningActionTile, RunningGlyph, RunningSectionHeading, RunningStatusCh
 import { loadRunningActiveSessions, runningActiveElapsedMs, subscribeRunningActiveSessions, upsertRunningActiveSession, type RunningActiveSession } from "../../activity/runningActiveSessions";
 import { OUTDOOR_SPORT_PROFILES, canonicalOutdoorPerformanceSport, loadOutdoorPerformanceSport, outdoorAverageMetricLabel, outdoorAverageMetricValue, outdoorAverageSpeedKmh, outdoorSportLabel, outdoorUsesSpeedMetric, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
+import { InlineAdBanner } from "../../monetization/AdSlot";
 import { listRecoverableRunningSessionDrafts } from "../../activity/runningSessionDrafts";
 const PAGE_MAX_WIDTH = 620;
 const sectionWrap: React.CSSProperties = { width: "100%", boxSizing: "border-box" };
@@ -219,11 +220,31 @@ export default function RunningHome({ store, go }: Props) {
         <div ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}><div ref={textRef} style={{ width: "fit-content", marginInline: "auto", fontSize: 32, fontWeight: 900, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "center" }}>{copy.title}</div></div>
       </div>
 
+      {/* PUB 1 — même logique inline/scroll que DARTS SCORING. */}
+      <InlineAdBanner
+        placement="home"
+        slotKey="home-top"
+        offset={0}
+        compact
+        style={{ marginBottom: 16 }}
+      />
+
       <div style={sectionWrap}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>
 
       <div style={sectionWrap}>{activeProfile ? <ActiveProfileCard hideStatus hideStarRing profile={activeProfile as any} stats={{} as any} suppressDefaultStatsSlides customSlides={profileSlides as any} globalTitle={`${outdoorSportLabel(activitySport, lang)} · ${copy.overview}`} globalKpis={[
         { label: copy.distance, value: formatDistance(stats.totalDistanceM) }, { label: copy.sessions, value: stats.sessions }, { label: bestMetricLabel, value: bestMetricValue }, { label: copy.climb, value: `+${Math.round(stats.totalElevationM)} m` }, { label: copy.longest, value: formatDistance(stats.longestM) }, { label: copy.time, value: formatDuration(stats.totalElapsedMs) },
       ]}/> : null}</div>
+
+      {/* PUB 2 — suit le bloc profil et se recale avec le scroll comme sur DARTS. */}
+      {activeProfile ? (
+        <InlineAdBanner
+          placement="home_secondary"
+          slotKey="home-player"
+          offset={2}
+          compact
+          style={{ marginTop: 12, marginBottom: 14 }}
+        />
+      ) : null}
 
       <div style={{ ...sectionWrap, marginTop: 12 }}>
         <RunningActionTile
