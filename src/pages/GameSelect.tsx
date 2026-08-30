@@ -22,7 +22,7 @@ import logoPingPong from "../assets/games/logo-pingpong.webp";
 import logoBabyFoot from "../assets/games/logo-babyfoot.webp";
 import logoRunning from "../assets/games/logo-running-performance.webp";
 import logoFitPerf from "../assets/games/logo-fit-performance.webp";
-import logoEsports from "../assets/games/logo-esports.svg";
+import logoEsports from "../assets/games/logo-esports.webp";
 
 // ✅ Sports à venir (affichés en SOON dans le GameSelect)
 import logoArchery from "../assets/games/logo-archery.png";

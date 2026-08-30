@@ -88,10 +88,12 @@ export default function NavigationBackgroundMusic({
   const explicitTrackActiveRef = React.useRef(false);
   const pausedByPreviewRef = React.useRef(false);
   const pendingAutoplayRef = React.useRef(false);
+  const pendingTrackStartRef = React.useRef(false);
   const playRequestSerialRef = React.useRef(0);
   const playInFlightRef = React.useRef<Promise<void> | null>(null);
   const trackLoadSerialRef = React.useRef(0);
   const announcedTrackSerialRef = React.useRef(0);
+  const advancedTrackSerialRef = React.useRef(-1);
   const nowPlayingShowRafRef = React.useRef<number | null>(null);
   const nowPlayingHideTimerRef = React.useRef<number | null>(null);
   const nowPlayingClearTimerRef = React.useRef<number | null>(null);
@@ -214,6 +216,16 @@ export default function NavigationBackgroundMusic({
     const nextId = takeNextTrackId();
     const track = getNavigationMusicTrack(nextId);
     if (!track) return false;
+
+    // A source replacement must invalidate any previous play() promise.
+    // In some Android WebViews the promise can stay alive longer than expected;
+    // if it is reused for the next track the playlist stops after track #1.
+    playRequestSerialRef.current += 1;
+    playInFlightRef.current = null;
+    pendingAutoplayRef.current = true;
+    pendingTrackStartRef.current = true;
+
+    try { audio.pause(); } catch {}
     audio.src = track.url;
     trackLoadSerialRef.current += 1;
     audio.preload = "auto";
@@ -227,7 +239,8 @@ export default function NavigationBackgroundMusic({
     if (!track) return false;
     playRequestSerialRef.current += 1;
     playInFlightRef.current = null;
-    pendingAutoplayRef.current = false;
+    pendingAutoplayRef.current = true;
+    pendingTrackStartRef.current = true;
     explicitTrackActiveRef.current = true;
     currentTrackIdRef.current = trackId;
     audio.pause();
@@ -251,6 +264,15 @@ export default function NavigationBackgroundMusic({
   const requestPlay = React.useCallback((): Promise<void> => {
     const audio = audioRef.current;
     if (!audio || !canPlay()) return Promise.resolve();
+
+    // Never call play() against a source that has just been swapped and is not
+    // ready yet. Waiting for canplay makes first -> second -> third track
+    // chaining reliable on Android WebView as well as desktop browsers.
+    if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+      pendingAutoplayRef.current = true;
+      pendingTrackStartRef.current = true;
+      return Promise.resolve();
+    }
 
     // Coalesce simultaneous React effects into ONE media play request. On boot,
     // route/prefs/lifecycle effects can all ask for playback during the same
@@ -280,6 +302,7 @@ export default function NavigationBackgroundMusic({
         // newer valid playback.
         if (requestSerial !== playRequestSerialRef.current || !canPlay()) return;
         pendingAutoplayRef.current = false;
+        pendingTrackStartRef.current = false;
         rampVolume(getTargetVolume(), 220);
         // The banner is deliberately NOT triggered here. Only the real media
         // `playing` event may announce a title.
@@ -309,6 +332,7 @@ export default function NavigationBackgroundMusic({
     explicitTrackActiveRef.current = false;
     zoneRef.current = keepZone;
     pendingAutoplayRef.current = false;
+    pendingTrackStartRef.current = false;
     if (keepZone) {
       rebuildCycle();
       loadNextTrack(audio);
@@ -323,6 +347,7 @@ export default function NavigationBackgroundMusic({
     playRequestSerialRef.current += 1;
     playInFlightRef.current = null;
     pendingAutoplayRef.current = false;
+    pendingTrackStartRef.current = false;
     pausedByPreviewRef.current = false;
     zoneRef.current = null;
     cycleRef.current = [];
@@ -366,25 +391,53 @@ export default function NavigationBackgroundMusic({
       announceCurrentTrack();
     };
     const onCanPlay = () => {
-      // Some Android WebViews resolve source loading after the initial play()
-      // request. If that first request was deferred, retry immediately when the
-      // media is ready instead of waiting for a Settings interaction.
+      // Source changes are deliberately started from canplay. Calling play()
+      // immediately after audio.load() is unreliable on Android WebView and was
+      // the reason the playlist could stop after the first title.
       if (!mountedRef.current || !zoneRef.current || !canPlay()) return;
-      if (audio.paused || pendingAutoplayRef.current) void requestPlay();
+      if (pendingTrackStartRef.current || audio.paused || pendingAutoplayRef.current) {
+        pendingTrackStartRef.current = false;
+        void requestPlay();
+      }
     };
-    const onEnded = () => {
-      if (!mountedRef.current || !zoneRef.current) return;
+    const advanceToNextTrack = () => {
+      if (!mountedRef.current || !zoneRef.current || !canPlay()) return;
+
+      // `ended` is the canonical signal, but some Android WebViews have also
+      // been observed to expose `audio.ended === true` through `pause` without
+      // reliably delivering the ended callback. Guard by source serial so both
+      // signals can safely call this function without skipping two tracks.
+      const completedSerial = trackLoadSerialRef.current;
+      if (advancedTrackSerialRef.current === completedSerial) return;
+      advancedTrackSerialRef.current = completedSerial;
+
       if (explicitTrackActiveRef.current) explicitTrackActiveRef.current = false;
       if (getEnabledTrackIds(prefsRef.current).length > 0 && loadNextTrack(audio)) {
-        void requestPlay();
+        // loadNextTrack marks the source as pending; onCanPlay owns the actual
+        // start so the transition is deterministic.
         return;
       }
       currentTrackIdRef.current = null;
+      pendingTrackStartRef.current = false;
       try { audio.removeAttribute("src"); } catch {}
+    };
+    const onEnded = () => {
+      advanceToNextTrack();
+    };
+    const onPause = () => {
+      if (audio.ended) advanceToNextTrack();
+    };
+    const onError = () => {
+      // A single damaged/unsupported asset must not kill the whole playlist.
+      // Skip it and continue with the next enabled title.
+      if (!mountedRef.current || !zoneRef.current || !canPlay()) return;
+      advanceToNextTrack();
     };
     audio.addEventListener("playing", onPlaying);
     audio.addEventListener("canplay", onCanPlay);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("error", onError);
     return () => {
       mountedRef.current = false;
       playRequestSerialRef.current += 1;
@@ -394,6 +447,8 @@ export default function NavigationBackgroundMusic({
       audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("error", onError);
       try { audio.pause(); } catch {}
       audioRef.current = null;
     };
