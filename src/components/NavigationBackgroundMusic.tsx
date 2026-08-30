@@ -89,6 +89,7 @@ export default function NavigationBackgroundMusic({
   const pausedByPreviewRef = React.useRef(false);
   const pendingAutoplayRef = React.useRef(false);
   const playRequestSerialRef = React.useRef(0);
+  const playInFlightRef = React.useRef<Promise<void> | null>(null);
   const trackLoadSerialRef = React.useRef(0);
   const announcedTrackSerialRef = React.useRef(0);
   const nowPlayingShowRafRef = React.useRef<number | null>(null);
@@ -225,6 +226,7 @@ export default function NavigationBackgroundMusic({
     const track = getNavigationMusicTrack(trackId);
     if (!track) return false;
     playRequestSerialRef.current += 1;
+    playInFlightRef.current = null;
     pendingAutoplayRef.current = false;
     explicitTrackActiveRef.current = true;
     currentTrackIdRef.current = trackId;
@@ -246,34 +248,60 @@ export default function NavigationBackgroundMusic({
     showNowPlayingBanner(trackId);
   }, [showNowPlayingBanner]);
 
-  const requestPlay = React.useCallback(async () => {
+  const requestPlay = React.useCallback((): Promise<void> => {
     const audio = audioRef.current;
-    if (!audio || !canPlay()) return;
-    const requestSerial = ++playRequestSerialRef.current;
+    if (!audio || !canPlay()) return Promise.resolve();
+
+    // Coalesce simultaneous React effects into ONE media play request. On boot,
+    // route/prefs/lifecycle effects can all ask for playback during the same
+    // render. Letting each one call audio.play() created a race where an older
+    // promise could resolve late and pause the track started by a newer call.
+    if (playInFlightRef.current) return playInFlightRef.current;
+
+    const requestSerial = playRequestSerialRef.current;
     audio.muted = false;
-    rampVolume(getTargetVolume(), 220);
+    // Apply the persisted level synchronously before starting. The ramp then
+    // keeps later Awena/Settings volume transitions smooth.
+    audio.volume = getTargetVolume();
+
+    let nativePlay: Promise<void>;
     try {
-      await audio.play();
-      // A route can switch to PLAY while the browser is still resolving an
-      // autoplay promise. Never let that delayed promise restart the music.
-      if (requestSerial !== playRequestSerialRef.current || !canPlay()) {
-        try { audio.pause(); } catch {}
-        return;
-      }
-      pendingAutoplayRef.current = false;
-      // The "playing" event below is the source of truth for the banner.
-      // Keep this fallback for WebViews that occasionally skip that event.
-      announceCurrentTrack();
+      nativePlay = audio.play();
     } catch {
-      if (requestSerial === playRequestSerialRef.current && canPlay()) {
-        pendingAutoplayRef.current = true;
-      }
+      pendingAutoplayRef.current = canPlay();
+      return Promise.resolve();
     }
-  }, [announceCurrentTrack, canPlay, getTargetVolume, rampVolume]);
+
+    const task = nativePlay
+      .then(() => {
+        // A PLAY route, mute, preview or source replacement can invalidate this
+        // attempt while the browser is still resolving play(). Those code paths
+        // already stop/replace the player, so a stale promise must NEVER pause a
+        // newer valid playback.
+        if (requestSerial !== playRequestSerialRef.current || !canPlay()) return;
+        pendingAutoplayRef.current = false;
+        rampVolume(getTargetVolume(), 220);
+        // The banner is deliberately NOT triggered here. Only the real media
+        // `playing` event may announce a title.
+      })
+      .catch(() => {
+        if (requestSerial === playRequestSerialRef.current && canPlay()) {
+          pendingAutoplayRef.current = true;
+        }
+      })
+      .finally(() => {
+        if (playInFlightRef.current === task) playInFlightRef.current = null;
+      });
+
+    playInFlightRef.current = task;
+    return task;
+  }, [canPlay, getTargetVolume, rampVolume]);
 
   const resetPlaylist = React.useCallback((keepZone: NavigationMusicZone = zoneRef.current) => {
     const audio = audioRef.current;
     if (!audio) return;
+    playRequestSerialRef.current += 1;
+    playInFlightRef.current = null;
     try { audio.pause(); } catch {}
     cycleRef.current = [];
     cursorRef.current = 0;
@@ -293,6 +321,7 @@ export default function NavigationBackgroundMusic({
   const hardStopForGameplay = React.useCallback(() => {
     // Invalidate every pending play() call before touching the element.
     playRequestSerialRef.current += 1;
+    playInFlightRef.current = null;
     pendingAutoplayRef.current = false;
     pausedByPreviewRef.current = false;
     zoneRef.current = null;
@@ -318,20 +347,30 @@ export default function NavigationBackgroundMusic({
     if (typeof window === "undefined") return;
     mountedRef.current = true;
 
-    // Reuse the persistent splash player whenever possible.
-    // On Android/Chrome this is important: the intro has already unlocked this
-    // exact media element, while creating a brand-new Audio() after the splash
-    // can be blocked by autoplay policy until the user touches the screen.
-    const splashPlayer = document.getElementById("dc-splash-audio");
-    const audio = splashPlayer instanceof HTMLAudioElement ? splashPlayer : new Audio();
+    // Keep navigation music on its own media element. This is intentionally
+    // separate from `dc-splash-audio`: sharing the React-managed splash player
+    // caused the intro source/volume lifecycle to interfere with the first
+    // navigation track after boot. The dedicated player is the architecture
+    // that was working before the now-playing banner was introduced.
+    const audio = new Audio();
     audio.preload = "auto";
     audio.loop = false;
+    audio.autoplay = false;
+    audio.muted = false;
     audio.volume = getTargetVolume();
     audioRef.current = audio;
 
     const onPlaying = () => {
+      if (!mountedRef.current || !zoneRef.current || !canPlay()) return;
       pendingAutoplayRef.current = false;
       announceCurrentTrack();
+    };
+    const onCanPlay = () => {
+      // Some Android WebViews resolve source loading after the initial play()
+      // request. If that first request was deferred, retry immediately when the
+      // media is ready instead of waiting for a Settings interaction.
+      if (!mountedRef.current || !zoneRef.current || !canPlay()) return;
+      if (audio.paused || pendingAutoplayRef.current) void requestPlay();
     };
     const onEnded = () => {
       if (!mountedRef.current || !zoneRef.current) return;
@@ -344,12 +383,16 @@ export default function NavigationBackgroundMusic({
       try { audio.removeAttribute("src"); } catch {}
     };
     audio.addEventListener("playing", onPlaying);
+    audio.addEventListener("canplay", onCanPlay);
     audio.addEventListener("ended", onEnded);
     return () => {
       mountedRef.current = false;
+      playRequestSerialRef.current += 1;
+      playInFlightRef.current = null;
       cancelVolumeRamp();
       clearNowPlayingTimers();
       audio.removeEventListener("playing", onPlaying);
+      audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("ended", onEnded);
       try { audio.pause(); } catch {}
       audioRef.current = null;
