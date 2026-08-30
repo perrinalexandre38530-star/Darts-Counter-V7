@@ -1,7 +1,19 @@
 import { getEsportsGame } from "./catalog";
-import { buildRoundRobinMatches, buildSingleEliminationBracket } from "./tournamentEngine";
-import type { EsportsMatch, EsportsRoom, EsportsState, EsportsTournament, EsportsTournamentFormat, GamerIdentity } from "./types";
+import { applyTournamentMatchScore, buildRoundRobinMatches, buildSingleEliminationBracket } from "./tournamentEngine";
+import type {
+  EsportsLfgPost,
+  EsportsMatch,
+  EsportsPlatform,
+  EsportsRoom,
+  EsportsRoomInvite,
+  EsportsState,
+  EsportsTeam,
+  EsportsTournament,
+  EsportsTournamentFormat,
+  GamerIdentity,
+} from "./types";
 
+// On conserve volontairement la même clé afin de migrer les données V0.1 sans les perdre.
 const LS_KEY = "ms-esports-hub-v1";
 const EVENT = "ms:esports-store";
 
@@ -16,12 +28,15 @@ const DEFAULT_GAMER: GamerIdentity = {
 };
 
 const DEFAULT_STATE: EsportsState = {
-  version: 1,
+  version: 2,
   gamer: DEFAULT_GAMER,
   selectedGameId: "rocket-league",
   rooms: [],
   matches: [],
   tournaments: [],
+  teams: [],
+  lfgPosts: [],
+  roomInvites: [],
 };
 
 function uid(prefix: string): string {
@@ -38,12 +53,22 @@ export function generateEsportsRoomCode(): string {
 function normalizeState(value: any): EsportsState {
   if (!value || typeof value !== "object") return structuredClone(DEFAULT_STATE);
   return {
-    version: 1,
-    gamer: { ...DEFAULT_GAMER, ...(value.gamer || {}), handles: { ...(value.gamer?.handles || {}) }, favoriteGameIds: Array.isArray(value.gamer?.favoriteGameIds) ? value.gamer.favoriteGameIds.map(String) : DEFAULT_GAMER.favoriteGameIds },
+    version: 2,
+    gamer: {
+      ...DEFAULT_GAMER,
+      ...(value.gamer || {}),
+      handles: { ...(value.gamer?.handles || {}) },
+      favoriteGameIds: Array.isArray(value.gamer?.favoriteGameIds)
+        ? value.gamer.favoriteGameIds.map(String)
+        : DEFAULT_GAMER.favoriteGameIds,
+    },
     selectedGameId: getEsportsGame(value.selectedGameId).id,
     rooms: Array.isArray(value.rooms) ? value.rooms : [],
     matches: Array.isArray(value.matches) ? value.matches : [],
     tournaments: Array.isArray(value.tournaments) ? value.tournaments : [],
+    teams: Array.isArray(value.teams) ? value.teams : [],
+    lfgPosts: Array.isArray(value.lfgPosts) ? value.lfgPosts : [],
+    roomInvites: Array.isArray(value.roomInvites) ? value.roomInvites : [],
   };
 }
 
@@ -77,13 +102,24 @@ export function subscribeEsportsStore(listener: () => void): () => void {
 }
 
 export function saveGamerIdentity(patch: Partial<GamerIdentity>): EsportsState {
-  return patchEsportsState((state) => ({ ...state, gamer: { ...state.gamer, ...patch, handles: { ...state.gamer.handles, ...(patch.handles || {}) } } }));
+  return patchEsportsState((state) => ({
+    ...state,
+    gamer: { ...state.gamer, ...patch, handles: { ...state.gamer.handles, ...(patch.handles || {}) } },
+  }));
 }
 
 export function toggleFavoriteGame(gameId: string): EsportsState {
   return patchEsportsState((state) => {
     const has = state.gamer.favoriteGameIds.includes(gameId);
-    return { ...state, gamer: { ...state.gamer, favoriteGameIds: has ? state.gamer.favoriteGameIds.filter((id) => id !== gameId) : [...state.gamer.favoriteGameIds, gameId] } };
+    return {
+      ...state,
+      gamer: {
+        ...state.gamer,
+        favoriteGameIds: has
+          ? state.gamer.favoriteGameIds.filter((id) => id !== gameId)
+          : [...state.gamer.favoriteGameIds, gameId],
+      },
+    };
   });
 }
 
@@ -111,16 +147,29 @@ export function createLocalEsportsRoom(input: Partial<EsportsRoom> & { gameId: s
     createdAt: input.createdAt || Date.now(),
     updatedAt: Date.now(),
   };
-  patchEsportsState((state) => ({ ...state, selectedGameId: room.gameId, rooms: [room, ...state.rooms.filter((r) => r.id !== room.id && r.code !== room.code)].slice(0, 80) }));
+  patchEsportsState((state) => ({
+    ...state,
+    selectedGameId: room.gameId,
+    rooms: [room, ...state.rooms.filter((r) => r.id !== room.id && r.code !== room.code)].slice(0, 80),
+  }));
   return room;
 }
 
 export function upsertEsportsRoom(room: EsportsRoom): EsportsState {
-  return patchEsportsState((state) => ({ ...state, rooms: [{ ...room, updatedAt: Date.now() }, ...state.rooms.filter((r) => r.id !== room.id && r.code !== room.code)].slice(0, 80) }));
+  return patchEsportsState((state) => ({
+    ...state,
+    rooms: [{ ...room, updatedAt: Date.now() }, ...state.rooms.filter((r) => r.id !== room.id && r.code !== room.code)].slice(0, 80),
+  }));
 }
 
 export function removeEsportsRoom(id: string): EsportsState {
   return patchEsportsState((state) => ({ ...state, rooms: state.rooms.filter((room) => room.id !== id) }));
+}
+
+export function recordEsportsRoomInvite(input: Omit<EsportsRoomInvite, "id" | "sentAt">): EsportsRoomInvite {
+  const invite: EsportsRoomInvite = { ...input, id: uid("invite"), sentAt: Date.now() };
+  patchEsportsState((state) => ({ ...state, roomInvites: [invite, ...state.roomInvites].slice(0, 120) }));
+  return invite;
 }
 
 export function recordEsportsMatch(input: Omit<EsportsMatch, "id" | "createdAt" | "winner"> & { winner?: "A" | "B" | "draw" }): EsportsMatch {
@@ -137,8 +186,73 @@ export function recordEsportsMatch(input: Omit<EsportsMatch, "id" | "createdAt" 
   return match;
 }
 
+export function createEsportsTeam(input: { name: string; tag?: string; gameIds?: string[]; memberNames?: string[]; captainName?: string }): EsportsTeam {
+  const name = String(input.name || "").trim();
+  if (!name) throw new Error("Nom d'équipe obligatoire.");
+  const team: EsportsTeam = {
+    id: uid("team"),
+    name,
+    tag: String(input.tag || "").trim().toUpperCase().slice(0, 8),
+    captainName: String(input.captainName || "Gamer").trim() || "Gamer",
+    gameIds: (input.gameIds || []).map((id) => getEsportsGame(id).id).filter((id, index, arr) => arr.indexOf(id) === index),
+    memberNames: (input.memberNames || []).map((v) => String(v).trim()).filter(Boolean),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  patchEsportsState((state) => ({ ...state, teams: [team, ...state.teams].slice(0, 80) }));
+  return team;
+}
+
+export function updateEsportsTeam(id: string, patch: Partial<Pick<EsportsTeam, "name" | "tag" | "gameIds" | "memberNames" | "captainName">>): EsportsState {
+  return patchEsportsState((state) => ({
+    ...state,
+    teams: state.teams.map((team) => team.id === id ? { ...team, ...patch, updatedAt: Date.now() } : team),
+  }));
+}
+
+export function deleteEsportsTeam(id: string): EsportsState {
+  return patchEsportsState((state) => ({ ...state, teams: state.teams.filter((team) => team.id !== id) }));
+}
+
+export function createEsportsLfgPost(input: {
+  gameId: string;
+  authorName: string;
+  platform: EsportsPlatform;
+  mode?: string;
+  message?: string;
+  slotsNeeded?: number;
+}): EsportsLfgPost {
+  const post: EsportsLfgPost = {
+    id: uid("lfg"),
+    gameId: getEsportsGame(input.gameId).id,
+    authorName: String(input.authorName || "Gamer").trim() || "Gamer",
+    platform: input.platform,
+    mode: String(input.mode || "Casual").trim() || "Casual",
+    message: String(input.message || "").trim(),
+    slotsNeeded: Math.max(1, Math.min(20, Number(input.slotsNeeded || 1))),
+    status: "open",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  patchEsportsState((state) => ({ ...state, selectedGameId: post.gameId, lfgPosts: [post, ...state.lfgPosts].slice(0, 100) }));
+  return post;
+}
+
+export function setEsportsLfgStatus(id: string, status: "open" | "closed"): EsportsState {
+  return patchEsportsState((state) => ({
+    ...state,
+    lfgPosts: state.lfgPosts.map((post) => post.id === id ? { ...post, status, updatedAt: Date.now() } : post),
+  }));
+}
+
+export function deleteEsportsLfgPost(id: string): EsportsState {
+  return patchEsportsState((state) => ({ ...state, lfgPosts: state.lfgPosts.filter((post) => post.id !== id) }));
+}
+
 export function createEsportsTournament(input: { name: string; gameId: string; format: EsportsTournamentFormat; bestOf: number; participantNames: string[] }): EsportsTournament {
-  const participants = input.participantNames.map((name, index) => ({ id: uid("participant"), name: name.trim(), seed: index + 1 })).filter((p) => p.name);
+  const participants = input.participantNames
+    .map((name, index) => ({ id: uid("participant"), name: name.trim(), seed: index + 1 }))
+    .filter((p) => p.name);
   const tournament: EsportsTournament = {
     id: uid("tournament"),
     name: input.name.trim() || `${getEsportsGame(input.gameId).shortName} Cup`,
@@ -153,6 +267,44 @@ export function createEsportsTournament(input: { name: string; gameId: string; f
   };
   patchEsportsState((state) => ({ ...state, selectedGameId: tournament.gameId, tournaments: [tournament, ...state.tournaments].slice(0, 100) }));
   return tournament;
+}
+
+export function recordEsportsTournamentMatchResult(tournamentId: string, tournamentMatchId: string, scoreA: number, scoreB: number): EsportsState {
+  return patchEsportsState((state) => {
+    const tournament = state.tournaments.find((t) => t.id === tournamentId);
+    if (!tournament) throw new Error("Tournoi introuvable.");
+    const original = tournament.matches.find((m) => m.id === tournamentMatchId);
+    if (!original?.participantAId || !original?.participantBId || !original.participantAName || !original.participantBName) {
+      throw new Error("Match non prêt.");
+    }
+
+    const matches = applyTournamentMatchScore(tournament.matches, tournamentMatchId, scoreA, scoreB, tournament.format);
+    const updatedMatch = matches.find((m) => m.id === tournamentMatchId)!;
+    const finished = matches.length > 0 && matches.every((m) => m.status === "finished");
+    const updatedTournament: EsportsTournament = { ...tournament, matches, status: finished ? "finished" : "active", updatedAt: Date.now() };
+
+    const history: EsportsMatch = {
+      id: uid("match"),
+      gameId: tournament.gameId,
+      tournamentId: tournament.id,
+      tournamentMatchId,
+      bestOf: tournament.bestOf,
+      resultKind: getEsportsGame(tournament.gameId).resultKind,
+      sideA: { name: original.participantAName, playerNames: [original.participantAName], score: Number(scoreA) },
+      sideB: { name: original.participantBName, playerNames: [original.participantBName], score: Number(scoreB) },
+      winner: updatedMatch.winnerId === original.participantAId ? "A" : "B",
+      notes: `Tournoi · ${tournament.name}`,
+      playedAt: Date.now(),
+      createdAt: Date.now(),
+    };
+
+    return {
+      ...state,
+      selectedGameId: tournament.gameId,
+      tournaments: state.tournaments.map((t) => t.id === tournament.id ? updatedTournament : t),
+      matches: [history, ...state.matches.filter((m) => !(m.tournamentId === tournament.id && m.tournamentMatchId === tournamentMatchId))].slice(0, 500),
+    };
+  });
 }
 
 export function deleteEsportsTournament(id: string): EsportsState {

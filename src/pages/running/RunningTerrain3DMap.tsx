@@ -1,12 +1,17 @@
 import React from "react";
 import { formatDuration, formatPace, haversineMeters } from "../../activity/activityMath";
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
+import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
+import RunningTerrain3DCompat from "./RunningTerrain3DCompat";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
 import "./runningResponsive.css";
 
 const MAPLIBRE_VERSION = "6.6.0";
-const MAPLIBRE_MODULE = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`;
+const MAPLIBRE_MODULES = [
+  `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
+  `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
+];
 const MAPLIBRE_CSS = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
 const TERRAIN_TILEJSON = "https://tiles.mapterhorn.com/tilejson.json";
 
@@ -33,11 +38,19 @@ type Props = {
   onPlaceSelect?: (place: OutdoorRoutePlace) => void;
   onFallback2D?: () => void;
   showReplay?: boolean;
+  preferCompat?: boolean;
 };
 
 function pickText(lang: string, fr: string, en: string, es: string) {
   const lower = String(lang || "fr").toLowerCase();
   return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
+}
+
+function importWithTimeout(url: string, timeoutMs: number): Promise<MapLibreGlobal> {
+  return Promise.race([
+    import(/* @vite-ignore */ url),
+    new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error(`MapLibre timeout: ${url}`)), timeoutMs)),
+  ]);
 }
 
 function loadMapLibre(): Promise<MapLibreGlobal> {
@@ -53,13 +66,12 @@ function loadMapLibre(): Promise<MapLibreGlobal> {
     document.head.appendChild(link);
   }
 
-  window.__mssMapLibrePromise = import(/* @vite-ignore */ MAPLIBRE_MODULE).then((module) => {
+  window.__mssMapLibrePromise = Promise.any(MAPLIBRE_MODULES.map((url) => importWithTimeout(url, 3200))).then((module) => {
     window.maplibregl = module;
     return module;
   });
   return window.__mssMapLibrePromise;
 }
-
 function routeBounds(points: GeoPoint[]) {
   let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
   for (const point of points) {
@@ -138,7 +150,7 @@ function markerElement(content: string, border: string, title: string, size = 30
   return el;
 }
 
-export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true }: Props) {
+export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true, preferCompat = false }: Props) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
   const maplibreRef = React.useRef<any>(null);
@@ -146,7 +158,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   const staticMarkersRef = React.useRef<any[]>([]);
   const replayFrameRef = React.useRef<number | null>(null);
   const lastCameraAtRef = React.useRef(0);
-  const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = React.useState<"loading" | "ready" | "compat">(preferCompat ? "compat" : "loading");
   const [error, setError] = React.useState("");
   const [replaying, setReplaying] = React.useState(false);
   const [replayIndex, setReplayIndex] = React.useState(0);
@@ -155,6 +167,8 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   const distances = React.useMemo(() => cumulativeDistances(safePoints), [safePoints]);
   const totalDistanceM = distances[distances.length - 1] || 0;
   const terrain = React.useMemo(() => analyzeRunningTerrain(safePoints), [safePoints]);
+  const performance = React.useMemo(() => buildRunningActivityAnalytics({ route: safePoints, distanceM: totalDistanceM, movingMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0), elapsedMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0) } as any), [safePoints, totalDistanceM]);
+  const hasPerformanceColors = performance.routeEdges.some((edge) => edge.score != null);
   const terrainSampleByIndex = React.useMemo(() => {
     const map = new Map<number, { gradePct: number; altitudeM: number }>();
     for (const sample of terrain.samples) map.set(sample.index, { gradePct: sample.gradePct, altitudeM: sample.altitudeM });
@@ -175,6 +189,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     const host = hostRef.current;
     if (!host || safePoints.length < 2) return;
     let disposed = false;
+    if (preferCompat) { setStatus("compat"); setError(""); return; }
     setStatus("loading"); setError("");
 
     void loadMapLibre().then((maplibregl) => {
@@ -207,16 +222,17 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         cooperativeGestures: false,
       });
       mapRef.current = map;
-      try { map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), "top-right"); } catch {}
+      try { map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true, showZoom: false }), "top-right"); } catch {}
       try { map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right"); } catch {}
 
       map.on("load", () => {
         if (disposed) return;
         try { map.setTerrain({ source: "terrainSource", exaggeration: 1.18 }); } catch {}
         try {
-          map.addSource("mss-route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: safePoints.map((point) => [point.lon, point.lat]) } } });
+          const features = hasPerformanceColors ? performance.routeEdges.map((edge) => ({ type: "Feature", properties: { color: edge.color }, geometry: { type: "LineString", coordinates: [[safePoints[edge.startIndex].lon, safePoints[edge.startIndex].lat], [safePoints[edge.endIndex].lon, safePoints[edge.endIndex].lat]] } })) : [{ type: "Feature", properties: { color: accent }, geometry: { type: "LineString", coordinates: safePoints.map((point) => [point.lon, point.lat]) } }];
+          map.addSource("mss-route", { type: "geojson", data: { type: "FeatureCollection", features } });
           map.addLayer({ id: "mss-route-shadow", type: "line", source: "mss-route", paint: { "line-color": "rgba(0,0,0,.82)", "line-width": 9, "line-opacity": .88 } });
-          map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", paint: { "line-color": accent, "line-width": 5.2, "line-opacity": 1 } });
+          map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", paint: { "line-color": ["get", "color"], "line-width": 5.2, "line-opacity": 1 } });
         } catch {}
 
         staticMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
@@ -254,7 +270,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       });
     }).catch((cause) => {
       if (disposed) return;
-      setStatus("error");
+      setStatus("compat");
       setError(String(cause?.message || cause || "MapLibre unavailable"));
     });
 
@@ -269,7 +285,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       try { mapRef.current?.remove(); } catch {}
       mapRef.current = null;
     };
-  }, [accent, fitRoute, fullscreen, lang, onPlaceSelect, places, safePoints, distances, totalDistanceM]);
+  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, onPlaceSelect, performance.routeEdges, places, preferCompat, safePoints, distances, totalDistanceM]);
 
   React.useEffect(() => {
     const map = mapRef.current;
@@ -356,7 +372,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   return <div className="running-map-shell" style={{ position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
     <div ref={hostRef} style={{ position: "absolute", inset: 0 }}/>
     {status === "loading" ? <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "grid", placeItems: "center", background: "linear-gradient(145deg,#101821,#070b10)", color: textSoft }}><div style={{ textAlign: "center", fontSize: 9 }}><div style={{ color: accent, fontSize: 20, marginBottom: 8 }}>⛰</div>{pickText(lang, "Chargement du relief 3D…", "Loading 3D terrain…", "Cargando relieve 3D…")}</div></div> : null}
-    {status === "error" ? <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "grid", placeItems: "center", padding: 18, background: "linear-gradient(145deg,#101821,#070b10)" }}><div style={{ maxWidth: 360, textAlign: "center" }}><div style={{ color: "#ff9a92", fontSize: 22 }}>△</div><div style={{ marginTop: 6, fontSize: 10, fontWeight: 1000 }}>{pickText(lang, "3D indisponible", "3D unavailable", "3D no disponible")}</div><div style={{ marginTop: 5, color: textSoft, fontSize: 7.5, lineHeight: 1.45 }}>{error}</div>{onFallback2D ? <button className="btn" onClick={onFallback2D} style={{ marginTop: 10, minHeight: 36, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{pickText(lang, "REVENIR EN 2D", "BACK TO 2D", "VOLVER A 2D")}</button> : null}</div></div> : null}
+    {status === "compat" ? <div style={{ position: "absolute", inset: 0, zIndex: 22 }}><RunningTerrain3DCompat points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} activePointIndex={effectiveIndex} onActivePointChange={onActivePointChange}/><div style={{ position: "absolute", left: 10, top: 54, zIndex: 30, padding: "5px 8px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: "1px solid rgba(255,255,255,.10)", color: textSoft, fontSize: 6.5 }}>{preferCompat ? pickText(lang, "3D live · altitude GPS", "Live 3D · GPS elevation", "3D live · altitud GPS") : pickText(lang, "Mode 3D compatible · WebGL distant indisponible", "Compatible 3D mode · remote WebGL unavailable", "Modo 3D compatible · WebGL remoto no disponible")}</div>{onFallback2D ? <button className="btn" onClick={onFallback2D} style={{ position: "absolute", right: 10, bottom: 10, zIndex: 31, minHeight: 34, color: accent, borderColor: `${accent}55`, background: "rgba(5,8,13,.86)", fontSize: 7.5, fontWeight: 1000 }}>{pickText(lang, "REVENIR EN 2D", "BACK TO 2D", "VOLVER A 2D")}</button> : null}</div> : null}
 
     {status === "ready" ? <>
       <div style={{ position: "absolute", left: 10, top: 10, zIndex: 15, display: "flex", gap: 6, pointerEvents: "auto" }}>

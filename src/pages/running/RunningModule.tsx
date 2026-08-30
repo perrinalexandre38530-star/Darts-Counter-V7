@@ -9,6 +9,7 @@ import Section from "../../components/Section";
 import RunningPlanView from "./RunningPlanView";
 import RunningGoalView from "./RunningGoalView";
 import RunningRunAnalysisPanel from "./RunningRunAnalysisPanel";
+import RunningActivityPerformancePanel from "./RunningActivityPerformancePanel";
 import RunningElevationProfile from "./RunningElevationProfile";
 import RunningTerrain3DMap from "./RunningTerrain3DMap";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
@@ -36,6 +37,7 @@ import { syncOutdoorRouteAttempt } from "../../activity/outdoorRouteCommunity";
 import { loadRunningShoes, type RunningShoe } from "../../activity/runningGear";
 import { adaptiveMilestoneCoach, adaptiveSplitCoach } from "../../activity/runningCoach";
 import { analyzeRunningTerrain, terrainAdvice, terrainLabel } from "../../activity/runningElevation";
+import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
 import { OUTDOOR_SPORT_PROFILES, canonicalOutdoorPerformanceSport, loadOutdoorPerformanceSport, outdoorActivityTitle, outdoorAverageMetricLabel, outdoorAverageMetricValue, outdoorDefaultGoal, outdoorGoalDistancesKm, outdoorGoalDurationsMin, outdoorPresetIds, outdoorSportLabel, outdoorTrainingPresetIds, outdoorUsesSpeedMetric, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import { loadOutdoorRouteExtras, type OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import { estimateOutdoorRouteDurationMs, outdoorDirectionalGuidance, outdoorRouteProgress, outdoorRouteRejoinPlan } from "../../activity/outdoorNavigation";
@@ -294,6 +296,7 @@ export default function RunningModule({ go, params }: Props) {
     const lastLapElapsedRef = React.useRef(0);
     const lastLapDistanceRef = React.useRef(0);
     const splitCountRef = React.useRef(0);
+    const splitToastTimerRef = React.useRef<number | null>(null);
     const phaseIndexRef = React.useRef<number | null>(null);
     const milestoneRef = React.useRef<Set<number>>(new Set());
     const offRouteAlertRef = React.useRef(false);
@@ -309,6 +312,17 @@ export default function RunningModule({ go, params }: Props) {
     const rerouteResultRef = React.useRef<OutdoorRouteRerouteResult | null>(null);
     const rerouteBusyRef = React.useRef(false);
     const liveOutdoorProgressRef = React.useRef<any>(null);
+    const showSplitToast = React.useCallback((message: string, durationMs = 3500) => {
+        if (splitToastTimerRef.current != null) window.clearTimeout(splitToastTimerRef.current);
+        setSplitToast(message);
+        splitToastTimerRef.current = window.setTimeout(() => {
+            splitToastTimerRef.current = null;
+            setSplitToast(null);
+        }, durationMs);
+    }, []);
+    React.useEffect(() => () => {
+        if (splitToastTimerRef.current != null) window.clearTimeout(splitToastTimerRef.current);
+    }, []);
     const copy = pickLegacyLocalizedValue(lang, {
         title: "RUNNING PERFORMANCE", setupSub: "Prépare ta sortie avant le départ", recordSub: "Sortie GPS en cours", history: "MES SORTIES", records: "MES RECORDS", setup: "SORTIR", quick: "RAPIDE", training: "ENTRAÎNEMENT", pacer: "PACER", selected: "SÉANCE SÉLECTIONNÉE", start: "DÉMARRER", gps: "GPS", gpsCheck: "TESTER LE GPS", gpsReady: "GPS PRÊT", gpsSearching: "RECHERCHE GPS…", gpsLost: "SIGNAL GPS PERDU", gpsUnknown: "GPS À VÉRIFIER", gpsPoor: "SIGNAL FAIBLE", gpsDenied: "LOCALISATION REFUSÉE", gpsHint: "Teste le GPS avant le départ pour éviter une sortie sans tracé.", local: "RUNNING PERFORMANCE — GPS · CARTE · CAPTEURS · HEALTH CONNECT", watches: "MONTRES & CAPTEURS", soon: "BIENTÔT", targetPace: "ALLURE CIBLE", targetDistance: "DISTANCE CIBLE", expected: "TEMPS CIBLE", countdown: "PRÊT ?", go: "GO !",
         distance: "DISTANCE", time: "TEMPS", avgPace: "ALLURE MOY.", livePace: "ALLURE LIVE", speed: "VITESSE", elevation: "DÉNIVELÉ +", accuracy: "PRÉCISION", moving: "TEMPS MOUV.", target: "OBJECTIF", ahead: "EN AVANCE", behind: "EN RETARD", projected: "ARRIVÉE PROJETÉE", phase: "BLOC EN COURS", remaining: "RESTANT", route: "PARCOURS", waiting: "En attente du premier point GPS…", pause: "PAUSE", resume: "REPRENDRE", finish: "TERMINER", cancel: "ANNULER", lap: "TOUR", splits: "SPLITS KM", laps: "TOURS MANUELS", targetReached: "OBJECTIF ATTEINT", insufficient: "Il faut au moins deux points GPS pour enregistrer la sortie. Le brouillon reste sauvegardé pour récupération.", complete: "SORTIE TERMINÉE", verified: "GPS VÉRIFIÉ", delete: "SUPPRIMER LA SORTIE", empty: "Aucune sortie enregistrée.", noRecord: "Pas encore de record", longestLabel: "PLUS LONGUE", bestEfforts: "MEILLEURS EFFORTS", consistency: "RÉGULARITÉ", negative: "NEGATIVE SPLIT", achievements: "PERFORMANCES DÉBLOQUÉES", firstRun: "PREMIÈRE SORTIE", longestBadge: "PLUS LONGUE SORTIE", personalBest: "NOUVEAU RECORD", filters: ["TOUTES", "LIBRES", "SÉANCES", "PACER"], plan: "PLAN", custom: "SUR MESURE", audioCoach: "COACH VOCAL AWENA", audioCoachSub: "Annonce les blocs, splits et repères pendant la sortie.", feedback: "RESSENTI APRÈS LA SORTIE", effort: "EFFORT PERÇU", feeling: "SENSATIONS", notes: "NOTES", save: "ENREGISTRER", info: "RUNNING PERFORMANCE regroupe Running, Trail, Randonnée, Marche (marche classique et nordique) et Tapis roulant. Le GPS natif Android écran éteint est désormais câblé pour les tests internes, tandis que le module reste masqué de la Store V1.",
@@ -969,7 +983,7 @@ export default function RunningModule({ go, params }: Props) {
             return;
         const split = liveSplits[liveSplits.length - 1];
         splitCountRef.current = liveSplits.length;
-        setSplitToast(`KM ${split.index} · ${formatDuration(split.splitMs)} · ${formatPace(split.paceSecPerKm)}/km`);
+        showSplitToast(`KM ${split.index} · ${formatDuration(split.splitMs)} · ${formatPace(split.paceSecPerKm)}/km`);
         const splitVoice = adaptiveSplitCoach({
             split,
             previous: liveSplits.length > 1 ? liveSplits[liveSplits.length - 2] : undefined,
@@ -982,9 +996,7 @@ export default function RunningModule({ go, params }: Props) {
             navigator.vibrate?.([80, 60, 80]);
         }
         catch { }
-        const id = window.setTimeout(() => setSplitToast(null), 3500);
-        return () => window.clearTimeout(id);
-    }, [isRecording, lang, liveGhostDelta, liveSplits, speakCoach, targetPaceSecPerKm]);
+    }, [isRecording, lang, liveGhostDelta, liveSplits, showSplitToast, speakCoach, targetPaceSecPerKm]);
     React.useEffect(() => {
         if (!isRecording || progress == null) return;
         for (const milestone of [25, 50, 75, 90]) {
@@ -1287,12 +1299,12 @@ export default function RunningModule({ go, params }: Props) {
         setManualLaps((rows) => [...rows, lap]);
         lastLapElapsedRef.current = currentElapsed;
         lastLapDistanceRef.current = distance;
-        setSplitToast(`${copy.lap} ${lap.index} · ${formatDuration(lapMs)} · ${formatPace(lap.paceSecPerKm)}/km`);
+        showSplitToast(`${copy.lap} ${lap.index} · ${formatDuration(lapMs)} · ${formatPace(lap.paceSecPerKm)}/km`);
         try {
             navigator.vibrate?.(70);
         }
         catch { }
-    }, [activeElapsedAt, activitySport, copy.lap, isRecording, manualLaps.length, paused]);
+    }, [activeElapsedAt, activitySport, copy.lap, isRecording, manualLaps.length, paused, showSplitToast]);
     const cancelRun = React.useCallback(() => {
         stopWatch();
         const sessionId = activeSessionIdRef.current;
@@ -1634,7 +1646,7 @@ export default function RunningModule({ go, params }: Props) {
 
       {livePage === "route" ? <>
         {selectedRoute && activitySport !== "treadmill" ? <OutdoorRouteNavigationPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} mode="live" liveDistanceM={liveDistance} elapsedMs={elapsedMs} currentPoint={points[points.length - 1] || null} previousPoint={points[points.length - 2] || null} liveElevationGainM={liveElevation} extras={routeExtras} reroute={liveOutdoorReroute} rerouteBusy={liveOutdoorRerouteBusy} rerouteError={liveOutdoorRerouteError} onOpenMap={() => setLiveRouteMapFullscreen(true)}/> : null}
-        <RunningSurface accent={accent} active style={{ marginTop: selectedRoute ? 8 : 0 }}><RouteMap points={points} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} showRouteNetwork={activitySport !== "treadmill"}/></RunningSurface>
+        <RunningSurface accent={accent} active style={{ marginTop: selectedRoute ? 8 : 0 }}><RouteMap points={points} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} showRouteNetwork={activitySport !== "treadmill"} zoomable immersive onOpen={() => setLiveRouteMapFullscreen(true)}/></RunningSurface>
       </> : null}
 
       {livePage === "splits" ? <>
@@ -1649,7 +1661,7 @@ export default function RunningModule({ go, params }: Props) {
         {activitySport === "treadmill" ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.speed} value={`${treadmillSpeed.toFixed(1)} km/h`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={`${treadmillIncline.toFixed(1)}%`} accent={accent}/></div></RunningSurface> : null}
       </> : null}
 
-      {liveRouteMapFullscreen && selectedRoute && routeExtras && activitySport !== "treadmill" ? <OutdoorRouteLiveMap route={selectedRoute} track={points} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} liveDistanceM={liveDistance} elapsedMs={elapsedMs} liveElevationGainM={liveElevation} extras={routeExtras} reroute={liveOutdoorReroute} rerouteBusy={liveOutdoorRerouteBusy} onClose={() => setLiveRouteMapFullscreen(false)}/> : null}
+      {liveRouteMapFullscreen && activitySport !== "treadmill" ? (selectedRoute && routeExtras ? <OutdoorRouteLiveMap route={selectedRoute} track={points} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} liveDistanceM={liveDistance} elapsedMs={elapsedMs} liveElevationGainM={liveElevation} extras={routeExtras} reroute={liveOutdoorReroute} rerouteBusy={liveOutdoorRerouteBusy} onClose={() => setLiveRouteMapFullscreen(false)}/> : <div style={{ position: "fixed", inset: 0, zIndex: 250, background: "#06080d", display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto" }}><div style={{ display: "grid", gridTemplateColumns: "44px 1fr 44px", gap: 8, alignItems: "center", padding: "max(10px,env(safe-area-inset-top)) 10px 10px", borderBottom: "1px solid rgba(255,255,255,.08)", background: "rgba(6,8,13,.96)" }}><button className="btn" onClick={() => setLiveRouteMapFullscreen(false)} style={{ minWidth: 40, minHeight: 40, padding: 0 }}>‹</button><div style={{ textAlign: "center" }}><div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "CARTE LIVE", "LIVE MAP", "MAPA LIVE")}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 8.5 }}>{pickLegacyLocalizedText(lang, "Glisser · pincer · molette · 2D/3D", "Drag · pinch · wheel · 2D/3D", "Mover · pellizcar · rueda · 2D/3D")}</div></div><button className="btn" onClick={() => setLiveRouteMapFullscreen(false)} style={{ minWidth: 40, minHeight: 40, padding: 0 }}>✕</button></div><div style={{ minHeight: 0, padding: 8 }}><RouteMap points={points} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} showRouteNetwork zoomable immersive fullscreen/></div><div style={{ padding: "10px 10px max(12px,env(safe-area-inset-bottom))", background: "rgba(6,8,13,.97)", borderTop: "1px solid rgba(255,255,255,.08)", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.distance} value={formatDistance(liveDistance)} accent={accent}/><MiniStat label={copy.time} value={formatDuration(elapsedMs)} accent={accent}/><MiniStat label={copy.elevation} value={`+${Math.round(liveElevation)} m`} accent={accent}/></div></div>) : null}
       <div style={recordDock}><button className="btn" onClick={addLap} disabled={!isRecording || paused} style={{ minHeight: 52, fontWeight: 1000 }}>{copy.lap}</button><button className="btn" onClick={togglePause} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000 }}>{paused ? `▶ ${copy.resume}` : `Ⅱ ${copy.pause}`}</button><button className="btn primary" onClick={() => void finishRun()} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000, background: accent }}>■ {copy.finish}</button></div>
     </div>;
     }
@@ -1687,7 +1699,7 @@ export default function RunningModule({ go, params }: Props) {
         return <div className="container running-page" style={{ maxWidth: PAGE_MAX_WIDTH }}>
       {detailMapFullscreen && !selected.indoor ? <div style={{ position: "fixed", inset: 0, zIndex: 250, background: "#06080d", display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 44px", gap: 8, alignItems: "center", padding: "max(10px,env(safe-area-inset-top)) 10px 10px", borderBottom: "1px solid rgba(255,255,255,.08)", background: "rgba(6,8,13,.96)" }}><button className="btn" onClick={() => setDetailMapFullscreen(false)} style={{ minWidth: 40, minHeight: 40, padding: 0 }}>‹</button><div style={{ textAlign: "center" }}><div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>{outdoorSportLabel(selectedSport, lang).toUpperCase()} · {pickLegacyLocalizedText(lang, "PARCOURS DE LA SORTIE", "ACTIVITY ROUTE", "RUTA DE LA SALIDA")}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 8.5 }}>{activityDate(selected.startedAt, lang)}</div></div><button className="btn" onClick={() => setDetailMapFullscreen(false)} style={{ minWidth: 40, minHeight: 40, padding: 0 }}>✕</button></div>
-        <div style={{ minHeight: 0, padding: 8 }}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} zoomable immersive fullscreen activePointIndex={detailProfilePoint} onActivePointChange={setDetailProfilePoint}/></div>
+        <div style={{ minHeight: 0, padding: 8 }}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} zoomable immersive fullscreen performanceActivity={selected} activePointIndex={detailProfilePoint} onActivePointChange={setDetailProfilePoint}/></div>
         <div style={{ padding: "10px 10px max(12px,env(safe-area-inset-bottom))", background: "rgba(6,8,13,.97)", borderTop: "1px solid rgba(255,255,255,.08)", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.distance} value={formatDistance(selected.distanceM)} accent={accent}/><MiniStat label={copy.time} value={formatDuration(selected.elapsedMs)} accent={accent}/><MiniStat label={outdoorAverageMetricLabel(selectedSport, lang)} value={outdoorAverageMetricValue(selected, selectedSport)} accent={accent}/><MiniStat label={copy.moving} value={formatDuration(selected.movingMs)} accent={accent}/><MiniStat label={copy.elevation} value={`+${Math.round(selected.elevationGainM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "POINTS GPS", "GPS POINTS", "PUNTOS GPS")} value={String(selected.route?.length || 0)} accent={accent}/></div>
       </div> : null}
       <PageHeader title={copy.complete} subtitle={`${outdoorSportLabel(selectedSport, lang)} · ${activityDate(selected.startedAt, lang)}`} left={<BackDot onClick={() => setView("history")}/>} right={infoDot}/>
@@ -1696,10 +1708,11 @@ export default function RunningModule({ go, params }: Props) {
       <div style={{ marginTop: 10 }}><Section title={copy.feedback}><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000 }}>{copy.effort}</div><div className="running-rpe-grid" style={{ marginTop: 6 }}>{Array.from({ length: 10 }, (_, i) => i + 1).map((value) => <button key={value} className="btn" onClick={() => void updateSelected({ effortRating: value })} style={{ minWidth: 0, minHeight: 32, padding: 0, fontSize: 8.5, fontWeight: 1000, borderColor: selected.effortRating === value ? `${accent}88` : undefined, color: selected.effortRating === value ? accent : undefined }}>{value}</button>)}</div><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000, marginTop: 10 }}>{copy.feeling}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 6 }}>{([['great','😄'],['good','🙂'],['normal','😐'],['tired','😮‍💨'],['hard','🥵']] as const).map(([value, icon]) => <button key={value} className="btn" onClick={() => void updateSelected({ feeling: value })} style={{ minHeight: 38, padding: 3, fontSize: 17, borderColor: selected.feeling === value ? `${accent}88` : undefined, background: selected.feeling === value ? `${accent}10` : undefined }}>{icon}</button>)}</div><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000, marginTop: 10 }}>{copy.notes}</div><textarea value={selected.notes || ""} onChange={(event) => setSelected({ ...selected, notes: event.target.value.slice(0, 500) })} onBlur={() => { if (selected) void saveActivity(selected).then(refreshActivities); }} placeholder={pickLegacyLocalizedText(lang, "Comment s’est passée la sortie ?", "How did the run feel?", "¿Cómo fue la carrera?")} style={{ width: "100%", minHeight: 72, marginTop: 6, resize: "vertical", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.16)", color: "inherit", padding: 10, font: "inherit", fontSize: 10, outline: "none" }}/></Section></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Metric label={copy.time} value={formatDuration(selected.elapsedMs)} accent={accent}/><Metric label={copy.moving} value={formatDuration(selected.movingMs)} accent={accent}/><Metric label={outdoorAverageMetricLabel(selectedSport, lang)} value={outdoorAverageMetricValue(selected, selectedSport)} accent={accent}/><Metric label={outdoorUsesSpeedMetric(selectedSport) ? pickLegacyLocalizedText(lang, "ALLURE (MIN/KM)", "PACE (MIN/KM)", "RITMO (MIN/KM)") : pickLegacyLocalizedText(lang, "VITESSE MOY. (KM/H)", "AVG SPEED (KM/H)", "VELOCIDAD MEDIA (KM/H)")} value={outdoorUsesSpeedMetric(selectedSport) ? `${formatPace(selected.avgPaceSecPerKm)}/km` : `${(selected.avgSpeedMps * 3.6).toFixed(1)} km/h`} accent={accent}/><Metric label={copy.elevation} value={`+${Math.round(selected.elevationGainM)} m`} accent={accent}/><Metric label={copy.consistency} value={consistency == null ? "—" : `${consistency}%`} accent={accent}/></div>
       {detailSensors.sampleCount ? <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "CAPTEURS & PHYSIO", "SENSORS & PHYSIO", "SENSORES Y FISIO")}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><MiniStat label={pickLegacyLocalizedText(lang, "FC MOY.", "AVG HR", "FC MEDIA")} value={detailSensors.avgHeartRateBpm == null ? "—" : `${Math.round(detailSensors.avgHeartRateBpm)} bpm`} accent={accent}/><MiniStat label={pickLegacyBilingualText(lang, "FC MAX", "MAX HR")} value={detailSensors.maxHeartRateBpm == null ? "—" : `${Math.round(detailSensors.maxHeartRateBpm)} bpm`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "CADENCE MOY.", "AVG CADENCE", "CADENCIA MEDIA")} value={detailSensors.avgCadenceSpm == null ? "—" : `${Math.round(detailSensors.avgCadenceSpm)} spm`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "VITESSE CAPTEUR", "SENSOR SPEED", "VELOCIDAD SENSOR")} value={detailSensors.avgSensorSpeedMps == null ? "—" : `${(detailSensors.avgSensorSpeedMps * 3.6).toFixed(1)} km/h`} accent={accent}/></div>{selected.sensorDevices?.length ? <div style={{ marginTop: 8, fontSize: 8.4, color: textSoft }}>{selected.sensorDevices.map((device) => device.name).join(" · ")}</div> : null}</Section></div> : null}
-      {detailTerrain.hasElevation ? <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "RELIEF DE LA SORTIE", "ACTIVITY ELEVATION", "DESNIVEL DE LA SALIDA")}><RunningElevationProfile points={selected.route} accent={accent} textSoft={textSoft} lang={lang} interactive activePointIndex={detailProfilePoint} onActivePointChange={setDetailProfilePoint}/><div className="running-metrics-4" style={{ marginTop: 8 }}><MiniStat label={pickLegacyLocalizedText(lang, "DIFFICULTÉ", "DIFFICULTY", "DIFICULTAD")} value={`${detailTerrain.difficultyScore}/100`} accent={accent}/><MiniStat label="D+" value={`+${Math.round(detailTerrain.gainM)} m`} accent={accent}/><MiniStat label="D−" value={`−${Math.round(detailTerrain.lossM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "TERRAIN", "TERRAIN", "TERRENO")} value={terrainLabel(detailTerrain.terrain, lang)} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "ALT. MIN", "MIN ELEV.", "ALT. MIN")} value={detailTerrain.minAltitudeM == null ? "—" : `${Math.round(detailTerrain.minAltitudeM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "ALT. MAX", "MAX ELEV.", "ALT. MAX")} value={detailTerrain.maxAltitudeM == null ? "—" : `${Math.round(detailTerrain.maxAltitudeM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "PENTE MAX", "MAX GRADE", "PEND. MAX")} value={`${detailTerrain.maxGradePct.toFixed(1)}%`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "CÔTES", "HILLS", "CUESTAS")} value={String(detailTerrain.hills.length)} accent={accent}/></div></Section></div> : null}
+      {detailTerrain.hasElevation ? <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "RELIEF DE LA SORTIE", "ACTIVITY ELEVATION", "DESNIVEL DE LA SALIDA")}><RunningElevationProfile points={selected.route} accent={accent} textSoft={textSoft} lang={lang} interactive performanceColored activePointIndex={detailProfilePoint} onActivePointChange={setDetailProfilePoint}/><div className="running-metrics-4" style={{ marginTop: 8 }}><MiniStat label={pickLegacyLocalizedText(lang, "DIFFICULTÉ", "DIFFICULTY", "DIFICULTAD")} value={`${detailTerrain.difficultyScore}/100`} accent={accent}/><MiniStat label="D+" value={`+${Math.round(detailTerrain.gainM)} m`} accent={accent}/><MiniStat label="D−" value={`−${Math.round(detailTerrain.lossM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "TERRAIN", "TERRAIN", "TERRENO")} value={terrainLabel(detailTerrain.terrain, lang)} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "ALT. MIN", "MIN ELEV.", "ALT. MIN")} value={detailTerrain.minAltitudeM == null ? "—" : `${Math.round(detailTerrain.minAltitudeM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "ALT. MAX", "MAX ELEV.", "ALT. MAX")} value={detailTerrain.maxAltitudeM == null ? "—" : `${Math.round(detailTerrain.maxAltitudeM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "PENTE MAX", "MAX GRADE", "PEND. MAX")} value={`${detailTerrain.maxGradePct.toFixed(1)}%`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "CÔTES", "HILLS", "CUESTAS")} value={String(detailTerrain.hills.length)} accent={accent}/></div></Section></div> : null}
+      <div style={{ marginTop: 10 }}><RunningActivityPerformancePanel activity={selected} lang={lang} accent={accent} textSoft={textSoft} activePointIndex={detailProfilePoint} onSegmentSelect={(index) => setDetailProfilePoint(index)}/></div>
       {(selected.ghostDeltaMs != null || selectedShoe) ? <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "COMPARAISON & ÉQUIPEMENT", "COMPARISON & GEAR", "COMPARACIÓN Y EQUIPO")}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>{selected.ghostDeltaMs != null ? <MiniStat label={selected.ghostDeltaMs <= 0 ? copy.ahead : copy.behind} value={formatDuration(Math.abs(selected.ghostDeltaMs))} accent={selected.ghostDeltaMs <= 0 ? "#71ff9a" : "#ff8a67"}/> : null}{selectedShoe ? <MiniStat label={pickLegacyLocalizedText(lang, "CHAUSSURES", "SHOES", "ZAPATILLAS")} value={selectedShoe.name} accent={accent}/> : null}</div></Section></div> : null}
       <div style={{ marginTop: 10 }}><Section title={copy.bestEfforts}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><Effort label="1 KM" value={e1} accent={accent}/><Effort label="5 KM" value={e5} accent={accent}/><Effort label="10 KM" value={e10} accent={accent}/></div>{neg ? <div style={{ marginTop: 9, color: "#71ff9a", fontSize: 10, fontWeight: 1000 }}>✓ {copy.negative}</div> : null}</Section></div>
-      {!selected.indoor ? <div style={{ marginTop: 10 }}><Section title={copy.route} right={<div style={{ display: "flex", gap: 6 }}><button className="btn" onClick={() => setDetailMapFullscreen(true)} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, color: accent, borderColor: `${accent}66` }}>⛶ {pickLegacyLocalizedText(lang, "PLEIN ÉCRAN", "FULL SCREEN", "PANTALLA COMPLETA")}</button><button className="btn" onClick={() => { if (savedRoute) { setSavedRoutes(removeRunningRoute(savedRoute.id)); } else { setSavedRoutes(upsertRunningRoute(favoriteRouteFromActivity(selected))); } }} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, color: savedRoute ? accent : undefined, borderColor: savedRoute ? `${accent}77` : undefined }}>{savedRoute ? "★ " : "☆ "}{pickLegacyLocalizedText(lang, "FAVORI", "FAVORITE", "FAVORITA")}</button></div>}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} zoomable activePointIndex={detailProfilePoint} onActivePointChange={setDetailProfilePoint} onOpen={() => setDetailMapFullscreen(true)}/></Section></div> : null}
+      {!selected.indoor ? <div style={{ marginTop: 10 }}><Section title={copy.route} right={<div style={{ display: "flex", gap: 6 }}><button className="btn" onClick={() => setDetailMapFullscreen(true)} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, color: accent, borderColor: `${accent}66` }}>⛶ {pickLegacyLocalizedText(lang, "PLEIN ÉCRAN", "FULL SCREEN", "PANTALLA COMPLETA")}</button><button className="btn" onClick={() => { if (savedRoute) { setSavedRoutes(removeRunningRoute(savedRoute.id)); } else { setSavedRoutes(upsertRunningRoute(favoriteRouteFromActivity(selected))); } }} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, color: savedRoute ? accent : undefined, borderColor: savedRoute ? `${accent}77` : undefined }}>{savedRoute ? "★ " : "☆ "}{pickLegacyLocalizedText(lang, "FAVORI", "FAVORITE", "FAVORITA")}</button></div>}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} zoomable immersive performanceActivity={selected} activePointIndex={detailProfilePoint} onActivePointChange={setDetailProfilePoint} onOpen={() => setDetailMapFullscreen(true)}/></Section></div> : null}
       <div style={{ marginTop: 10 }}><RunningRunAnalysisPanel activity={selected} lang={lang} accent={accent} textSoft={textSoft}/></div>
       <div style={{ marginTop: 10 }}><Section title={copy.splits}>{selected.splits.length ? <SplitTable splits={selected.splits} accent={accent}/> : <div style={{ color: textSoft, fontSize: 10 }}>—</div>}</Section></div>
       {selected.manualLaps?.length ? <div style={{ marginTop: 10 }}><Section title={copy.laps}><LapTable laps={selected.manualLaps} accent={accent}/></Section></div> : null}
@@ -2186,7 +2199,7 @@ function gpsMaxSpeedMpsForSport(sport: OutdoorPerformanceSport): number {
     if (canonical === "trail") return 10;
     return 12; // 43,2 km/h, garde-fou large pour la course.
 }
-function RouteMap({ points, accent, waiting, lang = "fr", textSoft = "#a8a8b3", showRouteNetwork = false, zoomable = false, immersive = false, fullscreen = false, route, terrain, activePointIndex = null, onActivePointChange, onOpen }: {
+function RouteMap({ points, accent, waiting, lang = "fr", textSoft = "#a8a8b3", showRouteNetwork = false, zoomable = false, immersive = false, fullscreen = false, route, terrain, performanceActivity, activePointIndex = null, onActivePointChange, onOpen }: {
     points: GeoPoint[];
     accent: string;
     waiting: string;
@@ -2198,65 +2211,143 @@ function RouteMap({ points, accent, waiting, lang = "fr", textSoft = "#a8a8b3", 
     fullscreen?: boolean;
     route?: RunningRouteTemplate | null;
     terrain?: ReturnType<typeof analyzeRunningTerrain> | null;
+    performanceActivity?: ActivityRecord | null;
     activePointIndex?: number | null;
     onActivePointChange?: (index: number | null) => void;
     onOpen?: () => void;
 }) {
+    const safePoints = React.useMemo(() => points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)), [points]);
     const [zoomDelta, setZoomDelta] = React.useState(0);
+    const [panPx, setPanPx] = React.useState({ x: 0, y: 0 });
     const [mapMode, setMapMode] = React.useState<"2d" | "3d">("2d");
-    React.useEffect(() => { setZoomDelta(0); setMapMode("2d"); }, [points]);
-    const layout = React.useMemo(() => buildMapLayout(points, zoomDelta), [points, zoomDelta]);
-    if (mapMode === "3d" && zoomable && points.length >= 2) return <div className="running-map-shell" style={{ width: "100%", height: fullscreen ? "100%" : undefined, aspectRatio: fullscreen ? undefined : immersive ? "4/3" : "5/3", maxHeight: fullscreen ? "none" : immersive ? 520 : 380, minHeight: fullscreen ? 0 : immersive ? "clamp(300px,55svh,440px)" : "clamp(225px,42svh,330px)", position: "relative", overflow: "hidden", borderRadius: fullscreen ? 12 : immersive ? 21 : 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)", boxShadow: immersive ? "0 22px 52px rgba(0,0,0,.30)" : undefined }}>
-        <RunningTerrain3DMap points={points} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route?.name} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onFallback2D={() => setMapMode("2d")} showReplay/>
+    const shellRef = React.useRef<HTMLDivElement | null>(null);
+    const pointersRef = React.useRef(new Map<number, { x: number; y: number }>());
+    const dragRef = React.useRef<{ id: number; x: number; y: number; pan: { x: number; y: number }; moved: boolean } | null>(null);
+    const pinchRef = React.useRef<{ distance: number; zoomDelta: number } | null>(null);
+    const layout = React.useMemo(() => buildMapLayout(safePoints, zoomDelta, panPx), [panPx, safePoints, zoomDelta]);
+    const performance = React.useMemo(() => {
+        if (safePoints.length < 2) return null;
+        if (performanceActivity) return buildRunningActivityAnalytics(performanceActivity);
+        const elapsedMs = Math.max(0, Number(safePoints[safePoints.length - 1]?.elapsedMs || 0));
+        return buildRunningActivityAnalytics({ route: safePoints, distanceM: routeDistanceMeters(safePoints), movingMs: elapsedMs, elapsedMs } as ActivityRecord);
+    }, [performanceActivity, safePoints]);
+    const hasPerformanceColors = !!performance?.routeEdges.some((edge) => edge.score != null);
+    const shellStyle: React.CSSProperties = { width: "100%", height: fullscreen ? "100%" : undefined, aspectRatio: fullscreen ? undefined : immersive ? "4/3" : "5/3", maxHeight: fullscreen ? "none" : immersive ? 620 : 430, minHeight: fullscreen ? 0 : immersive ? "clamp(320px,58svh,500px)" : "clamp(250px,46svh,380px)", position: "relative", overflow: "hidden", borderRadius: fullscreen ? 12 : immersive ? 21 : 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)", boxShadow: immersive ? "0 22px 52px rgba(0,0,0,.30)" : undefined };
+    const resetView = React.useCallback(() => { setZoomDelta(0); setPanPx({ x: 0, y: 0 }); }, []);
+    const pointerDistance = (rows: Array<{ x: number; y: number }>) => rows.length < 2 ? 0 : Math.hypot(rows[0].x - rows[1].x, rows[0].y - rows[1].y);
+    const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!zoomable || mapMode !== "2d") return;
+        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch { }
+        if (pointersRef.current.size === 1) {
+            dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, pan: panPx, moved: false };
+            pinchRef.current = null;
+        } else if (pointersRef.current.size === 2) {
+            const rows = Array.from(pointersRef.current.values());
+            pinchRef.current = { distance: pointerDistance(rows), zoomDelta };
+            dragRef.current = null;
+        }
+    };
+    const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!zoomable || mapMode !== "2d" || !pointersRef.current.has(event.pointerId)) return;
+        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pointersRef.current.size >= 2 && pinchRef.current) {
+            const rows = Array.from(pointersRef.current.values());
+            const distance = pointerDistance(rows);
+            const ratio = distance / Math.max(1, pinchRef.current.distance);
+            if (ratio > 1.16) {
+                const next = Math.min(5, pinchRef.current.zoomDelta + 1);
+                setZoomDelta(next); pinchRef.current = { distance, zoomDelta: next };
+            } else if (ratio < .86) {
+                const next = Math.max(-4, pinchRef.current.zoomDelta - 1);
+                setZoomDelta(next); pinchRef.current = { distance, zoomDelta: next };
+            }
+            return;
+        }
+        const drag = dragRef.current;
+        if (!drag || drag.id !== event.pointerId) return;
+        const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
+        const rect = shellRef.current?.getBoundingClientRect();
+        const scaleX = 1000 / Math.max(1, rect?.width || 1000), scaleY = 600 / Math.max(1, rect?.height || 600);
+        setPanPx({ x: drag.pan.x + dx * scaleX, y: drag.pan.y + dy * scaleY });
+    };
+    const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+        const drag = dragRef.current;
+        const wasTap = !!drag && drag.id === event.pointerId && !drag.moved && pointersRef.current.size === 1;
+        pointersRef.current.delete(event.pointerId);
+        if (pointersRef.current.size < 2) pinchRef.current = null;
+        if (pointersRef.current.size === 0) dragRef.current = null;
+        if (wasTap && onOpen) onOpen();
+    };
+    const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+        if (!zoomable || mapMode !== "2d") return;
+        event.preventDefault();
+        event.stopPropagation();
+        setZoomDelta((value) => Math.max(-4, Math.min(5, value + (event.deltaY < 0 ? 1 : -1))));
+    };
+    if (mapMode === "3d" && zoomable && safePoints.length >= 2) return <div className="running-map-shell" style={shellStyle}>
+        <RunningTerrain3DMap points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route?.name} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onFallback2D={() => setMapMode("2d")} showReplay={!fullscreen} preferCompat={!route && !performanceActivity}/>
         <div style={{ position: "absolute", left: 58, top: 8, zIndex: 30, display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(5,8,13,.86)", border: "1px solid rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}>
           <button className="btn" onClick={() => setMapMode("2d")} style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000 }}>2D</button>
           <button className="btn" style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>3D</button>
         </div>
+        {onOpen && !fullscreen ? <button className="btn" title={pickLegacyLocalizedText(lang, "Plein écran", "Full screen", "Pantalla completa")} onClick={(event) => { event.stopPropagation(); onOpen(); }} style={{ position: "absolute", right: 10, top: 10, zIndex: 31, minWidth: 40, minHeight: 40, padding: 0, background: "rgba(5,8,13,.88)", fontSize: 16 }}>⛶</button> : null}
     </div>;
-    return <div className="running-map-shell" onClick={onOpen} style={{ width: "100%", height: fullscreen ? "100%" : undefined, cursor: onOpen ? "pointer" : undefined, aspectRatio: fullscreen ? undefined : immersive ? "4/3" : "5/3", maxHeight: fullscreen ? "none" : immersive ? 520 : 380, minHeight: fullscreen ? 0 : immersive ? "clamp(300px,55svh,440px)" : "clamp(225px,42svh,330px)", position: "relative", overflow: "hidden", borderRadius: fullscreen ? 12 : immersive ? 21 : 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)", boxShadow: immersive ? "0 22px 52px rgba(0,0,0,.30)" : undefined }}>{layout ? <>{layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>{showRouteNetwork ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/> : null}</React.Fragment>)}<svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}><polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/><polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>{layout.start ? <g><circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/><text x={layout.start.x} y={layout.start.y - 12} textAnchor="middle" fontSize="18">🚩</text></g> : null}{layout.end ? <g><circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/><text x={layout.end.x} y={layout.end.y - 12} textAnchor="middle" fontSize="18">🏁</text></g> : null}{terrain?.maxAltitudeM != null ? (() => { const summit = highestPointOnRoute(points); if (!summit)
-        return null; const summitScreen = mercatorScreen(summit, layout.center, layout.zoom, layout.width, layout.height); return <g><circle cx={summitScreen.x} cy={summitScreen.y} r="6" fill="#ffcf57" stroke="#fff" strokeWidth="2"/><text x={summitScreen.x} y={summitScreen.y - 10} textAnchor="middle" fontSize="16">⛰️</text></g>; })() : null}</svg></> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}{zoomable ? <div style={{ position: "absolute", right: 8, top: 8, display: "grid", gap: 6, zIndex: 4 }}><button className="btn" onClick={(event) => { event.stopPropagation(); setZoomDelta((value) => Math.max(-3, value - 1)); }} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>−</button><button className="btn" onClick={(event) => { event.stopPropagation(); setZoomDelta((value) => Math.min(4, value + 1)); }} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>+</button><button className="btn" title="3D" onClick={(event) => { event.stopPropagation(); setMapMode("3d"); }} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)", color: accent, fontSize: 9, fontWeight: 1000 }}>3D</button><button className="btn" onClick={(event) => { event.stopPropagation(); route && openRouteInMaps(route); }} style={{ minWidth: 34, minHeight: 34, padding: 0, background: "rgba(8,10,16,.88)" }}>↗</button></div> : null}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap · routes Waymarked Trails</a></div>;
+    return <div ref={shellRef} className="running-map-shell" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onWheel={onWheel} style={{ ...shellStyle, cursor: zoomable ? "grab" : onOpen ? "pointer" : undefined, touchAction: zoomable ? "none" : undefined, userSelect: "none" }}>
+      {layout ? <>
+        {layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/>{showRouteNetwork ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/> : null}</React.Fragment>)}
+        <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+          <polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.82)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round"/>
+          {hasPerformanceColors ? performance!.routeEdges.map((edge) => { const a = layout.screen[edge.startIndex], b = layout.screen[edge.endIndex]; return a && b ? <line key={`perf-${edge.startIndex}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={edge.color} strokeWidth="6" strokeLinecap="round"/> : null; }) : <polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>}
+          {layout.start ? <g><circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/><text x={layout.start.x} y={layout.start.y - 12} textAnchor="middle" fontSize="18">🚩</text></g> : null}
+          {layout.end ? <g><circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/><text x={layout.end.x} y={layout.end.y - 12} textAnchor="middle" fontSize="18">🏁</text></g> : null}
+          {terrain?.maxAltitudeM != null ? (() => { const summit = highestPointOnRoute(safePoints); if (!summit) return null; const summitScreen = mercatorScreen(summit, layout.center, layout.zoom, layout.width, layout.height); return <g><circle cx={summitScreen.x} cy={summitScreen.y} r="6" fill="#ffcf57" stroke="#fff" strokeWidth="2"/><text x={summitScreen.x} y={summitScreen.y - 10} textAnchor="middle" fontSize="16">⛰️</text></g>; })() : null}
+          {activePointIndex != null && layout.screen[activePointIndex] ? <g><circle cx={layout.screen[activePointIndex].x} cy={layout.screen[activePointIndex].y} r="10" fill="rgba(0,0,0,.72)" stroke="#fff" strokeWidth="2"/><circle cx={layout.screen[activePointIndex].x} cy={layout.screen[activePointIndex].y} r="6" fill={accent}/></g> : null}
+        </svg>
+      </> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}
+      {zoomable ? <div style={{ position: "absolute", right: 8, top: 8, display: "grid", gap: 6, zIndex: 4 }}>
+        <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(8,10,16,.88)", border: "1px solid rgba(255,255,255,.10)" }}><button className="btn" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMapMode("2d"); }} style={{ minWidth: 34, minHeight: 32, padding: "0 6px", color: accent, fontSize: 8, fontWeight: 1000 }}>2D</button>{safePoints.length >= 2 ? <button className="btn" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMapMode("3d"); }} style={{ minWidth: 34, minHeight: 32, padding: "0 6px", fontSize: 8, fontWeight: 1000 }}>3D</button> : null}</div>
+        <button className="btn" title={pickLegacyLocalizedText(lang, "Recentrer", "Recenter", "Recentrar")} onPointerDown={(e) => e.stopPropagation()} onClick={(event) => { event.stopPropagation(); resetView(); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(8,10,16,.88)" }}>◎</button>
+        {onOpen && !fullscreen ? <button className="btn" title={pickLegacyLocalizedText(lang, "Plein écran", "Full screen", "Pantalla completa")} onPointerDown={(e) => e.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpen(); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(8,10,16,.88)", fontSize: 16 }}>⛶</button> : null}
+        {route ? <button className="btn" title={pickLegacyLocalizedText(lang, "Ouvrir dans Maps", "Open in Maps", "Abrir en Maps")} onPointerDown={(e) => e.stopPropagation()} onClick={(event) => { event.stopPropagation(); openRouteInMaps(route); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(8,10,16,.88)" }}>↗</button> : null}
+      </div> : null}
+      {zoomable ? <div style={{ position: "absolute", left: 8, bottom: 8, zIndex: 4, padding: "5px 8px", borderRadius: 999, background: "rgba(5,8,13,.76)", border: "1px solid rgba(255,255,255,.09)", color: textSoft, fontSize: 7, pointerEvents: "none", backdropFilter: "blur(10px)" }}>{pickLegacyLocalizedText(lang, "Glisser · pincer · molette", "Drag · pinch · wheel", "Mover · pellizcar · rueda")}</div> : null}
+      <a onPointerDown={(e) => e.stopPropagation()} href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap · routes Waymarked Trails</a>
+    </div>;
 }
 type MapLayout = {
     width: number;
     height: number;
     zoom: number;
-    center: {
-        x: number;
-        y: number;
-    };
+    center: { x: number; y: number };
     polyline: string;
-    start: {
-        x: number;
-        y: number;
-    } | null;
-    end: {
-        x: number;
-        y: number;
-    } | null;
-    tiles: Array<{
-        z: number;
-        x: number;
-        y: number;
-        left: number;
-        top: number;
-        url: string;
-        routeOverlayUrl: string;
-    }>;
+    screen: Array<{ x: number; y: number }>;
+    start: { x: number; y: number } | null;
+    end: { x: number; y: number } | null;
+    tiles: Array<{ z: number; x: number; y: number; left: number; top: number; url: string; routeOverlayUrl: string }>;
 };
-function buildMapLayout(points: GeoPoint[], zoomDelta = 0): MapLayout | null { if (!points.length)
-    return null; const width = 1000, height = 600, lats = points.map((p) => p.lat), lons = points.map((p) => p.lon), centerLat = (Math.min(...lats) + Math.max(...lats)) / 2, centerLon = (Math.min(...lons) + Math.max(...lons)) / 2; let zoom = 18; for (let z = 18; z >= 3; z -= 1) {
-    const px = points.map((p) => mercatorPixel(p.lat, p.lon, z)), xs = px.map((p) => p.x), ys = px.map((p) => p.y);
-    if (Math.max(...xs) - Math.min(...xs) <= width * .78 && Math.max(...ys) - Math.min(...ys) <= height * .72) {
-        zoom = z;
-        break;
+function buildMapLayout(points: GeoPoint[], zoomDelta = 0, panPx = { x: 0, y: 0 }): MapLayout | null {
+    if (!points.length) return null;
+    const width = 1000, height = 600, lats = points.map((p) => p.lat), lons = points.map((p) => p.lon), centerLat = (Math.min(...lats) + Math.max(...lats)) / 2, centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+    let zoom = 18;
+    for (let z = 18; z >= 3; z -= 1) {
+        const px = points.map((p) => mercatorPixel(p.lat, p.lon, z)), xs = px.map((p) => p.x), ys = px.map((p) => p.y);
+        if (Math.max(...xs) - Math.min(...xs) <= width * .78 && Math.max(...ys) - Math.min(...ys) <= height * .72) { zoom = z; break; }
     }
-} zoom = Math.max(3, Math.min(19, zoom + zoomDelta)); const center = mercatorPixel(centerLat, centerLon, zoom); const screen = points.map((p) => { const w = mercatorPixel(p.lat, p.lon, zoom); return { x: w.x - center.x + width / 2, y: w.y - center.y + height / 2 }; }); const minX = Math.floor((center.x - width / 2) / 256) - 1, maxX = Math.floor((center.x + width / 2) / 256) + 1, minY = Math.floor((center.y - height / 2) / 256) - 1, maxY = Math.floor((center.y + height / 2) / 256) + 1, count = 2 ** zoom; const tiles: MapLayout["tiles"] = []; for (let tx = minX; tx <= maxX; tx += 1)
-    for (let ty = minY; ty <= maxY; ty += 1) {
-        if (ty < 0 || ty >= count)
-            continue;
+    zoom = Math.max(3, Math.min(19, zoom + zoomDelta));
+    const baseCenter = mercatorPixel(centerLat, centerLon, zoom);
+    const center = { x: baseCenter.x - panPx.x, y: baseCenter.y - panPx.y };
+    const screen = points.map((p) => { const world = mercatorPixel(p.lat, p.lon, zoom); return { x: world.x - center.x + width / 2, y: world.y - center.y + height / 2 }; });
+    const minX = Math.floor((center.x - width / 2) / 256) - 1, maxX = Math.floor((center.x + width / 2) / 256) + 1, minY = Math.floor((center.y - height / 2) / 256) - 1, maxY = Math.floor((center.y + height / 2) / 256) + 1, count = 2 ** zoom;
+    const tiles: MapLayout["tiles"] = [];
+    for (let tx = minX; tx <= maxX; tx += 1) for (let ty = minY; ty <= maxY; ty += 1) {
+        if (ty < 0 || ty >= count) continue;
         const wx = ((tx % count) + count) % count;
         tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: `https://tile.openstreetmap.org/${zoom}/${wx}/${ty}.png`, routeOverlayUrl: `https://tile.waymarkedtrails.org/hiking/${zoom}/${wx}/${ty}.png` });
-    } return { width, height, zoom, center, tiles, polyline: screen.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "), start: screen[0] || null, end: screen[screen.length - 1] || null }; }
+    }
+    return { width, height, zoom, center, tiles, screen, polyline: screen.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "), start: screen[0] || null, end: screen[screen.length - 1] || null };
+}
 function mercatorPixel(lat: number, lon: number, zoom: number) { const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat)), scale = 256 * 2 ** zoom, sin = Math.sin(clamped * Math.PI / 180); return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale }; }
 function mercatorScreen(point: GeoPoint, center: { x: number; y: number }, zoom: number, width: number, height: number) { const world = mercatorPixel(point.lat, point.lon, zoom); return { x: world.x - center.x + width / 2, y: world.y - center.y + height / 2 }; }
 function highestPointOnRoute(points: GeoPoint[]) { const valid = points.filter((point) => Number.isFinite(point.altitude)); if (!valid.length)

@@ -259,6 +259,8 @@ export default function RunningHome({ store, go }: Props) {
         />
       </div>
 
+      {activities[0] ? <div style={{ ...sectionWrap, marginTop: 10 }}><button type="button" onClick={() => go("games", { runningActivityId: activities[0].id, runningActivitySport: canonicalOutdoorPerformanceSport(activities[0].sport) })} style={{ width: "100%", display: "grid", gridTemplateColumns: "46px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 11, borderRadius: 17, border: `1px solid ${accent}42`, background: `linear-gradient(135deg,${accent}12,rgba(5,8,13,.88))`, color: "#fff", textAlign: "left", cursor: "pointer", boxShadow: `0 12px 28px ${accent}0d` }}><span style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}35`, color: accent }}><RunningGlyph name="history" size={20}/></span><span style={{ minWidth: 0 }}><small style={{ display: "block", color: accent, fontSize: 7.3, fontWeight: 1000, letterSpacing: .8 }}>{pickLegacyLocalizedText(lang, "DERNIÈRE SORTIE", "LAST ACTIVITY", "ÚLTIMA SALIDA")}</small><b style={{ display: "block", marginTop: 2, fontSize: 11.2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{outdoorSportLabel(canonicalOutdoorPerformanceSport(activities[0].sport), lang)} · {formatDistance(activities[0].distanceM)}</b><small style={{ display: "block", marginTop: 2, color: textSoft, fontSize: 8.2 }}>{new Date(activities[0].startedAt).toLocaleDateString(localeForLang(lang))} · {formatDuration(activities[0].elapsedMs)} · {outdoorAverageMetricValue(activities[0], canonicalOutdoorPerformanceSport(activities[0].sport))}</small></span><span style={{ color: accent, fontSize: 21 }}>›</span></button></div> : null}
+
       <div style={{ ...sectionWrap, marginTop: 10 }}><RunningSurface accent={accent} padding={12}>
         <RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "CETTE SEMAINE", "THIS WEEK", "ESTA SEMANA")} title={pickLegacyLocalizedText(lang, "Ton rythme en un coup d'œil", "Your week at a glance", "Tu semana de un vistazo")} action={<button className="btn" onClick={() => go("stats")} style={{ minHeight: 30, padding: "4px 8px", fontSize: 7.8, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "DÉTAILS", "DETAILS", "DETALLES")}</button>}/>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
@@ -286,7 +288,7 @@ export default function RunningHome({ store, go }: Props) {
 
       <div style={{ ...sectionWrap, marginTop: 12 }}><ArcadeTicker items={tickers} activeIndex={tickerIndex} onIndexChange={setTickerIndex} intervalMs={7000}/></div>
 
-      {activities.length ? <div style={{ ...sectionWrap, marginTop: 12 }}><RunningSurface accent={accent} padding={12}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO")} title={copy.recent} action={<button className="btn" style={{ minHeight: 30, fontSize: 8 }} onClick={() => go("stats", { runningStatsTab: "history" })}>{copy.allRuns}</button>}/><div style={{ display: "grid", gap: 7 }}>{activities.slice(0, 2).map((a) => <RecentRun key={a.id} activity={a} accent={accent} textSoft={textSoft} lang={lang}/>)}</div></RunningSurface></div> : null}
+      {activities.length ? <div style={{ ...sectionWrap, marginTop: 12 }}><RunningSurface accent={accent} padding={12}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO")} title={copy.recent} action={<button className="btn" style={{ minHeight: 30, fontSize: 8 }} onClick={() => go("stats", { runningStatsTab: "history" })}>{copy.allRuns}</button>}/><div style={{ display: "grid", gap: 7 }}>{activities.slice(0, 2).map((a) => <RecentRun key={a.id} activity={a} accent={accent} textSoft={textSoft} lang={lang} onClick={() => go("games", { runningActivityId: a.id, runningActivitySport: canonicalOutdoorPerformanceSport(a.sport) })}/>)}</div></RunningSurface></div> : null}
     </div>
   </div>;
 }
@@ -314,19 +316,20 @@ function Challenge({ label, value, progress, accent }: {
     accent: string;
 }) { return <div style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontSize: 9.5 }}><span style={{ opacity: .72 }}>{label}</span><b style={{ color: accent }}>{value}</b></div><Progress value={progress} accent={accent}/></div>; }
 function TrainingKpi({ label, value, accent }: { label: string; value: string; accent: string }) { return <div style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", textAlign: "center" }}><div style={{ fontSize: 8.2, opacity: .58, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000, color: accent }}>{value}</div></div>; }
-function RecentRun({ activity, accent, textSoft, lang }: {
+function RecentRun({ activity, accent, textSoft, lang, onClick }: {
     activity: ActivityRecord;
     accent: string;
     textSoft: string;
     lang: string;
+    onClick: () => void;
 }) {
     const sport = canonicalOutdoorPerformanceSport(activity.sport);
     const glyph = sport === "trail" ? "sport-trail" : sport === "hiking" ? "sport-hiking" : sport === "walking" ? "sport-walking" : sport === "treadmill" ? "sport-treadmill" : "sport-running";
-    return <div style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center", padding: 9, borderRadius: 13, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>
+    return <button type="button" onClick={onClick} style={{ width: "100%", display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center", padding: 9, borderRadius: 13, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)", color: "#fff", textAlign: "left", cursor: "pointer" }}>
         <div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", color: accent, background: `${accent}12`, border: `1px solid ${accent}2e` }}><RunningGlyph name={glyph as any} size={18}/></div>
         <div><div style={{ color: accent, fontSize: 7.5, fontWeight: 1000 }}>{outdoorSportLabel(sport, lang).toUpperCase()}</div><b style={{ fontSize: 10.5 }}>{formatDistance(activity.distanceM)}</b><div style={{ color: textSoft, fontSize: 9, marginTop: 2 }}>{new Date(activity.startedAt).toLocaleDateString()} · {formatDuration(activity.elapsedMs)}</div></div>
-        <div style={{ color: accent, fontSize: 10, fontWeight: 1000, textAlign: "right" }}>{outdoorAverageMetricValue(activity, sport)}<small style={{ display: "block", fontSize: 7 }}>{outdoorAverageMetricLabel(sport, lang)}</small></div>
-    </div>;
+        <div style={{ color: accent, fontSize: 10, fontWeight: 1000, textAlign: "right" }}>{outdoorAverageMetricValue(activity, sport)}<small style={{ display: "block", fontSize: 7 }}>{outdoorAverageMetricLabel(sport, lang)}</small><span style={{ display: "block", marginTop: 4, fontSize: 15 }}>›</span></div>
+    </button>;
 }
 
 function PerformanceRing({ value, accent, label }: { value: number; accent: string; label: string }) { return <div style={{ width: 88, height: 88, borderRadius: 999, display: "grid", placeItems: "center", background: `conic-gradient(${accent} ${Math.max(0, Math.min(100, value))}%,rgba(255,255,255,.07) 0)`, boxShadow: `0 0 25px ${accent}20` }}><div style={{ width: 70, height: 70, borderRadius: 999, display: "grid", placeItems: "center", alignContent: "center", background: "rgba(5,7,12,.96)", border: "1px solid rgba(255,255,255,.07)", textAlign: "center" }}><b style={{ color: accent, fontSize: 21, lineHeight: 1 }}>{value}</b><span style={{ marginTop: 3, fontSize: 7, opacity: .55, fontWeight: 1000 }}>{label}</span></div></div>; }

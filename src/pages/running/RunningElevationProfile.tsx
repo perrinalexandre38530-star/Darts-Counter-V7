@@ -1,6 +1,7 @@
 import React from "react";
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import type { GeoPoint } from "../../activity/activityTypes";
+import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
 
 type Props = {
   points: GeoPoint[];
@@ -11,6 +12,7 @@ type Props = {
   interactive?: boolean;
   activePointIndex?: number | null;
   onActivePointChange?: (index: number | null) => void;
+  performanceColored?: boolean;
 };
 
 function pickText(lang: string, fr: string, en: string, es: string) {
@@ -18,8 +20,9 @@ function pickText(lang: string, fr: string, en: string, es: string) {
   return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
 }
 
-export default function RunningElevationProfile({ points, accent, textSoft = "#a8a8b3", height = 150, lang = "fr", interactive = false, activePointIndex = null, onActivePointChange }: Props) {
+export default function RunningElevationProfile({ points, accent, textSoft = "#a8a8b3", height = 150, lang = "fr", interactive = false, activePointIndex = null, onActivePointChange, performanceColored = false }: Props) {
   const analysis = React.useMemo(() => analyzeRunningTerrain(points), [points]);
+  const performance = React.useMemo(() => performanceColored ? buildRunningActivityAnalytics({ route: points, distanceM: analysis.distanceM, movingMs: Number(points[points.length - 1]?.elapsedMs || 0), elapsedMs: Number(points[points.length - 1]?.elapsedMs || 0) } as any) : null, [analysis.distanceM, performanceColored, points]);
   if (!analysis.hasElevation || analysis.samples.length < 2) return <div style={{ padding: 16, textAlign: "center", color: textSoft, fontSize: 9 }}>—</div>;
   const samples = analysis.samples;
   const minAlt = Math.min(...samples.map((row) => row.altitudeM));
@@ -53,7 +56,7 @@ export default function RunningElevationProfile({ points, accent, textSoft = "#a
       <defs><linearGradient id="runElevFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={accent} stopOpacity=".42"/><stop offset="1" stopColor={accent} stopOpacity=".02"/></linearGradient></defs>
       {[.25,.5,.75].map((ratio) => <line key={ratio} x1="12" x2="308" y1={28 + ratio * 76} y2={28 + ratio * 76} stroke="rgba(255,255,255,.055)" strokeWidth="1"/>)}
       {analysis.hills.map((hill) => <rect key={hill.id} x={x(hill.startDistanceM)} y="12" width={Math.max(2, x(hill.endDistanceM) - x(hill.startDistanceM))} height="110" fill="#ff985f" opacity=".08" rx="3"/>)}
-      <path d={area} fill="url(#runElevFill)"/><path d={line} fill="none" stroke={accent} strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round"/>
+      <path d={area} fill="url(#runElevFill)"/>{performanceColored && performance?.segments?.length ? performance.segments.map((segment) => { const rows = samples.filter((row) => row.index >= segment.startIndex && row.index <= segment.endIndex); if (rows.length < 2) return null; const d = rows.map((row, index) => `${index ? "L" : "M"}${x(row.distanceM).toFixed(1)},${y(row.altitudeM).toFixed(1)}`).join(" "); return <path key={segment.index} d={d} fill="none" stroke={segment.color} strokeWidth="3.2" strokeLinejoin="round" strokeLinecap="round"/>; }) : <path d={line} fill="none" stroke={accent} strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round"/>}
       {activeSample ? <g pointerEvents="none"><line x1={x(activeSample.distanceM)} x2={x(activeSample.distanceM)} y1="10" y2="122" stroke={accent} strokeWidth="1.4" strokeDasharray="3 3"/><circle cx={x(activeSample.distanceM)} cy={y(activeSample.altitudeM)} r="4.5" fill={accent} stroke="#fff" strokeWidth="1.5"/></g> : null}
       <text x="14" y="16" fontSize="7" fill={textSoft}>{Math.round(maxAlt)} m</text><text x="14" y="132" fontSize="7" fill={textSoft}>{Math.round(minAlt)} m</text>
       <text x="306" y="132" textAnchor="end" fontSize="7" fill={textSoft}>{(maxDistance / 1000).toFixed(1)} km</text>

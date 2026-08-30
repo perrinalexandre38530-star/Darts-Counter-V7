@@ -4,8 +4,10 @@ import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import { ESPORTS_GAMES, getEsportsGame } from "../../esports/catalog";
 import { createOnlineEsportsRoom, joinOnlineEsportsRoom, refreshOnlineEsportsRoom, setOnlineEsportsReady, startOnlineEsportsMatch, subscribeOnlineEsportsRoom } from "../../esports/online";
-import { createEsportsTournament, createLocalEsportsRoom, deleteEsportsTournament, patchEsportsState, readEsportsState, recordEsportsMatch, removeEsportsRoom, saveGamerIdentity, selectEsportsGame, subscribeEsportsStore, toggleFavoriteGame, upsertEsportsRoom } from "../../esports/store";
-import type { EsportsGameDefinition, EsportsRoom, EsportsState, EsportsTournamentFormat } from "../../esports/types";
+import { createEsportsLfgPost, createEsportsTeam, createEsportsTournament, createLocalEsportsRoom, deleteEsportsLfgPost, deleteEsportsTeam, deleteEsportsTournament, readEsportsState, recordEsportsMatch, recordEsportsRoomInvite, recordEsportsTournamentMatchResult, removeEsportsRoom, saveGamerIdentity, selectEsportsGame, setEsportsLfgStatus, subscribeEsportsStore, toggleFavoriteGame, upsertEsportsRoom } from "../../esports/store";
+import type { EsportsGameDefinition, EsportsPlatform, EsportsRoom, EsportsState, EsportsTournamentFormat } from "../../esports/types";
+import { buildRoundRobinStandings } from "../../esports/tournamentEngine";
+import { fetchEsportsRoomMessages, loadEsportsFriends, postEsportsRoomMessage, requestEsportsFriend, searchEsportsPlayers, sendEsportsRoomInvite, subscribeEsportsRoomMessages, syncEsportsPresence, type EsportsFriend } from "../../esports/community";
 import type { Store } from "../../lib/types";
 
 export type EsportsSection = "overview" | "games" | "rooms" | "matches" | "tournaments" | "profile" | "stats";
@@ -88,6 +90,8 @@ export default function EsportsHub({ store, go, section = "overview" }: Props) {
     rooms: state.rooms.filter((r) => r.status !== "finished").length,
     matches: state.matches.length,
     tournaments: state.tournaments.length,
+    teams: state.teams.length,
+    lfg: state.lfgPosts.filter((post) => post.status === "open").length,
   };
 
   return (
@@ -113,7 +117,7 @@ export default function EsportsHub({ store, go, section = "overview" }: Props) {
         {section === "rooms" ? <RoomsSection state={state} refresh={refresh} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} accent={accent} setToast={setToast} tr={tr} /> : null}
         {section === "matches" ? <MatchesSection state={state} refresh={refresh} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} accent={accent} setToast={setToast} tr={tr} /> : null}
         {section === "tournaments" ? <TournamentsSection state={state} refresh={refresh} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} accent={accent} setToast={setToast} tr={tr} /> : null}
-        {section === "profile" ? <ProfileSection state={state} refresh={refresh} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} accent={accent} go={go} tr={tr} /> : null}
+        {section === "profile" ? <ProfileSection state={state} refresh={refresh} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} accent={accent} go={go} setToast={setToast} tr={tr} /> : null}
         {section === "stats" ? <StatsSection state={state} panelStyle={panelStyle} textSoft={textSoft} tr={tr} /> : null}
       </div>
       {toast ? <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 104, zIndex: 120, borderRadius: 999, background: "rgba(5,8,14,.96)", border: `1px solid ${accent}`, color: textMain, padding: "9px 14px", fontSize: 12, fontWeight: 900, boxShadow: `0 0 24px ${accent}40` }}>{toast}</div> : null}
@@ -131,6 +135,8 @@ function Overview({ state, selectedGame, counts, panelStyle, buttonStyle, textSo
         ["◉", counts.rooms, tr("Salons actifs", "Active rooms", "Salas activas"), "rooms"],
         ["VS", counts.matches, tr("Matchs enregistrés", "Recorded matches", "Partidos guardados"), "matches"],
         ["🏆", counts.tournaments, tr("Tournois", "Tournaments", "Torneos"), "tournaments"],
+        ["🛡", counts.teams, tr("Équipes / clans", "Teams / clans", "Equipos / clanes"), "profile"],
+        ["📡", counts.lfg, tr("Recherches LFG", "LFG searches", "Búsquedas LFG"), "profile"],
       ].map(([icon, value, label, target]) => <button key={String(target)} type="button" onClick={() => navigateSection(target)} style={{ ...panelStyle, padding: 13, textAlign: "left", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 18, color: accent, fontWeight: 1000 }}>{icon}</div><div style={{ marginTop: 8, fontSize: 24, fontWeight: 1000 }}>{value}</div><div style={{ color: textSoft, fontSize: 10.5 }}>{label}</div></button>)}
     </section>
 
@@ -224,10 +230,104 @@ function RoomDetail({ room, state, refresh, buttonStyle, inputStyle, textSoft, s
   const [busy, setBusy] = React.useState(false);
   if (!room) return <Empty text={tr("Salon introuvable.", "Room not found.", "Sala no encontrada.")} textSoft={textSoft}/>;
   const game = getEsportsGame(room.gameId);
-  const addLocalMember = () => { const clean = name.trim(); if (!clean) return; const members = [...room.members, { id: `local_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, name: clean, ready: false, team: room.members.filter((m: any) => m.team === "A").length <= room.members.filter((m: any) => m.team === "B").length ? "A" : "B", role: "player" }].slice(0, room.maxPlayers); upsertEsportsRoom({ ...room, members }); setName(""); refresh(); };
-  const toggleReady = async () => { setBusy(true); try { if (room.source === "online") { await setOnlineEsportsReady(room.code, true); } else { const members = room.members.map((m: any, i: number) => i === 0 ? { ...m, ready: !m.ready } : m); upsertEsportsRoom({ ...room, members }); } refresh(); } catch (e: any) { setToast(String(e?.message || e)); } finally { setBusy(false); } };
-  const launch = async () => { setBusy(true); try { if (room.source === "online") { await startOnlineEsportsMatch(room); await refreshOnlineEsportsRoom(room.code).catch(() => null); } upsertEsportsRoom({ ...room, status: "playing" }); refresh(); setToast(tr("Match lancé — saisie du résultat disponible dans MATCHS.", "Match started — result entry is available in MATCHES.", "Partido iniciado — resultado disponible en PARTIDOS.")); } catch (e: any) { setToast(String(e?.message || e)); } finally { setBusy(false); } };
-  return <div><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}><div><div style={{ color: game.accent, fontSize: 11, fontWeight: 1000 }}>{game.icon} {game.name}</div><div style={{ marginTop: 2, fontSize: 20, fontWeight: 1000 }}>{room.title}</div><div style={{ color: textSoft, fontSize: 10 }}>{room.formatLabel} · BO{room.bestOf} · {room.visibility.toUpperCase()}</div></div><div style={{ borderRadius: 12, padding: "7px 9px", background: `${game.accent}18`, color: game.accent, textAlign: "center" }}><div style={{ fontSize: 8.5, fontWeight: 900 }}>CODE</div><div style={{ fontSize: 16, fontWeight: 1000, letterSpacing: 2 }}>{room.code}</div></div></div><div style={{ marginTop: 12, display: "grid", gap: 6 }}>{room.members.map((member: any, index: number) => <div key={member.id} style={{ borderRadius: 13, padding: 9, background: "rgba(255,255,255,.035)", display: "grid", gridTemplateColumns: "32px 1fr auto auto", alignItems: "center", gap: 8 }}><span style={{ width: 32, height: 32, borderRadius: 10, background: `${game.accent}18`, display: "grid", placeItems: "center", color: game.accent, fontWeight: 1000 }}>{index + 1}</span><div><strong>{member.name}</strong><div style={{ color: textSoft, fontSize: 9 }}>{member.role || "player"}</div></div><span style={{ fontSize: 9, color: member.team === "A" ? "#60a5fa" : member.team === "B" ? "#fb923c" : textSoft, fontWeight: 1000 }}>{member.team ? `TEAM ${member.team}` : "—"}</span><span style={{ fontSize: 9, color: member.ready ? "#34d399" : textSoft }}>{member.ready ? "READY" : "WAIT"}</span></div>)}</div>{room.source === "local" && room.members.length < room.maxPlayers ? <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 7 }}><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLocalMember()} placeholder={tr("Ajouter un joueur / une équipe", "Add a player / team", "Añadir jugador / equipo")} style={inputStyle}/><button type="button" onClick={addLocalMember} style={buttonStyle(false)}>＋</button></div> : null}<div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 7 }}><button type="button" disabled={busy} onClick={toggleReady} style={buttonStyle(false)}>✓ READY</button><button type="button" disabled={busy || room.status === "finished"} onClick={launch} style={buttonStyle(true)}>▶ {tr("Lancer le match", "Start match", "Iniciar partido")}</button><button type="button" onClick={() => { removeEsportsRoom(room.id); refresh(); }} style={buttonStyle(false)}>× {tr("Supprimer", "Delete", "Eliminar")}</button></div></div>;
+  const addLocalMember = () => {
+    const clean = name.trim(); if (!clean) return;
+    const members = [...room.members, {
+      id: `local_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+      name: clean,
+      ready: false,
+      team: room.members.filter((m: any) => m.team === "A").length <= room.members.filter((m: any) => m.team === "B").length ? "A" : "B",
+      role: "player",
+    }].slice(0, room.maxPlayers);
+    upsertEsportsRoom({ ...room, members }); setName(""); refresh();
+  };
+  const toggleReady = async () => {
+    setBusy(true);
+    try {
+      if (room.source === "online") await setOnlineEsportsReady(room.code, true);
+      else upsertEsportsRoom({ ...room, members: room.members.map((m: any, i: number) => i === 0 ? { ...m, ready: !m.ready } : m) });
+      refresh();
+    } catch (e: any) { setToast(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  const launch = async () => {
+    setBusy(true);
+    try {
+      if (room.source === "online") {
+        await startOnlineEsportsMatch(room);
+        await refreshOnlineEsportsRoom(room.code).catch(() => null);
+      }
+      upsertEsportsRoom({ ...room, status: "playing" }); refresh();
+      setToast(tr("Match lancé — saisie du résultat disponible dans MATCHS.", "Match started — result entry is available in MATCHES.", "Partido iniciado — resultado disponible en PARTIDOS."));
+    } catch (e: any) { setToast(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  const copyCode = async () => {
+    try { await navigator.clipboard?.writeText(room.code); setToast(`${tr("Code copié", "Code copied", "Código copiado")} · ${room.code}`); }
+    catch { setToast(room.code); }
+  };
+  return <div>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+      <div><div style={{ color: game.accent, fontSize: 11, fontWeight: 1000 }}>{game.icon} {game.name}</div><div style={{ marginTop: 2, fontSize: 20, fontWeight: 1000 }}>{room.title}</div><div style={{ color: textSoft, fontSize: 10 }}>{room.formatLabel} · BO{room.bestOf} · {room.visibility.toUpperCase()}</div></div>
+      <button type="button" onClick={copyCode} style={{ border: 0, borderRadius: 12, padding: "7px 9px", background: `${game.accent}18`, color: game.accent, textAlign: "center", cursor: "pointer" }}><div style={{ fontSize: 8.5, fontWeight: 900 }}>CODE · COPY</div><div style={{ fontSize: 16, fontWeight: 1000, letterSpacing: 2 }}>{room.code}</div></button>
+    </div>
+    <div style={{ marginTop: 12, display: "grid", gap: 6 }}>{room.members.map((member: any, index: number) => <div key={member.id} style={{ borderRadius: 13, padding: 9, background: "rgba(255,255,255,.035)", display: "grid", gridTemplateColumns: "32px 1fr auto auto", alignItems: "center", gap: 8 }}><span style={{ width: 32, height: 32, borderRadius: 10, background: `${game.accent}18`, display: "grid", placeItems: "center", color: game.accent, fontWeight: 1000 }}>{index + 1}</span><div><strong>{member.name}</strong><div style={{ color: textSoft, fontSize: 9 }}>{member.role || "player"}</div></div><span style={{ fontSize: 9, color: member.team === "A" ? "#60a5fa" : member.team === "B" ? "#fb923c" : textSoft, fontWeight: 1000 }}>{member.team ? `TEAM ${member.team}` : "—"}</span><span style={{ fontSize: 9, color: member.ready ? "#34d399" : textSoft }}>{member.ready ? "READY" : "WAIT"}</span></div>)}</div>
+    {room.source === "local" && room.members.length < room.maxPlayers ? <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 7 }}><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLocalMember()} placeholder={tr("Ajouter un joueur / une équipe", "Add a player / team", "Añadir jugador / equipo")} style={inputStyle}/><button type="button" onClick={addLocalMember} style={buttonStyle(false)}>＋</button></div> : null}
+    <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 7 }}><button type="button" disabled={busy} onClick={toggleReady} style={buttonStyle(false)}>✓ READY</button><button type="button" disabled={busy || room.status === "finished"} onClick={launch} style={buttonStyle(true)}>▶ {tr("Lancer le match", "Start match", "Iniciar partido")}</button><button type="button" onClick={() => { removeEsportsRoom(room.id); refresh(); }} style={buttonStyle(false)}>× {tr("Supprimer", "Delete", "Eliminar")}</button></div>
+    {room.source === "online" ? <RoomSocialPanel room={room} gamerName={state.gamer.displayName} refresh={refresh} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} setToast={setToast} tr={tr}/> : null}
+  </div>;
+}
+
+function RoomSocialPanel({ room, gamerName, refresh, buttonStyle, inputStyle, textSoft, setToast, tr }: any) {
+  const [friends, setFriends] = React.useState<EsportsFriend[]>([]);
+  const [messages, setMessages] = React.useState<any[]>([]);
+  const [friendId, setFriendId] = React.useState("");
+  const [chatText, setChatText] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const messageKey = React.useCallback((row: any) => String(row?.id || `${row?.created_at || row?.createdAt || ""}:${row?.user_id || ""}:${JSON.stringify(row?.message || row?.text || "")}`), []);
+
+  React.useEffect(() => {
+    let alive = true;
+    loadEsportsFriends().then((rows) => { if (alive) setFriends(rows || []); }).catch(() => { if (alive) setFriends([]); });
+    fetchEsportsRoomMessages(room.code).then((rows) => { if (alive) setMessages(rows || []); }).catch(() => { if (alive) setMessages([]); });
+    const unsub = subscribeEsportsRoomMessages(room.code, (row: any) => {
+      if (!alive) return;
+      setMessages((prev) => prev.some((item) => messageKey(item) === messageKey(row)) ? prev : [...prev, row].slice(-80));
+    });
+    return () => { alive = false; try { void unsub?.(); } catch {} };
+  }, [room.code, messageKey]);
+
+  const invite = async () => {
+    const friend = friends.find((f) => String(f.userId || f.id) === friendId);
+    if (!friend) return;
+    setBusy(true);
+    try {
+      await sendEsportsRoomInvite(room, friend, gamerName || "Gamer");
+      recordEsportsRoomInvite({ roomId: room.id, roomCode: room.code, gameId: room.gameId, targetUserId: String(friend.userId || friend.id), targetName: String(friend.displayName || friend.nickname || "Ami"), status: "sent" });
+      refresh(); setToast(tr("Invitation envoyée.", "Invite sent.", "Invitación enviada."));
+    } catch (e: any) {
+      recordEsportsRoomInvite({ roomId: room.id, roomCode: room.code, gameId: room.gameId, targetUserId: String(friend.userId || friend.id), targetName: String(friend.displayName || friend.nickname || "Ami"), status: "failed" });
+      setToast(String(e?.message || e));
+    } finally { setBusy(false); }
+  };
+
+  const sendChat = async () => {
+    const clean = chatText.trim(); if (!clean) return;
+    setBusy(true);
+    try { const row = await postEsportsRoomMessage(room.code, clean, gamerName); if (row) setMessages((prev) => prev.some((item) => messageKey(item) === messageKey(row)) ? prev : [...prev, row].slice(-80)); setChatText(""); }
+    catch (e: any) { setToast(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+
+  const parseMessage = (row: any) => {
+    const payload = row?.message && typeof row.message === "object" ? row.message : null;
+    return { author: payload?.authorName || row?.nickname || row?.display_name || tr("Joueur", "Player", "Jugador"), text: payload?.text || row?.text || (typeof row?.message === "string" ? row.message : ""), at: row?.created_at || row?.createdAt || null };
+  };
+
+  return <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 9 }}>
+    <div style={{ borderRadius: 16, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ fontWeight: 1000 }}>👥 {tr("Inviter un ami", "Invite a friend", "Invitar a un amigo")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 9.5 }}>{tr("Utilise directement tes amis MULTISPORTS SCORING.", "Uses your MULTISPORTS SCORING friends directly.", "Usa directamente tus amigos de MULTISPORTS SCORING.")}</div>{friends.length ? <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}><select value={friendId} onChange={(e) => setFriendId(e.target.value)} style={inputStyle}><option value="">{tr("Choisir un ami…", "Choose a friend…", "Elegir un amigo…")}</option>{friends.map((friend) => { const id = String(friend.userId || friend.id); return <option key={id} value={id}>{friend.status === "online" ? "🟢" : friend.status === "away" ? "🟠" : "⚫"} {friend.displayName || friend.nickname || id}</option>; })}</select><button type="button" disabled={!friendId || busy} onClick={invite} style={buttonStyle(true)}>✉ {tr("Inviter", "Invite", "Invitar")}</button></div> : <div style={{ marginTop: 8, color: textSoft, fontSize: 10 }}>{tr("Ami en ligne indisponible ou compte non connecté.", "Friends unavailable or account not signed in.", "Amigos no disponibles o cuenta no conectada.")}</div>}</div>
+    <div style={{ borderRadius: 16, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ fontWeight: 1000 }}>💬 {tr("Chat du salon", "Room chat", "Chat de la sala")}</div><div style={{ marginTop: 7, maxHeight: 180, overflowY: "auto", display: "grid", gap: 5 }}>{messages.length ? messages.slice(-30).map((row: any) => { const m = parseMessage(row); return <div key={messageKey(row)} style={{ borderRadius: 10, padding: "6px 8px", background: "rgba(255,255,255,.035)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}><strong style={{ fontSize: 9.5 }}>{m.author}</strong><span style={{ color: textSoft, fontSize: 8 }}>{m.at ? formatDate(Date.parse(m.at) || Number(m.at)) : ""}</span></div><div style={{ marginTop: 2, fontSize: 10.5 }}>{m.text}</div></div>; }) : <div style={{ color: textSoft, fontSize: 9.5 }}>{tr("Aucun message.", "No messages.", "Sin mensajes.")}</div>}</div><div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}><input value={chatText} maxLength={500} onChange={(e) => setChatText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendChat()} placeholder={tr("Écrire dans le salon…", "Write in the room…", "Escribir en la sala…")} style={inputStyle}/><button type="button" disabled={busy || !chatText.trim()} onClick={sendChat} style={buttonStyle(false)}>➤</button></div></div>
+  </div>;
 }
 
 function MatchesSection({ state, refresh, panelStyle, buttonStyle, inputStyle, textSoft, accent, setToast, tr }: any) {
@@ -255,24 +355,137 @@ function TournamentsSection({ state, refresh, panelStyle, buttonStyle, inputStyl
   React.useEffect(() => { const g = getEsportsGame(gameId); setBestOf(g.bestOf[0] || 1); }, [gameId]);
   const create = () => { const names = participantsText.split(/\n|,/).map((s) => s.trim()).filter(Boolean); if (names.length < 2) return setToast(tr("Ajoute au moins 2 participants.", "Add at least 2 participants.", "Añade al menos 2 participantes.")); const t = createEsportsTournament({ name, gameId, format, bestOf, participantNames: names }); setOpenId(t.id); refresh(); setToast(tr("Tournoi créé.", "Tournament created.", "Torneo creado.")); };
   const open = state.tournaments.find((t: any) => t.id === openId) || null;
-  return <div style={{ display: "grid", gap: 10 }}><section style={{ ...panelStyle, padding: 14 }}><div style={{ fontSize: 22, fontWeight: 1000 }}>{tr("Générateur de tournoi", "Tournament generator", "Generador de torneos")}</div><div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 }}><input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle}/><select value={gameId} onChange={(e) => setGameId(e.target.value)} style={inputStyle}>{ESPORTS_GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select><select value={format} onChange={(e) => setFormat(e.target.value as EsportsTournamentFormat)} style={inputStyle}><option value="single_elimination">{tr("Élimination directe", "Single elimination", "Eliminación directa")}</option><option value="round_robin">Round Robin</option></select><select value={bestOf} onChange={(e) => setBestOf(Number(e.target.value))} style={inputStyle}>{game.bestOf.map((n) => <option key={n} value={n}>BO{n}</option>)}</select></div><textarea value={participantsText} onChange={(e) => setParticipantsText(e.target.value)} style={{ ...inputStyle, minHeight: 110, marginTop: 8, resize: "vertical" }} placeholder={tr("Un joueur / équipe par ligne", "One player / team per line", "Un jugador / equipo por línea")}/><div style={{ marginTop: 9, textAlign: "right" }}><button type="button" onClick={create} style={buttonStyle(true)}>🏆 {tr("Générer le tournoi", "Generate tournament", "Generar torneo")}</button></div></section><section style={{ display: "grid", gridTemplateColumns: "minmax(220px,.65fr) minmax(340px,1.35fr)", gap: 10 }}><div style={{ ...panelStyle, padding: 12 }}><div style={{ fontWeight: 1000 }}>{tr("Mes tournois", "My tournaments", "Mis torneos")} · {state.tournaments.length}</div><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{state.tournaments.map((t: any) => <button type="button" key={t.id} onClick={() => setOpenId(t.id)} style={{ textAlign: "left", borderRadius: 13, border: `1px solid ${openId === t.id ? getEsportsGame(t.gameId).accent : "rgba(255,255,255,.08)"}`, background: "rgba(255,255,255,.03)", color: "inherit", padding: 9, cursor: "pointer" }}><strong>{t.name}</strong><div style={{ color: textSoft, fontSize: 9 }}>{getEsportsGame(t.gameId).shortName} · {t.participants.length} · BO{t.bestOf}</div></button>)}</div></div><div style={{ ...panelStyle, padding: 12 }}>{open ? <TournamentBracket tournament={open} textSoft={textSoft} accent={accent} buttonStyle={buttonStyle} refresh={refresh} setOpenId={setOpenId} tr={tr}/> : <Empty text={tr("Crée ou sélectionne un tournoi.", "Create or select a tournament.", "Crea o selecciona un torneo.")} textSoft={textSoft}/>}</div></section></div>;
+  return <div style={{ display: "grid", gap: 10 }}><section style={{ ...panelStyle, padding: 14 }}><div style={{ fontSize: 22, fontWeight: 1000 }}>{tr("Générateur de tournoi", "Tournament generator", "Generador de torneos")}</div><div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 }}><input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle}/><select value={gameId} onChange={(e) => setGameId(e.target.value)} style={inputStyle}>{ESPORTS_GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select><select value={format} onChange={(e) => setFormat(e.target.value as EsportsTournamentFormat)} style={inputStyle}><option value="single_elimination">{tr("Élimination directe", "Single elimination", "Eliminación directa")}</option><option value="round_robin">Round Robin</option></select><select value={bestOf} onChange={(e) => setBestOf(Number(e.target.value))} style={inputStyle}>{game.bestOf.map((n) => <option key={n} value={n}>BO{n}</option>)}</select></div><textarea value={participantsText} onChange={(e) => setParticipantsText(e.target.value)} style={{ ...inputStyle, minHeight: 110, marginTop: 8, resize: "vertical" }} placeholder={tr("Un joueur / équipe par ligne", "One player / team per line", "Un jugador / equipo por línea")}/><div style={{ marginTop: 9, textAlign: "right" }}><button type="button" onClick={create} style={buttonStyle(true)}>🏆 {tr("Générer le tournoi", "Generate tournament", "Generar torneo")}</button></div></section><section style={{ display: "grid", gridTemplateColumns: "minmax(220px,.65fr) minmax(340px,1.35fr)", gap: 10 }}><div style={{ ...panelStyle, padding: 12 }}><div style={{ fontWeight: 1000 }}>{tr("Mes tournois", "My tournaments", "Mis torneos")} · {state.tournaments.length}</div><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{state.tournaments.map((t: any) => <button type="button" key={t.id} onClick={() => setOpenId(t.id)} style={{ textAlign: "left", borderRadius: 13, border: `1px solid ${openId === t.id ? getEsportsGame(t.gameId).accent : "rgba(255,255,255,.08)"}`, background: "rgba(255,255,255,.03)", color: "inherit", padding: 9, cursor: "pointer" }}><strong>{t.name}</strong><div style={{ color: textSoft, fontSize: 9 }}>{getEsportsGame(t.gameId).shortName} · {t.participants.length} · BO{t.bestOf}</div></button>)}</div></div><div style={{ ...panelStyle, padding: 12 }}>{open ? <TournamentBracket tournament={open} textSoft={textSoft} accent={accent} buttonStyle={buttonStyle} refresh={refresh} setOpenId={setOpenId} setToast={setToast} tr={tr}/> : <Empty text={tr("Crée ou sélectionne un tournoi.", "Create or select a tournament.", "Crea o selecciona un torneo.")} textSoft={textSoft}/>}</div></section></div>;
 }
 
-function TournamentBracket({ tournament, textSoft, buttonStyle, refresh, setOpenId, tr }: any) {
+function TournamentBracket({ tournament, textSoft, buttonStyle, refresh, setOpenId, setToast, tr }: any) {
   const game = getEsportsGame(tournament.gameId);
   const rounds = [...new Set(tournament.matches.map((m: any) => m.round))].sort((a: any,b: any) => a-b);
-  return <div><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: game.accent, fontWeight: 1000 }}>{game.icon} {game.name}</div><div style={{ fontSize: 20, fontWeight: 1000 }}>{tournament.name}</div><div style={{ color: textSoft, fontSize: 9.5 }}>{tournament.format.replace("_", " ").toUpperCase()} · {tournament.participants.length} · BO{tournament.bestOf}</div></div><button type="button" onClick={() => { deleteEsportsTournament(tournament.id); setOpenId(null); refresh(); }} style={buttonStyle(false)}>×</button></div><div style={{ marginTop: 12, overflowX: "auto", paddingBottom: 6 }}><div style={{ display: "flex", gap: 9, minWidth: Math.max(520, rounds.length * 230) }}>{rounds.map((round: any) => <div key={round} style={{ width: 220, flex: "0 0 220px" }}><div style={{ color: textSoft, fontSize: 9, fontWeight: 1000, marginBottom: 6 }}>{tournament.format === "round_robin" ? `${tr("JOURNÉE", "ROUND", "JORNADA")} ${round}` : round === rounds.length ? tr("FINALE", "FINAL", "FINAL") : `${tr("TOUR", "ROUND", "RONDA")} ${round}`}</div><div style={{ display: "grid", gap: 7 }}>{tournament.matches.filter((m: any) => m.round === round).map((m: any) => <div key={m.id} style={{ borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 8 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}><span>{m.participantAName || "TBD"}</span><strong>{m.scoreA ?? "—"}</strong></div><div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "6px 0" }}/><div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}><span>{m.participantBName || "TBD"}</span><strong>{m.scoreB ?? "—"}</strong></div></div>)}</div></div>)}</div></div></div>;
+  const finalMatch = tournament.format === "single_elimination" ? tournament.matches.find((m: any) => m.round === rounds[rounds.length - 1]) : null;
+  const champion = finalMatch?.status === "finished" && finalMatch?.winnerId ? (finalMatch.winnerId === finalMatch.participantAId ? finalMatch.participantAName : finalMatch.participantBName) : null;
+  const standings = tournament.format === "round_robin" ? buildRoundRobinStandings(tournament.participants, tournament.matches) : [];
+  return <div>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}><div><div style={{ color: game.accent, fontWeight: 1000 }}>{game.icon} {game.name}</div><div style={{ fontSize: 20, fontWeight: 1000 }}>{tournament.name}</div><div style={{ color: textSoft, fontSize: 9.5 }}>{tournament.format.replace("_", " ").toUpperCase()} · {tournament.participants.length} · BO{tournament.bestOf} · {tournament.status.toUpperCase()}</div></div><button type="button" onClick={() => { deleteEsportsTournament(tournament.id); setOpenId(null); refresh(); }} style={buttonStyle(false)}>×</button></div>
+    {champion ? <div style={{ marginTop: 10, borderRadius: 16, padding: 12, textAlign: "center", background: `${game.accent}16`, border: `1px solid ${game.accent}65` }}><div style={{ color: textSoft, fontSize: 9, fontWeight: 900 }}>{tr("CHAMPION", "CHAMPION", "CAMPEÓN")}</div><div style={{ marginTop: 2, color: game.accent, fontSize: 22, fontWeight: 1000 }}>🏆 {champion}</div></div> : null}
+    {standings.length ? <div style={{ marginTop: 10, borderRadius: 15, overflow: "hidden", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ padding: "8px 10px", fontWeight: 1000, background: "rgba(255,255,255,.04)" }}>{tr("Classement", "Standings", "Clasificación")}</div>{standings.map((row: any, index: number) => <div key={row.participantId} style={{ display: "grid", gridTemplateColumns: "30px 1fr repeat(5,42px)", gap: 5, alignItems: "center", padding: "7px 9px", borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 9.5 }}><strong>{index + 1}</strong><strong>{row.name}</strong><span style={{ textAlign: "center", color: textSoft }}>P {row.played}</span><span style={{ textAlign: "center" }}>W {row.wins}</span><span style={{ textAlign: "center" }}>L {row.losses}</span><span style={{ textAlign: "center" }}>± {row.diff}</span><strong style={{ textAlign: "center", color: game.accent }}>{row.points} pts</strong></div>)}</div> : null}
+    <div style={{ marginTop: 12, overflowX: "auto", paddingBottom: 6 }}><div style={{ display: "flex", gap: 9, minWidth: Math.max(520, rounds.length * 250) }}>{rounds.map((round: any) => <div key={round} style={{ width: 240, flex: "0 0 240px" }}><div style={{ color: textSoft, fontSize: 9, fontWeight: 1000, marginBottom: 6 }}>{tournament.format === "round_robin" ? `${tr("JOURNÉE", "ROUND", "JORNADA")} ${round}` : round === rounds.length ? tr("FINALE", "FINAL", "FINAL") : `${tr("TOUR", "ROUND", "RONDA")} ${round}`}</div><div style={{ display: "grid", gap: 7 }}>{tournament.matches.filter((m: any) => m.round === round).map((m: any) => <TournamentMatchCard key={m.id} tournament={tournament} match={m} game={game} textSoft={textSoft} buttonStyle={buttonStyle} refresh={refresh} setToast={setToast} tr={tr}/>)}</div></div>)}</div></div>
+  </div>;
 }
 
-function ProfileSection({ state, refresh, panelStyle, buttonStyle, inputStyle, textSoft, accent, go, tr }: any) {
+function TournamentMatchCard({ tournament, match, game, textSoft, buttonStyle, refresh, setToast, tr }: any) {
+  const [scoreA, setScoreA] = React.useState<number>(Number(match.scoreA ?? 0));
+  const [scoreB, setScoreB] = React.useState<number>(Number(match.scoreB ?? 0));
+  React.useEffect(() => { setScoreA(Number(match.scoreA ?? 0)); setScoreB(Number(match.scoreB ?? 0)); }, [match.scoreA, match.scoreB, match.id]);
+  const ready = !!match.participantAId && !!match.participantBId;
+  const winnerName = match.status === "finished" && match.winnerId ? (match.winnerId === match.participantAId ? match.participantAName : match.participantBName) : null;
+  const save = () => {
+    if (!ready) return;
+    if (Number(scoreA) === Number(scoreB)) { setToast(tr("Un match de tournoi doit avoir un vainqueur.", "A tournament match needs a winner.", "Un partido de torneo debe tener un ganador.")); return; }
+    try { recordEsportsTournamentMatchResult(tournament.id, match.id, Number(scoreA), Number(scoreB)); refresh(); setToast(tr("Résultat validé — bracket mis à jour.", "Result saved — bracket updated.", "Resultado guardado — cuadro actualizado.")); }
+    catch (e: any) { setToast(String(e?.message || e)); }
+  };
+  return <div style={{ borderRadius: 13, border: `1px solid ${winnerName ? `${game.accent}55` : "rgba(255,255,255,.08)"}`, background: winnerName ? `${game.accent}0c` : "rgba(255,255,255,.03)", padding: 8 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 48px", gap: 6, alignItems: "center" }}><span style={{ fontWeight: match.winnerId === match.participantAId ? 1000 : 600 }}>{match.participantAName || "TBD"}</span><input type="number" min={0} disabled={!ready} value={scoreA} onChange={(e) => setScoreA(clampNumber(e.target.value,0,999,0))} style={{ width: 48, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.1)", background: "rgba(0,0,0,.25)", color: "inherit", textAlign: "center", fontWeight: 1000 }}/></div>
+    <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "6px 0" }}/>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 48px", gap: 6, alignItems: "center" }}><span style={{ fontWeight: match.winnerId === match.participantBId ? 1000 : 600 }}>{match.participantBName || "TBD"}</span><input type="number" min={0} disabled={!ready} value={scoreB} onChange={(e) => setScoreB(clampNumber(e.target.value,0,999,0))} style={{ width: 48, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.1)", background: "rgba(0,0,0,.25)", color: "inherit", textAlign: "center", fontWeight: 1000 }}/></div>
+    <div style={{ marginTop: 7, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 5 }}><span style={{ color: winnerName ? game.accent : textSoft, fontSize: 8.5, fontWeight: 900 }}>{winnerName ? `✓ ${winnerName}` : match.status.toUpperCase()}</span>{ready ? <button type="button" onClick={save} style={{ ...buttonStyle(match.status !== "finished"), minHeight: 28, padding: "4px 7px", fontSize: 8.5 }}>{match.status === "finished" ? tr("Modifier", "Edit", "Editar") : tr("Valider", "Save", "Guardar")}</button> : null}</div>
+  </div>;
+}
+
+function ProfileSection({ state, refresh, panelStyle, buttonStyle, inputStyle, textSoft, accent, go, setToast, tr }: any) {
+  const [tab, setTab] = React.useState<"profile" | "friends" | "teams" | "lfg">("profile");
   const [displayName, setDisplayName] = React.useState(state.gamer.displayName);
   const [bio, setBio] = React.useState(state.gamer.bio);
   const [country, setCountry] = React.useState(state.gamer.country || "FR");
   const [availability, setAvailability] = React.useState(state.gamer.availability);
   const [lookingForGroup, setLookingForGroup] = React.useState(state.gamer.lookingForGroup);
   const [handles, setHandles] = React.useState({ ...state.gamer.handles } as any);
-  const save = () => { saveGamerIdentity({ displayName: displayName.trim() || "Gamer", bio: bio.trim(), country: country.trim().toUpperCase(), availability, lookingForGroup, handles }); refresh(); };
-  return <div style={{ display: "grid", gap: 10 }}><section style={{ ...panelStyle, padding: 14 }}><div style={{ fontSize: 22, fontWeight: 1000 }}>{tr("Profil gamer", "Gamer profile", "Perfil gamer")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 10.5 }}>{tr("Un profil transverse pour tes identifiants et tes communautés gaming. Il reste séparé des statistiques sportives classiques.", "A cross-game profile for gaming IDs and communities. It remains separate from classic sports statistics.", "Un perfil transversal para IDs y comunidades gaming, separado de las estadísticas deportivas clásicas.")}</div><div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Pseudo gamer" style={inputStyle}/><input value={country} maxLength={3} onChange={(e) => setCountry(e.target.value)} placeholder="FR" style={inputStyle}/><select value={availability} onChange={(e) => setAvailability(e.target.value)} style={inputStyle}><option value="available">🟢 {tr("Disponible", "Available", "Disponible")}</option><option value="busy">🟠 {tr("Occupé", "Busy", "Ocupado")}</option><option value="offline">⚫ Offline</option></select><label style={{ ...inputStyle, display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={lookingForGroup} onChange={(e) => setLookingForGroup(e.target.checked)}/>{tr("Je cherche des joueurs / une équipe", "I'm looking for players / a team", "Busco jugadores / equipo")}</label></div><textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Bio gaming..." style={{ ...inputStyle, minHeight: 76, marginTop: 8, resize: "vertical" }}/></section><section style={{ ...panelStyle, padding: 14 }}><div style={{ fontWeight: 1000 }}>{tr("Identifiants plateformes", "Platform IDs", "IDs de plataformas")}</div><div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>{["steam","epic","riot","ea","playstation","xbox","battlenet","switch"].map((key) => <label key={key} style={{ display: "grid", gap: 4 }}><span style={{ color: textSoft, fontSize: 9, fontWeight: 900 }}>{key.toUpperCase()}</span><input value={handles[key] || ""} onChange={(e) => setHandles((prev: any) => ({ ...prev, [key]: e.target.value }))} style={inputStyle}/></label>)}</div><div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => go("profiles")} style={buttonStyle(false)}>{tr("Ouvrir mon profil MULTISPORTS", "Open my MULTISPORTS profile", "Abrir mi perfil MULTISPORTS")}</button><button type="button" onClick={save} style={buttonStyle(true)}>✓ {tr("Enregistrer", "Save", "Guardar")}</button></div></section><section style={{ ...panelStyle, padding: 14 }}><div style={{ fontWeight: 1000 }}>{tr("Jeux favoris", "Favorite games", "Juegos favoritos")}</div><div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>{state.gamer.favoriteGameIds.map((id: string) => { const game = getEsportsGame(id); return <span key={id} style={{ borderRadius: 999, padding: "7px 10px", border: `1px solid ${game.accent}50`, background: `${game.accent}12`, color: game.accent, fontSize: 10, fontWeight: 1000 }}>{game.icon} {game.shortName}</span>; })}</div></section></div>;
+  const save = async () => {
+    saveGamerIdentity({ displayName: displayName.trim() || "Gamer", bio: bio.trim(), country: country.trim().toUpperCase(), availability, lookingForGroup, handles });
+    refresh();
+    try { await syncEsportsPresence(availability); } catch {}
+    setToast(tr("Profil gamer enregistré.", "Gamer profile saved.", "Perfil gamer guardado."));
+  };
+  const tabs = [
+    ["profile", "🎮", tr("Profil", "Profile", "Perfil")],
+    ["friends", "👥", tr("Amis", "Friends", "Amigos")],
+    ["teams", "🛡", tr("Équipes", "Teams", "Equipos")],
+    ["lfg", "📡", "LFG"],
+  ] as const;
+  return <div style={{ display: "grid", gap: 10 }}>
+    <section style={{ ...panelStyle, padding: 10 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{tabs.map(([id, icon, label]) => <button type="button" key={id} onClick={() => setTab(id)} style={{ ...buttonStyle(tab === id), minWidth: 0, padding: "8px 6px" }}>{icon} <span style={{ marginLeft: 3 }}>{label}</span></button>)}</div></section>
+    {tab === "profile" ? <>
+      <section style={{ ...panelStyle, padding: 14 }}><div style={{ fontSize: 22, fontWeight: 1000 }}>{tr("Profil gamer", "Gamer profile", "Perfil gamer")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 10.5 }}>{tr("Ton identité gaming transverse : jeux, plateformes, disponibilité et recherche de groupe.", "Your cross-game identity: games, platforms, availability and group search.", "Tu identidad gaming: juegos, plataformas, disponibilidad y búsqueda de grupo.")}</div><div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Pseudo gamer" style={inputStyle}/><input value={country} maxLength={3} onChange={(e) => setCountry(e.target.value)} placeholder="FR" style={inputStyle}/><select value={availability} onChange={(e) => setAvailability(e.target.value)} style={inputStyle}><option value="available">🟢 {tr("Disponible", "Available", "Disponible")}</option><option value="busy">🟠 {tr("Occupé", "Busy", "Ocupado")}</option><option value="offline">⚫ Offline</option></select><label style={{ ...inputStyle, display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={lookingForGroup} onChange={(e) => setLookingForGroup(e.target.checked)}/>{tr("Je cherche des joueurs / une équipe", "I'm looking for players / a team", "Busco jugadores / equipo")}</label></div><textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Bio gaming..." style={{ ...inputStyle, minHeight: 76, marginTop: 8, resize: "vertical" }}/></section>
+      <section style={{ ...panelStyle, padding: 14 }}><div style={{ fontWeight: 1000 }}>{tr("Identifiants plateformes", "Platform IDs", "IDs de plataformas")}</div><div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>{["steam","epic","riot","ea","playstation","xbox","battlenet","switch"].map((key) => <label key={key} style={{ display: "grid", gap: 4 }}><span style={{ color: textSoft, fontSize: 9, fontWeight: 900 }}>{key.toUpperCase()}</span><input value={handles[key] || ""} onChange={(e) => setHandles((prev: any) => ({ ...prev, [key]: e.target.value }))} style={inputStyle}/></label>)}</div><div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => go("profiles")} style={buttonStyle(false)}>{tr("Ouvrir mon profil MULTISPORTS", "Open my MULTISPORTS profile", "Abrir mi perfil MULTISPORTS")}</button><button type="button" onClick={save} style={buttonStyle(true)}>✓ {tr("Enregistrer", "Save", "Guardar")}</button></div></section>
+      <section style={{ ...panelStyle, padding: 14 }}><div style={{ fontWeight: 1000 }}>{tr("Jeux favoris", "Favorite games", "Juegos favoritos")}</div><div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>{state.gamer.favoriteGameIds.map((id: string) => { const game = getEsportsGame(id); return <span key={id} style={{ borderRadius: 999, padding: "7px 10px", border: `1px solid ${game.accent}50`, background: `${game.accent}12`, color: game.accent, fontSize: 10, fontWeight: 1000 }}>{game.icon} {game.shortName}</span>; })}</div></section>
+    </> : null}
+    {tab === "friends" ? <EsportsFriendsPanel panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} setToast={setToast} tr={tr}/> : null}
+    {tab === "teams" ? <EsportsTeamsPanel state={state} refresh={refresh} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} setToast={setToast} tr={tr}/> : null}
+    {tab === "lfg" ? <EsportsLfgPanel state={state} refresh={refresh} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} accent={accent} setToast={setToast} tr={tr}/> : null}
+  </div>;
+}
+
+function EsportsFriendsPanel({ panelStyle, buttonStyle, inputStyle, textSoft, setToast, tr }: any) {
+  const [friends, setFriends] = React.useState<EsportsFriend[]>([]);
+  const [query, setQuery] = React.useState("");
+  const [results, setResults] = React.useState<EsportsFriend[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const load = React.useCallback(async () => {
+    setLoading(true); setError("");
+    try { setFriends(await loadEsportsFriends()); }
+    catch (e: any) { setFriends([]); setError(String(e?.message || e || tr("Connexion requise.", "Sign-in required.", "Conexión requerida."))); }
+    finally { setLoading(false); }
+  }, [tr]);
+  React.useEffect(() => { void load(); }, [load]);
+  const search = async () => {
+    const clean = query.trim(); if (clean.length < 2) return;
+    setLoading(true); setError("");
+    try { setResults(await searchEsportsPlayers(clean)); }
+    catch (e: any) { setResults([]); setError(String(e?.message || e)); }
+    finally { setLoading(false); }
+  };
+  const request = async (user: EsportsFriend) => {
+    const id = String(user.userId || user.id || ""); if (!id) return;
+    try { await requestEsportsFriend(id); setToast(tr("Demande d'ami envoyée.", "Friend request sent.", "Solicitud de amistad enviada.")); }
+    catch (e: any) { setToast(String(e?.message || e)); }
+  };
+  return <div style={{ display: "grid", gap: 10 }}>
+    <section style={{ ...panelStyle, padding: 14 }}><div style={{ fontSize: 22, fontWeight: 1000 }}>👥 {tr("Communauté gaming", "Gaming community", "Comunidad gaming")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 10.5 }}>{tr("Ce sont les mêmes amis que dans MULTISPORTS SCORING : pas de doublon de réseau social.", "These are the same friends as MULTISPORTS SCORING: no duplicate social network.", "Son los mismos amigos de MULTISPORTS SCORING: sin red social duplicada.")}</div><div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 7 }}><input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder={tr("Chercher un joueur / pseudo…", "Search player / nickname…", "Buscar jugador / alias…")} style={inputStyle}/><button type="button" disabled={loading || query.trim().length < 2} onClick={search} style={buttonStyle(true)}>⌕ {tr("Chercher", "Search", "Buscar")}</button></div>{error ? <div style={{ marginTop: 8, color: "#fb7185", fontSize: 10 }}>{error}</div> : null}</section>
+    {results.length ? <section style={{ ...panelStyle, padding: 12 }}><div style={{ fontWeight: 1000 }}>{tr("Résultats", "Results", "Resultados")}</div><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{results.map((user) => { const id = String(user.userId || user.id); return <div key={id} style={{ borderRadius: 13, padding: 9, background: "rgba(255,255,255,.035)", display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}><div><strong>{user.displayName || user.nickname || id}</strong><div style={{ color: textSoft, fontSize: 9 }}>{user.countryCode || user.country || ""} · {user.status || "offline"}</div></div><button type="button" onClick={() => request(user)} style={buttonStyle(false)}>＋ {tr("Ami", "Friend", "Amigo")}</button></div>; })}</div></section> : null}
+    <section style={{ ...panelStyle, padding: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ fontWeight: 1000 }}>{tr("Mes amis", "My friends", "Mis amigos")} · {friends.length}</div><button type="button" onClick={load} style={{ ...buttonStyle(false), minHeight: 30, padding: "4px 8px" }}>↻</button></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 7 }}>{friends.length ? friends.map((friend) => { const id = String(friend.userId || friend.id); const status = friend.status === "online" ? "🟢" : friend.status === "away" ? "🟠" : "⚫"; return <div key={id} style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,.035)" }}><div style={{ fontWeight: 1000 }}>{status} {friend.displayName || friend.nickname || id}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 9 }}>{friend.countryCode || friend.country || ""} {friend.lastSeenAt ? `· ${friend.lastSeenAt}` : ""}</div></div>; }) : <Empty text={loading ? tr("Chargement…", "Loading…", "Cargando…") : tr("Aucun ami chargé.", "No friends loaded.", "No hay amigos cargados.")} textSoft={textSoft}/>}</div></section>
+  </div>;
+}
+
+function EsportsTeamsPanel({ state, refresh, panelStyle, buttonStyle, inputStyle, textSoft, setToast, tr }: any) {
+  const [name, setName] = React.useState("");
+  const [tag, setTag] = React.useState("");
+  const [gameId, setGameId] = React.useState(state.selectedGameId);
+  const [members, setMembers] = React.useState("");
+  const create = () => {
+    try { createEsportsTeam({ name, tag, gameIds: [gameId], memberNames: members.split(/\n|,/).map((v) => v.trim()).filter(Boolean), captainName: state.gamer.displayName }); setName(""); setTag(""); setMembers(""); refresh(); setToast(tr("Équipe créée.", "Team created.", "Equipo creado.")); }
+    catch (e: any) { setToast(String(e?.message || e)); }
+  };
+  return <div style={{ display: "grid", gap: 10 }}>
+    <section style={{ ...panelStyle, padding: 14 }}><div style={{ fontSize: 22, fontWeight: 1000 }}>🛡 {tr("Équipes & clans", "Teams & clans", "Equipos y clanes")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 10.5 }}>{tr("Crée des groupes persistants réutilisables dans les salons et les tournois.", "Create persistent groups reusable in rooms and tournaments.", "Crea grupos persistentes reutilizables en salas y torneos.")}</div><div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "minmax(160px,1fr) 100px minmax(180px,1fr)", gap: 7 }}><input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("Nom de l'équipe", "Team name", "Nombre del equipo")} style={inputStyle}/><input value={tag} maxLength={8} onChange={(e) => setTag(e.target.value.toUpperCase())} placeholder="TAG" style={inputStyle}/><select value={gameId} onChange={(e) => setGameId(e.target.value)} style={inputStyle}>{ESPORTS_GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div><textarea value={members} onChange={(e) => setMembers(e.target.value)} placeholder={tr("Membres, un par ligne (optionnel)", "Members, one per line (optional)", "Miembros, uno por línea (opcional)")} style={{ ...inputStyle, minHeight: 74, marginTop: 7, resize: "vertical" }}/><div style={{ marginTop: 8, textAlign: "right" }}><button type="button" disabled={!name.trim()} onClick={create} style={buttonStyle(true)}>＋ {tr("Créer l'équipe", "Create team", "Crear equipo")}</button></div></section>
+    <section style={{ ...panelStyle, padding: 12 }}><div style={{ fontWeight: 1000 }}>{tr("Mes équipes", "My teams", "Mis equipos")} · {state.teams.length}</div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 8 }}>{state.teams.length ? state.teams.map((team: any) => <div key={team.id} style={{ borderRadius: 15, padding: 11, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ fontSize: 15 }}>{team.tag ? `[${team.tag}] ` : ""}{team.name}</strong><div style={{ color: textSoft, fontSize: 9 }}>{team.gameIds.map((id: string) => getEsportsGame(id).shortName).join(" · ") || tr("Multi-jeux", "Multi-game", "Multijuego")}</div></div><button type="button" onClick={() => { deleteEsportsTeam(team.id); refresh(); }} style={{ ...buttonStyle(false), minHeight: 28, padding: "3px 7px" }}>×</button></div><div style={{ marginTop: 8, color: textSoft, fontSize: 9.5 }}>{tr("Capitaine", "Captain", "Capitán")}: {team.captainName}</div><div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 4 }}>{team.memberNames.length ? team.memberNames.map((member: string) => <span key={member} style={{ borderRadius: 999, padding: "4px 7px", background: "rgba(255,255,255,.05)", fontSize: 8.5 }}>{member}</span>) : <span style={{ color: textSoft, fontSize: 9 }}>{tr("Aucun membre ajouté.", "No members added.", "Sin miembros añadidos.")}</span>}</div></div>) : <Empty text={tr("Aucune équipe créée.", "No teams created.", "No hay equipos creados.")} textSoft={textSoft}/>}</div></section>
+  </div>;
+}
+
+function EsportsLfgPanel({ state, refresh, panelStyle, buttonStyle, inputStyle, textSoft, accent, setToast, tr }: any) {
+  const [gameId, setGameId] = React.useState(state.selectedGameId);
+  const game = getEsportsGame(gameId);
+  const [platform, setPlatform] = React.useState<EsportsPlatform>(game.platforms[0] || "pc");
+  const [mode, setMode] = React.useState("Ranked / Casual");
+  const [slots, setSlots] = React.useState(1);
+  const [message, setMessage] = React.useState("");
+  React.useEffect(() => { const g = getEsportsGame(gameId); setPlatform(g.platforms[0] || "pc"); }, [gameId]);
+  const publish = () => { createEsportsLfgPost({ gameId, authorName: state.gamer.displayName, platform, mode, message, slotsNeeded: slots }); saveGamerIdentity({ lookingForGroup: true, availability: "available" }); refresh(); setMessage(""); setToast(tr("Annonce LFG publiée localement.", "LFG post published locally.", "Anuncio LFG publicado localmente.")); };
+  const open = state.lfgPosts.filter((post: any) => post.status === "open");
+  return <div style={{ display: "grid", gap: 10 }}>
+    <section style={{ ...panelStyle, padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start", flexWrap: "wrap" }}><div><div style={{ fontSize: 22, fontWeight: 1000 }}>📡 LFG · LOOKING FOR GROUP</div><div style={{ marginTop: 4, color: textSoft, fontSize: 10.5 }}>{tr("Prépare tes annonces de recherche de joueurs. La diffusion globale arrivera avec le backend E-SPORTS public ; le modèle de données est déjà prêt.", "Prepare player-search posts. Global publishing will come with the public E-SPORTS backend; the data model is ready.", "Prepara anuncios para buscar jugadores. La publicación global llegará con el backend público E-SPORTS.")}</div></div><span style={{ borderRadius: 999, padding: "5px 8px", background: `${accent}16`, color: accent, fontSize: 8.5, fontWeight: 1000 }}>LOCAL-FIRST V0.2</span></div><div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 7 }}><select value={gameId} onChange={(e) => setGameId(e.target.value)} style={inputStyle}>{ESPORTS_GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select><select value={platform} onChange={(e) => setPlatform(e.target.value as EsportsPlatform)} style={inputStyle}>{game.platforms.map((p) => <option key={p} value={p}>{displayPlatform(p)}</option>)}</select><input value={mode} onChange={(e) => setMode(e.target.value)} placeholder="Ranked / Casual / Duo..." style={inputStyle}/><input type="number" min={1} max={20} value={slots} onChange={(e) => setSlots(clampNumber(e.target.value,1,20,1))} style={inputStyle}/></div><textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={300} placeholder={tr("Ex : cherche 2 joueurs Diamant, micro FR, ce soir…", "Example: looking for 2 Diamond players, mic, tonight…", "Ej.: busco 2 jugadores Diamante, micro, esta noche…")} style={{ ...inputStyle, minHeight: 76, marginTop: 7, resize: "vertical" }}/><div style={{ marginTop: 8, textAlign: "right" }}><button type="button" onClick={publish} style={buttonStyle(true)}>📡 {tr("Publier", "Publish", "Publicar")}</button></div></section>
+    <section style={{ ...panelStyle, padding: 12 }}><div style={{ fontWeight: 1000 }}>{tr("Mes recherches ouvertes", "My open searches", "Mis búsquedas abiertas")} · {open.length}</div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 8 }}>{state.lfgPosts.length ? state.lfgPosts.map((post: any) => { const g = getEsportsGame(post.gameId); return <div key={post.id} style={{ borderRadius: 15, padding: 11, background: post.status === "open" ? `${g.accent}0b` : "rgba(255,255,255,.025)", border: `1px solid ${post.status === "open" ? `${g.accent}40` : "rgba(255,255,255,.06)"}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}><strong style={{ color: g.accent }}>{g.icon} {g.shortName}</strong><span style={{ color: post.status === "open" ? "#34d399" : textSoft, fontSize: 8.5, fontWeight: 1000 }}>{post.status.toUpperCase()}</span></div><div style={{ marginTop: 5, fontSize: 10, fontWeight: 900 }}>{displayPlatform(post.platform)} · {post.mode} · +{post.slotsNeeded}</div>{post.message ? <div style={{ marginTop: 5, color: textSoft, fontSize: 9.5 }}>{post.message}</div> : null}<div style={{ marginTop: 8, display: "flex", gap: 5 }}><button type="button" onClick={() => { setEsportsLfgStatus(post.id, post.status === "open" ? "closed" : "open"); refresh(); }} style={{ ...buttonStyle(false), minHeight: 28, padding: "4px 7px", fontSize: 8.5 }}>{post.status === "open" ? tr("Clore", "Close", "Cerrar") : tr("Rouvrir", "Reopen", "Reabrir")}</button><button type="button" onClick={() => { deleteEsportsLfgPost(post.id); refresh(); }} style={{ ...buttonStyle(false), minHeight: 28, padding: "4px 7px", fontSize: 8.5 }}>×</button></div></div>; }) : <Empty text={tr("Aucune annonce LFG.", "No LFG posts.", "Sin anuncios LFG.")} textSoft={textSoft}/>}</div></section>
+  </div>;
 }
 
 function StatsSection({ state, panelStyle, textSoft, tr }: any) {

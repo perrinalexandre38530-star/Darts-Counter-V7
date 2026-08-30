@@ -353,7 +353,7 @@ export default function BottomNav({
         { k: "esports_rooms", label: tr("Salons", "Rooms", "Salas"), icon: <Icon name="esports_rooms" /> },
         { k: "esports_matches", label: tr("Matchs", "Matches", "Partidos"), icon: <Icon name="esports_matches" /> },
         { k: "esports_tournaments", label: tr("Tournois", "Tournaments", "Torneos"), icon: <Icon name="esports_tournaments" /> },
-        { k: "esports_profile", label: tr("Profil", "Profile", "Perfil"), icon: <Icon name="esports_profile" /> },
+        { k: "esports_profile", label: tr("Communauté", "Community", "Comunidad"), icon: <Icon name="esports_profile" /> },
         { k: "settings", label: tr("Réglages", "Settings", "Ajustes"), icon: <Icon name="settings" /> },
       ]
     : sportLc === "running"

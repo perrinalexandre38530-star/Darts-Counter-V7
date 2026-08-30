@@ -70,6 +70,7 @@ export type EsportsMatch = {
   gameId: string;
   roomId?: string | null;
   tournamentId?: string | null;
+  tournamentMatchId?: string | null;
   bestOf: number;
   resultKind: EsportsResultKind;
   sideA: EsportsMatchSide;
@@ -79,6 +80,41 @@ export type EsportsMatch = {
   stats?: Record<string, number | string | null>;
   playedAt: number;
   createdAt: number;
+};
+
+export type EsportsTeam = {
+  id: string;
+  name: string;
+  tag: string;
+  captainName: string;
+  gameIds: string[];
+  memberNames: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type EsportsLfgPost = {
+  id: string;
+  gameId: string;
+  authorName: string;
+  platform: EsportsPlatform;
+  mode: string;
+  message: string;
+  slotsNeeded: number;
+  status: "open" | "closed";
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type EsportsRoomInvite = {
+  id: string;
+  roomId: string;
+  roomCode: string;
+  gameId: string;
+  targetUserId: string;
+  targetName: string;
+  status: "sent" | "failed";
+  sentAt: number;
 };
 
 export type EsportsTournamentFormat = "single_elimination" | "round_robin";
@@ -117,10 +153,13 @@ export type EsportsTournament = {
 };
 
 export type EsportsState = {
-  version: 1;
+  version: 2;
   gamer: GamerIdentity;
   selectedGameId: string;
   rooms: EsportsRoom[];
   matches: EsportsMatch[];
   tournaments: EsportsTournament[];
+  teams: EsportsTeam[];
+  lfgPosts: EsportsLfgPost[];
+  roomInvites: EsportsRoomInvite[];
 };
