@@ -131,50 +131,50 @@ import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
 
 // Pages
 import GameSelect from "./pages/GameSelect";
-import Home from "./pages/Home";
-import Games from "./pages/Games";
-import ModeNotReady from "./pages/ModeNotReady";
-import X01Setup from "./pages/X01Setup";
-import X01Play from "./pages/X01Play";
-import X01OnlineSetup from "./pages/X01OnlineSetup";
-import CricketPlay from "./pages/CricketPlay";
+const Home = React.lazy(() => import("./pages/Home"));
+const Games = React.lazy(() => import("./pages/Games"));
+const ModeNotReady = React.lazy(() => import("./pages/ModeNotReady"));
+const X01Setup = React.lazy(() => import("./pages/X01Setup"));
+const X01Play = React.lazy(() => import("./pages/X01Play"));
+const X01OnlineSetup = React.lazy(() => import("./pages/X01OnlineSetup"));
+const CricketPlay = React.lazy(() => import("./pages/CricketPlay"));
 
 // ✅ KILLER (CONFIG + PLAY)
-import KillerConfig from "./pages/KillerConfig";
-import KillerPlay from "./pages/KillerPlay";
-import KillerSummaryPage from "./pages/KillerSummaryPage";
+const KillerConfig = React.lazy(() => import("./pages/KillerConfig"));
+const KillerPlay = React.lazy(() => import("./pages/KillerPlay"));
+const KillerSummaryPage = React.lazy(() => import("./pages/KillerSummaryPage"));
 
 // ✅ NEW: LES 5 VIES (CONFIG + PLAY)
-import FiveLivesConfig from "./pages/FiveLivesConfig";
-import FiveLivesPlay from "./pages/FiveLivesPlay";
+const FiveLivesConfig = React.lazy(() => import("./pages/FiveLivesConfig"));
+const FiveLivesPlay = React.lazy(() => import("./pages/FiveLivesPlay"));
 
-import ShanghaiPlay from "./pages/ShanghaiPlay";
-import LobbyPick from "./pages/LobbyPick";
-import X01End from "./pages/X01End";
-import AvatarCreator from "./pages/AvatarCreator";
+const ShanghaiPlay = React.lazy(() => import("./pages/ShanghaiPlay"));
+const LobbyPick = React.lazy(() => import("./pages/LobbyPick"));
+const X01End = React.lazy(() => import("./pages/X01End"));
+const AvatarCreator = React.lazy(() => import("./pages/AvatarCreator"));
 
-import TrainingMenu from "./pages/TrainingMenu";
-import TrainingX01Config from "./pages/TrainingX01Config";
-import TrainingX01Play from "./pages/TrainingX01Play";
-import TrainingClock from "./pages/TrainingClock";
-import TrainingModePage from "./pages/TrainingModePage";
+const TrainingMenu = React.lazy(() => import("./pages/TrainingMenu"));
+const TrainingX01Config = React.lazy(() => import("./pages/TrainingX01Config"));
+const TrainingX01Play = React.lazy(() => import("./pages/TrainingX01Play"));
+const TrainingClock = React.lazy(() => import("./pages/TrainingClock"));
+const TrainingModePage = React.lazy(() => import("./pages/TrainingModePage"));
 import { useTrainingAutoSync } from "./training/sync/useTrainingAutoSync";
 import { useAutoBackup } from "./hooks/useAutoBackup";
 
-import ShanghaiConfigPage from "./pages/ShanghaiConfig";
-import ShanghaiEnd from "./pages/ShanghaiEnd";
-import DartsModeSummaryPage from "./pages/DartsModeSummaryPage";
+const ShanghaiConfigPage = React.lazy(() => import("./pages/ShanghaiConfig"));
+const ShanghaiEnd = React.lazy(() => import("./pages/ShanghaiEnd"));
+const DartsModeSummaryPage = React.lazy(() => import("./pages/DartsModeSummaryPage"));
 
 // ✅ NEW: WARFARE
-import WarfareConfigPage from "./pages/WarfareConfig";
-import WarfarePlay from "./pages/WarfarePlay";
+const WarfareConfigPage = React.lazy(() => import("./pages/WarfareConfig"));
+const WarfarePlay = React.lazy(() => import("./pages/WarfarePlay"));
 
 // ✅ NEW: Battle Royale (config)
-import BattleRoyaleConfigPage from "./pages/BattleRoyaleConfig";
-import BattleRoyalePlay from "./pages/BattleRoyalePlay";
+const BattleRoyaleConfigPage = React.lazy(() => import("./pages/BattleRoyaleConfig"));
+const BattleRoyalePlay = React.lazy(() => import("./pages/BattleRoyalePlay"));
 
 // ✅ NEW: Spectator
-import SpectatorPage from "./pages/SpectatorPage";
+const SpectatorPage = React.lazy(() => import("./pages/SpectatorPage"));
 
 // Historique
 import { History } from "./lib/history";
@@ -187,40 +187,39 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 // ✅ NEW: rebuild stats cache when history changes (FAST STATS HUB)
 
 // Stats pages
-import StatsDetail from "./pages/StatsDetail";
-import StatsOnline from "./pages/StatsOnline";
+const StatsDetail = React.lazy(() => import("./pages/StatsDetail"));
+const StatsOnline = React.lazy(() => import("./pages/StatsOnline"));
 
-import Profiles from "./pages/Profiles";
+const Profiles = React.lazy(() => import("./pages/Profiles"));
 const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
-import MessagesPage from "./pages/MessagesPage";
+const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
 const StorageVaultPage = React.lazy(() => import("./pages/StorageVaultPage"));
-// StatsOnline en import statique : évite les crashs de chunk dynamique après déploiement/cache
 
 const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
 const CricketMatchDetail = React.lazy(() => import("./pages/CricketMatchDetail"));
 const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
-import SyncCenter from "./pages/SyncCenter";
+const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
 const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
-import TournamentsList from "./pages/TournamentsList";
+const TournamentsList = React.lazy(() => import("./pages/TournamentsList"));
 
 // TOURNOI
-import TournamentCreate from "./pages/TournamentCreate";
-import TournamentComposeTeams from "./pages/TournamentComposeTeams";
-import TournamentView from "./pages/TournamentView";
-import TournamentMatchPlay from "./pages/TournamentMatchPlay";
-import TournamentRoadmap from "./pages/TournamentRoadmap";
-import TournamentMatchResult from "./pages/TournamentMatchResult";
+const TournamentCreate = React.lazy(() => import("./pages/TournamentCreate"));
+const TournamentComposeTeams = React.lazy(() => import("./pages/TournamentComposeTeams"));
+const TournamentView = React.lazy(() => import("./pages/TournamentView"));
+const TournamentMatchPlay = React.lazy(() => import("./pages/TournamentMatchPlay"));
+const TournamentRoadmap = React.lazy(() => import("./pages/TournamentRoadmap"));
+const TournamentMatchResult = React.lazy(() => import("./pages/TournamentMatchResult"));
 
 // X01 V3
-import X01ConfigV3 from "./pages/X01ConfigV3";
-import X01PlayV3 from "./pages/X01PlayV3";
-import CameraScoringSetup from "./pages/CameraScoringSetup";
-import CameraScoringCalibration from "./pages/CameraScoringCalibration";
-import X01DeviceCameraPage from "./pages/X01DeviceCameraPage";
+const X01ConfigV3 = React.lazy(() => import("./pages/X01ConfigV3"));
+const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
+const CameraScoringSetup = React.lazy(() => import("./pages/CameraScoringSetup"));
+const CameraScoringCalibration = React.lazy(() => import("./pages/CameraScoringCalibration"));
+const X01DeviceCameraPage = React.lazy(() => import("./pages/X01DeviceCameraPage"));
 
 // 🌟 Nouveau : SYNC / Partage stats locales
 
@@ -236,166 +235,166 @@ import { DevModeProvider } from "./contexts/DevModeContext";
 
 // ✅ NEW: Sport context + Pétanque pages
 import { SportProvider, useSport } from "./contexts/SportContext";
-import PetanquePlay from "./pages/petanque/PetanquePlay";
-import PetanqueHome from "./pages/petanque/PetanqueHome";
-import PetanqueTeams from "./pages/petanque/PetanqueTeams";
-import PetanqueTeamEdit from "./pages/petanque/PetanqueTeamEdit";
+const PetanquePlay = React.lazy(() => import("./pages/petanque/PetanquePlay"));
+const PetanqueHome = React.lazy(() => import("./pages/petanque/PetanqueHome"));
+const PetanqueTeams = React.lazy(() => import("./pages/petanque/PetanqueTeams"));
+const PetanqueTeamEdit = React.lazy(() => import("./pages/petanque/PetanqueTeamEdit"));
 
 // ✅ NEW: Pétanque STATS — copie visuelle StatsShell (identique UI)
-import PetanqueStatsShell from "./pages/petanque/PetanqueStatsShell";
-import PetanqueStatsPlayersPage from "./pages/petanque/PetanqueStatsPlayersPage";
-import PetanqueStatsTeamsPage from "./pages/petanque/PetanqueStatsTeamsPage";
-import PetanqueStatsLeaderboardsPage from "./pages/petanque/PetanqueStatsLeaderboardsPage";
-import PetanqueStatsMatchesPage from "./pages/petanque/PetanqueStatsMatchesPage";
-import PetanqueStatsHistoryPage from "./pages/petanque/PetanqueStatsHistoryPage";
+const PetanqueStatsShell = React.lazy(() => import("./pages/petanque/PetanqueStatsShell"));
+const PetanqueStatsPlayersPage = React.lazy(() => import("./pages/petanque/PetanqueStatsPlayersPage"));
+const PetanqueStatsTeamsPage = React.lazy(() => import("./pages/petanque/PetanqueStatsTeamsPage"));
+const PetanqueStatsLeaderboardsPage = React.lazy(() => import("./pages/petanque/PetanqueStatsLeaderboardsPage"));
+const PetanqueStatsMatchesPage = React.lazy(() => import("./pages/petanque/PetanqueStatsMatchesPage"));
+const PetanqueStatsHistoryPage = React.lazy(() => import("./pages/petanque/PetanqueStatsHistoryPage"));
 
-import PetanqueTournamentsHome from "./pages/petanque/PetanqueTournamentsHome";
-import PetanqueTournamentCreate from "./pages/petanque/PetanqueTournamentCreate";
-import PetanqueTournamentView from "./pages/petanque/PetanqueTournamentView";
-import PetanqueTournamentMatchScore from "./pages/petanque/PetanqueTournamentMatchScore";
+const PetanqueTournamentsHome = React.lazy(() => import("./pages/petanque/PetanqueTournamentsHome"));
+const PetanqueTournamentCreate = React.lazy(() => import("./pages/petanque/PetanqueTournamentCreate"));
+const PetanqueTournamentView = React.lazy(() => import("./pages/petanque/PetanqueTournamentView"));
+const PetanqueTournamentMatchScore = React.lazy(() => import("./pages/petanque/PetanqueTournamentMatchScore"));
 
 // ✅ NEW: Pétanque flow (menu/config/play)
-import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
-import PetanqueConfig from "./pages/petanque/PetanqueConfig";
+const PetanqueMenuGames = React.lazy(() => import("./pages/petanque/PetanqueMenuGames"));
+const PetanqueConfig = React.lazy(() => import("./pages/petanque/PetanqueConfig"));
 
 // ✅ NEW: Baby-Foot (LOCAL)
-import BabyFootHome from "./pages/babyfoot/BabyFootHome";
-import BabyFootMenuGames from "./pages/babyfoot/BabyFootMenuGames";
-import BabyFootConfig from "./pages/babyfoot/BabyFootConfig";
-import BabyFootPlay from "./pages/babyfoot/BabyFootPlay";
-import BabyFootEndPage from "./pages/babyfoot/BabyFootEndPage";
-import BabyFootTeams from "./pages/babyfoot/BabyFootTeams";
-import BabyFootTeamEdit from "./pages/babyfoot/BabyFootTeamEdit";
-import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
-import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
-import BabyFootStatsCenterPage from "./pages/babyfoot/BabyFootStatsCenterPage";
-import BabyFootStatsTeamsPage from "./pages/babyfoot/BabyFootStatsTeamsPage";
-import BabyFootLeagueHome from "./pages/babyfoot/BabyFootLeagueHome";
-import BabyFootCompetitionHome from "./pages/babyfoot/BabyFootCompetitionHome";
+const BabyFootHome = React.lazy(() => import("./pages/babyfoot/BabyFootHome"));
+const BabyFootMenuGames = React.lazy(() => import("./pages/babyfoot/BabyFootMenuGames"));
+const BabyFootConfig = React.lazy(() => import("./pages/babyfoot/BabyFootConfig"));
+const BabyFootPlay = React.lazy(() => import("./pages/babyfoot/BabyFootPlay"));
+const BabyFootEndPage = React.lazy(() => import("./pages/babyfoot/BabyFootEndPage"));
+const BabyFootTeams = React.lazy(() => import("./pages/babyfoot/BabyFootTeams"));
+const BabyFootTeamEdit = React.lazy(() => import("./pages/babyfoot/BabyFootTeamEdit"));
+const BabyFootStatsShell = React.lazy(() => import("./pages/babyfoot/BabyFootStatsShell"));
+const BabyFootStatsHistoryPage = React.lazy(() => import("./pages/babyfoot/BabyFootStatsHistoryPage"));
+const BabyFootStatsCenterPage = React.lazy(() => import("./pages/babyfoot/BabyFootStatsCenterPage"));
+const BabyFootStatsTeamsPage = React.lazy(() => import("./pages/babyfoot/BabyFootStatsTeamsPage"));
+const BabyFootLeagueHome = React.lazy(() => import("./pages/babyfoot/BabyFootLeagueHome"));
+const BabyFootCompetitionHome = React.lazy(() => import("./pages/babyfoot/BabyFootCompetitionHome"));
 
 // ✅ NEW: Ping-Pong (LOCAL)
-import PingPongHome from "./pages/pingpong/PingPongHome";
-import PingPongMenuGames from "./pages/pingpong/PingPongMenuGames";
-import PingPongConfig from "./pages/pingpong/PingPongConfig";
-import PingPongPlay from "./pages/pingpong/PingPongPlay";
-import PingPongTraining from "./pages/pingpong/PingPongTraining";
-import PingPongStatsShell from "./pages/pingpong/PingPongStatsShell";
-import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage";
-import PingPongMatchDetail from "./pages/pingpong/PingPongMatchDetail";
+const PingPongHome = React.lazy(() => import("./pages/pingpong/PingPongHome"));
+const PingPongMenuGames = React.lazy(() => import("./pages/pingpong/PingPongMenuGames"));
+const PingPongConfig = React.lazy(() => import("./pages/pingpong/PingPongConfig"));
+const PingPongPlay = React.lazy(() => import("./pages/pingpong/PingPongPlay"));
+const PingPongTraining = React.lazy(() => import("./pages/pingpong/PingPongTraining"));
+const PingPongStatsShell = React.lazy(() => import("./pages/pingpong/PingPongStatsShell"));
+const PingPongStatsHistoryPage = React.lazy(() => import("./pages/pingpong/PingPongStatsHistoryPage"));
+const PingPongMatchDetail = React.lazy(() => import("./pages/pingpong/PingPongMatchDetail"));
 
 // ✅ NEW: Mölkky (LOCAL — sans bots)
-import MolkkyHome from "./pages/molkky/MolkkyHome";
-import MolkkyMenuGames from "./pages/molkky/MolkkyMenuGames";
-import MolkkyConfig from "./pages/molkky/MolkkyConfig";
-import MolkkyPlay from "./pages/molkky/MolkkyPlay";
-import MolkkyStatsShell from "./pages/molkky/MolkkyStatsShell";
-import MolkkyStatsHistoryPage from "./pages/molkky/MolkkyStatsHistoryPage";
-import MolkkyStatsLeaderboardsPage from "./pages/molkky/MolkkyStatsLeaderboardsPage";
-import MolkkyStatsPlayersPage from "./pages/molkky/MolkkyStatsPlayersPage";
-import MolkkyStatsLocalsPage from "./pages/molkky/MolkkyStatsLocalsPage";
+const MolkkyHome = React.lazy(() => import("./pages/molkky/MolkkyHome"));
+const MolkkyMenuGames = React.lazy(() => import("./pages/molkky/MolkkyMenuGames"));
+const MolkkyConfig = React.lazy(() => import("./pages/molkky/MolkkyConfig"));
+const MolkkyPlay = React.lazy(() => import("./pages/molkky/MolkkyPlay"));
+const MolkkyStatsShell = React.lazy(() => import("./pages/molkky/MolkkyStatsShell"));
+const MolkkyStatsHistoryPage = React.lazy(() => import("./pages/molkky/MolkkyStatsHistoryPage"));
+const MolkkyStatsLeaderboardsPage = React.lazy(() => import("./pages/molkky/MolkkyStatsLeaderboardsPage"));
+const MolkkyStatsPlayersPage = React.lazy(() => import("./pages/molkky/MolkkyStatsPlayersPage"));
+const MolkkyStatsLocalsPage = React.lazy(() => import("./pages/molkky/MolkkyStatsLocalsPage"));
 
 // ✅ NEW: DICE GAME flow (LOCAL)
-import DiceHome from "./pages/dice/DiceHome";
-import DiceMenuGames from "./pages/dice/DiceMenuGames";
-import DiceConfig from "./pages/dice/DiceConfig";
-import DicePlay from "./pages/dice/DicePlay";
-import DiceYamsConfig from "./pages/dice/DiceYamsConfig";
-import DiceYamsPlay from "./pages/dice/DiceYamsPlay";
-import DiceFarkleConfig from "./pages/dice/DiceFarkleConfig";
-import Dice421Config from "./pages/dice/Dice421Config";
-import DicePokerConfig from "./pages/dice/DicePokerConfig";
-import DiceSoonPlay from "./pages/dice/DiceSoonPlay";
-import FootHome from "./pages/foot/FootHome";
-import FootMenuGames from "./pages/foot/FootMenuGames";
-import FootConfig from "./pages/foot/FootConfig";
-import FootPlay from "./pages/foot/FootPlay";
+const DiceHome = React.lazy(() => import("./pages/dice/DiceHome"));
+const DiceMenuGames = React.lazy(() => import("./pages/dice/DiceMenuGames"));
+const DiceConfig = React.lazy(() => import("./pages/dice/DiceConfig"));
+const DicePlay = React.lazy(() => import("./pages/dice/DicePlay"));
+const DiceYamsConfig = React.lazy(() => import("./pages/dice/DiceYamsConfig"));
+const DiceYamsPlay = React.lazy(() => import("./pages/dice/DiceYamsPlay"));
+const DiceFarkleConfig = React.lazy(() => import("./pages/dice/DiceFarkleConfig"));
+const Dice421Config = React.lazy(() => import("./pages/dice/Dice421Config"));
+const DicePokerConfig = React.lazy(() => import("./pages/dice/DicePokerConfig"));
+const DiceSoonPlay = React.lazy(() => import("./pages/dice/DiceSoonPlay"));
+const FootHome = React.lazy(() => import("./pages/foot/FootHome"));
+const FootMenuGames = React.lazy(() => import("./pages/foot/FootMenuGames"));
+const FootConfig = React.lazy(() => import("./pages/foot/FootConfig"));
+const FootPlay = React.lazy(() => import("./pages/foot/FootPlay"));
 
 // ✅ RUNNING (WEB/PWA BETA — volontairement hors whitelist Android Store V1)
-import RunningHome from "./pages/running/RunningHome";
-import RunningModule from "./pages/running/RunningModule";
-import RunningPlanCenter from "./pages/running/RunningPlanCenter";
-import RunningStatsPage from "./pages/running/RunningStatsPage";
+const RunningHome = React.lazy(() => import("./pages/running/RunningHome"));
+const RunningModule = React.lazy(() => import("./pages/running/RunningModule"));
+const RunningPlanCenter = React.lazy(() => import("./pages/running/RunningPlanCenter"));
+const RunningStatsPage = React.lazy(() => import("./pages/running/RunningStatsPage"));
 
 // ✅ FIT PERF — musculation / salle / performance
-import FitPerfHome from "./pages/fit/FitPerfHome";
-import EsportsHub from "./pages/esports/EsportsHub";
+const FitPerfHome = React.lazy(() => import("./pages/fit/FitPerfHome"));
+const EsportsHub = React.lazy(() => import("./pages/esports/EsportsHub"));
 import { isEsportsEnabledForCurrentRuntime } from "./config/androidStoreV1";
-import FitPerfModule from "./pages/fit/FitPerfModule";
-import FitPerfPlan from "./pages/fit/FitPerfPlan";
-import FitPerfStatsPage from "./pages/fit/FitPerfStatsPage";
+const FitPerfModule = React.lazy(() => import("./pages/fit/FitPerfModule"));
+const FitPerfPlan = React.lazy(() => import("./pages/fit/FitPerfPlan"));
+const FitPerfStatsPage = React.lazy(() => import("./pages/fit/FitPerfStatsPage"));
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
-import DartsModeConfig from "./pages/modes/DartsModeConfig";
-import DartsModePlay from "./pages/modes/DartsModePlay";
+const DartsModeConfig = React.lazy(() => import("./pages/modes/DartsModeConfig"));
+const DartsModePlay = React.lazy(() => import("./pages/modes/DartsModePlay"));
 
 // ✅ NEW: Darts modes (Config + Play) — MVP pages (câblage dédié)
-import HalveItConfig from "./pages/HalveItConfig";
-import HalveItPlay from "./pages/HalveItPlay";
-import CountUpConfig from "./pages/CountUpConfig";
-import DefiConfig from "./pages/DefiConfig";
-import DefiPlay from "./pages/DefiPlay";
-import CountUpPlay from "./pages/CountUpPlay";
-import PrisonerConfig from "./pages/PrisonerConfig";
-import PrisonerPlay from "./pages/PrisonerPlay";
-import SuperBullConfig from "./pages/SuperBullConfig";
-import SuperBullPlay from "./pages/SuperBullPlay";
-import ShooterConfig from "./pages/ShooterConfig";
-import ShooterPlay from "./pages/ShooterPlay";
-import DartsRacerConfig from "./pages/DartsRacerConfig";
-import DartsRacerPlay from "./pages/DartsRacerPlay";
-import TicTacToeConfig from "./pages/TicTacToeConfig";
-import TicTacToePlay from "./pages/TicTacToePlay";
-import KnockoutConfig from "./pages/KnockoutConfig";
-import KnockoutPlay from "./pages/KnockoutPlay";
-import Bobs27Config from "./pages/Bobs27Config";
-import Bobs27Play from "./pages/Bobs27Play";
-import BowlingConfig from "./pages/BowlingConfig";
-import BowlingPlay from "./pages/BowlingPlay";
-import ScramConfig from "./pages/ScramConfig";
-import ScramPlay from "./pages/ScramPlay";
-import GolfConfig from "./pages/GolfConfig";
-import GolfPlay from "./pages/GolfPlay";
-import BaseballConfig from "./pages/BaseballConfig";
-import BaseballPlay from "./pages/BaseballPlay";
-import AttrapeMoiConfig from "./pages/AttrapeMoiConfig";
-import AttrapeMoiPlay from "./pages/AttrapeMoiPlay";
-import PresidentConfig from "./pages/PresidentConfig";
-import PresidentPlay from "./pages/PresidentPlay";
-import Game170Config from "./pages/Game170Config";
-import Game170Play from "./pages/Game170Play";
-import FootballConfig from "./pages/FootballConfig";
-import FootballPlay from "./pages/FootballPlay";
-import BatardConfig from "./pages/batard/BatardConfig";
-import FunGagesConfig from "./pages/FunGagesConfig";
-import FunGagesPlay from "./pages/FunGagesPlay";
-import BatardPlay from "./pages/batard/BatardPlay";
-import CapitalConfig from "./pages/CapitalConfig";
-import CapitalPlay from "./pages/CapitalPlay";
-import LoterieConfig from "./pages/LoterieConfig";
-import LoteriePlay from "./pages/LoteriePlay";
-import HappyMilleConfig from "./pages/HappyMilleConfig";
-import HappyMillePlay from "./pages/HappyMillePlay";
-import RugbyConfig from "./pages/RugbyConfig";
-import RugbyPlay from "./pages/RugbyPlay";
-import DepartementsConfig from "./pages/DepartementsConfig";
-import DepartementsPlay from "./pages/DepartementsPlay";
-import DartsFirefighterConfig from "./pages/DartsFirefighterConfig";
-import DartsFirefighterPlay from "./pages/DartsFirefighterPlay";
-import DartsPokerConfig from "./pages/DartsPokerConfig";
-import DartsPokerPlay from "./pages/DartsPokerPlay";
-import CargoConfig from "./pages/CargoConfig";
-import CargoPlay from "./pages/CargoPlay";
-import OceanControlConfig from "./pages/OceanControlConfig";
-import OceanControlPlay from "./pages/OceanControlPlay";
-import EnculetteConfig from "./pages/EnculetteConfig";
-import EnculettePlay from "./pages/EnculettePlay";
-import CastJoinPage from "./pages/cast/CastJoinPage";
-import CastHostPage from "./pages/cast/CastHostPage";
-import CastScreen from "./pages/cast/CastScreen";
-import ViewerHost from "./pages/viewer/ViewerHost";
-import ViewerJoin from "./pages/viewer/ViewerJoin";
-import ViewerDisplay from "./pages/viewer/ViewerDisplay";
+const HalveItConfig = React.lazy(() => import("./pages/HalveItConfig"));
+const HalveItPlay = React.lazy(() => import("./pages/HalveItPlay"));
+const CountUpConfig = React.lazy(() => import("./pages/CountUpConfig"));
+const DefiConfig = React.lazy(() => import("./pages/DefiConfig"));
+const DefiPlay = React.lazy(() => import("./pages/DefiPlay"));
+const CountUpPlay = React.lazy(() => import("./pages/CountUpPlay"));
+const PrisonerConfig = React.lazy(() => import("./pages/PrisonerConfig"));
+const PrisonerPlay = React.lazy(() => import("./pages/PrisonerPlay"));
+const SuperBullConfig = React.lazy(() => import("./pages/SuperBullConfig"));
+const SuperBullPlay = React.lazy(() => import("./pages/SuperBullPlay"));
+const ShooterConfig = React.lazy(() => import("./pages/ShooterConfig"));
+const ShooterPlay = React.lazy(() => import("./pages/ShooterPlay"));
+const DartsRacerConfig = React.lazy(() => import("./pages/DartsRacerConfig"));
+const DartsRacerPlay = React.lazy(() => import("./pages/DartsRacerPlay"));
+const TicTacToeConfig = React.lazy(() => import("./pages/TicTacToeConfig"));
+const TicTacToePlay = React.lazy(() => import("./pages/TicTacToePlay"));
+const KnockoutConfig = React.lazy(() => import("./pages/KnockoutConfig"));
+const KnockoutPlay = React.lazy(() => import("./pages/KnockoutPlay"));
+const Bobs27Config = React.lazy(() => import("./pages/Bobs27Config"));
+const Bobs27Play = React.lazy(() => import("./pages/Bobs27Play"));
+const BowlingConfig = React.lazy(() => import("./pages/BowlingConfig"));
+const BowlingPlay = React.lazy(() => import("./pages/BowlingPlay"));
+const ScramConfig = React.lazy(() => import("./pages/ScramConfig"));
+const ScramPlay = React.lazy(() => import("./pages/ScramPlay"));
+const GolfConfig = React.lazy(() => import("./pages/GolfConfig"));
+const GolfPlay = React.lazy(() => import("./pages/GolfPlay"));
+const BaseballConfig = React.lazy(() => import("./pages/BaseballConfig"));
+const BaseballPlay = React.lazy(() => import("./pages/BaseballPlay"));
+const AttrapeMoiConfig = React.lazy(() => import("./pages/AttrapeMoiConfig"));
+const AttrapeMoiPlay = React.lazy(() => import("./pages/AttrapeMoiPlay"));
+const PresidentConfig = React.lazy(() => import("./pages/PresidentConfig"));
+const PresidentPlay = React.lazy(() => import("./pages/PresidentPlay"));
+const Game170Config = React.lazy(() => import("./pages/Game170Config"));
+const Game170Play = React.lazy(() => import("./pages/Game170Play"));
+const FootballConfig = React.lazy(() => import("./pages/FootballConfig"));
+const FootballPlay = React.lazy(() => import("./pages/FootballPlay"));
+const BatardConfig = React.lazy(() => import("./pages/batard/BatardConfig"));
+const FunGagesConfig = React.lazy(() => import("./pages/FunGagesConfig"));
+const FunGagesPlay = React.lazy(() => import("./pages/FunGagesPlay"));
+const BatardPlay = React.lazy(() => import("./pages/batard/BatardPlay"));
+const CapitalConfig = React.lazy(() => import("./pages/CapitalConfig"));
+const CapitalPlay = React.lazy(() => import("./pages/CapitalPlay"));
+const LoterieConfig = React.lazy(() => import("./pages/LoterieConfig"));
+const LoteriePlay = React.lazy(() => import("./pages/LoteriePlay"));
+const HappyMilleConfig = React.lazy(() => import("./pages/HappyMilleConfig"));
+const HappyMillePlay = React.lazy(() => import("./pages/HappyMillePlay"));
+const RugbyConfig = React.lazy(() => import("./pages/RugbyConfig"));
+const RugbyPlay = React.lazy(() => import("./pages/RugbyPlay"));
+const DepartementsConfig = React.lazy(() => import("./pages/DepartementsConfig"));
+const DepartementsPlay = React.lazy(() => import("./pages/DepartementsPlay"));
+const DartsFirefighterConfig = React.lazy(() => import("./pages/DartsFirefighterConfig"));
+const DartsFirefighterPlay = React.lazy(() => import("./pages/DartsFirefighterPlay"));
+const DartsPokerConfig = React.lazy(() => import("./pages/DartsPokerConfig"));
+const DartsPokerPlay = React.lazy(() => import("./pages/DartsPokerPlay"));
+const CargoConfig = React.lazy(() => import("./pages/CargoConfig"));
+const CargoPlay = React.lazy(() => import("./pages/CargoPlay"));
+const OceanControlConfig = React.lazy(() => import("./pages/OceanControlConfig"));
+const OceanControlPlay = React.lazy(() => import("./pages/OceanControlPlay"));
+const EnculetteConfig = React.lazy(() => import("./pages/EnculetteConfig"));
+const EnculettePlay = React.lazy(() => import("./pages/EnculettePlay"));
+const CastJoinPage = React.lazy(() => import("./pages/cast/CastJoinPage"));
+const CastHostPage = React.lazy(() => import("./pages/cast/CastHostPage"));
+const CastScreen = React.lazy(() => import("./pages/cast/CastScreen"));
+const ViewerHost = React.lazy(() => import("./pages/viewer/ViewerHost"));
+const ViewerJoin = React.lazy(() => import("./pages/viewer/ViewerJoin"));
+const ViewerDisplay = React.lazy(() => import("./pages/viewer/ViewerDisplay"));
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
 import { runtimeDiag, diagMarkStart, diagMarkEnd } from "./lib/runtimeDiag";
 import { installProfilesDiag, profilesDiagIncrement, profilesDiagLog, diffShallow } from "./lib/profilesDiag";
@@ -2576,7 +2575,7 @@ useEffect(() => {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [loading, showSplash, tab]);
+  }, [loading, showSplash]);
 
   /* Restore online session automatique désactivé en mode NAS. */
 
@@ -2740,12 +2739,29 @@ useEffect(() => {
 
     // PERF V68: publish the actual navigation state first. Diagnostics are
     // bookkeeping and must never sit in front of the visible route change.
+    const navPerfStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       (window as any).__mscActiveTab = String(next || "");
       document.documentElement.dataset.mscGameplay = isGameplayRouteName(next) ? "1" : "0";
+      document.documentElement.dataset.mscNavigating = "1";
     } catch {}
     setRouteParams(nextParams ?? null);
     setTab(next);
+
+    // Deux frames = nouvel écran engagé dans le pipeline de rendu. On libère alors
+    // les effets visuels temporairement mis en pause et on garde une mesure de
+    // diagnostic uniquement quand le mode diag est activé.
+    try {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          try { delete document.documentElement.dataset.mscNavigating; } catch {}
+          const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - navPerfStartedAt;
+          if (durationMs >= 80) runtimeDiag("nav:first-paint:slow", { fromTab: String(tab || ""), toTab: String(next || ""), durationMs: Math.round(durationMs * 10) / 10 });
+        });
+      });
+    } catch {
+      try { delete document.documentElement.dataset.mscNavigating; } catch {}
+    }
 
     // Le suivi diagnostic ne doit jamais être dans le même task que le clic de
     // navigation : React peut alors peindre le nouvel écran avant le bookkeeping.
@@ -3347,6 +3363,8 @@ useEffect(() => {
     });
   }
 
+  const statsWarmStartedProfileRef = React.useRef<string>("");
+
   // ============================================================
   // ✅ STATS MOBILE ZERO-FREEZE
   // Aucun agrégateur lourd n'est lancé au démarrage. Après une partie, le
@@ -3388,6 +3406,11 @@ useEffect(() => {
           ? (store as any).profiles.find((p: any) => String(p?.id || "") === activeId) || (store as any).profiles[0] || null
           : null;
         const activeName = String(activeProfile?.name || activeProfile?.displayName || "").trim();
+        // PERF NAV: le préchauffage complet est une optimisation, pas une tâche de
+        // navigation. Une fois lancé pour un profil, on ne le relance pas à chaque
+        // changement d'onglet. Un vrai update d'historique utilise force=true.
+        if (!force && statsWarmStartedProfileRef.current === activeId) return;
+        if (!force) statsWarmStartedProfileRef.current = activeId;
         void (async () => {
           try {
             const dartSetsMod: any = await import("./components/StatsDartSetsSection");
@@ -3399,9 +3422,9 @@ useEffect(() => {
           // X01 Multi possède son propre snapshot dérivé de History. On le prépare
           // après Mes fléchettes, jamais en concurrence, afin que l'ouverture de
           // l'onglet ne relise plus tous les payloads match par match.
-          if (cancelled) return;
+          if (cancelled || isGameplayRouteName(currentTabRef.current)) return;
           await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 220 : 80));
-          if (cancelled) return;
+          if (cancelled || isGameplayRouteName(currentTabRef.current)) return;
           try {
             const x01Mod: any = await import("./stats/X01MultiStatsTabFull");
             await x01Mod?.prewarmX01MultiSessions?.(activeId);
@@ -3409,7 +3432,7 @@ useEffect(() => {
             try { console.warn("[stats] x01 multi idle prewarm ignored:", err); } catch {}
           }
 
-          if (cancelled) return;
+          if (cancelled || isGameplayRouteName(currentTabRef.current)) return;
           await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 180 : 70));
           try {
             const compareMod: any = await import("./pages/StatsX01Compare");
@@ -3418,7 +3441,7 @@ useEffect(() => {
             try { console.warn("[stats] x01 compare prewarm ignored:", err); } catch {}
           }
 
-          if (cancelled) return;
+          if (cancelled || isGameplayRouteName(currentTabRef.current)) return;
           await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 220 : 80));
           try {
             const bridgeMod: any = await import("./lib/statsBridge");
@@ -3463,7 +3486,7 @@ useEffect(() => {
       try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
       window.removeEventListener("dc-history-updated", onHistoryUpdated);
     };
-  }, [loading, tab, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
+  }, [loading, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
 
   React.useEffect(() => {
     const gameplayActive = isGameplayRouteName(tab);
@@ -3482,6 +3505,11 @@ useEffect(() => {
       } catch { return false; }
     })();
     const preloadLight = () => {
+      if (isGameplayRouteName(currentTabRef.current)) return;
+      // Pages de navigation principales : chargées seulement quand le navigateur
+      // est réellement libre, afin que le premier clic suivant soit instantané.
+      preloadPage(() => import("./pages/Home"));
+      preloadPage(() => import("./pages/Games"));
       preloadPage(() => import("./pages/Profiles"));
       preloadPage(() => import("./pages/ProfilesBots"));
       preloadPage(() => import("./pages/Settings"));

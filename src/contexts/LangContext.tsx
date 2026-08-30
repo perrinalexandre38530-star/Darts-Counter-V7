@@ -185,6 +185,11 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   type LiteralState = { source: string; applied: string; resolved?: string; resolvedLang?: string };
   const literalTextStateRef = React.useRef<WeakMap<Text, LiteralState>>(new WeakMap());
   const literalAttrStateRef = React.useRef<WeakMap<Element, Map<string, LiteralState>>>(new WeakMap());
+  // PERF NAV: en français, les littéraux du DOM sont déjà dans leur langue source.
+  // On ne doit donc pas observer/scanner chaque montage de page. Ce flag permet
+  // de distinguer le premier boot FR (zéro scan nécessaire) d'un retour vers FR
+  // après une autre langue (un scan unique restaure alors les sources mémorisées).
+  const literalSafetyHasRunRef = React.useRef(false);
 
   // --- Safety-net global pour les libellés UI historiques codés en dur ---
   // Les dictionnaires restent la source normale. Ce garde-fou ne touche que le DOM
@@ -334,18 +339,76 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 
     const body = document.body;
     if (!body) return;
+
+    // PERF NAV CRITICAL:
+    // - Premier boot FR : aucun texte n'a pu être traduit auparavant, donc scanner
+    //   tout le DOM est du travail perdu.
+    // - Retour vers FR depuis une autre langue : un scan unique suffit à restaurer
+    //   les sources mémorisées. Il n'y a ensuite rien à traduire sur les nouveaux
+    //   écrans FR, donc surtout PAS de MutationObserver global.
+    if (lang === "fr" && !literalSafetyHasRunRef.current) {
+      literalSafetyHasRunRef.current = true;
+      return () => { cancelled = true; };
+    }
+
     scan(body);
+    literalSafetyHasRunRef.current = true;
+
+    if (lang === "fr") {
+      return () => { cancelled = true; };
+    }
+
+    // Les anciens callbacks scannaient immédiatement chaque addedNode. React peut
+    // créer des centaines de mutations lors d'un changement de page, avec des
+    // sous-arbres imbriqués => rescans répétés quasi O(n²). On regroupe désormais
+    // toutes les mutations d'une frame, puis on ne garde que les racines utiles.
+    let frameId: number | null = null;
+    const pendingRoots = new Set<Node>();
+    const pendingAttrs = new Map<Element, Set<string>>();
+
+    const queueRoot = (node: Node) => {
+      for (const root of pendingRoots) {
+        try {
+          if (root === node || root.contains(node)) return;
+          if (node.contains(root)) pendingRoots.delete(root);
+        } catch {}
+      }
+      pendingRoots.add(node);
+    };
+
+    const flushMutations = () => {
+      frameId = null;
+      if (cancelled) return;
+      const roots = Array.from(pendingRoots);
+      pendingRoots.clear();
+      const attrs = Array.from(pendingAttrs.entries());
+      pendingAttrs.clear();
+
+      for (const root of roots) scan(root);
+      for (const [el, names] of attrs) {
+        for (const attr of names) applyAttr(el, attr);
+      }
+    };
+
+    const scheduleFlush = () => {
+      if (frameId != null || cancelled) return;
+      frameId = window.requestAnimationFrame(flushMutations);
+    };
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === "characterData") {
-          scan(mutation.target);
+          queueRoot(mutation.target);
         } else if (mutation.type === "childList") {
-          mutation.addedNodes.forEach(scan);
+          mutation.addedNodes.forEach(queueRoot);
         } else if (mutation.type === "attributes" && mutation.attributeName) {
-          applyAttr(mutation.target as Element, mutation.attributeName);
+          const el = mutation.target as Element;
+          let names = pendingAttrs.get(el);
+          if (!names) { names = new Set<string>(); pendingAttrs.set(el, names); }
+          names.add(mutation.attributeName);
         }
       }
+      scheduleFlush();
     });
     observer.observe(body, {
       subtree: true,
@@ -358,6 +421,9 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       observer.disconnect();
+      if (frameId != null) window.cancelAnimationFrame(frameId);
+      pendingRoots.clear();
+      pendingAttrs.clear();
     };
   }, [lang]);
 

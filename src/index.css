@@ -1377,3 +1377,26 @@ html[data-dc-theme-page-scope="off"] body{
 }
 
 @keyframes socialAuthSpin { to { transform: rotate(360deg); } }
+
+
+/* ============================================================
+   PERF NAVIGATION GLOBAL
+   - pendant les 2 frames d'un changement de route, les ambiances de thème
+     continuent d'être visibles mais leurs animations GPU sont temporairement
+     figées afin de laisser le budget de rendu au nouvel écran ;
+   - background-attachment:fixed provoque des repaints coûteux dans Android
+     WebView / Chrome mobile : on conserve l'effet desktop, pas sur mobile.
+   ============================================================ */
+:root[data-msc-navigating="1"] body::after,
+:root[data-msc-navigating="1"] .dc-theme-preview-drift,
+:root[data-msc-navigating="1"] .dc-theme-preview-pulse,
+:root[data-msc-navigating="1"] .dc-theme-preview-scan,
+:root[data-msc-navigating="1"] .dc-theme-preview-sheen {
+  animation-play-state: paused !important;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .dc-themed-route--full {
+    background-attachment: scroll !important;
+  }
+}

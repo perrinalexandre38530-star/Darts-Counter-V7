@@ -1,10 +1,7 @@
 import React from "react";
 import { useLang } from "../contexts/LangContext";
 import { useAudio } from "../contexts/AudioContext";
-import { buildAwenaReply } from "./AwenaCore";
 import { awenaTranslation } from "./AwenaTranslation";
-import { captureAwenaScreenSnapshot } from "./AwenaLiveScreen";
-import { findAwenaMode } from "./AwenaKnowledge";
 import { AWENA_CONTEXT_EVENT } from "./AwenaContextBridge";
 import { awenaVoice } from "./AwenaVoice";
 import { loadAwenaSettings, saveAwenaSettings } from "./AwenaSettings";
@@ -14,7 +11,6 @@ import { parseAwenaMusicIntent, awenaMusicCatalogText, awenaMusicTrackCount } fr
 import { getAudioPreferences } from "../lib/audioPreferences";
 import { requestNavigationMusicTrackFromAwena } from "../lib/navigationMusicControl";
 import { isGameplayRouteName } from "../lib/gameplayRoutes";
-import { buildAwenaRecordsReply, warmAwenaRecordsCache } from "./AwenaRecords";
 import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaSpeechCue, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
 
 type AwenaContextValue = {
@@ -133,27 +129,21 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // Pré-indexer l'historique quand le navigateur est au repos. Ainsi, la
-  // première question Records ne paie généralement pas le coût de lecture et
-  // de normalisation au moment où l'utilisateur attend sa réponse.
+  // PERF NAV: le moteur Awena (connaissances + historique Records) est lourd et
+  // n'a aucune raison de parser/indexer l'historique pendant la navigation normale.
+  // On le précharge uniquement lorsque l'utilisateur ouvre réellement le panneau.
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const w = window as any;
-    let idleId: any = null;
-    let timerId: number | null = null;
-    if (typeof w.requestIdleCallback === "function") {
-      idleId = w.requestIdleCallback(() => warmAwenaRecordsCache(), { timeout: 1400 });
-    } else {
-      timerId = window.setTimeout(() => warmAwenaRecordsCache(), 700);
-    }
-    return () => {
-      if (idleId != null && typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(idleId);
-      if (timerId != null) window.clearTimeout(timerId);
-    };
-  }, []);
-
-  React.useEffect(() => {
-    if (panelOpen) warmAwenaRecordsCache();
+    if (!panelOpen) return;
+    let cancelled = false;
+    void Promise.all([
+      import("./AwenaCore"),
+      import("./AwenaKnowledge"),
+      import("./AwenaLiveScreen"),
+      import("./AwenaRecords"),
+    ]).then(([, , , records]) => {
+      if (!cancelled) return records.warmAwenaRecordsCache();
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
   }, [panelOpen]);
 
   // Awena follows the exact same language as the application. We prepare both
@@ -241,8 +231,17 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
       ? clean
       : await awenaTranslation.questionToFrench(clean, String(lang || "fr"));
 
-    const explicitMode = findAwenaMode(canonicalQuestion, runtime.mode || runtime.route);
-    const screenSnapshot = captureAwenaScreenSnapshot();
+    // Chargement à la demande : le coût du moteur Awena n'est plus payé par tous
+    // les utilisateurs ni à chaque démarrage/navigation. Les imports sont mis en
+    // cache par le runtime après la première ouverture.
+    const [coreMod, knowledgeMod, liveScreenMod, recordsMod] = await Promise.all([
+      import("./AwenaCore"),
+      import("./AwenaKnowledge"),
+      import("./AwenaLiveScreen"),
+      import("./AwenaRecords"),
+    ]);
+    const explicitMode = knowledgeMod.findAwenaMode(canonicalQuestion, runtime.mode || runtime.route);
+    const screenSnapshot = liveScreenMod.captureAwenaScreenSnapshot();
     const baseContext: AwenaRuntimeContext = {
       ...runtime,
       extra: {
@@ -259,7 +258,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     const canonicalMusicIntent = parseAwenaMusicIntent(canonicalQuestion);
     const musicIntent = rawMusicIntent.kind !== "none" ? rawMusicIntent : canonicalMusicIntent;
 
-    let canonicalReply = null as ReturnType<typeof buildAwenaReply> | null;
+    let canonicalReply: any = null;
     if (musicIntent.kind === "list") {
       canonicalReply = {
         text: `## MUSIQUES DISPONIBLES\nJ'ai **${awenaMusicTrackCount()} titres intégrés** dans MULTISPORTS SCORING. Je peux lancer directement n'importe lequel :\n\n- ${awenaMusicCatalogText().replace(/, /g, "\n- ")}\n\nDis simplement : **« Awena, lance Stadium Pulse »** ou remplace le titre par celui que tu veux.`,
@@ -302,12 +301,12 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     // statistique apparaît accidentellement dans la phrase traduite.
     if (!canonicalReply && options?.modeTopic !== "rules" && options?.modeTopic !== "config") {
       try {
-        recordsReply = await buildAwenaRecordsReply(canonicalQuestion, contextForReply);
+        recordsReply = await recordsMod.buildAwenaRecordsReply(canonicalQuestion, contextForReply);
       } catch (error) {
         console.warn("[AwenaRecords] réponse records interrompue, fallback conversationnel", error);
       }
     }
-    canonicalReply = canonicalReply ?? recordsReply ?? buildAwenaReply(canonicalQuestion, contextForReply);
+    canonicalReply = canonicalReply ?? recordsReply ?? coreMod.buildAwenaReply(canonicalQuestion, contextForReply);
     const reply = await awenaTranslation.replyFromFrench(canonicalReply, String(lang || "fr"));
 
     if (canonicalReply.modeId || canonicalReply.knowledgeTopic) {

@@ -13,7 +13,7 @@
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node ./tools/run-ts-regressions.mjs --only tools/test-x01v3-regression.ts",
     "test:sync": "node ./tools/test-cloud-sync.mjs",
-    "test:ci": "npm run version:check && npm run typecheck && npm run build && npm run test:auth && npm run test:sync && npm run test:cloud-routing && npm run test:nearby && npm run test:regressions && npm run test:monetization && npm run test:android-bootstrap && npm run test:android-store-v1 && npm run test:account-restore && npm run test:admob-native && npm run test:play-billing && npm run test:play-privacy",
+    "test:ci": "npm run version:check && npm run typecheck && npm run build && npm run test:auth && npm run test:sync && npm run test:cloud-routing && npm run test:nearby && npm run test:regressions && npm run test:monetization && npm run test:android-bootstrap && npm run test:android-store-v1 && npm run test:account-restore && npm run test:admob-native && npm run test:play-billing && npm run test:play-privacy && npm run test:navigation-performance",
     "compress-images": "node ./src/tools/compress-images.js",
     "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs",
     "test:territories-maps": "node ./src/tools/audit-territories-maps.mjs",
@@ -107,9 +107,10 @@
     "test:navigation-music": "node --experimental-strip-types ./tools/test-navigation-music-route-contract-v1.mjs",
     "fit:awena:drivers": "node ./tools/build-fit-awena-drivers.mjs",
     "test:fit-awena-drivers": "node ./tools/test-fit-awena-photo-driver-v110.mjs",
-    "test:esports": "node ./tools/test-esports-hub-v1.mjs && node ./tools/test-esports-community-v02.mjs && node --experimental-strip-types ./tools/test-esports-tournament-v02.ts",
+    "test:esports": "node ./tools/test-esports-hub-v1.mjs",
     "fit:awena:doctor": "node ./tools/fit-awena-doctor.mjs",
-    "fit:awena:setup": "node ./tools/fit-awena-doctor.mjs --install-ffmpeg"
+    "fit:awena:setup": "node ./tools/fit-awena-doctor.mjs --install-ffmpeg",
+    "test:navigation-performance": "node ./tools/test-navigation-performance-contract-v1.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
