@@ -47,6 +47,7 @@ export default function OutdoorRouteDetailPage(props: Props) {
   const { route, sport, lang, accent, textSoft } = props;
   const [tab, setTab] = React.useState<DetailTab>(props.initialTab || "overview");
   const [mapFullscreen, setMapFullscreen] = React.useState(false);
+  const [activeProfilePoint, setActiveProfilePoint] = React.useState<number | null>(null);
   const [extras, setExtras] = React.useState<OutdoorRouteExtras>(() => loadOutdoorRouteExtras(route.id));
   const terrain = React.useMemo(() => analyzeRunningTerrain(route.route), [route.route]);
   const advice = React.useMemo(() => terrainAdvice(terrain, lang), [lang, terrain]);
@@ -57,9 +58,9 @@ export default function OutdoorRouteDetailPage(props: Props) {
     return Math.round(rows.reduce((sum, row) => sum + Number(row.avgPaceSecPerKm || 0), 0) / rows.length);
   }, [props.localAttempts]);
 
-  React.useEffect(() => { setExtras(loadOutdoorRouteExtras(route.id)); setTab(props.initialTab || "overview"); setMapFullscreen(false); }, [props.initialTab, route.id]);
+  React.useEffect(() => { setExtras(loadOutdoorRouteExtras(route.id)); setTab(props.initialTab || "overview"); setMapFullscreen(false); setActiveProfilePoint(null); }, [props.initialTab, route.id]);
 
-  if (mapFullscreen) return <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#070a0f" }}><OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} fullscreen onCloseFullscreen={() => setMapFullscreen(false)}/></div>;
+  if (mapFullscreen) return <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#070a0f" }}><OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} fullscreen activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint} onCloseFullscreen={() => setMapFullscreen(false)}/></div>;
 
   const tabs: Array<[DetailTab, string, string]> = [
     ["overview", "▤", pickText(lang, "APERÇU", "OVERVIEW", "RESUMEN")],
@@ -78,7 +79,7 @@ export default function OutdoorRouteDetailPage(props: Props) {
     </header>
 
     <div style={{ display: "grid", gap: 10 }}>
-      <OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} height="clamp(350px,58vh,680px)" onFullscreen={() => setMapFullscreen(true)}/>
+      <OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} height="clamp(350px,58vh,680px)" activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint} onFullscreen={() => setMapFullscreen(true)}/>
 
       <section style={{ padding: 11, borderRadius: 18, background: "linear-gradient(145deg,rgba(255,255,255,.045),rgba(5,8,13,.91))", border: `1px solid ${accent}28`, boxShadow: "0 16px 38px rgba(0,0,0,.26)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
@@ -96,7 +97,7 @@ export default function OutdoorRouteDetailPage(props: Props) {
       {tab === "overview" ? <div style={{ display: "grid", gap: 9 }}>
         <RunningSurface accent={accent}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><Metric label="D−" value={terrain.hasElevation ? `−${Math.round(terrain.lossM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"ALT. MIN","MIN ALT","ALT. MIN")} value={terrain.minAltitudeM != null ? `${Math.round(terrain.minAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"PENTE MAX","MAX GRADE","PEND. MAX")} value={terrain.hasElevation ? `${terrain.maxGradePct.toFixed(1)}%` : "—"} accent={accent}/></div>
-          <div style={{ marginTop: 10, color: accent, fontSize: 8.2, fontWeight: 1000 }}>{pickText(lang,"PROFIL ALTIMÉTRIQUE","ELEVATION PROFILE","PERFIL DE ELEVACIÓN")}</div><div style={{ marginTop: 6 }}><RunningElevationProfile points={route.route} accent={accent} textSoft={textSoft} height={150}/></div>
+          <div style={{ marginTop: 10, color: accent, fontSize: 8.2, fontWeight: 1000 }}>{pickText(lang,"PROFIL ALTIMÉTRIQUE","ELEVATION PROFILE","PERFIL DE ELEVACIÓN")}</div><div style={{ marginTop: 6 }}><RunningElevationProfile points={route.route} accent={accent} textSoft={textSoft} height={150} lang={lang} interactive activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint}/></div>
           {advice ? <div style={{ marginTop: 9, color: textSoft, fontSize: 8.1, lineHeight: 1.45 }}><b style={{ color: accent }}>{terrainLabel(terrain.terrain, lang)}</b> · {advice.text}</div> : null}
         </RunningSurface>
         <OutdoorRoutePlaceInfoPanel route={route} lang={lang} accent={accent} textSoft={textSoft} compact/>

@@ -7,6 +7,7 @@ import {
   type SocialAuthProvider,
   type SocialProviderAvailability,
 } from "../../lib/socialAuth";
+import { useLang, type Lang } from "../../contexts/LangContext";
 
 type Props = {
   busyProvider: SocialAuthProvider | null;
@@ -14,27 +15,78 @@ type Props = {
   onProvider: (provider: SocialAuthProvider) => void;
 };
 
+type SocialPanelCopy = {
+  quickTitle: string;
+  showMore: (count: number) => string;
+  hideMore: string;
+  continueWith: (label: string, blocked: boolean) => string;
+  titleWith: (label: string, blocked: boolean) => string;
+};
+
+const SOCIAL_PANEL_COPY: Record<"fr" | "en" | "es", SocialPanelCopy> = {
+  fr: {
+    quickTitle: "Connexion rapide",
+    showMore: (count) => `Plus de connexions (${count})`,
+    hideMore: "Masquer les autres connexions",
+    continueWith: (label, blocked) => `Continuer avec ${label}${blocked ? " — à configurer" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — à configurer dans Supabase" : ""}`,
+  },
+  en: {
+    quickTitle: "Quick sign in",
+    showMore: (count) => `More connections (${count})`,
+    hideMore: "Hide other connections",
+    continueWith: (label, blocked) => `Continue with ${label}${blocked ? " — needs setup" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — configure in Supabase" : ""}`,
+  },
+  es: {
+    quickTitle: "Conexión rápida",
+    showMore: (count) => `Más conexiones (${count})`,
+    hideMore: "Ocultar las otras conexiones",
+    continueWith: (label, blocked) => `Continuar con ${label}${blocked ? " — por configurar" : ""}`,
+    titleWith: (label, blocked) => `${label}${blocked ? " — configurar en Supabase" : ""}`,
+  },
+};
+
+function getQuickCopy(lang: Lang): SocialPanelCopy {
+  if (lang === "en") return SOCIAL_PANEL_COPY.en;
+  if (lang === "es") return SOCIAL_PANEL_COPY.es;
+  return SOCIAL_PANEL_COPY.fr;
+}
+
 export default function SocialLoginPanel({ busyProvider, disabled = false, onProvider }: Props) {
   const [showMore, setShowMore] = React.useState(false);
   const [availability, setAvailability] = React.useState<Partial<Record<SocialAuthProvider, SocialProviderAvailability>>>({});
+  const { lang } = useLang();
+  const copy = getQuickCopy(lang);
 
   React.useEffect(() => {
     let alive = true;
     void getSocialProviderAvailabilityMap()
-      .then((map) => { if (alive) setAvailability(map); })
+      .then((map) => {
+        if (alive) setAvailability(map);
+      })
       .catch(() => {});
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const unavailableCount = [...SOCIAL_AUTH_PRIMARY_PROVIDERS, ...SOCIAL_AUTH_SECONDARY_PROVIDERS]
-    .filter((provider) => availability[provider] === "disabled").length;
+  const orderedVisibleProviders = [...SOCIAL_AUTH_PRIMARY_PROVIDERS, ...SOCIAL_AUTH_SECONDARY_PROVIDERS].filter(
+    (provider) => availability[provider] !== "disabled"
+  );
+  const primaryProviders = orderedVisibleProviders.slice(0, 4);
+  const secondaryProviders = orderedVisibleProviders.slice(4);
+
+  React.useEffect(() => {
+    if (!secondaryProviders.length && showMore) setShowMore(false);
+  }, [secondaryProviders.length, showMore]);
 
   return (
     <div style={panelStyle}>
-      <div style={headerStyle}>Connexion rapide</div>
+      <div style={headerStyle}>{copy.quickTitle}</div>
 
       <div style={primaryGridStyle}>
-        {SOCIAL_AUTH_PRIMARY_PROVIDERS.map((provider) => (
+        {primaryProviders.map((provider) => (
           <SocialLogoButton
             key={provider}
             provider={provider}
@@ -42,42 +94,39 @@ export default function SocialLoginPanel({ busyProvider, disabled = false, onPro
             blocked={availability[provider] === "disabled"}
             disabled={disabled || (!!busyProvider && busyProvider !== provider)}
             size="primary"
+            labels={copy}
             onClick={() => onProvider(provider)}
           />
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowMore((value) => !value)}
-        disabled={disabled || !!busyProvider}
-        style={moreButtonStyle}
-        aria-expanded={showMore}
-      >
-        <span style={{ fontSize: 18, lineHeight: 1 }}>{showMore ? "−" : "+"}</span>
-        <span>{showMore ? "Masquer les autres connexions" : `Plus de connexions (${SOCIAL_AUTH_SECONDARY_PROVIDERS.length})`}</span>
-      </button>
+      {secondaryProviders.length ? (
+        <button
+          type="button"
+          onClick={() => setShowMore((value) => !value)}
+          disabled={disabled || !!busyProvider}
+          style={moreButtonStyle}
+          aria-expanded={showMore}
+        >
+          <span style={{ fontSize: 18, lineHeight: 1 }}>{showMore ? "−" : "+"}</span>
+          <span>{showMore ? copy.hideMore : copy.showMore(secondaryProviders.length)}</span>
+        </button>
+      ) : null}
 
       {showMore ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={secondaryGridStyle}>
-            {SOCIAL_AUTH_SECONDARY_PROVIDERS.map((provider) => (
-              <SocialLogoButton
-                key={provider}
-                provider={provider}
-                busy={busyProvider === provider}
-                blocked={availability[provider] === "disabled"}
-                disabled={disabled || (!!busyProvider && busyProvider !== provider)}
-                size="secondary"
-                onClick={() => onProvider(provider)}
-              />
-            ))}
-          </div>
-          <div style={infoStyle}>
-            {unavailableCount > 0
-              ? "Les logos atténués ne sont pas encore activés dans Supabase. Un appui affiche le réglage manquant sans quitter l’application."
-              : "Tous les fournisseurs utilisent le même compte MULTISPORTS SCORING. Instagram reste réservé aux comptes Business / Creator."}
-          </div>
+        <div style={secondaryGridStyle}>
+          {secondaryProviders.map((provider) => (
+            <SocialLogoButton
+              key={provider}
+              provider={provider}
+              busy={busyProvider === provider}
+              blocked={availability[provider] === "disabled"}
+              disabled={disabled || (!!busyProvider && busyProvider !== provider)}
+              size="secondary"
+              labels={copy}
+              onClick={() => onProvider(provider)}
+            />
+          ))}
         </div>
       ) : null}
     </div>
@@ -90,10 +139,11 @@ type LogoButtonProps = {
   blocked: boolean;
   disabled: boolean;
   size: "primary" | "secondary";
+  labels: SocialPanelCopy;
   onClick: () => void;
 };
 
-function SocialLogoButton({ provider, busy, blocked, disabled, size, onClick }: LogoButtonProps) {
+function SocialLogoButton({ provider, busy, blocked, disabled, size, labels, onClick }: LogoButtonProps) {
   const theme = SOCIAL_TILE_THEME[provider];
   const px = size === "primary" ? 62 : 52;
   const iconPx = size === "primary" ? 31 : 26;
@@ -105,9 +155,9 @@ function SocialLogoButton({ provider, busy, blocked, disabled, size, onClick }: 
       type="button"
       onClick={onClick}
       disabled={isDisabled}
-      aria-label={`Continuer avec ${label}${blocked ? " — à configurer" : ""}`}
+      aria-label={labels.continueWith(label, blocked)}
       aria-disabled={blocked || isDisabled}
-      title={`${label}${blocked ? " — à configurer dans Supabase" : ""}`}
+      title={labels.titleWith(label, blocked)}
       style={{
         width: px,
         height: px,
@@ -128,7 +178,11 @@ function SocialLogoButton({ provider, busy, blocked, disabled, size, onClick }: 
     >
       <SocialProviderLogo provider={provider} size={iconPx} color={theme.logoColor} />
       {busy ? <span style={spinnerStyle} /> : null}
-      {blocked ? <span aria-hidden="true" style={blockedDotStyle}>!</span> : null}
+      {blocked ? (
+        <span aria-hidden="true" style={blockedDotStyle}>
+          !
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -208,7 +262,7 @@ const primaryGridStyle: React.CSSProperties = {
 
 const secondaryGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
   alignItems: "center",
   gap: 9,
 };
@@ -227,16 +281,6 @@ const moreButtonStyle: React.CSSProperties = {
   fontSize: 11.5,
   fontWeight: 900,
   cursor: "pointer",
-};
-
-const infoStyle: React.CSSProperties = {
-  padding: "8px 9px",
-  borderRadius: 11,
-  border: "1px solid rgba(255,255,255,.075)",
-  background: "rgba(0,0,0,.18)",
-  fontSize: 10.5,
-  lineHeight: 1.35,
-  opacity: 0.72,
 };
 
 const spinnerStyle: React.CSSProperties = {

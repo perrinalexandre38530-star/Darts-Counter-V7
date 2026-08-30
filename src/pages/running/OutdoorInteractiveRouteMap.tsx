@@ -4,6 +4,7 @@ import { fetchOutdoorPlacePhotos, type OutdoorRoutePhoto } from "../../activity/
 import { fetchOutdoorRoutePlaceContext, outdoorRoutePlaceIcon, type OutdoorRoutePlace, type OutdoorRoutePlaceContext } from "../../activity/outdoorRoutePlaces";
 import type { GeoPoint } from "../../activity/activityTypes";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
+import RunningTerrain3DMap from "./RunningTerrain3DMap";
 
 function pickText(lang: string, fr: string, en: string, es: string) {
   const lower = String(lang || "fr").toLowerCase();
@@ -24,13 +25,15 @@ type Props = {
   showPoi?: boolean;
   onFullscreen?: () => void;
   onCloseFullscreen?: () => void;
+  activePointIndex?: number | null;
+  onActivePointChange?: (index: number | null) => void;
 };
 
 const TILE = 256;
 const MIN_ZOOM = 3;
 const MAX_ZOOM = 19;
 
-export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSoft, height = "clamp(330px,54vh,620px)", fullscreen = false, showPoi = true, onFullscreen, onCloseFullscreen }: Props) {
+export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSoft, height = "clamp(330px,54vh,620px)", fullscreen = false, showPoi = true, onFullscreen, onCloseFullscreen, activePointIndex = null, onActivePointChange }: Props) {
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const [size, setSize] = React.useState<Size>({ width: 1000, height: 620 });
   const [viewport, setViewport] = React.useState<Viewport>(() => fitViewport(route.route, 1000, 620));
@@ -38,6 +41,7 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
   const [selectedPlace, setSelectedPlace] = React.useState<OutdoorRoutePlace | null>(null);
   const [placePhotos, setPlacePhotos] = React.useState<OutdoorRoutePhoto[]>([]);
   const [placePhotoBusy, setPlacePhotoBusy] = React.useState(false);
+  const [mapMode, setMapMode] = React.useState<"2d" | "3d">("2d");
   const pointerRef = React.useRef(new Map<number, ScreenPoint>());
   const dragRef = React.useRef<{ id: number; startX: number; startY: number; centerWorld: ScreenPoint; moved: boolean } | null>(null);
   const pinchRef = React.useRef<{ distance: number; zoom: number } | null>(null);
@@ -45,6 +49,7 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
   React.useEffect(() => {
     setViewport(fitViewport(route.route, Math.max(320, size.width), Math.max(260, size.height)));
     setSelectedPlace(null);
+    setMapMode("2d");
   }, [route.id]);
 
   React.useEffect(() => {
@@ -142,6 +147,18 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
     setSelectedPlace(place);
   };
 
+  if (mapMode === "3d") return <div ref={wrapRef} style={{ position: "relative", width: "100%", height: fullscreen ? "100dvh" : height, minHeight: fullscreen ? undefined : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
+    <RunningTerrain3DMap points={route.route} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route.name} places={visiblePlaces} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onPlaceSelect={setSelectedPlace} onFallback2D={() => setMapMode("2d")} showReplay/>
+    <div style={{ position: "absolute", left: 58, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, zIndex: 30, display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(5,8,13,.86)", border: "1px solid rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}>
+      <button className="btn" onClick={() => setMapMode("2d")} style={{ minWidth: 34, minHeight: 32, padding: "0 7px", fontSize: 7, fontWeight: 1000 }}>2D</button>
+      <button className="btn" style={{ minWidth: 34, minHeight: 32, padding: "0 7px", fontSize: 7, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>3D</button>
+    </div>
+    <div style={{ position: "absolute", right: 54, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, zIndex: 30 }}>
+      {fullscreen && onCloseFullscreen ? <button className="btn" onClick={onCloseFullscreen} style={mapControlStyle}>×</button> : onFullscreen ? <button className="btn" onClick={onFullscreen} style={mapControlStyle}>⛶</button> : null}
+    </div>
+    {selectedPlace ? <PlacePopup place={selectedPlace} photos={placePhotos} busy={placePhotoBusy} accent={accent} textSoft={textSoft} lang={lang} onClose={() => setSelectedPlace(null)}/> : null}
+  </div>;
+
   return <div ref={wrapRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={onWheel} style={{ position: "relative", width: "100%", height: fullscreen ? "100dvh" : height, minHeight: fullscreen ? undefined : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", touchAction: "none", userSelect: "none", cursor: "grab", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
     {layout.tiles.map((tile) => <img key={tile.key} src={tile.url} alt="" draggable={false} loading="eager" decoding="async" style={{ position: "absolute", left: tile.left, top: tile.top, width: TILE + 1, height: TILE + 1, objectFit: "cover", pointerEvents: "none" }}/>) }
     <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(3,7,11,.015),rgba(3,7,11,.08))", pointerEvents: "none" }}/>
@@ -160,6 +177,10 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
 
     <div style={{ position: "absolute", left: 10, top: fullscreen ? "max(10px,env(safe-area-inset-top))" : 10, display: "flex", gap: 6, zIndex: 18, pointerEvents: "auto" }}>
       <button className="btn" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); recenter(); }} style={mapControlStyle}>◎</button>
+      <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(5,8,13,.86)", border: "1px solid rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}>
+        <button className="btn" style={{ minWidth: 34, minHeight: 30, padding: "0 7px", fontSize: 7, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>2D</button>
+        <button className="btn" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setMapMode("3d"); }} style={{ minWidth: 34, minHeight: 30, padding: "0 7px", fontSize: 7, fontWeight: 1000 }}>3D</button>
+      </div>
       <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.82)", border: `1px solid ${accent}38`, color: accent, fontSize: 7, fontWeight: 1000, backdropFilter: "blur(12px)" }}>{pickText(lang,"GLISSER · ZOOMER","DRAG · ZOOM","MOVER · ZOOM")}</div>
     </div>
 
