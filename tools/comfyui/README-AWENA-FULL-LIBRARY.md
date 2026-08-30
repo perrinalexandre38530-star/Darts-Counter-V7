@@ -1,44 +1,67 @@
-# Workflow ComfyUI — contrat FIT PERF AWENA FULL LIBRARY
+# FIT PERF · AWENA-WAN batch
 
-Le runner `tools/run-comfyui-awena-batch.mjs` pilote un workflow ComfyUI exporté en **API format**.
+Le workflow API fourni dans ce dossier est maintenant adapté directement depuis le workflow ComfyUI AWENA push-up validé.
 
-Place le workflow validé ici :
+Fichier prêt à utiliser :
 
 `tools/comfyui/awena-exercise-api.json`
 
-Le workflow doit utiliser la référence d'identité AWENA et produire, pour chaque exercice :
+## Ce que le batch remplace automatiquement
 
-- `awena-preview.webm` avec **vrai canal alpha** ;
-- `awena-poster.webp` ;
-- `awena-step-01.webp` à `awena-step-04.webp`.
+Pour chaque exercice :
 
-## Placeholders reconnus
+- l'image d'identité du node `LoadImage` devient la référence AWENA ;
+- la vidéo du node `LoadVideo` devient la vidéo de mouvement propre à l'exercice ;
+- le prompt positif et le prompt négatif sont générés depuis le catalogue ;
+- les seeds sont déterministes ;
+- le nom de sortie est rattaché à l'ID de l'exercice.
 
-Dans les inputs des nodes du workflow API, remplace les valeurs variables par :
+Le workflow conserve Wan Animate + DWPose + SAM2. Une seconde segmentation SAM2 est ajoutée sur les frames AWENA finales. Le runner récupère ensuite séparément les frames RGB et leurs mattes, puis fabrique lui-même :
 
-- `__AWENA_REFERENCE__`
-- `__POSITIVE_PROMPT__`
-- `__NEGATIVE_PROMPT__`
-- `__MOTION_PROMPT__`
-- `__STEP_1_PROMPT__` … `__STEP_4_PROMPT__`
-- `__SEED__`
-- `__EXERCISE_NAME__`
-- `__ASSET_KEY__`
-- `__VIDEO_PREFIX__`
-- `__POSTER_PREFIX__`
-- `__STEP_1_PREFIX__` … `__STEP_4_PREFIX__`
+- `awena-preview.webm` en VP9 avec véritable alpha ;
+- `awena-poster.webp` transparent ;
+- `awena-step-01.webp` à `awena-step-04.webp`, extraits de quatre instants du mouvement AWENA afin qu'ils correspondent exactement à la vidéo.
 
-Le runner refuse d'intégrer une vidéo qui ne possède pas d'alpha vérifiable. Si le workflow produit plutôt une séquence PNG RGBA nommée `awena-frame-0001.png`, `awena-frame-0002.png`, etc., le runner l'encode automatiquement en VP9 WebM `yuva420p`.
+Cela évite de générer quatre séries d'images indépendantes et garantit la cohérence visage / tenue / position entre la vidéo et les étapes.
 
-## Workflow conseillé
+## Point essentiel : vidéo de mouvement
 
-1. Load Image `__AWENA_REFERENCE__`.
-2. Identity / reference adapter pour verrouiller AWENA.
-3. Génération des 4 poses avec les `__STEP_X_PROMPT__`.
-4. Image-to-video / motion model piloté par `__MOTION_PROMPT__`.
-5. Background removal / alpha matting **dans ComfyUI**.
-6. Sortie vidéo alpha ou séquence PNG RGBA.
-7. Save Image des 4 étapes avec les préfixes fournis.
-8. Save Image du poster avec `__POSTER_PREFIX__`.
+Le workflow fourni n'est pas un workflow text-to-video. Il reproduit le mouvement d'une vidéo guide avec DWPose. Dans le workflow push-up original, cette entrée était `Pompes à main large - Guide vidéo Lyfta.mp4`.
 
-Le workflow exact dépend des modèles et custom nodes installés dans ton ComfyUI : le runner est volontairement indépendant de Wan/Kling/LTX/etc. et réutilise ton workflow AWENA déjà validé.
+Le runner cherche automatiquement un driver dans cet ordre :
+
+1. `--driver <fichier>` pour un test manuel ;
+2. `var/fit-awena/drivers/<assetKey>.mp4|webm|mov|mkv` ;
+3. les vidéos déjà connues dans le catalogue FIT PERF / wger.
+
+Les vidéos distantes sont téléchargées puis envoyées automatiquement à ComfyUI via son API. Il n'y a plus besoin de modifier le node `LoadVideo` à la main.
+
+Les exercices sans aucune vidéo de mouvement sont placés dans :
+
+`var/fit-awena/blocked-no-motion-driver.json`
+
+Ils ne reçoivent volontairement pas un mouvement approximatif. Ils constitueront le second lot à traiter avec un générateur automatique de driver I2V/T2V avant de repasser dans ce workflow AWENA-WAN.
+
+## Test recommandé
+
+ComfyUI doit être lancé et accessible sur `http://127.0.0.1:8188`.
+
+```bash
+npm run fit:awena:queue -- --refresh
+npm run fit:awena:run -- --match "push" --limit 1 --driver "C:/chemin/Pompes à main large - Guide vidéo Lyfta.mp4" --overwrite
+```
+
+Aucun chemin vers le dossier output ComfyUI n'est obligatoire : le runner sait récupérer les frames via `/view`.
+
+Si le détourage est inversé (AWENA transparente et fond visible), relancer avec :
+
+```bash
+npm run fit:awena:run -- --match "push" --limit 1 --driver "C:/chemin/video.mp4" --overwrite --invert-mask
+```
+
+Puis :
+
+```bash
+npm run fit:awena:index
+npm run fit:awena:audit
+```

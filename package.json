@@ -102,6 +102,7 @@
     "fit:awena:index": "node ./tools/build-fit-awena-index.mjs",
     "fit:awena:audit": "node ./tools/audit-fit-awena-media.mjs",
     "test:fit-awena-library": "node ./tools/test-fit-awena-full-library-v108.mjs",
+    "test:fit-awena-wan": "node ./tools/test-fit-awena-wan-v109.mjs",
     "test:keep-awake": "node ./tools/test-keep-awake-v1.mjs",
     "test:navigation-music": "node --experimental-strip-types ./tools/test-navigation-music-route-contract-v1.mjs"
   },

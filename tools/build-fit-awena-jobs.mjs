@@ -25,20 +25,29 @@ function cameraHint(exercise) {
 }
 
 function negativePrompt() {
-  return "cropped body, cut off head, cut off hands, cut off feet, extra limbs, extra fingers, missing fingers, deformed hands, broken anatomy, duplicated body, wrong equipment, floating equipment, warped gym machine, text, captions, watermark, logo, background objects, crowd, camera motion, identity drift, changing clothes, changing hairstyle";
+  return [
+    "camera movement, camera shake, zoom, dolly, pan, tilt, camera rotation, changing perspective, changing framing, scene change, background change",
+    "character moving out of frame, cropped body, cropped feet, cropped hands, cut off head",
+    "wrong exercise, wrong equipment, equipment changing shape, hands sliding unexpectedly, feet sliding unexpectedly, incorrect grip",
+    "hips rising, hips sagging, arched back, bent knees when not required, twisted torso, asymmetric movement, uncontrolled bouncing",
+    "changing face, different face, face morphing, changing hairstyle, changing hair length, changing body shape, changing clothing, changing leggings, changing shoes, changing gloves",
+    "extra arms, extra legs, extra hands, extra feet, extra fingers, missing fingers, fused fingers, malformed fingers, deformed hands, deformed feet, broken wrists, broken elbows, broken shoulders, broken anatomy, duplicated limbs",
+    "warping, morphing, melting body, ghosting, flickering, temporal inconsistency, jitter, motion artifacts, excessive motion blur",
+    "text, subtitles, logo, watermark"
+  ].join(", ");
 }
 
 function basePrompt(exercise) {
   const instructions=(exercise.instructions||[]).slice(0,6).join(" ");
   const muscles=[exercise.muscle,...(exercise.rawPrimaryMuscles||[]).slice(0,3)].filter(Boolean).join(", ");
   return [
-    "AWENA, the exact same adult athletic female fitness coach as the supplied identity reference image, preserve her face, hair, body proportions and sports outfit consistently in every frame.",
+    "AWENA, the exact same adult athletic female fitness coach as the supplied identity reference image. Preserve her identity perfectly: same face and facial features, same brown ponytail hairstyle, same athletic body proportions, same black sports bra, same black leggings with colorful accents, same black fingerless gloves and same black athletic shoes with colorful details.",
     `Demonstrate the fitness exercise: ${exercise.name}.`,
     `Equipment: ${exercise.equipment || "bodyweight"}. Primary target: ${muscles || "full body"}.`,
     instructions ? `Technique to follow: ${instructions}` : "Use biomechanically correct standard technique for this named exercise.",
     cameraHint(exercise)+".",
     "Full body completely inside frame at every moment with generous margin around head, hands, equipment and feet.",
-    "Professional exercise encyclopedia demonstration, neutral expression, controlled tempo, seamless repetition loop, stable locked camera, realistic anatomy, educational clarity.",
+    "Professional exercise encyclopedia demonstration, neutral expression, one complete controlled repetition, stable locked camera, realistic anatomy and educational clarity. Preserve identity, anatomy, clothing, equipment, framing and character scale throughout the entire animation.",
     "Subject isolated for alpha matting. Final deliverable must have a genuinely transparent background, not a black or white background, with clean hair and limb edges.",
     "No text, no labels, no watermark."
   ].join(" ");
@@ -96,6 +105,12 @@ for(const exercise of catalog.exercises){
     category:exercise.category||"",
     existingReferenceImages:exercise.imagePaths||[],
     existingReferenceVideos:exercise.videoUrls||[],
+    motionDriver:{
+      required:true,
+      existingVideoCandidates:exercise.videoUrls||[],
+      photoCandidates:exercise.imagePaths||[],
+      strategy:(exercise.videoUrls||[]).length?"existing-video":"needs-generated-driver",
+    },
     instructions:exercise.instructions||[],
     output:{
       directory:`public/fit/awena-library/${key}`,
@@ -114,7 +129,7 @@ for(const exercise of catalog.exercises){
     },
   });
 }
-const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,alreadyComplete:complete,partial,queued:jobs.length,sources:catalog.sources,sourceErrors:catalog.errors||[]};
+const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,alreadyComplete:complete,partial,queued:jobs.length,withExistingMotionVideo:jobs.filter((j)=>j.existingReferenceVideos?.length).length,withReferencePhotos:jobs.filter((j)=>j.existingReferenceImages?.length).length,needsGeneratedMotionDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length).length,sources:catalog.sources,sourceErrors:catalog.errors||[]};
 await fs.writeFile(QUEUE_FILE,JSON.stringify({version:1,createdAt:new Date().toISOString(),catalogCount:catalog.exercises.length,jobs},null,2));
 await fs.writeFile(REPORT_FILE,JSON.stringify(report,null,2));
 console.log(JSON.stringify(report,null,2));

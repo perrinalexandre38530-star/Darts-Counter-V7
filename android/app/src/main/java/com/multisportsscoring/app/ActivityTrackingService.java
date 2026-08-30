@@ -72,6 +72,12 @@ public class ActivityTrackingService extends Service implements LocationListener
     private static long pausedStartedRealtimeMs = 0L;
     private static long pausedTotalMs = 0L;
 
+    // Precision-first GPS policy. Coordinates can wander by several metres while the phone is
+    // perfectly still; those changes must never become distance, speed or elevation gain.
+    private static final float MAX_TRACKING_ACCURACY_M = 30.0f;
+    private static final float STATIONARY_SPEED_MPS = 0.40f;
+    private static final long MIN_SEGMENT_TIME_MS = 500L;
+
     private LocationManager locationManager;
     private Handler reminderHandler;
 
@@ -303,20 +309,27 @@ public class ActivityTrackingService extends Service implements LocationListener
 
     private void requestLocationUpdates() {
         if (locationManager == null) return;
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        boolean fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        boolean coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        if (!fine && !coarse) return;
         try {
             Location freshest = null;
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            boolean gpsRequested = false;
+            // During a recorded outdoor performance, GPS_PROVIDER is the authoritative source.
+            // Mixing NETWORK_PROVIDER fixes with GPS fixes is a classic source of 10-60 m jumps
+            // while stationary, because the two providers have different uncertainty centres.
+            if (fine && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, gpsIntervalMsForMode(batteryMode), gpsMinDistanceMForMode(batteryMode), this);
                 freshest = fresherLocation(freshest, locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER));
+                gpsRequested = true;
             }
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            // Network is only a degraded fallback when precise GPS is unavailable. It is never
+            // mixed into an active GPS trace. The same strict accuracy/drift gate still applies.
+            if (!gpsRequested && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, networkIntervalMsForMode(batteryMode), networkMinDistanceMForMode(batteryMode), this);
                 freshest = fresherLocation(freshest, locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER));
             }
-            // A very recent cached fix avoids displaying 0 GPS for several seconds when
-            // Android already has a valid position from Maps / the system location stack.
+            // A recent high-quality cached fix may seed the route as its zero-distance anchor.
             if (isFreshUsableLocation(freshest)) onLocationChanged(freshest);
         } catch (Exception ignored) {}
     }
@@ -331,7 +344,7 @@ public class ActivityTrackingService extends Service implements LocationListener
         if (location == null) return false;
         long ageMs = Math.max(0L, System.currentTimeMillis() - location.getTime());
         if (ageMs > 15000L) return false;
-        return !location.hasAccuracy() || location.getAccuracy() <= 80f;
+        return location.hasAccuracy() && location.getAccuracy() <= MAX_TRACKING_ACCURACY_M;
     }
 
     private void removeLocationUpdates() {
@@ -409,20 +422,62 @@ public class ActivityTrackingService extends Service implements LocationListener
         } catch (Exception ignored) {}
     }
 
+    private static double maxSpeedMpsForSport(String value) {
+        String canonical = value == null ? "running" : value.trim().toLowerCase();
+        if ("walking".equals(canonical) || "nordic-walking".equals(canonical) || "hiking".equals(canonical)) return 5.0;
+        if ("trail".equals(canonical)) return 10.0;
+        return 12.0;
+    }
+
+    private static double movementDeadbandMeters(TrackPoint previous, Location next) {
+        double previousAccuracy = previous != null && previous.accuracy != null ? Math.max(1.0, previous.accuracy) : 8.0;
+        double nextAccuracy = next.hasAccuracy() ? Math.max(1.0, next.getAccuracy()) : 8.0;
+        double uncertainty = Math.max(previousAccuracy, nextAccuracy);
+        double base = Math.max(3.0, Math.min(12.0, uncertainty * 0.60));
+        if (next.hasSpeed() && next.getSpeed() >= STATIONARY_SPEED_MPS) return Math.max(2.5, base * 0.55);
+        return Math.max(6.0, base);
+    }
+
     @Override
     public void onLocationChanged(Location location) {
         synchronized (LOCK) {
             if (!running || paused || location == null) return;
+
+            // No performance metric is accumulated from an imprecise fix. Better to display
+            // "acquiring GPS" for a few seconds than manufacture distance while sitting still.
+            if (!location.hasAccuracy() || location.getAccuracy() > MAX_TRACKING_ACCURACY_M) return;
+            if (!Double.isFinite(location.getLatitude()) || !Double.isFinite(location.getLongitude())) return;
+
             long elapsed = activeElapsedNow();
             TrackPoint previous = ROUTE.isEmpty() ? null : ROUTE.get(ROUTE.size() - 1);
-            if (location.hasAccuracy() && location.getAccuracy() > 100f) return;
             if (previous != null) {
+                long dt = elapsed - previous.elapsedMs;
+                if (dt < MIN_SEGMENT_TIME_MS) return;
+
                 float[] distance = new float[1];
                 Location.distanceBetween(previous.lat, previous.lon, location.getLatitude(), location.getLongitude(), distance);
-                long dt = Math.max(1L, elapsed - previous.elapsedMs);
-                double speed = distance[0] / (dt / 1000.0);
-                if (speed > 20.0) return;
+                double segmentM = Math.max(0.0, distance[0]);
+                if (!Double.isFinite(segmentM) || segmentM <= 0.0) return;
+
+                // Doppler-derived GPS speed is the strongest stationary signal available on the
+                // phone. A coordinate can drift while this speed correctly remains ~0 m/s.
+                if (location.hasSpeed()) {
+                    double reportedSpeed = Math.max(0.0, location.getSpeed());
+                    if (reportedSpeed < STATIONARY_SPEED_MPS) return;
+                    if (reportedSpeed > maxSpeedMpsForSport(sport) * 1.35) return;
+                }
+
+                double deadbandM = movementDeadbandMeters(previous, location);
+                if (segmentM < deadbandM) return;
+
+                // If a provider exposes no speed at all, require a larger displacement before
+                // accepting motion. This intentionally trades a small startup delay for zero drift.
+                if (!location.hasSpeed() && dt < 1200L && segmentM < Math.max(8.0, deadbandM * 1.35)) return;
+
+                double impliedSpeed = segmentM / (dt / 1000.0);
+                if (impliedSpeed > maxSpeedMpsForSport(sport)) return;
             }
+
             ROUTE.add(new TrackPoint(location, elapsed));
             if (ROUTE.size() > 25000) ROUTE.remove(0);
         }

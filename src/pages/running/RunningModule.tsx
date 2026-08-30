@@ -537,7 +537,7 @@ export default function RunningModule({ go, params }: Props) {
         void (async () => {
             const draft = await loadRunningSessionDraft(session.id);
             if (draft) {
-                const restoredRoute = Array.isArray(draft.route) ? draft.route : [];
+                const restoredRoute = Array.isArray(draft.route) ? filterRouteOutliers(draft.route, gpsMaxSpeedMpsForSport(activitySport)) : [];
                 if (restoredRoute.length) {
                     pointsRef.current = restoredRoute;
                     setPoints(restoredRoute);
@@ -594,7 +594,7 @@ export default function RunningModule({ go, params }: Props) {
                 if (status?.running) {
                     nativeTrackingActiveRef.current = true;
                     const nativeRoute = Array.isArray(track?.route) ? track!.route! : [];
-                    const mergedRoute = mergeRunningDraftRoutes(draft?.route, nativeRoute);
+                    const mergedRoute = filterRouteOutliers(mergeRunningDraftRoutes(draft?.route, nativeRoute), gpsMaxSpeedMpsForSport(activitySport));
                     if (mergedRoute.length) {
                         pointsRef.current = mergedRoute;
                         setPoints(mergedRoute);
@@ -778,21 +778,21 @@ export default function RunningModule({ go, params }: Props) {
         lastGpsPointAtRef.current = Date.now();
         setPoints(pointsRef.current);
         setAccuracy(Number.isFinite(point.accuracy) ? Number(point.accuracy) : null);
-        setGpsMessage(Number(point.accuracy || 0) > 45 ? copy.gpsPoor : copy.gpsReady);
+        setGpsMessage(Number(point.accuracy || 0) > 30 ? copy.gpsPoor : copy.gpsReady);
     }), [activitySport, copy.gpsPoor, copy.gpsReady]);
 
     React.useEffect(() => {
         if (!isRecording || !nativeTrackingActiveRef.current || activitySport === "treadmill") return;
         const id = window.setInterval(() => { void getNativeTrack().then((snapshot) => {
             if (!snapshot?.route?.length) return;
-            const mergedRoute = mergeRunningDraftRoutes(pointsRef.current, snapshot.route);
+            const mergedRoute = filterRouteOutliers(mergeRunningDraftRoutes(pointsRef.current, snapshot.route), gpsMaxSpeedMpsForSport(activitySport));
             pointsRef.current = mergedRoute;
             lastGpsPointAtRef.current = Date.now();
             setPoints(mergedRoute);
             const point = mergedRoute[mergedRoute.length - 1];
             if (point) {
                 setAccuracy(Number.isFinite(point.accuracy) ? Number(point.accuracy) : null);
-                setGpsMessage(Number(point.accuracy || 0) > 45 ? copy.gpsPoor : copy.gpsReady);
+                setGpsMessage(Number(point.accuracy || 0) > 30 ? copy.gpsPoor : copy.gpsReady);
             }
         }); }, 4000);
         return () => window.clearInterval(id);
@@ -1026,7 +1026,7 @@ export default function RunningModule({ go, params }: Props) {
                 }
                 const nextAccuracy = Number.isFinite(resolved.accuracy) ? Number(resolved.accuracy) : null;
                 setAccuracy(nextAccuracy);
-                setGpsMessage(nextAccuracy != null && nextAccuracy > 45 ? copy.gpsPoor : copy.gpsReady);
+                setGpsMessage(nextAccuracy != null && nextAccuracy > 30 ? copy.gpsPoor : copy.gpsReady);
             } catch {
                 try { await stopNativeTracking(); } catch {}
                     setGpsMessage(copy.gpsLost);
@@ -1131,7 +1131,7 @@ export default function RunningModule({ go, params }: Props) {
                     const previousTrack = await getNativeTrack();
                     const previousRoute = Array.isArray(previousTrack?.route) ? previousTrack!.route! : [];
                     if (previousDraft) {
-                        const mergedPrevious = mergeRunningDraftRoutes(previousDraft.route, previousRoute);
+                        const mergedPrevious = filterRouteOutliers(mergeRunningDraftRoutes(previousDraft.route, previousRoute), gpsMaxSpeedMpsForSport(canonicalOutdoorPerformanceSport(previousDraft.sport)));
                         await saveRunningSessionDraft({ ...previousDraft, route: mergedPrevious, updatedAt: Date.now() });
                         patchRunningActiveSession(previousOwnerId, { lastDraftAt: Date.now(), lastDistanceM: mergedPrevious.length > 1 ? routeDistanceMeters(mergedPrevious) : undefined });
                     }
@@ -1178,7 +1178,7 @@ export default function RunningModule({ go, params }: Props) {
                 setGpsMessage(copy.pause);
                 return;
             }
-            setGpsMessage(Number(next.accuracy || 0) > 45 ? copy.gpsPoor : copy.gpsReady);
+            setGpsMessage(Number(next.accuracy || 0) > 30 ? copy.gpsPoor : copy.gpsReady);
             const previous = pointsRef.current[pointsRef.current.length - 1];
             if (!shouldAcceptRunningPoint(previous, next, gpsMaxSpeedMpsForSport(activitySport))) return;
             pointsRef.current = [...pointsRef.current, next];
@@ -1250,7 +1250,7 @@ export default function RunningModule({ go, params }: Props) {
                     const previousTrack = await getNativeTrack();
                     const previousRoute = Array.isArray(previousTrack?.route) ? previousTrack!.route! : [];
                     if (previousDraft) {
-                        const mergedPrevious = mergeRunningDraftRoutes(previousDraft.route, previousRoute);
+                        const mergedPrevious = filterRouteOutliers(mergeRunningDraftRoutes(previousDraft.route, previousRoute), gpsMaxSpeedMpsForSport(canonicalOutdoorPerformanceSport(previousDraft.sport)));
                         await saveRunningSessionDraft({ ...previousDraft, route: mergedPrevious, updatedAt: Date.now() });
                         patchRunningActiveSession(previousOwnerId, { lastDraftAt: Date.now(), lastDistanceM: mergedPrevious.length > 1 ? routeDistanceMeters(mergedPrevious) : undefined });
                     }
@@ -1414,7 +1414,7 @@ export default function RunningModule({ go, params }: Props) {
     }, []);
     const resolveRoutePosition = React.useCallback(async (): Promise<GeoPoint> => {
         const cachedPoint = routeDiscoveryCenter;
-        if (cachedPoint && Date.now() - Number(cachedPoint.timestamp || 0) < 90_000 && (!Number.isFinite(cachedPoint.accuracy) || Number(cachedPoint.accuracy) <= 100)) {
+        if (cachedPoint && Date.now() - Number(cachedPoint.timestamp || 0) < 90_000 && (!Number.isFinite(cachedPoint.accuracy) || Number(cachedPoint.accuracy) <= 30)) {
             setAccuracy(Number.isFinite(cachedPoint.accuracy) ? Number(cachedPoint.accuracy) : null);
             return cachedPoint;
         }

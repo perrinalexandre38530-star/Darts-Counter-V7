@@ -1,5 +1,7 @@
 import type { ActivitySplit, GeoPoint } from "./activityTypes";
 const EARTH_RADIUS_M = 6371000;
+const GPS_MAX_HORIZONTAL_ACCURACY_M = 30;
+const GPS_STATIONARY_SPEED_MPS = 0.4;
 function toRad(value: number) {
     return (value * Math.PI) / 180;
 }
@@ -100,19 +102,71 @@ export function averageSpeedMps(distanceM: number, elapsedMs: number): number {
         return 0;
     return distanceM / (elapsedMs / 1000);
 }
+
+function validGpsAccuracy(point: GeoPoint): boolean {
+    return !Number.isFinite(point.accuracy) || (Number(point.accuracy) >= 0 && Number(point.accuracy) <= GPS_MAX_HORIZONTAL_ACCURACY_M);
+}
+
+function gpsMovementDeadbandMeters(previous: GeoPoint, next: GeoPoint): number {
+    const prevAccuracy = Number.isFinite(previous.accuracy) ? Math.max(1, Number(previous.accuracy)) : 8;
+    const nextAccuracy = Number.isFinite(next.accuracy) ? Math.max(1, Number(next.accuracy)) : 8;
+    const uncertainty = Math.max(prevAccuracy, nextAccuracy);
+    // A position can legitimately move inside its accuracy circle while the athlete is perfectly still.
+    // Never turn that uncertainty into distance. With a Doppler speed from GPS we can be more responsive;
+    // without a speed signal, require a larger displacement before declaring real motion.
+    const base = Math.max(3, Math.min(12, uncertainty * 0.6));
+    return Number.isFinite(next.speed) && Number(next.speed) >= GPS_STATIONARY_SPEED_MPS
+        ? Math.max(2.5, base * 0.55)
+        : Math.max(6, base);
+}
+
+/**
+ * High-precision gate for outdoor performance tracking.
+ *
+ * Important: accepting every valid latitude/longitude is not enough. Phones keep emitting
+ * slightly different fixes while stationary (GPS drift), and summing those differences can
+ * create tens or hundreds of fictitious metres. This gate rejects poor fixes, stationary
+ * Doppler speeds, movement hidden inside the horizontal-accuracy circle and impossible jumps.
+ */
 export function shouldAcceptRunningPoint(previous: GeoPoint | undefined, next: GeoPoint, maxSpeedMps = 12): boolean {
     if (!Number.isFinite(next.lat) || !Number.isFinite(next.lon))
         return false;
-    if (Number.isFinite(next.accuracy) && Number(next.accuracy) > 100)
+    if (Math.abs(Number(next.lat)) > 90 || Math.abs(Number(next.lon)) > 180)
+        return false;
+    if (!validGpsAccuracy(next))
         return false;
     if (!previous)
         return true;
+    if (!Number.isFinite(previous.lat) || !Number.isFinite(previous.lon))
+        return true;
+    if (Number.isFinite(next.timestamp) && Number.isFinite(previous.timestamp) && Number(next.timestamp) <= Number(previous.timestamp))
+        return false;
     const dt = Math.max(0.001, (next.timestamp - previous.timestamp) / 1000);
     const distance = haversineMeters(previous, next);
-    if (distance < 2 && dt < 5)
+    if (!Number.isFinite(distance) || distance <= 0)
         return false;
-    // Garde-fou anti-saut GPS. La limite est adaptée au sport par l'appelant.
-    if (distance / dt > Math.max(1, maxSpeedMps))
+
+    // Android GPS speed is Doppler-derived and is generally much more stable at rest than
+    // position deltas. A near-zero reported speed means the coordinate change is drift.
+    if (Number.isFinite(next.speed)) {
+        const reportedSpeed = Math.max(0, Number(next.speed));
+        if (reportedSpeed < GPS_STATIONARY_SPEED_MPS)
+            return false;
+        if (reportedSpeed > Math.max(1, maxSpeedMps) * 1.35)
+            return false;
+    }
+
+    const deadband = gpsMovementDeadbandMeters(previous, next);
+    if (distance < deadband)
+        return false;
+
+    // No speed signal (common in some browsers): be deliberately conservative. Real walking
+    // or running will cross this threshold after a few seconds; random 2-5 m chair drift will not.
+    if (!Number.isFinite(next.speed) && dt < 1.2 && distance < Math.max(8, deadband * 1.35))
+        return false;
+
+    const impliedSpeed = distance / dt;
+    if (impliedSpeed > Math.max(1, maxSpeedMps))
         return false;
     return true;
 }
@@ -139,7 +193,7 @@ export function movingTimeMs(points: GeoPoint[]): number {
         if (!dt || dt > 60000)
             continue;
         const speed = haversineMeters(a, b) / (dt / 1000);
-        if (speed >= 0.55 && speed <= 12)
+        if (speed >= GPS_STATIONARY_SPEED_MPS && speed <= 12)
             moving += dt;
     }
     return moving;
