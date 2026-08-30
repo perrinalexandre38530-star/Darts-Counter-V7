@@ -25,6 +25,8 @@ const DEFAULT_GAMER: GamerIdentity = {
   handles: {},
   availability: "available",
   lookingForGroup: false,
+  primaryPlatform: "pc",
+  rankByGame: {},
 };
 
 const DEFAULT_STATE: EsportsState = {
@@ -58,6 +60,7 @@ function normalizeState(value: any): EsportsState {
       ...DEFAULT_GAMER,
       ...(value.gamer || {}),
       handles: { ...(value.gamer?.handles || {}) },
+      rankByGame: { ...(value.gamer?.rankByGame || {}) },
       favoriteGameIds: Array.isArray(value.gamer?.favoriteGameIds)
         ? value.gamer.favoriteGameIds.map(String)
         : DEFAULT_GAMER.favoriteGameIds,
@@ -104,7 +107,7 @@ export function subscribeEsportsStore(listener: () => void): () => void {
 export function saveGamerIdentity(patch: Partial<GamerIdentity>): EsportsState {
   return patchEsportsState((state) => ({
     ...state,
-    gamer: { ...state.gamer, ...patch, handles: { ...state.gamer.handles, ...(patch.handles || {}) } },
+    gamer: { ...state.gamer, ...patch, handles: { ...state.gamer.handles, ...(patch.handles || {}) }, rankByGame: { ...state.gamer.rankByGame, ...(patch.rankByGame || {}) } },
   }));
 }
 
@@ -220,6 +223,7 @@ export function createEsportsLfgPost(input: {
   platform: EsportsPlatform;
   mode?: string;
   message?: string;
+  rankLabel?: string;
   slotsNeeded?: number;
 }): EsportsLfgPost {
   const post: EsportsLfgPost = {
@@ -229,6 +233,7 @@ export function createEsportsLfgPost(input: {
     platform: input.platform,
     mode: String(input.mode || "Casual").trim() || "Casual",
     message: String(input.message || "").trim(),
+    rankLabel: String(input.rankLabel || "").trim(),
     slotsNeeded: Math.max(1, Math.min(20, Number(input.slotsNeeded || 1))),
     status: "open",
     createdAt: Date.now(),

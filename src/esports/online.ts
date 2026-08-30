@@ -90,3 +90,13 @@ export function subscribeOnlineEsportsRoom(code: string, onRoom: (room: EsportsR
   if (sub && typeof sub.close === "function") return () => sub.close();
   return () => {};
 }
+
+export async function listPublicOnlineEsportsRooms(limit = 60): Promise<EsportsRoom[]> {
+  const lobbies = await onlineApi.listActiveLobbies(Math.max(1, Math.min(120, limit)));
+  return (lobbies || [])
+    .filter((lobby: any) => String(lobby?.mode || "").toLowerCase().startsWith("esports:"))
+    .filter((lobby: any) => String((lobby?.settings as any)?.esports?.visibility || "private").toLowerCase() === "public")
+    .map((lobby: any) => lobbyToEsportsRoom(lobby))
+    .filter((room) => room.status !== "finished")
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}

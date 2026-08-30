@@ -35,7 +35,6 @@ export default function RunningStatsPage({ go, params }: Props) {
   const locale = lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB";
   const [activitySport, setActivitySport] = React.useState<OutdoorPerformanceSport>(() => loadOutdoorPerformanceSport());
   const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
-  const [showAll, setShowAll] = React.useState(false);
   const [shoes, setShoes] = React.useState<RunningShoe[]>(() => loadRunningShoes());
   const [newShoeName, setNewShoeName] = React.useState("");
   const [tab, setTab] = React.useState<StatsTab>(() => (["overview", "performance", "history", "gear", "sync"].includes(String(params?.runningStatsTab || "")) ? String(params.runningStatsTab) as StatsTab : "hub"));
@@ -46,6 +45,15 @@ export default function RunningStatsPage({ go, params }: Props) {
   React.useEffect(() => { saveOutdoorPerformanceSport(activitySport); void refreshActivities(); }, [activitySport, refreshActivities]);
 
   const stats = React.useMemo(() => buildRunningStats(activities, Date.now(), locale), [activities, locale]);
+  const recordRows: Array<[string, typeof stats.best400m]> = [
+    ["400 M", stats.best400m],
+    ["1 KM", stats.best1k],
+    ["1 MILE", stats.bestMile],
+    ["5 KM", stats.best5k],
+    ["10 KM", stats.best10k],
+    ["SEMI", stats.bestHalf],
+    ["MARATHON", stats.bestMarathon],
+  ];
   const canonicalSport = canonicalOutdoorPerformanceSport(activitySport);
   const speedPrimary = outdoorUsesSpeedMetric(canonicalSport);
   const bestAverageSpeedKmh = activities.reduce((best, activity) => Math.max(best, outdoorAverageSpeedKmh(activity)), 0);
@@ -69,11 +77,11 @@ export default function RunningStatsPage({ go, params }: Props) {
   }, [persistShoes, shoes]);
 
   const copy = lang === "fr" ? {
-    title: "STATS PERFORMANCE", sub: "Tes données outdoor, sans page interminable", total: "DISTANCE TOTALE", runs: "ACTIVITÉS", time: "TEMPS", climb: "D+", best: "MEILLEURE ALLURE", longest: "PLUS LONGUE", week: "7 DERNIERS JOURS", load: "CHARGE D’ENTRAÎNEMENT", freshness: "Préparation", acute: "Charge 7 j", ratio: "Ratio 7/28 j", records: "RECORDS PERSONNELS", predictions: "PRÉDICTIONS", gear: "ÉQUIPEMENT", addShoe: "AJOUTER UNE PAIRE", shoePlaceholder: "Nom de la paire…", mileage: "Kilométrage", wear: "Usure estimée", active: "ACTIVE", retired: "RETIRÉE", recent: "DERNIÈRES ACTIVITÉS", all: "VOIR TOUT", less: "RÉDUIRE", noRuns: "Aucune sortie enregistrée pour le moment.", info: "Organisation simplifiée : Aperçu pour la synthèse, Analyse pour les performances, Journal pour le calendrier et l’historique, Matériel pour l’équipement, Sync pour les capteurs et les échanges de données.", tabs: { overview: "APERÇU", performance: "ANALYSE", history: "JOURNAL", gear: "MATÉRIEL", sync: "SYNC" }
+    title: "STATS PERFORMANCE", sub: "Tes données outdoor, sans page interminable", total: "DISTANCE TOTALE", runs: "ACTIVITÉS", time: "TEMPS", climb: "D+", best: "MEILLEURE ALLURE", longest: "PLUS LONGUE", week: "7 DERNIERS JOURS", load: "CHARGE D’ENTRAÎNEMENT", freshness: "Préparation", acute: "Charge 7 j", ratio: "Ratio 7/28 j", records: "RECORDS PERSONNELS", predictions: "PRÉDICTIONS", gear: "ÉQUIPEMENT", addShoe: "AJOUTER UNE PAIRE", shoePlaceholder: "Nom de la paire…", mileage: "Kilométrage", wear: "Usure estimée", active: "ACTIVE", retired: "RETIRÉE", recent: "TOUTES LES SORTIES", all: "VOIR TOUT", less: "RÉDUIRE", noRuns: "Aucune sortie enregistrée pour le moment.", info: "Organisation simplifiée : Aperçu pour la synthèse, Analyse pour les performances, Sorties pour retrouver toutes les activités et leur calendrier, Matériel pour l’équipement, Sync pour les capteurs et les échanges de données.", tabs: { overview: "APERÇU", performance: "ANALYSE", history: "SORTIES", gear: "MATÉRIEL", sync: "SYNC" }
   } : lang === "es" ? {
-    title: "STATS PERFORMANCE", sub: "Tus datos outdoor, sin una página interminable", total: "DISTANCIA TOTAL", runs: "ACTIVIDADES", time: "TIEMPO", climb: "D+", best: "MEJOR RITMO", longest: "MÁS LARGA", week: "ÚLTIMOS 7 DÍAS", load: "CARGA DE ENTRENAMIENTO", freshness: "Preparación", acute: "Carga 7 d", ratio: "Ratio 7/28 d", records: "RÉCORDS PERSONALES", predictions: "PREDICCIONES", gear: "EQUIPO", addShoe: "AÑADIR ZAPATILLAS", shoePlaceholder: "Nombre de las zapatillas…", mileage: "Kilometraje", wear: "Desgaste estimado", active: "ACTIVAS", retired: "RETIRADAS", recent: "ÚLTIMAS ACTIVIDADES", all: "VER TODO", less: "REDUCIR", noRuns: "Todavía no hay salidas guardadas.", info: "Organización simplificada: Resumen, Análisis, Diario, Material y Sync para sensores e intercambio de datos.", tabs: { overview: "RESUMEN", performance: "ANÁLISIS", history: "DIARIO", gear: "MATERIAL", sync: "SYNC" }
+    title: "STATS PERFORMANCE", sub: "Tus datos outdoor, sin una página interminable", total: "DISTANCIA TOTAL", runs: "ACTIVIDADES", time: "TIEMPO", climb: "D+", best: "MEJOR RITMO", longest: "MÁS LARGA", week: "ÚLTIMOS 7 DÍAS", load: "CARGA DE ENTRENAMIENTO", freshness: "Preparación", acute: "Carga 7 d", ratio: "Ratio 7/28 d", records: "RÉCORDS PERSONALES", predictions: "PREDICCIONES", gear: "EQUIPO", addShoe: "AÑADIR ZAPATILLAS", shoePlaceholder: "Nombre de las zapatillas…", mileage: "Kilometraje", wear: "Desgaste estimado", active: "ACTIVAS", retired: "RETIRADAS", recent: "TODAS LAS SALIDAS", all: "VER TODO", less: "REDUCIR", noRuns: "Todavía no hay salidas guardadas.", info: "Organización simplificada: Resumen, Análisis, Salidas para encontrar todas las actividades y su calendario, Material y Sync para sensores e intercambio de datos.", tabs: { overview: "RESUMEN", performance: "ANÁLISIS", history: "SALIDAS", gear: "MATERIAL", sync: "SYNC" }
   } : {
-    title: "PERFORMANCE STATS", sub: "Your outdoor data without an endless page", total: "TOTAL DISTANCE", runs: "ACTIVITIES", time: "TIME", climb: "ELEVATION", best: "BEST PACE", longest: "LONGEST", week: "LAST 7 DAYS", load: "TRAINING LOAD", freshness: "Readiness", acute: "7-day load", ratio: "7/28 ratio", records: "PERSONAL RECORDS", predictions: "PREDICTIONS", gear: "GEAR", addShoe: "ADD SHOES", shoePlaceholder: "Shoe name…", mileage: "Mileage", wear: "Estimated wear", active: "ACTIVE", retired: "RETIRED", recent: "RECENT ACTIVITIES", all: "VIEW ALL", less: "SHOW LESS", noRuns: "No activities saved yet.", info: "Simplified layout: Overview, Analysis, Journal, Gear and Sync for sensors and data exchange.", tabs: { overview: "OVERVIEW", performance: "ANALYSIS", history: "JOURNAL", gear: "GEAR", sync: "SYNC" }
+    title: "PERFORMANCE STATS", sub: "Your outdoor data without an endless page", total: "TOTAL DISTANCE", runs: "ACTIVITIES", time: "TIME", climb: "ELEVATION", best: "BEST PACE", longest: "LONGEST", week: "LAST 7 DAYS", load: "TRAINING LOAD", freshness: "Readiness", acute: "7-day load", ratio: "7/28 ratio", records: "PERSONAL RECORDS", predictions: "PREDICTIONS", gear: "GEAR", addShoe: "ADD SHOES", shoePlaceholder: "Shoe name…", mileage: "Mileage", wear: "Estimated wear", active: "ACTIVE", retired: "RETIRED", recent: "ALL ACTIVITIES", all: "VIEW ALL", less: "SHOW LESS", noRuns: "No activities saved yet.", info: "Simplified layout: Overview, Analysis, Activities for every saved outing and its calendar, Gear and Sync for sensors and data exchange.", tabs: { overview: "OVERVIEW", performance: "ANALYSIS", history: "ACTIVITIES", gear: "GEAR", sync: "SYNC" }
   };
   const bestMetricLabel = speedPrimary ? (lang === "fr" ? "MEILLEURE VITESSE" : lang === "es" ? "MEJOR VELOCIDAD" : "BEST SPEED") : copy.best;
   const bestMetricValue = speedPrimary ? (bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—") : `${formatPace(stats.bestPaceSecPerKm)}/km`;
@@ -95,7 +103,7 @@ export default function RunningStatsPage({ go, params }: Props) {
         <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
           <RunningHubCard title={copy.tabs.overview} subtitle={lang === "fr" ? "Synthèse, semaine et charge d’entraînement" : lang === "es" ? "Resumen, semana y carga de entrenamiento" : "Summary, week and training load"} icon={<RunningGlyph name="chart" size={20}/>} accent={accent} onClick={() => setTab("overview")}/>
           <RunningHubCard title={copy.tabs.performance} subtitle={lang === "fr" ? "Records, forme et terrain" : lang === "es" ? "Récords, forma y terreno" : "Records, fitness and terrain"} icon={<RunningGlyph name="spark" size={20}/>} accent={accent} onClick={() => { setAnalysisTab("hub"); setTab("performance"); }}/>
-          <RunningHubCard title={copy.tabs.history} subtitle={lang === "fr" ? "Calendrier et dernières activités" : lang === "es" ? "Calendario y últimas actividades" : "Calendar and recent activities"} icon={<RunningGlyph name="history" size={20}/>} accent={accent} onClick={() => setTab("history")} badge={activities.length || undefined}/>
+          <RunningHubCard title={copy.tabs.history} subtitle={lang === "fr" ? "Toutes tes sorties enregistrées et leur calendrier" : lang === "es" ? "Todas tus salidas guardadas y su calendario" : "All saved activities and their calendar"} icon={<RunningGlyph name="history" size={20}/>} accent={accent} onClick={() => setTab("history")} badge={activities.length || undefined}/>
           <RunningHubCard title={copy.tabs.gear} subtitle={lang === "fr" ? "Chaussures et kilométrage" : lang === "es" ? "Zapatillas y kilometraje" : "Shoes and mileage"} icon={<RunningGlyph name="shoe" size={20}/>} accent={accent} onClick={() => setTab("gear")} badge={shoes.length || undefined}/>
           <RunningHubCard title={copy.tabs.sync} subtitle={lang === "fr" ? "Capteurs, Health Connect et fichiers" : lang === "es" ? "Sensores, Health Connect y archivos" : "Sensors, Health Connect and files"} icon={<RunningGlyph name="sensor" size={20}/>} accent={accent} onClick={() => { setSyncTab("hub"); setTab("sync"); }}/>
         </div>
@@ -179,7 +187,7 @@ export default function RunningStatsPage({ go, params }: Props) {
         <RunningSurface accent={accent} active style={{ marginTop: 10 }}>
         <div style={{ color: accent, fontSize: 9, fontWeight: 1000, marginBottom: 8 }}>{copy.recent}</div>
         {activities.length ? <div style={{ display: "grid", gap: 7 }}>
-          {(showAll ? activities : activities.slice(0, 8)).map((a) => {
+          {activities.map((a) => {
             const sport = canonicalOutdoorPerformanceSport(a.sport);
             const icon = sport === "trail" ? "⛰️" : sport === "hiking" ? "🥾" : sport === "walking" ? "🚶" : sport === "treadmill" ? "🏃‍♂️" : "🏃";
             return <button type="button" key={a.id} onClick={() => go("games", { runningView: "detail", runningActivityId: a.id, runningActivitySport: sport })} style={{ width: "100%", padding: 11, color: "inherit", textAlign: "left", cursor: "pointer", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.18))", boxShadow: "0 8px 18px rgba(0,0,0,.18)", display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center" }}>
@@ -188,7 +196,6 @@ export default function RunningStatsPage({ go, params }: Props) {
               <div style={{ color: accent, fontSize: 10, fontWeight: 1000, textAlign: "right" }}>{outdoorAverageMetricValue(a, sport)}<small style={{ display: "block", fontSize: 7 }}>{outdoorAverageMetricLabel(sport, String(lang || "fr"))}</small><div style={{ marginTop: 2, opacity: .55 }}>›</div></div>
             </button>;
           })}
-          {activities.length > 8 ? <button className="btn" onClick={() => setShowAll((value) => !value)} style={{ width: "100%", minHeight: 42, marginTop: 2, fontWeight: 1000 }}>{showAll ? copy.less : copy.all}</button> : null}
         </div> : <div style={{ padding: 18, textAlign: "center", color: textSoft, fontSize: 10 }}>{copy.noRuns}</div>}
       </RunningSurface></> : null}
 

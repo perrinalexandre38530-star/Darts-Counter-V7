@@ -30,6 +30,8 @@ export type GamerIdentity = {
   handles: Partial<Record<EsportsPlatform | "steam" | "epic" | "riot" | "ea" | "battlenet", string>>;
   availability: "available" | "busy" | "offline";
   lookingForGroup: boolean;
+  primaryPlatform: EsportsPlatform;
+  rankByGame: Record<string, string>;
 };
 
 export type EsportsRoomMember = {
@@ -100,6 +102,7 @@ export type EsportsLfgPost = {
   platform: EsportsPlatform;
   mode: string;
   message: string;
+  rankLabel: string;
   slotsNeeded: number;
   status: "open" | "closed";
   createdAt: number;

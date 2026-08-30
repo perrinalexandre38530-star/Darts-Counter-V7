@@ -1,6 +1,7 @@
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 import {
   listFriends,
+  listPrivateMessages,
   searchUsers,
   sendFriendRequest,
   sendPrivateMessage,
@@ -62,4 +63,39 @@ export async function postEsportsRoomMessage(roomCode: string, text: string, aut
 
 export function subscribeEsportsRoomMessages(roomCode: string, onInsert: (row: any) => void) {
   return subscribeMessages(roomCode, onInsert);
+}
+
+
+export type IncomingEsportsRoomInvite = {
+  id: string;
+  roomCode: string;
+  roomId?: string | null;
+  gameId: string;
+  title: string;
+  bestOf?: number | null;
+  formatLabel?: string | null;
+  fromName: string;
+  fromUserId?: string | null;
+  createdAt?: string | null;
+};
+
+export async function loadIncomingEsportsRoomInvites(): Promise<IncomingEsportsRoomInvite[]> {
+  const messages = await listPrivateMessages();
+  return (messages || [])
+    .filter((message: any) => message?.direction !== "outgoing")
+    .filter((message: any) => String(message?.metadata?.kind || "") === "esports_room_invite")
+    .map((message: any) => ({
+      id: String(message.id || `${message?.metadata?.roomCode || "invite"}_${message?.createdAt || ""}`),
+      roomCode: String(message?.metadata?.roomCode || "").toUpperCase(),
+      roomId: message?.metadata?.roomId ? String(message.metadata.roomId) : null,
+      gameId: String(message?.metadata?.gameId || "rocket-league"),
+      title: String(message?.metadata?.title || "Salon E-SPORTS"),
+      bestOf: Number(message?.metadata?.bestOf || 0) || null,
+      formatLabel: message?.metadata?.formatLabel ? String(message.metadata.formatLabel) : null,
+      fromName: String(message?.fromUser?.displayName || message?.fromUser?.nickname || "Un ami"),
+      fromUserId: message?.fromUser?.userId || message?.fromUser?.id || null,
+      createdAt: message?.createdAt || null,
+    }))
+    .filter((invite) => !!invite.roomCode)
+    .slice(0, 30);
 }
