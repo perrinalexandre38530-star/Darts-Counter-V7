@@ -55,3 +55,53 @@ CREATE TABLE IF NOT EXISTS run_log (
   queued INTEGER NOT NULL DEFAULT 0,
   error TEXT
 );
+
+CREATE TABLE IF NOT EXISTS social_assets (
+  id TEXT PRIMARY KEY,
+  url TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL DEFAULT '',
+  media_type TEXT NOT NULL,
+  platforms_json TEXT NOT NULL DEFAULT '[]',
+  quality_score INTEGER NOT NULL DEFAULT 0,
+  technical_score INTEGER NOT NULL DEFAULT 0,
+  brand_score INTEGER NOT NULL DEFAULT 0,
+  human_approved INTEGER NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_assets_approved ON social_assets(human_approved, quality_score DESC, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS social_campaigns (
+  id TEXT PRIMARY KEY,
+  source_sighting_id TEXT UNIQUE,
+  language TEXT NOT NULL DEFAULT 'fr',
+  topic TEXT NOT NULL DEFAULT '',
+  angle TEXT NOT NULL DEFAULT '',
+  hook TEXT NOT NULL DEFAULT '',
+  call_to_action TEXT NOT NULL DEFAULT '',
+  hashtags_json TEXT NOT NULL DEFAULT '[]',
+  media_type TEXT NOT NULL DEFAULT 'video',
+  media_brief_json TEXT NOT NULL DEFAULT '{}',
+  platform_copy_json TEXT NOT NULL DEFAULT '{}',
+  quality_score INTEGER NOT NULL DEFAULT 0,
+  factual_score INTEGER NOT NULL DEFAULT 0,
+  brand_score INTEGER NOT NULL DEFAULT 0,
+  usefulness_score INTEGER NOT NULL DEFAULT 0,
+  visual_score INTEGER NOT NULL DEFAULT 0,
+  spam_risk INTEGER NOT NULL DEFAULT 100,
+  cringe_risk INTEGER NOT NULL DEFAULT 100,
+  qa_reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft',
+  selected_asset_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  approved_at TEXT,
+  published_at TEXT,
+  FOREIGN KEY (source_sighting_id) REFERENCES sightings(id),
+  FOREIGN KEY (selected_asset_id) REFERENCES social_assets(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_campaigns_status ON social_campaigns(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_social_campaigns_quality ON social_campaigns(quality_score DESC, created_at DESC);

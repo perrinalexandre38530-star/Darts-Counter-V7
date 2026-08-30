@@ -1,3 +1,6 @@
-# Never commit the real values.
+# Never commit real values.
 BRAVE_SEARCH_API_KEY=replace_me
 RADAR_ADMIN_TOKEN=replace_me_with_a_long_random_secret
+
+# Social Growth is intentionally review-only until official social OAuth/API connectors are configured.
+SOCIAL_AUTOPILOT_MODE=review

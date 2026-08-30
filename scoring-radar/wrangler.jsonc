@@ -32,14 +32,22 @@
     ]
   },
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["0 * * * *"]
   },
   "vars": {
     "APP_DESTINATION_URL": "https://multisports-scoring.pages.dev/",
     "RADAR_MARKETS": "fr:FR,en:US,en:GB,es:ES,de:DE,it:IT,pt:PT,pt:BR,nl:NL,pl:PL,tr:TR,ar:SA,hi:IN,id:ID,ja:JP,ko:KR,zh-hans:SG,zh-hant:TW,ru:RU,uk:UA,sv:SE,da:DK,no:NO,fi:FI,cs:CZ,ro:RO,el:GR,he:IL,th:TH,vi:VN,hu:HU,bg:BG,hr:HR,sk:SK,sl:SI,et:EE,lv:LV,lt:LT,sr:RS,ms:MY,bn:BD,ta:IN,te:IN,gu:IN,mr:IN,pa:IN,kn:IN,ml:IN,is:IS,ca:ES,eu:ES,gl:ES",
-    "RADAR_MARKETS_PER_RUN": "5",
+    "RADAR_MARKETS_PER_RUN": "1",
     "RADAR_RESULTS_PER_QUERY": "10",
-    "RADAR_MIN_SCORE": "70"
+    "RADAR_MIN_SCORE": "70",
+    "SOCIAL_AUTOPILOT_MODE": "review",
+    "SOCIAL_MIN_OPPORTUNITY_SCORE": "85",
+    "SOCIAL_MIN_QUALITY_SCORE": "90",
+    "SOCIAL_MIN_FACTUAL_SCORE": "95",
+    "SOCIAL_MIN_VISUAL_SCORE": "90",
+    "SOCIAL_MAX_SPAM_RISK": "10",
+    "SOCIAL_MAX_CRINGE_RISK": "10",
+    "SOCIAL_MAX_CAMPAIGNS_PER_DAY": "2"
   },
   "observability": {
     "enabled": true,

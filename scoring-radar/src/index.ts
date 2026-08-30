@@ -4,17 +4,29 @@ import { searchBrave } from './brave';
 import { intFromEnv, marketKey, parseMarkets } from './config';
 import {
   applyAnalysis,
+  attachSocialAsset,
+  countSocialCampaignsSince,
   finishRun,
   getOpportunity,
   getRadarStats,
+  getSocialAsset,
+  getSocialCampaign,
+  getSocialStats,
   insertCandidate,
+  insertSocialAsset,
+  insertSocialCampaign,
+  listSocialAssets,
+  listSocialCampaigns,
   listOpportunities,
   logClick,
+  setSocialCampaignStatus,
+  socialCampaignExistsForSighting,
   startRun
 } from './db';
-import type { Candidate, RadarEnv } from './domain';
+import type { Candidate, RadarEnv, SocialCampaignRow } from './domain';
 import { sha256Hex } from './hash';
 import { isAdminAuthorized, unauthorized } from './security';
+import { generateAndAuditSocialDraft, socialQaPasses } from './social';
 import { SEARCH_INTENTS } from './targets';
 
 function json(data: unknown, status = 200): Response {
@@ -56,8 +68,196 @@ function safeDestination(base: string, row: { id: string; source: string; langua
   return url.toString();
 }
 
+function parseJsonField<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function socialCampaignPayload(row: SocialCampaignRow) {
+  return {
+    ...row,
+    hashtags: parseJsonField<string[]>(row.hashtags_json, []),
+    media_brief: parseJsonField<Record<string, unknown>>(row.media_brief_json, {}),
+    platform_copy: parseJsonField<Record<string, string>>(row.platform_copy_json, {})
+  };
+}
+
+async function maybeCreateSocialCampaign(env: RadarEnv, candidates: Candidate[], analyses: Awaited<ReturnType<typeof classifyCandidates>>): Promise<void> {
+  const minOpportunityScore = intFromEnv(env.SOCIAL_MIN_OPPORTUNITY_SCORE, 85, 0, 100);
+  const maxPerDay = intFromEnv(env.SOCIAL_MAX_CAMPAIGNS_PER_DAY, 2, 0, 24);
+  if (maxPerDay <= 0) return;
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  if (await countSocialCampaignsSince(env, since) >= maxPerDay) return;
+
+  const best = analyses
+    .filter((analysis) => analysis.eligible && analysis.score >= minOpportunityScore)
+    .sort((a, b) => b.score - a.score)
+    .find((analysis) => candidates.some((candidate) => candidate.id === analysis.id));
+  if (!best) return;
+  if (await socialCampaignExistsForSighting(env, best.id)) return;
+
+  const candidate = candidates.find((item) => item.id === best.id);
+  if (!candidate) return;
+
+  const { draft, qa, passes } = await generateAndAuditSocialDraft(env, candidate, best);
+  const createdAt = new Date().toISOString();
+  const status = passes ? 'ready_for_review' : 'rejected_by_qa';
+  await insertSocialCampaign(env, {
+    id: crypto.randomUUID(),
+    sourceSightingId: candidate.id,
+    language: draft.language,
+    topic: draft.topic,
+    angle: draft.angle,
+    hook: draft.hook,
+    callToAction: draft.callToAction,
+    hashtagsJson: JSON.stringify(draft.hashtags),
+    mediaType: draft.mediaType,
+    mediaBriefJson: JSON.stringify(draft.mediaBrief),
+    platformCopyJson: JSON.stringify(draft.platformCopies),
+    qualityScore: qa.qualityScore,
+    factualScore: qa.factualScore,
+    brandScore: qa.brandScore,
+    usefulnessScore: qa.usefulnessScore,
+    visualScore: qa.visualScore,
+    spamRisk: qa.spamRisk,
+    cringeRisk: qa.cringeRisk,
+    qaReason: qa.reason,
+    status,
+    createdAt
+  });
+
+  console.log(JSON.stringify({
+    event: 'social_campaign_created',
+    sourceSightingId: candidate.id,
+    status,
+    qualityScore: qa.qualityScore,
+    factualScore: qa.factualScore,
+    visualScore: qa.visualScore,
+    spamRisk: qa.spamRisk,
+    cringeRisk: qa.cringeRisk
+  }));
+}
+
 async function handleAdminApi(request: Request, env: RadarEnv, url: URL): Promise<Response> {
   if (!isAdminAuthorized(request, env)) return unauthorized();
+
+  if (request.method === 'GET' && url.pathname === '/api/social/stats') {
+    return json({ ok: true, stats: await getSocialStats(env), mode: env.SOCIAL_AUTOPILOT_MODE || 'review' });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/social/campaigns') {
+    const limit = intFromEnv(url.searchParams.get('limit') ?? undefined, 100, 1, 300);
+    const campaigns = await listSocialCampaigns(env, limit);
+    return json({ ok: true, campaigns: campaigns.map((row) => socialCampaignPayload(row)) });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/social/assets') {
+    const approvedOnly = url.searchParams.get('approvedOnly') === '1';
+    const assets = await listSocialAssets(env, approvedOnly);
+    return json({
+      ok: true,
+      assets: assets.map((row) => ({ ...row, platforms: parseJsonField<string[]>(row.platforms_json, []) }))
+    });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/social/assets') {
+    const body = await request.json() as Record<string, unknown>;
+    const rawUrl = typeof body.url === 'string' ? body.url.trim() : '';
+    let assetUrl: URL;
+    try {
+      assetUrl = new URL(rawUrl);
+    } catch {
+      return json({ ok: false, error: 'invalid_asset_url' }, 400);
+    }
+    if (assetUrl.protocol !== 'https:') return json({ ok: false, error: 'asset_url_must_be_https' }, 400);
+
+    const mediaType = body.mediaType === 'image' ? 'image' : body.mediaType === 'video' ? 'video' : '';
+    if (!mediaType) return json({ ok: false, error: 'invalid_media_type' }, 400);
+    const qualityScore = intFromEnv(String(body.qualityScore ?? ''), 0, 0, 100);
+    const technicalScore = intFromEnv(String(body.technicalScore ?? ''), 0, 0, 100);
+    const brandScore = intFromEnv(String(body.brandScore ?? ''), 0, 0, 100);
+    const humanApproved = body.humanApproved === true && qualityScore >= 90 && technicalScore >= 90 && brandScore >= 90;
+    const platforms = Array.isArray(body.platforms)
+      ? body.platforms.filter((item): item is string => typeof item === 'string').slice(0, 8)
+      : [];
+    const createdAt = new Date().toISOString();
+    const id = crypto.randomUUID();
+    await insertSocialAsset(env, {
+      id,
+      url: assetUrl.toString(),
+      title: typeof body.title === 'string' ? body.title.slice(0, 180) : '',
+      mediaType,
+      platformsJson: JSON.stringify(platforms),
+      qualityScore,
+      technicalScore,
+      brandScore,
+      humanApproved,
+      notes: typeof body.notes === 'string' ? body.notes.slice(0, 800) : '',
+      createdAt
+    });
+    return json({ ok: true, id, humanApproved });
+  }
+
+  const campaignActionMatch = url.pathname.match(/^\/api\/social\/campaigns\/([^/]+)\/(asset|approve|reject)$/);
+  if (request.method === 'POST' && campaignActionMatch) {
+    const campaignId = campaignActionMatch[1]!;
+    const action = campaignActionMatch[2]!;
+    const campaign = await getSocialCampaign(env, campaignId);
+    if (!campaign) return json({ ok: false, error: 'campaign_not_found' }, 404);
+
+    if (action === 'asset') {
+      const body = await request.json() as { assetId?: string };
+      const assetId = typeof body.assetId === 'string' ? body.assetId : '';
+      const asset = assetId ? await getSocialAsset(env, assetId) : null;
+      if (!asset) return json({ ok: false, error: 'asset_not_found' }, 404);
+      if (asset.human_approved !== 1 || asset.quality_score < 90 || asset.technical_score < 90 || asset.brand_score < 90) {
+        return json({ ok: false, error: 'asset_not_approved' }, 409);
+      }
+      if (asset.media_type !== campaign.media_type) {
+        return json({ ok: false, error: 'asset_media_type_mismatch' }, 409);
+      }
+      await attachSocialAsset(env, campaignId, assetId);
+      return json({ ok: true, campaignId, assetId });
+    }
+
+    if (action === 'reject') {
+      await setSocialCampaignStatus(env, campaignId, 'rejected');
+      return json({ ok: true, campaignId, status: 'rejected' });
+    }
+
+    if (campaign.status !== 'ready_for_review') {
+      return json({ ok: false, error: 'campaign_not_ready_for_review' }, 409);
+    }
+    const qaPasses = socialQaPasses(env, {
+      qualityScore: campaign.quality_score,
+      factualScore: campaign.factual_score,
+      brandScore: campaign.brand_score,
+      usefulnessScore: campaign.usefulness_score,
+      visualScore: campaign.visual_score,
+      spamRisk: campaign.spam_risk,
+      cringeRisk: campaign.cringe_risk,
+      decision: 'pass',
+      reason: campaign.qa_reason
+    });
+    if (!qaPasses) return json({ ok: false, error: 'campaign_failed_quality_gate' }, 409);
+    if (!campaign.selected_asset_id) return json({ ok: false, error: 'approved_asset_required' }, 409);
+    const asset = await getSocialAsset(env, campaign.selected_asset_id);
+    if (!asset || asset.human_approved !== 1 || asset.quality_score < 90 || asset.technical_score < 90 || asset.brand_score < 90) {
+      return json({ ok: false, error: 'approved_asset_required' }, 409);
+    }
+    await setSocialCampaignStatus(env, campaignId, 'approved');
+    return json({
+      ok: true,
+      campaignId,
+      status: 'approved',
+      publish_mode: env.SOCIAL_AUTOPILOT_MODE || 'review',
+      note: 'Publishing connectors are intentionally not enabled until social account OAuth/API credentials are configured.'
+    });
+  }
 
   if (request.method === 'GET' && url.pathname === '/api/opportunities') {
     const minScore = intFromEnv(url.searchParams.get('minScore') ?? env.RADAR_MIN_SCORE, 70, 0, 100);
@@ -159,9 +359,9 @@ async function runScheduled(env: RadarEnv, scheduledTime: number): Promise<void>
   const markets = parseMarkets(env);
   const marketsPerRun = intFromEnv(env.RADAR_MARKETS_PER_RUN, 5, 1, 20);
   const resultsPerQuery = intFromEnv(env.RADAR_RESULTS_PER_QUERY, 10, 1, 20);
-  const fiveMinuteTick = Math.floor(scheduledTime / 300_000);
-  const { selected: selectedMarkets, runsPerSweep } = chooseMarketBatch(markets, marketsPerRun, fiveMinuteTick);
-  const intentIndex = Math.floor(Math.abs(fiveMinuteTick) / runsPerSweep) % SEARCH_INTENTS.length;
+  const hourlyTick = Math.floor(scheduledTime / 3_600_000);
+  const { selected: selectedMarkets, runsPerSweep } = chooseMarketBatch(markets, marketsPerRun, hourlyTick);
+  const intentIndex = Math.floor(Math.abs(hourlyTick) / runsPerSweep) % SEARCH_INTENTS.length;
   const selectedIntent = SEARCH_INTENTS[intentIndex]!;
 
   await startRun(env, runId, startedAt, selectedMarkets.map(marketKey).join(','));
@@ -234,6 +434,13 @@ export default {
         throw new Error(`Missing classifier result for candidate ${candidate.id}`);
       }
       await applyAnalysis(env, analysis);
+    }
+
+    try {
+      await maybeCreateSocialCampaign(env, candidates, analyses);
+    } catch (caught) {
+      const error = caught instanceof Error ? caught.message : String(caught);
+      console.error(JSON.stringify({ event: 'social_campaign_error', error }));
     }
 
     console.log(JSON.stringify({ event: 'radar_classified', count: candidates.length }));
