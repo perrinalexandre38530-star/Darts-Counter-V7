@@ -1,0 +1,10 @@
+MULTISPORTS SCORING — SYNC CANONICAL V53
+Base: Darts-Counter-V7(52).zip
+Corrections:
+- restored canonical root .gitignore
+- restored canonical android/app/.gitignore
+- restored android/app/build.gradle versionCode 15 / versionName 1.0.0
+- removed .env from distributable archive
+- removed android/key.properties from distributable archive
+- removed temporary apply-snapchat-v48.mjs
+- kept Snapchat custom OAuth: custom:snapchat
