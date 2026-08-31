@@ -31,3 +31,11 @@ Useful commands:
 - `npm run fit:awena:review -- --asset <assetKey> --reject`
 - `npm run fit:awena:index`
 - `npm run fit:awena:audit`
+
+V113 completeness rules:
+
+- `APPROVED COMPLETE` = video + poster + at least 4 validated pedagogical steps; never regenerated.
+- `APPROVED PARTIAL` = validated media exists but one or more components are missing.
+- Motion queue may create `VIDEO_ONLY_SUPPLEMENT` only when an APPROVED PARTIAL pack lacks video.
+- Step queue may create `STEPS_ONLY_SUPPLEMENT` only when an authoritative video already exists and fewer than 4 validated steps are available.
+- Component approval copies only missing pieces into generated `/approved`; already validated components are protected against overwrite.

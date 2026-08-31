@@ -115,7 +115,8 @@
     "fit:awena:review": "node ./tools/review-fit-awena-media.mjs",
     "test:fit-awena-registry": "node ./tools/test-fit-awena-registry-v112.mjs",
     "fit:awena:steps:queue": "node ./tools/build-fit-awena-step-jobs.mjs",
-    "fit:awena:steps:ready": "node ./tools/mark-fit-awena-steps-ready.mjs"
+    "fit:awena:steps:ready": "node ./tools/mark-fit-awena-steps-ready.mjs",
+    "test:fit-awena-partial": "node ./tools/test-fit-awena-partial-v113.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

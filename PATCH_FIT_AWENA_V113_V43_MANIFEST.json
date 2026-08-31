@@ -1,0 +1,30 @@
+{
+  "base": "Darts-Counter-V7(44)(1).zip",
+  "version": "V113-V44",
+  "packagePolicy": {
+    "basePackage": "V44",
+    "preserveAllExistingScripts": true,
+    "addedScripts": [
+      "test:fit-awena-partial"
+    ],
+    "dependenciesChanged": false,
+    "devDependenciesChanged": false
+  },
+  "files": [
+    "INSTALLATION-FIT-AWENA-V113-V44.txt",
+    "docs/FIT_AWENA_PARTIAL_COMPLETE_V113.md",
+    "package.json",
+    "public/fit/awena-library/README.md",
+    "src/fit/fitAwenaMedia.ts",
+    "src/pages/fit/FitExerciseMotion.tsx",
+    "tools/audit-fit-awena-media.mjs",
+    "tools/build-fit-awena-jobs.mjs",
+    "tools/build-fit-awena-registry.mjs",
+    "tools/build-fit-awena-step-jobs.mjs",
+    "tools/fit-awena-registry.mjs",
+    "tools/review-fit-awena-media.mjs",
+    "tools/run-comfyui-awena-batch.mjs",
+    "tools/test-fit-awena-partial-v113.mjs",
+    "tools/test-fit-awena-registry-v112.mjs"
+  ]
+}

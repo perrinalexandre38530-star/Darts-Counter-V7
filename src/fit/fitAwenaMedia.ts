@@ -91,14 +91,10 @@ export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_A
       "/fit/exercise-media/burpee/awena-04.webp",
     ];
   }
-  if (key === "curl") {
-    return [
-      "/fit/motions/awena/premium/curl/frames/frame-01.webp",
-      "/fit/motions/awena/premium/curl/frames/frame-02.webp",
-      "/fit/motions/awena/premium/curl/frames/frame-04.webp",
-      "/fit/motions/awena/premium/curl/frames/frame-05.webp",
-    ];
-  }
+  // Squat/Curl legacy premium frames are useful motion references/posters, but
+  // they are NOT considered final pedagogical step illustrations anymore.
+  // Their dedicated APPROVED generated step pack fills this missing component.
+  if (key === "squat" || key === "curl") return fitAwenaGeneratedMedia(exercise, requestedCount).stepImages;
   return fitAwenaGeneratedMedia(exercise, requestedCount).stepImages;
 }
 

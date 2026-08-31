@@ -79,12 +79,6 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
           onError={() => setKnownVideoOk(false)}
           style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block", background: "transparent" }}
         />
-      ) : hasAwenaPremiumMotion(motionExerciseId) && premiumMotion && !premiumFailed ? (
-        <FitPremiumMotionPlayer slot={premiumMotion} compact={compact} onFail={() => setPremiumFailed(true)} showBadge={!cleanBranding}/>
-      ) : compact && premiumPoster ? (
-        <div style={{ minHeight: 100, display: "grid", placeItems: "center", padding: 4, boxSizing: "border-box" }}>
-          <img src={premiumPoster} alt={`Aperçu Awena ${exercise.name}`} loading="lazy" style={{ width: "100%", height: 122, objectFit: "contain", display: "block", borderRadius: 10 }}/>
-        </div>
       ) : generatedVideoOk ? (
         <video
           src={generatedMedia.videoUrl}
@@ -97,6 +91,12 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
           onError={() => setGeneratedVideoOk(false)}
           style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block", background: "transparent" }}
         />
+      ) : hasAwenaPremiumMotion(motionExerciseId) && premiumMotion && !premiumFailed ? (
+        <FitPremiumMotionPlayer slot={premiumMotion} compact={compact} onFail={() => setPremiumFailed(true)} showBadge={!cleanBranding}/>
+      ) : compact && premiumPoster ? (
+        <div style={{ minHeight: 100, display: "grid", placeItems: "center", padding: 4, boxSizing: "border-box" }}>
+          <img src={premiumPoster} alt={`Aperçu Awena ${exercise.name}`} loading="lazy" style={{ width: "100%", height: 122, objectFit: "contain", display: "block", borderRadius: 10 }}/>
+        </div>
       ) : hasFitAwena3DMotion(exercise) && !threeDFailed ? (
         <FitAwena3DStage exercise={exercise} compact={compact} onFail={() => setThreeDFailed(true)}/>
       ) : hasFitAwenaMotion(exercise) ? (
