@@ -53,6 +53,10 @@ repositories {
 }
 
 dependencies {
+    // RUNNING PERF / Health Connect - keep this dependency in the Android source
+    // so future patches/builds cannot lose the native HealthConnectPlugin classes.
+    implementation "androidx.health.connect:connect-client:1.1.0"
+
     // Awena Voice V6: moteur TTS local sherpa-onnx / VITS-Piper.
     implementation("com.github.k2-fsa:sherpa-onnx:v1.13.5") {
         // Le AAR Android contient déjà les classes JVM.
