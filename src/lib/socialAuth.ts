@@ -46,9 +46,9 @@ export const SOCIAL_AUTH_CONFIG: Record<SocialAuthProvider, SocialAuthConfig> = 
     custom: true,
     note: "Comptes Business / Creator",
   },
-  // Snapchat existe côté Supabase Auth/GoTrue mais n'est pas encore exposé dans
-  // toutes les versions des types supabase-js : on le passe donc comme provider runtime.
-  snapchat: { label: "Snapchat", oauthProvider: "snapchat", settingsKeys: ["snapchat"] },
+  // Snapchat Login Kit est configuré comme Custom OAuth2 dans Supabase.
+  // custom:true empêche /auth/v1/settings de masquer le bouton.
+  snapchat: { label: "Snapchat", oauthProvider: "custom:snapchat", custom: true },
   // TikTok Login Kit n'est pas un provider natif Supabase : Custom OAuth/OIDC.
   tiktok: { label: "TikTok", oauthProvider: "custom:tiktok", custom: true },
   github: { label: "GitHub", oauthProvider: "github", settingsKeys: ["github"] },
