@@ -310,6 +310,15 @@ async function loadPublicAuthSettings(force = false): Promise<Record<string, unk
 
 export async function getSocialProviderAvailabilityMap(force = false): Promise<Partial<Record<SocialAuthProvider, SocialProviderAvailability>>> {
   const result: Partial<Record<SocialAuthProvider, SocialProviderAvailability>> = {};
+
+  // Android natif : l'écran de connexion ne doit jamais attendre /auth/v1/settings.
+  // Le provider réel sera validé par Supabase au lancement OAuth. Le PWA conserve
+  // la vérification distante actuelle.
+  if (isCapacitorNativeRuntime() && !force) {
+    for (const provider of SOCIAL_AUTH_PROVIDERS) result[provider] = "unknown";
+    return result;
+  }
+
   let external: Record<string, unknown>;
   try {
     external = await loadPublicAuthSettings(force);
@@ -415,8 +424,11 @@ export async function startSocialSignIn(provider: SocialAuthProvider): Promise<v
   // Toute nouvelle connexion sociale explicite le réarme avant de lancer OAuth.
   resumeSupabaseAuthRuntime();
 
-  const availability = await getSocialProviderAvailability(provider);
-  if (availability === "disabled") throw providerNotEnabledError(provider);
+  const nativeRuntime = isCapacitorNativeRuntime();
+  if (!nativeRuntime) {
+    const availability = await getSocialProviderAvailability(provider);
+    if (availability === "disabled") throw providerNotEnabledError(provider);
+  }
 
   const config = SOCIAL_AUTH_CONFIG[provider];
   try {
@@ -439,12 +451,18 @@ export async function startSocialSignIn(provider: SocialAuthProvider): Promise<v
     // Il reste ainsi récupérable même si une ancienne session est sauvegardée/
     // rafraîchie pendant le détour chez le provider OAuth.
     backupPendingPkceVerifier(provider);
-    await preflightOAuthUrl(url, provider);
+
+    // Sur Android, l'URL OAuth doit s'ouvrir immédiatement après sa création.
+    // Le double preflight réseau (/settings puis GET OAuth) faisait paraître le
+    // bouton inactif pendant plusieurs secondes dans la WebView.
+    if (!nativeRuntime) {
+      await preflightOAuthUrl(url, provider);
+    }
 
     try { localStorage.removeItem("dc_explicit_logout_v1"); } catch {}
     rememberPending(provider);
 
-    if (isCapacitorNativeRuntime()) {
+    if (nativeRuntime) {
       await NativeSocialAuth.openExternal({ url });
     } else if (typeof window !== "undefined") {
       window.location.assign(url);

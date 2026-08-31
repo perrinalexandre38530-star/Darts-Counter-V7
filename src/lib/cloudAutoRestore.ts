@@ -379,6 +379,16 @@ export async function maybeAutoRestoreCloudForSignedInUser(
   userId?: string | null,
   opts?: { force?: boolean; explicitManual?: boolean }
 ): Promise<boolean> {
+  // Android natif : aucune restauration multi-source automatique pendant le
+  // démarrage/login. Le coordinateur Local + NAS + R2 + fichier peut scanner,
+  // sérialiser et restaurer de gros snapshots sur le thread JS de la WebView ;
+  // cela bloque alors taps, scroll et navigation. La restauration reste
+  // disponible lorsqu'elle est explicitement demandée par l'utilisateur.
+  if (Capacitor.isNativePlatform() && opts?.explicitManual !== true) {
+    try { console.info("[cloudAutoRestore] Android natif : auto-restore multi-source désactivé au login"); } catch {}
+    return false;
+  }
+
   // Compat API historique : le nom de cette fonction est conservé pour ne pas
   // casser les écrans d'auth existants, mais la source n'est PLUS "Cloud R2".
   // Le coordinateur compare désormais Local + NAS + R2 + fichier/SD/cloud perso
