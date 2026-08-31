@@ -12,8 +12,18 @@ const MAPLIBRE_MODULES = [
   `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
   `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
 ];
-const MAPLIBRE_CSS = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
-const TERRAIN_TILEJSON = "https://tiles.mapterhorn.com/tilejson.json";
+const MAPLIBRE_SCRIPTS = [
+  `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`,
+  `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`,
+];
+const MAPLIBRE_CSS = [
+  `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
+  `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
+];
+// Mapterhorn publishes 512px Terrarium DEM tiles directly. Using the XYZ
+// endpoint avoids a TileJSON metadata request that could keep MapLibre's
+// initial style in a permanent loading state inside Android WebView/PWA.
+const TERRAIN_TILES = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp";
 
 type MapLibreGlobal = any;
 
@@ -53,22 +63,58 @@ function importWithTimeout(url: string, timeoutMs: number): Promise<MapLibreGlob
   ]);
 }
 
+function loadClassicScript(url: string, timeoutMs: number): Promise<MapLibreGlobal> {
+  return new Promise((resolve, reject) => {
+    if (window.maplibregl) { resolve(window.maplibregl); return; }
+    const existing = document.querySelector(`script[data-mss-maplibre-src="${url}"]`) as HTMLScriptElement | null;
+    const script = existing || document.createElement("script");
+    const timer = window.setTimeout(() => reject(new Error(`MapLibre script timeout: ${url}`)), timeoutMs);
+    const finish = () => {
+      window.clearTimeout(timer);
+      if (window.maplibregl) resolve(window.maplibregl);
+      else reject(new Error(`MapLibre global missing: ${url}`));
+    };
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", () => { window.clearTimeout(timer); reject(new Error(`MapLibre script failed: ${url}`)); }, { once: true });
+    if (!existing) {
+      script.src = url;
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.dataset.mssMaplibreSrc = url;
+      document.head.appendChild(script);
+    }
+  });
+}
+
 function loadMapLibre(): Promise<MapLibreGlobal> {
   if (typeof window === "undefined") return Promise.reject(new Error("MapLibre unavailable"));
   if (window.maplibregl) return Promise.resolve(window.maplibregl);
   if (window.__mssMapLibrePromise) return window.__mssMapLibrePromise;
 
   if (!document.querySelector(`link[data-mss-maplibre="${MAPLIBRE_VERSION}"]`)) {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = MAPLIBRE_CSS;
-    link.dataset.mssMaplibre = MAPLIBRE_VERSION;
-    document.head.appendChild(link);
+    // CSS is not required for WebGL rendering, so try both CDNs without making
+    // map readiness depend on either stylesheet.
+    for (const href of MAPLIBRE_CSS) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      link.dataset.mssMaplibre = MAPLIBRE_VERSION;
+      link.crossOrigin = "anonymous";
+      document.head.appendChild(link);
+    }
   }
 
-  window.__mssMapLibrePromise = Promise.any(MAPLIBRE_MODULES.map((url) => importWithTimeout(url, 3200))).then((module) => {
-    window.maplibregl = module;
-    return module;
+  const esm = Promise.any(MAPLIBRE_MODULES.map((url) => importWithTimeout(url, 4200)));
+  const classic = Promise.any(MAPLIBRE_SCRIPTS.map((url) => loadClassicScript(url, 5200)));
+  window.__mssMapLibrePromise = Promise.any([esm, classic]).then((module) => {
+    const resolved = (module as any)?.Map ? module : window.maplibregl || module;
+    window.maplibregl = resolved;
+    return resolved;
+  }).catch((error) => {
+    // Do not cache a transient CDN/network failure forever. A later 3D opening
+    // can retry MapLibre while the embedded renderer remains immediately usable.
+    window.__mssMapLibrePromise = undefined;
+    throw error;
   });
   return window.__mssMapLibrePromise;
 }
@@ -187,10 +233,16 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
 
   React.useEffect(() => {
     const host = hostRef.current;
-    if (!host || safePoints.length < 2) return;
+    if (!host) return;
     let disposed = false;
-    if (preferCompat) { setStatus("compat"); setError(""); return; }
+    let mapReady = false;
+    let readinessTimer: number | null = null;
+    let compatPreviewTimer: number | null = null;
+    if (safePoints.length < 2 || preferCompat) { setStatus("compat"); setError(""); return; }
     setStatus("loading"); setError("");
+    // Never leave the user staring at a blank loader. Show the embedded 3D
+    // renderer while the full WebGL + DEM engine starts in the background.
+    compatPreviewTimer = window.setTimeout(() => { if (!disposed && !mapReady) setStatus("compat"); }, 900);
 
     void loadMapLibre().then((maplibregl) => {
       if (disposed || !hostRef.current) return;
@@ -200,13 +252,14 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         version: 8,
         sources: {
           osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" },
-          terrainSource: { type: "raster-dem", url: TERRAIN_TILEJSON, tileSize: 256 },
-          hillshadeSource: { type: "raster-dem", url: TERRAIN_TILEJSON, tileSize: 256 },
+          terrainSource: { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" },
+          hillshadeSource: { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" },
         },
         layers: [
           { id: "osm", type: "raster", source: "osm" },
           { id: "hillshade", type: "hillshade", source: "hillshadeSource", paint: { "hillshade-exaggeration": .42, "hillshade-shadow-color": "#10151b", "hillshade-highlight-color": "#ffffff", "hillshade-accent-color": "#59636d" } },
         ],
+        terrain: { source: "terrainSource", exaggeration: 1.18 },
       } as any;
 
       const map = new maplibregl.Map({
@@ -222,11 +275,19 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         cooperativeGestures: false,
       });
       mapRef.current = map;
+      readinessTimer = window.setTimeout(() => {
+        if (disposed || mapReady) return;
+        setError("MapLibre map readiness timeout");
+        setStatus("compat");
+      }, 6500);
       try { map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true, showZoom: false }), "top-right"); } catch {}
       try { map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right"); } catch {}
 
       map.on("load", () => {
         if (disposed) return;
+        mapReady = true;
+        if (readinessTimer != null) window.clearTimeout(readinessTimer);
+        if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
         try { map.setTerrain({ source: "terrainSource", exaggeration: 1.18 }); } catch {}
         try {
           const features = hasPerformanceColors ? performance.routeEdges.map((edge) => ({ type: "Feature", properties: { color: edge.color }, geometry: { type: "LineString", coordinates: [[safePoints[edge.startIndex].lon, safePoints[edge.startIndex].lat], [safePoints[edge.endIndex].lon, safePoints[edge.endIndex].lat]] } })) : [{ type: "Feature", properties: { color: accent }, geometry: { type: "LineString", coordinates: safePoints.map((point) => [point.lon, point.lat]) } }];
@@ -263,19 +324,24 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       });
       map.on("error", (event: any) => {
         const message = String(event?.error?.message || "");
-        if (/terrain|dem|tilejson|mapterhorn/i.test(message)) {
-          // Keep the map usable if the DEM endpoint is temporarily unavailable.
-          try { map.setTerrain(null); } catch {}
+        if (/webgl|context lost|failed to initialize/i.test(message) && !disposed) {
+          setError(message || "WebGL unavailable");
+          setStatus("compat");
         }
+        // Individual OSM/DEM tile failures are non-fatal. MapLibre will retry
+        // and the embedded compat renderer remains available if startup fails.
       });
     }).catch((cause) => {
       if (disposed) return;
+      if (readinessTimer != null) window.clearTimeout(readinessTimer);
       setStatus("compat");
       setError(String(cause?.message || cause || "MapLibre unavailable"));
     });
 
     return () => {
       disposed = true;
+      if (readinessTimer != null) window.clearTimeout(readinessTimer);
+      if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
       if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
       replayFrameRef.current = null;
       staticMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });

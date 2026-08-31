@@ -107,7 +107,7 @@
     "test:navigation-music": "node --experimental-strip-types ./tools/test-navigation-music-route-contract-v1.mjs",
     "fit:awena:drivers": "node ./tools/build-fit-awena-drivers.mjs",
     "test:fit-awena-drivers": "node ./tools/test-fit-awena-photo-driver-v110.mjs",
-    "test:esports": "node ./tools/test-esports-hub-v1.mjs",
+    "test:esports": "node ./tools/test-esports-hub-v1.mjs && node ./tools/test-esports-public-network-v3.mjs && node ./tools/test-esports-competitive-network-v4.mjs",
     "fit:awena:doctor": "node ./tools/fit-awena-doctor.mjs",
     "fit:awena:setup": "node ./tools/fit-awena-doctor.mjs --install-ffmpeg",
     "test:navigation-performance": "node ./tools/test-navigation-performance-contract-v1.mjs",

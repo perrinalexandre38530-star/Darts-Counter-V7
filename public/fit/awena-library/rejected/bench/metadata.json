@@ -14,5 +14,11 @@
     98,
     148
   ],
-  "posterFrameIndex": 15
+  "posterFrameIndex": 15,
+  "status": "REJECTED",
+  "migratedFromLegacyRoot": true,
+  "statusChangedAt": "2026-08-31T05:34:44.497Z",
+  "reviewedAt": "2026-08-31T05:34:44.495Z",
+  "reviewDecision": "REJECTED",
+  "humanReviewed": true
 }

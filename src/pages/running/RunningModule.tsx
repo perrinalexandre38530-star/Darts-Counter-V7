@@ -46,6 +46,7 @@ import { getRunningSensorSnapshot, subscribeRunningSensors, type RunningSensorSn
 import { sensorSummaryForActivity } from "../../activity/activitySensorInsights";
 import { buildTreadmillSplits, treadmillDistanceSource, treadmillDistanceSourceLabel, averageTreadmillIncline } from "../../activity/treadmillPerformance";
 import { addNativeTrackingListener, getNativeCurrentPosition, getNativeTrack, isNativeActivityTrackingAvailable, nativeTrackingStatus, openNativeAppLocationPermissionSettings, openNativeLocationSettings, pauseNativeTracking, requestNativeTrackingPermissions, resumeNativeTracking, startNativeTracking, stopNativeTracking } from "../../activity/nativeActivityTracking";
+import { acquireWebGpsFix, geoPointFromWebPosition, getWebGpsEnvironment, WEB_GPS_WATCH_OPTIONS, webGpsErrorCode } from "../../activity/webGeolocation";
 import { deleteActivity, getActivity, listActivities, saveActivity } from "../../activity/activityStore";
 import { clearNativeTrackingOwnerIf, getNativeTrackingOwnerSessionId, getRunningActiveSession, getRunningRecordingSession, loadRunningActiveSessions, patchRunningActiveSession, removeRunningActiveSession, resumedRunningSessionTiming, setNativeTrackingOwnerSessionId, upsertRunningActiveSession } from "../../activity/runningActiveSessions";
 import { listOutdoorOfflineRoutePacks } from "../../activity/outdoorOfflineCache";
@@ -1046,17 +1047,28 @@ export default function RunningModule({ go, params }: Props) {
             }
             return;
         }
-        if (!navigator.geolocation) {
-            setGpsMessage(copy.gpsDenied);
-            return;
+        try {
+            const environment = await getWebGpsEnvironment();
+            if (!environment.secure) {
+                setGpsMessage(pickLegacyLocalizedText(lang, "GPS WEB BLOQUÉ · OUVRE L’APPLICATION EN HTTPS", "WEB GPS BLOCKED · OPEN THE APP OVER HTTPS", "GPS WEB BLOQUEADO · ABRE LA APP CON HTTPS"));
+                return;
+            }
+            const resolved = await acquireWebGpsFix({ timeoutMs: 20000, desiredAccuracyM: 25, maxAcceptableAccuracyM: 80, onFix: (point) => {
+                const nextAccuracy = Number.isFinite(point.accuracy) ? Number(point.accuracy) : null;
+                setAccuracy(nextAccuracy);
+                setGpsMessage(nextAccuracy != null && nextAccuracy > 35 ? copy.gpsPoor : copy.gpsSearching);
+            } });
+            const nextAccuracy = Number.isFinite(resolved.accuracy) ? Number(resolved.accuracy) : null;
+            setAccuracy(nextAccuracy);
+            setGpsMessage(nextAccuracy != null && nextAccuracy > 35 ? copy.gpsPoor : copy.gpsReady);
+        } catch (error) {
+            const reason = webGpsErrorCode(error);
+            setGpsMessage(reason === "insecure"
+                ? pickLegacyLocalizedText(lang, "GPS WEB BLOQUÉ · HTTPS OBLIGATOIRE", "WEB GPS BLOCKED · HTTPS REQUIRED", "GPS WEB BLOQUEADO · HTTPS OBLIGATORIO")
+                : reason === "denied"
+                    ? pickLegacyLocalizedText(lang, "LOCALISATION REFUSÉE · AUTORISE-LA DANS LE NAVIGATEUR", "LOCATION DENIED · ALLOW IT IN YOUR BROWSER", "UBICACIÓN DENEGADA · AUTORÍZALA EN EL NAVEGADOR")
+                    : copy.gpsLost);
         }
-        navigator.geolocation.getCurrentPosition((pos) => {
-            const a = Number(pos.coords.accuracy || 999);
-            setAccuracy(a);
-            setGpsMessage(a <= 35 ? copy.gpsReady : copy.gpsPoor);
-        }, (error) => {
-            setGpsMessage(error.code === 1 ? copy.gpsDenied : copy.gpsLost);
-        }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
     }, [activitySport, copy.gpsDenied, copy.gpsLost, copy.gpsPoor, copy.gpsReady, copy.gpsSearching, lang]);
     const startGpsRun = React.useCallback(async () => {
         if (activitySport !== "treadmill" && isNativeActivityTrackingAvailable()) {
@@ -1082,8 +1094,37 @@ export default function RunningModule({ go, params }: Props) {
             }
         }
 
-        setPoints([]);
-        pointsRef.current = [];
+        let initialWebFix: GeoPoint | null = null;
+        if (activitySport !== "treadmill" && !isNativeActivityTrackingAvailable()) {
+            setGpsMessage(copy.gpsSearching);
+            try {
+                const environment = await getWebGpsEnvironment();
+                if (!environment.secure) {
+                    setGpsMessage(pickLegacyLocalizedText(lang, "GPS WEB BLOQUÉ · HTTPS OBLIGATOIRE", "WEB GPS BLOCKED · HTTPS REQUIRED", "GPS WEB BLOQUEADO · HTTPS OBLIGATORIO"));
+                    return;
+                }
+                initialWebFix = await acquireWebGpsFix({ timeoutMs: 22000, desiredAccuracyM: 25, maxAcceptableAccuracyM: 80, onFix: (point) => {
+                    const nextAccuracy = Number.isFinite(point.accuracy) ? Number(point.accuracy) : null;
+                    setAccuracy(nextAccuracy);
+                    setGpsMessage(nextAccuracy != null && nextAccuracy > 35 ? copy.gpsPoor : copy.gpsSearching);
+                } });
+                const initialAccuracy = Number.isFinite(initialWebFix.accuracy) ? Number(initialWebFix.accuracy) : null;
+                setAccuracy(initialAccuracy);
+                setGpsMessage(initialAccuracy != null && initialAccuracy > 35 ? copy.gpsPoor : copy.gpsReady);
+            } catch (error) {
+                const reason = webGpsErrorCode(error);
+                setGpsMessage(reason === "denied"
+                    ? pickLegacyLocalizedText(lang, "LOCALISATION REFUSÉE · AUTORISE-LA DANS LE NAVIGATEUR/PWA", "LOCATION DENIED · ALLOW IT IN THE BROWSER/PWA", "UBICACIÓN DENEGADA · AUTORÍZALA EN EL NAVEGADOR/PWA")
+                    : reason === "insecure"
+                        ? pickLegacyLocalizedText(lang, "GPS WEB BLOQUÉ · HTTPS OBLIGATOIRE", "WEB GPS BLOCKED · HTTPS REQUIRED", "GPS WEB BLOQUEADO · HTTPS OBLIGATORIO")
+                        : pickLegacyLocalizedText(lang, "AUCUN FIX GPS WEB FIABLE · RÉESSAIE À L’EXTÉRIEUR", "NO RELIABLE WEB GPS FIX · TRY AGAIN OUTDOORS", "SIN FIX GPS WEB FIABLE · PRUEBA DE NUEVO EN EXTERIOR"));
+                return;
+            }
+        }
+
+        setPoints(initialWebFix ? [initialWebFix] : []);
+        pointsRef.current = initialWebFix ? [initialWebFix] : [];
+        if (initialWebFix) lastGpsPointAtRef.current = Date.now();
         setManualLaps([]);
         lastLapElapsedRef.current = 0;
         lastLapDistanceRef.current = 0;
@@ -1098,8 +1139,8 @@ export default function RunningModule({ go, params }: Props) {
         sensorSamplesRef.current = [];
         lastSensorSampleAtRef.current = 0;
         setAccuracy(null);
-        lastGpsPointAtRef.current = 0;
-        setGpsMessage(activitySport === "treadmill" ? (pickLegacyLocalizedText(lang, "MESURE INTÉRIEURE", "INDOOR MEASUREMENT", "MEDICIÓN INTERIOR")) : copy.gpsSearching);
+        lastGpsPointAtRef.current = initialWebFix ? Date.now() : 0;
+        setGpsMessage(activitySport === "treadmill" ? (pickLegacyLocalizedText(lang, "MESURE INTÉRIEURE", "INDOOR MEASUREMENT", "MEDICIÓN INTERIOR")) : initialWebFix ? (Number(initialWebFix.accuracy || 0) > 35 ? copy.gpsPoor : copy.gpsReady) : copy.gpsSearching);
         treadmillDistanceRef.current = 0;
         treadmillFtmsLastRawRef.current = null;
         treadmillTickRef.current = Date.now();
@@ -1183,9 +1224,13 @@ export default function RunningModule({ go, params }: Props) {
         }
         setGpsMessage(copy.gpsSearching);
         watchIdRef.current = navigator.geolocation.watchPosition((position) => {
-            const ts = position.timestamp || Date.now();
-            const coords = position.coords;
-            const next: GeoPoint = { lat: coords.latitude, lon: coords.longitude, timestamp: ts, elapsedMs: activeElapsedAt(ts), accuracy: Number.isFinite(coords.accuracy) ? Number(coords.accuracy) : undefined, altitude: Number.isFinite(coords.altitude) ? Number(coords.altitude) : undefined, speed: Number.isFinite(coords.speed) ? Number(coords.speed) : undefined };
+            const raw = geoPointFromWebPosition(position);
+            const ts = raw.timestamp || Date.now();
+            const next: GeoPoint = { ...raw, elapsedMs: activeElapsedAt(ts) };
+            // A rejected jitter point still proves that the browser/PWA GPS is alive.
+            // Refresh signal health BEFORE movement filtering so standing still never
+            // turns a valid GPS signal into a false "GPS lost" state.
+            lastGpsPointAtRef.current = Date.now();
             setAccuracy(Number.isFinite(next.accuracy) ? Number(next.accuracy) : null);
             if (pausedRef.current) {
                 setGpsMessage(copy.pause);
@@ -1195,11 +1240,11 @@ export default function RunningModule({ go, params }: Props) {
             const previous = pointsRef.current[pointsRef.current.length - 1];
             if (!shouldAcceptRunningPoint(previous, next, gpsMaxSpeedMpsForSport(activitySport))) return;
             pointsRef.current = [...pointsRef.current, next];
-            lastGpsPointAtRef.current = Date.now();
             setPoints(pointsRef.current);
         }, (error) => {
-            setGpsMessage(error.code === 1 ? copy.gpsDenied : copy.gpsLost);
-            if (error.code === 1) {
+            const reason = webGpsErrorCode(error);
+            setGpsMessage(reason === "denied" ? copy.gpsDenied : copy.gpsLost);
+            if (reason === "denied") {
                 setIsRecording(false);
                 if (activeSessionIdRef.current) {
                     const failedSessionId = activeSessionIdRef.current;
@@ -1209,7 +1254,7 @@ export default function RunningModule({ go, params }: Props) {
                 }
                 setView("setup");
             }
-        }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 15000 });
+        }, WEB_GPS_WATCH_OPTIONS);
     }, [activeElapsedAt, activitySport, copy.gpsDenied, copy.gpsLost, copy.gpsPoor, copy.gpsReady, copy.gpsSearching, copy.pause, effectivePreset, lang, speakCoach, stopWatch]);
     const startCountdown = React.useCallback(() => {
         if (countdown != null || isRecording)
@@ -1444,14 +1489,12 @@ export default function RunningModule({ go, params }: Props) {
                 throw new Error(pickLegacyLocalizedText(lang, "Active le GPS Android puis réessaie.", "Turn on Android location then try again.", "Activa la ubicación Android y vuelve a intentarlo."));
             }
             point = await getNativeCurrentPosition(10000);
-        } else if (navigator.geolocation) {
-            point = await new Promise<GeoPoint | null>((resolve) => navigator.geolocation.getCurrentPosition((position) => resolve({
-                lat: position.coords.latitude,
-                lon: position.coords.longitude,
-                timestamp: position.timestamp || Date.now(),
-                accuracy: Number.isFinite(position.coords.accuracy) ? Number(position.coords.accuracy) : undefined,
-                altitude: Number.isFinite(position.coords.altitude) ? Number(position.coords.altitude) : undefined,
-            }), () => resolve(null), { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 }));
+        } else {
+            try {
+                point = await acquireWebGpsFix({ timeoutMs: 16000, desiredAccuracyM: 30, maxAcceptableAccuracyM: 90 });
+            } catch {
+                point = null;
+            }
         }
         if (!point) throw new Error(pickLegacyLocalizedText(lang, "Impossible d'obtenir ta position GPS.", "Unable to get your GPS position.", "No se pudo obtener tu posición GPS."));
         setRouteDiscoveryCenter(point);

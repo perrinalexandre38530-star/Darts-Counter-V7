@@ -1,3 +1,6 @@
+/*
+  Permissions-Policy: geolocation=(self)
+
 # Cloudflare Pages cache hardening — prevents stale Vite chunks after deploy
 /
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
