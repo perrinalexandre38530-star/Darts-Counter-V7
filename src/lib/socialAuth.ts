@@ -278,14 +278,29 @@ export type SocialProviderAvailability = "enabled" | "disabled" | "unknown";
 
 let providerSettingsCache: { at: number; external: Record<string, unknown> } | null = null;
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = 3200,
+): Promise<Response> {
+  if (typeof AbortController === "undefined") return fetch(input, init);
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), Math.max(500, timeoutMs));
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function loadPublicAuthSettings(force = false): Promise<Record<string, unknown>> {
   if (!force && providerSettingsCache && Date.now() - providerSettingsCache.at < 60_000) {
     return providerSettingsCache.external;
   }
-  const response = await fetch(`${__SUPABASE_ENV__.url}/auth/v1/settings`, {
+  const response = await fetchWithTimeout(`${__SUPABASE_ENV__.url}/auth/v1/settings`, {
     headers: { apikey: __SUPABASE_ENV__.anonKey },
     cache: "no-store",
-  });
+  }, 2800);
   if (!response.ok) throw new Error(`Supabase Auth settings HTTP ${response.status}`);
   const json = await response.json();
   const external = (json?.external && typeof json.external === "object") ? json.external : {};
@@ -329,12 +344,12 @@ function providerNotEnabledError(provider: SocialAuthProvider): Error {
 
 async function preflightOAuthUrl(url: string, provider: SocialAuthProvider): Promise<void> {
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "GET",
       headers: { apikey: __SUPABASE_ENV__.anonKey },
       redirect: "manual",
       cache: "no-store",
-    });
+    }, 3200);
     if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400) || response.status === 0) return;
     if (response.ok) return;
     let raw = "";
@@ -526,9 +541,12 @@ export function initNativeSocialAuthBridge() {
     if (document.visibilityState === "visible") poll();
   });
 
+  // focus/pageshow/visibility sont les signaux principaux. Le polling n'est
+  // qu'un filet de sécurité : 900 ms réveillait inutilement le bridge natif et
+  // le stockage pendant tout le détour OAuth.
   nativePollTimer = window.setInterval(() => {
     if (getPendingSocialAuth()) poll();
-  }, 900);
+  }, 2500);
 
   // Gère aussi le cold start directement depuis le deep link.
   poll();

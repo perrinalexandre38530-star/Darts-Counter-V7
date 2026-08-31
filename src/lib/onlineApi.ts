@@ -57,6 +57,7 @@ import { apiGet, apiPost, buildApiUrl, canUseNasOnlineApi, getApiUrl, readNasAcc
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 import { loadStoragePrefs } from "./storagePlans";
 import { buildMissingSocialProfilePatch, buildSocialProfileCreatePayload, extractSocialProfileSeed } from "./socialProfileImport";
+import { scheduleRuntimeIdle } from "./runtimePerformance";
 
 export const CLOUD_STORE_KEY = "main";
 
@@ -407,13 +408,41 @@ function loadAuthFromLS(): AuthSession | null {
   return safeParse<AuthSession | null>(raw, null);
 }
 
+function authIdentitySignature(session: AuthSession | null | undefined): string {
+  const userId = String(session?.user?.id || session?.userId || "").trim();
+  if (!userId) return "signed_out";
+  const supabaseUserId = String(session?.supabaseUserId || "").trim();
+  const provider = String(session?.authProvider || "unknown").trim().toLowerCase();
+  return `signed_in|${userId}|${supabaseUserId}|${provider}`;
+}
+
 function saveAuthToLS(session: AuthSession | null) {
   if (typeof window === "undefined") return;
+
+  // PERF ANDROID / AUTH : dc-auth-changed est un signal d'IDENTITÉ, pas un
+  // signal de persistance. Avant ce correctif, chaque refresh de token, bridge
+  // NAS ou mise à jour de profil redispatchait l'événement. AuthOnlineProvider
+  // relançait alors getCurrentSession() -> restoreSession() -> bridge/profil, qui
+  // réécrivait à son tour la session et pouvait créer une tempête de traitements.
+  const previous = loadAuthFromLS();
+  const previousSignature = authIdentitySignature(previous);
+  const nextSignature = authIdentitySignature(session);
+
   if (!session) window.localStorage.removeItem(LS_AUTH_KEY);
   else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
 
+  if (previousSignature === nextSignature) return;
+
   try {
-    window.dispatchEvent(new CustomEvent("dc-auth-changed"));
+    window.dispatchEvent(new CustomEvent("dc-auth-changed", {
+      detail: {
+        status: session?.user?.id ? "signed_in" : "signed_out",
+        reason: "auth_identity_changed",
+        userId: String(session?.user?.id || session?.userId || "") || null,
+        supabaseUserId: String(session?.supabaseUserId || "") || null,
+        provider: String(session?.authProvider || "") || null,
+      },
+    }));
   } catch {}
 }
 
@@ -1158,7 +1187,7 @@ async function tryNasLoginWithoutInvitation(payload: LoginPayload): Promise<Auth
   return null;
 }
 
-async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }): Promise<AuthSession | null> {
+async function buildAuthSessionFromSupabaseUncoalesced(opts?: { allowNasFailure?: boolean }): Promise<AuthSession | null> {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) {
     console.warn("[onlineApi] getSession error", sessionError);
@@ -1251,6 +1280,19 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
   return authSession;
 }
 
+let __buildAuthFromSupabaseInFlight: Promise<AuthSession | null> | null = null;
+
+async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }): Promise<AuthSession | null> {
+  if (__buildAuthFromSupabaseInFlight) return __buildAuthFromSupabaseInFlight;
+  const task = buildAuthSessionFromSupabaseUncoalesced(opts);
+  __buildAuthFromSupabaseInFlight = task;
+  try {
+    return await task;
+  } finally {
+    if (__buildAuthFromSupabaseInFlight === task) __buildAuthFromSupabaseInFlight = null;
+  }
+}
+
 // ============================================================
 // Compte utilisateur unique
 // ============================================================
@@ -1293,6 +1335,71 @@ function normalizeAuthErrorMessage(msg: string) {
 // ============================================================
 // Public AUTH
 // ============================================================
+let __publicAuthHydrationPromise: Promise<AuthSession | null> | null = null;
+
+function buildFastPublicAuthSession(session: any): AuthSession | null {
+  const user = session?.user;
+  if (!user?.id) return null;
+
+  // Ne conserve un cache bridge/profil que s'il appartient avec certitude au
+  // compte Supabase qui vient d'être authentifié. Aucun appel réseau ici.
+  clearStaleAccountCredentialsForSupabaseUser(user);
+  const cached = loadAuthFromLS();
+  const cachedForSameAccount = cachedAuthMatchesSupabaseUser(cached, user) ? cached : null;
+  const meta = (user.user_metadata || {}) as any;
+  const socialSeed = extractSocialProfileSeed(user);
+  const nickname =
+    socialSeed.nickname ||
+    meta?.nickname ||
+    meta?.full_name ||
+    meta?.name ||
+    user.email ||
+    "Player";
+  const supabaseUserId = String(user.id || "");
+  const canonicalUserId = String(
+    cachedForSameAccount?.user?.id ||
+    cachedForSameAccount?.userId ||
+    resolveCanonicalUserId(user) ||
+    supabaseUserId,
+  );
+
+  const fastSession: AuthSession = {
+    token: String(session?.access_token || ""),
+    refreshToken: String(session?.refresh_token || ""),
+    expiresAt: session?.expires_at ?? null,
+    userId: canonicalUserId,
+    user: {
+      id: canonicalUserId,
+      email: user.email ?? undefined,
+      nickname,
+      createdAt: user.created_at ? Date.parse(user.created_at) : now(),
+    },
+    profile: cachedForSameAccount?.profile || null,
+    authProvider: "supabase",
+    degradedMode: false,
+    supabaseUserId,
+  };
+
+  saveAuthToLS(fastSession);
+  markAuthReady(!!fastSession.token);
+  return fastSession;
+}
+
+function schedulePublicAuthHydration(): void {
+  if (typeof window === "undefined") return;
+  scheduleRuntimeIdle(() => {
+    if (__publicAuthHydrationPromise) return;
+    __publicAuthHydrationPromise = buildAuthSessionFromSupabase({ allowNasFailure: true })
+      .catch((error) => {
+        console.warn("[onlineApi] deferred public auth hydration ignored", error);
+        return null;
+      })
+      .finally(() => {
+        __publicAuthHydrationPromise = null;
+      });
+  }, { timeoutMs: 5000, fallbackDelayMs: 1200 });
+}
+
 async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
   clearExplicitLogout();
   resumeSupabaseAuthRuntime();
@@ -1308,8 +1415,11 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
       if (data?.user) throw new Error("Compte public créé. Confirme ton adresse e-mail avec le message envoyé par MULTISPORTS SCORING, puis connecte-toi.");
       throw new Error("Compte public créé mais aucune session Supabase n'a été retournée.");
     }
-    const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+    const session = buildFastPublicAuthSession(data.session);
     if (!session) throw new Error("Compte créé, mais impossible d'ouvrir la session publique.");
+    // Profil, capability NAS et bridge sont utiles, mais ne doivent plus retarder
+    // l'ouverture de l'application. Ils se construisent au prochain idle.
+    schedulePublicAuthHydration();
     return session;
   } catch (error: any) {
     const msg = String(error?.message || error || "");
@@ -1343,12 +1453,12 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
     // correspondent pas au nouvel utilisateur AVANT toute lecture de backup.
     if (data?.session?.user) clearStaleAccountCredentialsForSupabaseUser(data.session.user);
 
-    const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+    const session = buildFastPublicAuthSession(data?.session);
     if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");
-    session.authProvider = "supabase";
-    session.degradedMode = false;
-    saveAuthToLS(session);
-    markAuthReady(true);
+    // IMPORTANT : ne plus attendre profil + NAS capability + bridge ici. Sur
+    // Android cela pouvait prolonger la connexion plusieurs secondes et entrer
+    // en concurrence avec le callback OAuth / le premier rendu de navigation.
+    schedulePublicAuthHydration();
     return session;
   } catch (error: any) {
     supabaseError = error;

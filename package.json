@@ -110,7 +110,7 @@
     "test:esports": "node ./tools/test-esports-hub-v1.mjs && node ./tools/test-esports-public-network-v3.mjs && node ./tools/test-esports-competitive-network-v4.mjs",
     "fit:awena:doctor": "node ./tools/fit-awena-doctor.mjs",
     "fit:awena:setup": "node ./tools/fit-awena-doctor.mjs --install-ffmpeg",
-    "test:navigation-performance": "node ./tools/test-navigation-performance-contract-v1.mjs",
+    "test:navigation-performance": "node ./test-navigation-performance-contract-v1.mjs",
     "fit:awena:registry": "node ./tools/build-fit-awena-registry.mjs",
     "fit:awena:review": "node ./tools/review-fit-awena-media.mjs",
     "test:fit-awena-registry": "node ./tools/test-fit-awena-registry-v112.mjs",

@@ -21,8 +21,12 @@ import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled, isSupabaseHardDisabledInNasMode } from "../lib/serverConfig";
 import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
+const PROFILE_HYDRATION_COOLDOWN_MS = 2200;
+const BACKUP_RESTORE_COOLDOWN_MS = 2 * 60 * 1000;
 import type { OnlineProfile } from "../lib/onlineTypes";
 
 const AUTH_REDIRECT_LOGIN = "#/account/start";
@@ -236,28 +240,83 @@ type Ctx = AuthState & {
 
 const AuthOnlineContext = React.createContext<Ctx | null>(null);
 
+function cachedSessionMatchesSupabaseUser(cached: any, user: User): boolean {
+  try {
+    if (!cached || !user?.id) return false;
+    const meta = (user.user_metadata || {}) as any;
+    const liveIds = new Set([
+      user.id,
+      meta?.canonical_user_id,
+      meta?.nas_user_id,
+      meta?.multisports_user_id,
+    ].map((value) => String(value || "").trim()).filter(Boolean));
+    const cachedIds = [
+      cached?.user?.id,
+      cached?.userId,
+      cached?.supabaseUserId,
+    ].map((value) => String(value || "").trim()).filter(Boolean);
+    return cachedIds.some((id) => liveIds.has(id));
+  } catch {
+    return false;
+  }
+}
+
+function readCachedAuthSession(): any | null {
+  try {
+    return (onlineApi as any).loadAuthFromLS?.() || null;
+  } catch {
+    return null;
+  }
+}
+
+function isCachedSessionStillUsable(cached: any): boolean {
+  if (!cached?.token || !cached?.user?.id) return false;
+  const rawExpiresAt = Number(cached?.expiresAt || 0);
+  if (!rawExpiresAt) return true;
+  const expiresAtMs = rawExpiresAt < 1_000_000_000_000 ? rawExpiresAt * 1000 : rawExpiresAt;
+  return expiresAtMs > Date.now() - 30_000;
+}
+
 async function safeGetSession(): Promise<Session | null> {
   if (isExplicitlyLoggedOut()) return null;
   try {
-    // Priorité à la session interne NAS/R2 quand elle existe.
-    // C'est le cas des comptes publics Supabase bridgés et des comptes invités NAS :
-    // ils doivent apparaître connectés partout, même si le SDK Supabase navigateur
-    // n'a pas de session locale exploitable.
-    const nasBridge = await safeGetNasBridgeSession();
-    if (nasBridge?.user) return nasBridge;
-
-    // En mode NAS, la session Supabase reste volontairement active : elle
-    // permet la connexion de secours et l'accès direct à Cloudflare R2.
-    // Elle ne remplace jamais le JWT NAS dans apiClient.
+    // PERF CRITIQUE : lecture LOCALE Supabase en premier. L'ancienne version
+    // appelait onlineApi.getCurrentSession() avant getSession(); ce chemin peut
+    // restaurer le profil, sonder le NAS puis créer un bridge réseau. Il se
+    // déclenchait au boot, sur les événements Auth et pendant OAuth.
     if (!isSupabaseHardDisabledInNasMode()) {
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
-      if (data?.session?.user) return data.session;
+      if (data?.session?.user) {
+        const cached = readCachedAuthSession();
+        if (cachedSessionMatchesSupabaseUser(cached, data.session.user)) {
+          const cachedBridge = authSessionToPseudoSupabaseSession(cached);
+          if (cachedBridge?.user) return cachedBridge;
+        }
+        return data.session;
+      }
+    }
+
+    // Si Supabase est momentanément en train de restaurer son stockage, un cache
+    // local encore valide évite un faux signed_out. Aucun réseau ici non plus.
+    const cached = readCachedAuthSession();
+    if (isCachedSessionStillUsable(cached)) {
+      const pseudo = authSessionToPseudoSupabaseSession(cached);
+      if (pseudo?.user) return pseudo;
+    }
+
+    // Le chemin réseau NAS n'est désormais qu'un fallback réel : mode NAS ou
+    // ancien token NAS récupérable. Il n'est plus exécuté sur chaque lecture Auth.
+    if (isNasProviderEnabled() || hasRecoverableNasAuth()) {
+      const nasBridge = await safeGetNasBridgeSession();
+      if (nasBridge?.user) return nasBridge;
     }
 
     return null;
   } catch (e) {
     console.warn("[useAuthOnline] getSession failed:", e);
+    const cached = readCachedAuthSession();
+    if (isCachedSessionStillUsable(cached)) return authSessionToPseudoSupabaseSession(cached);
     return null;
   }
 }
@@ -268,25 +327,39 @@ async function safeEnsureSession(): Promise<Session | null> {
   return null;
 }
 
+const profileLoadInFlight = new Map<string, Promise<OnlineProfile | null>>();
+
 async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | null> {
-  try {
-    const api: any = onlineApi as any;
+  const userId = String(user?.id || "").trim();
+  if (!userId) return null;
+  const existing = profileLoadInFlight.get(userId);
+  if (existing) return existing;
 
-    if (typeof api.getProfile === "function") {
-      const res = await api.getProfile();
-      return (res?.profile ?? res ?? null) as OnlineProfile | null;
+  const task = (async () => {
+    try {
+      const api: any = onlineApi as any;
+
+      if (typeof api.getProfile === "function") {
+        const res = await api.getProfile();
+        return (res?.profile ?? res ?? null) as OnlineProfile | null;
+      }
+
+      if (typeof api.getMyProfile === "function") {
+        const res = await api.getMyProfile();
+        return (res?.profile ?? res ?? null) as OnlineProfile | null;
+      }
+
+      return null;
+    } catch (e) {
+      console.warn("[useAuthOnline] safeLoadProfileBestEffort failed:", e);
+      return null;
+    } finally {
+      profileLoadInFlight.delete(userId);
     }
+  })();
 
-    if (typeof api.getMyProfile === "function") {
-      const res = await api.getMyProfile();
-      return (res?.profile ?? res ?? null) as OnlineProfile | null;
-    }
-
-    return null;
-  } catch (e) {
-    console.warn("[useAuthOnline] safeLoadProfileBestEffort failed:", e);
-    return null;
-  }
+  profileLoadInFlight.set(userId, task);
+  return task;
 }
 
 function applyAuthFromSession(
@@ -402,12 +475,44 @@ function shouldSearchBackupsForUser(user: any): boolean {
   return ageMs < -60_000 || ageMs > 10 * 60_000;
 }
 
-function searchBackupsInBackground(user: any): void {
-  if (!user?.id || !shouldSearchBackupsForUser(user)) return;
-  // Décalage court : laisse d'abord App.tsx basculer le namespace local du compte.
+const backupRestoreLastScheduledAt = new Map<string, number>();
+const backupRestoreInFlight = new Set<string>();
+
+function scheduleOutsideNavigation(task: () => void, delayMs: number, attempt = 0): void {
+  if (typeof window === "undefined") return;
   window.setTimeout(() => {
-    void maybeAutoRestoreCloudForSignedInUser(String(user.id)).catch(() => false);
-  }, 250);
+    const navigating = (() => {
+      try { return document.documentElement.dataset.mscNavigating === "1"; } catch { return false; }
+    })();
+    if (navigating && attempt < 8) {
+      scheduleOutsideNavigation(task, 450, attempt + 1);
+      return;
+    }
+    scheduleRuntimeIdle(task, {
+      timeoutMs: isCapacitorNativeRuntime() ? 5000 : 3000,
+      fallbackDelayMs: isCapacitorNativeRuntime() ? 900 : 180,
+    });
+  }, Math.max(0, delayMs));
+}
+
+function searchBackupsInBackground(user: any): void {
+  const userId = String(user?.id || "").trim();
+  if (!userId || !shouldSearchBackupsForUser(user)) return;
+
+  const nowTs = Date.now();
+  const lastTs = backupRestoreLastScheduledAt.get(userId) || 0;
+  if (nowTs - lastTs < BACKUP_RESTORE_COOLDOWN_MS || backupRestoreInFlight.has(userId)) return;
+  backupRestoreLastScheduledAt.set(userId, nowTs);
+
+  // Android : la restauration cloud/NAS/R2 ne démarre plus 250 ms après login.
+  // Elle attend la fin du montage et un vrai créneau idle.
+  scheduleOutsideNavigation(() => {
+    if (backupRestoreInFlight.has(userId)) return;
+    backupRestoreInFlight.add(userId);
+    void maybeAutoRestoreCloudForSignedInUser(userId)
+      .catch(() => false)
+      .finally(() => backupRestoreInFlight.delete(userId));
+  }, isCapacitorNativeRuntime() ? 2400 : 650);
 }
 
 async function safeGetNasBridgeSession(): Promise<Session | null> {
@@ -557,7 +662,46 @@ function SessionExpiredFloatingCard({
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<AuthState>(initial);
   const lastNasAuthAttemptRef = React.useRef(0);
+  const authChangeInFlightRef = React.useRef(false);
+  const lastProfileHydrationRef = React.useRef(new Map<string, number>());
   const lastSignedInSessionRef = React.useRef<Session | null>(null);
+
+  const hydrateProfileAndBackups = React.useCallback((user: User) => {
+    const userId = String(user?.id || "").trim();
+    if (!userId) return;
+    const nowTs = Date.now();
+    const previous = lastProfileHydrationRef.current.get(userId) || 0;
+    if (nowTs - previous < PROFILE_HYDRATION_COOLDOWN_MS) return;
+    lastProfileHydrationRef.current.set(userId, nowTs);
+
+    scheduleOutsideNavigation(() => {
+      void safeLoadProfileBestEffort(user).then((profile) => {
+        setState((current) => {
+          // Le bridge différé peut avoir remplacé l'id Supabase par l'id canonique.
+          // On accepte les deux identités si elles correspondent au même cache.
+          const currentId = String(current.user?.id || "");
+          const cached = readCachedAuthSession();
+          const sameAccount = current.user
+            ? cachedSessionMatchesSupabaseUser(cached, current.user) || currentId === userId
+            : false;
+          if (!sameAccount) return current;
+          return { ...current, profile };
+        });
+
+        // Si le travail profil a créé/rafraîchi un bridge canonique, applique-le
+        // depuis le cache LOCAL sans relancer getCurrentSession().
+        const cached = readCachedAuthSession();
+        if (cachedSessionMatchesSupabaseUser(cached, user)) {
+          const bridged = authSessionToPseudoSupabaseSession(cached);
+          if (bridged?.user) {
+            lastSignedInSessionRef.current = bridged;
+            applyAuthFromSession(setState, bridged);
+          }
+        }
+        searchBackupsInBackground(user);
+      });
+    }, isCapacitorNativeRuntime() ? 900 : 120);
+  }, []);
 
   React.useEffect(() => {
     const t = window.setTimeout(() => {
@@ -593,14 +737,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       applyAuthFromSession(setState, session);
 
       const user = session?.user ?? null;
-      if (user) {
-        const profile = await safeLoadProfileBestEffort(user);
-        setState((s) => {
-          if (!s.user || s.user.id !== user.id) return s;
-          return { ...s, profile };
-        });
-        searchBackupsInBackground(user);
-      }
+      if (user) hydrateProfileAndBackups(user);
     } catch (e: any) {
       console.warn("[useAuthOnline] refresh fatal:", e);
       setState((s) => ({
@@ -610,7 +747,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         error: e?.message || "refresh error",
       }));
     }
-  }, []);
+  }, [hydrateProfileAndBackups]);
 
   React.useEffect(() => {
     let alive = true;
@@ -633,28 +770,17 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         applyAuthFromSession(setState, session);
 
         const user = session?.user ?? null;
-        if (user) {
-
-          safeLoadProfileBestEffort(user).then((profile) => {
-            if (!alive) return;
-            setState((s) => {
-              if (!s.user || s.user.id !== user.id) return s;
-              return { ...s, profile };
-            });
-            searchBackupsInBackground(user);
-          });
-        }
+        if (user) hydrateProfileAndBackups(user);
 
         nasHandler = async () => {
+          if (!alive || authChangeInFlightRef.current) return;
+
+          const nowTs = Date.now();
+          if (nowTs - lastNasAuthAttemptRef.current < NAS_AUTH_COOLDOWN_MS) return;
+          lastNasAuthAttemptRef.current = nowTs;
+          authChangeInFlightRef.current = true;
+
           try {
-            if (!alive) return;
-
-            const nowTs = Date.now();
-            if (nowTs - lastNasAuthAttemptRef.current < NAS_AUTH_COOLDOWN_MS) {
-              return;
-            }
-            lastNasAuthAttemptRef.current = nowTs;
-
             if (isNasProviderEnabled()) {
               await cleanupSupabaseLocalSessionForNas();
             }
@@ -663,25 +789,16 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             if (nextSession?.user) {
               lastSignedInSessionRef.current = nextSession;
               applyAuthFromSession(setState, nextSession);
+              hydrateProfileAndBackups(nextSession.user);
             } else {
               lastSignedInSessionRef.current = null;
               applyAuthFromSession(setState, null);
             }
-
-            const nextUser = nextSession?.user ?? null;
-            if (nextUser) {
-              safeLoadProfileBestEffort(nextUser).then((profile) => {
-                if (!alive) return;
-                setState((s) => {
-                  if (!s.user || s.user.id !== nextUser.id) return s;
-                  return { ...s, profile };
-                });
-                searchBackupsInBackground(nextUser);
-              });
-            }
           } catch (e) {
             console.warn("[useAuthOnline] auth change handler error:", e);
-            setState((s) => ({ ...s, loading: false, ready: true }));
+            setState((current) => ({ ...current, loading: false, ready: true }));
+          } finally {
+            authChangeInFlightRef.current = false;
           }
         };
 
@@ -706,41 +823,15 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           }
 
           // La session fournie par l'événement suffit pour déverrouiller l'UI
-          // immédiatement. Le profil/NAS/R2 est du post-traitement best-effort.
+          // immédiatement. Aucun getCurrentSession()/restoreSession()/NAS bridge
+          // n'est autorisé dans le task qui suit directement ce callback.
           lastSignedInSessionRef.current = emittedSession;
           applyAuthFromSession(setState, emittedSession);
 
-          // Sort explicitement du callback Auth AVANT tout nouvel appel Supabase.
-          window.setTimeout(() => {
-            void (async () => {
-              try {
-                if (!alive) return;
-
-                // Résout ensuite l'identité canonique / éventuel bridge NAS,
-                // maintenant que le verrou Auth Supabase a été libéré.
-                const resolvedSession = await safeGetSession();
-                if (!alive) return;
-
-                const nextSession = resolvedSession?.user ? resolvedSession : emittedSession;
-                const nextUser = nextSession?.user ?? null;
-                if (!nextUser) return;
-
-                lastSignedInSessionRef.current = nextSession;
-                applyAuthFromSession(setState, nextSession);
-
-                const profile = await safeLoadProfileBestEffort(nextUser);
-                if (!alive) return;
-                setState((state) => {
-                  if (!state.user || state.user.id !== nextUser.id) return state;
-                  return { ...state, profile };
-                });
-                searchBackupsInBackground(nextUser);
-              } catch (e) {
-                console.warn("[useAuthOnline] deferred auth-state hydration error:", e);
-                if (alive) setState((state) => ({ ...state, loading: false, ready: true }));
-              }
-            })();
-          }, 0);
+          // TOKEN_REFRESHED ne change pas l'identité : ne réveille ni profil ni cloud.
+          if (event !== "TOKEN_REFRESHED") {
+            hydrateProfileAndBackups(emittedSession.user);
+          }
         });
 
         supaSubscription = data?.subscription ?? null;
@@ -764,7 +855,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         supaSubscription?.unsubscribe?.();
       } catch {}
     };
-  }, []);
+  }, [hydrateProfileAndBackups]);
 
   const signup = React.useCallback(
     async (payload: { email?: string; nickname: string; password?: string }) => {
@@ -776,14 +867,14 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         const ok = await (onlineApi as any).signup?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
         if (success) {
-          try {
-            const s: any = await onlineApi.getCurrentSession?.();
-            const uid = String(s?.user?.id || "").trim();
-            if (uid) {
-              localStorage.setItem("dc_user_id", uid);
-              setStorageUser(uid);
-            }
-          } catch {}
+          const directSession = authSessionToPseudoSupabaseSession(ok);
+          if (directSession?.user) {
+            lastSignedInSessionRef.current = directSession;
+            applyAuthFromSession(setState, directSession);
+            hydrateProfileAndBackups(directSession.user);
+          } else {
+            void refresh();
+          }
         }
         return success;
       } catch (e) {
@@ -791,7 +882,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         return false;
       }
     },
-    []
+    [hydrateProfileAndBackups, refresh]
   );
 
   const login = React.useCallback(
@@ -804,14 +895,14 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         const ok = await (onlineApi as any).login?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
         if (success) {
-          try {
-            const s: any = await onlineApi.getCurrentSession?.();
-            const uid = String(s?.user?.id || "").trim();
-            if (uid) {
-              localStorage.setItem("dc_user_id", uid);
-              setStorageUser(uid);
-            }
-          } catch {}
+          const directSession = authSessionToPseudoSupabaseSession(ok);
+          if (directSession?.user) {
+            lastSignedInSessionRef.current = directSession;
+            applyAuthFromSession(setState, directSession);
+            hydrateProfileAndBackups(directSession.user);
+          } else {
+            void refresh();
+          }
         }
         return success;
       } catch (e) {
@@ -819,7 +910,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         return false;
       }
     },
-    []
+    [hydrateProfileAndBackups, refresh]
   );
 
   const logout = React.useCallback(async () => {

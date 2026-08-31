@@ -397,6 +397,7 @@ const ViewerJoin = React.lazy(() => import("./pages/viewer/ViewerJoin"));
 const ViewerDisplay = React.lazy(() => import("./pages/viewer/ViewerDisplay"));
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
 import { runtimeDiag, diagMarkStart, diagMarkEnd } from "./lib/runtimeDiag";
+import { getRuntimePlatform } from "./lib/nativePlatform";
 import { installProfilesDiag, profilesDiagIncrement, profilesDiagLog, diffShallow } from "./lib/profilesDiag";
 import { loadBots as loadStoredBots, saveBots as saveStoredBots } from "./lib/bots";
 import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
@@ -1161,7 +1162,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         if (current >= targetProgress) return current;
         return Math.min(targetProgress, current + Math.max(1, Math.ceil((targetProgress - current) / 7)));
       });
-    }, 55);
+    }, 110);
     return () => window.clearInterval(timer);
   }, [targetProgress]);
 
@@ -2745,8 +2746,18 @@ useEffect(() => {
       document.documentElement.dataset.mscGameplay = isGameplayRouteName(next) ? "1" : "0";
       document.documentElement.dataset.mscNavigating = "1";
     } catch {}
-    setRouteParams(nextParams ?? null);
-    setTab(next);
+    const commitRouteState = () => {
+      setRouteParams(nextParams ?? null);
+      setTab(next);
+    };
+    if (getRuntimePlatform() === "android") {
+      // Android WebView : le montage d'une page lourde devient interruptible.
+      // Les interactions de la page courante restent traitables pendant que
+      // React prépare le prochain écran au lieu de monopoliser le thread UI.
+      React.startTransition(commitRouteState);
+    } else {
+      commitRouteState();
+    }
 
     // Deux frames = nouvel écran engagé dans le pipeline de rendu. On libère alors
     // les effets visuels temporairement mis en pause et on garde une mesure de
