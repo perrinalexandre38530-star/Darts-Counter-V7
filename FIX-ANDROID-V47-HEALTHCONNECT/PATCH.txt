@@ -1,0 +1,12 @@
+PATCH ANDROID V47 — lancement / Health Connect
+
+1) android/app/build.gradle
+Dans dependencies { ... } :
++ implementation "androidx.health.connect:connect-client:1.1.0"
+
+2) android/app/src/main/java/com/multisportsscoring/app/MainActivity.java
+Si necessaire :
+- protected void onResume()
++ public void onResume()
+
+Le script APPLY_FIX.bat applique automatiquement ces corrections sans ecraser le reste du build.gradle.
