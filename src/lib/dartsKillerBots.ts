@@ -1,17 +1,18 @@
-import avatarMarron from "../assets/avatars/killer-bots/marron.webp";
-import avatarVerveine from "../assets/avatars/killer-bots/verveine.webp";
-import avatarBrutes from "../assets/avatars/killer-bots/brutes.webp";
-import avatarDjuno from "../assets/avatars/killer-bots/djuno.webp";
-import avatarThorn from "../assets/avatars/killer-bots/thorn.webp";
-import avatarMiasma from "../assets/avatars/killer-bots/miasma.webp";
-import avatarRaze from "../assets/avatars/killer-bots/raze.webp";
-import avatarNoz from "../assets/avatars/killer-bots/noz.webp";
-import avatarZeno from "../assets/avatars/killer-bots/zeno.webp";
-import avatarBrams from "../assets/avatars/killer-bots/brams.webp";
-import avatarViperine from "../assets/avatars/killer-bots/viperine.webp";
-import avatarWest from "../assets/avatars/killer-bots/west.webp";
-import avatarBatuzia from "../assets/avatars/killer-bots/batuzia.webp";
-import avatarSqwal from "../assets/avatars/killer-bots/sqwal.webp";
+import { contentPackAssetUrl } from "./contentPacks";
+const avatarMarron = contentPackAssetUrl("character-portraits", "killer-bots/marron.webp");
+const avatarVerveine = contentPackAssetUrl("character-portraits", "killer-bots/verveine.webp");
+const avatarBrutes = contentPackAssetUrl("character-portraits", "killer-bots/brutes.webp");
+const avatarDjuno = contentPackAssetUrl("character-portraits", "killer-bots/djuno.webp");
+const avatarThorn = contentPackAssetUrl("character-portraits", "killer-bots/thorn.webp");
+const avatarMiasma = contentPackAssetUrl("character-portraits", "killer-bots/miasma.webp");
+const avatarRaze = contentPackAssetUrl("character-portraits", "killer-bots/raze.webp");
+const avatarNoz = contentPackAssetUrl("character-portraits", "killer-bots/noz.webp");
+const avatarZeno = contentPackAssetUrl("character-portraits", "killer-bots/zeno.webp");
+const avatarBrams = contentPackAssetUrl("character-portraits", "killer-bots/brams.webp");
+const avatarViperine = contentPackAssetUrl("character-portraits", "killer-bots/viperine.webp");
+const avatarWest = contentPackAssetUrl("character-portraits", "killer-bots/west.webp");
+const avatarBatuzia = contentPackAssetUrl("character-portraits", "killer-bots/batuzia.webp");
+const avatarSqwal = contentPackAssetUrl("character-portraits", "killer-bots/sqwal.webp");
 
 export type DartsKillerBotTrait =
   | "spectral"

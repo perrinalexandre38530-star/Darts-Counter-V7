@@ -29,6 +29,8 @@ function walk(rootDir) {
 
 // FIT PERF media is streamed/installed from the Cloudflare content pack on Android.
 removeDir('fit');
+// Theme textures are also served by the Cloudflare theme-textures pack.
+removeDir('theme-textures');
 
 const saved = removed.reduce((n, x) => n + x.size, 0);
 console.log(`Android content-pack strip: ${(saved / 1024 / 1024).toFixed(2)} MB removed from dist`);

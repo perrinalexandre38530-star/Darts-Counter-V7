@@ -1,0 +1,22 @@
+{
+  "base": "Darts-Counter-V7(62).zip",
+  "version": "V114",
+  "changedFiles": [
+    "INSTALLATION-FIT-AWENA-V114-V62.txt",
+    "docs/FIT_AWENA_CANONICAL_PACKS_V114.md",
+    "package.json",
+    "src/tools/build-fit-awena-jobs.mjs",
+    "src/tools/build-fit-awena-registry.mjs",
+    "src/tools/build-fit-awena-step-jobs.mjs",
+    "src/tools/fit-awena-registry.mjs",
+    "src/tools/review-fit-awena-media.mjs",
+    "tools/build-fit-awena-jobs.mjs",
+    "tools/build-fit-awena-registry.mjs",
+    "tools/build-fit-awena-step-jobs.mjs",
+    "tools/comfyui/AWENA_STEP_WORKFLOW.md",
+    "tools/fit-awena-registry.mjs",
+    "tools/review-fit-awena-media.mjs",
+    "tools/run-comfyui-awena-steps.mjs",
+    "tools/test-fit-awena-canonical-v114.mjs"
+  ]
+}

@@ -2,8 +2,10 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import {
+  CONTENT_PACK_IDS,
   CONTENT_PACK_META,
   contentPackInfo,
+  contentPacksTotalBytes,
   getContentPackStatus,
   installContentPack,
   removeContentPack,
@@ -12,7 +14,6 @@ import {
   type ContentPackProgress,
 } from "../../lib/contentPacks";
 
-const PACK_IDS: ContentPackId[] = ["fit-awena", "navigation-music", "collectible-cards"];
 
 function bytesLabel(bytes: number): string {
   const mb = Math.max(0, Number(bytes || 0)) / 1024 / 1024;
@@ -26,6 +27,7 @@ export default function ContentPacksSettingsPanel() {
   const [busy, setBusy] = React.useState<ContentPackId | null>(null);
   const [progress, setProgress] = React.useState<ContentPackProgress | null>(null);
   const [message, setMessage] = React.useState("");
+  const [allBusy, setAllBusy] = React.useState(false);
 
   React.useEffect(() => subscribeContentPacks(refresh), []);
 
@@ -61,6 +63,45 @@ export default function ContentPacksSettingsPanel() {
     }
   }
 
+  async function installAll() {
+    setAllBusy(true);
+    setMessage("");
+    try {
+      for (const id of CONTENT_PACK_IDS) {
+        if (getContentPackStatus(id).installed) continue;
+        setBusy(id);
+        setProgress(null);
+        await installContentPack(id, setProgress);
+      }
+      setMessage(tr("Tous les packs sont installés pour le mode hors ligne.", "All packs are installed for offline use.", "Todos los packs están instalados para uso sin conexión."));
+    } catch (error: any) {
+      setMessage(`${tr("Installation interrompue", "Installation interrupted", "Instalación interrumpida")} : ${error?.message || error}`);
+    } finally {
+      setBusy(null);
+      setProgress(null);
+      setAllBusy(false);
+      refresh();
+    }
+  }
+
+  async function removeAll() {
+    setAllBusy(true);
+    setMessage("");
+    try {
+      for (const id of CONTENT_PACK_IDS) await removeContentPack(id);
+      setMessage(tr("Tous les packs hors ligne ont été supprimés.", "All offline packs were removed.", "Se eliminaron todos los packs sin conexión."));
+    } catch (error: any) {
+      setMessage(`${tr("Suppression impossible", "Removal failed", "No se pudo eliminar")} : ${error?.message || error}`);
+    } finally {
+      setBusy(null);
+      setAllBusy(false);
+      refresh();
+    }
+  }
+
+  const installedCount = CONTENT_PACK_IDS.filter((id) => getContentPackStatus(id).installed).length;
+  const totalPackBytes = contentPacksTotalBytes();
+
   return (
     <section style={{ display: "grid", gap: 10, marginBottom: 18 }}>
       <div style={{ padding: 12, borderRadius: 16, border: `1px solid ${theme.borderSoft}`, background: theme.cardBackground || "rgba(8,15,26,.94)" }}>
@@ -72,9 +113,21 @@ export default function ContentPacksSettingsPanel() {
             "El núcleo de la app sigue siendo ligero. Los medios pesados se transmiten desde Cloudflare y pueden instalarse aquí para usarlos sin conexión."
           )}
         </div>
+        <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 9, color: theme.textSoft, fontWeight: 900 }}>
+            {installedCount}/{CONTENT_PACK_IDS.length} {tr("packs installés", "packs installed", "packs instalados")} · {bytesLabel(totalPackBytes)}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button type="button" disabled={allBusy || busy !== null || installedCount === CONTENT_PACK_IDS.length} onClick={() => void installAll()} style={{ minHeight: 32, borderRadius: 10, border: `1px solid ${theme.primary}66`, background: `${theme.primary}14`, color: theme.primary, padding: "0 10px", fontSize: 9, fontWeight: 1000, cursor: allBusy ? "wait" : "pointer" }}>
+            {tr("TOUT INSTALLER", "INSTALL ALL", "INSTALAR TODO")}
+          </button>
+          <button type="button" disabled={allBusy || busy !== null || installedCount === 0} onClick={() => void removeAll()} style={{ minHeight: 32, borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", color: theme.textSoft, padding: "0 10px", fontSize: 9, fontWeight: 1000, cursor: allBusy ? "wait" : "pointer" }}>
+            {tr("TOUT SUPPRIMER", "REMOVE ALL", "ELIMINAR TODO")}
+          </button>
+        </div>
       </div>
 
-      {PACK_IDS.map((id) => {
+      {CONTENT_PACK_IDS.map((id) => {
         const meta = CONTENT_PACK_META[id];
         const info = contentPackInfo(id);
         const status = getContentPackStatus(id);

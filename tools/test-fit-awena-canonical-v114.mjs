@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { canonicalAwenaAssetKey, manualAwenaKeyForExercise } from "./fit-awena-registry.mjs";
+
+const nativeCurl={id:"curl",name:"Curl biceps",source:"mss",motionKey:"curl"};
+const fedbCurl={id:"fedb:Barbell_Curl",name:"Barbell Curl",source:"free-exercise-db"};
+const squat={id:"squat",name:"Squat",source:"mss",motionKey:"squat"};
+const unrelated={id:"wger:abc",name:"Hammer Curl",source:"wger"};
+assert.equal(manualAwenaKeyForExercise(nativeCurl),"curl");
+assert.equal(manualAwenaKeyForExercise(fedbCurl),"curl");
+assert.equal(canonicalAwenaAssetKey(nativeCurl,"curl"),"curl");
+assert.equal(canonicalAwenaAssetKey(fedbCurl,"fedb-Barbell-Curl"),"curl");
+assert.equal(canonicalAwenaAssetKey(squat,"squat"),"squat");
+assert.equal(canonicalAwenaAssetKey(unrelated,"wger-abc"),"wger-abc");
+const jobs=fs.readFileSync(new URL("./build-fit-awena-jobs.mjs",import.meta.url),"utf8");
+const steps=fs.readFileSync(new URL("./build-fit-awena-step-jobs.mjs",import.meta.url),"utf8");
+assert.match(jobs,/canonicalPackDeduplication:true/);
+assert.match(jobs,/aliases/);
+assert.match(steps,/canonicalPackDeduplication:true/);
+assert.match(steps,/aliases/);
+console.log("FIT AWENA V114 canonical pack deduplication: OK");

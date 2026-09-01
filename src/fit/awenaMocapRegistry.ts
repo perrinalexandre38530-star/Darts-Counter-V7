@@ -1,4 +1,5 @@
 import type { FitExercise } from "./fitStore";
+import { contentPackAssetUrl } from "../lib/contentPacks";
 
 export type FitMocapSource = "cmu" | "mocapflow" | "procedural";
 export type FitMocapFormat = "bvh" | "glb" | "fbx";
@@ -27,7 +28,7 @@ export const FIT_MOCAP_BINDINGS: Record<string, FitMocapBinding> = {
     source: "cmu",
     sourceMotionId: "22_14",
     format: "bvh",
-    localAsset: "/fit/mocap/cmu/22_14.bvh",
+    localAsset: contentPackAssetUrl("fit-awena", "mocap/cmu/22_14.bvh"),
     remoteAsset: "https://raw.githubusercontent.com/una-dinosauria/cmu-mocap/master/data/022/22_14.bvh",
     license: "CMU Graphics Lab Motion Capture Database usage terms + Bruce Hahne BVH conversion (no additional restrictions)",
     note: "Verified source: CMU subject 22 trial 14 = alternating squats (subject A). FIT PERF now loads the checked BVH through a local-first/cache-first runtime, with the procedural motion as a non-blocking fallback.",

@@ -1,9 +1,10 @@
-import avatarKael from "../assets/avatars/firefighter-bots/kael.webp";
-import avatarMalysia from "../assets/avatars/firefighter-bots/malysia.webp";
-import avatarAero from "../assets/avatars/firefighter-bots/aero.webp";
-import avatarZephyr from "../assets/avatars/firefighter-bots/zephyr.webp";
-import avatarBraze from "../assets/avatars/firefighter-bots/braze.webp";
-import avatarLyna from "../assets/avatars/firefighter-bots/lyna.webp";
+import { contentPackAssetUrl } from "./contentPacks";
+const avatarKael = contentPackAssetUrl("character-portraits", "firefighter-bots/kael.webp");
+const avatarMalysia = contentPackAssetUrl("character-portraits", "firefighter-bots/malysia.webp");
+const avatarAero = contentPackAssetUrl("character-portraits", "firefighter-bots/aero.webp");
+const avatarZephyr = contentPackAssetUrl("character-portraits", "firefighter-bots/zephyr.webp");
+const avatarBraze = contentPackAssetUrl("character-portraits", "firefighter-bots/braze.webp");
+const avatarLyna = contentPackAssetUrl("character-portraits", "firefighter-bots/lyna.webp");
 
 export type DartsFirefighterBotTrait =
   | "commander"

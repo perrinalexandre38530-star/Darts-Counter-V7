@@ -40,6 +40,10 @@ check(
   "Awena sherpa-onnx JVM dupliqué exclu",
   gradle.includes('exclude group: "com.github.k2-fsa.sherpa-onnx", module: "sherpa-onnx-jvm"')
 );
+check(
+  "Payload natif desktop exclu du module Android",
+  gradle.includes('**/native/osx-*/**') && gradle.includes('**/native/win-*/**') && gradle.includes('**/native/linux-*/**')
+);
 check("Commons Compress présent", gradle.includes("org.apache.commons:commons-compress:1.27.1"));
 check("Awena ML Kit Translation 17.0.3 présent", gradle.includes("com.google.mlkit:translate:17.0.3"));
 check("AwenaTranslation plugin registered", main.includes("registerPlugin(AwenaTranslationPlugin.class)"));

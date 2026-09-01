@@ -19,6 +19,12 @@ android {
         versionCode 15
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Production Play Store: keep the two Android ARM ABIs only.
+        // x86/x86_64 are emulator/ChromeOS-oriented and duplicate the very large
+        // sherpa-onnx native payload inside the AAB. Pixel/phone production stays covered.
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -42,6 +48,21 @@ android {
             }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    // Never ship desktop/Linux native resources in the Android base module.
+    // Android JNI .so files remain untouched; only META-INF/native payloads for
+    // non-Android platforms are excluded.
+    packaging {
+        resources {
+            excludes += [
+                "**/native/osx-*/**",
+                "**/native/win-*/**",
+                "**/native/linux-*/**",
+                "META-INF/native/osx-*/**",
+                "META-INF/native/win-*/**",
+                "META-INF/native/linux-*/**"
+            ]
         }
     }
 }

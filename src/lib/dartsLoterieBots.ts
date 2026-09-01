@@ -1,10 +1,11 @@
-import avatarLucky from "../assets/avatars/loterie-bots/lucky.webp";
-import avatarVega from "../assets/avatars/loterie-bots/vega.webp";
-import avatarAce from "../assets/avatars/loterie-bots/ace.webp";
-import avatarFortuna from "../assets/avatars/loterie-bots/fortuna.webp";
-import avatarJinx from "../assets/avatars/loterie-bots/jinx.webp";
-import avatarJack from "../assets/avatars/loterie-bots/jack.webp";
-import avatarMidas from "../assets/avatars/loterie-bots/midas.webp";
+import { contentPackAssetUrl } from "./contentPacks";
+const avatarLucky = contentPackAssetUrl("character-portraits", "loterie-bots/lucky.webp");
+const avatarVega = contentPackAssetUrl("character-portraits", "loterie-bots/vega.webp");
+const avatarAce = contentPackAssetUrl("character-portraits", "loterie-bots/ace.webp");
+const avatarFortuna = contentPackAssetUrl("character-portraits", "loterie-bots/fortuna.webp");
+const avatarJinx = contentPackAssetUrl("character-portraits", "loterie-bots/jinx.webp");
+const avatarJack = contentPackAssetUrl("character-portraits", "loterie-bots/jack.webp");
+const avatarMidas = contentPackAssetUrl("character-portraits", "loterie-bots/midas.webp");
 
 export type DartsLoterieBotTrait =
   | "luck"

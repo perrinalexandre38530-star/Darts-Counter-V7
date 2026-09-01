@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { assetKey, loadCatalog } from "./fit-awena-catalog-source.mjs";
 import { resolveCatalogImageUrls } from "./fit-awena-driver-utils.mjs";
-import { AWENA_COMPLETENESS, AWENA_STATUS, ensureAwenaRegistryDirectories, generatedDirectory, resolveAwenaRegistryState } from "./fit-awena-registry.mjs";
+import { AWENA_COMPLETENESS, AWENA_STATUS, canonicalAwenaAssetKey, ensureAwenaRegistryDirectories, generatedDirectory, resolveAwenaRegistryState } from "./fit-awena-registry.mjs";
 
 const ROOT = process.cwd();
 const MEDIA_ROOT = path.join(ROOT, "public/fit/awena-library");
@@ -84,11 +84,12 @@ await fs.mkdir(OUT_DIR,{recursive:true});
 await ensureAwenaRegistryDirectories();
 await fs.writeFile(CATALOG_FILE,JSON.stringify(catalog,null,2));
 
-const jobs=[];
 const statusCounts={ APPROVED:0, REVIEW:0, MISSING:0, REJECTED:0 };
+const groups=new Map();
 for(const exercise of catalog.exercises){
-  const key=assetKey(exercise);
-  const registryState=await resolveAwenaRegistryState(exercise,key);
+  const rawKey=assetKey(exercise);
+  const canonicalKey=canonicalAwenaAssetKey(exercise,rawKey);
+  const registryState=await resolveAwenaRegistryState(exercise,rawKey);
   statusCounts[registryState.status]=(statusCounts[registryState.status]||0)+1;
   const approvedPartialMissingVideo = registryState.status===AWENA_STATUS.APPROVED
     && registryState.completeness===AWENA_COMPLETENESS.PARTIAL
@@ -99,35 +100,67 @@ for(const exercise of catalog.exercises){
   if(registryState.status===AWENA_STATUS.APPROVED && !approvedPartialMissingVideo) continue;
   if(registryState.status===AWENA_STATUS.REVIEW) continue;
   if(registryState.status===AWENA_STATUS.REJECTED && !retryRejected) continue;
-  const requestedComponents = approvedPartialMissingVideo ? ["video"] : ["video","poster"];
-  const generationMode = approvedPartialMissingVideo ? "VIDEO_ONLY_SUPPLEMENT" : "MOTION_PACK";
+  const entry={exercise,rawKey,canonicalKey,registryState,approvedPartialMissingVideo};
+  if(!groups.has(canonicalKey)) groups.set(canonicalKey,[]);
+  groups.get(canonicalKey).push(entry);
+}
+
+function richness(entry){
+  const ex=entry.exercise;
+  let score=0;
+  if(String(ex.source||"").toLowerCase()==="mss") score+=10000;
+  if(String(ex.id||"")===entry.canonicalKey) score+=5000;
+  score+=(ex.videoUrls||[]).length*500;
+  score+=resolveCatalogImageUrls(ex).length*20;
+  score+=(ex.instructions||[]).length*5;
+  return score;
+}
+function unique(values){return [...new Set(values.filter(Boolean))];}
+
+const jobs=[];
+let aliasEntriesCollapsed=0;
+for(const [canonicalKey,entries] of groups){
+  const sorted=[...entries].sort((a,b)=>richness(b)-richness(a));
+  const rep=sorted[0];
+  const exercise=rep.exercise;
+  const approvedPartialMissingVideo=entries.some((e)=>e.approvedPartialMissingVideo);
+  const requestedComponents=approvedPartialMissingVideo?["video"]:["video","poster"];
+  const generationMode=approvedPartialMissingVideo?"VIDEO_ONLY_SUPPLEMENT":"MOTION_PACK";
+  const resolvedReferenceImages=unique(entries.flatMap((e)=>resolveCatalogImageUrls(e.exercise)));
+  const existingReferenceVideos=unique(entries.flatMap((e)=>e.exercise.videoUrls||[]));
+  const existingReferenceImages=unique(entries.flatMap((e)=>e.exercise.imagePaths||[]));
+  const aliases=entries.map((e)=>({exerciseId:e.exercise.id,assetKey:e.rawKey,name:e.exercise.name,source:e.exercise.source}));
+  aliasEntriesCollapsed+=Math.max(0,aliases.length-1);
   jobs.push({
-    version:1,
+    version:2,
     exerciseId:exercise.id,
-    assetKey:key,
+    representativeExerciseId:exercise.id,
+    assetKey:canonicalKey,
+    canonicalAssetKey:canonicalKey,
+    aliases,
     name:exercise.name,
     source:exercise.source,
     muscle:exercise.muscle,
     equipment:exercise.equipment,
     level:exercise.level||"",
     category:exercise.category||"",
-    existingReferenceImages:exercise.imagePaths||[],
-    resolvedReferenceImages:resolveCatalogImageUrls(exercise),
-    existingReferenceVideos:exercise.videoUrls||[],
+    existingReferenceImages,
+    resolvedReferenceImages,
+    existingReferenceVideos,
     motionDriver:{
       required:true,
-      existingVideoCandidates:exercise.videoUrls||[],
-      photoCandidates:resolveCatalogImageUrls(exercise),
-      strategy:(exercise.videoUrls||[]).length?"existing-video":resolveCatalogImageUrls(exercise).length>=2?"photo-pair-driver":"needs-generated-driver",
+      existingVideoCandidates:existingReferenceVideos,
+      photoCandidates:resolvedReferenceImages,
+      strategy:existingReferenceVideos.length?"existing-video":resolvedReferenceImages.length>=2?"photo-pair-driver":"needs-generated-driver",
     },
     instructions:exercise.instructions||[],
-    registryStatus: registryState.status,
-    registryCompleteness: registryState.completeness,
-    existingApprovedCoverage: registryState.status===AWENA_STATUS.APPROVED ? registryState.coverage : null,
+    registryStatus:rep.registryState.status,
+    registryCompleteness:rep.registryState.completeness,
+    existingApprovedCoverage:rep.registryState.status===AWENA_STATUS.APPROVED?rep.registryState.coverage:null,
     requestedComponents,
     generationMode,
     output:{
-      directory:path.relative(ROOT,generatedDirectory(AWENA_STATUS.REVIEW,key)).replaceAll("\\","/"),
+      directory:path.relative(ROOT,generatedDirectory(AWENA_STATUS.REVIEW,canonicalKey)).replaceAll("\\","/"),
       video:"awena-preview.webm",
       poster:"awena-poster.webp",
       steps:["awena-step-01.webp","awena-step-02.webp","awena-step-03.webp","awena-step-04.webp"],
@@ -135,20 +168,19 @@ for(const exercise of catalog.exercises){
       alphaCodec:"VP9 yuva420p WebM",
     },
     comfyui:{
-      prompt:basePrompt(exercise),
-      negativePrompt:negativePrompt(),
-      motionPrompt:motionPrompt(exercise),
-      stepPrompts:stepPrompts(exercise),
-      seed:Math.abs([...String(exercise.id)].reduce((a,c)=>((a*31)+c.charCodeAt(0))|0,17)),
+      prompt:basePrompt(exercise),negativePrompt:negativePrompt(),motionPrompt:motionPrompt(exercise),stepPrompts:stepPrompts(exercise),
+      seed:Math.abs([...String(canonicalKey)].reduce((a,c)=>((a*31)+c.charCodeAt(0))|0,17)),
     },
   });
 }
+
 const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,statusCounts,queued:jobs.length,
+  uniqueCanonicalPacks:jobs.length,aliasEntriesCollapsed,
   fullMotionPackJobs:jobs.filter((j)=>j.generationMode==="MOTION_PACK").length,
   approvedPartialVideoOnlyJobs:jobs.filter((j)=>j.generationMode==="VIDEO_ONLY_SUPPLEMENT").length,
   withExistingMotionVideo:jobs.filter((j)=>j.existingReferenceVideos?.length).length,withReferencePhotos:jobs.filter((j)=>j.resolvedReferenceImages?.length).length,withPhotoPairDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)>=2).length,needsGeneratedMotionDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)<2).length,
-  policy:{approvedCompleteNeverQueued:true,approvedPartialOnlyMissingVideoQueued:true,validatedPosterAndStepsNeverRegenerated:true,reviewNeverQueued:true,rejectedRequiresRetryFlag:true,generatedDestination:"REVIEW"},sources:catalog.sources,sourceErrors:catalog.errors||[]};
-await fs.writeFile(QUEUE_FILE,JSON.stringify({version:3,createdAt:new Date().toISOString(),catalogCount:catalog.exercises.length,jobs},null,2));
+  policy:{canonicalPackDeduplication:true,approvedCompleteNeverQueued:true,approvedPartialOnlyMissingVideoQueued:true,validatedPosterAndStepsNeverRegenerated:true,reviewNeverQueued:true,rejectedRequiresRetryFlag:true,generatedDestination:"REVIEW"},sources:catalog.sources,sourceErrors:catalog.errors||[]};
+await fs.writeFile(QUEUE_FILE,JSON.stringify({version:4,createdAt:new Date().toISOString(),catalogCount:catalog.exercises.length,jobs},null,2));
 await fs.writeFile(REPORT_FILE,JSON.stringify(report,null,2));
 console.log(JSON.stringify(report,null,2));
 console.log(`Queue: ${QUEUE_FILE}`);

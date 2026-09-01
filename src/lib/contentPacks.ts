@@ -16,25 +16,40 @@ export type ContentPackProgress = {
   currentPath?: string;
 };
 
-const STATE_KEY = "mss_content_packs_v1";
-export const CONTENT_PACK_CACHE = "mss-content-packs-v1";
+const STATE_KEY = "mss_content_packs_v2";
+export const CONTENT_PACK_CACHE = "mss-content-packs-v2";
 export const CONTENT_PACK_BASE_URL = String(
   (import.meta as any)?.env?.VITE_CONTENT_PACK_BASE_URL ||
     "https://pub-170ceab787594ee9a09d6315358fb928.r2.dev/mss-content-packs/v1"
 ).replace(/\/+$/, "");
 
-export const CONTENT_PACK_META: Record<ContentPackId, { title: string; subtitle: string }> = {
+export const CONTENT_PACK_IDS = Object.keys(CONTENT_PACK_CATALOG) as ContentPackId[];
+
+export const CONTENT_PACK_META: Record<ContentPackId, { title: string; subtitle: string; group: "sport" | "audio" | "visual" }> = {
   "fit-awena": {
     title: "FIT PERF · Médias AWENA",
-    subtitle: "Vidéos, étapes d’exercices, tickers et médias FIT PERF.",
+    subtitle: "Vidéos, étapes d’exercices, motion capture et médias FIT PERF.",
+    group: "sport",
   },
   "navigation-music": {
     title: "Musiques de navigation",
-    subtitle: "Playlist complète MULTISPORTS SCORING, installable hors ligne.",
+    subtitle: "Playlist complète MULTISPORTS SCORING, compressée en Opus et installable hors ligne.",
+    group: "audio",
   },
   "collectible-cards": {
     title: "Cartes à débloquer HD",
     subtitle: "Cartes de collection haute définition des modes et personnages.",
+    group: "visual",
+  },
+  "theme-textures": {
+    title: "Textures de thèmes",
+    subtitle: "Textures premium, graffiti, matériaux, arènes et thèmes post-apocalyptiques.",
+    group: "visual",
+  },
+  "character-portraits": {
+    title: "Personnages IA",
+    subtitle: "Portraits Killer, Loterie et Firefighter chargés à la demande.",
+    group: "visual",
   },
 };
 
@@ -55,13 +70,27 @@ function writeState(next: Partial<Record<ContentPackId, ContentPackStatus>>) {
   } catch {}
 }
 
-export function contentPackAssetUrl(packId: ContentPackId, relativePath: string): string {
+function encodePackPath(relativePath: string): string {
   const clean = String(relativePath || "").replace(/^\/+/, "");
-  return `${CONTENT_PACK_BASE_URL}/${encodeURIComponent(packId)}/${clean.split("/").map(encodeURIComponent).join("/")}`;
+  return clean.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+}
+
+/**
+ * Immutable, versioned URL. A new pack version gets a new path, so old CacheStorage
+ * entries can never shadow a refreshed Cloudflare object.
+ */
+export function contentPackAssetUrl(packId: ContentPackId, relativePath: string): string {
+  const clean = encodePackPath(relativePath);
+  const version = encodeURIComponent(String(CONTENT_PACK_CATALOG[packId].version || "0"));
+  return `${CONTENT_PACK_BASE_URL}/${encodeURIComponent(packId)}/${version}${clean ? `/${clean}` : ""}`;
 }
 
 export function contentPackInfo(packId: ContentPackId) {
   return CONTENT_PACK_CATALOG[packId];
+}
+
+export function contentPacksTotalBytes(): number {
+  return CONTENT_PACK_IDS.reduce((total, id) => total + Number(CONTENT_PACK_CATALOG[id].totalBytes || 0), 0);
 }
 
 export function getContentPackStatus(packId: ContentPackId): ContentPackStatus {
@@ -90,8 +119,30 @@ async function fetchPackAsset(url: string): Promise<Response> {
     const response = await fetch(url, { cache: "no-store", credentials: "omit", mode: "cors" });
     if (response.ok) return response;
   } catch {}
+  // R2 public buckets without a CORS rule still produce a cacheable opaque response.
   const opaque = await fetch(url, { cache: "no-store", credentials: "omit", mode: "no-cors" });
   return opaque;
+}
+
+function packPathMarker(packId: ContentPackId): string {
+  try {
+    const base = new URL(CONTENT_PACK_BASE_URL);
+    const basePath = base.pathname.replace(/\/+$/, "");
+    return `${basePath}/${encodeURIComponent(packId)}/`;
+  } catch {
+    return `/${encodeURIComponent(packId)}/`;
+  }
+}
+
+async function purgePackCacheEntries(packId: ContentPackId): Promise<void> {
+  if (typeof window === "undefined" || !("caches" in window)) return;
+  const cache = await window.caches.open(CONTENT_PACK_CACHE);
+  const marker = packPathMarker(packId);
+  const keys = await cache.keys();
+  await Promise.all(keys.filter((request) => {
+    try { return new URL(request.url).pathname.includes(marker); }
+    catch { return request.url.includes(marker); }
+  }).map((request) => cache.delete(request)));
 }
 
 export async function installContentPack(
@@ -102,6 +153,9 @@ export async function installContentPack(
     throw new Error("Le stockage hors ligne des packs n’est pas disponible sur cet appareil.");
   }
   const pack = CONTENT_PACK_CATALOG[packId];
+  const current = readState()[packId];
+  if (current?.version && current.version !== pack.version) await purgePackCacheEntries(packId);
+
   const cache = await window.caches.open(CONTENT_PACK_CACHE);
   let completedFiles = 0;
   let completedBytes = 0;
@@ -127,11 +181,7 @@ export async function installContentPack(
 }
 
 export async function removeContentPack(packId: ContentPackId): Promise<void> {
-  if (typeof window !== "undefined" && "caches" in window) {
-    const cache = await window.caches.open(CONTENT_PACK_CACHE);
-    const pack = CONTENT_PACK_CATALOG[packId];
-    await Promise.all(pack.files.map((file) => cache.delete(contentPackAssetUrl(packId, file.path))));
-  }
+  await purgePackCacheEntries(packId);
   const next = readState();
   next[packId] = { installed: false, version: null, installedAt: null };
   writeState(next);

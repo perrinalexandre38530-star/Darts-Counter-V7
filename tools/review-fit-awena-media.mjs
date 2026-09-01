@@ -5,6 +5,7 @@ import {
   AWENA_COMPLETENESS,
   AWENA_STATUS,
   ensureAwenaRegistryDirectories,
+  canonicalAwenaAssetKey,
   generatedDirectory,
   moveGeneratedPack,
   resolveAwenaRegistryState,
@@ -25,7 +26,8 @@ if (!asset || Number(approve) + Number(reject) !== 1) {
 await ensureAwenaRegistryDirectories();
 const catalog = await loadCatalog({ allowCache: true });
 const exercise = catalog.exercises.find((ex) => assetKey(ex) === asset || String(ex.id) === asset);
-const key = exercise ? assetKey(exercise) : asset;
+const rawKey = exercise ? assetKey(exercise) : asset;
+const key = exercise ? canonicalAwenaAssetKey(exercise, rawKey) : asset;
 const reviewDir = generatedDirectory(AWENA_STATUS.REVIEW, key);
 if (!fssync.existsSync(reviewDir)) throw new Error(`Pack REVIEW absent: ${reviewDir}`);
 
@@ -48,7 +50,7 @@ if (meta?.technicalQuality?.pass === false && !force) {
 }
 
 const current = exercise
-  ? await resolveAwenaRegistryState(exercise, key)
+  ? await resolveAwenaRegistryState(exercise, rawKey)
   : { status: AWENA_STATUS.MISSING, completeness: AWENA_COMPLETENESS.NONE, missingComponents: ["video", "poster", "steps"], coverage: {} };
 
 if (current.status === AWENA_STATUS.APPROVED && current.completeness === AWENA_COMPLETENESS.COMPLETE && !force) {
@@ -131,7 +133,7 @@ approvedMeta = {
 await fs.writeFile(approvedMetaFile, JSON.stringify(approvedMeta, null, 2));
 await fs.rm(reviewDir, { recursive: true, force: true });
 
-const after = exercise ? await resolveAwenaRegistryState(exercise, key) : null;
+const after = exercise ? await resolveAwenaRegistryState(exercise, rawKey) : null;
 console.log(`${key}: REVIEW components -> APPROVED`);
 console.log(`Composants approuvés: ${componentsToApprove.join(", ")}`);
 console.log(`Fichiers copiés: ${copied.join(", ")}`);

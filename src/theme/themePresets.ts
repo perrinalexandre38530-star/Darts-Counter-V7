@@ -1,3 +1,4 @@
+import { contentPackAssetUrl } from "../lib/contentPacks";
 // ============================================
 // src/theme/themePresets.ts
 // Thèmes néon : seuls les accents changent,
@@ -175,7 +176,7 @@ export const THEME_STORAGE_KEY = "dc_app_theme_v1";
 const DARK_BG = "#050712";
 const DARK_CARD = "#121420";
 
-export const THEMES: AppTheme[] = [
+const RAW_THEMES: AppTheme[] = [
   {
     id: "gold",
     name: "Néon Doré",
@@ -3535,3 +3536,37 @@ export const THEMES: AppTheme[] = [
   },
 
 ];
+
+const THEME_TEXTURE_FIELDS: (keyof AppTheme)[] = [
+  "pageBackground",
+  "cardBackground",
+  "ambientOverlay",
+  "textureOverlay",
+  "surfaceSheen",
+  "navBackground",
+  "buttonBackground",
+  "frameOverlay",
+];
+
+function externalizeThemeTextureUrl(value: unknown): unknown {
+  if (typeof value !== "string" || !value.includes("/theme-textures/")) return value;
+  return value.replace(/\/theme-textures\/([^)'"\s,]+)/g, (_match, fileName: string) =>
+    contentPackAssetUrl("theme-textures", fileName)
+  );
+}
+
+function externalizeThemeTextures(theme: AppTheme): AppTheme {
+  const next: AppTheme = { ...theme };
+  for (const field of THEME_TEXTURE_FIELDS) {
+    const value = next[field];
+    if (typeof value === "string") (next as any)[field] = externalizeThemeTextureUrl(value);
+  }
+  return next;
+}
+
+/**
+ * Theme textures are intentionally outside the Android base bundle.
+ * They stream from the Cloudflare content pack and can be installed offline.
+ */
+export const THEMES: AppTheme[] = RAW_THEMES.map(externalizeThemeTextures);
+

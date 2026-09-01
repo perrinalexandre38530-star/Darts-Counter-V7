@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { assetKey, loadCatalog } from "./fit-awena-catalog-source.mjs";
-import { AWENA_COMPLETENESS, AWENA_ROOT, AWENA_STATUS, ensureAwenaRegistryDirectories, listGeneratedArtifactKeys, quarantineLegacyPack, resolveAwenaRegistryState } from "./fit-awena-registry.mjs";
+import { AWENA_COMPLETENESS, AWENA_ROOT, AWENA_STATUS, canonicalAwenaAssetKey, ensureAwenaRegistryDirectories, listGeneratedArtifactKeys, quarantineLegacyPack, resolveAwenaRegistryState } from "./fit-awena-registry.mjs";
 
 const refresh = process.argv.includes("--refresh");
 const migrateLegacy = process.argv.includes("--migrate-legacy");
@@ -21,10 +21,12 @@ if (migrateLegacy) {
 const entries = [];
 for (const exercise of catalog.exercises) {
   const key = assetKey(exercise);
+  const canonicalKey = canonicalAwenaAssetKey(exercise, key);
   const state = await resolveAwenaRegistryState(exercise, key);
   entries.push({
     exerciseId: exercise.id,
     assetKey: key,
+    canonicalAssetKey: canonicalKey,
     name: exercise.name,
     source: exercise.source,
     status: state.status,
@@ -54,12 +56,15 @@ const artifactCounts = {
   reviewArtifacts: (await listGeneratedArtifactKeys(AWENA_STATUS.REVIEW)).length,
   rejectedArtifacts: (await listGeneratedArtifactKeys(AWENA_STATUS.REJECTED)).length,
 };
+const aliasMap = Object.fromEntries([...new Set(entries.map((entry) => entry.canonicalAssetKey))].map((canonicalKey) => [canonicalKey, entries.filter((entry) => entry.canonicalAssetKey === canonicalKey).map((entry) => ({ exerciseId: entry.exerciseId, assetKey: entry.assetKey, name: entry.name, source: entry.source }))]));
 const registry = {
-  version: 3,
+  version: 4,
   generatedAt: new Date().toISOString(),
   catalogCount: entries.length,
   counts: { ...counts, ...completenessCounts, ...artifactCounts },
+  packAliases: aliasMap,
   policy: {
+    canonicalPackAliases: true,
     manualIsAuthoritative: true,
     generatedDefaultStatus: AWENA_STATUS.REVIEW,
     onlyApprovedGeneratedMediaIsRenderable: true,

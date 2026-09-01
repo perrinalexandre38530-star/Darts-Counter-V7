@@ -78,6 +78,13 @@ export function manualAwenaKeyForExercise(exercise = {}) {
   return "";
 }
 
+export function canonicalAwenaAssetKey(exercise = {}, fallbackAssetKey = "") {
+  const manualKey = manualAwenaKeyForExercise(exercise);
+  if (manualKey) return manualKey;
+  const fallback = String(fallbackAssetKey || exercise?.id || "").trim();
+  return fallback || "unknown";
+}
+
 const MANUAL_PACKS = Object.freeze({
   bench: {
     video: "/fit/motions/awena/premium/bench/motion.mp4",
@@ -238,8 +245,9 @@ async function legacyGeneratedState(assetKey) {
 }
 
 export async function resolveAwenaRegistryState(exercise, assetKey) {
+  const canonicalAssetKey = canonicalAwenaAssetKey(exercise, assetKey);
   const manual = await manualAwenaPackForExercise(exercise);
-  const approvedGenerated = await generatedAwenaStateAt(AWENA_STATUS.APPROVED, assetKey);
+  const approvedGenerated = await generatedAwenaStateAt(AWENA_STATUS.APPROVED, canonicalAssetKey);
 
   // Hand-authored media is authoritative per component. Human-approved generated
   // media may ONLY supplement components that the manual pack does not provide.
@@ -258,6 +266,7 @@ export async function resolveAwenaRegistryState(exercise, assetKey) {
     return enrichState({
       ...manual,
       assetKey,
+      canonicalAssetKey,
       origin: (useGeneratedVideo || useGeneratedPoster || useGeneratedSteps) ? "manual+generated" : "manual",
       videoUrl: manual.videoUrl || approvedGenerated?.videoUrl || null,
       posterUrl: manual.posterUrl || approvedGenerated?.posterUrl || null,
@@ -275,14 +284,14 @@ export async function resolveAwenaRegistryState(exercise, assetKey) {
     });
   }
 
-  if (approvedGenerated) return enrichState(approvedGenerated);
-  const review = await generatedAwenaStateAt(AWENA_STATUS.REVIEW, assetKey);
-  if (review) return enrichState(review);
-  const legacy = await legacyGeneratedState(assetKey);
-  if (legacy) return enrichState(legacy);
-  const rejected = await generatedAwenaStateAt(AWENA_STATUS.REJECTED, assetKey);
-  if (rejected) return enrichState(rejected);
-  return enrichState({ status: AWENA_STATUS.MISSING, origin: "none", assetKey, coverage: { video: false, poster: false, frames: 0, steps: 0 } });
+  if (approvedGenerated) return enrichState({ ...approvedGenerated, assetKey, canonicalAssetKey });
+  const review = await generatedAwenaStateAt(AWENA_STATUS.REVIEW, canonicalAssetKey);
+  if (review) return enrichState({ ...review, assetKey, canonicalAssetKey });
+  const legacy = await legacyGeneratedState(canonicalAssetKey);
+  if (legacy) return enrichState({ ...legacy, assetKey, canonicalAssetKey });
+  const rejected = await generatedAwenaStateAt(AWENA_STATUS.REJECTED, canonicalAssetKey);
+  if (rejected) return enrichState({ ...rejected, assetKey, canonicalAssetKey });
+  return enrichState({ status: AWENA_STATUS.MISSING, origin: "none", assetKey, canonicalAssetKey, coverage: { video: false, poster: false, frames: 0, steps: 0 } });
 }
 
 export async function listGeneratedArtifactKeys(status) {

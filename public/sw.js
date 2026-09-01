@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-09-01-content-packs-v1";
+const SW_VERSION = "dc-sw-2026-09-01-content-packs-v3";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 
 self.addEventListener("install", () => {
