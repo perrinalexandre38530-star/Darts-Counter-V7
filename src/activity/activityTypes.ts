@@ -66,6 +66,8 @@ export type ActivityRecord = {
     title?: string;
     visibility?: "private" | "public";
     photos?: ActivityPhoto[];
+    publishedRouteId?: string;
+    publishedAt?: number;
     targetDistanceM?: number | null;
     targetDurationMs?: number | null;
     targetPaceSecPerKm?: number | null;

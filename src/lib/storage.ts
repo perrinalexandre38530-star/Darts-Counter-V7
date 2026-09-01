@@ -31,6 +31,10 @@ import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
 import { exportLocalTournamentsSnapshot, importLocalTournamentsSnapshot } from "./tournaments/storeLocal";
 import { createCooperativeYielder } from "./mainThreadYield";
+import { listActivities, saveActivity } from "../activity/activityStore";
+import { loadRunningRoutes, saveRunningRoutes } from "../activity/runningRoutes";
+import { listRunningSessionDrafts, saveRunningSessionDraft } from "../activity/runningSessionDrafts";
+import { listOutdoorOfflineRoutePacks, prepareOutdoorOfflineRoutePack } from "../activity/outdoorOfflineCache";
 
 const STORAGE_DIAG_ENABLED = false; // PERF V2: désactive les logs verbeux par défaut (les slows restent dans runtimeDiag)
 const STORE_WRITE_MODE: "plain" | "gzip" = "plain";
@@ -1511,6 +1515,117 @@ function exportLocalStorageDc(): Record<string, string> {
   return out;
 }
 
+const RUNNING_BACKUP_LOCAL_KEYS = [
+  "mss-running-plan-v1",
+  "mss-running-audio-coach-v1",
+  "mss-running-segments-v1",
+  "mss-running-race-calendar-v1",
+  "mss-running-active-sessions-v1",
+  "mss-running-shoes-v1",
+  "mss-outdoor-route-extras-v1",
+  "mss-running-race-goal-v1",
+  "mss-outdoor-long-distance-v1",
+  "mss-running-performance-activity-v1",
+  "mss-running-privacy-v1",
+] as const;
+
+type RunningBackupSnapshot = {
+  _v: 2;
+  exportedAt: string;
+  activities: any[];
+  routes: any[];
+  drafts: any[];
+  offlineRoutePacks: any[];
+  preferences: Record<string, string>;
+};
+
+async function exportRunningBackupSnapshot(): Promise<RunningBackupSnapshot> {
+  const preferences: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    for (const key of RUNNING_BACKUP_LOCAL_KEYS) {
+      try {
+        const value = window.localStorage.getItem(key);
+        if (value != null) preferences[key] = value;
+      } catch {}
+    }
+  }
+
+  const [activities, drafts, offlineRoutePacks] = await Promise.all([
+    listActivities().catch(() => []),
+    listRunningSessionDrafts().catch(() => []),
+    listOutdoorOfflineRoutePacks().catch(() => []),
+  ]);
+
+  let routes: any[] = [];
+  try { routes = loadRunningRoutes(); } catch {}
+
+  return {
+    _v: 2,
+    exportedAt: new Date().toISOString(),
+    activities,
+    routes,
+    drafts,
+    offlineRoutePacks,
+    preferences,
+  };
+}
+
+async function importRunningBackupSnapshot(snapshot: any, report: (progress: number, message: string) => void): Promise<void> {
+  if (!snapshot || typeof snapshot !== "object") return;
+
+  const activities = Array.isArray(snapshot.activities) ? snapshot.activities : [];
+  const drafts = Array.isArray(snapshot.drafts) ? snapshot.drafts : [];
+  const routes = Array.isArray(snapshot.routes) ? snapshot.routes : [];
+  const offlineRoutePacks = Array.isArray(snapshot.offlineRoutePacks) ? snapshot.offlineRoutePacks : [];
+  const preferences = snapshot.preferences && typeof snapshot.preferences === "object" ? snapshot.preferences : {};
+
+  report(80, `Restauration des sorties : 0/${activities.length}`);
+  for (let i = 0; i < activities.length; i += 1) {
+    try { await saveActivity(activities[i] as any); } catch (error) {
+      console.warn("[storage] restore running activity failed", activities[i]?.id, error);
+    }
+    if ((i + 1) % 8 === 0 || i + 1 === activities.length) {
+      report(80 + Math.round(((i + 1) / Math.max(1, activities.length)) * 8), `Restauration des sorties : ${i + 1}/${activities.length}`);
+    }
+  }
+
+  if (routes.length) {
+    try { saveRunningRoutes(routes as any); } catch (error) {
+      console.warn("[storage] restore running routes failed", error);
+    }
+  }
+
+  for (const draft of drafts) {
+    try { await saveRunningSessionDraft(draft as any); } catch (error) {
+      console.warn("[storage] restore running draft failed", draft?.sessionId, error);
+    }
+  }
+
+  for (const pack of offlineRoutePacks) {
+    try {
+      if (!pack?.route || !pack?.sport) continue;
+      await prepareOutdoorOfflineRoutePack(pack.route, pack.sport, pack.extras || {}, pack.longDistancePrefs || {});
+    } catch (error) {
+      console.warn("[storage] restore outdoor offline pack failed", pack?.routeId, error);
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    for (const key of RUNNING_BACKUP_LOCAL_KEYS) {
+      if (!(key in preferences)) continue;
+      try { window.localStorage.setItem(key, String(preferences[key] ?? "")); } catch {}
+    }
+    // Le propriétaire du service GPS natif est volontairement exclu :
+    // restaurer cet identifiant sur un autre appareil lierait la session à un
+    // service Android qui n'existe pas sur ce téléphone.
+    try { window.localStorage.removeItem("mss-running-native-tracking-owner-v1"); } catch {}
+    try { window.dispatchEvent(new Event("mss-running-backup-restored")); } catch {}
+    try { window.dispatchEvent(new Event("storage")); } catch {}
+  }
+
+  report(96, "Sorties, parcours, photos et réglages RUNNING restaurés.");
+}
+
 function importLocalStorageDc(map: Record<string, string>) {
   if (typeof window === "undefined") return;
   if (!map || typeof map !== "object") return;
@@ -2155,6 +2270,11 @@ export async function exportAll(): Promise<any> {
     return { _v: 1, exportedAt: new Date().toISOString(), tournaments: [], matchesByTournament: {}, counts: { tournaments: 0, matchesBuckets: 0, matches: 0 } };
   });
 
+  const running = await exportRunningBackupSnapshot().catch((err) => {
+    console.warn("[storage] export running snapshot failed", err);
+    return { _v: 2, exportedAt: new Date().toISOString(), activities: [], routes: [], drafts: [], offlineRoutePacks: [], preferences: {} };
+  });
+
   return {
     _v: 2,
     idb: nextIdbDump,
@@ -2166,6 +2286,11 @@ export async function exportAll(): Promise<any> {
     tournaments,
     competitions: tournaments,
     teams: loadStoredTeams(),
+    // RUNNING / outdoor vit dans plusieurs IndexedDB et clés mss-* séparées.
+    // Ce bloc explicite rend les sauvegardes manuelles réellement portables
+    // entre Android, PWA et un nouvel appareil, photos et traces GPS incluses.
+    running,
+    outdoorActivities: running,
     exportedAt: new Date().toISOString(),
   };
 }
@@ -2540,7 +2665,19 @@ export async function importAll(
       console.warn("[storage] importAll tournaments restore failed", e);
     }
 
-    report(78, "Finalisation du stockage principal…");
+    // 5) RUNNING / outdoor : activités GPS complètes, photos, parcours, brouillons
+    // et préférences vivent hors du store IndexedDB principal. Ils sont restaurés
+    // explicitement pour qu'un backup chargé sur un autre appareil réaffiche tout.
+    try {
+      const runningDump = dump.running || dump.outdoorActivities || null;
+      if (runningDump && typeof runningDump === "object") {
+        await importRunningBackupSnapshot(runningDump, report);
+      }
+    } catch (e) {
+      console.warn("[storage] importAll running/outdoor restore failed", e);
+    }
+
+    report(98, "Finalisation du stockage principal…");
     await yieldIfNeeded(true);
     try {
       const maybeStoreKey = scopedStorageKey(STORE_KEY);

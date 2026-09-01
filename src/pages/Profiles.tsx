@@ -3980,6 +3980,9 @@ function ProfilesMenuView({
   const sportKey = String(sportResolved || "").toLowerCase();
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
   const isDarts = sportKey.includes("darts");
+  const isOutdoorPerf = ["running", "trail", "walking", "hiking", "cycling", "mtb", "bmx", "roller"].some((key) => sportKey.includes(key));
+  const isFitPerf = sportKey.includes("fit");
+  const supportsTeams = isDarts || isBabyFoot || sportKey.includes("petanque") || sportKey.includes("football") || sportKey === "foot" || sportKey.includes("pingpong");
   const { t, lang } = useLang();
   const primary = theme.primary;
 
@@ -4127,6 +4130,37 @@ function ProfilesMenuView({
         onClick={onSelectMe}
       />
   
+      {isOutdoorPerf ? <>
+        <CardBtn
+          title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")}
+          subtitle={pickLegacyLocalizedText(lang, "Historique, cartes GPS, photos et statistiques du sport actif.", "History, GPS maps, photos and stats for the active sport.", "Historial, mapas GPS, fotos y estadísticas del deporte activo.")}
+          onClick={() => go?.("stats", { runningStatsTab: "history" })}
+        />
+        <CardBtn
+          title={pickLegacyLocalizedText(lang, "MES PARCOURS", "MY ROUTES", "MIS RUTAS")}
+          subtitle={pickLegacyLocalizedText(lang, "Parcours sauvegardés, Explorer et bibliothèque communautaire.", "Saved routes, Explore and community library.", "Rutas guardadas, Explorar y biblioteca comunitaria.")}
+          onClick={() => go?.("games", { runningOpenRoutes: true })}
+        />
+        <CardBtn
+          title={pickLegacyLocalizedText(lang, "PARTENAIRES À PROXIMITÉ", "NEARBY PARTNERS", "COMPAÑEROS CERCANOS")}
+          subtitle={pickLegacyLocalizedText(lang, "Trouve des personnes pour courir, marcher, randonner ou rouler.", "Find people to run, walk, hike or ride with.", "Encuentra personas para correr, caminar, hacer senderismo o montar.")}
+          onClick={() => go?.("online", { tab: "nearby" })}
+        />
+      </> : null}
+
+      {isFitPerf ? <>
+        <CardBtn
+          title={pickLegacyLocalizedText(lang, "MES SÉANCES FIT PERF", "MY FIT PERF WORKOUTS", "MIS SESIONES FIT PERF")}
+          subtitle={pickLegacyLocalizedText(lang, "Séries, répétitions, charges, records et progression.", "Sets, reps, loads, records and progress.", "Series, repeticiones, cargas, récords y progreso.")}
+          onClick={() => go?.("stats")}
+        />
+        <CardBtn
+          title={pickLegacyLocalizedText(lang, "MON PROGRAMME", "MY PROGRAM", "MI PROGRAMA")}
+          subtitle={pickLegacyLocalizedText(lang, "Retrouve ton plan d'entraînement FIT PERF.", "Open your FIT PERF training plan.", "Abre tu plan de entrenamiento FIT PERF.")}
+          onClick={() => go?.("fit_plan")}
+        />
+      </> : null}
+  
       {!isBabyFoot && (
         <CardBtn
           title={t("profiles.menu.friends.title", "AMIS")}
@@ -4165,7 +4199,7 @@ function ProfilesMenuView({
         />
       ) : null}
 
-      <CardBtn
+      {supportsTeams ? <CardBtn
         title={t("profiles.menu.teams.title", pickLegacyLocalizedText(lang, `ÉQUIPES (${String(sportResolved || "SPORT").toUpperCase()})`, `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`, `EQUIPOS (${String(sportResolved || "SPORT").toUpperCase()})`))}
         subtitle={t(
           "profiles.menu.teams.subtitle",
@@ -4173,7 +4207,7 @@ function ProfilesMenuView({
         )}
         badge={t("profiles.menu.teams.badge", "NEW")}
         onClick={() => go?.("petanque_teams", { sport: sportResolved || "darts", returnTo: "profiles" })}
-      />
+      /> : null}
     </div>
   );
 }

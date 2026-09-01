@@ -1,0 +1,36 @@
+{
+  "assetKey": "squat",
+  "exerciseId": "squat",
+  "name": "Squat",
+  "status": "REVIEW",
+  "requestedComponents": [
+    "steps"
+  ],
+  "generationMode": "STEPS_ONLY_SUPPLEMENT",
+  "stepStrategy": "APPROVED_VIDEO_PHASE_FRAMES",
+  "aliases": [
+    {
+      "exerciseId": "squat",
+      "assetKey": "squat",
+      "name": "Squat",
+      "source": "mss"
+    }
+  ],
+  "stepGuide": {
+    "status": "REVIEW_REQUIRED",
+    "requiredSteps": 4,
+    "generatedAt": "2026-09-01T11:11:15.670Z",
+    "policy": "Candidate pedagogical steps derived only from already APPROVED AWENA manual media; human visual review remains mandatory."
+  },
+  "humanReviewRequired": true,
+  "preparedFromApprovedMedia": {
+    "sourceMode": "APPROVED_VIDEO_PHASE_FRAMES",
+    "source": "C:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\public\\fit\\motions\\awena\\premium\\squat\\motion.mp4",
+    "times": [
+      0.5,
+      1.5,
+      2.5,
+      3.5
+    ]
+  }
+}

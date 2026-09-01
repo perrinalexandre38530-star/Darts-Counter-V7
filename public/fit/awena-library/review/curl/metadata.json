@@ -1,0 +1,41 @@
+{
+  "assetKey": "curl",
+  "exerciseId": "curl",
+  "name": "Curl biceps",
+  "status": "REVIEW",
+  "requestedComponents": [
+    "steps"
+  ],
+  "generationMode": "STEPS_ONLY_SUPPLEMENT",
+  "stepStrategy": "APPROVED_MANUAL_FRAMES",
+  "aliases": [
+    {
+      "exerciseId": "fedb:Barbell_Curl",
+      "assetKey": "fedb-barbell-curl",
+      "name": "Barbell Curl",
+      "source": "free-exercise-db"
+    },
+    {
+      "exerciseId": "curl",
+      "assetKey": "curl",
+      "name": "Curl biceps",
+      "source": "mss"
+    }
+  ],
+  "stepGuide": {
+    "status": "REVIEW_REQUIRED",
+    "requiredSteps": 4,
+    "generatedAt": "2026-09-01T11:11:15.069Z",
+    "policy": "Candidate pedagogical steps derived only from already APPROVED AWENA manual media; human visual review remains mandatory."
+  },
+  "humanReviewRequired": true,
+  "preparedFromApprovedMedia": {
+    "sourceMode": "APPROVED_MANUAL_FRAMES",
+    "sources": [
+      "C:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\public\\fit\\motions\\awena\\premium\\curl\\frames\\frame-01.webp",
+      "C:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\public\\fit\\motions\\awena\\premium\\curl\\frames\\frame-02.webp",
+      "C:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\public\\fit\\motions\\awena\\premium\\curl\\frames\\frame-04.webp",
+      "C:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\public\\fit\\motions\\awena\\premium\\curl\\frames\\frame-05.webp"
+    ]
+  }
+}

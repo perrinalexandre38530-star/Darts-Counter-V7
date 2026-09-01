@@ -10,7 +10,7 @@ export type RunningRouteTemplate = {
   elevationGainM: number;
   referenceElapsedMs: number;
   createdAt: number;
-  source?: "activity" | "gpx" | "tcx" | "fit" | "osm" | "generated";
+  source?: "activity" | "gpx" | "tcx" | "fit" | "osm" | "generated" | "community";
   scout?: {
     provider: "openstreetmap-route-scout" | "routeyou";
     score: number;
@@ -34,6 +34,15 @@ export type RunningRouteTemplate = {
     elevationErrorM?: number;
     elevationTargetMatched?: boolean;
     elevationSource?: "open-meteo-copernicus-dem" | "embedded";
+  };
+  community?: {
+    publicId: string;
+    ownerUserId?: string;
+    ownerDisplayName?: string;
+    ownerAvatarUrl?: string | null;
+    description?: string;
+    distanceFromCenterM?: number;
+    publishedAt?: number;
   };
   externalId?: string;
   network?: string;

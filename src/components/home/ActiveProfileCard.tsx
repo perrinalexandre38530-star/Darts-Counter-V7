@@ -776,7 +776,14 @@ type KpiCellProps = {
   theme: any;
 };
 
+function splitKpiDisplayValue(value: string) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^([+−-]?\d+(?:[.,]\d+)?)(?:\s*)(km\/h|km|m|bpm|spm|%|\/km)$/i);
+  return match ? { main: match[1], unit: match[2] } : { main: raw, unit: "" };
+}
+
 function KpiCell({ label, value, primary, theme }: KpiCellProps) {
+  const display = splitKpiDisplayValue(value);
   return (
     <div
       style={{
@@ -807,16 +814,9 @@ function KpiCell({ label, value, primary, theme }: KpiCellProps) {
         }}
       />
 
-      <div
-        style={{
-          fontSize: 20,
-          fontWeight: 900,
-          color: primary,
-          lineHeight: 1.1,
-          animation: "apcValueGlow 2.8s ease-in-out infinite",
-        }}
-      >
-        {value}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, minWidth: 0, color: primary, animation: "apcValueGlow 2.8s ease-in-out infinite" }}>
+        <span style={{ fontSize: 20, fontWeight: 900, lineHeight: 1.05, minWidth: 0 }}>{display.main}</span>
+        {display.unit ? <span style={{ fontSize: 8, fontWeight: 900, lineHeight: 1, opacity: .72, textTransform: "none" }}>{display.unit}</span> : null}
       </div>
     </div>
   );

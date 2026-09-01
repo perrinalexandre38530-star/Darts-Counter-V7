@@ -64,6 +64,14 @@ const SPORT_LABEL: Record<string, string> = {
   molkky: "Mölkky",
   dice: "Dés",
   foot: "Football",
+  running: "Running",
+  trail: "Trail",
+  walking: "Marche",
+  hiking: "Randonnée",
+  cycling: "Vélo",
+  mtb: "VTT",
+  bmx: "BMX",
+  roller: "Roller",
 };
 const SPORTS = Object.keys(SPORT_LABEL);
 const RADII = [2, 5, 10, 25, 50];
@@ -76,9 +84,17 @@ function normalizeSport(raw?: string | null) {
   if (s.includes("pet")) return "petanque";
   if (s.includes("ping")) return "pingpong";
   if (s.includes("molk")) return "molkky";
-  if (s.includes("dice") || s.includes("de")) return "dice";
+  if (s.includes("dice") || s === "de" || s === "des") return "dice";
+  if (s === "running" || s === "run" || s === "jogging") return "running";
+  if (s.includes("trail")) return "trail";
+  if (s.includes("nordic") || s.includes("walk") || s.includes("marche")) return "walking";
+  if (s.includes("hiking") || s.includes("rando")) return "hiking";
+  if (s.includes("cycling") || s === "velo" || s === "bike") return "cycling";
+  if (s === "mtb" || s === "vtt") return "mtb";
+  if (s.includes("bmx")) return "bmx";
+  if (s.includes("roller") || s.includes("skate")) return "roller";
   if (s.includes("foot")) return "foot";
-  return "darts";
+  return SPORT_LABEL[s] ? s : "darts";
 }
 
 function readProfileName(profile: any) {
