@@ -168,4 +168,55 @@ export function sportRouteForAgenda(sport: MultisportEventSport) {
   return null;
 }
 
+function icsEscape(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+function icsUtc(ts: number) {
+  const d = new Date(ts);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+}
+
+export function buildMultisportAgendaIcs(events: MultisportAgendaEvent[] = collectMultisportAgendaEvents()) {
+  const now = icsUtc(Date.now());
+  const rows = events
+    .filter((event) => event.status !== "declined" && event.status !== "cancelled" && event.status !== "pending")
+    .map((event) => {
+      const meta = multisportSportMeta(event.sport);
+      const endAt = event.startAt + Math.max(1, event.durationMin || 60) * 60_000;
+      const description = [meta.label, event.discipline, event.organizer || event.club, event.notes].filter(Boolean).join(" · ");
+      return [
+        "BEGIN:VEVENT",
+        `UID:${icsEscape(event.id)}@multisports-scoring`,
+        `DTSTAMP:${now}`,
+        `DTSTART:${icsUtc(event.startAt)}`,
+        `DTEND:${icsUtc(endAt)}`,
+        `SUMMARY:${icsEscape(`${meta.label} · ${event.title}`)}`,
+        event.location ? `LOCATION:${icsEscape(event.location)}` : "",
+        description ? `DESCRIPTION:${icsEscape(description)}` : "",
+        `STATUS:${event.status === "completed" || event.status === "confirmed" ? "CONFIRMED" : "TENTATIVE"}`,
+        "END:VEVENT",
+      ].filter(Boolean).join("\r\n");
+    });
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "PRODID:-//MULTISPORTS SCORING//Agenda//FR", ...rows, "END:VCALENDAR", ""].join("\r\n");
+}
+
+export function downloadMultisportAgendaIcs(events: MultisportAgendaEvent[] = collectMultisportAgendaEvents(), filename = "multisports-scoring-agenda.ics") {
+  if (typeof document === "undefined") return false;
+  try {
+    const blob = new Blob([buildMultisportAgendaIcs(events)], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return true;
+  } catch { return false; }
+}
+
 export const FIT_PROGRAM_CATALOG = FIT_PROGRAMS;

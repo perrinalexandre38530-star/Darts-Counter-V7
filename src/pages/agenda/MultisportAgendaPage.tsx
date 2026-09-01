@@ -6,6 +6,7 @@ import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import {
   collectMultisportAgendaEvents,
   createMultisportEvent,
+  downloadMultisportAgendaIcs,
   localDayStart,
   localMonthStart,
   localWeekStart,
@@ -14,6 +15,7 @@ import {
   respondToAgendaInvitation,
   type MultisportAgendaEvent,
   type MultisportEventSport,
+  type MultisportEventType,
 } from "../../planning/multisportAgenda";
 
 type Props = { go: (route: any, params?: any) => void; params?: any };
@@ -59,6 +61,8 @@ export default function MultisportAgendaPage({ go, params }: Props) {
     const start = localWeekStart(cursor); return { start, end: start + 7 * DAY };
   }, [cursor, view]);
   const visible = React.useMemo(() => filteredEvents.filter((event) => event.startAt >= range.start && event.startAt < range.end), [filteredEvents, range]);
+  const visibleMinutes = React.useMemo(() => visible.reduce((sum, event) => sum + Math.max(0, event.durationMin || 0), 0), [visible]);
+  const visibleSports = React.useMemo(() => new Set(visible.map((event) => event.sport)).size, [visible]);
 
   const shift = (direction: number) => {
     const date = new Date(cursor);
@@ -97,14 +101,17 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       `}</style>
 
       <div className="msa-top">
-        <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", gap: 9, alignItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
           <BackDot onClick={() => go("home")} />
           <div style={{ textAlign: "center", minWidth: 0 }}>
             <div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: 1.5 }}>MULTISPORTS SCORING</div>
             <div style={{ marginTop: 3, fontSize: 23, fontWeight: 1000, letterSpacing: 1.4 }}>AGENDA</div>
             <div className="msa-muted" style={{ marginTop: 3, fontSize: 9 }}>{t("Toute ta semaine sportive au même endroit", "Your whole sports week in one place", "Toda tu semana deportiva en un solo lugar")}</div>
           </div>
-          <button type="button" onClick={() => setCreateOpen(true)} aria-label={t("Ajouter", "Add", "Añadir")} style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${accent}66`, background: `${accent}18`, color: accent, fontSize: 23, cursor: "pointer" }}>+</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" onClick={() => downloadMultisportAgendaIcs(events)} aria-label={t("Exporter l'agenda", "Export agenda", "Exportar agenda")} title={t("Exporter vers Google / Apple / Outlook (.ics)", "Export to Google / Apple / Outlook (.ics)", "Exportar a Google / Apple / Outlook (.ics)")} style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.76)", fontSize: 18, cursor: "pointer" }}>↗</button>
+            <button type="button" onClick={() => setCreateOpen(true)} aria-label={t("Ajouter", "Add", "Añadir")} style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${accent}66`, background: `${accent}18`, color: accent, fontSize: 23, cursor: "pointer" }}>+</button>
+          </div>
         </div>
 
         <div className="msa-tabs">
@@ -126,6 +133,11 @@ export default function MultisportAgendaPage({ go, params }: Props) {
           <button type="button" onClick={() => setSportFilter("all")} style={chipStyle(sportFilter === "all", accent)}>{t("Tous", "All", "Todos")}</button>
           {SPORT_OPTIONS.filter((id) => id !== "other").map((id) => { const meta = multisportSportMeta(id); return <button key={id} type="button" onClick={() => setSportFilter(id)} style={chipStyle(sportFilter === id, meta.accent)}>{meta.icon} {meta.label}</button>; })}
         </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 5 }}>
+          <AgendaMetric label={t("ACTIVITÉS", "ACTIVITIES", "ACTIVIDADES")} value={String(visible.length)} accent={accent} />
+          <AgendaMetric label={t("SPORTS", "SPORTS", "DEPORTES")} value={String(visibleSports)} accent="#72def4" />
+          <AgendaMetric label={t("TEMPS", "TIME", "TIEMPO")} value={formatAgendaMinutes(visibleMinutes)} accent="#75ed9a" />
+        </div>
       </> : null}
 
       {view === "today" ? <div style={{ marginTop: 8 }}>{visible.length ? visible.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => openEvent(event)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />) : <EmptyState text={t("Rien de prévu aujourd'hui. Ajoute une activité ou active un programme.", "Nothing scheduled today. Add an activity or activate a program.", "Nada previsto hoy. Añade una actividad o activa un programa.")} />}</div> : null}
@@ -141,13 +153,38 @@ export default function MultisportAgendaPage({ go, params }: Props) {
   );
 }
 
+function formatAgendaMinutes(minutes: number) {
+  if (!minutes) return "0 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h${String(rest).padStart(2, "0")}` : `${hours}h`;
+}
+
+function eventTypeLabel(type: MultisportEventType) {
+  if (type === "workout") return "SÉANCE";
+  if (type === "training") return "ENTRAÎNEMENT";
+  if (type === "match") return "MATCH";
+  if (type === "game") return "PARTIE";
+  if (type === "outing") return "SORTIE";
+  if (type === "race") return "COURSE";
+  if (type === "tournament") return "TOURNOI";
+  if (type === "recovery") return "RÉCUP";
+  if (type === "club") return "CLUB";
+  return "ACTIVITÉ";
+}
+
+function AgendaMetric({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return <div style={{ minWidth: 0, borderRadius: 13, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.022)", padding: "8px 7px", textAlign: "center" }}><div style={{ color: "rgba(255,255,255,.42)", fontSize: 6.7, fontWeight: 1000, letterSpacing: .65 }}>{label}</div><div style={{ marginTop: 3, color: accent, fontSize: 13, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>;
+}
+
 function chipStyle(active: boolean, accent: string): React.CSSProperties { return { flex: "0 0 auto", minHeight: 34, borderRadius: 999, border: `1px solid ${active ? accent + "77" : "rgba(255,255,255,.07)"}`, background: active ? `${accent}18` : "rgba(255,255,255,.025)", color: active ? accent : "rgba(255,255,255,.62)", padding: "0 10px", fontSize: 8, fontWeight: 1000, whiteSpace: "nowrap", cursor: "pointer" }; }
 
 function EventCard({ event, locale, onOpen, onDelete }: { event: MultisportAgendaEvent; locale: string; onOpen: () => void; onDelete?: () => void }) {
   const meta = multisportSportMeta(event.sport); const hot = event.accent || meta.accent;
   return <div className="msa-event" role={event.route ? "button" : undefined} tabIndex={event.route ? 0 : undefined} onClick={event.route ? onOpen : undefined} onKeyDown={(e) => { if (event.route && (e.key === "Enter" || e.key === " ")) onOpen(); }} style={{ borderColor: `${hot}38` }}>
     <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", fontSize: 20, background: `${hot}13`, border: `1px solid ${hot}40` }}>{meta.icon}</div>
-    <div style={{ minWidth: 0 }}><div style={{ color: hot, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>{meta.label}{event.discipline ? ` · ${String(event.discipline).toUpperCase()}` : ""}</div><div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.title}</div><div style={{ marginTop: 3, fontSize: 8.3, color: "rgba(255,255,255,.56)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.organizer || event.club ? `${event.organizer || event.club} · ` : ""}{event.location || event.notes || sourceLabel(event.source)}</div></div>
+    <div style={{ minWidth: 0 }}><div style={{ color: hot, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>{meta.label} · {eventTypeLabel(event.type)}{event.discipline ? ` · ${String(event.discipline).toUpperCase()}` : ""}</div><div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.title}</div><div style={{ marginTop: 3, fontSize: 8.3, color: "rgba(255,255,255,.56)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.organizer || event.club ? `${event.organizer || event.club} · ` : ""}{event.location || event.notes || sourceLabel(event.source)}</div></div>
     <div className="msa-event-time" style={{ textAlign: "right", whiteSpace: "nowrap" }}><strong style={{ color: "#fff", fontSize: 11 }}>{formatTime(event.startAt, locale)}</strong>{event.durationMin ? <div style={{ marginTop: 2, color: hot, fontSize: 8, fontWeight: 900 }}>{event.durationMin} min</div> : null}{onDelete ? <button type="button" aria-label="Supprimer" onClick={(e) => { e.stopPropagation(); onDelete(); }} style={{ marginTop: 4, border: 0, background: "transparent", color: "rgba(255,255,255,.35)", fontSize: 12, cursor: "pointer" }}>×</button> : null}</div>
   </div>;
 }
@@ -162,9 +199,76 @@ function MonthGrid({ cursor, events, locale, onSelectDay }: { cursor: number; ev
 }
 
 function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: string; lang: string; onClose: () => void; onCreated: () => void }) {
-  const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es); const tomorrow = Date.now() + DAY;
-  const [title, setTitle] = React.useState(""); const [sport, setSport] = React.useState<MultisportEventSport>("fit"); const [date, setDate] = React.useState(toDateInput(tomorrow)); const [time, setTime] = React.useState("18:00"); const [duration, setDuration] = React.useState("60"); const [location, setLocation] = React.useState(""); const [kind, setKind] = React.useState<"personal" | "club" | "invite">("personal"); const [organizer, setOrganizer] = React.useState("");
-  const submit = (e: React.FormEvent) => { e.preventDefault(); if (!title.trim()) return; createMultisportEvent({ title: title.trim(), sport, type: sport === "foot" ? "match" : "training", source: kind === "club" ? "club" : kind === "invite" ? "friend" : "manual", startAt: inputToTimestamp(date, time), durationMin: Math.max(0, Number(duration) || 0) || undefined, location: location.trim() || undefined, organizer: organizer.trim() || undefined, status: kind === "invite" ? "pending" : "confirmed", accent: multisportSportMeta(sport).accent, route: sport !== "other" ? "games" : undefined, routeParams: sport === "fit" ? { fitTemplateId: "free", fitSessionTitle: title.trim() } : undefined }); onCreated(); };
+  const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
+  const tomorrow = Date.now() + DAY;
+  const [title, setTitle] = React.useState("");
+  const [sport, setSport] = React.useState<MultisportEventSport>("fit");
+  const [eventType, setEventType] = React.useState<MultisportEventType>("workout");
+  const [date, setDate] = React.useState(toDateInput(tomorrow));
+  const [time, setTime] = React.useState("18:00");
+  const [duration, setDuration] = React.useState("60");
+  const [location, setLocation] = React.useState("");
+  const [kind, setKind] = React.useState<"personal" | "club" | "invite">("personal");
+  const [organizer, setOrganizer] = React.useState("");
+  const [participants, setParticipants] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+
+  const selectSport = (next: MultisportEventSport) => {
+    setSport(next);
+    if (next === "fit") setEventType("workout");
+    else if (next === "running") setEventType("outing");
+    else if (next === "foot") setEventType("match");
+    else if (["darts", "babyfoot", "pingpong", "petanque", "molkky", "dicegame", "esports"].includes(next)) setEventType("game");
+    else setEventType("other");
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    const people = participants.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 30);
+    createMultisportEvent({
+      title: title.trim(),
+      sport,
+      type: eventType,
+      source: kind === "club" ? "club" : kind === "invite" ? "friend" : "manual",
+      startAt: inputToTimestamp(date, time),
+      durationMin: Math.max(0, Number(duration) || 0) || undefined,
+      location: location.trim() || undefined,
+      organizer: kind === "invite" ? organizer.trim() || undefined : undefined,
+      club: kind === "club" ? organizer.trim() || undefined : undefined,
+      participants: people.length ? people : undefined,
+      notes: notes.trim() || undefined,
+      status: kind === "invite" ? "pending" : "confirmed",
+      accent: multisportSportMeta(sport).accent,
+      route: sport !== "other" ? "games" : undefined,
+      routeParams: sport === "fit" ? { fitTemplateId: "free", fitSessionTitle: title.trim() } : undefined,
+    });
+    onCreated();
+  };
+
   const input: React.CSSProperties = { width: "100%", minHeight: 44, boxSizing: "border-box", borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(0,0,0,.34)", color: "#fff", padding: "0 11px", fontSize: 16 };
-  return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.72)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 12 }}><form onSubmit={submit} onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto", borderRadius: 22, border: "1px solid rgba(255,255,255,.11)", background: "linear-gradient(180deg,#0b1019,#060910)", padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: 1 }}>AGENDA MULTISPORTS</div><div style={{ fontSize: 19, fontWeight: 1000 }}>{t("Ajouter une activité", "Add an activity", "Añadir una actividad")}</div></div><button type="button" onClick={onClose} style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "#fff" }}>×</button></div><div style={{ display: "grid", gap: 9, marginTop: 12 }}><input style={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Ex. Match de foot, PULL, pétanque…", "E.g. football match, PULL, pétanque…", "Ej. partido, PULL, petanca…")} autoFocus/><select style={input} value={sport} onChange={(e) => setSport(e.target.value as MultisportEventSport)}>{SPORT_OPTIONS.map((id) => <option key={id} value={id}>{multisportSportMeta(id).icon} {multisportSportMeta(id).label}</option>)}</select><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><input style={input} type="date" value={date} onChange={(e) => setDate(e.target.value)}/><input style={input} type="time" value={time} onChange={(e) => setTime(e.target.value)}/></div><input style={input} inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder={t("Durée en minutes", "Duration in minutes", "Duración en minutos")}/><input style={input} value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("Lieu (facultatif)", "Location (optional)", "Lugar (opcional)")}/><select style={input} value={kind} onChange={(e) => setKind(e.target.value as any)}><option value="personal">{t("Personnel", "Personal", "Personal")}</option><option value="club">{t("Club / équipe", "Club / team", "Club / equipo")}</option><option value="invite">{t("Invitation reçue", "Received invitation", "Invitación recibida")}</option></select>{kind !== "personal" ? <input style={input} value={organizer} onChange={(e) => setOrganizer(e.target.value)} placeholder={kind === "club" ? t("Nom du club / équipe", "Club / team name", "Club / equipo") : t("Invité par…", "Invited by…", "Invitado por…")}/> : null}<button type="submit" style={{ minHeight: 46, borderRadius: 13, border: `1px solid ${accent}`, background: `linear-gradient(135deg,${accent},#fff1bd)`, color: "#0a0d12", fontWeight: 1000 }}>{t("AJOUTER À L'AGENDA", "ADD TO AGENDA", "AÑADIR A LA AGENDA")}</button></div></form></div>;
+  const label: React.CSSProperties = { color: "rgba(255,255,255,.46)", fontSize: 7, fontWeight: 1000, letterSpacing: .7, marginBottom: -3 };
+  return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.72)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 12 }}>
+    <form onSubmit={submit} onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto", borderRadius: 22, border: "1px solid rgba(255,255,255,.11)", background: "linear-gradient(180deg,#0b1019,#060910)", padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div><div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: 1 }}>AGENDA MULTISPORTS</div><div style={{ fontSize: 19, fontWeight: 1000 }}>{t("Ajouter une activité", "Add an activity", "Añadir una actividad")}</div></div>
+        <button type="button" onClick={onClose} style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "#fff" }}>×</button>
+      </div>
+      <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+        <div style={label}>{t("ACTIVITÉ", "ACTIVITY", "ACTIVIDAD")}</div>
+        <input style={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Ex. Match de foot, PULL, pétanque…", "E.g. football match, PULL, pétanque…", "Ej. partido, PULL, petanca…")} autoFocus/>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <label><div style={label}>{t("SPORT", "SPORT", "DEPORTE")}</div><select style={{ ...input, marginTop: 5 }} value={sport} onChange={(e) => selectSport(e.target.value as MultisportEventSport)}>{SPORT_OPTIONS.map((id) => <option key={id} value={id}>{multisportSportMeta(id).icon} {multisportSportMeta(id).label}</option>)}</select></label>
+          <label><div style={label}>{t("TYPE", "TYPE", "TIPO")}</div><select style={{ ...input, marginTop: 5 }} value={eventType} onChange={(e) => setEventType(e.target.value as MultisportEventType)}><option value="workout">{t("Séance", "Workout", "Sesión")}</option><option value="training">{t("Entraînement", "Training", "Entrenamiento")}</option><option value="match">{t("Match", "Match", "Partido")}</option><option value="game">{t("Partie", "Game", "Partida")}</option><option value="outing">{t("Sortie", "Outing", "Salida")}</option><option value="race">{t("Course / épreuve", "Race", "Carrera")}</option><option value="tournament">{t("Tournoi", "Tournament", "Torneo")}</option><option value="recovery">{t("Récupération", "Recovery", "Recuperación")}</option><option value="club">Club</option><option value="other">{t("Autre", "Other", "Otro")}</option></select></label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><label><div style={label}>{t("DATE", "DATE", "FECHA")}</div><input style={{ ...input, marginTop: 5 }} type="date" value={date} onChange={(e) => setDate(e.target.value)}/></label><label><div style={label}>{t("HEURE", "TIME", "HORA")}</div><input style={{ ...input, marginTop: 5 }} type="time" value={time} onChange={(e) => setTime(e.target.value)}/></label></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><label><div style={label}>{t("DURÉE", "DURATION", "DURACIÓN")}</div><input style={{ ...input, marginTop: 5 }} inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="60 min"/></label><label><div style={label}>{t("ORIGINE", "SOURCE", "ORIGEN")}</div><select style={{ ...input, marginTop: 5 }} value={kind} onChange={(e) => setKind(e.target.value as any)}><option value="personal">{t("Personnel", "Personal", "Personal")}</option><option value="club">{t("Club / équipe", "Club / team", "Club / equipo")}</option><option value="invite">{t("Invitation reçue", "Received invitation", "Invitación recibida")}</option></select></label></div>
+        {kind !== "personal" ? <><div style={label}>{kind === "club" ? t("CLUB / ÉQUIPE", "CLUB / TEAM", "CLUB / EQUIPO") : t("INVITÉ PAR", "INVITED BY", "INVITADO POR")}</div><input style={input} value={organizer} onChange={(e) => setOrganizer(e.target.value)} placeholder={kind === "club" ? t("Nom du club / équipe", "Club / team name", "Club / equipo") : t("Nom de l'ami / organisateur", "Friend / organizer", "Amigo / organizador")}/></> : null}
+        <div style={label}>{t("LIEU", "LOCATION", "LUGAR")}</div><input style={input} value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("Lieu (facultatif)", "Location (optional)", "Lugar (opcional)")}/>
+        <div style={label}>{t("PARTICIPANTS", "PARTICIPANTS", "PARTICIPANTES")}</div><input style={input} value={participants} onChange={(e) => setParticipants(e.target.value)} placeholder={t("Paul, Marc, équipe A…", "Paul, Marc, team A…", "Paul, Marc, equipo A…")}/>
+        <div style={label}>{t("NOTES", "NOTES", "NOTAS")}</div><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("Consignes, rendez-vous, objectif…", "Instructions, meetup, goal…", "Indicaciones, cita, objetivo…")} style={{ ...input, minHeight: 74, resize: "vertical", paddingTop: 10, fontFamily: "inherit" }}/>
+        <button type="submit" style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${accent}`, background: `linear-gradient(135deg,${accent},#fff1bd)`, color: "#0a0d12", fontWeight: 1000 }}>{kind === "invite" ? t("AJOUTER COMME INVITATION", "ADD AS INVITATION", "AÑADIR COMO INVITACIÓN") : t("AJOUTER À L'AGENDA", "ADD TO AGENDA", "AÑADIR A LA AGENDA")}</button>
+      </div>
+    </form>
+  </div>;
 }

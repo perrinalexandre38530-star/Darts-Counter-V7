@@ -349,16 +349,6 @@ export default function FitPerfHome({ store, go }: Props) {
     { id: "goals", label: t("OBJECTIFS", "GOALS", "OBJETIVOS"), icon: "goals" },
   ];
 
-  React.useEffect(() => {
-    const timer = window.setInterval(() => {
-      setTab((current) => {
-        const index = tabs.findIndex((item) => item.id === current);
-        return tabs[(index + 1 + tabs.length) % tabs.length]?.id || "profile";
-      });
-    }, 3800);
-    return () => window.clearInterval(timer);
-  }, [lang]);
-
   const panelTitle =
     tab === "overview" ? t("VUE GLOBALE", "OVERVIEW", "VISTA GLOBAL") :
     tab === "today" ? t("AUJOURD'HUI", "TODAY", "HOY") :
@@ -395,10 +385,10 @@ export default function FitPerfHome({ store, go }: Props) {
         .fit-home-mini-stat span{font-size:7.5px;font-weight:900;letter-spacing:.55px;text-transform:uppercase;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .fit-home-mini-stat strong{font-size:13px;line-height:1;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .fit-home-cta{margin-top:9px;min-height:38px;border-radius:12px;border:1px solid ${accent}66;background:linear-gradient(135deg,${accent}1e,rgba(255,255,255,.055));color:${accent};font-weight:1000;letter-spacing:.65px;text-transform:uppercase;cursor:pointer;box-shadow:0 0 18px ${accent}12}
-        .fit-home-tabs{flex:0 0 auto;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;padding:5px;border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(3,5,10,.76);box-shadow:0 12px 30px rgba(0,0,0,.42)}
-        .fit-home-tab{min-width:0;height:45px;border-radius:13px;border:1px solid transparent;background:transparent;color:rgba(255,255,255,.58);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 2px;cursor:pointer}
-        .fit-home-tab span{display:block;width:100%;font-size:6.7px;font-weight:1000;letter-spacing:.35px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
-        .fit-home-tab.is-active{border-color:${accent}68;background:linear-gradient(135deg,${accent}1c,rgba(255,255,255,.055));color:${accent};box-shadow:0 0 16px ${accent}16,inset 0 0 0 1px ${accent}0d}
+        .fit-home-tabs{flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:5px;border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(3,5,10,.76);box-shadow:0 12px 30px rgba(0,0,0,.42);overflow:hidden}
+        .fit-home-tab{flex:0 0 42px;width:42px;min-width:42px;height:45px;border-radius:13px;border:1px solid transparent;background:transparent;color:rgba(255,255,255,.58);display:flex;align-items:center;justify-content:center;gap:0;padding:0;cursor:pointer;transition:flex-basis .18s ease,width .18s ease,color .18s ease,background .18s ease,border-color .18s ease}
+        .fit-home-tab span{min-width:0;font-size:7px;font-weight:1000;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .fit-home-tab.is-active{flex:1 1 118px;width:auto;min-width:90px;gap:7px;padding:0 10px;border-color:${accent}68;background:linear-gradient(135deg,${accent}1c,rgba(255,255,255,.055));color:${accent};box-shadow:0 0 16px ${accent}16,inset 0 0 0 1px ${accent}0d}
         .fit-home-profile-grid{display:grid;grid-template-columns:112px minmax(0,1fr);gap:10px;height:100%;min-height:0}
         .fit-home-profile-card{border-radius:20px;padding:10px;background:radial-gradient(circle at 0 0,${accent}22,rgba(5,7,16,.96));border:1px solid ${accent}77;box-shadow:0 0 26px ${accent}38;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0}
         .fit-home-profile-name{margin-top:7px;max-width:100%;font-size:19px;font-weight:1000;color:${accent};text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 12px ${accent}66}
@@ -418,7 +408,7 @@ export default function FitPerfHome({ store, go }: Props) {
         .fit-home-ticker-in{animation:fitHomeTickerIn .34s ease both}
         @keyframes fitHomeTickerIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
         @media(max-height:720px){
-          .fit-home-shell{padding-top:7px;gap:5px}.fit-home-header{padding:8px 12px;border-radius:21px}.fit-home-panel{flex-basis:185px;padding:8px 9px}.fit-home-panel-body{margin-top:5px}.fit-home-tabs{gap:3px;padding:3px}.fit-home-tab{height:39px}.fit-home-tab span{font-size:6px}.fit-home-kpi{padding:4px 5px 6px}.fit-home-kpi-value{font-size:15px}.fit-home-mini-row{margin-top:5px}.fit-home-mini-stat{padding:5px}.fit-home-cta{margin-top:5px;min-height:30px}.fit-home-ticker-details{margin-top:4px}.fit-home-ticker-card{padding:5px 6px}.fit-home-ticker-note{font-size:7.8px}
+          .fit-home-shell{padding-top:7px;gap:5px}.fit-home-header{padding:8px 12px;border-radius:21px}.fit-home-panel{flex-basis:185px;padding:8px 9px}.fit-home-panel-body{margin-top:5px}.fit-home-tabs{gap:3px;padding:3px}.fit-home-tab{height:39px;flex-basis:36px;width:36px;min-width:36px}.fit-home-tab.is-active{min-width:82px;padding:0 7px}.fit-home-tab span{font-size:6px}.fit-home-kpi{padding:4px 5px 6px}.fit-home-kpi-value{font-size:15px}.fit-home-mini-row{margin-top:5px}.fit-home-mini-stat{padding:5px}.fit-home-cta{margin-top:5px;min-height:30px}.fit-home-ticker-details{margin-top:4px}.fit-home-ticker-card{padding:5px 6px}.fit-home-ticker-note{font-size:7.8px}
         }
       `}</style>
 
@@ -616,7 +606,7 @@ export default function FitPerfHome({ store, go }: Props) {
                 onClick={() => setTab(item.id)}
               >
                 <FitIcon name={item.icon} size={19} />
-                <span>{item.label}</span>
+                {selected ? <span>{item.label}</span> : null}
               </button>
             );
           })}
