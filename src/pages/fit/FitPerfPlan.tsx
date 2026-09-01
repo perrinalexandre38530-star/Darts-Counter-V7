@@ -24,6 +24,7 @@ import FitExerciseMotion from "./FitExerciseMotion";
 import FitExerciseDetailDialog from "./FitExerciseDetailDialog";
 import FitProgramDetailDialog from "./FitProgramDetailDialog";
 import FitMultisportPlanBuilder from "./FitMultisportPlanBuilder";
+import FitProgramDiscovery from "./FitProgramDiscovery";
 import { FitGhostButton, FitGlassCard, FitIcon, FitIconTabs, FitMetric, FitPageHeader, FitPill, FitPrimaryButton, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 import {
   FIT_GOALS,
@@ -488,50 +489,15 @@ export default function FitPerfPlan({ go }: Props) {
           </div>
         </> : null}
 
-        {programView === "discover" ? <>
-          <FitSectionTitle eyebrow={t("DÉCOUVRIR", "DISCOVER", "DESCUBRIR")} title={t("Choisis ta pratique", "Choose your practice", "Elige tu práctica")} right={<FitPill accent={accent}>{visiblePrograms.length}</FitPill>} />
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "1px 1px 5px", scrollbarWidth: "none" }}>
-            <button type="button" onClick={() => setProgramPractice("all")} style={{ flex: "0 0 118px", minHeight: 68, borderRadius: 16, border: `1px solid ${programPractice === "all" ? accent + "77" : "rgba(255,255,255,.075)"}`, background: programPractice === "all" ? `${accent}16` : "rgba(255,255,255,.025)", color: programPractice === "all" ? accent : "rgba(255,255,255,.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: 7 }}>
-              <span style={{ width: 34, height: 34, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}10`, border: `1px solid ${accent}2e`, fontSize: 17 }}>✦</span>
-              <strong style={{ fontSize: 7.8 }}>{t("TOUT", "ALL", "TODO")}</strong>
-            </button>
-            {FIT_PRACTICES.map((practice) => {
-              const selected = programPractice === practice.id;
-              return <button key={practice.id} type="button" onClick={() => setProgramPractice(practice.id)} style={{ flex: "0 0 118px", minHeight: 68, borderRadius: 16, border: `1px solid ${selected ? practice.accent + "70" : "rgba(255,255,255,.075)"}`, background: selected ? `${practice.accent}16` : "rgba(255,255,255,.025)", color: selected ? practice.accent : "rgba(255,255,255,.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: 7 }}>
-                <span style={{ width: 34, height: 34, borderRadius: 12, display: "grid", placeItems: "center", background: `${practice.accent}10`, border: `1px solid ${practice.accent}2e`, fontSize: 17 }}>{practice.icon}</span>
-                <strong style={{ maxWidth: "100%", fontSize: 7.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{practice.label.toUpperCase()}</strong>
-              </button>;
-            })}
-          </div>
-
-          <div style={{ marginTop: 7, padding: 9, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)" }}>
-            <div style={{ color: textSoft, fontSize: 6.7, fontWeight: 1000, letterSpacing: .75 }}>{t("OBJECTIF", "GOAL", "OBJETIVO")}</div>
-            <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 6, paddingBottom: 2 }}>
-              {filterChip(t("Tous", "All", "Todos"), programGoal === "all", () => setProgramGoal("all"))}
-              {FIT_GOALS.map((goal) => filterChip(goal.label, programGoal === goal.id, () => setProgramGoal(goal.id)))}
-            </div>
-            <div style={{ marginTop: 8, color: textSoft, fontSize: 6.7, fontWeight: 1000, letterSpacing: .75 }}>{t("TEMPS DISPONIBLE", "AVAILABLE TIME", "TIEMPO DISPONIBLE")}</div>
-            <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 6, paddingBottom: 1 }}>
-              {filterChip(t("Tous", "All", "Todos"), programDuration === "all", () => setProgramDuration("all"))}
-              {filterChip("≤ 25 min", programDuration === "short", () => setProgramDuration("short"))}
-              {filterChip("30–50 min", programDuration === "medium", () => setProgramDuration("medium"))}
-              {filterChip("55+ min", programDuration === "long", () => setProgramDuration("long"))}
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 8, marginTop: 9 }}>
-            {visiblePrograms.map((program) => { const isActive = activeProgram?.id === program.id; const practiceMeta = FIT_PRACTICES.find((item) => item.id === program.practice); return <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 11, minWidth: 0, background: `linear-gradient(150deg,${program.accent}12,rgba(6,9,15,.99) 42%)`, borderColor: isActive ? `${program.accent}88` : `${program.accent}32` }}>
-              <div style={{ display: "grid", gridTemplateColumns: "50px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-                <div style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", color: program.accent, background: `${program.accent}12`, border: `1px solid ${program.accent}38`, fontSize: 17, fontWeight: 1000 }}>{practiceMeta?.icon || program.icon}</div>
-                <div style={{ minWidth: 0 }}><div style={{ color: program.accent, fontSize: 11.5, lineHeight: 1.1, fontWeight: 1000 }}>{program.title}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 7.9, lineHeight: 1.3 }}>{program.subtitle}</div></div>
-                {isActive ? <FitPill accent={program.accent}>{t("ACTIF", "ACTIVE", "ACTIVO")}</FitPill> : null}
-              </div>
-              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}><FitPill>{program.durationWeeks} sem.</FitPill><FitPill>{program.sessionsPerWeek}× / sem.</FitPill><FitPill>{program.typicalDurationMin} min</FitPill>{program.goals.slice(0,2).map((goal) => <FitPill key={goal} accent={program.accent}>{FIT_GOALS.find((item) => item.id === goal)?.label || goal}</FitPill>)}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 9 }}><button type="button" onClick={() => setSelectedProgramDetail(program)} style={{ minHeight: 40, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: "rgba(255,255,255,.78)", fontSize: 7.7, fontWeight: 1000 }}>{t("VOIR LE PROGRAMME", "VIEW PROGRAM", "VER PROGRAMA")}</button><button type="button" onClick={() => activateProgram(program.id)} style={{ minHeight: 40, borderRadius: 11, border: `1px solid ${program.accent}60`, background: isActive ? `${program.accent}24` : `${program.accent}12`, color: program.accent, fontSize: 7.7, fontWeight: 1000 }}>{isActive ? t("ACTIF", "ACTIVE", "ACTIVO") : t("CHOISIR", "CHOOSE", "ELEGIR")}</button></div>
-            </FitGlassCard>; })}
-            {!visiblePrograms.length ? <div style={{ padding: "24px 12px", textAlign: "center", color: textSoft, borderRadius: 16, border: "1px dashed rgba(255,255,255,.11)" }}>{t("Aucun programme avec ces filtres.", "No program matches these filters.", "Ningún programa coincide con estos filtros.")}</div> : null}
-          </div>
-        </> : null}
+        {programView === "discover" ? <FitProgramDiscovery
+          programs={discoverPrograms}
+          activeProgramId={activeProgram?.id}
+          accent={accent}
+          textSoft={textSoft}
+          t={t}
+          onOpen={setSelectedProgramDetail}
+          onActivate={activateProgram}
+        /> : null}
 
         {programView === "create" ? <>
           <FitSectionTitle eyebrow={t("CRÉER", "CREATE", "CREAR")} title={t("Quel type de planning ?", "What kind of plan?", "¿Qué tipo de plan?")} />

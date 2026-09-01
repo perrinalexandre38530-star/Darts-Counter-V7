@@ -14,6 +14,7 @@ import {
   type EsportsMmrLeaderboardRowV5,
 } from "../../esports/networkV5";
 import type { EsportsState } from "../../esports/types";
+import EsportsRankedProgressV6 from "./EsportsNetworkV6";
 
 type Props = {
   state: EsportsState;
@@ -157,7 +158,7 @@ export default function EsportsCompetitiveSessionV5({ state, ticket, panelStyle,
           <div style={{ fontSize: 18, fontWeight: 1000 }}>🎮 {tr("SESSION CLASSÉE V0.5", "RANKED SESSION V0.5", "SESIÓN CLASIFICADA V0.5")}</div>
           <div style={{ marginTop: 3, color: textSoft, fontSize: 9.5 }}>{tr("Le MATCH TROUVÉ devient un vrai salon privé, avec équipes A/B automatiques et un seul résultat validé par les deux joueurs.", "MATCH FOUND becomes a real private room with automatic A/B teams and one result validated by both players.", "PARTIDA ENCONTRADA se convierte en una sala privada real con equipos A/B automáticos y un resultado validado por ambos.")}</div>
         </div>
-        <span className="esports-status-pill">RANKED · ELO K32</span>
+        <span className="esports-status-pill">RANKED · K48→32</span>
       </div>
       {error ? <div style={{ marginTop: 9, color: "#fb7185", fontSize: 9.5, overflowWrap: "anywhere" }}>{error}</div> : null}
 
@@ -202,8 +203,10 @@ export default function EsportsCompetitiveSessionV5({ state, ticket, panelStyle,
       </> : <div style={{ padding: "16px 4px", color: textSoft, fontSize: 10, textAlign: "center" }}>{ticket?.status === "matched" ? tr("Préparation de la session classée…", "Preparing ranked session…", "Preparando sesión clasificada…") : tr("Une session classée apparaîtra ici après MATCH TROUVÉ.", "A ranked session will appear here after MATCH FOUND.", "Una sesión clasificada aparecerá aquí tras PARTIDA ENCONTRADA.")}</div>}
     </section>
 
+    <EsportsRankedProgressV6 gameId={session?.gameId || leaderboardGame} session={session} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} setToast={setToast} tr={tr} onSessionRefresh={loadSession}/>
+
     <section style={{ ...panelStyle, padding: 14 }} className="esports-panel">
-      <div className="esports-heading-row"><div><div style={{ fontSize: 18, fontWeight: 1000 }}>🏅 {tr("LEADERBOARD MMR", "MMR LEADERBOARD", "CLASIFICACIÓN MMR")}</div><div style={{ color: textSoft, fontSize: 9 }}>{tr("Classement de skill par jeu et par saison. Départ à 1000 MMR, Elo K=32.", "Skill ranking per game and season. Starts at 1000 MMR, Elo K=32.", "Ranking de habilidad por juego y temporada. Empieza en 1000 MMR, Elo K=32.")}</div></div><select value={leaderboardGame} onChange={(e) => setLeaderboardGame(e.target.value)} style={{ ...inputStyle, width: "min(190px,100%)" }}>{ESPORTS_GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+      <div className="esports-heading-row"><div><div style={{ fontSize: 18, fontWeight: 1000 }}>🏅 {tr("LEADERBOARD MMR", "MMR LEADERBOARD", "CLASIFICACIÓN MMR")}</div><div style={{ color: textSoft, fontSize: 9 }}>{tr("Classement de skill par jeu et par saison. Départ à 1000 MMR, K=48 pendant les placements puis K=32.", "Skill ranking per game and season. Starts at 1000 MMR, K=48 during placements then K=32.", "Ranking de habilidad por juego y temporada. Empieza en 1000 MMR, K=48 en colocación y luego K=32.")}</div></div><select value={leaderboardGame} onChange={(e) => setLeaderboardGame(e.target.value)} style={{ ...inputStyle, width: "min(190px,100%)" }}>{ESPORTS_GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
       <div style={{ marginTop: 9, display: "grid", gap: 5 }}>{leaderboard.length ? leaderboard.slice(0, 25).map((row) => <div key={row.userId} className="esports-leader-row" style={{ background: row.position <= 3 ? "rgba(250,204,21,.055)" : "rgba(255,255,255,.025)" }}><strong style={{ textAlign: "center" }}>{row.position === 1 ? "🥇" : row.position === 2 ? "🥈" : row.position === 3 ? "🥉" : `#${row.position}`}</strong><div><strong style={{ overflowWrap: "anywhere" }}>{row.displayName}</strong><div style={{ color: textSoft, fontSize: 8 }}>{row.seasonName} · {row.matches} {tr("matchs", "matches", "partidos")}</div></div><strong style={{ textAlign: "right", color: "#facc15" }}>{row.rating}</strong><span className="esports-leader-extra" style={{ textAlign: "right", color: textSoft, fontSize: 8 }}>{row.wins}W</span></div>) : <div style={{ padding: 10, color: textSoft, fontSize: 10 }}>{tr("Aucun match classé confirmé pour ce jeu.", "No confirmed ranked match for this game yet.", "Aún no hay partidas clasificadas confirmadas para este juego.")}</div>}</div>
     </section>
   </div>;

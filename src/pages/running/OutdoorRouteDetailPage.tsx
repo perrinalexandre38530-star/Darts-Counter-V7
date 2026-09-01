@@ -16,6 +16,7 @@ import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
 import OutdoorOfflineRoutePanel from "./OutdoorOfflineRoutePanel";
 import RunningElevationProfile from "./RunningElevationProfile";
 import { RunningSurface } from "./RunningUi";
+import { fetchOutdoorRouteCoverPhoto } from "../../activity/outdoorRouteMedia";
 import "./runningResponsive.css";
 
 export type OutdoorRouteDetailTab = "overview" | "places" | "photos" | "performance" | "community" | "plan";
@@ -50,6 +51,7 @@ export default function OutdoorRouteDetailPage(props: Props) {
   const [mapFullscreen, setMapFullscreen] = React.useState(false);
   const [activeProfilePoint, setActiveProfilePoint] = React.useState<number | null>(null);
   const [extras, setExtras] = React.useState<OutdoorRouteExtras>(() => loadOutdoorRouteExtras(route.id));
+  const [coverUrl, setCoverUrl] = React.useState<string>("");
   const terrain = React.useMemo(() => analyzeRunningTerrain(route.route), [route.route]);
   const advice = React.useMemo(() => terrainAdvice(terrain, lang), [lang, terrain]);
   const best = props.localAttempts[0] || null;
@@ -59,7 +61,7 @@ export default function OutdoorRouteDetailPage(props: Props) {
     return Math.round(rows.reduce((sum, row) => sum + Number(row.avgPaceSecPerKm || 0), 0) / rows.length);
   }, [props.localAttempts]);
 
-  React.useEffect(() => { setExtras(loadOutdoorRouteExtras(route.id)); setTab(props.initialTab || "overview"); setMapFullscreen(false); setActiveProfilePoint(null); }, [props.initialTab, route.id]);
+  React.useEffect(() => { setExtras(loadOutdoorRouteExtras(route.id)); setTab(props.initialTab || "overview"); setMapFullscreen(false); setActiveProfilePoint(null); setCoverUrl(""); let live = true; void fetchOutdoorRouteCoverPhoto(route, lang).then((photo) => { if (live && photo?.imageUrl) setCoverUrl(photo.imageUrl); }).catch(() => {}); return () => { live = false; }; }, [lang, props.initialTab, route, route.id]);
 
   if (mapFullscreen) return <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#070a0f" }}><OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} fullscreen activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint} onCloseFullscreen={() => setMapFullscreen(false)}/></div>;
 
@@ -84,16 +86,17 @@ export default function OutdoorRouteDetailPage(props: Props) {
     </header>
 
     <div style={{ display: "grid", gap: 10 }}>
-      <OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} height="clamp(350px,58vh,680px)" activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint} onFullscreen={() => setMapFullscreen(true)}/>
-
-      <section style={{ padding: 11, borderRadius: 18, background: "linear-gradient(145deg,rgba(255,255,255,.045),rgba(5,8,13,.91))", border: `1px solid ${accent}28`, boxShadow: "0 16px 38px rgba(0,0,0,.26)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
-          <div style={{ minWidth: 0 }}><div style={{ fontSize: "clamp(13px,2.4vw,19px)", lineHeight: 1.15, fontWeight: 1000 }}>{route.name}</div><div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={terrain.hasElevation ? terrainLabel(terrain.terrain, lang) : outdoorSportLabel(sport, lang)} accent={accent}/>{route.scout ? <Pill text={`✦ ${route.scout.score}%`} accent={accent}/> : null}{terrain.hasElevation ? <Pill text={`${pickText(lang,"DIFF.","DIFF.","DIF.")} ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div></div>
-          <button className="btn" onClick={() => setMapFullscreen(true)} title={pickText(lang,"Carte plein écran","Fullscreen map","Mapa a pantalla completa")} style={{ minWidth: 42, minHeight: 42, padding: 0, color: accent, borderColor: `${accent}55`, fontSize: 15 }}>⛶</button>
+      <section style={{ minHeight: "clamp(260px,42vh,430px)", borderRadius: 24, overflow: "hidden", position: "relative", border: `1px solid ${accent}38`, background: coverUrl ? `url(${JSON.stringify(coverUrl)}) center/cover no-repeat` : `radial-gradient(circle at 72% 18%,${accent}30,transparent 38%),linear-gradient(145deg,#17202d,#070a10)`, boxShadow: "0 20px 48px rgba(0,0,0,.36)" }}>
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(4,7,12,.08) 12%,rgba(4,7,12,.4) 50%,rgba(4,7,12,.97) 100%)" }}/>
+        <div style={{ position: "absolute", inset: 0, padding: 14, display: "flex", flexDirection: "column", justifyContent: "flex-end", zIndex: 2 }}>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={terrain.hasElevation ? terrainLabel(terrain.terrain, lang) : outdoorSportLabel(sport, lang)} accent={accent}/>{route.scout ? <Pill text={`✦ ${route.scout.score}%`} accent={accent}/> : null}{terrain.hasElevation ? <Pill text={`${pickText(lang,"DIFF.","DIFF.","DIF.")} ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div>
+          <h1 style={{ margin: "7px 0 0", fontSize: "clamp(22px,5vw,36px)", lineHeight: 1, fontWeight: 1000, textShadow: "0 3px 18px rgba(0,0,0,.65)" }}>{route.name}</h1>
+          <div className="running-metrics-4" style={{ marginTop: 11 }}><Metric label={pickText(lang,"DISTANCE","DISTANCE","DISTANCIA")} value={formatDistance(route.distanceM)} accent={accent}/><Metric label="D+" value={terrain.hasElevation ? `+${Math.round(terrain.gainM)} m` : route.elevationGainM ? `+${Math.round(route.elevationGainM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"SOMMET","HIGH","CIMA")} value={terrain.maxAltitudeM != null ? `${Math.round(terrain.maxAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"DURÉE","TIME","TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(route, sport))} accent={accent}/></div>
+          <div className="running-actions-4" style={{ marginTop: 9 }}><Action icon="▶" label={pickText(lang,"GUIDER","GUIDE","GUIAR")} accent={accent} active onClick={props.onGuide}/><Action icon="▰" label={pickText(lang,"CARTE","MAP","MAPA")} accent={accent} onClick={() => setMapFullscreen(true)}/><Action icon={props.favorite ? "★" : "☆"} label={pickText(lang,"FAVORI","FAVORITE","FAVORITO")} accent={accent} active={props.favorite} onClick={props.onToggleFavorite}/><Action icon="◷" label={pickText(lang,"PLANIFIER","PLAN","PLANIFICAR")} accent={accent} onClick={() => setTab("plan")}/></div>
         </div>
-        <div className="running-metrics-4" style={{ marginTop: 10 }}><Metric label={pickText(lang,"DISTANCE","DISTANCE","DISTANCIA")} value={formatDistance(route.distanceM)} accent={accent}/><Metric label="D+" value={terrain.hasElevation ? `+${Math.round(terrain.gainM)} m` : route.elevationGainM ? `+${Math.round(route.elevationGainM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"SOMMET","HIGH","CIMA")} value={terrain.maxAltitudeM != null ? `${Math.round(terrain.maxAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"DURÉE","TIME","TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(route, sport))} accent={accent}/></div>
-        <div className="running-actions-4" style={{ marginTop: 9 }}><Action icon="▶" label={pickText(lang,"GUIDER","GUIDE","GUIAR")} accent={accent} active onClick={props.onGuide}/><Action icon={props.favorite ? "★" : "☆"} label={pickText(lang,"FAVORI","FAVORITE","FAVORITO")} accent={accent} active={props.favorite} onClick={props.onToggleFavorite}/><Action icon="◷" label={pickText(lang,"PLANIFIER","PLAN","PLANIFICAR")} accent={accent} onClick={() => setTab("plan")}/><Action icon="↗" label="MAPS" accent={accent} onClick={props.onOpenMaps}/></div>
       </section>
+
+      <OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} height="clamp(300px,44vh,520px)" activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint} onFullscreen={() => setMapFullscreen(true)}/>
 
       <nav style={{ position: "sticky", top: 58, zIndex: 70, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, padding: 6, borderRadius: 16, background: "rgba(6,9,14,.92)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,.075)", boxShadow: "0 12px 30px rgba(0,0,0,.24)" }}>
         {primaryTabs.map(([id, icon, label, target]) => { const active = primaryTab === id; return <button key={id} className="btn" title={label} onClick={() => setTab(target)} style={{ minWidth: 0, minHeight: 44, padding: "5px 4px", display: "grid", placeItems: "center", gap: 2, borderRadius: 13, color: active ? accent : undefined, borderColor: active ? `${accent}5a` : "rgba(255,255,255,.06)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: 8.2, fontWeight: 1000 }}><span style={{ fontSize: 13 }}>{icon}</span><span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span></button>; })}

@@ -24,6 +24,8 @@ import {
 import { FitIcon, FitMiniBars, FitProgress, FitRing, fitUiCss, type FitIconName } from "./FitPerfUi";
 import fitPerfLogo from "../../assets/games/logo-fit-performance.webp";
 import { collectMultisportAgendaEvents, multisportSportMeta, type MultisportAgendaEvent } from "../../planning/multisportAgenda";
+import { FIT_PRACTICES, getFitProgramCatalog } from "../../fit/fitProgramCatalog";
+import { loadFitUserPreferences, recommendFitPrograms, type FitUserPreferences } from "../../fit/fitUserPreferences";
 
 type Props = { store?: any; go: (route: any, params?: any) => void };
 type HomeTab = "today" | "progress" | "records" | "goals" | "profile";
@@ -108,6 +110,7 @@ export default function FitPerfHome({ store, go }: Props) {
   const profile = activeProfile(store);
   const [sessions, setSessions] = React.useState<FitSession[]>(() => loadFitSessions());
   const [agendaEvents, setAgendaEvents] = React.useState<MultisportAgendaEvent[]>(() => collectMultisportAgendaEvents());
+  const [fitPreferences, setFitPreferences] = React.useState<FitUserPreferences | null>(() => loadFitUserPreferences());
   const [tab, setTab] = React.useState<HomeTab>("today");
   const [tickerIndex, setTickerIndex] = React.useState(0);
 
@@ -131,6 +134,12 @@ export default function FitPerfHome({ store, go }: Props) {
     };
   }, []);
 
+  React.useEffect(() => {
+    const refreshPreferences = () => setFitPreferences(loadFitUserPreferences());
+    window.addEventListener("dc:fit-preferences-changed", refreshPreferences as EventListener);
+    return () => window.removeEventListener("dc:fit-preferences-changed", refreshPreferences as EventListener);
+  }, []);
+
   const scoped = fitSessionsForProfile(sessions, profile?.id);
   const summary = buildFitProfileSummary(sessions, profile?.id);
   const week = sessionsSince(scoped, weekStart());
@@ -151,6 +160,8 @@ export default function FitPerfHome({ store, go }: Props) {
     const event = agendaEvents.find((item) => item.startAt >= startAt && item.startAt < endAt && item.status !== "declined") || null;
     return { startAt, event };
   });
+  const homeRecommendation = React.useMemo(() => fitPreferences ? recommendFitPrograms(getFitProgramCatalog(), fitPreferences, 1)[0] || null : null, [fitPreferences]);
+  const homeRecommendationPractice = homeRecommendation ? FIT_PRACTICES.find((item) => item.id === homeRecommendation.program.practice) || null : null;
 
   const openSportEvent = (event: MultisportAgendaEvent) => {
     if (!event.route) { go("agenda", { agendaView: "week" }); return; }
@@ -422,12 +433,23 @@ export default function FitPerfHome({ store, go }: Props) {
                       </div>
                     </div>
                   );
-                })() : (
+                })() : homeRecommendation ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+                    <div style={{ width: 56, height: 56, borderRadius: 18, display: "grid", placeItems: "center", background: `${homeRecommendation.program.accent}12`, border: `1px solid ${homeRecommendation.program.accent}55`, boxShadow: `0 0 18px ${homeRecommendation.program.accent}18`, fontSize: 24 }}>{homeRecommendationPractice?.icon || homeRecommendation.program.icon}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: homeRecommendation.program.accent, fontSize: 7.2, fontWeight: 1000, letterSpacing: .8 }}>{t("POUR TOI", "FOR YOU", "PARA TI")} · {homeRecommendation.score}%</div>
+                      <div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{homeRecommendation.program.title}</div>
+                      <div style={{ marginTop: 3, color: textSoft, fontSize: 8 }}>{homeRecommendation.program.sessionsPerWeek}× / {t("semaine", "week", "semana")} · {homeRecommendation.program.typicalDurationMin} min</div>
+                      <button className="fit-home-cta" style={{ marginTop: 7, width: "100%", borderColor: `${homeRecommendation.program.accent}66`, color: homeRecommendation.program.accent, background: `${homeRecommendation.program.accent}0d` }} type="button" onClick={() => go("fit_plan")}>{t("VOIR LE PROGRAMME", "VIEW PROGRAM", "VER PROGRAMA")}</button>
+                    </div>
+                  </div>
+                ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
-                    <div style={{ width: 54, height: 54, borderRadius: 17, display: "grid", placeItems: "center", background: `${accent}10`, border: `1px solid ${accent}35`, color: accent }}><FitIcon name="today" size={26} /></div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 1000 }}>{t("Rien de prévu aujourd’hui", "Nothing planned today", "Nada previsto hoy")}</div>
-                      <div style={{ marginTop: 3, color: textSoft, fontSize: 8.5 }}>{t("Lance une séance libre ou ajoute une activité à ta semaine.", "Start a free workout or add an activity to your week.", "Inicia una sesión libre o añade una actividad.")}</div>
+                    <div style={{ width: 54, height: 54, borderRadius: 17, display: "grid", placeItems: "center", background: `${accent}10`, border: `1px solid ${accent}35`, color: accent }}><FitIcon name="goals" size={25} /></div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 1000 }}>{t("Trouvons ton programme", "Let's find your program", "Busquemos tu programa")}</div>
+                      <div style={{ marginTop: 3, color: textSoft, fontSize: 8 }}>{t("Objectif, niveau, matériel et temps : 30 secondes suffisent.", "Goal, level, equipment and time: 30 seconds is enough.", "Objetivo, nivel, material y tiempo: bastan 30 segundos.")}</div>
+                      <button className="fit-home-cta" style={{ marginTop: 7, width: "100%" }} type="button" onClick={() => go("fit_plan")}>{t("PERSONNALISER FIT PERF", "PERSONALIZE FIT PERF", "PERSONALIZAR FIT PERF")}</button>
                     </div>
                   </div>
                 )}

@@ -1,0 +1,18 @@
+{
+  "base": "Darts-Counter-V7(85).zip",
+  "scope": "RUNNING PERF visual refactor + route detail + 3D fallback + multisport agenda week view",
+  "install": "Extract this ZIP at the ROOT of the project and allow these files to replace the existing files at the same paths.",
+  "modified": [
+    "src/pages/running/RunningHome.tsx",
+    "src/pages/running/RunningTerrain3DMap.tsx",
+    "src/pages/running/OutdoorRouteDetailPage.tsx",
+    "src/pages/agenda/MultisportAgendaPage.tsx"
+  ],
+  "validated": {
+    "typescript": true,
+    "runningTerrain3D": "16/16",
+    "runningRouteDetail": "15/15",
+    "multisportAgenda": "12/12",
+    "viteBuild": "not executed: local node_modules unavailable; npm ci timed out in container"
+  }
+}
