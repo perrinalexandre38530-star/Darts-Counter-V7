@@ -280,15 +280,24 @@ function isCachedSessionStillUsable(cached: any): boolean {
 async function safeGetSession(): Promise<Session | null> {
   if (isExplicitlyLoggedOut()) return null;
   try {
-    // PERF CRITIQUE : lecture LOCALE Supabase en premier. L'ancienne version
-    // appelait onlineApi.getCurrentSession() avant getSession(); ce chemin peut
-    // restaurer le profil, sonder le NAS puis créer un bridge réseau. Il se
-    // déclenchait au boot, sur les événements Auth et pendant OAuth.
+    const cached = readCachedAuthSession();
+
+    // ANDROID FAST BOOT:
+    // onlineApi conserve déjà une session authentifiée avec expiration. Sur une
+    // WebView Android, attendre le verrou interne de supabase.auth.getSession()
+    // avant d'afficher l'app pouvait coûter plusieurs secondes au relancement.
+    // Une session locale encore valide déverrouille donc immédiatement l'UI ;
+    // Supabase continue ensuite sa restauration/refresh en arrière-plan.
+    if (isCapacitorNativeRuntime() && isCachedSessionStillUsable(cached)) {
+      const cachedFastPath = authSessionToPseudoSupabaseSession(cached);
+      if (cachedFastPath?.user) return cachedFastPath;
+    }
+
+    // PERF CRITIQUE : lecture LOCALE Supabase avant tout bridge NAS réseau.
     if (!isSupabaseHardDisabledInNasMode()) {
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
       if (data?.session?.user) {
-        const cached = readCachedAuthSession();
         if (cachedSessionMatchesSupabaseUser(cached, data.session.user)) {
           const cachedBridge = authSessionToPseudoSupabaseSession(cached);
           if (cachedBridge?.user) return cachedBridge;
@@ -299,7 +308,6 @@ async function safeGetSession(): Promise<Session | null> {
 
     // Si Supabase est momentanément en train de restaurer son stockage, un cache
     // local encore valide évite un faux signed_out. Aucun réseau ici non plus.
-    const cached = readCachedAuthSession();
     if (isCachedSessionStillUsable(cached)) {
       const pseudo = authSessionToPseudoSupabaseSession(cached);
       if (pseudo?.user) return pseudo;
@@ -700,7 +708,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         }
         searchBackupsInBackground(user);
       });
-    }, isCapacitorNativeRuntime() ? 900 : 120);
+    }, isCapacitorNativeRuntime() ? 3600 : 120);
   }, []);
 
   React.useEffect(() => {

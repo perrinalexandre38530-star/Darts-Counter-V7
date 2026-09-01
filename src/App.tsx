@@ -1162,7 +1162,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         if (current >= targetProgress) return current;
         return Math.min(targetProgress, current + Math.max(1, Math.ceil((targetProgress - current) / 7)));
       });
-    }, 110);
+    }, getRuntimePlatform() === "android" ? 220 : 110);
     return () => window.clearInterval(timer);
   }, [targetProgress]);
 
@@ -1249,7 +1249,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
       setTargetProgress(100);
       setMsg("Connexion réussie");
       setDetail("Bienvenue dans MULTISPORTS SCORING");
-      await new Promise((resolve) => window.setTimeout(resolve, 160));
+      await new Promise((resolve) => window.setTimeout(resolve, getRuntimePlatform() === "android" ? 40 : 160));
       if (alive && !timedOut) goRef.current("gameSelect");
       return true;
     };

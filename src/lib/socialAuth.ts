@@ -420,11 +420,15 @@ export async function startSocialSignIn(provider: SocialAuthProvider): Promise<v
   if (!SOCIAL_AUTH_PROVIDERS.includes(provider)) throw new Error("Fournisseur de connexion inconnu.");
   if (!__SUPABASE_ENV__.hasEnv) throw new Error("Supabase Auth n'est pas configuré sur cette version de l'application.");
 
-  // Une déconnexion locale peut avoir stoppé le scheduler Supabase dans la SPA.
-  // Toute nouvelle connexion sociale explicite le réarme avant de lancer OAuth.
-  resumeSupabaseAuthRuntime();
-
   const nativeRuntime = isCapacitorNativeRuntime();
+
+  // Sur Android, startAutoRefresh() juste avant signInWithOAuth pouvait réveiller
+  // un refresh d'une ancienne session et entrer en concurrence avec le verrou Auth
+  // utilisé pour générer le PKCE. Le runtime sera réarmé au retour OAuth réussi.
+  if (!nativeRuntime) {
+    resumeSupabaseAuthRuntime();
+  }
+
   if (!nativeRuntime) {
     const availability = await getSocialProviderAvailability(provider);
     if (availability === "disabled") throw providerNotEnabledError(provider);
@@ -564,7 +568,7 @@ export function initNativeSocialAuthBridge() {
   // le stockage pendant tout le détour OAuth.
   nativePollTimer = window.setInterval(() => {
     if (getPendingSocialAuth()) poll();
-  }, 2500);
+  }, 1500);
 
   // Gère aussi le cold start directement depuis le deep link.
   poll();

@@ -1400,3 +1400,37 @@ html[data-dc-theme-page-scope="off"] body{
     background-attachment: scroll !important;
   }
 }
+
+/* ============================================================
+   ANDROID WEBVIEW — PERFORMANCE SHIELD V55
+   Le rendu visuel reste identique en PWA/desktop. Sur Android natif, les
+   backdrop-filter répétés créent de nombreuses couches GPU et rendent scroll
+   + taps très coûteux sur les pages riches. On conserve les fonds/transparences
+   mais on retire uniquement le flou de composition natif.
+   ============================================================ */
+:root[data-msc-runtime-platform="android"] * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+:root[data-msc-runtime-platform="android"] .dc-themed-route--full {
+  background-attachment: scroll !important;
+}
+
+:root[data-msc-runtime-platform="android"] body::after,
+:root[data-msc-runtime-platform="android"] .dc-theme-preview-drift,
+:root[data-msc-runtime-platform="android"] .dc-theme-preview-pulse,
+:root[data-msc-runtime-platform="android"] .dc-theme-preview-scan,
+:root[data-msc-runtime-platform="android"] .dc-theme-preview-sheen,
+:root[data-msc-runtime-platform="android"] .dc-postapoc-overgrowth {
+  animation: none !important;
+  transform: none !important;
+}
+
+:root[data-msc-runtime-platform="android"][data-msc-navigating="1"] *,
+:root[data-msc-runtime-platform="android"][data-msc-navigating="1"] *::before,
+:root[data-msc-runtime-platform="android"][data-msc-navigating="1"] *::after {
+  animation-play-state: paused !important;
+  transition-duration: 0s !important;
+}
+

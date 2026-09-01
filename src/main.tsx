@@ -14,11 +14,17 @@ import AsyncGuard from "./components/AsyncGuard";
 import BootGuard from "./components/BootGuard";
 import { startMemoryWatchdog } from "./utils/memoryWatchdog";
 import { installPlayerNameTypography } from "./lib/playerNameTypography";
-import { isCapacitorNativeRuntime } from "./lib/nativePlatform";
+import { getRuntimePlatform, isCapacitorNativeRuntime } from "./lib/nativePlatform";
 import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
 import { initKeepAwakeRuntime } from "./lib/keepAwake";
+
+// Publie la plateforme avant le premier rendu afin que les garde-fous CSS
+// Android soient actifs dès la première frame.
+try {
+  document.documentElement.dataset.mscRuntimePlatform = getRuntimePlatform();
+} catch {}
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
@@ -26,12 +32,35 @@ startMemoryWatchdog();
 // Écran actif par défaut : natif Android + Screen Wake Lock web/PWA.
 initKeepAwakeRuntime();
 
-// Android uniquement : initialise AdMob + UMP tôt dans la session.
-// Aucun SDK publicitaire n'est appelé dans la PWA/web.
+// Android : AdMob/UMP ne fait plus partie du critical path du boot/auth.
+// Le SDK natif + consentement peuvent déclencher I/O, réseau et callbacks JNI.
+// On attend une vraie fenêtre idle ET la fin du tunnel OAuth avant initialisation.
 if (isCapacitorNativeRuntime()) {
-  void ensureNativeAdMobReady().then((status) => {
-    try { (window as any).__mscAdMobStatus = status; } catch {}
-  });
+  const scheduleAdMobAfterInteractive = (attempt = 0) => {
+    const delay = attempt === 0 ? 6500 : 2500;
+    window.setTimeout(() => {
+      scheduleRuntimeIdle(() => {
+        let authBusy = false;
+        let navigating = false;
+        try {
+          authBusy =
+            !!localStorage.getItem("msc_social_auth_pending_v1") ||
+            /^#\/(?:auth|account)/i.test(String(window.location.hash || ""));
+          navigating = document.documentElement.dataset.mscNavigating === "1";
+        } catch {}
+
+        if ((authBusy || navigating) && attempt < 40) {
+          scheduleAdMobAfterInteractive(attempt + 1);
+          return;
+        }
+
+        void ensureNativeAdMobReady().then((status) => {
+          try { (window as any).__mscAdMobStatus = status; } catch {}
+        });
+      }, { timeoutMs: 8000, fallbackDelayMs: 900 });
+    }, delay);
+  };
+  scheduleAdMobAfterInteractive();
 }
 
 // OAuth Google/Facebook/X/Discord : écoute le deep link de retour Android.

@@ -4,6 +4,7 @@
 // characterData observer on every live score update.
 
 import { isGameplayRuntime, scheduleRuntimeIdle } from "./runtimePerformance";
+import { getRuntimePlatform } from "./nativePlatform";
 
 const PLAYER_NAME_CLASS = "dc-player-name-jumbo";
 const PLAYER_NAME_FONT = '"Bangers", "Luckiest Guy", "Baloo 2", "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif';
@@ -163,10 +164,32 @@ function tagElement(el: HTMLElement) {
   }
 }
 
+const ANDROID_PLAYER_SELECTOR = [
+  "[data-player-name]",
+  "[data-profile-name]",
+  "[class*='player-name']",
+  "[class*='player_name']",
+  "[class*='profile-name']",
+  "[class*='profile_name']",
+  "[class*='nickname']",
+  "[class*='pseudo']",
+].join(",");
+
 function scanTree(root: ParentNode | Node) {
-  if (root instanceof HTMLElement) tagElement(root);
+  const android = getRuntimePlatform() === "android";
+
+  if (root instanceof HTMLElement) {
+    if (!android || root.matches(ANDROID_PLAYER_SELECTOR)) tagElement(root);
+  }
   if (!(root instanceof Element || root instanceof Document || root instanceof DocumentFragment)) return;
-  const nodes = root.querySelectorAll<HTMLElement>("div,span,b,strong,p,h1,h2,h3,h4,h5,h6,button,a,td,th,label,input");
+
+  // Android WebView : ne jamais querySelectorAll tous les div/span d'une page.
+  // Le MutationObserver global pouvait sinon rescanner des centaines/milliers
+  // de noeuds à chaque changement de route et bloquer taps + scroll.
+  const selector = android
+    ? ANDROID_PLAYER_SELECTOR
+    : "div,span,b,strong,p,h1,h2,h3,h4,h5,h6,button,a,td,th,label,input";
+  const nodes = root.querySelectorAll<HTMLElement>(selector);
   for (const el of Array.from(nodes)) tagElement(el);
 }
 
@@ -175,13 +198,55 @@ function scanDocument() {
   scanTree(document.body);
 }
 
+let mutationFlushCancel: (() => void) | null = null;
+const pendingMutationRoots = new Set<Node>();
+
+function queueMutationRoot(node: Node) {
+  // Elimine les sous-arbres déjà couverts par une racine en attente.
+  for (const root of Array.from(pendingMutationRoots)) {
+    try {
+      if (root === node || (root instanceof Node && root.contains?.(node))) return;
+      if ((node as any)?.contains?.(root)) pendingMutationRoots.delete(root);
+    } catch {}
+  }
+  pendingMutationRoots.add(node);
+  if (mutationFlushCancel) return;
+
+  mutationFlushCancel = scheduleRuntimeIdle(() => {
+    mutationFlushCancel = null;
+
+    // Un changement de route est prioritaire sur la typographie décorative.
+    try {
+      if (document.documentElement.dataset.mscNavigating === "1") {
+        const roots = Array.from(pendingMutationRoots);
+        pendingMutationRoots.clear();
+        for (const root of roots) queueMutationRoot(root);
+        return;
+      }
+    } catch {}
+
+    // On traite un nombre borné de racines par créneau idle afin de rendre
+    // régulièrement la main au thread UI Android.
+    const roots = Array.from(pendingMutationRoots).slice(0, getRuntimePlatform() === "android" ? 4 : 12);
+    for (const root of roots) {
+      pendingMutationRoots.delete(root);
+      scanTree(root);
+    }
+    if (pendingMutationRoots.size) {
+      const remaining = Array.from(pendingMutationRoots);
+      pendingMutationRoots.clear();
+      for (const root of remaining) queueMutationRoot(root);
+    }
+  }, { timeoutMs: 5000, fallbackDelayMs: getRuntimePlatform() === "android" ? 320 : 120 });
+}
+
 function installObserver() {
   if (observer || typeof MutationObserver === "undefined" || !document.body) return;
   observer = new MutationObserver((mutations) => {
-    // Only newly inserted subtrees are scanned. Observing every characterData
-    // mutation meant every live score/text update entered this global observer.
+    // Ne jamais scanner synchroniquement dans le callback MutationObserver :
+    // React peut ajouter une page entière dans le même microtask.
     for (const mutation of mutations) {
-      for (const node of Array.from(mutation.addedNodes)) scanTree(node);
+      for (const node of Array.from(mutation.addedNodes)) queueMutationRoot(node);
     }
   });
   observer.observe(document.body, { subtree: true, childList: true });
@@ -209,14 +274,25 @@ export function installPlayerNameTypography() {
 
   const start = () => {
     installObserver();
-    void refreshKnownNames({ fullDocument: true, allowStorageFallback: true });
 
+    if (getRuntimePlatform() === "android") {
+      // Le store/IndexedDB et le DOM complet ne font pas partie du critical path
+      // Android. Les noms explicites sont pris en charge par l'observer léger ;
+      // le catalogue de noms est hydraté plus tard en idle.
+      scheduleRuntimeIdle(() => {
+        void refreshKnownNames({ fullDocument: false, allowStorageFallback: false });
+      }, { timeoutMs: 7000, fallbackDelayMs: 1800 });
+    } else {
+      void refreshKnownNames({ fullDocument: true, allowStorageFallback: true });
+    }
+
+    const android = getRuntimePlatform() === "android";
     const onStorage = (event: StorageEvent) => {
-      if (storageKeyLooksRelevant(event.key)) queueRefresh(!isGameplayRuntime());
+      if (storageKeyLooksRelevant(event.key)) queueRefresh(android ? false : !isGameplayRuntime());
     };
-    const onProfiles = () => queueRefresh(!isGameplayRuntime());
-    const onStore = () => queueRefresh(!isGameplayRuntime());
-    const onForced = () => queueRefresh(true);
+    const onProfiles = () => queueRefresh(android ? false : !isGameplayRuntime());
+    const onStore = () => queueRefresh(android ? false : !isGameplayRuntime());
+    const onForced = () => queueRefresh(android ? false : true);
 
     window.addEventListener("storage", onStorage);
     window.addEventListener("dc:profiles-changed", onProfiles as EventListener);
@@ -234,6 +310,9 @@ export function installPlayerNameTypography() {
       if (refreshTimer) window.clearInterval(refreshTimer);
       refreshCancel?.();
       refreshCancel = null;
+      mutationFlushCancel?.();
+      mutationFlushCancel = null;
+      pendingMutationRoots.clear();
       observer?.disconnect();
       observer = null;
       window.removeEventListener("storage", onStorage);

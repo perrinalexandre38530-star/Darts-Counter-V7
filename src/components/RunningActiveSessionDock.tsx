@@ -29,6 +29,8 @@ import {
   saveRunningSessionDraft,
   type RunningSessionDraft,
 } from "../activity/runningSessionDrafts";
+import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 
 function RunnerIcon({ size = 19 }: { size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -62,13 +64,34 @@ export default function RunningActiveSessionDock({
   React.useEffect(() => subscribeRunningActiveSessions(setSessions), []);
   React.useEffect(() => {
     let alive = true;
-    const refresh = async () => {
+    let cancelIdle: (() => void) | null = null;
+    const native = isCapacitorNativeRuntime();
+
+    const refreshNow = async () => {
+      try {
+        if (document.documentElement.dataset.mscNavigating === "1") return;
+      } catch {}
       const rows = await listRecoverableRunningSessionDrafts(sessions.map((row) => row.id));
       if (alive) setRecoverableDrafts(rows);
     };
-    void refresh();
-    const timer = window.setInterval(refresh, 8000);
-    return () => { alive = false; window.clearInterval(timer); };
+
+    const refresh = () => {
+      cancelIdle?.();
+      cancelIdle = scheduleRuntimeIdle(() => {
+        cancelIdle = null;
+        void refreshNow();
+      }, { timeoutMs: native ? 7000 : 3000, fallbackDelayMs: native ? 900 : 120 });
+    };
+
+    // listRecoverableRunningSessionDrafts fait un IndexedDB.getAll(). Il ne doit
+    // jamais se battre avec le montage d'une page Android.
+    refresh();
+    const timer = window.setInterval(refresh, native ? 45000 : 12000);
+    return () => {
+      alive = false;
+      cancelIdle?.();
+      window.clearInterval(timer);
+    };
   }, [sessions.map((row) => row.id).join("|")]);
   React.useEffect(() => {
     if (!sessions.length) return;
@@ -103,7 +126,12 @@ export default function RunningActiveSessionDock({
       } catch {}
     };
     void refresh();
-    const timer = window.setInterval(refresh, 4000);
+    const timer = window.setInterval(() => {
+      try {
+        if (document.documentElement.dataset.mscNavigating === "1") return;
+      } catch {}
+      void refresh();
+    }, isCapacitorNativeRuntime() ? 6500 : 4000);
     return () => { alive = false; window.clearInterval(timer); };
   }, [sessions.map((row) => `${row.id}:${row.paused}:${row.mode}`).join("|")]);
 
