@@ -2,7 +2,7 @@
   "assetKey": "squat",
   "exerciseId": "squat",
   "name": "Squat",
-  "status": "REVIEW",
+  "status": "REJECTED",
   "requestedComponents": [
     "steps"
   ],
@@ -32,5 +32,11 @@
       2.5,
       3.5
     ]
-  }
+  },
+  "rejectedAt": "2026-09-01T12:24:59.252Z",
+  "reviewDecision": "REJECTED",
+  "humanReviewed": false,
+  "rejectionReason": "V117_UNSAFE_LEGACY_STEP_REUSE",
+  "rejectionDetail": "Legacy approved frames/video may be used as pose references only; they are no longer publishable pedagogical steps, especially when exercise equipment must remain complete.",
+  "statusChangedAt": "2026-09-01T12:24:59.253Z"
 }

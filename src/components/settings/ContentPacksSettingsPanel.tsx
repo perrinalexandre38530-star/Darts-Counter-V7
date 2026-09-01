@@ -8,6 +8,7 @@ import {
   contentPacksTotalBytes,
   getContentPackStatus,
   installContentPack,
+  probeContentPackGateway,
   removeContentPack,
   subscribeContentPacks,
   type ContentPackId,
@@ -28,8 +29,16 @@ export default function ContentPacksSettingsPanel() {
   const [progress, setProgress] = React.useState<ContentPackProgress | null>(null);
   const [message, setMessage] = React.useState("");
   const [allBusy, setAllBusy] = React.useState(false);
+  const [gateway, setGateway] = React.useState<"checking" | "online" | "offline">("checking");
 
   React.useEffect(() => subscribeContentPacks(refresh), []);
+  React.useEffect(() => {
+    let active = true;
+    void probeContentPackGateway().then((ok) => {
+      if (active) setGateway(ok ? "online" : "offline");
+    });
+    return () => { active = false; };
+  }, []);
 
   const tr = (fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr;
 
@@ -116,6 +125,23 @@ export default function ContentPacksSettingsPanel() {
         <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 9, color: theme.textSoft, fontWeight: 900 }}>
             {installedCount}/{CONTENT_PACK_IDS.length} {tr("packs installés", "packs installed", "packs instalados")} · {bytesLabel(totalPackBytes)}
+          </span>
+          <span
+            title={tr("Passerelle Cloudflare des packs", "Cloudflare content-pack gateway", "Pasarela Cloudflare de packs")}
+            style={{
+              fontSize: 8.5,
+              fontWeight: 1000,
+              borderRadius: 999,
+              padding: "4px 7px",
+              border: `1px solid ${gateway === "online" ? `${theme.success}66` : gateway === "offline" ? `${theme.danger}66` : theme.borderSoft}`,
+              color: gateway === "online" ? theme.success : gateway === "offline" ? theme.danger : theme.textSoft,
+            }}
+          >
+            {gateway === "online"
+              ? tr("CLOUD CONNECTÉ", "CLOUD ONLINE", "CLOUD CONECTADO")
+              : gateway === "offline"
+              ? tr("CLOUD INDISPONIBLE", "CLOUD OFFLINE", "CLOUD NO DISPONIBLE")
+              : tr("TEST CLOUD…", "CHECKING CLOUD…", "PROBANDO CLOUD…")}
           </span>
           <div style={{ flex: 1 }} />
           <button type="button" disabled={allBusy || busy !== null || installedCount === CONTENT_PACK_IDS.length} onClick={() => void installAll()} style={{ minHeight: 32, borderRadius: 10, border: `1px solid ${theme.primary}66`, background: `${theme.primary}14`, color: theme.primary, padding: "0 10px", fontSize: 9, fontWeight: 1000, cursor: allBusy ? "wait" : "pointer" }}>

@@ -16,11 +16,11 @@ export type ContentPackProgress = {
   currentPath?: string;
 };
 
-const STATE_KEY = "mss_content_packs_v2";
-export const CONTENT_PACK_CACHE = "mss-content-packs-v2";
+const STATE_KEY = "mss_content_packs_v3";
+export const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 export const CONTENT_PACK_BASE_URL = String(
   (import.meta as any)?.env?.VITE_CONTENT_PACK_BASE_URL ||
-    "https://pub-170ceab787594ee9a09d6315358fb928.r2.dev/mss-content-packs/v1"
+    "https://mss-content-packs.perrin-alexandre38530.workers.dev/mss-content-packs/v1"
 ).replace(/\/+$/, "");
 
 export const CONTENT_PACK_IDS = Object.keys(CONTENT_PACK_CATALOG) as ContentPackId[];
@@ -85,6 +85,10 @@ export function contentPackAssetUrl(packId: ContentPackId, relativePath: string)
   return `${CONTENT_PACK_BASE_URL}/${encodeURIComponent(packId)}/${version}${clean ? `/${clean}` : ""}`;
 }
 
+export function contentPackManifestUrl(packId: ContentPackId): string {
+  return contentPackAssetUrl(packId, "manifest.json");
+}
+
 export function contentPackInfo(packId: ContentPackId) {
   return CONTENT_PACK_CATALOG[packId];
 }
@@ -115,13 +119,33 @@ export function subscribeContentPacks(listener: () => void): () => void {
 }
 
 async function fetchPackAsset(url: string): Promise<Response> {
+  const response = await fetch(url, {
+    cache: "no-store",
+    credentials: "omit",
+    mode: "cors",
+  });
+  if (!response.ok) {
+    throw new Error(`Cloudflare Content Pack HTTP ${response.status}`);
+  }
+  return response;
+}
+
+/**
+ * Petit test réseau utilisé par l'interface de réglages. Le Worker ne révèle aucun
+ * secret : il ne sert que le préfixe public mss-content-packs/v1/ du bucket privé.
+ */
+export async function probeContentPackGateway(packId: ContentPackId = "theme-textures"): Promise<boolean> {
   try {
-    const response = await fetch(url, { cache: "no-store", credentials: "omit", mode: "cors" });
-    if (response.ok) return response;
-  } catch {}
-  // R2 public buckets without a CORS rule still produce a cacheable opaque response.
-  const opaque = await fetch(url, { cache: "no-store", credentials: "omit", mode: "no-cors" });
-  return opaque;
+    const response = await fetch(contentPackManifestUrl(packId), {
+      method: "HEAD",
+      cache: "no-store",
+      credentials: "omit",
+      mode: "cors",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 function packPathMarker(packId: ContentPackId): string {
@@ -152,6 +176,7 @@ export async function installContentPack(
   if (typeof window === "undefined" || !("caches" in window)) {
     throw new Error("Le stockage hors ligne des packs n’est pas disponible sur cet appareil.");
   }
+
   const pack = CONTENT_PACK_CATALOG[packId];
   const current = readState()[packId];
   if (current?.version && current.version !== pack.version) await purgePackCacheEntries(packId);
@@ -159,21 +184,38 @@ export async function installContentPack(
   const cache = await window.caches.open(CONTENT_PACK_CACHE);
   let completedFiles = 0;
   let completedBytes = 0;
+  let cursor = 0;
   const totalFiles = pack.files.length;
   const totalBytes = Number(pack.totalBytes || 0);
+  const concurrency = Math.min(4, Math.max(1, totalFiles));
 
-  for (const file of pack.files) {
-    const url = contentPackAssetUrl(packId, file.path);
-    const existing = await cache.match(url);
-    if (!existing) {
-      const response = await fetchPackAsset(url);
-      if (response.type !== "opaque" && !response.ok) throw new Error(`Téléchargement impossible : ${file.path}`);
-      await cache.put(url, response.clone());
+  const worker = async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= totalFiles) return;
+      const file = pack.files[index];
+      const url = contentPackAssetUrl(packId, file.path);
+      const existing = await cache.match(url);
+
+      if (!existing) {
+        const response = await fetchPackAsset(url);
+        await cache.put(url, response.clone());
+      }
+
+      completedFiles += 1;
+      completedBytes += Number(file.bytes || 0);
+      onProgress?.({
+        packId,
+        completedFiles,
+        totalFiles,
+        completedBytes,
+        totalBytes,
+        currentPath: file.path,
+      });
     }
-    completedFiles += 1;
-    completedBytes += Number(file.bytes || 0);
-    onProgress?.({ packId, completedFiles, totalFiles, completedBytes, totalBytes, currentPath: file.path });
-  }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
   const next = readState();
   next[packId] = { installed: true, version: pack.version, installedAt: Date.now() };

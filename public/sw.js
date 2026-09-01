@@ -1,6 +1,7 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-09-01-content-packs-v3";
+const SW_VERSION = "dc-sw-2026-09-01-content-packs-v4";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
+const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -10,7 +11,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     try {
       const names = await caches.keys();
-      await Promise.all(names.filter((name) => name !== SW_VERSION && !name.startsWith(CONTENT_PACK_CACHE_PREFIX)).map((name) => caches.delete(name).catch(() => false)));
+      await Promise.all(names.filter((name) => name !== SW_VERSION && name !== CONTENT_PACK_CACHE).map((name) => caches.delete(name).catch(() => false)));
     } catch {}
     await self.clients.claim();
   })());

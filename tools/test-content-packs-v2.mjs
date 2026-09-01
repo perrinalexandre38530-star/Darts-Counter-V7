@@ -32,12 +32,21 @@ for (const source of [killer, loterie, firefighter]) {
   assert.ok(!source.includes('assets/avatars/'), 'official character portraits must not be statically imported');
 }
 assert.ok(packs.includes('CONTENT_PACK_CATALOG[packId].version'), 'content pack URLs must be versioned');
+assert.ok(packs.includes('mss-content-packs.perrin-alexandre38530.workers.dev/mss-content-packs/v1'), 'runtime must use the validated Cloudflare Worker gateway');
+assert.ok(!packs.includes('pub-170ceab787594ee9a09d6315358fb928.r2.dev'), 'legacy direct r2.dev gateway must be removed');
+assert.ok(packs.includes('mss_content_packs_v3'), 'gateway migration must invalidate the old installed-state marker');
+assert.ok(packs.includes('mss-content-packs-v3'), 'gateway migration must use a fresh offline cache');
+assert.ok(packs.includes('probeContentPackGateway'), 'pack manager must be able to probe the public gateway');
 assert.ok(packUi.includes('CONTENT_PACK_IDS.map'), 'pack manager must render generated packs dynamically');
 assert.ok(packUi.includes('TOUT INSTALLER'), 'pack manager must support one-tap offline install');
+assert.ok(packUi.includes('CLOUD CONNECTÉ'), 'pack manager must expose gateway health to the user');
 assert.ok(settings.includes('ContentPacksSettingsPanel'), 'settings must expose the pack manager');
 assert.ok(strip.includes("removeDir('fit')"), 'Android sync must strip embedded FIT media');
-assert.ok(strip.includes("removeDir('theme-textures')"), 'Android sync must strip embedded theme textures');
-assert.ok(sw.includes('CONTENT_PACK_CACHE_PREFIX'), 'service worker must preserve content packs');
+assert.ok(strip.includes("removeDirExcept('theme-textures'"), 'Android sync must strip heavy embedded theme textures selectively');
+assert.ok(strip.includes('postapoc-cracks-overlay.svg'), 'Android sync must preserve the tiny CSS crack overlay');
+assert.ok(strip.includes('postapoc-panel-concrete.svg'), 'Android sync must preserve the tiny CSS concrete panel');
+assert.ok(sw.includes('CONTENT_PACK_CACHE_PREFIX'), 'service worker must identify content-pack caches');
+assert.ok(sw.includes('const CONTENT_PACK_CACHE = "mss-content-packs-v3"'), 'service worker must keep only the current content-pack cache generation');
 assert.ok(pkg.scripts['android:sync'].includes('android:strip-content-packs'), 'Android sync must strip remote content before Capacitor sync');
 assert.ok(gradle.includes('abiFilters "arm64-v8a", "armeabi-v7a"'), 'Play build must exclude x86/x86_64 native payloads');
-console.log('✅ Content packs V2 contract OK');
+console.log('✅ Content packs V3 gateway/cache contract OK');

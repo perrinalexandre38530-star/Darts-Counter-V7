@@ -2,7 +2,7 @@
   "assetKey": "curl",
   "exerciseId": "curl",
   "name": "Curl biceps",
-  "status": "REVIEW",
+  "status": "REJECTED",
   "requestedComponents": [
     "steps"
   ],
@@ -37,5 +37,11 @@
       "C:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\public\\fit\\motions\\awena\\premium\\curl\\frames\\frame-04.webp",
       "C:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\public\\fit\\motions\\awena\\premium\\curl\\frames\\frame-05.webp"
     ]
-  }
+  },
+  "rejectedAt": "2026-09-01T12:24:59.246Z",
+  "reviewDecision": "REJECTED",
+  "humanReviewed": false,
+  "rejectionReason": "V117_UNSAFE_LEGACY_STEP_REUSE",
+  "rejectionDetail": "Legacy approved frames/video may be used as pose references only; they are no longer publishable pedagogical steps, especially when exercise equipment must remain complete.",
+  "statusChangedAt": "2026-09-01T12:24:59.249Z"
 }
