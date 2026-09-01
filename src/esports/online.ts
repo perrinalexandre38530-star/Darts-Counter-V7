@@ -6,14 +6,23 @@ import type { EsportsRoom, EsportsRoomMember } from "./types";
 function lobbyToEsportsRoom(lobby: OnlineLobby): EsportsRoom {
   const settings = (lobby.settings || {}) as any;
   const game = getEsportsGame(settings.esports?.gameId || String(lobby.mode || "").replace(/^esports:/, ""));
-  const members: EsportsRoomMember[] = (lobby.players || []).map((p: any, index: number) => ({
-    id: String(p.id || p.userId || p.user_id || `online_${index}`),
-    onlineUserId: String(p.userId || p.user_id || "") || null,
-    name: String(p.nickname || p.displayName || p.display_name || `Joueur ${index + 1}`),
-    ready: String(p.status || "").toLowerCase() === "ready",
-    team: p.team === "B" ? "B" : p.team === "A" ? "A" : null,
-    role: String(p.role || "player") === "spectator" ? "spectator" : String(p.userId || p.user_id || "") === String(lobby.hostUserId || "") ? "host" : "player",
-  }));
+  const competitive = settings.esports?.competitiveMatch || null;
+  const members: EsportsRoomMember[] = (lobby.players || []).map((p: any, index: number) => {
+    const onlineUserId = String(p.userId || p.user_id || "");
+    const autoTeam = competitive && onlineUserId
+      ? onlineUserId === String(competitive.playerAUserId || "") ? "A"
+        : onlineUserId === String(competitive.playerBUserId || "") ? "B"
+          : (index % 2 === 0 ? "A" : "B")
+      : null;
+    return {
+      id: String(p.id || p.userId || p.user_id || `online_${index}`),
+      onlineUserId: onlineUserId || null,
+      name: String(p.nickname || p.displayName || p.display_name || `Joueur ${index + 1}`),
+      ready: String(p.status || "").toLowerCase() === "ready",
+      team: p.team === "B" ? "B" : p.team === "A" ? "A" : autoTeam,
+      role: String(p.role || "player") === "spectator" ? "spectator" : onlineUserId === String(lobby.hostUserId || "") ? "host" : "player",
+    };
+  });
   return {
     id: String(lobby.id || lobby.code),
     code: String(lobby.code || "").toUpperCase(),
@@ -33,7 +42,7 @@ function lobbyToEsportsRoom(lobby: OnlineLobby): EsportsRoom {
   };
 }
 
-export async function createOnlineEsportsRoom(input: { gameId: string; title: string; teamSize: number; maxPlayers: number; bestOf: number; formatLabel: string; visibility: "private" | "friends" | "public"; hostName: string }): Promise<EsportsRoom> {
+export async function createOnlineEsportsRoom(input: { gameId: string; title: string; teamSize: number; maxPlayers: number; bestOf: number; formatLabel: string; visibility: "private" | "friends" | "public"; hostName: string; competitiveMatch?: { matchId: string; playerAUserId: string; playerBUserId: string } }): Promise<EsportsRoom> {
   const game = getEsportsGame(input.gameId);
   const lobby = await onlineApi.createLobby({
     mode: `esports:${game.id}`,
@@ -41,7 +50,7 @@ export async function createOnlineEsportsRoom(input: { gameId: string; title: st
     settings: {
       start: 0,
       doubleOut: false,
-      esports: { gameId: game.id, title: input.title, teamSize: input.teamSize, maxPlayers: input.maxPlayers, bestOf: input.bestOf, formatLabel: input.formatLabel, visibility: input.visibility, schemaVersion: 1 },
+      esports: { gameId: game.id, title: input.title, teamSize: input.teamSize, maxPlayers: input.maxPlayers, bestOf: input.bestOf, formatLabel: input.formatLabel, visibility: input.visibility, schemaVersion: 2, competitiveMatch: input.competitiveMatch || null },
     },
   });
   const room = lobbyToEsportsRoom(lobby);

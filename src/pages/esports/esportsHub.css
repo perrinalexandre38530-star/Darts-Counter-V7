@@ -1,0 +1,682 @@
+.esports-root {
+  width: 100%;
+  max-width: 100vw;
+  min-height: 100%;
+  overflow-x: hidden;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  padding: 16px 12px 112px;
+  box-sizing: border-box;
+}
+
+.esports-root,
+.esports-root *,
+.esports-root *::before,
+.esports-root *::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.esports-root img,
+.esports-root svg,
+.esports-root canvas,
+.esports-root video {
+  max-width: 100%;
+}
+
+.esports-page {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+
+.esports-panel {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.esports-section-stack {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+}
+
+.esports-dashboard-grid,
+.esports-auto-grid,
+.esports-kpi-grid,
+.esports-card-grid,
+.esports-form-grid {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+}
+
+.esports-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.esports-wide-card-grid {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+}
+
+.esports-action-row,
+.esports-heading-row,
+.esports-inline-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 100%;
+}
+
+.esports-heading-row {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.esports-action-row > button,
+.esports-action-row > a {
+  flex: 1 1 148px;
+  max-width: 100%;
+}
+
+.esports-input,
+.esports-root input,
+.esports-root select,
+.esports-root textarea,
+.esports-root button {
+  max-width: 100%;
+}
+
+.esports-root input,
+.esports-root select,
+.esports-root textarea {
+  min-width: 0;
+}
+
+.esports-hero-card {
+  border-radius: 24px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.11);
+  background:
+    radial-gradient(circle at 86% 12%, var(--es-game-accent-soft, rgba(56,189,248,.12)), transparent 34%),
+    linear-gradient(135deg, rgba(8,10,20,.98), rgba(14,18,34,.98));
+  box-shadow: 0 18px 38px rgba(0,0,0,.62);
+  overflow: hidden;
+  position: relative;
+}
+
+.esports-hero-main {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.esports-hero-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border-radius: 20px;
+  filter: drop-shadow(0 0 18px var(--es-game-accent-soft, rgba(56,189,248,.3)));
+}
+
+.esports-gamer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 20px;
+  line-height: 1.05;
+  font-weight: 1000;
+  letter-spacing: .3px;
+}
+
+.esports-subtitle {
+  margin-top: 4px;
+  color: rgba(226,232,240,.67);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.esports-hero-kpis {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 6px;
+}
+
+.esports-hero-kpi {
+  text-align: center;
+  border-radius: 14px;
+  padding: 8px 5px;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.06);
+}
+
+.esports-hero-kpi strong {
+  display: block;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.esports-hero-kpi span {
+  display: block;
+  margin-top: 4px;
+  color: rgba(226,232,240,.62);
+  font-size: 7.5px;
+  font-weight: 900;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+}
+
+.esports-section-nav {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.esports-section-nav button {
+  min-height: 54px;
+  padding: 6px 4px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.025);
+  color: #f8fafc;
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 900;
+  overflow: hidden;
+}
+
+.esports-section-nav button > span:first-child {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 16px;
+}
+
+.esports-section-nav button.is-active {
+  border-color: var(--es-accent, #f6c256);
+  background: color-mix(in srgb, var(--es-accent, #f6c256) 13%, transparent);
+  color: var(--es-accent, #f6c256);
+}
+
+.esports-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(52,211,153,.08);
+  color: #34d399;
+  border: 1px solid rgba(52,211,153,.18);
+  font-size: 8px;
+  font-weight: 1000;
+}
+
+.esports-leader-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr) 76px 56px;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 7px;
+  border-radius: 11px;
+}
+
+.esports-stat-performance-row {
+  width: 100%;
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(255,255,255,.035);
+}
+
+.esports-stat-performance-head {
+  width: 100%;
+}
+
+.esports-stat-performance-kpis {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 6px;
+}
+
+.esports-member-row,
+.esports-compact-row {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 7px;
+  align-items: center;
+  width: 100%;
+}
+
+.esports-member-detail-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0,1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.esports-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 104px;
+  z-index: 120;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  border-radius: 18px;
+  padding: 9px 14px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.esports-room-code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.esports-root pre,
+.esports-root code {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 440px) {
+  .esports-root {
+    padding: 10px 8px 104px;
+  }
+
+  .esports-page {
+    gap: 9px;
+  }
+
+  .esports-hero-main {
+    grid-template-columns: 58px minmax(0,1fr);
+    gap: 9px;
+  }
+
+  .esports-hero-logo {
+    width: 58px;
+    height: 58px;
+    border-radius: 16px;
+  }
+
+  .esports-gamer-name {
+    font-size: 17px;
+  }
+
+  .esports-hero-kpis {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+
+  .esports-section-nav {
+    grid-template-columns: repeat(4,minmax(0,1fr));
+    gap: 4px;
+  }
+
+  .esports-section-nav button {
+    min-height: 49px;
+    font-size: 7px;
+    padding-inline: 2px;
+  }
+
+  .esports-form-grid,
+  .esports-auto-grid,
+  .esports-card-grid,
+  .esports-wide-card-grid,
+  .esports-dashboard-grid,
+  .esports-kpi-grid {
+    grid-template-columns: minmax(0,1fr) !important;
+  }
+
+  .esports-mobile-stack {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+    width: 100% !important;
+  }
+
+  .esports-mobile-flex-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+  }
+
+  .esports-mobile-flex-stack > * {
+    width: 100% !important;
+  }
+
+  .esports-member-detail-row {
+    grid-template-columns: 32px minmax(0,1fr) auto;
+  }
+
+  .esports-member-ready {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+
+  .esports-leader-row {
+    grid-template-columns: 30px minmax(0,1fr) 68px;
+    gap: 5px;
+  }
+
+  .esports-leader-extra {
+    display: none !important;
+  }
+
+  .esports-root button {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 340px) {
+  .esports-root {
+    padding-inline: 6px;
+  }
+  .esports-section-nav {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+  .esports-stat-performance-kpis {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+}
+
+.esports-bracket-scroll {
+  width: 100%;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+.esports-bracket-track { max-width: none; }
+.esports-bracket-round { min-width: 0; }
+
+@media (max-width: 440px) {
+  .esports-bracket-scroll { overflow-x: visible !important; }
+  .esports-bracket-track {
+    min-width: 0 !important;
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+  }
+  .esports-bracket-round {
+    width: 100% !important;
+    flex: none !important;
+  }
+}
+
+/* V57 cover-art catalogue -------------------------------------------------- */
+.esports-game-grid {
+  margin-top: 12px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 10px;
+}
+
+.esports-game-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 19px;
+  border: 1px solid color-mix(in srgb, var(--game-card-accent, #38bdf8) 28%, rgba(255,255,255,.09));
+  background:
+    radial-gradient(circle at 50% -15%, color-mix(in srgb, var(--game-card-accent, #38bdf8) 13%, transparent), transparent 44%),
+    linear-gradient(155deg, rgba(14,18,30,.98), rgba(4,6,11,.98));
+  box-shadow: 0 16px 30px rgba(0,0,0,.36);
+}
+
+.esports-game-card.is-selected {
+  border-color: var(--game-card-accent, #38bdf8);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--game-card-accent, #38bdf8) 32%, transparent), 0 18px 34px rgba(0,0,0,.5);
+}
+
+.esports-game-cover-button {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.esports-game-cover {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--game-cover-accent, #38bdf8) 36%, transparent), transparent 55%),
+    #090d16;
+  isolation: isolate;
+}
+
+.esports-game-cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  transition: transform .2s ease, filter .2s ease;
+}
+
+.esports-game-cover-button:hover .esports-game-cover img {
+  transform: scale(1.025);
+  filter: saturate(1.08) contrast(1.03);
+}
+
+.esports-game-cover::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, rgba(3,5,10,.74));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.esports-game-cover-shine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 0 28px rgba(255,255,255,.025);
+}
+
+.esports-game-cover-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: var(--game-cover-accent, #38bdf8);
+  text-align: center;
+}
+
+.esports-game-cover-fallback span {
+  font-size: 46px;
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--game-cover-accent, #38bdf8) 65%, transparent));
+}
+
+.esports-game-cover-fallback strong {
+  font-size: 15px;
+  letter-spacing: 1.4px;
+}
+
+.esports-game-card-body {
+  min-width: 0;
+  padding: 11px;
+}
+
+.esports-game-title-row {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.esports-game-title {
+  font-size: 15px;
+  line-height: 1.1;
+  font-weight: 1000;
+  overflow-wrap: anywhere;
+}
+
+.esports-game-meta {
+  margin-top: 4px;
+  color: rgba(226,232,240,.58);
+  font-size: 8.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.esports-favorite-button {
+  border: 0;
+  background: transparent;
+  color: rgba(226,232,240,.42);
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.esports-favorite-button.is-favorite {
+  color: #ffd54a;
+  filter: drop-shadow(0 0 8px rgba(255,213,74,.35));
+}
+
+.esports-game-tags {
+  margin-top: 9px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.esports-game-tags span {
+  min-width: 0;
+  border-radius: 999px;
+  padding: 4px 7px;
+  background: rgba(255,255,255,.05);
+  color: rgba(226,232,240,.62);
+  font-size: 7.8px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.esports-game-actions {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 6px;
+}
+
+.esports-active-game-head {
+  display: grid;
+  grid-template-columns: 72px minmax(0,1fr) auto;
+  gap: 11px;
+  align-items: center;
+  width: 100%;
+}
+
+.esports-active-game-cover {
+  width: 72px;
+  height: 96px;
+  aspect-ratio: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.1);
+  box-shadow: 0 10px 24px rgba(0,0,0,.38);
+}
+
+.esports-active-game-copy {
+  min-width: 0;
+}
+
+.esports-active-game-change {
+  justify-self: end;
+}
+
+@media (max-width: 440px) {
+  .esports-game-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 7px;
+  }
+
+  .esports-game-card {
+    border-radius: 15px;
+  }
+
+  .esports-game-card-body {
+    padding: 8px;
+  }
+
+  .esports-game-title {
+    font-size: 11.5px;
+  }
+
+  .esports-game-meta {
+    font-size: 7px;
+  }
+
+  .esports-favorite-button {
+    font-size: 17px;
+  }
+
+  .esports-game-tags {
+    gap: 3px;
+  }
+
+  .esports-game-tags span {
+    padding: 3px 5px;
+    font-size: 6.5px;
+  }
+
+  .esports-game-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .esports-game-actions button {
+    min-height: 34px !important;
+    padding: 5px 7px !important;
+    font-size: 8px !important;
+  }
+
+  .esports-active-game-head {
+    grid-template-columns: 58px minmax(0,1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .esports-active-game-cover {
+    width: 58px;
+    height: 78px;
+    border-radius: 10px;
+  }
+
+  .esports-active-game-change {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 330px) {
+  .esports-game-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -25,6 +25,7 @@ import {
 import { freeExerciseImageUrl } from "../../fit/freeExerciseCatalog";
 import { getCachedFitCatalog, loadFitCatalog } from "../../fit/fitCatalogEngine";
 import { getAwenaPremiumMotion } from "../../fit/awenaPremiumMotions";
+import { contentPackAssetUrl } from "../../lib/contentPacks";
 import { FIT_MUSCLE_ORDER, exerciseMatchesMuscle } from "../../fit/fitExerciseTaxonomy";
 import { FitGlassCard, FitGhostButton, FitIcon, FitIconTabs, FitPill, FitPrimaryButton, FitProgress, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
@@ -34,11 +35,11 @@ type View = "setup" | "workout" | "history";
 const REST_SECONDS_KEY = "mss-fit-perf-rest-seconds-v1";
 
 const TEMPLATE_VISUALS: Record<string, { imageUrl: string; imagePosition?: string }> = {
-  free: { imageUrl: "/fit/tickers/free-awena.png", imagePosition: "left center" },
-  push: { imageUrl: "/fit/tickers/push-awena.png", imagePosition: "left center" },
-  pull: { imageUrl: "/fit/tickers/pull-awena.png", imagePosition: "left center" },
-  legs: { imageUrl: "/fit/tickers/legs-awena.png", imagePosition: "left center" },
-  full: { imageUrl: "/fit/tickers/full-awena.png", imagePosition: "right center" },
+  free: { imageUrl: contentPackAssetUrl("fit-awena", "tickers/free-awena.webp"), imagePosition: "left center" },
+  push: { imageUrl: contentPackAssetUrl("fit-awena", "tickers/push-awena.webp"), imagePosition: "left center" },
+  pull: { imageUrl: contentPackAssetUrl("fit-awena", "tickers/pull-awena.webp"), imagePosition: "left center" },
+  legs: { imageUrl: contentPackAssetUrl("fit-awena", "tickers/legs-awena.webp"), imagePosition: "left center" },
+  full: { imageUrl: contentPackAssetUrl("fit-awena", "tickers/full-awena.webp"), imagePosition: "right center" },
 };
 
 function initialRestSeconds() {
@@ -158,9 +159,11 @@ export default function FitPerfModule({ go, store, params }: Props) {
   const startWorkout = (templateId = selectedTemplateId) => {
     const template = effectiveTemplate(templateId);
     const next = createSessionFromTemplate(template, { profileId: activeProfile?.id, profileName: activeProfile?.name });
+    const requestedSessionTitle = String(params?.fitSessionTitle || "").trim();
+    if (requestedSessionTitle) next.title = requestedSessionTitle;
     if (templateId === "free") {
       next.exercises = [];
-      next.title = t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE");
+      if (!requestedSessionTitle) next.title = t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE");
       const requestedExerciseId = String(params?.fitExerciseId || "");
       if (requestedExerciseId && exerciseById(requestedExerciseId)) {
         next.exercises = [{ id: makeId("sx"), exerciseId: requestedExerciseId, sets: defaultSets(20, 3, 10) }];
@@ -173,9 +176,10 @@ export default function FitPerfModule({ go, store, params }: Props) {
   };
 
   React.useEffect(() => {
-    if (!requestedTemplate) return;
     if (params?.fitAutoStart === false) return;
-    startWorkout(requestedTemplate.id);
+    if (requestedTemplate) startWorkout(requestedTemplate.id);
+    else if (requestedTemplateId === "free" && (params?.fitSessionTitle || params?.fitProgramId)) startWorkout("free");
+    else return;
     // One-shot navigation params only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -55,6 +55,7 @@ import { useSport } from "../contexts/SportContext";
 import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel";
 import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
 import AudioSettingsPanel from "../components/settings/AudioSettingsPanel";
+import ContentPacksSettingsPanel from "../components/settings/ContentPacksSettingsPanel";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { getAudioPreferences } from "../lib/audioPreferences";
 import { getKeepScreenAwakePreference, setKeepScreenAwakePreference, subscribeKeepScreenAwakePreference } from "../lib/keepAwake";
@@ -2270,7 +2271,7 @@ function DisplaySleepSettingsSection() {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "advertising" | "shop" | "privacy" | "theme" | "lang" | "audio" | "display" | "general" | "sport" | "castViewer" | "developer" | "awena";
+type SettingsTab = "menu" | "account" | "advertising" | "shop" | "privacy" | "theme" | "lang" | "audio" | "contentPacks" | "display" | "general" | "sport" | "castViewer" | "developer" | "awena";
 type DeveloperSub = "menu" | "diagnostics" | "tests" | "onlineCleanup" | "nas" | "logs" | "security";
 
 const PRIVACY_POLICY_URL = "https://multisports-scoring.pages.dev/privacy-policy";
@@ -4731,7 +4732,7 @@ export function Settings({ go, params }: Props) {
     ? "linear-gradient(180deg, rgba(15,34,55,0.96), rgba(6,17,31,0.98))"
     : LEGACY_CARD_BG);
 
-  const validSettingsTabs: SettingsTab[] = ["menu", "account", "advertising", "shop", "privacy", "theme", "lang", "audio", "display", "general", "sport", "castViewer", "developer", "awena"];
+  const validSettingsTabs: SettingsTab[] = ["menu", "account", "advertising", "shop", "privacy", "theme", "lang", "audio", "contentPacks", "display", "general", "sport", "castViewer", "developer", "awena"];
   const validAccountPages: AccountPage[] = ["account_menu", "account_storage", "account_notifications", "account_danger"];
   const initialSettingsTab = validSettingsTabs.includes(String(params?.settingsTab || "") as SettingsTab)
     ? (String(params?.settingsTab) as SettingsTab)
@@ -5867,6 +5868,8 @@ export function Settings({ go, params }: Props) {
       ? t("settings.menu.lang", "Langues")
       : tab === "audio"
       ? t("settings.menu.audio", "AUDIO")
+      : tab === "contentPacks"
+      ? L("PACKS DE CONTENU", "CONTENT PACKS", "PACKS DE CONTENIDO")
       : tab === "display"
       ? L("ÉCRAN & VEILLE", "SCREEN & SLEEP", "PANTALLA Y REPOSO")
       : tab === "general"
@@ -5914,6 +5917,8 @@ export function Settings({ go, params }: Props) {
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
       : tab === "audio"
       ? t("settings.audio.pageSubtitle", "Musiques, playlist, volumes, bruitages et intro de démarrage.")
+      : tab === "contentPacks"
+      ? L("Installe ou supprime les gros médias Cloudflare sans alourdir le cœur de l’application.", "Install or remove large Cloudflare media without bloating the app core.", "Instala o elimina los medios pesados de Cloudflare sin aumentar el núcleo de la app.")
       : tab === "display"
       ? L("Écran actif, mise en veille et comportement d’affichage.", "Screen awake, sleep timeout and display behavior.", "Pantalla activa, reposo y comportamiento de visualización.")
       : tab === "sport"
@@ -6039,6 +6044,13 @@ export function Settings({ go, params }: Props) {
               onClick={() => setTab("audio")}
             />
             <SettingsMenuCard
+              title={L("PACKS DE CONTENU", "CONTENT PACKS", "PACKS DE CONTENIDO")}
+              subtitle={L("Télécharge à la demande les médias FIT PERF, musiques et cartes HD. Le cœur Android reste léger.", "Download FIT PERF media, music and HD cards on demand. The Android core stays light.", "Descarga bajo demanda medios FIT PERF, música y cartas HD. El núcleo Android sigue ligero.")}
+              theme={theme}
+              rightHint="CLOUDFLARE"
+              onClick={() => setTab("contentPacks")}
+            />
+            <SettingsMenuCard
               title={L("ÉCRAN & VEILLE", "SCREEN & SLEEP", "PANTALLA Y REPOSO")}
               subtitle={L("Garder l’écran allumé pendant l’utilisation de l’application. Activé par défaut.", "Keep the screen awake while using the app. Enabled by default.", "Mantener la pantalla encendida mientras se usa la aplicación. Activado por defecto.")}
               theme={theme}
@@ -6105,6 +6117,7 @@ export function Settings({ go, params }: Props) {
           />
         )}
         {tab === "audio" && <StartupIntroSection />}
+        {tab === "contentPacks" && <ContentPacksSettingsPanel />}
         {tab === "display" && <DisplaySleepSettingsSection />}
         {tab === "sport" && <SportSection />}
         {tab === "castViewer" && <CastViewerSettingsSection go={go} />}

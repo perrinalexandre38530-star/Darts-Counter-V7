@@ -23,6 +23,7 @@ import {
 } from "../../fit/fitStore";
 import { FitIcon, FitMiniBars, FitProgress, FitRing, fitUiCss, type FitIconName } from "./FitPerfUi";
 import fitPerfLogo from "../../assets/games/logo-fit-performance.webp";
+import { collectMultisportAgendaEvents, multisportSportMeta, type MultisportAgendaEvent } from "../../planning/multisportAgenda";
 
 type Props = { store?: any; go: (route: any, params?: any) => void };
 type HomeTab = "overview" | "today" | "progress" | "records" | "goals" | "profile";
@@ -106,6 +107,7 @@ export default function FitPerfHome({ store, go }: Props) {
   const textSoft = (theme as any)?.textSoft || "#9ea4af";
   const profile = activeProfile(store);
   const [sessions, setSessions] = React.useState<FitSession[]>(() => loadFitSessions());
+  const [agendaEvents, setAgendaEvents] = React.useState<MultisportAgendaEvent[]>(() => collectMultisportAgendaEvents());
   const [tab, setTab] = React.useState<HomeTab>("profile");
   const [tickerIndex, setTickerIndex] = React.useState(0);
 
@@ -116,6 +118,16 @@ export default function FitPerfHome({ store, go }: Props) {
     return () => {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("dc:fit-session-saved", refresh as EventListener);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const refreshAgenda = () => setAgendaEvents(collectMultisportAgendaEvents());
+    window.addEventListener("dc:multisport-agenda-changed", refreshAgenda as EventListener);
+    window.addEventListener("focus", refreshAgenda);
+    return () => {
+      window.removeEventListener("dc:multisport-agenda-changed", refreshAgenda as EventListener);
+      window.removeEventListener("focus", refreshAgenda);
     };
   }, []);
 
@@ -130,6 +142,19 @@ export default function FitPerfHome({ store, go }: Props) {
   const goalPct = Math.min(100, (summary.weekSessions / weeklyGoal) * 100);
   const weekSets = week.reduce((sum, session) => sum + completedSets(session), 0);
   const profileName = profileDisplayName(profile, t("Joueur", "Player", "Jugador"));
+  const nowTs = Date.now();
+  const nextSportEvent = agendaEvents.find((event) => event.startAt >= nowTs - 60 * 60 * 1000 && event.status !== "declined") || null;
+  const weekAgendaStart = weekStart(nowTs);
+  const weekAgendaCount = agendaEvents.filter((event) => event.startAt >= weekAgendaStart && event.startAt < weekAgendaStart + 7 * 86400000).length;
+
+  const openSportEvent = (event: MultisportAgendaEvent) => {
+    if (!event.route) { go("agenda", { agendaView: "week" }); return; }
+    if (["fit", "running", "darts", "foot", "babyfoot", "pingpong", "petanque", "molkky", "dicegame", "esports"].includes(event.sport)) {
+      try { localStorage.setItem("dc-start-game", event.sport); } catch {}
+      try { window.dispatchEvent(new CustomEvent("dc:sport-change", { detail: { sport: event.sport, game: event.sport, source: "fit_home_agenda" } })); } catch {}
+    }
+    window.requestAnimationFrame(() => go(event.route as any, event.routeParams));
+  };
 
   const tickerItems = React.useMemo<ArcadeTickerItem[]>(() => {
     const lastSessionLabel = recent
@@ -455,7 +480,7 @@ export default function FitPerfHome({ store, go }: Props) {
                   <Kpi label={t("records", "records", "récords")} value={summary.records} accent="#b59cff" />
                 </div>
                 <div className="fit-home-mini-row">
-                  <MiniStat label={t("cette semaine", "this week", "esta semana")} value={`${summary.weekSessions}/${weeklyGoal}`} accent={accent} />
+                  <MiniStat label={t("agenda semaine", "week agenda", "agenda semana")} value={weekAgendaCount} accent={accent} />
                   <MiniStat label={t("séries", "sets", "series")} value={weekSets} accent="#72def4" />
                   <MiniStat label="1RM" value={formatKg(summary.bestOneRm)} accent="#b59cff" />
                 </div>
@@ -463,38 +488,30 @@ export default function FitPerfHome({ store, go }: Props) {
             )}
 
             {tab === "today" && (
-              recent ? (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
+              nextSportEvent ? (() => {
+                const sportMeta = multisportSportMeta(nextSportEvent.sport);
+                const eventAccent = nextSportEvent.accent || sportMeta.accent;
+                const sameDay = new Date(nextSportEvent.startAt).toDateString() === new Date().toDateString();
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
+                    <div style={{ width: 72, height: 72, borderRadius: 20, display: "grid", placeItems: "center", background: `${eventAccent}12`, border: `1px solid ${eventAccent}55`, boxShadow: `0 0 20px ${eventAccent}20`, fontSize: 30 }}>{sportMeta.icon}</div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ color: accent, fontSize: 16, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{recent.title}</div>
-                      <div style={{ marginTop: 4, color: textSoft, fontSize: 9.5 }}>{new Date(recent.endedAt || recent.startedAt).toLocaleDateString()} · {formatDuration(sessionDurationMs(recent, recent.endedAt || recent.startedAt))}</div>
+                      <div style={{ color: eventAccent, fontSize: 8, fontWeight: 1000, letterSpacing: 1 }}>{sameDay ? t("AUJOURD'HUI", "TODAY", "HOY") : t("PROCHAINE ACTIVITÉ", "NEXT ACTIVITY", "PRÓXIMA ACTIVIDAD")} · {sportMeta.label}</div>
+                      <div style={{ marginTop: 4, color: "#fff", fontSize: 16, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextSportEvent.title}</div>
+                      <div style={{ marginTop: 4, color: textSoft, fontSize: 9 }}>{new Date(nextSportEvent.startAt).toLocaleDateString()} · {new Date(nextSportEvent.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{nextSportEvent.durationMin ? ` · ${nextSportEvent.durationMin} min` : ""}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 7, marginTop: 9 }}>
+                        <button className="fit-home-cta" style={{ marginTop: 0 }} type="button" onClick={() => openSportEvent(nextSportEvent)}>{nextSportEvent.route ? t("LANCER / OUVRIR", "START / OPEN", "INICIAR / ABRIR") : t("VOIR", "VIEW", "VER")}</button>
+                        <button type="button" onClick={() => go("agenda", { agendaView: "week" })} aria-label="Agenda" style={{ width: 40, minHeight: 38, borderRadius: 12, border: `1px solid ${eventAccent}55`, background: `${eventAccent}10`, color: eventAccent }}><FitIcon name="program" size={19}/></button>
+                      </div>
                     </div>
-                    <FitRing value={Math.min(100, completedSets(recent) * 10)} label={t("SÉRIES", "SETS", "SERIES")} accent={accent} size={72} />
                   </div>
-                  <div className="fit-home-mini-row">
-                    <MiniStat label={t("volume", "volume", "volumen")} value={formatVolume(sessionVolume(recent))} accent="#74ef9b" />
-                    <MiniStat label={t("séries", "sets", "series")} value={completedSets(recent)} accent={accent} />
-                    <MiniStat label={t("exercices", "exercises", "ejercicios")} value={recent.exercises.length} accent="#72def4" />
-                  </div>
-                  <div style={{ marginTop: 9, display: "grid", gap: 6 }}>
-                    {recent.exercises.slice(0, 3).map((row) => {
-                      const ex = exerciseById(row.exerciseId);
-                      return (
-                        <div key={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 9px", borderRadius: 11, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.025)", fontSize: 9.5 }}>
-                          <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ex?.name || t("Exercice", "Exercise", "Ejercicio")}</strong>
-                          <span style={{ color: textSoft, whiteSpace: "nowrap" }}>{row.sets.filter((set) => set.completed).length} {t("séries", "sets", "series")}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : (
+                );
+              })() : (
                 <div style={{ textAlign: "center" }}>
                   <FitIcon name="today" size={42} />
-                  <div style={{ marginTop: 9, fontSize: 18, fontWeight: 1000 }}>{t("Aucune séance aujourd'hui", "No workout today", "Sin sesión hoy")}</div>
-                  <div style={{ marginTop: 5, color: textSoft, fontSize: 10 }}>{t("Lance une séance pour alimenter ce tableau.", "Start a workout to fill this dashboard.", "Inicia una sesión para completar este panel.")}</div>
-                  <button className="fit-home-cta" type="button" onClick={() => go("games", { fitTemplateId: "free" })}>{t("Démarrer maintenant", "Start now", "Empezar ahora")}</button>
+                  <div style={{ marginTop: 9, fontSize: 18, fontWeight: 1000 }}>{t("Ta semaine est libre", "Your week is free", "Tu semana está libre")}</div>
+                  <div style={{ marginTop: 5, color: textSoft, fontSize: 10 }}>{t("Active un programme ou ajoute n’importe quel sport à ton Agenda MULTISPORTS.", "Activate a program or add any sport to your MULTISPORTS Agenda.", "Activa un programa o añade cualquier deporte a tu Agenda MULTISPORTS.")}</div>
+                  <button className="fit-home-cta" type="button" onClick={() => go("agenda", { agendaView: "week" })}>{t("OUVRIR L'AGENDA", "OPEN AGENDA", "ABRIR AGENDA")}</button>
                 </div>
               )
             )}

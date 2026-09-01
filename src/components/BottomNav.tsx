@@ -22,6 +22,7 @@ import { dismissBackgroundRestoreState, useBackgroundRestoreState } from "../lib
 type TabKey =
   | "home"
   | "games"
+  | "agenda"
   | "running_plan"
   | "fit_plan"
   | "esports_rooms"
@@ -98,6 +99,15 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
           <path {...p} d="M19 12h2" />
           <path {...p} d="M12 21v-2" />
           <path {...p} d="M3 12h2" />
+        </svg>
+      );
+
+    case "agenda":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <rect {...p} x="4" y="5" width="16" height="16" rx="2.5" />
+          <path {...p} d="M7 3v4M17 3v4M4 9h16" />
+          <path {...p} d="M8 13h3M13 13h3M8 17h3M13 17h3" />
         </svg>
       );
 
@@ -372,6 +382,7 @@ export default function BottomNav({
           ),
         },
         { k: "running_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <Icon name="running_plan" /> },
+        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
         { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
       ]
@@ -388,12 +399,14 @@ export default function BottomNav({
               </svg>
             ),
           },
-          { k: "fit_plan", label: tr("Exercices", "Exercises", "Ejercicios"), icon: <Icon name="fit_plan" /> },
+          { k: "fit_plan", label: tr("Explorer", "Explore", "Explorar"), icon: <Icon name="fit_plan" /> },
+          { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
           { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
           { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
         ]
       : [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
+        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
 
         ...(hideOnline ? [] : [
           { k: "messages", label: t("nav.messages", tr("Messages", "Messages", "Mensajes")), icon: <Icon name="messages" /> },

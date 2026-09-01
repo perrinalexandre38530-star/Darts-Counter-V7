@@ -1,10 +1,12 @@
 import type { FitExercise } from "./fitStore";
+import { contentPackAssetUrl } from "../lib/contentPacks";
 
 /**
  * Generated media is never consumed from the raw/review area. Only files that
  * have been explicitly promoted to /approved are visible to the application.
  */
-export const FIT_AWENA_LIBRARY_ROOT = "/fit/awena-library";
+const fitPackUrl = (relativePath: string) => contentPackAssetUrl("fit-awena", relativePath);
+export const FIT_AWENA_LIBRARY_ROOT = fitPackUrl("awena-library");
 export const FIT_AWENA_APPROVED_ROOT = `${FIT_AWENA_LIBRARY_ROOT}/approved`;
 export const FIT_AWENA_STEP_COUNT_DEFAULT = 4;
 
@@ -69,26 +71,26 @@ export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_A
   const key = motionKey(exercise);
   if (key === "pushup") {
     return [
-      "/fit/exercise-media/pushup/awena-step-01-start.webp",
-      "/fit/exercise-media/pushup/awena-step-02-descent.webp",
-      "/fit/exercise-media/pushup/awena-step-03-bottom.webp",
-      "/fit/exercise-media/pushup/awena-step-04-press.webp",
+      fitPackUrl("exercise-media/pushup/awena-step-01-start.webp"),
+      fitPackUrl("exercise-media/pushup/awena-step-02-descent.webp"),
+      fitPackUrl("exercise-media/pushup/awena-step-03-bottom.webp"),
+      fitPackUrl("exercise-media/pushup/awena-step-04-press.webp"),
     ];
   }
   if (key === "bench") {
     return [
-      "/fit/exercise-media/bench/awena-step-00-setup.webp",
-      "/fit/exercise-media/bench/awena-step-02-descent.webp",
-      "/fit/exercise-media/bench/awena-step-03-bottom.webp",
-      "/fit/exercise-media/bench/awena-step-04-press.webp",
+      fitPackUrl("exercise-media/bench/awena-step-00-setup.webp"),
+      fitPackUrl("exercise-media/bench/awena-step-02-descent.webp"),
+      fitPackUrl("exercise-media/bench/awena-step-03-bottom.webp"),
+      fitPackUrl("exercise-media/bench/awena-step-04-press.webp"),
     ];
   }
   if (key === "burpee") {
     return [
-      "/fit/exercise-media/burpee/awena-01.webp",
-      "/fit/exercise-media/burpee/awena-02.webp",
-      "/fit/exercise-media/burpee/awena-03.webp",
-      "/fit/exercise-media/burpee/awena-04.webp",
+      fitPackUrl("exercise-media/burpee/awena-01.webp"),
+      fitPackUrl("exercise-media/burpee/awena-02.webp"),
+      fitPackUrl("exercise-media/burpee/awena-03.webp"),
+      fitPackUrl("exercise-media/burpee/awena-04.webp"),
     ];
   }
   // Squat/Curl legacy premium frames are useful motion references/posters, but
@@ -100,14 +102,14 @@ export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_A
 
 export function fitAwenaKnownPoster(exercise: FitExercise): string | null {
   const key = motionKey(exercise);
-  if (["pushup", "bench", "squat", "curl", "burpee"].includes(key)) return `/fit/motions/awena/premium/${key}/poster.webp`;
+  if (["pushup", "bench", "squat", "curl", "burpee"].includes(key)) return fitPackUrl(`motions/awena/premium/${key}/poster.webp`);
   return null;
 }
 
 export function fitAwenaKnownVideo(exercise: FitExercise): string | null {
   const key = motionKey(exercise);
-  if (key === "pushup" || key === "burpee") return `/fit/motions/awena/premium/${key}/motion.webm`;
-  if (key === "bench" || key === "squat") return `/fit/motions/awena/premium/${key}/motion.mp4`;
+  if (key === "pushup" || key === "burpee") return fitPackUrl(`motions/awena/premium/${key}/motion.webm`);
+  if (key === "bench" || key === "squat") return fitPackUrl(`motions/awena/premium/${key}/motion.mp4`);
   return null;
 }
 

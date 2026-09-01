@@ -8,6 +8,7 @@ import logoDiceGame from "../../assets/games/logo-dicegame.webp";
 import logoFoot from "../../assets/games/logo-foot.png";
 import logoRunning from "../../assets/games/logo-running-performance.webp";
 import logoFit from "../../assets/games/logo-fit-performance.webp";
+import logoEsports from "../../assets/games/logo-esports.webp";
 
 const LOGOS: Record<string, string> = {
   darts: logoDarts,
@@ -20,6 +21,7 @@ const LOGOS: Record<string, string> = {
   foot: logoFoot,
   running: logoRunning,
   fit: logoFit,
+  esports: logoEsports,
 };
 
 export default function SportWelcomeWatermark({

@@ -5,6 +5,7 @@ import type { FitExercise, FitMuscle, FitRecord } from "../../fit/fitStore";
 import { formatKg } from "../../fit/fitStore";
 import { freeExerciseImageUrl } from "../../fit/freeExerciseCatalog";
 import { fitAwenaStepImages } from "../../fit/fitAwenaMedia";
+import { contentPackAssetUrl } from "../../lib/contentPacks";
 import { FIT_MUSCLE_COLORS, FIT_MUSCLE_LABELS, inferGoalTags, inferMovementPattern, normalizeLevel } from "../../fit/fitExerciseTaxonomy";
 import FitBodyMap from "./FitBodyMap";
 import FitExerciseMotion from "./FitExerciseMotion";
@@ -23,22 +24,22 @@ type Props = {
   detailRecord: FitRecord | null;
 };
 
-const PUSHUP_AWENA_HIGH = "/fit/exercise-media/pushup/awena-high.png";
-const PUSHUP_AWENA_LOW = "/fit/exercise-media/pushup/awena-low.png";
-const PUSHUP_AWENA_STEP_1 = "/fit/exercise-media/pushup/awena-step-01-start.webp";
-const PUSHUP_AWENA_STEP_2 = "/fit/exercise-media/pushup/awena-step-02-descent.webp";
-const PUSHUP_AWENA_STEP_3 = "/fit/exercise-media/pushup/awena-step-03-bottom.webp";
-const PUSHUP_AWENA_STEP_4 = "/fit/exercise-media/pushup/awena-step-04-press.webp";
-const BENCH_AWENA_SETUP = "/fit/exercise-media/bench/awena-step-00-setup.webp";
-const BENCH_AWENA_STEP_1 = "/fit/exercise-media/bench/awena-step-01-start.webp";
-const BENCH_AWENA_STEP_2 = "/fit/exercise-media/bench/awena-step-02-descent.webp";
-const BENCH_AWENA_STEP_3 = "/fit/exercise-media/bench/awena-step-03-bottom.webp";
-const BENCH_AWENA_STEP_4 = "/fit/exercise-media/bench/awena-step-04-press.webp";
-const BURPEE_AWENA_STEP_1 = "/fit/exercise-media/burpee/awena-01.webp";
-const BURPEE_AWENA_STEP_2 = "/fit/exercise-media/burpee/awena-03.webp";
-const BURPEE_AWENA_STEP_3 = "/fit/exercise-media/burpee/awena-05.webp";
-const BURPEE_AWENA_STEP_4 = "/fit/exercise-media/burpee/awena-02.webp";
-const BURPEE_AWENA_PLANK = "/fit/exercise-media/burpee/awena-04.webp";
+const PUSHUP_AWENA_HIGH = contentPackAssetUrl("fit-awena", "exercise-media/pushup/awena-high.webp");
+const PUSHUP_AWENA_LOW = contentPackAssetUrl("fit-awena", "exercise-media/pushup/awena-low.webp");
+const PUSHUP_AWENA_STEP_1 = contentPackAssetUrl("fit-awena", "exercise-media/pushup/awena-step-01-start.webp");
+const PUSHUP_AWENA_STEP_2 = contentPackAssetUrl("fit-awena", "exercise-media/pushup/awena-step-02-descent.webp");
+const PUSHUP_AWENA_STEP_3 = contentPackAssetUrl("fit-awena", "exercise-media/pushup/awena-step-03-bottom.webp");
+const PUSHUP_AWENA_STEP_4 = contentPackAssetUrl("fit-awena", "exercise-media/pushup/awena-step-04-press.webp");
+const BENCH_AWENA_SETUP = contentPackAssetUrl("fit-awena", "exercise-media/bench/awena-step-00-setup.webp");
+const BENCH_AWENA_STEP_1 = contentPackAssetUrl("fit-awena", "exercise-media/bench/awena-step-01-start.webp");
+const BENCH_AWENA_STEP_2 = contentPackAssetUrl("fit-awena", "exercise-media/bench/awena-step-02-descent.webp");
+const BENCH_AWENA_STEP_3 = contentPackAssetUrl("fit-awena", "exercise-media/bench/awena-step-03-bottom.webp");
+const BENCH_AWENA_STEP_4 = contentPackAssetUrl("fit-awena", "exercise-media/bench/awena-step-04-press.webp");
+const BURPEE_AWENA_STEP_1 = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-01.webp");
+const BURPEE_AWENA_STEP_2 = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-03.webp");
+const BURPEE_AWENA_STEP_3 = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-05.webp");
+const BURPEE_AWENA_STEP_4 = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-02.webp");
+const BURPEE_AWENA_PLANK = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-04.webp");
 
 type GuideStep = { title: string; body: string; image: string | null; fallbackImage?: string | null };
 type ExerciseGuide = {

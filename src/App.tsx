@@ -322,6 +322,7 @@ import { isEsportsEnabledForCurrentRuntime } from "./config/androidStoreV1";
 const FitPerfModule = React.lazy(() => import("./pages/fit/FitPerfModule"));
 const FitPerfPlan = React.lazy(() => import("./pages/fit/FitPerfPlan"));
 const FitPerfStatsPage = React.lazy(() => import("./pages/fit/FitPerfStatsPage"));
+const MultisportAgendaPage = React.lazy(() => import("./pages/agenda/MultisportAgendaPage"));
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -961,6 +962,7 @@ type Tab =
   | "home"
   | "gameSelect"
   | "games"
+  | "agenda"
   | "running_plan"
   | "fit_plan"
   | "esports_rooms"
@@ -4512,6 +4514,10 @@ const unifiedStats = (() => {
         ) : (
           <GameSelect go={go} />
         );
+        break;
+
+      case "agenda":
+        page = <MultisportAgendaPage go={go} params={routeParams} />;
         break;
 
       case "running_plan":

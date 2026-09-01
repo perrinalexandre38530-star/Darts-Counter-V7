@@ -1,3 +1,4 @@
+import { contentPackAssetUrl } from "../lib/contentPacks";
 export type AwenaPremiumVideoSource = {
   src: string;
   type: "video/webm" | "video/mp4";
@@ -23,7 +24,7 @@ export type AwenaPremiumMotionSlot = {
   frameSequence?: AwenaPremiumFrameSequence;
 };
 
-const ROOT = "/fit/motions/awena/premium";
+const ROOT = contentPackAssetUrl("fit-awena", "motions/awena/premium");
 
 function frames(exerciseId: string, count: number, fps: number, order?: number[]): AwenaPremiumFrameSequence {
   const dir = `${ROOT}/${exerciseId}`;
