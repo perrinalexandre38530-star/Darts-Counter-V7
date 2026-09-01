@@ -493,7 +493,7 @@ export default function FitPerfHome({ store, go }: Props) {
                     <div style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
                       <div style={{ width: 62, height: 62, borderRadius: 18, display: "grid", placeItems: "center", background: `${eventAccent}12`, border: `1px solid ${eventAccent}55`, boxShadow: `0 0 20px ${eventAccent}20`, fontSize: 27 }}>{sportMeta.icon}</div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: eventAccent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .9 }}>{sameDay ? t("À FAIRE AUJOURD'HUI", "TODAY'S ACTIVITY", "ACTIVIDAD DE HOY")} · {sportMeta.label}</div>
+                        <div style={{ color: eventAccent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .9 }}>{sameDay ? t("À FAIRE AUJOURD'HUI", "TODAY'S ACTIVITY", "ACTIVIDAD DE HOY") : t("PROCHAINE ACTIVITÉ", "NEXT ACTIVITY", "PRÓXIMA ACTIVIDAD")} · {sportMeta.label}</div>
                         <div style={{ marginTop: 3, color: "#fff", fontSize: 15, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextSportEvent.title}</div>
                         <div style={{ marginTop: 3, color: textSoft, fontSize: 8.4 }}>{new Date(nextSportEvent.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{nextSportEvent.durationMin ? ` · ${nextSportEvent.durationMin} min` : ""}</div>
                         <button className="fit-home-cta" style={{ marginTop: 7, width: "100%" }} type="button" onClick={() => openSportEvent(nextSportEvent)}>{nextSportEvent.route ? t("COMMENCER / OUVRIR", "START / OPEN", "EMPEZAR / ABRIR") : t("VOIR L'ACTIVITÉ", "VIEW ACTIVITY", "VER ACTIVIDAD")}</button>
