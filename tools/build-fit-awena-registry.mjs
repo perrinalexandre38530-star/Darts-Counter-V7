@@ -60,7 +60,6 @@ const aliasMap = Object.fromEntries([...new Set(entries.map((entry) => entry.can
 const registry = {
   version: 4,
   generatedAt: new Date().toISOString(),
-  catalogSnapshotGeneratedAt: catalog.generatedAt || null,
   catalogCount: entries.length,
   counts: { ...counts, ...completenessCounts, ...artifactCounts },
   packAliases: aliasMap,

@@ -131,7 +131,9 @@
     "content-packs:publish:dry": "npm run content-packs:prepare && npm run content-packs:audit && npm run content-packs:upload:dry",
     "content-packs:check": "npm run test:content-packs && npm run content-packs:audit",
     "fit:awena:steps:run": "node ./tools/run-comfyui-awena-steps.mjs",
-    "test:fit-awena-canonical": "node ./tools/test-fit-awena-canonical-v114.mjs"
+    "test:fit-awena-canonical": "node ./tools/test-fit-awena-canonical-v114.mjs",
+    "fit:awena:sync": "node ./tools/sync-fit-awena-state.mjs",
+    "test:fit-awena-steps-local": "node ./tools/test-fit-awena-steps-local-v115.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

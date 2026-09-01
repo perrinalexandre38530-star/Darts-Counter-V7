@@ -28,7 +28,7 @@ const artifactCounts={
   rejectedArtifacts:(await listGeneratedArtifactKeys(AWENA_STATUS.REJECTED)).length,
 };
 const summary={
-  generatedAt:new Date().toISOString(),catalogSnapshotGeneratedAt:catalog.generatedAt||null,catalogCount:rows.length,
+  generatedAt:new Date().toISOString(),catalogCount:rows.length,
   approved:count(AWENA_STATUS.APPROVED),review:count(AWENA_STATUS.REVIEW),missing:count(AWENA_STATUS.MISSING),rejected:count(AWENA_STATUS.REJECTED),
   approvedComplete:approvedRows.filter(r=>r.awenaCompleteness===AWENA_COMPLETENESS.COMPLETE).length,
   approvedPartial:approvedRows.filter(r=>r.awenaCompleteness===AWENA_COMPLETENESS.PARTIAL).length,

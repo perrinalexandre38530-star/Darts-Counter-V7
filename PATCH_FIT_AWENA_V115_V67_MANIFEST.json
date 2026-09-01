@@ -1,0 +1,74 @@
+{
+  "base": "Darts-Counter-V7(67).zip",
+  "patch": "FIT-PERF-AWENA-V115-V67-PATCH.zip",
+  "packageJsonMerge": {
+    "removedScripts": 0,
+    "changedExistingScripts": 0,
+    "addedScripts": [
+      "fit:awena:sync",
+      "test:fit-awena-steps-local"
+    ],
+    "dependenciesChanged": false,
+    "devDependenciesChanged": false,
+    "otherTopLevelKeysChanged": 0
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "status": "modified",
+      "sha256": "9bb450b858eff07a4ab7c5afab805f5185571320c8d892a6b9e87b85570c11e1"
+    },
+    {
+      "path": "docs/FIT_AWENA_STEP_RECOVERY_SYNC_V115.md",
+      "status": "added",
+      "sha256": "7736e5c6745a7f8086b4d69648fe428661cb112ed27bcc5ce294fafe66a788bd"
+    },
+    {
+      "path": "tools/audit-fit-awena-media.mjs",
+      "status": "modified",
+      "sha256": "81696fb6003ba580acd69eb25c5117bf6a851870f87cb9d9b5ba786ceaa89640"
+    },
+    {
+      "path": "tools/build-fit-awena-jobs.mjs",
+      "status": "modified",
+      "sha256": "269255733db5df3c97a1d7224d1553b5284e04321b10eb863a31ff0c2487e7ef"
+    },
+    {
+      "path": "tools/build-fit-awena-registry.mjs",
+      "status": "modified",
+      "sha256": "3b616b402e458dcaf2b41c892cccd50d45873dbfb4323ebc60f0170d8663464f"
+    },
+    {
+      "path": "tools/build-fit-awena-step-jobs.mjs",
+      "status": "modified",
+      "sha256": "13ce5c6923fc457de149d1c4f5fb5173313f9049b6fc5158a01850aff88e3092"
+    },
+    {
+      "path": "tools/comfyui/AWENA_STEP_WORKFLOW.md",
+      "status": "modified",
+      "sha256": "5819b301a9d807a6431704bf124009deb0514cfe9b36f15e935282ec1acf2b67"
+    },
+    {
+      "path": "tools/run-comfyui-awena-steps.mjs",
+      "status": "modified",
+      "sha256": "22f669617bcb092bf7f9e752c43c8f64551727e44a2379dd7acd463c594df1f5"
+    },
+    {
+      "path": "tools/sync-fit-awena-state.mjs",
+      "status": "added",
+      "sha256": "11e1f13af51cb408f62a35657146cbcbc5ab42b34d504cc9440b7cf3bf97c822"
+    },
+    {
+      "path": "tools/test-fit-awena-steps-local-v115.mjs",
+      "status": "added",
+      "sha256": "dbb9241aa50303a9a0bd33263978756968d2c76a8b5d3b292984f6952f36f766"
+    }
+  ],
+  "tests": [
+    "typecheck",
+    "test:fit-awena-steps-local",
+    "test:fit-awena-canonical",
+    "test:fit-awena-partial",
+    "test:fit-awena-registry"
+  ]
+}
