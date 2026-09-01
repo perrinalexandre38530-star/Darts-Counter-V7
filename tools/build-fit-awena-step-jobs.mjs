@@ -26,10 +26,17 @@ for(const exercise of catalog.exercises){
   const missingSteps=Number(state.coverage?.steps||0)<4;
   if(!missingSteps) continue;
   const reviewMotionReady=state.status===AWENA_STATUS.REVIEW && state.origin!=="legacy-generated" && Boolean(state.coverage?.video);
-  const approvedPartialSteps=state.status===AWENA_STATUS.APPROVED && state.completeness===AWENA_COMPLETENESS.PARTIAL && Boolean(state.coverage?.video);
+  const approvedManualFrames=state.status===AWENA_STATUS.APPROVED
+    && state.completeness===AWENA_COMPLETENESS.PARTIAL
+    && Array.isArray(state.frameImages)
+    && state.frameImages.length>=4;
+  const approvedPartialVideo=state.status===AWENA_STATUS.APPROVED
+    && state.completeness===AWENA_COMPLETENESS.PARTIAL
+    && Boolean(state.coverage?.video);
+  const approvedPartialSteps=approvedManualFrames || approvedPartialVideo;
   if(!reviewMotionReady && !approvedPartialSteps) continue;
   if(!grouped.has(key)) grouped.set(key,[]);
-  grouped.get(key).push({exercise,rawKey,key,state,reviewMotionReady,approvedPartialSteps});
+  grouped.get(key).push({exercise,rawKey,key,state,reviewMotionReady,approvedPartialSteps,approvedManualFrames,approvedPartialVideo});
 }
 
 function rank(entry){
@@ -45,6 +52,8 @@ for(const [key,entries] of grouped){
   const {exercise,state}=rep;
   const reviewMotionReady=entries.some((e)=>e.reviewMotionReady);
   const approvedPartialSteps=entries.some((e)=>e.approvedPartialSteps);
+  const approvedManualFrames=entries.some((e)=>e.approvedManualFrames);
+  const approvedPartialVideo=entries.some((e)=>e.approvedPartialVideo);
   const reviewDir=generatedDirectory(AWENA_STATUS.REVIEW,key);
   const stepFiles=Array.from({length:4},(_,i)=>path.join(reviewDir,`awena-step-${String(i+1).padStart(2,"0")}.webp`));
   if(stepFiles.every((file)=>fssync.existsSync(file))) continue;
@@ -52,8 +61,14 @@ for(const [key,entries] of grouped){
   aliasEntriesCollapsed+=Math.max(0,aliases.length-1);
   const instructions=(exercise.instructions||[]).slice(0,4);
   const authoritativeVideo=state.videoUrl||null;
+  const approvedFrameSources=Array.isArray(state.frameImages)?state.frameImages:[];
+  const stepStrategy=approvedManualFrames
+    ? "APPROVED_MANUAL_FRAMES"
+    : approvedPartialVideo
+      ? "APPROVED_VIDEO_PHASE_FRAMES"
+      : "COMFYUI_DEDICATED_STILLS";
   jobs.push({
-    version:3,
+    version:4,
     exerciseId:exercise.id,
     representativeExerciseId:exercise.id,
     assetKey:key,
@@ -63,11 +78,14 @@ for(const [key,entries] of grouped){
     registryStatus:state.status,
     registryCompleteness:state.completeness,
     generationMode:approvedPartialSteps?"STEPS_ONLY_SUPPLEMENT":"STEPS_FOR_REVIEW_PACK",
+    stepStrategy,
     requestedComponents:["steps"],
     preserveApprovedComponents:true,
     identityReference:"public/fit/exercise-media/pushup/awena-step-01-start.webp",
     authoritativeVideoReference:authoritativeVideo,
     motionReference:reviewMotionReady?path.join(reviewDir,"awena-preview.webm"):publicUrlToLocal(authoritativeVideo),
+    approvedFrameSources,
+    phaseFractions:[0.10,0.30,0.50,0.70],
     outputDirectory:reviewDir,
     outputs:["awena-step-01.webp","awena-step-02.webp","awena-step-03.webp","awena-step-04.webp"],
     prompts:Array.from({length:4},(_,i)=>[
@@ -82,16 +100,20 @@ for(const [key,entries] of grouped){
 }
 await fs.mkdir("var/fit-awena",{recursive:true});
 const summary={
-  version:2,
+  version:3,
   createdAt:new Date().toISOString(),
+  catalogSnapshotGeneratedAt:catalog.generatedAt||null,
   count:jobs.length,
   approvedPartialStepsOnly:jobs.filter((job)=>job.generationMode==="STEPS_ONLY_SUPPLEMENT").length,
   reviewPackSteps:jobs.filter((job)=>job.generationMode==="STEPS_FOR_REVIEW_PACK").length,
+  reusableApprovedFrames:jobs.filter((job)=>job.stepStrategy==="APPROVED_MANUAL_FRAMES").length,
+  reusableApprovedVideo:jobs.filter((job)=>job.stepStrategy==="APPROVED_VIDEO_PHASE_FRAMES").length,
+  requiresComfyUiImageWorkflow:jobs.filter((job)=>job.stepStrategy==="COMFYUI_DEDICATED_STILLS").length,
   uniqueCanonicalPacks:jobs.length,
   aliasEntriesCollapsed,
   policy:{canonicalPackDeduplication:true,validatedVideoPosterNeverReplaced:true,dedicatedPedagogicalImagesOnly:true},
   jobs,
 };
 await fs.writeFile("var/fit-awena/step-queue.json",JSON.stringify(summary,null,2));
-console.log(JSON.stringify({count:summary.count,approvedPartialStepsOnly:summary.approvedPartialStepsOnly,reviewPackSteps:summary.reviewPackSteps,uniqueCanonicalPacks:summary.uniqueCanonicalPacks,aliasEntriesCollapsed:summary.aliasEntriesCollapsed},null,2));
+console.log(JSON.stringify({count:summary.count,approvedPartialStepsOnly:summary.approvedPartialStepsOnly,reviewPackSteps:summary.reviewPackSteps,reusableApprovedFrames:summary.reusableApprovedFrames,reusableApprovedVideo:summary.reusableApprovedVideo,requiresComfyUiImageWorkflow:summary.requiresComfyUiImageWorkflow,uniqueCanonicalPacks:summary.uniqueCanonicalPacks,aliasEntriesCollapsed:summary.aliasEntriesCollapsed},null,2));
 console.log("AWENA dedicated step queue -> var/fit-awena/step-queue.json");

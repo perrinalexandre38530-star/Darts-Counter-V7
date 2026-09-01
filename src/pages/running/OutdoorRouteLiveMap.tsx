@@ -77,7 +77,7 @@ function fitZoom(points: GeoPoint[], width: number, height: number) {
   }
   return 3;
 }
-function buildLayout(centerPoint: GeoPoint, zoom: number, width = 1000, height = 1600): Layout {
+function buildLayout(centerPoint: GeoPoint, zoom: number, width: number, height: number): Layout {
   const center = mercatorPixel(centerPoint.lat, centerPoint.lon, zoom);
   const minX = Math.floor((center.x - width / 2) / 256) - 1;
   const maxX = Math.floor((center.x + width / 2) / 256) + 1;
@@ -124,6 +124,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   const [mapMode, setMapMode] = React.useState<"2d" | "3d">("2d");
   const [manualCenter, setManualCenter] = React.useState<GeoPoint | null>(null);
   const mapGestureRef = React.useRef<HTMLDivElement | null>(null);
+  const [mapSize, setMapSize] = React.useState(() => ({ width: typeof window === "undefined" ? 390 : Math.max(320, window.innerWidth), height: typeof window === "undefined" ? 720 : Math.max(420, window.innerHeight) }));
   const pointerRef = React.useRef(new Map<number,{x:number;y:number}>());
   const dragRef = React.useRef<{id:number;x:number;y:number;center:{x:number;y:number}} | null>(null);
   const pinchRef = React.useRef<{distance:number;zoomDelta:number} | null>(null);
@@ -137,7 +138,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   const rerouteGuidance = React.useMemo(() => rerouteRoute && progress.offRouteAlert ? outdoorDirectionalGuidance(rerouteRoute, rerouteMatchedM, currentPoint, previousPoint) : null, [currentPoint, previousPoint, progress.offRouteAlert, rerouteMatchedM, rerouteRoute]);
   const activeGuidance = progress.offRouteAlert && rerouteGuidance ? rerouteGuidance : guidance;
 
-  const overviewZoom = React.useMemo(() => fitZoom(reroute?.route?.length ? [...(route.route || []), ...reroute.route] : (route.route || []), 1000, 1600), [reroute?.route, route.route]);
+  const overviewZoom = React.useMemo(() => fitZoom(reroute?.route?.length ? [...(route.route || []), ...reroute.route] : (route.route || []), mapSize.width, mapSize.height), [mapSize.height, mapSize.width, reroute?.route, route.route]);
   const mapAnchor = React.useMemo(() => {
     if (follow && currentPoint) return currentPoint;
     if (manualCenter) return manualCenter;
@@ -148,7 +149,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   }, [currentPoint, follow, manualCenter, reroute?.route, route.route]);
   const baseZoom = follow ? 16 : overviewZoom;
   const zoom = clamp(baseZoom + zoomDelta, 3, 19);
-  const layout = React.useMemo(() => mapAnchor ? buildLayout(mapAnchor, zoom) : null, [mapAnchor, zoom]);
+  const layout = React.useMemo(() => mapAnchor ? buildLayout(mapAnchor, zoom, mapSize.width, mapSize.height) : null, [mapAnchor, mapSize.height, mapSize.width, zoom]);
   const routeLine = React.useMemo(() => layout ? (route.route || []).map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, route.route]);
   const trackLine = React.useMemo(() => layout ? track.map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, track]);
   const rerouteLine = React.useMemo(() => layout && reroute ? reroute.route.map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, reroute]);
@@ -168,6 +169,21 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
     setZoomDelta((value) => value + (16 - overviewZoom));
     setFollow(false);
   }, [currentPoint, follow, overviewZoom]);
+  React.useLayoutEffect(() => {
+    if (mapMode !== "2d") return;
+    const host = mapGestureRef.current;
+    if (!host) return;
+    const update = () => {
+      const rect = host.getBoundingClientRect();
+      if (rect.width > 1 && rect.height > 1) setMapSize({ width: rect.width, height: rect.height });
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", update); return () => window.removeEventListener("resize", update); }
+    const observer = new ResizeObserver(update);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [mapMode]);
+
   const pointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (mapMode !== "2d" || !layout) return;
     beginManualPan();
@@ -226,7 +242,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
 
   return <div role="dialog" aria-label={copy.nav} style={{ position: "fixed", inset: 0, zIndex: 220, background: "#0b1218", overflow: "hidden" }}>
     {mapMode === "3d" ? <div style={{ position: "absolute", inset: 0 }}><RunningTerrain3DMap points={route.route} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen routeName={route.name} activePointIndex={activeRouteIndex} showReplay={false} onFallback2D={() => setMapMode("2d")}/></div> : <div ref={mapGestureRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={wheelMap} style={{ position: "absolute", inset: 0, touchAction: "none", userSelect: "none", cursor: "grab" }}>
-      {layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>{sport === "trail" || sport === "hiking" ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", pointerEvents: "none", userSelect: "none" }}/> : null}</React.Fragment>)}
+      {layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", userSelect: "none" }}/>{sport === "trail" || sport === "hiking" ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", pointerEvents: "none", userSelect: "none" }}/> : null}</React.Fragment>)}
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
         <polyline points={routeLine} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
         <polyline points={routeLine} fill="none" stroke={accent} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
@@ -236,7 +252,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
         {finishScreen ? <text x={finishScreen.x} y={finishScreen.y} textAnchor="middle" dominantBaseline="central" fontSize="25">🏁</text> : null}
         {turnScreen ? <><circle cx={turnScreen.x} cy={turnScreen.y} r="12" fill="#0a0d12" stroke={progress.offRouteAlert && reroute ? "#ffad4f" : accent} strokeWidth="4"/><text x={turnScreen.x} y={turnScreen.y + 2} textAnchor="middle" dominantBaseline="central" fontSize="19" fill={progress.offRouteAlert && reroute ? "#ffad4f" : accent}>{turnIcon(activeGuidance?.kind || "straight")}</text></> : null}
       </svg>
-      {currentScreen ? <div style={{ position: "absolute", left: `${currentScreen.x / layout.width * 100}%`, top: `${currentScreen.y / layout.height * 100}%`, transform: `translate(-50%,-50%) rotate(${movementBearing || 0}deg)`, width: 38, height: 38, borderRadius: 999, display: "grid", placeItems: "center", background: "#fff", color: "#0b1016", border: `4px solid ${isAlert ? "#ff6b62" : accent}`, boxShadow: `0 0 0 6px ${isAlert ? "rgba(255,107,98,.18)" : `${accent}2c`},0 7px 22px rgba(0,0,0,.48)`, zIndex: 6, fontSize: 18, fontWeight: 1000 }}>▲</div> : null}
+      {currentScreen ? <div style={{ position: "absolute", left: currentScreen.x, top: currentScreen.y, transform: `translate(-50%,-50%) rotate(${movementBearing || 0}deg)`, width: 38, height: 38, borderRadius: 999, display: "grid", placeItems: "center", background: "#fff", color: "#0b1016", border: `4px solid ${isAlert ? "#ff6b62" : accent}`, boxShadow: `0 0 0 6px ${isAlert ? "rgba(255,107,98,.18)" : `${accent}2c`},0 7px 22px rgba(0,0,0,.48)`, zIndex: 6, fontSize: 18, fontWeight: 1000 }}>▲</div> : null}
     </div>}
 
     <div style={{ position: "absolute", left: 10, right: 10, top: "max(10px,env(safe-area-inset-top))", zIndex: 12, display: "grid", gap: 8 }}>

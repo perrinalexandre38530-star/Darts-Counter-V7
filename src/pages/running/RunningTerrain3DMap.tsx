@@ -2,12 +2,11 @@ import React from "react";
 import { formatDuration, formatPace, haversineMeters } from "../../activity/activityMath";
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
-import RunningTerrain3DCompat from "./RunningTerrain3DCompat";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
 import "./runningResponsive.css";
 
-const MAPLIBRE_VERSION = "6.6.0";
+const MAPLIBRE_VERSION = "5.12.0";
 const MAPLIBRE_MODULES = [
   `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
   `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
@@ -24,6 +23,7 @@ const MAPLIBRE_CSS = [
 // endpoint avoids a TileJSON metadata request that could keep MapLibre's
 // initial style in a permanent loading state inside Android WebView/PWA.
 const TERRAIN_TILES = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp";
+const BASE_MAP_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 type MapLibreGlobal = any;
 
@@ -48,7 +48,7 @@ type Props = {
   onPlaceSelect?: (place: OutdoorRoutePlace) => void;
   onFallback2D?: () => void;
   showReplay?: boolean;
-  preferCompat?: boolean;
+  preferCompat?: boolean; // Legacy prop kept for caller compatibility; real 3D is always attempted.
 };
 
 function pickText(lang: string, fr: string, en: string, es: string) {
@@ -196,7 +196,7 @@ function markerElement(content: string, border: string, title: string, size = 30
   return el;
 }
 
-export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true, preferCompat = false }: Props) {
+export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true, preferCompat: _legacyPreferCompat = false }: Props) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
   const maplibreRef = React.useRef<any>(null);
@@ -204,7 +204,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   const staticMarkersRef = React.useRef<any[]>([]);
   const replayFrameRef = React.useRef<number | null>(null);
   const lastCameraAtRef = React.useRef(0);
-  const [status, setStatus] = React.useState<"loading" | "ready" | "compat">(preferCompat ? "compat" : "loading");
+  const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = React.useState("");
   const [replaying, setReplaying] = React.useState(false);
   const [replayIndex, setReplayIndex] = React.useState(0);
@@ -235,31 +235,29 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     const host = hostRef.current;
     if (!host) return;
     let disposed = false;
-    let mapReady = false;
     let readinessTimer: number | null = null;
-    let compatPreviewTimer: number | null = null;
-    if (safePoints.length < 2 || preferCompat) { setStatus("compat"); setError(""); return; }
-    setStatus("loading"); setError("");
-    // Never leave the user staring at a blank loader. Show the embedded 3D
-    // renderer while the full WebGL + DEM engine starts in the background.
-    compatPreviewTimer = window.setTimeout(() => { if (!disposed && !mapReady) setStatus("compat"); }, 900);
+    let compatPreviewTimer: number | null = null; // legacy watchdog name: now triggers a harmless resize, never fake 3D.
+    let resizeObserver: ResizeObserver | null = null;
+    if (safePoints.length < 2) { setStatus("error"); setError(pickText(lang, "Tracé insuffisant pour la 3D", "Not enough route points for 3D", "No hay suficientes puntos para 3D")); return; }
+    setStatus("loading");
+    setError("");
+    compatPreviewTimer = window.setTimeout(() => { if (!disposed) { try { mapRef.current?.resize(); } catch {} } }, 1200);
 
     void loadMapLibre().then((maplibregl) => {
       if (disposed || !hostRef.current) return;
       maplibreRef.current = maplibregl;
       const first = safePoints[0];
+      // Important: start with a lightweight raster style only. DEM sources are
+      // added AFTER the base map load, so a slow terrain server can never block
+      // MapLibre's initial render in Android WebView/PWA.
       const style = {
         version: 8,
         sources: {
-          osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" },
-          terrainSource: { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" },
-          hillshadeSource: { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" },
+          baseMap: { type: "raster", tiles: [BASE_MAP_TILES], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" },
         },
         layers: [
-          { id: "osm", type: "raster", source: "osm" },
-          { id: "hillshade", type: "hillshade", source: "hillshadeSource", paint: { "hillshade-exaggeration": .42, "hillshade-shadow-color": "#10151b", "hillshade-highlight-color": "#ffffff", "hillshade-accent-color": "#59636d" } },
+          { id: "base-map", type: "raster", source: "baseMap", paint: { "raster-saturation": .08, "raster-contrast": .05, "raster-brightness-min": .08, "raster-brightness-max": .96 } },
         ],
-        terrain: { source: "terrainSource", exaggeration: 1.18 },
       } as any;
 
       const map = new maplibregl.Map({
@@ -267,33 +265,46 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         style,
         center: [first.lon, first.lat],
         zoom: 13,
-        pitch: 64,
+        pitch: 62,
         bearing: 0,
         maxPitch: 85,
         renderWorldCopies: false,
         attributionControl: false,
         cooperativeGestures: false,
+        canvasContextAttributes: { antialias: true },
       });
       mapRef.current = map;
       readinessTimer = window.setTimeout(() => {
-        if (disposed || mapReady) return;
-        setError("MapLibre map readiness timeout");
-        setStatus("compat");
-      }, 6500);
+        if (disposed || status === "ready") return;
+        setError(pickText(lang, "Le moteur 3D ne répond pas. Revenez en 2D puis réessayez.", "3D engine is not responding. Return to 2D and try again.", "El motor 3D no responde. Vuelve a 2D e inténtalo de nuevo."));
+        setStatus("error");
+      }, 9000);
+
       try { map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true, showZoom: false }), "top-right"); } catch {}
       try { map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right"); } catch {}
 
       map.on("load", () => {
         if (disposed) return;
-        mapReady = true;
         if (readinessTimer != null) window.clearTimeout(readinessTimer);
         if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
-        try { map.setTerrain({ source: "terrainSource", exaggeration: 1.18 }); } catch {}
+        // Add the DEM only after the raster map is already alive. This is the
+        // key difference from the old implementation that could stay forever
+        // on “Chargement du relief 3D…”.
+        try {
+          if (!map.getSource("terrainSource")) map.addSource("terrainSource", { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" });
+          if (!map.getSource("hillshadeSource")) map.addSource("hillshadeSource", { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" });
+          if (!map.getLayer("terrain-hillshade")) map.addLayer({ id: "terrain-hillshade", type: "hillshade", source: "hillshadeSource", paint: { "hillshade-exaggeration": .58, "hillshade-shadow-color": "#0c1118", "hillshade-highlight-color": "#f5f7fb", "hillshade-accent-color": "#657482" } });
+          map.setTerrain({ source: "terrainSource", exaggeration: 1.35 });
+        } catch (terrainError: any) {
+          // Keep the real MapLibre map visible even if individual DEM tiles fail.
+          setError(String(terrainError?.message || terrainError || "DEM unavailable"));
+        }
+
         try {
           const features = hasPerformanceColors ? performance.routeEdges.map((edge) => ({ type: "Feature", properties: { color: edge.color }, geometry: { type: "LineString", coordinates: [[safePoints[edge.startIndex].lon, safePoints[edge.startIndex].lat], [safePoints[edge.endIndex].lon, safePoints[edge.endIndex].lat]] } })) : [{ type: "Feature", properties: { color: accent }, geometry: { type: "LineString", coordinates: safePoints.map((point) => [point.lon, point.lat]) } }];
           map.addSource("mss-route", { type: "geojson", data: { type: "FeatureCollection", features } });
-          map.addLayer({ id: "mss-route-shadow", type: "line", source: "mss-route", paint: { "line-color": "rgba(0,0,0,.82)", "line-width": 9, "line-opacity": .88 } });
-          map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", paint: { "line-color": ["get", "color"], "line-width": 5.2, "line-opacity": 1 } });
+          map.addLayer({ id: "mss-route-shadow", type: "line", source: "mss-route", paint: { "line-color": "rgba(0,0,0,.86)", "line-width": 9.5, "line-opacity": .9 } });
+          map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", paint: { "line-color": ["get", "color"], "line-width": 5.4, "line-opacity": 1 } });
         } catch {}
 
         staticMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
@@ -320,21 +331,26 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         }
 
         setStatus("ready");
-        window.setTimeout(() => fitRoute(64), 40);
+        window.setTimeout(() => { try { map.resize(); } catch {}; fitRoute(64); }, 60);
       });
+
       map.on("error", (event: any) => {
         const message = String(event?.error?.message || "");
         if (/webgl|context lost|failed to initialize/i.test(message) && !disposed) {
           setError(message || "WebGL unavailable");
-          setStatus("compat");
+          setStatus("error");
         }
-        // Individual OSM/DEM tile failures are non-fatal. MapLibre will retry
-        // and the embedded compat renderer remains available if startup fails.
+        // Raster/DEM tile errors are non-fatal and must not destroy the map.
       });
+
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => { try { map.resize(); } catch {} });
+        resizeObserver.observe(host);
+      }
     }).catch((cause) => {
       if (disposed) return;
       if (readinessTimer != null) window.clearTimeout(readinessTimer);
-      setStatus("compat");
+      setStatus("error");
       setError(String(cause?.message || cause || "MapLibre unavailable"));
     });
 
@@ -342,6 +358,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       disposed = true;
       if (readinessTimer != null) window.clearTimeout(readinessTimer);
       if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
+      resizeObserver?.disconnect();
       if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
       replayFrameRef.current = null;
       staticMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
@@ -351,7 +368,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       try { mapRef.current?.remove(); } catch {}
       mapRef.current = null;
     };
-  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, onPlaceSelect, performance.routeEdges, places, preferCompat, safePoints, distances, totalDistanceM]);
+  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, onPlaceSelect, performance.routeEdges, places, safePoints, distances, totalDistanceM]);
 
   React.useEffect(() => {
     const map = mapRef.current;
@@ -438,7 +455,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   return <div className="running-map-shell" style={{ position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
     <div ref={hostRef} style={{ position: "absolute", inset: 0 }}/>
     {status === "loading" ? <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "grid", placeItems: "center", background: "linear-gradient(145deg,#101821,#070b10)", color: textSoft }}><div style={{ textAlign: "center", fontSize: 9 }}><div style={{ color: accent, fontSize: 20, marginBottom: 8 }}>⛰</div>{pickText(lang, "Chargement du relief 3D…", "Loading 3D terrain…", "Cargando relieve 3D…")}</div></div> : null}
-    {status === "compat" ? <div style={{ position: "absolute", inset: 0, zIndex: 22 }}><RunningTerrain3DCompat points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} activePointIndex={effectiveIndex} onActivePointChange={onActivePointChange}/><div style={{ position: "absolute", left: 10, top: 54, zIndex: 30, padding: "5px 8px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: "1px solid rgba(255,255,255,.10)", color: textSoft, fontSize: 6.5 }}>{preferCompat ? pickText(lang, "3D live · altitude GPS", "Live 3D · GPS elevation", "3D live · altitud GPS") : pickText(lang, "Mode 3D compatible · WebGL distant indisponible", "Compatible 3D mode · remote WebGL unavailable", "Modo 3D compatible · WebGL remoto no disponible")}</div>{onFallback2D ? <button className="btn" onClick={onFallback2D} style={{ position: "absolute", right: 10, bottom: 10, zIndex: 31, minHeight: 34, color: accent, borderColor: `${accent}55`, background: "rgba(5,8,13,.86)", fontSize: 7.5, fontWeight: 1000 }}>{pickText(lang, "REVENIR EN 2D", "BACK TO 2D", "VOLVER A 2D")}</button> : null}</div> : null}
+    {status === "error" ? <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "grid", placeItems: "center", padding: 20, background: "linear-gradient(145deg,#101821,#070b10)" }}><div style={{ width: "min(420px,100%)", padding: 16, borderRadius: 18, background: "rgba(5,8,13,.88)", border: "1px solid rgba(255,255,255,.12)", textAlign: "center", boxShadow: "0 18px 48px rgba(0,0,0,.35)" }}><div style={{ color: accent, fontSize: 26 }}>⛰</div><div style={{ marginTop: 7, color: "#fff", fontSize: 11, fontWeight: 1000 }}>{pickText(lang, "RELIEF 3D INDISPONIBLE", "3D TERRAIN UNAVAILABLE", "RELIEVE 3D NO DISPONIBLE")}</div><div style={{ marginTop: 6, color: textSoft, fontSize: 8.5, lineHeight: 1.45 }}>{error || pickText(lang, "Le moteur WebGL/DEM n'a pas pu démarrer.", "The WebGL/DEM engine could not start.", "El motor WebGL/DEM no pudo iniciarse.")}</div>{onFallback2D ? <button className="btn" onClick={onFallback2D} style={{ marginTop: 12, minHeight: 38, color: accent, borderColor: `${accent}55`, background: `${accent}0d`, fontSize: 8.5, fontWeight: 1000 }}>{pickText(lang, "REVENIR EN 2D", "BACK TO 2D MAP", "VOLVER AL MAPA 2D")}</button> : null}</div></div> : null}
 
     {status === "ready" ? <>
       <div style={{ position: "absolute", left: 10, top: 10, zIndex: 15, display: "flex", gap: 6, pointerEvents: "auto" }}>

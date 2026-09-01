@@ -32,6 +32,14 @@ export type ActivitySplit = {
     splitMs: number;
     paceSecPerKm: number;
 };
+export type ActivityPhoto = {
+    id: string;
+    dataUrl: string;
+    createdAt: number;
+    name?: string;
+    width?: number;
+    height?: number;
+};
 export type ActivityLap = {
     index: number;
     elapsedMs: number;
@@ -56,6 +64,8 @@ export type ActivityRecord = {
     route: GeoPoint[];
     splits: ActivitySplit[];
     title?: string;
+    visibility?: "private" | "public";
+    photos?: ActivityPhoto[];
     targetDistanceM?: number | null;
     targetDurationMs?: number | null;
     targetPaceSecPerKm?: number | null;
