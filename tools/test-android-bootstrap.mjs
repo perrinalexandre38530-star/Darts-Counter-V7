@@ -13,7 +13,9 @@ assert.equal(config.appName, "MULTISPORTS SCORING", "Nom Android incorrect.");
 assert.equal(config.webDir, "dist", "webDir doit pointer vers dist.");
 assert.ok(native.includes("isCapacitorNativeRuntime"), "Détection Capacitor native absente.");
 assert.ok(main.includes("isCapacitorNativeRuntime"), "main.tsx ne protège pas encore le boot natif.");
-assert.ok(main.includes("Native Capacitor: Service Worker désactivé"), "Politique SW native absente.");
+assert.ok(main.includes("prepareNativeContentPackServiceWorker"), "SW dédié aux content packs natifs absent.");
+assert.ok(main.includes("Native Capacitor: Content Pack Service Worker actif"), "Diagnostic SW content packs natif absent.");
+assert.ok(!main.includes("Native Capacitor: Service Worker désactivé"), "La régression qui désactive tout SW natif est revenue.");
 assert.ok(bootstrap.includes('CAP_VERSION = "8.4.2"'), "Version Capacitor bootstrap inattendue.");
 assert.ok(bootstrap.includes('APP_ID = "com.multisportsscoring.app"'), "App ID bootstrap inattendu.");
 assert.ok(

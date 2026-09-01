@@ -16,6 +16,8 @@ const loterie = read('src/lib/dartsLoterieBots.ts');
 const firefighter = read('src/lib/dartsFirefighterBots.ts');
 const strip = read('tools/strip-android-content-packs.mjs');
 const sw = read('public/sw.js');
+const nativePackSw = read('public/content-packs-sw.js');
+const main = read('src/main.tsx');
 const gradle = read('android/app/build.gradle');
 const pkg = JSON.parse(read('package.json'));
 
@@ -40,6 +42,8 @@ assert.ok(packs.includes('probeContentPackGateway'), 'pack manager must be able 
 assert.ok(packUi.includes('CONTENT_PACK_IDS.map'), 'pack manager must render generated packs dynamically');
 assert.ok(packUi.includes('TOUT INSTALLER'), 'pack manager must support one-tap offline install');
 assert.ok(packUi.includes('CLOUD CONNECTÉ'), 'pack manager must expose gateway health to the user');
+assert.ok(packUi.includes('reconcileContentPackInstallations'), 'pack manager must repair stale installed markers when CacheStorage was cleared');
+assert.ok(packs.includes('reconcileContentPackInstallations'), 'content-pack runtime must reconcile localStorage with the real offline cache');
 assert.ok(settings.includes('ContentPacksSettingsPanel'), 'settings must expose the pack manager');
 assert.ok(strip.includes("removeDir('fit')"), 'Android sync must strip embedded FIT media');
 assert.ok(strip.includes("removeDirExcept('theme-textures'"), 'Android sync must strip heavy embedded theme textures selectively');
@@ -47,6 +51,13 @@ assert.ok(strip.includes('postapoc-cracks-overlay.svg'), 'Android sync must pres
 assert.ok(strip.includes('postapoc-panel-concrete.svg'), 'Android sync must preserve the tiny CSS concrete panel');
 assert.ok(sw.includes('CONTENT_PACK_CACHE_PREFIX'), 'service worker must identify content-pack caches');
 assert.ok(sw.includes('const CONTENT_PACK_CACHE = "mss-content-packs-v3"'), 'service worker must keep only the current content-pack cache generation');
+assert.ok(sw.includes('Content-Range'), 'PWA service worker must support cached video byte ranges');
+assert.ok(nativePackSw.includes('CONTENT_PACK_CACHE = "mss-content-packs-v3"'), 'native content-pack SW must use the same offline cache');
+assert.ok(nativePackSw.includes('Content-Range'), 'native content-pack SW must support video byte ranges');
+assert.ok(nativePackSw.includes('if (!isContentPackRequest(event.request)) return'), 'native SW must never intercept app chunks or navigation');
+assert.ok(main.includes('prepareNativeContentPackServiceWorker'), 'native boot must activate the dedicated content-pack SW');
+assert.ok(main.includes('key !== CONTENT_PACK_CACHE_NAME'), 'native boot must preserve downloaded content packs');
+assert.ok(!main.includes('Native Capacitor: Service Worker désactivé'), 'native boot must no longer disable the content-pack transport');
 assert.ok(pkg.scripts['android:sync'].includes('android:strip-content-packs'), 'Android sync must strip remote content before Capacitor sync');
 assert.ok(gradle.includes('abiFilters "arm64-v8a", "armeabi-v7a"'), 'Play build must exclude x86/x86_64 native payloads');
-console.log('✅ Content packs V3 gateway/cache contract OK');
+console.log('✅ Content packs V4 native/offline gateway/cache contract OK');

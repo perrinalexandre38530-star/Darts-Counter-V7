@@ -118,6 +118,42 @@ export function subscribeContentPacks(listener: () => void): () => void {
   };
 }
 
+/**
+ * Vérifie que le marqueur local "installé" correspond encore à un vrai cache.
+ * Les anciennes builds Android supprimaient CacheStorage au boot mais laissaient
+ * le localStorage intact : l'UI pouvait donc afficher INSTALLÉ alors que les
+ * images/vidéos avaient disparu. Cette réconciliation corrige cet état fantôme.
+ */
+export async function reconcileContentPackInstallations(): Promise<void> {
+  if (typeof window === "undefined" || !("caches" in window)) return;
+  const state = readState();
+  let changed = false;
+
+  try {
+    const cache = await window.caches.open(CONTENT_PACK_CACHE);
+    for (const packId of CONTENT_PACK_IDS) {
+      const current = state[packId];
+      const pack = CONTENT_PACK_CATALOG[packId];
+      if (!current?.installed || current.version !== pack.version) continue;
+
+      // Validation stricte : un pack hors ligne n'est "installé" que si tous ses
+      // fichiers versionnés sont réellement présents dans CacheStorage.
+      const checks = await Promise.all(
+        pack.files.map((file) => cache.match(contentPackAssetUrl(packId, file.path))),
+      );
+      if (checks.some((response) => !response)) {
+        state[packId] = { installed: false, version: null, installedAt: null };
+        changed = true;
+      }
+    }
+  } catch {
+    // Si CacheStorage lui-même est indisponible, on ne détruit pas l'état ici.
+    return;
+  }
+
+  if (changed) writeState(state);
+}
+
 async function fetchPackAsset(url: string): Promise<Response> {
   const response = await fetch(url, {
     cache: "no-store",

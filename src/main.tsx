@@ -471,8 +471,11 @@ function isSafeMode(): boolean {
 /* ============================================================
    SW/CACHES UTILITIES
 ============================================================ */
+const CONTENT_PACK_CACHE_NAME = "mss-content-packs-v3";
+const NATIVE_CONTENT_PACK_SW_URL = "/content-packs-sw.js";
+
 async function disableAllServiceWorkersAndCaches() {
-  // 1) unregister SW
+  // Réparation forte uniquement : cette fonction reste volontairement destructive.
   try {
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -480,13 +483,74 @@ async function disableAllServiceWorkersAndCaches() {
     }
   } catch {}
 
-  // 2) delete caches
   try {
     if (typeof caches !== "undefined" && (caches as any).keys) {
       const keys = await (caches as any).keys();
       await Promise.all(keys.map((k: string) => caches.delete(k)));
     }
   } catch {}
+}
+
+async function prepareNativeContentPackServiceWorker() {
+  // Le bundle applicatif reste local dans Capacitor : aucun cache de chunks Vite.
+  // Seuls les médias externalisés utilisent un SW dédié afin que <img>/<video>
+  // puissent relire CacheStorage, y compris hors ligne.
+  if (!("serviceWorker" in navigator)) {
+    console.warn("⚠️ Native Capacitor: Service Worker indisponible, packs hors ligne désactivés");
+    return;
+  }
+
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    let contentPackReg: ServiceWorkerRegistration | null = null;
+
+    for (const reg of regs) {
+      const scriptUrl = reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || "";
+      if (scriptUrl.endsWith(NATIVE_CONTENT_PACK_SW_URL)) contentPackReg = reg;
+      else await reg.unregister().catch(() => false);
+    }
+
+    // Supprime les vieux caches PWA/chunks mais CONSERVE les packs téléchargés.
+    try {
+      if (typeof caches !== "undefined" && (caches as any).keys) {
+        const keys = await (caches as any).keys();
+        await Promise.all(
+          keys
+            .filter((key: string) => key !== CONTENT_PACK_CACHE_NAME)
+            .map((key: string) => caches.delete(key).catch(() => false)),
+        );
+      }
+    } catch {}
+
+    if (!contentPackReg) {
+      contentPackReg = await navigator.serviceWorker.register(NATIVE_CONTENT_PACK_SW_URL, {
+        scope: "/",
+        updateViaCache: "none",
+      });
+    } else {
+      try { await contentPackReg.update(); } catch {}
+    }
+
+    try { await navigator.serviceWorker.ready; } catch {}
+
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          navigator.serviceWorker.removeEventListener("controllerchange", finish);
+          resolve();
+        };
+        navigator.serviceWorker.addEventListener("controllerchange", finish, { once: true });
+        window.setTimeout(finish, 1200);
+      });
+    }
+
+    console.log("✅ Native Capacitor: Content Pack Service Worker actif");
+  } catch (error) {
+    console.warn("⚠️ Native Content Pack SW impossible", error);
+  }
 }
 
 /* ============================================================
@@ -812,12 +876,10 @@ async function devUnregisterSW() {
       } catch {}
     }
 
-    // Capacitor embarque déjà le bundle web dans l'APK/AAB. Un Service Worker PWA
-    // dans la WebView native peut conserver d'anciens chunks après une mise à jour.
-    // On garde donc le SW uniquement pour la vraie PWA Web/Cloudflare.
+    // Capacitor embarque déjà les chunks dans l'APK/AAB : aucun cache applicatif natif.
+    // Seul un SW dédié aux content packs est conservé pour les images/vidéos distantes.
     if (isCapacitorNativeRuntime()) {
-      await disableAllServiceWorkersAndCaches();
-      console.log("✅ Native Capacitor: Service Worker désactivé");
+      await prepareNativeContentPackServiceWorker();
     } else if (import.meta.env.PROD) {
       await registerServiceWorkerProd();
     } else {

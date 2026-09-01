@@ -9,6 +9,7 @@ import {
   getContentPackStatus,
   installContentPack,
   probeContentPackGateway,
+  reconcileContentPackInstallations,
   removeContentPack,
   subscribeContentPacks,
   type ContentPackId,
@@ -34,6 +35,9 @@ export default function ContentPacksSettingsPanel() {
   React.useEffect(() => subscribeContentPacks(refresh), []);
   React.useEffect(() => {
     let active = true;
+    void reconcileContentPackInstallations().then(() => {
+      if (active) refresh();
+    });
     void probeContentPackGateway().then((ok) => {
       if (active) setGateway(ok ? "online" : "offline");
     });
