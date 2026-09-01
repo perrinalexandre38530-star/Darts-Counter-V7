@@ -6,11 +6,48 @@ const AI_MODEL = '@cf/zai-org/glm-4.7-flash' as const;
 
 function extractText(output: unknown): string {
   if (typeof output === 'string') return output;
-  if (output && typeof output === 'object' && 'response' in output) {
-    const response = (output as { response?: unknown }).response;
-    if (typeof response === 'string') return response;
+  if (!output || typeof output !== 'object') {
+    throw new Error('Workers AI returned an empty or invalid response');
   }
-  throw new Error('Workers AI returned an unsupported response shape');
+
+  const record = output as Record<string, unknown>;
+
+  // Legacy Workers AI text-generation shape.
+  if (typeof record.response === 'string') return record.response;
+
+  // Some specialized Workers AI endpoints use a dedicated text field.
+  if (typeof record.translated_text === 'string') return record.translated_text;
+
+  // OpenAI-compatible chat-completion shape used by GLM-4.7-Flash.
+  if (Array.isArray(record.choices) && record.choices.length > 0) {
+    const firstChoice = record.choices[0];
+    if (firstChoice && typeof firstChoice === 'object') {
+      const choice = firstChoice as Record<string, unknown>;
+
+      if (choice.message && typeof choice.message === 'object') {
+        const message = choice.message as Record<string, unknown>;
+        if (typeof message.content === 'string') return message.content;
+
+        if (Array.isArray(message.content)) {
+          const text = message.content
+            .map((part) => {
+              if (!part || typeof part !== 'object') return '';
+              const item = part as Record<string, unknown>;
+              return typeof item.text === 'string' ? item.text : '';
+            })
+            .filter(Boolean)
+            .join('\n');
+          if (text) return text;
+        }
+      }
+
+      if (typeof choice.text === 'string') return choice.text;
+    }
+  }
+
+  throw new Error(
+    `Workers AI returned an unsupported response shape: ${Object.keys(record).join(', ') || 'no keys'}`
+  );
 }
 
 function cleanJson(raw: string): string {
@@ -31,23 +68,35 @@ export async function localizeQuery(env: RadarEnv, market: Market, intent: Searc
   const cached = await getCachedQuery(env, key, intent.key);
   if (cached) return cached;
 
-  const output = await env.AI.run(AI_MODEL, {
-    messages: [
-      {
-        role: 'system',
-        content: 'Translate a search-engine query into the requested language. Keep product-neutral wording, sport names, and user-intent words. Return only the translated query, no quotes and no explanation.'
-      },
-      {
-        role: 'user',
-        content: `Language code: ${market.language}\nCountry: ${market.country}\nQuery: ${intent.canonicalQuery}`
-      }
-    ]
-  });
+  try {
+    const output = await env.AI.run(AI_MODEL, {
+      messages: [
+        {
+          role: 'system',
+          content: 'Translate a search-engine query into the requested language. Keep product-neutral wording, sport names, and user-intent words. Return only the translated query, no quotes and no explanation.'
+        },
+        {
+          role: 'user',
+          content: `Language code: ${market.language}\nCountry: ${market.country}\nQuery: ${intent.canonicalQuery}`
+        }
+      ]
+    });
 
-  const translated = extractText(output).trim().replace(/^['"]|['"]$/g, '');
-  const query = translated.slice(0, 380) || intent.canonicalQuery;
-  await cacheQuery(env, key, intent.key, query);
-  return query;
+    const translated = extractText(output).trim().replace(/^['"]|['"]$/g, '');
+    const query = translated.slice(0, 380) || intent.canonicalQuery;
+    await cacheQuery(env, key, intent.key, query);
+    return query;
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: 'radar_translation_fallback',
+      market: key,
+      error: error instanceof Error ? error.message : String(error)
+    }));
+
+    // Query localization is an optimization, not a hard dependency.
+    // If Workers AI fails, Brave Search must still run with the canonical query.
+    return intent.canonicalQuery;
+  }
 }
 
 export async function classifyCandidates(env: RadarEnv, candidates: Candidate[]): Promise<Analysis[]> {

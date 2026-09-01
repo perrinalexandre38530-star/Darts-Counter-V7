@@ -35,6 +35,8 @@ const checks = [
   [brave.includes("freshness', 'pd'"), '24h freshness filter'],
   [brave.includes("'Cache-Control': 'no-cache'"), 'fresh-search no-cache request'],
   [ai.includes('@cf/zai-org/glm-4.7-flash'), 'multilingual Workers AI model'],
+  [ai.includes('record.choices') && social.includes('record.choices'), 'OpenAI-compatible Workers AI response support'],
+  [ai.includes('radar_translation_fallback') && ai.includes('return intent.canonicalQuery'), 'translation failure falls back without blocking Brave'],
   [ai.includes('transparent about affiliation'), 'transparent affiliation policy'],
   [social.includes('APPROVED') || social.includes('approved asset library'), 'approved-media-only social policy'],
   [social.includes('qualityScore'), 'independent social creative QA'],

@@ -15,11 +15,48 @@ const VERIFIED_PRODUCT_FACTS = [
 
 function extractText(output: unknown): string {
   if (typeof output === 'string') return output;
-  if (output && typeof output === 'object' && 'response' in output) {
-    const response = (output as { response?: unknown }).response;
-    if (typeof response === 'string') return response;
+  if (!output || typeof output !== 'object') {
+    throw new Error('Workers AI returned an empty or invalid response');
   }
-  throw new Error('Workers AI returned an unsupported response shape');
+
+  const record = output as Record<string, unknown>;
+
+  // Legacy Workers AI text-generation shape.
+  if (typeof record.response === 'string') return record.response;
+
+  // Some specialized Workers AI endpoints use a dedicated text field.
+  if (typeof record.translated_text === 'string') return record.translated_text;
+
+  // OpenAI-compatible chat-completion shape used by GLM-4.7-Flash.
+  if (Array.isArray(record.choices) && record.choices.length > 0) {
+    const firstChoice = record.choices[0];
+    if (firstChoice && typeof firstChoice === 'object') {
+      const choice = firstChoice as Record<string, unknown>;
+
+      if (choice.message && typeof choice.message === 'object') {
+        const message = choice.message as Record<string, unknown>;
+        if (typeof message.content === 'string') return message.content;
+
+        if (Array.isArray(message.content)) {
+          const text = message.content
+            .map((part) => {
+              if (!part || typeof part !== 'object') return '';
+              const item = part as Record<string, unknown>;
+              return typeof item.text === 'string' ? item.text : '';
+            })
+            .filter(Boolean)
+            .join('\n');
+          if (text) return text;
+        }
+      }
+
+      if (typeof choice.text === 'string') return choice.text;
+    }
+  }
+
+  throw new Error(
+    `Workers AI returned an unsupported response shape: ${Object.keys(record).join(', ') || 'no keys'}`
+  );
 }
 
 function cleanJson(raw: string): string {
