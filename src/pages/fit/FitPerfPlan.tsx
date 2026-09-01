@@ -22,7 +22,9 @@ import {
 import FitBodyMap from "./FitBodyMap";
 import FitExerciseMotion from "./FitExerciseMotion";
 import FitExerciseDetailDialog from "./FitExerciseDetailDialog";
-import { FitGlassCard, FitIcon, FitIconTabs, FitMetric, FitPageHeader, FitPill, FitPrimaryButton, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
+import FitProgramDetailDialog from "./FitProgramDetailDialog";
+import FitMultisportPlanBuilder from "./FitMultisportPlanBuilder";
+import { FitGhostButton, FitGlassCard, FitIcon, FitIconTabs, FitMetric, FitPageHeader, FitPill, FitPrimaryButton, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 import {
   FIT_GOALS,
   FIT_PRACTICES,
@@ -35,12 +37,13 @@ import {
   getFitProgramCatalog,
   type FitPracticeId,
   type FitProgramGoal,
+  type FitProgramDefinition,
 } from "../../fit/fitProgramCatalog";
 
 type Props = { go: (route: any, params?: any) => void };
 type Tab = "body" | "library" | "favorites" | "programs";
 type FilterTab = "zone" | "equipment" | "level";
-type ProgramView = "mine" | "discover" | "create";
+type ProgramView = "mine" | "discover" | "create" | "hybrid";
 const EXERCISES_PER_PAGE = 8;
 const FAVORITES_KEY = "mss-fit-perf-favorite-exercises-v1";
 // AWENA COACH detail dialog and premium motions are wired from this FIT PERF library shell.
@@ -152,6 +155,7 @@ export default function FitPerfPlan({ go }: Props) {
   const [customWeeks, setCustomWeeks] = React.useState(6);
   const [customDuration, setCustomDuration] = React.useState(45);
   const [customDays, setCustomDays] = React.useState<number[]>([0, 2, 4]);
+  const [selectedProgramDetail, setSelectedProgramDetail] = React.useState<FitProgramDefinition | null>(null);
   const [search, setSearch] = React.useState("");
   const [muscle, setMuscle] = React.useState<FitMuscle | "Tous">("Tous");
   const [equipment, setEquipment] = React.useState<FitEquipment | "Tous">("Tous");
@@ -448,11 +452,12 @@ export default function FitPerfPlan({ go }: Props) {
           <button type="button" onClick={() => setProgramView("discover")} style={{ width: 38, height: 38, borderRadius: 11, border: `1px solid ${accent}55`, background: `${accent}10`, color: accent }}><FitIcon name="chevron" size={18}/></button>
         </FitGlassCard>}
 
-        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: 5, borderRadius: 16, border: "1px solid rgba(255,255,255,.06)", background: "rgba(3,5,10,.52)" }}>
+        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, padding: 5, borderRadius: 16, border: "1px solid rgba(255,255,255,.06)", background: "rgba(3,5,10,.52)" }}>
           {([
             ["mine", t("MON PLAN", "MY PLAN", "MI PLAN"), "program"],
             ["discover", t("DÉCOUVRIR", "DISCOVER", "DESCUBRIR"), "search"],
-            ["create", t("CRÉER", "CREATE", "CREAR"), "plus"],
+            ["create", t("FIT", "FIT", "FIT"), "plus"],
+            ["hybrid", t("MULTISPORT", "MULTISPORT", "MULTIDEPORTE"), "program"],
           ] as [ProgramView, string, any][]).map(([id, label, icon]) => { const selected = programView === id; return <button key={id} type="button" onClick={() => setProgramView(id)} style={{ minHeight: 43, borderRadius: 12, border: `1px solid ${selected ? accent + "66" : "transparent"}`, background: selected ? `${accent}16` : "transparent", color: selected ? accent : "rgba(255,255,255,.54)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 7.5, fontWeight: 1000 }}><FitIcon name={icon} size={17}/><span>{label}</span></button>; })}
         </div>
 
@@ -515,7 +520,7 @@ export default function FitPerfPlan({ go }: Props) {
                 {isActive ? <FitPill accent={program.accent}>{t("ACTIF", "ACTIVE", "ACTIVO")}</FitPill> : null}
               </div>
               <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}><FitPill>{program.durationWeeks} sem.</FitPill><FitPill>{program.sessionsPerWeek}× / sem.</FitPill><FitPill>{program.typicalDurationMin} min</FitPill>{program.goals.slice(0,2).map((goal) => <FitPill key={goal} accent={program.accent}>{FIT_GOALS.find((item) => item.id === goal)?.label || goal}</FitPill>)}</div>
-              <button type="button" onClick={() => activateProgram(program.id)} style={{ width: "100%", minHeight: 40, marginTop: 9, borderRadius: 11, border: `1px solid ${program.accent}60`, background: isActive ? `${program.accent}24` : `${program.accent}12`, color: program.accent, fontSize: 7.9, fontWeight: 1000 }}>{isActive ? t("PROGRAMME ACTIF", "ACTIVE PROGRAM", "PROGRAMA ACTIVO") : t("CHOISIR CE PROGRAMME", "CHOOSE THIS PROGRAM", "ELEGIR ESTE PROGRAMA")}</button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 9 }}><button type="button" onClick={() => setSelectedProgramDetail(program)} style={{ minHeight: 40, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: "rgba(255,255,255,.78)", fontSize: 7.7, fontWeight: 1000 }}>{t("VOIR LE PROGRAMME", "VIEW PROGRAM", "VER PROGRAMA")}</button><button type="button" onClick={() => activateProgram(program.id)} style={{ minHeight: 40, borderRadius: 11, border: `1px solid ${program.accent}60`, background: isActive ? `${program.accent}24` : `${program.accent}12`, color: program.accent, fontSize: 7.7, fontWeight: 1000 }}>{isActive ? t("ACTIF", "ACTIVE", "ACTIVO") : t("CHOISIR", "CHOOSE", "ELEGIR")}</button></div>
             </FitGlassCard>; })}
             {!visiblePrograms.length ? <div style={{ padding: "24px 12px", textAlign: "center", color: textSoft, borderRadius: 16, border: "1px dashed rgba(255,255,255,.11)" }}>{t("Aucun programme avec ces filtres.", "No program matches these filters.", "Ningún programa coincide con estos filtros.")}</div> : null}
           </div>
@@ -541,6 +546,8 @@ export default function FitPerfPlan({ go }: Props) {
             <FitPrimaryButton onClick={createMyProgram} disabled={!customTitle.trim() || !customDays.length} accent={FIT_PRACTICES.find((item) => item.id === customPractice)?.accent || accent} style={{ width: "100%", minHeight: 50, marginTop: 10 }}>{t("CRÉER ET ACTIVER", "CREATE & ACTIVATE", "CREAR Y ACTIVAR")}</FitPrimaryButton>
           </FitGlassCard>
         </> : null}
+
+        {programView === "hybrid" ? <FitMultisportPlanBuilder go={go} lang={lang} accent={accent} textSoft={textSoft} /> : null}
       </> : null}
 
       {detail ? <FitExerciseDetailDialog
@@ -550,6 +557,15 @@ export default function FitPerfPlan({ go }: Props) {
         isFavorite={favorites.includes(detail.id)}
         onToggleFavorite={() => toggleFavorite(detail.id)}
         detailRecord={detailRecord || null}
+      /> : null}
+      {selectedProgramDetail ? <FitProgramDetailDialog
+        program={selectedProgramDetail}
+        active={activeProgram?.id === selectedProgramDetail.id}
+        onClose={() => setSelectedProgramDetail(null)}
+        onActivate={() => { activateProgram(selectedProgramDetail.id); setSelectedProgramDetail(null); }}
+        onOpenWeek={() => { setSelectedProgramDetail(null); go("agenda", { agendaView: "week" }); }}
+        t={t}
+        textSoft={textSoft}
       /> : null}
     </FitShell>
   </div>;

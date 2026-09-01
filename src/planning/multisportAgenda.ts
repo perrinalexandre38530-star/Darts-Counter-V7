@@ -1,10 +1,11 @@
 import { buildRunningPlanWeeks, loadRunningPlan } from "../activity/runningTraining";
 import { loadRunningRaces } from "../activity/runningRaceCalendar";
 import { FIT_PROGRAMS, getActiveFitProgramDefinition } from "../fit/fitProgramCatalog";
+import { getActiveMultisportPlanDefinition } from "./multisportPlan";
 
 export type MultisportEventSport = "fit" | "running" | "darts" | "foot" | "babyfoot" | "pingpong" | "petanque" | "molkky" | "dicegame" | "esports" | "other";
 export type MultisportEventType = "workout" | "training" | "match" | "game" | "outing" | "race" | "tournament" | "recovery" | "club" | "other";
-export type MultisportEventSource = "manual" | "fit_program" | "running_program" | "running_race" | "friend" | "club" | "team" | "system";
+export type MultisportEventSource = "manual" | "fit_program" | "multisport_program" | "running_program" | "running_race" | "friend" | "club" | "team" | "system";
 export type MultisportEventStatus = "planned" | "pending" | "confirmed" | "declined" | "completed" | "cancelled";
 
 export type MultisportAgendaEvent = {
@@ -127,6 +128,26 @@ function virtualFitProgramEvents(): MultisportAgendaEvent[] {
   return events;
 }
 
+function virtualMultisportPlanEvents(): MultisportAgendaEvent[] {
+  const state = getActiveMultisportPlanDefinition();
+  if (!state) return [];
+  const { active, plan } = state;
+  const events: MultisportAgendaEvent[] = [];
+  for (let week = 0; week < plan.durationWeeks; week += 1) {
+    for (let slotIndex = 0; slotIndex < plan.slots.length; slotIndex += 1) {
+      const slot = plan.slots[slotIndex];
+      const startAt = active.startedAt + (week * 7 + slot.dayOffset) * DAY + slot.startHour * 60 * 60 * 1000 + slot.startMinute * 60 * 1000;
+      const meta = multisportSportMeta(slot.sport as MultisportEventSport);
+      events.push({
+        id: `multiplan:${plan.id}:w${week + 1}:${slot.id}`, title: slot.title, sport: slot.sport as MultisportEventSport, discipline: slot.discipline,
+        type: slot.eventType as MultisportEventType, source: "multisport_program", sourceId: plan.id, startAt, durationMin: slot.durationMin,
+        notes: slot.note || plan.subtitle, status: "planned", readonly: true, accent: meta.accent, route: slot.route || "games", routeParams: slot.routeParams,
+      });
+    }
+  }
+  return events;
+}
+
 function virtualRunningEvents(): MultisportAgendaEvent[] {
   const plan = loadRunningPlan();
   if (!plan) return [];
@@ -147,7 +168,7 @@ function virtualRunningRaceEvents(): MultisportAgendaEvent[] {
 
 export function collectMultisportAgendaEvents(): MultisportAgendaEvent[] {
   const map = new Map<string, MultisportAgendaEvent>();
-  [...virtualFitProgramEvents(), ...virtualRunningEvents(), ...virtualRunningRaceEvents(), ...loadStoredMultisportEvents()].forEach((event) => map.set(event.id, event));
+  [...virtualFitProgramEvents(), ...virtualMultisportPlanEvents(), ...virtualRunningEvents(), ...virtualRunningRaceEvents(), ...loadStoredMultisportEvents()].forEach((event) => map.set(event.id, event));
   return [...map.values()].filter((event) => event.status !== "declined" && event.status !== "cancelled").sort((a, b) => a.startAt - b.startAt);
 }
 

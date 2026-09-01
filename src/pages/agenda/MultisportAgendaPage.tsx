@@ -189,7 +189,7 @@ function EventCard({ event, locale, onOpen, onDelete }: { event: MultisportAgend
   </div>;
 }
 
-function sourceLabel(source: MultisportAgendaEvent["source"]) { if (source === "fit_program") return "Programme FIT PERF"; if (source === "running_program") return "Programme RUNNING PERF"; if (source === "running_race") return "Course"; if (source === "club") return "Club"; if (source === "team") return "Équipe"; if (source === "friend") return "Invitation"; return "Personnel"; }
+function sourceLabel(source: MultisportAgendaEvent["source"]) { if (source === "fit_program") return "Programme FIT PERF"; if (source === "multisport_program") return "Plan MULTISPORTS"; if (source === "running_program") return "Programme RUNNING PERF"; if (source === "running_race") return "Course"; if (source === "club") return "Club"; if (source === "team") return "Équipe"; if (source === "friend") return "Invitation"; return "Personnel"; }
 function EmptyState({ text }: { text: string }) { return <div style={{ borderRadius: 18, border: "1px dashed rgba(255,255,255,.12)", background: "rgba(255,255,255,.02)", padding: "28px 18px", textAlign: "center", color: "rgba(255,255,255,.5)", fontSize: 10, lineHeight: 1.5 }}>{text}</div>; }
 
 function MonthGrid({ cursor, events, locale, onSelectDay }: { cursor: number; events: MultisportAgendaEvent[]; locale: string; onSelectDay: (day: number) => void }) {

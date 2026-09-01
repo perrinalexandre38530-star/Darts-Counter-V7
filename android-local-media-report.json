@@ -1,0 +1,2427 @@
+{
+  "generatedAt": "2026-09-01T14:08:22.617Z",
+  "ffmpeg": true,
+  "before": 119244963,
+  "after": 106391067,
+  "saved": 12853896,
+  "optimizedCount": 345,
+  "skippedCount": 0,
+  "files": [
+    {
+      "file": "dist/assets/killer_awena_rules_en-Bqv1Zz0a.mp4",
+      "before": 4351823,
+      "after": 4030492,
+      "saved": 321331,
+      "note": "video"
+    },
+    {
+      "file": "dist/assets/killer_awena_rules-CLfFTxtq.mp4",
+      "before": 4737701,
+      "after": 4433385,
+      "saved": 304316,
+      "note": "video"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D12.webp",
+      "before": 492180,
+      "after": 242490,
+      "saved": 249690,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/x01_awena_rules-COpPgx2C.mp4",
+      "before": 2223722,
+      "after": 2060741,
+      "saved": 162981,
+      "note": "video"
+    },
+    {
+      "file": "dist/assets/foot-pitch-BZzBX8xK.webp",
+      "before": 273538,
+      "after": 158620,
+      "saved": 114918,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/30.webp",
+      "before": 245048,
+      "after": 131980,
+      "saved": 113068,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/77.webp",
+      "before": 221844,
+      "after": 119378,
+      "saved": 102466,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/73.webp",
+      "before": 219480,
+      "after": 119638,
+      "saved": 99842,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/78.webp",
+      "before": 214916,
+      "after": 116418,
+      "saved": 98498,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/76.webp",
+      "before": 216288,
+      "after": 118018,
+      "saved": 98270,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/75.webp",
+      "before": 212730,
+      "after": 115542,
+      "saved": 97188,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/loterie-best-card-bg-classic-4P_6ptFV.webp",
+      "before": 220372,
+      "after": 123794,
+      "saved": 96578,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/79.webp",
+      "before": 204328,
+      "after": 112000,
+      "saved": 92328,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/72.webp",
+      "before": 203582,
+      "after": 111660,
+      "saved": 91922,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/74.webp",
+      "before": 195534,
+      "after": 107400,
+      "saved": 88134,
+      "note": "webp"
+    },
+    {
+      "file": "dist/img/ticker-online-2.jpg",
+      "before": 120427,
+      "after": 33092,
+      "saved": 87335,
+      "note": "jpg"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D8.webp",
+      "before": 171422,
+      "after": 84442,
+      "saved": 86980,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/11.webp",
+      "before": 184490,
+      "after": 97650,
+      "saved": 86840,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/14.webp",
+      "before": 185208,
+      "after": 99524,
+      "saved": 85684,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/19.webp",
+      "before": 184600,
+      "after": 99018,
+      "saved": 85582,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/12.webp",
+      "before": 186074,
+      "after": 100896,
+      "saved": 85178,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/13.webp",
+      "before": 190756,
+      "after": 105928,
+      "saved": 84828,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/15.webp",
+      "before": 191986,
+      "after": 107282,
+      "saved": 84704,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/16.webp",
+      "before": 184882,
+      "after": 100234,
+      "saved": 84648,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D20.webp",
+      "before": 172090,
+      "after": 87530,
+      "saved": 84560,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/21.webp",
+      "before": 168180,
+      "after": 83808,
+      "saved": 84372,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/18.webp",
+      "before": 183512,
+      "after": 99166,
+      "saved": 84346,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D10.webp",
+      "before": 170574,
+      "after": 86494,
+      "saved": 84080,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D7.webp",
+      "before": 165078,
+      "after": 82050,
+      "saved": 83028,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/10.webp",
+      "before": 188006,
+      "after": 105348,
+      "saved": 82658,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D2.webp",
+      "before": 165706,
+      "after": 83178,
+      "saved": 82528,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D19.webp",
+      "before": 167840,
+      "after": 85634,
+      "saved": 82206,
+      "note": "webp"
+    },
+    {
+      "file": "dist/img/ticker-tip-advice-2.jpg",
+      "before": 158742,
+      "after": 77123,
+      "saved": 81619,
+      "note": "jpg"
+    },
+    {
+      "file": "dist/img/ticker-tip-news.jpg",
+      "before": 145245,
+      "after": 63660,
+      "saved": 81585,
+      "note": "jpg"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D5.webp",
+      "before": 163334,
+      "after": 81940,
+      "saved": 81394,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D6.webp",
+      "before": 163750,
+      "after": 82432,
+      "saved": 81318,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D3.webp",
+      "before": 163548,
+      "after": 82302,
+      "saved": 81246,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D9.webp",
+      "before": 165206,
+      "after": 84116,
+      "saved": 81090,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/17.webp",
+      "before": 189312,
+      "after": 108438,
+      "saved": 80874,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/DB.webp",
+      "before": 161828,
+      "after": 81660,
+      "saved": 80168,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/20.webp",
+      "before": 169186,
+      "after": 89524,
+      "saved": 79662,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D4.webp",
+      "before": 157108,
+      "after": 77508,
+      "saved": 79600,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D11.webp",
+      "before": 160648,
+      "after": 81258,
+      "saved": 79390,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D1.webp",
+      "before": 152356,
+      "after": 74024,
+      "saved": 78332,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/2.webp",
+      "before": 164704,
+      "after": 87882,
+      "saved": 76822,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/miss.webp",
+      "before": 155806,
+      "after": 79334,
+      "saved": 76472,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/9.webp",
+      "before": 156558,
+      "after": 80478,
+      "saved": 76080,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/5.webp",
+      "before": 156652,
+      "after": 81666,
+      "saved": 74986,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/3.webp",
+      "before": 156872,
+      "after": 82616,
+      "saved": 74256,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/25.webp",
+      "before": 153648,
+      "after": 79580,
+      "saved": 74068,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/6.webp",
+      "before": 155304,
+      "after": 81496,
+      "saved": 73808,
+      "note": "webp"
+    },
+    {
+      "file": "dist/img/ticker-leaderboard.jpg",
+      "before": 131672,
+      "after": 58383,
+      "saved": 73289,
+      "note": "jpg"
+    },
+    {
+      "file": "dist/img/ticker-tip-advice.jpg",
+      "before": 135689,
+      "after": 62962,
+      "saved": 72727,
+      "note": "jpg"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/8.webp",
+      "before": 158076,
+      "after": 85764,
+      "saved": 72312,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/53.webp",
+      "before": 147552,
+      "after": 75274,
+      "saved": 72278,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/7.webp",
+      "before": 147384,
+      "after": 75374,
+      "saved": 72010,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/1.webp",
+      "before": 144368,
+      "after": 72450,
+      "saved": 71918,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/80.webp",
+      "before": 151438,
+      "after": 80098,
+      "saved": 71340,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/96.webp",
+      "before": 146598,
+      "after": 75348,
+      "saved": 71250,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/22.webp",
+      "before": 148432,
+      "after": 77284,
+      "saved": 71148,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/51.webp",
+      "before": 145634,
+      "after": 74512,
+      "saved": 71122,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/83.webp",
+      "before": 145908,
+      "after": 75042,
+      "saved": 70866,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/4.webp",
+      "before": 148948,
+      "after": 78218,
+      "saved": 70730,
+      "note": "webp"
+    },
+    {
+      "file": "dist/img/ticker-global.jpg",
+      "before": 119994,
+      "after": 49717,
+      "saved": 70277,
+      "note": "jpg"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/95.webp",
+      "before": 145044,
+      "after": 74920,
+      "saved": 70124,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/29.webp",
+      "before": 143068,
+      "after": 72976,
+      "saved": 70092,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/36.webp",
+      "before": 144128,
+      "after": 74112,
+      "saved": 70016,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/23.webp",
+      "before": 148306,
+      "after": 78296,
+      "saved": 70010,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/59.webp",
+      "before": 145048,
+      "after": 75108,
+      "saved": 69940,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/27.webp",
+      "before": 143386,
+      "after": 73512,
+      "saved": 69874,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/90.webp",
+      "before": 144360,
+      "after": 74518,
+      "saved": 69842,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/31.webp",
+      "before": 141106,
+      "after": 71312,
+      "saved": 69794,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/81.webp",
+      "before": 136608,
+      "after": 66954,
+      "saved": 69654,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/56.webp",
+      "before": 141148,
+      "after": 71586,
+      "saved": 69562,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/50.webp",
+      "before": 143486,
+      "after": 73930,
+      "saved": 69556,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/28.webp",
+      "before": 147018,
+      "after": 77464,
+      "saved": 69554,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/63.webp",
+      "before": 144744,
+      "after": 75374,
+      "saved": 69370,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/54.webp",
+      "before": 143976,
+      "after": 74614,
+      "saved": 69362,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/39.webp",
+      "before": 143626,
+      "after": 74306,
+      "saved": 69320,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/57.webp",
+      "before": 141522,
+      "after": 72240,
+      "saved": 69282,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/26.webp",
+      "before": 146682,
+      "after": 77480,
+      "saved": 69202,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/61.webp",
+      "before": 137558,
+      "after": 68462,
+      "saved": 69096,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/24.webp",
+      "before": 141330,
+      "after": 72284,
+      "saved": 69046,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/52.webp",
+      "before": 142430,
+      "after": 73444,
+      "saved": 68986,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/94.webp",
+      "before": 138084,
+      "after": 69104,
+      "saved": 68980,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/58.webp",
+      "before": 143316,
+      "after": 74346,
+      "saved": 68970,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/43.webp",
+      "before": 144908,
+      "after": 76164,
+      "saved": 68744,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/98.webp",
+      "before": 139094,
+      "after": 70814,
+      "saved": 68280,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/87.webp",
+      "before": 134658,
+      "after": 66426,
+      "saved": 68232,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/38.webp",
+      "before": 139814,
+      "after": 71626,
+      "saved": 68188,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/91.webp",
+      "before": 141642,
+      "after": 73588,
+      "saved": 68054,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/88.webp",
+      "before": 140372,
+      "after": 72418,
+      "saved": 67954,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/109.webp",
+      "before": 143518,
+      "after": 75622,
+      "saved": 67896,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/106.webp",
+      "before": 143208,
+      "after": 75322,
+      "saved": 67886,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/97.webp",
+      "before": 139538,
+      "after": 71742,
+      "saved": 67796,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/48.webp",
+      "before": 143382,
+      "after": 75588,
+      "saved": 67794,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/120.webp",
+      "before": 151478,
+      "after": 83796,
+      "saved": 67682,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/33.webp",
+      "before": 142654,
+      "after": 75022,
+      "saved": 67632,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/49.webp",
+      "before": 141588,
+      "after": 74038,
+      "saved": 67550,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/x01_awena_rules_poster-B0DwGRF8.webp",
+      "before": 145942,
+      "after": 78430,
+      "saved": 67512,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/103.webp",
+      "before": 142112,
+      "after": 74696,
+      "saved": 67416,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/100.webp",
+      "before": 144424,
+      "after": 77018,
+      "saved": 67406,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/92.webp",
+      "before": 138004,
+      "after": 70604,
+      "saved": 67400,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/118.webp",
+      "before": 144220,
+      "after": 76838,
+      "saved": 67382,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/46.webp",
+      "before": 142288,
+      "after": 74940,
+      "saved": 67348,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/89.webp",
+      "before": 136654,
+      "after": 69334,
+      "saved": 67320,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/34.webp",
+      "before": 143260,
+      "after": 75944,
+      "saved": 67316,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/62.webp",
+      "before": 139204,
+      "after": 71910,
+      "saved": 67294,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/99.webp",
+      "before": 138038,
+      "after": 70776,
+      "saved": 67262,
+      "note": "webp"
+    },
+    {
+      "file": "dist/awena/awena-presenter.webp",
+      "before": 170142,
+      "after": 102960,
+      "saved": 67182,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/64.webp",
+      "before": 138102,
+      "after": 70928,
+      "saved": 67174,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/55.webp",
+      "before": 139638,
+      "after": 72546,
+      "saved": 67092,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/66.webp",
+      "before": 139088,
+      "after": 72048,
+      "saved": 67040,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/32.webp",
+      "before": 138640,
+      "after": 71606,
+      "saved": 67034,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/111.webp",
+      "before": 141846,
+      "after": 74846,
+      "saved": 67000,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/82.webp",
+      "before": 137202,
+      "after": 70216,
+      "saved": 66986,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/47.webp",
+      "before": 140352,
+      "after": 73418,
+      "saved": 66934,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/107.webp",
+      "before": 139564,
+      "after": 72840,
+      "saved": 66724,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/69.webp",
+      "before": 138968,
+      "after": 72418,
+      "saved": 66550,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/116.webp",
+      "before": 142564,
+      "after": 76038,
+      "saved": 66526,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/114.webp",
+      "before": 138452,
+      "after": 72298,
+      "saved": 66154,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/105.webp",
+      "before": 140746,
+      "after": 74672,
+      "saved": 66074,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/special-cards/hors-lot-fr.webp",
+      "before": 251314,
+      "after": 185246,
+      "saved": 66068,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/102.webp",
+      "before": 141192,
+      "after": 75230,
+      "saved": 65962,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/85.webp",
+      "before": 135650,
+      "after": 69890,
+      "saved": 65760,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/108.webp",
+      "before": 139870,
+      "after": 74208,
+      "saved": 65662,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/104.webp",
+      "before": 138466,
+      "after": 73026,
+      "saved": 65440,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/68.webp",
+      "before": 136914,
+      "after": 71586,
+      "saved": 65328,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/37.webp",
+      "before": 132336,
+      "after": 67106,
+      "saved": 65230,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/84.webp",
+      "before": 132846,
+      "after": 67698,
+      "saved": 65148,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/86.webp",
+      "before": 135236,
+      "after": 70134,
+      "saved": 65102,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/93.webp",
+      "before": 135692,
+      "after": 70612,
+      "saved": 65080,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/119.webp",
+      "before": 139122,
+      "after": 74180,
+      "saved": 64942,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/113.webp",
+      "before": 135194,
+      "after": 70256,
+      "saved": 64938,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/special-cards/out-of-draw-en.webp",
+      "before": 248014,
+      "after": 183168,
+      "saved": 64846,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/67.webp",
+      "before": 133988,
+      "after": 69484,
+      "saved": 64504,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/42.webp",
+      "before": 138432,
+      "after": 73960,
+      "saved": 64472,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/killer_awena_rules_poster_en-B2OuQoLx.webp",
+      "before": 141768,
+      "after": 77548,
+      "saved": 64220,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/60.webp",
+      "before": 130706,
+      "after": 66490,
+      "saved": 64216,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/35.webp",
+      "before": 132820,
+      "after": 68688,
+      "saved": 64132,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/44.webp",
+      "before": 132062,
+      "after": 68054,
+      "saved": 64008,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/40.webp",
+      "before": 137826,
+      "after": 73844,
+      "saved": 63982,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/45.webp",
+      "before": 134236,
+      "after": 70256,
+      "saved": 63980,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/65.webp",
+      "before": 131478,
+      "after": 67616,
+      "saved": 63862,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/117.webp",
+      "before": 134136,
+      "after": 70390,
+      "saved": 63746,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/101.webp",
+      "before": 135444,
+      "after": 71998,
+      "saved": 63446,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/110.webp",
+      "before": 131890,
+      "after": 68802,
+      "saved": 63088,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/115.webp",
+      "before": 136362,
+      "after": 73376,
+      "saved": 62986,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/killer_awena_rules_poster-x3TjepCH.webp",
+      "before": 139508,
+      "after": 76524,
+      "saved": 62984,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/41.webp",
+      "before": 127578,
+      "after": 64892,
+      "saved": 62686,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/112.webp",
+      "before": 130790,
+      "after": 68688,
+      "saved": 62102,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/70.webp",
+      "before": 134002,
+      "after": 71972,
+      "saved": 62030,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/score-cards/71.webp",
+      "before": 126948,
+      "after": 65562,
+      "saved": 61386,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/euro_3-71t0jhGq.webp",
+      "before": 131254,
+      "after": 73568,
+      "saved": 57686,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/money_9-Cv5_ql0W.webp",
+      "before": 120216,
+      "after": 74938,
+      "saved": 45278,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_foot_3v3-CfulV6VJ.webp",
+      "before": 104912,
+      "after": 59890,
+      "saved": 45022,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/team_esquive-CsWslF-S.webp",
+      "before": 104230,
+      "after": 64246,
+      "saved": 39984,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/money_2--zINnDcl.webp",
+      "before": 115848,
+      "after": 77114,
+      "saved": 38734,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/mission_wildfire-CtPl-IMC.webp",
+      "before": 143526,
+      "after": 105050,
+      "saved": 38476,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/mission_civil_protection-BsDDCUmn.webp",
+      "before": 147244,
+      "after": 109550,
+      "saved": 37694,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/mission_express-BTXQ5bh1.webp",
+      "before": 142034,
+      "after": 105888,
+      "saved": 36146,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/mission_custom-7IWPCBNl.webp",
+      "before": 152810,
+      "after": 116826,
+      "saved": 35984,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/money_7-BYPCIIco.webp",
+      "before": 98460,
+      "after": 63100,
+      "saved": 35360,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/mission_inferno-djTnxytw.webp",
+      "before": 116558,
+      "after": 84446,
+      "saved": 32112,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_tips_3-vbisjgsm.png",
+      "before": 1306142,
+      "after": 1283296,
+      "saved": 22846,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T17.webp",
+      "before": 276522,
+      "after": 257082,
+      "saved": 19440,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T19.webp",
+      "before": 266894,
+      "after": 247498,
+      "saved": 19396,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T18.webp",
+      "before": 301784,
+      "after": 285968,
+      "saved": 15816,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T16.webp",
+      "before": 279126,
+      "after": 263540,
+      "saved": 15586,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T11.webp",
+      "before": 259666,
+      "after": 244684,
+      "saved": 14982,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T20.webp",
+      "before": 275274,
+      "after": 260856,
+      "saved": 14418,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T13.webp",
+      "before": 254160,
+      "after": 240024,
+      "saved": 14136,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T14.webp",
+      "before": 286366,
+      "after": 273988,
+      "saved": 12378,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T6.webp",
+      "before": 267980,
+      "after": 255646,
+      "saved": 12334,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T10.webp",
+      "before": 312682,
+      "after": 300644,
+      "saved": 12038,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/logo-badminton-ClwYhLqv.png",
+      "before": 640493,
+      "after": 628611,
+      "saved": 11882,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T15.webp",
+      "before": 254458,
+      "after": 242656,
+      "saved": 11802,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T12.webp",
+      "before": 256618,
+      "after": 245132,
+      "saved": 11486,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T2.webp",
+      "before": 294390,
+      "after": 284086,
+      "saved": 10304,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T5.webp",
+      "before": 293568,
+      "after": 283574,
+      "saved": 9994,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T4.webp",
+      "before": 298966,
+      "after": 289190,
+      "saved": 9776,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T3.webp",
+      "before": 281160,
+      "after": 271418,
+      "saved": 9742,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_results_1-0r285lD3.png",
+      "before": 854519,
+      "after": 844806,
+      "saved": 9713,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T1.webp",
+      "before": 311356,
+      "after": 301670,
+      "saved": 9686,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D14.webp",
+      "before": 231912,
+      "after": 222346,
+      "saved": 9566,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D18.webp",
+      "before": 240978,
+      "after": 231646,
+      "saved": 9332,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D16.webp",
+      "before": 231934,
+      "after": 223136,
+      "saved": 8798,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D15.webp",
+      "before": 235874,
+      "after": 227732,
+      "saved": 8142,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T7.webp",
+      "before": 256184,
+      "after": 248168,
+      "saved": 8016,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_results_3-BbSFLdlk.png",
+      "before": 800628,
+      "after": 792716,
+      "saved": 7912,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D17.webp",
+      "before": 225766,
+      "after": 217940,
+      "saved": 7826,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T8.webp",
+      "before": 273688,
+      "after": 265864,
+      "saved": 7824,
+      "note": "webp"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/T9.webp",
+      "before": 293586,
+      "after": 286166,
+      "saved": 7420,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/logo-rugby-BrogA36i.png",
+      "before": 491417,
+      "after": 485234,
+      "saved": 6183,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/target_bg--hIexo83.png",
+      "before": 477521,
+      "after": 471810,
+      "saved": 5711,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-basket-B5h5tIfR.png",
+      "before": 555070,
+      "after": 549586,
+      "saved": 5484,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/loterie/express-cards/D13.webp",
+      "before": 232434,
+      "after": 226968,
+      "saved": 5466,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/classic-Dywctfqr.png",
+      "before": 931188,
+      "after": 926614,
+      "saved": 4574,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-padel-BaadEwE7.png",
+      "before": 528266,
+      "after": 523989,
+      "saved": 4277,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-pickleball-C0LQieDm.png",
+      "before": 508790,
+      "after": 504860,
+      "saved": 3930,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-frisbee-CivvVQMG.png",
+      "before": 555816,
+      "after": 552367,
+      "saved": 3449,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-foot-DR9p9Q5h.png",
+      "before": 539519,
+      "after": 536084,
+      "saved": 3435,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_events_2-yVeVUVur.png",
+      "before": 907417,
+      "after": 904199,
+      "saved": 3218,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-cornhole-BcK-E_Rj.png",
+      "before": 628080,
+      "after": 625246,
+      "saved": 2834,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/multisports_scoring_nav-DXkVww7Q.m4a",
+      "before": 1351326,
+      "after": 1348718,
+      "saved": 2608,
+      "note": "audio"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_results_2-DU7UB-CQ.png",
+      "before": 872832,
+      "after": 870259,
+      "saved": 2573,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-archery-iD7PkU9H.png",
+      "before": 583209,
+      "after": 580657,
+      "saved": 2552,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/bleiz-DNePL6c9.png",
+      "before": 860693,
+      "after": 858263,
+      "saved": 2430,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/canadair_07-BKW7VSqv.png",
+      "before": 228664,
+      "after": 226613,
+      "saved": 2051,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/snake-king-Bj1FDh1-.png",
+      "before": 609298,
+      "after": 607294,
+      "saved": 2004,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Assist-CL7v0pNA.png",
+      "before": 236134,
+      "after": 234137,
+      "saved": 1997,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/the-ferret-Dbio2h2z.png",
+      "before": 643681,
+      "after": 642024,
+      "saved": 1657,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_gallery-X1xSswfA.png",
+      "before": 137380,
+      "after": 135834,
+      "saved": 1546,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/dice_yams-DYCaSvQr.png",
+      "before": 136613,
+      "after": 135075,
+      "saved": 1538,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/bully-boy-BeWaqv32.png",
+      "before": 175912,
+      "after": 174386,
+      "saved": 1526,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/LOGO-DDsKUeia.png",
+      "before": 190687,
+      "after": 189227,
+      "saved": 1460,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_tournoi-BxIdRsyz.png",
+      "before": 103925,
+      "after": 102533,
+      "saved": 1392,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/the-asp-Cfbzp-f_.png",
+      "before": 580438,
+      "after": 579076,
+      "saved": 1362,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 28-C4Z7REti.png",
+      "before": 134317,
+      "after": 133051,
+      "saved": 1266,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/nova-Dhiz68Cf.png",
+      "before": 875368,
+      "after": 874127,
+      "saved": 1241,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_bobs_27-BOkavICJ.png",
+      "before": 111609,
+      "after": 110375,
+      "saved": 1234,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Carreau-1XKKehTP.png",
+      "before": 244682,
+      "after": 243494,
+      "saved": 1188,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_prisoner-BvVqdNeK.png",
+      "before": 114286,
+      "after": 113151,
+      "saved": 1135,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/dice_race-B6HyvovP.png",
+      "before": 136314,
+      "after": 135289,
+      "saved": 1025,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_golf_simple-XBMSjXHT.png",
+      "before": 108460,
+      "after": 107448,
+      "saved": 1012,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_pingpong_events_2-DLdPXl3_.png",
+      "before": 106950,
+      "after": 105973,
+      "saved": 977,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_us-D5yBr_kH.png",
+      "before": 121225,
+      "after": 120259,
+      "saved": 966,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_pingpong_news_1-z7JZAY1Y.png",
+      "before": 128641,
+      "after": 127693,
+      "saved": 948,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-chess-DOMeQWEM.png",
+      "before": 521312,
+      "after": 520372,
+      "saved": 940,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/canadair_01-tBzQvGTS.png",
+      "before": 222322,
+      "after": 221512,
+      "saved": 810,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_mon_profil-iF5mydXn.png",
+      "before": 137328,
+      "after": 136534,
+      "saved": 794,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/dartboard_photo-RUoHhMiO.png",
+      "before": 194171,
+      "after": 193386,
+      "saved": 785,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_eu-BQKzfY6c.png",
+      "before": 118314,
+      "after": 117571,
+      "saved": 743,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_classic-CpS5Tw-x.png",
+      "before": 106318,
+      "after": 105601,
+      "saved": 717,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_randomizer-CLs4-d1g.png",
+      "before": 121334,
+      "after": 120635,
+      "saved": 699,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_attrape_moi_en-vpl7C7n8.png",
+      "before": 126697,
+      "after": 126001,
+      "saved": 696,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_follow_the_leader-C-0nrICH.png",
+      "before": 114826,
+      "after": 114162,
+      "saved": 664,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_count_up-J7aETip7.png",
+      "before": 110154,
+      "after": 109493,
+      "saved": 661,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/jackpot-C1StZ3vr.png",
+      "before": 177305,
+      "after": 176658,
+      "saved": 647,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_training_teamquick7-DDLsM5pu.png",
+      "before": 115481,
+      "after": 114835,
+      "saved": 646,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Trou-BObIcyRO.png",
+      "before": 240445,
+      "after": 239808,
+      "saved": 637,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 15-D2bNR-J2.png",
+      "before": 118214,
+      "after": 117585,
+      "saved": 629,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_training_time_attack-B24kz442.png",
+      "before": 106132,
+      "after": 105516,
+      "saved": 616,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_new_2-C-PHO_Ua.png",
+      "before": 748911,
+      "after": 748297,
+      "saved": 614,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_challenge-BKQVtnop.png",
+      "before": 120233,
+      "after": 119628,
+      "saved": 605,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_knockout-BMN6qjZt.png",
+      "before": 123494,
+      "after": 122900,
+      "saved": 594,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/concede-B5tEUHI8.png",
+      "before": 208216,
+      "after": 207623,
+      "saved": 593,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 31-DhC5ggnf.png",
+      "before": 113959,
+      "after": 113367,
+      "saved": 592,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_ligue-CM6tvyZi.png",
+      "before": 103452,
+      "after": 102860,
+      "saved": 592,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 7-RmzoIV-8.png",
+      "before": 119623,
+      "after": 119034,
+      "saved": 589,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_rugby-BZTYNWth.png",
+      "before": 119650,
+      "after": 119064,
+      "saved": 586,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/team_blue-Ds6euCsa.png",
+      "before": 198214,
+      "after": 197633,
+      "saved": 581,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_rpg_darts-CnfCL5cx.png",
+      "before": 132374,
+      "after": 131825,
+      "saved": 549,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_tic_tac_toe-OTVTT8_X.png",
+      "before": 121955,
+      "after": 121411,
+      "saved": 544,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Reprise-DNw1dVgo.png",
+      "before": 225377,
+      "after": 224835,
+      "saved": 542,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_golf_birdie-DofCX2Xi.png",
+      "before": 111196,
+      "after": 110666,
+      "saved": 530,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_battleship-0304sSqN.png",
+      "before": 122285,
+      "after": 121759,
+      "saved": 526,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_training_ghost-BULJAxZG.png",
+      "before": 109865,
+      "after": 109354,
+      "saved": 511,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_training_speed5-D24xXecA.png",
+      "before": 102279,
+      "after": 101769,
+      "saved": 510,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_training-BxXmisrZ.png",
+      "before": 115939,
+      "after": 115435,
+      "saved": 504,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/hollywood-ra8tce45.png",
+      "before": 611971,
+      "after": 611474,
+      "saved": 497,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/darts/winmau-cypher-1024.png",
+      "before": 125320,
+      "after": 124833,
+      "saved": 487,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_loterie-BcASTVo_.png",
+      "before": 133035,
+      "after": 132552,
+      "saved": 483,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_ocean_control-iVM_siwI.png",
+      "before": 118297,
+      "after": 117815,
+      "saved": 482,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/FR-NAQ-9WiZc_MR.png",
+      "before": 168820,
+      "after": 168340,
+      "saved": 480,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_fun-Du3dVF4u.png",
+      "before": 112423,
+      "after": 111959,
+      "saved": 464,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_molkky_joueurs-CBVkxmwZ.png",
+      "before": 108815,
+      "after": 108351,
+      "saved": 464,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_ua-DI8sbTmm.png",
+      "before": 126070,
+      "after": 125613,
+      "saved": 457,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_es-j11Q7kAA.png",
+      "before": 113959,
+      "after": 113510,
+      "saved": 449,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_fun_gages-HpbD5qx3.png",
+      "before": 124760,
+      "after": 124312,
+      "saved": 448,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_mines_traps-CIYzF5fz.png",
+      "before": 125183,
+      "after": 124736,
+      "saved": 447,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/canadair_02-nle237Yc.png",
+      "before": 126155,
+      "after": 125710,
+      "saved": 445,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_fr-BYH-0otj.png",
+      "before": 109364,
+      "after": 108924,
+      "saved": 440,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_is-CfgofiTN.png",
+      "before": 119714,
+      "after": 119276,
+      "saved": 438,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_golf_bogey-DiTfhDu2.png",
+      "before": 101700,
+      "after": 101283,
+      "saved": 417,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_capital-CK7I7wdJ.png",
+      "before": 129703,
+      "after": 129292,
+      "saved": 411,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_un-Cr4qpzxZ.png",
+      "before": 112375,
+      "after": 111967,
+      "saved": 408,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/darts/target-975-ultra-1024.png",
+      "before": 98491,
+      "after": 98085,
+      "saved": 406,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_molkky_games-BFWmZYrO.png",
+      "before": 99228,
+      "after": 98831,
+      "saved": 397,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/darts/winmau-aspria-1024.png",
+      "before": 103542,
+      "after": 103155,
+      "saved": 387,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ice-man-uBcR_evR.png",
+      "before": 590103,
+      "after": 589716,
+      "saved": 387,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/protected1-C49p2LvS.png",
+      "before": 156024,
+      "after": 155642,
+      "saved": 382,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_fun_handicap-DJXsHdrE.png",
+      "before": 110021,
+      "after": 109659,
+      "saved": 362,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/dice_farkle-jDgkfGf5.png",
+      "before": 117276,
+      "after": 116931,
+      "saved": 345,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_pingpong_news_2-ClCbksq2.png",
+      "before": 99926,
+      "after": 99593,
+      "saved": 333,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_darts_racer-Cne1B7oq.png",
+      "before": 114068,
+      "after": 113744,
+      "saved": 324,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_fi-zQHNkahW.png",
+      "before": 131358,
+      "after": 131039,
+      "saved": 319,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_defis_endurance-BkFdLm60.png",
+      "before": 112684,
+      "after": 112367,
+      "saved": 317,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_hr-B2qrhWpp.png",
+      "before": 123034,
+      "after": 122718,
+      "saved": 316,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_cn-DPFlCNXm.png",
+      "before": 129765,
+      "after": 129460,
+      "saved": 305,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Pointage-CCl6_B-O.png",
+      "before": 229891,
+      "after": 229599,
+      "saved": 292,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_bowling-4y2Fa_xn.png",
+      "before": 136906,
+      "after": 136621,
+      "saved": 285,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_molkky_custom-DBAT9Oka.png",
+      "before": 99548,
+      "after": 99278,
+      "saved": 270,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_golf_eagle-c3qFLKYC.png",
+      "before": 113007,
+      "after": 112738,
+      "saved": 269,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_defis_clutch3-BaxnoRkE.png",
+      "before": 129022,
+      "after": 128759,
+      "saved": 263,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 9-L81IeoIS.png",
+      "before": 119179,
+      "after": 118918,
+      "saved": 261,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_jp-CkV3unI7.png",
+      "before": 124258,
+      "after": 124000,
+      "saved": 258,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_sa-DYDVd1Ef.png",
+      "before": 127120,
+      "after": 126868,
+      "saved": 252,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_br-iHlxCn5v.png",
+      "before": 130643,
+      "after": 130401,
+      "saved": 242,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/loterie-best-card-bg-double-DCSb6kt7.png",
+      "before": 443494,
+      "after": 443257,
+      "saved": 237,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_golf-D36El8Pg.png",
+      "before": 105818,
+      "after": 105581,
+      "saved": 237,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_ru-9RlXRSZP.png",
+      "before": 125053,
+      "after": 124816,
+      "saved": 237,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_golf_miss-DY9WsYUV.png",
+      "before": 98708,
+      "after": 98473,
+      "saved": 235,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/canadair_05-CquE1oTe.png",
+      "before": 118352,
+      "after": 118120,
+      "saved": 232,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_mx-CvUF63FP.png",
+      "before": 123372,
+      "after": 123140,
+      "saved": 232,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_chaos_mode-DHm17ppH.png",
+      "before": 125612,
+      "after": 125387,
+      "saved": 225,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/dice_duel-C0Og_PsZ.png",
+      "before": 134089,
+      "after": 133868,
+      "saved": 221,
+      "note": "png"
+    },
+    {
+      "file": "dist/images/darts/harrows-chizzy-1024.png",
+      "before": 127894,
+      "after": 127678,
+      "saved": 216,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 16-CgE5HqQV.png",
+      "before": 113984,
+      "after": 113771,
+      "saved": 213,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_training_doubleio-CwAPZbSc.png",
+      "before": 111426,
+      "after": 111217,
+      "saved": 209,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_teams-BBozideE.png",
+      "before": 120661,
+      "after": 120453,
+      "saved": 208,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_halve_it-BFe8QECA.png",
+      "before": 122227,
+      "after": 122036,
+      "saved": 191,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 6-BuqbZq-l.png",
+      "before": 125971,
+      "after": 125786,
+      "saved": 185,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_infection-qzj3Tiws.png",
+      "before": 128818,
+      "after": 128638,
+      "saved": 180,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_training_challenge2v1-CdGMGfb0.png",
+      "before": 99715,
+      "after": 99539,
+      "saved": 176,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/team_pink-CPqtxB9n.png",
+      "before": 208052,
+      "after": 207881,
+      "saved": 171,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_in-BUJTJYV2.png",
+      "before": 106020,
+      "after": 105868,
+      "saved": 152,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_training_challenges-DeLomXg1.png",
+      "before": 114167,
+      "after": 114019,
+      "saved": 148,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_tour_horloge-C-xsaJk2.png",
+      "before": 110577,
+      "after": 110431,
+      "saved": 146,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_bingo-DumKH7_5.png",
+      "before": 137038,
+      "after": 136908,
+      "saved": 130,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/team_green-CSIHegPr.png",
+      "before": 203924,
+      "after": 203811,
+      "saved": 113,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_be-C6WMt9cV.png",
+      "before": 130512,
+      "after": 130399,
+      "saved": 113,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_asia-B0RQjTrM.png",
+      "before": 124422,
+      "after": 124312,
+      "saved": 110,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_na-BC0-Gtr5.png",
+      "before": 116030,
+      "after": 115921,
+      "saved": 109,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_babyfoot_fun_sets_bo3-CGoqR43v.png",
+      "before": 103585,
+      "after": 103480,
+      "saved": 105,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_ar-DkfXMZ58.png",
+      "before": 130399,
+      "after": 130303,
+      "saved": 96,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/the-giant-BFBJHB5S.png",
+      "before": 127762,
+      "after": 127674,
+      "saved": 88,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_enculette-DLnZS0cU.png",
+      "before": 109989,
+      "after": 109904,
+      "saved": 85,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/canadair_04-CqgUPbmN.png",
+      "before": 124446,
+      "after": 124363,
+      "saved": 83,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/fire1-BGhW4I5A.png",
+      "before": 146713,
+      "after": 146635,
+      "saved": 78,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_attrape_moi-BTIuUrwj.png",
+      "before": 125944,
+      "after": 125873,
+      "saved": 71,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_gr-CcYmo_AV.png",
+      "before": 125597,
+      "after": 125528,
+      "saved": 69,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_af-CXQpS3xM.png",
+      "before": 118960,
+      "after": 118892,
+      "saved": 68,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_pingpong_tips_1-CMTFqBXu.png",
+      "before": 101335,
+      "after": 101274,
+      "saved": 61,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_batard_players-Bu5dKDIw.png",
+      "before": 135368,
+      "after": 135318,
+      "saved": 50,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_sam-dD7nYViT.png",
+      "before": 105632,
+      "after": 105583,
+      "saved": 49,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_territories_it-BQTBykLj.png",
+      "before": 118788,
+      "after": 118745,
+      "saved": 43,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Tir-D6OrRoBK.png",
+      "before": 207907,
+      "after": 207868,
+      "saved": 39,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_menu_games_en-BtkZVw00.png",
+      "before": 137904,
+      "after": 137875,
+      "saved": 29,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/FR-ARA-BYhA_D98.png",
+      "before": 107338,
+      "after": 107310,
+      "saved": 28,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 22-CUsKWZE-.png",
+      "before": 113561,
+      "after": 113535,
+      "saved": 26,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_battle_royale-CZAXjGwC.png",
+      "before": 109637,
+      "after": 109614,
+      "saved": 23,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_five_lives_2-D3o5DIR9.png",
+      "before": 107425,
+      "after": 107415,
+      "saved": 10,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/Parcours 2-Yxw6Ya4p.png",
+      "before": 131694,
+      "after": 131687,
+      "saved": 7,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_sound_darts-BbQZjmO6.png",
+      "before": 123277,
+      "after": 123272,
+      "saved": 5,
+      "note": "png"
+    }
+  ],
+  "skipped": []
+}
