@@ -1,0 +1,187 @@
+{
+  "id": "theme-textures",
+  "version": "2026.09.01.3",
+  "files": [
+    {
+      "path": "graffiti-atelier-spray.webp",
+      "bytes": 204720,
+      "sha256": "679f3088b17170010240ec6ecf86aba2b6ce8a54a3a59939159af9c7887737d3",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-beton-pastel.webp",
+      "bytes": 164542,
+      "sha256": "6abd21ad654aa2fb6d43e7c22f8f4258026f2ffbd3d013417b3a0b620bf00ca8",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-blackbook-riot.webp",
+      "bytes": 193516,
+      "sha256": "4f98f76f08a34c33ec7610b66ae13402aafdb9927c6853b8f60640861a20d9ea",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-bleu-lilas.webp",
+      "bytes": 172614,
+      "sha256": "5e051690c761f0689dc4ebda4304d36cc8b3d942d275c8ce31fdfe3ec0ae8a49",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-chaos-primaire.webp",
+      "bytes": 257672,
+      "sha256": "99c492ef8d674d54c988640ab7b92fdf4a3de7d7a1487047402fff6b0efaea74",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-collage-chrome.webp",
+      "bytes": 287490,
+      "sha256": "c5dc624af8ced0411948fc5d5cbb861ae3d075cb0f63dd45debfc18d58b87520",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-eclat-cyan.webp",
+      "bytes": 57742,
+      "sha256": "452d9135b4997960c0b89f800886f52c5df5f06ccfa54acfd7da23aa8786ab59",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-explosion-blanche.webp",
+      "bytes": 54794,
+      "sha256": "623fdc66e00c29f31dc055bc32d0d95ab3f8ef1a8f23eb5823257cf024453dfe",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-line-love.webp",
+      "bytes": 157144,
+      "sha256": "013533f8642da5892b70cb63f3811a7302c6b22d37d6a62b5754768b47909556",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-mur-pop.webp",
+      "bytes": 206946,
+      "sha256": "10f43d81ee5391955387aff72af1145dba2cc7722629bc2357970a87f9252ac1",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-peace-love.webp",
+      "bytes": 209044,
+      "sha256": "3f585571f33725c95db76a22cb1d0f5ad93aba8aadd788adf0b0fb9adfd11957",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-rose-hero.webp",
+      "bytes": 213346,
+      "sha256": "adfdeb89f8b7a9e8ca94a414e6f21261e353e3db93389f6ea6c5ca8e1237f21b",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-rouge-underground.webp",
+      "bytes": 31698,
+      "sha256": "91fdb80a5ad4e4effa391ce00b856068f2a94c9fe3d0312d9b9204de49168da8",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-ruelle.webp",
+      "bytes": 77042,
+      "sha256": "29bb4f9d991cdc578daa6d50c80ab0b94c248487f030b019edcb1bc083d62da4",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-splash-acidule.webp",
+      "bytes": 215278,
+      "sha256": "cfbe80896911d100ceb52061993d229f2d8ba1805ee07c733b1d8ddf45490a6a",
+      "mime": "image/webp"
+    },
+    {
+      "path": "graffiti-tags-nocturnes.webp",
+      "bytes": 11410,
+      "sha256": "7d897187e343a68677f624b40b9da61661991c50fcf3ba5d70d48dfbbcdb1a67",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-aube-des-ruines.webp",
+      "bytes": 80362,
+      "sha256": "b7239915074b175f14fe6db2b0b71175bf7ceeed60f8cc03a8549cb1fee0567f",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-avenue-silence.webp",
+      "bytes": 90086,
+      "sha256": "f84db7f11535e2cae6cfa5e46f0d0d2122ce41d38e4363fc98ffaebace6d22cc",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-beton-gris.webp",
+      "bytes": 116450,
+      "sha256": "db4b2f0f3942cb8a2b2ebb8d9b367093f8e9e69977a85511e39789e3edc25db9",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-chute-finale.webp",
+      "bytes": 66572,
+      "sha256": "565eeee773241b4bba8d05a1cba680e953195568a36b72fb918712665361e36e",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-cracked-concrete.webp",
+      "bytes": 61296,
+      "sha256": "d4105b396db2b5f59a2a76784cb0650f7245a68cc672b4f40f272d87fb2f3f6d",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-cracks-overlay.svg",
+      "bytes": 2055,
+      "sha256": "7c0d73ad533d653ba54f1a38fa1ccfa31db8230b8e63fb556e25700b9cb7a52f",
+      "mime": "image/svg+xml"
+    },
+    {
+      "path": "postapoc-crepuscule-corbeau.webp",
+      "bytes": 68824,
+      "sha256": "6547d2f5ce59f91eedef83bae9374d1311d8a048b99f827ac225518628981bc6",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-eden-perdu.webp",
+      "bytes": 108148,
+      "sha256": "f0e6a894d2c86130602d2df95b969d9f79aedabb77d5880d9f374a90bd35dd63",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-horizon-cendre.webp",
+      "bytes": 89486,
+      "sha256": "50dbafebe8adc39f25727f963c052410864b2048ef17b4b535c44e76839e1d4b",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-panel-concrete.svg",
+      "bytes": 1967,
+      "sha256": "1f48772674e7bc2390de229daf181a217f2e7df23ff958b767601168ef09493f",
+      "mime": "image/svg+xml"
+    },
+    {
+      "path": "postapoc-pluie-neon.webp",
+      "bytes": 231994,
+      "sha256": "b95993e41981ff0a3be3857347140ecb8d3a5de00f11082cfcb588afce8b3217",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-rusted-steel.webp",
+      "bytes": 177118,
+      "sha256": "a0c1cf1c72fa444a60ae9099a873a10f74cf6597da996234cf6de9974b11e24e",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-tour-brisee.webp",
+      "bytes": 190592,
+      "sha256": "1f962a1d6519e8b07c4c949fd8327718d06ebc825742e6a89ab305ad77e71595",
+      "mime": "image/webp"
+    },
+    {
+      "path": "postapoc-worn-frame.webp",
+      "bytes": 20548,
+      "sha256": "8c489b9b60fc205ff9c4e7e1279e1d94a53a3f52a2e73224c76e634e555a816c",
+      "mime": "image/webp"
+    }
+  ],
+  "totalBytes": 3820496
+}

@@ -1,0 +1,169 @@
+{
+  "id": "character-portraits",
+  "version": "2026.09.01.3",
+  "files": [
+    {
+      "path": "firefighter-bots/aero.webp",
+      "bytes": 88942,
+      "sha256": "a77aab8c53872faf3483303664e19e171083a7cb4f6977e80080ed4a3f75bf84",
+      "mime": "image/webp"
+    },
+    {
+      "path": "firefighter-bots/braze.webp",
+      "bytes": 78704,
+      "sha256": "9e3fd053f8de71ee35590ceabae21b43369b6758d3dc5c5725bc296abf1f56f4",
+      "mime": "image/webp"
+    },
+    {
+      "path": "firefighter-bots/kael.webp",
+      "bytes": 81724,
+      "sha256": "4252b336f12f135ad784f281a26d62a41dda8959ced32d5add9e1ae7504652ba",
+      "mime": "image/webp"
+    },
+    {
+      "path": "firefighter-bots/lyna.webp",
+      "bytes": 85266,
+      "sha256": "71e24c2cef3fa7669ff6ace00816886306b56b502aad8367215bf8e5fd3d2ba5",
+      "mime": "image/webp"
+    },
+    {
+      "path": "firefighter-bots/malysia.webp",
+      "bytes": 89386,
+      "sha256": "82695a99e9ae62799b7e4e6cae1976f85c28cbbcce5b7347cb99519572da2797",
+      "mime": "image/webp"
+    },
+    {
+      "path": "firefighter-bots/zephyr.webp",
+      "bytes": 94966,
+      "sha256": "bcfeb7e8a1305717a9e2a304d4f7d1bb6a2bb3426bbec29f83c000c13342f2d3",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/batuzia.webp",
+      "bytes": 99072,
+      "sha256": "aaeb2b99eb8cc1054c11f41af2849928eba91f1a2aa8b000b5d7d4da1c4270f0",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/brams.webp",
+      "bytes": 131752,
+      "sha256": "682a993bfb9cb01167d7f268fd89cbd2c66ff251b389691758130982b3d9f872",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/brutes.webp",
+      "bytes": 91850,
+      "sha256": "e124abb8ee00a1604bfb365952ec6d2ec0645a2d7019bad60b56b857016201b6",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/djuno.webp",
+      "bytes": 91472,
+      "sha256": "14dda667ba8d021f184f9d91abba66c188ec3bb8388c659a8f255d39565f3f26",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/marron.webp",
+      "bytes": 72886,
+      "sha256": "197fe2c91f331f640beb0e00f6b04e7f01893f9c91676bd49dab093d3f90ae37",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/miasma.webp",
+      "bytes": 96582,
+      "sha256": "2452bbe65ebb242d840a1c9e2cecd059902c6607f46a95497add321ce69e47fb",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/noz.webp",
+      "bytes": 127106,
+      "sha256": "c9f5079e6d86632ce15c0bc11beb0188018e5f1c483e91a20bfd4aaf5d55edf3",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/raze.webp",
+      "bytes": 96088,
+      "sha256": "f824ea25eb78a4b3d350b92e9b6175ed3bffdde62bdc12f8689d5d668aa7811f",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/sqwal.webp",
+      "bytes": 133570,
+      "sha256": "642d711efe62d5a8cb41a750f8b82e6a934b6e6cb44cc63be14f8253205fd974",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/thorn.webp",
+      "bytes": 100274,
+      "sha256": "e0b665ced96ef2941a7b5a20a24cfb92884a757ba27964848ec32159962e2f7e",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/verveine.webp",
+      "bytes": 95466,
+      "sha256": "9a5523ff31cf38c05f7a3aa8129416893d3f6571725cbd82e318183108872444",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/viperine.webp",
+      "bytes": 157044,
+      "sha256": "07cd6b6ce970ed2af512c201efe60bc711fa0eb8a1620852c6b8bee54a2331f1",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/west.webp",
+      "bytes": 118872,
+      "sha256": "4e32c6f4d5d1323e6d5f46a9cafdbc223785320c06739286acbcc5e5ed0edd47",
+      "mime": "image/webp"
+    },
+    {
+      "path": "killer-bots/zeno.webp",
+      "bytes": 77218,
+      "sha256": "53a94d97ba240f2fa959f3e3ce96538d8a736dbe9ebc4507848bb317fa0fd3fe",
+      "mime": "image/webp"
+    },
+    {
+      "path": "loterie-bots/ace.webp",
+      "bytes": 56218,
+      "sha256": "64f05e57cdeef88e9abfd411326ba77a57a863df1032bf59701548d6e09de254",
+      "mime": "image/webp"
+    },
+    {
+      "path": "loterie-bots/fortuna.webp",
+      "bytes": 66718,
+      "sha256": "1e4fb216cc7a9ac3c886eda176b2d7fe133164e0f29a9f3b25d8d8b58c41ed2d",
+      "mime": "image/webp"
+    },
+    {
+      "path": "loterie-bots/jack.webp",
+      "bytes": 59146,
+      "sha256": "090729437d5a14ae1aba795c9f88816805280b9beaa8b043ba4d3acbdc5fc3ca",
+      "mime": "image/webp"
+    },
+    {
+      "path": "loterie-bots/jinx.webp",
+      "bytes": 60486,
+      "sha256": "143f1142c73e82bd89f8c9ecfdb11fa596e074dec0c5544068bc8eaa74646c83",
+      "mime": "image/webp"
+    },
+    {
+      "path": "loterie-bots/lucky.webp",
+      "bytes": 60688,
+      "sha256": "b11fa6e942ca0a0dfdce0bdfc6c0fee6a937f4c4522a9833c2bb22ff9be2321e",
+      "mime": "image/webp"
+    },
+    {
+      "path": "loterie-bots/midas.webp",
+      "bytes": 69346,
+      "sha256": "3e6b370d16c3becf0d5bcb07516160a3709d9c88995a9a95901173045ee54bf8",
+      "mime": "image/webp"
+    },
+    {
+      "path": "loterie-bots/vega.webp",
+      "bytes": 59328,
+      "sha256": "de33d18b7bfaacd69c1a8790c2678c9b4eb41fab25d8978499ee9238523086d9",
+      "mime": "image/webp"
+    }
+  ],
+  "totalBytes": 2440170
+}

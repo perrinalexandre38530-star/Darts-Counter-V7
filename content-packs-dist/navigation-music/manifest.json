@@ -1,0 +1,169 @@
+{
+  "id": "navigation-music",
+  "version": "2026.09.01.3",
+  "files": [
+    {
+      "path": "arena_uprising_nav.webm",
+      "bytes": 1574351,
+      "sha256": "508981a597fed7def95ad49cbd470c791a58e688517670939c4345a0ffe85f0b",
+      "mime": "video/webm"
+    },
+    {
+      "path": "bass_bet_nav.webm",
+      "bytes": 1492836,
+      "sha256": "f6227a710b8a534242c8ffea0b50ba89dc76c9249e2d35d6e45cc71ed91d5055",
+      "mime": "video/webm"
+    },
+    {
+      "path": "bass_nebula_nav.webm",
+      "bytes": 2257234,
+      "sha256": "d4e93fd846bd4ae279ea1691fcea0e61039c18d2534f623d37d2b5753741aadc",
+      "mime": "video/webm"
+    },
+    {
+      "path": "bet_bass_nav.webm",
+      "bytes": 1005369,
+      "sha256": "7158f3f746fa427db4fcfce95c471632d631c2bf00c7d0f564cfca34cf7e6709",
+      "mime": "video/webm"
+    },
+    {
+      "path": "darts_vanguard_nav.webm",
+      "bytes": 1153911,
+      "sha256": "591f613baf6db35e95d634c8f27db7549a8e612ebae38bcdb368f1949982b2d2",
+      "mime": "video/webm"
+    },
+    {
+      "path": "distorted_bed_nav.webm",
+      "bytes": 1428996,
+      "sha256": "67289d6eca57fd11f70026479cda85d8e3d72ef9e4810cbe2365659f8e111127",
+      "mime": "video/webm"
+    },
+    {
+      "path": "dreamwave_horizon_nav.webm",
+      "bytes": 1143720,
+      "sha256": "eb973d4fc1e307494b47c6e97c1f6b860f352b91c977795d6274927c544911fa",
+      "mime": "video/webm"
+    },
+    {
+      "path": "garage_impact_nav.webm",
+      "bytes": 996466,
+      "sha256": "34592d142d26743fd933b93d0295c54bab9efb2878ef813ee223981a26c2c70b",
+      "mime": "video/webm"
+    },
+    {
+      "path": "heartwave_anthem_nav.webm",
+      "bytes": 1261447,
+      "sha256": "c78ff7ad82b17ba3f84a04b5d975fc61685ae4fb634ed342ef0b5f1c4ab2ef0a",
+      "mime": "video/webm"
+    },
+    {
+      "path": "linear_skyline_nav.webm",
+      "bytes": 1360895,
+      "sha256": "4c21df72a48ebf1e8e0a6f1d9b159304c72529a72de1f70233b980ee4faf4836",
+      "mime": "video/webm"
+    },
+    {
+      "path": "midnight_enigma_nav.webm",
+      "bytes": 1067599,
+      "sha256": "fa0986c36dc387b39cde33e97fd6507d2648f056b00939cbea3384e3a8eb9c05",
+      "mime": "video/webm"
+    },
+    {
+      "path": "ms_electrodyn_2_nav.webm",
+      "bytes": 1218291,
+      "sha256": "08b18cc3460bef9c1e38c3e61c7ff22f1a34a8982ef4d836eda3ad23e5df6bdc",
+      "mime": "video/webm"
+    },
+    {
+      "path": "ms_electrodyn_nav.webm",
+      "bytes": 1364658,
+      "sha256": "d6b1e9c52745829753cdd7c689a51494fc2b8ed5d85788b40a31f974c5a958b9",
+      "mime": "video/webm"
+    },
+    {
+      "path": "neon_caravan_nav.webm",
+      "bytes": 1414763,
+      "sha256": "77198efef14e0423cec76365a330c346a90cd0771ebd08905a95182dc0c4a55b",
+      "mime": "video/webm"
+    },
+    {
+      "path": "night_drive_nav.webm",
+      "bytes": 2253594,
+      "sha256": "62e01dca5a9a9ec6916bb151f8fea12ff7b96562f939c67f4190799869e19b0d",
+      "mime": "video/webm"
+    },
+    {
+      "path": "obsidian_flow_nav.webm",
+      "bytes": 1805688,
+      "sha256": "e398ca7a486844fa7b7a991db527b682951d851882f6091c9d51f418bba2ed6a",
+      "mime": "video/webm"
+    },
+    {
+      "path": "orbital_echo_nav.webm",
+      "bytes": 1621137,
+      "sha256": "d565249a9bd67f1187d9d188d526a1b33e32694f1bff716791a153464bb4e0b4",
+      "mime": "video/webm"
+    },
+    {
+      "path": "oriental_surge_nav.webm",
+      "bytes": 964992,
+      "sha256": "e590224786103f034f9124c84d6908b32b32f827846e30d0dfcdeb0767491059",
+      "mime": "video/webm"
+    },
+    {
+      "path": "pixel_ascension_nav.webm",
+      "bytes": 1307041,
+      "sha256": "b7ca9f29546d19e0456bf52350116bec7cfadcf10eaf7a5d1127ade413d7e2f7",
+      "mime": "video/webm"
+    },
+    {
+      "path": "scoring_overture_nav.webm",
+      "bytes": 1308273,
+      "sha256": "a2a0580d609d00abdab7462faf390f456272095f4b5bccad1a881d0efc99c796",
+      "mime": "video/webm"
+    },
+    {
+      "path": "shadow_frequency_nav.webm",
+      "bytes": 1342240,
+      "sha256": "0e05a7e37c72f3816d90a3893eacad8f87282734960bf663be21c101f9a06986",
+      "mime": "video/webm"
+    },
+    {
+      "path": "steel_reactor_nav.webm",
+      "bytes": 1452984,
+      "sha256": "1f255a49d429df5d8f2438abc97503b24a291c96c6ab2032b27ed1a75725a3e7",
+      "mime": "video/webm"
+    },
+    {
+      "path": "stellar_riot_nav.webm",
+      "bytes": 1461235,
+      "sha256": "a497a7d00c90427a564735d1af3e67248ded383d26cf2415f8a5c7eb7b18a8f5",
+      "mime": "video/webm"
+    },
+    {
+      "path": "stone_reverie_nav.webm",
+      "bytes": 1733932,
+      "sha256": "b3a4487b77820630257263c6c599894c509fed7bbbb18a073c32655474864a52",
+      "mime": "video/webm"
+    },
+    {
+      "path": "temporal_drive_nav.webm",
+      "bytes": 1990412,
+      "sha256": "47b2419ac558a0a0123ef283a2d5e1fa5d75cea842073047d29b5098c2128a76",
+      "mime": "video/webm"
+    },
+    {
+      "path": "temporal_resolve_nav.webm",
+      "bytes": 786764,
+      "sha256": "ae405af4fa9415f44a81d13c2cb2a732acb2a5d0cc050cd09639758e0994cb00",
+      "mime": "video/webm"
+    },
+    {
+      "path": "titan_groove_nav.webm",
+      "bytes": 1757257,
+      "sha256": "6c651b0988fdac4d977301035f8caf251f9a913123d8619c487f5b0579a24ec0",
+      "mime": "video/webm"
+    }
+  ],
+  "totalBytes": 38526085
+}
