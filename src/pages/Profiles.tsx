@@ -3985,6 +3985,17 @@ function ProfilesMenuView({
   const supportsTeams = isDarts || isBabyFoot || sportKey.includes("petanque") || sportKey.includes("football") || sportKey === "foot" || sportKey.includes("pingpong");
   const { t, lang } = useLang();
   const primary = theme.primary;
+  const outdoorProfileLabel = sportKey.includes("trail") ? "TRAIL" : sportKey.includes("walking") ? pickLegacyLocalizedText(lang, "MARCHE", "WALKING", "MARCHA") : sportKey.includes("hiking") ? pickLegacyLocalizedText(lang, "RANDONNÉE", "HIKING", "SENDERISMO") : sportKey.includes("cycling") ? pickLegacyLocalizedText(lang, "VÉLO", "CYCLING", "CICLISMO") : sportKey.includes("mtb") ? "VTT" : sportKey.includes("bmx") ? "BMX" : sportKey.includes("roller") ? "ROLLER" : "RUNNING PERF";
+  const contextualProfileTitle = isOutdoorPerf
+    ? `${outdoorProfileLabel} · ${pickLegacyLocalizedText(lang, "PROFIL", "PROFILE", "PERFIL")}`
+    : isFitPerf
+      ? `FIT PERF · ${pickLegacyLocalizedText(lang, "PROFIL", "PROFILE", "PERFIL")}`
+      : t("profiles.menu.title", "PROFILS");
+  const contextualProfileSubtitle = isOutdoorPerf
+    ? pickLegacyLocalizedText(lang, "Tes sorties, tes parcours et tes partenaires d'abord. Le compte et l'avatar restent accessibles plus bas.", "Your activities, routes and partners first. Account and avatar tools remain available below.", "Tus salidas, rutas y compañeros primero. La cuenta y el avatar siguen disponibles más abajo.")
+    : isFitPerf
+      ? pickLegacyLocalizedText(lang, "Tes séances, ta progression et ton programme FIT PERF d'abord.", "Your workouts, progress and FIT PERF program first.", "Tus sesiones, progreso y programa FIT PERF primero.")
+      : t("profiles.menu.subtitle", "Gère ton avatar, ton profil connecté, tes amis, les profils locaux et tes BOTS.");
 
   const CardBtn: React.FC<{
     title: string;
@@ -4087,49 +4098,20 @@ function ProfilesMenuView({
             width: "100%",
           }}
         >
-          {t("profiles.menu.title", "PROFILS")}
+          {contextualProfileTitle}
         </div>
         <div
           className="subtitle"
           style={{ fontSize: 12, marginTop: 4, color: theme.textSoft }}
         >
-          {t(
-            "profiles.menu.subtitle",
-            "Gère ton avatar, ton profil connecté, tes amis, les profils locaux et tes BOTS."
-          )}
+          {contextualProfileSubtitle}
         </div>
       </div>
 
       <PageAdBanner placement="profiles" slotKey="page-profiles-under-header" />
-  
-      <CardBtn
-        title={t("profiles.menu.avatar.title", "CREER AVATAR")}
-        subtitle={t(
-          "profiles.menu.avatar.subtitle",
-          "Personnalise ton médaillon avec le créateur d’avatar."
-        )}
-        onClick={() => go?.("avatar")}
-      />
 
-      <CardBtn
-        title={t("profiles.menu.avatarGallery.title", "GALERIE")}
-        subtitle={t(
-          "profiles.menu.avatarGallery.subtitle",
-          "Tous les avatars et logos enregistrés pour ce compte, classés par source."
-        )}
-        badge={avatarGalleryCount > 0 ? String(avatarGalleryCount) : undefined}
-        onClick={onSelectAvatarGallery}
-      />
-  
-      <CardBtn
-        title={t("profiles.menu.me.title", "MON PROFIL")}
-        subtitle={t(
-          "profiles.menu.me.subtitle",
-          "Profil connecté, statut, mini-stats et informations personnelles."
-        )}
-        onClick={onSelectMe}
-      />
-  
+
+      {(isOutdoorPerf || isFitPerf) ? <div style={{ margin: "12px 2px 9px", color: primary, fontSize: 9, fontWeight: 1000, letterSpacing: 1.1 }}>{pickLegacyLocalizedText(lang, "MON SPORT", "MY SPORT", "MI DEPORTE")}</div> : null}
       {isOutdoorPerf ? <>
         <CardBtn
           title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")}
@@ -4160,6 +4142,37 @@ function ProfilesMenuView({
           onClick={() => go?.("fit_plan")}
         />
       </> : null}
+  
+
+      {(isOutdoorPerf || isFitPerf) ? <div style={{ margin: "16px 2px 9px", color: theme.textSoft, fontSize: 8.5, fontWeight: 1000, letterSpacing: 1.1 }}>{pickLegacyLocalizedText(lang, "COMPTE & SOCIAL", "ACCOUNT & SOCIAL", "CUENTA Y SOCIAL")}</div> : null}
+  
+      <CardBtn
+        title={t("profiles.menu.avatar.title", "CREER AVATAR")}
+        subtitle={t(
+          "profiles.menu.avatar.subtitle",
+          "Personnalise ton médaillon avec le créateur d’avatar."
+        )}
+        onClick={() => go?.("avatar")}
+      />
+
+      <CardBtn
+        title={t("profiles.menu.avatarGallery.title", "GALERIE")}
+        subtitle={t(
+          "profiles.menu.avatarGallery.subtitle",
+          "Tous les avatars et logos enregistrés pour ce compte, classés par source."
+        )}
+        badge={avatarGalleryCount > 0 ? String(avatarGalleryCount) : undefined}
+        onClick={onSelectAvatarGallery}
+      />
+  
+      <CardBtn
+        title={t("profiles.menu.me.title", "MON PROFIL")}
+        subtitle={t(
+          "profiles.menu.me.subtitle",
+          "Profil connecté, statut, mini-stats et informations personnelles."
+        )}
+        onClick={onSelectMe}
+      />
   
       {!isBabyFoot && (
         <CardBtn

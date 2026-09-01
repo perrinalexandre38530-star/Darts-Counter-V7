@@ -221,22 +221,49 @@ export default function RunningHome({ store, go }: Props) {
         <div ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}><div ref={textRef} style={{ width: "fit-content", marginInline: "auto", fontSize: 32, fontWeight: 900, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "center" }}>{copy.title}</div></div>
       </div>
 
-      {/* PUB 1 — même logique inline/scroll que DARTS SCORING. */}
+      <div style={sectionWrap}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>
+
+      {/* Centre d'action RUNNING : placé AVANT pubs/stats pour que les actions essentielles
+          soient visibles immédiatement à l'ouverture du module. */}
+      <div className="running-home-command" style={{ ...sectionWrap, marginTop: 10 }}>
+        <RunningSurface accent={accent} active padding={12}>
+          <RunningSectionHeading
+            eyebrow={pickLegacyLocalizedText(lang, "CENTRE RUNNING", "RUNNING CENTER", "CENTRO RUNNING")}
+            title={pickLegacyLocalizedText(lang, "Qu'est-ce qu'on fait maintenant ?", "What do you want to do now?", "¿Qué quieres hacer ahora?")}
+          />
+          <RunningActionTile
+            featured
+            accent={accent}
+            onClick={mainAction}
+            icon={<RunningGlyph name={currentSession ? "recover" : activitySport === "trail" ? "sport-trail" : activitySport === "hiking" ? "sport-hiking" : activitySport === "walking" ? "sport-walking" : activitySport === "treadmill" ? "sport-treadmill" : "sport-running"} size={24}/>}
+            title={mainActionTitle}
+            subtitle={mainActionSub}
+            meta={currentSession ? <span style={{ padding: "4px 7px", borderRadius: 999, border: "1px solid rgba(109,255,157,.30)", color: "#6dff9d", fontSize: 7, fontWeight: 1000 }}>{currentSession.paused ? "PAUSE" : "EN COURS"}</span> : <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}30`, color: accent, fontSize: 7, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR")}</span>}
+          />
+          <div className="running-home-command-grid" style={{ marginTop: 9 }}>
+            <RunningActionTile accent={accent} onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} icon={<RunningGlyph name="route-choose" size={20}/>} title={pickLegacyLocalizedText(lang, "EXPLORER", "EXPLORE", "EXPLORAR")} subtitle={pickLegacyLocalizedText(lang, "Vrais parcours · carte · communauté", "Mapped routes · map · community", "Rutas reales · mapa · comunidad")}/>
+            <RunningActionTile accent={accent} onClick={() => go("stats", { runningStatsTab: "history" })} icon={<RunningGlyph name="history" size={20}/>} title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")} subtitle={activities.length ? `${activities.length} ${copy.sessions.toLowerCase()}` : pickLegacyLocalizedText(lang, "Aucune sortie", "No activity yet", "Sin actividad")}/>
+            <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20}/>} title={pickLegacyLocalizedText(lang, "PARTENAIRES", "PARTNERS", "COMPAÑEROS")} subtitle={pickLegacyLocalizedText(lang, "Run · trail · rando autour de moi", "Run · trail · hike near me", "Run · trail · senderismo cerca")}/>
+            <RunningActionTile accent={accent} onClick={() => go("stats")} icon={<RunningGlyph name="chart" size={20}/>} title={pickLegacyLocalizedText(lang, "ANALYSE", "ANALYSIS", "ANÁLISIS")} subtitle={pickLegacyLocalizedText(lang, "Stats · records · terrain", "Stats · records · terrain", "Stats · récords · terreno")}/>
+          </div>
+        </RunningSurface>
+      </div>
+
+      {activities[0] ? <div style={{ ...sectionWrap, marginTop: 10 }}><button type="button" onClick={() => go("games", { runningActivityId: activities[0].id, runningActivitySport: canonicalOutdoorPerformanceSport(activities[0].sport) })} style={{ width: "100%", display: "grid", gridTemplateColumns: "46px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 11, borderRadius: 17, border: `1px solid ${accent}42`, background: `linear-gradient(135deg,${accent}12,rgba(5,8,13,.88))`, color: "#fff", textAlign: "left", cursor: "pointer", boxShadow: `0 12px 28px ${accent}0d` }}><span style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}35`, color: accent }}><RunningGlyph name="history" size={20}/></span><span style={{ minWidth: 0 }}><small style={{ display: "block", color: accent, fontSize: 7.3, fontWeight: 1000, letterSpacing: .8 }}>{pickLegacyLocalizedText(lang, "DERNIÈRE SORTIE · OUVRIR", "LAST ACTIVITY · OPEN", "ÚLTIMA SALIDA · ABRIR")}</small><b style={{ display: "block", marginTop: 2, fontSize: 11.2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{activities[0].title || `${outdoorSportLabel(canonicalOutdoorPerformanceSport(activities[0].sport), lang)} · ${formatDistance(activities[0].distanceM)}`}</b><small style={{ display: "block", marginTop: 2, color: textSoft, fontSize: 8.2 }}>{new Date(activities[0].startedAt).toLocaleDateString(localeForLang(lang))} · {formatDuration(activities[0].elapsedMs)} · {outdoorAverageMetricValue(activities[0], canonicalOutdoorPerformanceSport(activities[0].sport))}</small></span><span style={{ color: accent, fontSize: 21 }}>›</span></button></div> : null}
+
+      {/* Les pubs et le résumé global restent présents, mais APRÈS les actions principales. */}
       <InlineAdBanner
         placement="home"
         slotKey="home-top"
         offset={0}
         compact
-        style={{ marginBottom: 16 }}
+        style={{ marginTop: 14, marginBottom: 14 }}
       />
-
-      <div style={sectionWrap}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>
 
       <div style={sectionWrap}>{activeProfile ? <ActiveProfileCard hideStatus hideStarRing profile={activeProfile as any} stats={{} as any} suppressDefaultStatsSlides customSlides={profileSlides as any} globalTitle={`${outdoorSportLabel(activitySport, lang)} · ${copy.overview}`} globalKpis={[
         { label: copy.distance, value: formatDistance(stats.totalDistanceM) }, { label: copy.sessions, value: stats.sessions }, { label: bestMetricLabel, value: bestMetricValue }, { label: copy.climb, value: `+${Math.round(stats.totalElevationM)} m` }, { label: copy.longest, value: formatDistance(stats.longestM) }, { label: copy.time, value: formatDuration(stats.totalElapsedMs) },
       ]}/> : null}</div>
 
-      {/* PUB 2 — suit le bloc profil et se recale avec le scroll comme sur DARTS. */}
       {activeProfile ? (
         <InlineAdBanner
           placement="home_secondary"
@@ -247,20 +274,6 @@ export default function RunningHome({ store, go }: Props) {
         />
       ) : null}
 
-      <div style={{ ...sectionWrap, marginTop: 12 }}>
-        <RunningActionTile
-          featured
-          accent={accent}
-          onClick={mainAction}
-          icon={<RunningGlyph name={currentSession ? "recover" : activitySport === "trail" ? "sport-trail" : activitySport === "hiking" ? "sport-hiking" : activitySport === "walking" ? "sport-walking" : activitySport === "treadmill" ? "sport-treadmill" : "sport-running"} size={24}/>}
-          title={mainActionTitle}
-          subtitle={mainActionSub}
-          meta={currentSession ? <span style={{ padding: "4px 7px", borderRadius: 999, border: "1px solid rgba(109,255,157,.30)", color: "#6dff9d", fontSize: 7, fontWeight: 1000 }}>{currentSession.paused ? "PAUSE" : "EN COURS"}</span> : <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}30`, color: accent, fontSize: 7, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "AUJOURD'HUI", "TODAY", "HOY")}</span>}
-        />
-      </div>
-
-      {activities[0] ? <div style={{ ...sectionWrap, marginTop: 10 }}><button type="button" onClick={() => go("games", { runningActivityId: activities[0].id, runningActivitySport: canonicalOutdoorPerformanceSport(activities[0].sport) })} style={{ width: "100%", display: "grid", gridTemplateColumns: "46px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 11, borderRadius: 17, border: `1px solid ${accent}42`, background: `linear-gradient(135deg,${accent}12,rgba(5,8,13,.88))`, color: "#fff", textAlign: "left", cursor: "pointer", boxShadow: `0 12px 28px ${accent}0d` }}><span style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}35`, color: accent }}><RunningGlyph name="history" size={20}/></span><span style={{ minWidth: 0 }}><small style={{ display: "block", color: accent, fontSize: 7.3, fontWeight: 1000, letterSpacing: .8 }}>{pickLegacyLocalizedText(lang, "DERNIÈRE SORTIE", "LAST ACTIVITY", "ÚLTIMA SALIDA")}</small><b style={{ display: "block", marginTop: 2, fontSize: 11.2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{outdoorSportLabel(canonicalOutdoorPerformanceSport(activities[0].sport), lang)} · {formatDistance(activities[0].distanceM)}</b><small style={{ display: "block", marginTop: 2, color: textSoft, fontSize: 8.2 }}>{new Date(activities[0].startedAt).toLocaleDateString(localeForLang(lang))} · {formatDuration(activities[0].elapsedMs)} · {outdoorAverageMetricValue(activities[0], canonicalOutdoorPerformanceSport(activities[0].sport))}</small></span><span style={{ color: accent, fontSize: 21 }}>›</span></button></div> : null}
-
       <div style={{ ...sectionWrap, marginTop: 10 }}><RunningSurface accent={accent} padding={12}>
         <RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "CETTE SEMAINE", "THIS WEEK", "ESTA SEMANA")} title={pickLegacyLocalizedText(lang, "Ton rythme en un coup d'œil", "Your week at a glance", "Tu semana de un vistazo")} action={<button className="btn" onClick={() => go("stats")} style={{ minHeight: 30, padding: "4px 8px", fontSize: 7.8, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "DÉTAILS", "DETAILS", "DETALLES")}</button>}/>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
@@ -270,16 +283,6 @@ export default function RunningHome({ store, go }: Props) {
         </div>
         <Progress value={goalPct} accent={accent}/>
       </RunningSurface></div>
-
-      <div style={{ ...sectionWrap, marginTop: 12 }}>
-        <RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "ACCÈS RAPIDE", "QUICK ACCESS", "ACCESO RÁPIDO")} title={pickLegacyLocalizedText(lang, "Choisis ton prochain geste", "Choose your next step", "Elige tu siguiente paso")}/>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-          <RunningActionTile accent={accent} onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} icon={<RunningGlyph name="route-choose" size={20}/>} title={pickLegacyLocalizedText(lang, "EXPLORER", "EXPLORE", "EXPLORAR")} subtitle={pickLegacyLocalizedText(lang, "Parcours réels · communauté · carte", "Mapped routes · community · map", "Rutas reales · comunidad · mapa")}/>
-          <RunningActionTile accent={accent} onClick={() => go("stats", { runningStatsTab: "history" })} icon={<RunningGlyph name="history" size={20}/>} title={pickLegacyLocalizedText(lang, "SORTIES", "ACTIVITIES", "SALIDAS")} subtitle={activities.length ? `${activities.length} ${copy.sessions.toLowerCase()}` : pickLegacyLocalizedText(lang, "Aucune sortie", "No activity yet", "Sin actividad")}/>
-          <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20}/>} title={pickLegacyLocalizedText(lang, "PARTENAIRES", "PARTNERS", "COMPAÑEROS")} subtitle={pickLegacyLocalizedText(lang, "Run · trail · rando à proximité", "Run · trail · hike nearby", "Run · trail · senderismo cerca")}/>
-          <RunningActionTile accent={accent} onClick={() => go("stats")} icon={<RunningGlyph name="chart" size={20}/>} title={pickLegacyLocalizedText(lang, "ANALYSE", "ANALYSIS", "ANÁLISIS")} subtitle={pickLegacyLocalizedText(lang, "Records · forme · terrain", "Records · fitness · terrain", "Récords · forma · terreno")}/>
-        </div>
-      </div>
 
       {activitySport === "running" ? <div style={{ ...sectionWrap, marginTop: 12 }}><RunningSurface accent={accent} padding={12}>
         <RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "OBJECTIF", "GOAL", "OBJETIVO")} title={raceGoalSnapshot ? `${distanceGoalLabel(raceGoalSnapshot.goal.distanceM)} · J−${raceGoalSnapshot.daysLeft}` : pickLegacyLocalizedText(lang, "Donne une date à ta progression", "Give your progress a date", "Pon fecha a tu progreso")} action={<button className="btn" onClick={() => go("running_plan", { focus: "goal" })} style={{ minHeight: 30, padding: "4px 8px", fontSize: 7.8, fontWeight: 1000 }}>{raceGoalSnapshot ? pickLegacyLocalizedText(lang, "GÉRER", "MANAGE", "GESTIONAR") : pickLegacyLocalizedText(lang, "CRÉER", "CREATE", "CREAR")}</button>}/>

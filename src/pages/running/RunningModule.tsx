@@ -1895,7 +1895,7 @@ export default function RunningModule({ go, params }: Props) {
     };
     return <div className={`container running-page ${setupPanel === "route" ? "running-page--routes" : ""}`} style={{ maxWidth: setupPanel === "route" ? 1280 : PAGE_MAX_WIDTH, paddingLeft: "clamp(8px,2.2vw,14px)", paddingRight: "clamp(8px,2.2vw,14px)", overflowX: "clip" }}><PageHeader title={setupPageTitle} subtitle={setupPageSubtitle} left={<BackDot onClick={backFromSetup}/>} right={infoDot}/>
 
-    <RunningSetupSteps
+    {setupPanel !== "menu" ? <RunningSetupSteps
       value={setupPanel}
       accent={accent}
       routeOptional={activitySport === "treadmill"}
@@ -1913,20 +1913,47 @@ export default function RunningModule({ go, params }: Props) {
         ready: pickLegacyLocalizedText(lang, "DÉPART", "START", "SALIDA"),
         readySub: activitySport === "treadmill" ? treadmillSourceLabel : (gpsMessage || copy.gpsUnknown),
       }}
-    />
+    /> : null}
 
     {setupPanel === "menu" ? <>
       <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/>
-      <RunningSurface accent={accent} active style={{ marginTop: 10 }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "PRÊT À PARTIR ?", "READY TO GO?", "¿LISTO PARA SALIR?")}</div>
-          <div style={{ marginTop: 5, color: textSoft, fontSize: 9.4, lineHeight: 1.45 }}>{pickLegacyLocalizedText(lang, "Pour une sortie simple, tu peux démarrer directement. Modifie seulement la séance ou le parcours si tu en as besoin.", "For a simple activity, start directly. Only change the workout or route if you need to.", "Para una salida simple, empieza directamente. Cambia la sesión o la ruta solo si lo necesitas.")}</div>
-        </div>
-        <button className="btn" onClick={() => { selectManualPreset("goal-free"); setSetupPanel("ready"); }} style={{ width: "100%", minHeight: 52, marginTop: 12, borderRadius: 15, color: "#071015", background: accent, borderColor: accent, fontSize: 11.5, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "▶ DÉMARRER UNE SORTIE LIBRE", "▶ START FREE ACTIVITY", "▶ INICIAR SALIDA LIBRE")}</button>
+      <RunningSurface accent={accent} active style={{ marginTop: 10 }} padding={13}>
+        <div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: 1.2 }}>{pickLegacyLocalizedText(lang, "DÉMARRAGE RAPIDE", "QUICK START", "INICIO RÁPIDO")}</div>
+        <div style={{ marginTop: 4, color: "#fff", fontSize: 16, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "Pars maintenant", "Start now", "Sal ahora")}</div>
+        <div style={{ marginTop: 5, color: textSoft, fontSize: 9.2, lineHeight: 1.45 }}>{pickLegacyLocalizedText(lang, "Une sortie libre lance directement le GPS et la carte. Tu peux tout consulter pendant l'activité.", "A free activity starts GPS and the map directly. All live data remains available during the activity.", "Una salida libre inicia directamente el GPS y el mapa. Todos los datos quedan disponibles durante la actividad.")}</div>
+        <button className="btn" onClick={() => { selectManualPreset("goal-free"); setSetupPanel("ready"); }} style={{ width: "100%", minHeight: 56, marginTop: 12, borderRadius: 16, color: "#071015", background: accent, borderColor: accent, fontSize: 12.5, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "▶ DÉMARRER MAINTENANT", "▶ START NOW", "▶ EMPEZAR AHORA")}</button>
       </RunningSurface>
-      <div style={{ display: "grid", gridTemplateColumns: activitySport === "treadmill" ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 10 }}>
-        <RunningHubCard title={pickLegacyLocalizedText(lang, "MODIFIER LA SÉANCE", "EDIT WORKOUT", "EDITAR SESIÓN")} subtitle={`${presetLabel(effectivePreset, lang)}${targetDistanceM ? ` · ${distanceLabel(targetDistanceM)}` : targetDurationMs ? ` · ${formatDuration(targetDurationMs)}` : ""}`} icon={<RunningGlyph name="step-workout" size={20}/>} accent={accent} onClick={() => { setSetupTab("goal"); setSetupPanel("workout"); }}/>
-        {activitySport !== "treadmill" ? <RunningHubCard title={pickLegacyLocalizedText(lang, "CHOISIR UN PARCOURS", "CHOOSE A ROUTE", "ELEGIR UNA RUTA")} subtitle={selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, "Optionnel · autour de moi, générer ou favoris", "Optional · nearby, generate or saved", "Opcional · cerca, generar o guardadas")} icon={<RunningGlyph name="step-route" size={20}/>} accent={accent} onClick={() => { setRoutePanelTab("choose"); setRouteChooseMode(routeOptions.length ? "library" : "discover"); setSetupPanel("route"); }} badge={selectedRoute ? "✓" : undefined}/> : null}
+
+      <div className="running-setup-launch-grid" style={{ marginTop: 10 }}>
+        <RunningHubCard
+          title={pickLegacyLocalizedText(lang, "CHOISIR UNE SÉANCE", "CHOOSE A WORKOUT", "ELEGIR SESIÓN")}
+          subtitle={pickLegacyLocalizedText(lang, "Libre · objectif · fractionné · tempo · côtes", "Free · goal · intervals · tempo · hills", "Libre · objetivo · intervalos · tempo · cuestas")}
+          icon={<RunningGlyph name="step-workout" size={20}/>}
+          accent={accent}
+          onClick={() => { setSetupTab("goal"); setSetupPanel("workout"); }}
+        />
+        {activitySport !== "treadmill" ? <RunningHubCard
+          title={pickLegacyLocalizedText(lang, "EXPLORER UN PARCOURS", "EXPLORE A ROUTE", "EXPLORAR UNA RUTA")}
+          subtitle={selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, "Vrais parcours · communauté · mes favoris", "Mapped routes · community · saved routes", "Rutas reales · comunidad · favoritas")}
+          icon={<RunningGlyph name="route-choose" size={20}/>}
+          accent={accent}
+          onClick={() => { setRoutePanelTab("choose"); setRouteChooseMode(routeOptions.length ? "library" : "discover"); setSetupPanel("route"); }}
+          badge={selectedRoute ? "✓" : undefined}
+        /> : null}
+        <RunningHubCard
+          title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")}
+          subtitle={pickLegacyLocalizedText(lang, "Retrouver cartes, photos et statistiques", "Open maps, photos and statistics", "Abrir mapas, fotos y estadísticas")}
+          icon={<RunningGlyph name="history" size={20}/>}
+          accent={accent}
+          onClick={() => go("stats", { runningStatsTab: "history" })}
+        />
+        <RunningHubCard
+          title={pickLegacyLocalizedText(lang, "PARTENAIRES", "PARTNERS", "COMPAÑEROS")}
+          subtitle={pickLegacyLocalizedText(lang, "Trouver quelqu'un à proximité", "Find someone nearby", "Encontrar alguien cerca")}
+          icon={<RunningGlyph name="gps" size={20}/>}
+          accent={accent}
+          onClick={() => go("online", { tab: "nearby" })}
+        />
       </div>
     </> : null}
 

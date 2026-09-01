@@ -197,3 +197,26 @@
 @media (max-width: 420px) {
   .running-activity-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* RUNNING HOME V80 — actions essentielles visibles avant pubs et statistiques. */
+.running-home-command-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.running-home-command-grid > button { min-width:0; min-height:88px !important; }
+@media (max-width:380px) {
+  .running-home-command-grid { grid-template-columns:1fr; }
+  .running-home-command-grid > button { min-height:74px !important; }
+}
+
+/* Setup V80 — quatre choix lisibles au lieu d'un assistant affiché avant même le choix. */
+.running-setup-launch-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+.running-setup-launch-grid > button { min-width:0; }
+@media (max-width:440px) {
+  .running-setup-launch-grid { grid-template-columns:1fr; }
+}
