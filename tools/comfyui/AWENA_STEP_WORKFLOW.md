@@ -13,3 +13,9 @@ Supported tokens:
 - `__ASSET_KEY__` : canonical AWENA pack key
 
 The output is always written to REVIEW. `npm run fit:awena:steps:ready -- --asset <key>` is an explicit human checkpoint after visual inspection; only then may `fit:awena:review -- --asset <key> --approve` promote the missing steps.
+
+## V115 note
+
+`awena-step-api.json` is **not required** for jobs whose `stepStrategy` is `APPROVED_MANUAL_FRAMES` or `APPROVED_VIDEO_PHASE_FRAMES`.
+Those jobs only reuse already APPROVED AWENA media and are still written to REVIEW for visual validation.
+The API workflow is required only for `COMFYUI_DEDICATED_STILLS` jobs.

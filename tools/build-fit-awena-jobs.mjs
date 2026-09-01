@@ -174,13 +174,13 @@ for(const [canonicalKey,entries] of groups){
   });
 }
 
-const report={generatedAt:new Date().toISOString(),catalogCount:catalog.exercises.length,statusCounts,queued:jobs.length,
+const report={generatedAt:new Date().toISOString(),catalogSnapshotGeneratedAt:catalog.generatedAt||null,catalogCount:catalog.exercises.length,statusCounts,queued:jobs.length,
   uniqueCanonicalPacks:jobs.length,aliasEntriesCollapsed,
   fullMotionPackJobs:jobs.filter((j)=>j.generationMode==="MOTION_PACK").length,
   approvedPartialVideoOnlyJobs:jobs.filter((j)=>j.generationMode==="VIDEO_ONLY_SUPPLEMENT").length,
   withExistingMotionVideo:jobs.filter((j)=>j.existingReferenceVideos?.length).length,withReferencePhotos:jobs.filter((j)=>j.resolvedReferenceImages?.length).length,withPhotoPairDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)>=2).length,needsGeneratedMotionDriver:jobs.filter((j)=>!j.existingReferenceVideos?.length&&(j.resolvedReferenceImages?.length||0)<2).length,
   policy:{canonicalPackDeduplication:true,approvedCompleteNeverQueued:true,approvedPartialOnlyMissingVideoQueued:true,validatedPosterAndStepsNeverRegenerated:true,reviewNeverQueued:true,rejectedRequiresRetryFlag:true,generatedDestination:"REVIEW"},sources:catalog.sources,sourceErrors:catalog.errors||[]};
-await fs.writeFile(QUEUE_FILE,JSON.stringify({version:4,createdAt:new Date().toISOString(),catalogCount:catalog.exercises.length,jobs},null,2));
+await fs.writeFile(QUEUE_FILE,JSON.stringify({version:5,createdAt:new Date().toISOString(),catalogSnapshotGeneratedAt:catalog.generatedAt||null,catalogCount:catalog.exercises.length,jobs},null,2));
 await fs.writeFile(REPORT_FILE,JSON.stringify(report,null,2));
 console.log(JSON.stringify(report,null,2));
 console.log(`Queue: ${QUEUE_FILE}`);

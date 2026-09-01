@@ -71,6 +71,10 @@ export type FitSet = {
   reps: number;
   completed: boolean;
   warmup?: boolean;
+  /** Optional metrics used by non-strength practices. */
+  durationSec?: number;
+  distanceM?: number;
+  rounds?: number;
 };
 
 export type FitSessionExercise = {
@@ -83,6 +87,9 @@ export type FitSession = {
   id: string;
   title: string;
   templateId?: string;
+  /** Practice is optional for backward compatibility with V1 sessions. */
+  practice?: string;
+  programId?: string;
   profileId?: string;
   profileName?: string;
   startedAt: number;

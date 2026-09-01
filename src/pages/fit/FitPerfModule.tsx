@@ -27,6 +27,7 @@ import { getCachedFitCatalog, loadFitCatalog } from "../../fit/fitCatalogEngine"
 import { getAwenaPremiumMotion } from "../../fit/awenaPremiumMotions";
 import { contentPackAssetUrl } from "../../lib/contentPacks";
 import { FIT_MUSCLE_ORDER, exerciseMatchesMuscle } from "../../fit/fitExerciseTaxonomy";
+import { FIT_PRACTICES, getFitProgramCatalog, type FitPracticeId } from "../../fit/fitProgramCatalog";
 import { FitGlassCard, FitGhostButton, FitIcon, FitIconTabs, FitPill, FitPrimaryButton, FitProgress, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
 type Props = { go: (route: any, params?: any) => void; store?: any; params?: any };
@@ -49,6 +50,32 @@ function initialRestSeconds() {
   } catch {
     return 90;
   }
+}
+
+type FitMetricMode = "strength" | "bodyweight" | "interval" | "hold" | "cardio";
+
+function metricModeForPractice(practice?: string): FitMetricMode {
+  if (practice === "hiit" || practice === "military" || practice === "functional") return "interval";
+  if (practice === "yoga" || practice === "mobility" || practice === "stretching") return "hold";
+  if (practice === "cardio") return "cardio";
+  if (practice === "calisthenics" || practice === "core") return "bodyweight";
+  return "strength";
+}
+
+function formatSetPerformance(set: FitSet | undefined, mode: FitMetricMode) {
+  if (!set) return "—";
+  if (mode === "hold") return `${Math.max(0, Number(set.durationSec) || 0)} s`;
+  if (mode === "interval") return `${Math.max(0, Number(set.reps) || 0)} reps · ${Math.max(0, Number(set.durationSec) || 0)} s`;
+  if (mode === "cardio") {
+    const km = Math.max(0, Number(set.distanceM) || 0) / 1000;
+    const min = Math.max(0, Number(set.durationSec) || 0) / 60;
+    return `${km.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} km · ${Math.round(min)} min`;
+  }
+  if (mode === "bodyweight") {
+    const load = Math.max(0, Number(set.weightKg) || 0);
+    return `${Math.max(0, Number(set.reps) || 0)} reps${load > 0 ? ` · +${load} kg` : ""}`;
+  }
+  return `${Math.max(0, Number(set.weightKg) || 0)} kg × ${Math.max(0, Number(set.reps) || 0)}`;
 }
 
 export default function FitPerfModule({ go, store, params }: Props) {
@@ -160,6 +187,10 @@ export default function FitPerfModule({ go, store, params }: Props) {
     const template = effectiveTemplate(templateId);
     const next = createSessionFromTemplate(template, { profileId: activeProfile?.id, profileName: activeProfile?.name });
     const requestedSessionTitle = String(params?.fitSessionTitle || "").trim();
+    const requestedProgramId = String(params?.fitProgramId || "").trim();
+    const requestedProgram = requestedProgramId ? getFitProgramCatalog().find((item) => item.id === requestedProgramId) || null : null;
+    next.programId = requestedProgram?.id || undefined;
+    next.practice = String(params?.fitPractice || requestedProgram?.practice || "musculation");
     if (requestedSessionTitle) next.title = requestedSessionTitle;
     if (templateId === "free") {
       next.exercises = [];
@@ -222,13 +253,25 @@ export default function FitPerfModule({ go, store, params }: Props) {
         return { ...set, completed: completedNow };
       }),
     }));
-    if (completedNow) setRestLeft(restSeconds);
+    if (completedNow) {
+      const mode = metricModeForPractice(session?.practice);
+      if (mode !== "hold" && mode !== "cardio") setRestLeft(restSeconds);
+    }
   };
 
   const addSet = (exerciseRowId: string) => {
     updateExercise(exerciseRowId, (row) => {
       const last = row.sets[row.sets.length - 1];
-      const next: FitSet = { id: makeId("set"), weightKg: Number(last?.weightKg || 20), reps: Number(last?.reps || 10), completed: false };
+      const mode = metricModeForPractice(session?.practice);
+      const next: FitSet = {
+        id: makeId("set"),
+        weightKg: mode === "strength" ? Number(last?.weightKg ?? 20) : Number(last?.weightKg ?? 0),
+        reps: mode === "hold" || mode === "cardio" ? 0 : Number(last?.reps ?? 10),
+        durationSec: Number(last?.durationSec ?? (mode === "hold" ? 30 : mode === "interval" ? 40 : mode === "cardio" ? 600 : 0)),
+        distanceM: Number(last?.distanceM ?? (mode === "cardio" ? 1000 : 0)),
+        rounds: Number(last?.rounds ?? 1),
+        completed: false,
+      };
       return { ...row, sets: [...row.sets, next] };
     });
   };
@@ -244,7 +287,13 @@ export default function FitPerfModule({ go, store, params }: Props) {
       if (!current) return current;
       if (current.exercises.some((row) => row.exerciseId === exerciseId)) return current;
       added = true;
-      const next: FitSessionExercise = { id: rowId, exerciseId, sets: defaultSets(20, 3, 10) };
+      const mode = metricModeForPractice(current.practice);
+      const sets = defaultSets(mode === "strength" ? 20 : 0, 3, mode === "hold" || mode === "cardio" ? 0 : 10).map((set) => ({
+        ...set,
+        durationSec: mode === "hold" ? 30 : mode === "interval" ? 40 : mode === "cardio" ? 600 : 0,
+        distanceM: mode === "cardio" ? 1000 : 0,
+      }));
+      const next: FitSessionExercise = { id: rowId, exerciseId, sets };
       return { ...current, exercises: [...current.exercises, next] };
     });
     if (added) setExpandedExerciseRowId(rowId);
@@ -295,6 +344,40 @@ export default function FitPerfModule({ go, store, params }: Props) {
     const doneSets = completedSets(session);
     const allSets = totalSets(session);
     const progress = allSets ? (doneSets / allSets) * 100 : 0;
+    const practiceId = (session.practice || "musculation") as FitPracticeId;
+    const practiceMeta = FIT_PRACTICES.find((item) => item.id === practiceId) || FIT_PRACTICES[0];
+    const metricMode = metricModeForPractice(practiceId);
+    const focusedIndexRaw = session.exercises.findIndex((row) => row.id === expandedExerciseRowId);
+    const focusedIndex = focusedIndexRaw >= 0 ? focusedIndexRaw : (session.exercises.length ? 0 : -1);
+    const focusedRow = focusedIndex >= 0 ? session.exercises[focusedIndex] : null;
+    const focusedExercise = focusedRow ? exerciseById(focusedRow.exerciseId) : null;
+    const workoutHistory = fitSessionsForProfile(loadFitSessions(), activeProfile?.id).filter((item) => item.id !== session.id);
+    const previousSetForExercise = (exerciseId: string) => {
+      for (const historicSession of workoutHistory) {
+        const historicRow = historicSession.exercises.find((item) => item.exerciseId === exerciseId);
+        const completed = historicRow?.sets.filter((set) => set.completed) || [];
+        if (completed.length) return completed[completed.length - 1];
+      }
+      return undefined;
+    };
+    const focusedPreviousSet = focusedRow ? previousSetForExercise(focusedRow.exerciseId) : undefined;
+    const focusExerciseAt = (index: number) => {
+      if (!session.exercises.length) return;
+      const safe = Math.max(0, Math.min(session.exercises.length - 1, index));
+      setExpandedExerciseRowId(session.exercises[safe].id);
+    };
+    const reusePreviousPerformance = () => {
+      if (!focusedRow || !focusedPreviousSet) return;
+      const target = focusedRow.sets.find((set) => !set.completed) || focusedRow.sets[0];
+      if (!target) return;
+      updateSet(focusedRow.id, target.id, {
+        weightKg: Number(focusedPreviousSet.weightKg || 0),
+        reps: Number(focusedPreviousSet.reps || 0),
+        durationSec: Number(focusedPreviousSet.durationSec || 0),
+        distanceM: Number(focusedPreviousSet.distanceM || 0),
+        rounds: Number(focusedPreviousSet.rounds || 0),
+      });
+    };
     const filteredExercises = pickerExercises.filter((exercise) => {
       const matchesFilter = exerciseMatchesMuscle(exercise, exerciseFilter as any);
       const q = exerciseSearch.trim().toLowerCase();
@@ -327,24 +410,57 @@ export default function FitPerfModule({ go, store, params }: Props) {
             <div style={{ marginTop: 9 }}><FitProgress value={(restLeft / Math.max(1, restSeconds)) * 100} accent="#75ed9a" height={6} /></div>
           </FitGlassCard> : null}
 
-          <FitSectionTitle eyebrow={t("SÉANCE EN COURS", "WORKOUT IN PROGRESS", "SESIÓN EN CURSO")} title={t("Séries & charges", "Sets & loads", "Series y cargas")} right={<FitPill accent={accent}>{session.exercises.length} EXOS</FitPill>} />
+          {focusedExercise && focusedRow ? <FitGlassCard accent={focusedExercise.accent} style={{ marginTop: 10, padding: 12, background: `linear-gradient(135deg,${focusedExercise.accent}14,rgba(6,9,14,.995) 38%,rgba(4,6,10,.998))`, borderColor: `${focusedExercise.accent}52` }}>
+            <div style={{ display: "grid", gridTemplateColumns: "82px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
+              <div style={{ width: 82, height: 82, borderRadius: 18, overflow: "hidden", display: "grid", placeItems: "center", color: focusedExercise.accent, background: `${focusedExercise.accent}12`, border: `1px solid ${focusedExercise.accent}38`, fontSize: 28, fontWeight: 1000 }}>
+                {exercisePreviewUrl(focusedExercise.id) ? <img src={exercisePreviewUrl(focusedExercise.id) || undefined} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : focusedExercise.icon}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <FitPill accent={practiceMeta.accent}>{practiceMeta.icon} {practiceMeta.label.toUpperCase()}</FitPill>
+                  <FitPill accent={focusedExercise.accent}>{focusedIndex + 1}/{session.exercises.length}</FitPill>
+                </div>
+                <div style={{ marginTop: 7, fontSize: 18, lineHeight: 1.05, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{focusedExercise.name}</div>
+                <div style={{ marginTop: 4, color: textSoft, fontSize: 9 }}>{focusedExercise.muscle} · {focusedExercise.equipment}</div>
+                <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ color: textSoft, fontSize: 8, fontWeight: 900 }}>{t("DERNIÈRE FOIS", "LAST TIME", "ÚLTIMA VEZ")}</span>
+                  <b style={{ color: focusedPreviousSet ? "#fff" : textSoft, fontSize: 10.5 }}>{formatSetPerformance(focusedPreviousSet, metricMode)}</b>
+                  {focusedPreviousSet ? <button type="button" onClick={reusePreviousPerformance} style={{ marginLeft: "auto", minHeight: 27, borderRadius: 9, border: `1px solid ${focusedExercise.accent}38`, background: `${focusedExercise.accent}0c`, color: focusedExercise.accent, padding: "0 8px", fontSize: 7.3, fontWeight: 1000, cursor: "pointer" }}>{t("REPRENDRE", "REUSE", "REUTILIZAR")}</button> : null}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", gap: 7 }}>
+              <button type="button" disabled={focusedIndex <= 0} onClick={() => focusExerciseAt(focusedIndex - 1)} aria-label={t("Exercice précédent", "Previous exercise", "Ejercicio anterior")} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: focusedIndex <= 0 ? "rgba(255,255,255,.22)" : "#fff", fontSize: 18 }}>‹</button>
+              <div style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${focusedExercise.accent}28`, background: `${focusedExercise.accent}08`, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "0 9px", textAlign: "center" }}>
+                <span style={{ color: focusedExercise.accent, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>{metricMode === "strength" ? "KG · REPS" : metricMode === "bodyweight" ? "REPS · CHARGE +" : metricMode === "interval" ? "REPS · TEMPS" : metricMode === "hold" ? "MAINTIEN · TEMPS" : "DISTANCE · TEMPS"}</span>
+              </div>
+              <button type="button" disabled={focusedIndex >= session.exercises.length - 1} onClick={() => focusExerciseAt(focusedIndex + 1)} aria-label={t("Exercice suivant", "Next exercise", "Ejercicio siguiente")} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${focusedExercise.accent}40`, background: `${focusedExercise.accent}0e`, color: focusedIndex >= session.exercises.length - 1 ? "rgba(255,255,255,.22)" : focusedExercise.accent, fontSize: 18 }}>›</button>
+            </div>
+          </FitGlassCard> : null}
+
+          <FitSectionTitle eyebrow={t("EXERCICE ACTUEL", "CURRENT EXERCISE", "EJERCICIO ACTUAL")} title={metricMode === "strength" ? t("Séries & charges", "Sets & loads", "Series y cargas") : metricMode === "hold" ? t("Maintiens & durée", "Holds & duration", "Aguantes y duración") : metricMode === "cardio" ? t("Distance & durée", "Distance & duration", "Distancia y duración") : t("Séries & effort", "Sets & effort", "Series y esfuerzo")} right={<FitPill accent={accent}>{doneSets}/{allSets}</FitPill>} />
 
           <div style={{ display: "grid", gap: 10 }}>
             {session.exercises.map((row, exerciseIndex) => {
               const exercise = exerciseById(row.exerciseId);
               if (!exercise) return null;
               const rowDone = row.sets.filter((set) => set.completed).length;
-              const expanded = expandedExerciseRowId === row.id;
+              const expanded = focusedRow?.id === row.id;
               return <FitGlassCard key={row.id} accent={exercise.accent} style={{ overflow: "hidden", borderColor: expanded ? `${exercise.accent}66` : "rgba(255,255,255,.13)", background: expanded ? `linear-gradient(145deg,${exercise.accent}12,rgba(7,10,16,.99) 28%,rgba(4,6,11,.995))` : "linear-gradient(180deg,rgba(9,12,18,.985),rgba(5,8,13,.995))", boxShadow: "0 10px 28px rgba(0,0,0,.48)" }}>
-                <div role="button" tabIndex={0} onClick={() => setExpandedExerciseRowId(expanded ? null : row.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setExpandedExerciseRowId(expanded ? null : row.id); }} style={{ display: "grid", gridTemplateColumns: "54px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, cursor: "pointer" }}>
+                <div role="button" tabIndex={0} onClick={() => setExpandedExerciseRowId(row.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setExpandedExerciseRowId(row.id); }} style={{ display: "grid", gridTemplateColumns: "54px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, cursor: "pointer" }}>
                   <div style={{ width: 52, height: 46, borderRadius: 11, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}30`, fontSize: 16, fontWeight: 1000, overflow: "hidden" }}>{exercisePreviewUrl(exercise.id) ? <img src={exercisePreviewUrl(exercise.id) || undefined} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : exercise.icon}</div>
                   <div style={{ minWidth: 0 }}><div style={{ color: exercise.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .7 }}>{String(exerciseIndex + 1).padStart(2, "0")} · {exercise.muscle.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 11.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.8 }}>{rowDone}/{row.sets.length} {t("séries", "sets", "series")}</div></div>
                   <FitPill accent={rowDone === row.sets.length && row.sets.length ? "#75ed9a" : exercise.accent}>{rowDone}/{row.sets.length}</FitPill>
                   <span style={{ color: expanded ? exercise.accent : textSoft, display: "grid", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .18s ease" }}><FitIcon name="chevron" size={16}/></span>
                 </div>
                 {expanded ? <div style={{ padding: "0 9px 9px", animation: "fitTabLabelIn .18s ease both" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 40px", gap: 6, padding: "6px 2px 0", color: textSoft, fontSize: 7.6, fontWeight: 950, letterSpacing: .55, textAlign: "center" }}><span>#</span><span>KG</span><span>REPS</span><span>OK</span></div>
-                  <div style={{ display: "grid", gap: 5, marginTop: 4 }}>{row.sets.map((set, index) => <SetRow key={set.id} index={index} set={set} accent={exercise.accent} onWeight={(weightKg) => updateSet(row.id, set.id, { weightKg })} onReps={(reps) => updateSet(row.id, set.id, { reps })} onToggle={() => toggleSet(row.id, set.id)} onRemove={() => removeSet(row.id, set.id)} />)}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 40px", gap: 6, padding: "6px 2px 0", color: textSoft, fontSize: 7.6, fontWeight: 950, letterSpacing: .55, textAlign: "center" }}>
+                    <span>#</span>
+                    <span>{metricMode === "strength" || metricMode === "bodyweight" ? "KG" : metricMode === "cardio" ? "KM" : "SEC"}</span>
+                    <span>{metricMode === "hold" ? t("RESP", "BREATH", "RESP") : metricMode === "cardio" ? "MIN" : "REPS"}</span>
+                    <span>OK</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 5, marginTop: 4 }}>{row.sets.map((set, index) => <SetRow key={set.id} index={index} set={set} accent={exercise.accent} mode={metricMode} onWeight={(weightKg) => updateSet(row.id, set.id, { weightKg })} onReps={(reps) => updateSet(row.id, set.id, { reps })} onDuration={(durationSec) => updateSet(row.id, set.id, { durationSec })} onDistance={(distanceM) => updateSet(row.id, set.id, { distanceM })} onToggle={() => toggleSet(row.id, set.id)} onRemove={() => removeSet(row.id, set.id)} />)}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 38px", gap: 6, marginTop: 7 }}><FitGhostButton onClick={() => addSet(row.id)} accent={exercise.accent} style={{ minHeight: 36, color: exercise.accent, fontSize: 8.8 }}>＋ {t("AJOUTER UNE SÉRIE", "ADD SET", "AÑADIR SERIE")}</FitGhostButton><button type="button" aria-label={t("Supprimer l'exercice", "Remove exercise", "Eliminar ejercicio")} onClick={() => removeExercise(row.id)} style={{ borderRadius: 11, border: "1px solid rgba(255,110,110,.18)", background: "rgba(255,90,90,.055)", color: "#ff8b8b", fontSize: 17 }}>×</button></div>
                 </div> : null}
               </FitGlassCard>;
@@ -448,7 +564,61 @@ function TemplateCard({ selected, accent, title, titleLines, onClick, wide = fal
   </button>;
 }
 
-function SetRow({ index, set, accent, onWeight, onReps, onToggle, onRemove }: { index: number; set: FitSet; accent: string; onWeight: (value: number) => void; onReps: (value: number) => void; onToggle: () => void; onRemove: () => void }) {
-  const inputStyle: React.CSSProperties = { width: "100%", minWidth: 0, height: 38, borderRadius: 10, border: `1px solid ${set.completed ? accent + "55" : "rgba(255,255,255,.07)"}`, background: set.completed ? `${accent}14` : "rgba(16,21,29,.98)", color: "#fff", textAlign: "center", fontSize: 13, fontWeight: 900, outline: "none", boxSizing: "border-box" };
-  return <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 40px", gap: 6, alignItems: "center", opacity: set.completed ? .92 : 1 }} onContextMenu={(event) => { event.preventDefault(); onRemove(); }}><div style={{ width: 32, height: 38, borderRadius: 10, display: "grid", placeItems: "center", color: set.completed ? accent : "rgba(255,255,255,.55)", background: set.completed ? `${accent}12` : "rgba(14,19,27,.98)", border: `1px solid ${set.completed ? accent + "35" : "rgba(255,255,255,.06)"}`, fontWeight: 950, fontSize: 11 }}>{index + 1}</div><input inputMode="decimal" type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => onWeight(Math.max(0, Number(event.target.value) || 0))} style={inputStyle}/><input inputMode="numeric" type="number" min="0" step="1" value={set.reps} onChange={(event) => onReps(Math.max(0, Math.round(Number(event.target.value) || 0)))} style={inputStyle}/><button type="button" onClick={onToggle} aria-label={set.completed ? "Annuler la série" : "Valider la série"} style={{ width: 40, height: 38, borderRadius: 10, border: `1px solid ${set.completed ? accent + "66" : "rgba(255,255,255,.08)"}`, background: set.completed ? accent : "rgba(255,255,255,.035)", color: set.completed ? "#090b0d" : "#fff", fontWeight: 1000, cursor: "pointer", boxShadow: set.completed ? `0 0 16px ${accent}28` : "none" }}>{set.completed ? "✓" : "○"}</button></div>;
+function SetRow({
+  index,
+  set,
+  accent,
+  mode,
+  onWeight,
+  onReps,
+  onDuration,
+  onDistance,
+  onToggle,
+  onRemove,
+}: {
+  index: number;
+  set: FitSet;
+  accent: string;
+  mode: FitMetricMode;
+  onWeight: (value: number) => void;
+  onReps: (value: number) => void;
+  onDuration: (value: number) => void;
+  onDistance: (value: number) => void;
+  onToggle: () => void;
+  onRemove: () => void;
+}) {
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    minWidth: 0,
+    height: 42,
+    borderRadius: 11,
+    border: `1px solid ${set.completed ? accent + "55" : "rgba(255,255,255,.08)"}`,
+    background: set.completed ? `${accent}14` : "rgba(16,21,29,.98)",
+    color: "#fff",
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: 950,
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  const metricA = mode === "cardio"
+    ? <input inputMode="decimal" type="number" min="0" step="0.1" value={Math.round((Number(set.distanceM) || 0) / 100) / 10} onChange={(event) => onDistance(Math.max(0, Number(event.target.value) || 0) * 1000)} style={inputStyle}/>
+    : mode === "interval" || mode === "hold"
+      ? <input inputMode="numeric" type="number" min="0" step="5" value={Math.max(0, Math.round(Number(set.durationSec) || 0))} onChange={(event) => onDuration(Math.max(0, Math.round(Number(event.target.value) || 0)))} style={inputStyle}/>
+      : <input inputMode="decimal" type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => onWeight(Math.max(0, Number(event.target.value) || 0))} style={inputStyle}/>;
+
+  const metricB = mode === "cardio"
+    ? <input inputMode="decimal" type="number" min="0" step="1" value={Math.round((Number(set.durationSec) || 0) / 6) / 10} onChange={(event) => onDuration(Math.max(0, Number(event.target.value) || 0) * 60)} style={inputStyle}/>
+    : <input inputMode="numeric" type="number" min="0" step="1" value={set.reps} onChange={(event) => onReps(Math.max(0, Math.round(Number(event.target.value) || 0)))} style={inputStyle}/>;
+
+  return <div
+    style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 40px", gap: 6, alignItems: "center", opacity: set.completed ? .92 : 1 }}
+    onContextMenu={(event) => { event.preventDefault(); onRemove(); }}
+  >
+    <div style={{ width: 32, height: 42, borderRadius: 10, display: "grid", placeItems: "center", color: set.completed ? accent : "rgba(255,255,255,.55)", background: set.completed ? `${accent}12` : "rgba(14,19,27,.98)", border: `1px solid ${set.completed ? accent + "35" : "rgba(255,255,255,.06)"}`, fontWeight: 950, fontSize: 11 }}>{index + 1}</div>
+    {metricA}
+    {metricB}
+    <button type="button" onClick={onToggle} aria-label={set.completed ? "Annuler la série" : "Valider la série"} style={{ width: 40, height: 42, borderRadius: 10, border: `1px solid ${set.completed ? accent + "66" : "rgba(255,255,255,.08)"}`, background: set.completed ? accent : "rgba(255,255,255,.035)", color: set.completed ? "#090b0d" : "#fff", fontWeight: 1000, cursor: "pointer", boxShadow: set.completed ? `0 0 16px ${accent}28` : "none" }}>{set.completed ? "✓" : "○"}</button>
+  </div>;
 }
