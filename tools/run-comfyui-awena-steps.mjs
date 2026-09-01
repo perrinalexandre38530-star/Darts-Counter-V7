@@ -3,6 +3,7 @@ import fssync from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { requireMediaTools, runFfmpeg, runFfprobe } from "./fit-awena-media-tools.mjs";
+import { validateStepPack } from "./fit-awena-step-quality.mjs";
 
 function arg(name,fallback=""){const i=process.argv.indexOf(name);return i>=0?(process.argv[i+1]??fallback):fallback;}
 function flag(name){return process.argv.includes(name);}
@@ -70,8 +71,12 @@ async function prepareFromApprovedVideo(job){
 }
 async function writeStepMetadata(job,extra={}){
   const metaFile=path.join(job.outputDirectory,"metadata.json");let meta={};try{meta=JSON.parse(await fs.readFile(metaFile,"utf8"));}catch{}
-  meta={...meta,assetKey:job.assetKey,exerciseId:job.exerciseId,name:job.name,status:"REVIEW",requestedComponents:["steps"],generationMode:job.generationMode,stepStrategy:job.stepStrategy,aliases:job.aliases||[],stepGuide:{status:"REVIEW_REQUIRED",requiredSteps:4,generatedAt:new Date().toISOString(),policy:job.stepStrategy==="COMFYUI_DEDICATED_STILLS"?"Dedicated pedagogical AWENA stills generated individually; never arbitrary video frame extraction.":"Candidate pedagogical steps derived only from already APPROVED AWENA manual media; human visual review remains mandatory."},humanReviewRequired:true,...extra};await fs.writeFile(metaFile,JSON.stringify(meta,null,2));
+  const technicalQuality=extra.technicalQuality||null;
+  const ready=technicalQuality?.pass===true;
+  meta={...meta,assetKey:job.assetKey,exerciseId:job.exerciseId,name:job.name,status:"REVIEW",requestedComponents:["steps"],generationMode:job.generationMode,stepStrategy:job.stepStrategy,aliases:job.aliases||[],equipment:job.equipment||null,equipmentIntegrityRequired:Boolean(job.equipmentIntegrityRequired),stepGuide:{status:ready?"READY":"TECHNICAL_REVIEW_REQUIRED",requiredSteps:4,generatedAt:new Date().toISOString(),policy:"V117: four dedicated pedagogical AWENA stills generated automatically. Legacy frames/video may guide pose only and are never copied as final steps. Human review remains mandatory even after automatic QC."},humanReviewRequired:true,...extra};
+  await fs.writeFile(metaFile,JSON.stringify(meta,null,2));
 }
+
 
 if(!await exists(queueFile))throw new Error(`Queue steps absente: ${queueFile}. Lance npm run fit:awena:steps:queue -- --refresh`);
 const q=JSON.parse(await fs.readFile(queueFile,"utf8"));let jobs=q.jobs||[];if(match)jobs=jobs.filter(j=>`${j.name} ${j.exerciseId} ${j.assetKey}`.toLowerCase().includes(match));if(limit)jobs=jobs.slice(0,limit);
@@ -84,11 +89,8 @@ const raw=needsComfyUi?JSON.parse(await fs.readFile(workflowFile,"utf8")):null;c
 let completed=0,failed=0;
 for(const job of jobs){
   try{
-    if(job.stepStrategy==="APPROVED_MANUAL_FRAMES"){
-      const prepared=await prepareFromApprovedFrames(job);await writeStepMetadata(job,{preparedFromApprovedMedia:prepared});completed++;console.log(`STEPS REVIEW READY ${job.assetKey} · depuis frames AWENA APPROVED · validation visuelle requise`);continue;
-    }
-    if(job.stepStrategy==="APPROVED_VIDEO_PHASE_FRAMES"){
-      const prepared=await prepareFromApprovedVideo(job);await writeStepMetadata(job,{preparedFromApprovedMedia:prepared});completed++;console.log(`STEPS REVIEW READY ${job.assetKey} · depuis vidéo AWENA APPROVED · validation visuelle requise`);continue;
+    if(job.stepStrategy==="APPROVED_MANUAL_FRAMES"||job.stepStrategy==="APPROVED_VIDEO_PHASE_FRAMES"){
+      throw new Error(`Queue steps legacy V115 refusée pour ${job.assetKey}. Lance npm run fit:awena:sync afin de reconstruire une queue V117 COMFYUI_DEDICATED_STILLS. Les anciennes frames/vidéos ne sont plus copiées comme steps finaux.`);
     }
     const identity=localReference(job.identityReference);if(!identity)throw new Error(`Référence AWENA absente: ${job.identityReference}`);
     const identityName=await upload(identity,`fit-awena-step-identity-${job.assetKey}${path.extname(identity)}`);
@@ -102,8 +104,15 @@ for(const job of jobs){
       const preferred=refs.find(r=>`${r.subfolder}/${r.filename}`.includes(prefix))||refs.at(-1);const tmp=path.join(os.tmpdir(),`awena-step-${job.assetKey}-${i+1}${path.extname(preferred.filename)||".png"}`);await materialize(preferred,tmp);
       if(/\.webp$/i.test(tmp))await fs.copyFile(tmp,target);else runFfmpeg(["-y","-i",tmp,"-frames:v","1","-c:v","libwebp","-quality","92",target],`Conversion step ${i+1}`);await fs.rm(tmp,{force:true}).catch(()=>{});
     }
-    await writeStepMetadata(job,{preparedFromApprovedMedia:null});
-    completed++;console.log(`STEPS REVIEW READY ${job.assetKey} · validation visuelle requise`);
+    const stepFiles=Array.from({length:4},(_,i)=>path.join(job.outputDirectory,`awena-step-${String(i+1).padStart(2,"0")}.webp`));
+    const technicalQuality=await validateStepPack(stepFiles,{equipmentIntegrityRequired:Boolean(job.equipmentIntegrityRequired)});
+    await writeStepMetadata(job,{preparedFromApprovedMedia:null,technicalQuality});
+    if(!technicalQuality.pass){
+      failed++;
+      console.error(`STEPS QC REFUSÉ ${job.assetKey}: ${(technicalQuality.reasons||[]).join(", ")||"qualité technique insuffisante"}. Le pack reste REVIEW et ne peut pas être approuvé.`);
+      continue;
+    }
+    completed++;console.log(`STEPS REVIEW READY ${job.assetKey} · QC technique OK · validation visuelle requise`);
   }catch(error){failed++;console.error(`ECHEC STEPS ${job.name}: ${error?.message||error}`);}
 }
 console.log(JSON.stringify({processed:jobs.length,reviewReady:completed,failed},null,2));if(failed)process.exitCode=2;

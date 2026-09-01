@@ -1,0 +1,80 @@
+{
+  "name": "FIT PERF AWENA Automated Dedicated Steps V117",
+  "base": "Darts-Counter-V7(68).zip",
+  "packageJsonModified": false,
+  "principles": [
+    "No per-exercise Copy-Item/manual media substitution",
+    "Legacy approved frames/video are pose references only, never final steps",
+    "Exercises with equipment require dedicated generated stills",
+    "Automatic alpha/margin/pose-diversity technical gate before approval",
+    "Unsafe legacy REVIEW step packs quarantined automatically during sync",
+    "One-time ComfyUI image workflow, then batch generation is automatic"
+  ],
+  "files": [
+    {
+      "path": "INSTALLATION-FIT-AWENA-V117-V68.txt",
+      "sha256": "47fac6acf1132e2961d26ec04aa5fdbe20c023704e7f98ca16e5e5e1d0c94538",
+      "size": 1398
+    },
+    {
+      "path": "docs/FIT_AWENA_STEP_RECOVERY_SYNC_V115.md",
+      "sha256": "7736e5c6745a7f8086b4d69648fe428661cb112ed27bcc5ce294fafe66a788bd",
+      "size": 1725
+    },
+    {
+      "path": "tools/audit-fit-awena-media.mjs",
+      "sha256": "81696fb6003ba580acd69eb25c5117bf6a851870f87cb9d9b5ba786ceaa89640",
+      "size": 3953
+    },
+    {
+      "path": "tools/build-fit-awena-jobs.mjs",
+      "sha256": "269255733db5df3c97a1d7224d1553b5284e04321b10eb863a31ff0c2487e7ef",
+      "size": 11992
+    },
+    {
+      "path": "tools/build-fit-awena-registry.mjs",
+      "sha256": "3b616b402e458dcaf2b41c892cccd50d45873dbfb4323ebc60f0170d8663464f",
+      "size": 4078
+    },
+    {
+      "path": "tools/build-fit-awena-step-jobs.mjs",
+      "sha256": "36d832dbf3f8413f9b1d5d2c9b75e747565fe1923804514dbfd97a404803bc02",
+      "size": 8519
+    },
+    {
+      "path": "tools/comfyui/AWENA_STEP_WORKFLOW.md",
+      "sha256": "45f9f15d47d3789a668f2b8c92cd797bc3c6413d261761ba4ec2711c1d510250",
+      "size": 1701
+    },
+    {
+      "path": "tools/fit-awena-step-quality.mjs",
+      "sha256": "c64e1706cc5a6a08d3acd4be69d188d70a5a33e13ff3a30c343794ac54e05ac4",
+      "size": 3099
+    },
+    {
+      "path": "tools/probe-comfyui-image-models.mjs",
+      "sha256": "589e91845f781c554066ee53397abe51df5f4ad186e01c87c05399a3944448c6",
+      "size": 718
+    },
+    {
+      "path": "tools/quarantine-fit-awena-legacy-step-reviews.mjs",
+      "sha256": "3e4cf224e3b946ccb59048fbb5662606cecbe7861ca5166ca5fc771211b6792b",
+      "size": 1377
+    },
+    {
+      "path": "tools/run-comfyui-awena-steps.mjs",
+      "sha256": "693761956abf1c893887019ef387a42bdc698eb4498d7238af27b946c3afa16a",
+      "size": 11624
+    },
+    {
+      "path": "tools/sync-fit-awena-state.mjs",
+      "sha256": "896386cb9be13a2916dbdab1502d38ecce8376b3d997fde5a17960b55b56920c",
+      "size": 2313
+    },
+    {
+      "path": "tools/test-fit-awena-steps-local-v115.mjs",
+      "sha256": "0c74004e450ab465d819af4a1ac67851865e96333a9d3177e45e039dab65981c",
+      "size": 1695
+    }
+  ]
+}

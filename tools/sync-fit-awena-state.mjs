@@ -8,6 +8,7 @@ const catalog = await loadCatalog({ refresh, allowCache: true });
 console.log(JSON.stringify({ catalogCount: catalog.exercises?.length || 0, sources: catalog.sources || {}, sourceErrors: catalog.errors || [] }, null, 2));
 
 const steps = [
+  ["unsafe step review quarantine", ["./tools/quarantine-fit-awena-legacy-step-reviews.mjs"]],
   ["registry", ["./tools/build-fit-awena-registry.mjs", "--migrate-legacy"]],
   ["audit", ["./tools/audit-fit-awena-media.mjs"]],
   ["motion queue", ["./tools/build-fit-awena-jobs.mjs"]],

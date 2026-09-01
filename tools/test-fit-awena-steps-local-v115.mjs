@@ -1,6 +1,4 @@
 import fs from "node:fs/promises";
-import fssync from "node:fs";
-import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 function run(args){
@@ -16,24 +14,13 @@ const curl=queue.jobs.find((j)=>j.assetKey==="curl");
 const squat=queue.jobs.find((j)=>j.assetKey==="squat");
 if(!curl)throw new Error("curl missing from step queue");
 if(!squat)throw new Error("squat missing from step queue");
-if(curl.stepStrategy!=="APPROVED_MANUAL_FRAMES")throw new Error(`curl strategy=${curl.stepStrategy}`);
-if(squat.stepStrategy!=="APPROVED_VIDEO_PHASE_FRAMES")throw new Error(`squat strategy=${squat.stepStrategy}`);
-if(queue.requiresComfyUiImageWorkflow!==0)throw new Error(`unexpected ComfyUI step jobs: ${queue.requiresComfyUiImageWorkflow}`);
-
-const reviewCurl=path.resolve("public/fit/awena-library/review/curl");
-const backup=path.resolve("var/fit-awena/test-backup-review-curl");
-await fs.rm(backup,{recursive:true,force:true});
-if(fssync.existsSync(reviewCurl)){await fs.mkdir(path.dirname(backup),{recursive:true});await fs.rename(reviewCurl,backup);}
-try{
-  run(["./tools/run-comfyui-awena-steps.mjs","--match","curl","--overwrite"]);
-  for(let i=1;i<=4;i++){
-    const f=path.join(reviewCurl,`awena-step-${String(i).padStart(2,"0")}.webp`);
-    const s=await fs.stat(f);if(s.size<1000)throw new Error(`invalid generated curl step ${i}`);
-  }
-  const meta=JSON.parse(await fs.readFile(path.join(reviewCurl,"metadata.json"),"utf8"));
-  if(meta.status!=="REVIEW"||meta.stepStrategy!=="APPROVED_MANUAL_FRAMES")throw new Error("curl metadata policy mismatch");
-}finally{
-  await fs.rm(reviewCurl,{recursive:true,force:true});
-  if(fssync.existsSync(backup))await fs.rename(backup,reviewCurl);
+for(const job of [curl,squat]){
+  if(job.stepStrategy!=="COMFYUI_DEDICATED_STILLS")throw new Error(`${job.assetKey} unsafe strategy=${job.stepStrategy}`);
+  if(!job.equipmentIntegrityRequired)throw new Error(`${job.assetKey} must enforce equipment integrity`);
 }
-console.log("FIT AWENA V115 local step preparation: OK");
+if((curl.approvedFrameSources||[]).length<4)throw new Error("curl approved frames must remain pose references");
+if(!squat.authoritativeVideoReference)throw new Error("squat approved video must remain pose reference");
+if(queue.reusableApprovedFrames!==0||queue.reusableApprovedVideo!==0)throw new Error("legacy frames/video must never be copied as final steps in V117");
+if(queue.requiresComfyUiImageWorkflow<2)throw new Error(`expected dedicated still workflow jobs, got ${queue.requiresComfyUiImageWorkflow}`);
+if(queue.policy?.legacyFramesArePoseReferencesOnly!==true)throw new Error("V117 pose-reference-only policy missing");
+console.log("FIT AWENA V117 automated dedicated steps policy: OK");
