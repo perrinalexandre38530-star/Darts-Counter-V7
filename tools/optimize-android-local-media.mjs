@@ -28,20 +28,65 @@ function walk(dir) {
 }
 function mb(n) { return (n / 1024 / 1024).toFixed(2); }
 function tempName(file) { return `${file}.mss-opt.tmp${path.extname(file).toLowerCase()}`; }
+function sleepSync(ms) {
+  // Petite attente synchrone, utile sous Windows lorsque Sharp/antivirus/indexeur
+  // garde brièvement un handle ouvert juste après la création du fichier temporaire.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function safeRemove(file) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      fs.rmSync(file, { force: true });
+      return true;
+    } catch {
+      sleepSync(40 * (attempt + 1));
+    }
+  }
+  return false;
+}
+
 function replaceIfSmaller(src, temp) {
   const before = fs.statSync(src).size;
   const after = fs.statSync(temp).size;
 
-  if (after > 0 && after < before) {
-    // Windows: renameSync(temp, src) peut échouer avec EPERM lorsque src existe.
-    // copyFileSync remplace le fichier existant de façon fiable, puis on nettoie le temporaire.
-    fs.copyFileSync(temp, src);
-    fs.rmSync(temp, { force: true });
-    return { before, after, saved: before - after };
+  if (!(after > 0 && after < before)) {
+    safeRemove(temp);
+    return { before, after: before, saved: 0 };
   }
 
-  fs.rmSync(temp, { force: true });
-  return { before, after: before, saved: 0 };
+  let lastError = null;
+
+  // 1) Copie avec plusieurs tentatives : la plupart des verrous Windows
+  // disparaissent dans les quelques centaines de ms qui suivent Sharp/ffmpeg.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      fs.copyFileSync(temp, src);
+      safeRemove(temp);
+      return { before, after, saved: before - after };
+    } catch (error) {
+      lastError = error;
+      sleepSync(60 * (attempt + 1));
+    }
+  }
+
+  // 2) Fallback : réécriture directe du contenu au lieu d'un rename/copy.
+  try {
+    const data = fs.readFileSync(temp);
+    fs.writeFileSync(src, data);
+    safeRemove(temp);
+    return { before, after, saved: before - after };
+  } catch (error) {
+    lastError = error;
+  }
+
+  // L'optimisation média est "best effort" : un fichier momentanément verrouillé
+  // ne doit JAMAIS faire échouer tout android:sync.
+  safeRemove(temp);
+  console.warn(
+    `[media-opt] SKIP fichier verrouillé: ${path.relative(ROOT, src)} (${lastError?.code || lastError?.message || 'erreur Windows'})`
+  );
+  return { before, after: before, saved: 0, note: 'windows-lock-skip' };
 }
 
 async function optimizeImage(file) {
@@ -98,6 +143,11 @@ async function pool(items, worker, concurrency = 3) {
     while (true) { const idx = i++; if (idx >= items.length) return; out[idx] = await worker(items[idx]); }
   }));
   return out.filter(Boolean);
+}
+
+// Nettoie les fichiers temporaires laissés par une exécution interrompue.
+for (const stale of walk(DIST).filter((f) => f.includes('.mss-opt.tmp.'))) {
+  safeRemove(stale);
 }
 
 const all = walk(DIST);

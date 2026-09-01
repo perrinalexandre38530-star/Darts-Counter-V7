@@ -361,6 +361,16 @@ export default function FitPerfModule({ go, store, params }: Props) {
       return undefined;
     };
     const focusedPreviousSet = focusedRow ? previousSetForExercise(focusedRow.exerciseId) : undefined;
+    const focusedDone = focusedRow?.sets.filter((set) => set.completed).length || 0;
+    const focusedTotal = focusedRow?.sets.length || 0;
+    const focusedComplete = focusedTotal > 0 && focusedDone === focusedTotal;
+    const focusedNextSetIndex = focusedRow ? Math.max(0, focusedRow.sets.findIndex((set) => !set.completed)) : -1;
+    const focusedSetLabel =
+      metricMode === "strength" ? "KG · REPS" :
+      metricMode === "bodyweight" ? "REPS · CHARGE +" :
+      metricMode === "interval" ? "TEMPS · REPS" :
+      metricMode === "hold" ? "MAINTIEN · RESP." :
+      "DISTANCE · TEMPS";
     const focusExerciseAt = (index: number) => {
       if (!session.exercises.length) return;
       const safe = Math.max(0, Math.min(session.exercises.length - 1, index));
@@ -438,44 +448,118 @@ export default function FitPerfModule({ go, store, params }: Props) {
             </div>
           </FitGlassCard> : null}
 
-          <FitSectionTitle eyebrow={t("EXERCICE ACTUEL", "CURRENT EXERCISE", "EJERCICIO ACTUAL")} title={metricMode === "strength" ? t("Séries & charges", "Sets & loads", "Series y cargas") : metricMode === "hold" ? t("Maintiens & durée", "Holds & duration", "Aguantes y duración") : metricMode === "cardio" ? t("Distance & durée", "Distance & duration", "Distancia y duración") : t("Séries & effort", "Sets & effort", "Series y esfuerzo")} right={<FitPill accent={accent}>{doneSets}/{allSets}</FitPill>} />
+          <FitSectionTitle
+            eyebrow={t("EXERCICE ACTUEL", "CURRENT EXERCISE", "EJERCICIO ACTUAL")}
+            title={focusedExercise?.name || t("Ajoute un exercice", "Add an exercise", "Añade un ejercicio")}
+            right={focusedRow ? <FitPill accent={focusedComplete ? "#75ed9a" : focusedExercise?.accent || accent}>{focusedDone}/{focusedTotal}</FitPill> : null}
+          />
 
-          <div style={{ display: "grid", gap: 10 }}>
-            {session.exercises.map((row, exerciseIndex) => {
-              const exercise = exerciseById(row.exerciseId);
-              if (!exercise) return null;
-              const rowDone = row.sets.filter((set) => set.completed).length;
-              const expanded = focusedRow?.id === row.id;
-              return <FitGlassCard key={row.id} accent={exercise.accent} style={{ overflow: "hidden", borderColor: expanded ? `${exercise.accent}66` : "rgba(255,255,255,.13)", background: expanded ? `linear-gradient(145deg,${exercise.accent}12,rgba(7,10,16,.99) 28%,rgba(4,6,11,.995))` : "linear-gradient(180deg,rgba(9,12,18,.985),rgba(5,8,13,.995))", boxShadow: "0 10px 28px rgba(0,0,0,.48)" }}>
-                <div role="button" tabIndex={0} onClick={() => setExpandedExerciseRowId(row.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setExpandedExerciseRowId(row.id); }} style={{ display: "grid", gridTemplateColumns: "54px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, cursor: "pointer" }}>
-                  <div style={{ width: 52, height: 46, borderRadius: 11, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}30`, fontSize: 16, fontWeight: 1000, overflow: "hidden" }}>{exercisePreviewUrl(exercise.id) ? <img src={exercisePreviewUrl(exercise.id) || undefined} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : exercise.icon}</div>
-                  <div style={{ minWidth: 0 }}><div style={{ color: exercise.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .7 }}>{String(exerciseIndex + 1).padStart(2, "0")} · {exercise.muscle.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 11.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.8 }}>{rowDone}/{row.sets.length} {t("séries", "sets", "series")}</div></div>
-                  <FitPill accent={rowDone === row.sets.length && row.sets.length ? "#75ed9a" : exercise.accent}>{rowDone}/{row.sets.length}</FitPill>
-                  <span style={{ color: expanded ? exercise.accent : textSoft, display: "grid", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .18s ease" }}><FitIcon name="chevron" size={16}/></span>
-                </div>
-                {expanded ? <div style={{ padding: "0 9px 9px", animation: "fitTabLabelIn .18s ease both" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 40px", gap: 6, padding: "6px 2px 0", color: textSoft, fontSize: 7.6, fontWeight: 950, letterSpacing: .55, textAlign: "center" }}>
-                    <span>#</span>
-                    <span>{metricMode === "strength" || metricMode === "bodyweight" ? "KG" : metricMode === "cardio" ? "KM" : "SEC"}</span>
-                    <span>{metricMode === "hold" ? t("RESP", "BREATH", "RESP") : metricMode === "cardio" ? "MIN" : "REPS"}</span>
-                    <span>OK</span>
+          {focusedExercise && focusedRow ? <>
+            <FitGlassCard accent={focusedExercise.accent} style={{ padding: 11, borderColor: `${focusedExercise.accent}55`, background: `linear-gradient(160deg,${focusedExercise.accent}11,rgba(6,9,14,.995) 36%,rgba(4,6,10,.998))` }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+                <div>
+                  <div style={{ color: focusedExercise.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .8 }}>{focusedSetLabel}</div>
+                  <div style={{ marginTop: 3, color: "#fff", fontSize: 12.5, fontWeight: 1000 }}>
+                    {focusedComplete
+                      ? t("Exercice terminé", "Exercise complete", "Ejercicio terminado")
+                      : t(`Série ${focusedNextSetIndex + 1} sur ${focusedTotal}`, `Set ${focusedNextSetIndex + 1} of ${focusedTotal}`, `Serie ${focusedNextSetIndex + 1} de ${focusedTotal}`)}
                   </div>
-                  <div style={{ display: "grid", gap: 5, marginTop: 4 }}>{row.sets.map((set, index) => <SetRow key={set.id} index={index} set={set} accent={exercise.accent} mode={metricMode} onWeight={(weightKg) => updateSet(row.id, set.id, { weightKg })} onReps={(reps) => updateSet(row.id, set.id, { reps })} onDuration={(durationSec) => updateSet(row.id, set.id, { durationSec })} onDistance={(distanceM) => updateSet(row.id, set.id, { distanceM })} onToggle={() => toggleSet(row.id, set.id)} onRemove={() => removeSet(row.id, set.id)} />)}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 38px", gap: 6, marginTop: 7 }}><FitGhostButton onClick={() => addSet(row.id)} accent={exercise.accent} style={{ minHeight: 36, color: exercise.accent, fontSize: 8.8 }}>＋ {t("AJOUTER UNE SÉRIE", "ADD SET", "AÑADIR SERIE")}</FitGhostButton><button type="button" aria-label={t("Supprimer l'exercice", "Remove exercise", "Eliminar ejercicio")} onClick={() => removeExercise(row.id)} style={{ borderRadius: 11, border: "1px solid rgba(255,110,110,.18)", background: "rgba(255,90,90,.055)", color: "#ff8b8b", fontSize: 17 }}>×</button></div>
-                </div> : null}
-              </FitGlassCard>;
-            })}
-          </div>
+                </div>
+                <div style={{ minWidth: 74, textAlign: "right" }}>
+                  <div style={{ color: textSoft, fontSize: 6.8, fontWeight: 1000, letterSpacing: .55 }}>{t("DERNIÈRE FOIS", "LAST TIME", "ÚLTIMA VEZ")}</div>
+                  <div style={{ marginTop: 2, color: focusedPreviousSet ? "#fff" : textSoft, fontSize: 10, fontWeight: 1000 }}>{formatSetPerformance(focusedPreviousSet, metricMode)}</div>
+                </div>
+              </div>
 
-          {!session.exercises.length ? <FitGlassCard accent={accent} style={{ padding: "28px 18px", textAlign: "center" }}><div style={{ fontSize: 34 }}>＋</div><div style={{ marginTop: 8, fontSize: 14, fontWeight: 1000 }}>{t("Construis ta séance", "Build your workout", "Construye tu sesión")}</div><div style={{ margin: "6px auto 0", maxWidth: 380, color: textSoft, fontSize: 10, lineHeight: 1.5 }}>{t("Ajoute ton premier exercice puis renseigne tes charges et tes répétitions série par série.", "Add your first exercise, then enter loads and reps set by set.", "Añade tu primer ejercicio e introduce cargas y repeticiones serie por serie.")}</div></FitGlassCard> : null}
+              <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 44px", gap: 7, marginTop: 10, padding: "0 2px", color: textSoft, fontSize: 7.3, fontWeight: 1000, letterSpacing: .55, textAlign: "center" }}>
+                <span>#</span>
+                <span>{metricMode === "strength" || metricMode === "bodyweight" ? "KG" : metricMode === "cardio" ? "KM" : "SEC"}</span>
+                <span>{metricMode === "hold" ? t("RESP", "BREATH", "RESP") : metricMode === "cardio" ? "MIN" : "REPS"}</span>
+                <span>OK</span>
+              </div>
+              <div style={{ display: "grid", gap: 7, marginTop: 5 }}>
+                {focusedRow.sets.map((set, index) => <SetRow
+                  key={set.id}
+                  index={index}
+                  set={set}
+                  accent={focusedExercise.accent}
+                  mode={metricMode}
+                  onWeight={(weightKg) => updateSet(focusedRow.id, set.id, { weightKg })}
+                  onReps={(reps) => updateSet(focusedRow.id, set.id, { reps })}
+                  onDuration={(durationSec) => updateSet(focusedRow.id, set.id, { durationSec })}
+                  onDistance={(distanceM) => updateSet(focusedRow.id, set.id, { distanceM })}
+                  onToggle={() => toggleSet(focusedRow.id, set.id)}
+                  onRemove={() => removeSet(focusedRow.id, set.id)}
+                />)}
+              </div>
 
-          <FitPrimaryButton onClick={() => setShowExercisePicker(true)} accent={accent} style={{ width: "100%", marginTop: 10 }}>＋ {t("AJOUTER UN EXERCICE", "ADD EXERCISE", "AÑADIR EJERCICIO")}</FitPrimaryButton>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 7, marginTop: 9 }}>
+                <FitGhostButton onClick={() => addSet(focusedRow.id)} accent={focusedExercise.accent} style={{ minHeight: 39, color: focusedExercise.accent, fontSize: 8.8 }}>＋ {t("AJOUTER UNE SÉRIE", "ADD SET", "AÑADIR SERIE")}</FitGhostButton>
+                {focusedPreviousSet ? <FitGhostButton onClick={reusePreviousPerformance} accent={focusedExercise.accent} style={{ minHeight: 39, color: focusedExercise.accent, fontSize: 8 }}>{t("REPRENDRE", "REUSE", "REUTILIZAR")}</FitGhostButton> : null}
+              </div>
 
-          <FitSectionTitle eyebrow={t("RÉCUPÉRATION", "RECOVERY", "RECUPERACIÓN")} title={t("Chronomètre automatique", "Automatic rest timer", "Temporizador automático")} />
-          <FitGlassCard accent="#75ed9a" style={{ padding: 13, background: "linear-gradient(180deg,rgba(8,14,13,.99),rgba(5,8,12,.995))" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={{ fontSize: 11.5, fontWeight: 950 }}>{t("Repos après chaque série validée", "Rest after each completed set", "Descanso tras cada serie completada")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 9.5 }}>{t("Réglage mémorisé pour les prochaines séances.", "Setting is saved for future workouts.", "Ajuste guardado para futuras sesiones.")}</div></div><b style={{ color: "#75ed9a", fontSize: 18 }}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, "0")}</b></div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginTop: 10 }}>{[60, 90, 120, 180].map((seconds) => <button key={seconds} type="button" onClick={() => changeRestSeconds(seconds)} style={{ minHeight: 36, borderRadius: 11, border: `1px solid ${restSeconds === seconds ? "rgba(117,237,154,.55)" : "rgba(255,255,255,.07)"}`, background: restSeconds === seconds ? "rgba(117,237,154,.12)" : "rgba(255,255,255,.03)", color: restSeconds === seconds ? "#75ed9a" : "#fff", fontWeight: 900, cursor: "pointer" }}>{seconds < 60 ? `${seconds}s` : `${seconds / 60}m`}</button>)}</div>
-          </FitGlassCard>
+              {focusedComplete && focusedIndex < session.exercises.length - 1 ? <FitPrimaryButton onClick={() => focusExerciseAt(focusedIndex + 1)} accent="#75ed9a" style={{ width: "100%", minHeight: 46, marginTop: 9 }}>
+                {t("EXERCICE SUIVANT", "NEXT EXERCISE", "SIGUIENTE EJERCICIO")} →
+              </FitPrimaryButton> : null}
+            </FitGlassCard>
+
+            <FitSectionTitle eyebrow={t("SÉANCE", "WORKOUT", "SESIÓN")} title={t("File d’exercices", "Exercise queue", "Cola de ejercicios")} right={<FitPill accent={accent}>{focusedIndex + 1}/{session.exercises.length}</FitPill>} />
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "1px 1px 5px", scrollSnapType: "x proximity" }}>
+              {session.exercises.map((row, exerciseIndex) => {
+                const exercise = exerciseById(row.exerciseId);
+                if (!exercise) return null;
+                const rowDone = row.sets.filter((set) => set.completed).length;
+                const complete = row.sets.length > 0 && rowDone === row.sets.length;
+                const active = row.id === focusedRow.id;
+                return <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => setExpandedExerciseRowId(row.id)}
+                  style={{
+                    flex: "0 0 118px",
+                    minWidth: 0,
+                    scrollSnapAlign: "start",
+                    borderRadius: 15,
+                    border: `1px solid ${active ? exercise.accent + "77" : complete ? "rgba(117,237,154,.38)" : "rgba(255,255,255,.08)"}`,
+                    background: active ? `${exercise.accent}12` : "rgba(255,255,255,.025)",
+                    color: "#fff",
+                    padding: 7,
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ height: 62, borderRadius: 11, overflow: "hidden", display: "grid", placeItems: "center", background: `radial-gradient(circle at center,${exercise.accent}16,#05080d 72%)` }}>
+                    {exercisePreviewUrl(exercise.id) ? <img src={exercisePreviewUrl(exercise.id) || undefined} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <span style={{ color: exercise.accent, fontSize: 22, fontWeight: 1000 }}>{exercise.icon}</span>}
+                  </div>
+                  <div style={{ marginTop: 6, color: active ? exercise.accent : "#fff", fontSize: 8.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div>
+                  <div style={{ marginTop: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, color: complete ? "#75ed9a" : textSoft, fontSize: 7.2, fontWeight: 900 }}>
+                    <span>{String(exerciseIndex + 1).padStart(2, "0")}</span><span>{complete ? "✓" : `${rowDone}/${row.sets.length}`}</span>
+                  </div>
+                </button>;
+              })}
+              <button type="button" onClick={() => setShowExercisePicker(true)} style={{ flex: "0 0 86px", minHeight: 102, borderRadius: 15, border: `1px dashed ${accent}55`, background: `${accent}08`, color: accent, display: "grid", placeItems: "center", alignContent: "center", gap: 4, fontWeight: 1000 }}>
+                <span style={{ fontSize: 24 }}>＋</span><span style={{ fontSize: 7.2 }}>{t("AJOUTER", "ADD", "AÑADIR")}</span>
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 7, marginTop: 5 }}>
+              <FitGhostButton onClick={() => setShowExercisePicker(true)} style={{ minHeight: 40 }}>＋ {t("AJOUTER / REMPLACER", "ADD / REPLACE", "AÑADIR / CAMBIAR")}</FitGhostButton>
+              <button type="button" aria-label={t("Supprimer l'exercice", "Remove exercise", "Eliminar ejercicio")} onClick={() => removeExercise(focusedRow.id)} style={{ minWidth: 42, borderRadius: 11, border: "1px solid rgba(255,110,110,.18)", background: "rgba(255,90,90,.055)", color: "#ff8b8b", fontSize: 17 }}>×</button>
+            </div>
+          </> : <FitGlassCard accent={accent} style={{ padding: "28px 18px", textAlign: "center" }}>
+            <div style={{ fontSize: 34 }}>＋</div>
+            <div style={{ marginTop: 8, fontSize: 14, fontWeight: 1000 }}>{t("Construis ta séance", "Build your workout", "Construye tu sesión")}</div>
+            <div style={{ margin: "6px auto 0", maxWidth: 380, color: textSoft, fontSize: 10, lineHeight: 1.5 }}>{t("Ajoute ton premier exercice puis renseigne tes séries.", "Add your first exercise, then enter your sets.", "Añade tu primer ejercicio y registra tus series.")}</div>
+            <FitPrimaryButton onClick={() => setShowExercisePicker(true)} accent={accent} style={{ width: "100%", minHeight: 45, marginTop: 12 }}>＋ {t("AJOUTER UN EXERCICE", "ADD EXERCISE", "AÑADIR EJERCICIO")}</FitPrimaryButton>
+          </FitGlassCard>}
+
+          {(metricMode === "strength" || metricMode === "bodyweight" || metricMode === "interval") ? <details style={{ marginTop: 10, borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(6,9,14,.985)", overflow: "hidden" }}>
+            <summary style={{ listStyle: "none", minHeight: 42, padding: "0 11px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer", fontSize: 9.5, fontWeight: 1000 }}>
+              <span style={{ color: "#75ed9a" }}>⏱</span>{t("Repos automatique", "Automatic rest", "Descanso automático")}
+              <span style={{ marginLeft: "auto", color: "#75ed9a" }}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, "0")}</span>
+            </summary>
+            <div style={{ padding: "0 10px 10px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>{[60, 90, 120, 180].map((seconds) => <button key={seconds} type="button" onClick={() => changeRestSeconds(seconds)} style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${restSeconds === seconds ? "rgba(117,237,154,.55)" : "rgba(255,255,255,.07)"}`, background: restSeconds === seconds ? "rgba(117,237,154,.12)" : "rgba(255,255,255,.03)", color: restSeconds === seconds ? "#75ed9a" : "#fff", fontWeight: 900 }}>{seconds / 60}m</button>)}</div>
+          </details> : null}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 8, marginTop: 12 }}><FitGhostButton onClick={() => { setSession(null); setView("setup"); }} style={{ minHeight: 52 }}>{t("ANNULER", "CANCEL", "CANCELAR")}</FitGhostButton><FitPrimaryButton onClick={finishWorkout} disabled={doneSets === 0} accent="#75ed9a" style={{ minHeight: 52 }}>✓ {t("TERMINER LA SÉANCE", "FINISH WORKOUT", "TERMINAR SESIÓN")}</FitPrimaryButton></div>
 

@@ -41,7 +41,7 @@ type Props = { go: (route: any, params?: any) => void };
 type Tab = "body" | "library" | "favorites" | "programs";
 type FilterTab = "zone" | "equipment" | "level";
 type ProgramView = "mine" | "discover" | "create";
-const EXERCISES_PER_PAGE = 9;
+const EXERCISES_PER_PAGE = 8;
 const FAVORITES_KEY = "mss-fit-perf-favorite-exercises-v1";
 // AWENA COACH detail dialog and premium motions are wired from this FIT PERF library shell.
 
@@ -264,7 +264,7 @@ export default function FitPerfPlan({ go }: Props) {
           position: "relative",
         }}
       >
-        <div style={{ position: "relative", height: 128, background: `radial-gradient(circle at 50% 36%,${accent}18,#070a10 70%)`, overflow: "hidden" }}>
+        <div style={{ position: "relative", height: 158, background: `radial-gradient(circle at 50% 36%,${accent}18,#070a10 70%)`, overflow: "hidden" }}>
           <FitExerciseMotion exercise={exercise} accent={accent} compact cleanBranding />
           <div aria-hidden="true" style={{ position: "absolute", left: 7, top: 7, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,5,10,.84)", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 3px 12px rgba(0,0,0,.38)", pointerEvents: "none", zIndex: 2 }}>
             <img src={LOGO} alt="" style={{ width: 19, height: 19, objectFit: "contain", display: "block" }} />
@@ -277,7 +277,7 @@ export default function FitPerfPlan({ go }: Props) {
           ><FitIcon name="favorite" size={13} /></button>
         </div>
         <div style={{ padding: "9px 9px 10px" }}>
-          <div style={{ minHeight: 29, fontSize: 9.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", color: accent, justifyContent: "center" }}>{exercise.name}</div>
+          <div style={{ minHeight: 31, fontSize: 10.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", color: accent, justifyContent: "center" }}>{exercise.name}</div>
           <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
             <DifficultyStars level={exercise.level} accent={accent} size={9} />
             <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: accent }} title={FIT_MUSCLE_LABELS[exercise.muscle][langKey]}><MuscleFilterIcon muscle={exercise.muscle} active size={18} accentColor={accent} /></span>
@@ -379,7 +379,7 @@ export default function FitPerfPlan({ go }: Props) {
             <div style={{ textAlign: "right" }}><div style={{ color: accent, fontSize: 10.5, fontWeight: 1000 }}>{page + 1} / {pageCount}</div><div style={{ marginTop: 2, color: "rgba(255,255,255,.4)", fontSize: 6.4, fontWeight: 900 }}>{t("9 PAR PAGE", "9 PER PAGE", "9 POR PÁGINA")}</div></div>
           </div>
 
-          {pagedExercises.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>{pagedExercises.map(renderExerciseTile)}</div> : <div style={{ padding: "32px 12px", textAlign: "center", color: textSoft, fontSize: 9 }}>{tab === "favorites" ? t("Aucun favori avec ces filtres.", "No favorites with these filters.", "No hay favoritos con estos filtros.") : t("Aucun exercice ne correspond à ces filtres.", "No exercise matches these filters.", "Ningún ejercicio coincide con estos filtros.")}</div>}
+          {pagedExercises.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{pagedExercises.map(renderExerciseTile)}</div> : <div style={{ padding: "32px 12px", textAlign: "center", color: textSoft, fontSize: 9 }}>{tab === "favorites" ? t("Aucun favori avec ces filtres.", "No favorites with these filters.", "No hay favoritos con estos filtros.") : t("Aucun exercice ne correspond à ces filtres.", "No exercise matches these filters.", "Ningún ejercicio coincide con estos filtros.")}</div>}
 
           <div style={{ display: "grid", gridTemplateColumns: "40px 40px 1fr 40px 40px", gap: 6, alignItems: "center", marginTop: 11 }}>
             <button type="button" disabled={pageCount <= 1} onClick={() => setPage(0)} aria-label={t("Première page", "First page", "Primera página")} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "rgba(255,255,255,.8)", fontWeight: 1000, cursor: pageCount > 1 ? "pointer" : "default", opacity: pageCount > 1 ? 1 : .35 }}>«</button>
@@ -458,6 +458,20 @@ export default function FitPerfPlan({ go }: Props) {
 
         {programView === "mine" ? <>
           <FitSectionTitle eyebrow={t("MES PROGRAMMES", "MY PROGRAMS", "MIS PROGRAMAS")} title={t("Ma semaine sportive", "My training week", "Mi semana deportiva")} right={<FitPill accent={accent}>{myPrograms.length + (activeProgram ? 1 : 0)}</FitPill>} />
+          {activeProgram ? <FitGlassCard accent={activeProgram.accent} style={{ padding: 13, marginBottom: 9, background: `linear-gradient(145deg,${activeProgram.accent}18,rgba(5,8,14,.995) 48%)`, borderColor: `${activeProgram.accent}66` }}>
+            <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 11, alignItems: "center" }}>
+              <div style={{ width: 54, height: 54, borderRadius: 16, display: "grid", placeItems: "center", color: activeProgram.accent, background: `${activeProgram.accent}12`, border: `1px solid ${activeProgram.accent}38`, fontSize: 22 }}>{activeProgram.icon}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: activeProgram.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .75 }}>{t("PROGRAMME ACTIF", "ACTIVE PROGRAM", "PROGRAMA ACTIVO")}</div>
+                <div style={{ marginTop: 3, fontSize: 15, lineHeight: 1.08, fontWeight: 1000 }}>{activeProgram.title}</div>
+                <div style={{ marginTop: 4, color: textSoft, fontSize: 8 }}>{activeProgram.sessionsPerWeek}× / {t("semaine", "week", "semana")} · {activeProgram.typicalDurationMin} min · {activeProgram.durationWeeks} sem.</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 10 }}>
+              <FitPrimaryButton onClick={() => go("games", { fitProgramId: activeProgram.id, fitSessionTitle: activeProgram.title, fitPractice: activeProgram.practice })} accent={activeProgram.accent} style={{ minHeight: 42 }}>{t("SÉANCE DU JOUR", "TODAY'S WORKOUT", "SESIÓN DE HOY")}</FitPrimaryButton>
+              <FitGhostButton onClick={() => go("agenda", { agendaView: "week" })} accent={activeProgram.accent} style={{ minHeight: 42 }}>{t("VOIR LA SEMAINE", "VIEW WEEK", "VER SEMANA")}</FitGhostButton>
+            </div>
+          </FitGlassCard> : null}
           {myPrograms.length ? <div style={{ display: "grid", gap: 7 }}>
             {myPrograms.map((program) => { const isActive = activeProgram?.id === program.id; return <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 10, display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 9, alignItems: "center", borderColor: isActive ? `${program.accent}77` : `${program.accent}30` }}>
               <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: `${program.accent}12`, border: `1px solid ${program.accent}35`, fontSize: 18 }}>{program.icon}</div>
@@ -474,9 +488,19 @@ export default function FitPerfPlan({ go }: Props) {
 
         {programView === "discover" ? <>
           <FitSectionTitle eyebrow={t("DÉCOUVRIR", "DISCOVER", "DESCUBRIR")} title={t("Que veux-tu pratiquer ?", "What do you want to train?", "¿Qué quieres practicar?")} />
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 3 }}>
-            <button type="button" onClick={() => setProgramPractice("all")} style={{ flex: "0 0 auto", minHeight: 42, borderRadius: 13, border: `1px solid ${programPractice === "all" ? accent + "77" : "rgba(255,255,255,.075)"}`, background: programPractice === "all" ? `${accent}19` : "rgba(255,255,255,.025)", color: programPractice === "all" ? accent : textSoft, padding: "0 12px", fontSize: 8, fontWeight: 1000 }}>{t("TOUT", "ALL", "TODO")}</button>
-            {FIT_PRACTICES.map((practice) => <button key={practice.id} type="button" onClick={() => setProgramPractice(practice.id)} style={{ flex: "0 0 auto", minHeight: 42, borderRadius: 13, border: `1px solid ${programPractice === practice.id ? practice.accent + "70" : "rgba(255,255,255,.075)"}`, background: programPractice === practice.id ? `${practice.accent}16` : "rgba(255,255,255,.025)", color: programPractice === practice.id ? practice.accent : "rgba(255,255,255,.65)", padding: "0 11px", fontSize: 8, fontWeight: 1000, whiteSpace: "nowrap" }}>{practice.icon} {practice.label}</button>)}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+            <button type="button" onClick={() => setProgramPractice("all")} style={{ minHeight: 58, borderRadius: 15, border: `1px solid ${programPractice === "all" ? accent + "77" : "rgba(255,255,255,.075)"}`, background: programPractice === "all" ? `${accent}16` : "rgba(255,255,255,.025)", color: programPractice === "all" ? accent : "rgba(255,255,255,.72)", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", gap: 8, alignItems: "center", padding: "8px 10px", textAlign: "left" }}>
+              <span style={{ width: 36, height: 36, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}10`, border: `1px solid ${accent}2e`, fontSize: 17 }}>✦</span>
+              <span><strong style={{ display: "block", fontSize: 9.2 }}>{t("Toutes les pratiques", "All practices", "Todas las prácticas")}</strong><small style={{ display: "block", marginTop: 2, color: textSoft, fontSize: 7 }}>{discoverPrograms.length} {t("programmes", "programs", "programas")}</small></span>
+            </button>
+            {FIT_PRACTICES.map((practice) => {
+              const count = discoverPrograms.filter((program) => program.practice === practice.id).length;
+              const selected = programPractice === practice.id;
+              return <button key={practice.id} type="button" onClick={() => setProgramPractice(practice.id)} style={{ minHeight: 58, borderRadius: 15, border: `1px solid ${selected ? practice.accent + "70" : "rgba(255,255,255,.075)"}`, background: selected ? `${practice.accent}16` : "rgba(255,255,255,.025)", color: selected ? practice.accent : "rgba(255,255,255,.72)", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", gap: 8, alignItems: "center", padding: "8px 10px", textAlign: "left" }}>
+                <span style={{ width: 36, height: 36, borderRadius: 12, display: "grid", placeItems: "center", background: `${practice.accent}10`, border: `1px solid ${practice.accent}2e`, fontSize: 17 }}>{practice.icon}</span>
+                <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{practice.label}</strong><small style={{ display: "block", marginTop: 2, color: textSoft, fontSize: 7 }}>{count} {t("programmes", "programs", "programas")}</small></span>
+              </button>;
+            })}
           </div>
           <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 6, paddingBottom: 3 }}>
             {filterChip(t("Tous objectifs", "All goals", "Todos objetivos"), programGoal === "all", () => setProgramGoal("all"))}

@@ -108,7 +108,7 @@ export default function FitPerfHome({ store, go }: Props) {
   const profile = activeProfile(store);
   const [sessions, setSessions] = React.useState<FitSession[]>(() => loadFitSessions());
   const [agendaEvents, setAgendaEvents] = React.useState<MultisportAgendaEvent[]>(() => collectMultisportAgendaEvents());
-  const [tab, setTab] = React.useState<HomeTab>("profile");
+  const [tab, setTab] = React.useState<HomeTab>("today");
   const [tickerIndex, setTickerIndex] = React.useState(0);
 
   React.useEffect(() => {
@@ -146,6 +146,12 @@ export default function FitPerfHome({ store, go }: Props) {
   const nextSportEvent = agendaEvents.find((event) => event.startAt >= nowTs - 60 * 60 * 1000 && event.status !== "declined") || null;
   const weekAgendaStart = weekStart(nowTs);
   const weekAgendaCount = agendaEvents.filter((event) => event.startAt >= weekAgendaStart && event.startAt < weekAgendaStart + 7 * 86400000).length;
+  const agendaWeekDays = Array.from({ length: 7 }, (_, index) => {
+    const startAt = weekAgendaStart + index * 86400000;
+    const endAt = startAt + 86400000;
+    const event = agendaEvents.find((item) => item.startAt >= startAt && item.startAt < endAt && item.status !== "declined") || null;
+    return { startAt, event };
+  });
 
   const openSportEvent = (event: MultisportAgendaEvent) => {
     if (!event.route) { go("agenda", { agendaView: "week" }); return; }
@@ -372,7 +378,7 @@ export default function FitPerfHome({ store, go }: Props) {
       <style>{`
         .fit-home-shell{height:100%;width:100%;max-width:520px;margin:0 auto;padding:12px 12px 8px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;overflow:hidden}
         .fit-home-header{position:relative;overflow:hidden;isolation:isolate;flex:0 0 auto;border-radius:25px;padding:12px 16px;background:linear-gradient(135deg,rgba(8,10,20,.99),rgba(14,18,34,.985));border:1px solid rgba(255,255,255,.10);box-shadow:0 20px 40px rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center}.fit-home-header>*:not(.fit-home-logo-watermark){position:relative;z-index:2}.fit-home-logo-watermark{position:absolute;z-index:0;left:-52px;top:50%;width:190px;height:190px;transform:translateY(-50%) scale(1.25);object-fit:contain;opacity:.14;filter:grayscale(1) saturate(0) brightness(.78) contrast(1.18);pointer-events:none}
-        .fit-home-panel{flex:0 0 clamp(205px,28vh,260px);min-height:0;border-radius:22px;padding:11px 12px;background:radial-gradient(circle at top,rgba(255,255,255,.045),rgba(0,0,0,.95));border:1px solid rgba(255,255,255,.10);box-shadow:0 0 24px rgba(0,0,0,.8),0 0 30px ${accent}26;display:flex;flex-direction:column;overflow:hidden}
+        .fit-home-panel{flex:0 0 clamp(228px,31vh,282px);min-height:0;border-radius:22px;padding:11px 12px;background:radial-gradient(circle at top,rgba(255,255,255,.045),rgba(0,0,0,.95));border:1px solid rgba(255,255,255,.10);box-shadow:0 0 24px rgba(0,0,0,.8),0 0 30px ${accent}26;display:flex;flex-direction:column;overflow:hidden}
         .fit-home-panel-title{font-size:13px;font-weight:950;letter-spacing:1.15px;text-transform:uppercase;text-align:center;color:${accent};text-shadow:0 0 12px ${accent}55;flex:0 0 auto}
         .fit-home-panel-body{flex:1 1 auto;min-height:0;margin-top:7px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
         .fit-home-kpi-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -478,32 +484,51 @@ export default function FitPerfHome({ store, go }: Props) {
             )}
 
             {tab === "today" && (
-              nextSportEvent ? (() => {
-                const sportMeta = multisportSportMeta(nextSportEvent.sport);
-                const eventAccent = nextSportEvent.accent || sportMeta.accent;
-                const sameDay = new Date(nextSportEvent.startAt).toDateString() === new Date().toDateString();
-                return (
-                  <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
-                    <div style={{ width: 72, height: 72, borderRadius: 20, display: "grid", placeItems: "center", background: `${eventAccent}12`, border: `1px solid ${eventAccent}55`, boxShadow: `0 0 20px ${eventAccent}20`, fontSize: 30 }}>{sportMeta.icon}</div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: eventAccent, fontSize: 8, fontWeight: 1000, letterSpacing: 1 }}>{sameDay ? t("AUJOURD'HUI", "TODAY", "HOY") : t("PROCHAINE ACTIVITÉ", "NEXT ACTIVITY", "PRÓXIMA ACTIVIDAD")} · {sportMeta.label}</div>
-                      <div style={{ marginTop: 4, color: "#fff", fontSize: 16, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextSportEvent.title}</div>
-                      <div style={{ marginTop: 4, color: textSoft, fontSize: 9 }}>{new Date(nextSportEvent.startAt).toLocaleDateString()} · {new Date(nextSportEvent.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{nextSportEvent.durationMin ? ` · ${nextSportEvent.durationMin} min` : ""}</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 7, marginTop: 9 }}>
-                        <button className="fit-home-cta" style={{ marginTop: 0 }} type="button" onClick={() => openSportEvent(nextSportEvent)}>{nextSportEvent.route ? t("LANCER / OUVRIR", "START / OPEN", "INICIAR / ABRIR") : t("VOIR", "VIEW", "VER")}</button>
-                        <button type="button" onClick={() => go("agenda", { agendaView: "week" })} aria-label="Agenda" style={{ width: 40, minHeight: 38, borderRadius: 12, border: `1px solid ${eventAccent}55`, background: `${eventAccent}10`, color: eventAccent }}><FitIcon name="program" size={19}/></button>
+              <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+                {nextSportEvent ? (() => {
+                  const sportMeta = multisportSportMeta(nextSportEvent.sport);
+                  const eventAccent = nextSportEvent.accent || sportMeta.accent;
+                  const sameDay = new Date(nextSportEvent.startAt).toDateString() === new Date().toDateString();
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+                      <div style={{ width: 62, height: 62, borderRadius: 18, display: "grid", placeItems: "center", background: `${eventAccent}12`, border: `1px solid ${eventAccent}55`, boxShadow: `0 0 20px ${eventAccent}20`, fontSize: 27 }}>{sportMeta.icon}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: eventAccent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .9 }}>{sameDay ? t("À FAIRE AUJOURD'HUI", "TODAY'S ACTIVITY", "ACTIVIDAD DE HOY")} · {sportMeta.label}</div>
+                        <div style={{ marginTop: 3, color: "#fff", fontSize: 15, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextSportEvent.title}</div>
+                        <div style={{ marginTop: 3, color: textSoft, fontSize: 8.4 }}>{new Date(nextSportEvent.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{nextSportEvent.durationMin ? ` · ${nextSportEvent.durationMin} min` : ""}</div>
+                        <button className="fit-home-cta" style={{ marginTop: 7, width: "100%" }} type="button" onClick={() => openSportEvent(nextSportEvent)}>{nextSportEvent.route ? t("COMMENCER / OUVRIR", "START / OPEN", "EMPEZAR / ABRIR") : t("VOIR L'ACTIVITÉ", "VIEW ACTIVITY", "VER ACTIVIDAD")}</button>
                       </div>
                     </div>
+                  );
+                })() : (
+                  <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+                    <div style={{ width: 54, height: 54, borderRadius: 17, display: "grid", placeItems: "center", background: `${accent}10`, border: `1px solid ${accent}35`, color: accent }}><FitIcon name="today" size={26} /></div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 1000 }}>{t("Rien de prévu aujourd’hui", "Nothing planned today", "Nada previsto hoy")}</div>
+                      <div style={{ marginTop: 3, color: textSoft, fontSize: 8.5 }}>{t("Lance une séance libre ou ajoute une activité à ta semaine.", "Start a free workout or add an activity to your week.", "Inicia una sesión libre o añade una actividad.")}</div>
+                    </div>
                   </div>
-                );
-              })() : (
-                <div style={{ textAlign: "center" }}>
-                  <FitIcon name="today" size={42} />
-                  <div style={{ marginTop: 9, fontSize: 18, fontWeight: 1000 }}>{t("Ta semaine est libre", "Your week is free", "Tu semana está libre")}</div>
-                  <div style={{ marginTop: 5, color: textSoft, fontSize: 10 }}>{t("Active un programme ou ajoute n’importe quel sport à ton Agenda MULTISPORTS.", "Activate a program or add any sport to your MULTISPORTS Agenda.", "Activa un programa o añade cualquier deporte a tu Agenda MULTISPORTS.")}</div>
-                  <button className="fit-home-cta" type="button" onClick={() => go("agenda", { agendaView: "week" })}>{t("OUVRIR L'AGENDA", "OPEN AGENDA", "ABRIR AGENDA")}</button>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 4, marginTop: 10 }}>
+                  {agendaWeekDays.map(({ startAt, event }, index) => {
+                    const date = new Date(startAt);
+                    const isToday = date.toDateString() === new Date().toDateString();
+                    const meta = event ? multisportSportMeta(event.sport) : null;
+                    const hot = event?.accent || meta?.accent || "rgba(255,255,255,.18)";
+                    return <button key={startAt} type="button" onClick={() => event ? openSportEvent(event) : go("agenda", { agendaView: "week" })} style={{ minWidth: 0, height: 43, borderRadius: 10, border: `1px solid ${isToday ? accent + "66" : event ? hot + "40" : "rgba(255,255,255,.06)"}`, background: isToday ? `${accent}11` : event ? `${hot}0d` : "rgba(255,255,255,.02)", color: isToday ? accent : event ? "#fff" : "rgba(255,255,255,.38)", display: "grid", placeItems: "center", alignContent: "center", gap: 2, padding: 0 }}>
+                      <span style={{ fontSize: 6.8, fontWeight: 1000 }}>{["L","M","M","J","V","S","D"][index]}</span>
+                      <span style={{ fontSize: event ? 13 : 8, lineHeight: 1 }}>{event ? meta?.icon : "·"}</span>
+                    </button>;
+                  })}
                 </div>
-              )
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
+                  <button type="button" onClick={() => go("games", { fitTemplateId: "free" })} style={{ minHeight: 35, borderRadius: 11, border: `1px solid ${accent}38`, background: `${accent}08`, color: accent, fontSize: 7.2, fontWeight: 1000 }}>{t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE")}</button>
+                  <button type="button" onClick={() => go("fit_plan")} style={{ minHeight: 35, borderRadius: 11, border: "1px solid rgba(114,222,244,.28)", background: "rgba(114,222,244,.06)", color: "#72def4", fontSize: 7.2, fontWeight: 1000 }}>{t("PROGRAMMES", "PROGRAMS", "PROGRAMAS")}</button>
+                  <button type="button" onClick={() => go("agenda", { agendaView: "week" })} style={{ minHeight: 35, borderRadius: 11, border: "1px solid rgba(181,156,255,.28)", background: "rgba(181,156,255,.06)", color: "#b59cff", fontSize: 7.2, fontWeight: 1000 }}>{t("AGENDA", "AGENDA", "AGENDA")}</button>
+                </div>
+              </div>
             )}
 
             {tab === "progress" && (
