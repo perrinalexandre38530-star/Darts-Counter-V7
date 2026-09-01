@@ -29,9 +29,19 @@ function walk(dir) {
 function mb(n) { return (n / 1024 / 1024).toFixed(2); }
 function tempName(file) { return `${file}.mss-opt.tmp${path.extname(file).toLowerCase()}`; }
 function replaceIfSmaller(src, temp) {
-  const before = fs.statSync(src).size; const after = fs.statSync(temp).size;
-  if (after > 0 && after < before) { fs.renameSync(temp, src); return { before, after, saved: before - after }; }
-  fs.rmSync(temp, { force: true }); return { before, after: before, saved: 0 };
+  const before = fs.statSync(src).size;
+  const after = fs.statSync(temp).size;
+
+  if (after > 0 && after < before) {
+    // Windows: renameSync(temp, src) peut échouer avec EPERM lorsque src existe.
+    // copyFileSync remplace le fichier existant de façon fiable, puis on nettoie le temporaire.
+    fs.copyFileSync(temp, src);
+    fs.rmSync(temp, { force: true });
+    return { before, after, saved: before - after };
+  }
+
+  fs.rmSync(temp, { force: true });
+  return { before, after: before, saved: 0 };
 }
 
 async function optimizeImage(file) {
