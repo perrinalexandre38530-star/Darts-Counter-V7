@@ -13,6 +13,7 @@ import {
   multisportSportMeta,
   removeMultisportEvent,
   respondToAgendaInvitation,
+  updateMultisportEvent,
   type MultisportAgendaEvent,
   type MultisportEventSport,
   type MultisportEventType,
@@ -45,6 +46,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
   const [cursor, setCursor] = React.useState(() => Date.now());
   const [createOpen, setCreateOpen] = React.useState(false);
   const [sportFilter, setSportFilter] = React.useState<MultisportEventSport | "all">("all");
+  const [selectedEvent, setSelectedEvent] = React.useState<MultisportAgendaEvent | null>(null);
 
   const refresh = React.useCallback(() => setEvents(collectMultisportAgendaEvents()), []);
   React.useEffect(() => {
@@ -63,6 +65,19 @@ export default function MultisportAgendaPage({ go, params }: Props) {
   const visible = React.useMemo(() => filteredEvents.filter((event) => event.startAt >= range.start && event.startAt < range.end), [filteredEvents, range]);
   const visibleMinutes = React.useMemo(() => visible.reduce((sum, event) => sum + Math.max(0, event.durationMin || 0), 0), [visible]);
   const visibleSports = React.useMemo(() => new Set(visible.map((event) => event.sport)).size, [visible]);
+  const conflictIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    const active = filteredEvents.filter((event) => event.status !== "declined" && event.status !== "cancelled");
+    for (let i = 0; i < active.length; i += 1) {
+      const a = active[i]; const aEnd = a.startAt + Math.max(15, a.durationMin || 60) * 60_000;
+      for (let j = i + 1; j < active.length; j += 1) {
+        const b = active[j]; if (!sameLocalDay(a.startAt, b.startAt)) continue;
+        const bEnd = b.startAt + Math.max(15, b.durationMin || 60) * 60_000;
+        if (a.startAt < bEnd && b.startAt < aEnd) { ids.add(a.id); ids.add(b.id); }
+      }
+    }
+    return ids;
+  }, [filteredEvents]);
 
   const shift = (direction: number) => {
     const date = new Date(cursor);
@@ -94,7 +109,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         .msa-tab{height:42px;border:1px solid transparent;border-radius:11px;background:transparent;color:rgba(255,255,255,.58);font-size:8px;font-weight:1000;text-transform:uppercase;cursor:pointer;min-width:0}
         .msa-tab.on{color:${accent};border-color:${accent}55;background:${accent}16}
         .msa-event{width:100%;text-align:left;border-radius:17px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(5,8,14,.96));padding:10px;display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:10px;align-items:center;color:#fff;cursor:pointer;min-width:0}
-        .msa-event+.msa-event{margin-top:7px}.msa-day{border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);padding:9px}.msa-day.today{border-color:${accent}55;background:${accent}0c}
+        .msa-event+.msa-event{margin-top:7px}.msa-event.conflict{border-color:rgba(255,117,117,.55)!important;background:linear-gradient(145deg,rgba(255,90,90,.07),rgba(5,8,14,.97))}.msa-day{border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);padding:9px}.msa-day.today{border-color:${accent}55;background:${accent}0c}
         .msa-week{display:grid;gap:8px}.msa-month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}.msa-month-cell{min-height:66px;border-radius:12px;border:1px solid rgba(255,255,255,.065);background:rgba(255,255,255,.025);padding:5px;overflow:hidden}.msa-month-cell.off{opacity:.28}.msa-dot{width:6px;height:6px;border-radius:999px;display:inline-block;margin-right:3px}
         .msa-action{min-height:42px;border-radius:12px;border:1px solid ${accent}55;background:${accent}15;color:${accent};font-weight:1000;cursor:pointer}.msa-muted{color:${textSoft}}
         @media(max-width:390px){.msa-event{grid-template-columns:38px minmax(0,1fr)}.msa-event-time{grid-column:2}.msa-tab{font-size:6.8px}.msa-month-cell{min-height:56px;padding:4px}}
@@ -140,14 +155,23 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         </div>
       </> : null}
 
-      {view === "today" ? <div style={{ marginTop: 8 }}>{visible.length ? visible.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => openEvent(event)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />) : <EmptyState text={t("Rien de prévu aujourd'hui. Ajoute une activité ou active un programme.", "Nothing scheduled today. Add an activity or activate a program.", "Nada previsto hoy. Añade una actividad o activa un programa.")} />}</div> : null}
+      {view === "today" ? <div style={{ marginTop: 8 }}>{visible.length ? visible.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />) : <EmptyState text={t("Rien de prévu aujourd'hui. Ajoute une activité ou active un programme.", "Nothing scheduled today. Add an activity or activate a program.", "Nada previsto hoy. Añade una actividad o activa un programa.")} />}</div> : null}
 
-      {view === "week" ? <div className="msa-week" style={{ marginTop: 8 }}>{Array.from({ length: 7 }, (_, i) => range.start + i * DAY).map((day) => { const rows = visible.filter((event) => sameLocalDay(event.startAt, day)); return <section key={day} className={`msa-day${sameLocalDay(day, Date.now()) ? " today" : ""}`}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: rows.length ? 7 : 0 }}><strong style={{ fontSize: 10.5, textTransform: "uppercase", color: sameLocalDay(day, Date.now()) ? accent : "#fff" }}>{formatDate(day, locale)}</strong><span className="msa-muted" style={{ fontSize: 8 }}>{rows.length ? `${rows.length} ${t("activité(s)", "activity", "actividad")}` : t("Libre", "Free", "Libre")}</span></div>{rows.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => openEvent(event)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />)}</section>; })}</div> : null}
+      {view === "week" ? <div className="msa-week" style={{ marginTop: 8 }}>{Array.from({ length: 7 }, (_, i) => range.start + i * DAY).map((day) => { const rows = visible.filter((event) => sameLocalDay(event.startAt, day)); return <section key={day} className={`msa-day${sameLocalDay(day, Date.now()) ? " today" : ""}`}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: rows.length ? 7 : 0 }}><strong style={{ fontSize: 10.5, textTransform: "uppercase", color: sameLocalDay(day, Date.now()) ? accent : "#fff" }}>{formatDate(day, locale)}</strong><span className="msa-muted" style={{ fontSize: 8 }}>{rows.some((event) => conflictIds.has(event.id)) ? <b style={{ color: "#ff8b8b" }}>⚠ {t("Conflit", "Conflict", "Conflicto")}</b> : rows.length ? `${rows.length} ${t("activité(s)", "activity", "actividad")}` : t("Libre", "Free", "Libre")}</span></div>{rows.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />)}</section>; })}</div> : null}
 
       {view === "month" ? <MonthGrid cursor={cursor} events={filteredEvents} locale={locale} onSelectDay={(day) => { setCursor(day); setView("today"); }} /> : null}
 
-      {view === "invitations" ? <div style={{ marginTop: 10 }}>{pending.length ? pending.map((event) => <div key={event.id} style={{ borderRadius: 18, border: `1px solid ${(event.accent || accent)}55`, background: `linear-gradient(145deg,${event.accent || accent}10,rgba(5,8,14,.98))`, padding: 12, marginBottom: 8 }}><EventCard event={event} locale={locale} onOpen={() => undefined} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}><button type="button" className="msa-action" onClick={() => { respondToAgendaInvitation(event.id, "confirmed"); refresh(); }}>{t("ACCEPTER", "ACCEPT", "ACEPTAR")}</button><button type="button" onClick={() => { respondToAgendaInvitation(event.id, "declined"); refresh(); }} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.72)", fontWeight: 1000 }}>{t("REFUSER", "DECLINE", "RECHAZAR")}</button></div></div>) : <EmptyState text={t("Aucune invitation en attente.", "No pending invitations.", "No hay invitaciones pendientes.")} />}</div> : null}
+      {view === "invitations" ? <div style={{ marginTop: 10 }}>{pending.length ? pending.map((event) => <div key={event.id} style={{ borderRadius: 18, border: `1px solid ${(event.accent || accent)}55`, background: `linear-gradient(145deg,${event.accent || accent}10,rgba(5,8,14,.98))`, padding: 12, marginBottom: 8 }}><EventCard event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}><button type="button" className="msa-action" onClick={() => { respondToAgendaInvitation(event.id, "confirmed"); refresh(); }}>{t("ACCEPTER", "ACCEPT", "ACEPTAR")}</button><button type="button" onClick={() => { respondToAgendaInvitation(event.id, "declined"); refresh(); }} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.72)", fontWeight: 1000 }}>{t("REFUSER", "DECLINE", "RECHAZAR")}</button></div></div>) : <EmptyState text={t("Aucune invitation en attente.", "No pending invitations.", "No hay invitaciones pendientes.")} />}</div> : null}
 
+      {selectedEvent ? <EventDetailDialog
+        event={selectedEvent}
+        locale={locale}
+        lang={String(lang || "fr")}
+        conflict={conflictIds.has(selectedEvent.id)}
+        onClose={() => setSelectedEvent(null)}
+        onOpenModule={() => { const event = selectedEvent; setSelectedEvent(null); openEvent(event); }}
+        onChanged={() => { refresh(); const fresh = collectMultisportAgendaEvents().find((item) => item.id === selectedEvent.id) || null; setSelectedEvent(fresh); }}
+      /> : null}
       {createOpen ? <CreateEventDialog accent={accent} lang={String(lang || "fr")} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); refresh(); }} /> : null}
     </div>
   );
@@ -180,11 +204,12 @@ function AgendaMetric({ label, value, accent }: { label: string; value: string; 
 
 function chipStyle(active: boolean, accent: string): React.CSSProperties { return { flex: "0 0 auto", minHeight: 34, borderRadius: 999, border: `1px solid ${active ? accent + "77" : "rgba(255,255,255,.07)"}`, background: active ? `${accent}18` : "rgba(255,255,255,.025)", color: active ? accent : "rgba(255,255,255,.62)", padding: "0 10px", fontSize: 8, fontWeight: 1000, whiteSpace: "nowrap", cursor: "pointer" }; }
 
-function EventCard({ event, locale, onOpen, onDelete }: { event: MultisportAgendaEvent; locale: string; onOpen: () => void; onDelete?: () => void }) {
+function EventCard({ event, locale, onOpen, onDelete, conflict = false }: { event: MultisportAgendaEvent; locale: string; onOpen: () => void; onDelete?: () => void; conflict?: boolean }) {
   const meta = multisportSportMeta(event.sport); const hot = event.accent || meta.accent;
-  return <div className="msa-event" role={event.route ? "button" : undefined} tabIndex={event.route ? 0 : undefined} onClick={event.route ? onOpen : undefined} onKeyDown={(e) => { if (event.route && (e.key === "Enter" || e.key === " ")) onOpen(); }} style={{ borderColor: `${hot}38` }}>
-    <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", fontSize: 20, background: `${hot}13`, border: `1px solid ${hot}40` }}>{meta.icon}</div>
-    <div style={{ minWidth: 0 }}><div style={{ color: hot, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>{meta.label} · {eventTypeLabel(event.type)}{event.discipline ? ` · ${String(event.discipline).toUpperCase()}` : ""}</div><div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.title}</div><div style={{ marginTop: 3, fontSize: 8.3, color: "rgba(255,255,255,.56)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.organizer || event.club ? `${event.organizer || event.club} · ` : ""}{event.location || event.notes || sourceLabel(event.source)}</div></div>
+  const status = event.status === "completed" ? "✓" : event.status === "pending" ? "?" : "";
+  return <div className={`msa-event${conflict ? " conflict" : ""}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpen(); }} style={{ borderColor: `${hot}38` }}>
+    <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", fontSize: 20, background: `${hot}13`, border: `1px solid ${hot}40`, position: "relative" }}>{meta.icon}{status ? <span style={{ position: "absolute", right: -4, bottom: -4, width: 17, height: 17, borderRadius: 999, display: "grid", placeItems: "center", background: event.status === "completed" ? "#75ed9a" : hot, color: "#07100b", fontSize: 9, fontWeight: 1000 }}>{status}</span> : null}</div>
+    <div style={{ minWidth: 0 }}><div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}><span style={{ color: hot, fontSize: 8, fontWeight: 1000, letterSpacing: .7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{meta.label} · {eventTypeLabel(event.type)}{event.discipline ? ` · ${String(event.discipline).toUpperCase()}` : ""}</span>{conflict ? <span style={{ flex: "0 0 auto", color: "#ff8b8b", fontSize: 8, fontWeight: 1000 }}>⚠</span> : null}</div><div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.title}</div><div style={{ marginTop: 3, fontSize: 8.3, color: "rgba(255,255,255,.56)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.organizer || event.club ? `${event.organizer || event.club} · ` : ""}{event.location || event.notes || sourceLabel(event.source)}</div></div>
     <div className="msa-event-time" style={{ textAlign: "right", whiteSpace: "nowrap" }}><strong style={{ color: "#fff", fontSize: 11 }}>{formatTime(event.startAt, locale)}</strong>{event.durationMin ? <div style={{ marginTop: 2, color: hot, fontSize: 8, fontWeight: 900 }}>{event.durationMin} min</div> : null}{onDelete ? <button type="button" aria-label="Supprimer" onClick={(e) => { e.stopPropagation(); onDelete(); }} style={{ marginTop: 4, border: 0, background: "transparent", color: "rgba(255,255,255,.35)", fontSize: 12, cursor: "pointer" }}>×</button> : null}</div>
   </div>;
 }
@@ -197,6 +222,42 @@ function MonthGrid({ cursor, events, locale, onSelectDay }: { cursor: number; ev
   const weekdays = Array.from({ length: 7 }, (_, i) => formatDate(gridStart + i * DAY, locale, { weekday: "narrow" }));
   return <div style={{ marginTop: 10 }}><div className="msa-month" style={{ marginBottom: 5 }}>{weekdays.map((d, i) => <div key={i} style={{ textAlign: "center", color: "rgba(255,255,255,.42)", fontSize: 8, fontWeight: 1000 }}>{d}</div>)}</div><div className="msa-month">{Array.from({ length: 42 }, (_, i) => { const day = gridStart + i * DAY; const d = new Date(day); const currentMonth = d.getMonth() === first.getMonth(); const rows = events.filter((event) => sameLocalDay(event.startAt, day)); return <button type="button" key={day} className={`msa-month-cell${currentMonth ? "" : " off"}`} onClick={() => onSelectDay(day)} style={{ color: "#fff", textAlign: "left", cursor: "pointer" }}><strong style={{ fontSize: 9 }}>{d.getDate()}</strong><div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 1 }}>{rows.slice(0, 8).map((event) => <span key={event.id} className="msa-dot" title={event.title} style={{ background: event.accent || multisportSportMeta(event.sport).accent }} />)}</div></button>; })}</div></div>;
 }
+
+function EventDetailDialog({ event, locale, lang, conflict, onClose, onOpenModule, onChanged }: { event: MultisportAgendaEvent; locale: string; lang: string; conflict: boolean; onClose: () => void; onOpenModule: () => void; onChanged: () => void }) {
+  const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
+  const meta = multisportSportMeta(event.sport); const hot = event.accent || meta.accent;
+  const [date, setDate] = React.useState(toDateInput(event.startAt));
+  const [time, setTime] = React.useState(() => { const d = new Date(event.startAt); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; });
+  const [duration, setDuration] = React.useState(String(event.durationMin || 60));
+  const editable = !event.readonly;
+  const saveSchedule = () => { if (!editable) return; updateMultisportEvent(event.id, { startAt: inputToTimestamp(date, time), durationMin: Math.max(15, Number(duration) || 60) }); onChanged(); };
+  return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 160, background: "rgba(0,0,0,.72)", backdropFilter: "blur(10px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 10 }}>
+    <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 560, maxHeight: "88vh", overflowY: "auto", borderRadius: "24px 24px 16px 16px", border: `1px solid ${hot}46`, background: `linear-gradient(180deg,${hot}0e,#0a0e16 26%,#060910)`, padding: 14, boxShadow: "0 -24px 70px rgba(0,0,0,.62)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 38px", gap: 10, alignItems: "center" }}>
+        <div style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", fontSize: 23, background: `${hot}15`, border: `1px solid ${hot}42` }}>{meta.icon}</div>
+        <div style={{ minWidth: 0 }}><div style={{ color: hot, fontSize: 8, fontWeight: 1000, letterSpacing: .8 }}>{meta.label} · {eventTypeLabel(event.type)}</div><div style={{ marginTop: 3, fontSize: 17, lineHeight: 1.08, fontWeight: 1000 }}>{event.title}</div><div style={{ marginTop: 4, color: "rgba(255,255,255,.52)", fontSize: 8.5 }}>{formatDate(event.startAt, locale)} · {formatTime(event.startAt, locale)}{event.durationMin ? ` · ${event.durationMin} min` : ""}</div></div>
+        <button type="button" onClick={onClose} style={{ width: 38, height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: 18 }}>×</button>
+      </div>
+      {conflict ? <div style={{ marginTop: 11, borderRadius: 13, border: "1px solid rgba(255,117,117,.32)", background: "rgba(255,80,80,.07)", padding: 10, color: "#ff9a9a", fontSize: 9, fontWeight: 900 }}>⚠ {t("Cette activité chevauche une autre activité de ton agenda.", "This activity overlaps another event in your agenda.", "Esta actividad se superpone con otra de tu agenda.")}</div> : null}
+      <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+        <AgendaDetail label={t("ORIGINE", "SOURCE", "ORIGEN")} value={sourceLabel(event.source)} />
+        <AgendaDetail label={t("STATUT", "STATUS", "ESTADO")} value={statusLabel(event.status)} />
+        {event.location ? <AgendaDetail label={t("LIEU", "LOCATION", "LUGAR")} value={event.location} /> : null}
+        {event.club || event.organizer ? <AgendaDetail label={t("ORGANISATEUR", "ORGANIZER", "ORGANIZADOR")} value={event.club || event.organizer || "—"} /> : null}
+      </div>
+      {event.participants?.length ? <div style={{ marginTop: 9, color: "rgba(255,255,255,.65)", fontSize: 9 }}><b style={{ color: "#fff" }}>{t("Participants", "Participants", "Participantes")}:</b> {event.participants.join(", ")}</div> : null}
+      {event.notes ? <div style={{ marginTop: 9, borderRadius: 12, background: "rgba(255,255,255,.025)", padding: 9, color: "rgba(255,255,255,.62)", fontSize: 9, lineHeight: 1.45 }}>{event.notes}</div> : null}
+      {editable ? <div style={{ marginTop: 11, borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 10 }}><div style={{ color: "rgba(255,255,255,.42)", fontSize: 7, fontWeight: 1000, letterSpacing: .8 }}>{t("DÉPLACER L'ACTIVITÉ", "RESCHEDULE", "REPROGRAMAR")}</div><div style={{ display: "grid", gridTemplateColumns: "1.2fr .9fr .7fr", gap: 6, marginTop: 7 }}><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={detailInput}/><input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={detailInput}/><input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value)} aria-label="Durée" style={detailInput}/></div><button type="button" onClick={saveSchedule} style={{ width: "100%", minHeight: 40, marginTop: 7, borderRadius: 11, border: `1px solid ${hot}55`, background: `${hot}12`, color: hot, fontWeight: 1000 }}>{t("ENREGISTRER LE CRÉNEAU", "SAVE TIME", "GUARDAR HORARIO")}</button></div> : null}
+      <div style={{ display: "grid", gridTemplateColumns: event.route ? "1fr 1.25fr" : "1fr", gap: 7, marginTop: 11 }}>
+        {event.status !== "completed" && editable ? <button type="button" onClick={() => { updateMultisportEvent(event.id, { status: "completed" }); onChanged(); }} style={{ minHeight: 46, borderRadius: 13, border: "1px solid rgba(117,237,154,.35)", background: "rgba(117,237,154,.09)", color: "#75ed9a", fontWeight: 1000 }}>✓ {t("TERMINÉE", "COMPLETED", "TERMINADA")}</button> : <button type="button" onClick={onClose} style={{ minHeight: 46, borderRadius: 13, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: "#fff", fontWeight: 1000 }}>{t("FERMER", "CLOSE", "CERRAR")}</button>}
+        {event.route ? <button type="button" onClick={onOpenModule} style={{ minHeight: 46, borderRadius: 13, border: `1px solid ${hot}`, background: `linear-gradient(135deg,${hot},#fff1bd)`, color: "#080b10", fontWeight: 1000 }}>{t("OUVRIR LE MODULE", "OPEN MODULE", "ABRIR MÓDULO")} →</button> : null}
+      </div>
+    </div>
+  </div>;
+}
+const detailInput: React.CSSProperties = { minWidth: 0, width: "100%", boxSizing: "border-box", minHeight: 40, borderRadius: 10, border: "1px solid rgba(255,255,255,.1)", background: "rgba(0,0,0,.32)", color: "#fff", padding: "0 8px", fontSize: 16 };
+function AgendaDetail({ label, value }: { label: string; value: string }) { return <div style={{ minWidth: 0, borderRadius: 12, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.022)", padding: 8 }}><div style={{ color: "rgba(255,255,255,.4)", fontSize: 6.6, fontWeight: 1000, letterSpacing: .65 }}>{label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 9.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>; }
+function statusLabel(status: MultisportAgendaEvent["status"]) { if (status === "completed") return "Terminée"; if (status === "pending") return "Invitation"; if (status === "confirmed") return "Confirmée"; if (status === "declined") return "Refusée"; if (status === "cancelled") return "Annulée"; return "Planifiée"; }
 
 function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: string; lang: string; onClose: () => void; onCreated: () => void }) {
   const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);

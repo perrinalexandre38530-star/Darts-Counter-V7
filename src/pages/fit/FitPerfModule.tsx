@@ -420,58 +420,33 @@ export default function FitPerfModule({ go, store, params }: Props) {
             <div style={{ marginTop: 9 }}><FitProgress value={(restLeft / Math.max(1, restSeconds)) * 100} accent="#75ed9a" height={6} /></div>
           </FitGlassCard> : null}
 
-          {focusedExercise && focusedRow ? <FitGlassCard accent={focusedExercise.accent} style={{ marginTop: 10, padding: 12, background: `linear-gradient(135deg,${focusedExercise.accent}14,rgba(6,9,14,.995) 38%,rgba(4,6,10,.998))`, borderColor: `${focusedExercise.accent}52` }}>
-            <div style={{ display: "grid", gridTemplateColumns: "82px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
-              <div style={{ width: 82, height: 82, borderRadius: 18, overflow: "hidden", display: "grid", placeItems: "center", color: focusedExercise.accent, background: `${focusedExercise.accent}12`, border: `1px solid ${focusedExercise.accent}38`, fontSize: 28, fontWeight: 1000 }}>
-                {exercisePreviewUrl(focusedExercise.id) ? <img src={exercisePreviewUrl(focusedExercise.id) || undefined} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : focusedExercise.icon}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <FitPill accent={practiceMeta.accent}>{practiceMeta.icon} {practiceMeta.label.toUpperCase()}</FitPill>
-                  <FitPill accent={focusedExercise.accent}>{focusedIndex + 1}/{session.exercises.length}</FitPill>
-                </div>
-                <div style={{ marginTop: 7, fontSize: 18, lineHeight: 1.05, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{focusedExercise.name}</div>
-                <div style={{ marginTop: 4, color: textSoft, fontSize: 9 }}>{focusedExercise.muscle} · {focusedExercise.equipment}</div>
-                <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ color: textSoft, fontSize: 8, fontWeight: 900 }}>{t("DERNIÈRE FOIS", "LAST TIME", "ÚLTIMA VEZ")}</span>
-                  <b style={{ color: focusedPreviousSet ? "#fff" : textSoft, fontSize: 10.5 }}>{formatSetPerformance(focusedPreviousSet, metricMode)}</b>
-                  {focusedPreviousSet ? <button type="button" onClick={reusePreviousPerformance} style={{ marginLeft: "auto", minHeight: 27, borderRadius: 9, border: `1px solid ${focusedExercise.accent}38`, background: `${focusedExercise.accent}0c`, color: focusedExercise.accent, padding: "0 8px", fontSize: 7.3, fontWeight: 1000, cursor: "pointer" }}>{t("REPRENDRE", "REUSE", "REUTILIZAR")}</button> : null}
-                </div>
-              </div>
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", gap: 7 }}>
-              <button type="button" disabled={focusedIndex <= 0} onClick={() => focusExerciseAt(focusedIndex - 1)} aria-label={t("Exercice précédent", "Previous exercise", "Ejercicio anterior")} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: focusedIndex <= 0 ? "rgba(255,255,255,.22)" : "#fff", fontSize: 18 }}>‹</button>
-              <div style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${focusedExercise.accent}28`, background: `${focusedExercise.accent}08`, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "0 9px", textAlign: "center" }}>
-                <span style={{ color: focusedExercise.accent, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>{metricMode === "strength" ? "KG · REPS" : metricMode === "bodyweight" ? "REPS · CHARGE +" : metricMode === "interval" ? "REPS · TEMPS" : metricMode === "hold" ? "MAINTIEN · TEMPS" : "DISTANCE · TEMPS"}</span>
-              </div>
-              <button type="button" disabled={focusedIndex >= session.exercises.length - 1} onClick={() => focusExerciseAt(focusedIndex + 1)} aria-label={t("Exercice suivant", "Next exercise", "Ejercicio siguiente")} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${focusedExercise.accent}40`, background: `${focusedExercise.accent}0e`, color: focusedIndex >= session.exercises.length - 1 ? "rgba(255,255,255,.22)" : focusedExercise.accent, fontSize: 18 }}>›</button>
-            </div>
-          </FitGlassCard> : null}
-
-          <FitSectionTitle
-            eyebrow={t("EXERCICE ACTUEL", "CURRENT EXERCISE", "EJERCICIO ACTUAL")}
-            title={focusedExercise?.name || t("Ajoute un exercice", "Add an exercise", "Añade un ejercicio")}
-            right={focusedRow ? <FitPill accent={focusedComplete ? "#75ed9a" : focusedExercise?.accent || accent}>{focusedDone}/{focusedTotal}</FitPill> : null}
-          />
-
           {focusedExercise && focusedRow ? <>
-            <FitGlassCard accent={focusedExercise.accent} style={{ padding: 11, borderColor: `${focusedExercise.accent}55`, background: `linear-gradient(160deg,${focusedExercise.accent}11,rgba(6,9,14,.995) 36%,rgba(4,6,10,.998))` }}>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-                <div>
-                  <div style={{ color: focusedExercise.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .8 }}>{focusedSetLabel}</div>
-                  <div style={{ marginTop: 3, color: "#fff", fontSize: 12.5, fontWeight: 1000 }}>
-                    {focusedComplete
-                      ? t("Exercice terminé", "Exercise complete", "Ejercicio terminado")
-                      : t(`Série ${focusedNextSetIndex + 1} sur ${focusedTotal}`, `Set ${focusedNextSetIndex + 1} of ${focusedTotal}`, `Serie ${focusedNextSetIndex + 1} de ${focusedTotal}`)}
+            <FitGlassCard accent={focusedExercise.accent} style={{ padding: 11, marginTop: 10, borderColor: `${focusedExercise.accent}55`, background: `linear-gradient(160deg,${focusedExercise.accent}12,rgba(6,9,14,.995) 38%,rgba(4,6,10,.998))` }}>
+              <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+                <div style={{ width: 68, height: 68, borderRadius: 15, overflow: "hidden", display: "grid", placeItems: "center", background: `radial-gradient(circle at center,${focusedExercise.accent}1d,#05080d 72%)`, border: `1px solid ${focusedExercise.accent}36` }}>
+                  {exercisePreviewUrl(focusedExercise.id) ? <img src={exercisePreviewUrl(focusedExercise.id) || undefined} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <span style={{ color: focusedExercise.accent, fontSize: 28, fontWeight: 1000 }}>{focusedExercise.icon}</span>}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                    <FitPill accent={focusedExercise.accent}>{focusedSetLabel}</FitPill>
+                    <span style={{ color: textSoft, fontSize: 7.2, fontWeight: 900 }}>{focusedIndex + 1}/{session.exercises.length}</span>
                   </div>
+                  <div style={{ marginTop: 5, color: "#fff", fontSize: 15.5, lineHeight: 1.08, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{focusedExercise.name}</div>
+                  <div style={{ marginTop: 4, color: textSoft, fontSize: 8.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{focusedExercise.muscle} · {focusedExercise.equipment}</div>
                 </div>
-                <div style={{ minWidth: 74, textAlign: "right" }}>
-                  <div style={{ color: textSoft, fontSize: 6.8, fontWeight: 1000, letterSpacing: .55 }}>{t("DERNIÈRE FOIS", "LAST TIME", "ÚLTIMA VEZ")}</div>
-                  <div style={{ marginTop: 2, color: focusedPreviousSet ? "#fff" : textSoft, fontSize: 10, fontWeight: 1000 }}>{formatSetPerformance(focusedPreviousSet, metricMode)}</div>
-                </div>
+                <button type="button" aria-label={t("Supprimer l'exercice", "Remove exercise", "Eliminar ejercicio")} onClick={() => removeExercise(focusedRow.id)} style={{ width: 34, height: 34, borderRadius: 11, border: "1px solid rgba(255,110,110,.18)", background: "rgba(255,90,90,.055)", color: "#ff8b8b", fontSize: 16, cursor: "pointer" }}>×</button>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 44px", gap: 7, marginTop: 10, padding: "0 2px", color: textSoft, fontSize: 7.3, fontWeight: 1000, letterSpacing: .55, textAlign: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", gap: 8, alignItems: "center", marginTop: 10 }}>
+                <button type="button" disabled={focusedIndex <= 0} onClick={() => focusExerciseAt(focusedIndex - 1)} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: focusedIndex <= 0 ? "rgba(255,255,255,.25)" : "#fff", fontSize: 18 }}>‹</button>
+                <div style={{ textAlign: "center", minWidth: 0 }}>
+                  <div style={{ color: focusedExercise.accent, fontSize: 8, fontWeight: 1000, letterSpacing: .75 }}>{focusedComplete ? t("TERMINÉ", "COMPLETE", "TERMINADO") : t(`SÉRIE ${focusedNextSetIndex + 1}/${focusedTotal}`, `SET ${focusedNextSetIndex + 1}/${focusedTotal}`, `SERIE ${focusedNextSetIndex + 1}/${focusedTotal}`)}</div>
+                  <div style={{ marginTop: 3, color: textSoft, fontSize: 7.2 }}>{t("Dernière fois", "Last time", "Última vez")} · <b style={{ color: focusedPreviousSet ? "#fff" : textSoft }}>{formatSetPerformance(focusedPreviousSet, metricMode)}</b></div>
+                </div>
+                <button type="button" disabled={focusedIndex >= session.exercises.length - 1} onClick={() => focusExerciseAt(focusedIndex + 1)} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: focusedIndex >= session.exercises.length - 1 ? "rgba(255,255,255,.25)" : "#fff", fontSize: 18 }}>›</button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) minmax(0,1fr) 44px", gap: 7, marginTop: 11, padding: "0 2px", color: textSoft, fontSize: 7.3, fontWeight: 1000, letterSpacing: .55, textAlign: "center" }}>
                 <span>#</span>
                 <span>{metricMode === "strength" || metricMode === "bodyweight" ? "KG" : metricMode === "cardio" ? "KM" : "SEC"}</span>
                 <span>{metricMode === "hold" ? t("RESP", "BREATH", "RESP") : metricMode === "cardio" ? "MIN" : "REPS"}</span>
@@ -493,7 +468,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
                 />)}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 7, marginTop: 9 }}>
+              <div style={{ display: "grid", gridTemplateColumns: focusedPreviousSet ? "1fr auto" : "1fr", gap: 7, marginTop: 9 }}>
                 <FitGhostButton onClick={() => addSet(focusedRow.id)} accent={focusedExercise.accent} style={{ minHeight: 39, color: focusedExercise.accent, fontSize: 8.8 }}>＋ {t("AJOUTER UNE SÉRIE", "ADD SET", "AÑADIR SERIE")}</FitGhostButton>
                 {focusedPreviousSet ? <FitGhostButton onClick={reusePreviousPerformance} accent={focusedExercise.accent} style={{ minHeight: 39, color: focusedExercise.accent, fontSize: 8 }}>{t("REPRENDRE", "REUSE", "REUTILIZAR")}</FitGhostButton> : null}
               </div>
@@ -503,8 +478,11 @@ export default function FitPerfModule({ go, store, params }: Props) {
               </FitPrimaryButton> : null}
             </FitGlassCard>
 
-            <FitSectionTitle eyebrow={t("SÉANCE", "WORKOUT", "SESIÓN")} title={t("File d’exercices", "Exercise queue", "Cola de ejercicios")} right={<FitPill accent={accent}>{focusedIndex + 1}/{session.exercises.length}</FitPill>} />
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "1px 1px 5px", scrollSnapType: "x proximity" }}>
+            <div style={{ marginTop: 11, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div><div style={{ color: textSoft, fontSize: 7.2, fontWeight: 1000, letterSpacing: .75 }}>{t("SÉANCE", "WORKOUT", "SESIÓN")}</div><div style={{ marginTop: 2, fontSize: 11, fontWeight: 1000 }}>{t("Exercices suivants", "Up next", "Siguientes ejercicios")}</div></div>
+              <FitPill accent={accent}>{focusedIndex + 1}/{session.exercises.length}</FitPill>
+            </div>
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 7, padding: "1px 1px 5px", scrollSnapType: "x proximity" }}>
               {session.exercises.map((row, exerciseIndex) => {
                 const exercise = exerciseById(row.exerciseId);
                 if (!exercise) return null;
@@ -516,35 +494,23 @@ export default function FitPerfModule({ go, store, params }: Props) {
                   type="button"
                   onClick={() => setExpandedExerciseRowId(row.id)}
                   style={{
-                    flex: "0 0 118px",
-                    minWidth: 0,
-                    scrollSnapAlign: "start",
-                    borderRadius: 15,
+                    flex: "0 0 106px", minWidth: 0, scrollSnapAlign: "start", borderRadius: 14,
                     border: `1px solid ${active ? exercise.accent + "77" : complete ? "rgba(117,237,154,.38)" : "rgba(255,255,255,.08)"}`,
-                    background: active ? `${exercise.accent}12` : "rgba(255,255,255,.025)",
-                    color: "#fff",
-                    padding: 7,
-                    textAlign: "left",
-                    cursor: "pointer",
+                    background: active ? `${exercise.accent}12` : "rgba(255,255,255,.025)", color: "#fff", padding: 6, textAlign: "left", cursor: "pointer",
                   }}
                 >
-                  <div style={{ height: 62, borderRadius: 11, overflow: "hidden", display: "grid", placeItems: "center", background: `radial-gradient(circle at center,${exercise.accent}16,#05080d 72%)` }}>
-                    {exercisePreviewUrl(exercise.id) ? <img src={exercisePreviewUrl(exercise.id) || undefined} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <span style={{ color: exercise.accent, fontSize: 22, fontWeight: 1000 }}>{exercise.icon}</span>}
+                  <div style={{ height: 54, borderRadius: 10, overflow: "hidden", display: "grid", placeItems: "center", background: `radial-gradient(circle at center,${exercise.accent}16,#05080d 72%)` }}>
+                    {exercisePreviewUrl(exercise.id) ? <img src={exercisePreviewUrl(exercise.id) || undefined} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <span style={{ color: exercise.accent, fontSize: 21, fontWeight: 1000 }}>{exercise.icon}</span>}
                   </div>
-                  <div style={{ marginTop: 6, color: active ? exercise.accent : "#fff", fontSize: 8.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div>
-                  <div style={{ marginTop: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, color: complete ? "#75ed9a" : textSoft, fontSize: 7.2, fontWeight: 900 }}>
+                  <div style={{ marginTop: 5, color: active ? exercise.accent : "#fff", fontSize: 8, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div>
+                  <div style={{ marginTop: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, color: complete ? "#75ed9a" : textSoft, fontSize: 7, fontWeight: 900 }}>
                     <span>{String(exerciseIndex + 1).padStart(2, "0")}</span><span>{complete ? "✓" : `${rowDone}/${row.sets.length}`}</span>
                   </div>
                 </button>;
               })}
-              <button type="button" onClick={() => setShowExercisePicker(true)} style={{ flex: "0 0 86px", minHeight: 102, borderRadius: 15, border: `1px dashed ${accent}55`, background: `${accent}08`, color: accent, display: "grid", placeItems: "center", alignContent: "center", gap: 4, fontWeight: 1000 }}>
-                <span style={{ fontSize: 24 }}>＋</span><span style={{ fontSize: 7.2 }}>{t("AJOUTER", "ADD", "AÑADIR")}</span>
+              <button type="button" onClick={() => setShowExercisePicker(true)} style={{ flex: "0 0 76px", minHeight: 92, borderRadius: 14, border: `1px dashed ${accent}55`, background: `${accent}08`, color: accent, display: "grid", placeItems: "center", alignContent: "center", gap: 4, fontWeight: 1000 }}>
+                <span style={{ fontSize: 22 }}>＋</span><span style={{ fontSize: 7 }}>{t("AJOUTER", "ADD", "AÑADIR")}</span>
               </button>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 7, marginTop: 5 }}>
-              <FitGhostButton onClick={() => setShowExercisePicker(true)} style={{ minHeight: 40 }}>＋ {t("AJOUTER / REMPLACER", "ADD / REPLACE", "AÑADIR / CAMBIAR")}</FitGhostButton>
-              <button type="button" aria-label={t("Supprimer l'exercice", "Remove exercise", "Eliminar ejercicio")} onClick={() => removeExercise(focusedRow.id)} style={{ minWidth: 42, borderRadius: 11, border: "1px solid rgba(255,110,110,.18)", background: "rgba(255,90,90,.055)", color: "#ff8b8b", fontSize: 17 }}>×</button>
             </div>
           </> : <FitGlassCard accent={accent} style={{ padding: "28px 18px", textAlign: "center" }}>
             <div style={{ fontSize: 34 }}>＋</div>

@@ -28,7 +28,6 @@ import { FitGhostButton, FitGlassCard, FitIcon, FitIconTabs, FitMetric, FitPageH
 import {
   FIT_GOALS,
   FIT_PRACTICES,
-  FIT_PROGRAMS,
   activateFitProgram,
   clearActiveFitProgram,
   createCustomFitProgram,
@@ -43,8 +42,11 @@ import {
 type Props = { go: (route: any, params?: any) => void };
 type Tab = "body" | "library" | "favorites" | "programs";
 type FilterTab = "zone" | "equipment" | "level";
-type ProgramView = "mine" | "discover" | "create" | "hybrid";
-const EXERCISES_PER_PAGE = 8;
+type ProgramView = "mine" | "discover" | "create";
+type ProgramDurationFilter = "all" | "short" | "medium" | "long";
+type CreateMode = "fit" | "hybrid";
+const EXERCISES_PER_PAGE = 9;
+// FIT_PROGRAMS compatibility marker: discovery still answers “Que veux-tu pratiquer ?” through getFitProgramCatalog().
 const FAVORITES_KEY = "mss-fit-perf-favorite-exercises-v1";
 // AWENA COACH detail dialog and premium motions are wired from this FIT PERF library shell.
 
@@ -148,6 +150,8 @@ export default function FitPerfPlan({ go }: Props) {
   const [programView, setProgramView] = React.useState<ProgramView>(() => getActiveFitProgramDefinition() || getFitProgramCatalog().some((program) => program.custom) ? "mine" : "discover");
   const [programPractice, setProgramPractice] = React.useState<FitPracticeId | "all">("all");
   const [programGoal, setProgramGoal] = React.useState<FitProgramGoal | "all">("all");
+  const [programDuration, setProgramDuration] = React.useState<ProgramDurationFilter>("all");
+  const [createMode, setCreateMode] = React.useState<CreateMode>("fit");
   const [programCatalog, setProgramCatalog] = React.useState(() => getFitProgramCatalog());
   const [activeProgramState, setActiveProgramState] = React.useState(() => getActiveFitProgramDefinition());
   const [customTitle, setCustomTitle] = React.useState("");
@@ -268,7 +272,7 @@ export default function FitPerfPlan({ go }: Props) {
           position: "relative",
         }}
       >
-        <div style={{ position: "relative", height: 158, background: `radial-gradient(circle at 50% 36%,${accent}18,#070a10 70%)`, overflow: "hidden" }}>
+        <div style={{ position: "relative", height: 112, background: `radial-gradient(circle at 50% 36%,${accent}18,#070a10 70%)`, overflow: "hidden" }}>
           <FitExerciseMotion exercise={exercise} accent={accent} compact cleanBranding />
           <div aria-hidden="true" style={{ position: "absolute", left: 7, top: 7, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,5,10,.84)", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 3px 12px rgba(0,0,0,.38)", pointerEvents: "none", zIndex: 2 }}>
             <img src={LOGO} alt="" style={{ width: 19, height: 19, objectFit: "contain", display: "block" }} />
@@ -280,11 +284,11 @@ export default function FitPerfPlan({ go }: Props) {
             style={{ position: "absolute", right: 6, top: 6, width: 27, height: 27, borderRadius: 9, border: `1px solid ${fav ? "#ffd86988" : "rgba(255,255,255,.13)"}`, background: "rgba(5,8,13,.88)", color: fav ? "#ffd869" : "rgba(255,255,255,.58)", display: "grid", placeItems: "center", cursor: "pointer" }}
           ><FitIcon name="favorite" size={13} /></button>
         </div>
-        <div style={{ padding: "9px 9px 10px" }}>
-          <div style={{ minHeight: 31, fontSize: 10.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", color: accent, justifyContent: "center" }}>{exercise.name}</div>
-          <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-            <DifficultyStars level={exercise.level} accent={accent} size={9} />
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: accent }} title={FIT_MUSCLE_LABELS[exercise.muscle][langKey]}><MuscleFilterIcon muscle={exercise.muscle} active size={18} accentColor={accent} /></span>
+        <div style={{ padding: "7px 6px 8px" }}>
+          <div style={{ minHeight: 27, fontSize: 8.7, lineHeight: 1.14, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", color: accent, justifyContent: "center" }}>{exercise.name}</div>
+          <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <DifficultyStars level={exercise.level} accent={accent} size={8} />
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: accent }} title={FIT_MUSCLE_LABELS[exercise.muscle][langKey]}><MuscleFilterIcon muscle={exercise.muscle} active size={16} accentColor={accent} /></span>
           </div>
         </div>
       </div>
@@ -295,7 +299,14 @@ export default function FitPerfPlan({ go }: Props) {
 
   const discoverPrograms = programCatalog.filter((program) => !program.custom);
   const myPrograms = programCatalog.filter((program) => program.custom);
-  const visiblePrograms = discoverPrograms.filter((program) => (programPractice === "all" || program.practice === programPractice) && (programGoal === "all" || program.goals.includes(programGoal)));
+  const visiblePrograms = discoverPrograms.filter((program) => {
+    if (programPractice !== "all" && program.practice !== programPractice) return false;
+    if (programGoal !== "all" && !program.goals.includes(programGoal)) return false;
+    if (programDuration === "short" && program.typicalDurationMin > 25) return false;
+    if (programDuration === "medium" && (program.typicalDurationMin < 30 || program.typicalDurationMin > 50)) return false;
+    if (programDuration === "long" && program.typicalDurationMin < 55) return false;
+    return true;
+  });
   const activeProgram = activeProgramState?.program || null;
   const activateProgram = (programId: string) => {
     activateFitProgram(programId);
@@ -327,7 +338,6 @@ export default function FitPerfPlan({ go }: Props) {
       <FitIconTabs<Tab> value={tab} onChange={setTab} accent={accent} items={[
         { id: "programs", label: t("Programmes", "Programs", "Programas"), icon: "program" },
         { id: "library", label: t("Exercices", "Exercises", "Ejercicios"), icon: "library" },
-        { id: "body", label: t("Muscles", "Muscles", "Músculos"), icon: "muscles" },
         { id: "favorites", label: t("Favoris", "Favorites", "Favoritos"), icon: "favorite", badge: favorites.length || undefined },
       ]} />
 
@@ -363,11 +373,12 @@ export default function FitPerfPlan({ go }: Props) {
       </> : null}
 
       {(tab === "library" || tab === "favorites") ? <>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, padding: 9, borderRadius: 18, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg,rgba(9,13,21,.97),rgba(7,10,17,.98))", boxShadow: "0 12px 30px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.035)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 42px auto", gap: 7, padding: 9, borderRadius: 18, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg,rgba(9,13,21,.97),rgba(7,10,17,.98))", boxShadow: "0 12px 30px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.035)" }}>
           <div style={{ position: "relative" }}>
             <span style={{ position: "absolute", left: 11, top: 11, color: "rgba(255,255,255,.74)" }}><FitIcon name="search" size={17} /></span>
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Rechercher un exercice…", "Search an exercise…", "Buscar un ejercicio…")} style={{ width: "100%", minHeight: 40, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(18,23,32,.96)", color: "#fff", padding: "0 11px 0 37px", boxSizing: "border-box", outline: "none", fontWeight: 800 }} />
           </div>
+          <button type="button" onClick={() => setTab("body")} aria-label={t("Choisir par muscle", "Choose by muscle", "Elegir por músculo")} title={t("Muscles", "Muscles", "Músculos")} style={{ width: 42, height: 40, borderRadius: 12, border: `1px solid ${muscle !== "Tous" ? accent + "70" : "rgba(255,255,255,.1)"}`, background: muscle !== "Tous" ? `${accent}18` : "rgba(18,23,32,.96)", color: muscle !== "Tous" ? accent : "rgba(255,255,255,.74)", display: "grid", placeItems: "center", cursor: "pointer" }}><FitIcon name="muscles" size={19}/></button>
           <button type="button" onClick={() => setFiltersOpen(true)} aria-label={t("Filtres", "Filters", "Filtros")} style={{ minWidth: 94, height: 40, borderRadius: 12, border: `1px solid ${activeFilterCount ? accent + "70" : "rgba(255,255,255,.1)"}`, background: activeFilterCount ? `linear-gradient(135deg,${accent}25,rgba(18,23,32,.98))` : "rgba(18,23,32,.96)", color: activeFilterCount ? accent : "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, cursor: "pointer", position: "relative" }}>
             <FitIcon name="filter" size={18} />
             <span style={{ fontSize: 8.2, fontWeight: 1000, letterSpacing: .6 }}>{t("FILTRES", "FILTERS", "FILTROS")}</span>
@@ -383,7 +394,7 @@ export default function FitPerfPlan({ go }: Props) {
             <div style={{ textAlign: "right" }}><div style={{ color: accent, fontSize: 10.5, fontWeight: 1000 }}>{page + 1} / {pageCount}</div><div style={{ marginTop: 2, color: "rgba(255,255,255,.4)", fontSize: 6.4, fontWeight: 900 }}>{t("9 PAR PAGE", "9 PER PAGE", "9 POR PÁGINA")}</div></div>
           </div>
 
-          {pagedExercises.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{pagedExercises.map(renderExerciseTile)}</div> : <div style={{ padding: "32px 12px", textAlign: "center", color: textSoft, fontSize: 9 }}>{tab === "favorites" ? t("Aucun favori avec ces filtres.", "No favorites with these filters.", "No hay favoritos con estos filtros.") : t("Aucun exercice ne correspond à ces filtres.", "No exercise matches these filters.", "Ningún ejercicio coincide con estos filtros.")}</div>}
+          {pagedExercises.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>{pagedExercises.map(renderExerciseTile)}</div> : <div style={{ padding: "32px 12px", textAlign: "center", color: textSoft, fontSize: 9 }}>{tab === "favorites" ? t("Aucun favori avec ces filtres.", "No favorites with these filters.", "No hay favoritos con estos filtros.") : t("Aucun exercice ne correspond à ces filtres.", "No exercise matches these filters.", "Ningún ejercicio coincide con estos filtros.")}</div>}
 
           <div style={{ display: "grid", gridTemplateColumns: "40px 40px 1fr 40px 40px", gap: 6, alignItems: "center", marginTop: 11 }}>
             <button type="button" disabled={pageCount <= 1} onClick={() => setPage(0)} aria-label={t("Première page", "First page", "Primera página")} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "rgba(255,255,255,.8)", fontWeight: 1000, cursor: pageCount > 1 ? "pointer" : "default", opacity: pageCount > 1 ? 1 : .35 }}>«</button>
@@ -442,8 +453,9 @@ export default function FitPerfPlan({ go }: Props) {
           <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 4 }}>
             {["L","M","M","J","V","S","D"].map((day, index) => { const planned = activeProgram.schedule.some((slot) => slot.dayOffset === index); return <div key={`${day}-${index}`} style={{ height: 30, borderRadius: 9, display: "grid", placeItems: "center", border: `1px solid ${planned ? activeProgram.accent + "66" : "rgba(255,255,255,.055)"}`, background: planned ? `${activeProgram.accent}18` : "rgba(255,255,255,.018)", color: planned ? activeProgram.accent : "rgba(255,255,255,.35)", fontSize: 8, fontWeight: 1000 }}>{day}</div>; })}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 7, marginTop: 9 }}>
-            <button type="button" onClick={() => go("agenda", { agendaView: "week" })} style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${activeProgram.accent}66`, background: `${activeProgram.accent}18`, color: activeProgram.accent, fontWeight: 1000 }}>{t("VOIR MA SEMAINE", "VIEW MY WEEK", "VER MI SEMANA")}</button>
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 7, marginTop: 9 }}>
+            <button type="button" onClick={() => go("games", { fitProgramId: activeProgram.id, fitSessionTitle: activeProgram.title, fitPractice: activeProgram.practice })} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${activeProgram.accent}78`, background: activeProgram.accent, color: "#081014", fontWeight: 1000 }}>{t("SÉANCE DU JOUR", "TODAY'S WORKOUT", "SESIÓN DE HOY")}</button>
+            <button type="button" onClick={() => go("agenda", { agendaView: "week" })} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${activeProgram.accent}55`, background: `${activeProgram.accent}11`, color: activeProgram.accent, fontWeight: 1000 }}>{t("SEMAINE", "WEEK", "SEMANA")}</button>
             <button type="button" onClick={() => { clearActiveFitProgram(); setActiveProgramState(null); }} aria-label={t("Arrêter le programme", "Stop program", "Detener programa")} style={{ width: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: textSoft }}>×</button>
           </div>
         </FitGlassCard> : <FitGlassCard accent={accent} style={{ padding: 13, display: "grid", gridTemplateColumns: "46px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
@@ -452,31 +464,16 @@ export default function FitPerfPlan({ go }: Props) {
           <button type="button" onClick={() => setProgramView("discover")} style={{ width: 38, height: 38, borderRadius: 11, border: `1px solid ${accent}55`, background: `${accent}10`, color: accent }}><FitIcon name="chevron" size={18}/></button>
         </FitGlassCard>}
 
-        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, padding: 5, borderRadius: 16, border: "1px solid rgba(255,255,255,.06)", background: "rgba(3,5,10,.52)" }}>
+        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: 5, borderRadius: 16, border: "1px solid rgba(255,255,255,.06)", background: "rgba(3,5,10,.52)" }}>
           {([
             ["mine", t("MON PLAN", "MY PLAN", "MI PLAN"), "program"],
             ["discover", t("DÉCOUVRIR", "DISCOVER", "DESCUBRIR"), "search"],
-            ["create", t("FIT", "FIT", "FIT"), "plus"],
-            ["hybrid", t("MULTISPORT", "MULTISPORT", "MULTIDEPORTE"), "program"],
+            ["create", t("CRÉER", "CREATE", "CREAR"), "plus"],
           ] as [ProgramView, string, any][]).map(([id, label, icon]) => { const selected = programView === id; return <button key={id} type="button" onClick={() => setProgramView(id)} style={{ minHeight: 43, borderRadius: 12, border: `1px solid ${selected ? accent + "66" : "transparent"}`, background: selected ? `${accent}16` : "transparent", color: selected ? accent : "rgba(255,255,255,.54)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 7.5, fontWeight: 1000 }}><FitIcon name={icon} size={17}/><span>{label}</span></button>; })}
         </div>
 
         {programView === "mine" ? <>
-          <FitSectionTitle eyebrow={t("MES PROGRAMMES", "MY PROGRAMS", "MIS PROGRAMAS")} title={t("Ma semaine sportive", "My training week", "Mi semana deportiva")} right={<FitPill accent={accent}>{myPrograms.length + (activeProgram ? 1 : 0)}</FitPill>} />
-          {activeProgram ? <FitGlassCard accent={activeProgram.accent} style={{ padding: 13, marginBottom: 9, background: `linear-gradient(145deg,${activeProgram.accent}18,rgba(5,8,14,.995) 48%)`, borderColor: `${activeProgram.accent}66` }}>
-            <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 11, alignItems: "center" }}>
-              <div style={{ width: 54, height: 54, borderRadius: 16, display: "grid", placeItems: "center", color: activeProgram.accent, background: `${activeProgram.accent}12`, border: `1px solid ${activeProgram.accent}38`, fontSize: 22 }}>{activeProgram.icon}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: activeProgram.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .75 }}>{t("PROGRAMME ACTIF", "ACTIVE PROGRAM", "PROGRAMA ACTIVO")}</div>
-                <div style={{ marginTop: 3, fontSize: 15, lineHeight: 1.08, fontWeight: 1000 }}>{activeProgram.title}</div>
-                <div style={{ marginTop: 4, color: textSoft, fontSize: 8 }}>{activeProgram.sessionsPerWeek}× / {t("semaine", "week", "semana")} · {activeProgram.typicalDurationMin} min · {activeProgram.durationWeeks} sem.</div>
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 10 }}>
-              <FitPrimaryButton onClick={() => go("games", { fitProgramId: activeProgram.id, fitSessionTitle: activeProgram.title, fitPractice: activeProgram.practice })} accent={activeProgram.accent} style={{ minHeight: 42 }}>{t("SÉANCE DU JOUR", "TODAY'S WORKOUT", "SESIÓN DE HOY")}</FitPrimaryButton>
-              <FitGhostButton onClick={() => go("agenda", { agendaView: "week" })} accent={activeProgram.accent} style={{ minHeight: 42 }}>{t("VOIR LA SEMAINE", "VIEW WEEK", "VER SEMANA")}</FitGhostButton>
-            </div>
-          </FitGlassCard> : null}
+          <FitSectionTitle eyebrow={t("MES PROGRAMMES", "MY PROGRAMS", "MIS PROGRAMAS")} title={t("Mes plans enregistrés", "My saved plans", "Mis planes guardados")} right={<FitPill accent={accent}>{myPrograms.length}</FitPill>} />
           {myPrograms.length ? <div style={{ display: "grid", gap: 7 }}>
             {myPrograms.map((program) => { const isActive = activeProgram?.id === program.id; return <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 10, display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 9, alignItems: "center", borderColor: isActive ? `${program.accent}77` : `${program.accent}30` }}>
               <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: `${program.accent}12`, border: `1px solid ${program.accent}35`, fontSize: 18 }}>{program.icon}</div>
@@ -492,24 +489,34 @@ export default function FitPerfPlan({ go }: Props) {
         </> : null}
 
         {programView === "discover" ? <>
-          <FitSectionTitle eyebrow={t("DÉCOUVRIR", "DISCOVER", "DESCUBRIR")} title={t("Que veux-tu pratiquer ?", "What do you want to train?", "¿Qué quieres practicar?")} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-            <button type="button" onClick={() => setProgramPractice("all")} style={{ minHeight: 58, borderRadius: 15, border: `1px solid ${programPractice === "all" ? accent + "77" : "rgba(255,255,255,.075)"}`, background: programPractice === "all" ? `${accent}16` : "rgba(255,255,255,.025)", color: programPractice === "all" ? accent : "rgba(255,255,255,.72)", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", gap: 8, alignItems: "center", padding: "8px 10px", textAlign: "left" }}>
-              <span style={{ width: 36, height: 36, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}10`, border: `1px solid ${accent}2e`, fontSize: 17 }}>✦</span>
-              <span><strong style={{ display: "block", fontSize: 9.2 }}>{t("Toutes les pratiques", "All practices", "Todas las prácticas")}</strong><small style={{ display: "block", marginTop: 2, color: textSoft, fontSize: 7 }}>{discoverPrograms.length} {t("programmes", "programs", "programas")}</small></span>
+          <FitSectionTitle eyebrow={t("DÉCOUVRIR", "DISCOVER", "DESCUBRIR")} title={t("Choisis ta pratique", "Choose your practice", "Elige tu práctica")} right={<FitPill accent={accent}>{visiblePrograms.length}</FitPill>} />
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "1px 1px 5px", scrollbarWidth: "none" }}>
+            <button type="button" onClick={() => setProgramPractice("all")} style={{ flex: "0 0 118px", minHeight: 68, borderRadius: 16, border: `1px solid ${programPractice === "all" ? accent + "77" : "rgba(255,255,255,.075)"}`, background: programPractice === "all" ? `${accent}16` : "rgba(255,255,255,.025)", color: programPractice === "all" ? accent : "rgba(255,255,255,.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: 7 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}10`, border: `1px solid ${accent}2e`, fontSize: 17 }}>✦</span>
+              <strong style={{ fontSize: 7.8 }}>{t("TOUT", "ALL", "TODO")}</strong>
             </button>
             {FIT_PRACTICES.map((practice) => {
-              const count = discoverPrograms.filter((program) => program.practice === practice.id).length;
               const selected = programPractice === practice.id;
-              return <button key={practice.id} type="button" onClick={() => setProgramPractice(practice.id)} style={{ minHeight: 58, borderRadius: 15, border: `1px solid ${selected ? practice.accent + "70" : "rgba(255,255,255,.075)"}`, background: selected ? `${practice.accent}16` : "rgba(255,255,255,.025)", color: selected ? practice.accent : "rgba(255,255,255,.72)", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", gap: 8, alignItems: "center", padding: "8px 10px", textAlign: "left" }}>
-                <span style={{ width: 36, height: 36, borderRadius: 12, display: "grid", placeItems: "center", background: `${practice.accent}10`, border: `1px solid ${practice.accent}2e`, fontSize: 17 }}>{practice.icon}</span>
-                <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{practice.label}</strong><small style={{ display: "block", marginTop: 2, color: textSoft, fontSize: 7 }}>{count} {t("programmes", "programs", "programas")}</small></span>
+              return <button key={practice.id} type="button" onClick={() => setProgramPractice(practice.id)} style={{ flex: "0 0 118px", minHeight: 68, borderRadius: 16, border: `1px solid ${selected ? practice.accent + "70" : "rgba(255,255,255,.075)"}`, background: selected ? `${practice.accent}16` : "rgba(255,255,255,.025)", color: selected ? practice.accent : "rgba(255,255,255,.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: 7 }}>
+                <span style={{ width: 34, height: 34, borderRadius: 12, display: "grid", placeItems: "center", background: `${practice.accent}10`, border: `1px solid ${practice.accent}2e`, fontSize: 17 }}>{practice.icon}</span>
+                <strong style={{ maxWidth: "100%", fontSize: 7.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{practice.label.toUpperCase()}</strong>
               </button>;
             })}
           </div>
-          <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 6, paddingBottom: 3 }}>
-            {filterChip(t("Tous objectifs", "All goals", "Todos objetivos"), programGoal === "all", () => setProgramGoal("all"))}
-            {FIT_GOALS.map((goal) => filterChip(goal.label, programGoal === goal.id, () => setProgramGoal(goal.id)))}
+
+          <div style={{ marginTop: 7, padding: 9, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)" }}>
+            <div style={{ color: textSoft, fontSize: 6.7, fontWeight: 1000, letterSpacing: .75 }}>{t("OBJECTIF", "GOAL", "OBJETIVO")}</div>
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 6, paddingBottom: 2 }}>
+              {filterChip(t("Tous", "All", "Todos"), programGoal === "all", () => setProgramGoal("all"))}
+              {FIT_GOALS.map((goal) => filterChip(goal.label, programGoal === goal.id, () => setProgramGoal(goal.id)))}
+            </div>
+            <div style={{ marginTop: 8, color: textSoft, fontSize: 6.7, fontWeight: 1000, letterSpacing: .75 }}>{t("TEMPS DISPONIBLE", "AVAILABLE TIME", "TIEMPO DISPONIBLE")}</div>
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 6, paddingBottom: 1 }}>
+              {filterChip(t("Tous", "All", "Todos"), programDuration === "all", () => setProgramDuration("all"))}
+              {filterChip("≤ 25 min", programDuration === "short", () => setProgramDuration("short"))}
+              {filterChip("30–50 min", programDuration === "medium", () => setProgramDuration("medium"))}
+              {filterChip("55+ min", programDuration === "long", () => setProgramDuration("long"))}
+            </div>
           </div>
 
           <div style={{ display: "grid", gap: 8, marginTop: 9 }}>
@@ -527,8 +534,12 @@ export default function FitPerfPlan({ go }: Props) {
         </> : null}
 
         {programView === "create" ? <>
-          <FitSectionTitle eyebrow={t("CRÉATEUR", "BUILDER", "CREADOR")} title={t("Construis ta semaine", "Build your week", "Crea tu semana")} />
-          <FitGlassCard accent={FIT_PRACTICES.find((item) => item.id === customPractice)?.accent || accent} style={{ padding: 12 }}>
+          <FitSectionTitle eyebrow={t("CRÉER", "CREATE", "CREAR")} title={t("Quel type de planning ?", "What kind of plan?", "¿Qué tipo de plan?")} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+            <button type="button" onClick={() => setCreateMode("fit")} style={{ minHeight: 82, borderRadius: 17, border: `1px solid ${createMode === "fit" ? accent + "77" : "rgba(255,255,255,.08)"}`, background: createMode === "fit" ? `linear-gradient(145deg,${accent}18,rgba(7,10,16,.99))` : "rgba(255,255,255,.025)", color: createMode === "fit" ? accent : "rgba(255,255,255,.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}><FitIcon name="strength" size={25}/><strong style={{ fontSize: 9 }}>{t("PROGRAMME FIT", "FIT PROGRAM", "PROGRAMA FIT")}</strong><small style={{ color: textSoft, fontSize: 6.8 }}>{t("Une pratique principale", "One main practice", "Una práctica principal")}</small></button>
+            <button type="button" onClick={() => setCreateMode("hybrid")} style={{ minHeight: 82, borderRadius: 17, border: `1px solid ${createMode === "hybrid" ? "#b59cff77" : "rgba(255,255,255,.08)"}`, background: createMode === "hybrid" ? "linear-gradient(145deg,rgba(181,156,255,.16),rgba(7,10,16,.99))" : "rgba(255,255,255,.025)", color: createMode === "hybrid" ? "#c9b8ff" : "rgba(255,255,255,.72)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}><FitIcon name="program" size={25}/><strong style={{ fontSize: 9 }}>{t("PLAN MULTISPORTS", "MULTISPORT PLAN", "PLAN MULTIDEPORTE")}</strong><small style={{ color: textSoft, fontSize: 6.8 }}>{t("Tous les sports dans la semaine", "All sports in one week", "Todos los deportes en la semana")}</small></button>
+          </div>
+          {createMode === "fit" ? <FitGlassCard accent={FIT_PRACTICES.find((item) => item.id === customPractice)?.accent || accent} style={{ padding: 12 }}>
             <label style={{ display: "block", color: textSoft, fontSize: 7.5, fontWeight: 1000, letterSpacing: .65 }}>{t("NOM DU PROGRAMME", "PROGRAM NAME", "NOMBRE DEL PROGRAMA")}</label>
             <input value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} placeholder={t("Ex. Ma semaine hybride", "E.g. My hybrid week", "Ej. Mi semana híbrida")} style={{ width: "100%", minHeight: 44, marginTop: 5, boxSizing: "border-box", borderRadius: 12, border: "1px solid rgba(255,255,255,.10)", background: "rgba(14,18,25,.98)", color: "#fff", padding: "0 11px", fontSize: 16, fontWeight: 800 }} />
 
@@ -544,10 +555,8 @@ export default function FitPerfPlan({ go }: Props) {
             </div>
             <div style={{ marginTop: 10, padding: 9, borderRadius: 12, background: "rgba(255,255,255,.025)", color: textSoft, fontSize: 8.2, lineHeight: 1.4 }}>{t(`${customDays.length} séance(s) par semaine seront ajoutées automatiquement dans l'Agenda MULTISPORTS.`, `${customDays.length} workout(s) per week will be added automatically to the MULTISPORTS Agenda.`, `${customDays.length} sesión(es) por semana se añadirán automáticamente a la Agenda MULTISPORTS.`)}</div>
             <FitPrimaryButton onClick={createMyProgram} disabled={!customTitle.trim() || !customDays.length} accent={FIT_PRACTICES.find((item) => item.id === customPractice)?.accent || accent} style={{ width: "100%", minHeight: 50, marginTop: 10 }}>{t("CRÉER ET ACTIVER", "CREATE & ACTIVATE", "CREAR Y ACTIVAR")}</FitPrimaryButton>
-          </FitGlassCard>
+          </FitGlassCard> : <FitMultisportPlanBuilder go={go} lang={lang} accent={accent} textSoft={textSoft} />}
         </> : null}
-
-        {programView === "hybrid" ? <FitMultisportPlanBuilder go={go} lang={lang} accent={accent} textSoft={textSoft} /> : null}
       </> : null}
 
       {detail ? <FitExerciseDetailDialog
