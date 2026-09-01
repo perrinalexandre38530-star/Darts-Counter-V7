@@ -1,6 +1,7 @@
 import type { Analysis, Candidate, Market, RadarEnv, SearchIntent } from './domain';
 import { cacheQuery, getCachedQuery } from './db';
-import { marketKey } from './config';
+import { intFromEnv, marketKey } from './config';
+import { withTimeout } from './timeout';
 
 const AI_MODEL = '@cf/zai-org/glm-4.7-flash' as const;
 
@@ -69,7 +70,8 @@ export async function localizeQuery(env: RadarEnv, market: Market, intent: Searc
   if (cached) return cached;
 
   try {
-    const output = await env.AI.run(AI_MODEL, {
+    const timeoutMs = intFromEnv(env.RADAR_TRANSLATION_TIMEOUT_MS, 15_000, 2_000, 60_000);
+    const output = await withTimeout(env.AI.run(AI_MODEL, {
       messages: [
         {
           role: 'system',
@@ -80,7 +82,7 @@ export async function localizeQuery(env: RadarEnv, market: Market, intent: Searc
           content: `Language code: ${market.language}\nCountry: ${market.country}\nQuery: ${intent.canonicalQuery}`
         }
       ]
-    });
+    }), timeoutMs, 'Workers AI query localization');
 
     const translated = extractText(output).trim().replace(/^['"]|['"]$/g, '');
     const query = translated.slice(0, 380) || intent.canonicalQuery;
@@ -112,7 +114,8 @@ export async function classifyCandidates(env: RadarEnv, candidates: Candidate[])
     matched_query: candidate.queryText
   }));
 
-  const output = await env.AI.run(AI_MODEL, {
+  const timeoutMs = intFromEnv(env.RADAR_CLASSIFY_TIMEOUT_MS, 30_000, 5_000, 90_000);
+  const output = await withTimeout(env.AI.run(AI_MODEL, {
     messages: [
       {
         role: 'system',
@@ -135,7 +138,7 @@ Rules:
         content: JSON.stringify(compact)
       }
     ]
-  });
+  }), timeoutMs, 'Workers AI candidate classification');
 
   const parsed = JSON.parse(cleanJson(extractText(output))) as unknown;
   if (!Array.isArray(parsed)) throw new Error('Classifier did not return a JSON array');

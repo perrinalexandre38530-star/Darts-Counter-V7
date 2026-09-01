@@ -9,6 +9,11 @@ export type RadarSecrets = {
   SOCIAL_MAX_SPAM_RISK?: string;
   SOCIAL_MAX_CRINGE_RISK?: string;
   SOCIAL_MAX_CAMPAIGNS_PER_DAY?: string;
+  RADAR_TRANSLATION_TIMEOUT_MS?: string;
+  RADAR_BRAVE_TIMEOUT_MS?: string;
+  RADAR_CLASSIFY_TIMEOUT_MS?: string;
+  RADAR_STALL_TIMEOUT_MS?: string;
+  SOCIAL_AI_TIMEOUT_MS?: string;
 };
 
 export type RadarEnv = Env & RadarSecrets;
@@ -35,6 +40,7 @@ export type Candidate = {
   market: string;
   languageHint: string;
   capturedAt: string;
+  runId?: string;
 };
 
 export type Analysis = {
@@ -143,4 +149,24 @@ export type SocialAssetRow = {
   notes: string;
   created_at: string;
   updated_at: string;
+};
+
+export type RunProgressRow = {
+  run_id: string;
+  status: string;
+  stage: string;
+  started_at: string;
+  updated_at: string;
+  finished_at: string | null;
+  elapsed_ms: number;
+  queries: number;
+  brave_results: number;
+  new_candidates: number;
+  queued: number;
+  analyzed: number;
+  eligible: number;
+  high_intent: number;
+  social_campaigns: number;
+  error: string | null;
+  details_json: string;
 };

@@ -1,5 +1,5 @@
 import type { Candidate, Market, RadarEnv } from './domain';
-import { braveSearchLanguage } from './config';
+import { braveSearchLanguage, intFromEnv } from './config';
 import { sha256Hex } from './hash';
 
 interface BraveWebResult {
@@ -40,13 +40,28 @@ export async function searchBrave(
   url.searchParams.set('extra_snippets', 'true');
   url.searchParams.set('result_filter', 'web');
 
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      'Cache-Control': 'no-cache',
-      'X-Subscription-Token': env.BRAVE_SEARCH_API_KEY
+  const timeoutMs = intFromEnv(env.RADAR_BRAVE_TIMEOUT_MS, 15_000, 2_000, 60_000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+        'X-Subscription-Token': env.BRAVE_SEARCH_API_KEY
+      },
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Brave Search timed out after ${timeoutMs} ms`);
     }
-  });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const body = await response.text();

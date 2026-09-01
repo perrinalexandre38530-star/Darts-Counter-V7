@@ -7,7 +7,10 @@ import {
   attachSocialAsset,
   countSocialCampaignsSince,
   finishRun,
+  getActiveRunProgress,
+  getLatestRunProgress,
   getOpportunity,
+  getRunProgress,
   getRadarStats,
   getSocialAsset,
   getSocialCampaign,
@@ -21,9 +24,10 @@ import {
   logClick,
   setSocialCampaignStatus,
   socialCampaignExistsForSighting,
-  startRun
+  startRun,
+  updateRunProgress
 } from './db';
-import type { Candidate, RadarEnv, SocialCampaignRow } from './domain';
+import type { Candidate, RadarEnv, RunProgressRow, SocialCampaignRow } from './domain';
 import { sha256Hex } from './hash';
 import { isAdminAuthorized, unauthorized } from './security';
 import { generateAndAuditSocialDraft, socialQaPasses } from './social';
@@ -85,28 +89,55 @@ function socialCampaignPayload(row: SocialCampaignRow) {
   };
 }
 
-async function maybeCreateSocialCampaign(env: RadarEnv, candidates: Candidate[], analyses: Awaited<ReturnType<typeof classifyCandidates>>): Promise<void> {
+function runProgressPayload(env: RadarEnv, row: RunProgressRow | null) {
+  if (!row) return null;
+  const now = Date.now();
+  const updatedAt = Date.parse(row.updated_at);
+  const startedAt = Date.parse(row.started_at);
+  const stallTimeoutMs = intFromEnv(env.RADAR_STALL_TIMEOUT_MS, 60_000, 15_000, 300_000);
+  const active = ['running', 'processing', 'queued'].includes(row.status);
+  const staleForMs = Number.isFinite(updatedAt) ? Math.max(0, now - updatedAt) : 0;
+  const liveElapsedMs = Number.isFinite(startedAt) && active ? Math.max(row.elapsed_ms, now - startedAt) : row.elapsed_ms;
+  return {
+    ...row,
+    elapsed_ms: liveElapsedMs,
+    details: parseJsonField<Record<string, unknown>>(row.details_json, {}),
+    stalled: active && staleForMs > stallTimeoutMs,
+    stale_for_ms: staleForMs,
+    stall_timeout_ms: stallTimeoutMs
+  };
+}
+
+function elapsedSince(startedAtMs: number): number {
+  return Math.max(0, Date.now() - startedAtMs);
+}
+
+async function maybeCreateSocialCampaign(
+  env: RadarEnv,
+  candidates: Candidate[],
+  analyses: Awaited<ReturnType<typeof classifyCandidates>>
+): Promise<{ created: boolean; sourceSightingId?: string; status?: string }> {
   const minOpportunityScore = intFromEnv(env.SOCIAL_MIN_OPPORTUNITY_SCORE, 85, 0, 100);
   const maxPerDay = intFromEnv(env.SOCIAL_MAX_CAMPAIGNS_PER_DAY, 2, 0, 24);
-  if (maxPerDay <= 0) return;
+  if (maxPerDay <= 0) return { created: false };
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  if (await countSocialCampaignsSince(env, since) >= maxPerDay) return;
+  if (await countSocialCampaignsSince(env, since) >= maxPerDay) return { created: false };
 
   const best = analyses
     .filter((analysis) => analysis.eligible && analysis.score >= minOpportunityScore)
     .sort((a, b) => b.score - a.score)
     .find((analysis) => candidates.some((candidate) => candidate.id === analysis.id));
-  if (!best) return;
-  if (await socialCampaignExistsForSighting(env, best.id)) return;
+  if (!best) return { created: false };
+  if (await socialCampaignExistsForSighting(env, best.id)) return { created: false };
 
   const candidate = candidates.find((item) => item.id === best.id);
-  if (!candidate) return;
+  if (!candidate) return { created: false };
 
   const { draft, qa, passes } = await generateAndAuditSocialDraft(env, candidate, best);
   const createdAt = new Date().toISOString();
   const status = passes ? 'ready_for_review' : 'rejected_by_qa';
-  await insertSocialCampaign(env, {
+  const inserted = await insertSocialCampaign(env, {
     id: crypto.randomUUID(),
     sourceSightingId: candidate.id,
     language: draft.language,
@@ -140,10 +171,24 @@ async function maybeCreateSocialCampaign(env: RadarEnv, candidates: Candidate[],
     spamRisk: qa.spamRisk,
     cringeRisk: qa.cringeRisk
   }));
+
+  return { created: inserted, sourceSightingId: candidate.id, status };
 }
 
-async function handleAdminApi(request: Request, env: RadarEnv, url: URL): Promise<Response> {
+async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: ExecutionContext): Promise<Response> {
   if (!isAdminAuthorized(request, env)) return unauthorized();
+
+  if (request.method === 'GET' && url.pathname === '/api/runs/latest') {
+    const run = await getLatestRunProgress(env);
+    return json({ ok: true, run: runProgressPayload(env, run) });
+  }
+
+  const runProgressMatch = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
+  if (request.method === 'GET' && runProgressMatch) {
+    const run = await getRunProgress(env, runProgressMatch[1]!);
+    if (!run) return json({ ok: false, error: 'run_not_found' }, 404);
+    return json({ ok: true, run: runProgressPayload(env, run) });
+  }
 
   if (request.method === 'GET' && url.pathname === '/api/social/stats') {
     return json({ ok: true, stats: await getSocialStats(env), mode: env.SOCIAL_AUTOPILOT_MODE || 'review' });
@@ -294,9 +339,37 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL): Promis
   }
 
   if (request.method === 'POST' && url.pathname === '/api/run') {
+    const active = await getActiveRunProgress(env);
+    if (active) {
+      const updatedAt = Date.parse(active.updated_at);
+      const stallTimeoutMs = intFromEnv(env.RADAR_STALL_TIMEOUT_MS, 60_000, 15_000, 300_000);
+      const staleForMs = Number.isFinite(updatedAt) ? Date.now() - updatedAt : 0;
+      if (staleForMs <= stallTimeoutMs) {
+        return json({
+          ok: true,
+          already_running: true,
+          run_id: active.run_id,
+          run: runProgressPayload(env, active)
+        });
+      }
+
+      await updateRunProgress(env, active.run_id, {
+        status: 'failed',
+        stage: 'watchdog_timeout',
+        finishedAt: new Date().toISOString(),
+        error: `Watchdog: no progress update for ${Math.round(staleForMs / 1000)} s`
+      });
+    }
+
     const started = Date.now();
-    await runScheduled(env, started);
-    return json({ ok: true, triggered_at: new Date(started).toISOString() });
+    const runId = crypto.randomUUID();
+    ctx.waitUntil(runScheduled(env, started, runId));
+    return json({
+      ok: true,
+      run_id: runId,
+      status: 'starting',
+      triggered_at: new Date(started).toISOString()
+    }, 202);
   }
 
   if (request.method === 'POST' && url.pathname === '/api/ingest') {
@@ -353,9 +426,9 @@ async function handleGo(request: Request, env: RadarEnv, url: URL): Promise<Resp
   return Response.redirect(safeDestination(env.APP_DESTINATION_URL, row), 302);
 }
 
-async function runScheduled(env: RadarEnv, scheduledTime: number): Promise<void> {
+async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto.randomUUID()): Promise<void> {
   const startedAt = new Date(scheduledTime).toISOString();
-  const runId = crypto.randomUUID();
+  const startedMs = Date.now();
   const markets = parseMarkets(env);
   const marketsPerRun = intFromEnv(env.RADAR_MARKETS_PER_RUN, 5, 1, 20);
   const resultsPerQuery = intFromEnv(env.RADAR_RESULTS_PER_QUERY, 10, 1, 20);
@@ -363,30 +436,153 @@ async function runScheduled(env: RadarEnv, scheduledTime: number): Promise<void>
   const { selected: selectedMarkets, runsPerSweep } = chooseMarketBatch(markets, marketsPerRun, hourlyTick);
   const intentIndex = Math.floor(Math.abs(hourlyTick) / runsPerSweep) % SEARCH_INTENTS.length;
   const selectedIntent = SEARCH_INTENTS[intentIndex]!;
+  const timings: Record<string, number> = {};
+  const details: Record<string, unknown> = {
+    intent: selectedIntent.key,
+    intent_description: selectedIntent.description,
+    timings
+  };
 
   await startRun(env, runId, startedAt, selectedMarkets.map(marketKey).join(','));
+  await updateRunProgress(env, runId, {
+    status: 'running',
+    stage: 'starting',
+    elapsedMs: elapsedSince(startedMs),
+    details
+  });
 
   let queries = 0;
   let candidates = 0;
+  let newCandidatesTotal = 0;
   let queued = 0;
   let error: string | undefined;
+  let currentStage = 'starting';
 
   try {
+    if (selectedMarkets.length === 0) throw new Error('No radar market is configured');
+
     for (const market of selectedMarkets) {
+      const marketLabel = marketKey(market);
+      details.market = marketLabel;
+
+      currentStage = 'localizing';
+      await updateRunProgress(env, runId, {
+        status: 'running',
+        stage: currentStage,
+        elapsedMs: elapsedSince(startedMs),
+        queries,
+        braveResults: candidates,
+        newCandidates: newCandidatesTotal,
+        queued,
+        details
+      });
+      const localizationStarted = Date.now();
       const queryText = await localizeQuery(env, market, selectedIntent);
+      timings.localizing = (timings.localizing ?? 0) + (Date.now() - localizationStarted);
+      details.query = queryText;
+
+      currentStage = 'brave_search';
+      await updateRunProgress(env, runId, {
+        status: 'running',
+        stage: currentStage,
+        elapsedMs: elapsedSince(startedMs),
+        queries,
+        braveResults: candidates,
+        newCandidates: newCandidatesTotal,
+        queued,
+        details
+      });
+      const braveStarted = Date.now();
       const found = await searchBrave(env, selectedIntent.key, queryText, market, resultsPerQuery, startedAt);
+      timings.brave_search = (timings.brave_search ?? 0) + (Date.now() - braveStarted);
       queries += 1;
       candidates += found.length;
 
+      currentStage = 'deduplicating';
+      await updateRunProgress(env, runId, {
+        status: 'running',
+        stage: currentStage,
+        elapsedMs: elapsedSince(startedMs),
+        queries,
+        braveResults: candidates,
+        newCandidates: newCandidatesTotal,
+        queued,
+        details
+      });
+      const dedupeStarted = Date.now();
+      const newCandidates: Candidate[] = [];
       for (const candidate of found) {
-        if (await insertCandidate(env, candidate)) {
-          await env.CANDIDATE_QUEUE.send(candidate);
-          queued += 1;
-        }
+        const queueCandidate: Candidate = { ...candidate, runId };
+        if (await insertCandidate(env, queueCandidate)) newCandidates.push(queueCandidate);
       }
+      timings.deduplicating = (timings.deduplicating ?? 0) + (Date.now() - dedupeStarted);
+      newCandidatesTotal += newCandidates.length;
+
+      currentStage = newCandidates.length > 0 ? 'queueing' : 'deduplicating';
+      await updateRunProgress(env, runId, {
+        status: newCandidates.length > 0 ? 'queued' : 'running',
+        stage: currentStage,
+        elapsedMs: elapsedSince(startedMs),
+        queries,
+        braveResults: candidates,
+        newCandidates: newCandidatesTotal,
+        queued,
+        details
+      });
+
+      if (newCandidates.length > 0) {
+        const queueStarted = Date.now();
+        await env.CANDIDATE_QUEUE.sendBatch(newCandidates.map((body) => ({ body })));
+        timings.queueing = (timings.queueing ?? 0) + (Date.now() - queueStarted);
+      }
+    }
+
+    const searchFinishedAt = new Date().toISOString();
+    if (queued > 0) {
+      currentStage = 'awaiting_classification';
+      await updateRunProgress(env, runId, {
+        status: 'queued',
+        stage: currentStage,
+        elapsedMs: elapsedSince(startedMs),
+        queries,
+        braveResults: candidates,
+        newCandidates: newCandidatesTotal,
+        queued,
+        error: null,
+        details
+      });
+    } else {
+      await updateRunProgress(env, runId, {
+        status: 'completed',
+        stage: 'completed',
+        finishedAt: searchFinishedAt,
+        elapsedMs: elapsedSince(startedMs),
+        queries,
+        braveResults: candidates,
+        newCandidates: 0,
+        queued: 0,
+        analyzed: 0,
+        eligible: 0,
+        highIntent: 0,
+        socialCampaigns: 0,
+        error: null,
+        details
+      });
     }
   } catch (caught) {
     error = caught instanceof Error ? caught.message : String(caught);
+    await updateRunProgress(env, runId, {
+      status: 'failed',
+      stage: `${currentStage}_failed`,
+      finishedAt: new Date().toISOString(),
+      elapsedMs: elapsedSince(startedMs),
+      queries,
+      braveResults: candidates,
+      newCandidates: newCandidatesTotal,
+      queued,
+      error,
+      details
+    });
     console.error(JSON.stringify({ event: 'radar_scheduled_error', runId, error }));
   } finally {
     await finishRun(env, runId, { queries, candidates, queued, error });
@@ -395,11 +591,11 @@ async function runScheduled(env: RadarEnv, scheduledTime: number): Promise<void>
 }
 
 export default {
-  async fetch(request: Request, env: RadarEnv): Promise<Response> {
+  async fetch(request: Request, env: RadarEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'GET' && url.pathname === '/health') {
-      return json({ ok: true, service: 'scoring-radar', version: '0.1.0' });
+      return json({ ok: true, service: 'scoring-radar', version: '0.2.0' });
     }
 
     if (request.method === 'GET' && (url.pathname === '/admin' || url.pathname === '/admin/')) {
@@ -413,7 +609,7 @@ export default {
     }
 
     if (url.pathname.startsWith('/api/')) {
-      return handleAdminApi(request, env, url);
+      return handleAdminApi(request, env, url, ctx);
     }
 
     return json({ ok: false, error: 'not_found' }, 404);
@@ -425,24 +621,139 @@ export default {
 
   async queue(batch: MessageBatch<Candidate>, env: RadarEnv): Promise<void> {
     const candidates = batch.messages.map((message) => message.body);
-    const analyses = await classifyCandidates(env, candidates);
+    const runIds = [...new Set(candidates.map((candidate) => candidate.runId).filter((id): id is string => Boolean(id)))];
+    const progressByRun = new Map<string, RunProgressRow>();
+    const detailsByRun = new Map<string, Record<string, unknown>>();
+
+    for (const runId of runIds) {
+      const progress = await getRunProgress(env, runId);
+      if (!progress) continue;
+      progressByRun.set(runId, progress);
+      const details = parseJsonField<Record<string, unknown>>(progress.details_json, {});
+      detailsByRun.set(runId, details);
+      await updateRunProgress(env, runId, {
+        status: 'processing',
+        stage: 'classifying',
+        elapsedMs: Math.max(0, Date.now() - Date.parse(progress.started_at)),
+        details
+      });
+    }
+
+    const classifyStarted = Date.now();
+    let analyses: Awaited<ReturnType<typeof classifyCandidates>>;
+    try {
+      analyses = await classifyCandidates(env, candidates);
+    } catch (caught) {
+      const error = caught instanceof Error ? caught.message : String(caught);
+      for (const runId of runIds) {
+        const progress = progressByRun.get(runId);
+        const details = detailsByRun.get(runId) ?? {};
+        const timings = details.timings && typeof details.timings === 'object'
+          ? details.timings as Record<string, number>
+          : {};
+        timings.classifying = Date.now() - classifyStarted;
+        details.timings = timings;
+        await updateRunProgress(env, runId, {
+          status: 'failed',
+          stage: 'classification_failed',
+          finishedAt: new Date().toISOString(),
+          elapsedMs: progress ? Math.max(0, Date.now() - Date.parse(progress.started_at)) : 0,
+          error,
+          details
+        });
+      }
+      console.error(JSON.stringify({ event: 'radar_classification_error', runIds, error }));
+      throw caught;
+    }
+
+    const classifyDuration = Date.now() - classifyStarted;
     const byId = new Map(analyses.map((analysis) => [analysis.id, analysis]));
 
     for (const candidate of candidates) {
       const analysis = byId.get(candidate.id);
       if (!analysis) {
-        throw new Error(`Missing classifier result for candidate ${candidate.id}`);
+        const error = `Missing classifier result for candidate ${candidate.id}`;
+        if (candidate.runId) {
+          const progress = progressByRun.get(candidate.runId);
+          await updateRunProgress(env, candidate.runId, {
+            status: 'failed',
+            stage: 'classification_failed',
+            finishedAt: new Date().toISOString(),
+            elapsedMs: progress ? Math.max(0, Date.now() - Date.parse(progress.started_at)) : 0,
+            error
+          });
+        }
+        throw new Error(error);
       }
       await applyAnalysis(env, analysis);
     }
 
-    try {
-      await maybeCreateSocialCampaign(env, candidates, analyses);
-    } catch (caught) {
-      const error = caught instanceof Error ? caught.message : String(caught);
-      console.error(JSON.stringify({ event: 'social_campaign_error', error }));
+    for (const runId of runIds) {
+      const progress = progressByRun.get(runId);
+      const details = detailsByRun.get(runId) ?? {};
+      const timings = details.timings && typeof details.timings === 'object'
+        ? details.timings as Record<string, number>
+        : {};
+      timings.classifying = classifyDuration;
+      details.timings = timings;
+      const runCandidateIds = new Set(candidates.filter((candidate) => candidate.runId === runId).map((candidate) => candidate.id));
+      const runAnalyses = analyses.filter((analysis) => runCandidateIds.has(analysis.id));
+      await updateRunProgress(env, runId, {
+        status: 'processing',
+        stage: 'social_growth',
+        elapsedMs: progress ? Math.max(0, Date.now() - Date.parse(progress.started_at)) : 0,
+        analyzed: runAnalyses.length,
+        eligible: runAnalyses.filter((analysis) => analysis.eligible).length,
+        highIntent: runAnalyses.filter((analysis) => analysis.eligible && analysis.score >= 90).length,
+        details
+      });
     }
 
-    console.log(JSON.stringify({ event: 'radar_classified', count: candidates.length }));
+    const socialStarted = Date.now();
+    let socialResult: Awaited<ReturnType<typeof maybeCreateSocialCampaign>> = { created: false };
+    let socialError: string | null = null;
+    try {
+      socialResult = await maybeCreateSocialCampaign(env, candidates, analyses);
+    } catch (caught) {
+      socialError = caught instanceof Error ? caught.message : String(caught);
+      console.error(JSON.stringify({ event: 'social_campaign_error', runIds, error: socialError }));
+    }
+    const socialDuration = Date.now() - socialStarted;
+    const campaignRunId = socialResult.sourceSightingId
+      ? candidates.find((candidate) => candidate.id === socialResult.sourceSightingId)?.runId
+      : undefined;
+
+    for (const runId of runIds) {
+      const progress = progressByRun.get(runId);
+      const details = detailsByRun.get(runId) ?? {};
+      const timings = details.timings && typeof details.timings === 'object'
+        ? details.timings as Record<string, number>
+        : {};
+      timings.social_growth = socialDuration;
+      details.timings = timings;
+      const runCandidateIds = new Set(candidates.filter((candidate) => candidate.runId === runId).map((candidate) => candidate.id));
+      const runAnalyses = analyses.filter((analysis) => runCandidateIds.has(analysis.id));
+      const finishedAt = new Date().toISOString();
+      await updateRunProgress(env, runId, {
+        status: socialError ? 'completed_with_warnings' : 'completed',
+        stage: socialError ? 'social_growth_failed' : 'completed',
+        finishedAt,
+        elapsedMs: progress ? Math.max(0, Date.now() - Date.parse(progress.started_at)) : 0,
+        analyzed: runAnalyses.length,
+        eligible: runAnalyses.filter((analysis) => analysis.eligible).length,
+        highIntent: runAnalyses.filter((analysis) => analysis.eligible && analysis.score >= 90).length,
+        socialCampaigns: socialResult.created && campaignRunId === runId ? 1 : 0,
+        error: socialError,
+        details
+      });
+    }
+
+    console.log(JSON.stringify({
+      event: 'radar_classified',
+      count: candidates.length,
+      runIds,
+      socialCampaignCreated: socialResult.created,
+      socialError
+    }));
   }
 } satisfies ExportedHandler<RadarEnv, Candidate>;

@@ -56,6 +56,32 @@ CREATE TABLE IF NOT EXISTS run_log (
   error TEXT
 );
 
+
+
+CREATE TABLE IF NOT EXISTS run_progress (
+  run_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'running',
+  stage TEXT NOT NULL DEFAULT 'starting',
+  started_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  finished_at TEXT,
+  elapsed_ms INTEGER NOT NULL DEFAULT 0,
+  queries INTEGER NOT NULL DEFAULT 0,
+  brave_results INTEGER NOT NULL DEFAULT 0,
+  new_candidates INTEGER NOT NULL DEFAULT 0,
+  queued INTEGER NOT NULL DEFAULT 0,
+  analyzed INTEGER NOT NULL DEFAULT 0,
+  eligible INTEGER NOT NULL DEFAULT 0,
+  high_intent INTEGER NOT NULL DEFAULT 0,
+  social_campaigns INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (run_id) REFERENCES run_log(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_run_progress_status ON run_progress(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_run_progress_started ON run_progress(started_at DESC);
+
 CREATE TABLE IF NOT EXISTS social_assets (
   id TEXT PRIMARY KEY,
   url TEXT NOT NULL UNIQUE,

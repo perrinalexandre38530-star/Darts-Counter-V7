@@ -1,5 +1,6 @@
 import { intFromEnv } from './config';
 import type { Analysis, Candidate, RadarEnv, SocialDraft, SocialQa } from './domain';
+import { withTimeout } from './timeout';
 
 const AI_MODEL = '@cf/zai-org/glm-4.7-flash' as const;
 
@@ -162,7 +163,8 @@ export async function generateAndAuditSocialDraft(
   candidate: Candidate,
   analysis: Analysis
 ): Promise<{ draft: SocialDraft; qa: SocialQa; passes: boolean }> {
-  const generation = await env.AI.run(AI_MODEL, {
+  const timeoutMs = intFromEnv(env.SOCIAL_AI_TIMEOUT_MS, 30_000, 5_000, 90_000);
+  const generation = await withTimeout(env.AI.run(AI_MODEL, {
     messages: [
       {
         role: 'system',
@@ -209,11 +211,11 @@ platformCopies keys: facebook_page, instagram_reel, youtube_short, tiktok.`
         })
       }
     ]
-  });
+  }), timeoutMs, 'Workers AI social draft generation');
 
   const draft = parseDraft(JSON.parse(cleanJson(extractText(generation))), analysis.language);
 
-  const audit = await env.AI.run(AI_MODEL, {
+  const audit = await withTimeout(env.AI.run(AI_MODEL, {
     messages: [
       {
         role: 'system',
@@ -238,7 +240,7 @@ Return strict JSON only with exactly: qualityScore, factualScore, brandScore, us
       },
       { role: 'user', content: JSON.stringify(draft) }
     ]
-  });
+  }), timeoutMs, 'Workers AI social quality audit');
 
   const qa = parseQa(JSON.parse(cleanJson(extractText(audit))));
   return { draft, qa, passes: socialQaPasses(env, qa) };

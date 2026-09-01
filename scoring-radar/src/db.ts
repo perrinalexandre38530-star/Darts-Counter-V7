@@ -1,4 +1,4 @@
-import type { Analysis, Candidate, OpportunityRow, RadarEnv } from './domain';
+import type { Analysis, Candidate, OpportunityRow, RadarEnv, RunProgressRow } from './domain';
 
 export async function insertCandidate(env: RadarEnv, candidate: Candidate): Promise<boolean> {
   const result = await env.DB.prepare(`
@@ -94,9 +94,89 @@ export async function logClick(
 }
 
 export async function startRun(env: RadarEnv, id: string, startedAt: string, markets: string): Promise<void> {
-  await env.DB.prepare(
-    'INSERT INTO run_log (id, started_at, markets) VALUES (?, ?, ?)'
-  ).bind(id, startedAt, markets).run();
+  await env.DB.batch([
+    env.DB.prepare(
+      'INSERT INTO run_log (id, started_at, markets) VALUES (?, ?, ?)'
+    ).bind(id, startedAt, markets),
+    env.DB.prepare(`
+      INSERT INTO run_progress (
+        run_id, status, stage, started_at, updated_at, details_json
+      ) VALUES (?, 'running', 'starting', ?, ?, '{}')
+    `).bind(id, startedAt, startedAt)
+  ]);
+}
+
+export type RunProgressPatch = Partial<{
+  status: string;
+  stage: string;
+  finishedAt: string | null;
+  elapsedMs: number;
+  queries: number;
+  braveResults: number;
+  newCandidates: number;
+  queued: number;
+  analyzed: number;
+  eligible: number;
+  highIntent: number;
+  socialCampaigns: number;
+  error: string | null;
+  details: Record<string, unknown>;
+}>;
+
+export async function updateRunProgress(env: RadarEnv, id: string, patch: RunProgressPatch): Promise<void> {
+  const setters: string[] = ['updated_at = ?'];
+  const values: unknown[] = [new Date().toISOString()];
+  const add = (column: string, value: unknown) => {
+    setters.push(`${column} = ?`);
+    values.push(value);
+  };
+
+  if (patch.status !== undefined) add('status', patch.status);
+  if (patch.stage !== undefined) add('stage', patch.stage);
+  if (patch.finishedAt !== undefined) add('finished_at', patch.finishedAt);
+  if (patch.elapsedMs !== undefined) add('elapsed_ms', Math.max(0, Math.round(patch.elapsedMs)));
+  if (patch.queries !== undefined) add('queries', patch.queries);
+  if (patch.braveResults !== undefined) add('brave_results', patch.braveResults);
+  if (patch.newCandidates !== undefined) add('new_candidates', patch.newCandidates);
+  if (patch.queued !== undefined) add('queued', patch.queued);
+  if (patch.analyzed !== undefined) add('analyzed', patch.analyzed);
+  if (patch.eligible !== undefined) add('eligible', patch.eligible);
+  if (patch.highIntent !== undefined) add('high_intent', patch.highIntent);
+  if (patch.socialCampaigns !== undefined) add('social_campaigns', patch.socialCampaigns);
+  if (patch.error !== undefined) add('error', patch.error);
+  if (patch.details !== undefined) add('details_json', JSON.stringify(patch.details));
+
+  values.push(id);
+  await env.DB.prepare(`UPDATE run_progress SET ${setters.join(', ')} WHERE run_id = ?`).bind(...values).run();
+}
+
+export async function getRunProgress(env: RadarEnv, id: string): Promise<RunProgressRow | null> {
+  return env.DB.prepare(`
+    SELECT run_id, status, stage, started_at, updated_at, finished_at, elapsed_ms,
+           queries, brave_results, new_candidates, queued, analyzed, eligible,
+           high_intent, social_campaigns, error, details_json
+    FROM run_progress WHERE run_id = ?
+  `).bind(id).first<RunProgressRow>();
+}
+
+export async function getLatestRunProgress(env: RadarEnv): Promise<RunProgressRow | null> {
+  return env.DB.prepare(`
+    SELECT run_id, status, stage, started_at, updated_at, finished_at, elapsed_ms,
+           queries, brave_results, new_candidates, queued, analyzed, eligible,
+           high_intent, social_campaigns, error, details_json
+    FROM run_progress ORDER BY started_at DESC LIMIT 1
+  `).first<RunProgressRow>();
+}
+
+export async function getActiveRunProgress(env: RadarEnv): Promise<RunProgressRow | null> {
+  return env.DB.prepare(`
+    SELECT run_id, status, stage, started_at, updated_at, finished_at, elapsed_ms,
+           queries, brave_results, new_candidates, queued, analyzed, eligible,
+           high_intent, social_campaigns, error, details_json
+    FROM run_progress
+    WHERE status IN ('running', 'processing', 'queued')
+    ORDER BY started_at DESC LIMIT 1
+  `).first<RunProgressRow>();
 }
 
 export async function finishRun(
