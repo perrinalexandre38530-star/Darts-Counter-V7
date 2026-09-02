@@ -2,7 +2,7 @@ import { localeForLang, pickLegacyBilingualText, pickLegacyLocalizedText, pickLe
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
-import ActiveProfileCard from "../../components/home/ActiveProfileCard";
+import ActiveProfileCard, { type ActiveProfileStats } from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 import { listActivities } from "../../activity/activityStore";
 import { buildRunningStats } from "../../activity/runningInsights";
@@ -200,22 +200,6 @@ export default function RunningHome({ store, go }: Props) {
             : { id: "records", title: copy.records, text: `1K ${stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—"} · 5K ${stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—"} · 10K ${stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—"}`, detail: pickLegacyLocalizedText(lang, "Meilleurs efforts calculés sur tous les tracés", "Best efforts across all routes", "Mejores esfuerzos calculados en todas las rutas"), backgroundImage: tickerSvg("records", accent), accentColor: accent });
         return rows;
     }, [accent, activitySport, bestAverageSpeedKmh, canonicalSport, copy.coach, copy.longest, copy.pacer, copy.pacerSub, copy.plan, copy.records, copy.sessions, copy.streak, copy.weeks, lang, levelXp, recommendation.text, recommendation.title, speedPrimary, stats.activeWeekStreak, stats.best10k, stats.best1k, stats.best5k, stats.longestM, stats.weekDistanceM, stats.weekSessions]);
-    const profileSlides = [{ id: "running-records", title: `${outdoorSportLabel(canonicalSport, lang)} · ${copy.records}`, rows: speedPrimary ? [
-                { label: pickLegacyLocalizedText(lang, "VITESSE MOY. MAX", "BEST AVG SPEED", "MEJOR VEL. MEDIA"), value: bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—" },
-                { label: copy.longest, value: formatDistance(stats.longestM) },
-                { label: copy.time, value: formatDuration(stats.totalElapsedMs) },
-                { label: copy.streak, value: `${stats.activeWeekStreak} ${copy.weeks}` },
-            ] : [
-                { label: "1 KM", value: stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—" },
-                { label: "5 KM", value: stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—" },
-                { label: "10 KM", value: stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—" },
-                { label: copy.streak, value: `${stats.activeWeekStreak} ${copy.weeks}` },
-            ] }];
-    const changeGoal = (delta: number) => {
-        const next = Math.max(5, Math.min(100, weeklyGoalKm + delta));
-        setWeeklyGoalKm(next);
-        localStorage.setItem(GOAL_KEY, String(next));
-    };
     const currentSession = activeSessions.find((session) => !session.paused) || activeSessions[0] || null;
     const mainActionTitle = currentSession
         ? pickLegacyLocalizedText(lang, "REPRENDRE LA SESSION", "RESUME SESSION", "REANUDAR SESIÓN")
@@ -229,83 +213,193 @@ export default function RunningHome({ store, go }: Props) {
     const weekLabel = `${(stats.weekDistanceM / 1000).toFixed(1)} / ${weeklyGoalKm} km`;
     const bestMetricLabel = speedPrimary ? pickLegacyLocalizedText(lang, "Meilleure vitesse", "Best speed", "Mejor velocidad") : copy.best;
     const bestMetricValue = speedPrimary ? (bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—") : `${formatPace(stats.bestPaceSecPerKm)} /km`;
-    const homePages = [
-      pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR"),
-      pickLegacyLocalizedText(lang, "PROGRESSION", "PROGRESS", "PROGRESO"),
-      pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO"),
+    const runningGlobalKpis = [
+        { label: copy.distance.toLowerCase(), value: `${(stats.totalDistanceM / 1000).toFixed(1)} km` },
+        { label: copy.sessions.toLowerCase(), value: String(stats.sessions) },
+        { label: bestMetricLabel.toLowerCase(), value: bestMetricValue },
+        { label: copy.climb.toLowerCase(), value: `${Math.round(stats.totalElevationGainM)} m` },
+        { label: copy.longest.toLowerCase(), value: formatDistance(stats.longestM) },
+        { label: copy.time.toLowerCase(), value: formatDuration(stats.totalElapsedMs) },
     ];
-    const goHomePage = (index: number) => {
-      const next = ((index % homePages.length) + homePages.length) % homePages.length;
-      setHomePage(next);
-      const node = homePagerRef.current;
-      if (node) node.scrollTo({ left: node.clientWidth * next, behavior: "smooth" });
+    const nextWorkoutValue = nextWorkout
+        ? `${nextWorkout.label || nextWorkout.type || pickLegacyLocalizedText(lang, "Séance", "Workout", "Sesión")}`
+        : activePlan
+            ? pickLegacyLocalizedText(lang, "À planifier", "To schedule", "Por planificar")
+            : pickLegacyLocalizedText(lang, "Aucun programme", "No plan", "Sin plan");
+    const recentActivity = activities[0] || null;
+    const runningSlides = [
+        {
+            id: "running-start",
+            title: pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR"),
+            rows: [
+                { label: pickLegacyLocalizedText(lang, "discipline", "sport", "deporte"), value: outdoorSportLabel(canonicalSport, lang) },
+                { label: pickLegacyLocalizedText(lang, "session", "session", "sesión"), value: currentSession ? (currentSession.paused ? pickLegacyLocalizedText(lang, "En pause", "Paused", "Pausada") : pickLegacyLocalizedText(lang, "En cours", "Live", "En curso")) : pickLegacyLocalizedText(lang, "Aucune", "None", "Ninguna") },
+                { label: pickLegacyLocalizedText(lang, "recommandation", "recommendation", "recomendación"), value: recommendation.title },
+                { label: pickLegacyLocalizedText(lang, "objectif", "target", "objetivo"), value: weekLabel },
+                { label: pickLegacyLocalizedText(lang, "parcours", "routes", "rutas"), value: pickLegacyLocalizedText(lang, "Explorer et lancer", "Explore & start", "Explorar y empezar") },
+                { label: pickLegacyLocalizedText(lang, "coach", "coach", "coach"), value: copy.coach },
+            ],
+        },
+        {
+            id: "running-progress",
+            title: pickLegacyLocalizedText(lang, "PROGRESSION", "PROGRESS", "PROGRESO"),
+            rows: [
+                { label: copy.weekGoal.toLowerCase(), value: weekLabel },
+                { label: pickLegacyLocalizedText(lang, "fraîcheur", "freshness", "frescura"), value: `${trainingStatus.freshnessScore}%` },
+                { label: pickLegacyLocalizedText(lang, "charge 7 j", "7-day load", "carga 7 días"), value: String(trainingStatus.load7d) },
+                { label: copy.streak.toLowerCase(), value: `${stats.activeWeekStreak} ${copy.weeks}` },
+                { label: copy.program.toLowerCase(), value: activePlan ? `S${currentPlanWeek}/${planDurationWeeks(activePlan)}` : copy.noProgram },
+                { label: copy.nextWorkout.toLowerCase(), value: nextWorkoutValue },
+            ],
+        },
+        {
+            id: "running-journal",
+            title: pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO"),
+            rows: [
+                { label: pickLegacyLocalizedText(lang, "dernière sortie", "last activity", "última salida"), value: recentActivity ? new Date(recentActivity.startedAt).toLocaleDateString() : "—" },
+                { label: pickLegacyLocalizedText(lang, "distance", "distance", "distancia"), value: recentActivity ? formatDistance(recentActivity.distanceM) : "—" },
+                { label: pickLegacyLocalizedText(lang, "durée", "duration", "duración"), value: recentActivity ? formatDuration(recentActivity.elapsedMs) : "—" },
+                { label: pickLegacyLocalizedText(lang, "allure / vitesse", "pace / speed", "ritmo / velocidad"), value: recentActivity ? outdoorAverageMetricValue(recentActivity, canonicalOutdoorPerformanceSport(recentActivity.sport)) : "—" },
+                { label: pickLegacyLocalizedText(lang, "sorties", "activities", "salidas"), value: String(activities.length) },
+                { label: pickLegacyLocalizedText(lang, "brouillons", "drafts", "borradores"), value: String(activeSessions.length) },
+            ],
+        },
+    ];
+    const runningProfileStats: ActiveProfileStats = {
+        ratingGlobal: 0,
+        winrateGlobal: 0,
+        avg3DGlobal: 0,
+        sessionsGlobal: stats.sessions,
+        recordBestVisitX01: 0,
+        recordBestCOX01: 0,
     };
-    React.useEffect(() => {
-      const timer = window.setInterval(() => goHomePage(homePage + 1), 6500);
-      return () => window.clearInterval(timer);
-    }, [homePage]);
+    const currentTicker = tickers.length ? tickers[Math.min(Math.max(tickerIndex, 0), tickers.length - 1)] : null;
     return <div className="running-page running-home-v2" style={{ minHeight: "100dvh", background: (theme as any).pageBackground || (theme as any).bg || "#05060C", color: "#FFFFFF", display: "flex", justifyContent: "center", padding: "10px 8px max(82px,calc(70px + env(safe-area-inset-bottom)))", boxSizing: "border-box", overflowX: "hidden" }}>
       <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, minWidth: 0 }}>
-        <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}} .running-home-pager{scrollbar-width:none}.running-home-pager::-webkit-scrollbar{display:none}`}</style>
-        <div style={{ borderRadius: 22, padding: "10px 12px", background: `linear-gradient(135deg,${accent}18,rgba(8,10,20,.985) 44%,rgba(14,18,34,.985))`, border: `1px solid ${accent}35`, boxShadow: "0 16px 34px rgba(0,0,0,.5)", position: "relative", overflow: "hidden", isolation: "isolate" }}>
-          <SportWelcomeWatermark sport="running" opacity={0.11} size={150} />
-          <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-            <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: 1.3 }}>{copy.welcome.toUpperCase()} · MULTISPORTS SCORING</div><div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}><div ref={textRef} style={{ width: "fit-content", fontSize: 24, fontWeight: 1000, letterSpacing: 2.2, whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "left center" }}>{copy.title}</div></div><div style={{ marginTop: 4, color: "rgba(255,255,255,.78)", fontSize: 9.2, fontWeight: 900, letterSpacing: .35 }}>{outdoorSportLabel(canonicalSport, lang).toUpperCase()}</div></div>
-            <div style={{ display: "grid", justifyItems: "end", gap: 8 }}><div style={{ minWidth: 54, textAlign: "right" }}><b style={{ color: accent, fontSize: 15 }}>{(stats.weekDistanceM / 1000).toFixed(1)}</b><small style={{ display: "block", color: textSoft, fontSize: 7 }}>KM / 7J</small></div><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
+        <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}}`}</style>
+
+        <div
+          style={{
+            borderRadius: 24,
+            padding: 18,
+            marginBottom: 10,
+            background: "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))",
+            border: `1px solid ${(theme as any).borderSoft ?? `${accent}22`}`,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.7)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            position: "relative",
+            overflow: "hidden",
+            isolation: "isolate",
+          }}
+        >
+          <SportWelcomeWatermark sport="running" opacity={0.12} size={205} />
+          <div
+            style={{
+              position: "relative",
+              zIndex: 2,
+              display: "inline-flex",
+              padding: "5px 18px",
+              borderRadius: 999,
+              border: `1px solid ${accent}`,
+              background: "linear-gradient(135deg, rgba(0,0,0,0.9), rgba(255,255,255,0.06))",
+              marginBottom: 10,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.1, textTransform: "uppercase", color: accent }}>
+              {copy.welcome}
+            </span>
+          </div>
+          <div
+            ref={wrapRef}
+            style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden", textAlign: "center" }}
+          >
+            <div
+              ref={textRef}
+              style={{
+                width: "fit-content",
+                maxWidth: "100%",
+                margin: "0 auto",
+                fontSize: 32,
+                fontWeight: 900,
+                letterSpacing: 3,
+                textAlign: "center",
+                textTransform: "uppercase",
+                backgroundImage: `linear-gradient(120deg, ${accent}, #ffffff, ${accent})`,
+                backgroundSize: "200% 100%",
+                WebkitBackgroundClip: "text",
+                color: "transparent",
+                animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
+                transform: `scale(${scale})`,
+                transformOrigin: "center center",
+              }}
+            >
+              {copy.title}
+            </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 8 }}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>
-        <nav style={{ marginTop: 8, display: "grid", gridTemplateColumns: "34px repeat(3,minmax(0,1fr)) 34px", gap: 5, padding: 4, borderRadius: 15, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>
-          <button className="btn" title={pickLegacyLocalizedText(lang, "Page précédente", "Previous page", "Página anterior")} onClick={() => goHomePage((homePage + homePages.length - 1) % homePages.length)} style={{ minHeight: 36, minWidth: 0, padding: 0, borderRadius: 11, fontSize: 12 }}>‹</button>
-          {homePages.map((label, index) => <button key={label} className="btn" onClick={() => goHomePage(index)} style={{ minHeight: 36, minWidth: 0, padding: "4px 5px", borderRadius: 11, borderColor: homePage === index ? `${accent}55` : "transparent", background: homePage === index ? `${accent}12` : "transparent", color: homePage === index ? accent : "rgba(255,255,255,.55)", fontSize: 7.5, fontWeight: 1000 }}>{label}</button>)}
-          <button className="btn" title={pickLegacyLocalizedText(lang, "Page suivante", "Next page", "Página siguiente")} onClick={() => goHomePage((homePage + 1) % homePages.length)} style={{ minHeight: 36, minWidth: 0, padding: 0, borderRadius: 11, fontSize: 12 }}>›</button>
-        </nav>
-
-        <div ref={homePagerRef} className="running-home-pager" onScroll={(event) => { const node = event.currentTarget; if (!node.clientWidth) return; const index = Math.max(0, Math.min(2, Math.round(node.scrollLeft / node.clientWidth))); if (index !== homePage) setHomePage(index); }} style={{ marginTop: 8, display: "flex", width: "100%", overflowX: "auto", overflowY: "hidden", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", touchAction: "pan-x", borderRadius: 22 }}>
-          <section style={{ flex: "0 0 100%", minWidth: 0, scrollSnapAlign: "start", padding: 1, boxSizing: "border-box" }}>
-            <RunningSurface accent={accent} active padding={11}>
-              <div style={{ minHeight: "min(62dvh,540px)", display: "grid", alignContent: "space-between", gap: 9 }}>
-                <div><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "MA SORTIE", "MY ACTIVITY", "MI SALIDA")} title={pickLegacyLocalizedText(lang, "Prêt à bouger ?", "Ready to move?", "¿Listo para moverte?")}/><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
-                <RunningActionTile featured accent={accent} onClick={mainAction} icon={<RunningGlyph name={currentSession ? "recover" : activitySport === "trail" ? "sport-trail" : activitySport === "hiking" ? "sport-hiking" : activitySport === "walking" ? "sport-walking" : activitySport === "treadmill" ? "sport-treadmill" : "sport-running"} size={24}/>} title={mainActionTitle} subtitle={mainActionSub} meta={<span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}30`, color: currentSession ? "#6dff9d" : accent, fontSize: 7, fontWeight: 1000 }}>{currentSession ? (currentSession.paused ? "PAUSE" : "EN COURS") : pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR")}</span>}/></div>
-                <div className="running-home-command-grid">
-                  <RunningActionTile accent={accent} onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} icon={<RunningGlyph name="route-choose" size={20}/>} title={pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")} subtitle={pickLegacyLocalizedText(lang, "Explorer visuellement", "Visual discovery", "Explorar visualmente")}/>
-                  <RunningActionTile accent={accent} onClick={() => go("stats", { runningStatsTab: "history" })} icon={<RunningGlyph name="history" size={20}/>} title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")} subtitle={`${activities.length} ${copy.sessions.toLowerCase()}`}/>
-                  <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20}/>} title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")} subtitle={pickLegacyLocalizedText(lang, "Liste d'amis · partenaires de sortie", "Friends list · activity partners", "Lista de amigos · compañeros de salida")}/>
-                  <RunningActionTile accent={accent} onClick={() => go("running_plan")} icon={<RunningGlyph name="spark" size={20}/>} title={pickLegacyLocalizedText(lang, "COACH", "COACH", "COACH")} subtitle={pickLegacyLocalizedText(lang, "Plans & objectifs", "Plans & goals", "Planes y objetivos")}/>
-                </div>
-              </div>
-            </RunningSurface>
-          </section>
-
-          <section style={{ flex: "0 0 100%", minWidth: 0, scrollSnapAlign: "start", padding: 1, boxSizing: "border-box" }}>
-            <RunningSurface accent={accent} padding={11}>
-              <div style={{ minHeight: "min(62dvh,540px)", display: "grid", alignContent: "start", gap: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "PROGRESSION", "PROGRESS", "PROGRESO")} title={pickLegacyLocalizedText(lang, "L'essentiel, sans doublons", "The essentials, no duplicates", "Lo esencial, sin duplicados")} action={<button className="btn" onClick={() => go("stats")} style={{ minHeight: 30, fontSize: 7.5 }}>{pickLegacyLocalizedText(lang, "STATS", "STATS", "STATS")}</button>}/><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-                  <RunningStatusChip icon={<RunningGlyph name="distance" size={12}/>} label={pickLegacyLocalizedText(lang, "SEMAINE", "WEEK", "SEMANA")} value={weekLabel} accent={accent}/>
-                  <RunningStatusChip icon={<RunningGlyph name="spark" size={12}/>} label={pickLegacyLocalizedText(lang, "PRÉPARATION", "READINESS", "PREPARACIÓN")} value={`${trainingStatus.freshnessScore}%`} accent={trainingStatus.freshnessScore >= 70 ? "#71ff9a" : accent}/>
-                  <RunningStatusChip icon={<RunningGlyph name="history" size={12}/>} label={copy.streak} value={`${stats.activeWeekStreak} ${copy.weeks}`} accent={accent}/>
-                  <RunningStatusChip icon={<RunningGlyph name="chart" size={12}/>} label={bestMetricLabel.toUpperCase()} value={bestMetricValue} accent="#72def4"/>
-                </div>
-                <Progress value={goalPct} accent={accent}/>
-                {activitySport === "running" ? <div style={{ marginTop: 2, padding: 10, borderRadius: 15, border: `1px solid ${accent}2f`, background: `linear-gradient(135deg,${accent}0d,rgba(255,255,255,.018))` }}><div style={{ color: accent, fontSize: 7.5, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "OBJECTIF COURSE", "RACE GOAL", "OBJETIVO")}</div><div style={{ marginTop: 4, fontSize: 12, fontWeight: 1000 }}>{raceGoalSnapshot ? `${distanceGoalLabel(raceGoalSnapshot.goal.distanceM)} · J−${raceGoalSnapshot.daysLeft}` : pickLegacyLocalizedText(lang, "Aucun objectif daté", "No dated goal", "Sin objetivo fechado")}</div><button className="btn" onClick={() => go("running_plan", { focus: "goal" })} style={{ marginTop: 8, minHeight: 34, color: accent, borderColor: `${accent}45`, fontSize: 7.5 }}>{raceGoalSnapshot ? pickLegacyLocalizedText(lang, "GÉRER", "MANAGE", "GESTIONAR") : pickLegacyLocalizedText(lang, "CRÉER UN OBJECTIF", "CREATE GOAL", "CREAR OBJETIVO")}</button></div> : null}
-                <ArcadeTicker items={tickers} activeIndex={tickerIndex} onIndexChange={setTickerIndex} intervalMs={7000}/>
-              </div>
-            </RunningSurface>
-          </section>
-
-          <section style={{ flex: "0 0 100%", minWidth: 0, scrollSnapAlign: "start", padding: 1, boxSizing: "border-box" }}>
-            <RunningSurface accent={accent} padding={11}>
-              <div style={{ minHeight: "min(62dvh,540px)", display: "grid", alignContent: "start", gap: 9 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO")} title={pickLegacyLocalizedText(lang, "Tes dernières sorties", "Your latest activities", "Tus últimas salidas")} action={<button className="btn" onClick={() => go("stats", { runningStatsTab: "history" })} style={{ minHeight: 30, fontSize: 7.5 }}>{copy.allRuns}</button>}/><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
-                {activities.length ? <div style={{ display: "grid", gap: 7 }}>{activities.slice(0, 4).map((a) => <RecentRun key={a.id} activity={a} accent={accent} textSoft={textSoft} lang={lang} onClick={() => go("games", { runningActivityId: a.id, runningActivitySport: canonicalOutdoorPerformanceSport(a.sport) })}/>)}</div> : <div style={{ padding: 22, borderRadius: 16, border: "1px dashed rgba(255,255,255,.12)", color: textSoft, textAlign: "center", fontSize: 9 }}>{pickLegacyLocalizedText(lang, "Tes sorties apparaîtront ici.", "Your activities will appear here.", "Tus salidas aparecerán aquí.")}</div>}
-                <InlineAdBanner placement="home" slotKey="home-top" offset={0} compact style={{ marginTop: 2 }}/>
-              </div>
-            </RunningSurface>
-          </section>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent} />
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 7 }}>{[0,1,2].map((index) => <button key={index} aria-label={`${index + 1}`} onClick={() => goHomePage(index)} style={{ width: homePage === index ? 20 : 6, height: 6, borderRadius: 999, border: 0, padding: 0, background: homePage === index ? accent : "rgba(255,255,255,.2)", transition: "all .2s" }}/>)}</div>
+
+        <InlineAdBanner placement="home" slotKey="home-top" offset={0} compact style={{ marginBottom: 12 }} />
+
+        {activeProfile && (
+          <ActiveProfileCard
+            profile={activeProfile as any}
+            stats={runningProfileStats}
+            globalTitle={copy.overview}
+            globalKpis={runningGlobalKpis}
+            customSlides={runningSlides}
+            suppressDefaultStatsSlides
+          />
+        )}
+
+        {!activeProfile && (
+          <div style={{ padding: 16, borderRadius: 22, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))", marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 900, color: accent }}>{pickLegacyLocalizedText(lang, "JOUEUR ACTIF", "ACTIVE PROFILE", "JUGADOR ACTIVO")}</div>
+            <div style={{ marginTop: 6, color: textSoft, fontSize: 11 }}>{pickLegacyLocalizedText(lang, "Aucun profil actif pour le moment.", "No active profile yet.", "Aún no hay perfil activo.")}</div>
+          </div>
+        )}
+
+        <InlineAdBanner placement="home_secondary" slotKey="home-player" offset={2} compact style={{ marginTop: 12, marginBottom: 14 }} />
+
+        <ArcadeTicker items={tickers} activeIndex={tickerIndex} intervalMs={7000} onIndexChange={setTickerIndex} onActiveIndexChange={setTickerIndex} />
+
+        {currentTicker ? <div style={{ marginTop: 10, marginBottom: 12, borderRadius: 22, border: `1px solid ${(theme as any).borderSoft ?? "rgba(255,255,255,0.12)"}`, boxShadow: "0 18px 40px rgba(0,0,0,0.85)", padding: 8, background: "radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(3,4,10,1))" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 0, borderRadius: 18, overflow: "hidden", position: "relative", minHeight: 112, backgroundColor: "#05060C", backgroundImage: currentTicker.backgroundImage ? `url("${currentTicker.backgroundImage}")` : undefined, backgroundSize: "cover", backgroundPosition: "center" }}>
+              <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(130deg, rgba(0,0,0,0.85), rgba(0,0,0,0.45))", pointerEvents: "none" }} />
+              <div style={{ position: "relative", padding: "9px 10px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: currentTicker.accentColor || accent }}>{currentTicker.title}</div>
+                <div style={{ fontSize: 11, lineHeight: 1.35, color: (theme as any).textSoft ?? "rgba(255,255,255,0.9)" }}>{currentTicker.text}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+                  <PulseKpi label={copy.weekGoal} value={weekLabel} accent={accent} />
+                  <PulseKpi label={copy.streak} value={`${stats.activeWeekStreak} ${copy.weeks}`} accent={accent} />
+                </div>
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, borderRadius: 18, overflow: "hidden", position: "relative", minHeight: 112, background: "linear-gradient(160deg, rgba(12,18,30,0.98), rgba(4,7,15,0.98))", border: `1px solid ${accent}1f` }}>
+              <div style={{ position: "relative", padding: "9px 10px 10px", display: "flex", flexDirection: "column", gap: 7, height: "100%" }}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: accent }}>{pickLegacyLocalizedText(lang, "ACCÈS RAPIDES", "QUICK ACCESS", "ACCESOS RÁPIDOS")}</div>
+                <div style={{ fontSize: 11, lineHeight: 1.35, color: textSoft }}>{mainActionSub}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: "auto" }}>
+                  <button className="btn" onClick={mainAction} style={{ minHeight: 34, fontSize: 7.6, color: accent, borderColor: `${accent}45` }}>{mainActionTitle}</button>
+                  <button className="btn" onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} style={{ minHeight: 34, fontSize: 7.6 }}>{pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div> : null}
+
+        <div className="running-home-command-grid" style={{ marginTop: 6 }}>
+          <RunningActionTile accent={accent} onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} icon={<RunningGlyph name="route-choose" size={20} />} title={pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")} subtitle={pickLegacyLocalizedText(lang, "Explorer visuellement", "Visual discovery", "Explorar visualmente")} />
+          <RunningActionTile accent={accent} onClick={() => go("stats", { runningStatsTab: "history" })} icon={<RunningGlyph name="history" size={20} />} title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")} subtitle={`${activities.length} ${copy.sessions.toLowerCase()}`} />
+          <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20} />} title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")} subtitle={pickLegacyLocalizedText(lang, "Liste d'amis · partenaires de sortie", "Friends list · activity partners", "Lista de amigos · compañeros de salida")} />
+          <RunningActionTile accent={accent} onClick={() => go("running_plan")} icon={<RunningGlyph name="spark" size={20} />} title={pickLegacyLocalizedText(lang, "COACH", "COACH", "COACH")} subtitle={pickLegacyLocalizedText(lang, "Plans & objectifs", "Plans & goals", "Planes y objetivos")} />
+        </div>
       </div>
     </div>;
 
