@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-02T20:34:21.550Z",
+  "generatedAt": "2026-09-02T20:49:31.164Z",
   "ffmpeg": true,
-  "before": 249905414,
-  "after": 108242516,
-  "saved": 141662898,
-  "optimizedCount": 577,
+  "before": 252385627,
+  "after": 108899813,
+  "saved": 143485814,
+  "optimizedCount": 583,
   "skippedCount": 0,
   "files": [
     {
@@ -400,6 +400,20 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/running_discipline_awena-Cze5wKZo.png",
+      "before": 479007,
+      "after": 123652,
+      "saved": 355355,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/running_coach_training-BBekUJBO.png",
+      "before": 478267,
+      "after": 123183,
+      "saved": 355084,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/cool-hand-CIvbudZQ.png",
       "before": 500851,
       "after": 172689,
@@ -498,6 +512,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/running_routes_map-JKhEF575.png",
+      "before": 398834,
+      "after": 108501,
+      "saved": 290333,
+      "note": "png"
+    },
+    {
       "file": "dist/images/loterie/express-cards/T16.webp",
       "before": 569082,
       "after": 279126,
@@ -575,6 +596,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/running_session_timer-Dc8smZ_o.png",
+      "before": 374378,
+      "after": 95253,
+      "saved": 279125,
+      "note": "png"
+    },
+    {
       "file": "dist/images/loterie/express-cards/T8.webp",
       "before": 552120,
       "after": 273688,
@@ -594,6 +622,13 @@
       "after": 267980,
       "saved": 277438,
       "note": "webp"
+    },
+    {
+      "file": "dist/assets/running_recommendation_badge-LEf9aTQG.png",
+      "before": 389744,
+      "after": 112425,
+      "saved": 277319,
+      "note": "png"
     },
     {
       "file": "dist/assets/darts_racer_race_bg-B2ajH3Vg.png",
@@ -691,6 +726,13 @@
       "before": 322035,
       "after": 55524,
       "saved": 266511,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/running_goal_target-CKwY5iQM.png",
+      "before": 359983,
+      "after": 94283,
+      "saved": 265700,
       "note": "png"
     },
     {
