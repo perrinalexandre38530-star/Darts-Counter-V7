@@ -4522,7 +4522,7 @@ const unifiedStats = (() => {
 
       case "running_plan":
         page = activeSport === "running" ? (
-          <RunningPlanCenter go={go} />
+          <RunningPlanCenter go={go} params={routeParams} />
         ) : (
           <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
         );

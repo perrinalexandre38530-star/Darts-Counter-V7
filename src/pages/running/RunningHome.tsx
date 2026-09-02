@@ -70,6 +70,18 @@ function useAutoFitTitle(deps: any[] = []) {
 }
 function svgDataUri(svg: string) { return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`; }
 type RunningTickerVisual = "hero" | "coach" | "goal" | "records" | "streak" | "load" | "plan" | "next" | "routes" | "gps" | "community" | "gear" | "pacer";
+
+function runningStartTileSvg(kind: "discipline" | "session" | "recommendation" | "goal" | "routes" | "coach", accent: string) {
+    const glyphs: Record<string, string> = {
+        discipline: `<circle cx="74" cy="52" r="16"/><path d="M70 71l-18 25 24 13 17-18 21 7M76 80l28-14 18 11M54 96l-18 27M77 108l12 31"/>`,
+        session: `<circle cx="80" cy="83" r="42"/><path d="M80 83V55M80 83l23 14M63 25h34M80 25v15"/>`,
+        recommendation: `<path d="M84 20 49 83h29l-9 57 43-73H83z"/>`,
+        goal: `<circle cx="80" cy="80" r="50"/><circle cx="80" cy="80" r="31"/><circle cx="80" cy="80" r="12"/><path d="m92 68 34-34M112 34h14v14"/>`,
+        routes: `<path d="M35 126c20-50 31-68 54-50 18 14 10 31 31 24 12-4 14-18 6-31"/><circle cx="35" cy="126" r="8"/><path d="M126 29c-17 0-29 12-29 28 0 24 29 49 29 49s29-25 29-49c0-16-12-28-29-28z"/><circle cx="126" cy="57" r="9"/>`,
+        coach: `<path d="M29 48h58l22 17-22 17H29zM109 65h18l21-15v30l-21-15M47 82v43M72 82l18 43"/>`,
+    };
+    return svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="130" viewBox="0 0 180 150"><defs><radialGradient id="g" cx="78%" cy="22%" r="90%"><stop offset="0" stop-color="${accent}" stop-opacity=".34"/><stop offset="1" stop-color="#050811" stop-opacity=".98"/></radialGradient></defs><rect width="180" height="150" rx="20" fill="url(#g)"/><g fill="none" stroke="${accent}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".72">${glyphs[kind]}</g></svg>`);
+}
 function tickerSvg(kind: RunningTickerVisual, accent: string) {
     const c: Record<RunningTickerVisual, [string, string, string, string]> = {
         hero: ["PERFORMANCE", "BOUGE.", "PROGRESSE.", "KM"],
@@ -349,7 +361,7 @@ export default function RunningHome({ store, go }: Props) {
         { label: copy.distance.toLowerCase(), value: `${(stats.totalDistanceM / 1000).toFixed(1)} km` },
         { label: copy.sessions.toLowerCase(), value: String(stats.sessions) },
         { label: bestMetricLabel.toLowerCase(), value: bestMetricValue },
-        { label: copy.climb.toLowerCase(), value: `${Math.round(stats.totalElevationGainM)} m` },
+        { label: copy.climb.toLowerCase(), value: `${Math.round(stats.totalElevationM)} m` },
         { label: copy.longest.toLowerCase(), value: formatDistance(stats.longestM) },
         { label: copy.time.toLowerCase(), value: formatDuration(stats.totalElapsedMs) },
     ];
@@ -359,17 +371,25 @@ export default function RunningHome({ store, go }: Props) {
             ? pickLegacyLocalizedText(lang, "À planifier", "To schedule", "Por planificar")
             : pickLegacyLocalizedText(lang, "Aucun programme", "No plan", "Sin plan");
     const recentActivity = activities[0] || null;
+    const openDisciplineSetup = () => go("games", { runningActivitySport: activitySport });
+    const openSession = () => currentSession
+        ? go("games", { runningResumeSessionId: currentSession.id, runningActivitySport: currentSession.sport })
+        : go("games", { runningActivitySport: activitySport });
+    const openRecommendation = () => mainAction();
+    const openGoal = () => go("running_plan", { runningPlanTab: "goal", runningActivitySport: activitySport });
+    const openRoutes = () => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true });
+    const openCoach = () => go("running_plan", { runningPlanTab: "program", runningActivitySport: activitySport });
     const runningSlides = [
         {
             id: "running-start",
             title: pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR"),
             rows: [
-                { label: pickLegacyLocalizedText(lang, "discipline", "sport", "deporte"), value: outdoorSportLabel(canonicalSport, lang) },
-                { label: pickLegacyLocalizedText(lang, "session", "session", "sesión"), value: currentSession ? (currentSession.paused ? pickLegacyLocalizedText(lang, "En pause", "Paused", "Pausada") : pickLegacyLocalizedText(lang, "En cours", "Live", "En curso")) : pickLegacyLocalizedText(lang, "Aucune", "None", "Ninguna") },
-                { label: pickLegacyLocalizedText(lang, "recommandation", "recommendation", "recomendación"), value: recommendation.title },
-                { label: pickLegacyLocalizedText(lang, "objectif", "target", "objetivo"), value: weekLabel },
-                { label: pickLegacyLocalizedText(lang, "parcours", "routes", "rutas"), value: pickLegacyLocalizedText(lang, "Explorer et lancer", "Explore & start", "Explorar y empezar") },
-                { label: pickLegacyLocalizedText(lang, "coach", "coach", "coach"), value: copy.coach },
+                { label: pickLegacyLocalizedText(lang, "discipline", "sport", "deporte"), value: outdoorSportLabel(canonicalSport, lang), onClick: openDisciplineSetup, backgroundImage: runningStartTileSvg("discipline", accent), ariaLabel: pickLegacyLocalizedText(lang, "Choisir la discipline", "Choose sport", "Elegir deporte") },
+                { label: pickLegacyLocalizedText(lang, "session", "session", "sesión"), value: currentSession ? (currentSession.paused ? pickLegacyLocalizedText(lang, "En pause", "Paused", "Pausada") : pickLegacyLocalizedText(lang, "En cours", "Live", "En curso")) : pickLegacyLocalizedText(lang, "Nouvelle", "New", "Nueva"), onClick: openSession, backgroundImage: runningStartTileSvg("session", accent), ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir la session", "Open session", "Abrir sesión") },
+                { label: pickLegacyLocalizedText(lang, "recommandation", "recommendation", "recomendación"), value: recommendation.title, onClick: openRecommendation, backgroundImage: runningStartTileSvg("recommendation", accent), ariaLabel: pickLegacyLocalizedText(lang, "Lancer la recommandation", "Start recommendation", "Iniciar recomendación") },
+                { label: pickLegacyLocalizedText(lang, "objectif", "target", "objetivo"), value: weekLabel, onClick: openGoal, backgroundImage: runningStartTileSvg("goal", accent), ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir les objectifs", "Open goals", "Abrir objetivos") },
+                { label: pickLegacyLocalizedText(lang, "parcours", "routes", "rutas"), value: pickLegacyLocalizedText(lang, "Explorer", "Explore", "Explorar"), onClick: openRoutes, backgroundImage: runningStartTileSvg("routes", accent), ariaLabel: pickLegacyLocalizedText(lang, "Explorer les parcours", "Explore routes", "Explorar rutas") },
+                { label: pickLegacyLocalizedText(lang, "coach", "coach", "coach"), value: copy.coach, onClick: openCoach, backgroundImage: runningStartTileSvg("coach", accent), ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir le coach", "Open coach", "Abrir coach") },
             ],
         },
         {
@@ -393,7 +413,7 @@ export default function RunningHome({ store, go }: Props) {
                 { label: pickLegacyLocalizedText(lang, "durée", "duration", "duración"), value: recentActivity ? formatDuration(recentActivity.elapsedMs) : "—" },
                 { label: pickLegacyLocalizedText(lang, "allure / vitesse", "pace / speed", "ritmo / velocidad"), value: recentActivity ? outdoorAverageMetricValue(recentActivity, canonicalOutdoorPerformanceSport(recentActivity.sport)) : "—" },
                 { label: pickLegacyLocalizedText(lang, "sorties", "activities", "salidas"), value: String(activities.length) },
-                { label: pickLegacyLocalizedText(lang, "brouillons", "drafts", "borradores"), value: String(activeSessions.length) },
+                { label: pickLegacyLocalizedText(lang, "sessions", "sessions", "sesiones"), value: String(activeSessions.length) },
             ],
         },
     ];

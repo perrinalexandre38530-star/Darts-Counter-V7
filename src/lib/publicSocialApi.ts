@@ -14,6 +14,29 @@ export type CloudPublicUser = {
   createdAt?: string;
 };
 
+
+export type CommunityPulseMember = {
+  userId: string;
+  displayName?: string;
+  avatarUrl?: string | null;
+  countryCode?: string | null;
+  cityLabel?: string | null;
+  status?: "online" | "away" | "offline" | string;
+  createdAt?: string | null;
+  lastSeenAt?: string | null;
+};
+
+export type CommunityPulse = {
+  members: number;
+  active24h: number;
+  active7d: number;
+  onlineNow: number;
+  new7d: number;
+  recentMembers: CommunityPulseMember[];
+  activeMembers: CommunityPulseMember[];
+  generatedAt?: string | null;
+};
+
 export type CloudFriendRequest = {
   id: string;
   status: string;
@@ -94,6 +117,31 @@ export async function cloudRemoveFriend(userId: string) {
   const { data, error } = await supabase.rpc("ms_remove_friend", { p_friend_user_id: userId } as any);
   if (error) rpcError(error, "Impossible de retirer cet ami.");
   return data;
+}
+
+
+export async function cloudCommunityHeartbeat(status: "online" | "away" | "offline" = "online") {
+  const { data, error } = await supabase.rpc("ms_community_heartbeat", { p_status: status } as any);
+  if (error) rpcError(error, "Impossible de mettre à jour l'activité communautaire.");
+  return data;
+}
+
+export async function cloudGetCommunityPulse(recentLimit = 8): Promise<CommunityPulse> {
+  const { data, error } = await supabase.rpc("ms_get_community_pulse", {
+    p_recent_limit: Math.max(1, Math.min(20, Number(recentLimit) || 8)),
+  } as any);
+  if (error) rpcError(error, "Impossible de charger la communauté.");
+  const value: any = Array.isArray(data) ? data[0] : data;
+  return {
+    members: Number(value?.members || 0),
+    active24h: Number(value?.active24h || 0),
+    active7d: Number(value?.active7d || 0),
+    onlineNow: Number(value?.onlineNow || 0),
+    new7d: Number(value?.new7d || 0),
+    recentMembers: Array.isArray(value?.recentMembers) ? value.recentMembers : [],
+    activeMembers: Array.isArray(value?.activeMembers) ? value.activeMembers : [],
+    generatedAt: value?.generatedAt || null,
+  };
 }
 
 export async function cloudUpdatePresence(status: "online" | "away" | "offline") {

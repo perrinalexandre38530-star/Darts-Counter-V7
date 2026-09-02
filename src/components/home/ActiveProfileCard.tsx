@@ -106,10 +106,18 @@ type Props = {
   status?: "online" | "away" | "offline";
 };
 
+export type SlideRowDef = {
+  label: string;
+  value: string;
+  onClick?: () => void;
+  backgroundImage?: string;
+  ariaLabel?: string;
+};
+
 export type SlideDef = {
   id: string;
   title: string;
-  rows: { label: string; value: string }[];
+  rows: SlideRowDef[];
 };
 
 function fmtPct(v?: MaybeNum): string {
@@ -334,6 +342,9 @@ function ActiveProfileCard({
           rows: custom.rows.map((row) => ({
             label: String(row.label || ""),
             value: String(row.value ?? "—"),
+            onClick: row.onClick,
+            backgroundImage: row.backgroundImage,
+            ariaLabel: row.ariaLabel,
           })),
         });
       }
@@ -570,9 +581,41 @@ function ActiveProfileCard({
     t,
   ]);
 
-  const handleNextSlide = () => {
+  const handleNextSlide = React.useCallback(() => {
     if (!slides.length || slides.length <= 1) return;
     setIndex((i) => (i + 1) % slides.length);
+  }, [slides.length]);
+
+  const handlePreviousSlide = React.useCallback(() => {
+    if (!slides.length || slides.length <= 1) return;
+    setIndex((i) => (i - 1 + slides.length) % slides.length);
+  }, [slides.length]);
+
+  const swipeStartRef = React.useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const swipeMovedRef = React.useRef(false);
+  const onSlidePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (slides.length <= 1) return;
+    swipeStartRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    swipeMovedRef.current = false;
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
+  };
+  const onSlidePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) swipeMovedRef.current = true;
+  };
+  const onSlidePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+      if (dx < 0) handleNextSlide();
+      else handlePreviousSlide();
+    }
   };
 
   const starRingAvg3D = Number.isFinite(Number(starAvg3D))
@@ -707,7 +750,10 @@ function ActiveProfileCard({
 
         {/* Colonne droite */}
         <div
-          onClick={handleNextSlide}
+          onPointerDown={onSlidePointerDown}
+          onPointerMove={onSlidePointerMove}
+          onPointerUp={onSlidePointerUp}
+          onPointerCancel={() => { swipeStartRef.current = null; }}
           style={{
             flex: 1,
             borderRadius: 18,
@@ -717,7 +763,9 @@ function ActiveProfileCard({
             overflow: "hidden",
             boxShadow: `0 0 24px ${primary}55, inset 0 0 0 1px rgba(0,0,0,0.8)`,
             border: `1px solid ${primary}AA`,
-            cursor: slides.length > 1 ? "pointer" : "default",
+            cursor: slides.length > 1 ? "grab" : "default",
+            touchAction: "pan-y",
+            userSelect: "none",
           }}
         >
           <div
@@ -758,6 +806,9 @@ function ActiveProfileCard({
                     value={row.value}
                     primary={primary}
                     theme={theme}
+                    onClick={row.onClick}
+                    backgroundImage={row.backgroundImage}
+                    ariaLabel={row.ariaLabel}
                   />
                 ))}
               </div>
@@ -774,6 +825,9 @@ type KpiCellProps = {
   value: string;
   primary: string;
   theme: any;
+  onClick?: () => void;
+  backgroundImage?: string;
+  ariaLabel?: string;
 };
 
 function splitKpiDisplayValue(value: string) {
@@ -782,44 +836,43 @@ function splitKpiDisplayValue(value: string) {
   return match ? { main: match[1], unit: match[2] } : { main: raw, unit: "" };
 }
 
-function KpiCell({ label, value, primary, theme }: KpiCellProps) {
+function KpiCell({ label, value, primary, theme, onClick, backgroundImage, ariaLabel }: KpiCellProps) {
   const display = splitKpiDisplayValue(value);
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        padding: "6px 8px 8px",
-        background:
-          "radial-gradient(circle at 0% 0%, rgba(255,255,255,0.06), rgba(5,7,16,0.96))",
-        border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.18)"}`,
-        boxShadow: "0 10px 22px rgba(0,0,0,0.75)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: 10, letterSpacing: 0.4, opacity: 0.8, marginBottom: 3, textTransform: "lowercase" }}>
+  const interactive = typeof onClick === "function";
+  const content = (
+    <>
+      {backgroundImage ? <div aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg,rgba(2,5,10,.22),rgba(2,5,10,.86)),url("${backgroundImage}")`, backgroundSize: "cover", backgroundPosition: "center", opacity: .9, pointerEvents: "none" }} /> : null}
+      <div style={{ position: "relative", zIndex: 1, fontSize: 10, letterSpacing: 0.4, opacity: 0.88, marginBottom: 3, textTransform: "lowercase" }}>
         {label}
       </div>
-
-      <div
-        style={{
-          height: 2,
-          width: 32,
-          borderRadius: 999,
-          marginBottom: 4,
-          background: `linear-gradient(90deg, transparent, ${primary}, transparent)`,
-          boxShadow: `0 0 8px ${primary}66`,
-        }}
-      />
-
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, minWidth: 0, color: primary, animation: "apcValueGlow 2.8s ease-in-out infinite" }}>
-        <span style={{ fontSize: 20, fontWeight: 900, lineHeight: 1.05, minWidth: 0 }}>{display.main}</span>
+      <div style={{ position: "relative", zIndex: 1, height: 2, width: 32, borderRadius: 999, marginBottom: 4, background: `linear-gradient(90deg, transparent, ${primary}, transparent)`, boxShadow: `0 0 8px ${primary}66` }} />
+      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, minWidth: 0, color: primary, animation: "apcValueGlow 2.8s ease-in-out infinite" }}>
+        <span style={{ fontSize: interactive ? 17 : 20, fontWeight: 900, lineHeight: 1.05, minWidth: 0, textShadow: backgroundImage ? "0 2px 12px #000" : undefined }}>{display.main}</span>
         {display.unit ? <span style={{ fontSize: 8, fontWeight: 900, lineHeight: 1, opacity: .72, textTransform: "none" }}>{display.unit}</span> : null}
       </div>
-    </div>
+      {interactive ? <div style={{ position: "absolute", zIndex: 2, right: 7, bottom: 5, fontSize: 11, color: primary, opacity: .9 }}>›</div> : null}
+    </>
   );
+  const baseStyle: React.CSSProperties = {
+    position: "relative",
+    overflow: "hidden",
+    minHeight: interactive ? 82 : undefined,
+    borderRadius: 14,
+    padding: "6px 8px 8px",
+    background: "radial-gradient(circle at 0% 0%, rgba(255,255,255,0.06), rgba(5,7,16,0.96))",
+    border: `1px solid ${interactive ? `${primary}66` : (theme.borderSoft ?? "rgba(255,255,255,0.18)")}`,
+    boxShadow: interactive ? `0 10px 24px rgba(0,0,0,.78), inset 0 0 20px ${primary}0d` : "0 10px 22px rgba(0,0,0,0.75)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    color: "inherit",
+  };
+  if (interactive) {
+    return <button type="button" aria-label={ariaLabel || `${label}: ${value}`} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onClick?.(); }} style={{ ...baseStyle, width: "100%", cursor: "pointer", font: "inherit" }}>{content}</button>;
+  }
+  return <div style={baseStyle}>{content}</div>;
 }
 
 export default ActiveProfileCard;

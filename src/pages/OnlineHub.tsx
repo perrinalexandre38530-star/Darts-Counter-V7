@@ -6,6 +6,8 @@ import { usePresence } from "../hooks/usePresence";
 import { useSharedOnlineItems } from "../hooks/useSharedOnlineItems";
 import { listOnlineStatsCleanupSessions } from "../lib/onlineStatsExclusions";
 import { useTheme } from "../contexts/ThemeContext";
+import { useAuthOnline } from "../hooks/useAuthOnline";
+import { cloudGetCommunityPulse, type CommunityPulse, type CommunityPulseMember } from "../lib/publicSocialApi";
 
 type Props = { store?: any; update?: (patch: any) => void; go?: (tab: string, params?: any) => void };
 type IconKind = "hub" | "play" | "friends" | "requests" | "stats" | "share" | "message" | "refresh" | "search" | "trophy" | "rank" | "wifi" | "clock" | "logout" | "star" | "info" | "target";
@@ -19,6 +21,24 @@ function initials(name: string) {
 function userIdOf(u: OnlineFriendUser) {
   return String(u.userId || u.id || "");
 }
+
+function relativeCommunityTime(value?: string | null) {
+  const ts = Date.parse(String(value || ""));
+  if (!Number.isFinite(ts)) return "récemment";
+  const delta = Math.max(0, Date.now() - ts);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (delta < minute) return "à l’instant";
+  if (delta < hour) return `il y a ${Math.max(1, Math.floor(delta / minute))} min`;
+  if (delta < day) return `il y a ${Math.max(1, Math.floor(delta / hour))} h`;
+  return `il y a ${Math.max(1, Math.floor(delta / day))} j`;
+}
+
+function communityName(member?: CommunityPulseMember | null) {
+  return String(member?.displayName || "Sportif").trim() || "Sportif";
+}
+
 function normalizeHex(value?: string, fallback = "#22E6FF") {
   const raw = String(value || fallback).trim();
   if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
@@ -109,6 +129,7 @@ function filledButton(primary: string): React.CSSProperties {
 
 export default function OnlineHub({ store, go }: Props) {
   const { theme } = useTheme();
+  const auth = useAuthOnline();
   // Couleur unique de page : le doré est interdit ici. Si le thème global renvoie encore du gold,
   // l'Online bascule automatiquement en cyan néon pour rester cohérent avec la maquette validée.
   const themePrimary = normalizeHex(theme.primary || "#22E6FF");
@@ -124,9 +145,40 @@ export default function OnlineHub({ store, go }: Props) {
   const [searching, setSearching] = React.useState(false);
   const [matchCount, setMatchCount] = React.useState(0);
   const [showStatusPanel, setShowStatusPanel] = React.useState(false);
+  const [communityPulse, setCommunityPulse] = React.useState<CommunityPulse | null>(null);
+  const [communityLoading, setCommunityLoading] = React.useState(true);
+  const [communityError, setCommunityError] = React.useState<string | null>(null);
   const unread = items.filter((i) => i.direction === "incoming" && !i.readAt).length;
   const connected = status !== "offline";
-  const currentUser = friends[0] || null;
+  const currentUser = React.useMemo<OnlineFriendUser | null>(() => {
+    const user: any = auth.user;
+    const profile: any = auth.profile;
+    if (!user?.id) return null;
+    const meta = user.user_metadata || {};
+    return {
+      id: String(user.id),
+      userId: String(user.id),
+      nickname: profile?.nickname || meta.nickname || undefined,
+      displayName: profile?.displayName || meta.display_name || meta.full_name || meta.name || (user.email ? String(user.email).split("@")[0] : "Joueur"),
+      avatarUrl: profile?.avatarUrl || meta.avatar_url || meta.picture || null,
+      country: profile?.country || null,
+      countryCode: profile?.countryCode || meta.country_code || null,
+      status,
+    };
+  }, [auth.user, auth.profile, status]);
+
+  const loadCommunity = React.useCallback(async () => {
+    setCommunityError(null);
+    try {
+      const pulse = await cloudGetCommunityPulse(10);
+      setCommunityPulse(pulse);
+    } catch (error: any) {
+      console.warn("[OnlineHub] communauté indisponible", error);
+      setCommunityError(error?.message || "Communauté indisponible");
+    } finally {
+      setCommunityLoading(false);
+    }
+  }, []);
 
   const loadMatches = React.useCallback(async () => {
     try {
@@ -156,9 +208,16 @@ export default function OnlineHub({ store, go }: Props) {
       events.forEach((eventName) => window.removeEventListener(eventName, refreshCount as EventListener));
     };
   }, [loadMatches]);
+  React.useEffect(() => {
+    let active = true;
+    const refresh = () => { if (active) void loadCommunity(); };
+    refresh();
+    const id = window.setInterval(refresh, 60_000);
+    return () => { active = false; window.clearInterval(id); };
+  }, [loadCommunity]);
   async function refreshAll() {
     await Promise.allSettled([refreshFriends(), refreshRequests(), refreshShared(), setPresence("online")]);
-    await loadMatches();
+    await Promise.allSettled([loadMatches(), loadCommunity()]);
   }
 
   const errors = [presenceError, friendsError, requestsError, sharedError].filter(Boolean);
@@ -177,14 +236,34 @@ export default function OnlineHub({ store, go }: Props) {
     ["PARTAGES", unread, "share" as IconKind],
     ["MATCHS", matchCount, "stats" as IconKind],
   ];
+  const recentPublicMembers = (communityPulse?.recentMembers || []).filter((member) => Boolean(member?.userId)).slice(0, 8);
+  const communityFeed = React.useMemo(() => {
+    const pulse = communityPulse;
+    if (!pulse) return connected ? ["Synchronisation de la communauté en cours"] : ["Connexion communautaire indisponible"];
+    const entries: string[] = [];
+    if (pulse.active24h > 0) entries.push(`${pulse.active24h} sportif${pulse.active24h > 1 ? "s" : ""} actif${pulse.active24h > 1 ? "s" : ""} aujourd’hui`);
+    if (pulse.new7d > 0) entries.push(`${pulse.new7d} nouveau${pulse.new7d > 1 ? "x" : ""} membre${pulse.new7d > 1 ? "s" : ""} cette semaine`);
+    for (const member of pulse.activeMembers.slice(0, 4)) {
+      entries.push(`${communityName(member)} actif ${relativeCommunityTime(member.lastSeenAt)}`);
+    }
+    for (const member of pulse.recentMembers.slice(0, 3)) {
+      if (member.createdAt) entries.push(`${communityName(member)} a rejoint la communauté ${relativeCommunityTime(member.createdAt)}`);
+    }
+    if (!entries.length && pulse.members > 0) entries.push(`${pulse.members} membre${pulse.members > 1 ? "s" : ""} dans la communauté MULTISPORTS SCORING`);
+    return entries.slice(0, 8);
+  }, [communityPulse, connected]);
 
   return <div style={{ minHeight: "100dvh", padding: "16px 12px 104px", color: text, background: `radial-gradient(760px 380px at 88% -6%, ${alpha(primary, "54")}, transparent 60%), radial-gradient(560px 340px at -8% 34%, ${alpha(primary, "26")}, transparent 66%), linear-gradient(180deg, ${bg}, #020611 58%, #000 100%)` }}>
     <style>{`
       .online-scroll::-webkit-scrollbar{display:none}
       .online-tile{position:relative; transition:transform .14s ease, filter .14s ease, border-color .14s ease;}
       .online-tile:active{transform:scale(.965)}
-      .online-marquee{white-space:nowrap; animation:onlineMarquee 19s linear infinite;}
-      @keyframes onlineMarquee{0%{transform:translateX(18%)}100%{transform:translateX(-82%)}}
+      .online-marquee{white-space:nowrap; animation:onlineMarquee 24s linear infinite;}
+      .online-community-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+      .online-community-members{display:flex;gap:9px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none;}
+      .online-community-members::-webkit-scrollbar{display:none}
+      @media(max-width:540px){.online-community-stats{grid-template-columns:repeat(2,minmax(0,1fr));}}
+      @keyframes onlineMarquee{0%{transform:translateX(12%)}100%{transform:translateX(-88%)}}
     `}</style>
     <div style={{ maxWidth: 760, margin: "0 auto", display: "grid", gap: 13 }}>
       <section style={{ ...neonCard(primary), padding: 16, background: `radial-gradient(circle at 78% 6%, ${alpha(primary, "4f")}, transparent 28%), linear-gradient(145deg, ${alpha(primary, "1d")}, rgba(255,255,255,.055) 42%, rgba(255,255,255,.024))` }}>
@@ -240,14 +319,54 @@ export default function OnlineHub({ store, go }: Props) {
 
       {errors.length ? <section style={{ ...neonCard(primary), color: "#ffb3b3", fontSize: 12 }}>{errors.map(String).join(" · ")}</section> : null}
 
+      <section style={{ ...neonCard(primary), display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: primary, fontWeight: 1000, letterSpacing: .5 }}><Icon kind="friends" size={20} /> COMMUNAUTÉ MULTISPORTS</div>
+            <div style={{ marginTop: 4, fontSize: 11, opacity: .68 }}>Des comptes et des présences réels — aucun faux joueur humain.</div>
+          </div>
+          <span style={{ flexShrink: 0, borderRadius: 999, padding: "5px 9px", color: "#7dffad", background: "rgba(67,240,126,.12)", border: "1px solid rgba(67,240,126,.34)", fontSize: 9, fontWeight: 1000 }}>100% RÉEL</span>
+        </div>
+
+        <div className="online-community-stats">
+          {[
+            ["MEMBRES", communityPulse?.members ?? "—", "friends" as IconKind],
+            ["ACTIFS 24 H", communityPulse?.active24h ?? "—", "clock" as IconKind],
+            ["ACTIFS 7 J", communityPulse?.active7d ?? "—", "stats" as IconKind],
+            ["EN LIGNE", communityPulse?.onlineNow ?? "—", "wifi" as IconKind],
+          ].map(([label, value, kind]) => <div key={String(label)} style={{ minHeight: 82, borderRadius: 18, padding: 11, background: `linear-gradient(180deg, ${alpha(primary, "12")}, rgba(0,0,0,.28))`, border: `1px solid ${alpha(primary, "2f")}`, boxShadow: `0 0 16px ${alpha(primary, "10")}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 9, fontWeight: 1000, opacity: .78 }}><span>{label}</span><Icon kind={kind as IconKind} size={15} color={primary} /></div>
+            <div style={{ marginTop: 8, fontSize: 27, lineHeight: 1, fontWeight: 1000, color: primary, textShadow: `0 0 14px ${alpha(primary, "66")}` }}>{communityLoading && !communityPulse ? "…" : value}</div>
+          </div>)}
+        </div>
+
+        {communityPulse ? <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 11 }}>
+          <span style={{ borderRadius: 999, padding: "5px 9px", color: primary, background: alpha(primary, "13"), border: `1px solid ${alpha(primary, "32")}`, fontWeight: 950 }}>+{communityPulse.new7d} cette semaine</span>
+          <span style={{ opacity: .64 }}>La présence « en ligne » expire automatiquement après 2 min sans activité.</span>
+        </div> : null}
+
+        {recentPublicMembers.length ? <div>
+          <div style={{ marginBottom: 8, fontSize: 10, fontWeight: 1000, opacity: .72 }}>MEMBRES RÉCENTS / ACTIFS</div>
+          <div className="online-community-members">
+            {recentPublicMembers.map((member) => <div key={member.userId} style={{ minWidth: 88, maxWidth: 96, padding: "9px 7px", borderRadius: 17, textAlign: "center", background: "rgba(255,255,255,.035)", border: `1px solid ${alpha(primary, "22")}` }}>
+              <div style={{ display: "grid", placeItems: "center" }}><Avatar user={member as any} size={42} primary={primary} /></div>
+              <div style={{ marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: 1000 }}>{communityName(member)}</div>
+              <div style={{ marginTop: 3, fontSize: 8, color: member.status === "online" ? "#7dffad" : primary, opacity: .82 }}>{member.status === "online" ? "EN LIGNE" : relativeCommunityTime(member.lastSeenAt || member.createdAt)}</div>
+            </div>)}
+          </div>
+        </div> : null}
+
+        {communityError ? <div style={{ fontSize: 10, color: "#ffb3b3", opacity: .9 }}>Communauté : {communityError}</div> : null}
+      </section>
+
       <section style={{ ...neonCard(primary), padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${alpha(primary, "24")}` }}>
           <b style={{ fontSize: 13, letterSpacing: .9, color: primary, textShadow: `0 0 14px ${alpha(primary, "70")}` }}>LIVE FEED</b>
-          <span style={{ borderRadius: 999, padding: "4px 9px", color: primary, background: alpha(primary, "18"), border: `1px solid ${alpha(primary, "42")}`, fontSize: 11, fontWeight: 1000 }}>AUTO</span>
+          <span style={{ borderRadius: 999, padding: "4px 9px", color: primary, background: alpha(primary, "18"), border: `1px solid ${alpha(primary, "42")}`, fontSize: 11, fontWeight: 1000 }}>RÉEL</span>
         </div>
         <div style={{ overflow: "hidden", padding: "10px 0" }}>
           <div className="online-marquee" style={{ display: "inline-flex", gap: 10, alignItems: "center", fontSize: 12, fontWeight: 900 }}>
-            {connected ? "● Session connectée" : "● Session déconnectée"} <span style={{ color: primary }}>●</span> Crée un salon X01 ou rejoins avec un code <span style={{ color: primary }}>●</span> Stats Online reliées à l’historique <span style={{ color: primary }}>●</span> Classements et tournois
+            {communityFeed.map((entry, index) => <React.Fragment key={`${entry}-${index}`}><span>{entry}</span>{index < communityFeed.length - 1 ? <span style={{ color: primary }}>●</span> : null}</React.Fragment>)}
           </div>
         </div>
       </section>

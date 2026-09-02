@@ -23,6 +23,7 @@ import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import { cloudCommunityHeartbeat } from "../lib/publicSocialApi";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
 const PROFILE_HYDRATION_COOLDOWN_MS = 2200;
@@ -864,6 +865,44 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       } catch {}
     };
   }, [hydrateProfileAndBackups]);
+
+  // Présence communautaire globale : un compte authentifié compte comme actif même
+  // s'il n'ouvre jamais la page ONLINE. Le RPC ne publie aucune donnée de profil :
+  // il rafraîchit uniquement ms_presence. Toutes les requêtes passent hors navigation.
+  React.useEffect(() => {
+    if (isNasProviderEnabled()) return;
+    if (state.status !== "signed_in" || !state.user?.id) return;
+
+    let alive = true;
+    let heartbeatTimer: number | null = null;
+
+    const scheduleHeartbeat = (next: "online" | "away" | "offline") => {
+      scheduleOutsideNavigation(() => {
+        if (!alive) return;
+        void cloudCommunityHeartbeat(next).catch((error) => {
+          console.warn("[community] heartbeat unavailable:", error);
+        });
+      }, isCapacitorNativeRuntime() ? 900 : 120);
+    };
+
+    const currentStatus = () => document.visibilityState === "hidden" ? "away" as const : "online" as const;
+    scheduleHeartbeat(currentStatus());
+
+    heartbeatTimer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") scheduleHeartbeat("online");
+    }, 60_000);
+
+    const onVisibility = () => scheduleHeartbeat(currentStatus());
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      alive = false;
+      if (heartbeatTimer != null) window.clearInterval(heartbeatTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      // Pas de requête synchrone au démontage : le seuil anti-stale du backend
+      // retire automatiquement un ancien statut online après 2 minutes.
+    };
+  }, [state.status, state.user?.id]);
 
   const signup = React.useCallback(
     async (payload: { email?: string; nickname: string; password?: string }) => {

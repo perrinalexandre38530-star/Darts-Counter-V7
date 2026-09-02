@@ -16,18 +16,18 @@ import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import OutdoorActivityPlanPanel from "./OutdoorActivityPlanPanel";
 import { loadOutdoorPerformanceSport, outdoorSportLabel, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 
-type Props = { go: (route: any, params?: any) => void };
+type Props = { go: (route: any, params?: any) => void; params?: any };
 type PlanTab = "hub" | "goal" | "program" | "races";
 
-export default function RunningPlanCenter({ go }: Props) {
+export default function RunningPlanCenter({ go, params }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang() as any;
   const locale = lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB";
   const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
   const textSoft = (theme as any)?.textSoft || "#a8a8b3";
-  const [activitySport, setActivitySport] = React.useState<OutdoorPerformanceSport>(() => loadOutdoorPerformanceSport());
+  const [activitySport, setActivitySport] = React.useState<OutdoorPerformanceSport>(() => params?.runningActivitySport ? String(params.runningActivitySport) as OutdoorPerformanceSport : loadOutdoorPerformanceSport());
   const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
-  const [tab, setTab] = React.useState<PlanTab>("hub");
+  const [tab, setTab] = React.useState<PlanTab>(() => ["goal", "program", "races"].includes(String(params?.runningPlanTab || "")) ? String(params.runningPlanTab) as PlanTab : "hub");
 
   React.useEffect(() => { saveOutdoorPerformanceSport(activitySport); void listActivities(activitySport).then(setActivities); }, [activitySport]);
 

@@ -2,9 +2,11 @@ import { buildRunningPlanWeeks, loadRunningPlan } from "../activity/runningTrain
 import { loadRunningRaces } from "../activity/runningRaceCalendar";
 import { FIT_PROGRAMS, getActiveFitProgramDefinition } from "../fit/fitProgramCatalog";
 import { getActiveMultisportPlanDefinition } from "./multisportPlan";
+import { getKV, setKV } from "../lib/storage";
+import { APP_SPORT_CATALOG, appSportMeta, type AppSportId } from "../config/sportCatalog";
 
-export type MultisportEventSport = "fit" | "running" | "darts" | "foot" | "babyfoot" | "pingpong" | "petanque" | "molkky" | "dicegame" | "esports" | "other";
-export type MultisportEventType = "workout" | "training" | "match" | "game" | "outing" | "race" | "tournament" | "recovery" | "club" | "other";
+export type MultisportEventSport = AppSportId | "other";
+export type MultisportEventType = "workout" | "training" | "match" | "game" | "outing" | "race" | "tournament" | "league" | "leisure" | "recovery" | "club" | "challenge" | "other";
 export type MultisportEventSource = "manual" | "fit_program" | "multisport_program" | "running_program" | "running_race" | "friend" | "club" | "team" | "system";
 export type MultisportEventStatus = "planned" | "pending" | "confirmed" | "declined" | "completed" | "cancelled";
 
@@ -29,26 +31,22 @@ export type MultisportAgendaEvent = {
   accent?: string;
   readonly?: boolean;
   createdAt?: number;
+  updatedAt?: number;
 };
 
 export const MULTISPORT_AGENDA_STORAGE_KEY = "mss-multisport-agenda-v1";
+const MULTISPORT_AGENDA_BACKUP_KEY = "mss-multisport-agenda-backup-v1";
+const MULTISPORT_AGENDA_KV_KEY = "mss-multisport-agenda-v2";
 const DAY = 86_400_000;
+const KNOWN_SPORT_IDS = new Set(APP_SPORT_CATALOG.map((item) => item.id));
 
-const SPORT_META: Record<MultisportEventSport, { label: string; icon: string; accent: string }> = {
-  fit: { label: "FIT PERF", icon: "🏋️", accent: "#f6c256" },
-  running: { label: "RUNNING PERF", icon: "🏃", accent: "#74f7a5" },
-  darts: { label: "DARTS", icon: "🎯", accent: "#cfe48b" },
-  foot: { label: "FOOT", icon: "⚽", accent: "#35d86f" },
-  babyfoot: { label: "BABY-FOOT", icon: "⚽", accent: "#ffcf5a" },
-  pingpong: { label: "PING-PONG", icon: "🏓", accent: "#ff8fd7" },
-  petanque: { label: "PÉTANQUE", icon: "🟡", accent: "#8fd7ff" },
-  molkky: { label: "MÖLKKY", icon: "🪵", accent: "#f7b267" },
-  dicegame: { label: "DICE GAME", icon: "🎲", accent: "#b9a7ff" },
-  esports: { label: "E-SPORTS", icon: "🎮", accent: "#8ab4ff" },
-  other: { label: "SPORT", icon: "◆", accent: "#c7ccd6" },
-};
+const OTHER_META = { label: "SPORT", icon: "◆", accent: "#c7ccd6" };
 
-export function multisportSportMeta(sport: MultisportEventSport) { return SPORT_META[sport] || SPORT_META.other; }
+export function multisportSportMeta(sport: MultisportEventSport) {
+  if (sport === "other") return OTHER_META;
+  const meta = appSportMeta(sport);
+  return { label: meta.label, icon: "◆", accent: meta.accent };
+}
 
 function makeId(prefix = "agenda") {
   try { return `${prefix}_${crypto.randomUUID()}`; } catch { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -59,9 +57,10 @@ function normalizeStoredEvent(raw: any): MultisportAgendaEvent | null {
   const startAt = Number(raw.startAt || 0);
   if (!Number.isFinite(startAt) || startAt <= 0) return null;
   const sport = String(raw.sport || "other") as MultisportEventSport;
-  const meta = multisportSportMeta(sport);
+  const safeSport: MultisportEventSport = sport === "other" || KNOWN_SPORT_IDS.has(sport as AppSportId) ? sport : "other";
+  const meta = multisportSportMeta(safeSport);
   return {
-    id: String(raw.id || makeId()), title: String(raw.title || "Activité").slice(0, 100), sport: SPORT_META[sport] ? sport : "other",
+    id: String(raw.id || makeId()), title: String(raw.title || "Activité").slice(0, 100), sport: safeSport,
     discipline: raw.discipline ? String(raw.discipline).slice(0, 64) : undefined,
     type: String(raw.type || "other") as MultisportEventType, source: String(raw.source || "manual") as MultisportEventSource,
     sourceId: raw.sourceId ? String(raw.sourceId) : undefined, startAt, durationMin: Number.isFinite(Number(raw.durationMin)) ? Math.max(0, Number(raw.durationMin)) : undefined,
@@ -70,32 +69,63 @@ function normalizeStoredEvent(raw: any): MultisportAgendaEvent | null {
     participants: Array.isArray(raw.participants) ? raw.participants.map(String).slice(0, 30) : undefined,
     status: String(raw.status || "planned") as MultisportEventStatus, route: raw.route ? String(raw.route) : undefined,
     routeParams: raw.routeParams && typeof raw.routeParams === "object" ? raw.routeParams : undefined,
-    accent: raw.accent ? String(raw.accent) : meta.accent, readonly: !!raw.readonly, createdAt: Number(raw.createdAt || Date.now()),
+    accent: raw.accent ? String(raw.accent) : meta.accent, readonly: !!raw.readonly, createdAt: Number(raw.createdAt || Date.now()), updatedAt: Number(raw.updatedAt || raw.createdAt || Date.now()),
   };
+}
+
+function normalizeEventArray(raw: unknown): MultisportAgendaEvent[] {
+  return (Array.isArray(raw) ? raw : []).map(normalizeStoredEvent).filter((item): item is MultisportAgendaEvent => !!item);
+}
+
+function mergeAgendaEventSets(...sets: MultisportAgendaEvent[][]): MultisportAgendaEvent[] {
+  const byId = new Map<string, MultisportAgendaEvent>();
+  for (const set of sets) for (const event of set) {
+    const prev = byId.get(event.id);
+    if (!prev || Number(event.updatedAt || event.createdAt || 0) >= Number(prev.updatedAt || prev.createdAt || 0)) byId.set(event.id, event);
+  }
+  return [...byId.values()].sort((a, b) => a.startAt - b.startAt);
 }
 
 export function loadStoredMultisportEvents(): MultisportAgendaEvent[] {
   if (typeof localStorage === "undefined") return [];
-  try {
-    const raw = JSON.parse(localStorage.getItem(MULTISPORT_AGENDA_STORAGE_KEY) || "[]");
-    return (Array.isArray(raw) ? raw : []).map(normalizeStoredEvent).filter((item): item is MultisportAgendaEvent => !!item);
-  } catch { return []; }
+  const sets: MultisportAgendaEvent[][] = [];
+  for (const key of [MULTISPORT_AGENDA_STORAGE_KEY, MULTISPORT_AGENDA_BACKUP_KEY]) {
+    try { sets.push(normalizeEventArray(JSON.parse(localStorage.getItem(key) || "[]"))); } catch {}
+  }
+  return mergeAgendaEventSets(...sets);
 }
 
 export function saveStoredMultisportEvents(events: MultisportAgendaEvent[]) {
-  if (typeof localStorage === "undefined") return;
-  try { localStorage.setItem(MULTISPORT_AGENDA_STORAGE_KEY, JSON.stringify(events.slice(-500))); } catch {}
+  const safe = mergeAgendaEventSets(normalizeEventArray(events));
+  if (typeof localStorage !== "undefined") {
+    const json = JSON.stringify(safe);
+    try { localStorage.setItem(MULTISPORT_AGENDA_STORAGE_KEY, json); } catch {}
+    try { localStorage.setItem(MULTISPORT_AGENDA_BACKUP_KEY, json); } catch {}
+  }
+  // Miroir IndexedDB du stockage principal : survit aux nettoyages/écrasements
+  // ponctuels de localStorage et entre dans les snapshots de sauvegarde compte.
+  void setKV(MULTISPORT_AGENDA_KV_KEY, safe).catch(() => {});
   try { window.dispatchEvent(new CustomEvent("dc:multisport-agenda-changed")); } catch {}
 }
 
+export async function hydrateMultisportAgendaPersistence(): Promise<MultisportAgendaEvent[]> {
+  const local = loadStoredMultisportEvents();
+  let idb: MultisportAgendaEvent[] = [];
+  try { idb = normalizeEventArray(await getKV<unknown>(MULTISPORT_AGENDA_KV_KEY)); } catch {}
+  const merged = mergeAgendaEventSets(local, idb);
+  if (merged.length || local.length || idb.length) saveStoredMultisportEvents(merged);
+  return merged;
+}
+
 export function createMultisportEvent(input: Omit<MultisportAgendaEvent, "id" | "createdAt">) {
-  const event: MultisportAgendaEvent = { ...input, id: makeId(), createdAt: Date.now() };
+  const now = Date.now();
+  const event: MultisportAgendaEvent = { ...input, id: makeId(), createdAt: now, updatedAt: now };
   saveStoredMultisportEvents([...loadStoredMultisportEvents(), event]);
   return event;
 }
 
 export function updateMultisportEvent(id: string, patch: Partial<MultisportAgendaEvent>) {
-  const next = loadStoredMultisportEvents().map((event) => event.id === id ? { ...event, ...patch, id: event.id } : event);
+  const next = loadStoredMultisportEvents().map((event) => event.id === id ? { ...event, ...patch, id: event.id, updatedAt: Date.now() } : event);
   saveStoredMultisportEvents(next);
   return next.find((event) => event.id === id) || null;
 }
@@ -154,7 +184,7 @@ function virtualRunningEvents(): MultisportAgendaEvent[] {
   return buildRunningPlanWeeks(plan).flatMap((week) => week.sessions.map((session) => ({
     id: `runplan:${session.id}`, title: session.title, sport: "running" as const, discipline: "running", type: "training" as const,
     source: "running_program" as const, sourceId: session.id, startAt: session.scheduledAt, durationMin: session.targetDurationMs ? Math.max(1, Math.round(session.targetDurationMs / 60_000)) : undefined,
-    notes: session.subtitle, status: "planned" as const, readonly: true, accent: SPORT_META.running.accent, route: "games",
+    notes: session.subtitle, status: "planned" as const, readonly: true, accent: multisportSportMeta("running").accent, route: "games",
     routeParams: { runningPresetId: session.customWorkout ? "custom" : session.presetId, runningTargetM: session.targetDistanceM || undefined, runningTargetDurationMs: session.targetDurationMs || undefined, runningPlanId: plan.id, runningPlanSessionId: session.id, runningPlanSessionTitle: session.title, runningCustomWorkout: session.customWorkout || undefined },
   })));
 }

@@ -14,6 +14,7 @@ import { useSport } from "../contexts/SportContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
+import { isAppSportEnabled } from "../config/sportCatalog";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.webp";
@@ -99,7 +100,7 @@ export default function GameSelect({ go }: Props) {
       id: "darts",
       label: "Darts Scoring",
       logo: logoDarts,
-      enabled: true,
+      enabled: isAppSportEnabled("darts" as any),
       onClick: () => {
         setSport("darts");
         go(HOME_ROUTE);
@@ -109,7 +110,7 @@ export default function GameSelect({ go }: Props) {
       id: "petanque",
       label: "Pétanque Scoring",
       logo: logoPetanque,
-      enabled: true,
+      enabled: isAppSportEnabled("petanque" as any),
       onClick: () => {
         setSport("petanque");
         go(GAMES_ROUTE);
@@ -119,7 +120,7 @@ export default function GameSelect({ go }: Props) {
       id: "pingpong",
       label: "Ping-Pong Scoring",
       logo: logoPingPong,
-      enabled: true,
+      enabled: isAppSportEnabled("pingpong" as any),
       onClick: () => {
         setSport("pingpong");
         go(GAMES_ROUTE);
@@ -129,7 +130,7 @@ export default function GameSelect({ go }: Props) {
       id: "babyfoot",
       label: "Baby-Foot Scoring",
       logo: logoBabyFoot,
-      enabled: true,
+      enabled: isAppSportEnabled("babyfoot" as any),
       onClick: () => {
         setSport("babyfoot");
         go(GAMES_ROUTE);
@@ -139,7 +140,7 @@ export default function GameSelect({ go }: Props) {
       id: "running",
       label: "Running Performance",
       logo: logoRunning,
-      enabled: true,
+      enabled: isAppSportEnabled("running" as any),
       onClick: () => {
         setSport("running");
         go(GAMES_ROUTE);
@@ -149,7 +150,7 @@ export default function GameSelect({ go }: Props) {
       id: "fit",
       label: "FIT PERF",
       logo: logoFitPerf,
-      enabled: true,
+      enabled: isAppSportEnabled("fit" as any),
       onClick: () => {
         setSport("fit");
         go(HOME_ROUTE);
@@ -159,7 +160,7 @@ export default function GameSelect({ go }: Props) {
       id: "esports",
       label: "E-SPORTS HUB",
       logo: logoEsports,
-      enabled: true,
+      enabled: isAppSportEnabled("esports" as any),
       onClick: () => {
         setSport("esports");
         go(HOME_ROUTE);
@@ -173,14 +174,14 @@ export default function GameSelect({ go }: Props) {
       id: "archery",
       label: "Tir à l'arc",
       logo: logoArchery,
-      enabled: false,
+      enabled: isAppSportEnabled("archery" as any),
       onClick: () => {},
     },
     {
       id: "molkky",
       label: "Mölkky",
       logo: logoMolkky,
-      enabled: true,
+      enabled: isAppSportEnabled("molkky" as any),
       onClick: () => {
         setSport("molkky");
         go(GAMES_ROUTE);
@@ -190,56 +191,56 @@ export default function GameSelect({ go }: Props) {
       id: "padel",
       label: "Padel",
       logo: logoPadel,
-      enabled: false,
+      enabled: isAppSportEnabled("padel" as any),
       onClick: () => {},
     },
     {
       id: "pickleball",
       label: "Pickleball",
       logo: logoPickleball,
-      enabled: false,
+      enabled: isAppSportEnabled("pickleball" as any),
       onClick: () => {},
     },
     {
       id: "frisbee",
       label: "Frisbee",
       logo: logoFrisbee,
-      enabled: false,
+      enabled: isAppSportEnabled("frisbee" as any),
       onClick: () => {},
     },
     {
       id: "billard",
       label: "Billard",
       logo: logoBillard,
-      enabled: false,
+      enabled: isAppSportEnabled("billard" as any),
       onClick: () => {},
     },
     {
       id: "badminton",
       label: "Badminton",
       logo: logoBadminton,
-      enabled: false,
+      enabled: isAppSportEnabled("badminton" as any),
       onClick: () => {},
     },
     {
       id: "basket",
       label: "Basket",
       logo: logoBasket,
-      enabled: false,
+      enabled: isAppSportEnabled("basket" as any),
       onClick: () => {},
     },
     {
       id: "cornhole",
       label: "Cornhole",
       logo: logoCornhole,
-      enabled: false,
+      enabled: isAppSportEnabled("cornhole" as any),
       onClick: () => {},
     },
     {
       id: "dicegame",
       label: "Dice Game",
       logo: logoDiceGame,
-      enabled: true,
+      enabled: isAppSportEnabled("dicegame" as any),
       onClick: () => {
         setSport("dicegame" as any);
         go(GAMES_ROUTE);
@@ -249,7 +250,7 @@ export default function GameSelect({ go }: Props) {
       id: "foot",
       label: "FOOT",
       logo: logoFoot,
-      enabled: true,
+      enabled: isAppSportEnabled("foot" as any),
       onClick: () => {
         setSport("foot" as any);
         go(HOME_ROUTE);
@@ -259,28 +260,28 @@ export default function GameSelect({ go }: Props) {
       id: "rugby",
       label: "Rugby",
       logo: logoRugby,
-      enabled: false,
+      enabled: isAppSportEnabled("rugby" as any),
       onClick: () => {},
     },
     {
       id: "volley",
       label: "Volley",
       logo: logoVolley,
-      enabled: false,
+      enabled: isAppSportEnabled("volley" as any),
       onClick: () => {},
     },
     {
       id: "tennis",
       label: "Tennis",
       logo: logoTennis,
-      enabled: false,
+      enabled: isAppSportEnabled("tennis" as any),
       onClick: () => {},
     },
     {
       id: "chess",
       label: "Échecs",
       logo: logoChess,
-      enabled: false,
+      enabled: isAppSportEnabled("chess" as any),
       onClick: () => {},
     },
   ];
