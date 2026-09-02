@@ -1,3 +1,4 @@
+import { clampRunningNumber as clamp, runningCoordKey as coordKey } from "./runningShared";
 import { haversineMeters } from "./activityMath";
 import type { GeoPoint } from "./activityTypes";
 import type { OutdoorPerformanceSport } from "./outdoorPerformance";
@@ -73,14 +74,6 @@ const TRAIL_HIGHWAYS = new Set(["path", "track", "bridleway"]);
 const UNPAVED_SURFACES = new Set(["unpaved", "gravel", "fine_gravel", "dirt", "earth", "ground", "grass", "mud", "sand", "woodchips"]);
 const MAX_GRAPH_NODES = 22000;
 const MAX_REROUTE_POINTS = 520;
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function coordKey(lat: number, lon: number) {
-  return `${lat.toFixed(6)},${lon.toFixed(6)}`;
-}
 
 function isAllowedWay(tags: Record<string, string> | undefined) {
   const highway = String(tags?.highway || "");

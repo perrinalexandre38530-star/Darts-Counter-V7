@@ -1,4 +1,5 @@
 import React from "react";
+import { pickRunningText as pickText } from "../../activity/runningShared";
 import { formatDistance, formatDuration, formatPace } from "../../activity/activityMath";
 import { estimateOutdoorRouteDurationMs } from "../../activity/outdoorNavigation";
 import { analyzeRunningTerrain, terrainAdvice, terrainLabel } from "../../activity/runningElevation";
@@ -39,11 +40,6 @@ type Props = {
   onOfflineChanged?: () => void;
 };
 
-function pickText(lang: string, fr: string, en: string, es: string) {
-  const lower = String(lang || "fr").toLowerCase();
-  return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
-}
-
 export default function OutdoorRouteDetailPage(props: Props) {
   const { route, sport, lang, accent, textSoft } = props;
   const [tab, setTab] = React.useState<DetailTab>(props.initialTab || "overview");
@@ -75,6 +71,16 @@ export default function OutdoorRouteDetailPage(props: Props) {
     ["photos", "▧", pickText(lang, "PHOTOS", "PHOTOS", "FOTOS")],
     ["community", "◉", pickText(lang, "COMMUNAUTÉ", "COMMUNITY", "COMUNIDAD")],
   ];
+  const routeShape = route.generation?.shape === "loop" || route.scout?.loop
+    ? pickText(lang, "Boucle", "Loop", "Bucle")
+    : route.generation?.shape === "out-back" ? pickText(lang, "Aller-retour", "Out & back", "Ida y vuelta") : null;
+  const routeSource = route.community?.ownerDisplayName
+    ? route.community.ownerDisplayName
+    : route.operator || route.network || (route.source === "generated" ? pickText(lang, "Généré pour toi", "Generated for you", "Generado para ti") : route.source === "osm" ? "OpenStreetMap" : outdoorSportLabel(sport, lang));
+  const routeDescription = route.community?.description || pickText(lang,
+    "Toutes les informations utiles sont regroupées ici : tracé interactif, difficulté, relief, points d’intérêt, photos et préparation de la sortie.",
+    "Everything useful is grouped here: interactive route, difficulty, elevation, points of interest, photos and trip preparation.",
+    "Toda la información útil está reunida aquí: ruta interactiva, dificultad, desnivel, puntos de interés, fotos y preparación de la salida.");
 
   return <div className="running-route-detail" style={{ minHeight: "100dvh", width: "100%", maxWidth: 1080, margin: "0 auto", overflowX: "clip", padding: "max(6px,env(safe-area-inset-top)) clamp(6px,1.2vw,16px) max(88px,calc(76px + env(safe-area-inset-bottom)))" }}>
     <header style={{ position: "sticky", top: 0, zIndex: 80, display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center", padding: "6px 0 9px", background: "linear-gradient(180deg,rgba(5,8,13,.98),rgba(5,8,13,.86) 78%,transparent)", backdropFilter: "blur(14px)" }}>
@@ -86,18 +92,38 @@ export default function OutdoorRouteDetailPage(props: Props) {
     <div style={{ display: "grid", gap: 10 }}>
       <OutdoorInteractiveRouteMap route={route} accent={accent} lang={lang} textSoft={textSoft} height="clamp(350px,58vh,680px)" activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint} onFullscreen={() => setMapFullscreen(true)}/>
 
-      <section style={{ position: "relative", padding: 14, borderRadius: 24, background: `linear-gradient(180deg,rgba(190,225,255,.08) 0%,rgba(15,22,36,.28) 16%,rgba(6,10,16,.72) 52%,rgba(4,7,12,.96) 100%)`, border: `1px solid ${accent}2c`, boxShadow: "0 18px 42px rgba(0,0,0,.32)", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `radial-gradient(circle at 20% 12%, ${accent}22, transparent 28%), linear-gradient(180deg, rgba(255,255,255,.04), transparent 14%, rgba(5,8,13,.12) 30%, rgba(5,8,13,.74) 65%, rgba(5,8,13,.96) 100%)` }} />
-        <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
-          <div style={{ minWidth: 0 }}><div style={{ marginTop: 2, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={terrain.hasElevation ? terrainLabel(terrain.terrain, lang) : outdoorSportLabel(sport, lang)} accent={accent}/>{route.scout ? <Pill text={`✦ ${route.scout.score}%`} accent={accent}/> : null}{terrain.hasElevation ? <Pill text={difficultyStarsLabel(terrain.difficultyScore, lang)} accent={accent} muted/> : null}</div><div style={{ marginTop: 8, fontSize: "clamp(12px,2vw,16px)", lineHeight: 1.08, fontWeight: 1000, fontFamily: '"Trebuchet MS", "Avenir Next", sans-serif', textWrap: "balance" }}>{route.name}</div><div style={{ marginTop: 5, color: "rgba(255,255,255,.72)", fontSize: 7.5, lineHeight: 1.4 }}>{pickText(lang,"Ouvre la carte interactive, explore le relief 2D/3D et navigue ensuite dans les onglets terrain, photos et communauté.","Open the interactive map, explore the 2D/3D terrain and then browse terrain, photos and community tabs.","Abre el mapa interactivo, explora el relieve 2D/3D y luego navega por terreno, fotos y comunidad.")}</div></div>
-          <button className="btn" onClick={() => setMapFullscreen(true)} title={pickText(lang,"Carte plein écran","Fullscreen map","Mapa a pantalla completa")} style={{ minWidth: 42, minHeight: 42, padding: 0, color: accent, borderColor: `${accent}55`, fontSize: 15, background: "rgba(5,8,13,.48)" }}>⛶</button>
+      <section className="running-route-summary-card" style={{ ['--route-accent' as any]: accent } as React.CSSProperties}>
+        <div className="running-route-summary-head">
+          <div className="running-route-summary-copy">
+            <div className="running-route-kicker">{routeSource}</div>
+            <h1 className="running-route-title">{route.name}</h1>
+            <div className="running-route-badges">
+              <Pill text={terrain.hasElevation ? terrainLabel(terrain.terrain, lang) : outdoorSportLabel(sport, lang)} accent={accent}/>
+              {terrain.hasElevation ? <Pill text={difficultyStarsLabel(terrain.difficultyScore, lang)} accent={accent} muted/> : null}
+              {route.scout ? <Pill text={`✦ ${route.scout.score}%`} accent={accent}/> : null}
+              {routeShape ? <Pill text={routeShape} accent={accent} muted/> : null}
+            </div>
+          </div>
+          <button className="btn running-route-fullscreen" onClick={() => setMapFullscreen(true)} title={pickText(lang,"Carte plein écran","Fullscreen map","Mapa a pantalla completa")}>⛶</button>
         </div>
-        <div className="running-metrics-4" style={{ marginTop: 10 }}><Metric label={pickText(lang,"DISTANCE","DISTANCE","DISTANCIA")} value={formatDistance(route.distanceM)} accent={accent}/><Metric label="D+" value={terrain.hasElevation ? `+${Math.round(terrain.gainM)} m` : route.elevationGainM ? `+${Math.round(route.elevationGainM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"SOMMET","HIGH","CIMA")} value={terrain.maxAltitudeM != null ? `${Math.round(terrain.maxAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"DURÉE","TIME","TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(route, sport))} accent={accent}/></div>
-        <div className="running-actions-4" style={{ marginTop: 9 }}><Action icon="▶" label={pickText(lang,"GUIDER","GUIDE","GUIAR")} accent={accent} active onClick={props.onGuide}/><Action icon={props.favorite ? "★" : "☆"} label={pickText(lang,"FAVORI","FAVORITE","FAVORITO")} accent={accent} active={props.favorite} onClick={props.onToggleFavorite}/><Action icon="◷" label={pickText(lang,"PLANIFIER","PLAN","PLANIFICAR")} accent={accent} onClick={() => setTab("plan")}/><Action icon="↗" label="MAPS" accent={accent} onClick={props.onOpenMaps}/></div>
+
+        <div className="running-route-core-metrics">
+          <Metric label={pickText(lang,"DISTANCE","DISTANCE","DISTANCIA")} value={formatDistance(route.distanceM)} accent={accent}/>
+          <Metric label="D+" value={terrain.hasElevation ? `+${Math.round(terrain.gainM)} m` : route.elevationGainM ? `+${Math.round(route.elevationGainM)} m` : "—"} accent={accent}/>
+          <Metric label={pickText(lang,"ALT. MAX","MAX ALT","ALT. MAX")} value={terrain.maxAltitudeM != null ? `${Math.round(terrain.maxAltitudeM)} m` : "—"} accent={accent}/>
+          <Metric label={pickText(lang,"DURÉE","TIME","TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(route, sport))} accent={accent}/>
+        </div>
+
+        <button className="btn running-route-primary-guide" onClick={props.onGuide} style={{ background: accent, borderColor: accent }}><span>▶</span><span>{pickText(lang,"GUIDER CE PARCOURS","START GUIDANCE","GUIAR ESTA RUTA")}</span></button>
+        <div className="running-route-secondary-actions">
+          <Action icon={props.favorite ? "★" : "☆"} label={pickText(lang,"FAVORI","FAVORITE","FAVORITO")} accent={accent} active={props.favorite} onClick={props.onToggleFavorite}/>
+          <Action icon="◷" label={pickText(lang,"PLANIFIER","PLAN","PLANIFICAR")} accent={accent} onClick={() => setTab("plan")}/>
+          <Action icon="↗" label="MAPS" accent={accent} onClick={props.onOpenMaps}/>
+        </div>
       </section>
 
-      <nav style={{ position: "sticky", top: 58, zIndex: 70, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, padding: 6, borderRadius: 16, background: "rgba(6,9,14,.92)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,.075)", boxShadow: "0 12px 30px rgba(0,0,0,.24)" }}>
-        {primaryTabs.map(([id, icon, label, target]) => { const active = primaryTab === id; return <button key={id} className="btn" title={label} onClick={() => setTab(target)} style={{ minWidth: 0, minHeight: 44, padding: "5px 4px", display: "grid", placeItems: "center", gap: 2, borderRadius: 13, color: active ? accent : undefined, borderColor: active ? `${accent}5a` : "rgba(255,255,255,.06)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: 8.2, fontWeight: 1000 }}><span style={{ fontSize: 13 }}>{icon}</span><span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span></button>; })}
+      <nav className="running-route-detail-tabs">
+        {primaryTabs.map(([id, icon, label, target]) => { const active = primaryTab === id; return <button key={id} className={`running-route-detail-tab${active ? " is-active" : ""}`} title={label} onClick={() => setTab(target)} style={{ color: active ? accent : undefined, borderBottomColor: active ? accent : "transparent" }}><span>{icon}</span><b>{label}</b></button>; })}
       </nav>
 
       {primaryTab === "discover" ? <div className="running-detail-discover-tabs">
@@ -106,8 +132,10 @@ export default function OutdoorRouteDetailPage(props: Props) {
 
       {tab === "overview" ? <div style={{ display: "grid", gap: 9 }}>
         <RunningSurface accent={accent}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><Metric label="D−" value={terrain.hasElevation ? `−${Math.round(terrain.lossM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"ALT. MIN","MIN ALT","ALT. MIN")} value={terrain.minAltitudeM != null ? `${Math.round(terrain.minAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"PENTE MAX","MAX GRADE","PEND. MAX")} value={terrain.hasElevation ? `${terrain.maxGradePct.toFixed(1)}%` : "—"} accent={accent}/></div>
-          <div style={{ marginTop: 10, color: accent, fontSize: 8.2, fontWeight: 1000 }}>{pickText(lang,"PROFIL ALTIMÉTRIQUE","ELEVATION PROFILE","PERFIL DE ELEVACIÓN")}</div><div style={{ marginTop: 6 }}><RunningElevationProfile points={route.route} accent={accent} textSoft={textSoft} height={150} lang={lang} interactive activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint}/></div>
+          <div className="running-route-about-title">{pickText(lang,"À PROPOS DU PARCOURS","ABOUT THIS ROUTE","SOBRE ESTA RUTA")}</div>
+          <div className="running-route-about-copy">{routeDescription}</div>
+          <div className="running-route-overview-metrics"><Metric label="D−" value={terrain.hasElevation ? `−${Math.round(terrain.lossM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"ALT. MIN","MIN ALT","ALT. MIN")} value={terrain.minAltitudeM != null ? `${Math.round(terrain.minAltitudeM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"PENTE MAX","MAX GRADE","PEND. MAX")} value={terrain.hasElevation ? `${terrain.maxGradePct.toFixed(1)}%` : "—"} accent={accent}/></div>
+          <div className="running-route-section-title" style={{ color: accent }}>{pickText(lang,"PROFIL ALTIMÉTRIQUE","ELEVATION PROFILE","PERFIL DE ELEVACIÓN")}</div><div style={{ marginTop: 6 }}><RunningElevationProfile points={route.route} accent={accent} textSoft={textSoft} height={150} lang={lang} interactive activePointIndex={activeProfilePoint} onActivePointChange={setActiveProfilePoint}/></div>
           {advice ? <div style={{ marginTop: 9, color: textSoft, fontSize: 8.1, lineHeight: 1.45 }}><b style={{ color: accent }}>{terrainLabel(terrain.terrain, lang)}</b> · {advice.text}</div> : null}
         </RunningSurface>
         <OutdoorRoutePlaceInfoPanel route={route} lang={lang} accent={accent} textSoft={textSoft} compact/>

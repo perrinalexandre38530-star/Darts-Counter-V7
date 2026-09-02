@@ -1,3 +1,4 @@
+import { clampRunningNumber as clamp } from "./runningShared";
 import type { ActivityRecord } from "./activityTypes";
 import {
   buildRunningPlanWeeks,
@@ -21,10 +22,6 @@ export type RunningPlanAdaptation = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
 
 function recentHardRuns(activities: ActivityRecord[], now: number) {
   return activities.filter((activity) => {

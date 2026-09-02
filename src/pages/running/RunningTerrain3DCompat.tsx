@@ -1,4 +1,5 @@
 import React from "react";
+import { pickRunningText as pickText, runningMercatorPixel as mercatorPixel, runningMercatorLatLon as mercatorLatLon } from "../../activity/runningShared";
 import { haversineMeters } from "../../activity/activityMath";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
@@ -21,9 +22,6 @@ type Size = { width: number; height: number };
 type Point2 = { x: number; y: number };
 const TILE = 256;
 
-function pickText(lang: string, fr: string, en: string, es: string) { const lower = String(lang || "fr").toLowerCase(); return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr; }
-function mercatorPixel(lat: number, lon: number, zoom: number) { const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat)); const scale = TILE * 2 ** zoom; const sin = Math.sin(clamped * Math.PI / 180); return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale }; }
-function mercatorLatLon(x: number, y: number, zoom: number) { const scale = TILE * 2 ** zoom; const lon = x / scale * 360 - 180; const n = Math.PI - 2 * Math.PI * y / scale; return { lat: 180 / Math.PI * Math.atan(Math.sinh(n)), lon }; }
 function pointDistance(a: Point2, b: Point2) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function fitViewport(points: GeoPoint[], width: number, height: number): Viewport {
   if (!points.length) return { lat: 0, lon: 0, zoom: 4 };

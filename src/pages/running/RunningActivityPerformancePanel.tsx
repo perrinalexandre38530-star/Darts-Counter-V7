@@ -1,14 +1,11 @@
 import React from "react";
+import { pickRunningText as pickText } from "../../activity/runningShared";
 import { formatDistance, formatDuration, formatPace } from "../../activity/activityMath";
 import type { ActivityRecord } from "../../activity/activityTypes";
 import { buildRunningActivityAnalytics, performanceBandLabel, RUNNING_PERFORMANCE_COLORS } from "../../activity/runningActivityAnalytics";
 import { canonicalOutdoorPerformanceSport, outdoorUsesSpeedMetric } from "../../activity/outdoorPerformance";
 import { RunningSurface } from "./RunningUi";
 
-function pickText(lang: string, fr: string, en: string, es: string) {
-  const lower = String(lang || "fr").toLowerCase();
-  return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
-}
 function fmt(value: number | null, digits = 1) { return value == null || !Number.isFinite(value) ? "—" : value.toFixed(digits); }
 
 type Props = { activity: ActivityRecord; lang: string; accent: string; textSoft: string; activePointIndex?: number | null; onSegmentSelect?: (pointIndex: number) => void };

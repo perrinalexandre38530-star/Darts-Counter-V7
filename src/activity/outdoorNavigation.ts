@@ -1,3 +1,4 @@
+import { clampRunningNumber as clamp, outdoorWaypointIcon as customIcon } from "./runningShared";
 import { haversineMeters } from "./activityMath";
 import type { GeoPoint } from "./activityTypes";
 import type { OutdoorPerformanceSport } from "./outdoorPerformance";
@@ -65,8 +66,6 @@ export type OutdoorRouteRejoinPlan = {
   forwardAdvanceM: number;
 };
 
-function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
-
 function baseSpeedKmh(sport: OutdoorPerformanceSport) {
   if (sport === "trail") return 7.5;
   if (sport === "hiking") return 4.5;
@@ -94,15 +93,6 @@ export function cumulativeOutdoorRouteDistances(points: GeoPoint[]): number[] {
   const result = new Array(points.length).fill(0);
   for (let index = 1; index < points.length; index += 1) result[index] = result[index - 1] + haversineMeters(points[index - 1], points[index]);
   return result;
-}
-
-function customIcon(kind: OutdoorCustomWaypoint["kind"]) {
-  if (kind === "water") return "💧";
-  if (kind === "food") return "🥪";
-  if (kind === "shelter") return "🏕️";
-  if (kind === "summit") return "⛰️";
-  if (kind === "danger") return "⚠️";
-  return "📍";
 }
 
 export function buildOutdoorRouteCheckpoints(route: RunningRouteTemplate, sport: OutdoorPerformanceSport, customWaypoints: OutdoorCustomWaypoint[] = []): OutdoorRouteCheckpoint[] {

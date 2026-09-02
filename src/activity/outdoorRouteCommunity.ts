@@ -1,3 +1,4 @@
+import { looksMissingRunningRpc as looksMissingRpc } from "./runningShared";
 import { supabase } from "../lib/supabaseClient";
 import type { ActivityRecord } from "./activityTypes";
 import { outdoorRouteKey } from "./outdoorRouteIdentity";
@@ -17,11 +18,6 @@ export type OutdoorRouteLeaderboardRow = {
   startedAt: string;
   attempts: number;
 };
-
-function looksMissingRpc(error: any) {
-  const message = String(error?.message || error?.details || "").toLowerCase();
-  return message.includes("pgrst202") || message.includes("could not find the function") || message.includes("does not exist");
-}
 
 export async function syncOutdoorRouteAttempt(route: RunningRouteTemplate, activity: ActivityRecord) {
   if (!route || !activity || !activity.id) return { ok: false, reason: "invalid" as const };

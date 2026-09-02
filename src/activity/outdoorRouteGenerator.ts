@@ -1,3 +1,4 @@
+import { clampRunningNumber as clamp, runningCoordKey as coordKey } from "./runningShared";
 import { haversineMeters } from "./activityMath";
 import type { GeoPoint } from "./activityTypes";
 import type { OutdoorPerformanceSport } from "./outdoorPerformance";
@@ -205,10 +206,6 @@ function elevationGainFromPoints(points: GeoPoint[]) {
   return Math.round(gain);
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
 function generationRadiusM(distanceKm: number, shape: OutdoorRouteGenerationShape) {
   const distanceM = distanceKm * 1000;
   if (shape === "out-back") return Math.round(clamp(distanceM * 0.62, 2500, 14500));
@@ -288,10 +285,6 @@ function preferenceFactor(tags: Record<string, string> | undefined, profile: Out
     if (highway === "steps") factor *= 1.25;
   }
   return clamp(factor, 0.48, 2.8);
-}
-
-function coordKey(lat: number, lon: number) {
-  return `${lat.toFixed(6)},${lon.toFixed(6)}`;
 }
 
 function edgeKey(a: string, b: string) {

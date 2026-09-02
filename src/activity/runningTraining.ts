@@ -1,3 +1,4 @@
+import { clampRunningNumber as clamp } from "./runningShared";
 import type { ActivityRecord } from "./activityTypes";
 import type { RunningStats } from "./runningInsights";
 
@@ -73,10 +74,6 @@ function mondayStart(ts: number) {
   const weekday = (d.getDay() + 6) % 7;
   d.setDate(d.getDate() - weekday);
   return d.getTime();
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
 }
 
 function workoutLoadWeight(type: ActivityRecord["workoutType"]) {

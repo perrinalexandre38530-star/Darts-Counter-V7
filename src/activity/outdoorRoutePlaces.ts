@@ -1,4 +1,5 @@
 import { haversineMeters } from "./activityMath";
+import { loadRunningArrayCache, saveRunningLocalJson } from "./runningShared";
 import { outdoorRouteKey } from "./outdoorRouteIdentity";
 import type { RunningRouteTemplate } from "./runningRoutes";
 
@@ -38,19 +39,6 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
 ];
-
-function loadCache(): CacheRow[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
-    return Array.isArray(value) ? value : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveCache(rows: CacheRow[]) {
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(rows.slice(0, 30))); } catch {}
-}
 
 function routeCenter(route: RunningRouteTemplate) {
   const points = route.route || [];
@@ -175,7 +163,7 @@ async function fetchNearbyPlaces(route: RunningRouteTemplate, lang: string): Pro
 
 export async function fetchOutdoorRoutePlaceContext(route: RunningRouteTemplate, lang = "fr"): Promise<OutdoorRoutePlaceContext> {
   const routeKey = outdoorRouteKey(route);
-  const cached = loadCache().find((row) => row.routeKey === routeKey && Date.now() - Number(row.updatedAt || 0) < MAX_AGE_MS);
+  const cached = loadRunningArrayCache<CacheRow>(CACHE_KEY).find((row) => row.routeKey === routeKey && Date.now() - Number(row.updatedAt || 0) < MAX_AGE_MS);
   if (cached) return cached;
   const center = routeCenter(route);
   if (!center) return { routeKey, locality: "", places: [], updatedAt: Date.now() };
@@ -187,8 +175,8 @@ export async function fetchOutdoorRoutePlaceContext(route: RunningRouteTemplate,
   const geo = geoResult.status === "fulfilled" ? geoResult.value : { locality: "" };
   const places = placesResult.status === "fulfilled" ? placesResult.value : [];
   const context: OutdoorRoutePlaceContext = { routeKey, ...geo, places, updatedAt: Date.now() };
-  const rest = loadCache().filter((row) => row.routeKey !== routeKey);
-  saveCache([context, ...rest]);
+  const rest = loadRunningArrayCache<CacheRow>(CACHE_KEY).filter((row) => row.routeKey !== routeKey);
+  saveRunningLocalJson(CACHE_KEY, [context, ...rest].slice(0, 30));
   return context;
 }
 

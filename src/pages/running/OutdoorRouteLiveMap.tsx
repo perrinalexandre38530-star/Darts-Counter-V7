@@ -1,4 +1,5 @@
 import React from "react";
+import { clampRunningNumber as clamp, runningMercatorPixel as mercatorPixel, runningMercatorLatLon as mercatorLatLon } from "../../activity/runningShared";
 import { formatDistance, formatDuration } from "../../activity/activityMath";
 import type { GeoPoint } from "../../activity/activityTypes";
 import {
@@ -40,21 +41,7 @@ type Layout = {
   tiles: Array<{ z: number; x: number; y: number; left: number; top: number; url: string; routeOverlayUrl: string }>;
 };
 
-function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
-function mercatorPixel(lat: number, lon: number, zoom: number) {
-  const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
-  const scale = 256 * 2 ** zoom;
-  const sin = Math.sin(clamped * Math.PI / 180);
-  return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale };
-}
 
-function mercatorLatLon(x: number, y: number, zoom: number) {
-  const scale = 256 * 2 ** zoom;
-  const lon = x / scale * 360 - 180;
-  const n = Math.PI - 2 * Math.PI * y / scale;
-  const lat = 180 / Math.PI * Math.atan(Math.sinh(n));
-  return { lat, lon };
-}
 function pointerDistance(a: {x:number;y:number}, b: {x:number;y:number}) { return Math.hypot(a.x-b.x,a.y-b.y); }
 function screenPoint(point: GeoPoint, layout: Layout) {
   const world = mercatorPixel(point.lat, point.lon, layout.zoom);

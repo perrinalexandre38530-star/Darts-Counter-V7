@@ -1,5 +1,6 @@
 import type { ActivityRecord, GeoPoint } from "./activityTypes";
 import { haversineMeters } from "./activityMath";
+import { runningLocalDateKey as dayKey } from "./runningShared";
 export type BestEffort = {
     distanceM: number;
     elapsedMs: number;
@@ -42,10 +43,6 @@ export type RunningStats = {
     bestMarathon: BestEffort | null;
 };
 const DAY = 24 * 60 * 60 * 1000;
-function dayKey(ts: number) {
-    const d = new Date(ts);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 function startOfLocalDay(ts: number) {
     const d = new Date(ts);
     d.setHours(0, 0, 0, 0);

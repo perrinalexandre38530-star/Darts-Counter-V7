@@ -1,4 +1,5 @@
 import React from "react";
+import { pickRunningText as pickText, runningPointElapsedMs as pointElapsedMs } from "../../activity/runningShared";
 import { formatDuration, formatPace, haversineMeters } from "../../activity/activityMath";
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
@@ -50,11 +51,6 @@ type Props = {
   showReplay?: boolean;
   preferCompat?: boolean; // Legacy prop kept for caller compatibility; real 3D is always attempted.
 };
-
-function pickText(lang: string, fr: string, en: string, es: string) {
-  const lower = String(lang || "fr").toLowerCase();
-  return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
-}
 
 function importWithTimeout(url: string, timeoutMs: number): Promise<MapLibreGlobal> {
   return Promise.race([
@@ -155,13 +151,6 @@ function bearingDegrees(a: GeoPoint, b: GeoPoint) {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
-function pointElapsedMs(points: GeoPoint[], index: number): number | null {
-  const point = points[index];
-  if (Number.isFinite(point?.elapsedMs)) return Math.max(0, Number(point.elapsedMs));
-  const first = Number(points[0]?.timestamp || 0);
-  const current = Number(point?.timestamp || 0);
-  return first > 0 && current >= first ? current - first : null;
-}
 
 function paceAtIndex(points: GeoPoint[], distances: number[], index: number) {
   const point = points[index];

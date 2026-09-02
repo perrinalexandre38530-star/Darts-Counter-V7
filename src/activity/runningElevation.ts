@@ -1,3 +1,4 @@
+import { clampRunningNumber as clamp, runningPointElapsedMs as elapsedAtPoint } from "./runningShared";
 import { haversineMeters, routeDistanceMeters } from "./activityMath";
 import { routeElapsedAtDistance } from "./runningRoutes";
 import type { ActivityRecord, GeoPoint } from "./activityTypes";
@@ -47,10 +48,6 @@ export type HillEffort = RunningHill & {
   title?: string;
 };
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
 function smoothAltitudes(points: GeoPoint[], radius = 2): Array<number | null> {
   return points.map((point, index) => {
     if (!Number.isFinite(point.altitude)) return null;
@@ -64,13 +61,6 @@ function smoothAltitudes(points: GeoPoint[], radius = 2): Array<number | null> {
   });
 }
 
-function elapsedAtPoint(points: GeoPoint[], index: number): number | null {
-  const point = points[index];
-  if (Number.isFinite(point?.elapsedMs)) return Math.max(0, Number(point.elapsedMs));
-  const first = Number(points[0]?.timestamp || 0);
-  const current = Number(point?.timestamp || 0);
-  return first > 0 && current >= first ? current - first : null;
-}
 
 export function buildElevationSamples(points: GeoPoint[]): ElevationSample[] {
   if (points.length < 2) return [];

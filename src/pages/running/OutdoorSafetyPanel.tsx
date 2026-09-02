@@ -1,4 +1,5 @@
 import React from "react";
+import { saveRunningLocalJson } from "../../activity/runningShared";
 import { estimateOutdoorRouteDurationMs } from "../../activity/outdoorNavigation";
 import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
@@ -27,10 +28,6 @@ function loadPrefs(): SafetyPrefs {
   }
 }
 
-function savePrefs(value: SafetyPrefs) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(value)); } catch {}
-}
-
 export default function OutdoorSafetyPanel({ route, sport, lang, accent, textSoft }: { route: RunningRouteTemplate | null; sport: OutdoorPerformanceSport; lang: string; accent: string; textSoft: string }) {
   const [prefs, setPrefs] = React.useState<SafetyPrefs>(() => loadPrefs());
   const [open, setOpen] = React.useState(false);
@@ -48,7 +45,7 @@ export default function OutdoorSafetyPanel({ route, sport, lang, accent, textSof
   const update = (patch: Partial<SafetyPrefs>) => {
     const next = { ...prefs, ...patch };
     setPrefs(next);
-    savePrefs(next);
+    saveRunningLocalJson(STORAGE_KEY, next);
   };
 
   const safetyText = () => {

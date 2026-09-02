@@ -1,4 +1,5 @@
 import React from "react";
+import { runningMercatorPixel as mercatorPixel } from "../../activity/runningShared";
 import { segmentRoutePoints, type RunningSegment } from "../../activity/runningSegments";
 import type { ActivityRecord, GeoPoint } from "../../activity/activityTypes";
 
@@ -56,9 +57,3 @@ function buildLayout(route: GeoPoint[], segment: GeoPoint[]) {
   };
 }
 
-function mercatorPixel(lat: number, lon: number, zoom: number) {
-  const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
-  const scale = 256 * 2 ** zoom;
-  const sin = Math.sin(clamped * Math.PI / 180);
-  return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale };
-}

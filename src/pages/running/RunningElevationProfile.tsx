@@ -1,4 +1,5 @@
 import React from "react";
+import { pickRunningText as pickText } from "../../activity/runningShared";
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
@@ -14,11 +15,6 @@ type Props = {
   onActivePointChange?: (index: number | null) => void;
   performanceColored?: boolean;
 };
-
-function pickText(lang: string, fr: string, en: string, es: string) {
-  const lower = String(lang || "fr").toLowerCase();
-  return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
-}
 
 export default function RunningElevationProfile({ points, accent, textSoft = "#a8a8b3", height = 150, lang = "fr", interactive = false, activePointIndex = null, onActivePointChange, performanceColored = false }: Props) {
   const analysis = React.useMemo(() => analyzeRunningTerrain(points), [points]);

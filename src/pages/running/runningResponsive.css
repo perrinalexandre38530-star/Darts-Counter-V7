@@ -60,8 +60,6 @@
 .running-step-title { display:block; font-size: 9.5px; line-height:1.05; font-weight:1000; letter-spacing:.25px; }
 .running-step-sub { display:block; margin-top:3px; font-size:7.4px; line-height:1.15; opacity:.62; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-.running-route-modes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
-.running-route-mode { min-height:48px; padding:6px 5px; border-radius:13px; white-space:normal; line-height:1.15; }
 .running-map-actions { display:grid; grid-template-columns:1.25fr 1fr 1fr; gap:6px; }
 .running-metrics-4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
 .running-actions-4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
@@ -84,8 +82,6 @@
   .running-step-index { width:21px; height:21px; font-size:8.5px; }
   .running-step-title { font-size:8.2px; }
   .running-step-sub { display:none; }
-  .running-route-modes { grid-template-columns:1fr; }
-  .running-route-mode { min-height:42px; }
 }
 
 /* Map surfaces: prioritize the route and keep overlays inside narrow Android screens. */
@@ -219,4 +215,185 @@
 .running-setup-launch-grid > button { min-width:0; }
 @media (max-width:440px) {
   .running-setup-launch-grid { grid-template-columns:1fr; }
+}
+
+/* V87 — route picker: one compact horizontal row, including Scout IA. */
+.running-route-modes {
+  display:flex;
+  grid-template-columns:none;
+  gap:6px;
+  width:100%;
+  min-width:0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  flex-wrap:nowrap;
+  padding:1px 0 3px;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.running-route-modes::-webkit-scrollbar { display:none; }
+.running-route-mode {
+  flex:0 0 36px;
+  min-width:36px;
+  min-height:38px;
+  height:38px;
+  padding:0 8px;
+  border-radius:12px;
+  white-space:nowrap;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  line-height:1;
+  scroll-snap-align:start;
+}
+.running-route-mode-icon { flex:0 0 auto; font-size:13px; line-height:1; }
+.running-route-mode-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8.1px; font-weight:1000; }
+.running-route-mode-hint { color:rgba(255,255,255,.48); font-size:7px; line-height:1.35; }
+
+/* V87 — generator: distance + shape + terrain + D+ remain on ONE selection line. */
+.running-generator-line {
+  display:flex;
+  align-items:stretch;
+  gap:7px;
+  width:100%;
+  min-width:0;
+  margin-top:9px;
+  padding:1px 0 5px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  flex-wrap:nowrap;
+  scrollbar-width:none;
+  scroll-snap-type:x proximity;
+  -webkit-overflow-scrolling:touch;
+}
+.running-generator-line::-webkit-scrollbar { display:none; }
+.running-generator-group {
+  flex:0 0 auto;
+  min-width:max-content;
+  padding:6px;
+  border-radius:13px;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.02);
+  scroll-snap-align:start;
+}
+.running-generator-group-label {
+  padding:0 2px 4px;
+  color:rgba(255,255,255,.48);
+  font-size:6.7px;
+  font-weight:1000;
+  letter-spacing:.5px;
+}
+.running-generator-group-options { display:flex; gap:4px; flex-wrap:nowrap; }
+.running-generator-chip {
+  min-width:0;
+  min-height:30px;
+  padding:3px 7px;
+  border-radius:9px;
+  white-space:nowrap;
+  font-size:7.3px;
+  font-weight:1000;
+}
+.running-generator-selection-summary {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  min-width:0;
+  margin-top:2px;
+  padding:0 2px;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-size:7.2px;
+  line-height:1.3;
+}
+@media (max-width:390px) {
+  .running-route-modes { grid-template-columns:none; }
+  .running-route-mode { min-height:38px; }
+  .running-route-mode-hint { display:none; }
+  .running-generator-chip { padding-left:6px; padding-right:6px; }
+}
+
+/* V87 — route detail: AllTrails-inspired information hierarchy, adapted to MSS dark UI. */
+.running-route-summary-card {
+  position:relative;
+  overflow:hidden;
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.085);
+  background:linear-gradient(180deg,rgba(15,19,24,.98),rgba(7,10,14,.98));
+  box-shadow:0 18px 42px rgba(0,0,0,.3);
+}
+.running-route-summary-card::before {
+  content:"";
+  position:absolute;
+  inset:0 0 auto 0;
+  height:3px;
+  background:var(--route-accent);
+  opacity:.9;
+}
+.running-route-summary-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:start; }
+.running-route-summary-copy { min-width:0; }
+.running-route-kicker { color:rgba(255,255,255,.53); font-size:7.4px; font-weight:900; letter-spacing:.35px; }
+.running-route-title { margin:5px 0 0; color:#fff; font-size:clamp(18px,3.2vw,28px); line-height:1.05; font-weight:1000; letter-spacing:-.35px; text-wrap:balance; }
+.running-route-badges { display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; }
+.running-route-fullscreen { min-width:42px; min-height:42px; padding:0; border-radius:999px; font-size:15px; }
+.running-route-core-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-top:14px; padding-top:13px; border-top:1px solid rgba(255,255,255,.075); }
+.running-route-primary-guide { width:100%; min-height:48px; margin-top:12px; display:flex; align-items:center; justify-content:center; gap:8px; border-radius:14px; color:#071015 !important; font-size:9.5px; font-weight:1000; box-shadow:0 10px 24px rgba(0,0,0,.2); }
+.running-route-secondary-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:7px; }
+.running-route-detail-tabs {
+  position:sticky;
+  top:58px;
+  z-index:70;
+  display:flex;
+  width:100%;
+  min-width:0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  gap:4px;
+  padding:0 4px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(6,9,14,.94);
+  backdrop-filter:blur(18px);
+  box-shadow:0 12px 30px rgba(0,0,0,.24);
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.running-route-detail-tabs::-webkit-scrollbar { display:none; }
+.running-route-detail-tab {
+  appearance:none;
+  flex:1 0 auto;
+  min-width:76px;
+  min-height:46px;
+  padding:5px 7px 4px;
+  border:0;
+  border-bottom:2px solid transparent;
+  background:transparent;
+  color:rgba(255,255,255,.62);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  font:inherit;
+  cursor:pointer;
+}
+.running-route-detail-tab span { font-size:12px; }
+.running-route-detail-tab b { font-size:7.7px; font-weight:1000; white-space:nowrap; }
+.running-route-detail-tab.is-active { background:rgba(255,255,255,.025); }
+.running-route-about-title { color:#fff; font-size:10px; font-weight:1000; letter-spacing:.2px; }
+.running-route-about-copy { margin-top:5px; color:rgba(255,255,255,.62); font-size:8.3px; line-height:1.5; }
+.running-route-overview-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:12px; }
+.running-route-section-title { margin-top:13px; font-size:8.2px; font-weight:1000; }
+@media (max-width:520px) {
+  .running-route-summary-card { padding:13px; border-radius:17px; }
+  .running-route-title { font-size:19px; }
+  .running-route-core-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .running-route-secondary-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .running-route-detail-tab { min-width:70px; }
+}
+@media (max-width:360px) {
+  .running-route-title { font-size:17px; }
+  .running-route-secondary-actions { grid-template-columns:1fr; }
+  .running-route-secondary-actions > button { min-height:38px !important; grid-template-columns:auto 1fr; justify-content:center; }
 }

@@ -1,4 +1,5 @@
 import { localeForLang, pickLegacyBilingualText, pickLegacyLocalizedText, pickLegacyLocalizedValue } from "../../i18n/legacyLocalizedText";
+import { runningMercatorPixel as mercatorPixel } from "../../activity/runningShared";
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -526,13 +527,13 @@ export default function RunningModule({ go, params }: Props) {
         void awenaVoice.speak(text, awena.settings, lang).catch(() => {});
     }, [audioCoach, awena?.settings, lang]);
     const selectAdjacentRoute = React.useCallback((direction: -1 | 1) => {
-        if (!routeOptions.length)
+        if (!routePanelOptions.length)
             return;
-        const nextIndex = (Math.max(0, selectedRouteIndex) + direction + routeOptions.length) % routeOptions.length;
-        const nextRoute = routeOptions[nextIndex];
+        const nextIndex = (Math.max(0, selectedRouteIndex) + direction + routePanelOptions.length) % routePanelOptions.length;
+        const nextRoute = routePanelOptions[nextIndex];
         if (nextRoute)
             selectRoute(nextRoute);
-    }, [routeOptions, selectedRouteIndex]);
+    }, [routePanelOptions, selectedRouteIndex]);
     const onRouteSwipeStart = React.useCallback((event: React.TouchEvent) => { routeSwipeStartXRef.current = event.touches[0]?.clientX ?? null; }, []);
     const onRouteSwipeEnd = React.useCallback((event: React.TouchEvent) => {
         const startX = routeSwipeStartXRef.current;
@@ -2053,20 +2054,20 @@ export default function RunningModule({ go, params }: Props) {
                 <div style={{ minWidth: 34, height: 28, display: "grid", placeItems: "center", borderRadius: 999, border: `1px solid ${accent}30`, background: `${accent}0b`, color: accent, fontSize: 7.5, fontWeight: 1000 }}>{routeOptions.length}</div>
               </div>
 
-              <div className="running-route-modes">
+              <div className="running-route-modes" role="tablist" aria-label={pickLegacyLocalizedText(lang, "Choix du type de parcours", "Route source", "Tipo de ruta")}>
                 {([
+                  ['scout','✦', pickLegacyLocalizedText(lang, 'SCOUT IA', 'AI SCOUT', 'SCOUT IA')],
                   ['favorites','★', pickLegacyLocalizedText(lang, 'FAVORIS', 'FAVORITES', 'FAVORITOS')],
                   ['remake','↺', pickLegacyLocalizedText(lang, 'REMAKE', 'REMAKE', 'REMAKE')],
                   ['discover','⌖', pickLegacyLocalizedText(lang, 'À PROXIMITÉ', 'NEARBY', 'CERCA')],
                   ['generate','＋', pickLegacyLocalizedText(lang, 'GÉNÉRER', 'GENERATE', 'GENERAR')],
-                  ['library','✦', pickLegacyLocalizedText(lang, 'BIBLIOTHÈQUE', 'LIBRARY', 'BIBLIOTECA')],
-                ] as Array<[RouteChooseMode, string, string]>).map(([mode, icon, label]) => { const active = routeChooseMode === mode; return <button key={mode} className="btn running-route-mode" title={label} onClick={() => setRouteChooseMode(mode)} style={{ color: active ? accent : undefined, borderColor: active ? `${accent}60` : "rgba(255,255,255,.065)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: active ? 8.6 : 10.4, fontWeight: 1000, padding: active ? '0 10px' : '0 6px', justifyContent: 'center' }}><span style={{ fontSize: 13, marginRight: active ? 5 : 0 }}>{icon}</span>{active ? label : null}</button>; })}
+                  ['library','▦', pickLegacyLocalizedText(lang, 'BIBLIOTHÈQUE', 'LIBRARY', 'BIBLIOTECA')],
+                ] as Array<[RouteChooseMode, string, string]>).map(([mode, icon, label]) => {
+                  const active = routeChooseMode === mode;
+                  return <button key={mode} type="button" role="tab" aria-selected={active} className="btn running-route-mode" title={label} onClick={() => setRouteChooseMode(mode)} style={{ flex: active ? "1 0 auto" : "0 0 36px", minWidth: active ? 92 : 36, maxWidth: active ? 148 : 36, color: active ? accent : undefined, borderColor: active ? `${accent}60` : "rgba(255,255,255,.065)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)" }}><span className="running-route-mode-icon">{icon}</span>{active ? <span className="running-route-mode-label">{label}</span> : null}</button>;
+                })}
               </div>
-
-              <div style={{ display: "flex", gap: 7, alignItems: "center", justifyContent: "space-between", minWidth: 0 }}>
-                <div style={{ color: textSoft, fontSize: 7.2 }}>{pickLegacyLocalizedText(lang, "Une seule ligne d'onglets, chaque mode affiche ses parcours dédiés.", "One tab row only, each mode shows its dedicated routes.", "Una sola fila de pestañas, cada modo muestra sus rutas dedicadas.")}</div>
-                <button className="btn" title={pickLegacyLocalizedText(lang, "Recherche avancée Scout IA", "Advanced AI Scout search", "Búsqueda avanzada Scout IA")} onClick={() => setRouteChooseMode('scout')} style={{ flex: routeChooseMode === 'scout' ? "1 0 auto" : "0 0 36px", maxWidth: routeChooseMode === 'scout' ? 148 : 36, minWidth: routeChooseMode === 'scout' ? 108 : 36, minHeight: 34, padding: routeChooseMode === 'scout' ? "4px 10px" : 0, borderRadius: 12, display: "flex", justifyContent: "center", alignItems: "center", gap: 6, color: routeChooseMode === 'scout' ? accent : undefined, borderColor: routeChooseMode === 'scout' ? `${accent}60` : "rgba(255,255,255,.065)", background: routeChooseMode === 'scout' ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: routeChooseMode === 'scout' ? 8.2 : 12, fontWeight: 1000 }}><span>✦</span>{routeChooseMode === 'scout' ? <span style={{ whiteSpace: "nowrap" }}>{pickLegacyLocalizedText(lang, 'SCOUT IA', 'AI SCOUT', 'SCOUT IA')}</span> : null}</button>
-              </div>
+              <div className="running-route-mode-hint">{pickLegacyLocalizedText(lang, "Une ligne, un choix : l'onglet actif s'ouvre et les autres restent compacts.", "One row, one choice: the active tab expands while the others stay compact.", "Una fila, una elección: la pestaña activa se abre y las demás quedan compactas.")}</div>
 
               {routeChooseMode === "showcase" ? <div style={{ padding: 12, borderRadius: 16, background: "linear-gradient(145deg,rgba(255,255,255,.05),rgba(7,10,15,.84))", border: "1px solid rgba(255,255,255,.08)" }}>
                 <div style={{ fontSize: 8.9, fontWeight: 1000, color: accent }}>{selectedRoute ? pickLegacyLocalizedText(lang, "PARCOURS MIS EN AVANT", "FEATURED ROUTE", "RUTA DESTACADA") : pickLegacyLocalizedText(lang, "PRÊT À AFFICHER TES PARCOURS", "READY TO SHOW YOUR ROUTES", "LISTO PARA MOSTRAR TUS RUTAS")}</div>
@@ -2097,12 +2098,23 @@ export default function RunningModule({ go, params }: Props) {
                   </div>
                   <RunningGlyph name="route-guide" size={20}/>
                 </div>
-                <div className="running-metrics-4" style={{ marginTop: 9 }}>{[5,10,15,20].map((distance) => <button key={distance} className="btn" onClick={() => setRouteGenerationDistanceKm(distance)} style={{ minHeight: 31, padding: "4px 5px", color: routeGenerationDistanceKm === distance ? accent : undefined, borderColor: routeGenerationDistanceKm === distance ? `${accent}66` : undefined, fontSize: 8, fontWeight: 1000 }}>{distance} KM</button>)}</div>
-                <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>{(["loop","out-back"] as OutdoorRouteGenerationShape[]).map((shape) => <button key={shape} className="btn" onClick={() => setRouteGenerationShape(shape)} style={{ minHeight: 33, padding: "4px 6px", color: routeGenerationShape === shape ? accent : undefined, borderColor: routeGenerationShape === shape ? `${accent}66` : undefined, fontSize: 7.8, fontWeight: 1000 }}>{shape === "loop" ? pickLegacyLocalizedText(lang, "↻ BOUCLE", "↻ LOOP", "↻ BUCLE") : pickLegacyLocalizedText(lang, "↔ ALLER-RETOUR", "↔ OUT & BACK", "↔ IDA Y VUELTA")}</button>)}</div>
-                <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{(["balanced","trails","easy"] as OutdoorRouteGenerationProfile[]).map((profile) => <button key={profile} className="btn" onClick={() => setRouteGenerationProfile(profile)} style={{ minHeight: 33, padding: "4px 5px", color: routeGenerationProfile === profile ? accent : undefined, borderColor: routeGenerationProfile === profile ? `${accent}66` : undefined, fontSize: 7.4, fontWeight: 1000 }}>{profile === "trails" ? pickLegacyLocalizedText(lang, "🥾 SENTIERS", "🥾 TRAILS", "🥾 SENDEROS") : profile === "easy" ? pickLegacyLocalizedText(lang, "◌ FACILE", "◌ EASY", "◌ FÁCIL") : pickLegacyLocalizedText(lang, "◎ ÉQUILIBRÉ", "◎ BALANCED", "◎ EQUILIBRADO")}</button>)}</div>
-                <div style={{ marginTop: 8, padding: 9, borderRadius: 13, border: `1px solid ${routeGenerationElevationEnabled ? `${accent}55` : "rgba(255,255,255,.08)"}`, background: routeGenerationElevationEnabled ? `${accent}08` : "rgba(255,255,255,.02)" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}><div><div style={{ fontSize: 8.4, fontWeight: 1000, color: routeGenerationElevationEnabled ? accent : undefined }}>⛰️ {pickLegacyLocalizedText(lang, "CIBLER LE DÉNIVELÉ POSITIF", "TARGET ELEVATION GAIN", "OBJETIVO DE DESNIVEL POSITIVO")}</div><div style={{ marginTop: 2, fontSize: 7.5, color: textSoft, lineHeight: 1.35 }}>{pickLegacyLocalizedText(lang, "Le moteur favorise les candidats compris dans la plage demandée.", "The engine prioritizes candidates inside your requested range.", "El motor prioriza las rutas candidatas dentro del rango solicitado.")}</div></div><button className="btn" onClick={() => setRouteGenerationElevationEnabled((value) => !value)} style={{ minWidth: 54, minHeight: 32, color: routeGenerationElevationEnabled ? accent : undefined, borderColor: routeGenerationElevationEnabled ? `${accent}66` : undefined, fontSize: 8, fontWeight: 1000 }}>{routeGenerationElevationEnabled ? "ON" : "OFF"}</button></div>
-                  {routeGenerationElevationEnabled ? <div className="running-metrics-4" style={{ marginTop: 8 }}>{([[0,150],[150,350],[350,650],[650,1000]] as Array<[number, number]>).map(([min, max]) => <button key={`${min}-${max}`} className="btn" onClick={() => { setRouteGenerationElevationMinM(min); setRouteGenerationElevationMaxM(max); }} style={{ minHeight: 31, padding: "4px 3px", fontSize: 7.2, fontWeight: 1000, color: routeGenerationElevationMinM === min && routeGenerationElevationMaxM === max ? accent : undefined, borderColor: routeGenerationElevationMinM === min && routeGenerationElevationMaxM === max ? `${accent}66` : undefined }}>+{min}–{max} m</button>)}</div> : null}
+                <div className="running-generator-line" aria-label={pickLegacyLocalizedText(lang, "Réglages du générateur", "Generator settings", "Ajustes del generador")}>
+                  <GeneratorSelectionGroup label={pickLegacyLocalizedText(lang, "DISTANCE", "DISTANCE", "DISTANCIA")}>
+                    {[5,10,15,20].map((distance) => <GeneratorChip key={distance} active={routeGenerationDistanceKm === distance} accent={accent} onClick={() => setRouteGenerationDistanceKm(distance)}>{distance} KM</GeneratorChip>)}
+                  </GeneratorSelectionGroup>
+                  <GeneratorSelectionGroup label={pickLegacyLocalizedText(lang, "FORME", "SHAPE", "FORMA")}>
+                    {(["loop","out-back"] as OutdoorRouteGenerationShape[]).map((shape) => <GeneratorChip key={shape} active={routeGenerationShape === shape} accent={accent} onClick={() => setRouteGenerationShape(shape)}>{shape === "loop" ? pickLegacyLocalizedText(lang, "↻ BOUCLE", "↻ LOOP", "↻ BUCLE") : pickLegacyLocalizedText(lang, "↔ A/R", "↔ OUT/BACK", "↔ I/V")}</GeneratorChip>)}
+                  </GeneratorSelectionGroup>
+                  <GeneratorSelectionGroup label={pickLegacyLocalizedText(lang, "TERRAIN", "TERRAIN", "TERRENO")}>
+                    {(["balanced","trails","easy"] as OutdoorRouteGenerationProfile[]).map((profile) => <GeneratorChip key={profile} active={routeGenerationProfile === profile} accent={accent} onClick={() => setRouteGenerationProfile(profile)}>{profile === "trails" ? pickLegacyLocalizedText(lang, "🥾 SENTIERS", "🥾 TRAILS", "🥾 SENDEROS") : profile === "easy" ? pickLegacyLocalizedText(lang, "◌ FACILE", "◌ EASY", "◌ FÁCIL") : pickLegacyLocalizedText(lang, "◎ ÉQUIL.", "◎ BALANCED", "◎ EQUIL.")}</GeneratorChip>)}
+                  </GeneratorSelectionGroup>
+                  <GeneratorSelectionGroup label="D+">
+                    <GeneratorChip active={!routeGenerationElevationEnabled} accent={accent} onClick={() => setRouteGenerationElevationEnabled(false)}>{pickLegacyLocalizedText(lang, "LIBRE", "FREE", "LIBRE")}</GeneratorChip>
+                    {([[0,150],[150,350],[350,650],[650,1000]] as Array<[number, number]>).map(([min, max]) => <GeneratorChip key={`${min}-${max}`} active={routeGenerationElevationEnabled && routeGenerationElevationMinM === min && routeGenerationElevationMaxM === max} accent={accent} onClick={() => { setRouteGenerationElevationEnabled(true); setRouteGenerationElevationMinM(min); setRouteGenerationElevationMaxM(max); }}>+{min}–{max}m</GeneratorChip>)}
+                  </GeneratorSelectionGroup>
+                </div>
+                <div className="running-generator-selection-summary" style={{ color: textSoft }}>
+                  <span>{routeGenerationDistanceKm} km</span><span>•</span><span>{routeGenerationShape === "loop" ? pickLegacyLocalizedText(lang, "boucle", "loop", "bucle") : pickLegacyLocalizedText(lang, "aller-retour", "out & back", "ida y vuelta")}</span><span>•</span><span>{routeGenerationProfile === "trails" ? pickLegacyLocalizedText(lang, "sentiers", "trails", "senderos") : routeGenerationProfile === "easy" ? pickLegacyLocalizedText(lang, "facile", "easy", "fácil") : pickLegacyLocalizedText(lang, "équilibré", "balanced", "equilibrado")}</span>{routeGenerationElevationEnabled ? <><span>•</span><span>D+ +{routeGenerationElevationMinM}–{routeGenerationElevationMaxM} m</span></> : null}
                 </div>
                 <button className="btn" disabled={routeGenerationBusy} onClick={() => void generateRoutes()} style={{ width: "100%", minHeight: 42, marginTop: 8, color: accent, borderColor: `${accent}77`, fontSize: 8.8, fontWeight: 1000 }}>{routeGenerationBusy ? pickLegacyLocalizedText(lang, "GÉNÉRATION…", "GENERATING…", "GENERANDO…") : pickLegacyLocalizedText(lang, "✨ GÉNÉRER 3 PARCOURS", "✨ GENERATE 3 ROUTES", "✨ GENERAR 3 RUTAS")}</button>
                 {routeGenerationMessage ? <div style={{ marginTop: 7, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{routeGenerationMessage}</div> : null}
@@ -2309,6 +2321,8 @@ function Choice({ active, accent, onClick, children }: {
     onClick: () => void;
     children: React.ReactNode;
 }) { return <button className="btn" onClick={onClick} style={{ minHeight: 36, padding: "6px 4px", fontSize: 8.8, fontWeight: 1000, borderColor: active ? `${accent}77` : undefined, color: active ? accent : undefined }}>{children}</button>; }
+function GeneratorSelectionGroup({ label, children }: { label: string; children: React.ReactNode }) { return <div className="running-generator-group"><div className="running-generator-group-label">{label}</div><div className="running-generator-group-options">{children}</div></div>; }
+function GeneratorChip({ active, accent, onClick, children }: { active: boolean; accent: string; onClick: () => void; children: React.ReactNode }) { return <button type="button" className="btn running-generator-chip" onClick={onClick} style={{ color: active ? accent : undefined, borderColor: active ? `${accent}66` : "rgba(255,255,255,.07)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)" }}>{children}</button>; }
 function HeroMetric({ label, value }: {
     label: string;
     value: string;
@@ -2376,6 +2390,15 @@ function Bars({ rows, accent }: {
     }>;
     accent: string;
 }) { const max = Math.max(1, ...rows.map((r) => r.value)); return <div style={{ display: "grid", gridTemplateColumns: `repeat(${rows.length},minmax(0,1fr))`, gap: 8, alignItems: "end", height: 118 }}>{rows.map((r) => <div key={r.label} style={{ display: "grid", gridTemplateRows: "1fr auto", gap: 5, alignItems: "end", height: "100%", textAlign: "center" }}><div style={{ height: 88, display: "flex", alignItems: "end", borderRadius: 8, background: "rgba(255,255,255,.025)", overflow: "hidden" }}><div style={{ width: "100%", height: `${Math.max(r.value ? 8 : 2, r.value / max * 100)}%`, background: `linear-gradient(180deg,${accent},${accent}60)`, borderRadius: "7px 7px 2px 2px" }}/></div><div style={{ fontSize: 8 }}>{r.label}<br /><b>{r.value.toFixed(1)}</b></div></div>)}</div>; }
+function difficultyBadgeLabel(terrain: ReturnType<typeof analyzeRunningTerrain> | null, lang: string) {
+    if (!terrain?.hasElevation) return pickLegacyLocalizedText(lang, "RELIEF À ANALYSER", "ELEVATION PENDING", "RELIEVE PENDIENTE");
+    const score = Number(terrain.difficultyScore || 0);
+    if (score >= 90) return pickLegacyLocalizedText(lang, "★★★★★ EXPERT", "★★★★★ EXPERT", "★★★★★ EXPERTO");
+    if (score >= 70) return pickLegacyLocalizedText(lang, "★★★★ SOUTENU", "★★★★ CHALLENGING", "★★★★ EXIGENTE");
+    if (score >= 45) return pickLegacyLocalizedText(lang, "★★★ INTERMÉDIAIRE", "★★★ INTERMEDIATE", "★★★ INTERMEDIA");
+    if (score >= 20) return pickLegacyLocalizedText(lang, "★★ FACILE", "★★ EASY", "★★ FÁCIL");
+    return pickLegacyLocalizedText(lang, "★ TRÈS FACILE", "★ VERY EASY", "★ MUY FÁCIL");
+}
 function buildSportRouteDetails(route: RunningRouteTemplate, terrain: ReturnType<typeof analyzeRunningTerrain> | null, sport: OutdoorPerformanceSport, lang: string) {
     const gainPerKm = terrain?.hasElevation ? terrain.gainPerKm : 0;
     const estimated = formatDuration(estimateOutdoorRouteDurationMs(route, sport));
@@ -2587,7 +2610,6 @@ function buildMapLayout(points: GeoPoint[], zoomDelta = 0, panPx = { x: 0, y: 0 
     }
     return { width, height, zoom, center, tiles, screen, polyline: screen.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "), start: screen[0] || null, end: screen[screen.length - 1] || null };
 }
-function mercatorPixel(lat: number, lon: number, zoom: number) { const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat)), scale = 256 * 2 ** zoom, sin = Math.sin(clamped * Math.PI / 180); return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale }; }
 function mercatorScreen(point: GeoPoint, center: { x: number; y: number }, zoom: number, width: number, height: number) { const world = mercatorPixel(point.lat, point.lon, zoom); return { x: world.x - center.x + width / 2, y: world.y - center.y + height / 2 }; }
 function highestPointOnRoute(points: GeoPoint[]) { const valid = points.filter((point) => Number.isFinite(point.altitude)); if (!valid.length)
     return null; return valid.reduce((best, point) => Number(point.altitude) > Number(best.altitude) ? point : best, valid[0]); }

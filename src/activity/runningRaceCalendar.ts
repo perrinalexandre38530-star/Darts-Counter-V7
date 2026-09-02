@@ -1,3 +1,4 @@
+import { isStandardRunningRaceDistance as validDistance } from "./runningShared";
 import { saveRunningRaceGoal, type RunningRaceGoalDistance } from "./runningGoals";
 
 export type RunningRaceEntry = {
@@ -16,10 +17,6 @@ export const RUNNING_RACE_CALENDAR_KEY = "mss-running-race-calendar-v1";
 
 function makeId() {
   try { return crypto.randomUUID(); } catch { return `race_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
-}
-
-function validDistance(value: unknown): value is RunningRaceGoalDistance {
-  return [5000, 10000, 21097, 42195].includes(Number(value));
 }
 
 function normalizeRace(raw: any): RunningRaceEntry | null {

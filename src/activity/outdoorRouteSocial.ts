@@ -1,3 +1,4 @@
+import { looksMissingRunningRpc as looksMissingRpc } from "./runningShared";
 import { supabase } from "../lib/supabaseClient";
 import { outdoorRouteKey } from "./outdoorRouteIdentity";
 import type { RunningRouteTemplate } from "./runningRoutes";
@@ -70,11 +71,6 @@ export type RouteSocialFeed = {
   outings: RouteOuting[];
   photos: RouteCommunityPhoto[];
 };
-
-function looksMissingRpc(error: any) {
-  const message = String(error?.message || error?.details || "").toLowerCase();
-  return message.includes("pgrst202") || message.includes("could not find the function") || message.includes("does not exist");
-}
 
 function cleanString(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max);

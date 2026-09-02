@@ -1,3 +1,4 @@
+import { isStandardRunningRaceDistance as validDistance } from "./runningShared";
 import type { RunningStats } from "./runningInsights";
 import { racePredictions } from "./runningTraining";
 
@@ -21,10 +22,6 @@ export type RunningRaceGoalSnapshot = {
 };
 
 export const RUNNING_RACE_GOAL_KEY = "mss-running-race-goal-v1";
-
-function validDistance(value: unknown): value is RunningRaceGoalDistance {
-  return [5000, 10000, 21097, 42195].includes(Number(value));
-}
 
 export function loadRunningRaceGoal(): RunningRaceGoal | null {
   if (typeof localStorage === "undefined") return null;

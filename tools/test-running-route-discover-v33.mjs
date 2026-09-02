@@ -17,7 +17,7 @@ const checks = [
   ["map fallback in cards", ui.includes("ScoutMiniMap")],
   ["route card metrics", ui.includes("estimateOutdoorRouteDurationMs") && ui.includes("difficultyScore")],
   ["route card actions", ui.includes("VOIR LA FICHE") && ui.includes("GUIDAGE")],
-  ["generic route block hidden in scout", module.includes('routeOptions.length && routeChooseMode !== "scout"')],
+  ["generic route block hidden in scout", module.includes('routePanelOptions.length && routeChooseMode !== "scout"')],
 ];
 let failed = 0;
 for (const [name, ok] of checks) { console.log(`${ok ? "✓" : "✗"} ${name}`); if (!ok) failed++; }

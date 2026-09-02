@@ -2,13 +2,10 @@ import React from "react";
 import Section from "../../components/Section";
 import { formatDistance, formatDuration, formatPace } from "../../activity/activityMath";
 import type { ActivityRecord } from "../../activity/activityTypes";
+import { runningLocalDateKey as keyOf } from "../../activity/runningShared";
 
 type Props = { activities: ActivityRecord[]; lang: string; accent: string; textSoft: string };
 
-function keyOf(ts: number) {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function monthStart(ts: number) {
   const d = new Date(ts);

@@ -1,4 +1,5 @@
 import React from "react";
+import { pickRunningText as pickText, runningMercatorPixel as mercatorPixel } from "../../activity/runningShared";
 import { estimateOutdoorRouteDurationMs } from "../../activity/outdoorNavigation";
 import { outdoorSportLabel, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import { analyzeRunningTerrain, terrainLabel } from "../../activity/runningElevation";
@@ -32,11 +33,6 @@ type Props = {
   onToggleFavorite: (route: RunningRouteTemplate) => void;
   onOpenMaps: (route: RunningRouteTemplate) => void;
 };
-
-function pickText(lang: string, fr: string, en: string, es: string) {
-  const lower = String(lang || "fr").toLowerCase();
-  return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
-}
 
 function isFavorite(route: RunningRouteTemplate, saved: RunningRouteTemplate[]) {
   return saved.some((item) => item.id === route.id || (!!route.externalId && item.externalId === route.externalId) || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId));
@@ -277,4 +273,3 @@ function buildCollectionMap(routes: RunningRouteTemplate[], width = 1000, height
   return { width, height, zoom, center, tiles, routes: mapped };
 }
 
-function mercatorPixel(lat: number, lon: number, zoom: number) { const clamped=Math.max(-85.05112878,Math.min(85.05112878,lat)), scale=256*2**zoom, sin=Math.sin(clamped*Math.PI/180); return { x:(lon+180)/360*scale, y:(.5-Math.log((1+sin)/(1-sin))/(4*Math.PI))*scale }; }

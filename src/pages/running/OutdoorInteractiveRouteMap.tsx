@@ -1,4 +1,5 @@
 import React from "react";
+import { clampRunningNumber as clamp, pickRunningText as pickText, runningMercatorPixel as mercatorPixel, runningMercatorLatLon as mercatorLatLon } from "../../activity/runningShared";
 import type { GeoPoint } from "../../activity/activityTypes";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import { fetchOutdoorRoutePlaceContext, outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
@@ -30,23 +31,6 @@ type Layout = {
   tiles: Array<{ key: string; left: number; top: number; x: number; y: number; z: number; url: string; overlayUrl: string }>;
 };
 
-function pickText(lang: string, fr: string, en: string, es: string) {
-  const lower = String(lang || "fr").toLowerCase();
-  return lower.startsWith("en") ? en : lower.startsWith("es") ? es : fr;
-}
-function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
-function mercatorPixel(lat: number, lon: number, zoom: number) {
-  const safeLat = clamp(lat, -85.05112878, 85.05112878);
-  const scale = 256 * 2 ** zoom;
-  const sin = Math.sin(safeLat * Math.PI / 180);
-  return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale };
-}
-function mercatorLatLon(x: number, y: number, zoom: number) {
-  const scale = 256 * 2 ** zoom;
-  const lon = x / scale * 360 - 180;
-  const n = Math.PI - 2 * Math.PI * y / scale;
-  return { lat: 180 / Math.PI * Math.atan(Math.sinh(n)), lon };
-}
 function pointerDistance(rows: Array<{ x: number; y: number }>) {
   return rows.length < 2 ? 0 : Math.hypot(rows[0].x - rows[1].x, rows[0].y - rows[1].y);
 }

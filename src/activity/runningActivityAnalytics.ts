@@ -1,3 +1,4 @@
+import { clampRunningNumber as clamp } from "./runningShared";
 import { haversineMeters } from "./activityMath";
 import type { ActivityRecord, GeoPoint } from "./activityTypes";
 import { analyzeRunningTerrain } from "./runningElevation";
@@ -60,7 +61,6 @@ export const RUNNING_PERFORMANCE_COLORS: Record<RunningPerformanceBand, string> 
   slow: "#ff5e72",
 };
 
-function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
 function percentile(values: number[], q: number) {
   if (!values.length) return null;
   const sorted = values.slice().sort((a, b) => a - b);

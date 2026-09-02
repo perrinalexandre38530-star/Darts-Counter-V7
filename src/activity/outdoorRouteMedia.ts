@@ -1,4 +1,5 @@
 import { haversineMeters } from "./activityMath";
+import { loadRunningArrayCache, saveRunningLocalJson } from "./runningShared";
 import { outdoorRouteKey } from "./outdoorRouteIdentity";
 import { fetchOutdoorRoutePlaceContext, type OutdoorRoutePlace } from "./outdoorRoutePlaces";
 import type { RunningRouteTemplate } from "./runningRoutes";
@@ -30,15 +31,11 @@ type CoverCacheRow = { routeKey: string; photo: OutdoorRoutePhoto | null; update
 
 const inflightPhotoRequests = new Map<string, Promise<OutdoorRoutePhoto[]>>();
 
-function loadCoverCache(): CoverCacheRow[] {
-  try { const value = JSON.parse(localStorage.getItem(COVER_CACHE_KEY) || "[]"); return Array.isArray(value) ? value : []; } catch { return []; }
-}
-function saveCoverCache(rows: CoverCacheRow[]) { try { localStorage.setItem(COVER_CACHE_KEY, JSON.stringify(rows.slice(0, 40))); } catch {} }
 
-function loadCache(): CacheRow[] {
-  try { const value = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]"); return Array.isArray(value) ? value : []; } catch { return []; }
-}
-function saveCache(rows: CacheRow[]) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(rows.slice(0, 24))); } catch {} }
+
+
+
+
 function stripHtml(value: unknown) { return String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(); }
 function normalizeTitle(value: string) { return value.toLowerCase().replace(/^file:/, "").replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[^a-z0-9à-ÿ]+/gi, " ").trim(); }
 
@@ -210,7 +207,7 @@ function dedupePhotos(photos: OutdoorRoutePhoto[]) {
 
 export async function fetchOutdoorRoutePhotos(route: RunningRouteTemplate, limit = 14, lang = "fr"): Promise<OutdoorRoutePhoto[]> {
   const routeKey = outdoorRouteKey(route);
-  const cached = loadCache().find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
+  const cached = loadRunningArrayCache<CacheRow>(CACHE_KEY).find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
   if (cached?.photos?.length) return cached.photos.slice(0, limit);
 
   const requestKey = `${routeKey}:${String(lang || "fr").slice(0,2)}`;
@@ -242,8 +239,8 @@ export async function fetchOutdoorRoutePhotos(route: RunningRouteTemplate, limit
     const pool: OutdoorRoutePhoto[] = [];
     for (const result of [...geoSettled, ...placeSettled]) if (result.status === "fulfilled") pool.push(...result.value);
     const photos = dedupePhotos(pool).filter((photo) => photo.distanceToRouteM == null || photo.distanceToRouteM < 9000).slice(0, Math.max(limit, 18));
-    const current = loadCache().filter((row) => row.routeKey !== routeKey);
-    saveCache([{ routeKey, photos, updatedAt: Date.now() }, ...current]);
+    const current = loadRunningArrayCache<CacheRow>(CACHE_KEY).filter((row) => row.routeKey !== routeKey);
+    saveRunningLocalJson(CACHE_KEY, [{ routeKey, photos, updatedAt: Date.now() }, ...current].slice(0, 24));
     return photos;
   })();
 
@@ -266,9 +263,9 @@ export async function fetchOutdoorPlacePhotos(route: RunningRouteTemplate, place
 
 export async function fetchOutdoorRouteCoverPhoto(route: RunningRouteTemplate, lang = "fr"): Promise<OutdoorRoutePhoto | null> {
   const routeKey = outdoorRouteKey(route);
-  const coverCached = loadCoverCache().find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
+  const coverCached = loadRunningArrayCache<CoverCacheRow>(COVER_CACHE_KEY).find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
   if (coverCached) return coverCached.photo || null;
-  const fullCached = loadCache().find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
+  const fullCached = loadRunningArrayCache<CacheRow>(CACHE_KEY).find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
   if (fullCached?.photos?.length) return fullCached.photos[0] || null;
   const anchors = routeAnchors(route);
   if (!anchors.length) return null;
@@ -277,7 +274,7 @@ export async function fetchOutdoorRouteCoverPhoto(route: RunningRouteTemplate, l
   const pool: OutdoorRoutePhoto[] = [];
   for (const result of settled) if (result.status === "fulfilled") pool.push(...result.value);
   const photo = dedupePhotos(pool).filter((item) => item.distanceToRouteM == null || item.distanceToRouteM < 7000)[0] || null;
-  const current = loadCoverCache().filter((row) => row.routeKey !== routeKey);
-  saveCoverCache([{ routeKey, photo, updatedAt: Date.now() }, ...current]);
+  const current = loadRunningArrayCache<CoverCacheRow>(COVER_CACHE_KEY).filter((row) => row.routeKey !== routeKey);
+  saveRunningLocalJson(COVER_CACHE_KEY, [{ routeKey, photo, updatedAt: Date.now() }, ...current].slice(0, 40));
   return photo;
 }

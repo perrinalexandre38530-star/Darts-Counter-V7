@@ -1,3 +1,4 @@
+import { outdoorWaypointIcon, saveRunningLocalJson } from "./runningShared";
 import type { RunningRouteTemplate } from "./runningRoutes";
 
 export type OutdoorWaypointKind = "water" | "food" | "shelter" | "summit" | "danger" | "poi";
@@ -31,10 +32,6 @@ function loadAll(): Record<string, OutdoorRouteExtras> {
   }
 }
 
-function saveAll(value: Record<string, OutdoorRouteExtras>) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(value)); } catch {}
-}
-
 export function defaultOutdoorRouteExtras(routeId: string): OutdoorRouteExtras {
   return { routeId, waypoints: [], offRouteAlertM: 120, alertsEnabled: true, updatedAt: Date.now() };
 }
@@ -54,7 +51,7 @@ export function loadOutdoorRouteExtras(routeId: string): OutdoorRouteExtras {
 export function saveOutdoorRouteExtras(extras: OutdoorRouteExtras) {
   const all = loadAll();
   all[extras.routeId] = { ...extras, updatedAt: Date.now() };
-  saveAll(all);
+  saveRunningLocalJson(STORAGE_KEY, all);
 }
 
 export function addOutdoorWaypoint(route: RunningRouteTemplate, input: Omit<OutdoorCustomWaypoint, "id" | "routeId" | "createdAt">): OutdoorRouteExtras {
@@ -91,11 +88,5 @@ export function updateOutdoorRouteAlertPrefs(routeId: string, patch: Partial<Pic
   return next;
 }
 
-export function waypointIcon(kind: OutdoorWaypointKind) {
-  if (kind === "water") return "💧";
-  if (kind === "food") return "🥪";
-  if (kind === "shelter") return "🏕️";
-  if (kind === "summit") return "⛰️";
-  if (kind === "danger") return "⚠️";
-  return "📍";
-}
+
+export const waypointIcon = outdoorWaypointIcon;

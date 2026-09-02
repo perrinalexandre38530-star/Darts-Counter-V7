@@ -4,14 +4,12 @@ import { defaultGoalTimeMs, distanceGoalLabel, type RunningRaceGoalDistance } fr
 import { createRunningRace, loadRunningRaces, raceDaysLeft, removeRunningRace, setPrimaryRunningRace, upsertRunningRace, type RunningRaceEntry } from "../../activity/runningRaceCalendar";
 import { formatDuration, formatPace } from "../../activity/activityMath";
 import "./runningResponsive.css";
+import { runningLocalDateKey as dateValue } from "../../activity/runningShared";
 
 const DISTANCES: RunningRaceGoalDistance[] = [5000, 10000, 21097, 42195];
 
 type Props = { lang: string; accent: string; textSoft: string };
 
-function dateValue(ts: number) {
-  const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 function parseDate(value: string) { const [y, m, d] = value.split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1, 9, 0, 0, 0).getTime(); }
 
 export default function RunningRaceCalendarView({ lang, accent, textSoft }: Props) {
