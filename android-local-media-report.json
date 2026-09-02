@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-02T17:16:37.146Z",
+  "generatedAt": "2026-09-02T19:50:41.268Z",
   "ffmpeg": true,
-  "before": 266633967,
-  "after": 114481699,
-  "saved": 152152268,
-  "optimizedCount": 575,
+  "before": 249905414,
+  "after": 108242516,
+  "saved": 141662898,
+  "optimizedCount": 577,
   "skippedCount": 0,
   "files": [
     {
@@ -169,20 +169,6 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/logo-frisbee-CivvVQMG.png",
-      "before": 1767455,
-      "after": 555816,
-      "saved": 1211639,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-cornhole-BcK-E_Rj.png",
-      "before": 1829099,
-      "after": 628080,
-      "saved": 1201019,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/the-ferret-Dbio2h2z.png",
       "before": 1833724,
       "after": 643681,
@@ -232,34 +218,6 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/logo-billard-B8OFid9r.png",
-      "before": 1694062,
-      "after": 539492,
-      "saved": 1154570,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-badminton-ClwYhLqv.png",
-      "before": 1788757,
-      "after": 640493,
-      "saved": 1148264,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-basket-B5h5tIfR.png",
-      "before": 1699427,
-      "after": 555070,
-      "saved": 1144357,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-foot-DR9p9Q5h.png",
-      "before": 1682924,
-      "after": 539519,
-      "saved": 1143405,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/the-asp-Cfbzp-f_.png",
       "before": 1713968,
       "after": 580438,
@@ -271,34 +229,6 @@
       "before": 1710279,
       "after": 586947,
       "saved": 1123332,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-volley-XRxxXOm3.png",
-      "before": 1685299,
-      "after": 571081,
-      "saved": 1114218,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-rugby-BrogA36i.png",
-      "before": 1596276,
-      "after": 491417,
-      "saved": 1104859,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-chess-DOMeQWEM.png",
-      "before": 1598165,
-      "after": 521312,
-      "saved": 1076853,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-pickleball-C0LQieDm.png",
-      "before": 1582211,
-      "after": 508790,
-      "saved": 1073421,
       "note": "png"
     },
     {
@@ -316,13 +246,6 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/logo-padel-BaadEwE7.png",
-      "before": 1525366,
-      "after": 528266,
-      "saved": 997100,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/ticker_babyfoot_new_1-DOlkYuFX.png",
       "before": 1708129,
       "after": 731039,
@@ -334,20 +257,6 @@
       "before": 1708733,
       "after": 736982,
       "saved": 971751,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-tennis-B5mZP-H4.png",
-      "before": 1471890,
-      "after": 522759,
-      "saved": 949131,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-archery-iD7PkU9H.png",
-      "before": 1529858,
-      "after": 583209,
-      "saved": 946649,
       "note": "png"
     },
     {
@@ -526,6 +435,13 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/logo-badminton-CaWriznV.png",
+      "before": 378084,
+      "after": 63415,
+      "saved": 314669,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/bully-boy-BeWaqv32.png",
       "before": 489585,
       "after": 175912,
@@ -589,6 +505,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/logo-basket-CPuenCe8.png",
+      "before": 351076,
+      "after": 61172,
+      "saved": 289904,
+      "note": "png"
+    },
+    {
       "file": "dist/images/loterie/express-cards/T4.webp",
       "before": 588326,
       "after": 298966,
@@ -608,6 +531,13 @@
       "after": 275274,
       "saved": 285980,
       "note": "webp"
+    },
+    {
+      "file": "dist/assets/logo-cornhole-C-NeivNy.png",
+      "before": 343867,
+      "after": 60027,
+      "saved": 283840,
+      "note": "png"
     },
     {
       "file": "dist/images/loterie/express-cards/T13.webp",
@@ -687,6 +617,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/logo-billard-qaV2fs6L.png",
+      "before": 329123,
+      "after": 54289,
+      "saved": 274834,
+      "note": "png"
+    },
+    {
       "file": "dist/images/loterie/express-cards/T12.webp",
       "before": 531412,
       "after": 256618,
@@ -701,10 +638,38 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/logo-molkky-DGaoLzkX.png",
+      "before": 328847,
+      "after": 57347,
+      "saved": 271500,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-chess-Cj1CKEvb.png",
+      "before": 325083,
+      "after": 54501,
+      "saved": 270582,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-frisbee-DaWqEdQC.png",
+      "before": 328354,
+      "after": 57850,
+      "saved": 270504,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/ticker_territories_hr-B2qrhWpp.png",
       "before": 392994,
       "after": 123034,
       "saved": 269960,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-tennis-DewGaJlx.png",
+      "before": 325695,
+      "after": 56475,
+      "saved": 269220,
       "note": "png"
     },
     {
@@ -715,11 +680,32 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/logo-foot-DGtxlvAT.png",
+      "before": 321843,
+      "after": 54069,
+      "saved": 267774,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-volley-Bgnp2qzl.png",
+      "before": 322035,
+      "after": 55524,
+      "saved": 266511,
+      "note": "png"
+    },
+    {
       "file": "dist/images/loterie/express-cards/T15.webp",
       "before": 519476,
       "after": 254458,
       "saved": 265018,
       "note": "webp"
+    },
+    {
+      "file": "dist/assets/logo-pickleball-DGCtP9Ba.png",
+      "before": 318272,
+      "after": 56539,
+      "saved": 261733,
+      "note": "png"
     },
     {
       "file": "dist/assets/ticker_ocean_control-iVM_siwI.png",
@@ -785,6 +771,13 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/logo-padel-CPCayUYQ.png",
+      "before": 306351,
+      "after": 50750,
+      "saved": 255601,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/ticker_babyfoot_training_teamquick7-DDLsM5pu.png",
       "before": 369855,
       "after": 115481,
@@ -820,6 +813,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/logo-archery-V6G9SwA_.png",
+      "before": 308774,
+      "after": 56738,
+      "saved": 252036,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/one-dart-DvUaJqWl.png",
       "before": 382868,
       "after": 130896,
@@ -845,6 +845,13 @@
       "before": 353128,
       "after": 102279,
       "saved": 250849,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/logo-rugby-CVFCutXu.png",
+      "before": 305955,
+      "after": 56035,
+      "saved": 249920,
       "note": "png"
     },
     {
@@ -1062,13 +1069,6 @@
       "before": 367356,
       "after": 131358,
       "saved": 235998,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-molkky-DcvH2vVD.png",
-      "before": 328463,
-      "after": 92574,
-      "saved": 235889,
       "note": "png"
     },
     {
@@ -2211,6 +2211,13 @@
       "after": 96390,
       "saved": 164814,
       "note": "png"
+    },
+    {
+      "file": "dist/assets/agenda-molkky-B6wUs1aA.webp",
+      "before": 350602,
+      "after": 185986,
+      "saved": 164616,
+      "note": "webp"
     },
     {
       "file": "dist/assets/ticker_babyfoot_match-_hr0_5FY.png",
@@ -3863,6 +3870,13 @@
       "after": 85439,
       "saved": 49032,
       "note": "png"
+    },
+    {
+      "file": "dist/assets/agenda-chess-BtGh5srx.webp",
+      "before": 106738,
+      "after": 57978,
+      "saved": 48760,
+      "note": "webp"
     },
     {
       "file": "dist/assets/sAfrica-CSDjOIFF.png",

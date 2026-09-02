@@ -39,6 +39,8 @@ const MULTISPORT_AGENDA_BACKUP_KEY = "mss-multisport-agenda-backup-v1";
 const MULTISPORT_AGENDA_KV_KEY = "mss-multisport-agenda-v2";
 const DAY = 86_400_000;
 const KNOWN_SPORT_IDS = new Set(APP_SPORT_CATALOG.map((item) => item.id));
+let agendaMemoryCache: MultisportAgendaEvent[] = [];
+let agendaPersistPromise: Promise<void> = Promise.resolve();
 
 const OTHER_META = { label: "SPORT", icon: "◆", accent: "#c7ccd6" };
 
@@ -87,25 +89,41 @@ function mergeAgendaEventSets(...sets: MultisportAgendaEvent[][]): MultisportAge
 }
 
 export function loadStoredMultisportEvents(): MultisportAgendaEvent[] {
-  if (typeof localStorage === "undefined") return [];
-  const sets: MultisportAgendaEvent[][] = [];
-  for (const key of [MULTISPORT_AGENDA_STORAGE_KEY, MULTISPORT_AGENDA_BACKUP_KEY]) {
-    try { sets.push(normalizeEventArray(JSON.parse(localStorage.getItem(key) || "[]"))); } catch {}
+  const sets: MultisportAgendaEvent[][] = [agendaMemoryCache];
+  if (typeof localStorage !== "undefined") {
+    for (const key of [MULTISPORT_AGENDA_STORAGE_KEY, MULTISPORT_AGENDA_BACKUP_KEY]) {
+      try { sets.push(normalizeEventArray(JSON.parse(localStorage.getItem(key) || "[]"))); } catch {}
+    }
   }
-  return mergeAgendaEventSets(...sets);
+  const merged = mergeAgendaEventSets(...sets);
+  agendaMemoryCache = merged;
+  return merged;
 }
 
 export function saveStoredMultisportEvents(events: MultisportAgendaEvent[]) {
   const safe = mergeAgendaEventSets(normalizeEventArray(events));
+  agendaMemoryCache = safe;
+
   if (typeof localStorage !== "undefined") {
     const json = JSON.stringify(safe);
+    // Double écriture synchrone : la liste principale + une copie de secours.
+    // Si l'une des deux clés est altérée par une ancienne version, l'autre
+    // permet de reconstruire l'agenda sans perdre les activités passées.
     try { localStorage.setItem(MULTISPORT_AGENDA_STORAGE_KEY, json); } catch {}
     try { localStorage.setItem(MULTISPORT_AGENDA_BACKUP_KEY, json); } catch {}
   }
-  // Miroir IndexedDB du stockage principal : survit aux nettoyages/écrasements
-  // ponctuels de localStorage et entre dans les snapshots de sauvegarde compte.
-  void setKV(MULTISPORT_AGENDA_KV_KEY, safe).catch(() => {});
+
+  // Miroir IndexedDB/account-sync. La promesse est chaînée pour éviter qu'une
+  // écriture ancienne finisse après une écriture récente lors de clics rapides.
+  agendaPersistPromise = agendaPersistPromise
+    .catch(() => {})
+    .then(async () => { await setKV(MULTISPORT_AGENDA_KV_KEY, safe); });
+
   try { window.dispatchEvent(new CustomEvent("dc:multisport-agenda-changed")); } catch {}
+}
+
+export async function flushMultisportAgendaPersistence(): Promise<void> {
+  await agendaPersistPromise.catch(() => {});
 }
 
 export async function hydrateMultisportAgendaPersistence(): Promise<MultisportAgendaEvent[]> {
@@ -113,7 +131,11 @@ export async function hydrateMultisportAgendaPersistence(): Promise<MultisportAg
   let idb: MultisportAgendaEvent[] = [];
   try { idb = normalizeEventArray(await getKV<unknown>(MULTISPORT_AGENDA_KV_KEY)); } catch {}
   const merged = mergeAgendaEventSets(local, idb);
-  if (merged.length || local.length || idb.length) saveStoredMultisportEvents(merged);
+  agendaMemoryCache = merged;
+  if (merged.length || local.length || idb.length) {
+    saveStoredMultisportEvents(merged);
+    await flushMultisportAgendaPersistence();
+  }
   return merged;
 }
 

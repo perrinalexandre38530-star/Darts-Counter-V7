@@ -1,5 +1,7 @@
 import React from "react";
 import BackDot from "../../components/BackDot";
+import PlusDot from "../../components/PlusDot";
+import PlayerPagedSelector from "../../components/PlayerPagedSelector";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
@@ -9,11 +11,14 @@ import { DARTS_GAMES, type DartsGameDef } from "../../games/dartsGameRegistry";
 import { filterDartsGamesForCurrentRuntime } from "../../config/androidStoreV1";
 import { appSportMeta, enabledAppSports, type AppSportId } from "../../config/sportCatalog";
 import { AGENDA_SPORT_ASSETS } from "./agendaSportAssets";
+import agendaTickerFr from "../../assets/tickers/ticker_agenda_fr.webp";
+import agendaTickerEn from "../../assets/tickers/ticker_agenda_en.webp";
 import {
   collectMultisportAgendaEvents,
   createMultisportEvent,
   downloadMultisportAgendaIcs,
   hydrateMultisportAgendaPersistence,
+  flushMultisportAgendaPersistence,
   localDayStart,
   localMonthStart,
   localWeekStart,
@@ -28,7 +33,7 @@ import {
 
 type Props = { go: (route: any, params?: any) => void; params?: any };
 type View = "today" | "week" | "month" | "invitations";
-type AgendaPerson = { id: string; name: string; avatar?: string | null; source: "local" | "friend" };
+type AgendaPerson = { id: string; name: string; avatar?: string | null; source: "local" | "friend"; profile: any };
 type SportTypeOption = { value: MultisportEventType; fr: string; en: string; es: string };
 const DAY = 86_400_000;
 
@@ -50,10 +55,18 @@ function enabledAgendaSports() {
 function tickerForDartsMode(id: string) {
   const raw = String(id || "").trim().toLowerCase();
   const requested = raw === "killer_progressive" ? "killer" : raw;
-  const variants = Array.from(new Set([requested, requested.replace(/-/g, "_"), requested.replace(/_/g, "-")]));
+  const aliases: Record<string, string[]> = {
+    training_x01: ["training_x01", "x01"],
+    tour_horloge: ["tour_horloge", "training_clock", "clock"],
+    training_doubleio: ["training_doubleio", "doubleio"],
+    training_challenges: ["training_challenges", "challenges"],
+    training_super_bull: ["training_super_bull", "super_bull"],
+  };
+  const seeds = aliases[requested] || [requested, requested.replace(/^training_/, "")];
+  const variants = Array.from(new Set(seeds.flatMap((seed) => [seed, seed.replace(/-/g, "_"), seed.replace(/_/g, "-")])));
   for (const candidate of variants) {
     const endings = [`/ticker_${candidate}.png`, `/ticker-${candidate}.png`];
-    const found = Object.keys(DARTS_TICKERS).find((key) => endings.some((ending) => key.endsWith(ending)));
+    const found = Object.keys(DARTS_TICKERS).find((key) => endings.some((ending) => key.toLowerCase().endsWith(ending)));
     if (found) return DARTS_TICKERS[found];
   }
   return null;
@@ -120,6 +133,10 @@ export default function MultisportAgendaPage({ go, params }: Props) {
   const { lang } = useLang() as any;
   const locale = String(lang || "fr").startsWith("fr") ? "fr-FR" : String(lang || "").startsWith("es") ? "es-ES" : "en-GB";
   const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(String(lang || "fr"), fr, en, es);
+  // Ticker header: French only when the app is explicitly in French.
+  // English is the fallback for every other language, as requested.
+  const agendaHeaderTicker = String(lang || "").toLowerCase().startsWith("fr") ? agendaTickerFr : agendaTickerEn;
+  const agendaHeaderAlt = String(lang || "").toLowerCase().startsWith("fr") ? "Agenda" : "Schedule";
   const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
   const textSoft = (theme as any)?.textSoft || "#9ca3af";
   const [events, setEvents] = React.useState<MultisportAgendaEvent[]>(() => collectMultisportAgendaEvents());
@@ -199,22 +216,33 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         .msa-action{min-height:42px;border-radius:12px;border:1px solid ${accent}55;background:${accent}15;color:${accent};font-weight:1000;cursor:pointer}.msa-muted{color:${textSoft}}
         .msa-sport-filter{display:flex;gap:7px;overflow-x:auto;padding:9px 0 5px;scrollbar-width:none}.msa-sport-filter::-webkit-scrollbar{display:none}
         .msa-sport-icon-btn{flex:0 0 auto;width:42px;height:42px;border-radius:14px;padding:5px;display:grid;place-items:center;cursor:pointer;transition:.15s transform}.msa-sport-icon-btn:active{transform:scale(.94)}
-        .msa-banner-choice{position:relative;width:100%;aspect-ratio:3/1;border-radius:15px;overflow:hidden;padding:0;cursor:pointer;background:#030509}.msa-banner-choice img{width:100%;height:100%;object-fit:cover;display:block}.msa-banner-choice.on:after{content:"✓";position:absolute;right:8px;top:8px;width:25px;height:25px;border-radius:999px;display:grid;place-items:center;background:rgba(0,0,0,.78);font-weight:1000}
-        .msa-darts-mode{height:60px;border-radius:12px;overflow:hidden;position:relative;background:rgba(255,255,255,.025);cursor:pointer;text-align:left}.msa-darts-mode img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.62}.msa-darts-mode:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,5,9,.92),rgba(3,5,9,.22),rgba(3,5,9,.78))}
+        .msa-banner-choice{position:relative;width:100%;height:74px;border-radius:13px;overflow:hidden;padding:0;cursor:pointer;background:#030509}.msa-banner-choice img{width:100%;height:100%;object-fit:cover;display:block}.msa-banner-choice.on:after{content:"✓";position:absolute;right:7px;top:7px;width:23px;height:23px;border-radius:999px;display:grid;place-items:center;background:rgba(0,0,0,.78);font-weight:1000}.msa-sport-picker-panel{max-height:286px;overflow-y:auto;display:grid;gap:6px;padding:7px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.28);scrollbar-width:thin}
+        .msa-darts-mode{aspect-ratio:6/1;min-height:0;border-radius:10px;overflow:hidden;position:relative;background:rgba(255,255,255,.025);cursor:pointer;text-align:left}.msa-darts-mode img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.76}.msa-darts-mode:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,5,9,.84),rgba(3,5,9,.10),rgba(3,5,9,.65))}
         @media(max-width:390px){.msa-event{grid-template-columns:38px minmax(0,1fr)}.msa-event-time{grid-column:2}.msa-tab{font-size:6.8px}.msa-month-cell{min-height:58px;padding:4px}.msa-sport-icon-btn{width:39px;height:39px}}
       `}</style>
 
-      <div className="msa-top">
-        <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
-          <BackDot onClick={() => go("home")} />
-          <div style={{ textAlign: "center", minWidth: 0 }}>
-            <div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: 1.5 }}>MULTISPORTS SCORING</div>
-            <div style={{ marginTop: 3, fontSize: 23, fontWeight: 1000, letterSpacing: 1.4 }}>AGENDA</div>
-            <div className="msa-muted" style={{ marginTop: 3, fontSize: 9 }}>{t("Toute ta semaine sportive au même endroit", "Your whole sports week in one place", "Toda tu semana deportiva en un solo lugar")}</div>
+      <div style={{ width: "100%", maxWidth: "none", marginBottom: 10 }}>
+        <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
+          <img
+            src={agendaHeaderTicker}
+            alt={agendaHeaderAlt}
+            draggable={false}
+            style={{ width: "100%", maxWidth: "none", height: "auto", display: "block", filter: `drop-shadow(0 0 14px ${accent}55)` }}
+          />
+          <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}>
+            <BackDot onClick={() => go("home")} />
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button type="button" onClick={() => downloadMultisportAgendaIcs(events)} aria-label={t("Exporter l'agenda", "Export agenda", "Exportar agenda")} title={t("Exporter vers Google / Apple / Outlook (.ics)", "Export to Google / Apple / Outlook (.ics)", "Exportar a Google / Apple / Outlook (.ics)")} style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.76)", fontSize: 18, cursor: "pointer" }}>↗</button>
-            <button type="button" onClick={() => setCreateOpen(true)} aria-label={t("Ajouter", "Add", "Añadir")} style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${accent}66`, background: `${accent}18`, color: accent, fontSize: 23, cursor: "pointer" }}>+</button>
+        </div>
+      </div>
+
+      <div className="msa-top">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div className="msa-muted" style={{ fontSize: 9.5, lineHeight: 1.35, minWidth: 0 }}>
+            {t("Toute ta semaine sportive au même endroit", "Your whole sports week in one place", "Toda tu semana deportiva en un solo lugar")}
+          </div>
+          <div style={{ display: "flex", gap: 8, flex: "0 0 auto", alignItems: "center" }}>
+            <AgendaShareButton accent={accent} title={t("Exporter vers Google / Apple / Outlook (.ics)", "Export to Google / Apple / Outlook (.ics)", "Exportar a Google / Apple / Outlook (.ics)")} onClick={() => { downloadMultisportAgendaIcs(events); }} />
+            <PlusDot onClick={() => setCreateOpen(true)} color={accent} title={t("Ajouter une activité", "Add an activity", "Añadir una actividad")} size={42} />
           </div>
         </div>
         <div className="msa-tabs">
@@ -233,7 +261,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
           <button type="button" className="msa-action" onClick={() => shift(1)}>›</button>
         </div>
         <div className="msa-sport-filter">
-          <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 8 }}>TOUS</button>
+          <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 8 }}>{t("TOUS", "ALL", "TODOS")}</button>
           {availableSports.map((entry) => <button key={entry.id} type="button" className="msa-sport-icon-btn" onClick={() => setSportFilter(entry.id)} aria-label={entry.label} title={entry.label} style={{ border: `1px solid ${sportFilter === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, background: sportFilter === entry.id ? `${entry.accent}18` : "rgba(255,255,255,.022)", boxShadow: sportFilter === entry.id ? `0 0 14px ${entry.accent}28` : "none" }}><TintedSportLogo sport={entry.id} color={entry.accent} size={29}/></button>)}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 5 }}>
@@ -259,8 +287,8 @@ export default function MultisportAgendaPage({ go, params }: Props) {
 
 function TintedSportLogo({ sport, color, size = 30 }: { sport: MultisportEventSport; color: string; size?: number }) {
   if (sport === "other" || !AGENDA_SPORT_ASSETS[sport as AppSportId]) return <span style={{ color, fontSize: size * .75 }}>◆</span>;
-  const src = AGENDA_SPORT_ASSETS[sport as AppSportId].logo;
-  return <span aria-hidden="true" style={{ display: "block", width: size, height: size, background: color, WebkitMaskImage: `url(${src})`, maskImage: `url(${src})`, WebkitMaskSize: "contain", maskSize: "contain", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", filter: `drop-shadow(0 0 6px ${color}66)` }} />;
+  const src = AGENDA_SPORT_ASSETS[sport as AppSportId].calendarIcon;
+  return <img aria-hidden="true" src={src} alt="" draggable={false} style={{ display: "block", width: size, height: size, objectFit: "contain", filter: `drop-shadow(0 0 6px ${color}88)` }} />;
 }
 
 function formatAgendaMinutes(minutes: number) {
@@ -272,6 +300,14 @@ function formatAgendaMinutes(minutes: number) {
 
 function eventTypeLabel(type: MultisportEventType) {
   if (type === "workout") return "SÉANCE"; if (type === "training") return "ENTRAÎNEMENT"; if (type === "match") return "MATCH"; if (type === "game") return "PARTIE"; if (type === "outing") return "SORTIE"; if (type === "race") return "COURSE"; if (type === "tournament") return "TOURNOI"; if (type === "league") return "LIGUE"; if (type === "leisure") return "LOISIRS"; if (type === "recovery") return "RÉCUP"; if (type === "club") return "CLUB"; if (type === "challenge") return "DÉFI"; return "ACTIVITÉ";
+}
+
+function AgendaShareButton({ accent, title, onClick }: { accent: string; title: string; onClick: () => void }) {
+  return <button type="button" onClick={onClick} aria-label={title} title={title} style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${accent}`, background: "rgba(0,0,0,.24)", color: accent, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: `0 0 0 1px ${accent}44,0 0 12px ${accent}88`, WebkitTapHighlightColor: "transparent" }}>
+    <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="15" height="15" rx="2"/><path d="M7 3v4M14 3v4M3 10h15"/><path d="M15 16h6M18 13l3 3-3 3"/>
+    </svg>
+  </button>;
 }
 
 function AgendaMetric({ label, value, accent }: { label: string; value: string; accent: string }) {
@@ -352,11 +388,30 @@ function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: strin
   const [selectedPeople, setSelectedPeople] = React.useState<string[]>([]);
   const [extraParticipants, setExtraParticipants] = React.useState("");
   const [notes, setNotes] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState("");
+
   const selectedHot = sport === "other" ? accent : multisportSportMeta(sport).accent;
   const selectedBanner = sport !== "other" ? AGENDA_SPORT_ASSETS[sport as AppSportId]?.banner : null;
   const typeOptions = sportTypeOptions(sport);
-  const dartsModes = React.useMemo(() => filterDartsGamesForCurrentRuntime(DARTS_GAMES).filter((game) => game.ready && game.entry === "games"), []);
+  const allDartsModes = React.useMemo(
+    () => filterDartsGamesForCurrentRuntime(DARTS_GAMES).filter((game) => game.ready),
+    [],
+  );
+  const dartsModes = React.useMemo(() => {
+    if (eventType === "training") {
+      return allDartsModes.filter((game) => game.entry === "training" || game.category === "training");
+    }
+    return allDartsModes.filter((game) => game.entry === "games" && game.category !== "training");
+  }, [allDartsModes, eventType]);
   const selectedDartsMode = dartsModes.find((mode) => mode.id === dartsModeId) || dartsModes[0] || null;
+  const participantProfiles = React.useMemo(() => peopleOptions.map((person) => person.profile), [peopleOptions]);
+
+  React.useEffect(() => {
+    if (sport !== "darts") return;
+    if (!dartsModes.length) return;
+    if (!dartsModes.some((mode) => mode.id === dartsModeId)) setDartsModeId(dartsModes[0].id);
+  }, [sport, dartsModes, dartsModeId]);
 
   React.useEffect(() => {
     let alive = true;
@@ -364,11 +419,22 @@ function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: strin
       for (const row of rows || []) {
         if (!row) continue;
         if (source === "local" && (row.isBot || row.bot || String(row.type || row.kind || "").toLowerCase().includes("bot"))) continue;
-        const id = String(row.id || row.userId || row.profileId || row.name || "").trim();
+        const rawId = String(row.id || row.userId || row.profileId || row.name || "").trim();
         const name = String(row.name || row.displayName || row.nickname || row.username || "").trim();
-        if (!id || !name) continue;
-        const key = `${source}:${id}`;
-        target.set(key, { id: key, name, source, avatar: row.avatarDataUrl || row.avatarUrl || row.avatar || row.photoURL || null });
+        if (!rawId || !name) continue;
+        const id = source === "local" ? rawId : `friend:${rawId}`;
+        const avatar = row.avatarDataUrl || row.avatarUrl || row.avatar || row.photoURL || null;
+        const profile = {
+          ...row,
+          id,
+          profileId: id,
+          name,
+          displayName: name,
+          avatarDataUrl: row.avatarDataUrl || avatar || undefined,
+          avatarUrl: row.avatarUrl || avatar || undefined,
+          agendaSource: source,
+        };
+        target.set(id, { id, name, source, avatar, profile });
       }
     };
     void (async () => {
@@ -389,58 +455,109 @@ function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: strin
   }, []);
 
   const selectSport = (next: MultisportEventSport) => {
-    setSport(next); setEventType(defaultTypeForSport(next)); setSportPickerOpen(false);
+    setSport(next);
+    setEventType(defaultTypeForSport(next));
+    setSportPickerOpen(false);
+    setDartsPickerOpen(false);
   };
 
-  const togglePerson = (person: AgendaPerson) => {
-    setSelectedPeople((prev) => prev.includes(person.id) ? prev.filter((id) => id !== person.id) : [...prev, person.id]);
+  const togglePersonId = (id: string) => {
+    setSelectedPeople((prev) => prev.includes(id) ? prev.filter((key) => key !== id) : [...prev, id]);
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
-    const pickedNames = peopleOptions.filter((person) => selectedPeople.includes(person.id)).map((person) => person.name);
-    const typedNames = extraParticipants.split(",").map((item) => item.trim()).filter(Boolean);
-    const people = Array.from(new Set([...pickedNames, ...typedNames])).slice(0, 30);
-    let route: string | undefined = sport !== "other" ? "games" : undefined;
-    let routeParams: Record<string, unknown> | undefined = sport === "fit" ? { fitTemplateId: "free", fitSessionTitle: title.trim() } : undefined;
-    let discipline: string | undefined;
-    if (sport === "darts" && selectedDartsMode) {
-      discipline = selectedDartsMode.label;
-      route = selectedDartsMode.tab;
-      routeParams = selectedDartsMode.variantId ? { variantId: selectedDartsMode.variantId, gameId: selectedDartsMode.id } : { gameId: selectedDartsMode.id };
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const pickedNames = peopleOptions.filter((person) => selectedPeople.includes(person.id)).map((person) => person.name);
+      const typedNames = extraParticipants.split(",").map((item) => item.trim()).filter(Boolean);
+      const people = Array.from(new Set([...pickedNames, ...typedNames])).slice(0, 30);
+      const sportMeta = multisportSportMeta(sport);
+      const selectedType = typeOptions.find((option) => option.value === eventType) || typeOptions[0];
+      const typeTitle = selectedType ? t(selectedType.fr, selectedType.en, selectedType.es) : t("Activité", "Activity", "Actividad");
+      // Le titre est facultatif : un clic sur AJOUTER crée toujours une vraie entrée.
+      // Pour Darts, le nom du mode sélectionné est le meilleur titre automatique.
+      const finalTitle = title.trim() || (sport === "darts" && selectedDartsMode ? selectedDartsMode.label : `${sportMeta.label} · ${typeTitle}`);
+      const startAt = inputToTimestamp(date, time);
+      if (!Number.isFinite(startAt) || startAt <= 0) throw new Error(t("Date ou heure invalide", "Invalid date or time", "Fecha u hora no válida"));
+
+      let route: string | undefined = sport !== "other" ? "games" : undefined;
+      let routeParams: Record<string, unknown> | undefined = sport === "fit" ? { fitTemplateId: "free", fitSessionTitle: finalTitle } : undefined;
+      let discipline: string | undefined;
+      if (sport === "darts" && selectedDartsMode) {
+        discipline = selectedDartsMode.label;
+        if (eventType === "training") {
+          route = selectedDartsMode.id === "training_x01" ? "training_x01" : selectedDartsMode.id === "tour_horloge" ? "training_clock" : "training";
+        } else {
+          route = selectedDartsMode.tab;
+        }
+        routeParams = selectedDartsMode.variantId
+          ? { variantId: selectedDartsMode.variantId, gameId: selectedDartsMode.id }
+          : { gameId: selectedDartsMode.id };
+      }
+
+      createMultisportEvent({
+        title: finalTitle,
+        sport,
+        discipline,
+        type: eventType,
+        source: kind === "club" ? "club" : kind === "invite" ? "friend" : "manual",
+        startAt,
+        durationMin: Math.max(0, Number(duration) || 0) || undefined,
+        location: location.trim() || undefined,
+        organizer: kind === "invite" ? organizer.trim() || undefined : undefined,
+        club: kind === "club" ? organizer.trim() || undefined : undefined,
+        participants: people.length ? people : undefined,
+        notes: notes.trim() || undefined,
+        status: kind === "invite" ? "pending" : "confirmed",
+        accent: multisportSportMeta(sport).accent,
+        route,
+        routeParams,
+      });
+      // Ne ferme le dialogue qu'après confirmation de l'écriture IndexedDB.
+      // Cela évite l'impression que le bouton ne fonctionne pas et garantit la persistance.
+      await flushMultisportAgendaPersistence();
+      onCreated();
+    } catch (error: any) {
+      setSaveError(String(error?.message || t("Impossible d'enregistrer l'activité", "Unable to save the activity", "No se puede guardar la actividad")));
+    } finally {
+      setSaving(false);
     }
-    createMultisportEvent({
-      title: title.trim(), sport, discipline, type: eventType,
-      source: kind === "club" ? "club" : kind === "invite" ? "friend" : "manual",
-      startAt: inputToTimestamp(date, time), durationMin: Math.max(0, Number(duration) || 0) || undefined,
-      location: location.trim() || undefined, organizer: kind === "invite" ? organizer.trim() || undefined : undefined,
-      club: kind === "club" ? organizer.trim() || undefined : undefined, participants: people.length ? people : undefined,
-      notes: notes.trim() || undefined, status: kind === "invite" ? "pending" : "confirmed",
-      accent: multisportSportMeta(sport).accent, route, routeParams,
-    });
-    onCreated();
   };
 
   const input: React.CSSProperties = { width: "100%", minHeight: 44, boxSizing: "border-box", borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(0,0,0,.34)", color: "#fff", padding: "0 11px", fontSize: 16 };
   const label: React.CSSProperties = { color: "rgba(255,255,255,.46)", fontSize: 7, fontWeight: 1000, letterSpacing: .7, marginBottom: -3 };
+
   return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.76)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 12 }}>
     <form onSubmit={submit} onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", borderRadius: 22, border: `1px solid ${selectedHot}35`, background: `linear-gradient(180deg,${selectedHot}0a,#0b1019 18%,#060910)`, padding: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div><div style={{ color: selectedHot, fontSize: 8, fontWeight: 1000, letterSpacing: 1 }}>AGENDA MULTISPORTS</div><div style={{ fontSize: 19, fontWeight: 1000 }}>{t("Ajouter une activité", "Add an activity", "Añadir una actividad")}</div></div>
         <button type="button" onClick={onClose} style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "#fff" }}>×</button>
       </div>
+
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
         <div style={label}>{t("ACTIVITÉ", "ACTIVITY", "ACTIVIDAD")}</div>
-        <input style={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Ex. Match, entraînement, sortie…", "E.g. match, training, outing…", "Ej. partido, entrenamiento, salida…")} autoFocus/>
+        <input style={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Facultatif — ex. match entre amis", "Optional — e.g. friendly match", "Opcional — ej. partido amistoso")} autoFocus/>
 
         <div style={label}>{t("SPORT / MODULE", "SPORT / MODULE", "DEPORTE / MÓDULO")}</div>
-        {selectedBanner ? <button type="button" className="msa-banner-choice" onClick={() => setSportPickerOpen((open) => !open)} style={{ border: `1px solid ${selectedHot}78`, boxShadow: `0 0 18px ${selectedHot}18` }}><img src={selectedBanner} alt={multisportSportMeta(sport).label}/></button> : null}
-        {sportPickerOpen ? <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", paddingRight: 2 }}>{sports.map((entry) => <button key={entry.id} type="button" className={`msa-banner-choice${sport === entry.id ? " on" : ""}`} onClick={() => selectSport(entry.id)} style={{ border: `1px solid ${sport === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, color: entry.accent }}><img src={AGENDA_SPORT_ASSETS[entry.id].banner} alt={entry.label}/></button>)}</div> : null}
+        {selectedBanner ? <button type="button" className="msa-banner-choice" onClick={() => setSportPickerOpen((open) => !open)} style={{ border: `1px solid ${selectedHot}78`, boxShadow: `0 0 18px ${selectedHot}18` }}>
+          <img src={selectedBanner} alt={multisportSportMeta(sport).label}/>
+          <span style={{ position: "absolute", right: 8, bottom: 6, zIndex: 3, minWidth: 24, height: 22, padding: "0 7px", borderRadius: 999, display: "grid", placeItems: "center", color: selectedHot, background: "rgba(0,0,0,.72)", border: `1px solid ${selectedHot}55`, fontSize: 10, fontWeight: 1000 }}>{sportPickerOpen ? "▲" : "▼"}</span>
+        </button> : null}
+        {sportPickerOpen ? <div className="msa-sport-picker-panel">{sports.map((entry) => <button key={entry.id} type="button" className={`msa-banner-choice${sport === entry.id ? " on" : ""}`} onClick={() => selectSport(entry.id)} style={{ height: 60, border: `1px solid ${sport === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, color: entry.accent }}><img src={AGENDA_SPORT_ASSETS[entry.id].banner} alt={entry.label}/></button>)}</div> : null}
 
-        <label><div style={label}>{t("TYPE", "TYPE", "TIPO")}</div><select style={{ ...input, marginTop: 5, borderColor: `${selectedHot}45` }} value={eventType} onChange={(e) => setEventType(e.target.value as MultisportEventType)}>{typeOptions.map((option) => <option key={option.value} value={option.value}>{t(option.fr, option.en, option.es)}</option>)}</select></label>
+        <label><div style={label}>{t("TYPE", "TYPE", "TIPO")}</div><select style={{ ...input, marginTop: 5, borderColor: `${selectedHot}45` }} value={eventType} onChange={(e) => { setEventType(e.target.value as MultisportEventType); setDartsPickerOpen(false); }}>{typeOptions.map((option) => <option key={option.value} value={option.value}>{t(option.fr, option.en, option.es)}</option>)}</select></label>
 
-        {sport === "darts" ? <div><div style={label}>{t("MODE DE JEU DARTS", "DARTS GAME MODE", "MODO DE DARDOS")}</div>{selectedDartsMode ? <button type="button" className="msa-darts-mode" onClick={() => setDartsPickerOpen((open) => !open)} style={{ width: "100%", marginTop: 5, border: `1px solid ${selectedHot}55`, color: "#fff" }}>{tickerForDartsMode(selectedDartsMode.id) ? <img src={tickerForDartsMode(selectedDartsMode.id) || ""} alt=""/> : null}<span style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", height: "100%", padding: "0 13px", color: selectedHot, fontSize: 13, fontWeight: 1000, textShadow: "0 2px 8px #000" }}>{selectedDartsMode.label}<span style={{ marginLeft: "auto", color: "rgba(255,255,255,.65)" }}>{dartsPickerOpen ? "▲" : "▼"}</span></span></button> : null}{dartsPickerOpen ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, maxHeight: 300, overflowY: "auto", marginTop: 7 }}>{dartsModes.map((mode) => <DartsModeChoice key={mode.id} mode={mode} selected={mode.id === dartsModeId} accent={selectedHot} onClick={() => { setDartsModeId(mode.id); setDartsPickerOpen(false); }}/>)}</div> : null}</div> : null}
+        {sport === "darts" ? <div>
+          <div style={label}>{eventType === "training" ? t("MODE DE TRAINING DARTS", "DARTS TRAINING MODE", "MODO DE ENTRENAMIENTO DE DARDOS") : t("MODE DE JEU DARTS", "DARTS GAME MODE", "MODO DE DARDOS")}</div>
+          {selectedDartsMode ? <button type="button" className="msa-darts-mode" onClick={() => setDartsPickerOpen((open) => !open)} style={{ width: "100%", marginTop: 5, border: `1px solid ${selectedHot}55`, color: "#fff" }}>
+            {tickerForDartsMode(selectedDartsMode.id) ? <img src={tickerForDartsMode(selectedDartsMode.id) || ""} alt=""/> : null}
+            <span style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", height: "100%", padding: "0 10px", color: selectedHot, fontSize: 10, fontWeight: 1000, textShadow: "0 2px 8px #000" }}>{selectedDartsMode.label}<span style={{ marginLeft: "auto", color: "rgba(255,255,255,.7)" }}>{dartsPickerOpen ? "▲" : "▼"}</span></span>
+          </button> : null}
+          {dartsPickerOpen ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5, maxHeight: 240, overflowY: "auto", marginTop: 7, padding: 5, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.24)" }}>{dartsModes.map((mode) => <DartsModeChoice key={mode.id} mode={mode} selected={mode.id === dartsModeId} accent={selectedHot} onClick={() => { setDartsModeId(mode.id); setDartsPickerOpen(false); }}/>)}</div> : null}
+        </div> : null}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><label><div style={label}>{t("DATE", "DATE", "FECHA")}</div><input style={{ ...input, marginTop: 5 }} type="date" value={date} onChange={(e) => setDate(e.target.value)}/></label><label><div style={label}>{t("HEURE", "TIME", "HORA")}</div><input style={{ ...input, marginTop: 5 }} type="time" value={time} onChange={(e) => setTime(e.target.value)}/></label></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><label><div style={label}>{t("DURÉE", "DURATION", "DURACIÓN")}</div><input style={{ ...input, marginTop: 5 }} inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="60 min"/></label><label><div style={label}>{t("ORIGINE", "SOURCE", "ORIGEN")}</div><select style={{ ...input, marginTop: 5 }} value={kind} onChange={(e) => setKind(e.target.value as any)}><option value="personal">{t("Personnel", "Personal", "Personal")}</option><option value="club">{t("Club / équipe", "Club / team", "Club / equipo")}</option><option value="invite">{t("Invitation reçue", "Received invitation", "Invitación recibida")}</option></select></label></div>
@@ -450,12 +567,26 @@ function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: strin
         <div style={label}>{t("PARTICIPANTS — PROFILS LOCAUX & AMIS", "PARTICIPANTS — LOCAL PROFILES & FRIENDS", "PARTICIPANTES — PERFILES LOCALES Y AMIGOS")}</div>
         <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.02)", padding: 8 }}>
           {peopleLoading && !peopleOptions.length ? <div style={{ color: "rgba(255,255,255,.42)", fontSize: 9, padding: 6 }}>{t("Chargement des profils et amis…", "Loading profiles and friends…", "Cargando perfiles y amigos…")}</div> : null}
-          {["local", "friend"].map((source) => { const rows = peopleOptions.filter((person) => person.source === source); if (!rows.length) return null; return <div key={source} style={{ marginBottom: source === "local" && peopleOptions.some((person) => person.source === "friend") ? 8 : 0 }}><div style={{ color: source === "local" ? selectedHot : "#66d9ff", fontSize: 7, fontWeight: 1000, margin: "1px 2px 5px" }}>{source === "local" ? t("PROFILS LOCAUX", "LOCAL PROFILES", "PERFILES LOCALES") : t("AMIS", "FRIENDS", "AMIGOS")}</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{rows.map((person) => { const active = selectedPeople.includes(person.id); return <button type="button" key={person.id} onClick={() => togglePerson(person)} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 35, borderRadius: 999, border: `1px solid ${active ? selectedHot : "rgba(255,255,255,.10)"}`, background: active ? `${selectedHot}18` : "rgba(0,0,0,.22)", color: active ? selectedHot : "#fff", padding: "3px 9px 3px 4px", fontSize: 9, fontWeight: 900 }}><PersonAvatar person={person}/><span>{person.name}</span>{active ? <span>✓</span> : null}</button>; })}</div></div>; })}
+          {peopleOptions.length ? <PlayerPagedSelector
+            profiles={participantProfiles}
+            selectedIds={selectedPeople}
+            onToggle={(id: string) => togglePersonId(String(id))}
+            accent={selectedHot}
+            pageSize={9}
+            modalTitle={t("Choisir les participants", "Choose participants", "Elegir participantes")}
+            showSelectedSummary={false}
+            showProfileStarring={sport === "darts"}
+            usageMode={sport === "darts" ? "x01" : "global"}
+            loopPages={true}
+            showListButton={false}
+          /> : null}
+          {selectedPeople.length ? <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 7, paddingBottom: 2, scrollbarWidth: "none" }}>{peopleOptions.filter((person) => selectedPeople.includes(person.id)).map((person) => <button key={person.id} type="button" onClick={() => togglePersonId(person.id)} title={t("Retirer", "Remove", "Quitar")} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, minHeight: 30, borderRadius: 999, border: `1px solid ${selectedHot}55`, background: `${selectedHot}0d`, color: "#fff", padding: "2px 8px 2px 3px", fontSize: 8.5, fontWeight: 900 }}><PersonAvatar person={person}/><span>{person.name}</span><span style={{ color: selectedHot }}>×</span></button>)}</div> : null}
           <input style={{ ...input, marginTop: peopleOptions.length ? 8 : 0, minHeight: 39, fontSize: 13 }} value={extraParticipants} onChange={(e) => setExtraParticipants(e.target.value)} placeholder={t("Ajouter un autre nom (optionnel)", "Add another name (optional)", "Añadir otro nombre (opcional)")}/>
         </div>
 
         <div style={label}>{t("NOTES", "NOTES", "NOTAS")}</div><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("Consignes, rendez-vous, objectif…", "Instructions, meetup, goal…", "Indicaciones, cita, objetivo…")} style={{ ...input, minHeight: 74, resize: "vertical", paddingTop: 10, fontFamily: "inherit" }}/>
-        <button type="submit" style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${selectedHot}`, background: `linear-gradient(135deg,${selectedHot},#fff1bd)`, color: "#0a0d12", fontWeight: 1000 }}>{kind === "invite" ? t("AJOUTER COMME INVITATION", "ADD AS INVITATION", "AÑADIR COMO INVITACIÓN") : t("AJOUTER À L'AGENDA", "ADD TO AGENDA", "AÑADIR A LA AGENDA")}</button>
+        {saveError ? <div role="alert" style={{ color: "#ff9a9a", border: "1px solid rgba(255,100,100,.25)", background: "rgba(255,80,80,.06)", borderRadius: 10, padding: 8, fontSize: 9, fontWeight: 900 }}>{saveError}</div> : null}
+        <button type="submit" disabled={saving} style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${selectedHot}`, background: `linear-gradient(135deg,${selectedHot},#fff1bd)`, color: "#0a0d12", fontWeight: 1000, opacity: saving ? .6 : 1 }}>{saving ? t("ENREGISTREMENT…", "SAVING…", "GUARDANDO…") : kind === "invite" ? t("AJOUTER COMME INVITATION", "ADD AS INVITATION", "AÑADIR COMO INVITACIÓN") : t("AJOUTER À L'AGENDA", "ADD TO AGENDA", "AÑADIR A LA AGENDA")}</button>
       </div>
     </form>
   </div>;

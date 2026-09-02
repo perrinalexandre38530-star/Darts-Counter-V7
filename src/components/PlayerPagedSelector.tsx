@@ -497,6 +497,8 @@ export default function PlayerPagedSelector({
   showProfileStarring,
   showSelectedSummary = true,
   usageMode = "global",
+  loopPages = false,
+  showListButton = true,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -656,7 +658,7 @@ export default function PlayerPagedSelector({
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" onClick={() => setOpen(true)} style={pill(accent, true)}>Choisir joueurs {selected.length ? `(${selected.length})` : ""}</button>
-        <button type="button" onClick={() => setListOpen((v) => !v)} style={pill(accent, listOpen)}>Liste profils</button>
+        {showListButton ? <button type="button" onClick={() => setListOpen((v) => !v)} style={pill(accent, listOpen)}>Liste profils</button> : null}
       </div>
 
       {listOpen ? (
@@ -717,9 +719,9 @@ export default function PlayerPagedSelector({
                 })}
               </div>
               <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "84px 1fr 84px", alignItems: "center", gap: 10 }}>
-                <button type="button" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={safePage <= 0} style={nav(accent)}>←</button>
+                <button type="button" onClick={() => setPage((p) => loopPages ? (p - 1 + pages) % pages : Math.max(0, p - 1))} disabled={!loopPages && safePage <= 0} style={nav(accent)}>←</button>
                 <div style={{ color: "#aab0cc", fontSize: 12, fontWeight: 900, textAlign: "center" }}>PAGE {safePage + 1}/{pages}</div>
-                <button type="button" onClick={() => setPage((p) => Math.min(pages - 1, p + 1))} disabled={safePage >= pages - 1} style={nav(accent)}>→</button>
+                <button type="button" onClick={() => setPage((p) => loopPages ? (p + 1) % pages : Math.min(pages - 1, p + 1))} disabled={!loopPages && safePage >= pages - 1} style={nav(accent)}>→</button>
               </div>
               <button
                 type="button"

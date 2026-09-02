@@ -23,6 +23,29 @@ import logoRugby from "../../assets/games/logo-rugby.png";
 import logoTennis from "../../assets/games/logo-tennis.png";
 import logoVolley from "../../assets/games/logo-volley.png";
 
+import calendarIconFit from "../../assets/agenda/icons/agenda-icon-fit.webp";
+import calendarIconRunning from "../../assets/agenda/icons/agenda-icon-running.webp";
+import calendarIconDarts from "../../assets/agenda/icons/agenda-icon-darts.webp";
+import calendarIconFoot from "../../assets/agenda/icons/agenda-icon-foot.webp";
+import calendarIconBabyFoot from "../../assets/agenda/icons/agenda-icon-babyfoot.webp";
+import calendarIconPingPong from "../../assets/agenda/icons/agenda-icon-pingpong.webp";
+import calendarIconPetanque from "../../assets/agenda/icons/agenda-icon-petanque.webp";
+import calendarIconMolkky from "../../assets/agenda/icons/agenda-icon-molkky.webp";
+import calendarIconDiceGame from "../../assets/agenda/icons/agenda-icon-dicegame.webp";
+import calendarIconEsports from "../../assets/agenda/icons/agenda-icon-esports.webp";
+import calendarIconArchery from "../../assets/agenda/icons/agenda-icon-archery.webp";
+import calendarIconBadminton from "../../assets/agenda/icons/agenda-icon-badminton.webp";
+import calendarIconBasket from "../../assets/agenda/icons/agenda-icon-basket.webp";
+import calendarIconBillard from "../../assets/agenda/icons/agenda-icon-billard.webp";
+import calendarIconChess from "../../assets/agenda/icons/agenda-icon-chess.webp";
+import calendarIconCornhole from "../../assets/agenda/icons/agenda-icon-cornhole.webp";
+import calendarIconFrisbee from "../../assets/agenda/icons/agenda-icon-frisbee.webp";
+import calendarIconPadel from "../../assets/agenda/icons/agenda-icon-padel.webp";
+import calendarIconPickleball from "../../assets/agenda/icons/agenda-icon-pickleball.webp";
+import calendarIconRugby from "../../assets/agenda/icons/agenda-icon-rugby.webp";
+import calendarIconTennis from "../../assets/agenda/icons/agenda-icon-tennis.webp";
+import calendarIconVolley from "../../assets/agenda/icons/agenda-icon-volley.webp";
+
 import bannerFit from "../../assets/agenda/agenda-fit.webp";
 import bannerRunning from "../../assets/agenda/agenda-running.webp";
 import bannerDarts from "../../assets/agenda/agenda-darts.webp";
@@ -46,27 +69,27 @@ import bannerRugby from "../../assets/agenda/agenda-rugby.webp";
 import bannerTennis from "../../assets/agenda/agenda-tennis.webp";
 import bannerVolley from "../../assets/agenda/agenda-volley.webp";
 
-export const AGENDA_SPORT_ASSETS: Record<AppSportId, { logo: string; banner: string }> = {
-  fit: { logo: logoFit, banner: bannerFit },
-  running: { logo: logoRunning, banner: bannerRunning },
-  darts: { logo: logoDarts, banner: bannerDarts },
-  foot: { logo: logoFoot, banner: bannerFoot },
-  babyfoot: { logo: logoBabyFoot, banner: bannerBabyFoot },
-  pingpong: { logo: logoPingPong, banner: bannerPingPong },
-  petanque: { logo: logoPetanque, banner: bannerPetanque },
-  molkky: { logo: logoMolkky, banner: bannerMolkky },
-  dicegame: { logo: logoDiceGame, banner: bannerDiceGame },
-  esports: { logo: logoEsports, banner: bannerEsports },
-  archery: { logo: logoArchery, banner: bannerArchery },
-  badminton: { logo: logoBadminton, banner: bannerBadminton },
-  basket: { logo: logoBasket, banner: bannerBasket },
-  billard: { logo: logoBillard, banner: bannerBillard },
-  chess: { logo: logoChess, banner: bannerChess },
-  cornhole: { logo: logoCornhole, banner: bannerCornhole },
-  frisbee: { logo: logoFrisbee, banner: bannerFrisbee },
-  padel: { logo: logoPadel, banner: bannerPadel },
-  pickleball: { logo: logoPickleball, banner: bannerPickleball },
-  rugby: { logo: logoRugby, banner: bannerRugby },
-  tennis: { logo: logoTennis, banner: bannerTennis },
-  volley: { logo: logoVolley, banner: bannerVolley },
+export const AGENDA_SPORT_ASSETS: Record<AppSportId, { logo: string; banner: string; calendarIcon: string }> = {
+  fit: { calendarIcon: calendarIconFit, logo: logoFit, banner: bannerFit },
+  running: { calendarIcon: calendarIconRunning, logo: logoRunning, banner: bannerRunning },
+  darts: { calendarIcon: calendarIconDarts, logo: logoDarts, banner: bannerDarts },
+  foot: { calendarIcon: calendarIconFoot, logo: logoFoot, banner: bannerFoot },
+  babyfoot: { calendarIcon: calendarIconBabyFoot, logo: logoBabyFoot, banner: bannerBabyFoot },
+  pingpong: { calendarIcon: calendarIconPingPong, logo: logoPingPong, banner: bannerPingPong },
+  petanque: { calendarIcon: calendarIconPetanque, logo: logoPetanque, banner: bannerPetanque },
+  molkky: { calendarIcon: calendarIconMolkky, logo: logoMolkky, banner: bannerMolkky },
+  dicegame: { calendarIcon: calendarIconDiceGame, logo: logoDiceGame, banner: bannerDiceGame },
+  esports: { calendarIcon: calendarIconEsports, logo: logoEsports, banner: bannerEsports },
+  archery: { calendarIcon: calendarIconArchery, logo: logoArchery, banner: bannerArchery },
+  badminton: { calendarIcon: calendarIconBadminton, logo: logoBadminton, banner: bannerBadminton },
+  basket: { calendarIcon: calendarIconBasket, logo: logoBasket, banner: bannerBasket },
+  billard: { calendarIcon: calendarIconBillard, logo: logoBillard, banner: bannerBillard },
+  chess: { calendarIcon: calendarIconChess, logo: logoChess, banner: bannerChess },
+  cornhole: { calendarIcon: calendarIconCornhole, logo: logoCornhole, banner: bannerCornhole },
+  frisbee: { calendarIcon: calendarIconFrisbee, logo: logoFrisbee, banner: bannerFrisbee },
+  padel: { calendarIcon: calendarIconPadel, logo: logoPadel, banner: bannerPadel },
+  pickleball: { calendarIcon: calendarIconPickleball, logo: logoPickleball, banner: bannerPickleball },
+  rugby: { calendarIcon: calendarIconRugby, logo: logoRugby, banner: bannerRugby },
+  tennis: { calendarIcon: calendarIconTennis, logo: logoTennis, banner: bannerTennis },
+  volley: { calendarIcon: calendarIconVolley, logo: logoVolley, banner: bannerVolley },
 };
