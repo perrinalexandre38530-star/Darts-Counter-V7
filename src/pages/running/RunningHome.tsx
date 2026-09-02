@@ -30,6 +30,22 @@ function safeActiveProfile(store: any) {
     const activeId = String(store?.activeProfileId || "");
     return profiles.find((p: any) => String(p?.id || "") === activeId) || profiles[0] || null;
 }
+function profileAvatarSrc(profile: any) {
+    return profile?.avatarUrl || profile?.avatarUri || profile?.avatarDataUrl || profile?.photoUrl || profile?.imageUrl || "";
+}
+function profileInitials(profile: any) {
+    const source = String(profile?.name || profile?.displayName || profile?.pseudo || profile?.username || "Joueur").trim();
+    const parts = source.split(/\s+/).filter(Boolean).slice(0, 2);
+    return (parts.map((part) => part[0]).join("") || "J").toUpperCase();
+}
+function RunningProfileBadge({ profile, accent, textSoft }: { profile: any; accent: string; textSoft: string }) {
+    const name = String(profile?.name || profile?.displayName || profile?.pseudo || profile?.username || "Joueur actif");
+    const avatar = profileAvatarSrc(profile);
+    return <div style={{ display: "inline-grid", gridTemplateColumns: "auto 1fr", gap: 8, alignItems: "center", padding: "7px 10px", borderRadius: 15, background: "rgba(5,8,13,.74)", border: `1px solid ${accent}2f`, boxShadow: `0 10px 24px ${accent}14`, backdropFilter: "blur(10px)" }}>
+      {avatar ? <img src={avatar} alt={name} style={{ width: 38, height: 38, borderRadius: 999, objectFit: "cover", border: `2px solid ${accent}7a`, background: "#0b1018" }}/> : <div style={{ width: 38, height: 38, borderRadius: 999, display: "grid", placeItems: "center", color: accent, fontSize: 12, fontWeight: 1000, border: `2px solid ${accent}7a`, background: `${accent}14` }}>{profileInitials(profile)}</div>}
+      <div style={{ minWidth: 0 }}><div style={{ color: "rgba(255,255,255,.52)", fontSize: 6.7, fontWeight: 1000, letterSpacing: .8 }}>JOUEUR ACTIF</div><div style={{ color: "#fff", fontSize: 9.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 170 }}>{name}</div><div style={{ color: textSoft, fontSize: 7.2, whiteSpace: "nowrap" }}>MULTISPORTS SCORING</div></div>
+    </div>;
+}
 function useAutoFitTitle(deps: any[] = []) {
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const textRef = useRef<HTMLDivElement | null>(null);
@@ -219,37 +235,43 @@ export default function RunningHome({ store, go }: Props) {
       pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO"),
     ];
     const goHomePage = (index: number) => {
-      const next = Math.max(0, Math.min(2, index));
+      const next = ((index % homePages.length) + homePages.length) % homePages.length;
       setHomePage(next);
       const node = homePagerRef.current;
       if (node) node.scrollTo({ left: node.clientWidth * next, behavior: "smooth" });
     };
+    React.useEffect(() => {
+      const timer = window.setInterval(() => goHomePage(homePage + 1), 6500);
+      return () => window.clearInterval(timer);
+    }, [homePage]);
     return <div className="running-page running-home-v2" style={{ minHeight: "100dvh", background: (theme as any).pageBackground || (theme as any).bg || "#05060C", color: "#FFFFFF", display: "flex", justifyContent: "center", padding: "10px 8px max(82px,calc(70px + env(safe-area-inset-bottom)))", boxSizing: "border-box", overflowX: "hidden" }}>
       <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, minWidth: 0 }}>
         <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}} .running-home-pager{scrollbar-width:none}.running-home-pager::-webkit-scrollbar{display:none}`}</style>
         <div style={{ borderRadius: 22, padding: "10px 12px", background: `linear-gradient(135deg,${accent}18,rgba(8,10,20,.985) 44%,rgba(14,18,34,.985))`, border: `1px solid ${accent}35`, boxShadow: "0 16px 34px rgba(0,0,0,.5)", position: "relative", overflow: "hidden", isolation: "isolate" }}>
           <SportWelcomeWatermark sport="running" opacity={0.11} size={150} />
-          <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-            <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 7.5, fontWeight: 1000, letterSpacing: 1.2 }}>{copy.welcome.toUpperCase()}</div><div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}><div ref={textRef} style={{ width: "fit-content", fontSize: 24, fontWeight: 1000, letterSpacing: 2.2, whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "left center" }}>{copy.title}</div></div></div>
-            <div style={{ minWidth: 54, textAlign: "right" }}><b style={{ color: accent, fontSize: 15 }}>{(stats.weekDistanceM / 1000).toFixed(1)}</b><small style={{ display: "block", color: textSoft, fontSize: 7 }}>KM / 7J</small></div>
+          <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+            <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: 1.3 }}>{copy.welcome.toUpperCase()} · MULTISPORTS SCORING</div><div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}><div ref={textRef} style={{ width: "fit-content", fontSize: 24, fontWeight: 1000, letterSpacing: 2.2, whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "left center" }}>{copy.title}</div></div><div style={{ marginTop: 4, color: "rgba(255,255,255,.78)", fontSize: 9.2, fontWeight: 900, letterSpacing: .35 }}>{outdoorSportLabel(canonicalSport, lang).toUpperCase()}</div></div>
+            <div style={{ display: "grid", justifyItems: "end", gap: 8 }}><div style={{ minWidth: 54, textAlign: "right" }}><b style={{ color: accent, fontSize: 15 }}>{(stats.weekDistanceM / 1000).toFixed(1)}</b><small style={{ display: "block", color: textSoft, fontSize: 7 }}>KM / 7J</small></div><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
           </div>
         </div>
 
         <div style={{ marginTop: 8 }}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>
-        <nav style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, padding: 4, borderRadius: 15, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>
+        <nav style={{ marginTop: 8, display: "grid", gridTemplateColumns: "34px repeat(3,minmax(0,1fr)) 34px", gap: 5, padding: 4, borderRadius: 15, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>
+          <button className="btn" title={pickLegacyLocalizedText(lang, "Page précédente", "Previous page", "Página anterior")} onClick={() => goHomePage((homePage + homePages.length - 1) % homePages.length)} style={{ minHeight: 36, minWidth: 0, padding: 0, borderRadius: 11, fontSize: 12 }}>‹</button>
           {homePages.map((label, index) => <button key={label} className="btn" onClick={() => goHomePage(index)} style={{ minHeight: 36, minWidth: 0, padding: "4px 5px", borderRadius: 11, borderColor: homePage === index ? `${accent}55` : "transparent", background: homePage === index ? `${accent}12` : "transparent", color: homePage === index ? accent : "rgba(255,255,255,.55)", fontSize: 7.5, fontWeight: 1000 }}>{label}</button>)}
+          <button className="btn" title={pickLegacyLocalizedText(lang, "Page suivante", "Next page", "Página siguiente")} onClick={() => goHomePage((homePage + 1) % homePages.length)} style={{ minHeight: 36, minWidth: 0, padding: 0, borderRadius: 11, fontSize: 12 }}>›</button>
         </nav>
 
         <div ref={homePagerRef} className="running-home-pager" onScroll={(event) => { const node = event.currentTarget; if (!node.clientWidth) return; const index = Math.max(0, Math.min(2, Math.round(node.scrollLeft / node.clientWidth))); if (index !== homePage) setHomePage(index); }} style={{ marginTop: 8, display: "flex", width: "100%", overflowX: "auto", overflowY: "hidden", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", touchAction: "pan-x", borderRadius: 22 }}>
           <section style={{ flex: "0 0 100%", minWidth: 0, scrollSnapAlign: "start", padding: 1, boxSizing: "border-box" }}>
             <RunningSurface accent={accent} active padding={11}>
               <div style={{ minHeight: "min(62dvh,540px)", display: "grid", alignContent: "space-between", gap: 9 }}>
-                <div><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "MA SORTIE", "MY ACTIVITY", "MI SALIDA")} title={pickLegacyLocalizedText(lang, "Prêt à bouger ?", "Ready to move?", "¿Listo para moverte?")}/>
+                <div><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "MA SORTIE", "MY ACTIVITY", "MI SALIDA")} title={pickLegacyLocalizedText(lang, "Prêt à bouger ?", "Ready to move?", "¿Listo para moverte?")}/><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
                 <RunningActionTile featured accent={accent} onClick={mainAction} icon={<RunningGlyph name={currentSession ? "recover" : activitySport === "trail" ? "sport-trail" : activitySport === "hiking" ? "sport-hiking" : activitySport === "walking" ? "sport-walking" : activitySport === "treadmill" ? "sport-treadmill" : "sport-running"} size={24}/>} title={mainActionTitle} subtitle={mainActionSub} meta={<span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}30`, color: currentSession ? "#6dff9d" : accent, fontSize: 7, fontWeight: 1000 }}>{currentSession ? (currentSession.paused ? "PAUSE" : "EN COURS") : pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR")}</span>}/></div>
                 <div className="running-home-command-grid">
                   <RunningActionTile accent={accent} onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} icon={<RunningGlyph name="route-choose" size={20}/>} title={pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")} subtitle={pickLegacyLocalizedText(lang, "Explorer visuellement", "Visual discovery", "Explorar visualmente")}/>
                   <RunningActionTile accent={accent} onClick={() => go("stats", { runningStatsTab: "history" })} icon={<RunningGlyph name="history" size={20}/>} title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")} subtitle={`${activities.length} ${copy.sessions.toLowerCase()}`}/>
-                  <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20}/>} title={pickLegacyLocalizedText(lang, "AUTOUR DE MOI", "NEAR ME", "CERCA DE MÍ")} subtitle={pickLegacyLocalizedText(lang, "Partenaires & spots", "Partners & spots", "Compañeros y lugares")}/>
+                  <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20}/>} title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")} subtitle={pickLegacyLocalizedText(lang, "Liste d'amis · partenaires de sortie", "Friends list · activity partners", "Lista de amigos · compañeros de salida")}/>
                   <RunningActionTile accent={accent} onClick={() => go("running_plan")} icon={<RunningGlyph name="spark" size={20}/>} title={pickLegacyLocalizedText(lang, "COACH", "COACH", "COACH")} subtitle={pickLegacyLocalizedText(lang, "Plans & objectifs", "Plans & goals", "Planes y objetivos")}/>
                 </div>
               </div>
@@ -259,7 +281,7 @@ export default function RunningHome({ store, go }: Props) {
           <section style={{ flex: "0 0 100%", minWidth: 0, scrollSnapAlign: "start", padding: 1, boxSizing: "border-box" }}>
             <RunningSurface accent={accent} padding={11}>
               <div style={{ minHeight: "min(62dvh,540px)", display: "grid", alignContent: "start", gap: 10 }}>
-                <RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "PROGRESSION", "PROGRESS", "PROGRESO")} title={pickLegacyLocalizedText(lang, "L'essentiel, sans doublons", "The essentials, no duplicates", "Lo esencial, sin duplicados")} action={<button className="btn" onClick={() => go("stats")} style={{ minHeight: 30, fontSize: 7.5 }}>{pickLegacyLocalizedText(lang, "STATS", "STATS", "STATS")}</button>}/>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "PROGRESSION", "PROGRESS", "PROGRESO")} title={pickLegacyLocalizedText(lang, "L'essentiel, sans doublons", "The essentials, no duplicates", "Lo esencial, sin duplicados")} action={<button className="btn" onClick={() => go("stats")} style={{ minHeight: 30, fontSize: 7.5 }}>{pickLegacyLocalizedText(lang, "STATS", "STATS", "STATS")}</button>}/><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
                   <RunningStatusChip icon={<RunningGlyph name="distance" size={12}/>} label={pickLegacyLocalizedText(lang, "SEMAINE", "WEEK", "SEMANA")} value={weekLabel} accent={accent}/>
                   <RunningStatusChip icon={<RunningGlyph name="spark" size={12}/>} label={pickLegacyLocalizedText(lang, "PRÉPARATION", "READINESS", "PREPARACIÓN")} value={`${trainingStatus.freshnessScore}%`} accent={trainingStatus.freshnessScore >= 70 ? "#71ff9a" : accent}/>
@@ -276,7 +298,7 @@ export default function RunningHome({ store, go }: Props) {
           <section style={{ flex: "0 0 100%", minWidth: 0, scrollSnapAlign: "start", padding: 1, boxSizing: "border-box" }}>
             <RunningSurface accent={accent} padding={11}>
               <div style={{ minHeight: "min(62dvh,540px)", display: "grid", alignContent: "start", gap: 9 }}>
-                <RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO")} title={pickLegacyLocalizedText(lang, "Tes dernières sorties", "Your latest activities", "Tus últimas salidas")} action={<button className="btn" onClick={() => go("stats", { runningStatsTab: "history" })} style={{ minHeight: 30, fontSize: 7.5 }}>{copy.allRuns}</button>}/>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><RunningSectionHeading eyebrow={pickLegacyLocalizedText(lang, "JOURNAL", "JOURNAL", "DIARIO")} title={pickLegacyLocalizedText(lang, "Tes dernières sorties", "Your latest activities", "Tus últimas salidas")} action={<button className="btn" onClick={() => go("stats", { runningStatsTab: "history" })} style={{ minHeight: 30, fontSize: 7.5 }}>{copy.allRuns}</button>}/><RunningProfileBadge profile={activeProfile} accent={accent} textSoft={textSoft}/></div>
                 {activities.length ? <div style={{ display: "grid", gap: 7 }}>{activities.slice(0, 4).map((a) => <RecentRun key={a.id} activity={a} accent={accent} textSoft={textSoft} lang={lang} onClick={() => go("games", { runningActivityId: a.id, runningActivitySport: canonicalOutdoorPerformanceSport(a.sport) })}/>)}</div> : <div style={{ padding: 22, borderRadius: 16, border: "1px dashed rgba(255,255,255,.12)", color: textSoft, textAlign: "center", fontSize: 9 }}>{pickLegacyLocalizedText(lang, "Tes sorties apparaîtront ici.", "Your activities will appear here.", "Tus salidas aparecerán aquí.")}</div>}
                 <InlineAdBanner placement="home" slotKey="home-top" offset={0} compact style={{ marginTop: 2 }}/>
               </div>

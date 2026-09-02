@@ -369,10 +369,11 @@ export default function BottomNav({
     : sportLc === "running"
     ? [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
-        { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
+        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
+        { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <Icon name="profiles" /> },
         {
           k: "games",
-          label: t("nav.run", tr("Courir", "Run", "Correr")),
+          label: t("nav.activity", tr("Activité", "Activity", "Actividad")),
           icon: (
             <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <circle cx="15.5" cy="4.5" r="2" />
@@ -382,7 +383,6 @@ export default function BottomNav({
           ),
         },
         { k: "running_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <Icon name="running_plan" /> },
-        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
         { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
       ]

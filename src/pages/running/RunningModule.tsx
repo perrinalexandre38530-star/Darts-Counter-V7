@@ -59,7 +59,7 @@ type SetupTab = "menu" | "goal" | "training" | "advanced";
 type SimpleGoalMode = "free" | "distance" | "duration";
 type SetupPanel = "menu" | "workout" | "route" | "ready";
 type RoutePanelTab = "menu" | "choose" | "guide" | "offline";
-type RouteChooseMode = "showcase" | "scout" | "discover" | "generate" | "library";
+type RouteChooseMode = "showcase" | "scout" | "discover" | "generate" | "library" | "favorites" | "remake";
 type LivePage = "cockpit" | "route" | "splits" | "details";
 type LiveMetricPanel = "essential" | "pace" | "relief" | "sensors" | "splits" | "nav";
 type WorkoutType = NonNullable<ActivityRecord["workoutType"]>;
@@ -417,8 +417,30 @@ export default function RunningModule({ go, params }: Props) {
         }
         return unique;
     }, [activities, activitySport, discoveredRoutes, offlineRoutes, routeElevationOverrides, savedRoutes]);
-    const selectedRoute = React.useMemo(() => routeOptions.find((route) => route.id === selectedRouteId) || null, [routeOptions, selectedRouteId]);
-    const selectedRouteIndex = React.useMemo(() => Math.max(0, routeOptions.findIndex((route) => route.id === selectedRouteId)), [routeOptions, selectedRouteId]);
+    const favoriteRouteOptions = React.useMemo(() => savedRoutes.filter((route) => !route.sport ? activitySport === "running" : route.sport === activitySport), [activitySport, savedRoutes]);
+    const remakeRouteOptions = React.useMemo(() => {
+        const savedSourceIds = new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean));
+        return activities
+            .filter((activity) => Array.isArray(activity.route) && activity.route.length >= 2 && activity.distanceM >= 300 && !savedSourceIds.has(activity.id) && canonicalOutdoorPerformanceSport(activity.sport) === activitySport)
+            .slice(0, 12)
+            .map((activity) => routeTemplateFromActivity(activity));
+    }, [activities, activitySport, savedRoutes]);
+    const nearbyRouteOptions = React.useMemo(() => discoveredRoutes.filter((route) => !route.sport || route.sport === activitySport), [activitySport, discoveredRoutes]);
+    const generatedRouteOptions = React.useMemo(() => routeOptions.filter((route) => route.source === "generated" || !!route.generation), [routeOptions]);
+    const libraryRouteOptions = React.useMemo(() => routeOptions.filter((route) => route.source === "community" || !!route.community || !!route.scout || route.source === "gpx" || route.source === "fit" || route.source === "tcx"), [routeOptions]);
+    const routePanelOptions = React.useMemo(() => {
+        switch (routeChooseMode) {
+            case "favorites": return favoriteRouteOptions;
+            case "remake": return remakeRouteOptions;
+            case "discover": return nearbyRouteOptions.length ? nearbyRouteOptions : routeOptions;
+            case "generate": return generatedRouteOptions.length ? generatedRouteOptions : routeOptions;
+            case "library": return libraryRouteOptions.length ? libraryRouteOptions : routeOptions;
+            case "showcase": return routeOptions;
+            default: return routeOptions;
+        }
+    }, [favoriteRouteOptions, remakeRouteOptions, nearbyRouteOptions, generatedRouteOptions, libraryRouteOptions, routeChooseMode, routeOptions]);
+    const selectedRouteIndex = React.useMemo(() => Math.max(0, routePanelOptions.findIndex((route) => route.id === selectedRouteId)), [routePanelOptions, selectedRouteId]);
+    const selectedRoute = React.useMemo(() => routeOptions.find((route) => route.id === selectedRouteId) || routePanelOptions[0] || null, [routeOptions, routePanelOptions, selectedRouteId]);
     const selectedRouteAttempts = React.useMemo(() => {
         if (!selectedRoute)
             return [] as ActivityRecord[];
@@ -440,7 +462,7 @@ export default function RunningModule({ go, params }: Props) {
             return false;
         }).slice().sort((a, b) => Number(a.elapsedMs || 0) - Number(b.elapsedMs || 0));
     }, [activities, selectedRoute]);
-    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteChooseMode((current) => current === "scout" ? "scout" : selectedRoute ? "showcase" : "discover"); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
+    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteChooseMode((current) => current === "showcase" ? (selectedRoute ? "discover" : "discover") : current); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
     const selectedTerrain = React.useMemo(() => selectedRoute ? analyzeRunningTerrain(selectedRoute.route) : null, [selectedRoute]);
     const selectedTerrainAdvice = React.useMemo(() => selectedTerrain ? terrainAdvice(selectedTerrain, lang) : null, [lang, selectedTerrain]);
     const selectedSportRouteDetails = React.useMemo(() => selectedRoute ? buildSportRouteDetails(selectedRoute, selectedTerrain, activitySport, lang) : null, [activitySport, lang, selectedRoute, selectedTerrain]);
@@ -2026,17 +2048,24 @@ export default function RunningModule({ go, params }: Props) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: accent, fontSize: 8.9, fontWeight: 1000, letterSpacing: .7 }}>{pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")}</div>
-                  <div style={{ marginTop: 2, color: textSoft, fontSize: 7.2 }}>{routeChooseMode === "scout" ? pickLegacyLocalizedText(lang, "Explorer des parcours existants", "Explore existing routes", "Explorar rutas existentes") : routeChooseMode === "generate" ? pickLegacyLocalizedText(lang, "Créer un itinéraire sur mesure", "Build a custom route", "Crear una ruta a medida") : routeChooseMode === "discover" ? pickLegacyLocalizedText(lang, "Voir les tracés proches", "See nearby routes", "Ver rutas cercanas") : routeChooseMode === "library" ? pickLegacyLocalizedText(lang, "Retrouver tes parcours", "Find your saved routes", "Encontrar tus rutas") : pickLegacyLocalizedText(lang, "Ta sélection en un coup d’œil", "Your selection at a glance", "Tu selección de un vistazo")}</div>
+                  <div style={{ marginTop: 2, color: textSoft, fontSize: 7.2 }}>{routeChooseMode === "scout" ? pickLegacyLocalizedText(lang, "Explorer des parcours existants", "Explore existing routes", "Explorar rutas existentes") : routeChooseMode === "generate" ? pickLegacyLocalizedText(lang, "Créer un itinéraire sur mesure", "Build a custom route", "Crear una ruta a medida") : routeChooseMode === "discover" ? pickLegacyLocalizedText(lang, "Voir les tracés proches", "See nearby routes", "Ver rutas cercanas") : routeChooseMode === "library" ? pickLegacyLocalizedText(lang, "Voir la bibliothèque de parcours", "Open the route library", "Abrir la biblioteca de rutas") : routeChooseMode === "favorites" ? pickLegacyLocalizedText(lang, "Retrouver tes favoris", "Find your favorites", "Encontrar tus favoritos") : routeChooseMode === "remake" ? pickLegacyLocalizedText(lang, "Refaire un parcours déjà effectué", "Repeat a previous route", "Repetir una ruta ya realizada") : pickLegacyLocalizedText(lang, "Ta sélection en un coup d’œil", "Your selection at a glance", "Tu selección de un vistazo")}</div>
                 </div>
                 <div style={{ minWidth: 34, height: 28, display: "grid", placeItems: "center", borderRadius: 999, border: `1px solid ${accent}30`, background: `${accent}0b`, color: accent, fontSize: 7.5, fontWeight: 1000 }}>{routeOptions.length}</div>
               </div>
 
               <div className="running-route-modes">
-                {([['discover','⌖', pickLegacyLocalizedText(lang, 'AUTOUR DE MOI', 'NEARBY', 'CERCA DE MÍ')], ['generate','＋', pickLegacyLocalizedText(lang, 'GÉNÉRER', 'GENERATE', 'GENERAR')], ['library','☆', pickLegacyLocalizedText(lang, 'MES PARCOURS', 'MY ROUTES', 'MIS RUTAS')]] as Array<[RouteChooseMode, string, string]>).map(([mode, icon, label]) => { const active = routeChooseMode === mode || (mode === 'discover' && routeChooseMode === 'scout') || (mode === 'library' && routeChooseMode === 'showcase'); return <button key={mode} className="btn running-route-mode" title={label} onClick={() => setRouteChooseMode(mode)} style={{ color: active ? accent : undefined, borderColor: active ? `${accent}60` : "rgba(255,255,255,.065)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: 9, fontWeight: 1000 }}><span style={{ fontSize: 13, marginRight: 5 }}>{icon}</span>{label}</button>; })}
+                {([
+                  ['favorites','★', pickLegacyLocalizedText(lang, 'FAVORIS', 'FAVORITES', 'FAVORITOS')],
+                  ['remake','↺', pickLegacyLocalizedText(lang, 'REMAKE', 'REMAKE', 'REMAKE')],
+                  ['discover','⌖', pickLegacyLocalizedText(lang, 'À PROXIMITÉ', 'NEARBY', 'CERCA')],
+                  ['generate','＋', pickLegacyLocalizedText(lang, 'GÉNÉRER', 'GENERATE', 'GENERAR')],
+                  ['library','✦', pickLegacyLocalizedText(lang, 'BIBLIOTHÈQUE', 'LIBRARY', 'BIBLIOTECA')],
+                ] as Array<[RouteChooseMode, string, string]>).map(([mode, icon, label]) => { const active = routeChooseMode === mode; return <button key={mode} className="btn running-route-mode" title={label} onClick={() => setRouteChooseMode(mode)} style={{ color: active ? accent : undefined, borderColor: active ? `${accent}60` : "rgba(255,255,255,.065)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: active ? 8.6 : 10.4, fontWeight: 1000, padding: active ? '0 10px' : '0 6px', justifyContent: 'center' }}><span style={{ fontSize: 13, marginRight: active ? 5 : 0 }}>{icon}</span>{active ? label : null}</button>; })}
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 0 }}>
-                {([['scout','✦', pickLegacyLocalizedText(lang, 'SCOUT IA', 'AI SCOUT', 'SCOUT IA')]] as Array<[RouteChooseMode, string, string]>).map(([mode, icon, label]) => { const active = routeChooseMode === mode; return <button key={mode} className="btn" title={pickLegacyLocalizedText(lang, "Recherche avancée Scout IA", "Advanced AI Scout search", "Búsqueda avanzada Scout IA")} onClick={() => setRouteChooseMode(mode)} style={{ flex: active ? "1 0 auto" : "0 0 36px", maxWidth: active ? 148 : 36, minWidth: active ? 108 : 36, minHeight: 34, padding: active ? "4px 10px" : 0, borderRadius: 12, display: "flex", justifyContent: "center", alignItems: "center", gap: 6, color: active ? accent : undefined, borderColor: active ? `${accent}60` : "rgba(255,255,255,.065)", background: active ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: active ? 8.2 : 12, fontWeight: 1000 }}><span>{icon}</span>{active ? <span style={{ whiteSpace: "nowrap" }}>{label}</span> : null}</button>; })}
+              <div style={{ display: "flex", gap: 7, alignItems: "center", justifyContent: "space-between", minWidth: 0 }}>
+                <div style={{ color: textSoft, fontSize: 7.2 }}>{pickLegacyLocalizedText(lang, "Une seule ligne d'onglets, chaque mode affiche ses parcours dédiés.", "One tab row only, each mode shows its dedicated routes.", "Una sola fila de pestañas, cada modo muestra sus rutas dedicadas.")}</div>
+                <button className="btn" title={pickLegacyLocalizedText(lang, "Recherche avancée Scout IA", "Advanced AI Scout search", "Búsqueda avanzada Scout IA")} onClick={() => setRouteChooseMode('scout')} style={{ flex: routeChooseMode === 'scout' ? "1 0 auto" : "0 0 36px", maxWidth: routeChooseMode === 'scout' ? 148 : 36, minWidth: routeChooseMode === 'scout' ? 108 : 36, minHeight: 34, padding: routeChooseMode === 'scout' ? "4px 10px" : 0, borderRadius: 12, display: "flex", justifyContent: "center", alignItems: "center", gap: 6, color: routeChooseMode === 'scout' ? accent : undefined, borderColor: routeChooseMode === 'scout' ? `${accent}60` : "rgba(255,255,255,.065)", background: routeChooseMode === 'scout' ? `${accent}0d` : "rgba(255,255,255,.018)", fontSize: routeChooseMode === 'scout' ? 8.2 : 12, fontWeight: 1000 }}><span>✦</span>{routeChooseMode === 'scout' ? <span style={{ whiteSpace: "nowrap" }}>{pickLegacyLocalizedText(lang, 'SCOUT IA', 'AI SCOUT', 'SCOUT IA')}</span> : null}</button>
               </div>
 
               {routeChooseMode === "showcase" ? <div style={{ padding: 12, borderRadius: 16, background: "linear-gradient(145deg,rgba(255,255,255,.05),rgba(7,10,15,.84))", border: "1px solid rgba(255,255,255,.08)" }}>
@@ -2055,7 +2084,7 @@ export default function RunningModule({ go, params }: Props) {
                 <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{[5,10,20].map((radius) => <button key={radius} className="btn" onClick={() => setRouteDiscoveryRadiusKm(radius)} style={{ minHeight: 31, padding: "4px 6px", color: routeDiscoveryRadiusKm === radius ? accent : undefined, borderColor: routeDiscoveryRadiusKm === radius ? `${accent}66` : undefined, fontSize: 8.1, fontWeight: 1000 }}>{radius} KM</button>)}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginTop: 8 }}>
                   <button className="btn" disabled={routeDiscoveryBusy} onClick={() => void discoverNearbyRoutes()} style={{ minHeight: 42, color: accent, borderColor: `${accent}66`, fontSize: 9.2, fontWeight: 1000 }}>{routeDiscoveryBusy ? pickLegacyLocalizedText(lang, "RECHERCHE…", "SEARCHING…", "BUSCANDO…") : pickLegacyLocalizedText(lang, "DÉCOUVRIR LES PARCOURS", "DISCOVER ROUTES", "DESCUBRIR RUTAS")}</button><button className="btn" onClick={() => setRouteChooseMode("scout")} title={pickLegacyLocalizedText(lang, "Recherche avancée Scout IA", "Advanced AI Scout search", "Búsqueda avanzada Scout IA")} style={{ minWidth: 44, minHeight: 42, padding: "0 10px", color: routeChooseMode === "scout" ? accent : undefined, borderColor: routeChooseMode === "scout" ? `${accent}66` : undefined, fontSize: 12 }}>✦</button>
-                  <button className="btn" onClick={() => go("online", { tab: "nearby" })} style={{ gridColumn: "1 / -1", minHeight: 40, fontSize: 8.8, fontWeight: 1000 }}>👥 {pickLegacyLocalizedText(lang, "TROUVER DES PARTENAIRES À PROXIMITÉ", "FIND NEARBY PARTNERS", "BUSCAR COMPAÑEROS CERCANOS")}</button>
+                  <button className="btn" onClick={() => go("online", { tab: "nearby" })} style={{ gridColumn: "1 / -1", minHeight: 40, fontSize: 8.8, fontWeight: 1000 }}>👥 {pickLegacyLocalizedText(lang, "TROUVER DES AMIS / PARTENAIRES", "FIND NEARBY PARTNERS", "BUSCAR COMPAÑEROS CERCANOS")}</button>
                 </div>
                 {routeDiscoveryMessage ? <div style={{ marginTop: 7, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{routeDiscoveryMessage}</div> : null}
               </div> : null}
@@ -2087,7 +2116,7 @@ export default function RunningModule({ go, params }: Props) {
                   <MiniStat label={pickLegacyLocalizedText(lang, "OFFLINE", "OFFLINE", "SIN CONEXIÓN")} value={String(offlineRoutes.length)} accent={accent}/>
                 </div>
                 <div style={{ marginTop: 7, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Tu carrousel principal est juste en dessous. Tu peux aussi afficher la liste détaillée si tu veux comparer plusieurs traces à la fois.", "Your main carousel is just below. You can also reveal the detailed list if you want to compare several routes at once.", "Tu carrusel principal está justo debajo. También puedes mostrar la lista detallada si quieres comparar varias rutas a la vez.")}</div>
-                <button className="btn" onClick={() => { setRouteChooseMode("showcase"); setRouteListOpen((value) => !value); }} style={{ width: "100%", minHeight: 38, marginTop: 8, color: accent, borderColor: `${accent}66`, fontSize: 8.5, fontWeight: 1000 }}>{routeListOpen ? pickLegacyLocalizedText(lang, "REFERMER LA LISTE DÉTAILLÉE", "HIDE DETAILED LIST", "OCULTAR LISTA DETALLADA") : pickLegacyLocalizedText(lang, "AFFICHER LA LISTE DÉTAILLÉE", "SHOW DETAILED LIST", "MOSTRAR LISTA DETALLADA")}</button>
+                <button className="btn" onClick={() => { setRouteChooseMode("library"); setRouteListOpen((value) => !value); }} style={{ width: "100%", minHeight: 38, marginTop: 8, color: accent, borderColor: `${accent}66`, fontSize: 8.5, fontWeight: 1000 }}>{routeListOpen ? pickLegacyLocalizedText(lang, "REFERMER LA LISTE DÉTAILLÉE", "HIDE DETAILED LIST", "OCULTAR LISTA DETALLADA") : pickLegacyLocalizedText(lang, "AFFICHER LA LISTE DÉTAILLÉE", "SHOW DETAILED LIST", "MOSTRAR LISTA DETALLADA")}</button>
               </div> : null}
             </div>
           </RunningSurface>
@@ -2114,7 +2143,7 @@ export default function RunningModule({ go, params }: Props) {
             onOpenMaps={openRouteInMaps}
           /> : null}
 
-          {routeOptions.length && routeChooseMode !== "scout" ? <RunningSurface accent={accent} active style={{ overflow: "hidden" }}>
+          {routePanelOptions.length && routeChooseMode !== "scout" ? <RunningSurface accent={accent} active style={{ overflow: "hidden" }}>
             <div style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 9, alignItems: "center" }}>
                 <div style={{ minWidth: 0 }}>
@@ -2128,13 +2157,13 @@ export default function RunningModule({ go, params }: Props) {
               </div>
 
               {selectedRoute ? <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ position: "relative", touchAction: "pan-y" }} onTouchStart={onRouteSwipeStart} onTouchEnd={onRouteSwipeEnd}>
+                <div style={{ display: "grid", gap: 8 }}><div style={{ padding: 10, borderRadius: 15, background: "linear-gradient(145deg,rgba(255,255,255,.04),rgba(5,8,13,.88))", border: `1px solid ${accent}25` }}><div style={{ display: "grid", gridTemplateColumns: "74px 1fr auto", gap: 8, alignItems: "center" }}><div style={{ height: 56, borderRadius: 12, background: `linear-gradient(135deg,${accent}18,rgba(255,255,255,.03))`, border: `1px solid ${accent}25`, display: "grid", placeItems: "center", color: accent, fontSize: 20, fontWeight: 1000 }}>🗺️</div><div style={{ minWidth: 0 }}><div style={{ color: "#fff", fontSize: 10.3, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{buildRouteDisplayName(selectedRoute, selectedTerrain, lang)}</div><div style={{ marginTop: 3, display: "flex", flexWrap: "wrap", gap: 5, color: textSoft, fontSize: 7.2 }}><span>{difficultyBadgeLabel(selectedTerrain, lang)}</span><span>• {formatDistance(selectedRoute.distanceM)}</span><span>• {formatDuration(estimateOutdoorRouteDurationMs(selectedRoute, activitySport))}</span></div></div><button className="btn" onClick={() => { setRouteDetailInitialTab("overview"); setRouteDetailOpen(true); }} style={{ minHeight: 38, padding: "0 10px", fontSize: 7.7, fontWeight: 1000, color: accent, borderColor: `${accent}55` }}>{pickLegacyLocalizedText(lang, "FICHE", "DETAILS", "FICHA")}</button></div></div><div style={{ position: "relative", touchAction: "pan-y" }} onTouchStart={onRouteSwipeStart} onTouchEnd={onRouteSwipeEnd}>
                   <RouteMap points={selectedRoute.route} accent={accent} waiting={copy.waiting} lang={lang} textSoft={textSoft} showRouteNetwork zoomable immersive route={selectedRoute} terrain={selectedTerrain} onOpen={() => { setRouteDetailInitialTab("overview"); setRouteDetailOpen(true); }}/>
                   <div style={{ position: "absolute", inset: 10, display: "grid", gridTemplateRows: "auto 1fr", pointerEvents: "none" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.78)", border: `1px solid ${accent}35`, color: accent, fontSize: 7.3, fontWeight: 1000 }}>{selectedTerrain?.hasElevation ? terrainLabel(selectedTerrain.terrain, lang) : outdoorSportLabel(activitySport, lang)}</div>
-                        <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.78)", border: "1px solid rgba(255,255,255,.10)", color: "#fff", fontSize: 7.3, fontWeight: 1000 }}>{selectedRouteIndex + 1}/{routeOptions.length}</div>
+                        <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.78)", border: "1px solid rgba(255,255,255,.10)", color: "#fff", fontSize: 7.3, fontWeight: 1000 }}>{selectedRouteIndex + 1}/{routePanelOptions.length || routeOptions.length}</div>
                         {selectedRoute.scout ? <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.82)", border: `1px solid ${accent}44`, color: accent, fontSize: 7.3, fontWeight: 1000 }}>✦ {selectedRoute.scout.score}%</div> : null}{selectedRoute.community ? <div style={{ padding: "5px 9px", borderRadius: 999, background: "rgba(7,10,15,.82)", border: `1px solid ${accent}44`, color: accent, fontSize: 7.3, fontWeight: 1000 }}>👥 {selectedRoute.community.ownerDisplayName || pickLegacyLocalizedText(lang, "COMMUNAUTÉ", "COMMUNITY", "COMUNIDAD")}</div> : null}
                       </div>
                       <div style={{ display: "grid", gap: 6, pointerEvents: "auto" }}>
@@ -2148,7 +2177,7 @@ export default function RunningModule({ go, params }: Props) {
                       <div style={{ justifySelf: "end", pointerEvents: "auto" }}><button className="btn" onClick={(event) => { event.stopPropagation(); selectAdjacentRoute(1); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(7,10,15,.82)", borderColor: `${accent}35`, fontSize: 16 }}>›</button></div>
                     </div>
                   </div>
-                </div>
+                </div></div>
 
                 <div style={{ padding: 10, borderRadius: 17, background: "linear-gradient(145deg,rgba(255,255,255,.04),rgba(5,8,13,.90))", border: `1px solid ${accent}28` }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
@@ -2165,7 +2194,7 @@ export default function RunningModule({ go, params }: Props) {
                 </div>
 
                 {routeListOpen ? <div style={{ display: "grid", gap: 8 }}>
-                  {routeOptions.slice(0, 12).map((route, index) => {
+                  {routePanelOptions.slice(0, 12).map((route, index) => {
                     const active = selectedRouteId === route.id;
                     const favorite = savedRoutes.some((item) => item.id === route.id || (!!route.externalId && item.externalId === route.externalId) || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId));
                     const routeTerrain = analyzeRunningTerrain(route.route);
@@ -2179,7 +2208,7 @@ export default function RunningModule({ go, params }: Props) {
 
               </div> : <div style={{ textAlign: "center", color: textSoft, fontSize: 9.2, lineHeight: 1.5, padding: 12 }}>{pickLegacyLocalizedText(lang, "Sélectionne un parcours dans le carrousel pour afficher la grande carte et tous les onglets dédiés.", "Select a route in the carousel to display the large map and all dedicated tabs.", "Selecciona una ruta en el carrusel para mostrar el gran mapa y todas las pestañas dedicadas.")}</div>}
             </div>
-          </RunningSurface> : <RunningSurface accent={accent} style={{ marginTop: 0 }}><div style={{ textAlign: "center", color: textSoft, fontSize: 9.5, lineHeight: 1.5, padding: 12 }}>{pickLegacyLocalizedText(lang, "Aucun parcours enregistré. Lance d’abord « Autour de moi » ou « Générer » pour obtenir de vraies cartes de parcours.", "No route saved yet. Start with “Around me” or “Generate” to get real route map cards.", "Todavía no hay rutas guardadas. Empieza con «Cerca de mí» o «Generar» para obtener verdaderas tarjetas de rutas con mapa.")}</div></RunningSurface>}
+          </RunningSurface> : <RunningSurface accent={accent} style={{ marginTop: 0 }}><div style={{ textAlign: "center", color: textSoft, fontSize: 9.5, lineHeight: 1.5, padding: 12 }}>{pickLegacyLocalizedText(lang, "Aucun parcours trouvé pour cet onglet. Essaie un autre filtre, « À proximité » ou « Générer » pour alimenter cette vue.", "No route saved yet. Start with “Around me” or “Generate” to get real route map cards.", "Todavía no hay rutas guardadas. Empieza con «Cerca de mí» o «Generar» para obtener verdaderas tarjetas de rutas con mapa.")}</div></RunningSurface>}
         </div>
       </> : null}
 

@@ -4124,8 +4124,8 @@ function ProfilesMenuView({
           onClick={() => go?.("games", { runningOpenRoutes: true })}
         />
         <CardBtn
-          title={pickLegacyLocalizedText(lang, "PARTENAIRES À PROXIMITÉ", "NEARBY PARTNERS", "COMPAÑEROS CERCANOS")}
-          subtitle={pickLegacyLocalizedText(lang, "Trouve des personnes pour courir, marcher, randonner ou rouler.", "Find people to run, walk, hike or ride with.", "Encuentra personas para correr, caminar, hacer senderismo o montar.")}
+          title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")}
+          subtitle={pickLegacyLocalizedText(lang, "Liste d'amis et partenaires de sortie à proximité.", "Friends list and nearby activity partners.", "Lista de amigos y compañeros de salida cercanos.")}
           onClick={() => go?.("online", { tab: "nearby" })}
         />
       </> : null}
