@@ -111,6 +111,7 @@ export type SlideRowDef = {
   value: string;
   onClick?: () => void;
   backgroundImage?: string;
+  tileImage?: string;
   ariaLabel?: string;
 };
 
@@ -344,6 +345,7 @@ function ActiveProfileCard({
             value: String(row.value ?? "—"),
             onClick: row.onClick,
             backgroundImage: row.backgroundImage,
+            tileImage: row.tileImage,
             ariaLabel: row.ariaLabel,
           })),
         });
@@ -808,6 +810,7 @@ function ActiveProfileCard({
                     theme={theme}
                     onClick={row.onClick}
                     backgroundImage={row.backgroundImage}
+                    tileImage={row.tileImage}
                     ariaLabel={row.ariaLabel}
                   />
                 ))}
@@ -827,6 +830,7 @@ type KpiCellProps = {
   theme: any;
   onClick?: () => void;
   backgroundImage?: string;
+  tileImage?: string;
   ariaLabel?: string;
 };
 
@@ -836,19 +840,34 @@ function splitKpiDisplayValue(value: string) {
   return match ? { main: match[1], unit: match[2] } : { main: raw, unit: "" };
 }
 
-function KpiCell({ label, value, primary, theme, onClick, backgroundImage, ariaLabel }: KpiCellProps) {
+function KpiCell({ label, value, primary, theme, onClick, backgroundImage, tileImage, ariaLabel }: KpiCellProps) {
   const display = splitKpiDisplayValue(value);
   const interactive = typeof onClick === "function";
+  const illustrationMode = Boolean(tileImage);
   const content = (
     <>
       {backgroundImage ? <div aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg,rgba(2,5,10,.22),rgba(2,5,10,.86)),url("${backgroundImage}")`, backgroundSize: "cover", backgroundPosition: "center", opacity: .9, pointerEvents: "none" }} /> : null}
-      <div style={{ position: "relative", zIndex: 1, fontSize: 10, letterSpacing: 0.4, opacity: 0.88, marginBottom: 3, textTransform: "lowercase" }}>
+      {illustrationMode ? <div aria-hidden style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 12%, ${primary}18, transparent 48%), linear-gradient(180deg, rgba(255,255,255,.04), rgba(4,8,16,.02) 34%, rgba(4,8,16,.22) 100%)`, pointerEvents: "none" }} /> : null}
+      {illustrationMode && tileImage ? (
+        <div style={{ position: "relative", zIndex: 1, minHeight: 58, marginBottom: 5, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <img src={tileImage} alt="" style={{ maxWidth: "76%", maxHeight: 58, objectFit: "contain", filter: "drop-shadow(0 8px 16px rgba(0,0,0,.6))" }} />
+        </div>
+      ) : null}
+      <div style={{ position: "relative", zIndex: 1, fontSize: illustrationMode ? 11.2 : 10, fontWeight: illustrationMode ? 800 : 600, letterSpacing: illustrationMode ? 0.2 : 0.4, opacity: illustrationMode ? 0.96 : 0.88, marginBottom: illustrationMode ? 2 : 3, textTransform: illustrationMode ? "none" : "lowercase", color: illustrationMode ? "#f4fbff" : undefined, textShadow: illustrationMode ? "0 2px 8px rgba(0,0,0,.55)" : undefined }}>
         {label}
       </div>
-      <div style={{ position: "relative", zIndex: 1, height: 2, width: 32, borderRadius: 999, marginBottom: 4, background: `linear-gradient(90deg, transparent, ${primary}, transparent)`, boxShadow: `0 0 8px ${primary}66` }} />
-      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, minWidth: 0, color: primary, animation: "apcValueGlow 2.8s ease-in-out infinite" }}>
-        <span style={{ fontSize: interactive ? 17 : 20, fontWeight: 900, lineHeight: 1.05, minWidth: 0, textShadow: backgroundImage ? "0 2px 12px #000" : undefined }}>{display.main}</span>
-        {display.unit ? <span style={{ fontSize: 8, fontWeight: 900, lineHeight: 1, opacity: .72, textTransform: "none" }}>{display.unit}</span> : null}
+      {!illustrationMode ? <div style={{ position: "relative", zIndex: 1, height: 2, width: 32, borderRadius: 999, marginBottom: 4, background: `linear-gradient(90deg, transparent, ${primary}, transparent)`, boxShadow: `0 0 8px ${primary}66` }} /> : null}
+      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: illustrationMode ? "center" : "baseline", justifyContent: "center", gap: 3, minWidth: 0, color: illustrationMode ? (theme.textSoft ?? "rgba(255,255,255,.76)") : primary, animation: illustrationMode ? undefined : "apcValueGlow 2.8s ease-in-out infinite", lineHeight: illustrationMode ? 1.2 : 1.05, textAlign: "center", maxWidth: "100%" }}>
+        {illustrationMode ? (
+          <span style={{ fontSize: 8.8, fontWeight: 600, opacity: .92, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "normal", display: "-webkit-box", WebkitLineClamp: 2 as any, WebkitBoxOrient: "vertical" as any }}>
+            {value}
+          </span>
+        ) : (
+          <>
+            <span style={{ fontSize: interactive ? 17 : 20, fontWeight: 900, minWidth: 0, textShadow: backgroundImage ? "0 2px 12px #000" : undefined }}>{display.main}</span>
+            {display.unit ? <span style={{ fontSize: 8, fontWeight: 900, lineHeight: 1, opacity: .72, textTransform: "none" }}>{display.unit}</span> : null}
+          </>
+        )}
       </div>
       {interactive ? <div style={{ position: "absolute", zIndex: 2, right: 7, bottom: 5, fontSize: 11, color: primary, opacity: .9 }}>›</div> : null}
     </>
@@ -856,16 +875,16 @@ function KpiCell({ label, value, primary, theme, onClick, backgroundImage, ariaL
   const baseStyle: React.CSSProperties = {
     position: "relative",
     overflow: "hidden",
-    minHeight: interactive ? 82 : undefined,
+    minHeight: interactive ? (illustrationMode ? 104 : 82) : undefined,
     borderRadius: 14,
-    padding: "6px 8px 8px",
-    background: "radial-gradient(circle at 0% 0%, rgba(255,255,255,0.06), rgba(5,7,16,0.96))",
+    padding: illustrationMode ? "8px 8px 10px" : "6px 8px 8px",
+    background: illustrationMode ? "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.08), rgba(5,7,16,0.98))" : "radial-gradient(circle at 0% 0%, rgba(255,255,255,0.06), rgba(5,7,16,0.96))",
     border: `1px solid ${interactive ? `${primary}66` : (theme.borderSoft ?? "rgba(255,255,255,0.18)")}`,
     boxShadow: interactive ? `0 10px 24px rgba(0,0,0,.78), inset 0 0 20px ${primary}0d` : "0 10px 22px rgba(0,0,0,0.75)",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: illustrationMode ? "flex-start" : "center",
     textAlign: "center",
     color: "inherit",
   };
