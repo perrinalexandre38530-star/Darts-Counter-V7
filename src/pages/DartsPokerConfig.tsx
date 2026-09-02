@@ -143,7 +143,7 @@ export default function DartsPokerConfig(props: any) {
     <OptionRow label="Conseils stratégiques"><OptionToggle value={assistanceEnabled} onChange={setAssistanceEnabled} /></OptionRow>
     <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>Chaque fléchette est validée individuellement. L’assistance met en avant les secteurs qui renforcent la main ou le contrat, sans modifier le résultat du lancer.</div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
-      {[["S","CARTE",GOLD],["D","+ ÉCHANGE",BLUE],["T","+ CHOIX",RED],["BULL","2 CARTES",GREEN],["DBULL","JOKER",GOLD]].map(([key,label,color]: any) => <div key={key} style={{ padding: "7px 3px", borderRadius: 10, textAlign: "center", border: `1px solid ${color}44`, background: `${color}0c` }}><div style={{ color, fontWeight: 1100, fontSize: 10 }}>{key}</div><div style={{ color: soft, fontSize: 6.8, marginTop: 2 }}>{label}</div></div>)}
+      {[["S","CARTE",GOLD],["D","+ ÉCHANGE","#55c7ff"],["T","+ CHOIX",RED],["BULL","2 CARTES",GREEN],["DBULL","JOKER",GOLD]].map(([key,label,color]: any) => <div key={key} style={{ padding: "7px 3px", borderRadius: 10, textAlign: "center", border: `1px solid ${color}44`, background: `${color}0c` }}><div style={{ color, fontWeight: 1100, fontSize: 10 }}>{key}</div><div style={{ color: soft, fontSize: 6.8, marginTop: 2 }}>{label}</div></div>)}
     </div>
   </section>;
 
