@@ -69,14 +69,25 @@ function useAutoFitTitle(deps: any[] = []) {
     return { wrapRef, textRef, scale };
 }
 function svgDataUri(svg: string) { return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`; }
-function tickerSvg(kind: "hero" | "coach" | "pacer" | "records", accent: string) {
-    const c = {
-        hero: ["PERFORMANCE", "BOUGE.", "PROGRESSE.", "GO"],
-        coach: ["COACH", "UN PLAN.", "UNE MISSION.", "GO"],
-        pacer: ["PACER", "GARDE TON", "RYTHME CIBLE", "±"],
+type RunningTickerVisual = "hero" | "coach" | "goal" | "records" | "streak" | "load" | "plan" | "next" | "routes" | "gps" | "community" | "gear" | "pacer";
+function tickerSvg(kind: RunningTickerVisual, accent: string) {
+    const c: Record<RunningTickerVisual, [string, string, string, string]> = {
+        hero: ["PERFORMANCE", "BOUGE.", "PROGRESSE.", "KM"],
+        coach: ["COACH", "UN PLAN.", "UNE MISSION.", "AI"],
+        goal: ["OBJECTIF", "CETTE SEMAINE", "VA AU BOUT.", "%"],
         records: ["RECORDS", "CHAQUE KM", "PEUT COMPTER", "PR"],
-    }[kind];
-    return svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360"><defs><radialGradient id="b" cx="72%" cy="28%" r="86%"><stop offset="0" stop-color="${accent}" stop-opacity=".24"/><stop offset=".46" stop-color="#111722"/><stop offset="1" stop-color="#05070d"/></radialGradient></defs><rect width="1200" height="360" fill="url(#b)"/><path d="M0 300 C160 240 320 330 500 265 C700 192 824 110 1200 206" fill="none" stroke="${accent}" stroke-opacity=".35" stroke-width="4"/><circle cx="930" cy="180" r="112" fill="none" stroke="${accent}" stroke-opacity=".32" stroke-width="3"/><text x="930" y="202" text-anchor="middle" font-family="Arial" font-size="72" font-weight="900" fill="${accent}">${c[3]}</text><text x="70" y="92" font-family="Arial" font-size="24" font-weight="900" letter-spacing="5" fill="${accent}">${c[0]}</text><text x="70" y="170" font-family="Arial" font-size="57" font-weight="900" fill="#fff">${c[1]}</text><text x="70" y="232" font-family="Arial" font-size="48" font-weight="900" fill="#fff" opacity=".82">${c[2]}</text></svg>`);
+        streak: ["REGULARITE", "ENCHAINE.", "GARDE LE CAP.", "7J"],
+        load: ["RECUPERATION", "CHARGE.", "FRAICHEUR.", "REC"],
+        plan: ["PROGRAMME", "PLANIFIE.", "PROGRESSE.", "PLAN"],
+        next: ["PROCHAINE", "SEANCE.", "PREPARE-TOI.", "NEXT"],
+        routes: ["PARCOURS", "CARTE 2D/3D", "RELIEF + D+.", "MAP"],
+        gps: ["GPS", "TRACE FIABLE.", "SORTIE SAUVEE.", "GPS"],
+        community: ["COMMUNAUTE", "COURS ENSEMBLE.", "PARTAGE.", "TEAM"],
+        gear: ["CAPTEURS", "MONTRES.", "HEALTH CONNECT.", "SYNC"],
+        pacer: ["PACER", "GARDE TON", "RYTHME CIBLE", "+/-"],
+    };
+    const row = c[kind];
+    return svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360"><defs><radialGradient id="b" cx="72%" cy="28%" r="86%"><stop offset="0" stop-color="${accent}" stop-opacity=".24"/><stop offset=".46" stop-color="#111722"/><stop offset="1" stop-color="#05070d"/></radialGradient></defs><rect width="1200" height="360" fill="url(#b)"/><path d="M0 300 C160 240 320 330 500 265 C700 192 824 110 1200 206" fill="none" stroke="${accent}" stroke-opacity=".35" stroke-width="4"/><circle cx="930" cy="180" r="112" fill="none" stroke="${accent}" stroke-opacity=".32" stroke-width="3"/><text x="930" y="202" text-anchor="middle" font-family="Arial" font-size="58" font-weight="900" fill="${accent}">${row[3]}</text><text x="70" y="92" font-family="Arial" font-size="24" font-weight="900" letter-spacing="5" fill="${accent}">${row[0]}</text><text x="70" y="170" font-family="Arial" font-size="57" font-weight="900" fill="#fff">${row[1]}</text><text x="70" y="232" font-family="Arial" font-size="48" font-weight="900" fill="#fff" opacity=".82">${row[2]}</text></svg>`);
 }
 function presetParams(presetId: string, targetM?: number | null, sport?: OutdoorPerformanceSport) { return { runningPresetId: presetId, runningTargetM: targetM ?? null, runningActivitySport: sport }; }
 export default function RunningHome({ store, go }: Props) {
@@ -190,16 +201,137 @@ export default function RunningHome({ store, go }: Props) {
     const level = Math.floor(xp / 1000) + 1;
     const levelXp = xp % 1000;
     const tickers: ArcadeTickerItem[] = useMemo(() => {
+        const sportName = outdoorSportLabel(canonicalSport, lang);
+        const weekKm = (stats.weekDistanceM / 1000).toFixed(1);
+        const goalProgress = Math.round(Math.min(100, stats.weekDistanceM / Math.max(1, weeklyGoalKm * 1000) * 100));
+        const loadRatio = trainingStatus.loadRatio == null ? "—" : trainingStatus.loadRatio.toFixed(2);
+        const nextWorkoutText = nextWorkout
+            ? `${nextWorkout.title} · ${new Date(nextWorkout.scheduledAt).toLocaleDateString(localeForLang(lang), { weekday: "short", day: "2-digit", month: "2-digit" })}`
+            : activePlan
+                ? pickLegacyLocalizedText(lang, "Prochaine séance à replanifier", "Next workout to reschedule", "Próxima sesión por reprogramar")
+                : pickLegacyLocalizedText(lang, "Crée un plan adapté à ton objectif", "Create a plan for your goal", "Crea un plan para tu objetivo");
         const rows: ArcadeTickerItem[] = [
-            { id: "hero", title: `${outdoorSportLabel(canonicalSport, lang)} Performance`, text: `${(stats.weekDistanceM / 1000).toFixed(1)} km · ${stats.weekSessions} ${copy.sessions.toLowerCase()} · ${levelXp}/1000 XP`, detail: `${copy.streak}: ${stats.activeWeekStreak} ${copy.weeks}`, backgroundImage: tickerSvg("hero", accent), accentColor: accent },
-            { id: "coach", title: `${copy.coach} · ${outdoorSportLabel(canonicalSport, lang).toUpperCase()}`, text: `${recommendation.title} — ${recommendation.text}`, detail: copy.plan, backgroundImage: tickerSvg("coach", accent), accentColor: accent },
+            {
+                id: "running-performance",
+                title: `${sportName} Performance`,
+                text: `${weekKm} km · ${stats.weekSessions} ${copy.sessions.toLowerCase()} · ${levelXp}/1000 XP`,
+                detail: `${copy.streak}: ${stats.activeWeekStreak} ${copy.weeks}`,
+                backgroundImage: tickerSvg("hero", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-coach",
+                title: `${copy.coach} · ${sportName.toUpperCase()}`,
+                text: `${recommendation.title} — ${recommendation.text}`,
+                detail: pickLegacyLocalizedText(lang, "Conseil adapté à ton activité récente", "Advice adapted to your recent activity", "Consejo adaptado a tu actividad reciente"),
+                backgroundImage: tickerSvg("coach", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-week-goal",
+                title: copy.weekGoal,
+                text: `${weekKm} / ${weeklyGoalKm} km · ${goalProgress}% ${pickLegacyLocalizedText(lang, "de l'objectif", "of target", "del objetivo")}`,
+                detail: goalProgress >= 100
+                    ? pickLegacyLocalizedText(lang, "Objectif atteint — tu peux consolider ou augmenter progressivement.", "Goal reached — consolidate or increase progressively.", "Objetivo cumplido — consolida o aumenta progresivamente.")
+                    : pickLegacyLocalizedText(lang, "Chaque sortie fait avancer la jauge hebdomadaire.", "Every activity moves the weekly gauge forward.", "Cada salida hace avanzar el objetivo semanal."),
+                backgroundImage: tickerSvg("goal", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-records",
+                title: copy.records,
+                text: speedPrimary
+                    ? `${pickLegacyLocalizedText(lang, "Vitesse moyenne max", "Best average speed", "Mejor velocidad media")}: ${bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—"} · ${copy.longest}: ${formatDistance(stats.longestM)}`
+                    : `1K ${stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—"} · 5K ${stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—"} · 10K ${stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—"}`,
+                detail: pickLegacyLocalizedText(lang, "Tes meilleurs efforts sont recalculés automatiquement après chaque sortie.", "Your best efforts are recalculated after every activity.", "Tus mejores esfuerzos se recalculan tras cada salida."),
+                backgroundImage: tickerSvg("records", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-streak",
+                title: pickLegacyLocalizedText(lang, "RÉGULARITÉ", "CONSISTENCY", "REGULARIDAD"),
+                text: `${stats.activeWeekStreak} ${copy.weeks} · ${stats.activeDayStreak} ${copy.days} ${pickLegacyLocalizedText(lang, "de série active", "active streak", "de racha activa")}`,
+                detail: pickLegacyLocalizedText(lang, "La régularité compte davantage qu'une seule grosse séance.", "Consistency matters more than one huge workout.", "La regularidad importa más que una sola sesión enorme."),
+                backgroundImage: tickerSvg("streak", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-recovery",
+                title: copy.trainingStatus,
+                text: `${copy.freshness}: ${trainingStatus.freshnessScore}% · ${copy.load7}: ${trainingStatus.acuteLoad7} · ratio ${loadRatio}`,
+                detail: trainingStatus.loadLabel === "high"
+                    ? pickLegacyLocalizedText(lang, "Charge élevée : privilégie une séance facile ou la récupération.", "High load: favor an easy workout or recovery.", "Carga alta: prioriza una sesión suave o recuperación.")
+                    : trainingStatus.loadLabel === "low"
+                        ? pickLegacyLocalizedText(lang, "Charge faible : bon moment pour reprendre progressivement.", "Low load: a good time to build back progressively.", "Carga baja: buen momento para retomar progresivamente.")
+                        : pickLegacyLocalizedText(lang, "Charge équilibrée : continue sans augmenter brutalement le volume.", "Balanced load: keep going without sudden volume jumps.", "Carga equilibrada: continúa sin aumentar el volumen bruscamente."),
+                backgroundImage: tickerSvg("load", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-plan",
+                title: copy.program,
+                text: activePlan
+                    ? `${pickLegacyLocalizedText(lang, "Semaine", "Week", "Semana")} ${currentPlanWeek}/${planDurationWeeks(activePlan)} · ${planCompletion}% ${pickLegacyLocalizedText(lang, "terminé", "complete", "completado")}`
+                    : copy.noProgram,
+                detail: activePlan
+                    ? pickLegacyLocalizedText(lang, "Le plan se recalcule à partir des séances réellement enregistrées.", "The plan follows the workouts you actually complete.", "El plan sigue las sesiones realmente completadas.")
+                    : copy.createProgram,
+                backgroundImage: tickerSvg("plan", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-next-workout",
+                title: copy.nextWorkout,
+                text: nextWorkoutText,
+                detail: nextWorkout?.subtitle || pickLegacyLocalizedText(lang, "Prépare ta prochaine séance sans quitter RUNNING PERF.", "Prepare your next workout without leaving RUNNING PERF.", "Prepara tu próxima sesión sin salir de RUNNING PERF."),
+                backgroundImage: tickerSvg("next", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-routes",
+                title: pickLegacyLocalizedText(lang, "PARCOURS 2D / 3D", "2D / 3D ROUTES", "RUTAS 2D / 3D"),
+                text: pickLegacyLocalizedText(lang, "Explore les tracés, le relief, le D+, l'altitude et les points d'intérêt avant de partir.", "Explore routes, terrain, elevation gain, altitude and POIs before you go.", "Explora rutas, relieve, desnivel, altitud y puntos de interés antes de salir."),
+                detail: pickLegacyLocalizedText(lang, "Carte tactile · zoom · inclinaison · profil altimétrique", "Touch map · zoom · tilt · elevation profile", "Mapa táctil · zoom · inclinación · perfil de altitud"),
+                backgroundImage: tickerSvg("routes", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-gps",
+                title: pickLegacyLocalizedText(lang, "GPS & SAUVEGARDE", "GPS & SAVING", "GPS Y GUARDADO"),
+                text: pickLegacyLocalizedText(lang, "Position précise, tracé progressif et récupération de session protègent ta sortie.", "Precise location, progressive route saving and session recovery protect your activity.", "Ubicación precisa, guardado progresivo y recuperación protegen tu salida."),
+                detail: pickLegacyLocalizedText(lang, "Vérifie toujours le GPS avant le départ.", "Always check GPS before starting.", "Comprueba siempre el GPS antes de empezar."),
+                backgroundImage: tickerSvg("gps", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-community",
+                title: pickLegacyLocalizedText(lang, "COMMUNAUTÉ RUNNING", "RUNNING COMMUNITY", "COMUNIDAD RUNNING"),
+                text: pickLegacyLocalizedText(lang, "Retrouve tes amis, partenaires de sortie et performances partagées dans l'écosystème MULTISPORTS SCORING.", "Find friends, activity partners and shared performances across MULTISPORTS SCORING.", "Encuentra amigos, compañeros de salida y rendimientos compartidos en MULTISPORTS SCORING."),
+                detail: pickLegacyLocalizedText(lang, "Courir seul ou ensemble, tout reste lié à ton profil sportif.", "Run solo or together, everything stays linked to your sports profile.", "Corre solo o acompañado: todo queda vinculado a tu perfil deportivo."),
+                backgroundImage: tickerSvg("community", accent),
+                accentColor: accent,
+            },
+            {
+                id: "running-devices",
+                title: copy.devices,
+                text: copy.devicesSub,
+                detail: pickLegacyLocalizedText(lang, "Centralise progressivement tes données d'activité et capteurs.", "Gradually centralize activity and sensor data.", "Centraliza progresivamente tus datos de actividad y sensores."),
+                backgroundImage: tickerSvg("gear", accent),
+                accentColor: accent,
+            },
         ];
-        if (OUTDOOR_SPORT_PROFILES[canonicalSport].supportsPacer) rows.push({ id: "pacer", title: copy.pacer, text: copy.pacerSub, detail: pickLegacyLocalizedText(lang, "Rythme cible · projection · delta live", "Target pace · projection · live delta", "Ritmo objetivo · proyección · delta live"), backgroundImage: tickerSvg("pacer", accent), accentColor: accent });
-        rows.push(speedPrimary
-            ? { id: "records", title: copy.records, text: `${pickLegacyLocalizedText(lang, "Vitesse moyenne max", "Best average speed", "Mejor velocidad media")}: ${bestAverageSpeedKmh > 0 ? `${bestAverageSpeedKmh.toFixed(1)} km/h` : "—"} · ${copy.longest}: ${formatDistance(stats.longestM)}`, detail: pickLegacyLocalizedText(lang, "Repères adaptés à la discipline sélectionnée", "Metrics adapted to the selected sport", "Métricas adaptadas al deporte seleccionado"), backgroundImage: tickerSvg("records", accent), accentColor: accent }
-            : { id: "records", title: copy.records, text: `1K ${stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—"} · 5K ${stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—"} · 10K ${stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—"}`, detail: pickLegacyLocalizedText(lang, "Meilleurs efforts calculés sur tous les tracés", "Best efforts across all routes", "Mejores esfuerzos calculados en todas las rutas"), backgroundImage: tickerSvg("records", accent), accentColor: accent });
+        if (OUTDOOR_SPORT_PROFILES[canonicalSport].supportsPacer) {
+            rows.splice(4, 0, {
+                id: "running-pacer",
+                title: copy.pacer,
+                text: copy.pacerSub,
+                detail: pickLegacyLocalizedText(lang, "Allure cible · projection d'arrivée · avance / retard en direct", "Target pace · projected finish · live ahead / behind", "Ritmo objetivo · llegada proyectada · adelanto / retraso en directo"),
+                backgroundImage: tickerSvg("pacer", accent),
+                accentColor: accent,
+            });
+        }
         return rows;
-    }, [accent, activitySport, bestAverageSpeedKmh, canonicalSport, copy.coach, copy.longest, copy.pacer, copy.pacerSub, copy.plan, copy.records, copy.sessions, copy.streak, copy.weeks, lang, levelXp, recommendation.text, recommendation.title, speedPrimary, stats.activeWeekStreak, stats.best10k, stats.best1k, stats.best5k, stats.longestM, stats.weekDistanceM, stats.weekSessions]);
+    }, [accent, activePlan, bestAverageSpeedKmh, canonicalSport, copy.coach, copy.createProgram, copy.days, copy.devices, copy.devicesSub, copy.freshness, copy.load7, copy.longest, copy.nextWorkout, copy.noProgram, copy.pacer, copy.pacerSub, copy.program, copy.records, copy.sessions, copy.streak, copy.trainingStatus, copy.weekGoal, copy.weeks, currentPlanWeek, lang, levelXp, nextWorkout, planCompletion, recommendation.text, recommendation.title, speedPrimary, stats.activeDayStreak, stats.activeWeekStreak, stats.best10k, stats.best1k, stats.best5k, stats.longestM, stats.weekDistanceM, stats.weekSessions, trainingStatus, weeklyGoalKm]);
     const currentSession = activeSessions.find((session) => !session.paused) || activeSessions[0] || null;
     const mainActionTitle = currentSession
         ? pickLegacyLocalizedText(lang, "REPRENDRE LA SESSION", "RESUME SESSION", "REANUDAR SESIÓN")
@@ -222,7 +354,7 @@ export default function RunningHome({ store, go }: Props) {
         { label: copy.time.toLowerCase(), value: formatDuration(stats.totalElapsedMs) },
     ];
     const nextWorkoutValue = nextWorkout
-        ? `${nextWorkout.label || nextWorkout.type || pickLegacyLocalizedText(lang, "Séance", "Workout", "Sesión")}`
+        ? `${nextWorkout.title || pickLegacyLocalizedText(lang, "Séance", "Workout", "Sesión")}`
         : activePlan
             ? pickLegacyLocalizedText(lang, "À planifier", "To schedule", "Por planificar")
             : pickLegacyLocalizedText(lang, "Aucun programme", "No plan", "Sin plan");
@@ -246,7 +378,7 @@ export default function RunningHome({ store, go }: Props) {
             rows: [
                 { label: copy.weekGoal.toLowerCase(), value: weekLabel },
                 { label: pickLegacyLocalizedText(lang, "fraîcheur", "freshness", "frescura"), value: `${trainingStatus.freshnessScore}%` },
-                { label: pickLegacyLocalizedText(lang, "charge 7 j", "7-day load", "carga 7 días"), value: String(trainingStatus.load7d) },
+                { label: pickLegacyLocalizedText(lang, "charge 7 j", "7-day load", "carga 7 días"), value: String(trainingStatus.acuteLoad7) },
                 { label: copy.streak.toLowerCase(), value: `${stats.activeWeekStreak} ${copy.weeks}` },
                 { label: copy.program.toLowerCase(), value: activePlan ? `S${currentPlanWeek}/${planDurationWeeks(activePlan)}` : copy.noProgram },
                 { label: copy.nextWorkout.toLowerCase(), value: nextWorkoutValue },
