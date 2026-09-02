@@ -840,6 +840,15 @@ function splitKpiDisplayValue(value: string) {
   return match ? { main: match[1], unit: match[2] } : { main: raw, unit: "" };
 }
 
+function fitTileFontSize(value: string, base: number, min: number) {
+  const len = String(value || "").trim().length;
+  if (len <= 8) return base;
+  if (len <= 11) return Math.max(min, base - 1);
+  if (len <= 14) return Math.max(min, base - 2);
+  if (len <= 18) return Math.max(min, base - 3);
+  return min;
+}
+
 function KpiCell({ label, value, primary, theme, onClick, backgroundImage, tileImage, ariaLabel }: KpiCellProps) {
   const display = splitKpiDisplayValue(value);
   const interactive = typeof onClick === "function";
@@ -849,17 +858,17 @@ function KpiCell({ label, value, primary, theme, onClick, backgroundImage, tileI
       {backgroundImage ? <div aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg,rgba(2,5,10,.22),rgba(2,5,10,.86)),url("${backgroundImage}")`, backgroundSize: "cover", backgroundPosition: "center", opacity: .9, pointerEvents: "none" }} /> : null}
       {illustrationMode ? <div aria-hidden style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 12%, ${primary}18, transparent 48%), linear-gradient(180deg, rgba(255,255,255,.04), rgba(4,8,16,.02) 34%, rgba(4,8,16,.22) 100%)`, pointerEvents: "none" }} /> : null}
       {illustrationMode && tileImage ? (
-        <div style={{ position: "relative", zIndex: 1, minHeight: 58, marginBottom: 5, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <img src={tileImage} alt="" style={{ maxWidth: "76%", maxHeight: 58, objectFit: "contain", filter: "drop-shadow(0 8px 16px rgba(0,0,0,.6))" }} />
+        <div style={{ position: "relative", zIndex: 1, minHeight: 70, marginBottom: 3, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <img src={tileImage} alt="" style={{ maxWidth: "90%", maxHeight: 70, objectFit: "contain", filter: "drop-shadow(0 8px 16px rgba(0,0,0,.62))" }} />
         </div>
       ) : null}
-      <div style={{ position: "relative", zIndex: 1, fontSize: illustrationMode ? 11.2 : 10, fontWeight: illustrationMode ? 800 : 600, letterSpacing: illustrationMode ? 0.2 : 0.4, opacity: illustrationMode ? 0.96 : 0.88, marginBottom: illustrationMode ? 2 : 3, textTransform: illustrationMode ? "none" : "lowercase", color: illustrationMode ? "#f4fbff" : undefined, textShadow: illustrationMode ? "0 2px 8px rgba(0,0,0,.55)" : undefined }}>
+      <div style={{ position: "relative", zIndex: 1, width: "100%", minWidth: 0, fontSize: illustrationMode ? fitTileFontSize(label, 11.4, 7.4) : 10, fontWeight: illustrationMode ? 850 : 600, letterSpacing: illustrationMode ? 0.15 : 0.4, opacity: illustrationMode ? 0.98 : 0.88, marginBottom: illustrationMode ? 1 : 3, textTransform: illustrationMode ? "uppercase" : "lowercase", color: illustrationMode ? "#f4fbff" : undefined, textShadow: illustrationMode ? "0 2px 8px rgba(0,0,0,.6)" : undefined, whiteSpace: illustrationMode ? "nowrap" : undefined, textAlign: "center" }}>
         {label}
       </div>
       {!illustrationMode ? <div style={{ position: "relative", zIndex: 1, height: 2, width: 32, borderRadius: 999, marginBottom: 4, background: `linear-gradient(90deg, transparent, ${primary}, transparent)`, boxShadow: `0 0 8px ${primary}66` }} /> : null}
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: illustrationMode ? "center" : "baseline", justifyContent: "center", gap: 3, minWidth: 0, color: illustrationMode ? (theme.textSoft ?? "rgba(255,255,255,.76)") : primary, animation: illustrationMode ? undefined : "apcValueGlow 2.8s ease-in-out infinite", lineHeight: illustrationMode ? 1.2 : 1.05, textAlign: "center", maxWidth: "100%" }}>
         {illustrationMode ? (
-          <span style={{ fontSize: 8.8, fontWeight: 600, opacity: .92, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "normal", display: "-webkit-box", WebkitLineClamp: 2 as any, WebkitBoxOrient: "vertical" as any }}>
+          <span style={{ width: "100%", fontSize: fitTileFontSize(value, 8.5, 6.7), fontWeight: 600, opacity: .82, maxWidth: "100%", whiteSpace: "nowrap", textAlign: "center" }}>
             {value}
           </span>
         ) : (
@@ -875,9 +884,9 @@ function KpiCell({ label, value, primary, theme, onClick, backgroundImage, tileI
   const baseStyle: React.CSSProperties = {
     position: "relative",
     overflow: "hidden",
-    minHeight: interactive ? (illustrationMode ? 104 : 82) : undefined,
+    minHeight: interactive ? (illustrationMode ? 112 : 82) : undefined,
     borderRadius: 14,
-    padding: illustrationMode ? "8px 8px 10px" : "6px 8px 8px",
+    padding: illustrationMode ? "7px 7px 8px" : "6px 8px 8px",
     background: illustrationMode ? "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.08), rgba(5,7,16,0.98))" : "radial-gradient(circle at 0% 0%, rgba(255,255,255,0.06), rgba(5,7,16,0.96))",
     border: `1px solid ${interactive ? `${primary}66` : (theme.borderSoft ?? "rgba(255,255,255,0.18)")}`,
     boxShadow: interactive ? `0 10px 24px rgba(0,0,0,.78), inset 0 0 20px ${primary}0d` : "0 10px 22px rgba(0,0,0,0.75)",
@@ -889,7 +898,7 @@ function KpiCell({ label, value, primary, theme, onClick, backgroundImage, tileI
     color: "inherit",
   };
   if (interactive) {
-    return <button type="button" aria-label={ariaLabel || `${label}: ${value}`} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onClick?.(); }} style={{ ...baseStyle, width: "100%", cursor: "pointer", font: "inherit" }}>{content}</button>;
+    return <button type="button" className={illustrationMode ? "dc-postapoc-menu-card running-home-image-action" : undefined} aria-label={ariaLabel || `${label}: ${value}`} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onClick?.(); }} style={{ ...baseStyle, width: "100%", cursor: "pointer", font: "inherit" }}>{content}</button>;
   }
   return <div style={baseStyle}>{content}</div>;
 }

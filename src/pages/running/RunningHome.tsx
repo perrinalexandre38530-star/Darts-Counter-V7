@@ -385,17 +385,24 @@ export default function RunningHome({ store, go }: Props) {
     const openGoal = () => go("running_plan", { runningPlanTab: "goal", runningActivitySport: activitySport });
     const openRoutes = () => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true });
     const openCoach = () => go("running_plan", { runningPlanTab: "program", runningActivitySport: activitySport });
+    const recommendationShort = recommendation.id === "intervals"
+        ? pickLegacyLocalizedText(lang, "INTERVALLES", "INTERVALS", "INTERVALOS")
+        : recommendation.id === "long"
+            ? pickLegacyLocalizedText(lang, "LONGUE", "LONG", "LARGA")
+            : recommendation.id === "hills"
+                ? pickLegacyLocalizedText(lang, "CÔTES", "HILLS", "CUESTAS")
+                : "EASY RUN";
     const runningSlides = [
         {
             id: "running-start",
             title: pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR"),
             rows: [
-                { label: pickLegacyLocalizedText(lang, "Discipline", "Sport", "Disciplina"), value: outdoorSportLabel(canonicalSport, lang), onClick: openDisciplineSetup, tileImage: runningDisciplineAwenaImg, ariaLabel: pickLegacyLocalizedText(lang, "Choisir la discipline", "Choose sport", "Elegir deporte") },
-                { label: pickLegacyLocalizedText(lang, "Session", "Session", "Sesión"), value: currentSession ? (currentSession.paused ? pickLegacyLocalizedText(lang, "Reprendre la sortie", "Resume activity", "Reanudar salida") : pickLegacyLocalizedText(lang, "Sortie en cours", "Activity in progress", "Salida en curso")) : pickLegacyLocalizedText(lang, "Nouvelle sortie", "New activity", "Nueva salida"), onClick: openSession, tileImage: runningSessionTimerImg, ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir la session", "Open session", "Abrir sesión") },
-                { label: pickLegacyLocalizedText(lang, "Recommandation", "Recommendation", "Recomendación"), value: recommendation.title, onClick: openRecommendation, tileImage: runningRecommendationBadgeImg, ariaLabel: pickLegacyLocalizedText(lang, "Lancer la recommandation", "Start recommendation", "Iniciar recomendación") },
-                { label: pickLegacyLocalizedText(lang, "Objectif", "Goal", "Objetivo"), value: weekLabel, onClick: openGoal, tileImage: runningGoalTargetImg, ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir les objectifs", "Open goals", "Abrir objetivos") },
-                { label: pickLegacyLocalizedText(lang, "Parcours", "Routes", "Rutas"), value: pickLegacyLocalizedText(lang, "Explorer les parcours", "Explore routes", "Explorar rutas"), onClick: openRoutes, tileImage: runningRoutesMapImg, ariaLabel: pickLegacyLocalizedText(lang, "Explorer les parcours", "Explore routes", "Explorar rutas") },
-                { label: pickLegacyLocalizedText(lang, "Coach", "Coach", "Coach"), value: pickLegacyLocalizedText(lang, "Plans et conseils", "Plans and tips", "Planes y consejos"), onClick: openCoach, tileImage: runningCoachTrainingImg, ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir le coach", "Open coach", "Abrir coach") },
+                { label: pickLegacyLocalizedText(lang, "SPORT", "SPORT", "DEPORTE"), value: outdoorSportLabel(canonicalSport, lang), onClick: openDisciplineSetup, tileImage: runningDisciplineAwenaImg, ariaLabel: pickLegacyLocalizedText(lang, "Choisir la discipline", "Choose sport", "Elegir deporte") },
+                { label: pickLegacyLocalizedText(lang, "SORTIE", "ACTIVITY", "SALIDA"), value: currentSession ? pickLegacyLocalizedText(lang, "REPRENDRE", "RESUME", "REANUDAR") : pickLegacyLocalizedText(lang, "NOUVELLE", "NEW", "NUEVA"), onClick: openSession, tileImage: runningSessionTimerImg, ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir la session", "Open session", "Abrir sesión") },
+                { label: pickLegacyLocalizedText(lang, "CONSEIL", "TIP", "CONSEJO"), value: recommendationShort, onClick: openRecommendation, tileImage: runningRecommendationBadgeImg, ariaLabel: pickLegacyLocalizedText(lang, "Lancer la recommandation", "Start recommendation", "Iniciar recomendación") },
+                { label: pickLegacyLocalizedText(lang, "OBJECTIF", "GOAL", "OBJETIVO"), value: `${weeklyGoalKm} km`, onClick: openGoal, tileImage: runningGoalTargetImg, ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir les objectifs", "Open goals", "Abrir objetivos") },
+                { label: pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS"), value: pickLegacyLocalizedText(lang, "EXPLORER", "EXPLORE", "EXPLORAR"), onClick: openRoutes, tileImage: runningRoutesMapImg, ariaLabel: pickLegacyLocalizedText(lang, "Explorer les parcours", "Explore routes", "Explorar rutas") },
+                { label: "COACH", value: pickLegacyLocalizedText(lang, "PLANS", "PLANS", "PLANES"), onClick: openCoach, tileImage: runningCoachTrainingImg, ariaLabel: pickLegacyLocalizedText(lang, "Ouvrir le coach", "Open coach", "Abrir coach") },
             ],
         },
         {

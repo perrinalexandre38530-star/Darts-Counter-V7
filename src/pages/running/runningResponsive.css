@@ -397,3 +397,17 @@
   .running-route-secondary-actions { grid-template-columns:1fr; }
   .running-route-secondary-actions > button { min-height:38px !important; grid-template-columns:auto 1fr; justify-content:center; }
 }
+
+
+/* RUNNING PERF — les tuiles de démarrage et le sélecteur reprennent
+   exactement la surface craquelée des cartes de profils en thème post-apoc. */
+:root[data-dc-theme^="postApoc"] .running-home-image-action,
+:root[data-dc-theme^="postApoc"] .running-discipline-chip {
+  background: var(--glass) !important;
+  border-color: color-mix(in srgb, var(--dc-accent) 24%, rgba(174,174,168,.34)) !important;
+}
+
+:root[data-dc-theme^="postApoc"] .running-discipline-chip[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--dc-accent) 72%, rgba(255,255,255,.28)) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dc-accent) 48%, transparent), 0 10px 24px rgba(0,0,0,.55) !important;
+}

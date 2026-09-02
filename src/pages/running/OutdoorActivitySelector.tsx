@@ -38,6 +38,8 @@ export default function OutdoorActivitySelector({ value, onChange, lang, accent,
             <button
               key={sport}
               type="button"
+              className="dc-postapoc-menu-card running-discipline-chip"
+              aria-pressed={active}
               onClick={() => onChange(sport)}
               style={{
                 minHeight: compact ? 36 : 40,
