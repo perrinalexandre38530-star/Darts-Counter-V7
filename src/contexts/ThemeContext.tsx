@@ -54,9 +54,27 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
 }
 
+const THEME_PREVIEW_FLAG = "dcThemePreview";
+const THEME_PREVIEW_THEME_PARAM = "dcThemePreviewTheme";
+
+function readThemePreviewRuntime(): { enabled: boolean; themeId: ThemeId | null } {
+  if (typeof window === "undefined") return { enabled: false, themeId: null };
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const enabled = params.get(THEME_PREVIEW_FLAG) === "1";
+    const raw = String(params.get(THEME_PREVIEW_THEME_PARAM) || "").trim() as ThemeId;
+    const themeId = THEMES.some((item) => item.id === raw) ? raw : null;
+    return { enabled, themeId };
+  } catch {
+    return { enabled: false, themeId: null };
+  }
+}
+
 function loadInitialThemeId(): ThemeId {
   if (typeof window === "undefined") return DEFAULT_THEME_ID;
   try {
+    const previewRuntime = readThemePreviewRuntime();
+    if (previewRuntime.enabled && previewRuntime.themeId) return previewRuntime.themeId;
     const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
     if (!raw) return DEFAULT_THEME_ID;
     const id = raw as ThemeId;
@@ -68,6 +86,7 @@ function loadInitialThemeId(): ThemeId {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const previewRuntime = React.useMemo(() => readThemePreviewRuntime(), []);
   const [themeId, setThemeIdState] = React.useState<ThemeId>(() =>
     loadInitialThemeId()
   );
@@ -77,6 +96,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [themeId]);
 
   const setThemeId = React.useCallback((id: ThemeId) => {
+    const exists = THEMES.some((item) => item.id === id);
+    if (!exists) return;
+    if (previewRuntime.enabled) {
+      // Aperçu THÈME : autorise même les thèmes premium/verrouillés et ne touche jamais
+      // au thème réellement sélectionné dans le parent.
+      setThemeIdState(id);
+      return;
+    }
     if (!canUseTheme(id)) return;
     setThemeIdState(id);
     try {
@@ -86,17 +113,33 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
-  }, []);
+  }, [previewRuntime.enabled]);
 
-  React.useEffect(() => subscribeVerifiedEntitlements(() => {
-    setThemeIdState((current) => {
-      try {
-        const stored = window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
-        if (stored && THEMES.some((item) => item.id === stored) && canUseTheme(stored)) return stored;
-      } catch {}
-      return canUseTheme(current) ? current : DEFAULT_THEME_ID;
+  React.useEffect(() => {
+    if (!previewRuntime.enabled) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as any;
+      if (!data || data.type !== "dc-theme-preview-theme") return;
+      const next = String(data.themeId || "") as ThemeId;
+      if (THEMES.some((item) => item.id === next)) setThemeIdState(next);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [previewRuntime.enabled]);
+
+  React.useEffect(() => {
+    if (previewRuntime.enabled) return;
+    return subscribeVerifiedEntitlements(() => {
+      setThemeIdState((current) => {
+        try {
+          const stored = window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
+          if (stored && THEMES.some((item) => item.id === stored) && canUseTheme(stored)) return stored;
+        } catch {}
+        return canUseTheme(current) ? current : DEFAULT_THEME_ID;
+      });
     });
-  }), []);
+  }, [previewRuntime.enabled]);
 
   // 🔥 Export des couleurs du thème en variables CSS globales
   React.useEffect(() => {

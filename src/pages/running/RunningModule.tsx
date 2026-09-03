@@ -1,5 +1,4 @@
 import { localeForLang, pickLegacyBilingualText, pickLegacyLocalizedText, pickLegacyLocalizedValue } from "../../i18n/legacyLocalizedText";
-import { runningMercatorPixel as mercatorPixel } from "../../activity/runningShared";
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -12,9 +11,9 @@ import RunningGoalView from "./RunningGoalView";
 import RunningRunAnalysisPanel from "./RunningRunAnalysisPanel";
 import RunningActivityPerformancePanel from "./RunningActivityPerformancePanel";
 import RunningElevationProfile from "./RunningElevationProfile";
-import RunningTerrain3DMap from "./RunningTerrain3DMap";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import OutdoorRouteNavigationPanel from "./OutdoorRouteNavigationPanel";
+import OutdoorInteractiveRouteMap from "./OutdoorInteractiveRouteMap";
 import OutdoorRouteLiveMap from "./OutdoorRouteLiveMap";
 import OutdoorRoutePlannerPanel from "./OutdoorRoutePlannerPanel";
 import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
@@ -2515,155 +2514,43 @@ function RouteMap({ points, accent, waiting, lang = "fr", textSoft = "#a8a8b3", 
     onOpen?: () => void;
 }) {
     const safePoints = React.useMemo(() => points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)), [points]);
-    const [zoomDelta, setZoomDelta] = React.useState(0);
-    const [panPx, setPanPx] = React.useState({ x: 0, y: 0 });
-    const [mapMode, setMapMode] = React.useState<"2d" | "3d">("2d");
-    const shellRef = React.useRef<HTMLDivElement | null>(null);
-    const [mapSize, setMapSize] = React.useState({ width: 1000, height: 600 });
-    const pointersRef = React.useRef(new Map<number, { x: number; y: number }>());
-    const dragRef = React.useRef<{ id: number; x: number; y: number; pan: { x: number; y: number }; moved: boolean } | null>(null);
-    const pinchRef = React.useRef<{ distance: number; zoomDelta: number } | null>(null);
-    const layout = React.useMemo(() => buildMapLayout(safePoints, zoomDelta, panPx, mapSize.width, mapSize.height), [mapSize.height, mapSize.width, panPx, safePoints, zoomDelta]);
-    const performance = React.useMemo(() => {
+    const effectiveRoute = React.useMemo<RunningRouteTemplate | null>(() => {
+        if (route) return { ...route, route: safePoints.length ? safePoints : route.route };
+        if (performanceActivity) return routeTemplateFromActivity(performanceActivity, outdoorActivityTitle(performanceActivity.sport, lang));
         if (safePoints.length < 2) return null;
-        if (performanceActivity) return buildRunningActivityAnalytics(performanceActivity);
         const elapsedMs = Math.max(0, Number(safePoints[safePoints.length - 1]?.elapsedMs || 0));
-        return buildRunningActivityAnalytics({ route: safePoints, distanceM: routeDistanceMeters(safePoints), movingMs: elapsedMs, elapsedMs } as ActivityRecord);
-    }, [performanceActivity, safePoints]);
-    const hasPerformanceColors = !!performance?.routeEdges.some((edge) => edge.score != null);
-    const shellStyle: React.CSSProperties = { width: "100%", height: fullscreen ? "100%" : undefined, aspectRatio: fullscreen ? undefined : immersive ? "4/3" : "5/3", maxHeight: fullscreen ? "none" : immersive ? 620 : 430, minHeight: fullscreen ? 0 : immersive ? "clamp(320px,58svh,500px)" : "clamp(250px,46svh,380px)", position: "relative", overflow: "hidden", borderRadius: fullscreen ? 12 : immersive ? 21 : 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)", boxShadow: immersive ? "0 22px 52px rgba(0,0,0,.30)" : undefined };
-    React.useLayoutEffect(() => {
-        if (mapMode !== "2d") return;
-        const host = shellRef.current;
-        if (!host) return;
-        const update = () => {
-            const rect = host.getBoundingClientRect();
-            if (rect.width > 1 && rect.height > 1) setMapSize({ width: rect.width, height: rect.height });
+        return {
+            id: `preview:${safePoints.length}:${Math.round(Number(safePoints[0]?.lat || 0) * 1e5)}:${Math.round(Number(safePoints[0]?.lon || 0) * 1e5)}`,
+            name: pickLegacyLocalizedText(lang, "Parcours", "Route", "Ruta"),
+            route: safePoints,
+            distanceM: routeDistanceMeters(safePoints),
+            elevationGainM: terrain?.gainM || 0,
+            referenceElapsedMs: elapsedMs,
+            createdAt: Date.now(),
+            source: "activity",
         };
-        update();
-        if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", update); return () => window.removeEventListener("resize", update); }
-        const observer = new ResizeObserver(update);
-        observer.observe(host);
-        return () => observer.disconnect();
-    }, [fullscreen, immersive, mapMode]);
-    const resetView = React.useCallback(() => { setZoomDelta(0); setPanPx({ x: 0, y: 0 }); }, []);
-    const pointerDistance = (rows: Array<{ x: number; y: number }>) => rows.length < 2 ? 0 : Math.hypot(rows[0].x - rows[1].x, rows[0].y - rows[1].y);
-    const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!zoomable || mapMode !== "2d") return;
-        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-        try { event.currentTarget.setPointerCapture(event.pointerId); } catch { }
-        if (pointersRef.current.size === 1) {
-            dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, pan: panPx, moved: false };
-            pinchRef.current = null;
-        } else if (pointersRef.current.size === 2) {
-            const rows = Array.from(pointersRef.current.values());
-            pinchRef.current = { distance: pointerDistance(rows), zoomDelta };
-            dragRef.current = null;
-        }
-    };
-    const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!zoomable || mapMode !== "2d" || !pointersRef.current.has(event.pointerId)) return;
-        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-        if (pointersRef.current.size >= 2 && pinchRef.current) {
-            const rows = Array.from(pointersRef.current.values());
-            const distance = pointerDistance(rows);
-            const ratio = distance / Math.max(1, pinchRef.current.distance);
-            if (ratio > 1.16) {
-                const next = Math.min(5, pinchRef.current.zoomDelta + 1);
-                setZoomDelta(next); pinchRef.current = { distance, zoomDelta: next };
-            } else if (ratio < .86) {
-                const next = Math.max(-4, pinchRef.current.zoomDelta - 1);
-                setZoomDelta(next); pinchRef.current = { distance, zoomDelta: next };
-            }
-            return;
-        }
-        const drag = dragRef.current;
-        if (!drag || drag.id !== event.pointerId) return;
-        const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
-        if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
-        const rect = shellRef.current?.getBoundingClientRect();
-        const scaleX = (layout?.width || mapSize.width) / Math.max(1, rect?.width || mapSize.width), scaleY = (layout?.height || mapSize.height) / Math.max(1, rect?.height || mapSize.height);
-        setPanPx({ x: drag.pan.x + dx * scaleX, y: drag.pan.y + dy * scaleY });
-    };
-    const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-        const drag = dragRef.current;
-        const wasTap = !!drag && drag.id === event.pointerId && !drag.moved && pointersRef.current.size === 1;
-        pointersRef.current.delete(event.pointerId);
-        if (pointersRef.current.size < 2) pinchRef.current = null;
-        if (pointersRef.current.size === 0) dragRef.current = null;
-        if (wasTap && onOpen) onOpen();
-    };
-    const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-        if (!zoomable || mapMode !== "2d") return;
-        event.preventDefault();
-        event.stopPropagation();
-        setZoomDelta((value) => Math.max(-4, Math.min(5, value + (event.deltaY < 0 ? 1 : -1))));
-    };
-    if (mapMode === "3d" && zoomable && safePoints.length >= 2) return <div className="running-map-shell" style={shellStyle}>
-        <RunningTerrain3DMap points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route?.name} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onFallback2D={() => setMapMode("2d")} showReplay={!fullscreen}/>
-        <div style={{ position: "absolute", left: 58, top: 8, zIndex: 30, display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(5,8,13,.86)", border: "1px solid rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}>
-          <button className="btn" onClick={() => setMapMode("2d")} style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000 }}>2D</button>
-          <button className="btn" style={{ minWidth: 38, minHeight: 34, padding: "0 8px", fontSize: 9, fontWeight: 1000, color: accent, borderColor: `${accent}55`, background: `${accent}10` }}>3D</button>
-        </div>
-        {onOpen && !fullscreen ? <button className="btn" title={pickLegacyLocalizedText(lang, "Plein écran", "Full screen", "Pantalla completa")} onClick={(event) => { event.stopPropagation(); onOpen(); }} style={{ position: "absolute", right: 10, top: 10, zIndex: 31, minWidth: 40, minHeight: 40, padding: 0, background: "rgba(5,8,13,.88)", fontSize: 16 }}>⛶</button> : null}
-    </div>;
-    return <div ref={shellRef} className="running-map-shell" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onWheel={onWheel} style={{ ...shellStyle, cursor: zoomable ? "grab" : onOpen ? "pointer" : undefined, touchAction: zoomable ? "none" : undefined, userSelect: "none" }}>
-      {layout ? <>
-        {layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/>{showRouteNetwork ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/> : null}</React.Fragment>)}
-        <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-          <polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.82)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round"/>
-          {hasPerformanceColors ? performance!.routeEdges.map((edge) => { const a = layout.screen[edge.startIndex], b = layout.screen[edge.endIndex]; return a && b ? <line key={`perf-${edge.startIndex}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={edge.color} strokeWidth="6" strokeLinecap="round"/> : null; }) : <polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>}
-          {layout.start ? <g><circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/><text x={layout.start.x} y={layout.start.y - 12} textAnchor="middle" fontSize="18">🚩</text></g> : null}
-          {layout.end ? <g><circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/><text x={layout.end.x} y={layout.end.y - 12} textAnchor="middle" fontSize="18">🏁</text></g> : null}
-          {terrain?.maxAltitudeM != null ? (() => { const summit = highestPointOnRoute(safePoints); if (!summit) return null; const summitScreen = mercatorScreen(summit, layout.center, layout.zoom, layout.width, layout.height); return <g><circle cx={summitScreen.x} cy={summitScreen.y} r="6" fill="#ffcf57" stroke="#fff" strokeWidth="2"/><text x={summitScreen.x} y={summitScreen.y - 10} textAnchor="middle" fontSize="16">⛰️</text></g>; })() : null}
-          {activePointIndex != null && layout.screen[activePointIndex] ? <g><circle cx={layout.screen[activePointIndex].x} cy={layout.screen[activePointIndex].y} r="10" fill="rgba(0,0,0,.72)" stroke="#fff" strokeWidth="2"/><circle cx={layout.screen[activePointIndex].x} cy={layout.screen[activePointIndex].y} r="6" fill={accent}/></g> : null}
-        </svg>
-      </> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}
-      {zoomable ? <div style={{ position: "absolute", right: 8, top: 8, display: "grid", gap: 6, zIndex: 4 }}>
-        <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(8,10,16,.88)", border: "1px solid rgba(255,255,255,.10)" }}><button className="btn" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMapMode("2d"); }} style={{ minWidth: 34, minHeight: 32, padding: "0 6px", color: accent, fontSize: 8, fontWeight: 1000 }}>2D</button>{safePoints.length >= 2 ? <button className="btn" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setMapMode("3d"); }} style={{ minWidth: 34, minHeight: 32, padding: "0 6px", fontSize: 8, fontWeight: 1000 }}>3D</button> : null}</div>
-        <button className="btn" title={pickLegacyLocalizedText(lang, "Recentrer", "Recenter", "Recentrar")} onPointerDown={(e) => e.stopPropagation()} onClick={(event) => { event.stopPropagation(); resetView(); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(8,10,16,.88)" }}>◎</button>
-        {onOpen && !fullscreen ? <button className="btn" title={pickLegacyLocalizedText(lang, "Plein écran", "Full screen", "Pantalla completa")} onPointerDown={(e) => e.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpen(); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(8,10,16,.88)", fontSize: 16 }}>⛶</button> : null}
-        {route ? <button className="btn" title={pickLegacyLocalizedText(lang, "Ouvrir dans Maps", "Open in Maps", "Abrir en Maps")} onPointerDown={(e) => e.stopPropagation()} onClick={(event) => { event.stopPropagation(); openRouteInMaps(route); }} style={{ minWidth: 40, minHeight: 40, padding: 0, background: "rgba(8,10,16,.88)" }}>↗</button> : null}
-      </div> : null}
-      {zoomable ? <div style={{ position: "absolute", left: 8, bottom: 8, zIndex: 4, padding: "5px 8px", borderRadius: 999, background: "rgba(5,8,13,.76)", border: "1px solid rgba(255,255,255,.09)", color: textSoft, fontSize: 7, pointerEvents: "none", backdropFilter: "blur(10px)" }}>{pickLegacyLocalizedText(lang, "Glisser · pincer · molette", "Drag · pinch · wheel", "Mover · pellizcar · rueda")}</div> : null}
-      <a onPointerDown={(e) => e.stopPropagation()} href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap · routes Waymarked Trails</a>
-    </div>;
+    }, [lang, performanceActivity, route, safePoints, terrain?.gainM]);
+    if (!effectiveRoute || safePoints.length < 2) return <div style={{ width: "100%", minHeight: immersive ? 320 : 250, display: "grid", placeItems: "center", borderRadius: 16, background: "#101821", border: "1px solid rgba(255,255,255,.08)", color: textSoft, fontSize: 9 }}>◎<br />{waiting}</div>;
+    const height = fullscreen ? "100%" : immersive ? "clamp(320px,58svh,620px)" : "clamp(250px,46svh,430px)";
+    return <OutdoorInteractiveRouteMap
+        route={effectiveRoute}
+        points={safePoints}
+        routeName={effectiveRoute.name}
+        performanceActivity={performanceActivity}
+        terrain={terrain}
+        showPlaces={!!route && (immersive || fullscreen)}
+        showRouteNetwork={showRouteNetwork}
+        accent={accent}
+        lang={lang}
+        textSoft={textSoft}
+        height={height}
+        fullscreen={fullscreen}
+        activePointIndex={activePointIndex}
+        onActivePointChange={onActivePointChange}
+        onFullscreen={zoomable ? onOpen : undefined}
+    />;
 }
-type MapLayout = {
-    width: number;
-    height: number;
-    zoom: number;
-    center: { x: number; y: number };
-    polyline: string;
-    screen: Array<{ x: number; y: number }>;
-    start: { x: number; y: number } | null;
-    end: { x: number; y: number } | null;
-    tiles: Array<{ z: number; x: number; y: number; left: number; top: number; url: string; routeOverlayUrl: string }>;
-};
-function buildMapLayout(points: GeoPoint[], zoomDelta = 0, panPx = { x: 0, y: 0 }, requestedWidth = 1000, requestedHeight = 600): MapLayout | null {
-    if (!points.length) return null;
-    const width = Math.max(280, Math.round(requestedWidth || 1000)), height = Math.max(220, Math.round(requestedHeight || 600)), lats = points.map((p) => p.lat), lons = points.map((p) => p.lon), centerLat = (Math.min(...lats) + Math.max(...lats)) / 2, centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
-    let zoom = 18;
-    for (let z = 18; z >= 3; z -= 1) {
-        const px = points.map((p) => mercatorPixel(p.lat, p.lon, z)), xs = px.map((p) => p.x), ys = px.map((p) => p.y);
-        if (Math.max(...xs) - Math.min(...xs) <= width * .78 && Math.max(...ys) - Math.min(...ys) <= height * .72) { zoom = z; break; }
-    }
-    zoom = Math.max(3, Math.min(19, zoom + zoomDelta));
-    const baseCenter = mercatorPixel(centerLat, centerLon, zoom);
-    const center = { x: baseCenter.x - panPx.x, y: baseCenter.y - panPx.y };
-    const screen = points.map((p) => { const world = mercatorPixel(p.lat, p.lon, zoom); return { x: world.x - center.x + width / 2, y: world.y - center.y + height / 2 }; });
-    const minX = Math.floor((center.x - width / 2) / 256) - 1, maxX = Math.floor((center.x + width / 2) / 256) + 1, minY = Math.floor((center.y - height / 2) / 256) - 1, maxY = Math.floor((center.y + height / 2) / 256) + 1, count = 2 ** zoom;
-    const tiles: MapLayout["tiles"] = [];
-    for (let tx = minX; tx <= maxX; tx += 1) for (let ty = minY; ty <= maxY; ty += 1) {
-        if (ty < 0 || ty >= count) continue;
-        const wx = ((tx % count) + count) % count;
-        tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: `https://tile.openstreetmap.org/${zoom}/${wx}/${ty}.png`, routeOverlayUrl: `https://tile.waymarkedtrails.org/hiking/${zoom}/${wx}/${ty}.png` });
-    }
-    return { width, height, zoom, center, tiles, screen, polyline: screen.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "), start: screen[0] || null, end: screen[screen.length - 1] || null };
-}
-function mercatorScreen(point: GeoPoint, center: { x: number; y: number }, zoom: number, width: number, height: number) { const world = mercatorPixel(point.lat, point.lon, zoom); return { x: world.x - center.x + width / 2, y: world.y - center.y + height / 2 }; }
-function highestPointOnRoute(points: GeoPoint[]) { const valid = points.filter((point) => Number.isFinite(point.altitude)); if (!valid.length)
-    return null; return valid.reduce((best, point) => Number(point.altitude) > Number(best.altitude) ? point : best, valid[0]); }
+
 function buildRouteDisplayName(route: RunningRouteTemplate, terrain: ReturnType<typeof analyzeRunningTerrain> | null, lang: string) { const raw = String(route.name || "").trim(); if (raw && !/^parcours\s+osm/i.test(raw))
     return raw; const distanceKm = Math.max(.2, Number(route.distanceM || 0) / 1000), type = route.generation?.shape === "loop" ? pickLegacyLocalizedText(lang, "Boucle", "Loop", "Bucle") : pickLegacyLocalizedText(lang, "Parcours", "Route", "Ruta"), terrainText = terrain?.hasElevation ? terrainLabel(terrain.terrain, lang).toLowerCase() : pickLegacyLocalizedText(lang, "découverte", "discovery", "descubrimiento"); return `${type} ${terrainText} ${distanceKm < 10 ? distanceKm.toFixed(1) : distanceKm.toFixed(0)} km`; }
 function openRouteInMaps(route: RunningRouteTemplate) { const start = route.route?.[0]; if (!start)

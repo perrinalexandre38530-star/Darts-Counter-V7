@@ -2,6 +2,7 @@ import React from "react";
 import { runningMercatorPixel as mercatorPixel } from "../../activity/runningShared";
 import { segmentRoutePoints, type RunningSegment } from "../../activity/runningSegments";
 import type { ActivityRecord, GeoPoint } from "../../activity/activityTypes";
+import { loadRunningMapTheme, runningMapRasterFilter, runningMapRasterTileUrl, type RunningMapTheme } from "./runningMapTheme";
 
 type Props = { segment: RunningSegment; source: ActivityRecord; accent: string };
 
@@ -9,10 +10,11 @@ type ScreenPoint = { x: number; y: number };
 
 export default function RunningSegmentMap({ segment, source, accent }: Props) {
   const segmentPoints = React.useMemo(() => segmentRoutePoints(segment, source), [segment, source]);
-  const layout = React.useMemo(() => buildLayout(source.route || [], segmentPoints), [source.route, segmentPoints]);
+  const theme = React.useMemo<RunningMapTheme>(() => loadRunningMapTheme(), []);
+  const layout = React.useMemo(() => buildLayout(source.route || [], segmentPoints, theme), [source.route, segmentPoints, theme]);
   if (!layout) return null;
   return <div style={{ width: "100%", aspectRatio: "16/8", minHeight: 120, maxHeight: 190, position: "relative", overflow: "hidden", borderRadius: 12, background: "#101821", border: "1px solid rgba(255,255,255,.07)" }}>
-    {layout.tiles.map((tile) => <img key={`${tile.z}-${tile.x}-${tile.y}`} src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>) }
+    {layout.tiles.map((tile) => <img key={`${tile.z}-${tile.x}-${tile.y}`} src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", filter: runningMapRasterFilter(theme), userSelect: "none" }}/>) }
     <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
       <polyline points={layout.routeLine} fill="none" stroke="rgba(255,255,255,.28)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
       <polyline points={layout.segmentLine} fill="none" stroke="rgba(0,0,0,.85)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round"/>
@@ -24,7 +26,7 @@ export default function RunningSegmentMap({ segment, source, accent }: Props) {
   </div>;
 }
 
-function buildLayout(route: GeoPoint[], segment: GeoPoint[]) {
+function buildLayout(route: GeoPoint[], segment: GeoPoint[], theme: RunningMapTheme) {
   if (route.length < 2 || segment.length < 2) return null;
   const width = 1000, height = 500;
   const lats = route.map((point) => point.lat), lons = route.map((point) => point.lon);
@@ -46,7 +48,7 @@ function buildLayout(route: GeoPoint[], segment: GeoPoint[]) {
   for (let tx = minX; tx <= maxX; tx += 1) for (let ty = minY; ty <= maxY; ty += 1) {
     if (ty < 0 || ty >= count) continue;
     const wx = ((tx % count) + count) % count;
-    tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: `https://tile.openstreetmap.org/${zoom}/${wx}/${ty}.png` });
+    tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: runningMapRasterTileUrl(theme, zoom, wx, ty) });
   }
   return {
     width, height, tiles,

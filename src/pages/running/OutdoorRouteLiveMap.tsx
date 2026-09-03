@@ -15,6 +15,7 @@ import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance"
 import type { OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import RunningTerrain3DMap from "./RunningTerrain3DMap";
+import { loadRunningMapTheme, runningMapAttribution, runningMapRasterFilter, runningMapRasterTileUrl, runningMapShowsTrailOverlay, runningMapThemeIcon, runningMapThemes, saveRunningMapTheme, type RunningMapTheme } from "./runningMapTheme";
 import "./runningResponsive.css";
 
 type Props = {
@@ -64,7 +65,7 @@ function fitZoom(points: GeoPoint[], width: number, height: number) {
   }
   return 3;
 }
-function buildLayout(centerPoint: GeoPoint, zoom: number, width: number, height: number): Layout {
+function buildLayout(centerPoint: GeoPoint, zoom: number, width: number, height: number, theme: RunningMapTheme): Layout {
   const center = mercatorPixel(centerPoint.lat, centerPoint.lon, zoom);
   const minX = Math.floor((center.x - width / 2) / 256) - 1;
   const maxX = Math.floor((center.x + width / 2) / 256) + 1;
@@ -82,7 +83,7 @@ function buildLayout(centerPoint: GeoPoint, zoom: number, width: number, height:
         y: ty,
         left: tx * 256 - center.x + width / 2,
         top: ty * 256 - center.y + height / 2,
-        url: `https://tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png`,
+        url: runningMapRasterTileUrl(theme, zoom, wrappedX, ty),
         routeOverlayUrl: `https://tile.waymarkedtrails.org/hiking/${zoom}/${wrappedX}/${ty}.png`,
       });
     }
@@ -109,12 +110,15 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   const [follow, setFollow] = React.useState(true);
   const [zoomDelta, setZoomDelta] = React.useState(0);
   const [mapMode, setMapMode] = React.useState<"2d" | "3d">("2d");
+  const [mapTheme, setMapTheme] = React.useState<RunningMapTheme>(() => loadRunningMapTheme());
+  const [themeMenu, setThemeMenu] = React.useState(false);
   const [manualCenter, setManualCenter] = React.useState<GeoPoint | null>(null);
   const mapGestureRef = React.useRef<HTMLDivElement | null>(null);
   const [mapSize, setMapSize] = React.useState(() => ({ width: typeof window === "undefined" ? 390 : Math.max(320, window.innerWidth), height: typeof window === "undefined" ? 720 : Math.max(420, window.innerHeight) }));
   const pointerRef = React.useRef(new Map<number,{x:number;y:number}>());
   const dragRef = React.useRef<{id:number;x:number;y:number;center:{x:number;y:number}} | null>(null);
   const pinchRef = React.useRef<{distance:number;zoomDelta:number} | null>(null);
+  React.useEffect(() => { saveRunningMapTheme(mapTheme); }, [mapTheme]);
   const currentPoint = track[track.length - 1] || route.route[0] || null;
   const previousPoint = track[track.length - 2] || null;
   const progress = React.useMemo(() => outdoorRouteProgress(route, sport, liveDistanceM, elapsedMs, currentPoint, liveElevationGainM, extras.waypoints, extras.offRouteAlertM), [currentPoint, elapsedMs, extras.offRouteAlertM, extras.waypoints, liveDistanceM, liveElevationGainM, route, sport]);
@@ -136,7 +140,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   }, [currentPoint, follow, manualCenter, reroute?.route, route.route]);
   const baseZoom = follow ? 16 : overviewZoom;
   const zoom = clamp(baseZoom + zoomDelta, 3, 19);
-  const layout = React.useMemo(() => mapAnchor ? buildLayout(mapAnchor, zoom, mapSize.width, mapSize.height) : null, [mapAnchor, mapSize.height, mapSize.width, zoom]);
+  const layout = React.useMemo(() => mapAnchor ? buildLayout(mapAnchor, zoom, mapSize.width, mapSize.height, mapTheme) : null, [mapAnchor, mapSize.height, mapSize.width, mapTheme, zoom]);
   const routeLine = React.useMemo(() => layout ? (route.route || []).map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, route.route]);
   const trackLine = React.useMemo(() => layout ? track.map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, track]);
   const rerouteLine = React.useMemo(() => layout && reroute ? reroute.route.map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, reroute]);
@@ -228,8 +232,8 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   const finishScreen = route.route[route.route.length - 1] ? screenPoint(route.route[route.route.length - 1], layout) : null;
 
   return <div role="dialog" aria-label={copy.nav} style={{ position: "fixed", inset: 0, zIndex: 220, background: "#0b1218", overflow: "hidden" }}>
-    {mapMode === "3d" ? <div style={{ position: "absolute", inset: 0 }}><RunningTerrain3DMap points={route.route} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen routeName={route.name} activePointIndex={activeRouteIndex} showReplay={false} onFallback2D={() => setMapMode("2d")}/></div> : <div ref={mapGestureRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={wheelMap} style={{ position: "absolute", inset: 0, touchAction: "none", userSelect: "none", cursor: "grab" }}>
-      {layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", userSelect: "none" }}/>{sport === "trail" || sport === "hiking" ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", pointerEvents: "none", userSelect: "none" }}/> : null}</React.Fragment>)}
+    {mapMode === "3d" ? <div style={{ position: "absolute", inset: 0 }}><RunningTerrain3DMap points={route.route} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen routeName={route.name} activePointIndex={activeRouteIndex} showReplay={false} onFallback2D={() => setMapMode("2d")} mapTheme={mapTheme} onMapThemeChange={setMapTheme} showStylePicker={false}/></div> : <div ref={mapGestureRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={wheelMap} style={{ position: "absolute", inset: 0, touchAction: "none", userSelect: "none", cursor: "grab" }}>
+      {layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", filter: runningMapRasterFilter(mapTheme), userSelect: "none" }}/>{runningMapShowsTrailOverlay(mapTheme, sport === "trail" || sport === "hiking") ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", pointerEvents: "none", userSelect: "none" }}/> : null}</React.Fragment>)}
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
         <polyline points={routeLine} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
         <polyline points={routeLine} fill="none" stroke={accent} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
@@ -246,7 +250,7 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 16, background: "rgba(7,10,15,.91)", border: "1px solid rgba(255,255,255,.13)", backdropFilter: "blur(18px)", boxShadow: "0 12px 35px rgba(0,0,0,.38)" }}>
         <button className="btn" onClick={onClose} style={{ minWidth: 40, minHeight: 40, padding: 0, fontSize: 16 }}>×</button>
         <div style={{ minWidth: 0 }}><div style={{ fontSize: 7.5, color: isAlert ? "#ff9b94" : accent, fontWeight: 1000, letterSpacing: 1 }}>{copy.nav}</div><div style={{ marginTop: 2, fontSize: 10.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{route.name}</div></div>
-        <div style={{ display: "grid", gap: 4, justifyItems: "end" }}><div style={{ display: "flex", gap: 3, padding: 2, borderRadius: 10, background: "rgba(0,0,0,.28)", border: "1px solid rgba(255,255,255,.08)" }}><button className="btn" onClick={() => setMapMode("2d")} style={{ minWidth: 32, minHeight: 26, padding: "0 5px", fontSize: 7, color: mapMode === "2d" ? accent : undefined, borderColor: mapMode === "2d" ? `${accent}55` : "transparent" }}>2D</button><button className="btn" onClick={() => setMapMode("3d")} style={{ minWidth: 32, minHeight: 26, padding: "0 5px", fontSize: 7, color: mapMode === "3d" ? accent : undefined, borderColor: mapMode === "3d" ? `${accent}55` : "transparent" }}>3D</button></div><span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${isAlert ? "rgba(255,107,98,.55)" : `${accent}55`}`, color: isAlert ? "#ff9b94" : accent, fontSize: 6.8, fontWeight: 1000 }}>{activeGuidance?.wrongWay ? copy.wrong : progress.offRouteAlert ? `${copy.off} · ${Math.round(progress.offRouteM || 0)} m` : copy.on}</span></div>
+        <div style={{ display: "grid", gap: 4, justifyItems: "end", position: "relative" }}><div style={{ display: "flex", gap: 3, padding: 2, borderRadius: 10, background: "rgba(0,0,0,.28)", border: "1px solid rgba(255,255,255,.08)" }}><button className="btn" onClick={() => setMapMode("2d")} style={{ minWidth: 32, minHeight: 26, padding: "0 5px", fontSize: 7, color: mapMode === "2d" ? accent : undefined, borderColor: mapMode === "2d" ? `${accent}55` : "transparent" }}>2D</button><button className="btn" onClick={() => setMapMode("3d")} style={{ minWidth: 32, minHeight: 26, padding: "0 5px", fontSize: 7, color: mapMode === "3d" ? accent : undefined, borderColor: mapMode === "3d" ? `${accent}55` : "transparent" }}>3D</button><button className="btn" title="Style" onClick={() => setThemeMenu((v) => !v)} style={{ minWidth: 30, minHeight: 26, padding: "0 5px", fontSize: 10, color: accent }}>{runningMapThemeIcon(mapTheme)}</button></div>{themeMenu ? <div style={{ position: "absolute", right: 0, top: 32, width: 142, zIndex: 30, padding: 5, borderRadius: 12, background: "rgba(5,8,13,.97)", border: "1px solid rgba(255,255,255,.13)", boxShadow: "0 12px 30px rgba(0,0,0,.4)" }}>{runningMapThemes(lang).map(([id,label]) => <button key={id} className="btn" onClick={() => { setMapTheme(id); setThemeMenu(false); }} style={{ width: "100%", minHeight: 30, margin: "2px 0", textAlign: "left", padding: "4px 7px", color: mapTheme === id ? accent : undefined, fontSize: 7 }}>{runningMapThemeIcon(id)} {label}</button>)}</div> : null}<span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${isAlert ? "rgba(255,107,98,.55)" : `${accent}55`}`, color: isAlert ? "#ff9b94" : accent, fontSize: 6.8, fontWeight: 1000 }}>{activeGuidance?.wrongWay ? copy.wrong : progress.offRouteAlert ? `${copy.off} · ${Math.round(progress.offRouteM || 0)} m` : copy.on}</span></div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "66px 1fr auto", gap: 10, alignItems: "center", padding: 10, borderRadius: 17, background: isAlert ? "rgba(42,8,8,.92)" : "rgba(7,10,15,.91)", border: `1px solid ${isAlert ? "rgba(255,107,98,.50)" : `${accent}42`}`, backdropFilter: "blur(18px)", boxShadow: "0 12px 35px rgba(0,0,0,.38)" }}>
         <div style={{ width: 60, height: 60, borderRadius: 18, display: "grid", placeItems: "center", background: isAlert ? "rgba(255,107,98,.13)" : `${accent}12`, border: `1px solid ${isAlert ? "rgba(255,107,98,.50)" : `${accent}48`}`, color: isAlert ? "#ff9b94" : accent, fontSize: 34, fontWeight: 1000 }}>{progress.offRouteAlert ? "↪" : turnIcon(instructionKind)}</div>
@@ -271,6 +275,6 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
       ].map(([label, value]) => <div key={label} style={{ minWidth: 0, padding: "7px 5px", borderRadius: 11, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", textAlign: "center" }}><div style={{ fontSize: 6.4, color: textSoft, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div><div style={{ marginTop: 3, fontSize: 10.2, fontWeight: 1000, color: label === copy.gap && isAlert ? "#ff9b94" : accent, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>)}</div>
     </div>
 
-    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", left: 6, bottom: 2, zIndex: 13, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 6, textDecoration: "none" }}>© OpenStreetMap</a>
+    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", left: 6, bottom: 2, zIndex: 13, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 6, textDecoration: "none" }}>{runningMapAttribution(mapTheme)}</a>
   </div>;
 }

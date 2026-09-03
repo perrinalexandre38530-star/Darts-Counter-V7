@@ -45,3 +45,28 @@ export function runningMapThemes(lang: string): Array<[RunningMapTheme, string]>
 // the user actually selects Satellite. MapLibre keeps the vector map beneath
 // it, so a transient imagery failure never leaves the map blank.
 export const RUNNING_SATELLITE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+
+
+export function runningMapRasterTileUrl(theme: RunningMapTheme, z: number, x: number, y: number): string {
+  const normalized = normalizeRunningMapTheme(theme);
+  if (normalized === "tourist") return `https://tile.opentopomap.org/${z}/${x}/${y}.png`;
+  if (normalized === "satellite") return RUNNING_SATELLITE_TILES.replace("{z}", String(z)).replace("{y}", String(y)).replace("{x}", String(x));
+  return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+}
+
+export function runningMapRasterFilter(theme: RunningMapTheme): string {
+  const normalized = normalizeRunningMapTheme(theme);
+  if (normalized === "illustrated") return "sepia(.18) saturate(1.35) contrast(.93) brightness(1.08)";
+  if (normalized === "light") return "grayscale(.08) saturate(.72) contrast(.88) brightness(1.15)";
+  if (normalized === "night") return "invert(.88) hue-rotate(180deg) saturate(.55) brightness(.68) contrast(1.24)";
+  if (normalized === "satellite") return "saturate(1.08) contrast(1.04) brightness(.96)";
+  return "saturate(1.12) contrast(1.03)";
+}
+
+export function runningMapShowsTrailOverlay(theme: RunningMapTheme, requested = false): boolean {
+  return requested || normalizeRunningMapTheme(theme) === "tourist";
+}
+
+export function runningMapAttribution(theme: RunningMapTheme): string {
+  return normalizeRunningMapTheme(theme) === "satellite" ? "Imagery © Esri" : "© OpenStreetMap";
+}

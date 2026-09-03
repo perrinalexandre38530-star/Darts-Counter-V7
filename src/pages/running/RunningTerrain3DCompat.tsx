@@ -4,6 +4,7 @@ import { haversineMeters } from "../../activity/activityMath";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
+import { loadRunningMapTheme, runningMapRasterFilter, runningMapRasterTileUrl } from "./runningMapTheme";
 import "./runningResponsive.css";
 
 type Props = {
@@ -46,6 +47,7 @@ export default function RunningTerrain3DCompat({ points, accent, lang, textSoft 
   const dragRef = React.useRef<{ id:number; x:number; y:number; center:Point2; moved:boolean } | null>(null);
   const pinchRef = React.useRef<{ distance:number; zoom:number } | null>(null);
   const terrain = React.useMemo(() => analyzeRunningTerrain(safe), [safe]);
+  const mapTheme = React.useMemo(() => loadRunningMapTheme(), []);
   const analytics = React.useMemo(() => buildRunningActivityAnalytics({ route: safe, distanceM: terrain.distanceM, movingMs: Number(safe[safe.length-1]?.elapsedMs || 0), elapsedMs: Number(safe[safe.length-1]?.elapsedMs || 0) } as any), [safe, terrain.distanceM]);
   const distances = React.useMemo(() => cumulative(safe), [safe]);
 
@@ -56,10 +58,10 @@ export default function RunningTerrain3DCompat({ points, accent, lang, textSoft 
     const center=mercatorPixel(viewport.lat,viewport.lon,viewport.zoom); const width=Math.max(320,size.width), height=Math.max(260,size.height);
     const minX=Math.floor((center.x-width/2)/TILE)-1,maxX=Math.floor((center.x+width/2)/TILE)+1,minY=Math.floor((center.y-height/2)/TILE)-1,maxY=Math.floor((center.y+height/2)/TILE)+1,count=2**viewport.zoom;
     const tiles:Array<{key:string;left:number;top:number;url:string}>=[];
-    for(let tx=minX;tx<=maxX;tx++) for(let ty=minY;ty<=maxY;ty++){if(ty<0||ty>=count)continue;const wx=((tx%count)+count)%count;tiles.push({key:`${viewport.zoom}-${tx}-${ty}`,left:tx*TILE-center.x+width/2,top:ty*TILE-center.y+height/2,url:`https://tile.openstreetmap.org/${viewport.zoom}/${wx}/${ty}.png`});}
+    for(let tx=minX;tx<=maxX;tx++) for(let ty=minY;ty<=maxY;ty++){if(ty<0||ty>=count)continue;const wx=((tx%count)+count)%count;tiles.push({key:`${viewport.zoom}-${tx}-${ty}`,left:tx*TILE-center.x+width/2,top:ty*TILE-center.y+height/2,url:runningMapRasterTileUrl(mapTheme, viewport.zoom, wx, ty)});}
     const screen=safe.map((p)=>{const w=mercatorPixel(p.lat,p.lon,viewport.zoom);return{x:w.x-center.x+width/2,y:w.y-center.y+height/2};});
     return {width,height,center,tiles,screen};
-  },[safe,size.height,size.width,viewport]);
+  },[mapTheme,safe,size.height,size.width,viewport]);
 
   const altitudes = terrain.samples.map((s)=>s.altitudeM); const minAlt=altitudes.length?Math.min(...altitudes):0,maxAlt=altitudes.length?Math.max(...altitudes):0;
   const altByIndex=React.useMemo(()=>{const m=new Map<number,number>();terrain.samples.forEach((s)=>m.set(s.index,s.altitudeM));return m;},[terrain.samples]);
@@ -76,7 +78,7 @@ export default function RunningTerrain3DCompat({ points, accent, lang, textSoft 
 
   return <div ref={wrapRef} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={wheel} style={{position:"relative",width:"100%",height:fullscreen?"100%":height,minHeight:fullscreen?0:300,overflow:"hidden",background:"linear-gradient(#0c1721,#071017)",touchAction:"none",userSelect:"none",cursor:"grab"}}>
     <div style={{position:"absolute",inset:"-12% -8% -2%",transform:"perspective(1050px) rotateX(48deg) scale(1.12)",transformOrigin:"50% 68%",filter:"saturate(.9) contrast(1.04)",overflow:"hidden"}}>
-      {layout.tiles.map((tile)=><img key={tile.key} src={tile.url} alt="" draggable={false} style={{position:"absolute",left:tile.left,top:tile.top,width:TILE,height:TILE,userSelect:"none",pointerEvents:"none"}}/>)}
+      {layout.tiles.map((tile)=><img key={tile.key} src={tile.url} alt="" draggable={false} style={{position:"absolute",left:tile.left,top:tile.top,width:TILE,height:TILE,filter:runningMapRasterFilter(mapTheme),userSelect:"none",pointerEvents:"none"}}/>)}
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} style={{position:"absolute",inset:0,width:"100%",height:"100%",overflow:"visible",pointerEvents:"none"}}>
         <path d={routeArea} fill={`${accent}20`} stroke="none"/>
         {layout.screen.map((base,index)=>index%Math.max(1,Math.floor(layout.screen.length/28))===0&&elevated[index]?<line key={`v${index}`} x1={base.x} y1={base.y} x2={elevated[index].x} y2={elevated[index].y} stroke={`${accent}38`} strokeWidth="1"/>:null)}

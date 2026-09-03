@@ -1,17 +1,24 @@
 import React from "react";
 import { clampRunningNumber as clamp, pickRunningText as pickText, runningMercatorPixel as mercatorPixel, runningMercatorLatLon as mercatorLatLon } from "../../activity/runningShared";
-import type { GeoPoint } from "../../activity/activityTypes";
+import type { ActivityRecord, GeoPoint } from "../../activity/activityTypes";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import { fetchOutdoorRoutePlaceContext, outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
 import { fetchOutdoorPlacePhotos, type OutdoorRoutePhoto } from "../../activity/outdoorRouteMedia";
 import RunningTerrain3DMap from "./RunningTerrain3DMap";
-import { RUNNING_SATELLITE_TILES, loadRunningMapTheme, runningMapThemeIcon, runningMapThemes, saveRunningMapTheme, type RunningMapTheme } from "./runningMapTheme";
+import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
+import { loadRunningMapTheme, runningMapAttribution, runningMapRasterFilter, runningMapRasterTileUrl, runningMapShowsTrailOverlay, runningMapThemeIcon, runningMapThemes, saveRunningMapTheme, type RunningMapTheme } from "./runningMapTheme";
 import "./runningResponsive.css";
 
 type MapTheme = RunningMapTheme;
 
 type Props = {
-  route: RunningRouteTemplate;
+  route?: RunningRouteTemplate | null;
+  points?: GeoPoint[];
+  routeName?: string;
+  performanceActivity?: ActivityRecord | null;
+  terrain?: { maxAltitudeM?: number | null } | null;
+  showPlaces?: boolean;
+  showRouteNetwork?: boolean;
   accent: string;
   lang: string;
   textSoft?: string;
@@ -45,18 +52,6 @@ function fitZoom(points: GeoPoint[], width: number, height: number) {
   }
   return 3;
 }
-function themeTile(theme: MapTheme, z: number, x: number, y: number) {
-  if (theme === "tourist") return `https://tile.opentopomap.org/${z}/${x}/${y}.png`;
-  if (theme === "satellite") return RUNNING_SATELLITE_TILES.replace("{z}", String(z)).replace("{y}", String(y)).replace("{x}", String(x));
-  return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
-}
-function themeFilter(theme: MapTheme) {
-  if (theme === "illustrated") return "sepia(.18) saturate(1.35) contrast(.93) brightness(1.08)";
-  if (theme === "light") return "grayscale(.08) saturate(.72) contrast(.88) brightness(1.15)";
-  if (theme === "night") return "invert(.88) hue-rotate(180deg) saturate(.55) brightness(.68) contrast(1.24)";
-  if (theme === "satellite") return "saturate(1.08) contrast(1.04) brightness(.96)";
-  return "saturate(1.12) contrast(1.03)";
-}
 function themeIcon(theme: MapTheme) { return runningMapThemeIcon(theme); }
 function screenPoint(lat: number, lon: number, layout: Layout) {
   const world = mercatorPixel(lat, lon, layout.zoom);
@@ -86,7 +81,7 @@ function buildLayout(points: GeoPoint[], width: number, height: number, zoomDelt
       left: tx * 256 - center.x + safeWidth / 2,
       top: ty * 256 - center.y + safeHeight / 2,
       x: wrappedX, y: ty, z: zoom,
-      url: themeTile(theme, zoom, wrappedX, ty),
+      url: runningMapRasterTileUrl(theme, zoom, wrappedX, ty),
       overlayUrl: `https://tile.waymarkedtrails.org/hiking/${zoom}/${wrappedX}/${ty}.png`,
     });
   }
@@ -96,7 +91,7 @@ function buildLayout(points: GeoPoint[], width: number, height: number, zoomDelt
   };
 }
 
-export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSoft = "#a8a8b3", height = "clamp(350px,58svh,680px)", fullscreen = false, activePointIndex = null, onActivePointChange, onFullscreen, onCloseFullscreen }: Props) {
+export default function OutdoorInteractiveRouteMap({ route = null, points, routeName, performanceActivity = null, terrain = null, showPlaces = true, showRouteNetwork = false, accent, lang, textSoft = "#a8a8b3", height = "clamp(350px,58svh,680px)", fullscreen = false, activePointIndex = null, onActivePointChange, onFullscreen, onCloseFullscreen }: Props) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const pointersRef = React.useRef(new Map<number, { x: number; y: number }>());
   const dragRef = React.useRef<{ id: number; x: number; y: number; centerWorld: { x: number; y: number }; moved: boolean } | null>(null);
@@ -112,7 +107,14 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
   const [placePhotos, setPlacePhotos] = React.useState<OutdoorRoutePhoto[]>([]);
   const [placeLoading, setPlaceLoading] = React.useState(false);
 
-  const safePoints = React.useMemo(() => (route.route || []).filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)), [route.route]);
+  const safePoints = React.useMemo(() => ((points || route?.route || [])).filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)), [points, route?.route]);
+  const analytics = React.useMemo(() => {
+    if (safePoints.length < 2) return null;
+    if (performanceActivity) return buildRunningActivityAnalytics(performanceActivity);
+    const elapsedMs = Math.max(0, Number(safePoints[safePoints.length - 1]?.elapsedMs || 0));
+    return buildRunningActivityAnalytics({ route: safePoints, distanceM: 0, movingMs: elapsedMs, elapsedMs } as ActivityRecord);
+  }, [performanceActivity, safePoints]);
+  const hasPerformanceColors = !!analytics?.routeEdges.some((edge) => edge.score != null);
   const layout = React.useMemo(() => buildLayout(safePoints, size.width, size.height, zoomDelta, manualCenter, theme), [manualCenter, safePoints, size.height, size.width, theme, zoomDelta]);
 
   React.useLayoutEffect(() => {
@@ -132,13 +134,14 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
   React.useEffect(() => { saveRunningMapTheme(theme); }, [theme]);
 
   React.useEffect(() => {
+    if (!route || !showPlaces) { setPlaces([]); return; }
     let cancelled = false;
     void fetchOutdoorRoutePlaceContext(route, lang).then((context) => { if (!cancelled) setPlaces(context.places || []); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [lang, route]);
+  }, [lang, route, showPlaces]);
 
   React.useEffect(() => {
-    if (!selectedPlace) { setPlacePhotos([]); return; }
+    if (!selectedPlace || !route) { setPlacePhotos([]); return; }
     let cancelled = false;
     setPlaceLoading(true);
     setPlacePhotos([]);
@@ -206,10 +209,10 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
     if (best >= 0 && bestD < 34) onActivePointChange(best);
   };
 
-  const shellStyle: React.CSSProperties = { position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 320, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? undefined : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 20px 52px rgba(0,0,0,.28)" };
+  const shellStyle: React.CSSProperties = { position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 220, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? undefined : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 20px 52px rgba(0,0,0,.28)" };
 
   if (mapMode === "3d") return <div className="running-map-shell" style={shellStyle}>
-    <RunningTerrain3DMap points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route.name} places={places} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onPlaceSelect={setSelectedPlace} onFallback2D={() => setMapMode("2d")} mapTheme={theme} onMapThemeChange={setTheme} showStylePicker={false}/>
+    <RunningTerrain3DMap points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={routeName || route?.name} places={places} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onPlaceSelect={setSelectedPlace} onFallback2D={() => setMapMode("2d")} mapTheme={theme} onMapThemeChange={setTheme} showStylePicker={false}/>
     <MapToolbar accent={accent} lang={lang} mapMode={mapMode} theme={theme} themeMenu={themeMenu} setMapMode={setMapMode} setThemeMenu={setThemeMenu} setTheme={setTheme} resetView={resetView} onFullscreen={onFullscreen} onCloseFullscreen={onCloseFullscreen} fullscreen={fullscreen}/>
     {selectedPlace ? <PlacePopup place={selectedPlace} photos={placePhotos} loading={placeLoading} accent={accent} textSoft={textSoft} lang={lang} onClose={() => setSelectedPlace(null)}/> : null}
   </div>;
@@ -217,19 +220,20 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
   return <div ref={hostRef} className="running-map-shell" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { selectNearestPoint(event); onPointerUp(event); }} onPointerCancel={onPointerUp} onWheel={onWheel} style={{ ...shellStyle, touchAction: "none", userSelect: "none", cursor: "grab" }}>
     {layout ? <>
       {layout.tiles.map((tile) => <React.Fragment key={tile.key}>
-        <img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", filter: themeFilter(theme), userSelect: "none", pointerEvents: "none" }}/>
-        {theme === "tourist" ? <img src={tile.overlayUrl} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", userSelect: "none", pointerEvents: "none", opacity: .72 }}/> : null}
+        <img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", filter: runningMapRasterFilter(theme), userSelect: "none", pointerEvents: "none" }}/>
+        {runningMapShowsTrailOverlay(theme, showRouteNetwork) ? <img src={tile.overlayUrl} alt="" draggable={false} style={{ position: "absolute", left: tile.left, top: tile.top, width: 256, height: 256, maxWidth: "none", objectFit: "cover", userSelect: "none", pointerEvents: "none", opacity: .72 }}/> : null}
       </React.Fragment>)}
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
         <polyline points={layout.screen.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ")} fill="none" stroke="rgba(0,0,0,.82)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round"/>
-        <polyline points={layout.screen.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ")} fill="none" stroke={accent} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+        {hasPerformanceColors ? analytics!.routeEdges.map((edge) => { const a = layout.screen[edge.startIndex], b = layout.screen[edge.endIndex]; return a && b ? <line key={`perf-${edge.startIndex}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={edge.color} strokeWidth="6" strokeLinecap="round"/> : null; }) : <polyline points={layout.screen.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ")} fill="none" stroke={accent} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>}
         {layout.screen[0] ? <><circle cx={layout.screen[0].x} cy={layout.screen[0].y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/><text x={layout.screen[0].x} y={layout.screen[0].y - 13} textAnchor="middle" fontSize="20">🚩</text></> : null}
         {layout.screen[layout.screen.length - 1] ? <><circle cx={layout.screen[layout.screen.length - 1].x} cy={layout.screen[layout.screen.length - 1].y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/><text x={layout.screen[layout.screen.length - 1].x} y={layout.screen[layout.screen.length - 1].y - 13} textAnchor="middle" fontSize="20">🏁</text></> : null}
+        {terrain?.maxAltitudeM != null ? (() => { let best = -1; for (let i = 0; i < safePoints.length; i += 1) if (Number.isFinite(safePoints[i]?.altitude) && (best < 0 || Number(safePoints[i].altitude) > Number(safePoints[best].altitude))) best = i; const p = best >= 0 ? layout.screen[best] : null; return p ? <><circle cx={p.x} cy={p.y} r="6" fill="#ffcf57" stroke="#fff" strokeWidth="2"/><text x={p.x} y={p.y - 10} textAnchor="middle" fontSize="16">⛰️</text></> : null; })() : null}
         {activePointIndex != null && layout.screen[activePointIndex] ? <><circle cx={layout.screen[activePointIndex].x} cy={layout.screen[activePointIndex].y} r="12" fill="rgba(0,0,0,.7)" stroke="#fff" strokeWidth="2"/><circle cx={layout.screen[activePointIndex].x} cy={layout.screen[activePointIndex].y} r="6" fill={accent}/></> : null}
       </svg>
       {places.slice(0, fullscreen ? 18 : 10).map((place) => { const point = screenPoint(place.lat, place.lon, layout); if (point.x < -30 || point.y < -30 || point.x > layout.width + 30 || point.y > layout.height + 30) return null; return <button key={place.id} className="btn" title={place.name} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setSelectedPlace(place); }} style={{ position: "absolute", left: point.x, top: point.y, transform: "translate(-50%,-50%)", zIndex: 7, width: 31, height: 31, minWidth: 31, minHeight: 31, padding: 0, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(5,8,13,.9)", border: "2px solid rgba(255,255,255,.82)", boxShadow: "0 5px 16px rgba(0,0,0,.42)", fontSize: 14 }}>{outdoorRoutePlaceIcon(place.category)}</button>; })}
     </> : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: textSoft }}>{pickText(lang, "Carte indisponible", "Map unavailable", "Mapa no disponible")}</div>}
-    {theme === "satellite" ? <div style={{ position: "absolute", right: 8, bottom: 8, zIndex: 8, padding: "3px 5px", borderRadius: 7, background: "rgba(5,8,13,.68)", color: "rgba(255,255,255,.62)", fontSize: 5.8, pointerEvents: "none" }}>Imagery © Esri</div> : null}
+    <div style={{ position: "absolute", right: 8, bottom: 8, zIndex: 8, padding: "3px 5px", borderRadius: 7, background: "rgba(5,8,13,.68)", color: "rgba(255,255,255,.62)", fontSize: 5.8, pointerEvents: "none" }}>{runningMapAttribution(theme)}</div>
 
     <MapToolbar accent={accent} lang={lang} mapMode={mapMode} theme={theme} themeMenu={themeMenu} setMapMode={setMapMode} setThemeMenu={setThemeMenu} setTheme={setTheme} resetView={resetView} onFullscreen={onFullscreen} onCloseFullscreen={onCloseFullscreen} fullscreen={fullscreen}/>
     <div className="running-map-hint" style={{ position: "absolute", left: 9, bottom: 8, zIndex: 8, padding: "5px 8px", borderRadius: 999, background: "rgba(5,8,13,.78)", border: "1px solid rgba(255,255,255,.09)", color: textSoft, fontSize: 7, pointerEvents: "none", backdropFilter: "blur(10px)" }}>{pickText(lang, "Glisser · pincer · molette", "Drag · pinch · wheel", "Mover · pellizcar · rueda")}</div>

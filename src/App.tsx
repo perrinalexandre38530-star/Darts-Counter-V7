@@ -1131,6 +1131,22 @@ type Tab =
   | "enculette_play"
   | "auth_reset";
 
+const THEME_PREVIEW_TAB_PARAM = "dcThemePreviewTab";
+const THEME_PREVIEW_ALLOWED_TABS: Tab[] = ["home", "games", "profiles", "stats", "online"];
+
+function readThemePreviewConfig(): { enabled: boolean; tab: Tab } {
+  if (typeof window === "undefined") return { enabled: false, tab: "home" };
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const enabled = params.get("dcThemePreview") === "1";
+    const rawTab = String(params.get(THEME_PREVIEW_TAB_PARAM) || "home") as Tab;
+    const tab = THEME_PREVIEW_ALLOWED_TABS.includes(rawTab) ? rawTab : "home";
+    return { enabled, tab };
+  } catch {
+    return { enabled: false, tab: "home" };
+  }
+}
+
 /* redirect TrainingStats → StatsHub */
 function RedirectToStatsTraining({ go }: { go: (tab: Tab, params?: any) => void }) {
   React.useEffect(() => {
@@ -2013,6 +2029,10 @@ function SWUpdateBanner() {
                 APP
 -------------------------------------------- */
 function App() {
+  const themePreviewConfig = React.useMemo(() => readThemePreviewConfig(), []);
+  const isThemePreviewFrame = themePreviewConfig.enabled;
+  const themePreviewTabRef = React.useRef<Tab>(themePreviewConfig.tab);
+
   // Nettoyage ultra-précoce : avant même le splash/routage, supprimer tout
   // callback OAuth déjà consommé que Chrome/PWA aurait restauré au démarrage.
   React.useState(() => scrubStaleOAuthCallbackUrl());
@@ -2177,7 +2197,7 @@ useEffect(() => {
 
   // ✅ DEFAULT TAB = gameSelect (si boot OK). Les flows auth/hash peuvent override.
   // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
-  const [tab, setTab] = React.useState<Tab>("gameSelect");
+  const [tab, setTab] = React.useState<Tab>(() => isThemePreviewFrame ? themePreviewConfig.tab : "gameSelect");
   const themePageScope = getThemePageScope(tab);
   const themedPageBackground = theme.pageBackground || theme.bg;
   const routedPageBackground = themePageScope === "off"
@@ -2518,6 +2538,7 @@ useEffect(() => {
 
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
+    if (isThemePreviewFrame) return false;
     const h = String(window.location.hash || "");
     const isAuthFlow =
     h.startsWith("#/auth/callback") ||
@@ -2540,6 +2561,28 @@ useEffect(() => {
     }, 8000);
     return () => window.clearTimeout(hardTimeout);
   }, [showSplash]);
+
+  React.useEffect(() => {
+    if (!isThemePreviewFrame) return;
+    setShowSplash(false);
+    setRouteParams(null);
+    setTab(themePreviewTabRef.current);
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as any;
+      if (!data || data.type !== "dc-theme-preview-route") return;
+      const next = String(data.tab || "") as Tab;
+      if (!THEME_PREVIEW_ALLOWED_TABS.includes(next)) return;
+      themePreviewTabRef.current = next;
+      setRouteParams(null);
+      setTab(next);
+      try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [isThemePreviewFrame]);
 
   /* Boot: persistance + nettoyage localStorage + warm-up (SANS SFX UI) */
   React.useEffect(() => {
@@ -3026,7 +3069,7 @@ useEffect(() => {
            h.startsWith("#/account/start") ||
            isStandalonePublicHash(h);
 
-          if (!isAuthFlow) {
+          if (!isAuthFlow && !isThemePreviewFrame) {
             if (!hasProfiles || !hasActive) {
               setRouteParams(null);
               setTab("account_start");
@@ -3040,7 +3083,7 @@ useEffect(() => {
       } catch {
         if (mounted) {
           setStore(initialStore);
-          if (!isStandalonePublicHash(String(window.location.hash || ""))) {
+          if (!isStandalonePublicHash(String(window.location.hash || "")) && !isThemePreviewFrame) {
             setRouteParams(null);
             setTab("account_start");
           }
@@ -3250,7 +3293,7 @@ useEffect(() => {
                   hh.startsWith("#/account/start") ||
                   isStandalonePublicHash(hh);
 
-                if (!isAuthFlow && hasProfiles && hasActive) {
+                if (!isAuthFlow && hasProfiles && hasActive && !isThemePreviewFrame) {
                   setRouteParams(null);
                   setTab("gameSelect");
                 }
@@ -6264,7 +6307,7 @@ case "babyfoot_team_edit":
           </AppGate>
         </div>
 
-        <NavigationBackgroundMusic route={String(tab)} />
+        {!isThemePreviewFrame && <NavigationBackgroundMusic route={String(tab)} />}
 
         {appChromeAllowed && (
           <AwenaOverlay
@@ -6284,7 +6327,7 @@ case "babyfoot_team_edit":
           <RunningActiveSessionDock currentRoute={String(tab)} currentSport={String(activeSport || "")} go={go} />
         )}
 
-        <SWUpdateBanner />
+        {!isThemePreviewFrame && <SWUpdateBanner />}
       </>
     </CrashCatcher>
   );
