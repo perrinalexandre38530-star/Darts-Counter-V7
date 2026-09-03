@@ -59,6 +59,7 @@ import ContentPacksSettingsPanel from "../components/settings/ContentPacksSettin
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { getAudioPreferences } from "../lib/audioPreferences";
 import { getKeepScreenAwakePreference, setKeepScreenAwakePreference, subscribeKeepScreenAwakePreference } from "../lib/keepAwake";
+import { getBasicProfileStatsAsync } from "../lib/statsBridge";
 
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -999,11 +1000,13 @@ function ThemePreviewBlock({
   theme,
   locked = false,
   onOpenShop,
+  activeProfile,
 }: {
   themeIdPreview: ThemeId | null;
   theme: any;
   locked?: boolean;
   onOpenShop?: () => void;
+  activeProfile?: any;
 }) {
   const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
   const premiumPreview = !!preview && isPremiumTheme(preview.id);
@@ -1024,7 +1027,94 @@ function ThemePreviewBlock({
   const innerSheenOpacity = clamp01(Math.max(0, previewSheenOpacity * (fx.innerSheen / Math.max(fx.sheen || .01, .01))));
   const innerFrameOpacity = clamp01(Math.max(0, previewFrameOpacity * (fx.innerFrame / Math.max(fx.frame || .01, .01))));
   const isPostApocPreview = Boolean(preview && String(preview.id).startsWith("postApoc"));
-  const meta = preview ? THEME_META[preview.id] : null;
+
+  const [slideIndex, setSlideIndex] = React.useState(0);
+  const [liveStats, setLiveStats] = React.useState(() => ({
+    name: String(activeProfile?.name || activeProfile?.displayName || "Ninja"),
+    avg3: Number(activeProfile?.stats?.avg3D || activeProfile?.stats?.avg3 || 0) || 0,
+    matches: Number(activeProfile?.stats?.matches || activeProfile?.stats?.games || activeProfile?.stats?.played || 0) || 0,
+    wins: Number(activeProfile?.stats?.wins || 0) || 0,
+    winRate: Number(activeProfile?.stats?.winRate || activeProfile?.stats?.winrate || 0) || 0,
+    bestVisit: Number(activeProfile?.stats?.bestVisit || 0) || 0,
+    bestCheckout: Number(activeProfile?.stats?.bestCheckout || activeProfile?.stats?.bestCO || 0) || 0,
+    favoriteLabel: String(activeProfile?.stats?.favoriteNumberLabel || activeProfile?.favoriteNumberLabel || activeProfile?.stats?.favorite || "—"),
+  }));
+
+  React.useEffect(() => {
+    if (!preview) return;
+    setSlideIndex(0);
+    const id = window.setInterval(() => setSlideIndex((value) => (value + 1) % 3), 2600);
+    return () => window.clearInterval(id);
+  }, [preview?.id]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const normalize = (profileLike: any, base?: any) => {
+      const readNum = (...values: any[]) => {
+        for (const value of values) {
+          const n = Number(value);
+          if (Number.isFinite(n)) return n;
+        }
+        return 0;
+      };
+      const readPct = (...values: any[]) => {
+        for (const value of values) {
+          const n = Number(value);
+          if (!Number.isFinite(n)) continue;
+          return n <= 1 ? n * 100 : n;
+        }
+        return 0;
+      };
+      const matches = readNum(
+        base?.games,
+        base?.matches,
+        profileLike?.stats?.games,
+        profileLike?.stats?.matches,
+        profileLike?.stats?.played,
+        profileLike?.matchesCount,
+      );
+      const wins = readNum(base?.wins, profileLike?.stats?.wins, profileLike?.wins);
+      const computedWin = matches > 0 ? (wins / matches) * 100 : 0;
+      const favoriteLabel =
+        profileLike?.stats?.favoriteNumberLabel ||
+        profileLike?.favoriteNumberLabel ||
+        profileLike?.stats?.favorite ||
+        profileLike?.favorite ||
+        "—";
+      return {
+        name: String(profileLike?.name || profileLike?.displayName || profileLike?.nickname || "Ninja"),
+        avg3: readNum(base?.avg3D, base?.avg3, base?.avg_3d, profileLike?.stats?.avg3D, profileLike?.stats?.avg3),
+        matches,
+        wins,
+        winRate: readPct(base?.winRate, base?.winrate, profileLike?.stats?.winRate, profileLike?.stats?.winrate) || computedWin,
+        bestVisit: readNum(base?.bestVisit, base?.best_visit, base?.recordBestVisit, profileLike?.stats?.bestVisit, profileLike?.recordBestVisit),
+        bestCheckout: readNum(base?.bestCheckout, base?.bestCO, base?.bestCo, base?.recordBestCO, profileLike?.stats?.bestCheckout, profileLike?.stats?.bestCO, profileLike?.recordBestCO),
+        favoriteLabel: String(favoriteLabel || "—"),
+      };
+    };
+
+    const refresh = async () => {
+      const fallback = normalize(activeProfile, null);
+      if (!cancelled) setLiveStats(fallback);
+      const profileId = String(activeProfile?.id || "").trim();
+      if (!profileId) return;
+      try {
+        const base = await getBasicProfileStatsAsync(profileId);
+        if (!cancelled) setLiveStats(normalize(activeProfile, base));
+      } catch {
+        if (!cancelled) setLiveStats(fallback);
+      }
+    };
+
+    void refresh();
+    window.addEventListener("dc-history-updated", refresh as EventListener);
+    window.addEventListener("dc-store-updated", refresh as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("dc-history-updated", refresh as EventListener);
+      window.removeEventListener("dc-store-updated", refresh as EventListener);
+    };
+  }, [activeProfile?.id, activeProfile?.name, activeProfile?.displayName]);
 
   if (!preview) {
     return (
@@ -1062,8 +1152,143 @@ function ThemePreviewBlock({
   const heroBackground = sceneUrl
     ? `linear-gradient(180deg, rgba(4,5,7,.08) 0%, rgba(4,5,7,.18) 38%, rgba(4,5,7,.80) 100%), url(${sceneUrl}) center/cover no-repeat`
     : localizeThemeBackground(preview.pageBackground || previewCard || previewBackground);
-  const titleColor = isPostApocPreview ? "#F4F2EC" : preview.primary;
-  const subtitleColor = isPostApocPreview ? "rgba(242,240,234,.68)" : preview.textSoft;
+
+  const slideLabel = ["ACCUEIL", "STATS", "ONLINE"][slideIndex] || "ACCUEIL";
+  const playerName = String(liveStats.name || activeProfile?.name || "Ninja");
+  const playerStatusLabel = "En ligne";
+  const statPills = [
+    ["AVG 3D", liveStats.avg3 > 0 ? liveStats.avg3.toFixed(1) : "—"],
+    ["MATCHS", liveStats.matches > 0 ? String(liveStats.matches) : "0"],
+    ["WIN%", liveStats.winRate > 0 ? `${Math.round(liveStats.winRate)}%` : "0%"],
+    ["FAVORI", liveStats.favoriteLabel || "—"],
+  ];
+  const bottomTabs = [
+    ["🏠", "Accueil"],
+    ["📊", "Statistiques"],
+    ["🌐", "En ligne"],
+    ["⚙️", "Réglages"],
+  ];
+
+  const renderMiniScreen = () => {
+    if (slideIndex === 1) {
+      return (
+        <div style={{ padding: 7, display: "grid", gap: 5 }}>
+          <div style={{ borderRadius: 11, border: `1px solid ${preview.borderSoft}`, background: "linear-gradient(135deg, rgba(8,10,20,.98), rgba(10,14,28,.98))", padding: "6px 7px", boxShadow: `0 8px 18px rgba(0,0,0,.42)` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+              <div style={{ color: preview.text, fontSize: 10, fontWeight: 1000, letterSpacing: .55 }}>STATISTIQUES</div>
+              <div style={{ color: preview.primary, fontSize: 6.2, fontWeight: 1000, textTransform: "uppercase" }}>profil actif</div>
+            </div>
+            <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "62px minmax(0,1fr)", gap: 6, alignItems: "center" }}>
+              <div style={{ display: "grid", placeItems: "center" }}>
+                <ProfileAvatar profile={activeProfile || { name: playerName }} size={40} avg3D={liveStats.avg3} showStars={false} ringColor={preview.primary} textColor={preview.text} loading="eager" fallbackMode="local" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: preview.text, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName}</div>
+                <div style={{ marginTop: 3, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 4 }}>
+                  {[ ["Best visit", liveStats.bestVisit || 0], ["Best CO", liveStats.bestCheckout || 0], ["Win rate", `${Math.round(liveStats.winRate || 0)}%`], ["Sessions", liveStats.matches || 0] ].map(([label, value]) => (
+                    <div key={String(label)} style={{ borderRadius: 7, border: `1px solid ${preview.borderSoft}`, background: "rgba(0,0,0,.42)", padding: "4px 4px", textAlign: "center" }}>
+                      <div style={{ color: preview.textSoft, fontSize: 4.6, fontWeight: 900, lineHeight: 1 }}>{label}</div>
+                      <div style={{ color: preview.text, fontSize: 7.2, fontWeight: 1000, marginTop: 2, lineHeight: 1 }}>{String(value)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+            {[ ["X01", liveStats.avg3 > 0 ? `${liveStats.avg3.toFixed(1)} avg` : "—"], ["ONLINE", liveStats.winRate > 0 ? `${Math.round(liveStats.winRate)}%` : "—"], ["RECORD", liveStats.bestVisit > 0 ? `${liveStats.bestVisit}` : "—"] ].map(([label, value]) => (
+              <div key={String(label)} style={{ minHeight: 38, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, position: "relative", overflow: "hidden", padding: 5 }}>
+                <div style={{ color: preview.primary, fontSize: 5.4, fontWeight: 1000 }}>{label}</div>
+                <div style={{ marginTop: 4, color: preview.text, fontSize: 7.4, fontWeight: 1000, lineHeight: 1.1 }}>{String(value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (slideIndex === 2) {
+      return (
+        <div style={{ padding: 7, display: "grid", gap: 5 }}>
+          <div style={{ borderRadius: 11, border: `1px solid ${preview.borderSoft}`, background: "linear-gradient(135deg, rgba(7,10,18,.98), rgba(9,12,24,.98))", padding: "6px 7px", boxShadow: `0 8px 18px rgba(0,0,0,.42)` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+              <div style={{ color: preview.text, fontSize: 10, fontWeight: 1000, letterSpacing: .55 }}>EN LIGNE</div>
+              <div style={{ color: preview.accent2 || preview.primary, fontSize: 6.2, fontWeight: 1000, textTransform: "uppercase" }}>aperçu live</div>
+            </div>
+            <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "58px minmax(0,1fr)", gap: 6 }}>
+              <div style={{ display: "grid", placeItems: "center", alignContent: "center", gap: 2 }}>
+                <ProfileAvatar profile={activeProfile || { name: playerName }} size={36} avg3D={liveStats.avg3} showStars={false} ringColor={preview.primary} textColor={preview.text} loading="eager" fallbackMode="local" />
+                <div style={{ display: "flex", alignItems: "center", gap: 3, color: preview.textSoft, fontSize: 5.2, fontWeight: 900 }}><span style={{ width: 5, height: 5, borderRadius: 999, background: "#45ee8a", boxShadow: "0 0 6px #45ee8a" }} />{playerStatusLabel}</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 4 }}>
+                {[ ["Défis", liveStats.matches > 0 ? Math.max(1, Math.round(liveStats.matches / 3)) : 0], ["Amis", activeProfile ? 3 : 0], ["Best visit", liveStats.bestVisit || 0], ["Best CO", liveStats.bestCheckout || 0] ].map(([label, value]) => (
+                  <div key={String(label)} style={{ borderRadius: 7, border: `1px solid ${preview.borderSoft}`, background: "rgba(0,0,0,.42)", padding: "4px 4px", textAlign: "center" }}>
+                    <div style={{ color: preview.textSoft, fontSize: 4.6, fontWeight: 900, lineHeight: 1 }}>{label}</div>
+                    <div style={{ color: preview.text, fontSize: 7.2, fontWeight: 1000, marginTop: 2, lineHeight: 1 }}>{String(value)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4 }}>
+            {["Match rapide", "Défis", "Clubs"].map((label) => (
+              <div key={label} style={{ minHeight: 44, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: heroBackground, position: "relative", overflow: "hidden", padding: 5 }}>
+                <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(130deg, rgba(0,0,0,.82), rgba(0,0,0,.50))" }} />
+                <div style={{ position: "relative", color: preview.text, fontSize: 6.2, fontWeight: 1000, lineHeight: 1.15 }}>{label}</div>
+                <div style={{ position: "relative", marginTop: 5, color: preview.primary, fontSize: 4.7, fontWeight: 900, textTransform: "uppercase" }}>ouverture directe</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ padding: 7, display: "grid", gap: 5 }}>
+        <div style={{ borderRadius: 11, border: `1px solid ${preview.borderSoft}`, background: "linear-gradient(135deg, rgba(8,10,20,.98), rgba(14,18,34,.98))", boxShadow: "0 8px 18px rgba(0,0,0,.42)", display: "grid", placeItems: "center", alignContent: "center", position: "relative", overflow: "hidden", padding: "6px 7px" }}>
+          <img src={logoDarts} alt="" style={{ position: "absolute", right: 8, top: "50%", width: 38, height: 38, transform: "translateY(-50%)", objectFit: "contain", opacity: .12, filter: `drop-shadow(0 0 8px ${preview.primary}55)` }} />
+          <div style={{ position: "relative", zIndex: 2, borderRadius: 999, border: `1px solid ${preview.primary}aa`, background: "rgba(0,0,0,.56)", color: preview.primary, fontSize: 5.6, fontWeight: 1000, letterSpacing: .65, textTransform: "uppercase", padding: "2px 7px", lineHeight: 1 }}>BIENVENUE</div>
+          <div style={{ position: "relative", zIndex: 2, marginTop: 3, color: preview.text, fontSize: 12.2, fontWeight: 1000, letterSpacing: 1.2, lineHeight: 1, textShadow: `0 0 10px ${preview.primary}40` }}>DARTS SCORING</div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "74px minmax(0,1fr)", gap: 5, minHeight: 68, borderRadius: 11, border: `1px solid ${preview.borderSoft}`, padding: 5, background: "linear-gradient(180deg, rgba(9,12,20,.98), rgba(4,7,13,.98))", boxShadow: `0 0 16px ${preview.primary}20, 0 8px 18px rgba(0,0,0,.38)` }}>
+          <div style={{ borderRadius: 9, border: `1px solid ${preview.primary}75`, background: `radial-gradient(circle at 0 0, ${preview.primary}24, rgba(5,7,16,.98))`, display: "grid", placeItems: "center", alignContent: "center", gap: 3, padding: 4 }}>
+            <ProfileAvatar profile={activeProfile || { name: playerName }} size={34} avg3D={liveStats.avg3} showStars={false} ringColor={preview.primary} textColor={preview.text} loading="eager" fallbackMode="local" />
+            <div style={{ color: preview.primary, fontSize: 7.1, fontWeight: 1000, lineHeight: 1, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 2, color: preview.textSoft, fontSize: 5.1, fontWeight: 800 }}><span style={{ width: 4, height: 4, borderRadius: 999, background: "#45ee8a", boxShadow: "0 0 6px #45ee8a" }} />{playerStatusLabel}</div>
+          </div>
+
+          <div style={{ borderRadius: 9, border: `1px solid ${preview.primary}8a`, background: `linear-gradient(135deg, ${preview.primary}16, rgba(0,0,0,.94))`, padding: 5, minWidth: 0, position: "relative", overflow: "hidden" }}>
+            {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: clamp01(innerTextureOpacity * .55), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+            <div style={{ position: "relative", color: preview.primary, fontSize: 6, fontWeight: 1000, letterSpacing: .45, textTransform: "uppercase" }}>VUE GLOBALE</div>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 3, marginTop: 4 }}>
+              {statPills.map(([label, value]) => (
+                <div key={String(label)} style={{ minWidth: 0, borderRadius: 6, border: `1px solid ${preview.borderSoft}`, background: "rgba(0,0,0,.42)", padding: "3px 4px", textAlign: "center" }}>
+                  <div style={{ color: preview.textSoft, fontSize: 4.5, fontWeight: 900, lineHeight: 1 }}>{label}</div>
+                  <div style={{ color: preview.text, fontSize: 7.5, fontWeight: 1000, marginTop: 2, lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(value)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+          <div style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: heroBackground, position: "relative", overflow: "hidden", padding: 5 }}>
+            <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(130deg, rgba(0,0,0,.82), rgba(0,0,0,.42))" }} />
+            <div style={{ position: "relative", color: preview.primary, fontSize: 5.6, fontWeight: 1000 }}>RECORDS</div>
+            <div style={{ position: "relative", marginTop: 4, color: preview.text, fontSize: 7.2, fontWeight: 1000, lineHeight: 1.05 }}>Best visit {liveStats.bestVisit || 0}</div>
+            <div style={{ position: "relative", marginTop: 2, color: preview.textSoft, fontSize: 4.8, fontWeight: 900, lineHeight: 1 }}>Best CO {liveStats.bestCheckout || 0}</div>
+          </div>
+          <div style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, position: "relative", overflow: "hidden", padding: 5 }}>
+            <div style={{ color: preview.accent2 || preview.primary, fontSize: 5.6, fontWeight: 1000 }}>APERÇU LIVE</div>
+            <div style={{ marginTop: 4, color: preview.textSoft, fontSize: 5.2, lineHeight: 1.2 }}>La miniature diffuse maintenant une vraie vue compacte de l’application.</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -1098,11 +1323,6 @@ function ThemePreviewBlock({
       ) : null}
 
       <div style={{ width: "100%", maxWidth: 410, position: "relative", zIndex: 3 }}>
-        <div style={{ textAlign: "center", marginBottom: 5 }}>
-          <div style={{ color: titleColor, fontWeight: 1000, fontSize: 15, textTransform: "uppercase", letterSpacing: .7, lineHeight: 1, textShadow: `0 0 12px ${preview.primary}38` }}>{meta?.defaultLabel || preview.name}</div>
-          <div style={{ marginTop: 3, color: subtitleColor, fontSize: 8.2, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{meta?.defaultDesc || preview.name}</div>
-        </div>
-
         <div
           className={isPostApocPreview ? "dc-postapoc-preview-panel" : undefined}
           style={{
@@ -1120,80 +1340,36 @@ function ThemePreviewBlock({
           {preview.surfaceSheen ? <div aria-hidden="true" className="dc-theme-preview-sheen" style={{ background: preview.surfaceSheen, opacity: innerSheenOpacity }} /> : null}
           {preview.frameOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: innerFrameOpacity, pointerEvents: "none", zIndex: 1 }} /> : null}
 
-          <div style={{ position: "relative", zIndex: 2, background: preview.pageBackground || preview.bg || "#05060C" }}>
-            {/* Miniature fidèle de la vraie page ACCUEIL : bienvenue + joueur actif + ticker + détail. */}
-            <div style={{ padding: 6, display: "grid", gap: 5 }}>
-              <div
-                style={{
-                  minHeight: 42,
-                  borderRadius: 11,
-                  border: `1px solid ${preview.borderSoft}`,
-                  background: "linear-gradient(135deg, rgba(8,10,20,.96), rgba(14,18,34,.96))",
-                  boxShadow: "0 8px 18px rgba(0,0,0,.42)",
-                  display: "grid",
-                  placeItems: "center",
-                  alignContent: "center",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                <img
-                  src={logoDarts}
-                  alt=""
-                  style={{ position: "absolute", right: 8, top: "50%", width: 42, height: 42, transform: "translateY(-50%)", objectFit: "contain", opacity: .11, filter: `drop-shadow(0 0 8px ${preview.primary}55)` }}
-                />
-                <div style={{ position: "relative", zIndex: 2, borderRadius: 999, border: `1px solid ${preview.primary}aa`, background: "rgba(0,0,0,.56)", color: preview.primary, fontSize: 5.5, fontWeight: 1000, letterSpacing: .65, textTransform: "uppercase", padding: "2px 7px", lineHeight: 1 }}>BIENVENUE</div>
-                <div style={{ position: "relative", zIndex: 2, marginTop: 3, color: preview.text, fontSize: 13.5, fontWeight: 1000, letterSpacing: 1.6, lineHeight: 1, textShadow: `0 0 10px ${preview.primary}40` }}>DARTS SCORING</div>
+          <div style={{ position: "relative", zIndex: 2, padding: 6 }}>
+            <div style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${preview.primary}55`, background: "linear-gradient(180deg, rgba(4,6,12,.995), rgba(4,6,12,.995))", boxShadow: `0 14px 28px rgba(0,0,0,.44), inset 0 1px 0 rgba(255,255,255,.04)` }}>
+              <div style={{ padding: "5px 8px", borderBottom: `1px solid ${preview.borderSoft}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "linear-gradient(180deg, rgba(5,8,15,.98), rgba(8,12,20,.98))" }}>
+                <div style={{ color: preview.primary, fontSize: 6.1, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .65 }}>fenêtre live</div>
+                <div style={{ color: preview.text, fontSize: 7.2, fontWeight: 1000, letterSpacing: .55 }}>{slideLabel}</div>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "76px minmax(0,1fr)",
-                  gap: 5,
-                  minHeight: 64,
-                  borderRadius: 11,
-                  border: `1px solid ${preview.borderSoft}`,
-                  padding: 5,
-                  background: "radial-gradient(circle at top, rgba(255,255,255,.04), rgba(0,0,0,.86))",
-                  boxShadow: `0 0 16px ${preview.primary}20, 0 8px 18px rgba(0,0,0,.38)`,
-                }}
-              >
-                <div style={{ borderRadius: 9, border: `1px solid ${preview.primary}75`, background: `radial-gradient(circle at 0 0, ${preview.primary}24, rgba(5,7,16,.95))`, display: "grid", placeItems: "center", alignContent: "center", gap: 2, padding: 4 }}>
-                  <div style={{ width: 27, height: 27, borderRadius: 999, border: `2px solid ${preview.primary}`, background: "rgba(3,5,12,.92)", color: preview.text, display: "grid", placeItems: "center", fontSize: 10, fontWeight: 1000, boxShadow: `0 0 10px ${preview.primary}45` }}>N</div>
-                  <div style={{ color: preview.primary, fontSize: 7.3, fontWeight: 1000, lineHeight: 1 }}>NINJA</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 2, color: preview.textSoft, fontSize: 5.1, fontWeight: 800 }}><span style={{ width: 4, height: 4, borderRadius: 999, background: "#45ee8a", boxShadow: "0 0 6px #45ee8a" }} />En ligne</div>
-                </div>
+              <div style={{ position: "relative", minHeight: 180, background: preview.pageBackground || preview.bg || "#05060C", overflow: "hidden" }}>
+                <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(3,5,12,.12), rgba(3,5,12,.16))" }} />
+                {preview.textureOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: clamp01(innerTextureOpacity * .55), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+                {preview.surfaceSheen ? <div aria-hidden="true" className="dc-theme-preview-sheen" style={{ background: preview.surfaceSheen, opacity: clamp01(innerSheenOpacity * .8) }} /> : null}
+                <div style={{ position: "relative", zIndex: 2 }}>{renderMiniScreen()}</div>
+              </div>
 
-                <div style={{ borderRadius: 9, border: `1px solid ${preview.primary}8a`, background: `linear-gradient(135deg, ${preview.primary}16, rgba(0,0,0,.91))`, padding: 5, minWidth: 0, position: "relative", overflow: "hidden" }}>
-                  {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: clamp01(innerTextureOpacity * .55), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
-                  <div style={{ position: "relative", color: preview.primary, fontSize: 6, fontWeight: 1000, letterSpacing: .45, textTransform: "uppercase" }}>VUE GLOBALE</div>
-                  <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 3, marginTop: 4 }}>
-                    {[["AVG 3D", "62.4"], ["WIN%", "68%"], ["MATCHS", "24"], ["FAVORI", "T20"]].map(([label, value]) => (
-                      <div key={label} style={{ minWidth: 0, borderRadius: 6, border: `1px solid ${preview.borderSoft}`, background: "rgba(0,0,0,.38)", padding: "3px 4px", textAlign: "center" }}>
-                        <div style={{ color: preview.textSoft, fontSize: 4.5, fontWeight: 900, lineHeight: 1 }}>{label}</div>
-                        <div style={{ color: preview.text, fontSize: 7.5, fontWeight: 1000, marginTop: 2, lineHeight: 1 }}>{value}</div>
+              <div style={{ padding: "5px 8px", borderTop: `1px solid ${preview.borderSoft}`, background: "rgba(4,6,12,.98)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+                  {bottomTabs.map(([icon, label], index) => {
+                    const active = (slideIndex === 0 && index === 0) || (slideIndex === 1 && index === 1) || (slideIndex === 2 && index === 2) || (slideIndex !== 0 && slideIndex !== 1 && slideIndex !== 2 && index === 3);
+                    return (
+                      <div key={String(label)} style={{ minHeight: 28, borderRadius: 8, border: `1px solid ${active ? `${preview.primary}88` : preview.borderSoft}`, background: active ? `${preview.primary}18` : "rgba(255,255,255,.02)", display: "grid", placeItems: "center", textAlign: "center", padding: "2px 3px" }}>
+                        <div style={{ color: active ? preview.primary : preview.textSoft, fontSize: 8.3, lineHeight: 1 }}>{icon}</div>
+                        <div style={{ marginTop: 2, color: active ? preview.text : preview.textSoft, fontSize: 4.9, fontWeight: 900, lineHeight: 1 }}>{label}</div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 3 }}>
-                {["RECORDS", "X01", "ONLINE", "TRAINING"].map((label, index) => (
-                  <div key={label} style={{ minWidth: 0, height: 21, borderRadius: 7, border: `1px solid ${index === 0 ? `${preview.primary}7a` : preview.borderSoft}`, background: index === 0 ? `${preview.primary}14` : "rgba(3,5,12,.62)", color: index === 0 ? preview.primary : preview.textSoft, display: "grid", placeItems: "center", fontSize: 4.8, fontWeight: 1000, letterSpacing: .2 }}>{label}</div>
-                ))}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                <div style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: heroBackground, position: "relative", overflow: "hidden", padding: 5 }}>
-                  <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(130deg, rgba(0,0,0,.82), rgba(0,0,0,.42))" }} />
-                  <div style={{ position: "relative", color: preview.primary, fontSize: 5.6, fontWeight: 1000 }}>RECORDS X01</div>
-                  <div style={{ position: "relative", marginTop: 4, color: preview.text, fontSize: 7.8, fontWeight: 1000 }}>180 <span style={{ color: preview.textSoft, fontSize: 5 }}>• CO 96</span></div>
-                </div>
-                <div style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, position: "relative", overflow: "hidden", padding: 5 }}>
-                  <div style={{ color: preview.accent2 || preview.primary, fontSize: 5.6, fontWeight: 1000 }}>ASTUCE DU MOMENT</div>
-                  <div style={{ marginTop: 4, color: preview.textSoft, fontSize: 5.4, lineHeight: 1.2 }}>Travaille ton T20 et suis ta progression.</div>
+                <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  {[0, 1, 2].map((index) => (
+                    <div key={index} style={{ width: index === slideIndex ? 18 : 6, height: 6, borderRadius: 999, background: index === slideIndex ? preview.primary : "rgba(255,255,255,.18)", boxShadow: index === slideIndex ? `0 0 8px ${preview.primary}77` : "none", transition: "all 160ms ease" }} />
+                  ))}
                 </div>
               </div>
             </div>
@@ -5026,6 +5202,7 @@ export function Settings({ go, params }: Props) {
           theme={theme}
           locked={themeLocked(previewThemeId)}
           onOpenShop={openThemeShop}
+          activeProfile={activeLocalProfile}
         />
 
         <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
