@@ -996,16 +996,12 @@ const POSTAPOC_CARD_SUBTITLE: Partial<Record<ThemeId, string>> = {
 
 function ThemePreviewBlock({
   themeIdPreview,
-  activeThemeId,
   theme,
-  onApply,
   locked = false,
   onOpenShop,
 }: {
   themeIdPreview: ThemeId | null;
-  activeThemeId: ThemeId;
   theme: any;
-  onApply: (id: ThemeId) => void;
   locked?: boolean;
   onOpenShop?: () => void;
 }) {
@@ -1034,7 +1030,7 @@ function ThemePreviewBlock({
     return (
       <div
         style={{
-          minHeight: 250,
+          minHeight: 190,
           borderRadius: 22,
           border: `1px solid ${theme.borderSoft}`,
           background: "linear-gradient(180deg, rgba(7,9,15,.94), rgba(5,7,12,.98))",
@@ -1043,14 +1039,14 @@ function ThemePreviewBlock({
           boxShadow: "inset 0 0 30px rgba(0,0,0,.38)",
           display: "grid",
           placeItems: "center",
-          padding: 14,
+          padding: 8,
         }}
       >
         <img src="/img/settings-theme-logo-preview.webp" alt="MULTISPORTS SCORING" style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0, opacity: .76 }} />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(2,4,10,.28), rgba(2,4,10,.86))" }} />
         <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 16px" }}>
-          <div style={{ color: "#fff", fontSize: 18, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase" }}>THÈME</div>
-          <div style={{ marginTop: 6, color: "rgba(255,255,255,.76)", fontSize: 10.5, fontWeight: 850 }}>Choisissez un pack puis un thème pour afficher l’aperçu complet.</div>
+          <div style={{ color: "#fff", fontSize: 15, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase" }}>THÈME</div>
+          <div style={{ marginTop: 2, color: "rgba(255,255,255,.76)", fontSize: 9, fontWeight: 850 }}>Choisissez un pack puis un thème pour afficher l’aperçu complet.</div>
         </div>
       </div>
     );
@@ -1068,14 +1064,13 @@ function ThemePreviewBlock({
     : localizeThemeBackground(preview.pageBackground || previewCard || previewBackground);
   const titleColor = isPostApocPreview ? "#F4F2EC" : preview.primary;
   const subtitleColor = isPostApocPreview ? "rgba(242,240,234,.68)" : preview.textSoft;
-  const activeLabel = locked ? "🔒 VOIR CE PACK DANS LA BOUTIQUE" : preview.id === activeThemeId ? "THÈME ACTIF" : "APPLIQUER CE THÈME";
 
   return (
     <div
       className={isPostApocPreview ? "dc-postapoc-theme-preview" : undefined}
       style={{
-        minHeight: isPostApocPreview ? 530 : 380,
-        borderRadius: isPostApocPreview ? 28 : 20,
+        minHeight: 250,
+        borderRadius: isPostApocPreview ? 20 : 16,
         border: `1px solid ${isPostApocPreview ? `${preview.primary}48` : (preview?.borderSoft || theme.borderSoft)}`,
         background: shellOuterBackground,
         overflow: "hidden",
@@ -1085,7 +1080,7 @@ function ThemePreviewBlock({
           : (preview.surfaceShadow || `0 18px 42px rgba(0,0,0,.52), 0 0 28px ${preview.primary}24, inset 0 1px 0 rgba(255,255,255,.07)`),
         display: "grid",
         placeItems: "center",
-        padding: isPostApocPreview ? 16 : 12,
+        padding: 7,
         isolation: "isolate",
       }}
     >
@@ -1103,9 +1098,9 @@ function ThemePreviewBlock({
       ) : null}
 
       <div style={{ width: "100%", maxWidth: 410, position: "relative", zIndex: 3 }}>
-        <div style={{ textAlign: "center", marginBottom: isPostApocPreview ? 12 : 8 }}>
-          <div style={{ color: titleColor, fontWeight: 1000, fontSize: isPostApocPreview ? 20 : 18, textTransform: "uppercase", letterSpacing: .9, lineHeight: 1, textShadow: `0 0 16px ${preview.primary}38` }}>{meta?.defaultLabel || preview.name}</div>
-          <div style={{ marginTop: 6, color: subtitleColor, fontSize: 9.6, lineHeight: 1.3 }}>{meta?.defaultDesc || preview.name}</div>
+        <div style={{ textAlign: "center", marginBottom: 5 }}>
+          <div style={{ color: titleColor, fontWeight: 1000, fontSize: 15, textTransform: "uppercase", letterSpacing: .7, lineHeight: 1, textShadow: `0 0 12px ${preview.primary}38` }}>{meta?.defaultLabel || preview.name}</div>
+          <div style={{ marginTop: 3, color: subtitleColor, fontSize: 8.2, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{meta?.defaultDesc || preview.name}</div>
         </div>
 
         <div
@@ -1113,7 +1108,7 @@ function ThemePreviewBlock({
           style={{
             position: "relative",
             overflow: "hidden",
-            borderRadius: isPostApocPreview ? 26 : 16,
+            borderRadius: isPostApocPreview ? 18 : 13,
             border: `1px solid ${isPostApocPreview ? `${preview.primary}80` : `${preview.primary}70`}`,
             background: shellPanelBackground,
             boxShadow: isPostApocPreview
@@ -1125,99 +1120,109 @@ function ThemePreviewBlock({
           {preview.surfaceSheen ? <div aria-hidden="true" className="dc-theme-preview-sheen" style={{ background: preview.surfaceSheen, opacity: innerSheenOpacity }} /> : null}
           {preview.frameOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: innerFrameOpacity, pointerEvents: "none", zIndex: 1 }} /> : null}
 
-          <div style={{ position: "relative", zIndex: 2 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: isPostApocPreview ? "10px 12px 9px" : "7px 9px", borderBottom: `1px solid ${preview.borderSoft}`, background: isPostApocPreview ? "linear-gradient(180deg, rgba(12,12,12,.92), rgba(8,8,8,.96))" : "rgba(3,5,12,.34)", backdropFilter: "blur(7px)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                {isPostApocPreview ? (
-                  <span style={{ alignSelf: "stretch", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 9px", borderRadius: 9, border: `1px solid ${preview.primary}55`, background: `linear-gradient(135deg, color-mix(in srgb, ${preview.primary} 62%, #e8ddc6), color-mix(in srgb, ${preview.primary} 42%, #2a1c13))`, color: "#111", fontSize: 7.8, fontWeight: 1000, letterSpacing: .5, textTransform: "uppercase", boxShadow: `0 0 12px ${preview.primary}35` }}>Nouveau</span>
-                ) : (
-                  <img src={logoDarts} alt="" style={{ width: 22, height: 22, objectFit: "contain", filter: `drop-shadow(0 0 7px ${preview.primary}55)` }} />
-                )}
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ color: preview.text, fontSize: isPostApocPreview ? 9.2 : 8.8, fontWeight: 1000, lineHeight: 1, letterSpacing: .45 }}>MULTISPORTS SCORING</div>
-                  <div style={{ color: preview.primary, fontSize: isPostApocPreview ? 7.8 : 7.2, fontWeight: 950, marginTop: 3, textTransform: "uppercase", letterSpacing: .4 }}>X01 • Partie en cours</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-                <span style={{ borderRadius: 999, border: `1px solid rgba(255,95,95,.55)`, background: `rgba(30,5,5,.78)`, color: "#FF5F5F", padding: "4px 8px", fontSize: 6.9, fontWeight: 1000, boxShadow: `0 0 10px rgba(255,95,95,.24)` }}>● EN DIRECT</span>
-                {locked ? <span style={{ fontSize: 11, color: preview.primary }}>🔒</span> : <span style={{ fontSize: 14, color: preview.textSoft }}>⋮</span>}
-              </div>
-            </div>
-
-            <div style={{ position: "relative", padding: isPostApocPreview ? 12 : 8 }}>
-              <div className={isPostApocPreview ? "dc-postapoc-scene" : undefined} style={{ position: "relative", overflow: "hidden", borderRadius: isPostApocPreview ? 18 : 13, border: `1px solid ${preview.borderSoft}`, background: heroBackground, backgroundAttachment: "scroll", backgroundPosition: "center center", backgroundRepeat: "no-repeat", backgroundSize: "cover", minHeight: isPostApocPreview ? 170 : 110, boxShadow: `0 10px 22px rgba(0,0,0,.44)` }}>
-                <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(2,4,8,.12), rgba(2,4,8,.14) 35%, rgba(2,4,8,.82) 100%)", pointerEvents: "none" }} />
-                {preview.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.ambientOverlay, opacity: isPostApocPreview ? .22 : .16, pointerEvents: "none" }} /> : null}
-                <div style={{ position: "absolute", left: 12, right: 12, bottom: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(120px,.72fr)", gap: 8, alignItems: "end" }}>
-                  <div style={{ display: "flex", alignItems: "end", gap: 9, minWidth: 0 }}>
-                    <div style={{ width: isPostApocPreview ? 56 : 44, height: isPostApocPreview ? 56 : 44, borderRadius: 999, padding: 3, background: `linear-gradient(135deg, color-mix(in srgb, ${preview.primary} 90%, #fff 10%), color-mix(in srgb, ${preview.accent2 || preview.primary} 65%, #000 35%))`, boxShadow: `0 0 16px ${preview.primary}40` }}>
-                      <div style={{ width: "100%", height: "100%", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(12,12,12,.88)", color: preview.text, fontSize: isPostApocPreview ? 24 : 18, fontWeight: 1000 }}>☠</div>
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="dc-player-name" style={{ color: preview.text, fontSize: isPostApocPreview ? 11.5 : 10.5, fontWeight: 950, lineHeight: 1, textTransform: "uppercase" }}>NINJA</div>
-                      <div style={{ color: preview.primary, fontSize: isPostApocPreview ? 34 : 24, fontWeight: 1000, lineHeight: .92, textShadow: `0 0 12px ${preview.primary}48` }}>301</div>
-                    </div>
-                  </div>
-                  <div style={{ borderRadius: isPostApocPreview ? 14 : 11, border: `1px solid ${preview.borderSoft}`, background: `linear-gradient(180deg, rgba(12,12,12,.76), rgba(5,5,5,.86))`, padding: isPostApocPreview ? "10px 12px" : "8px 9px", textAlign: "left", boxShadow: `0 8px 18px rgba(0,0,0,.30)` }}>
-                    <div style={{ color: preview.textSoft, fontSize: isPostApocPreview ? 7.5 : 6.6, fontWeight: 900, textTransform: "uppercase" }}>Objectif</div>
-                    <div style={{ color: preview.accent2 || preview.primary, fontSize: isPostApocPreview ? 23 : 16, fontWeight: 1000, marginTop: 3, textShadow: `0 0 10px ${preview.accent2 || preview.primary}42` }}>T20</div>
-                  </div>
-                </div>
+          <div style={{ position: "relative", zIndex: 2, background: preview.pageBackground || preview.bg || "#05060C" }}>
+            {/* Miniature fidèle de la vraie page ACCUEIL : bienvenue + joueur actif + ticker + détail. */}
+            <div style={{ padding: 6, display: "grid", gap: 5 }}>
+              <div
+                style={{
+                  minHeight: 42,
+                  borderRadius: 11,
+                  border: `1px solid ${preview.borderSoft}`,
+                  background: "linear-gradient(135deg, rgba(8,10,20,.96), rgba(14,18,34,.96))",
+                  boxShadow: "0 8px 18px rgba(0,0,0,.42)",
+                  display: "grid",
+                  placeItems: "center",
+                  alignContent: "center",
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                <img
+                  src={logoDarts}
+                  alt=""
+                  style={{ position: "absolute", right: 8, top: "50%", width: 42, height: 42, transform: "translateY(-50%)", objectFit: "contain", opacity: .11, filter: `drop-shadow(0 0 8px ${preview.primary}55)` }}
+                />
+                <div style={{ position: "relative", zIndex: 2, borderRadius: 999, border: `1px solid ${preview.primary}aa`, background: "rgba(0,0,0,.56)", color: preview.primary, fontSize: 5.5, fontWeight: 1000, letterSpacing: .65, textTransform: "uppercase", padding: "2px 7px", lineHeight: 1 }}>BIENVENUE</div>
+                <div style={{ position: "relative", zIndex: 2, marginTop: 3, color: preview.text, fontSize: 13.5, fontWeight: 1000, letterSpacing: 1.6, lineHeight: 1, textShadow: `0 0 10px ${preview.primary}40` }}>DARTS SCORING</div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 7 }}>
-                {[["AVG 3D", "62.4"], ["MEILLEUR", "180"], ["CHECKOUT", "96"]].map(([label, value]) => (
-                  <div key={label} className={isPostApocPreview ? "dc-postapoc-kpi" : undefined} style={{ position: "relative", overflow: "hidden", borderRadius: isPostApocPreview ? 10 : 10, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, padding: isPostApocPreview ? "8px 7px" : "5px 6px", textAlign: "center", boxShadow: `inset 0 1px 0 rgba(255,255,255,.04), 0 5px 12px rgba(0,0,0,.25)` }}>
-                    {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: clamp01(innerTextureOpacity * .78), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
-                    <div style={{ position: "relative", color: preview.textSoft, fontSize: isPostApocPreview ? 6.7 : 6.1, fontWeight: 900 }}>{label}</div>
-                    <div style={{ position: "relative", color: preview.text, fontSize: isPostApocPreview ? 12.8 : 10.5, fontWeight: 1000, marginTop: 2 }}>{value}</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "76px minmax(0,1fr)",
+                  gap: 5,
+                  minHeight: 64,
+                  borderRadius: 11,
+                  border: `1px solid ${preview.borderSoft}`,
+                  padding: 5,
+                  background: "radial-gradient(circle at top, rgba(255,255,255,.04), rgba(0,0,0,.86))",
+                  boxShadow: `0 0 16px ${preview.primary}20, 0 8px 18px rgba(0,0,0,.38)`,
+                }}
+              >
+                <div style={{ borderRadius: 9, border: `1px solid ${preview.primary}75`, background: `radial-gradient(circle at 0 0, ${preview.primary}24, rgba(5,7,16,.95))`, display: "grid", placeItems: "center", alignContent: "center", gap: 2, padding: 4 }}>
+                  <div style={{ width: 27, height: 27, borderRadius: 999, border: `2px solid ${preview.primary}`, background: "rgba(3,5,12,.92)", color: preview.text, display: "grid", placeItems: "center", fontSize: 10, fontWeight: 1000, boxShadow: `0 0 10px ${preview.primary}45` }}>N</div>
+                  <div style={{ color: preview.primary, fontSize: 7.3, fontWeight: 1000, lineHeight: 1 }}>NINJA</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 2, color: preview.textSoft, fontSize: 5.1, fontWeight: 800 }}><span style={{ width: 4, height: 4, borderRadius: 999, background: "#45ee8a", boxShadow: "0 0 6px #45ee8a" }} />En ligne</div>
+                </div>
+
+                <div style={{ borderRadius: 9, border: `1px solid ${preview.primary}8a`, background: `linear-gradient(135deg, ${preview.primary}16, rgba(0,0,0,.91))`, padding: 5, minWidth: 0, position: "relative", overflow: "hidden" }}>
+                  {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: clamp01(innerTextureOpacity * .55), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+                  <div style={{ position: "relative", color: preview.primary, fontSize: 6, fontWeight: 1000, letterSpacing: .45, textTransform: "uppercase" }}>VUE GLOBALE</div>
+                  <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 3, marginTop: 4 }}>
+                    {[["AVG 3D", "62.4"], ["WIN%", "68%"], ["MATCHS", "24"], ["FAVORI", "T20"]].map(([label, value]) => (
+                      <div key={label} style={{ minWidth: 0, borderRadius: 6, border: `1px solid ${preview.borderSoft}`, background: "rgba(0,0,0,.38)", padding: "3px 4px", textAlign: "center" }}>
+                        <div style={{ color: preview.textSoft, fontSize: 4.5, fontWeight: 900, lineHeight: 1 }}>{label}</div>
+                        <div style={{ color: preview.text, fontSize: 7.5, fontWeight: 1000, marginTop: 2, lineHeight: 1 }}>{value}</div>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 3 }}>
+                {["RECORDS", "X01", "ONLINE", "TRAINING"].map((label, index) => (
+                  <div key={label} style={{ minWidth: 0, height: 21, borderRadius: 7, border: `1px solid ${index === 0 ? `${preview.primary}7a` : preview.borderSoft}`, background: index === 0 ? `${preview.primary}14` : "rgba(3,5,12,.62)", color: index === 0 ? preview.primary : preview.textSoft, display: "grid", placeItems: "center", fontSize: 4.8, fontWeight: 1000, letterSpacing: .2 }}>{label}</div>
                 ))}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: isPostApocPreview ? "1fr" : "1fr auto", gap: 6, marginTop: 7 }}>
-                <div className={isPostApocPreview ? "dc-postapoc-action dc-postapoc-action-primary" : undefined} style={{ minHeight: isPostApocPreview ? 44 : 30, borderRadius: isPostApocPreview ? 9 : 10, border: `1px solid ${preview.primary}88`, background: preview.buttonBackground || preview.primary, color: isPostApocPreview ? "#F9F6F0" : "#050712", display: "grid", placeItems: "center", fontSize: isPostApocPreview ? 9.6 : 8, fontWeight: 1000, letterSpacing: .25, textTransform: "uppercase", textShadow: isPostApocPreview ? "0 2px 4px rgba(0,0,0,.55)" : "none", boxShadow: `0 0 16px ${preview.primary}2e, inset 0 1px 0 rgba(255,255,255,.16)` }}>Valider la volée</div>
-                {isPostApocPreview ? (
-                  <div className="dc-postapoc-action dc-postapoc-action-secondary" style={{ marginTop: 6, minHeight: 40, borderRadius: 9, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, color: preview.text, display: "grid", placeItems: "center", fontSize: 9.2, fontWeight: 950, textTransform: "uppercase", boxShadow: `0 8px 16px rgba(0,0,0,.28)` }}>Appliquer ce thème</div>
-                ) : (
-                  <div style={{ width: 34, minHeight: 30, borderRadius: 10, border: `1px solid ${preview.borderSoft}`, background: previewCard, color: preview.primary, display: "grid", placeItems: "center", fontSize: 13, fontWeight: 1000 }}>↶</div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 3, padding: "5px 7px 6px", borderTop: `1px solid ${preview.borderSoft}`, background: preview.navBackground || "rgba(4,6,13,.82)", backdropFilter: "blur(9px)" }}>
-              {[["◉", "JEUX"], ["◎", "PROFILS"], ["▥", "STATS"], ["⚙", "RÉGLAGES"]].map(([icon, label], index) => (
-                <div key={label} style={{ minWidth: 0, borderRadius: 8, border: index === 3 ? `1px solid ${preview.primary}70` : "1px solid transparent", background: index === 3 ? `${preview.primary}13` : "transparent", color: index === 3 ? preview.primary : preview.textSoft, textAlign: "center", padding: "3px 1px", boxShadow: index === 3 ? `0 0 10px ${preview.primary}22` : "none" }}>
-                  <div style={{ fontSize: 9, lineHeight: 1 }}>{icon}</div>
-                  <div style={{ fontSize: 5.6, fontWeight: 900, marginTop: 2 }}>{label}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                <div style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: heroBackground, position: "relative", overflow: "hidden", padding: 5 }}>
+                  <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(130deg, rgba(0,0,0,.82), rgba(0,0,0,.42))" }} />
+                  <div style={{ position: "relative", color: preview.primary, fontSize: 5.6, fontWeight: 1000 }}>RECORDS X01</div>
+                  <div style={{ position: "relative", marginTop: 4, color: preview.text, fontSize: 7.8, fontWeight: 1000 }}>180 <span style={{ color: preview.textSoft, fontSize: 5 }}>• CO 96</span></div>
                 </div>
-              ))}
+                <div style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, position: "relative", overflow: "hidden", padding: 5 }}>
+                  <div style={{ color: preview.accent2 || preview.primary, fontSize: 5.6, fontWeight: 1000 }}>ASTUCE DU MOMENT</div>
+                  <div style={{ marginTop: 4, color: preview.textSoft, fontSize: 5.4, lineHeight: 1.2 }}>Travaille ton T20 et suis ta progression.</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <button
-          className={isPostApocPreview ? "dc-postapoc-apply-button" : undefined}
-          type="button"
-          onClick={() => locked ? onOpenShop?.() : onApply(preview.id)}
-          style={{
-            marginTop: 10,
-            width: "100%",
-            minHeight: isPostApocPreview ? 42 : 34,
-            borderRadius: isPostApocPreview ? 13 : 11,
-            border: `1px solid ${preview.primary}88`,
-            background: locked ? (preview.buttonBackground || `linear-gradient(135deg,${preview.primary},${preview.accent2 || preview.primary})`) : preview.id === activeThemeId ? `${preview.primary}20` : (preview.buttonBackground || preview.primary),
-            color: locked ? (isPostApocPreview ? "#F8F5EE" : "#050712") : preview.id === activeThemeId ? preview.primary : (isPostApocPreview ? "#F8F5EE" : "#050712"),
-            fontSize: isPostApocPreview ? 10.5 : 9.5,
-            fontWeight: 1000,
-            cursor: "pointer",
-            textTransform: isPostApocPreview ? "uppercase" : "none",
-            letterSpacing: isPostApocPreview ? .35 : 0,
-            boxShadow: `0 0 18px ${preview.primary}32, inset 0 1px 0 rgba(255,255,255,.16)`,
-          }}
-        >
-          {activeLabel}
-        </button>
+        {locked ? (
+          <button
+            className={isPostApocPreview ? "dc-postapoc-apply-button" : undefined}
+            type="button"
+            onClick={() => onOpenShop?.()}
+            style={{
+              marginTop: 6,
+              width: "100%",
+              minHeight: 28,
+              borderRadius: 9,
+              border: `1px solid ${preview.primary}88`,
+              background: preview.buttonBackground || `linear-gradient(135deg,${preview.primary},${preview.accent2 || preview.primary})`,
+              color: isPostApocPreview ? "#F8F5EE" : "#050712",
+              fontSize: 8.4,
+              fontWeight: 1000,
+              cursor: "pointer",
+              textTransform: "uppercase",
+              boxShadow: `0 0 12px ${preview.primary}32`,
+            }}
+          >
+            🔒 VOIR DANS LA BOUTIQUE
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -1655,6 +1660,8 @@ function SettingsPageHeader({
   onBack,
   backTitle = "Retour",
   showHelp = true,
+  showSubtitle = true,
+  compact = false,
   onTitleClick,
 }: {
   title: string;
@@ -1663,20 +1670,22 @@ function SettingsPageHeader({
   onBack: () => void;
   backTitle?: string;
   showHelp?: boolean;
+  showSubtitle?: boolean;
+  compact?: boolean;
   onTitleClick?: () => void;
 }) {
   return (
-    <div style={{ width: "100%", paddingInline: 8, boxSizing: "border-box", marginBottom: 10 }}>
+    <div style={{ width: "100%", paddingInline: compact ? 6 : 8, boxSizing: "border-box", marginBottom: compact ? 4 : 10 }}>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "42px minmax(0, 1fr) 42px",
+          gridTemplateColumns: compact ? "38px minmax(0, 1fr) 38px" : "42px minmax(0, 1fr) 42px",
           alignItems: "center",
-          gap: 10,
+          gap: compact ? 6 : 10,
           width: "100%",
         }}
       >
-        <BackDot onClick={onBack} title={backTitle} size={38} color={theme.primary} glow={`${theme.primary}55`} />
+        <BackDot onClick={onBack} title={backTitle} size={compact ? 34 : 38} color={theme.primary} glow={`${theme.primary}55`} />
 
         <button
           type="button"
@@ -1688,7 +1697,7 @@ function SettingsPageHeader({
             letterSpacing: 1.1,
             textTransform: "uppercase",
             color: theme.primary,
-            fontSize: "clamp(23px, 6.4vw, 34px)",
+            fontSize: compact ? "clamp(21px, 5.8vw, 29px)" : "clamp(23px, 6.4vw, 34px)",
             lineHeight: 1.05,
             textShadow: `0 0 10px ${theme.primary}33`,
             background: "transparent",
@@ -1705,30 +1714,32 @@ function SettingsPageHeader({
             <SettingsInfoDot
               title={title}
               theme={theme}
-              size={38}
+              size={compact ? 34 : 38}
               helpText={subtitle}
             />
           ) : (
-            <div style={{ width: 38, height: 38 }} />
+            <div style={{ width: compact ? 34 : 38, height: compact ? 34 : 38 }} />
           )}
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 9,
-          paddingInline: 10,
-          textAlign: "center",
-          fontSize: 12,
-          lineHeight: 1.35,
-          color: theme.textSoft,
-          maxWidth: 390,
-          marginLeft: "auto",
-          marginRight: "auto",
-        }}
-      >
-        {subtitle}
-      </div>
+      {showSubtitle ? (
+        <div
+          style={{
+            marginTop: compact ? 4 : 9,
+            paddingInline: 10,
+            textAlign: "center",
+            fontSize: compact ? 10.5 : 12,
+            lineHeight: 1.3,
+            color: theme.textSoft,
+            maxWidth: 390,
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
+          {subtitle}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -4954,7 +4965,7 @@ export function Settings({ go, params }: Props) {
     const packCard = (pack: ThemePack) => {
       const locked = packLocked(pack);
       const swatchPresets = pack.ids.slice(0, 4).map((id) => getPreset(id));
-      const titleSize = pack.label.length > 20 ? 10.4 : pack.label.length > 16 ? 11.1 : 12.1;
+      const titleSize = pack.label.length > 20 ? 9.1 : pack.label.length > 16 ? 9.7 : 10.4;
       return (
         <button
           key={pack.id}
@@ -4962,14 +4973,14 @@ export function Settings({ go, params }: Props) {
           className={pack.id === "postapoc" ? "dc-postapoc-pack-card" : undefined}
           onClick={() => openPack(pack.id, pack.ids[0] || null)}
           style={{
-            minHeight: 114,
-            height: 114,
-            borderRadius: 17,
+            minHeight: 82,
+            height: 82,
+            borderRadius: 13,
             border: `1px solid ${pack.premium ? `${pack.colors[0]}77` : theme.borderSoft}`,
             background: `linear-gradient(180deg, rgba(6,8,14,.96), rgba(4,6,12,.98))`,
             color: theme.text,
             textAlign: "center",
-            padding: "13px 11px 12px",
+            padding: "9px 8px 8px",
             cursor: "pointer",
             boxShadow: pack.premium ? `0 12px 25px rgba(0,0,0,.36), 0 0 20px ${pack.colors[0]}24` : `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
             position: "relative",
@@ -4977,11 +4988,11 @@ export function Settings({ go, params }: Props) {
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            gap: 12,
+            gap: 7,
           }}
         >
           {pack.premium ? (
-            <span style={{ position: "absolute", top: 7, right: 8, borderRadius: 999, border: `1px solid ${pack.colors[0]}66`, background: "rgba(0,0,0,.52)", color: pack.colors[0], padding: "3px 7px", fontSize: 7.6, fontWeight: 1000, letterSpacing: .45 }}>
+            <span style={{ position: "absolute", top: 5, right: 6, borderRadius: 999, border: `1px solid ${pack.colors[0]}66`, background: "rgba(0,0,0,.52)", color: pack.colors[0], padding: "2px 6px", fontSize: 6.8, fontWeight: 1000, letterSpacing: .45 }}>
               {locked ? "🔒" : "✓"}
             </span>
           ) : null}
@@ -5002,35 +5013,33 @@ export function Settings({ go, params }: Props) {
             {pack.label}
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%" }}>
-            {swatchPresets.map((preset, idx) => renderThemeTextureSwatch(preset, `${pack.id}-${idx}`, 28, 999))}
+            {swatchPresets.map((preset, idx) => renderThemeTextureSwatch(preset, `${pack.id}-${idx}`, 22, 999))}
           </div>
         </button>
       );
     };
 
     return (
-      <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16, overflow: "hidden" }}>
+      <section style={{ background: CARD_BG, borderRadius: 14, border: `1px solid ${theme.borderSoft}`, padding: 7, marginBottom: 6, overflow: "hidden" }}>
         <ThemePreviewBlock
           themeIdPreview={previewThemeId}
-          activeThemeId={themeId}
           theme={theme}
-          onApply={applyTheme}
           locked={themeLocked(previewThemeId)}
           onOpenShop={openThemeShop}
         />
 
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
           <button
             type="button"
             onClick={() => { setPickerPackId(selectedPackId); setPickerOpen(true); }}
             style={{
-              minWidth: 190,
+              minWidth: 170,
               borderRadius: 999,
               border: `1px solid ${theme.primary}88`,
               background: `${theme.primary}12`,
               color: theme.primary,
-              padding: "8px 13px",
-              fontSize: 11,
+              padding: "6px 11px",
+              fontSize: 10,
               fontWeight: 950,
               cursor: "pointer",
               boxShadow: `0 0 12px ${theme.primary}22`,
@@ -5040,55 +5049,37 @@ export function Settings({ go, params }: Props) {
           </button>
         </div>
 
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 8 }}>
           {!selectedPack ? (
             <>
-              <div style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ marginBottom: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <div style={{ color: theme.textSoft, fontSize: 10, textTransform: "uppercase", fontWeight: 950, letterSpacing: .75 }}>PACKS DE THÈMES</div>
                 <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 850 }}>{packCarouselIndex + 1} / {THEME_PACKS.length}</div>
               </div>
               <SettingsLoopCarousel
                 items={THEME_PACKS}
                 theme={theme}
-                itemWidth={168}
-                gap={14}
+                itemWidth={142}
+                gap={10}
                 initialIndex={packCarouselIndex}
                 ariaLabel="Carrousel des packs de thèmes"
                 onActiveIndexChange={(index) => setPackCarouselIndex(index)}
                 renderItem={(pack: ThemePack) => packCard(pack)}
               />
-              <button
-                type="button"
-                onClick={() => { const currentPack = THEME_PACKS[packCarouselIndex] || THEME_PACKS[0]; if (currentPack) openPack(currentPack.id, currentPack.ids[0] || null); }}
-                style={{
-                  width: "100%",
-                  minHeight: 40,
-                  marginTop: 10,
-                  borderRadius: 13,
-                  border: `1px solid ${theme.primary}66`,
-                  background: `${theme.primary}16`,
-                  color: theme.primary,
-                  fontSize: 10.5,
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                  boxShadow: `0 0 16px ${theme.primary}20`,
-                }}
-              >
-                OUVRIR LE PACK SÉLECTIONNÉ
-              </button>
+
             </>
           ) : (
             <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                 <button type="button" onClick={() => { setSelectedPackId(null); }} style={{ border: "none", background: "transparent", color: theme.primary, fontSize: 10.5, fontWeight: 950, cursor: "pointer", padding: 0 }}>← PACKS</button>
                 <div style={{ color: selectedPack.premium ? selectedPack.colors[0] : theme.textSoft, fontSize: 10, fontWeight: 900 }}>{selectedPack.label}{selectedPack.premium && !premiumThemesUnlocked ? " · 🔒 BOUTIQUE" : ""}</div>
               </div>
-              <div style={{ marginBottom: 7, color: theme.textSoft, fontSize: 9.2, fontWeight: 850, textAlign: "center", letterSpacing: .35 }}>THÈME {Math.min(selectedPack.ids.length, selectedThemeIndex + 1)} / {selectedPack.ids.length} · Défile thème par thème</div>
+              <div style={{ marginBottom: 4, color: theme.textSoft, fontSize: 8.2, fontWeight: 850, textAlign: "center", letterSpacing: .35 }}>THÈME {Math.min(selectedPack.ids.length, selectedThemeIndex + 1)} / {selectedPack.ids.length} · Défile thème par thème</div>
               <SettingsLoopCarousel
                 items={selectedPack.ids}
                 theme={theme}
-                itemWidth={132}
-                gap={14}
+                itemWidth={116}
+                gap={10}
                 initialIndex={Math.max(0, selectedPack.ids.indexOf(previewThemeId || selectedPack.ids[0]))}
                 ariaLabel="Carrousel de thèmes"
                 onActiveIndexChange={(index) => {
@@ -5114,8 +5105,8 @@ export function Settings({ go, params }: Props) {
                       onClick={() => applyTheme(id)}
                       style={{
                         width: "100%",
-                        height: imageCard ? 164 : 132,
-                        borderRadius: 18,
+                        height: imageCard ? 108 : 92,
+                        borderRadius: 13,
                         border: `1px solid ${isPreview || isActive ? preset.primary : theme.borderSoft}`,
                         background: imageCard ? "#0B0D10" : (localizeThemeBackground(preset.cardBackground) || `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`),
                         backgroundImage: imageCard && sceneUrl ? `url(${sceneUrl})` : undefined,
@@ -5124,7 +5115,7 @@ export function Settings({ go, params }: Props) {
                         backgroundRepeat: imageCard ? "no-repeat" : undefined,
                         backgroundAttachment: "scroll",
                         color: preset.text,
-                        padding: imageCard ? 0 : 10,
+                        padding: imageCard ? 0 : 7,
                         cursor: "pointer",
                         boxShadow: isPreview || isActive ? `0 0 18px ${preset.primary}35, 0 12px 28px rgba(0,0,0,.30)` : "0 10px 24px rgba(0,0,0,.22)",
                         display: "flex",
@@ -5144,18 +5135,18 @@ export function Settings({ go, params }: Props) {
                       {imageCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: isPostApocCard ? "linear-gradient(180deg, rgba(4,5,6,.03) 0%, rgba(4,5,6,.08) 42%, rgba(4,5,6,.72) 73%, rgba(4,5,6,.97) 100%)" : "linear-gradient(180deg, rgba(4,6,12,.04) 0%, rgba(4,6,12,.18) 38%, rgba(4,6,12,.84) 76%, rgba(4,6,12,.96) 100%)", pointerEvents: "none" }} /> : null}
                       {isPostApocCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat", opacity: .52, mixBlendMode: "multiply", pointerEvents: "none" }} /> : null}
                       {isPostApocCard ? <span className="dc-postapoc-overgrowth" aria-hidden="true" /> : null}
-                      {locked ? <span style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}55`, background: "rgba(0,0,0,.55)", fontSize: 12 }}>🔒</span> : null}
-                      {!locked && (isPreview || isActive) ? <span style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}88`, background: "rgba(0,0,0,.55)", color: preset.primary, fontSize: 12, fontWeight: 1000 }}>✓</span> : null}
+                      {locked ? <span style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}55`, background: "rgba(0,0,0,.55)", fontSize: 10 }}>🔒</span> : null}
+                      {!locked && (isPreview || isActive) ? <span style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}88`, background: "rgba(0,0,0,.55)", color: preset.primary, fontSize: 10, fontWeight: 1000 }}>✓</span> : null}
                       {imageCard ? (
-                        <div style={{ position: "relative", zIndex: 2, marginTop: "auto", padding: "12px 10px 11px" }}>
-                          <div style={{ color: preset.text, fontSize: isPostApocCard ? 11.2 : 10.8, fontWeight: 1000, lineHeight: 1.08, textTransform: "uppercase", textShadow: "0 2px 8px rgba(0,0,0,.82)", letterSpacing: isPostApocCard ? .3 : 0 }}>{meta.defaultLabel}</div>
-                          <div style={{ marginTop: 4, color: locked ? preset.primary : (isPostApocCard ? preset.primary : preset.textSoft), fontSize: isPostApocCard ? 8.1 : 8.4, fontWeight: 900, lineHeight: 1.15, textTransform: "uppercase", letterSpacing: .3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{locked ? "Aperçu boutique" : cardSubtitle}</div>
+                        <div style={{ position: "relative", zIndex: 2, marginTop: "auto", padding: "8px 8px 7px" }}>
+                          <div style={{ color: preset.text, fontSize: 9.4, fontWeight: 1000, lineHeight: 1.08, textTransform: "uppercase", textShadow: "0 2px 8px rgba(0,0,0,.82)", letterSpacing: isPostApocCard ? .3 : 0 }}>{meta.defaultLabel}</div>
+                          <div style={{ marginTop: 2, color: locked ? preset.primary : (isPostApocCard ? preset.primary : preset.textSoft), fontSize: 7.2, fontWeight: 900, lineHeight: 1.15, textTransform: "uppercase", letterSpacing: .3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{locked ? "Aperçu boutique" : cardSubtitle}</div>
                         </div>
                       ) : (
                         <>
-                          {renderThemeTextureSwatch(preset, `${id}-preview`, 40, 13)}
-                          <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15, position: "relative" }}>{meta.defaultLabel}</span>
-                          <span style={{ fontSize: 8.5, color: locked ? preset.primary : preset.textSoft, position: "relative" }}>{locked ? "APERÇU BOUTIQUE" : isActive ? "ACTIF" : "APERÇU"}</span>
+                          {renderThemeTextureSwatch(preset, `${id}-preview`, 30, 10)}
+                          <span style={{ fontSize: 9.2, fontWeight: 950, textAlign: "center", lineHeight: 1.1, position: "relative" }}>{meta.defaultLabel}</span>
+                          <span style={{ fontSize: 7.4, color: locked ? preset.primary : preset.textSoft, position: "relative" }}>{locked ? "APERÇU BOUTIQUE" : isActive ? "ACTIF" : "APERÇU"}</span>
                         </>
                       )}
                     </button>
@@ -5163,7 +5154,7 @@ export function Settings({ go, params }: Props) {
                 }}
               />
               {selectedPack.premium && !premiumThemesUnlocked ? (
-                <button type="button" onClick={openThemeShop} style={{ width: "100%", marginTop: 10, minHeight: 40, borderRadius: 13, border: `1px solid ${selectedPack.colors[0]}77`, background: `linear-gradient(135deg,${selectedPack.colors[0]},${selectedPack.colors[3]})`, color: "#050712", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 18px ${selectedPack.colors[0]}2b` }}>🔒 DÉBLOQUER {selectedPack.label}</button>
+                <button type="button" onClick={openThemeShop} style={{ width: "100%", marginTop: 6, minHeight: 30, borderRadius: 10, border: `1px solid ${selectedPack.colors[0]}77`, background: `linear-gradient(135deg,${selectedPack.colors[0]},${selectedPack.colors[3]})`, color: "#050712", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 18px ${selectedPack.colors[0]}2b` }}>🔒 DÉBLOQUER {selectedPack.label}</button>
               ) : null}
             </>
           )}
@@ -5971,8 +5962,8 @@ export function Settings({ go, params }: Props) {
       className="container"
       style={{
         minHeight: "100vh",
-        paddingTop: 16,
-        paddingBottom: 90,
+        paddingTop: tab === "theme" ? 7 : 16,
+        paddingBottom: tab === "theme" ? 76 : 90,
         background: PAGE_BG,
         color: theme.text,
       }}
@@ -5985,10 +5976,12 @@ export function Settings({ go, params }: Props) {
           onBack={handleHeaderBack}
           backTitle={t("settings.back", "Retour")}
           onTitleClick={tab === "menu" ? handleSettingsTitleSecretTap : undefined}
+          showSubtitle={tab !== "theme"}
+          compact={tab === "theme"}
         />
       </div>
 
-      <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: 12 }}>
+      <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: tab === "theme" ? 8 : 12 }}>
         <PageAdBanner placement="settings" slotKey={`page-settings-${tab}-under-header`} />
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
