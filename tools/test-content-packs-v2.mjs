@@ -26,7 +26,21 @@ const restoreThemes = read('tools/restore-theme-textures-from-git.mjs');
 const auditThemes = read('tools/audit-theme-content-pack.mjs');
 const verifyThemes = read('tools/verify-theme-r2.mjs');
 const uploader = read('tools/upload-content-packs.mjs');
+const generatedCatalog = read('src/lib/contentPackCatalog.generated.ts');
+const themeCatalogGuard = read('tools/guard-theme-catalog.mjs');
 
+
+
+const themeCatalogStart = generatedCatalog.indexOf('"theme-textures":');
+const themeCatalogEnd = generatedCatalog.indexOf('"character-portraits":', themeCatalogStart);
+assert.ok(themeCatalogStart >= 0 && themeCatalogEnd > themeCatalogStart, 'generated catalog must contain a bounded theme-textures block');
+const themeCatalogBlock = generatedCatalog.slice(themeCatalogStart, themeCatalogEnd);
+assert.ok(themeCatalogBlock.includes('"version": "2026.09.03.2"'), 'generated theme catalog must keep the validated R2 version');
+assert.equal((themeCatalogBlock.match(/"path"\s*:/g) || []).length, 110, 'generated theme catalog must contain all 110 textures');
+assert.ok(themeCatalogBlock.includes('"path": "street-acier-urbain.webp"'), 'generated theme catalog must retain STREET textures');
+assert.ok(themeCatalogBlock.includes('"path": "prestige-quartz-dore.webp"'), 'generated theme catalog must retain PRESTIGE textures');
+assert.ok(themeCatalogGuard.includes('catalogFiles.size < 110'), 'build guard must reject truncated theme catalogs');
+assert.equal(pkg.scripts.prebuild, 'node ./tools/guard-theme-catalog.mjs', 'every build must run the theme catalog guard');
 
 assert.ok(prepare.includes("'theme-textures': '2026.09.03.2'"), 'full pack builder must keep the repaired immutable theme version');
 assert.ok(pkg.scripts['themes:repair-pack'].includes('themes:prepare-pack'), 'theme repair must use the dedicated theme-only builder');

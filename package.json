@@ -139,7 +139,8 @@
     "themes:prepare-pack": "node ./tools/prepare-theme-content-pack.mjs",
     "themes:audit-pack": "node ./tools/audit-theme-content-pack.mjs",
     "themes:verify-r2": "node ./tools/verify-theme-r2.mjs",
-    "android:externalization-audit": "node ./tools/audit-android-externalization-v106.mjs"
+    "android:externalization-audit": "node ./tools/audit-android-externalization-v106.mjs",
+    "prebuild": "node ./tools/guard-theme-catalog.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
