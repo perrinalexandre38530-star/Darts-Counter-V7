@@ -189,14 +189,16 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = React.useState("");
   const [replaying, setReplaying] = React.useState(false);
+  const replayingRef = React.useRef(false);
   const [replayIndex, setReplayIndex] = React.useState(0);
+  React.useEffect(() => { replayingRef.current = replaying; }, [replaying]);
 
   const safePoints = React.useMemo(() => points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)), [points]);
   const distances = React.useMemo(() => cumulativeDistances(safePoints), [safePoints]);
   const totalDistanceM = distances[distances.length - 1] || 0;
   const terrain = React.useMemo(() => analyzeRunningTerrain(safePoints), [safePoints]);
-  const performance = React.useMemo(() => buildRunningActivityAnalytics({ route: safePoints, distanceM: totalDistanceM, movingMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0), elapsedMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0) } as any), [safePoints, totalDistanceM]);
-  const hasPerformanceColors = performance.routeEdges.some((edge) => edge.score != null);
+  const activityAnalytics = React.useMemo(() => buildRunningActivityAnalytics({ route: safePoints, distanceM: totalDistanceM, movingMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0), elapsedMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0) } as any), [safePoints, totalDistanceM]);
+  const hasPerformanceColors = activityAnalytics.routeEdges.some((edge) => edge.score != null);
   const terrainSampleByIndex = React.useMemo(() => {
     const map = new Map<number, { gradePct: number; altitudeM: number }>();
     for (const sample of terrain.samples) map.set(sample.index, { gradePct: sample.gradePct, altitudeM: sample.altitudeM });
@@ -243,12 +245,32 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         renderWorldCopies: false,
         attributionControl: false,
         cooperativeGestures: false,
+        dragPan: true,
+        dragRotate: true,
+        scrollZoom: true,
+        touchZoomRotate: true,
+        touchPitch: true,
+        keyboard: true,
+        doubleClickZoom: true,
+        pitchWithRotate: true,
         canvasContextAttributes: { antialias: true },
         refreshExpiredTiles: false,
         fadeDuration: 0,
         maxTileCacheSize: fullscreen ? 80 : 48,
       });
       mapRef.current = map;
+      // Explicitly enable every native MapLibre navigation handler. Mouse:
+      // left-drag pans, right-drag / Ctrl+drag rotates and tilts, wheel zooms.
+      // Touch: one finger pans, pinch zooms/rotates, two-finger vertical drag tilts.
+      try { map.dragPan?.enable?.(); } catch {}
+      try { map.dragRotate?.enable?.(); } catch {}
+      try { map.scrollZoom?.enable?.(); } catch {}
+      try { map.touchZoomRotate?.enable?.(); } catch {}
+      try { map.touchZoomRotate?.enableRotation?.(); } catch {}
+      try { map.touchPitch?.enable?.(); } catch {}
+      try { map.keyboard?.enable?.(); } catch {}
+      try { map.doubleClickZoom?.enable?.(); } catch {}
+      try { map.getCanvas().style.touchAction = "none"; } catch {}
       readinessTimer = window.setTimeout(() => {
         if (disposed || status === "ready") return;
         setError(pickText(lang, "Le moteur 3D ne répond pas. Revenez en 2D puis réessayez.", "3D engine is not responding. Return to 2D and try again.", "El motor 3D no responde. Vuelve a 2D e inténtalo de nuevo."));
@@ -257,6 +279,18 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
 
       try { map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true, showZoom: false }), "top-right"); } catch {}
       try { map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right"); } catch {}
+
+      const stopFlyoverForManualCamera = (event: any) => {
+        if (!event?.originalEvent || !replayingRef.current) return;
+        replayingRef.current = false;
+        setReplaying(false);
+        if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
+        replayFrameRef.current = null;
+      };
+      map.on("dragstart", stopFlyoverForManualCamera);
+      map.on("rotatestart", stopFlyoverForManualCamera);
+      map.on("pitchstart", stopFlyoverForManualCamera);
+      map.on("zoomstart", stopFlyoverForManualCamera);
 
       map.on("load", () => {
         if (disposed) return;
@@ -279,7 +313,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         }
 
         try {
-          const features = hasPerformanceColors ? performance.routeEdges.map((edge) => ({ type: "Feature", properties: { color: edge.color }, geometry: { type: "LineString", coordinates: [[safePoints[edge.startIndex].lon, safePoints[edge.startIndex].lat], [safePoints[edge.endIndex].lon, safePoints[edge.endIndex].lat]] } })) : [{ type: "Feature", properties: { color: accent }, geometry: { type: "LineString", coordinates: safePoints.map((point) => [point.lon, point.lat]) } }];
+          const features = hasPerformanceColors ? activityAnalytics.routeEdges.map((edge) => ({ type: "Feature", properties: { color: edge.color }, geometry: { type: "LineString", coordinates: [[safePoints[edge.startIndex].lon, safePoints[edge.startIndex].lat], [safePoints[edge.endIndex].lon, safePoints[edge.endIndex].lat]] } })) : [{ type: "Feature", properties: { color: accent }, geometry: { type: "LineString", coordinates: safePoints.map((point) => [point.lon, point.lat]) } }];
           map.addSource("mss-route", { type: "geojson", data: { type: "FeatureCollection", features } });
           map.addLayer({ id: "mss-route-shadow", type: "line", source: "mss-route", paint: { "line-color": "rgba(0,0,0,.86)", "line-width": 9.5, "line-opacity": .9 } });
           map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", paint: { "line-color": ["get", "color"], "line-width": 5.4, "line-opacity": 1 } });
@@ -344,7 +378,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       try { mapRef.current?.remove(); } catch {}
       mapRef.current = null;
     };
-  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, performance.routeEdges, safePoints, distances, totalDistanceM]);
+  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, activityAnalytics.routeEdges, safePoints, distances, totalDistanceM]);
 
   React.useEffect(() => {
     const map = mapRef.current;
@@ -387,7 +421,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
 
   React.useEffect(() => {
     if (!replaying || safePoints.length < 2) return;
-    const startedAt = performance.now();
+    const startedAt = globalThis.performance?.now?.() ?? Date.now();
     const startIndex = replayIndex >= safePoints.length - 2 ? 0 : replayIndex;
     const startDistance = distances[startIndex] || 0;
     const remainingDistance = Math.max(1, totalDistanceM - startDistance);
@@ -426,7 +460,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
       replayFrameRef.current = null;
     };
-  }, [distances, onActivePointChange, replayIndex, replaying, safePoints, totalDistanceM]);
+  }, [distances, onActivePointChange, replaying, safePoints, totalDistanceM]);
 
   const currentIndex = effectiveIndex == null ? 0 : effectiveIndex;
   const currentPoint = safePoints[currentIndex] || safePoints[0];
@@ -471,6 +505,9 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       </div> : null}
 
       {routeName ? <div className="running-map-route-name" style={{ position: "absolute", left: "50%", top: 10, transform: "translateX(-50%)", zIndex: 10, maxWidth: "52%", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.70)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.8)", fontSize: 7, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none", backdropFilter: "blur(10px)" }}>{routeName}</div> : null}
+      <div className="running-map-camera-help" style={{ position: "absolute", right: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 14, maxWidth: "52%", padding: "5px 7px", borderRadius: 10, background: "rgba(5,8,13,.74)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.66)", fontSize: 6.6, fontWeight: 800, lineHeight: 1.25, pointerEvents: "none", backdropFilter: "blur(10px)", textAlign: "right" }}>
+        {pickText(lang, "Souris : glisser = déplacer · clic droit = tourner / incliner · molette = zoom · tactile : 2 doigts = tourner / incliner", "Mouse: drag = pan · right-drag = rotate / tilt · wheel = zoom · touch: 2 fingers = rotate / tilt", "Ratón: arrastrar = mover · botón derecho = girar / inclinar · rueda = zoom · táctil: 2 dedos = girar / inclinar")}
+      </div>
     </> : null}
   </div>;
 }

@@ -317,6 +317,9 @@ export default function RunningModule({ go, params }: Props) {
     const rerouteLastRequestedAtRef = React.useRef(0);
     const rerouteLastOriginRef = React.useRef<GeoPoint | null>(null);
     const rerouteAnnouncedAtRef = React.useRef(0);
+    const navigationVoiceLastAtRef = React.useRef(0);
+    const wrongWaySpokenAtRef = React.useRef(0);
+    const navigationSpeechSeqRef = React.useRef(0);
     const rerouteResultRef = React.useRef<OutdoorRouteRerouteResult | null>(null);
     const rerouteBusyRef = React.useRef(false);
     const liveOutdoorProgressRef = React.useRef<any>(null);
@@ -463,7 +466,7 @@ export default function RunningModule({ go, params }: Props) {
             return false;
         }).slice().sort((a, b) => Number(a.elapsedMs || 0) - Number(b.elapsedMs || 0));
     }, [activities, selectedRoute]);
-    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteChooseMode((current) => current === "showcase" ? (selectedRoute ? "discover" : "discover") : current); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
+    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); checkpointAnnouncedRef.current = new Set(); navigationVoiceLastAtRef.current = 0; wrongWaySpokenAtRef.current = 0; navigationSpeechSeqRef.current += 1; setRoutePanelTab("choose"); setRouteChooseMode((current) => current === "showcase" ? (selectedRoute ? "discover" : "discover") : current); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
     const selectedTerrain = React.useMemo(() => selectedRoute ? analyzeRunningTerrain(selectedRoute.route) : null, [selectedRoute]);
     const selectedTerrainAdvice = React.useMemo(() => selectedTerrain ? terrainAdvice(selectedTerrain, lang) : null, [lang, selectedTerrain]);
     const selectedSportRouteDetails = React.useMemo(() => selectedRoute ? buildSportRouteDetails(selectedRoute, selectedTerrain, activitySport, lang) : null, [activitySport, lang, selectedRoute, selectedTerrain]);
@@ -525,6 +528,16 @@ export default function RunningModule({ go, params }: Props) {
     const speakCoach = React.useCallback((text: string) => {
         if (!audioCoach || !awena?.settings) return;
         void awenaVoice.speak(text, awena.settings, lang).catch(() => {});
+    }, [audioCoach, awena?.settings, lang]);
+    const speakNavigation = React.useCallback((text: string) => {
+        if (!audioCoach || !awena?.settings) return;
+        const sequence = ++navigationSpeechSeqRef.current;
+        // Navigation behaves like a real GPS: never queue obsolete directions.
+        // A newer instruction cancels/replaces the previous navigation phrase.
+        void awenaVoice.stop().catch(() => {}).then(() => {
+            if (sequence !== navigationSpeechSeqRef.current) return;
+            return awenaVoice.speak(text, awena.settings, lang).catch(() => false);
+        });
     }, [audioCoach, awena?.settings, lang]);
     const selectAdjacentRoute = React.useCallback((direction: -1 | 1) => {
         if (!routePanelOptions.length)
@@ -937,9 +950,10 @@ export default function RunningModule({ go, params }: Props) {
                     setLiveOutdoorRerouteBusy(false);
                     setLiveOutdoorRerouteError("");
                     const nowAnnouncement = Date.now();
-                    if (nowAnnouncement - rerouteAnnouncedAtRef.current > 20_000) {
+                    if (nowAnnouncement - rerouteAnnouncedAtRef.current > 60_000) {
                         rerouteAnnouncedAtRef.current = nowAnnouncement;
-                        speakCoach(pickLegacyLocalizedText(lang, `Nouveau chemin calculé. Suis le reroutage sur environ ${Math.max(20, Math.round(result.distanceM / 10) * 10)} mètres pour rejoindre le parcours.`, `New path calculated. Follow the reroute for about ${Math.max(20, Math.round(result.distanceM / 10) * 10)} metres to rejoin the route.`, `Nueva ruta calculada. Sigue el desvío unos ${Math.max(20, Math.round(result.distanceM / 10) * 10)} metros para volver al recorrido.`));
+                        navigationVoiceLastAtRef.current = nowAnnouncement;
+                        speakNavigation(pickLegacyLocalizedText(lang, `Nouveau chemin calculé. Rejoins le parcours dans environ ${Math.max(20, Math.round(result.distanceM / 10) * 10)} mètres.`, `Route recalculated. Rejoin the route in about ${Math.max(20, Math.round(result.distanceM / 10) * 10)} metres.`, `Ruta recalculada. Vuelve al recorrido en unos ${Math.max(20, Math.round(result.distanceM / 10) * 10)} metros.`));
                     }
                 })
                 .catch((error) => {
@@ -962,50 +976,87 @@ export default function RunningModule({ go, params }: Props) {
             rerouteAbortRef.current = null;
             rerouteBusyRef.current = false;
         };
-    }, [activitySport, isRecording, lang, liveOutdoorProgress?.offRouteAlert, selectedRoute?.id, speakCoach]);
+    }, [activitySport, isRecording, lang, liveOutdoorProgress?.offRouteAlert, selectedRoute?.id, speakNavigation]);
     React.useEffect(() => {
-        if (!isRecording || !routeExtras?.alertsEnabled || !liveOutdoorProgress) { offRouteAlertRef.current = false; wrongWayAlertRef.current = false; return; }
+        if (!isRecording || !routeExtras?.alertsEnabled || !liveOutdoorProgress) {
+            offRouteAlertRef.current = false;
+            wrongWayAlertRef.current = false;
+            return;
+        }
+
+        const nowMs = Date.now();
+        const NAVIGATION_MIN_GAP_MS = 18_000;
+        let urgentSpoken = false;
+        const canSpeakNavigation = (gapMs = NAVIGATION_MIN_GAP_MS) => nowMs - navigationVoiceLastAtRef.current >= gapMs;
+        const speakGps = (phrase: string, gapMs = NAVIGATION_MIN_GAP_MS, force = false) => {
+            if (!force && !canSpeakNavigation(gapMs)) return false;
+            navigationVoiceLastAtRef.current = nowMs;
+            speakNavigation(phrase);
+            return true;
+        };
+
         if (liveOutdoorProgress.offRouteAlert && !offRouteAlertRef.current) {
             offRouteAlertRef.current = true;
             try { navigator.vibrate?.([120, 80, 120]); } catch {}
             const rejoinDistance = liveOutdoorRejoin ? Math.max(20, Math.round(liveOutdoorRejoin.distanceToTargetM / 10) * 10) : null;
-            speakCoach(pickLegacyLocalizedText(lang, rejoinDistance != null ? `Attention, tu es à ${Math.round(liveOutdoorProgress.offRouteM || 0)} mètres du parcours. Rejoins le tracé dans environ ${rejoinDistance} mètres.` : `Attention, tu es à ${Math.round(liveOutdoorProgress.offRouteM || 0)} mètres du parcours.`, rejoinDistance != null ? `Caution, you are ${Math.round(liveOutdoorProgress.offRouteM || 0)} metres off route. Rejoin the route in about ${rejoinDistance} metres.` : `Caution, you are ${Math.round(liveOutdoorProgress.offRouteM || 0)} metres off route.`, rejoinDistance != null ? `Atención, estás a ${Math.round(liveOutdoorProgress.offRouteM || 0)} metros de la ruta. Vuelve a la ruta en unos ${rejoinDistance} metros.` : `Atención, estás a ${Math.round(liveOutdoorProgress.offRouteM || 0)} metros de la ruta.`));
+            urgentSpoken = speakGps(pickLegacyLocalizedText(
+                lang,
+                rejoinDistance != null ? `Hors parcours. Rejoins le tracé dans environ ${rejoinDistance} mètres.` : "Hors parcours. Rejoins le tracé.",
+                rejoinDistance != null ? `Off route. Rejoin the route in about ${rejoinDistance} metres.` : "Off route. Rejoin the route.",
+                rejoinDistance != null ? `Fuera de ruta. Vuelve al recorrido en unos ${rejoinDistance} metros.` : "Fuera de ruta. Vuelve al recorrido.",
+            ), 0, true);
         } else if (!liveOutdoorProgress.offRouteAlert && offRouteAlertRef.current && Number(liveOutdoorProgress.offRouteM || 0) < routeExtras.offRouteAlertM * 0.7) {
             offRouteAlertRef.current = false;
-            speakCoach(pickLegacyLocalizedText(lang, "Tu es revenu sur le parcours.", "You are back on route.", "Has vuelto a la ruta."));
+            urgentSpoken = speakGps(pickLegacyLocalizedText(lang, "De retour sur le parcours.", "Back on route.", "De nuevo en la ruta."), 10_000);
         }
+
         if (liveOutdoorActiveDirection?.wrongWay && !wrongWayAlertRef.current) {
             wrongWayAlertRef.current = true;
             try { navigator.vibrate?.([180, 80, 180, 80, 180]); } catch {}
-            speakCoach(pickLegacyLocalizedText(lang, "Mauvais sens. Vérifie le parcours et fais demi-tour si nécessaire.", "Wrong way. Check the route and turn back if needed.", "Sentido incorrecto. Comprueba la ruta y da la vuelta si es necesario."));
+            if (nowMs - wrongWaySpokenAtRef.current >= 60_000) {
+                wrongWaySpokenAtRef.current = nowMs;
+                urgentSpoken = speakGps(pickLegacyLocalizedText(lang, "Mauvais sens. Fais demi-tour dès que possible.", "Wrong way. Make a U-turn when possible.", "Sentido incorrecto. Da la vuelta cuando sea posible."), 0, true) || urgentSpoken;
+            }
         } else if (!liveOutdoorActiveDirection?.wrongWay && wrongWayAlertRef.current) {
             wrongWayAlertRef.current = false;
         }
-        const announceTurn = (thresholdM: number, bucket: string) => {
-            if (!liveOutdoorActiveDirection || liveOutdoorActiveDirection.kind === "finish" || liveOutdoorActiveDirection.wrongWay || liveOutdoorActiveDirection.distanceM > thresholdM)
-                return;
-            const key = `${liveOutdoorProgress.offRouteAlert && liveOutdoorReroute ? "reroute:" : "route:"}${liveOutdoorActiveDirection.id}:${bucket}`;
-            if (turnAnnouncedRef.current.has(key))
-                return;
-            turnAnnouncedRef.current.add(key);
-            const direction = liveOutdoorActiveDirection.kind.includes("left")
-                ? pickLegacyLocalizedText(lang, "tourne à gauche", "turn left", "gira a la izquierda")
-                : liveOutdoorActiveDirection.kind.includes("right")
-                    ? pickLegacyLocalizedText(lang, "tourne à droite", "turn right", "gira a la derecha")
-                    : liveOutdoorActiveDirection.kind === "u-turn"
-                        ? pickLegacyLocalizedText(lang, "fais demi-tour", "make a U-turn", "da la vuelta")
-                        : pickLegacyLocalizedText(lang, "continue tout droit", "keep straight", "sigue recto");
-            speakCoach(pickLegacyLocalizedText(lang, `${direction} dans ${Math.max(20, Math.round(liveOutdoorActiveDirection.distanceM / 10) * 10)} mètres.`, `${direction} in ${Math.max(20, Math.round(liveOutdoorActiveDirection.distanceM / 10) * 10)} metres.`, `${direction} en ${Math.max(20, Math.round(liveOutdoorActiveDirection.distanceM / 10) * 10)} metros.`));
-        };
-        announceTurn(260, "early");
-        announceTurn(80, "near");
-        const checkpoint = liveOutdoorProgress.nextCheckpoint;
-        if (checkpoint && liveOutdoorProgress.nextCheckpointDistanceM != null && liveOutdoorProgress.nextCheckpointDistanceM <= 180 && !checkpointAnnouncedRef.current.has(checkpoint.id)) {
-            checkpointAnnouncedRef.current.add(checkpoint.id);
-            const label = checkpoint.name || (checkpoint.kind === "finish" ? pickLegacyLocalizedText(lang, "arrivée", "finish", "llegada") : checkpoint.kind === "high-point" ? pickLegacyLocalizedText(lang, "point haut", "high point", "punto alto") : `${Math.round(checkpoint.distanceM / 1000)} km`);
-            speakCoach(pickLegacyLocalizedText(lang, `${label} dans ${Math.max(30, Math.round(liveOutdoorProgress.nextCheckpointDistanceM / 10) * 10)} mètres.`, `${label} in ${Math.max(30, Math.round(liveOutdoorProgress.nextCheckpointDistanceM / 10) * 10)} metres.`, `${label} en ${Math.max(30, Math.round(liveOutdoorProgress.nextCheckpointDistanceM / 10) * 10)} metros.`));
+
+        // GPS-like voice policy: one useful announcement per real maneuver.
+        // Slight bends and straight continuations remain visible on screen but
+        // are deliberately silent so Awena does not narrate every street curve.
+        const voiceWorthyKinds = new Set(["left", "sharp-left", "right", "sharp-right", "u-turn"]);
+        if (!urgentSpoken && liveOutdoorActiveDirection && !liveOutdoorActiveDirection.wrongWay && liveOutdoorActiveDirection.kind !== "finish" && voiceWorthyKinds.has(liveOutdoorActiveDirection.kind)) {
+            const thresholdM = activitySport === "running" || activitySport === "trail" ? 140 : 95;
+            const distanceM = Number(liveOutdoorActiveDirection.distanceM || 0);
+            const key = `${liveOutdoorProgress.offRouteAlert && liveOutdoorReroute ? "reroute:" : "route:"}${liveOutdoorActiveDirection.id}:voice`;
+            if (distanceM <= thresholdM && !turnAnnouncedRef.current.has(key) && canSpeakNavigation()) {
+                const direction = liveOutdoorActiveDirection.kind.includes("left")
+                    ? pickLegacyLocalizedText(lang, "tourne à gauche", "turn left", "gira a la izquierda")
+                    : liveOutdoorActiveDirection.kind.includes("right")
+                        ? pickLegacyLocalizedText(lang, "tourne à droite", "turn right", "gira a la derecha")
+                        : pickLegacyLocalizedText(lang, "fais demi-tour", "make a U-turn", "da la vuelta");
+                const roundedM = Math.max(20, Math.round(distanceM / 10) * 10);
+                const phrase = distanceM <= 35
+                    ? pickLegacyLocalizedText(lang, `${direction}.`, `${direction}.`, `${direction}.`)
+                    : pickLegacyLocalizedText(lang, `Dans ${roundedM} mètres, ${direction}.`, `In ${roundedM} metres, ${direction}.`, `En ${roundedM} metros, ${direction}.`);
+                if (speakGps(phrase)) turnAnnouncedRef.current.add(key);
+            }
         }
-    }, [isRecording, lang, liveOutdoorActiveDirection?.distanceM, liveOutdoorActiveDirection?.id, liveOutdoorActiveDirection?.kind, liveOutdoorActiveDirection?.wrongWay, liveOutdoorProgress?.nextCheckpoint?.id, liveOutdoorProgress?.nextCheckpointDistanceM, liveOutdoorProgress?.offRouteAlert, liveOutdoorProgress?.offRouteM, liveOutdoorRejoin?.distanceToTargetM, liveOutdoorReroute, routeExtras?.alertsEnabled, routeExtras?.offRouteAlertM, speakCoach]);
+
+        // Do not vocalize routine kilometre/high-point checkpoints while route
+        // guidance is active. Only a user waypoint or the finish deserves a cue.
+        const checkpoint = liveOutdoorProgress.nextCheckpoint;
+        const checkpointVoiceWorthy = checkpoint?.kind === "custom" || checkpoint?.kind === "finish";
+        if (!urgentSpoken && checkpoint && checkpointVoiceWorthy && liveOutdoorProgress.nextCheckpointDistanceM != null) {
+            const thresholdM = checkpoint.kind === "finish" ? 90 : 70;
+            if (liveOutdoorProgress.nextCheckpointDistanceM <= thresholdM && !checkpointAnnouncedRef.current.has(checkpoint.id) && canSpeakNavigation()) {
+                checkpointAnnouncedRef.current.add(checkpoint.id);
+                const label = checkpoint.name || (checkpoint.kind === "finish" ? pickLegacyLocalizedText(lang, "Arrivée", "Finish", "Llegada") : pickLegacyLocalizedText(lang, "Point de repère", "Waypoint", "Punto de referencia"));
+                const roundedM = Math.max(20, Math.round(liveOutdoorProgress.nextCheckpointDistanceM / 10) * 10);
+                speakGps(pickLegacyLocalizedText(lang, `${label} dans ${roundedM} mètres.`, `${label} in ${roundedM} metres.`, `${label} en ${roundedM} metros.`));
+            }
+        }
+    }, [activitySport, isRecording, lang, liveOutdoorActiveDirection?.distanceM, liveOutdoorActiveDirection?.id, liveOutdoorActiveDirection?.kind, liveOutdoorActiveDirection?.wrongWay, liveOutdoorProgress?.nextCheckpoint?.id, liveOutdoorProgress?.nextCheckpoint?.kind, liveOutdoorProgress?.nextCheckpointDistanceM, liveOutdoorProgress?.offRouteAlert, liveOutdoorProgress?.offRouteM, liveOutdoorRejoin?.distanceToTargetM, liveOutdoorReroute, routeExtras?.alertsEnabled, routeExtras?.offRouteAlertM, speakNavigation]);
     const liveGhostDelta = liveGhostMatch?.deltaMs ?? null;
     const targetReached = (targetDistanceM && liveDistance >= targetDistanceM) || (targetDurationMs && elapsedMs >= targetDurationMs);
     React.useEffect(() => {

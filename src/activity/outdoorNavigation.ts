@@ -195,13 +195,100 @@ export function outdoorBearingDegrees(a: GeoPoint, b: GeoPoint): number | null {
 function turnKindFromAngle(delta: number): OutdoorTurnKind {
   const abs = Math.abs(delta);
   if (abs >= 150) return "u-turn";
-  if (delta <= -75) return "sharp-left";
-  if (delta <= -35) return "left";
-  if (delta <= -18) return "slight-left";
-  if (delta >= 75) return "sharp-right";
-  if (delta >= 35) return "right";
-  if (delta >= 18) return "slight-right";
+  if (delta <= -85) return "sharp-left";
+  if (delta <= -45) return "left";
+  if (delta <= -28) return "slight-left";
+  if (delta >= 85) return "sharp-right";
+  if (delta >= 45) return "right";
+  if (delta >= 28) return "slight-right";
   return "straight";
+}
+
+type OutdoorManeuverCandidate = {
+  index: number;
+  distanceM: number;
+  kind: OutdoorTurnKind;
+  bearingDeg: number;
+  turnAngleDeg: number;
+  strength: number;
+};
+
+function routeBearingAroundDistance(points: GeoPoint[], distances: number[], centerM: number, beforeM: number, afterM: number): number | null {
+  const from = pointAtDistance(points, distances, Math.max(0, centerM - beforeM));
+  const to = pointAtDistance(points, distances, Math.min(distances[distances.length - 1] || 0, centerM + afterM));
+  if (!from || !to || from.index === to.index) return null;
+  return outdoorBearingDegrees(from.point, to.point);
+}
+
+/**
+ * Detect a real navigation maneuver rather than every bend in a recorded GPS
+ * polyline. A genuine junction/corner changes heading in a concentrated area;
+ * a curved street changes heading progressively. Comparing a short window with
+ * a wider window filters those smooth bends and GPS zig-zag noise.
+ */
+function maneuverCandidateAtIndex(points: GeoPoint[], distances: number[], index: number): OutdoorManeuverCandidate | null {
+  const pivot = points[index];
+  const atDistance = distances[index] || 0;
+  if (!pivot || index <= 0 || index >= points.length - 1) return null;
+
+  const nearBefore = pointAtDistance(points, distances, Math.max(0, atDistance - 16));
+  const nearAfter = pointAtDistance(points, distances, Math.min(distances[distances.length - 1] || 0, atDistance + 16));
+  const farBeforeA = pointAtDistance(points, distances, Math.max(0, atDistance - 48));
+  const farBeforeB = pointAtDistance(points, distances, Math.max(0, atDistance - 12));
+  const farAfterA = pointAtDistance(points, distances, Math.min(distances[distances.length - 1] || 0, atDistance + 12));
+  const farAfterB = pointAtDistance(points, distances, Math.min(distances[distances.length - 1] || 0, atDistance + 48));
+
+  const fallbackBefore = points[Math.max(0, index - 1)];
+  const fallbackAfter = points[Math.min(points.length - 1, index + 1)];
+  const nearIn = nearBefore && nearBefore.index !== index ? outdoorBearingDegrees(nearBefore.point, pivot) : outdoorBearingDegrees(fallbackBefore, pivot);
+  const nearOut = nearAfter && nearAfter.index !== index ? outdoorBearingDegrees(pivot, nearAfter.point) : outdoorBearingDegrees(pivot, fallbackAfter);
+  const wideIn = farBeforeA && farBeforeB && farBeforeA.index !== farBeforeB.index ? outdoorBearingDegrees(farBeforeA.point, farBeforeB.point) : nearIn;
+  const wideOut = farAfterA && farAfterB && farAfterA.index !== farAfterB.index ? outdoorBearingDegrees(farAfterA.point, farAfterB.point) : nearOut;
+  if (nearIn == null || nearOut == null || wideIn == null || wideOut == null) return null;
+
+  const nearDelta = signedAngleDelta(nearIn, nearOut);
+  const wideDelta = signedAngleDelta(wideIn, wideOut);
+  const absNear = Math.abs(nearDelta);
+  const absWide = Math.abs(wideDelta);
+
+  // Ignore ordinary road curvature and tiny GPS kinks. The direction change
+  // must be significant AND concentrated around this point.
+  if (absWide < 30 || absNear < 23) return null;
+  if (Math.sign(nearDelta) !== Math.sign(wideDelta) && absNear > 10 && absWide > 10) return null;
+  if (absWide < 72 && absNear / Math.max(1, absWide) < 0.50) return null;
+
+  const kind = turnKindFromAngle(wideDelta);
+  if (kind === "straight") return null;
+  return { index, distanceM: atDistance, kind, bearingDeg: wideOut, turnAngleDeg: wideDelta, strength: absWide + absNear * 0.45 };
+}
+
+function nextOutdoorManeuver(points: GeoPoint[], distances: number[], currentIndex: number, matchedM: number, totalM: number): OutdoorManeuverCandidate | null {
+  const searchStartM = matchedM + 6;
+  const searchEndM = Math.min(totalM, matchedM + 1200);
+  let best: OutdoorManeuverCandidate | null = null;
+  let clusterUntilM = -1;
+
+  for (let index = Math.max(1, currentIndex); index < points.length - 1; index += 1) {
+    const atDistance = distances[index] || 0;
+    if (atDistance < searchStartM) continue;
+    if (atDistance > searchEndM) break;
+    const candidate = maneuverCandidateAtIndex(points, distances, index);
+    if (!candidate) continue;
+
+    if (!best) {
+      best = candidate;
+      clusterUntilM = candidate.distanceM + 58;
+      continue;
+    }
+    if (candidate.distanceM <= clusterUntilM) {
+      clusterUntilM = Math.max(clusterUntilM, candidate.distanceM + 40);
+      if (candidate.strength > best.strength) best = candidate;
+      continue;
+    }
+    // First maneuver cluster is complete: do not jump to a later junction.
+    break;
+  }
+  return best;
 }
 
 export function outdoorDirectionalGuidance(
@@ -219,36 +306,32 @@ export function outdoorDirectionalGuidance(
   if (currentIndex < 0) currentIndex = points.length - 1;
   currentIndex = Math.max(0, Math.min(points.length - 1, currentIndex));
 
-  const currentRoutePoint = points[currentIndex];
-  const nextRoutePoint = points[Math.min(points.length - 1, currentIndex + 1)];
-  const routeBearing = currentRoutePoint && nextRoutePoint ? outdoorBearingDegrees(currentRoutePoint, nextRoutePoint) : null;
+  // Compare movement with a smoothed section of route, not one tiny segment.
+  // This sharply reduces false "wrong way" alerts caused by noisy GPS points.
+  const routeBearing = routeBearingAroundDistance(points, distances, matched + 8, 12, 28)
+    ?? outdoorBearingDegrees(points[currentIndex], points[Math.min(points.length - 1, currentIndex + 1)]);
   let wrongWayAngleDeg: number | null = null;
   let wrongWay = false;
-  if (previousPoint && currentPoint && haversineMeters(previousPoint, currentPoint) >= 7 && routeBearing != null) {
+  if (previousPoint && currentPoint && haversineMeters(previousPoint, currentPoint) >= 9 && routeBearing != null) {
     const movementBearing = outdoorBearingDegrees(previousPoint, currentPoint);
     if (movementBearing != null) {
       wrongWayAngleDeg = Math.abs(signedAngleDelta(routeBearing, movementBearing));
-      wrongWay = wrongWayAngleDeg >= 105;
+      wrongWay = wrongWayAngleDeg >= 115;
     }
   }
 
-  const searchStartM = matched + 18;
-  const searchEndM = Math.min(total, matched + 1200);
-  for (let index = Math.max(1, currentIndex + 1); index < points.length - 1; index += 1) {
-    const atDistance = distances[index] ?? 0;
-    if (atDistance < searchStartM) continue;
-    if (atDistance > searchEndM) break;
-    const beforeIndex = Math.max(0, index - 2);
-    const afterIndex = Math.min(points.length - 1, index + 2);
-    const before = points[beforeIndex], pivot = points[index], after = points[afterIndex];
-    if (!before || !pivot || !after) continue;
-    const inBearing = outdoorBearingDegrees(before, pivot);
-    const outBearing = outdoorBearingDegrees(pivot, after);
-    if (inBearing == null || outBearing == null) continue;
-    const turnAngleDeg = signedAngleDelta(inBearing, outBearing);
-    const kind = turnKindFromAngle(turnAngleDeg);
-    if (kind === "straight") continue;
-    return { id: `turn:${index}`, kind, distanceM: Math.max(0, atDistance - matched), targetDistanceM: atDistance, bearingDeg: outBearing, turnAngleDeg, wrongWay, wrongWayAngleDeg };
+  const maneuver = nextOutdoorManeuver(points, distances, currentIndex, matched, total);
+  if (maneuver) {
+    return {
+      id: `turn:${Math.round(maneuver.distanceM)}`,
+      kind: maneuver.kind,
+      distanceM: Math.max(0, maneuver.distanceM - matched),
+      targetDistanceM: maneuver.distanceM,
+      bearingDeg: maneuver.bearingDeg,
+      turnAngleDeg: maneuver.turnAngleDeg,
+      wrongWay,
+      wrongWayAngleDeg,
+    };
   }
 
   const remainingM = Math.max(0, total - matched);
