@@ -21,7 +21,7 @@ import OutdoorOfflineRoutePanel from "./OutdoorOfflineRoutePanel";
 import OutdoorSafetyPanel from "./OutdoorSafetyPanel";
 import OutdoorRouteDetailPage, { type OutdoorRouteDetailTab } from "./OutdoorRouteDetailPage";
 import OutdoorRouteScoutDiscover from "./OutdoorRouteScoutDiscover";
-import { RunningGlyph, RunningHubCard, RunningSetupSteps, RunningSurface } from "./RunningUi";
+import { RunningGlyph, RunningHubCard, RunningSurface } from "./RunningUi";
 import "./runningResponsive.css";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { awenaVoice } from "../../awena/AwenaVoice";
@@ -54,10 +54,15 @@ import { clearNativeTrackingOwnerIf, getNativeTrackingOwnerSessionId, getRunning
 import { listOutdoorOfflineRoutePacks } from "../../activity/outdoorOfflineCache";
 import { deleteRunningSessionDraft, loadRunningSessionDraft, mergeRunningDraftRoutes, saveRunningSessionDraft, type RunningSessionDraft } from "../../activity/runningSessionDrafts";
 import type { ActivityLap, ActivityRecord, ActivitySensorSample, GeoPoint } from "../../activity/activityTypes";
+import runningActivityCardSession from "../../assets/running/activity_hub/running_activity_card_session.webp";
+import runningActivityCardRoute from "../../assets/running/activity_hub/running_activity_card_route.webp";
+import runningActivityCardFree from "../../assets/running/activity_hub/running_activity_card_free.webp";
+import runningActivityCardHistory from "../../assets/running/activity_hub/running_activity_card_history.webp";
+import runningActivityCardPartners from "../../assets/running/activity_hub/running_activity_card_partners.webp";
 type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
 type SetupTab = "menu" | "goal" | "training" | "advanced";
 type SimpleGoalMode = "free" | "distance" | "duration";
-type SetupPanel = "menu" | "workout" | "route" | "ready";
+type SetupPanel = "menu" | "workout" | "route" | "free" | "ready";
 type RoutePanelTab = "menu" | "choose" | "guide" | "offline";
 type RouteChooseMode = "showcase" | "scout" | "discover" | "generate" | "library" | "favorites" | "remake";
 type LivePage = "cockpit" | "route" | "splits" | "details";
@@ -198,6 +203,19 @@ function getPhase(preset: Preset | undefined, elapsedMs: number, lang: string) {
     const last = preset.steps[preset.steps.length - 1];
     return { index: preset.steps.length - 1, step: last, elapsedInStep: last.durationMs, remainingMs: 0, progress: 100, label: pickLegacyLocalizedText(lang, last.fr, last.en, last.es) };
 }
+function RunningImageHubCard({ title, subtitle, image, accent, onClick, wide = false }: { title: string; subtitle: string; image: string; accent: string; onClick: () => void; wide?: boolean }) {
+    return <button type="button" onClick={onClick} style={{ gridColumn: wide ? "1 / -1" : undefined, width: "100%", minWidth: 0, overflow: "hidden", borderRadius: 18, border: `1px solid ${accent}46`, background: "rgba(5,8,14,.96)", color: "#fff", padding: 0, textAlign: "left", cursor: "pointer", boxShadow: `0 14px 30px rgba(0,0,0,.38), inset 0 1px 0 ${accent}12` }}>
+      <div style={{ position: "relative", height: wide ? 116 : 104, overflow: "hidden", background: "#071018" }}>
+        <img src={image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: "saturate(1.05) contrast(1.03)" }}/>
+        <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,transparent 30%,rgba(3,7,12,.9) 100%)" }}/>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", padding: "9px 10px 10px" }}>
+        <div style={{ minWidth: 0 }}><b style={{ display: "block", color: accent, fontSize: 11.4, lineHeight: 1.05, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</b><small style={{ display: "block", marginTop: 3, color: "rgba(255,255,255,.56)", fontSize: 8.1, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</small></div>
+        <span style={{ color: accent, fontSize: 18, fontWeight: 1000 }}>›</span>
+      </div>
+    </button>;
+}
+
 export default function RunningModule({ go, params }: Props) {
     const { theme } = useTheme();
     const langApi = useLang() as any;
@@ -420,6 +438,16 @@ export default function RunningModule({ go, params }: Props) {
         }
         return unique;
     }, [activities, activitySport, discoveredRoutes, offlineRoutes, routeElevationOverrides, savedRoutes]);
+    React.useEffect(() => {
+        const requestedRouteId = String(params?.runningRouteId || "").trim();
+        if (!requestedRouteId || selectedRouteId) return;
+        const match = routeOptions.find((route) => route.id === requestedRouteId || route.externalId === requestedRouteId);
+        if (match) {
+            setSelectedRouteId(match.id);
+            setSetupPanel("route");
+            setRoutePanelTab("choose");
+        }
+    }, [params?.runningRouteId, routeOptions, selectedRouteId]);
     const favoriteRouteOptions = React.useMemo(() => savedRoutes.filter((route) => !route.sport ? activitySport === "running" : route.sport === activitySport), [activitySport, savedRoutes]);
     const remakeRouteOptions = React.useMemo(() => {
         const savedSourceIds = new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean));
@@ -1959,76 +1987,97 @@ export default function RunningModule({ go, params }: Props) {
       <button className="btn danger" style={{ width: "100%", marginTop: 2, fontWeight: 1000 }} onClick={() => void removeSelected()}>{copy.delete}</button>
     </div>;
     }
-    const setupPageTitle = setupPanel === "workout" && setupTab !== "menu" ? (setupTab === "goal" ? pickLegacyLocalizedText(lang, "OBJECTIF", "GOAL", "OBJETIVO") : setupTab === "training" ? pickLegacyLocalizedText(lang, "SÉANCES", "WORKOUTS", "SESIONES") : pickLegacyLocalizedText(lang, "AVANCÉ", "ADVANCED", "AVANZADO")) : setupPanel === "route" && routePanelTab !== "menu" ? (routePanelTab === "choose" ? pickLegacyLocalizedText(lang, "CHOISIR UN PARCOURS", "CHOOSE A ROUTE", "ELEGIR UNA RUTA") : routePanelTab === "guide" ? pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO") : pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN")) : setupPanel === "workout" ? pickLegacyLocalizedText(lang, "SÉANCE", "WORKOUT", "SESIÓN") : setupPanel === "route" ? pickLegacyLocalizedText(lang, "PARCOURS", "ROUTE", "RUTA") : setupPanel === "ready" ? pickLegacyLocalizedText(lang, "DÉPART", "START", "SALIDA") : copy.title;
-    const setupPageSubtitle = setupPanel === "menu" ? copy.setupSub : `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`;
+    const setupPageTitle = setupPanel === "workout" ? pickLegacyLocalizedText(lang, "SÉANCE", "WORKOUT", "SESIÓN") : setupPanel === "route" ? pickLegacyLocalizedText(lang, "PARCOURS", "ROUTE", "RUTA") : setupPanel === "free" ? pickLegacyLocalizedText(lang, "SORTIE LIBRE", "FREE ACTIVITY", "SALIDA LIBRE") : setupPanel === "ready" ? pickLegacyLocalizedText(lang, "DÉPART", "START", "SALIDA") : copy.title;
+    const setupPageSubtitle = setupPanel === "menu" ? copy.setupSub : setupPanel === "route" ? pickLegacyLocalizedText(lang, "Choisis puis lance ton parcours", "Choose and start your route", "Elige e inicia tu ruta") : setupPanel === "free" ? pickLegacyLocalizedText(lang, "GPS direct · sans séance imposée", "Direct GPS · no workout structure", "GPS directo · sin sesión impuesta") : `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`;
     const backFromSetup = () => {
         if (setupPanel === "route" && routePanelTab !== "choose" && routePanelTab !== "menu") { setRoutePanelTab("choose"); return; }
         if (setupPanel !== "menu") { setSetupPanel("menu"); return; }
         go("home");
     };
+    const scheduleConfiguredActivity = (kind: "workout" | "route" | "free") => {
+        const freeMode = kind === "free";
+        const routeMode = kind === "route";
+        const title = routeMode && selectedRoute ? selectedRoute.name : freeMode ? `${outdoorSportLabel(activitySport, lang)} · ${pickLegacyLocalizedText(lang, "LIBRE", "FREE", "LIBRE")}` : presetLabel(effectivePreset, lang);
+        const routeParams: Record<string, unknown> = {
+            runningPresetId: freeMode ? "free" : effectivePreset.id,
+            runningActivitySport: activitySport,
+            runningTargetM: freeMode ? undefined : targetDistanceM || undefined,
+            runningTargetDurationMs: freeMode ? undefined : targetDurationMs || undefined,
+            runningOpenRoutes: routeMode || undefined,
+            runningRouteId: routeMode && selectedRoute ? selectedRoute.id : undefined,
+        };
+        go("agenda", {
+            agendaView: "week",
+            agendaCreate: true,
+            agendaDraft: {
+                title,
+                sport: "running",
+                eventType: kind === "workout" ? "training" : "outing",
+                durationMin: Math.max(15, Math.round(Number(targetDurationMs || (routeMode && selectedRoute ? estimateOutdoorRouteDurationMs(selectedRoute, activitySport) : 3600000)) / 60000)),
+                discipline: activitySport,
+                route: "games",
+                routeParams,
+            },
+        });
+    };
     return <div className={`container running-page ${setupPanel === "route" ? "running-page--routes" : ""}`} style={{ maxWidth: setupPanel === "route" ? 1280 : PAGE_MAX_WIDTH, paddingLeft: "clamp(8px,2.2vw,14px)", paddingRight: "clamp(8px,2.2vw,14px)", overflowX: "clip" }}><PageHeader title={setupPageTitle} subtitle={setupPageSubtitle} left={<BackDot onClick={backFromSetup}/>} right={infoDot}/>
-
-    {setupPanel !== "menu" ? <RunningSetupSteps
-      value={setupPanel}
-      accent={accent}
-      routeOptional={activitySport === "treadmill"}
-      routeSelected={!!selectedRoute}
-      onChange={(next) => {
-        if (next === "workout") { setSetupPanel("workout"); if (setupTab === "menu") setSetupTab("goal"); return; }
-        if (next === "route") { if (activitySport === "treadmill") return; setSetupPanel("route"); setRoutePanelTab("choose"); if (routeChooseMode === "showcase") setRouteChooseMode(routeOptions.length ? "library" : "discover"); return; }
-        setSetupPanel("ready");
-      }}
-      labels={{
-        workout: pickLegacyLocalizedText(lang, "SÉANCE", "WORKOUT", "SESIÓN"),
-        workoutSub: presetLabel(effectivePreset, lang),
-        route: pickLegacyLocalizedText(lang, "PARCOURS", "ROUTE", "RUTA"),
-        routeSub: activitySport === "treadmill" ? pickLegacyLocalizedText(lang, "Non requis", "Not needed", "No necesario") : selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, "Optionnel", "Optional", "Opcional"),
-        ready: pickLegacyLocalizedText(lang, "DÉPART", "START", "SALIDA"),
-        readySub: activitySport === "treadmill" ? treadmillSourceLabel : (gpsMessage || copy.gpsUnknown),
-      }}
-    /> : null}
 
     {setupPanel === "menu" ? <>
       <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/>
-      <RunningSurface accent={accent} active style={{ marginTop: 10 }} padding={13}>
-        <div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: 1.2 }}>{pickLegacyLocalizedText(lang, "DÉMARRAGE RAPIDE", "QUICK START", "INICIO RÁPIDO")}</div>
-        <div style={{ marginTop: 4, color: "#fff", fontSize: 16, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "Pars maintenant", "Start now", "Sal ahora")}</div>
-        <div style={{ marginTop: 5, color: textSoft, fontSize: 9.2, lineHeight: 1.45 }}>{pickLegacyLocalizedText(lang, "Une sortie libre lance directement le GPS et la carte. Tu peux tout consulter pendant l'activité.", "A free activity starts GPS and the map directly. All live data remains available during the activity.", "Una salida libre inicia directamente el GPS y el mapa. Todos los datos quedan disponibles durante la actividad.")}</div>
-        <button className="btn" onClick={() => { selectManualPreset("goal-free"); setSetupPanel("ready"); }} style={{ width: "100%", minHeight: 56, marginTop: 12, borderRadius: 16, color: "#071015", background: accent, borderColor: accent, fontSize: 12.5, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "▶ DÉMARRER MAINTENANT", "▶ START NOW", "▶ EMPEZAR AHORA")}</button>
-      </RunningSurface>
-
-      <div className="running-setup-launch-grid" style={{ marginTop: 10 }}>
-        <RunningHubCard
-          title={pickLegacyLocalizedText(lang, "CHOISIR UNE SÉANCE", "CHOOSE A WORKOUT", "ELEGIR SESIÓN")}
-          subtitle={pickLegacyLocalizedText(lang, "Libre · objectif · fractionné · tempo · côtes", "Free · goal · intervals · tempo · hills", "Libre · objetivo · intervalos · tempo · cuestas")}
-          icon={<RunningGlyph name="step-workout" size={20}/>}
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
+        <RunningImageHubCard
+          title={pickLegacyLocalizedText(lang, "SÉANCE", "WORKOUT", "SESIÓN")}
+          subtitle={pickLegacyLocalizedText(lang, "Configurer", "Configure", "Configurar")}
+          image={runningActivityCardSession}
           accent={accent}
-          onClick={() => { setSetupTab("goal"); setSetupPanel("workout"); }}
+          onClick={() => { setSetupTab(trainingPresetIds.length ? "training" : "goal"); setSetupPanel("workout"); }}
         />
-        {activitySport !== "treadmill" ? <RunningHubCard
-          title={pickLegacyLocalizedText(lang, "EXPLORER UN PARCOURS", "EXPLORE A ROUTE", "EXPLORAR UNA RUTA")}
-          subtitle={selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, "Vrais parcours · communauté · mes favoris", "Mapped routes · community · saved routes", "Rutas reales · comunidad · favoritas")}
-          icon={<RunningGlyph name="route-choose" size={20}/>}
+        {activitySport !== "treadmill" ? <RunningImageHubCard
+          title={pickLegacyLocalizedText(lang, "PARCOURS", "ROUTE", "RUTA")}
+          subtitle={pickLegacyLocalizedText(lang, "Choisir", "Choose", "Elegir")}
+          image={runningActivityCardRoute}
           accent={accent}
           onClick={() => { setRoutePanelTab("choose"); setRouteChooseMode(routeOptions.length ? "library" : "discover"); setSetupPanel("route"); }}
-          badge={selectedRoute ? "✓" : undefined}
         /> : null}
-        <RunningHubCard
-          title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")}
-          subtitle={pickLegacyLocalizedText(lang, "Retrouver cartes, photos et statistiques", "Open maps, photos and statistics", "Abrir mapas, fotos y estadísticas")}
-          icon={<RunningGlyph name="history" size={20}/>}
+        <RunningImageHubCard
+          title={pickLegacyLocalizedText(lang, "LIBRE", "FREE", "LIBRE")}
+          subtitle={pickLegacyLocalizedText(lang, "GPS direct", "Direct GPS", "GPS directo")}
+          image={runningActivityCardFree}
           accent={accent}
-          onClick={() => go("stats", { runningStatsTab: "history" })}
+          wide={activitySport === "treadmill"}
+          onClick={() => { setSimpleGoalMode("free"); selectManualPreset("goal-free"); setSetupPanel("free"); }}
         />
-        <RunningHubCard
-          title={pickLegacyLocalizedText(lang, "PARTENAIRES", "PARTNERS", "COMPAÑEROS")}
-          subtitle={pickLegacyLocalizedText(lang, "Trouver quelqu'un à proximité", "Find someone nearby", "Encontrar alguien cerca")}
-          icon={<RunningGlyph name="gps" size={20}/>}
+        <RunningImageHubCard
+          title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")}
+          subtitle={pickLegacyLocalizedText(lang, "Historique", "History", "Historial")}
+          image={runningActivityCardHistory}
           accent={accent}
+          onClick={() => setView("history")}
+        />
+        <RunningImageHubCard
+          title={pickLegacyLocalizedText(lang, "PARTENAIRES", "PARTNERS", "COMPAÑEROS")}
+          subtitle={pickLegacyLocalizedText(lang, "À proximité", "Nearby", "Cerca")}
+          image={runningActivityCardPartners}
+          accent={accent}
+          wide
           onClick={() => go("online", { tab: "nearby" })}
         />
       </div>
     </> : null}
+
+    <div style={{ display: setupPanel === "free" ? "block" : "none" }}>
+      <OutdoorActivitySelector value={activitySport} onChange={(sport) => { setActivitySport(sport); setSimpleGoalMode("free"); selectManualPreset("goal-free"); }} lang={lang} accent={accent}/>
+      <RunningSurface accent={accent} active style={{ marginTop: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "58px 1fr", gap: 11, alignItems: "center" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 17, overflow: "hidden", border: `1px solid ${accent}44`, background: `${accent}0d` }}><img src={runningActivityCardFree} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}/></div>
+          <div><div style={{ color: accent, fontSize: 12.5, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "SORTIE LIBRE", "FREE ACTIVITY", "SALIDA LIBRE")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 8.9, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Tu pars quand tu veux. GPS, distance, allure et dénivelé sont enregistrés.", "Start whenever you want. GPS, distance, pace and elevation are recorded.", "Sal cuando quieras. Se registran GPS, distancia, ritmo y desnivel.")}</div></div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+          <button className="btn primary" onClick={() => { setSimpleGoalMode("free"); selectManualPreset("goal-free"); setSetupPanel("ready"); }} style={{ minHeight: 48, background: accent, color: "#071015", fontWeight: 1000 }}>▶ {pickLegacyLocalizedText(lang, "DÉMARRER", "START", "EMPEZAR")}</button>
+          <button className="btn" onClick={() => scheduleConfiguredActivity("free")} style={{ minHeight: 48, fontWeight: 1000 }}>◷ {pickLegacyLocalizedText(lang, "PROGRAMMER", "SCHEDULE", "PROGRAMAR")}</button>
+        </div>
+      </RunningSurface>
+    </div>
 
     <div style={{ display: setupPanel === "workout" ? "block" : "none" }}>
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${(sportProfile.supportsPacer || sportProfile.supportsIntervals) ? 3 : trainingPresetIds.length ? 2 : 1},minmax(0,1fr))`, gap: 6, marginTop: 10 }}>
@@ -2083,7 +2132,13 @@ export default function RunningModule({ go, params }: Props) {
 
     </div>
 
-    {setupPanel === "workout" && setupTab !== "menu" ? <RunningSurface accent={accent} active style={{ marginTop: 10 }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}30`, color: accent }}><PresetGlyph preset={effectivePreset} size={19}/></div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 8.8, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></RunningSurface> : null}
+    {setupPanel === "workout" && setupTab !== "menu" ? <>
+      <RunningSurface accent={accent} active style={{ marginTop: 10 }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}30`, color: accent }}><PresetGlyph preset={effectivePreset} size={19}/></div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 8.8, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></RunningSurface>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+        <button className="btn primary" onClick={() => setSetupPanel("ready")} style={{ minHeight: 50, background: accent, color: "#071015", fontWeight: 1000 }}>▶ {pickLegacyLocalizedText(lang, "LANCER", "START", "INICIAR")}</button>
+        <button className="btn" onClick={() => scheduleConfiguredActivity("workout")} style={{ minHeight: 50, fontWeight: 1000 }}>◷ {pickLegacyLocalizedText(lang, "PROGRAMMER", "SCHEDULE", "PROGRAMAR")}</button>
+      </div>
+    </> : null}
 
     <div style={{ display: setupPanel === "route" ? "block" : "none" }}>
       {routePanelTab === "menu" ? <div style={{ display: "none" }}>
@@ -2281,6 +2336,11 @@ export default function RunningModule({ go, params }: Props) {
 
       {routePanelTab === "offline" && selectedRoute && routeExtras ? <OutdoorOfflineRoutePanel route={selectedRoute} sport={activitySport} extras={routeExtras} lang={lang} accent={accent} textSoft={textSoft} onChange={() => void refreshOfflineRoutes()}/> : null}
     </div>
+
+    {setupPanel === "route" && selectedRoute ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+      <button className="btn primary" onClick={() => setSetupPanel("ready")} style={{ minHeight: 50, background: accent, color: "#071015", fontWeight: 1000 }}>▶ {pickLegacyLocalizedText(lang, "LANCER", "START", "INICIAR")}</button>
+      <button className="btn" onClick={() => scheduleConfiguredActivity("route")} style={{ minHeight: 50, fontWeight: 1000 }}>◷ {pickLegacyLocalizedText(lang, "PROGRAMMER", "SCHEDULE", "PROGRAMAR")}</button>
+    </div> : null}
 
     <div style={{ display: setupPanel === "ready" ? "block" : "none" }}>
     <RunningSurface accent={accent} active style={{ marginTop: 10 }}>

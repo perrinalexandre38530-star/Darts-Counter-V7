@@ -207,7 +207,10 @@ function captureBasePaint(map: any): PaintSnapshot {
     if (!props?.length) continue;
     const row: Record<string, unknown> = {};
     for (const prop of props) {
-      try { row[prop] = map.getPaintProperty(id, prop); } catch {}
+      try {
+        const value = map.getPaintProperty(id, prop);
+        if (value != null) row[prop] = value;
+      } catch {}
     }
     snapshot.set(id, row);
   }
@@ -218,7 +221,8 @@ function restoreBasePaint(map: any, snapshot: PaintSnapshot) {
   for (const [id, props] of snapshot.entries()) {
     if (!map.getLayer?.(id)) continue;
     for (const [prop, value] of Object.entries(props)) {
-      try { map.setPaintProperty(id, prop, value == null ? null : value); } catch {}
+      if (value == null) continue;
+      try { map.setPaintProperty(id, prop, value); } catch {}
     }
   }
 }
@@ -299,7 +303,9 @@ function applyRunningMapTheme(map: any, theme: RunningMapTheme, snapshot: PaintS
       const id = String(layer?.id || "");
       if (!id || isMssMapLayer(id)) continue;
       const palette = layerPalette(theme, layer);
+      const baseProps = snapshot.get(id) || {};
       for (const [prop, value] of Object.entries(palette)) {
+        if (!(prop in baseProps)) continue;
         try { map.setPaintProperty(id, prop, value); } catch {}
       }
     }
@@ -620,6 +626,16 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         maxTileCacheSize: fullscreen ? 80 : 48,
       });
       mapRef.current = map;
+      // OpenFreeMap styles can reference optional Maki sprites that are not
+      // bundled by every style endpoint. Supply a transparent 1x1 fallback so
+      // MapLibre does not spam styleimagemissing warnings or retry them.
+      map.on("styleimagemissing", (event: any) => {
+        const id = String(event?.id || "").trim();
+        if (!id) return;
+        try {
+          if (!map.hasImage?.(id)) map.addImage(id, { width: 1, height: 1, data: new Uint8Array([0, 0, 0, 0]) });
+        } catch {}
+      });
       // Keep native pan/zoom, but own rotation/pitch gestures ourselves. This
       // avoids browser/app conflicts where right-click was interpreted as Back.
       try { map.dragPan?.enable?.(); } catch {}

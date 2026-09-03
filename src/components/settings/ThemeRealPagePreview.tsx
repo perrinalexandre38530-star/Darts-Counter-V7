@@ -3,7 +3,6 @@ import { ThemePreviewScope, useTheme } from "../../contexts/ThemeContext";
 import { useStore } from "../../contexts/StoreContext";
 import { useSport } from "../../contexts/SportContext";
 import type { ThemeId } from "../../theme/themePresets";
-import BottomNav from "../BottomNav";
 
 const Home = React.lazy(() => import("../../pages/Home"));
 const Games = React.lazy(() => import("../../pages/Games"));
@@ -150,17 +149,9 @@ function RealPreviewViewport({ themeId }: { themeId: ThemeId }) {
           </div>
         </div>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 1px rgba(255,255,255,.035)", pointerEvents: "none" }} />
-      </div>
-
-      <div style={{ background: "#050812", borderTop: `1px solid ${theme.primary}38`, padding: "4px 7px 5px" }}>
-        <div style={{ height: 52 * scale, overflow: "hidden", pointerEvents: "none" }}>
-          <div style={{ width: PREVIEW_WIDTH, transform: `scale(${scale})`, transformOrigin: "top left" }}>
-            <BottomNav value={activeTab as any} onChange={() => {}} sportOverride={sport} />
-          </div>
-        </div>
-        <div style={{ marginTop: 3, display: "flex", justifyContent: "center", gap: 5 }}>
+        <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, bottom: 7, display: "flex", justifyContent: "center", gap: 5, pointerEvents: "none", zIndex: 8 }}>
           {pages.map((tab, index) => (
-            <span key={tab} style={{ width: index === pageIndex ? 18 : 6, height: 6, borderRadius: 999, background: index === pageIndex ? theme.primary : "rgba(255,255,255,.18)", boxShadow: index === pageIndex ? `0 0 8px ${theme.primary}77` : "none" }} />
+            <span key={tab} style={{ width: index === pageIndex ? 18 : 6, height: 6, borderRadius: 999, background: index === pageIndex ? theme.primary : "rgba(255,255,255,.30)", boxShadow: index === pageIndex ? `0 0 8px ${theme.primary}99` : "0 1px 3px rgba(0,0,0,.65)" }} />
           ))}
         </div>
       </div>

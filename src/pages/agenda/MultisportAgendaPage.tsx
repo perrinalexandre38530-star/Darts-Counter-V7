@@ -35,6 +35,15 @@ type Props = { go: (route: any, params?: any) => void; params?: any };
 type View = "today" | "week" | "month" | "invitations";
 type AgendaPerson = { id: string; name: string; avatar?: string | null; source: "local" | "friend"; profile: any };
 type SportTypeOption = { value: MultisportEventType; fr: string; en: string; es: string };
+type AgendaCreateDraft = {
+  title?: string;
+  sport?: MultisportEventSport;
+  eventType?: MultisportEventType;
+  durationMin?: number;
+  discipline?: string;
+  route?: string;
+  routeParams?: Record<string, unknown>;
+};
 const DAY = 86_400_000;
 
 const DARTS_TICKERS = import.meta.glob("../../assets/tickers/*.png", { eager: true, import: "default" }) as Record<string, string>;
@@ -142,7 +151,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
   const [events, setEvents] = React.useState<MultisportAgendaEvent[]>(() => collectMultisportAgendaEvents());
   const [view, setView] = React.useState<View>(() => (["today", "week", "month", "invitations"].includes(String(params?.agendaView)) ? params.agendaView : "week"));
   const [cursor, setCursor] = React.useState(() => Date.now());
-  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createOpen, setCreateOpen] = React.useState(() => Boolean(params?.agendaCreate));
   const [sportFilter, setSportFilter] = React.useState<MultisportEventSport | "all">("all");
   const [selectedEvent, setSelectedEvent] = React.useState<MultisportAgendaEvent | null>(null);
   const availableSports = enabledAgendaSports();
@@ -281,7 +290,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       {view === "invitations" ? <div style={{ marginTop: 10 }}>{pending.length ? pending.map((event) => <div key={event.id} style={{ borderRadius: 18, border: `1px solid ${(event.accent || accent)}55`, background: `linear-gradient(145deg,${event.accent || accent}10,rgba(5,8,14,.98))`, padding: 12, marginBottom: 8 }}><EventCard event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}><button type="button" className="msa-action" onClick={() => { respondToAgendaInvitation(event.id, "confirmed"); refresh(); }}>{t("ACCEPTER", "ACCEPT", "ACEPTAR")}</button><button type="button" onClick={() => { respondToAgendaInvitation(event.id, "declined"); refresh(); }} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.72)", fontWeight: 1000 }}>{t("REFUSER", "DECLINE", "RECHAZAR")}</button></div></div>) : <EmptyState text={t("Aucune invitation en attente.", "No pending invitations.", "No hay invitaciones pendientes.")} />}</div> : null}
 
       {selectedEvent ? <EventDetailDialog event={selectedEvent} locale={locale} lang={String(lang || "fr")} conflict={conflictIds.has(selectedEvent.id)} onClose={() => setSelectedEvent(null)} onOpenModule={() => { const event = selectedEvent; setSelectedEvent(null); openEvent(event); }} onChanged={() => { refresh(); const fresh = collectMultisportAgendaEvents().find((item) => item.id === selectedEvent.id) || null; setSelectedEvent(fresh); }} /> : null}
-      {createOpen ? <CreateEventDialog accent={accent} lang={String(lang || "fr")} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); refresh(); }} /> : null}
+      {createOpen ? <CreateEventDialog accent={accent} lang={String(lang || "fr")} initialDraft={(params?.agendaDraft || null) as AgendaCreateDraft | null} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); refresh(); }} /> : null}
     </div>
   );
 }
@@ -367,20 +376,21 @@ const detailInput: React.CSSProperties = { minWidth: 0, width: "100%", boxSizing
 function AgendaDetail({ label, value }: { label: string; value: string }) { return <div style={{ minWidth: 0, borderRadius: 12, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.022)", padding: 8 }}><div style={{ color: "rgba(255,255,255,.4)", fontSize: 6.6, fontWeight: 1000, letterSpacing: .65 }}>{label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 9.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>; }
 function statusLabel(status: MultisportAgendaEvent["status"]) { if (status === "completed") return "Terminée"; if (status === "pending") return "Invitation"; if (status === "confirmed") return "Confirmée"; if (status === "declined") return "Refusée"; if (status === "cancelled") return "Annulée"; return "Planifiée"; }
 
-function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: string; lang: string; onClose: () => void; onCreated: () => void }) {
+function CreateEventDialog({ accent, lang, initialDraft, onClose, onCreated }: { accent: string; lang: string; initialDraft?: AgendaCreateDraft | null; onClose: () => void; onCreated: () => void }) {
   const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
   const tomorrow = Date.now() + DAY;
   const sports = enabledAgendaSports();
-  const firstSport = (sports[0]?.id || "fit") as MultisportEventSport;
-  const [title, setTitle] = React.useState("");
+  const requestedSport = initialDraft?.sport;
+  const firstSport = ((requestedSport && sports.some((row) => row.id === requestedSport)) ? requestedSport : (sports[0]?.id || "fit")) as MultisportEventSport;
+  const [title, setTitle] = React.useState(String(initialDraft?.title || ""));
   const [sport, setSport] = React.useState<MultisportEventSport>(firstSport);
   const [sportPickerOpen, setSportPickerOpen] = React.useState(false);
-  const [eventType, setEventType] = React.useState<MultisportEventType>(() => defaultTypeForSport(firstSport));
+  const [eventType, setEventType] = React.useState<MultisportEventType>(() => initialDraft?.eventType || defaultTypeForSport(firstSport));
   const [dartsModeId, setDartsModeId] = React.useState("x01");
   const [dartsPickerOpen, setDartsPickerOpen] = React.useState(false);
   const [date, setDate] = React.useState(toDateInput(tomorrow));
   const [time, setTime] = React.useState("18:00");
-  const [duration, setDuration] = React.useState("60");
+  const [duration, setDuration] = React.useState(String(Math.max(0, Number(initialDraft?.durationMin || 60))));
   const [location, setLocation] = React.useState("");
   const [kind, setKind] = React.useState<"personal" | "club" | "invite">("personal");
   const [organizer, setOrganizer] = React.useState("");
@@ -484,9 +494,9 @@ function CreateEventDialog({ accent, lang, onClose, onCreated }: { accent: strin
       const startAt = inputToTimestamp(date, time);
       if (!Number.isFinite(startAt) || startAt <= 0) throw new Error(t("Date ou heure invalide", "Invalid date or time", "Fecha u hora no válida"));
 
-      let route: string | undefined = sport !== "other" ? "games" : undefined;
-      let routeParams: Record<string, unknown> | undefined = sport === "fit" ? { fitTemplateId: "free", fitSessionTitle: finalTitle } : undefined;
-      let discipline: string | undefined;
+      let route: string | undefined = initialDraft?.route || (sport !== "other" ? "games" : undefined);
+      let routeParams: Record<string, unknown> | undefined = initialDraft?.routeParams ? { ...initialDraft.routeParams } : (sport === "fit" ? { fitTemplateId: "free", fitSessionTitle: finalTitle } : undefined);
+      let discipline: string | undefined = initialDraft?.discipline;
       if (sport === "darts" && selectedDartsMode) {
         discipline = selectedDartsMode.label;
         if (eventType === "training") {

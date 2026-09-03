@@ -836,8 +836,17 @@ type KpiCellProps = {
 
 function splitKpiDisplayValue(value: string) {
   const raw = String(value || "").trim();
-  const match = raw.match(/^([+−-]?\d+(?:[.,]\d+)?)(?:\s*)(km\/h|km|m|bpm|spm|%|\/km)$/i);
-  return match ? { main: match[1], unit: match[2] } : { main: raw, unit: "" };
+  const match = raw.match(/^(.*?)(?:\s*)(km\/h|km|m|bpm|spm|%|\/km|min|h|s)$/i);
+  return match && String(match[1] || "").trim() ? { main: String(match[1]).trim(), unit: match[2] } : { main: raw, unit: "" };
+}
+
+function kpiMainFontSize(value: string, interactive: boolean) {
+  const length = String(value || "").trim().length;
+  if (length >= 19) return interactive ? 10.6 : 11.2;
+  if (length >= 14) return interactive ? 11.5 : 12.2;
+  if (length >= 10) return interactive ? 12.8 : 13.6;
+  if (length >= 7) return interactive ? 14.2 : 15;
+  return interactive ? 15.8 : 16.8;
 }
 
 function fitTileFontSize(value: string, base: number, min: number) {
@@ -873,8 +882,8 @@ function KpiCell({ label, value, primary, theme, onClick, backgroundImage, tileI
           </span>
         ) : (
           <>
-            <span style={{ fontSize: interactive ? 17 : 20, fontWeight: 900, minWidth: 0, textShadow: backgroundImage ? "0 2px 12px #000" : undefined }}>{display.main}</span>
-            {display.unit ? <span style={{ fontSize: 8, fontWeight: 900, lineHeight: 1, opacity: .72, textTransform: "none" }}>{display.unit}</span> : null}
+            <span style={{ fontSize: kpiMainFontSize(display.main, interactive), fontWeight: 900, minWidth: 0, maxWidth: "100%", lineHeight: 1.02, overflowWrap: "anywhere", textShadow: backgroundImage ? "0 2px 12px #000" : undefined }}>{display.main}</span>
+            {display.unit ? <span style={{ fontSize: 6.2, fontWeight: 900, lineHeight: 1, opacity: .58, textTransform: "none", whiteSpace: "nowrap" }}>{display.unit}</span> : null}
           </>
         )}
       </div>

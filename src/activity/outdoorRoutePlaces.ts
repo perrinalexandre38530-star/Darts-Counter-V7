@@ -36,8 +36,9 @@ type CacheRow = OutdoorRoutePlaceContext;
 const CACHE_KEY = "mss-route-place-context-v1";
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const OVERPASS_ENDPOINTS = [
-  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
 ];
 
 function routeCenter(route: RunningRouteTemplate) {
@@ -115,7 +116,7 @@ async function fetchNearbyPlaces(route: RunningRouteTemplate, lang: string): Pro
   let lastError: unknown = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
-      const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" }, body: `data=${encodeURIComponent(query)}` });
+      const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, { method: "GET", headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
       const json = await response.json();
       const start = route.route?.[0] || center;

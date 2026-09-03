@@ -13,8 +13,9 @@ export type OutdoorRouteDiscoveryResult = {
 };
 
 const OVERPASS_ENDPOINTS = [
-  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
 ];
 
 const MAX_DISCOVERED_ROUTES = 18;
@@ -171,10 +172,10 @@ async function fetchOverpass(query: string, signal: AbortSignal) {
   let lastError: unknown = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-        body: `data=${encodeURIComponent(query)}`,
+      const url = `${endpoint}?data=${encodeURIComponent(query)}`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
         signal,
       });
       if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
