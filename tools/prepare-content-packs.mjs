@@ -10,7 +10,14 @@ const sharp = require('sharp');
 const ROOT = process.cwd();
 const OUT = path.join(ROOT, 'content-packs-dist');
 const GENERATED_TS = path.join(ROOT, 'src', 'lib', 'contentPackCatalog.generated.ts');
-const VERSION = '2026.09.01.3';
+const PACK_VERSIONS = {
+  'fit-awena': '2026.09.01.3',
+  'navigation-music': '2026.09.01.3',
+  'collectible-cards': '2026.09.01.3',
+  // V106: only the theme pack gets a new immutable R2 version.
+  'theme-textures': '2026.09.03.2',
+  'character-portraits': '2026.09.01.3',
+};
 const PACKS = [
   'fit-awena',
   'navigation-music',
@@ -184,6 +191,7 @@ async function prepareThemes() {
   // avait supprimé 82 textures tout en laissant les thèmes les référencer.
   const themeSource = fs.readFileSync(path.join(ROOT, 'src', 'theme', 'themePresets.ts'), 'utf8');
   const required = [...new Set([...themeSource.matchAll(/\/theme-textures\/([^)'"\s,]+)/g)].map((m) => m[1]))].sort();
+  if (required.length < 110) throw new Error(`Analyse themes incomplete: ${required.length} texture(s) detectee(s), minimum attendu 110.`);
   const missing = required.filter((rel) => !byRel.has(rel));
   if (missing.length) {
     throw new Error(`Theme pack incomplet: ${missing.length} texture(s) manquante(s). Lance d'abord: npm run themes:restore\n${missing.join('\n')}`);
@@ -239,7 +247,9 @@ function buildManifest(packId, relFiles) {
     const full = path.join(root, rel);
     return { path: posix(rel), bytes: bytes(full), sha256: sha256(full), mime: mimeFor(rel) };
   });
-  const manifest = { id: packId, version: VERSION, files, totalBytes: files.reduce((n, f) => n + f.bytes, 0) };
+  const version = PACK_VERSIONS[packId];
+  if (!version) throw new Error(`Version de content pack absente pour ${packId}`);
+  const manifest = { id: packId, version, files, totalBytes: files.reduce((n, f) => n + f.bytes, 0) };
   fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify(manifest, null, 2));
   return manifest;
 }

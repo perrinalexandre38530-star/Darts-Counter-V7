@@ -20,6 +20,27 @@ const nativePackSw = read('public/content-packs-sw.js');
 const main = read('src/main.tsx');
 const gradle = read('android/app/build.gradle');
 const pkg = JSON.parse(read('package.json'));
+const prepare = read('tools/prepare-content-packs.mjs');
+const prepareThemes = read('tools/prepare-theme-content-pack.mjs');
+const restoreThemes = read('tools/restore-theme-textures-from-git.mjs');
+const auditThemes = read('tools/audit-theme-content-pack.mjs');
+const verifyThemes = read('tools/verify-theme-r2.mjs');
+const uploader = read('tools/upload-content-packs.mjs');
+
+
+assert.ok(prepare.includes("'theme-textures': '2026.09.03.2'"), 'full pack builder must keep the repaired immutable theme version');
+assert.ok(pkg.scripts['themes:repair-pack'].includes('themes:prepare-pack'), 'theme repair must use the dedicated theme-only builder');
+assert.ok(pkg.scripts['themes:repair-pack'].includes('themes:audit-pack'), 'theme repair must audit 110/110 before upload');
+assert.ok(pkg.scripts['themes:repair-pack'].includes('themes:verify-r2'), 'theme repair must verify R2 after upload');
+assert.ok(pkg.scripts['themes:repair-pack'].includes('--source=.mss-content-packs-build'), 'theme repair must publish from an ignored temporary build, not tracked content-packs-dist');
+assert.ok(prepareThemes.includes("const VERSION = '2026.09.03.2'"), 'theme-only builder must use a fresh immutable R2 version');
+assert.ok(prepareThemes.includes(".mss-content-packs-build"), 'theme-only builder output must stay outside tracked pack artifacts');
+assert.ok(prepareThemes.includes('MIN_EXPECTED = 110'), 'theme builder must reject truncated theme lists');
+assert.ok(restoreThemes.includes("gitRead('HEAD', rel)"), 'restore must recover originals from Git without putting them back in public/');
+assert.ok(restoreThemes.includes('street-acier-urbain.webp'), 'restore parser must guard STREET assets');
+assert.ok(auditThemes.includes('110'), 'theme audit must enforce the complete texture set');
+assert.ok(verifyThemes.includes('theme-textures'), 'R2 verifier must validate the theme pack through the public gateway');
+assert.ok(uploader.includes("--source="), 'uploader must support a dedicated temporary source directory');
 
 assert.ok(music.includes('contentPackAssetUrl("navigation-music"'), 'navigation music must use the remote pack');
 assert.ok(!music.includes('midnight_enigma_nav.m4a";'), 'only the two local fallback tracks may stay statically imported');

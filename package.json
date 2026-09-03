@@ -135,7 +135,11 @@
     "fit:awena:sync": "node ./tools/sync-fit-awena-state.mjs",
     "test:fit-awena-steps-local": "node ./tools/test-fit-awena-steps-local-v115.mjs",
     "themes:restore": "node ./tools/restore-theme-textures-from-git.mjs",
-    "themes:repair-pack": "npm run themes:restore && npm run content-packs:prepare && node ./tools/upload-content-packs.mjs --only=theme-textures"
+    "themes:repair-pack": "npm run themes:restore && npm run themes:prepare-pack && npm run themes:audit-pack && node ./tools/upload-content-packs.mjs --source=.mss-content-packs-build --only=theme-textures && npm run themes:verify-r2",
+    "themes:prepare-pack": "node ./tools/prepare-theme-content-pack.mjs",
+    "themes:audit-pack": "node ./tools/audit-theme-content-pack.mjs",
+    "themes:verify-r2": "node ./tools/verify-theme-r2.mjs",
+    "android:externalization-audit": "node ./tools/audit-android-externalization-v106.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

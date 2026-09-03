@@ -177,6 +177,202 @@ function markerElement(content: string, border: string, title: string, size = 30
   return el;
 }
 
+
+type ManualCameraCleanup = () => void;
+
+type CameraPointer = { x: number; y: number };
+
+function clampCameraPitch(value: number) {
+  return Math.max(0, Math.min(85, value));
+}
+
+function pointerPairMetrics(rows: CameraPointer[]) {
+  if (rows.length < 2) return null;
+  const a = rows[0], b = rows[1];
+  return {
+    cx: (a.x + b.x) / 2,
+    cy: (a.y + b.y) / 2,
+    distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+  };
+}
+
+/**
+ * MapLibre's native right-drag/touch camera gestures can be swallowed by the
+ * app/browser shell on Pages/WebView. This local controller shields secondary
+ * mouse buttons from global navigation and drives bearing/pitch/zoom directly.
+ *
+ * Desktop:
+ *   - left drag: native MapLibre pan
+ *   - right drag: free camera yaw + pitch
+ *   - Ctrl/Meta + left drag: same free-camera gesture
+ *   - wheel: native MapLibre zoom
+ * Touch:
+ *   - one finger: native MapLibre pan
+ *   - two fingers: horizontal drag = yaw, vertical drag = pitch, pinch = zoom
+ */
+function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraCleanup {
+  let mouseOrbit: null | { pointerId: number; x: number; y: number; bearing: number; pitch: number } = null;
+  const touches = new Map<number, CameraPointer>();
+  let touchOrbit: null | { cx: number; cy: number; distance: number; bearing: number; pitch: number; zoom: number } = null;
+  let dragPanSuspended = false;
+
+  const stopMapAnimation = () => {
+    try { map.stop?.(); } catch {}
+  };
+
+  const suspendDragPan = () => {
+    if (dragPanSuspended) return;
+    dragPanSuspended = true;
+    try { map.dragPan?.disable?.(); } catch {}
+  };
+
+  const resumeDragPan = () => {
+    if (!dragPanSuspended) return;
+    dragPanSuspended = false;
+    try { map.dragPan?.enable?.(); } catch {}
+  };
+
+  const beginTouchOrbitIfReady = () => {
+    if (touches.size < 2) return;
+    const metrics = pointerPairMetrics(Array.from(touches.values()).slice(0, 2));
+    if (!metrics) return;
+    stopMapAnimation();
+    suspendDragPan();
+    touchOrbit = {
+      ...metrics,
+      bearing: Number(map.getBearing?.() || 0),
+      pitch: Number(map.getPitch?.() || 0),
+      zoom: Number(map.getZoom?.() || 0),
+    };
+  };
+
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.pointerType === "touch") {
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touches.size === 2) {
+        event.preventDefault();
+        event.stopPropagation();
+        beginTouchOrbitIfReady();
+      }
+      return;
+    }
+
+    const secondary = event.button === 2 || event.button === 3 || event.button === 4;
+    const modifiedPrimary = event.button === 0 && (event.ctrlKey || event.metaKey);
+    if (!secondary && !modifiedPrimary) return;
+
+    // Buttons 3/4 are browser back/forward on many mice. Swallow them inside
+    // the map as well so a camera gesture can never kick the user to GameSelect.
+    event.preventDefault();
+    event.stopPropagation();
+    stopMapAnimation();
+    mouseOrbit = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      bearing: Number(map.getBearing?.() || 0),
+      pitch: Number(map.getPitch?.() || 0),
+    };
+    host.style.cursor = "grabbing";
+    try { host.setPointerCapture?.(event.pointerId); } catch {}
+  };
+
+  const onPointerMove = (event: PointerEvent) => {
+    if (event.pointerType === "touch") {
+      if (!touches.has(event.pointerId)) return;
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touches.size < 2) return;
+      if (!touchOrbit) beginTouchOrbitIfReady();
+      if (!touchOrbit) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const metrics = pointerPairMetrics(Array.from(touches.values()).slice(0, 2));
+      if (!metrics) return;
+      const dx = metrics.cx - touchOrbit.cx;
+      const dy = metrics.cy - touchOrbit.cy;
+      const zoomDelta = Math.log2(metrics.distance / Math.max(1, touchOrbit.distance)) * 1.9;
+      try {
+        map.jumpTo({
+          bearing: touchOrbit.bearing + dx * .34,
+          pitch: clampCameraPitch(touchOrbit.pitch - dy * .24),
+          zoom: Math.max(2, Math.min(20, touchOrbit.zoom + zoomDelta)),
+        });
+      } catch {}
+      return;
+    }
+
+    if (!mouseOrbit || mouseOrbit.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const dx = event.clientX - mouseOrbit.x;
+    const dy = event.clientY - mouseOrbit.y;
+    try {
+      map.jumpTo({
+        bearing: mouseOrbit.bearing + dx * .38,
+        pitch: clampCameraPitch(mouseOrbit.pitch - dy * .28),
+      });
+    } catch {}
+  };
+
+  const finishPointer = (event: PointerEvent) => {
+    if (event.pointerType === "touch") {
+      const hadGesture = touches.size >= 2 || !!touchOrbit;
+      touches.delete(event.pointerId);
+      if (hadGesture) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (touches.size < 2) {
+        touchOrbit = null;
+        resumeDragPan();
+      } else {
+        beginTouchOrbitIfReady();
+      }
+      return;
+    }
+
+    if (!mouseOrbit || mouseOrbit.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    mouseOrbit = null;
+    host.style.cursor = "";
+    try { host.releasePointerCapture?.(event.pointerId); } catch {}
+  };
+
+  const blockContextMenu = (event: Event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const blockSecondaryClick = (event: MouseEvent) => {
+    if (event.button < 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  host.addEventListener("pointerdown", onPointerDown, { passive: false });
+  window.addEventListener("pointermove", onPointerMove, { passive: false });
+  window.addEventListener("pointerup", finishPointer, { passive: false });
+  window.addEventListener("pointercancel", finishPointer, { passive: false });
+  host.addEventListener("contextmenu", blockContextMenu, { capture: true });
+  host.addEventListener("auxclick", blockSecondaryClick, { capture: true });
+  host.addEventListener("mousedown", blockSecondaryClick, { capture: true });
+  host.addEventListener("mouseup", blockSecondaryClick, { capture: true });
+
+  return () => {
+    host.removeEventListener("pointerdown", onPointerDown);
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", finishPointer);
+    window.removeEventListener("pointercancel", finishPointer);
+    host.removeEventListener("contextmenu", blockContextMenu, true);
+    host.removeEventListener("auxclick", blockSecondaryClick, true);
+    host.removeEventListener("mousedown", blockSecondaryClick, true);
+    host.removeEventListener("mouseup", blockSecondaryClick, true);
+    resumeDragPan();
+    host.style.cursor = "";
+  };
+}
+
 export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true, preferCompat: _legacyPreferCompat = false }: Props) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
@@ -222,6 +418,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     let readinessTimer: number | null = null;
     let compatPreviewTimer: number | null = null; // legacy watchdog name: now triggers a harmless resize, never fake 3D.
     let resizeObserver: ResizeObserver | null = null;
+    let manualCameraCleanup: ManualCameraCleanup | null = null;
     if (safePoints.length < 2) { setStatus("error"); setError(pickText(lang, "Tracé insuffisant pour la 3D", "Not enough route points for 3D", "No hay suficientes puntos para 3D")); return; }
     setStatus("loading");
     setError("");
@@ -259,18 +456,17 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         maxTileCacheSize: fullscreen ? 80 : 48,
       });
       mapRef.current = map;
-      // Explicitly enable every native MapLibre navigation handler. Mouse:
-      // left-drag pans, right-drag / Ctrl+drag rotates and tilts, wheel zooms.
-      // Touch: one finger pans, pinch zooms/rotates, two-finger vertical drag tilts.
+      // Keep native pan/zoom, but own rotation/pitch gestures ourselves. This
+      // avoids browser/app conflicts where right-click was interpreted as Back.
       try { map.dragPan?.enable?.(); } catch {}
-      try { map.dragRotate?.enable?.(); } catch {}
+      try { map.dragRotate?.disable?.(); } catch {}
       try { map.scrollZoom?.enable?.(); } catch {}
-      try { map.touchZoomRotate?.enable?.(); } catch {}
-      try { map.touchZoomRotate?.enableRotation?.(); } catch {}
-      try { map.touchPitch?.enable?.(); } catch {}
+      try { map.touchZoomRotate?.disable?.(); } catch {}
+      try { map.touchPitch?.disable?.(); } catch {}
       try { map.keyboard?.enable?.(); } catch {}
       try { map.doubleClickZoom?.enable?.(); } catch {}
       try { map.getCanvas().style.touchAction = "none"; } catch {}
+      manualCameraCleanup = bindManualCameraControls(map, host);
       readinessTimer = window.setTimeout(() => {
         if (disposed || status === "ready") return;
         setError(pickText(lang, "Le moteur 3D ne répond pas. Revenez en 2D puis réessayez.", "3D engine is not responding. Return to 2D and try again.", "El motor 3D no responde. Vuelve a 2D e inténtalo de nuevo."));
@@ -367,6 +563,8 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       if (readinessTimer != null) window.clearTimeout(readinessTimer);
       if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
       resizeObserver?.disconnect();
+      manualCameraCleanup?.();
+      manualCameraCleanup = null;
       if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
       replayFrameRef.current = null;
       routeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
@@ -506,7 +704,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
 
       {routeName ? <div className="running-map-route-name" style={{ position: "absolute", left: "50%", top: 10, transform: "translateX(-50%)", zIndex: 10, maxWidth: "52%", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.70)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.8)", fontSize: 7, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none", backdropFilter: "blur(10px)" }}>{routeName}</div> : null}
       <div className="running-map-camera-help" style={{ position: "absolute", right: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 14, maxWidth: "52%", padding: "5px 7px", borderRadius: 10, background: "rgba(5,8,13,.74)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.66)", fontSize: 6.6, fontWeight: 800, lineHeight: 1.25, pointerEvents: "none", backdropFilter: "blur(10px)", textAlign: "right" }}>
-        {pickText(lang, "Souris : glisser = déplacer · clic droit = tourner / incliner · molette = zoom · tactile : 2 doigts = tourner / incliner", "Mouse: drag = pan · right-drag = rotate / tilt · wheel = zoom · touch: 2 fingers = rotate / tilt", "Ratón: arrastrar = mover · botón derecho = girar / inclinar · rueda = zoom · táctil: 2 dedos = girar / inclinar")}
+        {pickText(lang, "Souris : gauche = déplacer · clic droit + glisser = rotation 360° / inclinaison · molette = zoom · tactile : 1 doigt = déplacer · 2 doigts = tourner / incliner / zoomer", "Mouse: left-drag = pan · right-drag = 360° rotate / tilt · wheel = zoom · touch: 1 finger = pan · 2 fingers = rotate / tilt / zoom", "Ratón: izquierdo = mover · derecho + arrastrar = giro 360° / inclinación · rueda = zoom · táctil: 1 dedo = mover · 2 dedos = girar / inclinar / zoom") }
       </div>
     </> : null}
   </div>;

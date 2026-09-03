@@ -48,3 +48,6 @@ var/fit-awena/
 
 # Theme texture recovery cache (restored from Git history, never commit)
 .mss-theme-restore/
+
+# Temporary Cloudflare content-pack publish build (never commit)
+.mss-content-packs-build/

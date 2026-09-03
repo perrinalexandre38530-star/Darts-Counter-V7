@@ -3,7 +3,10 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
-const out = path.join(root, 'content-packs-dist');
+const sourceArg = process.argv.find((arg) => arg.startsWith('--source='));
+const sourceRel = sourceArg ? sourceArg.slice('--source='.length).trim() : 'content-packs-dist';
+const out = path.resolve(root, sourceRel || 'content-packs-dist');
+if (out !== root && !out.startsWith(root + path.sep)) throw new Error('Content-pack source must stay inside the project directory.');
 const bucket = process.env.MSS_CONTENT_PACK_BUCKET || 'dart-scans';
 const prefix = (process.env.MSS_CONTENT_PACK_PREFIX || 'mss-content-packs/v1').replace(/^\/+|\/+$/g, '');
 const dryRun = process.argv.includes('--dry-run');
@@ -84,7 +87,8 @@ function put(key, file, immutable = true) {
   runWrangler(args, `Upload failed: ${key}`);
 }
 
-if (!fs.existsSync(out)) throw new Error(`Missing ${out}; run npm run content-packs:prepare first.`);
+if (!fs.existsSync(out)) throw new Error(`Missing ${out}; prepare the selected content-pack source first.`);
+console.log(`Pack source: ${path.relative(root, out) || '.'}`);
 const packs = fs.readdirSync(out)
   .filter((name) => fs.statSync(path.join(out, name)).isDirectory())
   .filter((name) => !only || only.has(name))
