@@ -121,7 +121,11 @@ export async function cloudRemoveFriend(userId: string) {
 
 
 export async function cloudCommunityHeartbeat(status: "online" | "away" | "offline" = "online") {
-  const { data, error } = await supabase.rpc("ms_community_heartbeat", { p_status: status } as any);
+  // Compatibilité backend : certaines instances Supabase n'ont pas encore reçu
+  // la migration ms_community_heartbeat (2026-09-02). ms_update_presence existe
+  // depuis la première version ONLINE et met à jour la même table ms_presence.
+  // Cela évite un POST 404 toutes les 60 s et garde la présence fonctionnelle.
+  const { data, error } = await supabase.rpc("ms_update_presence", { p_status: status } as any);
   if (error) rpcError(error, "Impossible de mettre à jour l'activité communautaire.");
   return data;
 }

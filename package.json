@@ -133,7 +133,9 @@
     "fit:awena:steps:run": "node ./tools/run-comfyui-awena-steps.mjs",
     "test:fit-awena-canonical": "node ./tools/test-fit-awena-canonical-v114.mjs",
     "fit:awena:sync": "node ./tools/sync-fit-awena-state.mjs",
-    "test:fit-awena-steps-local": "node ./tools/test-fit-awena-steps-local-v115.mjs"
+    "test:fit-awena-steps-local": "node ./tools/test-fit-awena-steps-local-v115.mjs",
+    "themes:restore": "node ./tools/restore-theme-textures-from-git.mjs",
+    "themes:repair-pack": "npm run themes:restore && npm run content-packs:prepare && node ./tools/upload-content-packs.mjs --only=theme-textures"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

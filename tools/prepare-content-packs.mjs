@@ -169,18 +169,32 @@ async function prepareCards() {
 
 async function prepareThemes() {
   const srcRoot = path.join(ROOT, 'public', 'theme-textures');
+  const restoredRoot = path.join(ROOT, '.mss-theme-restore', 'theme-textures');
   const outRoot = path.join(OUT, 'theme-textures');
-  const jobs = [];
-  for (const src of walk(srcRoot)) {
-    const rel = posix(path.relative(srcRoot, src));
-    const ext = path.extname(src).toLowerCase();
-    if (ext === '.webp') {
-      jobs.push({ src, rel, kind: 'copy' });
-    } else if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
-      jobs.push({ src, rel: rel.replace(/\.(png|jpe?g)$/i, '.webp'), kind: 'webp' });
-    } else if (ext === '.svg') {
-      jobs.push({ src, rel, kind: 'copy' });
+  const sources = [srcRoot, restoredRoot].filter((dir) => fs.existsSync(dir));
+  const byRel = new Map();
+  for (const root of sources) {
+    for (const src of walk(root)) {
+      const rel = posix(path.relative(root, src));
+      if (!byRel.has(rel)) byRel.set(rel, src);
     }
+  }
+
+  // Bloque désormais la génération d'un pack incomplet : c'est précisément ce qui
+  // avait supprimé 82 textures tout en laissant les thèmes les référencer.
+  const themeSource = fs.readFileSync(path.join(ROOT, 'src', 'theme', 'themePresets.ts'), 'utf8');
+  const required = [...new Set([...themeSource.matchAll(/\/theme-textures\/([^)'"\s,]+)/g)].map((m) => m[1]))].sort();
+  const missing = required.filter((rel) => !byRel.has(rel));
+  if (missing.length) {
+    throw new Error(`Theme pack incomplet: ${missing.length} texture(s) manquante(s). Lance d'abord: npm run themes:restore\n${missing.join('\n')}`);
+  }
+
+  const jobs = [];
+  for (const [rel, src] of byRel) {
+    const ext = path.extname(src).toLowerCase();
+    if (ext === '.webp') jobs.push({ src, rel, kind: 'copy' });
+    else if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') jobs.push({ src, rel: rel.replace(/\.(png|jpe?g)$/i, '.webp'), kind: 'webp' });
+    else if (ext === '.svg') jobs.push({ src, rel, kind: 'copy' });
   }
   await runPool(jobs, async (job) => {
     const dest = path.join(outRoot, job.rel);

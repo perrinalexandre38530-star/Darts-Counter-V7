@@ -45,3 +45,6 @@ android/upload-keystore.jks
 
 # FIT PERF AWENA batch working files (generated locally)
 var/fit-awena/
+
+# Theme texture recovery cache (restored from Git history, never commit)
+.mss-theme-restore/
