@@ -7,11 +7,7 @@ import type { GeoPoint } from "../../activity/activityTypes";
 import { outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
 import "./runningResponsive.css";
 
-const MAPLIBRE_VERSION = "5.12.0";
-const MAPLIBRE_MODULES = [
-  `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
-  `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.mjs`,
-];
+const MAPLIBRE_VERSION = "5.24.0";
 const MAPLIBRE_SCRIPTS = [
   `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`,
   `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`,
@@ -20,11 +16,9 @@ const MAPLIBRE_CSS = [
   `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
   `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
 ];
-// Mapterhorn publishes 512px Terrarium DEM tiles directly. Using the XYZ
-// endpoint avoids a TileJSON metadata request that could keep MapLibre's
-// initial style in a permanent loading state inside Android WebView/PWA.
+const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+// Mapterhorn publishes public 512px Terrarium DEM tiles directly.
 const TERRAIN_TILES = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp";
-const BASE_MAP_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 type MapLibreGlobal = any;
 
@@ -49,25 +43,30 @@ type Props = {
   onPlaceSelect?: (place: OutdoorRoutePlace) => void;
   onFallback2D?: () => void;
   showReplay?: boolean;
-  preferCompat?: boolean; // Legacy prop kept for caller compatibility; real 3D is always attempted.
+  preferCompat?: boolean;
 };
 
-function importWithTimeout(url: string, timeoutMs: number): Promise<MapLibreGlobal> {
-  return Promise.race([
-    import(/* @vite-ignore */ url),
-    new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error(`MapLibre timeout: ${url}`)), timeoutMs)),
-  ]);
+function ensureMapLibreCss() {
+  if (document.querySelector(`link[data-mss-maplibre="${MAPLIBRE_VERSION}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = MAPLIBRE_CSS[0];
+  link.dataset.mssMaplibre = MAPLIBRE_VERSION;
+  link.addEventListener("error", () => {
+    if (link.href !== MAPLIBRE_CSS[1]) link.href = MAPLIBRE_CSS[1];
+  }, { once: true });
+  document.head.appendChild(link);
 }
 
 function loadClassicScript(url: string, timeoutMs: number): Promise<MapLibreGlobal> {
   return new Promise((resolve, reject) => {
-    if (window.maplibregl) { resolve(window.maplibregl); return; }
+    if (window.maplibregl?.Map) { resolve(window.maplibregl); return; }
     const existing = document.querySelector(`script[data-mss-maplibre-src="${url}"]`) as HTMLScriptElement | null;
     const script = existing || document.createElement("script");
     const timer = window.setTimeout(() => reject(new Error(`MapLibre script timeout: ${url}`)), timeoutMs);
     const finish = () => {
       window.clearTimeout(timer);
-      if (window.maplibregl) resolve(window.maplibregl);
+      if (window.maplibregl?.Map) resolve(window.maplibregl);
       else reject(new Error(`MapLibre global missing: ${url}`));
     };
     script.addEventListener("load", finish, { once: true });
@@ -75,45 +74,38 @@ function loadClassicScript(url: string, timeoutMs: number): Promise<MapLibreGlob
     if (!existing) {
       script.src = url;
       script.async = true;
-      script.crossOrigin = "anonymous";
+      // Intentionally no crossOrigin attribute: classic scripts do not require
+      // CORS headers and this avoids the CDN failure seen on Pages/WebView.
       script.dataset.mssMaplibreSrc = url;
       document.head.appendChild(script);
     }
   });
 }
 
-function loadMapLibre(): Promise<MapLibreGlobal> {
-  if (typeof window === "undefined") return Promise.reject(new Error("MapLibre unavailable"));
-  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+async function loadMapLibre(): Promise<MapLibreGlobal> {
+  if (typeof window === "undefined") throw new Error("MapLibre unavailable");
+  if (window.maplibregl?.Map) return window.maplibregl;
   if (window.__mssMapLibrePromise) return window.__mssMapLibrePromise;
-
-  if (!document.querySelector(`link[data-mss-maplibre="${MAPLIBRE_VERSION}"]`)) {
-    // CSS is not required for WebGL rendering, so try both CDNs without making
-    // map readiness depend on either stylesheet.
-    for (const href of MAPLIBRE_CSS) {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = href;
-      link.dataset.mssMaplibre = MAPLIBRE_VERSION;
-      link.crossOrigin = "anonymous";
-      document.head.appendChild(link);
+  ensureMapLibreCss();
+  window.__mssMapLibrePromise = (async () => {
+    let lastError: unknown = null;
+    for (const url of MAPLIBRE_SCRIPTS) {
+      try {
+        const maplibregl = await loadClassicScript(url, 7000);
+        try { maplibregl.setMaxParallelImageRequests?.(8); } catch {}
+        return maplibregl;
+      } catch (error) {
+        lastError = error;
+      }
     }
-  }
-
-  const esm = Promise.any(MAPLIBRE_MODULES.map((url) => importWithTimeout(url, 4200)));
-  const classic = Promise.any(MAPLIBRE_SCRIPTS.map((url) => loadClassicScript(url, 5200)));
-  window.__mssMapLibrePromise = Promise.any([esm, classic]).then((module) => {
-    const resolved = (module as any)?.Map ? module : window.maplibregl || module;
-    window.maplibregl = resolved;
-    return resolved;
-  }).catch((error) => {
-    // Do not cache a transient CDN/network failure forever. A later 3D opening
-    // can retry MapLibre while the embedded renderer remains immediately usable.
+    throw lastError || new Error("MapLibre unavailable");
+  })().catch((error) => {
     window.__mssMapLibrePromise = undefined;
     throw error;
   });
   return window.__mssMapLibrePromise;
 }
+
 function routeBounds(points: GeoPoint[]) {
   let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
   for (const point of points) {
@@ -190,7 +182,8 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   const mapRef = React.useRef<any>(null);
   const maplibreRef = React.useRef<any>(null);
   const activeMarkerRef = React.useRef<any>(null);
-  const staticMarkersRef = React.useRef<any[]>([]);
+  const routeMarkersRef = React.useRef<any[]>([]);
+  const placeMarkersRef = React.useRef<any[]>([]);
   const replayFrameRef = React.useRef<number | null>(null);
   const lastCameraAtRef = React.useRef(0);
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
@@ -236,22 +229,12 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       if (disposed || !hostRef.current) return;
       maplibreRef.current = maplibregl;
       const first = safePoints[0];
-      // Important: start with a lightweight raster style only. DEM sources are
-      // added AFTER the base map load, so a slow terrain server can never block
-      // MapLibre's initial render in Android WebView/PWA.
-      const style = {
-        version: 8,
-        sources: {
-          baseMap: { type: "raster", tiles: [BASE_MAP_TILES], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" },
-        },
-        layers: [
-          { id: "base-map", type: "raster", source: "baseMap", paint: { "raster-saturation": .08, "raster-contrast": .05, "raster-brightness-min": .08, "raster-brightness-max": .96 } },
-        ],
-      } as any;
-
+      // Use OpenFreeMap's production vector style instead of hitting the public
+      // OpenStreetMap raster tile server directly. This removes the 429 bursts
+      // seen when the 3D camera loads many tiles at once.
       const map = new maplibregl.Map({
         container: hostRef.current,
-        style,
+        style: OPENFREEMAP_STYLE,
         center: [first.lon, first.lat],
         zoom: 13,
         pitch: 62,
@@ -261,6 +244,9 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         attributionControl: false,
         cooperativeGestures: false,
         canvasContextAttributes: { antialias: true },
+        refreshExpiredTiles: false,
+        fadeDuration: 0,
+        maxTileCacheSize: fullscreen ? 80 : 48,
       });
       mapRef.current = map;
       readinessTimer = window.setTimeout(() => {
@@ -282,7 +268,10 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         try {
           if (!map.getSource("terrainSource")) map.addSource("terrainSource", { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" });
           if (!map.getSource("hillshadeSource")) map.addSource("hillshadeSource", { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" });
-          if (!map.getLayer("terrain-hillshade")) map.addLayer({ id: "terrain-hillshade", type: "hillshade", source: "hillshadeSource", paint: { "hillshade-exaggeration": .58, "hillshade-shadow-color": "#0c1118", "hillshade-highlight-color": "#f5f7fb", "hillshade-accent-color": "#657482" } });
+          if (!map.getLayer("terrain-hillshade")) {
+            const firstSymbol = map.getStyle()?.layers?.find((layer: any) => layer.type === "symbol")?.id;
+            map.addLayer({ id: "terrain-hillshade", type: "hillshade", source: "hillshadeSource", paint: { "hillshade-exaggeration": .48, "hillshade-shadow-color": "#0c1118", "hillshade-highlight-color": "#f5f7fb", "hillshade-accent-color": "#657482" } }, firstSymbol);
+          }
           map.setTerrain({ source: "terrainSource", exaggeration: 1.35 });
         } catch (terrainError: any) {
           // Keep the real MapLibre map visible even if individual DEM tiles fail.
@@ -296,28 +285,22 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
           map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", paint: { "line-color": ["get", "color"], "line-width": 5.4, "line-opacity": 1 } });
         } catch {}
 
-        staticMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
-        staticMarkersRef.current = [];
+        routeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
+        routeMarkersRef.current = [];
         const startEl = markerElement("🚩", "#42ef7e", pickText(lang, "Départ", "Start", "Salida"), 32);
         const endEl = markerElement("🏁", "#ff5668", pickText(lang, "Arrivée", "Finish", "Llegada"), 32);
-        staticMarkersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([safePoints[0].lon, safePoints[0].lat]).addTo(map));
+        routeMarkersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([safePoints[0].lon, safePoints[0].lat]).addTo(map));
         const last = safePoints[safePoints.length - 1];
-        staticMarkersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([last.lon, last.lat]).addTo(map));
+        routeMarkersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([last.lon, last.lat]).addTo(map));
 
         for (let km = 1; km * 1000 < totalDistanceM; km += 1) {
           const index = indexAtDistance(distances, km * 1000);
           const point = safePoints[index];
           if (!point) continue;
           const el = markerElement(String(km), accent, `KM ${km}`, 24);
-          staticMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([point.lon, point.lat]).addTo(map));
+          routeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([point.lon, point.lat]).addTo(map));
         }
 
-        for (const place of places.slice(0, fullscreen ? 18 : 10)) {
-          const el = markerElement(outdoorRoutePlaceIcon(place.category), "rgba(255,255,255,.86)", place.name, 30);
-          el.style.cursor = "pointer";
-          el.addEventListener("click", (event) => { event.stopPropagation(); onPlaceSelect?.(place); });
-          staticMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([place.lon, place.lat]).addTo(map));
-        }
 
         setStatus("ready");
         window.setTimeout(() => { try { map.resize(); } catch {}; fitRoute(64); }, 60);
@@ -328,8 +311,10 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         if (/webgl|context lost|failed to initialize/i.test(message) && !disposed) {
           setError(message || "WebGL unavailable");
           setStatus("error");
+          return;
         }
-        // Raster/DEM tile errors are non-fatal and must not destroy the map.
+        // Once the style is alive, isolated vector/DEM tile errors are non-fatal.
+        // Before first load, keep the watchdog responsible for the fallback UI.
       });
 
       if (typeof ResizeObserver !== "undefined") {
@@ -350,14 +335,34 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       resizeObserver?.disconnect();
       if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
       replayFrameRef.current = null;
-      staticMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
-      staticMarkersRef.current = [];
+      routeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
+      routeMarkersRef.current = [];
+      placeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
+      placeMarkersRef.current = [];
       try { activeMarkerRef.current?.remove(); } catch {}
       activeMarkerRef.current = null;
       try { mapRef.current?.remove(); } catch {}
       mapRef.current = null;
     };
-  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, onPlaceSelect, performance.routeEdges, places, safePoints, distances, totalDistanceM]);
+  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, performance.routeEdges, safePoints, distances, totalDistanceM]);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const maplibregl = maplibreRef.current;
+    placeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
+    placeMarkersRef.current = [];
+    if (!map || !maplibregl || status !== "ready") return;
+    for (const place of places.slice(0, fullscreen ? 18 : 10)) {
+      const el = markerElement(outdoorRoutePlaceIcon(place.category), "rgba(255,255,255,.86)", place.name, 30);
+      el.style.cursor = "pointer";
+      el.addEventListener("click", (event) => { event.stopPropagation(); onPlaceSelect?.(place); });
+      try { placeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([place.lon, place.lat]).addTo(map)); } catch {}
+    }
+    return () => {
+      placeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
+      placeMarkersRef.current = [];
+    };
+  }, [fullscreen, onPlaceSelect, places, status]);
 
   React.useEffect(() => {
     const map = mapRef.current;

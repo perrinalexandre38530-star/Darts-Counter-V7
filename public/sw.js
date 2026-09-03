@@ -1,7 +1,10 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-09-01-content-packs-v5";
+const SW_VERSION = "dc-sw-2026-09-02-maplibre-terrain-v6";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 const CONTENT_PACK_CACHE = "mss-content-packs-v3";
+const MAP_TILE_CACHE = "mss-map-tiles-v1";
+const MAP_TILE_CACHE_LIMIT = 360;
+let mapTileWriteCount = 0;
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -11,7 +14,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     try {
       const names = await caches.keys();
-      await Promise.all(names.filter((name) => name !== SW_VERSION && name !== CONTENT_PACK_CACHE).map((name) => caches.delete(name).catch(() => false)));
+      await Promise.all(names.filter((name) => name !== SW_VERSION && name !== CONTENT_PACK_CACHE && name !== MAP_TILE_CACHE).map((name) => caches.delete(name).catch(() => false)));
     } catch {}
     await self.clients.claim();
   })());
@@ -83,6 +86,41 @@ async function fetchFullContentPack(url, cache) {
   return response;
 }
 
+function isMapTileRequest(url) {
+  if (!url) return false;
+  const host = String(url.hostname || "").toLowerCase();
+  if (host === "tile.openstreetmap.org" || host === "tile.opentopomap.org" || host === "tile.waymarkedtrails.org" || host === "tiles.mapterhorn.com") return true;
+  return false;
+}
+
+async function pruneMapTileCache(cache) {
+  mapTileWriteCount += 1;
+  if (mapTileWriteCount % 24 !== 0) return;
+  try {
+    const keys = await cache.keys();
+    const extra = keys.length - MAP_TILE_CACHE_LIMIT;
+    if (extra > 0) await Promise.all(keys.slice(0, extra).map((key) => cache.delete(key).catch(() => false)));
+  } catch {}
+}
+
+async function serveMapTileRequest(request) {
+  const cache = await caches.open(MAP_TILE_CACHE);
+  const cached = await cache.match(request, { ignoreVary: true });
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response && (response.ok || response.type === "opaque")) {
+      try {
+        await cache.put(request, response.clone());
+        void pruneMapTileCache(cache);
+      } catch {}
+    }
+    return response;
+  } catch {
+    return cached || new Response("", { status: 503, statusText: "Map tile unavailable" });
+  }
+}
+
 async function serveContentPackRequest(request) {
   const cache = await caches.open(CONTENT_PACK_CACHE);
   let response = await cache.match(request.url);
@@ -122,6 +160,10 @@ self.addEventListener("fetch", (event) => {
   const isContentPack = !!url && url.pathname.includes("/mss-content-packs/");
   if (isContentPack) {
     event.respondWith(serveContentPackRequest(event.request));
+    return;
+  }
+  if (isMapTileRequest(url)) {
+    event.respondWith(serveMapTileRequest(event.request));
     return;
   }
   event.respondWith(fetch(event.request).catch(async () => (await caches.match(event.request)) || new Response("", { status: 503, statusText: "Network unavailable" })));
