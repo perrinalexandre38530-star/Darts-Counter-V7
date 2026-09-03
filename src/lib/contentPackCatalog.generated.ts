@@ -563,92 +563,324 @@ export const CONTENT_PACK_CATALOG = {
     ]
   },
   "theme-textures": {
-    "version": "2026.09.01.3",
-    "totalBytes": 3820496,
+    "version": "2026.09.03.2",
+    "totalBytes": 31878408,
     "files": [
       {
+        "path": "abstract-amber-storm.webp",
+        "bytes": 229548
+      },
+      {
+        "path": "abstract-crimson-ice.webp",
+        "bytes": 389198
+      },
+      {
+        "path": "abstract-green-burst.webp",
+        "bytes": 674666
+      },
+      {
+        "path": "abstract-green-splash.webp",
+        "bytes": 347942
+      },
+      {
+        "path": "abstract-ice-red.webp",
+        "bytes": 561070
+      },
+      {
+        "path": "abstract-olive-canvas.webp",
+        "bytes": 225412
+      },
+      {
+        "path": "abstract-orange-flare.webp",
+        "bytes": 200308
+      },
+      {
+        "path": "abstract-orange-fusion.webp",
+        "bytes": 228946
+      },
+      {
+        "path": "abstract-orange-obsidian.webp",
+        "bytes": 562474
+      },
+      {
+        "path": "abstract-orange-rugged.webp",
+        "bytes": 306154
+      },
+      {
+        "path": "abstract-oxyd-blue.webp",
+        "bytes": 417058
+      },
+      {
+        "path": "abstract-patina.webp",
+        "bytes": 270168
+      },
+      {
+        "path": "abstract-purple-grunge.webp",
+        "bytes": 1173932
+      },
+      {
+        "path": "abstract-purple-nebula.webp",
+        "bytes": 648350
+      },
+      {
+        "path": "abstract-solar-dust.webp",
+        "bytes": 172524
+      },
+      {
+        "path": "abstract-solar-glow.webp",
+        "bytes": 246480
+      },
+      {
+        "path": "abstract-spectrum-dust.webp",
+        "bytes": 783086
+      },
+      {
+        "path": "abstract-turquoise-rust.webp",
+        "bytes": 467506
+      },
+      {
+        "path": "abstract-violet-ink.webp",
+        "bytes": 317406
+      },
+      {
+        "path": "abstract-violet-mur.webp",
+        "bytes": 1198818
+      },
+      {
+        "path": "abstract-violet-poster.webp",
+        "bytes": 495754
+      },
+      {
+        "path": "abstract-watercolor.webp",
+        "bytes": 145020
+      },
+      {
+        "path": "arcade-neon-pixels.webp",
+        "bytes": 152636
+      },
+      {
+        "path": "arcade-pixel-rose.webp",
+        "bytes": 199030
+      },
+      {
+        "path": "arcade-portail-bleu.webp",
+        "bytes": 40446
+      },
+      {
+        "path": "arcade-violet-matrix.webp",
+        "bytes": 66916
+      },
+      {
+        "path": "brushed-aluminium.webp",
+        "bytes": 471570
+      },
+      {
+        "path": "brushed-steel.webp",
+        "bytes": 1256228
+      },
+      {
+        "path": "citrus-gilded-ink.webp",
+        "bytes": 308284
+      },
+      {
+        "path": "citrus-jade-flow.webp",
+        "bytes": 180128
+      },
+      {
+        "path": "citrus-lime-aurora.webp",
+        "bytes": 221034
+      },
+      {
+        "path": "citrus-olive-marble.webp",
+        "bytes": 225656
+      },
+      {
+        "path": "citrus-volt-ambient.webp",
+        "bytes": 163234
+      },
+      {
+        "path": "citrus-volt-card.webp",
+        "bytes": 167320
+      },
+      {
+        "path": "citrus-volt-overlay.webp",
+        "bytes": 324974
+      },
+      {
+        "path": "citrus-volt-page.webp",
+        "bytes": 228666
+      },
+      {
+        "path": "copper-molten.webp",
+        "bytes": 51392
+      },
+      {
+        "path": "diamond-noir.webp",
+        "bytes": 1300638
+      },
+      {
+        "path": "factory-acier-fissure.webp",
+        "bytes": 243418
+      },
+      {
+        "path": "factory-acier-raye.webp",
+        "bytes": 365470
+      },
+      {
+        "path": "factory-argent-satine.webp",
+        "bytes": 101352
+      },
+      {
+        "path": "factory-atelier-grunge.webp",
+        "bytes": 258552
+      },
+      {
+        "path": "factory-brossage-pro.webp",
+        "bytes": 728326
+      },
+      {
+        "path": "factory-brume-argent.webp",
+        "bytes": 264392
+      },
+      {
+        "path": "factory-degrade-graphite.webp",
+        "bytes": 154316
+      },
+      {
+        "path": "factory-lames-metal.webp",
+        "bytes": 285464
+      },
+      {
+        "path": "factory-mur-industriel.webp",
+        "bytes": 266436
+      },
+      {
+        "path": "factory-plaques-decoupees.webp",
+        "bytes": 271426
+      },
+      {
+        "path": "factory-tole-givree.webp",
+        "bytes": 271288
+      },
+      {
+        "path": "fire-forge.webp",
+        "bytes": 269360
+      },
+      {
+        "path": "forged-titanium.webp",
+        "bytes": 536178
+      },
+      {
+        "path": "frame-emerald.webp",
+        "bytes": 4978
+      },
+      {
+        "path": "frame-metal.webp",
+        "bytes": 3992
+      },
+      {
+        "path": "frame-wood-gold.webp",
+        "bytes": 5284
+      },
+      {
+        "path": "gold-royal.webp",
+        "bytes": 141700
+      },
+      {
         "path": "graffiti-atelier-spray.webp",
-        "bytes": 204720
+        "bytes": 358216
       },
       {
         "path": "graffiti-beton-pastel.webp",
-        "bytes": 164542
+        "bytes": 284876
       },
       {
         "path": "graffiti-blackbook-riot.webp",
-        "bytes": 193516
+        "bytes": 305662
       },
       {
         "path": "graffiti-bleu-lilas.webp",
-        "bytes": 172614
+        "bytes": 306286
       },
       {
         "path": "graffiti-chaos-primaire.webp",
-        "bytes": 257672
+        "bytes": 438120
       },
       {
         "path": "graffiti-collage-chrome.webp",
-        "bytes": 287490
+        "bytes": 483474
       },
       {
         "path": "graffiti-eclat-cyan.webp",
-        "bytes": 57742
+        "bytes": 106068
       },
       {
         "path": "graffiti-explosion-blanche.webp",
-        "bytes": 54794
+        "bytes": 96368
       },
       {
         "path": "graffiti-line-love.webp",
-        "bytes": 157144
+        "bytes": 265344
       },
       {
         "path": "graffiti-mur-pop.webp",
-        "bytes": 206946
+        "bytes": 445792
       },
       {
         "path": "graffiti-peace-love.webp",
-        "bytes": 209044
+        "bytes": 361606
       },
       {
         "path": "graffiti-rose-hero.webp",
-        "bytes": 213346
+        "bytes": 381040
       },
       {
         "path": "graffiti-rouge-underground.webp",
-        "bytes": 31698
+        "bytes": 58492
       },
       {
         "path": "graffiti-ruelle.webp",
-        "bytes": 77042
+        "bytes": 143758
       },
       {
         "path": "graffiti-splash-acidule.webp",
-        "bytes": 215278
+        "bytes": 349894
       },
       {
         "path": "graffiti-tags-nocturnes.webp",
-        "bytes": 11410
+        "bytes": 24240
+      },
+      {
+        "path": "green-marble.webp",
+        "bytes": 23842
+      },
+      {
+        "path": "ice-crystal.webp",
+        "bytes": 265252
+      },
+      {
+        "path": "lava-core.webp",
+        "bytes": 64596
+      },
+      {
+        "path": "platinum-noir.webp",
+        "bytes": 38024
       },
       {
         "path": "postapoc-aube-des-ruines.webp",
-        "bytes": 80362
+        "bytes": 166762
       },
       {
         "path": "postapoc-avenue-silence.webp",
-        "bytes": 90086
+        "bytes": 160162
       },
       {
         "path": "postapoc-beton-gris.webp",
-        "bytes": 116450
+        "bytes": 230462
       },
       {
         "path": "postapoc-chute-finale.webp",
-        "bytes": 66572
-      },
-      {
-        "path": "postapoc-cracked-concrete.webp",
-        "bytes": 61296
+        "bytes": 127778
       },
       {
         "path": "postapoc-cracks-overlay.svg",
@@ -656,15 +888,15 @@ export const CONTENT_PACK_CATALOG = {
       },
       {
         "path": "postapoc-crepuscule-corbeau.webp",
-        "bytes": 68824
+        "bytes": 147588
       },
       {
         "path": "postapoc-eden-perdu.webp",
-        "bytes": 108148
+        "bytes": 215344
       },
       {
         "path": "postapoc-horizon-cendre.webp",
-        "bytes": 89486
+        "bytes": 200480
       },
       {
         "path": "postapoc-panel-concrete.svg",
@@ -672,19 +904,107 @@ export const CONTENT_PACK_CATALOG = {
       },
       {
         "path": "postapoc-pluie-neon.webp",
-        "bytes": 231994
-      },
-      {
-        "path": "postapoc-rusted-steel.webp",
-        "bytes": 177118
+        "bytes": 389490
       },
       {
         "path": "postapoc-tour-brisee.webp",
-        "bytes": 190592
+        "bytes": 344120
       },
       {
         "path": "postapoc-worn-frame.webp",
-        "bytes": 20548
+        "bytes": 22870
+      },
+      {
+        "path": "prestige-diamant-brume.webp",
+        "bytes": 63958
+      },
+      {
+        "path": "prestige-diamant-pur.webp",
+        "bytes": 48774
+      },
+      {
+        "path": "prestige-diamant-rose.webp",
+        "bytes": 93220
+      },
+      {
+        "path": "prestige-emeraude-lumiere.webp",
+        "bytes": 95152
+      },
+      {
+        "path": "prestige-emeraude-royale.webp",
+        "bytes": 148274
+      },
+      {
+        "path": "prestige-or-brut.webp",
+        "bytes": 766986
+      },
+      {
+        "path": "prestige-or-facettes.webp",
+        "bytes": 104354
+      },
+      {
+        "path": "prestige-or-fusion.webp",
+        "bytes": 539172
+      },
+      {
+        "path": "prestige-or-patine.webp",
+        "bytes": 568974
+      },
+      {
+        "path": "prestige-or-soie.webp",
+        "bytes": 594948
+      },
+      {
+        "path": "prestige-or-velours.webp",
+        "bytes": 233384
+      },
+      {
+        "path": "prestige-quartz-dore.webp",
+        "bytes": 230362
+      },
+      {
+        "path": "prestige-saphir-cristal.webp",
+        "bytes": 255562
+      },
+      {
+        "path": "prestige-saphir-nuit.webp",
+        "bytes": 276568
+      },
+      {
+        "path": "prestige-saphir-royal.webp",
+        "bytes": 505574
+      },
+      {
+        "path": "pub-bois-violet.webp",
+        "bytes": 108590
+      },
+      {
+        "path": "pub-comptoir-vintage.webp",
+        "bytes": 136304
+      },
+      {
+        "path": "pub-scene-ambree.webp",
+        "bytes": 52618
+      },
+      {
+        "path": "street-acier-urbain.webp",
+        "bytes": 93378
+      },
+      {
+        "path": "street-mur-street-art.webp",
+        "bytes": 341918
+      },
+      {
+        "path": "street-piste-colors.webp",
+        "bytes": 36946
+      },
+      {
+        "path": "street-route-urbex.webp",
+        "bytes": 158500
+      },
+      {
+        "path": "wood-noble.webp",
+        "bytes": 22960
       }
     ]
   },
