@@ -56,6 +56,7 @@ import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel
 import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
 import AudioSettingsPanel from "../components/settings/AudioSettingsPanel";
 import ContentPacksSettingsPanel from "../components/settings/ContentPacksSettingsPanel";
+import ThemeRealPagePreview from "../components/settings/ThemeRealPagePreview";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { getAudioPreferences } from "../lib/audioPreferences";
 import { getKeepScreenAwakePreference, setKeepScreenAwakePreference, subscribeKeepScreenAwakePreference } from "../lib/keepAwake";
@@ -1005,199 +1006,22 @@ function ThemePreviewBlock({
   locked?: boolean;
   onOpenShop?: () => void;
 }) {
-  const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
-  const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
-  const [pageIndex, setPageIndex] = React.useState(0);
-  const [frameReady, setFrameReady] = React.useState(false);
-
-  const previewPages = React.useMemo(() => [
-    { tab: "home", label: "ACCUEIL" },
-    { tab: "games", label: "ACTIVITÉ / JEUX" },
-    { tab: "profiles", label: "PROFILS" },
-    { tab: "stats", label: "STATISTIQUES" },
-    { tab: "online", label: "EN LIGNE" },
-  ] as const, []);
-
-  const activePage = previewPages[pageIndex] || previewPages[0];
-
-  const initialFrameSrc = React.useMemo(() => {
-    if (!preview || typeof window === "undefined") return "";
-    const url = new URL(window.location.pathname || "/", window.location.origin);
-    url.searchParams.set("dcThemePreview", "1");
-    url.searchParams.set("dcThemePreviewTheme", preview.id);
-    url.searchParams.set("dcThemePreviewTab", activePage.tab);
-    return url.toString();
-  // La première URL ne sert qu'à amorcer l'iframe. Les changements suivants passent par postMessage.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Boolean(preview)]);
-
-  const postPreviewState = React.useCallback((tabOverride?: string) => {
-    const target = iframeRef.current?.contentWindow;
-    if (!target || !preview) return;
-    const tab = tabOverride || activePage.tab;
-    target.postMessage({ type: "dc-theme-preview-theme", themeId: preview.id }, window.location.origin);
-    target.postMessage({ type: "dc-theme-preview-route", tab }, window.location.origin);
-  }, [preview?.id, activePage.tab]);
-
-  React.useEffect(() => {
-    if (!preview) return;
-    setPageIndex(0);
-  }, [preview?.id]);
-
-  React.useEffect(() => {
-    if (!preview || !frameReady) return;
-    postPreviewState(activePage.tab);
-    const frameWindow = iframeRef.current?.contentWindow;
-    const topTimer = window.setTimeout(() => {
-      try { frameWindow?.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
-    }, 80);
-    const scrollTimer = window.setTimeout(() => {
-      try { frameWindow?.scrollTo({ top: 170, left: 0, behavior: "smooth" }); } catch {}
-    }, 2500);
-    return () => {
-      window.clearTimeout(topTimer);
-      window.clearTimeout(scrollTimer);
-    };
-  }, [frameReady, activePage.tab, preview?.id, postPreviewState]);
-
-  React.useEffect(() => {
-    if (!preview || previewPages.length < 2) return;
-    const timer = window.setInterval(() => {
-      setPageIndex((current) => (current + 1) % previewPages.length);
-    }, 5200);
-    return () => window.clearInterval(timer);
-  }, [preview?.id, previewPages]);
-
-  if (!preview) {
-    return (
-      <div
-        style={{
-          minHeight: 190,
-          borderRadius: 16,
-          border: `1px solid ${theme.borderSoft}`,
-          background: "#02050a",
-          overflow: "hidden",
-          position: "relative",
-          display: "grid",
-          placeItems: "center",
-          padding: 8,
-        }}
-      >
-        <div style={{ textAlign: "center", padding: "0 16px" }}>
-          <div style={{ color: "#fff", fontSize: 15, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase" }}>THÈME</div>
-          <div style={{ marginTop: 3, color: "rgba(255,255,255,.68)", fontSize: 9, fontWeight: 850 }}>Choisis un thème pour lancer l’aperçu réel.</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      style={{
-        width: "100%",
-        borderRadius: 16,
-        border: `1px solid ${preview.primary}66`,
-        background: "#02050a",
-        overflow: "hidden",
-        position: "relative",
-        boxShadow: `0 16px 34px rgba(0,0,0,.58), 0 0 18px ${preview.primary}18`,
-        isolation: "isolate",
-      }}
-    >
-      <div
-        style={{
-          minHeight: 24,
-          padding: "4px 8px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          background: "#050812",
-          borderBottom: `1px solid ${preview.primary}38`,
-        }}
-      >
-        <div style={{ color: "rgba(255,255,255,.64)", fontSize: 6.8, fontWeight: 1000, letterSpacing: .65 }}>APERÇU RÉEL</div>
-        <div style={{ color: preview.primary, fontSize: 7.4, fontWeight: 1000, letterSpacing: .45 }}>{activePage.label}</div>
-      </div>
-
-      <div
-        style={{
-          height: 330,
-          position: "relative",
-          overflow: "hidden",
-          background: "#02050a",
-        }}
-      >
-        <iframe
-          ref={iframeRef}
-          title={`Aperçu réel ${activePage.label}`}
-          src={initialFrameSrc}
-          onLoad={() => {
-            setFrameReady(true);
-            window.setTimeout(() => postPreviewState(activePage.tab), 50);
-          }}
-          tabIndex={-1}
-          aria-hidden="true"
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "block",
-            border: 0,
-            background: "#02050a",
-            pointerEvents: "none",
-          }}
-        />
-        {!frameReady ? (
-          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#02050a", color: preview.primary, fontSize: 8, fontWeight: 1000 }}>
-            CHARGEMENT DE LA PAGE…
-          </div>
-        ) : null}
-      </div>
-
-      <div
-        style={{
-          minHeight: 24,
-          padding: "4px 8px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 5,
-          background: "#050812",
-          borderTop: `1px solid ${preview.primary}2f`,
-        }}
-      >
-        {previewPages.map((item, index) => (
-          <button
-            key={item.tab}
-            type="button"
-            aria-label={`Afficher ${item.label}`}
-            onClick={() => setPageIndex(index)}
-            style={{
-              width: index === pageIndex ? 20 : 6,
-              height: 6,
-              borderRadius: 999,
-              border: 0,
-              padding: 0,
-              background: index === pageIndex ? preview.primary : "rgba(255,255,255,.18)",
-              boxShadow: index === pageIndex ? `0 0 8px ${preview.primary}88` : "none",
-              cursor: "pointer",
-            }}
-          />
-        ))}
-      </div>
-
-      {locked ? (
+    <div style={{ width: "100%", position: "relative", isolation: "isolate", background: "#02050a", borderRadius: 16 }}>
+      <ThemeRealPagePreview themeId={themeIdPreview} />
+      {locked && themeIdPreview ? (
         <button
           type="button"
           onClick={() => onOpenShop?.()}
           style={{
+            marginTop: 6,
             width: "100%",
-            minHeight: 27,
-            border: 0,
-            borderTop: `1px solid ${preview.primary}45`,
-            background: "#070b13",
-            color: preview.primary,
-            fontSize: 7.8,
+            minHeight: 28,
+            borderRadius: 9,
+            border: `1px solid ${theme.primary}88`,
+            background: theme.buttonBackground || theme.primary,
+            color: "#050712",
+            fontSize: 8.4,
             fontWeight: 1000,
             cursor: "pointer",
             textTransform: "uppercase",

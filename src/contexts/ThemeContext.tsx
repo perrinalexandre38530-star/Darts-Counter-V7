@@ -201,6 +201,69 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+
+export function ThemePreviewScope({
+  themeId,
+  children,
+  className,
+  style,
+}: {
+  themeId: ThemeId;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const theme = React.useMemo<AppTheme>(() => THEMES.find((item) => item.id === themeId) ?? THEMES[0], [themeId]);
+  const noopSetThemeId = React.useCallback((_id: ThemeId) => {}, []);
+  const value = React.useMemo<ThemeContextValue>(() => ({ theme, themeId: theme.id, setThemeId: noopSetThemeId, themes: THEMES }), [theme, noopSetThemeId]);
+
+  const glow1 = rgba(theme.primary, 0.18);
+  const glow2 = rgba(theme.accent2 || theme.primary, 0.11);
+  const glassTop = rgba(theme.card, 0.78);
+  const glassBottom = rgba(theme.bg, 0.92);
+  const pageBackground = theme.pageBackground || `radial-gradient(900px 520px at 50% -14%, ${glow1}, transparent 62%), radial-gradient(680px 360px at 0% 28%, ${glow2}, transparent 62%), ${theme.bg}`;
+  const cardBackground = theme.cardBackground || `linear-gradient(180deg, ${glassTop}, ${glassBottom})`;
+  const vars: React.CSSProperties = {
+    background: pageBackground,
+    color: theme.text,
+    '--dc-accent': theme.primary,
+    '--dc-accent-soft': theme.accent1,
+    '--dc-text': theme.text,
+    '--dc-bg': theme.bg,
+    '--dc-card': theme.card,
+    '--bg': theme.bg,
+    '--bg-grad': pageBackground,
+    '--panel': theme.card,
+    '--panel-2': theme.bg,
+    '--glass': cardBackground,
+    '--dc-theme-ambient': theme.ambientOverlay || 'none',
+    '--dc-theme-ambient-opacity': String(theme.ambientOpacity ?? 0),
+    '--dc-theme-texture': theme.textureOverlay || 'none',
+    '--dc-theme-texture-opacity': String(theme.textureOpacity ?? 0),
+    '--dc-theme-texture-blend': theme.textureBlendMode || 'normal',
+    '--dc-theme-sheen': theme.surfaceSheen || 'none',
+    '--dc-theme-surface-shadow': theme.surfaceShadow || '0 20px 45px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)',
+    '--dc-theme-nav': theme.navBackground || 'linear-gradient(180deg, rgba(8,8,10,.55), rgba(8,8,10,.9))',
+    '--dc-theme-button': theme.buttonBackground || theme.primary,
+    '--dc-theme-frame': theme.frameOverlay || 'none',
+    '--dc-theme-frame-opacity': String(theme.frameOpacity ?? 0),
+    '--stroke': theme.borderSoft,
+    '--text': theme.text,
+    '--muted': theme.textSoft,
+    '--gold': theme.primary,
+    '--gold-2': theme.accent2 || theme.primary,
+    '--blue': theme.accent1 || theme.primary,
+    '--ring': `0 0 0 2px ${rgba(theme.primary, 0.34)}`,
+    ...style,
+  } as React.CSSProperties;
+
+  return (
+    <ThemeContext.Provider value={value}>
+      <div className={className} style={vars}>{children}</div>
+    </ThemeContext.Provider>
+  );
+}
+
 export function useTheme(): ThemeContextValue {
   const ctx = React.useContext(ThemeContext);
   if (!ctx) {
