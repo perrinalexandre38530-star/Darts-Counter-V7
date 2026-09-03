@@ -5,6 +5,7 @@ import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
+import { RUNNING_SATELLITE_TILES, loadRunningMapTheme, runningMapThemeIcon, runningMapThemeLabel, runningMapThemes, saveRunningMapTheme, type RunningMapTheme } from "./runningMapTheme";
 import "./runningResponsive.css";
 
 const MAPLIBRE_VERSION = "5.24.0";
@@ -44,6 +45,9 @@ type Props = {
   onFallback2D?: () => void;
   showReplay?: boolean;
   preferCompat?: boolean;
+  mapTheme?: RunningMapTheme;
+  onMapThemeChange?: (theme: RunningMapTheme) => void;
+  showStylePicker?: boolean;
 };
 
 function ensureMapLibreCss() {
@@ -175,6 +179,147 @@ function markerElement(content: string, border: string, title: string, size = 30
   el.style.color = "#fff";
   el.style.pointerEvents = "auto";
   return el;
+}
+
+
+type PaintSnapshot = Map<string, Record<string, unknown>>;
+
+const THEME_PAINT_PROPERTIES: Record<string, string[]> = {
+  background: ["background-color", "background-opacity"],
+  fill: ["fill-color", "fill-opacity", "fill-outline-color"],
+  line: ["line-color", "line-opacity"],
+  symbol: ["text-color", "text-halo-color", "text-halo-width", "text-opacity", "icon-opacity"],
+  circle: ["circle-color", "circle-opacity", "circle-stroke-color", "circle-stroke-opacity"],
+};
+
+function isMssMapLayer(id: string) {
+  return id.startsWith("mss-") || id === "terrain-hillshade";
+}
+
+function captureBasePaint(map: any): PaintSnapshot {
+  const snapshot: PaintSnapshot = new Map();
+  const layers = map.getStyle?.()?.layers || [];
+  for (const layer of layers) {
+    const id = String(layer?.id || "");
+    const type = String(layer?.type || "");
+    if (!id || isMssMapLayer(id)) continue;
+    const props = THEME_PAINT_PROPERTIES[type];
+    if (!props?.length) continue;
+    const row: Record<string, unknown> = {};
+    for (const prop of props) {
+      try { row[prop] = map.getPaintProperty(id, prop); } catch {}
+    }
+    snapshot.set(id, row);
+  }
+  return snapshot;
+}
+
+function restoreBasePaint(map: any, snapshot: PaintSnapshot) {
+  for (const [id, props] of snapshot.entries()) {
+    if (!map.getLayer?.(id)) continue;
+    for (const [prop, value] of Object.entries(props)) {
+      try { map.setPaintProperty(id, prop, value == null ? null : value); } catch {}
+    }
+  }
+}
+
+function layerPalette(theme: Exclude<RunningMapTheme, "tourist" | "satellite">, layer: any) {
+  const id = String(layer?.id || "").toLowerCase();
+  const type = String(layer?.type || "");
+  const water = /water|river|ocean|lake|stream/.test(id);
+  const green = /park|wood|forest|grass|green|landuse|nature|vegetation/.test(id);
+  const building = /building|house/.test(id);
+  const road = /road|street|highway|motorway|trunk|primary|secondary|tertiary|path|track/.test(id);
+  const boundary = /boundary|admin|border/.test(id);
+
+  if (theme === "night") {
+    if (type === "background") return { "background-color": "#07111b" };
+    if (type === "fill") return { "fill-color": water ? "#071c2b" : green ? "#10251e" : building ? "#18202a" : "#0b141e", "fill-opacity": .93 };
+    if (type === "line") return { "line-color": water ? "#28516b" : road ? "#536b80" : boundary ? "#685679" : "#334352", "line-opacity": road ? .9 : .72 };
+    if (type === "symbol") return { "text-color": "#e8f0f8", "text-halo-color": "#07111b", "text-halo-width": 1.35, "text-opacity": .96, "icon-opacity": .88 };
+    if (type === "circle") return { "circle-color": "#75c7dc", "circle-opacity": .82, "circle-stroke-color": "#07111b", "circle-stroke-opacity": .9 };
+  }
+
+  if (theme === "light") {
+    if (type === "background") return { "background-color": "#f6f8fb" };
+    if (type === "fill") return { "fill-color": water ? "#d9edf8" : green ? "#e3f0df" : building ? "#e6e8ec" : "#f4f5f7", "fill-opacity": .95 };
+    if (type === "line") return { "line-color": water ? "#a8cfdf" : road ? "#b7bec8" : boundary ? "#aeb5bf" : "#c8cdd4", "line-opacity": road ? .94 : .7 };
+    if (type === "symbol") return { "text-color": "#374151", "text-halo-color": "#ffffff", "text-halo-width": 1.4, "text-opacity": .98, "icon-opacity": .9 };
+    if (type === "circle") return { "circle-color": "#60839a", "circle-opacity": .78, "circle-stroke-color": "#ffffff", "circle-stroke-opacity": .92 };
+  }
+
+  if (theme === "illustrated") {
+    if (type === "background") return { "background-color": "#f1eadc" };
+    if (type === "fill") return { "fill-color": water ? "#a8cee2" : green ? "#bfd0a9" : building ? "#d8c7b0" : "#eee4d4", "fill-opacity": .94 };
+    if (type === "line") return { "line-color": water ? "#6fa7c2" : road ? "#81766d" : boundary ? "#9a86a5" : "#9f958a", "line-opacity": road ? .9 : .7 };
+    if (type === "symbol") return { "text-color": "#413a34", "text-halo-color": "#f7f0e4", "text-halo-width": 1.3, "text-opacity": .96, "icon-opacity": .88 };
+    if (type === "circle") return { "circle-color": "#7c6d62", "circle-opacity": .78, "circle-stroke-color": "#f7f0e4", "circle-stroke-opacity": .9 };
+  }
+
+  return {};
+}
+
+function ensureSatelliteLayer(map: any) {
+  try {
+    if (!map.getSource("mss-satellite-source")) {
+      map.addSource("mss-satellite-source", {
+        type: "raster",
+        tiles: [RUNNING_SATELLITE_TILES],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 19,
+        attribution: "Imagery © Esri",
+      });
+    }
+    if (!map.getLayer("mss-satellite")) {
+      const firstSymbol = map.getStyle?.()?.layers?.find((layer: any) => layer.type === "symbol")?.id;
+      map.addLayer({
+        id: "mss-satellite",
+        type: "raster",
+        source: "mss-satellite-source",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": .96, "raster-fade-duration": 0, "raster-resampling": "linear" },
+      }, firstSymbol);
+    }
+  } catch {}
+}
+
+function applyRunningMapTheme(map: any, theme: RunningMapTheme, snapshot: PaintSnapshot) {
+  if (!map || !snapshot.size) return;
+  // Always restore the original OpenFreeMap paint first. This keeps switching
+  // deterministic and avoids accumulating filters/overrides over time.
+  restoreBasePaint(map, snapshot);
+
+  if (theme === "satellite") ensureSatelliteLayer(map);
+  try { if (map.getLayer?.("mss-satellite")) map.setLayoutProperty("mss-satellite", "visibility", theme === "satellite" ? "visible" : "none"); } catch {}
+
+  if (theme !== "tourist" && theme !== "satellite") {
+    const layers = map.getStyle?.()?.layers || [];
+    for (const layer of layers) {
+      const id = String(layer?.id || "");
+      if (!id || isMssMapLayer(id)) continue;
+      const palette = layerPalette(theme, layer);
+      for (const [prop, value] of Object.entries(palette)) {
+        try { map.setPaintProperty(id, prop, value); } catch {}
+      }
+    }
+  }
+
+  const hillshade = theme === "night"
+    ? { exaggeration: .62, shadow: "#02060a", highlight: "#7eb8cf", accent: "#19384a" }
+    : theme === "illustrated"
+      ? { exaggeration: .38, shadow: "#574d42", highlight: "#fff7e7", accent: "#a8957e" }
+      : theme === "light"
+        ? { exaggeration: .32, shadow: "#7e8790", highlight: "#ffffff", accent: "#c8d0d6" }
+        : theme === "satellite"
+          ? { exaggeration: .30, shadow: "#0b1014", highlight: "#eef6f9", accent: "#52646f" }
+          : { exaggeration: .48, shadow: "#0c1118", highlight: "#f5f7fb", accent: "#657482" };
+  if (map.getLayer?.("terrain-hillshade")) {
+    try { map.setPaintProperty("terrain-hillshade", "hillshade-exaggeration", hillshade.exaggeration); } catch {}
+    try { map.setPaintProperty("terrain-hillshade", "hillshade-shadow-color", hillshade.shadow); } catch {}
+    try { map.setPaintProperty("terrain-hillshade", "hillshade-highlight-color", hillshade.highlight); } catch {}
+    try { map.setPaintProperty("terrain-hillshade", "hillshade-accent-color", hillshade.accent); } catch {}
+  }
 }
 
 
@@ -373,10 +518,12 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
   };
 }
 
-export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true, preferCompat: _legacyPreferCompat = false }: Props) {
+export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "#a8a8b3", height = "clamp(320px,58svh,620px)", fullscreen = false, routeName, places = [], activePointIndex = null, onActivePointChange, onPlaceSelect, onFallback2D, showReplay = true, preferCompat: _legacyPreferCompat = false, mapTheme, onMapThemeChange, showStylePicker = true }: Props) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
   const maplibreRef = React.useRef<any>(null);
+  const basePaintRef = React.useRef<PaintSnapshot>(new Map());
+  const themeRef = React.useRef<RunningMapTheme>(mapTheme || loadRunningMapTheme());
   const activeMarkerRef = React.useRef<any>(null);
   const routeMarkersRef = React.useRef<any[]>([]);
   const placeMarkersRef = React.useRef<any[]>([]);
@@ -387,7 +534,24 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   const [replaying, setReplaying] = React.useState(false);
   const replayingRef = React.useRef(false);
   const [replayIndex, setReplayIndex] = React.useState(0);
+  const [localTheme, setLocalTheme] = React.useState<RunningMapTheme>(() => mapTheme || loadRunningMapTheme());
+  const [styleMenu, setStyleMenu] = React.useState(false);
+  const effectiveTheme = mapTheme || localTheme;
   React.useEffect(() => { replayingRef.current = replaying; }, [replaying]);
+  React.useEffect(() => {
+    themeRef.current = effectiveTheme;
+    saveRunningMapTheme(effectiveTheme);
+    const map = mapRef.current;
+    if (map && basePaintRef.current.size) {
+      try { applyRunningMapTheme(map, effectiveTheme, basePaintRef.current); } catch {}
+    }
+  }, [effectiveTheme]);
+  const changeTheme = React.useCallback((theme: RunningMapTheme) => {
+    saveRunningMapTheme(theme);
+    if (onMapThemeChange) onMapThemeChange(theme);
+    else setLocalTheme(theme);
+    setStyleMenu(false);
+  }, [onMapThemeChange]);
 
   const safePoints = React.useMemo(() => points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)), [points]);
   const distances = React.useMemo(() => cumulativeDistances(safePoints), [safePoints]);
@@ -492,6 +656,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         if (disposed) return;
         if (readinessTimer != null) window.clearTimeout(readinessTimer);
         if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
+        basePaintRef.current = captureBasePaint(map);
         // Add the DEM only after the raster map is already alive. This is the
         // key difference from the old implementation that could stay forever
         // on “Chargement du relief 3D…”.
@@ -532,6 +697,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         }
 
 
+        try { applyRunningMapTheme(map, themeRef.current, basePaintRef.current); } catch {}
         setStatus("ready");
         window.setTimeout(() => { try { map.resize(); } catch {}; fitRoute(64); }, 60);
       });
@@ -686,7 +852,13 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     {status === "ready" ? <>
       <div style={{ position: "absolute", left: 10, top: 10, zIndex: 15, display: "flex", gap: 6, pointerEvents: "auto" }}>
         <button className="btn" onClick={() => fitRoute(64)} style={controlStyle} title={pickText(lang,"Recentrer","Recenter","Centrar")}>◎</button>
-        <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: `1px solid ${accent}38`, color: accent, fontSize: 8.4, fontWeight: 1000, backdropFilter: "blur(12px)" }}>3D · DEM</div>
+        {showStylePicker ? <div style={{ position: "relative" }}>
+          <button className="btn" onClick={() => setStyleMenu((value) => !value)} style={{ ...controlStyle, color: accent }} title={pickText(lang,"Style 3D","3D style","Estilo 3D")}>{runningMapThemeIcon(effectiveTheme)}</button>
+          {styleMenu ? <div style={{ position: "absolute", left: 0, top: 44, width: 146, padding: 5, borderRadius: 13, background: "rgba(5,8,13,.96)", border: "1px solid rgba(255,255,255,.13)", boxShadow: "0 14px 34px rgba(0,0,0,.42)", backdropFilter: "blur(16px)" }}>
+            {runningMapThemes(lang).map(([id, label]) => <button key={id} className="btn" onClick={() => changeTheme(id)} style={{ width: "100%", minHeight: 33, margin: "2px 0", textAlign: "left", padding: "5px 8px", color: effectiveTheme === id ? accent : undefined, borderColor: effectiveTheme === id ? `${accent}55` : undefined, fontSize: 8 }}>{runningMapThemeIcon(id)} {label}</button>)}
+          </div> : null}
+        </div> : null}
+        <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: `1px solid ${accent}38`, color: accent, fontSize: 8.4, fontWeight: 1000, backdropFilter: "blur(12px)" }}>3D · {runningMapThemeLabel(effectiveTheme, lang)}</div>
       </div>
 
       {showReplay ? <div className="running-3d-replay" style={{ position: "absolute", left: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 16, maxWidth: "calc(100% - 20px)", pointerEvents: "auto" }}>

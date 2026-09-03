@@ -5,9 +5,10 @@ import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import { fetchOutdoorRoutePlaceContext, outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
 import { fetchOutdoorPlacePhotos, type OutdoorRoutePhoto } from "../../activity/outdoorRouteMedia";
 import RunningTerrain3DMap from "./RunningTerrain3DMap";
+import { RUNNING_SATELLITE_TILES, loadRunningMapTheme, runningMapThemeIcon, runningMapThemes, saveRunningMapTheme, type RunningMapTheme } from "./runningMapTheme";
 import "./runningResponsive.css";
 
-type MapTheme = "tourist" | "illustrated" | "light" | "night";
+type MapTheme = RunningMapTheme;
 
 type Props = {
   route: RunningRouteTemplate;
@@ -46,15 +47,17 @@ function fitZoom(points: GeoPoint[], width: number, height: number) {
 }
 function themeTile(theme: MapTheme, z: number, x: number, y: number) {
   if (theme === "tourist") return `https://tile.opentopomap.org/${z}/${x}/${y}.png`;
+  if (theme === "satellite") return RUNNING_SATELLITE_TILES.replace("{z}", String(z)).replace("{y}", String(y)).replace("{x}", String(x));
   return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
 }
 function themeFilter(theme: MapTheme) {
   if (theme === "illustrated") return "sepia(.18) saturate(1.35) contrast(.93) brightness(1.08)";
   if (theme === "light") return "grayscale(.08) saturate(.72) contrast(.88) brightness(1.15)";
   if (theme === "night") return "invert(.88) hue-rotate(180deg) saturate(.55) brightness(.68) contrast(1.24)";
+  if (theme === "satellite") return "saturate(1.08) contrast(1.04) brightness(.96)";
   return "saturate(1.12) contrast(1.03)";
 }
-function themeIcon(theme: MapTheme) { return theme === "tourist" ? "⛰" : theme === "illustrated" ? "✎" : theme === "light" ? "☀" : "☾"; }
+function themeIcon(theme: MapTheme) { return runningMapThemeIcon(theme); }
 function screenPoint(lat: number, lon: number, layout: Layout) {
   const world = mercatorPixel(lat, lon, layout.zoom);
   return { x: world.x - layout.center.x + layout.width / 2, y: world.y - layout.center.y + layout.height / 2 };
@@ -99,7 +102,7 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
   const dragRef = React.useRef<{ id: number; x: number; y: number; centerWorld: { x: number; y: number }; moved: boolean } | null>(null);
   const pinchRef = React.useRef<{ distance: number; zoomDelta: number } | null>(null);
   const [mapMode, setMapMode] = React.useState<"2d" | "3d">("2d");
-  const [theme, setTheme] = React.useState<MapTheme>("tourist");
+  const [theme, setTheme] = React.useState<MapTheme>(() => loadRunningMapTheme());
   const [themeMenu, setThemeMenu] = React.useState(false);
   const [zoomDelta, setZoomDelta] = React.useState(0);
   const [manualCenter, setManualCenter] = React.useState<GeoPoint | null>(null);
@@ -125,6 +128,8 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
     observer.observe(host);
     return () => observer.disconnect();
   }, [mapMode]);
+
+  React.useEffect(() => { saveRunningMapTheme(theme); }, [theme]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -204,7 +209,7 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
   const shellStyle: React.CSSProperties = { position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 320, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? undefined : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 20px 52px rgba(0,0,0,.28)" };
 
   if (mapMode === "3d") return <div className="running-map-shell" style={shellStyle}>
-    <RunningTerrain3DMap points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route.name} places={places} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onPlaceSelect={setSelectedPlace} onFallback2D={() => setMapMode("2d")}/>
+    <RunningTerrain3DMap points={safePoints} accent={accent} lang={lang} textSoft={textSoft} height="100%" fullscreen={fullscreen} routeName={route.name} places={places} activePointIndex={activePointIndex} onActivePointChange={onActivePointChange} onPlaceSelect={setSelectedPlace} onFallback2D={() => setMapMode("2d")} mapTheme={theme} onMapThemeChange={setTheme} showStylePicker={false}/>
     <MapToolbar accent={accent} lang={lang} mapMode={mapMode} theme={theme} themeMenu={themeMenu} setMapMode={setMapMode} setThemeMenu={setThemeMenu} setTheme={setTheme} resetView={resetView} onFullscreen={onFullscreen} onCloseFullscreen={onCloseFullscreen} fullscreen={fullscreen}/>
     {selectedPlace ? <PlacePopup place={selectedPlace} photos={placePhotos} loading={placeLoading} accent={accent} textSoft={textSoft} lang={lang} onClose={() => setSelectedPlace(null)}/> : null}
   </div>;
@@ -224,6 +229,7 @@ export default function OutdoorInteractiveRouteMap({ route, accent, lang, textSo
       </svg>
       {places.slice(0, fullscreen ? 18 : 10).map((place) => { const point = screenPoint(place.lat, place.lon, layout); if (point.x < -30 || point.y < -30 || point.x > layout.width + 30 || point.y > layout.height + 30) return null; return <button key={place.id} className="btn" title={place.name} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setSelectedPlace(place); }} style={{ position: "absolute", left: point.x, top: point.y, transform: "translate(-50%,-50%)", zIndex: 7, width: 31, height: 31, minWidth: 31, minHeight: 31, padding: 0, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(5,8,13,.9)", border: "2px solid rgba(255,255,255,.82)", boxShadow: "0 5px 16px rgba(0,0,0,.42)", fontSize: 14 }}>{outdoorRoutePlaceIcon(place.category)}</button>; })}
     </> : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: textSoft }}>{pickText(lang, "Carte indisponible", "Map unavailable", "Mapa no disponible")}</div>}
+    {theme === "satellite" ? <div style={{ position: "absolute", right: 8, bottom: 8, zIndex: 8, padding: "3px 5px", borderRadius: 7, background: "rgba(5,8,13,.68)", color: "rgba(255,255,255,.62)", fontSize: 5.8, pointerEvents: "none" }}>Imagery © Esri</div> : null}
 
     <MapToolbar accent={accent} lang={lang} mapMode={mapMode} theme={theme} themeMenu={themeMenu} setMapMode={setMapMode} setThemeMenu={setThemeMenu} setTheme={setTheme} resetView={resetView} onFullscreen={onFullscreen} onCloseFullscreen={onCloseFullscreen} fullscreen={fullscreen}/>
     <div className="running-map-hint" style={{ position: "absolute", left: 9, bottom: 8, zIndex: 8, padding: "5px 8px", borderRadius: 999, background: "rgba(5,8,13,.78)", border: "1px solid rgba(255,255,255,.09)", color: textSoft, fontSize: 7, pointerEvents: "none", backdropFilter: "blur(10px)" }}>{pickText(lang, "Glisser · pincer · molette", "Drag · pinch · wheel", "Mover · pellizcar · rueda")}</div>
@@ -236,10 +242,10 @@ function MapToolbar({ accent, lang, mapMode, theme, themeMenu, setMapMode, setTh
   setMapMode: (mode: "2d" | "3d") => void; setThemeMenu: (value: boolean | ((value: boolean) => boolean)) => void; setTheme: (theme: MapTheme) => void; resetView: () => void;
   onFullscreen?: () => void; onCloseFullscreen?: () => void; fullscreen: boolean;
 }) {
-  const themes: Array<[MapTheme, string]> = [["tourist", pickText(lang,"Touristique","Tourist","Turístico")],["illustrated",pickText(lang,"Dessin","Illustrated","Dibujo")],["light",pickText(lang,"Clair","Light","Claro")],["night",pickText(lang,"Nuit","Night","Noche")]];
+  const themes = runningMapThemes(lang);
   return <div className="running-map-toolbar" style={{ position: "absolute", right: 9, top: 9, zIndex: 30, display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 5 }}>
     <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: 12, background: "rgba(5,8,13,.88)", border: "1px solid rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}><button className="btn" onClick={() => setMapMode("2d")} style={toolButton(mapMode === "2d", accent)}>2D</button><button className="btn" onClick={() => setMapMode("3d")} style={toolButton(mapMode === "3d", accent)}>3D</button></div>
-    {mapMode === "2d" ? <div style={{ position: "relative" }}><button className="btn" title={pickText(lang,"Style de carte","Map style","Estilo de mapa")} onClick={() => setThemeMenu((value) => !value)} style={{ ...iconButton, color: accent }}>{themeIcon(theme)}</button>{themeMenu ? <div style={{ position: "absolute", right: 0, top: 44, width: 150, padding: 5, borderRadius: 13, background: "rgba(5,8,13,.96)", border: "1px solid rgba(255,255,255,.13)", boxShadow: "0 14px 34px rgba(0,0,0,.38)" }}>{themes.map(([id,label]) => <button key={id} className="btn" onClick={() => { setTheme(id); setThemeMenu(false); }} style={{ width: "100%", minHeight: 34, margin: "2px 0", textAlign: "left", padding: "5px 8px", color: theme === id ? accent : undefined, borderColor: theme === id ? `${accent}55` : undefined, fontSize: 8 }}>{themeIcon(id)} {label}</button>)}</div> : null}</div> : null}
+    <div style={{ position: "relative" }}><button className="btn" title={pickText(lang,"Style de carte","Map style","Estilo de mapa")} onClick={() => setThemeMenu((value) => !value)} style={{ ...iconButton, color: accent }}>{themeIcon(theme)}</button>{themeMenu ? <div style={{ position: "absolute", right: 0, top: 44, width: 150, padding: 5, borderRadius: 13, background: "rgba(5,8,13,.96)", border: "1px solid rgba(255,255,255,.13)", boxShadow: "0 14px 34px rgba(0,0,0,.38)" }}>{themes.map(([id,label]) => <button key={id} className="btn" onClick={() => { setTheme(id); setThemeMenu(false); }} style={{ width: "100%", minHeight: 34, margin: "2px 0", textAlign: "left", padding: "5px 8px", color: theme === id ? accent : undefined, borderColor: theme === id ? `${accent}55` : undefined, fontSize: 8 }}>{themeIcon(id)} {label}</button>)}</div> : null}</div>
     {mapMode === "2d" ? <button className="btn" title={pickText(lang,"Recentrer","Recenter","Centrar")} onClick={resetView} style={iconButton}>◎</button> : null}
     {!fullscreen && onFullscreen ? <button className="btn" title={pickText(lang,"Plein écran","Full screen","Pantalla completa")} onClick={onFullscreen} style={iconButton}>⛶</button> : null}
     {fullscreen && onCloseFullscreen ? <button className="btn" title={pickText(lang,"Fermer","Close","Cerrar")} onClick={onCloseFullscreen} style={iconButton}>✕</button> : null}
