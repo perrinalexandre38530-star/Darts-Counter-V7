@@ -1000,14 +1000,20 @@ function ThemePreviewBlock({
   theme,
   locked = false,
   onOpenShop,
-  activeProfile,
 }: {
   themeIdPreview: ThemeId | null;
   theme: any;
   locked?: boolean;
   onOpenShop?: () => void;
-  activeProfile?: any;
 }) {
+  const previewStoreBridge = useStore();
+  const activeProfile = React.useMemo(() => {
+    const current: any = previewStoreBridge.store ?? previewStoreBridge.getStore?.() ?? null;
+    const profiles = Array.isArray(current?.profiles) ? current.profiles : [];
+    const activeId = String(current?.activeProfileId || "").trim();
+    return profiles.find((row: any) => String(row?.id || "") === activeId) || profiles[0] || null;
+  }, [previewStoreBridge.store]);
+
   const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
   const premiumPreview = !!preview && isPremiumTheme(preview.id);
   const previewBackground = preview
@@ -5202,7 +5208,6 @@ export function Settings({ go, params }: Props) {
           theme={theme}
           locked={themeLocked(previewThemeId)}
           onOpenShop={openThemeShop}
-          activeProfile={activeLocalProfile}
         />
 
         <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
