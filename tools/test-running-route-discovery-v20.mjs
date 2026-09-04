@@ -2,6 +2,7 @@ import fs from "node:fs";
 
 const read = (file) => fs.readFileSync(file, "utf8");
 const moduleUi = read("src/pages/running/RunningModule.tsx");
+const interactiveMap = read("src/pages/running/OutdoorInteractiveRouteMap.tsx");
 const discovery = read("src/activity/outdoorRouteDiscovery.ts");
 const routes = read("src/activity/runningRoutes.ts");
 const nativeBridge = read("src/activity/nativeActivityTracking.ts");
@@ -14,7 +15,7 @@ assert(discovery.includes('source: "osm"'), "Discovered routes are not tagged as
 assert(routes.includes('"osm"'), "RunningRouteTemplate does not accept OSM routes");
 assert(moduleUi.includes("discoverNearbyRoutes"), "Nearby route discovery UI missing");
 assert(moduleUi.includes("DÉCOUVRIR LES PARCOURS"), "Discover routes action missing");
-assert(moduleUi.includes("tile.waymarkedtrails.org/hiking"), "Hiking/walking route network overlay missing");
+assert(moduleUi.includes("tile.waymarkedtrails.org/hiking") || interactiveMap.includes("tile.waymarkedtrails.org/hiking"), "Hiking/walking route network overlay missing");
 assert(nativeBridge.includes("getNativeCurrentPosition"), "Native one-shot GPS bridge missing");
 assert(nativePlugin.includes("getCurrentPosition(PluginCall call)"), "Android one-shot GPS method missing");
 assert(nativePlugin.includes('result.put("granted", hasFineLocationPermission())'), "Running GPS must require precise location");

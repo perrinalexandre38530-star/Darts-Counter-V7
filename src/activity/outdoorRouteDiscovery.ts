@@ -1,6 +1,7 @@
 import { haversineMeters, routeDistanceMeters } from "./activityMath";
 import type { GeoPoint } from "./activityTypes";
 import type { OutdoorPerformanceSport } from "./outdoorPerformance";
+import { outdoorRouteSearchPolicy } from "./outdoorRouteSearchPolicy";
 import type { RunningRouteTemplate } from "./runningRoutes";
 
 export type OutdoorRouteDiscoveryCenter = { lat: number; lon: number };
@@ -9,7 +10,7 @@ export type OutdoorRouteDiscoveryResult = {
   routes: RunningRouteTemplate[];
   center: OutdoorRouteDiscoveryCenter;
   radiusKm: number;
-  provider: "openstreetmap-overpass";
+  provider: "mss-global-route-catalog" | "openstreetmap-overpass";
 };
 
 const OVERPASS_ENDPOINTS = [
@@ -18,18 +19,20 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
 ];
 
-const MAX_DISCOVERED_ROUTES = 18;
-const MAX_POINTS_PER_DISCOVERED_ROUTE = 520;
+const MAX_DISCOVERED_ROUTES = 64;
+const MAX_POINTS_PER_DISCOVERED_ROUTE = 620;
 
 function routeKindsForSport(sport: OutdoorPerformanceSport) {
-  if (sport === "running") return "running|foot|hiking|fitness_trail";
+  if (sport === "running") return "running|fitness_trail|foot|hiking";
   if (sport === "trail") return "hiking|foot|running|fitness_trail";
-  if (sport === "hiking" || sport === "walking" || sport === "nordic-walking") return "hiking|foot|running|fitness_trail";
+  if (sport === "hiking") return "hiking|foot";
+  if (sport === "walking") return "foot|hiking";
+  if (sport === "nordic-walking") return "nordic_walking|foot|hiking";
   return "hiking|foot|running|fitness_trail";
 }
 
 function bboxAround(center: OutdoorRouteDiscoveryCenter, radiusKm: number) {
-  const radius = Math.max(2, Math.min(40, radiusKm));
+  const radius = Math.max(2, Math.min(60, radiusKm));
   const latDelta = radius / 111.32;
   const lonScale = Math.max(0.18, Math.cos(center.lat * Math.PI / 180));
   const lonDelta = radius / (111.32 * lonScale);
@@ -45,7 +48,7 @@ function overpassQuery(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerfor
   const bbox = bboxAround(center, radiusKm);
   const routeKinds = routeKindsForSport(sport);
   const box = `${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)}`;
-  return `[out:json][timeout:18];\nrelation["type"="route"]["route"~"^(${routeKinds})$"](${box});\nout geom(${box});`;
+  return `[out:json][timeout:22];\nrelation["type"="route"]["route"~"^(${routeKinds})$"](${box});\nout geom(${box});`;
 }
 
 function sanitizeName(value: unknown, fallback: string) {
@@ -80,7 +83,21 @@ function distanceToCenter(point: GeoPoint, center: OutdoorRouteDiscoveryCenter) 
   return haversineMeters(point, { lat: center.lat, lon: center.lon, timestamp: 0 });
 }
 
-function connectedChains(relation: any, center: OutdoorRouteDiscoveryCenter) {
+function parseTaggedDistanceM(value: unknown) {
+  const raw = String(value || "").trim().toLowerCase().replace(",", ".");
+  if (!raw) return 0;
+  const match = raw.match(/([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return 0;
+  const numeric = Number(match[1]);
+  if (!(numeric > 0)) return 0;
+  if (/\bmi(?:le|les)?\b/.test(raw)) return numeric * 1609.344;
+  if (/\bkm\b/.test(raw)) return numeric * 1000;
+  if (/\bm\b/.test(raw)) return numeric;
+  // OSM route relations usually express `distance=*` in km when no unit is written.
+  return numeric <= 100 ? numeric * 1000 : numeric;
+}
+
+function connectedChains(relation: any) {
   const members = Array.isArray(relation?.members) ? relation.members : [];
   const rawSegments = members
     .filter((member: any) => member?.type === "way" && Array.isArray(member?.geometry) && member.geometry.length >= 2)
@@ -119,7 +136,9 @@ function connectedChains(relation: any, center: OutdoorRouteDiscoveryCenter) {
       }
     }
     const oriented = reverse ? [...segment].reverse() : segment;
-    if (bestIndex >= 0 && bestGap <= 350) {
+    // Route relations sometimes have tiny discontinuities at junctions. 550 m is still
+    // strict enough to avoid joining unrelated routes while recovering missing connectors.
+    if (bestIndex >= 0 && bestGap <= 550) {
       const chain = chains[bestIndex];
       if (prepend) chains[bestIndex] = [...oriented.slice(0, -1), ...chain];
       else chains[bestIndex] = [...chain, ...oriented.slice(1)];
@@ -128,29 +147,36 @@ function connectedChains(relation: any, center: OutdoorRouteDiscoveryCenter) {
     }
   }
 
+  // IMPORTANT: choose the longest coherent chain first. The previous implementation
+  // preferred the chain nearest to the user and could return a 300-700 m fragment of
+  // an otherwise valid 10-20 km relation.
   return chains
     .filter((chain) => chain.length >= 2)
     .map((chain) => simplify(chain))
-    .sort((a, b) => {
-      const aNearest = Math.min(...a.map((point) => distanceToCenter(point, center)));
-      const bNearest = Math.min(...b.map((point) => distanceToCenter(point, center)));
-      if (Math.abs(aNearest - bNearest) > 250) return aNearest - bNearest;
-      return segmentDistance(b) - segmentDistance(a);
-    });
+    .sort((a, b) => segmentDistance(b) - segmentDistance(a));
 }
 
 function relationToRoute(relation: any, center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport): RunningRouteTemplate | null {
   const relationId = Number(relation?.id);
   if (!Number.isFinite(relationId)) return null;
-  const chains = connectedChains(relation, center);
-  const route = chains.find((chain) => segmentDistance(chain) >= 250) || chains[0];
+  const chains = connectedChains(relation);
+  const route = chains[0];
   if (!route || route.length < 2) return null;
+
   const distanceM = routeDistanceMeters(route);
-  if (!Number.isFinite(distanceM) || distanceM < 200) return null;
+  const policy = outdoorRouteSearchPolicy(sport);
+  const absoluteMinM = policy.absoluteMinKm * 1000;
+  if (!Number.isFinite(distanceM) || distanceM < absoluteMinM) return null;
+
   const tags = relation?.tags || {};
+  const taggedDistanceM = parseTaggedDistanceM(tags.distance);
+  // If OSM explicitly says a route is e.g. 15 km but our geometry is only 2 km,
+  // the relation geometry was clipped/incomplete: do not expose that fragment.
+  if (taggedDistanceM > absoluteMinM && distanceM < taggedDistanceM * 0.42) return null;
+
   const network = sanitizeName(tags.network || tags["network:type"] || "", "");
   const ref = sanitizeName(tags.ref || "", "");
-  const name = sanitizeName(tags.name || tags["name:fr"] || ref, `Parcours OSM ${relationId}`);
+  const name = sanitizeName(tags["name:fr"] || tags.name || ref, `Parcours OSM ${relationId}`);
   return {
     id: `osm:route:${relationId}`,
     externalId: `osm-relation:${relationId}`,
@@ -181,13 +207,41 @@ async function fetchOverpass(query: string, signal: AbortSignal) {
       if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
       const json = await response.json();
       if (!Array.isArray(json?.elements)) throw new Error("Réponse cartographique invalide.");
-      return json;
+      return { json, provider: "openstreetmap-overpass" as const };
     } catch (error) {
       if (signal.aborted) throw error;
       lastError = error;
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Service cartographique indisponible.");
+}
+
+async function fetchGlobalCatalog(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport, radiusKm: number, signal: AbortSignal) {
+  const params = new URLSearchParams({
+    lat: String(center.lat),
+    lon: String(center.lon),
+    sport,
+    radiusKm: String(radiusKm),
+  });
+  const response = await fetch(`/api/running/routes/catalog?${params.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) throw new Error(`Catalogue MSS HTTP ${response.status}`);
+  const json = await response.json();
+  if (!Array.isArray(json?.elements)) throw new Error("Catalogue MSS invalide.");
+  return { json, provider: "mss-global-route-catalog" as const };
+}
+
+async function fetchDiscoveryData(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport, radiusKm: number, signal: AbortSignal) {
+  try {
+    return await fetchGlobalCatalog(center, sport, radiusKm, signal);
+  } catch (catalogError) {
+    if (signal.aborted) throw catalogError;
+    // Development/StackBlitz or a Pages deployment without the Function still works.
+    return fetchOverpass(overpassQuery(center, sport, radiusKm), signal);
+  }
 }
 
 export async function discoverOutdoorRoutes(
@@ -197,11 +251,12 @@ export async function discoverOutdoorRoutes(
 ): Promise<OutdoorRouteDiscoveryResult> {
   if (!Number.isFinite(center.lat) || !Number.isFinite(center.lon)) throw new Error("Position invalide.");
   if (sport === "treadmill") return { routes: [], center, radiusKm, provider: "openstreetmap-overpass" };
-  const safeRadius = Math.max(3, Math.min(30, Math.round(radiusKm)));
+  const safeRadius = Math.max(3, Math.min(60, Math.round(radiusKm)));
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 22000);
+  const timeout = window.setTimeout(() => controller.abort(), 26000);
   try {
-    const json = await fetchOverpass(overpassQuery(center, sport, safeRadius), controller.signal);
+    const fetched = await fetchDiscoveryData(center, sport, safeRadius, controller.signal);
+    const json = fetched.json;
     const routes = (json.elements as any[])
       .filter((element) => element?.type === "relation")
       .map((relation) => relationToRoute(relation, center, sport))
@@ -218,7 +273,7 @@ export async function discoverOutdoorRoutes(
       if (!unique.has(route.id)) unique.set(route.id, route);
       if (unique.size >= MAX_DISCOVERED_ROUTES) break;
     }
-    return { routes: [...unique.values()], center, radiusKm: safeRadius, provider: "openstreetmap-overpass" };
+    return { routes: [...unique.values()], center, radiusKm: safeRadius, provider: fetched.provider };
   } catch (error: any) {
     if (error?.name === "AbortError") throw new Error("La recherche de parcours a expiré. Réessaie dans quelques secondes.");
     throw error;
