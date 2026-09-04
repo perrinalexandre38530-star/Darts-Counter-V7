@@ -9,7 +9,7 @@ const migration = read("supabase/migrations/20260904_running_route_catalog_v1.sq
 const importer = read("tools/import-running-route-catalog-gpx.mjs");
 
 const checks = [
-  ["catalog v2 header", api.includes('x-mss-route-catalog": "v2')],
+  ["catalog v3 header", api.includes('x-mss-route-catalog": "v3')],
   ["persistent Supabase search", api.includes("ms_search_running_route_catalog")],
   ["service-role persistence", api.includes("SUPABASE_SERVICE_ROLE_KEY") && api.includes("persistRoutes")],
   ["OSM live source retained", api.includes("fetchOverpass") && api.includes("openstreetmap")],

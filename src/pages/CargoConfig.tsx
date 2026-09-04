@@ -37,6 +37,19 @@ const GREEN = "#62e6a7";
 const BLUE = "#56c9ff";
 const RED = "#ef5261";
 const SOFT = "#aab1bf";
+const TEAM_IDS = ["TEAM_A", "TEAM_B", "TEAM_C", "TEAM_D"] as const;
+const TEAM_COLORS = ["#ff9b42", "#56c9ff", "#62e6a7", "#d98cff"];
+
+function interleaveTeams(ids: string[], assignments: Record<string,string>, teamIds: string[], random = false) {
+  const groups = teamIds.map((teamId) => {
+    const members = ids.filter((id) => assignments[id] === teamId);
+    return random ? shuffle(members) : members;
+  });
+  const out: string[] = [];
+  const max = Math.max(0, ...groups.map((group) => group.length));
+  for (let index = 0; index < max; index += 1) groups.forEach((group) => { if (group[index]) out.push(group[index]); });
+  return out;
+}
 
 function readSaved() {
   try { const value = JSON.parse(localStorage.getItem(LS_KEY) || "null"); return value && typeof value === "object" ? value : {}; }
@@ -80,6 +93,14 @@ export default function CargoConfig(props: any) {
   const [botLevel, setBotLevel] = React.useState<CargoBotLevel>(initial.botLevel);
   const [variant, setVariant] = React.useState<CargoVariant>(initial.variant);
   const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(initial.participantMode);
+  const [teamCount, setTeamCount] = React.useState<2 | 3 | 4>((initial.teamCount || 2) as 2 | 3 | 4);
+  const [teamAssignments, setTeamAssignments] = React.useState<Record<string,string>>(() => ({ ...(initial.teamByPlayer || {}) }));
+  const [teamNames, setTeamNames] = React.useState<Record<string,string>>(() => ({
+    TEAM_A: initial.teamNames?.TEAM_A || "ÉQUIPE A",
+    TEAM_B: initial.teamNames?.TEAM_B || "ÉQUIPE B",
+    TEAM_C: initial.teamNames?.TEAM_C || "ÉQUIPE C",
+    TEAM_D: initial.teamNames?.TEAM_D || "ÉQUIPE D",
+  }));
   const [rounds, setRounds] = React.useState<number>(initial.rounds);
   const [visibleContracts, setVisibleContracts] = React.useState<2 | 3 | 4>(initial.visibleContracts);
   const [seriesRule, setSeriesRule] = React.useState<CargoSeriesRule>(initial.seriesRule);
@@ -110,21 +131,46 @@ export default function CargoConfig(props: any) {
 
   const selectedItems = selectedIds.map((id) => byId.get(id)).filter(Boolean);
   const selectedBots = selectedItems.filter(isBotLike);
-  const valid = selectedIds.length >= 1 && selectedIds.length <= 12;
+  const activeTeamIds = TEAM_IDS.slice(0, teamCount) as unknown as string[];
+  const effectiveTeamAssignments = React.useMemo(() => {
+    const next: Record<string,string> = {};
+    selectedIds.forEach((id, index) => {
+      const assigned = teamAssignments[id];
+      next[id] = activeTeamIds.includes(assigned) ? assigned : activeTeamIds[index % activeTeamIds.length];
+    });
+    return next;
+  }, [selectedIds, teamAssignments, teamCount]);
+  const teamSizes = activeTeamIds.map((teamId) => selectedIds.filter((id) => effectiveTeamAssignments[id] === teamId).length);
+  const validTeams = participantMode !== "teams" || (selectedIds.length >= 2 && activeTeamIds.length >= 2 && teamSizes.every((size) => size > 0));
+  const valid = selectedIds.length >= 1 && selectedIds.length <= 12 && validTeams;
   const isParcel = variant === "parcel_delivery";
   const usesContracts = !["free_load", "full_pallet", "parcel_delivery"].includes(variant);
   const usesCapacity = ["exact_load", "cargo_classic", "fragile_cargo", "cargo_rush", "convoy", "long_haul"].includes(variant);
 
+  function setPlayerTeam(playerId: string, teamId: string) {
+    setTeamAssignments((prev) => ({ ...prev, [String(playerId)]: teamId }));
+  }
+  function balanceTeams() {
+    setTeamAssignments((prev) => {
+      const next = { ...prev };
+      selectedIds.forEach((id, index) => { next[id] = activeTeamIds[index % activeTeamIds.length]; });
+      return next;
+    });
+  }
+
   function start() {
     if (!valid) return;
-    const ids = randomOrder ? shuffle(selectedIds) : [...selectedIds];
+    const sourceIds = [...selectedIds];
+    const teamByPlayer: Record<string, string> = participantMode === "teams" ? { ...effectiveTeamAssignments } : {};
+    const ids = participantMode === "teams"
+      ? interleaveTeams(sourceIds, teamByPlayer, activeTeamIds, randomOrder)
+      : randomOrder ? shuffle(sourceIds) : sourceIds;
     const playersList = ids.map((id) => byId.get(id)).filter(Boolean).map((profile: any) => ({ ...profile, id: String(profile.id), name: profile?.name || profile?.displayName || "Joueur", dartSetId: playerDartSets[String(profile.id)] ?? null, isBot: isBotLike(profile) }));
     const botIds = playersList.filter(isBotLike).map((profile: any) => String(profile.id));
-    const teamByPlayer: Record<string, string> = {};
-    if (participantMode === "teams") ids.forEach((id, index) => { teamByPlayer[id] = index % 2 === 0 ? "ÉQUIPE A" : "ÉQUIPE B"; });
     const payload: CargoConfigPayload = normalizeCargoConfig({
       mode: "cargo", variant, players: ids.length, selectedIds: ids, playersList, playerDartSets,
       botIds, botsEnabled: botIds.length > 0, botLevel, participantMode, teamByPlayer,
+      teamCount, teamNames,
       rounds, dartsPerTurn: 3, visibleContracts, seriesRule, carrySeriesBetweenTurns,
       mismatchRule, missRule, minSeries, maxSeries: isParcel ? 5 : maxSeries,
       truckCapacity, targetWeight, overloadRule, bullRule, dbullRule, fragileRate, urgentRate,
@@ -145,7 +191,40 @@ export default function CargoConfig(props: any) {
     </div>
     {botsPanel ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={customBots} selectedIds={selectedIds} onToggle={togglePlayer} accent={RED} label="CHAUFFEURS BOTS" showCheckbox={false} showSelectedSummary={false} /></div> : null}
     {selectedBots.length ? <OptionRow label="Niveau des Bots"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Apprenti" }, { value: "normal", label: "Routier" }, { value: "hard", label: "Expert logistique" }]} onChange={setBotLevel} /></OptionRow> : null}
-    <OptionRow label="Participants"><OptionSelect value={participantMode} options={[{ value: "players", label: "Individuel" }, { value: "teams", label: "Équipes / Convoi" }]} onChange={setParticipantMode} /></OptionRow>
+    <OptionRow label="Participants"><OptionSelect value={participantMode} options={[{ value: "players", label: selectedIds.length > 1 ? "Multi · chacun pour soi" : "Solo" }, { value: "teams", label: "Équipes / Convoi" }]} onChange={setParticipantMode} /></OptionRow>
+    <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 13, background: "rgba(0,0,0,.24)", border: "1px solid rgba(255,255,255,.07)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+      <div><div style={{ color: GOLD, fontSize: 8, fontWeight: 1100 }}>MULTI CARGO</div><div style={{ color: SOFT, fontSize: 7.5, marginTop: 2 }}>1 à 12 joueurs · humains et bots mélangés</div></div>
+      <strong style={{ color: GREEN, fontSize: 11 }}>{selectedIds.length}/12</strong>
+    </div>
+    {participantMode === "teams" ? <div style={{ marginTop: 9, borderRadius: 16, padding: 10, background: "linear-gradient(180deg,rgba(255,155,66,.07),rgba(0,0,0,.24))", border: `1px solid ${ORANGE}38` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <div><div style={{ color: ORANGE, fontSize: 9.5, fontWeight: 1100 }}>COMPOSITION DES ÉQUIPES</div><div style={{ color: SOFT, fontSize: 7.5, marginTop: 2 }}>2 à 4 équipes · ordre de jeu entrelacé automatiquement</div></div>
+        <button type="button" onClick={balanceTeams} style={{ flex: "0 0 auto", minHeight: 31, padding: "0 9px", borderRadius: 999, border: `1px solid ${GREEN}55`, background: `${GREEN}0d`, color: GREEN, fontSize: 7.5, fontWeight: 1050 }}>ÉQUILIBRER</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginBottom: 9 }}>
+        {[2,3,4].map((count) => <button key={count} type="button" onClick={() => setTeamCount(count as any)} style={{ minHeight: 35, borderRadius: 11, border: `1px solid ${teamCount === count ? ORANGE : "rgba(255,255,255,.08)"}`, background: teamCount === count ? `${ORANGE}17` : "rgba(255,255,255,.025)", color: teamCount === count ? ORANGE : SOFT, fontSize: 8, fontWeight: 1050 }}>{count} ÉQUIPES</button>)}
+      </div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {activeTeamIds.map((teamId, teamIndex) => {
+          const teamColor = TEAM_COLORS[teamIndex % TEAM_COLORS.length];
+          const members = selectedItems.filter((item: any) => effectiveTeamAssignments[String(item?.id)] === teamId);
+          return <div key={teamId} style={{ padding: 8, borderRadius: 13, border: `1px solid ${teamColor}38`, background: `${teamColor}09` }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+              <input value={teamNames[teamId] || `ÉQUIPE ${String.fromCharCode(65 + teamIndex)}`} onChange={(event) => setTeamNames((prev) => ({ ...prev, [teamId]: event.target.value.slice(0, 24) }))} aria-label={`Nom équipe ${teamIndex + 1}`} style={{ width: "100%", minWidth: 0, height: 32, boxSizing: "border-box", borderRadius: 10, border: `1px solid ${teamColor}44`, background: "rgba(0,0,0,.28)", color: teamColor, padding: "0 9px", fontWeight: 1050, fontSize: 9, outline: "none" }} />
+              <strong style={{ color: teamColor, fontSize: 9 }}>{members.length} joueur{members.length > 1 ? "s" : ""}</strong>
+            </div>
+            <div style={{ marginTop: 7, display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {selectedItems.map((profile: any) => {
+                const playerId = String(profile?.id || "");
+                const active = effectiveTeamAssignments[playerId] === teamId;
+                return <button key={`${teamId}-${playerId}`} type="button" onClick={() => setPlayerTeam(playerId, teamId)} style={{ minHeight: 29, maxWidth: 150, padding: "0 8px", borderRadius: 999, border: `1px solid ${active ? teamColor : "rgba(255,255,255,.08)"}`, background: active ? `${teamColor}18` : "rgba(255,255,255,.025)", color: active ? teamColor : "#8d94a3", fontSize: 7.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile?.name || profile?.displayName || "Joueur"}</button>;
+              })}
+            </div>
+          </div>;
+        })}
+      </div>
+      {!validTeams ? <div style={{ marginTop: 8, color: "#ff9aa8", fontSize: 8, fontWeight: 950 }}>Chaque équipe doit contenir au moins un joueur.</div> : <div style={{ marginTop: 8, color: GREEN, fontSize: 8, fontWeight: 950 }}>✓ Équipes prêtes · les coéquipiers seront alternés dans l’ordre de jeu.</div>}
+    </div> : null}
   </section>;
 
   const missionBlock = <section style={blockStyle(GOLD)}>
@@ -183,7 +262,7 @@ export default function CargoConfig(props: any) {
     <div style={{ textAlign: "center", color: "#fff", fontSize: 16, fontWeight: 1100 }}>CARGAISON PRÊTE</div>
     <div style={{ textAlign: "center", color: ORANGE, fontSize: 11, fontWeight: 1000, marginTop: 4 }}>{CARGO_VARIANT_LABELS[variant]} · {rounds} tours · {seriesRule === "exact_segment" ? "Série stricte" : "Même numéro"}</div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-      {[["PARTICIPANTS", selectedIds.length], [isParcel ? "OBJECTIF" : "CAPACITÉ", isParcel ? "COLIS" : `${truckCapacity} KG`], ["SÉRIE MAX", isParcel ? 5 : maxSeries]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "CAPACITÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
+      {[[participantMode === "teams" ? "ÉQUIPES" : "PARTICIPANTS", participantMode === "teams" ? teamCount : selectedIds.length], [isParcel ? "OBJECTIF" : "CAPACITÉ", isParcel ? "COLIS" : `${truckCapacity} KG`], ["SÉRIE MAX", isParcel ? 5 : maxSeries]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "CAPACITÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
     </div>
   </section>;
 

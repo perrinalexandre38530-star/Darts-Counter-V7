@@ -21,9 +21,12 @@ const sourceLicense = arg("license", "user-supplied");
 const attribution = arg("attribution", provider);
 const sourceBaseUrl = arg("source-base-url", "");
 const dryRun = has("dry-run");
+const countryCode = arg("country", "").toUpperCase().slice(0, 2);
+const regionName = arg("region", "");
+const locality = arg("locality", "");
 const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const serviceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
-const allowedSports = new Set(["running", "trail", "hiking", "walking", "nordic-walking"]);
+const allowedSports = new Set(["running", "trail", "hiking", "walking", "nordic-walking", "cycling", "mtb", "gravel", "ebike", "bmx", "roller", "snowshoe", "ski-touring", "equestrian"]);
 if (!allowedSports.has(sport)) throw new Error(`Sport invalide: ${sport}`);
 if (!fs.existsSync(dir)) throw new Error(`Dossier GPX introuvable: ${dir}`);
 if (!dryRun && (!supabaseUrl || !serviceKey)) throw new Error("SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont requis (sauf --dry-run).");
@@ -130,6 +133,9 @@ function recordFromFile(file) {
     ranking: 0,
     difficulty: 0,
     is_loop: routeStats.loop,
+    country_code: countryCode || null,
+    region_name: regionName || null,
+    locality: locality || null,
     metadata: { importFile: relative, description: description.slice(0, 800), importedBy: "mss-gpx-catalog-importer-v1" },
     fetched_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

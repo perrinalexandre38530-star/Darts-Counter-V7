@@ -15,6 +15,8 @@ import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import type { GameDart } from "../lib/types-game";
 import {
   buildCargoMatchStats,
+  buildCargoPlayerAdvancedStats,
+  buildCargoTeamStats,
   cargoContractTargetLabel,
   cargoCurrentObjective,
   cargoEventPresentation,
@@ -304,6 +306,9 @@ export default function CargoPlay(props: any) {
   const activeSeries = activeStats?.currentSeries;
   const activeContract = activeSeries?.contractId ? state.contracts.find((contract) => contract.id === activeSeries.contractId) : null;
   const activeStanding = state.standings.find((standing) => String(standing.id) === String(activePlayer?.id));
+  const activeTeamId = config.participantMode === "teams" ? config.teamByPlayer?.[String(activePlayer?.id || "")] || null : null;
+  const activeTeam = activeTeamId ? (state.teamStandings || []).find((team: any) => String(team.id) === String(activeTeamId)) : null;
+  const activeTeamName = activeTeam?.name || (activeTeamId ? config.teamNames?.[String(activeTeamId)] || activeTeamId : null);
   const isParcel = config.variant === "parcel_delivery";
   const activeScore = isParcel ? Number(activeStats.parcelsDelivered || 0) : Number(activeStats.totalWeight || 0);
   const scoreUnit = isParcel ? "COLIS" : "KG";
@@ -357,21 +362,135 @@ export default function CargoPlay(props: any) {
 
   function buildHistoryRecord(statusOverride?: "in_progress" | "finished") {
     const status = statusOverride || (state.phase === "finished" ? "finished" : "in_progress");
-    const finished = status === "finished"; const now = finished ? (state.finishedAt || Date.now()) : Date.now();
+    const finished = status === "finished";
+    const now = finished ? (state.finishedAt || Date.now()) : Date.now();
     const playerRows = state.players.map((player, index) => {
-      const profile = profilesById.get(String(player.id)) || player; const stats = state.statsByPlayer[player.id] || {}; const standing = state.standings.find((row) => row.id === player.id);
+      const profile = profilesById.get(String(player.id)) || player;
+      const stats = state.statsByPlayer[player.id] || {};
+      const standing = state.standings.find((row) => row.id === player.id);
+      const advanced = buildCargoPlayerAdvancedStats(state, String(player.id));
+      const teamId = config.teamByPlayer?.[String(player.id)] || null;
+      const teamName = teamId ? (config.teamNames?.[String(teamId)] || teamId) : null;
+      const teamStanding = teamId ? (state.teamStandings || []).find((row: any) => String(row.id) === String(teamId)) : null;
       const visits = state.visits.filter((visit) => String(visit.playerId) === String(player.id));
       const dartsDetail = visits.flatMap((visit) => visit.darts.map((dart, dartIndex) => ({ ...dart, label: visit.labels[dartIndex], round: visit.round, visit: visit.visit, dartIndex: dartIndex + 1, events: visit.events })));
-      return { id: player.id, playerId: player.id, profileId: player.id, name: playerName(profile), avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null, dartSetId: config.playerDartSets?.[player.id] ?? profile?.dartSetId ?? null, color: PLAYER_COLORS[index % PLAYER_COLORS.length], rank: standing?.rank || null, win: finished && state.winnerIds.includes(player.id), winner: finished && state.winnerIds.includes(player.id), ...stats, accuracy: pct(stats.hits, stats.darts), visitsHistory: visits, visitHistory: visits, dartsDetail, hitsBySegment: { ...(stats.hitsBySegment || {}) } };
+      return {
+        id: player.id,
+        playerId: player.id,
+        profileId: player.id,
+        name: playerName(profile),
+        avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null,
+        dartSetId: config.playerDartSets?.[player.id] ?? profile?.dartSetId ?? null,
+        color: PLAYER_COLORS[index % PLAYER_COLORS.length],
+        teamId,
+        teamName,
+        teamRank: teamStanding?.rank || null,
+        teamScore: teamStanding?.score || 0,
+        personalScore: standing?.personalScore ?? advanced.score,
+        rank: standing?.rank || null,
+        win: finished && state.winnerIds.includes(player.id),
+        winner: finished && state.winnerIds.includes(player.id),
+        ...stats,
+        ...advanced,
+        advanced,
+        visitsHistory: visits,
+        visitHistory: visits,
+        dartsDetail,
+        hitsBySegment: { ...(stats.hitsBySegment || {}) },
+      };
     });
     const matchStats = buildCargoMatchStats(state);
+    const teamRows = buildCargoTeamStats(state);
     const scoreWord = config.variant === "parcel_delivery" ? "colis" : "kg";
-    const summary = { kind: "cargo", mode: "cargo", sport: "darts", variant: config.variant, variantLabel: cargoVariantLabel(config.variant), finished, statisticsVersion: 2, telemetryVersion: 2, winnerId: finished ? state.winnerIds[0] || null : null, winnerIds: finished ? state.winnerIds : [], winnerName: finished ? state.standings.filter((row) => row.rank === 1).map((row) => row.name).join(" / ") : null, roundsPlayed: Math.min(config.rounds, state.roundIndex), configuredRounds: config.rounds, players: playerRows, perPlayer: playerRows, rankings: finished ? playerRows.slice().sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999)) : [], visits: state.visits, matchStats, config, scoreLine: `${cargoVariantLabel(config.variant)} · ${config.variant === "parcel_delivery" ? matchStats.totalParcels : matchStats.totalWeight} ${scoreWord} · ${matchStats.totalDarts} fléchettes`, game: { mode: "cargo", variant: config.variant, rounds: config.rounds } };
-    return { id: matchIdRef.current, matchId: matchIdRef.current, kind: "cargo", mode: "cargo", sport: "darts", status, statisticsVersion: 2, telemetryVersion: 2, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now, ...(finished ? { finishedAt: now, endedAt: now } : {}), winnerId: summary.winnerId, winnerIds: summary.winnerIds, winnerName: summary.winnerName, players: playerRows, resumeId: matchIdRef.current, resume: { config, state: cloneCargoState(state), updatedAt: now }, game: summary.game, summary, payload: { kind: "cargo", mode: "cargo", sport: "darts", variant: config.variant, statisticsVersion: 2, telemetryVersion: 2, config, players: playerRows, summary, visits: state.visits, visitHistory: state.visits, stateSnapshot: cloneCargoState(state), stats: { sport: "darts", mode: "cargo", variant: config.variant, players: playerRows, match: matchStats, global: matchStats } } };
+    const winnerName = finished
+      ? config.participantMode === "teams"
+        ? teamRows.filter((row: any) => row.rank === 1).map((row: any) => row.name).join(" / ")
+        : state.standings.filter((row) => row.rank === 1).map((row) => row.name).join(" / ")
+      : null;
+    const summary = {
+      kind: "cargo",
+      mode: "cargo",
+      sport: "darts",
+      variant: config.variant,
+      variantLabel: cargoVariantLabel(config.variant),
+      participantMode: config.participantMode,
+      teamCount: config.participantMode === "teams" ? config.teamCount : undefined,
+      teamNames: config.participantMode === "teams" ? config.teamNames : undefined,
+      finished,
+      statisticsVersion: 2,
+      telemetryVersion: 3,
+      analyticsVersion: 4,
+      winnerId: finished ? state.winnerIds[0] || null : null,
+      winnerIds: finished ? state.winnerIds : [],
+      winnerTeamIds: finished ? state.winnerTeamIds || [] : [],
+      winnerName,
+      roundsPlayed: Math.min(config.rounds, state.roundIndex),
+      configuredRounds: config.rounds,
+      players: playerRows,
+      perPlayer: playerRows,
+      teams: teamRows,
+      teamStandings: teamRows,
+      rankings: finished ? playerRows.slice().sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999)) : [],
+      visits: state.visits,
+      matchStats,
+      config,
+      scoreLine: `${cargoVariantLabel(config.variant)} · ${config.variant === "parcel_delivery" ? matchStats.totalParcels : matchStats.totalWeight} ${scoreWord} · ${matchStats.totalDarts} fléchettes`,
+      game: { mode: "cargo", variant: config.variant, rounds: config.rounds, participantMode: config.participantMode, teamCount: config.teamCount },
+    };
+    return {
+      id: matchIdRef.current,
+      matchId: matchIdRef.current,
+      kind: "cargo",
+      mode: "cargo",
+      sport: "darts",
+      status,
+      statisticsVersion: 2,
+      telemetryVersion: 3,
+      analyticsVersion: 4,
+      createdAt: state.startedAt,
+      startedAt: state.startedAt,
+      updatedAt: now,
+      ...(finished ? { finishedAt: now, endedAt: now } : {}),
+      winnerId: summary.winnerId,
+      winnerIds: summary.winnerIds,
+      winnerTeamIds: summary.winnerTeamIds,
+      winnerName: summary.winnerName,
+      players: playerRows,
+      teams: teamRows,
+      resumeId: matchIdRef.current,
+      resume: { config, state: cloneCargoState(state), updatedAt: now },
+      game: summary.game,
+      summary,
+      payload: {
+        kind: "cargo",
+        mode: "cargo",
+        sport: "darts",
+        variant: config.variant,
+        statisticsVersion: 2,
+        telemetryVersion: 3,
+        analyticsVersion: 4,
+        config,
+        players: playerRows,
+        teams: teamRows,
+        summary,
+        visits: state.visits,
+        visitHistory: state.visits,
+        stateSnapshot: cloneCargoState(state),
+        stats: { sport: "darts", mode: "cargo", variant: config.variant, players: playerRows, teams: teamRows, match: matchStats, global: matchStats },
+      },
+    };
   }
 
   React.useEffect(() => { if (state.phase === "finished" || state.visits.length === 0) return; const timer = window.setTimeout(() => { void (History as any).upsert(buildHistoryRecord("in_progress")); }, 280); return () => window.clearTimeout(timer); }, [state]);
-  React.useEffect(() => { if (state.phase !== "finished") return; setShowEnd(true); if (autoSavedRef.current === matchIdRef.current) return; autoSavedRef.current = matchIdRef.current; try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {} }, [state.phase]);
+  React.useEffect(() => {
+    if (state.phase !== "finished") return;
+    setShowEnd(true);
+    if (autoSavedRef.current === matchIdRef.current) return;
+    autoSavedRef.current = matchIdRef.current;
+    const record = buildHistoryRecord("finished");
+    try { void (History as any).upsert(record); } catch {}
+    try { onFinish?.(record, { navigate: false }); } catch {}
+  }, [state.phase]);
 
   const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 21, lineHeight: 1, fontWeight: 1200 }}>{activeScore} <span style={{ fontSize: 11, opacity: .82 }}>{scoreUnit}</span></div><div style={{ marginTop: 4, color: activeSeries ? GREEN : SOFT, fontSize: 8.3, fontWeight: 1000 }}>{activeSeries ? `SÉRIE ${activeSeries.count}${isParcel ? "/5" : ""}` : `TOUR ${state.roundIndex}/${config.rounds}`}</div></div>;
   const objectiveNow = cargoCurrentObjective(state);
@@ -398,12 +517,13 @@ export default function CargoPlay(props: any) {
             <div style={{ position: "relative", zIndex: 1, width: 56, height: 56, borderRadius: 999, display: "grid", placeItems: "center", boxShadow: `0 0 0 1px ${activeColor}66,0 0 15px ${activeColor}66` }}><ProfileAvatar profile={activeProfile} size={54} /></div>
             <div style={{ minWidth: 0, position: "relative", zIndex: 1 }}>
               <div style={{ color: activeColor, fontSize: 16, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${activeColor}44` }}>{playerName(activeProfile)}</div>
-              <div style={{ marginTop: 6, color: "rgba(255,255,255,.58)", fontSize: 8.4, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds}</div>
+              <div style={{ marginTop: 6, color: "rgba(255,255,255,.58)", fontSize: 8.4, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds}{activeTeamName ? ` · ${activeTeamName}` : ""}</div>
               <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 9px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: activeSeries ? GREEN : GOLD, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `Série ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`}` : "Nouvelle série disponible"}</span></div>
             </div>
             <div style={{ minWidth: 58, textAlign: "center", position: "relative", zIndex: 1 }}>
               <div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 33, lineHeight: .9, fontWeight: 1200, textShadow: `0 0 14px ${(isParcel ? BLUE : ORANGE)}42` }}>{activeScore}</div>
               <div style={{ marginTop: 6, color: SOFT, fontSize: 7.4, fontWeight: 1000, letterSpacing: .5 }}>{scoreUnit}</div>
+              {activeTeam ? <div style={{ marginTop: 4, color: GOLD, fontSize: 6.8, fontWeight: 1000 }}>TEAM {activeTeam.score} {scoreUnit}</div> : null}
             </div>
           </div>
 
@@ -455,7 +575,7 @@ export default function CargoPlay(props: any) {
     {overlay === "standings" ? <StandingsModal state={state} profilesById={profilesById} onClose={() => setOverlay(null)} /> : null}
     {overlay === "stats" ? <StatsModal state={state} stats={activeStats} profile={activeProfile} onClose={() => setOverlay(null)} /> : null}
     {overlay === "timeline" ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setOverlay(null)} /> : null}
-    {showEnd && state.phase === "finished" ? <CargoEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "cargo" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+    {showEnd && state.phase === "finished" ? <CargoEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "cargo" }); }} onHistory={() => { const record = buildHistoryRecord("finished"); try { void (History as any).upsert(record); } catch {} if (typeof go === "function") go("statsHub", { tab: "history", mode: "cargo", focusMatchId: matchIdRef.current }); }} /> : null}
   </div>;
 }
 
@@ -507,23 +627,53 @@ function ManifestModal({ state, activeStats, activeContract, onClose }: any) {
 
 function StandingsModal({ state, profilesById, onClose }: any) {
   const parcel = state.config.variant === "parcel_delivery";
+  const teamMode = state.config.participantMode === "teams";
+  if (teamMode) {
+    return <OverlayShell title="CLASSEMENT DES ÉQUIPES" subtitle={`${cargoVariantLabel(state.config.variant)} · Tour ${Math.min(state.roundIndex, state.config.rounds)}/${state.config.rounds}`} color={ORANGE} onClose={onClose}>
+      <div style={{ display: "grid", gap: 8 }}>{(state.teamStandings || []).map((team: any, index: number) => {
+        const color = PLAYER_COLORS[index % PLAYER_COLORS.length] || ORANGE;
+        const activeId = String(state.players[state.activePlayerIndex]?.id || "");
+        const active = team.playerIds?.includes(activeId);
+        const names = (team.playerIds || []).map((id: string) => playerName(profilesById.get(String(id)) || state.players.find((player: any) => String(player.id) === String(id)))).join(" · ");
+        return <div key={team.id} style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 10, borderRadius: 16, background: active ? `${color}10` : "rgba(255,255,255,.025)", border: `1px solid ${team.rank === 1 ? GOLD : active ? color : "rgba(255,255,255,.08)"}66` }}>
+          <div style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: `${color}11`, border: `1px solid ${color}44`, color: team.rank === 1 ? GOLD : color, fontSize: 15, fontWeight: 1100 }}>#{team.rank}</div>
+          <div style={{ minWidth: 0 }}><div style={{ color: team.rank === 1 ? GOLD : color, fontSize: 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.name}{active ? " · EN JEU" : ""}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names}</div><div style={{ marginTop: 3, color: "#8c94a4", fontSize: 7.5 }}>{team.completedContracts || 0} contrats · {team.pallets || 0} palettes · {team.accuracy || 0}% précision</div></div>
+          <div style={{ textAlign: "right" }}><div style={{ color: parcel ? BLUE : ORANGE, fontSize: 22, fontWeight: 1150 }}>{team.score || 0}</div><div style={{ color: SOFT, fontSize: 7 }}>{parcel ? "COLIS" : "KG"}</div></div>
+        </div>;
+      })}</div>
+    </OverlayShell>;
+  }
   return <OverlayShell title="CLASSEMENT CARGO" subtitle={`${cargoVariantLabel(state.config.variant)} · Tour ${Math.min(state.roundIndex, state.config.rounds)}/${state.config.rounds}`} color={ORANGE} onClose={onClose}>
-    <div style={{ display: "grid", gap: 8 }}>{state.standings.map((standing: any, index: number) => { const profile = profilesById.get(String(standing.id)) || standing; const color = PLAYER_COLORS[state.players.findIndex((player) => player.id === standing.id) % PLAYER_COLORS.length] || ORANGE; const active = state.players[state.activePlayerIndex]?.id === standing.id; return <div key={standing.id} style={{ display: "grid", gridTemplateColumns: "38px 44px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 15, background: active ? `${color}10` : "rgba(255,255,255,.025)", border: `1px solid ${standing.rank === 1 ? GOLD : active ? color : "rgba(255,255,255,.08)"}66` }}><div style={{ color: standing.rank === 1 ? GOLD : "#fff", fontSize: 18, fontWeight: 1100, textAlign: "center" }}>#{standing.rank}</div><ProfileAvatar profile={profile} size={40} /><div style={{ minWidth: 0 }}><div style={{ color: active ? color : "#fff", fontSize: 10.5, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(profile)}{standing.rank === 1 ? " · LEADER" : ""}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{standing.pallets || 0} palettes · {standing.completedContracts || 0} contrats · série {standing.longestSeries || 0}</div></div><div style={{ textAlign: "right" }}><div style={{ color: parcel ? BLUE : ORANGE, fontSize: 20, fontWeight: 1100 }}>{standing.score || 0}</div><div style={{ color: SOFT, fontSize: 7 }}>{parcel ? "COLIS" : "KG"}</div></div></div>; })}</div>
+    <div style={{ display: "grid", gap: 8 }}>{state.standings.map((standing: any) => { const profile = profilesById.get(String(standing.id)) || standing; const color = PLAYER_COLORS[state.players.findIndex((player) => player.id === standing.id) % PLAYER_COLORS.length] || ORANGE; const active = state.players[state.activePlayerIndex]?.id === standing.id; return <div key={standing.id} style={{ display: "grid", gridTemplateColumns: "38px 44px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 15, background: active ? `${color}10` : "rgba(255,255,255,.025)", border: `1px solid ${standing.rank === 1 ? GOLD : active ? color : "rgba(255,255,255,.08)"}66` }}><div style={{ color: standing.rank === 1 ? GOLD : "#fff", fontSize: 18, fontWeight: 1100, textAlign: "center" }}>#{standing.rank}</div><ProfileAvatar profile={profile} size={40} /><div style={{ minWidth: 0 }}><div style={{ color: active ? color : "#fff", fontSize: 10.5, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(profile)}{standing.rank === 1 ? " · LEADER" : ""}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{standing.pallets || 0} palettes · {standing.completedContracts || 0} contrats · série {standing.longestSeries || 0}</div></div><div style={{ textAlign: "right" }}><div style={{ color: parcel ? BLUE : ORANGE, fontSize: 20, fontWeight: 1100 }}>{standing.score || 0}</div><div style={{ color: SOFT, fontSize: 7 }}>{parcel ? "COLIS" : "KG"}</div></div></div>; })}</div>
   </OverlayShell>;
 }
 
 function StatsModal({ state, stats, profile, onClose }: any) {
   const parcel = state.config.variant === "parcel_delivery";
   const attempts = Number(stats?.completedContracts || 0) + Number(stats?.failedContracts || 0);
-  return <OverlayShell title={`STATS · ${playerName(profile).toUpperCase()}`} subtitle={cargoVariantLabel(state.config.variant)} color={GREEN} onClose={onClose}>
+  const adv = buildCargoPlayerAdvancedStats(state, String(profile?.id || ""));
+  return <OverlayShell title={`STATS · ${playerName(profile).toUpperCase()}`} subtitle={`${cargoVariantLabel(state.config.variant)} · télémétrie live`} color={GREEN} onClose={onClose}>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
       <Kpi label={parcel ? "COLIS LIVRÉS" : "POIDS TRANSPORTÉ"} value={parcel ? stats?.parcelsDelivered || 0 : `${stats?.totalWeight || 0} kg`} color={parcel ? BLUE : ORANGE} />
       <Kpi label={parcel ? "LIVRAISONS" : "PALETTES"} value={parcel ? stats?.parcelDeliveries || 0 : stats?.pallets || 0} color={GOLD} />
-      <Kpi label="PRÉCISION" value={`${pct(stats?.hits, stats?.darts)}%`} detail={`${stats?.hits || 0}/${stats?.darts || 0} touches`} color={GREEN} />
-      <Kpi label="MEILLEURE SÉRIE" value={stats?.longestSeries || 0} detail={`${stats?.visits || 0} volées`} color={BLUE} />
-      {!parcel ? <><Kpi label="CONTRATS RÉUSSIS" value={stats?.completedContracts || 0} detail={attempts ? `${pct(stats?.completedContracts, attempts)}% de réussite` : "Aucun contrat clos"} color={GREEN} /><Kpi label="MEILLEURE PALETTE" value={`${stats?.bestPalletWeight || 0} kg`} color={GOLD} /><Kpi label="POIDS PERDU" value={`${stats?.lostWeight || 0} kg`} detail={`${stats?.rejectedWeight || 0} kg rejetés`} color={RED} /><Kpi label="CHARGEMENTS PARFAITS" value={stats?.perfectLoads || 0} detail={`${stats?.overloads || 0} surcharges`} color={ORANGE} /></> : <><Kpi label="BONUS COLIS" value={stats?.parcelBonuses || 0} color={GOLD} /><Kpi label="SÉRIES DE 5" value={Number(stats?.parcelSeries?.[5] || 0)} color={GREEN} /></>}
+      <Kpi label="PRÉCISION" value={`${adv.accuracy}%`} detail={`${stats?.hits || 0}/${stats?.darts || 0} touches`} color={GREEN} />
+      <Kpi label="RENDEMENT / DART" value={`${adv.scorePerDart} ${parcel ? "colis" : "kg"}`} detail={`${adv.scorePerVisit} / volée`} color={ORANGE} />
+      <Kpi label="MEILLEURE VOLÉE" value={`${adv.bestVisitScore} ${parcel ? "colis" : "kg"}`} detail={`top 3 : ${adv.top3VisitAverage}`} color={GOLD} />
+      <Kpi label="MEILLEUR TOUR" value={`${adv.bestRoundScore} ${parcel ? "colis" : "kg"}`} detail={`${adv.consistency}% régularité`} color={BLUE} />
+      <Kpi label="SÉRIE DE TOUCHES" value={adv.longestHitStreak} detail={`${adv.longestMissStreak} miss consécutifs max`} color="#d98cff" />
+      <Kpi label="VOLÉES PRODUCTIVES" value={`${adv.productiveVisitRate}%`} detail={`${adv.productiveVisits}/${stats?.visits || 0}`} color={GREEN} />
+      {!parcel ? <><Kpi label="CONTRATS RÉUSSIS" value={stats?.completedContracts || 0} detail={attempts ? `${adv.contractCompletionRate}% de réussite` : "Aucun contrat clos"} color={GREEN} /><Kpi label="MEILLEURE PALETTE" value={`${stats?.bestPalletWeight || 0} kg`} color={GOLD} /><Kpi label="CHARGE CONSERVÉE" value={`${adv.retentionRate}%`} detail={`${stats?.lostWeight || 0} kg perdus · ${stats?.rejectedWeight || 0} rejetés`} color={BLUE} /><Kpi label="CHARGEMENTS PARFAITS" value={stats?.perfectLoads || 0} detail={`${stats?.overloads || 0} surcharges`} color={ORANGE} /></> : <><Kpi label="BONUS COLIS" value={stats?.parcelBonuses || 0} color={GOLD} /><Kpi label="SÉRIES DE 5" value={Number(stats?.parcelSeries?.[5] || 0)} color={GREEN} /><Kpi label="VOLÉES SANS MISS" value={`${adv.noMissVisitRate}%`} detail={`${adv.noMissVisits} volées`} color={GREEN} /><Kpi label="COUVERTURE NUMÉROS" value={`${adv.uniqueNumbersHit}/20`} color={BLUE} /></>}
     </div>
-    <div style={{ ...panel(), marginTop: 10, padding: 11 }}><div style={{ color: GOLD, fontSize: 9.5, fontWeight: 1100, marginBottom: 9 }}>RÉPARTITION DES IMPACTS</div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>{[["SIMPLE", stats?.singles || 0, ORANGE],["DOUBLE", stats?.doubles || 0, BLUE],["TRIPLE", stats?.triples || 0, "#d98cff"],["BULL", stats?.bulls || 0, GREEN],["DBULL", stats?.dbulls || 0, GOLD],["MISS", stats?.misses || 0, RED]].map(([label,value,color]: any) => <div key={label} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ color: SOFT, fontSize: 7 }}>{label}</div><div style={{ marginTop: 3, color, fontSize: 18, fontWeight: 1100 }}>{value}</div></div>)}</div></div>
+    <div style={{ ...panel(), marginTop: 10, padding: 11 }}>
+      <div style={{ color: GOLD, fontSize: 9.5, fontWeight: 1100, marginBottom: 9 }}>RÉPARTITION DES IMPACTS</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>{[["SIMPLE", stats?.singles || 0, ORANGE],["DOUBLE", stats?.doubles || 0, BLUE],["TRIPLE", stats?.triples || 0, "#d98cff"],["BULL", stats?.bulls || 0, GREEN],["DBULL", stats?.dbulls || 0, GOLD],["MISS", stats?.misses || 0, RED]].map(([label,value,color]: any) => <div key={label} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ color: SOFT, fontSize: 7 }}>{label}</div><div style={{ marginTop: 3, color, fontSize: 18, fontWeight: 1100 }}>{value}</div></div>)}</div>
+    </div>
+    <div style={{ ...panel(), marginTop: 10, padding: 11 }}>
+      <div style={{ color: BLUE, fontSize: 9.5, fontWeight: 1100, marginBottom: 9 }}>TÉLÉMÉTRIE AVANCÉE</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+        {[["1re flèche", `${adv.firstDartAccuracy}%`],["Dernière flèche", `${adv.lastDartAccuracy}%`],["Power darts", `${adv.powerDartRate}%`],["Bull rate", `${adv.bullRate}%`],["Volées parfaites", adv.perfectAccuracyVisits],["Segments uniques", adv.uniqueSegmentsHit],["Séries démarrées", adv.seriesStarts],["Séries perdues", adv.seriesLostEvents]].map(([label,value]: any) => <div key={label} style={{ padding: "7px 8px", borderRadius: 11, background: "rgba(0,0,0,.24)", border: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: SOFT, fontSize: 7.5 }}>{label}</span><strong style={{ color: "#fff", fontSize: 8.5 }}>{value}</strong></div>)}
+      </div>
+    </div>
   </OverlayShell>;
 }
 

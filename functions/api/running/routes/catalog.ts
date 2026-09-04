@@ -38,6 +38,9 @@ type CatalogRoute = {
     difficulty?: number;
     isLoop?: boolean;
     cached?: boolean;
+    countryCode?: string;
+    regionName?: string;
+    locality?: string;
   };
 };
 
@@ -60,7 +63,7 @@ function json(payload: any, status = 200, headers: HeadersInit = {}) {
       "content-type": "application/json; charset=utf-8",
       "cache-control": status === 200 ? `public, max-age=300, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_TTL_SECONDS}` : "no-store",
       "access-control-allow-origin": "*",
-      "x-mss-route-catalog": "v2",
+      "x-mss-route-catalog": "v3",
       ...headers,
     },
   });
@@ -73,7 +76,7 @@ function finite(value: string | null | number | undefined, fallback: number) {
 
 function canonicalSport(value: string | null) {
   const sport = String(value || "running").toLowerCase().trim();
-  if (["running", "trail", "hiking", "walking", "nordic-walking"].includes(sport)) return sport;
+  if (["running", "trail", "hiking", "walking", "nordic-walking", "cycling", "mtb", "gravel", "ebike", "bmx", "roller", "snowshoe", "ski-touring", "equestrian"].includes(sport)) return sport;
   return "running";
 }
 
@@ -83,6 +86,13 @@ function routeKindsForSport(sport: string) {
   if (sport === "hiking") return "hiking|foot";
   if (sport === "walking") return "foot|hiking|running|fitness_trail";
   if (sport === "nordic-walking") return "nordic_walking|foot|hiking|fitness_trail";
+  if (["cycling", "ebike", "gravel"].includes(sport)) return "bicycle|mtb";
+  if (sport === "mtb") return "mtb|bicycle";
+  if (sport === "bmx") return "bicycle|mtb";
+  if (sport === "roller") return "inline_skates|foot";
+  if (sport === "snowshoe") return "snowshoe|hiking|foot";
+  if (sport === "ski-touring") return "ski|piste";
+  if (sport === "equestrian") return "horse|hiking";
   return "hiking|foot|running|fitness_trail";
 }
 
@@ -279,6 +289,9 @@ function normalizeStoredRow(raw: any, sport: string): CatalogRoute | null {
       difficulty: finite(row?.difficulty, 0) || undefined,
       isLoop: typeof (row?.isLoop ?? row?.is_loop) === "boolean" ? Boolean(row?.isLoop ?? row?.is_loop) : undefined,
       cached: true,
+      countryCode: cleanText(row?.countryCode ?? row?.country_code) || undefined,
+      regionName: cleanText(row?.regionName ?? row?.region_name) || undefined,
+      locality: cleanText(row?.locality) || undefined,
     },
   };
 }
@@ -334,6 +347,9 @@ function toPersistRow(route: CatalogRoute) {
     ranking: route.catalog.ranking || 0,
     difficulty: route.catalog.difficulty || 0,
     is_loop: Boolean(route.catalog.isLoop),
+    country_code: null,
+    region_name: null,
+    locality: null,
     metadata: { source: "live-osm", importedBy: "mss-route-catalog-v2" },
     fetched_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -423,6 +439,11 @@ function outdooractiveSportAffinity(category: string, title: string, sport: stri
   if (sport === "hiking") return /(hiking|wander|randonn|sender|walk|trek)/i.test(haystack) ? 3 : 0;
   if (sport === "walking") return /(walk|marche|promenade|hiking|wander|randonn|spazier)/i.test(haystack) ? 3 : 0;
   if (sport === "running") return /(running|jog|lauf|course|trail)/i.test(haystack) ? 3 : /(fitness)/i.test(haystack) ? 2 : 1;
+  if (sport === "mtb") return /(mtb|mountain bike|vtt)/i.test(haystack) ? 4 : /(bike|cycling|velo|vélo)/i.test(haystack) ? 2 : 0;
+  if (["cycling", "gravel", "ebike"].includes(sport)) return /(bike|cycling|velo|vélo|gravel|e-bike|ebike|vtt)/i.test(haystack) ? 3 : 0;
+  if (sport === "snowshoe") return /(snowshoe|raquette)/i.test(haystack) ? 4 : 0;
+  if (sport === "ski-touring") return /(ski touring|ski de randonnée|skitour)/i.test(haystack) ? 4 : 0;
+  if (sport === "equestrian") return /(horse|equestrian|cheval|reit)/i.test(haystack) ? 4 : 0;
   return 1;
 }
 
@@ -559,7 +580,7 @@ function cacheRequestUrl(request: Request, lat: number, lon: number, sport: stri
   u.searchParams.set("sport", sport);
   u.searchParams.set("radiusKm", String(Math.round(radiusKm)));
   u.searchParams.set("targetKm", targetKm > 0 ? targetKm.toFixed(1) : "0");
-  u.searchParams.set("v", "2");
+  u.searchParams.set("v", "3");
   return new Request(u.toString(), { method: "GET" });
 }
 
@@ -620,7 +641,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
     }, {});
     const response = json({
       ok: true,
-      provider: "mss-global-route-catalog-v2",
+      provider: "mss-global-route-catalog-v3",
       sport,
       radiusKm,
       targetKm,

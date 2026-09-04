@@ -622,10 +622,15 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
       stateSnapshot: snapshot ? stripHeavyPreserveKeys(snapshot) : undefined,
       visits: stripHeavyPreserveKeys(cargoVisits),
       matchStats: stripHeavyPreserveKeys(matchStats),
+      teams: stripHeavyPreserveKeys(payload?.teams ?? summary?.teams ?? summary?.teamStandings ?? matchStats?.teamStats ?? snapshot?.teamStandings ?? []),
       summary: stripHeavyPreserveKeys({
         winnerId: summary?.winnerId,
         winnerIds: summary?.winnerIds,
+        winnerTeamIds: summary?.winnerTeamIds,
         winnerName: summary?.winnerName,
+        participantMode: summary?.participantMode ?? payload?.config?.participantMode,
+        teamCount: summary?.teamCount ?? payload?.config?.teamCount,
+        teamNames: summary?.teamNames ?? payload?.config?.teamNames,
         variant: summary?.variant ?? payload?.config?.variant,
         roundsPlayed: summary?.roundsPlayed ?? matchStats?.roundsPlayed,
         configuredRounds: summary?.configuredRounds ?? payload?.config?.rounds,
@@ -753,7 +758,16 @@ export function encodeCompactMatch(input: any): CompactMatchV1 | null {
     const payload = rec.payload && typeof rec.payload === "object" ? rec.payload : rec;
     const id = String(rec.id ?? rec.matchId ?? payload.id ?? payload.matchId ?? `m_${Date.now()}`);
     const mode = inferMode(rec, payload);
-    const players = collectPlayers(rec, payload);
+    const collectedPlayers = collectPlayers(rec, payload);
+    // CARGO possède de vraies entités équipe dans payload.teams/summary.teams.
+    // Elles ne doivent jamais être compactées comme des joueurs.
+    const cargoTeams = mode === "cargo"
+      ? ([payload?.teams, payload?.summary?.teams, rec?.summary?.teams].find(Array.isArray) || [])
+      : [];
+    const cargoTeamIds = new Set((cargoTeams as any[]).filter((row: any) => Array.isArray(row?.playerIds)).map((row: any) => String(row?.id || "")).filter(Boolean));
+    const players = mode === "cargo" && cargoTeamIds.size
+      ? collectedPlayers.filter((row: any) => !cargoTeamIds.has(getPlayerId(row)))
+      : collectedPlayers;
     const p: string[] = [];
     const ps: CompactPlayerStat[] = [];
     const names: Record<number, string> = {};
@@ -822,6 +836,64 @@ export function encodeCompactMatch(input: any): CompactMatchV1 | null {
           ["lo_b", firstNum(pl?.bulls)],
           ["lo_db", firstNum(pl?.dbulls)],
           ["lo_mis", firstNum(pl?.dartMisses, pl?.misses)],
+        ];
+        for (const [key, value] of modeStats) if (value !== undefined) n[key] = value;
+      }
+
+
+      if (mode === "cargo") {
+        const adv = pl?.advanced && typeof pl.advanced === "object" ? pl.advanced : {};
+        const modeStats: Array<[string, number | undefined]> = [
+          ["cg_pv", firstNum(pl?.productiveVisits, adv?.productiveVisits)],
+          ["cg_ev", firstNum(pl?.emptyVisits, adv?.emptyVisits)],
+          ["cg_pav", firstNum(pl?.perfectAccuracyVisits, adv?.perfectAccuracyVisits)],
+          ["cg_nmv", firstNum(pl?.noMissVisits, adv?.noMissVisits)],
+          ["cg_fd", firstNum(pl?.firstDarts, adv?.firstDarts)],
+          ["cg_fdh", firstNum(pl?.firstDartHits, adv?.firstDartHits)],
+          ["cg_2d", firstNum(pl?.secondDarts, adv?.secondDarts)],
+          ["cg_2dh", firstNum(pl?.secondDartHits, adv?.secondDartHits)],
+          ["cg_3d", firstNum(pl?.thirdDarts, adv?.thirdDarts)],
+          ["cg_3dh", firstNum(pl?.thirdDartHits, adv?.thirdDartHits)],
+          ["cg_ld", firstNum(pl?.lastDarts, adv?.lastDarts)],
+          ["cg_ldh", firstNum(pl?.lastDartHits, adv?.lastDartHits)],
+          ["cg_zv", firstNum(pl?.zeroHitVisits, adv?.zeroHitVisits)],
+          ["cg_1v", firstNum(pl?.oneHitVisits, adv?.oneHitVisits)],
+          ["cg_2v", firstNum(pl?.twoHitVisits, adv?.twoHitVisits)],
+          ["cg_3v", firstNum(pl?.threeHitVisits, adv?.threeHitVisits)],
+          ["cg_bv", firstNum(pl?.bestVisitScore, adv?.bestVisitScore)],
+          ["cg_br", firstNum(pl?.bestRoundScore, adv?.bestRoundScore)],
+          ["cg_hs", firstNum(pl?.longestHitStreak, adv?.longestHitStreak)],
+          ["cg_ms", firstNum(pl?.longestMissStreak, adv?.longestMissStreak)],
+          ["cg_us", firstNum(pl?.uniqueSegmentsHit, adv?.uniqueSegmentsHit)],
+          ["cg_un", firstNum(pl?.uniqueNumbersHit, adv?.uniqueNumbersHit)],
+          ["cg_ss", firstNum(pl?.seriesStarts, adv?.seriesStarts)],
+          ["cg_sp", firstNum(pl?.seriesProgressEvents, adv?.seriesProgressEvents)],
+          ["cg_sec", firstNum(pl?.seriesSecured, adv?.seriesSecured)],
+          ["cg_sl", firstNum(pl?.seriesLostEvents, adv?.seriesLostEvents)],
+          ["cg_hw", firstNum(pl?.handledWeight, adv?.handledWeight)],
+          ["cg_ca", firstNum(pl?.contractAttempts, adv?.contractAttempts)],
+          ["cg_con", firstNum(pl?.consistency, adv?.consistency)],
+          ["cg_av", firstNum(pl?.avgVisitScore, adv?.avgVisitScore)],
+          ["cg_ar", firstNum(pl?.avgRoundScore, adv?.avgRoundScore)],
+          ["cg_sd", firstNum(pl?.scorePerDart, adv?.scorePerDart)],
+          ["cg_sh", firstNum(pl?.scorePerHit, adv?.scorePerHit)],
+          ["cg_pr", firstNum(pl?.powerDartRate, adv?.powerDartRate)],
+          ["cg_bur", firstNum(pl?.bullRate, adv?.bullRate)],
+          ["cg_acc", firstNum(pl?.accuracy, adv?.accuracy)],
+          ["cg_ret", firstNum(pl?.retentionRate, adv?.retentionRate)],
+          ["cg_t3", firstNum(pl?.top3VisitAverage, adv?.top3VisitAverage)],
+          ["cg_t5", firstNum(pl?.top5VisitAverage, adv?.top5VisitAverage)],
+          ["cg_med", firstNum(pl?.medianVisitScore, adv?.medianVisitScore)],
+          ["cg_p75", firstNum(pl?.p75VisitScore, adv?.p75VisitScore)],
+          ["cg_p90", firstNum(pl?.p90VisitScore, adv?.p90VisitScore)],
+          ["cg_vsd", firstNum(pl?.visitStdDev, adv?.visitStdDev)],
+          ["cg_ahm", firstNum(pl?.avgHitMultiplier, adv?.avgHitMultiplier)],
+          ["cg_hvr", firstNum(pl?.highValueHitRate, adv?.highValueHitRate)],
+          ["cg_sfv", firstNum(pl?.safeVisits, adv?.safeVisits)],
+          ["cg_re", firstNum(pl?.riskEvents, adv?.riskEvents)],
+          ["cg_scr", firstNum(pl?.seriesConversionRate, adv?.seriesConversionRate)],
+          ["cg_slr", firstNum(pl?.seriesLossRate, adv?.seriesLossRate)],
+          ["cg_ccr", firstNum(pl?.contractCompletionRate, adv?.contractCompletionRate)],
         ];
         for (const [key, value] of modeStats) if (value !== undefined) n[key] = value;
       }
@@ -1025,6 +1097,56 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         alias("parcelDeliveries", "parceldeliveries");
         alias("parcelBonuses", "parcelbonuses");
         alias("routeStagesCompleted", "routestagescomplet");
+        alias("productiveVisits", "cg_pv", "productivevisits");
+        alias("emptyVisits", "cg_ev", "emptyvisits");
+        alias("perfectAccuracyVisits", "cg_pav", "perfectaccuracyvisi");
+        alias("noMissVisits", "cg_nmv", "nomissvisits");
+        alias("firstDarts", "cg_fd", "firstdarts");
+        alias("firstDartHits", "cg_fdh", "firstdarthits");
+        alias("secondDarts", "cg_2d", "seconddarts");
+        alias("secondDartHits", "cg_2dh", "seconddarthits");
+        alias("thirdDarts", "cg_3d", "thirddarts");
+        alias("thirdDartHits", "cg_3dh", "thirddarthits");
+        alias("lastDarts", "cg_ld", "lastdarts");
+        alias("lastDartHits", "cg_ldh", "lastdarthits");
+        alias("zeroHitVisits", "cg_zv", "zerohitvisits");
+        alias("oneHitVisits", "cg_1v", "onehitvisits");
+        alias("twoHitVisits", "cg_2v", "twohitvisits");
+        alias("threeHitVisits", "cg_3v", "threehitvisits");
+        alias("bestVisitScore", "cg_bv", "bestvisitscore");
+        alias("bestRoundScore", "cg_br", "bestroundscore");
+        alias("longestHitStreak", "cg_hs", "longesthitstreak");
+        alias("longestMissStreak", "cg_ms", "longestmissstreak");
+        alias("uniqueSegmentsHit", "cg_us", "uniquesegmentshit");
+        alias("uniqueNumbersHit", "cg_un", "uniquenumbershit");
+        alias("seriesStarts", "cg_ss", "seriesstarts");
+        alias("seriesProgressEvents", "cg_sp", "seriesprogresseven");
+        alias("seriesSecured", "cg_sec", "seriessecured");
+        alias("seriesLostEvents", "cg_sl", "serieslostevents");
+        alias("handledWeight", "cg_hw", "handledweight");
+        alias("contractAttempts", "cg_ca", "contractattempts");
+        alias("consistency", "cg_con", "consistency");
+        alias("avgVisitScore", "cg_av", "avgvisitscore");
+        alias("avgRoundScore", "cg_ar", "avgroundscore");
+        alias("scorePerDart", "cg_sd", "scoreperdart");
+        alias("scorePerHit", "cg_sh", "scoreperhit");
+        alias("powerDartRate", "cg_pr", "powerdartrate");
+        alias("bullRate", "cg_bur", "bullrate");
+        alias("accuracy", "cg_acc", "accuracy");
+        alias("retentionRate", "cg_ret", "retentionrate");
+        alias("top3VisitAverage", "cg_t3", "top3visitaverage");
+        alias("top5VisitAverage", "cg_t5", "top5visitaverage");
+        alias("medianVisitScore", "cg_med", "medianvisitscore");
+        alias("p75VisitScore", "cg_p75", "p75visitscore");
+        alias("p90VisitScore", "cg_p90", "p90visitscore");
+        alias("visitStdDev", "cg_vsd", "visitstddev");
+        alias("avgHitMultiplier", "cg_ahm", "avghitmultiplier");
+        alias("highValueHitRate", "cg_hvr", "highvaluehitrate");
+        alias("safeVisits", "cg_sfv", "safevisits");
+        alias("riskEvents", "cg_re", "riskevents");
+        alias("seriesConversionRate", "cg_scr", "seriesconversion");
+        alias("seriesLossRate", "cg_slr", "serieslossrate");
+        alias("contractCompletionRate", "cg_ccr", "contractcompletion");
       }
       if (compact.m === "football_darts") {
         const n = ps.n || {};
@@ -1151,6 +1273,7 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       ...(Array.isArray(poker?.visits) ? { visits: poker.visits } : {}),
       ...(cargo?.summary || {}),
       ...(cargo?.matchStats ? { matchStats: cargo.matchStats } : {}),
+      ...(Array.isArray(cargo?.teams) ? { teams: cargo.teams, teamStandings: cargo.teams } : {}),
       ...(Array.isArray(cargo?.visits) ? { visits: cargo.visits } : {}),
       ...(ocean?.summary || {}),
       ...(ocean?.matchStats ? { matchStats: ocean.matchStats } : {}),
@@ -1188,7 +1311,8 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         config: cargo.config || compact.o || {},
         stateSnapshot: cargo.stateSnapshot,
         visits: Array.isArray(cargo.visits) ? cargo.visits : [],
-        stats: { sport: "darts", mode: "cargo", players, match: cargo.matchStats || {}, global: cargo.matchStats || {} },
+        teams: Array.isArray(cargo.teams) ? cargo.teams : [],
+        stats: { sport: "darts", mode: "cargo", players, teams: Array.isArray(cargo.teams) ? cargo.teams : [], match: cargo.matchStats || {}, global: cargo.matchStats || {} },
       } : {}),
       ...(ocean ? {
         config: ocean.config || compact.o || {},

@@ -55,6 +55,9 @@ export type RunningRouteTemplate = {
     difficulty?: number;
     isLoop?: boolean;
     cached?: boolean;
+    countryCode?: string;
+    regionName?: string;
+    locality?: string;
   };
   externalId?: string;
   network?: string;
