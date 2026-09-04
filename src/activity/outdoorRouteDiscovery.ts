@@ -216,12 +216,53 @@ async function fetchOverpass(query: string, signal: AbortSignal) {
   throw lastError instanceof Error ? lastError : new Error("Service cartographique indisponible.");
 }
 
-async function fetchGlobalCatalog(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport, radiusKm: number, signal: AbortSignal) {
+function catalogPayloadToRoute(raw: any, sport: OutdoorPerformanceSport): RunningRouteTemplate | null {
+  if (!raw || !Array.isArray(raw.route) || raw.route.length < 2) return null;
+  const route = raw.route.map((point: any, index: number) => ({
+    lat: Number(point?.lat),
+    lon: Number(point?.lon ?? point?.lng),
+    timestamp: Number(point?.timestamp || Date.now() + index),
+    altitude: Number.isFinite(Number(point?.altitude)) ? Number(point.altitude) : undefined,
+  })).filter((point: GeoPoint) => Number.isFinite(point.lat) && Number.isFinite(point.lon));
+  if (route.length < 2) return null;
+  const distanceM = Number(raw.distanceM || routeDistanceMeters(route));
+  if (!Number.isFinite(distanceM) || distanceM < outdoorRouteSearchPolicy(sport).absoluteMinKm * 1000) return null;
+  return {
+    id: String(raw.id || raw.externalId || `catalog:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`),
+    externalId: String(raw.externalId || raw.id || "") || undefined,
+    name: sanitizeName(raw.name, "Parcours référencé"),
+    route: simplify(route),
+    distanceM,
+    elevationGainM: Number(raw.elevationGainM || 0),
+    referenceElapsedMs: Number(raw.referenceElapsedMs || 0),
+    createdAt: Number(raw.createdAt || Date.now()),
+    source: raw.source === "osm" ? "osm" : "catalog",
+    sport,
+    network: sanitizeName(raw.network || "", "") || undefined,
+    routeRef: sanitizeName(raw.routeRef || "", "") || undefined,
+    operator: sanitizeName(raw.operator || "", "") || undefined,
+    catalog: raw.catalog && typeof raw.catalog === "object" ? {
+      provider: String(raw.catalog.provider || "mss"),
+      providerRouteId: String(raw.catalog.providerRouteId || raw.externalId || raw.id || ""),
+      sourceUrl: raw.catalog.sourceUrl ? String(raw.catalog.sourceUrl) : undefined,
+      imageUrl: raw.catalog.imageUrl ? String(raw.catalog.imageUrl) : undefined,
+      attribution: raw.catalog.attribution ? String(raw.catalog.attribution) : undefined,
+      license: raw.catalog.license ? String(raw.catalog.license) : undefined,
+      ranking: Number.isFinite(Number(raw.catalog.ranking)) ? Number(raw.catalog.ranking) : undefined,
+      difficulty: Number.isFinite(Number(raw.catalog.difficulty)) ? Number(raw.catalog.difficulty) : undefined,
+      isLoop: typeof raw.catalog.isLoop === "boolean" ? raw.catalog.isLoop : undefined,
+      cached: typeof raw.catalog.cached === "boolean" ? raw.catalog.cached : undefined,
+    } : undefined,
+  };
+}
+
+async function fetchGlobalCatalog(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport, radiusKm: number, signal: AbortSignal, targetDistanceKm = 0) {
   const params = new URLSearchParams({
     lat: String(center.lat),
     lon: String(center.lon),
     sport,
     radiusKm: String(radiusKm),
+    targetKm: targetDistanceKm > 0 ? String(targetDistanceKm) : "0",
   });
   const response = await fetch(`/api/running/routes/catalog?${params.toString()}`, {
     method: "GET",
@@ -230,13 +271,13 @@ async function fetchGlobalCatalog(center: OutdoorRouteDiscoveryCenter, sport: Ou
   });
   if (!response.ok) throw new Error(`Catalogue MSS HTTP ${response.status}`);
   const json = await response.json();
-  if (!Array.isArray(json?.elements)) throw new Error("Catalogue MSS invalide.");
+  if (!Array.isArray(json?.elements) && !Array.isArray(json?.routes)) throw new Error("Catalogue MSS invalide.");
   return { json, provider: "mss-global-route-catalog" as const };
 }
 
-async function fetchDiscoveryData(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport, radiusKm: number, signal: AbortSignal) {
+async function fetchDiscoveryData(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport, radiusKm: number, signal: AbortSignal, targetDistanceKm = 0) {
   try {
-    return await fetchGlobalCatalog(center, sport, radiusKm, signal);
+    return await fetchGlobalCatalog(center, sport, radiusKm, signal, targetDistanceKm);
   } catch (catalogError) {
     if (signal.aborted) throw catalogError;
     // Development/StackBlitz or a Pages deployment without the Function still works.
@@ -248,6 +289,7 @@ export async function discoverOutdoorRoutes(
   center: OutdoorRouteDiscoveryCenter,
   sport: OutdoorPerformanceSport,
   radiusKm = 10,
+  targetDistanceKm = 0,
 ): Promise<OutdoorRouteDiscoveryResult> {
   if (!Number.isFinite(center.lat) || !Number.isFinite(center.lon)) throw new Error("Position invalide.");
   if (sport === "treadmill") return { routes: [], center, radiusKm, provider: "openstreetmap-overpass" };
@@ -255,19 +297,22 @@ export async function discoverOutdoorRoutes(
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 26000);
   try {
-    const fetched = await fetchDiscoveryData(center, sport, safeRadius, controller.signal);
+    const fetched = await fetchDiscoveryData(center, sport, safeRadius, controller.signal, targetDistanceKm);
     const json = fetched.json;
-    const routes = (json.elements as any[])
-      .filter((element) => element?.type === "relation")
-      .map((relation) => relationToRoute(relation, center, sport))
-      .filter((route): route is RunningRouteTemplate => !!route)
-      .sort((a, b) => {
-        const a0 = a.route[0];
-        const b0 = b.route[0];
-        const aNear = a0 ? distanceToCenter(a0, center) : Number.POSITIVE_INFINITY;
-        const bNear = b0 ? distanceToCenter(b0, center) : Number.POSITIVE_INFINITY;
-        return aNear - bNear || b.distanceM - a.distanceM;
-      });
+    const catalogRoutes = (Array.isArray(json?.routes) ? json.routes : [])
+      .map((raw: any) => catalogPayloadToRoute(raw, sport))
+      .filter((route: RunningRouteTemplate | null): route is RunningRouteTemplate => !!route);
+    const osmRoutes = (Array.isArray(json?.elements) ? json.elements : [])
+      .filter((element: any) => element?.type === "relation")
+      .map((relation: any) => relationToRoute(relation, center, sport))
+      .filter((route: RunningRouteTemplate | null): route is RunningRouteTemplate => !!route);
+    const routes = [...catalogRoutes, ...osmRoutes].sort((a, b) => {
+      const a0 = a.route[0];
+      const b0 = b.route[0];
+      const aNear = a0 ? distanceToCenter(a0, center) : Number.POSITIVE_INFINITY;
+      const bNear = b0 ? distanceToCenter(b0, center) : Number.POSITIVE_INFINITY;
+      return aNear - bNear || b.distanceM - a.distanceM;
+    });
     const unique = new Map<string, RunningRouteTemplate>();
     for (const route of routes) {
       if (!unique.has(route.id)) unique.set(route.id, route);

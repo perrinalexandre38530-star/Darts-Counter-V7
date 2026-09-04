@@ -29,12 +29,12 @@ import { RUNNING_AUDIO_COACH_KEY, type RunningCustomWorkoutSpec, type RunningPla
 import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGainMeters, filterRouteOutliers, formatDistance, formatDuration, formatPace, movingTimeMs, rollingPaceSecPerKm, routeDistanceMeters, shouldAcceptRunningPoint, } from "../../activity/activityMath";
 import { buildRunningStats, bestEffortMs, hasNegativeSplit, projectedFinishMs, splitConsistencyScore, targetPaceDeltaMs } from "../../activity/runningInsights";
 import { favoriteRouteFromActivity, ghostMatch as runningGhostMatch, loadRunningRoutes, removeRunningRoute, routeTemplateFromActivity, upsertRunningRoute, type RunningRouteTemplate } from "../../activity/runningRoutes";
-import { discoverOutdoorRoutes } from "../../activity/outdoorRouteDiscovery";
 import { scoutExistingOutdoorRoutes } from "../../activity/outdoorRouteScout";
+import { outdoorRouteSearchPolicy } from "../../activity/outdoorRouteSearchPolicy";
 import { generateOutdoorRoutes, type OutdoorRouteGenerationProfile, type OutdoorRouteGenerationShape } from "../../activity/outdoorRouteGenerator";
 import { enrichOutdoorRouteElevation, routeHasElevation } from "../../activity/outdoorRouteElevation";
 import { syncOutdoorRouteAttempt } from "../../activity/outdoorRouteCommunity";
-import { fetchNearbyCommunityRoutes, publishOutdoorActivityRoute, unpublishOutdoorActivityRoute } from "../../activity/outdoorPublicRoutes";
+import { publishOutdoorActivityRoute, unpublishOutdoorActivityRoute } from "../../activity/outdoorPublicRoutes";
 import { loadRunningShoes, type RunningShoe } from "../../activity/runningGear";
 import { adaptiveMilestoneCoach, adaptiveSplitCoach } from "../../activity/runningCoach";
 import { analyzeRunningTerrain, terrainAdvice, terrainLabel } from "../../activity/runningElevation";
@@ -229,6 +229,7 @@ export default function RunningModule({ go, params }: Props) {
     const [setupTab, setSetupTab] = React.useState<SetupTab>(() => params?.runningPresetId ? (initialPreset === "pacer" || initialPreset === "custom" ? "advanced" : ["easy", "tempo", "intervals", "hills", "long", "recovery"].includes(initialPreset) ? "training" : "goal") : "menu");
     const [setupPanel, setSetupPanel] = React.useState<SetupPanel>(() => params?.runningPresetId ? "workout" : "menu");
     const [activitySport, setActivitySport] = React.useState<OutdoorPerformanceSport>(() => params?.runningActivitySport ? canonicalOutdoorPerformanceSport(params.runningActivitySport) : loadOutdoorPerformanceSport());
+    const routeSearchPolicy = outdoorRouteSearchPolicy(activitySport);
     const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
     const [selected, setSelected] = React.useState<ActivityRecord | null>(null);
     const [selectedPresetId, setSelectedPresetId] = React.useState(() => {
@@ -265,15 +266,15 @@ export default function RunningModule({ go, params }: Props) {
     const [savedRoutes, setSavedRoutes] = React.useState<RunningRouteTemplate[]>(() => loadRunningRoutes());
     const [discoveredRoutes, setDiscoveredRoutes] = React.useState<RunningRouteTemplate[]>([]);
     const [routeDiscoveryCenter, setRouteDiscoveryCenter] = React.useState<GeoPoint | null>(null);
-    const [routeDiscoveryRadiusKm, setRouteDiscoveryRadiusKm] = React.useState(10);
+    const [routeDiscoveryRadiusKm, setRouteDiscoveryRadiusKm] = React.useState(() => routeSearchPolicy.defaultRadiusKm);
     const [routeDiscoveryBusy, setRouteDiscoveryBusy] = React.useState(false);
     const [routeDiscoveryMessage, setRouteDiscoveryMessage] = React.useState("");
     const [routePublishMessage, setRoutePublishMessage] = React.useState("");
     const [routeScoutBusy, setRouteScoutBusy] = React.useState(false);
-    const [routeScoutRadiusKm, setRouteScoutRadiusKm] = React.useState(20);
+    const [routeScoutRadiusKm, setRouteScoutRadiusKm] = React.useState(() => routeSearchPolicy.defaultRadiusKm);
     const [routeScoutMessage, setRouteScoutMessage] = React.useState("");
-    const [routeGenerationDistanceKm, setRouteGenerationDistanceKm] = React.useState(10);
-    const [routeGenerationProfile, setRouteGenerationProfile] = React.useState<OutdoorRouteGenerationProfile>("balanced");
+    const [routeGenerationDistanceKm, setRouteGenerationDistanceKm] = React.useState(() => routeSearchPolicy.defaultTargetKm);
+    const [routeGenerationProfile, setRouteGenerationProfile] = React.useState<OutdoorRouteGenerationProfile>(() => routeSearchPolicy.defaultProfile);
     const [routeGenerationShape, setRouteGenerationShape] = React.useState<OutdoorRouteGenerationShape>("loop");
     const [routeGenerationElevationEnabled, setRouteGenerationElevationEnabled] = React.useState(false);
     const [routeGenerationElevationMinM, setRouteGenerationElevationMinM] = React.useState(300);
@@ -406,11 +407,17 @@ export default function RunningModule({ go, params }: Props) {
     }, [activitySport]);
     React.useEffect(() => { void refreshOfflineRoutes(); }, [refreshOfflineRoutes]);
     React.useEffect(() => {
+        const policy = outdoorRouteSearchPolicy(activitySport);
         setDiscoveredRoutes([]);
         setRouteDiscoveryCenter(null);
         setRouteDiscoveryMessage("");
+        setRouteScoutMessage("");
         setRouteGenerationMessage("");
-        setRouteGenerationProfile(activitySport === "trail" || activitySport === "hiking" ? "trails" : "balanced");
+        setRouteDiscoveryRadiusKm(policy.defaultRadiusKm);
+        setRouteScoutRadiusKm(policy.defaultRadiusKm);
+        setRouteGenerationDistanceKm(policy.defaultTargetKm);
+        setRouteGenerationProfile(policy.defaultProfile);
+        setRouteGenerationShape("loop");
     }, [activitySport]);
     React.useEffect(() => {
         if (!params?.runningOpenRoutes || activitySport === "treadmill") return;
@@ -1662,7 +1669,7 @@ export default function RunningModule({ go, params }: Props) {
     const scoutExistingRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;
         setRouteScoutBusy(true);
-        setRouteScoutMessage(pickLegacyLocalizedText(lang, "SCOUT IA · RECHERCHE DES PARCOURS EXISTANTS…", "AI SCOUT · SEARCHING EXISTING ROUTES…", "SCOUT IA · BUSCANDO RUTAS EXISTENTES…"));
+        setRouteScoutMessage(pickLegacyLocalizedText(lang, "RECHERCHE DES MEILLEURS PARCOURS…", "SEARCHING THE BEST ROUTES…", "BUSCANDO LAS MEJORES RUTAS…"));
         try {
             const point = await resolveRoutePosition();
             const result = await scoutExistingOutdoorRoutes({
@@ -1670,10 +1677,12 @@ export default function RunningModule({ go, params }: Props) {
                 sport: activitySport,
                 radiusKm: routeScoutRadiusKm,
                 targetDistanceKm: routeGenerationDistanceKm,
-                minResults: 14,
+                minResults: 18,
+                profile: routeGenerationProfile,
+                shape: routeGenerationShape,
             });
             if (!result.routes.length) {
-                setRouteScoutMessage(pickLegacyLocalizedText(lang, "Aucun parcours balisé exploitable trouvé. Essaie un rayon plus grand : le Scout élargit déjà automatiquement sa recherche jusqu’à 40 km.", "No usable mapped route found. Try a larger radius: Scout already expands automatically up to 40 km.", "No se encontró una ruta señalizada utilizable. Prueba un radio mayor: Scout ya amplía automáticamente la búsqueda hasta 40 km."));
+                setRouteScoutMessage(pickLegacyLocalizedText(lang, "Aucun tracé cohérent n’a pu être construit ici. Essaie une autre distance ou un rayon plus large.", "No coherent route could be built here. Try another distance or a larger radius.", "No se pudo construir una ruta coherente aquí. Prueba otra distancia o un radio mayor."));
                 return;
             }
             setDiscoveredRoutes(result.routes);
@@ -1681,8 +1690,12 @@ export default function RunningModule({ go, params }: Props) {
             setRouteChooseMode("scout");
             const best = result.routes[0];
             const bestScore = Math.round(Number(best.scout?.score || 0));
-            const searched = result.searchedRadiiKm.length ? ` · ${result.searchedRadiiKm.join("/ ")} km` : "";
-            setRouteScoutMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours existants trouvés et classés. Meilleure correspondance : ${bestScore}%${searched}.`, `${result.routes.length} existing routes found and ranked. Best match: ${bestScore}%${searched}.`, `${result.routes.length} rutas existentes encontradas y clasificadas. Mejor coincidencia: ${bestScore}%${searched}.`));
+            const generatedCount = result.routes.filter((route) => route.source === "generated").length;
+            const communityCount = result.routes.filter((route) => route.source === "community").length;
+            const referencedCount = result.routes.filter((route) => route.source === "osm").length;
+            const searched = result.searchedRadiiKm.length ? ` · ${result.searchedRadiiKm.join("/")} km` : "";
+            const sourceNote = ` · ${referencedCount} référencés · ${communityCount} communauté · ${generatedCount} sur mesure`;
+            setRouteScoutMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours pertinents pour ${outdoorSportLabel(activitySport, lang)} · objectif ${routeGenerationDistanceKm} km · meilleure correspondance ${bestScore}%${sourceNote}${searched}.`, `${result.routes.length} relevant routes for ${outdoorSportLabel(activitySport, lang)} · ${routeGenerationDistanceKm} km target · best match ${bestScore}%${sourceNote}${searched}.`, `${result.routes.length} rutas relevantes para ${outdoorSportLabel(activitySport, lang)} · objetivo ${routeGenerationDistanceKm} km · mejor coincidencia ${bestScore}%${sourceNote}${searched}.`));
             void Promise.all(result.routes.slice(0, 6).filter((route) => !routeHasElevation(route)).map(async (route) => {
                 try {
                     const enriched = await enrichOutdoorRouteElevation(route);
@@ -1691,37 +1704,43 @@ export default function RunningModule({ go, params }: Props) {
                 } catch {}
             }));
         } catch (error: any) {
-            setRouteScoutMessage(error?.message || pickLegacyLocalizedText(lang, "Scout IA indisponible pour le moment.", "AI Scout is currently unavailable.", "Scout IA no disponible por el momento."));
+            setRouteScoutMessage(error?.message || pickLegacyLocalizedText(lang, "Recherche de parcours indisponible pour le moment.", "Route search is currently unavailable.", "La búsqueda de rutas no está disponible por el momento."));
         } finally {
             setRouteScoutBusy(false);
         }
-    }, [activitySport, lang, resolveRoutePosition, routeGenerationDistanceKm, routeScoutRadiusKm, selectRoute]);
+    }, [activitySport, lang, resolveRoutePosition, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, routeScoutRadiusKm, selectRoute]);
+
     const discoverNearbyRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;
         setRouteDiscoveryBusy(true);
-        setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, "LOCALISATION ET RECHERCHE DES PARCOURS…", "LOCATING AND SEARCHING ROUTES…", "LOCALIZANDO Y BUSCANDO RUTAS…"));
+        setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, "RECHERCHE DES PARCOURS ADAPTÉS…", "SEARCHING SUITABLE ROUTES…", "BUSCANDO RUTAS ADECUADAS…"));
         try {
             const point = await resolveRoutePosition();
-            const [result, community] = await Promise.all([
-                discoverOutdoorRoutes({ lat: point.lat, lon: point.lon }, activitySport, routeDiscoveryRadiusKm),
-                fetchNearbyCommunityRoutes({ lat: point.lat, lon: point.lon }, activitySport, routeDiscoveryRadiusKm),
-            ]);
-            const combined = [...community.routes, ...result.routes];
-            setDiscoveredRoutes(combined);
-            if (combined.length) {
-                const communityCount = community.routes.length;
-                const osmCount = result.routes.length;
-                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `${osmCount} parcours cartographiés + ${communityCount} parcours communauté trouvés dans ${result.radiusKm} km.`, `${osmCount} mapped routes + ${communityCount} community routes found within ${result.radiusKm} km.`, `${osmCount} rutas cartografiadas + ${communityCount} rutas de la comunidad encontradas en ${result.radiusKm} km.`));
-                if (!selectedRouteId) selectRoute(combined[0]);
+            const result = await scoutExistingOutdoorRoutes({
+                center: { lat: point.lat, lon: point.lon },
+                sport: activitySport,
+                radiusKm: routeDiscoveryRadiusKm,
+                targetDistanceKm: routeGenerationDistanceKm,
+                minResults: 16,
+                profile: routeGenerationProfile,
+                shape: routeGenerationShape,
+            });
+            setDiscoveredRoutes(result.routes);
+            if (result.routes.length) {
+                const generatedCount = result.routes.filter((route) => route.source === "generated").length;
+                const existingCount = result.routes.length - generatedCount;
+                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours adaptés trouvés pour ${routeGenerationDistanceKm} km · ${existingCount} existants · ${generatedCount} sur mesure.`, `${result.routes.length} suitable routes found for ${routeGenerationDistanceKm} km · ${existingCount} existing · ${generatedCount} custom.`, `${result.routes.length} rutas adecuadas encontradas para ${routeGenerationDistanceKm} km · ${existingCount} existentes · ${generatedCount} a medida.`));
+                if (!selectedRouteId) selectRoute(result.routes[0]);
             } else {
-                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `Aucun parcours existant ou communautaire trouvé dans ${result.radiusKm} km. Essaie un rayon plus grand.`, `No mapped or community route found within ${result.radiusKm} km. Try a larger radius.`, `No se encontró ninguna ruta cartografiada o comunitaria en ${result.radiusKm} km. Prueba un radio mayor.`));
+                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `Aucun parcours cohérent trouvé pour ${routeGenerationDistanceKm} km. Essaie une autre distance ou augmente le rayon.`, `No coherent route found for ${routeGenerationDistanceKm} km. Try another distance or increase the radius.`, `No se encontró una ruta coherente para ${routeGenerationDistanceKm} km. Prueba otra distancia o aumenta el radio.`));
             }
         } catch (error: any) {
             setRouteDiscoveryMessage(error?.message || pickLegacyLocalizedText(lang, "Recherche cartographique indisponible.", "Map route search unavailable.", "Búsqueda cartográfica no disponible."));
         } finally {
             setRouteDiscoveryBusy(false);
         }
-    }, [activitySport, lang, resolveRoutePosition, routeDiscoveryRadiusKm, selectRoute, selectedRouteId]);
+    }, [activitySport, lang, resolveRoutePosition, routeDiscoveryRadiusKm, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, selectRoute, selectedRouteId]);
+
     const generateRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;
         setRouteGenerationBusy(true);
@@ -2183,11 +2202,20 @@ export default function RunningModule({ go, params }: Props) {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                   <div>
                     <div style={{ color: accent, fontSize: 9.1, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, "PARCOURS AUTOUR DE MOI", "ROUTES AROUND ME", "RUTAS CERCA DE MÍ")}</div>
-                    <div style={{ marginTop: 3, color: textSoft, fontSize: 8, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Recherche les itinéraires balisés OpenStreetMap autour de ta position, sans remplir tout l’écran de paramètres.", "Find OpenStreetMap mapped routes around your current position without filling the whole screen with controls.", "Busca rutas señalizadas de OpenStreetMap cerca de tu posición sin llenar toda la pantalla de controles.")}</div>
+                    <div style={{ marginTop: 3, color: textSoft, fontSize: 8, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, `Recherche ${routeGenerationDistanceKm} km pour ${outdoorSportLabel(activitySport, lang)} : parcours cartographiés, communauté puis génération sur mesure si nécessaire.`, `Search ${routeGenerationDistanceKm} km routes for ${outdoorSportLabel(activitySport, lang)}: mapped routes, community routes, then custom generation if needed.`, `Busca rutas de ${routeGenerationDistanceKm} km para ${outdoorSportLabel(activitySport, lang)}: rutas cartografiadas, comunidad y generación a medida si hace falta.`)}</div>
                   </div>
                   <RunningGlyph name="route-choose" size={20}/>
                 </div>
-                <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{[5,10,20].map((radius) => <button key={radius} className="btn" onClick={() => setRouteDiscoveryRadiusKm(radius)} style={{ minHeight: 31, padding: "4px 6px", color: routeDiscoveryRadiusKm === radius ? accent : undefined, borderColor: routeDiscoveryRadiusKm === radius ? `${accent}66` : undefined, fontSize: 8.1, fontWeight: 1000 }}>{radius} KM</button>)}</div>
+                <div style={{ marginTop: 9, display: "grid", gap: 7 }}>
+                  <div>
+                    <div style={{ color: textSoft, fontSize: 6.8, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, "DISTANCE VOULUE", "TARGET DISTANCE", "DISTANCIA OBJETIVO")}</div>
+                    <div style={{ marginTop: 5, display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>{routeSearchPolicy.distanceOptionsKm.map((distance) => <button key={distance} className="btn" onClick={() => setRouteGenerationDistanceKm(distance)} style={{ flex: "0 0 auto", minWidth: 48, minHeight: 31, padding: "4px 7px", color: routeGenerationDistanceKm === distance ? accent : undefined, borderColor: routeGenerationDistanceKm === distance ? `${accent}66` : undefined, fontSize: 8.1, fontWeight: 1000 }}>{distance} KM</button>)}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: textSoft, fontSize: 6.8, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, "RAYON DE RECHERCHE", "SEARCH RADIUS", "RADIO DE BÚSQUEDA")}</div>
+                    <div style={{ marginTop: 5, display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>{routeSearchPolicy.radiusOptionsKm.map((radius) => <button key={radius} className="btn" onClick={() => setRouteDiscoveryRadiusKm(radius)} style={{ flex: "0 0 auto", minWidth: 48, minHeight: 31, padding: "4px 7px", color: routeDiscoveryRadiusKm === radius ? accent : undefined, borderColor: routeDiscoveryRadiusKm === radius ? `${accent}66` : undefined, fontSize: 8.1, fontWeight: 1000 }}>{radius} KM</button>)}</div>
+                  </div>
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginTop: 8 }}>
                   <button className="btn" disabled={routeDiscoveryBusy} onClick={() => void discoverNearbyRoutes()} style={{ minHeight: 42, color: accent, borderColor: `${accent}66`, fontSize: 9.2, fontWeight: 1000 }}>{routeDiscoveryBusy ? pickLegacyLocalizedText(lang, "RECHERCHE…", "SEARCHING…", "BUSCANDO…") : pickLegacyLocalizedText(lang, "DÉCOUVRIR LES PARCOURS", "DISCOVER ROUTES", "DESCUBRIR RUTAS")}</button><button className="btn" onClick={() => setRouteChooseMode("scout")} title={pickLegacyLocalizedText(lang, "Recherche avancée Scout IA", "Advanced AI Scout search", "Búsqueda avanzada Scout IA")} style={{ minWidth: 44, minHeight: 42, padding: "0 10px", color: routeChooseMode === "scout" ? accent : undefined, borderColor: routeChooseMode === "scout" ? `${accent}66` : undefined, fontSize: 12 }}>✦</button>
                   <button className="btn" onClick={() => go("online", { tab: "nearby" })} style={{ gridColumn: "1 / -1", minHeight: 40, fontSize: 8.8, fontWeight: 1000 }}>👥 {pickLegacyLocalizedText(lang, "TROUVER DES AMIS / PARTENAIRES", "FIND NEARBY PARTNERS", "BUSCAR COMPAÑEROS CERCANOS")}</button>
@@ -2205,7 +2233,7 @@ export default function RunningModule({ go, params }: Props) {
                 </div>
                 <div className="running-generator-line" aria-label={pickLegacyLocalizedText(lang, "Réglages du générateur", "Generator settings", "Ajustes del generador")}>
                   <GeneratorSelectionGroup label={pickLegacyLocalizedText(lang, "DISTANCE", "DISTANCE", "DISTANCIA")}>
-                    {[5,10,15,20].map((distance) => <GeneratorChip key={distance} active={routeGenerationDistanceKm === distance} accent={accent} onClick={() => setRouteGenerationDistanceKm(distance)}>{distance} KM</GeneratorChip>)}
+                    {routeSearchPolicy.distanceOptionsKm.map((distance) => <GeneratorChip key={distance} active={routeGenerationDistanceKm === distance} accent={accent} onClick={() => setRouteGenerationDistanceKm(distance)}>{distance} KM</GeneratorChip>)}
                   </GeneratorSelectionGroup>
                   <GeneratorSelectionGroup label={pickLegacyLocalizedText(lang, "FORME", "SHAPE", "FORMA")}>
                     {(["loop","out-back"] as OutdoorRouteGenerationShape[]).map((shape) => <GeneratorChip key={shape} active={routeGenerationShape === shape} accent={accent} onClick={() => setRouteGenerationShape(shape)}>{shape === "loop" ? pickLegacyLocalizedText(lang, "↻ BOUCLE", "↻ LOOP", "↻ BUCLE") : pickLegacyLocalizedText(lang, "↔ A/R", "↔ OUT/BACK", "↔ I/V")}</GeneratorChip>)}

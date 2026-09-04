@@ -140,7 +140,9 @@
     "themes:audit-pack": "node ./tools/audit-theme-content-pack.mjs",
     "themes:verify-r2": "node ./tools/verify-theme-r2.mjs",
     "android:externalization-audit": "node ./tools/audit-android-externalization-v106.mjs",
-    "prebuild": "node ./tools/guard-theme-catalog.mjs"
+    "prebuild": "node ./tools/guard-theme-catalog.mjs",
+    "routes:catalog:import-gpx": "node ./tools/import-running-route-catalog-gpx.mjs",
+    "test:route-catalog:v118": "node ./tools/test-running-route-catalog-v118.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

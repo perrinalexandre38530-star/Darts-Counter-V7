@@ -25,7 +25,7 @@ export type OutdoorRouteScoutResult = {
   warnings: string[];
 };
 
-const CACHE_KEY = "mss-outdoor-route-scout-v3";
+const CACHE_KEY = "mss-outdoor-route-scout-v4";
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_RESULTS = 48;
 
@@ -162,7 +162,8 @@ export function scoreScoutedRoute(route: RunningRouteTemplate, request: OutdoorR
     if (route.generation.profile === requestedProfile) { score += 9; reasons.push("terrain adapté"); }
     else score -= 4;
   }
-  if (route.source === "osm") { score += 8; reasons.push("parcours référencé"); }
+  if (route.source === "osm") { score += 9; reasons.push("parcours référencé"); }
+  if (route.source === "catalog") { score += 11; reasons.push(route.catalog?.provider ? `catalogue ${route.catalog.provider}` : "catalogue référencé"); }
   if (route.source === "generated") { score += 7; reasons.push("généré sur mesure"); }
   if (route.source === "community") { score += 5; reasons.push("parcours communauté"); }
 
@@ -192,9 +193,9 @@ export function rankOutdoorRouteCandidates(routes: RunningRouteTemplate[], reque
       return {
         ...route,
         scout: {
-          provider: "openstreetmap-route-scout" as const,
+          provider: route.catalog?.provider === "outdooractive" ? "outdooractive" as const : route.catalog?.provider === "geotrek" ? "geotrek" as const : route.catalog?.provider === "gpx-import" ? "gpx-catalog" as const : route.source === "catalog" ? "mss-route-catalog" as const : "openstreetmap-route-scout" as const,
           ...rankedRoute,
-          sourceUrl: relationId && /^\d+$/.test(relationId) ? `https://www.openstreetmap.org/relation/${relationId}` : undefined,
+          sourceUrl: route.catalog?.sourceUrl || (relationId && /^\d+$/.test(relationId) ? `https://www.openstreetmap.org/relation/${relationId}` : undefined),
           discoveredAt: Date.now(),
         },
       };
@@ -240,7 +241,7 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
     }
   }
 
-  const minResults = Math.max(8, Math.min(24, Number(normalizedRequest.minResults || 16)));
+  const minResults = Math.max(12, Math.min(32, Number(normalizedRequest.minResults || 24)));
   const radii = radiiFor(normalizedRequest);
   const gathered: RunningRouteTemplate[] = [];
   const searched: number[] = [];
@@ -254,14 +255,17 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
     Math.max(Number(normalizedRequest.radiusKm || policy.defaultRadiusKm), policy.defaultRadiusKm),
   ).catch(() => ({ routes: [] as RunningRouteTemplate[], available: false }));
 
-  const enoughExisting = Math.min(14, minResults);
+  const enoughExisting = Math.min(24, minResults);
   for (const radius of radii) {
     try {
-      const result = await discoverOutdoorRoutes(normalizedRequest.center, normalizedRequest.sport, radius);
+      const result = await discoverOutdoorRoutes(normalizedRequest.center, normalizedRequest.sport, radius, Number(normalizedRequest.targetDistanceKm || 0));
       searched.push(radius);
       gathered.push(...result.routes);
       const eligibleCount = rankOutdoorRouteCandidates(gathered, normalizedRequest).length;
       if (eligibleCount >= enoughExisting) break;
+      // Preserve responsiveness: after two radius levels, 16+ good existing routes is
+      // already enough choice to avoid an unnecessarily slow 60 km request.
+      if (searched.length >= 2 && eligibleCount >= 16) break;
     } catch (error: any) {
       warnings.push(String(error?.message || `Échec rayon ${radius} km`));
     }

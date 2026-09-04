@@ -10,9 +10,9 @@ export type RunningRouteTemplate = {
   elevationGainM: number;
   referenceElapsedMs: number;
   createdAt: number;
-  source?: "activity" | "gpx" | "tcx" | "fit" | "osm" | "generated" | "community";
+  source?: "activity" | "gpx" | "tcx" | "fit" | "osm" | "generated" | "community" | "catalog";
   scout?: {
-    provider: "openstreetmap-route-scout" | "routeyou";
+    provider: "openstreetmap-route-scout" | "routeyou" | "mss-route-catalog" | "outdooractive" | "geotrek" | "gpx-catalog";
     score: number;
     reasons: string[];
     distanceFromCenterM?: number;
@@ -43,6 +43,18 @@ export type RunningRouteTemplate = {
     description?: string;
     distanceFromCenterM?: number;
     publishedAt?: number;
+  };
+  catalog?: {
+    provider: string;
+    providerRouteId: string;
+    sourceUrl?: string;
+    imageUrl?: string;
+    attribution?: string;
+    license?: string;
+    ranking?: number;
+    difficulty?: number;
+    isLoop?: boolean;
+    cached?: boolean;
   };
   externalId?: string;
   network?: string;
