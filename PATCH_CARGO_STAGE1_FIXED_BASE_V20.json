@@ -1,0 +1,12 @@
+{
+  "base": "Darts-Counter-V7(20).zip",
+  "stage": 1,
+  "asset": "src/assets/tickers/ticker_cargo.png",
+  "asset_format": "PNG 800x230 RGBA",
+  "svg_used": false,
+  "verified": [
+    "CARGO INTEGRATION CONTRACT OK",
+    "CARGO REGRESSION OK",
+    "TypeScript/TSX parse OK"
+  ]
+}

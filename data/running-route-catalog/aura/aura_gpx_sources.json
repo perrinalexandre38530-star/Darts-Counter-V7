@@ -1,0 +1,171 @@
+[
+  {
+    "id": "aura_geotrek_regional",
+    "name": "Geotrek régional Auvergne-Rhône-Alpes Tourisme",
+    "coverage": "Auvergne-Rhône-Alpes",
+    "sports": [
+      "walk",
+      "hiking",
+      "trail",
+      "road_cycling",
+      "mtb",
+      "ebike",
+      "gravel",
+      "snowshoe",
+      "equestrian"
+    ],
+    "source_url": "https://geotrek.auvergnerhonealpes-tourisme.com/",
+    "api_v2": "https://geotrek.auvergnerhonealpes-tourisme.com/api/v2/trek/",
+    "gpx_pattern": "https://geotrek.auvergnerhonealpes-tourisme.com/api/fr/treks/{id}/{slug}.gpx",
+    "integration": "API / GPX",
+    "license_status": "Syndication officielle; conserver source et attribution de chaque fiche",
+    "priority": 1
+  },
+  {
+    "id": "ain_pdipr",
+    "name": "PDIPR itinéraire - Département de l'Ain",
+    "department": "01 Ain",
+    "sports": [
+      "hiking"
+    ],
+    "source_url": "https://www.data.gouv.fr/datasets/pdipr-itineraire",
+    "formats": [
+      "GeoJSON",
+      "KML",
+      "CSV",
+      "ZIP"
+    ],
+    "license": "Licence Ouverte / Open Licence 2.0",
+    "priority": 1
+  },
+  {
+    "id": "allier_pdipr",
+    "name": "PDIPR - Département de l'Allier",
+    "department": "03 Allier",
+    "sports": [
+      "hiking"
+    ],
+    "source_url": "https://www.data.gouv.fr/datasets/plan-departemental-des-itineraires-de-promenades-et-de-randonnees-du-departement-de-lallier/",
+    "formats": [
+      "ZIP"
+    ],
+    "license": "Licence Ouverte / Open Licence 2.0",
+    "priority": 2
+  },
+  {
+    "id": "isere_pdipr",
+    "name": "PDIPR - Département de l'Isère",
+    "department": "38 Isère",
+    "sports": [
+      "hiking",
+      "equestrian",
+      "mtb"
+    ],
+    "source_url": "https://www.data.gouv.fr/datasets/plan-departemental-des-itineraires-de-promenades-et-de-randonnees-departement-de-lisere",
+    "formats": [
+      "CSV",
+      "JSON",
+      "ZIP"
+    ],
+    "license": "Licence Ouverte / Open Licence 2.0",
+    "priority": 1
+  },
+  {
+    "id": "puy_de_dome_pdipr",
+    "name": "PDIPR 2026 - Département du Puy-de-Dôme",
+    "department": "63 Puy-de-Dôme",
+    "sports": [
+      "hiking",
+      "mtb"
+    ],
+    "source_url": "https://www.data.gouv.fr/datasets/plan-departemental-des-itineraires-de-promenades-et-de-randonnees-pdipr-departement-du-puy-de-dome-2026",
+    "formats": [
+      "ZIP",
+      "WMS"
+    ],
+    "license": "Licence Ouverte / Open Licence",
+    "priority": 1
+  },
+  {
+    "id": "savoie_pdipr",
+    "name": "PDIPR73 - Département de la Savoie",
+    "department": "73 Savoie",
+    "sports": [
+      "hiking"
+    ],
+    "source_url": "https://www.data.gouv.fr/datasets/pdipr73-plan-departemental-des-itineraires-de-promenade-et-de-randonnee",
+    "formats": [
+      "KML"
+    ],
+    "license": "Licence Ouverte / Open Licence",
+    "known_network_km": 6450,
+    "priority": 1
+  },
+  {
+    "id": "haute_savoie_pdipr",
+    "name": "Itinéraires PDIPR Haute-Savoie 2023",
+    "department": "74 Haute-Savoie",
+    "sports": [
+      "hiking"
+    ],
+    "source_url": "https://www.data.gouv.fr/datasets/itineraires-pdipr-sentiers-de-randonnee-de-la-haute-savoie-2023-2",
+    "formats": [
+      "Shapefile ZIP"
+    ],
+    "license": "Licence Ouverte / Open Licence 2.0",
+    "priority": 1
+  },
+  {
+    "id": "isere_outdoor",
+    "name": "Isère Outdoor",
+    "department": "38 Isère",
+    "sports": [
+      "hiking",
+      "running",
+      "trail",
+      "road_cycling",
+      "mtb",
+      "equestrian",
+      "winter"
+    ],
+    "source_url": "https://www.alpes-isere.com/outdoor/application-mobile-activites-isere-outdoor/",
+    "formats": [
+      "GPX"
+    ],
+    "license_status": "GPX téléchargeables; vérifier attribution/conditions par fiche avant réhébergement massif",
+    "priority": 2
+  },
+  {
+    "id": "erando63",
+    "name": "E-Rando 63",
+    "department": "63 Puy-de-Dôme",
+    "sports": [
+      "hiking",
+      "mtb"
+    ],
+    "source_url": "https://e-rando63.puy-de-dome.fr/",
+    "formats": [
+      "GPX"
+    ],
+    "license_status": "GPX officiels téléchargeables; conserver source/attribution",
+    "priority": 2
+  },
+  {
+    "id": "la_region_du_velo",
+    "name": "La Région du Vélo",
+    "coverage": "Auvergne-Rhône-Alpes",
+    "sports": [
+      "road_cycling",
+      "mtb",
+      "gravel",
+      "ebike"
+    ],
+    "source_url": "https://www.laregionduvelo.fr/",
+    "formats": [
+      "GPX",
+      "KML"
+    ],
+    "license_status": "Diffusion officielle; conserver source/attribution",
+    "priority": 1
+  }
+]

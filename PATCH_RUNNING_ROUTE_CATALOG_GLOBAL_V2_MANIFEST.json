@@ -1,0 +1,45 @@
+{
+  "patch": "RUNNING_ROUTE_CATALOG_GLOBAL_V2",
+  "date": "2026-09-04",
+  "base_archive": "Darts-Counter-V7(17).zip",
+  "tests": {
+    "test:route-catalog:v118": "21/21 passed",
+    "test:route-catalog:world": "14/14 passed",
+    "typecheck": "passed",
+    "vite_build": "not executed to completion: vite executable absent in extracted environment"
+  },
+  "new_files": [
+    "data/running-route-catalog/README.md",
+    "data/running-route-catalog/world-sources.json",
+    "data/running-route-catalog/aura/README_AURA_GPX.md",
+    "data/running-route-catalog/aura/aura_catalog_seed_routes.json",
+    "data/running-route-catalog/aura/aura_gpx_sources.json",
+    "tools/sync-running-route-catalog-world.mjs",
+    "tools/test-running-route-catalog-world-v2.mjs",
+    "supabase/migrations/20260904173000_running_route_catalog_global_v2.sql",
+    "docs/PATCH-RUNNING-ROUTE-CATALOG-GLOBAL-V2.md"
+  ],
+  "modified_files": [
+    "functions/api/running/routes/catalog.ts",
+    "src/activity/runningRoutes.ts",
+    "tools/import-running-route-catalog-gpx.mjs",
+    "tools/test-running-route-catalog-v118.mjs",
+    "package.json"
+  ],
+  "sport_values": [
+    "running",
+    "trail",
+    "hiking",
+    "walking",
+    "nordic-walking",
+    "cycling",
+    "mtb",
+    "gravel",
+    "ebike",
+    "bmx",
+    "roller",
+    "snowshoe",
+    "ski-touring",
+    "equestrian"
+  ]
+}

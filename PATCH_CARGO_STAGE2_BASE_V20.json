@@ -1,0 +1,20 @@
+{
+  "base": "Darts-Counter-V7(20).zip + CARGO Stage 1",
+  "stage": 2,
+  "name": "CARGO Stats V4 + End V5 + Analytics V5",
+  "assets_changed": false,
+  "ticker": "src/assets/tickers/ticker_cargo.png",
+  "files": [
+    "src/lib/gameEngines/cargoEngine.ts",
+    "src/lib/matchCompactCodec.ts",
+    "src/pages/CargoEnd.tsx",
+    "src/components/stats/CargoStatsTabFull.tsx",
+    "tools/test-cargo-integration.mjs",
+    "tools/test-cargo-regression.ts"
+  ],
+  "verified": [
+    "CARGO INTEGRATION CONTRACT OK",
+    "CARGO REGRESSION OK",
+    "TypeScript/TSX parse OK"
+  ]
+}

@@ -1,0 +1,373 @@
+[
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 1120,
+    "name": "La Grande Traversée du Volcan à Vélo - GT2V",
+    "sport": "road_cycling",
+    "distance_km": 168.0,
+    "elevation_gain_m": 3199
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 7907,
+    "name": "GTHL - La Grande Traversée de la Haute-Loire à VTT",
+    "sport": "mtb",
+    "distance_km": 593.8,
+    "elevation_gain_m": 16890
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 4033,
+    "name": "Au cœur de l'Ardèche à vélo",
+    "sport": "ebike",
+    "distance_km": 88.1,
+    "elevation_gain_m": 2127
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 3978,
+    "name": "L'Ardéchoise : Les Gorges",
+    "sport": "road_cycling",
+    "distance_km": 609.8,
+    "elevation_gain_m": 18292
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 3992,
+    "name": "GTML - Le Grand Tour des Monts du Lyonnais",
+    "sport": "mtb"
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 3991,
+    "name": "GTR - La Grande Traversée du Rhône VTT",
+    "sport": "mtb"
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 7731,
+    "name": "Traversée du Pilat - variante",
+    "sport": "mtb",
+    "distance_km": 63.6,
+    "elevation_gain_m": 2051
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 7855,
+    "name": "Sur les routes de Romain",
+    "sport": "road_cycling",
+    "distance_km": 135.0,
+    "elevation_gain_m": 2543
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 7546,
+    "name": "Le Forez - circuit route n°2",
+    "sport": "road_cycling",
+    "distance_km": 54.0,
+    "elevation_gain_m": 955
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 7642,
+    "name": "Grand Tour de la Forêt",
+    "sport": "mtb"
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 4002,
+    "name": "Vallées, châtaignes et volcans",
+    "sport": "ebike",
+    "distance_km": 26.1,
+    "elevation_gain_m": 895
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 4265,
+    "name": "Itinéraire VTT - Fer-à-Cheval",
+    "sport": "mtb",
+    "department": "74 Haute-Savoie"
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 4247,
+    "name": "N°17 Les Balcons de l'Aigle - boucle VTT",
+    "sport": "mtb",
+    "department": "38 Isère"
+  },
+  {
+    "provider": "aura_geotrek_regional",
+    "provider_route_id": 4249,
+    "name": "N°19 Les Gros Mollets - boucle VTT",
+    "sport": "mtb",
+    "department": "38 Isère"
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 1238,
+    "name": "ViaRhôna EV17",
+    "sport": "road_cycling",
+    "distance_km": 948.6,
+    "elevation_gain_m": 6369
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 1019,
+    "name": "Via Allier V70",
+    "sport": "road_cycling",
+    "distance_km": 453.0,
+    "elevation_gain_m": 6324
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 7998,
+    "name": "V73 - Via Fluvia",
+    "sport": "road_cycling",
+    "distance_km": 62.1,
+    "elevation_gain_m": 1042
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 7517,
+    "name": "Grande traversée du Livradois-Forez à VTT",
+    "sport": "mtb",
+    "distance_km": 229.0,
+    "elevation_gain_m": 5441
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 4011,
+    "name": "Saint Joseph XXL",
+    "sport": "gravel",
+    "distance_km": 117.0,
+    "elevation_gain_m": 3079
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 13632,
+    "name": "Gravel Tour Montanha de Haute-Loire",
+    "sport": "gravel",
+    "distance_km": 181.9,
+    "elevation_gain_m": 4295
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 30326,
+    "name": "Boucle Gravel de Saint-Agrève",
+    "sport": "gravel",
+    "distance_km": 36.0
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 7730,
+    "name": "Traversée du Pilat",
+    "sport": "mtb",
+    "distance_km": 63.3,
+    "elevation_gain_m": 2170
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 7569,
+    "name": "Les deux cols - circuit n°63",
+    "sport": "mtb",
+    "distance_km": 15.1,
+    "elevation_gain_m": 290
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 7909,
+    "name": "La Borne",
+    "sport": "mtb",
+    "distance_km": 26.1,
+    "elevation_gain_m": 519
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 988,
+    "name": "GTMC-VTT Étape 11 Riom > Clermont-Ferrand",
+    "sport": "mtb",
+    "distance_km": 26.6,
+    "elevation_gain_m": 582
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 1205,
+    "name": "N°G1 Gravel De la Motte au canal",
+    "sport": "gravel",
+    "distance_km": 47.5,
+    "elevation_gain_m": 480
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 5220,
+    "name": "La Belle Via étape 1 Chanaz/Aix-les-Bains > Chambéry",
+    "sport": "road_cycling",
+    "distance_km": 19.3,
+    "elevation_gain_m": 165
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 5221,
+    "name": "La Belle Via étape 2 Chambéry > La Terrasse",
+    "sport": "road_cycling",
+    "distance_km": 34.9,
+    "elevation_gain_m": 303
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 856,
+    "name": "La Belle Via étape 5 La Terrasse > Grenoble",
+    "sport": "road_cycling",
+    "distance_km": 32.4,
+    "elevation_gain_m": 241
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 1232,
+    "name": "La Belle Via étape 7 Vinay > Romans",
+    "sport": "road_cycling",
+    "distance_km": 48.8,
+    "elevation_gain_m": 544
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 1002,
+    "name": "ViaRhôna étape 10 Lyon > Vienne",
+    "sport": "road_cycling",
+    "distance_km": 35.5,
+    "elevation_gain_m": 350
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 1004,
+    "name": "ViaRhôna étape 12 Sablons/Serrières > Tournon/Glun",
+    "sport": "road_cycling",
+    "distance_km": 36.7,
+    "elevation_gain_m": 265
+  },
+  {
+    "provider": "la_region_du_velo",
+    "provider_route_id": 1005,
+    "name": "ViaRhôna étape 13 Tournon/Glun > Valence/La Voulte",
+    "sport": "road_cycling",
+    "distance_km": 23.8,
+    "elevation_gain_m": 148
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "GR465 Monts du Cantal > Vallée du Lot",
+    "sport": "hiking",
+    "distance_km": 130.0,
+    "department": "15 Cantal"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Traversée des Bauges de lac à lac",
+    "sport": "hiking",
+    "distance_km": 96.0,
+    "elevation_gain_m": 4478,
+    "department": "73 Savoie"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Tour des Bauges",
+    "sport": "hiking",
+    "distance_km": 80.0,
+    "elevation_gain_m": 3140,
+    "department": "73 Savoie"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Trail Le Vallon du Monastère",
+    "sport": "trail",
+    "distance_km": 19.4,
+    "elevation_gain_m": 1080,
+    "department": "38 Isère"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Trail Col de Bovinant",
+    "sport": "trail",
+    "distance_km": 19.2,
+    "elevation_gain_m": 1180,
+    "department": "38 Isère"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Montée du Nid d'Aigle",
+    "sport": "trail",
+    "distance_km": 19.5,
+    "elevation_gain_m": 2000,
+    "department": "74 Haute-Savoie"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Cols & panoramas de Chartreuse",
+    "sport": "road_cycling",
+    "distance_km": 75.0,
+    "elevation_gain_m": 1950,
+    "department": "38 Isère"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "VTT n°11 De la Monne à la Serre",
+    "sport": "mtb",
+    "distance_km": 33.0,
+    "elevation_gain_m": 780,
+    "department": "63 Puy-de-Dôme"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "VTT n°2 Aydat-Pessade",
+    "sport": "mtb",
+    "distance_km": 27.5,
+    "elevation_gain_m": 520,
+    "department": "63 Puy-de-Dôme"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Circuit VTT-E Alpages du Bozelet",
+    "sport": "ebike",
+    "distance_km": 18.0,
+    "elevation_gain_m": 900,
+    "department": "73 Savoie"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Circuit VTT-E Au fil de l'Isère",
+    "sport": "ebike",
+    "distance_km": 35.0,
+    "elevation_gain_m": 610,
+    "department": "73 Savoie"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Raquettes - Boucle des crêtes",
+    "sport": "snowshoe",
+    "distance_km": 2.7,
+    "elevation_gain_m": 90,
+    "department": "73 Savoie"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Raquettes - Colombaz",
+    "sport": "snowshoe",
+    "distance_km": 2.9,
+    "department": "74 Haute-Savoie"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Raquettes - Les Crêtes depuis la Praille",
+    "sport": "snowshoe",
+    "distance_km": 6.5,
+    "department": "01 Ain"
+  },
+  {
+    "provider": "official_tourism_gpx",
+    "name": "Ski de randonnée - Col de la Faucille",
+    "sport": "ski_touring",
+    "distance_km": 3.1,
+    "elevation_gain_m": 225,
+    "department": "01 Ain"
+  }
+]
