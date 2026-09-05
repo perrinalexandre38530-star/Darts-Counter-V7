@@ -459,7 +459,7 @@ export async function startSocialSignIn(provider: SocialAuthProvider): Promise<v
     // Sur Android, l'URL OAuth doit s'ouvrir immédiatement après sa création.
     // Le double preflight réseau (/settings puis GET OAuth) faisait paraître le
     // bouton inactif pendant plusieurs secondes dans la WebView.
-    if (!nativeRuntime) {
+    if (!nativeRuntime && !config.custom) {
       await preflightOAuthUrl(url, provider);
     }
 
