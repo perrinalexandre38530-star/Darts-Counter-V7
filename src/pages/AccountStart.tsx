@@ -6,7 +6,7 @@ import React from "react";
 import SocialLoginPanel from "../components/auth/SocialLoginPanel";
 import { SOCIAL_AUTH_LABELS, startSocialSignIn, type SocialAuthProvider } from "../lib/socialAuth";
 import { useLang, type Lang } from "../contexts/LangContext";
-import authBrandLogo from "../assets/auth-logo-ms-gold.png";
+const authBrandLogo = "/app-512.png";
 
 type Props = {
   onLogin: () => void;
@@ -408,7 +408,7 @@ export default function AccountStart({ onLogin, onCreate, onForgot }: Props) {
       </div>
 
       <div style={cardStyle}>
-        <div style={logoTileStyle}>
+        <div style={logoWrapStyle}>
           <img src={authBrandLogo} alt="MULTISPORTS SCORING" style={logoStyle} />
         </div>
 
@@ -469,22 +469,24 @@ const cardStyle: React.CSSProperties = {
   boxShadow: "0 26px 80px rgba(0,0,0,.78), 0 0 38px rgba(255,198,58,.10)",
 };
 
-const logoTileStyle: React.CSSProperties = {
-  width: "min(206px, 56vw)",
-  margin: "0 auto",
-  borderRadius: 30,
-  border: "1px solid rgba(255,198,58,.24)",
-  background: "linear-gradient(180deg, rgba(20,20,24,.98), rgba(8,9,12,.98))",
-  boxShadow: "0 18px 42px rgba(0,0,0,.44), inset 0 1px 0 rgba(255,255,255,.06)",
-  padding: "14px 14px 12px",
+const logoWrapStyle: React.CSSProperties = {
+  width: "min(260px, 72vw)",
+  margin: "0 auto 6px",
+  padding: 0,
+  border: "none",
+  background: "transparent",
+  boxShadow: "none",
+  borderRadius: 0,
 };
 
 const logoStyle: React.CSSProperties = {
   width: "100%",
   height: "auto",
   display: "block",
-  borderRadius: 20,
-  filter: "drop-shadow(0 10px 24px rgba(0,0,0,.34))",
+  borderRadius: 0,
+  background: "transparent",
+  boxShadow: "none",
+  filter: "drop-shadow(0 12px 28px rgba(0,0,0,.38))",
 };
 
 const welcomeTitleStyle: React.CSSProperties = {
