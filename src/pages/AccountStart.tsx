@@ -470,8 +470,10 @@ const cardStyle: React.CSSProperties = {
 };
 
 const logoWrapStyle: React.CSSProperties = {
-  width: "min(260px, 72vw)",
-  margin: "0 auto 6px",
+  // Taille volontairement fixe par rapport à l’écran, et non au texte traduit
+  // ("Bienvenue", "Welcome", etc. peuvent avoir des largeurs très différentes).
+  width: "min(168px, 44vw)",
+  margin: "0 auto 4px",
   padding: 0,
   border: "none",
   background: "transparent",
