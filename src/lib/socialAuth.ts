@@ -50,7 +50,7 @@ export const SOCIAL_AUTH_CONFIG: Record<SocialAuthProvider, SocialAuthConfig> = 
   // custom:true empêche /auth/v1/settings de masquer le bouton.
   snapchat: { label: "Snapchat", oauthProvider: "custom:snapchat", custom: true },
   // TikTok Login Kit n'est pas un provider natif Supabase : Custom OAuth/OIDC.
-  tiktok: { label: "TikTok", oauthProvider: "custom:tiktok", custom: true },
+  tiktok: { label: "TikTok", oauthProvider: "custom:tiktok", custom: true, scopes: "user.info.basic" },
   github: { label: "GitHub", oauthProvider: "github", settingsKeys: ["github"] },
   twitch: { label: "Twitch", oauthProvider: "twitch", settingsKeys: ["twitch"] },
   kakao: { label: "Kakao", oauthProvider: "kakao", settingsKeys: ["kakao"] },
