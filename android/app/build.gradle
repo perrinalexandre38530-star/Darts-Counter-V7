@@ -9,6 +9,8 @@ if (playSigningConfigured) {
 
 apply plugin: 'com.android.application'
 
+// ACTIVE GOOGLE PLAY MODULE — intentionally distinct from android/app/src/build.gradle template.
+
 android {
     namespace = "com.multisportsscoring.app"
     compileSdk = rootProject.ext.compileSdkVersion
