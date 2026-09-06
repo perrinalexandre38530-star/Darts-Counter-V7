@@ -108,6 +108,9 @@ type Props = {
   title?: string;
   /** Contenu centré du header (ex: scoreboard compact). */
   headerCenter?: React.ReactNode;
+  /** Image plein cadre du header. Le contenu/actions restent superposés par-dessus. */
+  headerFullBleedImage?: string;
+  headerFullBleedAlt?: string;
 
   /** Actions header */
   onBack?: () => void;
@@ -148,6 +151,8 @@ export default function GameplayLayout({
   modeId,
   title = "",
   headerCenter,
+  headerFullBleedImage,
+  headerFullBleedAlt = "",
   onBack,
   onInfo,
   showInfo,
@@ -307,17 +312,36 @@ export default function GameplayLayout({
         <div
           className="card"
           style={{
-            padding: "10px 12px",
+            padding: headerFullBleedImage ? 0 : "10px 12px",
             position: "relative",
             overflow: "hidden",
           }}
         >
+          {headerFullBleedImage ? (
+            <img
+              src={headerFullBleedImage}
+              alt={headerFullBleedAlt}
+              draggable={false}
+              style={{
+                width: "100%",
+                height: "auto",
+                minHeight: 64,
+                display: "block",
+                userSelect: "none",
+                pointerEvents: "none",
+              }}
+            />
+          ) : null}
+
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
               gap: 10,
+              ...(headerFullBleedImage
+                ? { position: "absolute", inset: 0, padding: "10px 12px" }
+                : null),
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>

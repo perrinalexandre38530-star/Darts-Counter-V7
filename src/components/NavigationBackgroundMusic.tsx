@@ -23,6 +23,11 @@ import {
   AWENA_NAVIGATION_MUSIC_REQUEST_EVENT,
   type AwenaNavigationMusicRequestDetail,
 } from "../lib/navigationMusicControl";
+import {
+  AWENA_AUDIO_FOCUS_EVENT,
+  isAwenaAudioFocusActive,
+  type AwenaAudioFocusDetail,
+} from "../lib/awenaAudioFocus";
 
 type NavigationMusicZone = "navigation" | null;
 
@@ -88,6 +93,7 @@ export default function NavigationBackgroundMusic({
   const currentTrackIdRef = React.useRef<NavigationMusicTrackId | null>(null);
   const explicitTrackActiveRef = React.useRef(false);
   const pausedByPreviewRef = React.useRef(false);
+  const pausedByAwenaRef = React.useRef(isAwenaAudioFocusActive());
   const pendingAutoplayRef = React.useRef(false);
   const pendingTrackStartRef = React.useRef(false);
   const playRequestSerialRef = React.useRef(0);
@@ -198,7 +204,8 @@ export default function NavigationBackgroundMusic({
       && settings.masterEnabled
       && settings.navigationMusicEnabled
       && (explicitTrackActiveRef.current || getEnabledTrackIds(settings).length > 0)
-      && !pausedByPreviewRef.current;
+      && !pausedByPreviewRef.current
+      && !pausedByAwenaRef.current;
   }, [muted]);
 
   const rebuildCycle = React.useCallback((settings = prefsRef.current) => {
@@ -537,12 +544,36 @@ export default function NavigationBackgroundMusic({
       setNowPlaying(null);
       return;
     }
-    if (zoneRef.current && !pausedByPreviewRef.current) void requestPlay();
+    if (zoneRef.current && !pausedByPreviewRef.current && !pausedByAwenaRef.current) void requestPlay();
   }, [muted, prefs.masterEnabled, prefs.navigationMusicEnabled, prefs.enabledTrackIds, clearNowPlayingTimers, requestPlay]);
 
   React.useEffect(() => {
     rampVolume(getTargetVolume(prefs), awenaSpeaking ? 180 : 520);
   }, [prefs.navigationVolume, prefs.duckAwenaEnabled, prefs.duckAwenaRatio, awenaSpeaking, getTargetVolume, rampVolume]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onAwenaAudioFocus = (event: Event) => {
+      const detail = (event as CustomEvent<AwenaAudioFocusDetail>).detail;
+      const active = typeof detail?.active === "boolean" ? detail.active : isAwenaAudioFocusActive();
+      pausedByAwenaRef.current = active;
+      if (active) {
+        // Awena always gets exclusive audio priority: pause completely, keep the
+        // current position, and resume the same track only after she is done.
+        playRequestSerialRef.current += 1;
+        playInFlightRef.current = null;
+        pendingAutoplayRef.current = false;
+        cancelVolumeRamp();
+        try { audioRef.current?.pause(); } catch {}
+      } else if (zoneRef.current && !pausedByPreviewRef.current) {
+        void requestPlay();
+      }
+    };
+    window.addEventListener(AWENA_AUDIO_FOCUS_EVENT, onAwenaAudioFocus as EventListener);
+    // A voice/video can acquire focus before this component finishes mounting.
+    if (isAwenaAudioFocusActive()) onAwenaAudioFocus(new CustomEvent(AWENA_AUDIO_FOCUS_EVENT, { detail: { active: true } }));
+    return () => window.removeEventListener(AWENA_AUDIO_FOCUS_EVENT, onAwenaAudioFocus as EventListener);
+  }, [cancelVolumeRamp, requestPlay]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;

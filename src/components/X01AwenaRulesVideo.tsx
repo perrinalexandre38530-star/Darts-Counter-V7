@@ -3,6 +3,7 @@ import localVideoSrc from "../assets/videos/x01_awena_rules.mp4";
 import posterSrc from "../assets/videos/x01_awena_rules_poster.webp";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { acquireAwenaAudioFocus, releaseAwenaAudioFocus } from "../lib/awenaAudioFocus";
 
 type Props = {
   open: boolean;
@@ -22,12 +23,35 @@ export default function X01AwenaRulesVideo({ open, onDone, firstLaunch = false }
   const { theme } = useTheme();
   const { t } = useLang();
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const audioFocusTokenRef = React.useRef<string | null>(null);
   const [failedRemote, setFailedRemote] = React.useState(false);
   const remoteSrc = envVideoUrl();
   const src = remoteSrc && !failedRemote ? remoteSrc : localVideoSrc;
 
+  const takeAwenaAudioFocus = React.useCallback(() => {
+    if (audioFocusTokenRef.current) return;
+    audioFocusTokenRef.current = acquireAwenaAudioFocus(
+      "video",
+      `awena-rules-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+  }, []);
+
+  const releaseVideoAudioFocus = React.useCallback(() => {
+    if (!audioFocusTokenRef.current) return;
+    releaseAwenaAudioFocus(audioFocusTokenRef.current);
+    audioFocusTokenRef.current = null;
+  }, []);
+
+  const finishVideo = React.useCallback(() => {
+    releaseVideoAudioFocus();
+    onDone();
+  }, [onDone, releaseVideoAudioFocus]);
+
   React.useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      releaseVideoAudioFocus();
+      return;
+    }
     setFailedRemote(false);
     const timer = window.setTimeout(() => {
       const video = videoRef.current;
@@ -37,8 +61,11 @@ export default function X01AwenaRulesVideo({ open, onDone, firstLaunch = false }
         if (p && typeof (p as Promise<void>).catch === "function") void p.catch(() => {});
       } catch {}
     }, 80);
-    return () => window.clearTimeout(timer);
-  }, [open]);
+    return () => {
+      window.clearTimeout(timer);
+      releaseVideoAudioFocus();
+    };
+  }, [open, releaseVideoAudioFocus]);
 
   if (!open) return null;
 
@@ -93,7 +120,7 @@ export default function X01AwenaRulesVideo({ open, onDone, firstLaunch = false }
           </div>
           <button
             type="button"
-            onClick={onDone}
+            onClick={finishVideo}
             aria-label={t("common.close", "Fermer")}
             style={{
               width: 34,
@@ -122,7 +149,10 @@ export default function X01AwenaRulesVideo({ open, onDone, firstLaunch = false }
             controls
             playsInline
             preload="metadata"
-            onEnded={onDone}
+            onPlay={takeAwenaAudioFocus}
+            onPlaying={takeAwenaAudioFocus}
+            onPause={releaseVideoAudioFocus}
+            onEnded={finishVideo}
             onError={() => {
               if (remoteSrc && !failedRemote) setFailedRemote(true);
             }}
@@ -155,7 +185,7 @@ export default function X01AwenaRulesVideo({ open, onDone, firstLaunch = false }
           </div>
           <button
             type="button"
-            onClick={onDone}
+            onClick={finishVideo}
             style={{
               flex: "0 0 auto",
               minHeight: 36,

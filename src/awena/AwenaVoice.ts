@@ -1,5 +1,10 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import type { AwenaSettings, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
+import {
+  acquireAwenaAudioFocus,
+  releaseAwenaAudioFocus,
+  releaseAwenaAudioFocusBySource,
+} from "../lib/awenaAudioFocus";
 
 export type AwenaSpeechTimingEvent = {
   utteranceId: string;
@@ -66,6 +71,27 @@ export class AwenaVoiceEngine {
   private timingListeners = new Set<(event: AwenaSpeechTimingEvent) => void>();
   private nativeTimingBridgeReady = false;
   private nativeTimingHandles: PluginListenerHandle[] = [];
+  private activeVoiceFocusToken: string | null = null;
+
+  private beginVoiceAudioFocus(utteranceId?: string): string {
+    if (this.activeVoiceFocusToken) {
+      releaseAwenaAudioFocus(this.activeVoiceFocusToken);
+      this.activeVoiceFocusToken = null;
+    }
+    const token = acquireAwenaAudioFocus(
+      "voice",
+      String(utteranceId || `awena-voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+    );
+    this.activeVoiceFocusToken = token;
+    return token;
+  }
+
+  private endVoiceAudioFocus(token?: string | null) {
+    const key = token || this.activeVoiceFocusToken;
+    if (!key) return;
+    releaseAwenaAudioFocus(key);
+    if (this.activeVoiceFocusToken === key) this.activeVoiceFocusToken = null;
+  }
 
   private emitTiming(event: AwenaSpeechTimingEvent) {
     for (const listener of this.timingListeners) {
@@ -94,6 +120,7 @@ export class AwenaVoiceEngine {
       const utteranceId = String(event?.utteranceId || "");
       if (!utteranceId) return;
       this.emitTiming({ utteranceId, phase: "end" });
+      this.endVoiceAudioFocus(utteranceId);
     }).then((handle) => this.nativeTimingHandles.push(handle)).catch(() => {
       this.nativeTimingBridgeReady = false;
     });
@@ -109,6 +136,7 @@ export class AwenaVoiceEngine {
     const clean = String(text || "").trim();
     if (!clean) return false;
     const language = localeForLang(lang);
+    const focusToken = this.beginVoiceAudioFocus(utteranceId);
 
     // Un seul canal vocal à la fois : si X01/WebSpeech parlait, on le coupe avant Awena.
     try { window.speechSynthesis?.cancel(); } catch {}
@@ -118,18 +146,20 @@ export class AwenaVoiceEngine {
         this.ensureNativeTimingBridge();
         const result = await NativeAwenaVoice.speak({
           text: clean,
-          utteranceId,
+          utteranceId: utteranceId || focusToken,
           language,
           voiceName: settings.voiceName,
           rate: settings.rate,
           pitch: settings.pitch,
           volume: settings.volume,
         });
+        if (!result?.ok) this.endVoiceAudioFocus(focusToken);
         return !!result?.ok;
       } catch (error) {
         // Important: on Android we do NOT fall back to WebSpeech. Once the neural pack is installed,
         // a neural failure must be visible instead of silently speaking with the old system voice.
         console.warn("[AwenaVoice] Android voice engine error", error);
+        this.endVoiceAudioFocus(focusToken);
         return false;
       }
     }
@@ -143,17 +173,26 @@ export class AwenaVoiceEngine {
         utterance.volume = settings.volume;
         const voice = webVoiceFor(language, settings.voiceName);
         if (voice) utterance.voice = voice;
-        const id = utteranceId || `awena-web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const id = utteranceId || focusToken;
         const words = Math.max(1, clean.split(/\s+/).filter(Boolean).length);
         const estimatedMs = Math.max(650, Math.round((words / (165 * Math.max(0.65, settings.rate))) * 60_000));
         utterance.onstart = () => this.emitTiming({ utteranceId: id, phase: "start", durationMs: estimatedMs });
-        utterance.onend = () => this.emitTiming({ utteranceId: id, phase: "end" });
-        utterance.onerror = () => this.emitTiming({ utteranceId: id, phase: "end" });
+        utterance.onend = () => {
+          this.emitTiming({ utteranceId: id, phase: "end" });
+          this.endVoiceAudioFocus(focusToken);
+        };
+        utterance.onerror = () => {
+          this.emitTiming({ utteranceId: id, phase: "end" });
+          this.endVoiceAudioFocus(focusToken);
+        };
         window.speechSynthesis.speak(utterance);
         return true;
       } catch (error) {
         console.warn("[AwenaVoice] Web speech unavailable", error);
+        this.endVoiceAudioFocus(focusToken);
       }
+    } else {
+      this.endVoiceAudioFocus(focusToken);
     }
     return false;
   }
@@ -170,6 +209,9 @@ export class AwenaVoiceEngine {
   }
 
   async stop(): Promise<void> {
+    if (this.activeVoiceFocusToken) this.endVoiceAudioFocus(this.activeVoiceFocusToken);
+    // Safety net for a native engine that was interrupted before speechEnd.
+    releaseAwenaAudioFocusBySource("voice");
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
       try { await NativeAwenaVoice.stop(); } catch {}
     }

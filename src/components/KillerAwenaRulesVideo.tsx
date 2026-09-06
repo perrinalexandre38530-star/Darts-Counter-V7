@@ -5,6 +5,7 @@ import posterFrSrc from "../assets/videos/killer_awena_rules_poster.webp";
 import posterEnSrc from "../assets/videos/killer_awena_rules_poster_en.webp";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { acquireAwenaAudioFocus, releaseAwenaAudioFocus } from "../lib/awenaAudioFocus";
 
 type Props = {
   open: boolean;
@@ -31,6 +32,7 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
   const { theme } = useTheme();
   const { t, lang } = useLang();
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const audioFocusTokenRef = React.useRef<string | null>(null);
   const [failedRemote, setFailedRemote] = React.useState(false);
   const isFrench = String(lang || "fr").toLowerCase() === "fr";
   const localVideoSrc = isFrench ? localVideoFrSrc : localVideoEnSrc;
@@ -39,8 +41,30 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
   const src = remoteSrc && !failedRemote ? remoteSrc : localVideoSrc;
   const durationLabel = isFrench ? "1:20" : "1:11";
 
+  const takeAwenaAudioFocus = React.useCallback(() => {
+    if (audioFocusTokenRef.current) return;
+    audioFocusTokenRef.current = acquireAwenaAudioFocus(
+      "video",
+      `awena-rules-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+  }, []);
+
+  const releaseVideoAudioFocus = React.useCallback(() => {
+    if (!audioFocusTokenRef.current) return;
+    releaseAwenaAudioFocus(audioFocusTokenRef.current);
+    audioFocusTokenRef.current = null;
+  }, []);
+
+  const finishVideo = React.useCallback(() => {
+    releaseVideoAudioFocus();
+    onDone();
+  }, [onDone, releaseVideoAudioFocus]);
+
   React.useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      releaseVideoAudioFocus();
+      return;
+    }
     setFailedRemote(false);
     const timer = window.setTimeout(() => {
       const video = videoRef.current;
@@ -50,8 +74,11 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
         if (p && typeof (p as Promise<void>).catch === "function") void p.catch(() => {});
       } catch {}
     }, 80);
-    return () => window.clearTimeout(timer);
-  }, [open, isFrench]);
+    return () => {
+      window.clearTimeout(timer);
+      releaseVideoAudioFocus();
+    };
+  }, [open, isFrench, releaseVideoAudioFocus]);
 
   if (!open) return null;
 
@@ -112,7 +139,7 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
           </div>
           <button
             type="button"
-            onClick={onDone}
+            onClick={finishVideo}
             aria-label={t("common.close", "Fermer")}
             style={{
               width: 34,
@@ -141,7 +168,10 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
             controls
             playsInline
             preload="metadata"
-            onEnded={onDone}
+            onPlay={takeAwenaAudioFocus}
+            onPlaying={takeAwenaAudioFocus}
+            onPause={releaseVideoAudioFocus}
+            onEnded={finishVideo}
             onError={() => {
               if (remoteSrc && !failedRemote) setFailedRemote(true);
             }}
@@ -184,7 +214,7 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
           </div>
           <button
             type="button"
-            onClick={onDone}
+            onClick={finishVideo}
             style={{
               flex: "0 0 auto",
               minHeight: 36,

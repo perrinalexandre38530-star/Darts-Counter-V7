@@ -2521,6 +2521,9 @@ const isBotTurn = React.useMemo(() => {
       configTeams.some((t: any) => Array.isArray(t?.players) && t.players.length > 0)
     );
 
+  // Ticker X01 plein cadre uniquement pour le multi individuel et le BO1 simple (1 set / 1 leg).
+  const showFullX01TickerHeader = (!isTeamsMode && players.length >= 3) || !useSetsUi;
+
 const teamsView = React.useMemo(() => {
   if (!isTeamsMode) return null;
 
@@ -5445,20 +5448,39 @@ if (isLandscapeTablet) {
           paddingBottom: 6,
         }}
       >
+        {showFullX01TickerHeader ? (
+          <img
+            src={tickerX01}
+            alt="X01"
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: "6px 12px",
+              width: "calc(100% - 24px)",
+              height: "calc(100% - 12px)",
+              objectFit: "cover",
+              borderRadius: 18,
+              display: "block",
+              userSelect: "none",
+              pointerEvents: "none",
+            }}
+          />
+        ) : null}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             width: "100%",
+            minHeight: showFullX01TickerHeader ? 72 : undefined,
             position: "relative",
           }}
         >
           <BackDot onClick={handleQuit} size={40} />
 
           <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-            {!useSetsUi ? <X01HeaderTicker compact /> : null}
-            {useSetsUi && (
+            {!showFullX01TickerHeader && !useSetsUi ? <X01HeaderTicker compact /> : null}
+            {!showFullX01TickerHeader && useSetsUi && (
               <div
                 style={{
                   position: "absolute",
@@ -5480,7 +5502,7 @@ if (isLandscapeTablet) {
             )}
 
                         {/* Scoreboard SET/LEG (même rendu que SOLO) */}
-            {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
+            {!showFullX01TickerHeader && useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
               (teamsView as any[]).length === 2 ? (
                 <DuelHeaderCompact
                   leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
@@ -5498,7 +5520,7 @@ if (isLandscapeTablet) {
                 />
               )
             ) : (
-              isDuel && useSetsUi && (
+              isDuel && !showFullX01TickerHeader && useSetsUi && (
                 <DuelHeaderCompact
                   leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
                   rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
@@ -5511,7 +5533,7 @@ if (isLandscapeTablet) {
             )}
           </div>
 
-          {useSetsUi ? (
+          {!showFullX01TickerHeader && useSetsUi ? (
             <SetLegChip
               currentSet={(state as any).currentSet ?? 1}
               currentLegInSet={(state as any).currentLeg ?? 1}
@@ -5868,7 +5890,9 @@ if (isLandscapeTablet) {
         title=""
         onBack={handleQuit}
         showInfo={false}
-        topRightExtra={isTabletUi && useSetsUi ? (
+        headerFullBleedImage={showFullX01TickerHeader ? tickerX01 : undefined}
+        headerFullBleedAlt={showFullX01TickerHeader ? "X01" : ""}
+        topRightExtra={isTabletUi && useSetsUi && !showFullX01TickerHeader ? (
           <SetLegChip
                 currentSet={(state as any).currentSet ?? 1}
                 currentLegInSet={(state as any).currentLeg ?? 1}
@@ -5878,7 +5902,7 @@ if (isLandscapeTablet) {
                 unit={matchFormatUnitForUi as any}
               />
         ) : null}
-        headerCenter={!isTabletUi ? (
+        headerCenter={!isTabletUi && !showFullX01TickerHeader ? (
           <div ref={headerWrapRef} style={{ width: "100%" }}>
             <div
               style={{
@@ -5890,7 +5914,6 @@ if (isLandscapeTablet) {
               }}
             >
               <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-                {!useSetsUi ? <X01HeaderTicker /> : null}
                 {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
                   (teamsView as any[]).length === 2 ? (
                     <DuelHeaderCompact
@@ -5939,10 +5962,9 @@ if (isLandscapeTablet) {
         ) : null}
         activeProfileHeader={
           <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
-            {isTabletUi ? (
+            {isTabletUi && !showFullX01TickerHeader ? (
               <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
                 <div style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
-                {!useSetsUi ? <X01HeaderTicker /> : null}
                 {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
                   (teamsView as any[]).length === 2 ? (
                     <DuelHeaderCompact
