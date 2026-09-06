@@ -5,6 +5,7 @@ type Props = {
   snapshot: ViewerLiveSnapshot | null;
   connectionLabel?: string;
   onJoin?: () => void;
+  displayMode?: "default" | "tv";
 };
 
 function avatarSrc(p: ViewerPlayer) {
@@ -142,7 +143,7 @@ function Waiting({ onJoin }: { onJoin?: () => void }) {
     <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 20 }}>
       <div style={{ maxWidth: 720, textAlign: "center", borderRadius: 30, padding: 28, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)" }}>
         <div style={{ fontSize: 34, fontWeight: 1100, color: "#ffd56a" }}>MULTISPORTS SCORING</div>
-        <div style={{ marginTop: 10, fontSize: 18, opacity: 0.86 }}>Viewer tablette prêt. Lance une partie sur le téléphone pour afficher le scoreboard ici.</div>
+        <div style={{ marginTop: 10, fontSize: 18, opacity: 0.86 }}>Viewer prêt. Lance une partie sur le téléphone pour afficher le scoreboard ici.</div>
         {onJoin ? (
           <button onClick={onJoin} style={{ marginTop: 18, borderRadius: 16, padding: "12px 16px", border: "1px solid rgba(255,255,255,.14)", background: "#ffd56a", color: "#17120b", fontWeight: 1000 }}>
             Saisir un autre code
@@ -153,7 +154,8 @@ function Waiting({ onJoin }: { onJoin?: () => void }) {
   );
 }
 
-export default function ViewerScreen({ snapshot, connectionLabel, onJoin }: Props) {
+export default function ViewerScreen({ snapshot, connectionLabel, onJoin, displayMode = "default" }: Props) {
+  const tvMode = displayMode === "tv";
   const players = Array.isArray(snapshot?.players) ? snapshot!.players : [];
   const active = players.find((p) => p.isActive) || players.find((p) => p.id === snapshot?.activePlayerId) || players[0] || null;
   const others = active ? players.filter((p) => p.id !== active.id) : players;
@@ -178,7 +180,7 @@ export default function ViewerScreen({ snapshot, connectionLabel, onJoin }: Prop
           "radial-gradient(900px 500px at 16% 0%, rgba(79,180,255,.16), transparent 62%), radial-gradient(780px 460px at 88% 20%, rgba(255,213,106,.11), transparent 58%), #06070c",
       }}
     >
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "clamp(14px, 2vw, 28px)", display: "grid", gap: 16 }}>
+      <div style={{ maxWidth: tvMode ? 1760 : 1280, margin: "0 auto", padding: tvMode ? "clamp(28px, 2.6vw, 52px)" : "clamp(14px, 2vw, 28px)", display: "grid", gap: tvMode ? 22 : 16 }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: "clamp(24px, 3.2vw, 46px)", fontWeight: 1200, letterSpacing: 1.2, color: "#ffd56a", textShadow: "0 0 24px rgba(255,213,106,.24)" }}>

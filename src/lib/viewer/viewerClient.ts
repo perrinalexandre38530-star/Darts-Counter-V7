@@ -1,4 +1,4 @@
-import { NAS_API_URL } from "../serverConfig";
+import { NAS_API_URL, PUBLIC_PAGES_ORIGIN } from "../serverConfig";
 import type { ViewerCreateSessionResult, ViewerLiveSnapshot } from "./types";
 
 const VIEWER_TIMEOUT_MS = 3500;
@@ -11,8 +11,13 @@ function normalizeBase(raw: any) {
 
 function baseCandidates() {
   const env = (import.meta as any)?.env || {};
+  const protocol = typeof window !== "undefined" ? String(window.location?.protocol || "").toLowerCase() : "";
+  const packagedFallback = protocol && protocol !== "http:" && protocol !== "https:"
+    ? normalizeBase(PUBLIC_PAGES_ORIGIN)
+    : "";
   const list = [
     normalizeBase(env.VITE_VIEWER_API_URL),
+    packagedFallback,
     normalizeBase(NAS_API_URL),
     normalizeBase(env.VITE_ONLINE_API_URL),
     normalizeBase(env.VITE_ONLINE_WS_BASE_URL),

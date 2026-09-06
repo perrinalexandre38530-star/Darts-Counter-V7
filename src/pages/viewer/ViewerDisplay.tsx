@@ -4,9 +4,9 @@ import { fetchViewerSnapshot, normalizeViewerCode } from "../../lib/viewer/viewe
 import type { ViewerLiveSnapshot } from "../../lib/viewer/types";
 import { getViewerPollMs } from "../../lib/viewer/viewerSettings";
 
-type Props = { go: (tab: any, params?: any) => void; sessionId?: string | null };
+type Props = { go: (tab: any, params?: any) => void; sessionId?: string | null; displayMode?: "default" | "tv" };
 
-export default function ViewerDisplay({ go, sessionId }: Props) {
+export default function ViewerDisplay({ go, sessionId, displayMode = "default" }: Props) {
   const sid = normalizeViewerCode(String(sessionId || ""));
   const [snapshot, setSnapshot] = React.useState<ViewerLiveSnapshot | null>(null);
   const [state, setState] = React.useState<"connecting" | "live" | "offline" | "missing">(sid ? "connecting" : "missing");
@@ -24,6 +24,7 @@ export default function ViewerDisplay({ go, sessionId }: Props) {
     const offlinePollMs = Math.max(1200, pollMs * 2);
 
     const tick = async () => {
+      let nextDelay = pollMs;
       try {
         const next = await fetchViewerSnapshot(sid);
         if (!alive) return;
@@ -38,9 +39,10 @@ export default function ViewerDisplay({ go, sessionId }: Props) {
           setState("connecting");
         }
       } catch {
+        nextDelay = offlinePollMs;
         if (alive) setState("offline");
       } finally {
-        if (alive) timer = window.setTimeout(tick, state === "offline" ? offlinePollMs : pollMs);
+        if (alive) timer = window.setTimeout(tick, nextDelay);
       }
     };
 
@@ -66,5 +68,5 @@ export default function ViewerDisplay({ go, sessionId }: Props) {
   }
 
   const label = state === "live" ? "connecté" : state === "offline" ? "hors ligne" : "connexion…";
-  return <ViewerScreen snapshot={snapshot} connectionLabel={label} onJoin={() => go("viewer_join")} />;
+  return <ViewerScreen snapshot={snapshot} connectionLabel={label} onJoin={() => go("viewer_join")} displayMode={displayMode} />;
 }

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "tv:samsung:build": "node ./tools/build-samsung-tv.mjs",
+    "tv:samsung:check": "node ./tools/check-samsung-tv.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",

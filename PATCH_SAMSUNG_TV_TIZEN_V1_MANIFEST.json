@@ -1,0 +1,43 @@
+{
+  "patch": "SAMSUNG_TV_TIZEN_V1",
+  "base": "Darts-Counter-V7(39).zip",
+  "date": "2026-09-06",
+  "purpose": "Ajoute un build Samsung Smart TV / Tizen dédié basé sur le Viewer existant, avec navigation télécommande et packaging WGT léger.",
+  "tizen": {
+    "project": "MULTISPORTSSCORINGTV",
+    "certificateProfile": "MULTISPORTS_SCORING_TV",
+    "packageId": "wgIoFKG6GG",
+    "applicationId": "wgIoFKG6GG.MULTISPORTSSCORINGTV",
+    "profile": "tv-samsung"
+  },
+  "modified": [
+    "package.json",
+    "src/lib/viewer/viewerClient.ts",
+    "src/pages/viewer/ViewerDisplay.tsx",
+    "src/components/viewer/ViewerScreen.tsx"
+  ],
+  "created": [
+    "vite.samsung-tv.config.ts",
+    "tv-samsung/index.html",
+    "tv-samsung/src/main.tsx",
+    "src/tv/samsung/SamsungTvApp.tsx",
+    "src/tv/samsung/samsung-tv.css",
+    "tools/build-samsung-tv.mjs",
+    "tools/check-samsung-tv.mjs",
+    "MULTISPORTSSCORINGTV/config.xml",
+    "MULTISPORTSSCORINGTV/icon.png",
+    "docs/SAMSUNG-TV-TIZEN.md",
+    "PATCH_SAMSUNG_TV_TIZEN_V1_MANIFEST.json"
+  ],
+  "commands": [
+    "npm install",
+    "npm run tv:samsung:build",
+    "npm run tv:samsung:check"
+  ],
+  "notes": [
+    "Le build TV n'embarque pas l'application mobile complète; il démarre sur un écran Viewer Samsung TV léger.",
+    "Le DUID du certificat sert uniquement au développement/test et ne limite pas la distribution publique.",
+    "Les IDs Tizen package/application doivent rester stables pour les futures mises à jour.",
+    "Le build écrit index.html et assets/ dans MULTISPORTSSCORINGTV sans supprimer config.xml ni les métadonnées Tizen créées localement."
+  ]
+}

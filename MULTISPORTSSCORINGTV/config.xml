@@ -1,13 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://yourdomain/MULTISPORTSSCORINGTV" version="0.2.1" viewmodes="maximized">
-   <name>MULTISPORTSSCORINGTV</name>
-   <icon src="icon.png"></icon>
-   <content src="index.html"></content>
-   <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"></feature>
-   <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"></tizen:setting>
-   <tizen:application id="wgloFkG0GG.MULTISPORTSSCORINGTV" package="wgloFkG0GG" required_version="2.3"></tizen:application>
-   <tizen:privilege name="http://tizen.org/privilege/application.launch"></tizen:privilege>
-   <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"></tizen:metadata>
-   <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"></tizen:metadata>
-   <tizen:profile name="tv-samsung"></tizen:profile>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="https://multisports-scoring.com/tv/MULTISPORTSSCORINGTV"
+        version="1.0.0"
+        viewmodes="maximized">
+    <name>MULTISPORTS SCORING</name>
+    <icon src="icon.png"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <access origin="*" subdomains="true"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:application id="wgIoFKG6GG.MULTISPORTSSCORINGTV"
+                       package="wgIoFKG6GG"
+                       required_version="2.3"/>
+    <tizen:setting screen-orientation="landscape"
+                   context-menu="disable"
+                   background-support="disable"
+                   encryption="disable"
+                   install-location="auto"
+                   hwkey-event="enable"
+                   pointing-device-support="disable"/>
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="false"/>
+    <tizen:profile name="tv-samsung"/>
 </widget>
