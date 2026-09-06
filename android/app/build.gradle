@@ -53,6 +53,21 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    // Never ship desktop/Linux native resources in the Android base module.
+    // Android JNI .so files remain untouched; only META-INF/native payloads for
+    // non-Android platforms are excluded.
+    packaging {
+        resources {
+            excludes += [
+                "**/native/osx-*/**",
+                "**/native/win-*/**",
+                "**/native/linux-*/**",
+                "META-INF/native/osx-*/**",
+                "META-INF/native/win-*/**",
+                "META-INF/native/linux-*/**"
+            ]
+        }
+    }
 }
 
 repositories {
