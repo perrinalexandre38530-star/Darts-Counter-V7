@@ -8,6 +8,10 @@
 // - CORS via ALLOW_ORIGINS (liste séparée par des virgules, ou vide = tout)
 // =============================================================
 
+// Cloudflare exige que toute classe Durable Object déclarée dans wrangler.online.toml
+// soit exportée depuis le point d'entrée du Worker.
+export { RoomDO } from "./RoomDO";
+
 // --------- Types minimalistes pour éviter d'ajouter workers-types ---------
 
 interface KVNamespace {
@@ -433,6 +437,18 @@ function generateToken(length = 12): string {
   return `${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}`;
 }
 
+// Code court Viewer : exactement 6 caractères, sans tirets.
+// Ne pas réutiliser generateToken(6), car generateToken() formate les tokens
+// de synchronisation sous forme XXXX-XXXX-XXXX.
+function generateViewerCode(length = 6): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out;
+}
+
 async function handleUpload(request: Request, env: Env): Promise<Response> {
   let payload: any;
   try {
@@ -503,7 +519,7 @@ async function handleViewerCreate(_request: Request, env: Env): Promise<Response
   for (let i = 0; i < 8; i++) {
     // Le Viewer Samsung TV saisit un code court de 6 caractères.
     // Garder la même longueur sur tous les backends évite toute troncature.
-    const candidate = generateToken(6);
+    const candidate = generateViewerCode(6);
     const existing = await env.DC_SYNC.get(viewerSessionKey(candidate));
     if (!existing) {
       sessionId = candidate;
