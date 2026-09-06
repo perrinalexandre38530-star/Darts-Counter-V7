@@ -26,6 +26,8 @@ import {
   type FootballParticipantMode,
   type FootballTieBreaker,
   type FootballVariant,
+  type FootballTargetDifficulty,
+  type FootballKickoffMode,
 } from "../lib/gameEngines/footballEngine";
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
@@ -73,7 +75,8 @@ function RulesContent() {
     <div><strong style={{ color: BLUE }}>ATTAQUE</strong><br />Touche l’un des trois secteurs affichés. Simple avance d’une zone, Double de deux, Triple de trois.</div>
     <div><strong style={{ color: RED }}>DÉFENSE</strong><br />Simple repousse le ballon, Double intercepte, Triple déclenche une contre-attaque.</div>
     <div><strong style={{ color: GOLD }}>TIR ET GARDIEN</strong><br />Dans la surface, Triple ou DBULL marque directement. Les autres tirs cadrés peuvent être arrêtés.</div>
-    <div><strong style={{ color: GREEN }}>CLASSIC</strong><br />BULL pour prendre la possession, puis n’importe quel DOUBLE pour marquer.</div>
+    <div><strong style={{ color: GOLD }}>FORMATS</strong><br />Match, Golden Goal, Premier à X buts, Tirs au but et Classic. Chaque format conserve les mêmes commandes.</div>
+    <div><strong style={{ color: GREEN }}>CLASSIC</strong><br />BULL pour prendre la possession, puis n’importe quel DOUBLE pour marquer. Le premier à l’objectif choisi gagne.</div>
   </div>;
 }
 
@@ -167,6 +170,12 @@ export default function FootballConfig(props: any) {
   const [halfRounds, setHalfRounds] = React.useState(initial.halfRounds);
   const [extraRounds, setExtraRounds] = React.useState(initial.extraRounds);
   const [tieBreaker, setTieBreaker] = React.useState<FootballTieBreaker>(initial.tieBreaker);
+  const [goalTarget, setGoalTarget] = React.useState(initial.goalTarget);
+  const [penaltyShots, setPenaltyShots] = React.useState(initial.penaltyShots);
+  const [mercyGoals, setMercyGoals] = React.useState(initial.mercyGoals);
+  const [targetDifficulty, setTargetDifficulty] = React.useState<FootballTargetDifficulty>(initial.targetDifficulty);
+  const [kickoffMode, setKickoffMode] = React.useState<FootballKickoffMode>(initial.kickoffMode);
+  const [coachHints, setCoachHints] = React.useState(initial.coachHints);
   const [goalkeeperEnabled, setGoalkeeperEnabled] = React.useState(initial.goalkeeperEnabled);
   const [missLosesPossession, setMissLosesPossession] = React.useState(initial.missLosesPossession);
   const [randomOrder, setRandomOrder] = React.useState(initial.randomOrder);
@@ -205,6 +214,8 @@ export default function FootballConfig(props: any) {
       setTieBreaker("penalties");
       setGoalkeeperEnabled(false);
       setMissLosesPossession(true);
+      setTargetDifficulty("accessible");
+      setMercyGoals(0);
       return;
     }
     if (id === "tactical") {
@@ -213,12 +224,16 @@ export default function FootballConfig(props: any) {
       setExtraRounds(3);
       setGoalkeeperEnabled(true);
       setMissLosesPossession(true);
+      setTargetDifficulty("expert");
+      setMercyGoals(0);
       return;
     }
     setHalfRounds(5);
     setTieBreaker("penalties");
     setGoalkeeperEnabled(true);
     setMissLosesPossession(true);
+    setTargetDifficulty("standard");
+    setMercyGoals(0);
   }
 
   const selectedTeams = selectedTeamIds.map((id) => teams.find((team: any) => String(team.id) === id)).filter(Boolean);
@@ -232,7 +247,7 @@ export default function FootballConfig(props: any) {
   const selectionLabel = participantMode === "players"
     ? (selectedPlayers.length ? selectedPlayers.map(playerName).join(" vs ") : "2 joueurs")
     : (selectedTeams.length ? selectedTeams.map((team: any) => team.name).join(" vs ") : "2 équipes");
-  const durationLabel = variant === "penalties" ? "5 tirs + mort subite" : variant === "classic" ? "BULL puis DOUBLE" : variant === "golden_goal" ? `1er but · max ${halfRounds} tours` : `2 × ${halfRounds} tours`;
+  const durationLabel = variant === "penalties" ? `${penaltyShots} tirs + mort subite` : variant === "classic" ? `BULL → DOUBLE · 1er à ${goalTarget}` : variant === "first_to" ? `1er à ${goalTarget} buts` : variant === "golden_goal" ? `1er but · max ${halfRounds} tours` : `2 × ${halfRounds} tours`;
 
   function buildPayload(): FootballConfigPayload {
     const playerDartSets = Object.fromEntries(selectedPlayers.map((profile: any) => [
@@ -259,6 +274,12 @@ export default function FootballConfig(props: any) {
       halfRounds,
       extraRounds,
       tieBreaker,
+      goalTarget,
+      penaltyShots,
+      mercyGoals,
+      targetDifficulty,
+      kickoffMode,
+      coachHints,
       goalkeeperEnabled,
       missLosesPossession,
       randomOrder,
@@ -280,8 +301,9 @@ export default function FootballConfig(props: any) {
     <div className="football-mode-grid">
       <ModeCard active={variant === "match"} icon="🏟️" title="MATCH" badge="RECOMMANDÉ" subtitle="Deux mi-temps, terrain, possession et gardien." rules={["ATTAQUE", "DÉFENSE", "TIRS"]} color={GREEN} onClick={() => setVariant("match")} />
       <ModeCard active={variant === "golden_goal"} icon="⚡" title="GOLDEN GOAL" subtitle="Le premier but met immédiatement fin au match." rules={["RAPIDE", "TENSION"]} color={GOLD} onClick={() => setVariant("golden_goal")} />
-      <ModeCard active={variant === "penalties"} icon="🥅" title="TIRS AU BUT" subtitle="Cinq tentatives par camp, puis mort subite." rules={["DUEL", "PRÉCISION"]} color={RED} onClick={() => setVariant("penalties")} />
-      <ModeCard active={variant === "classic"} icon="🎯" title="CLASSIC" subtitle="BULL pour le ballon, DOUBLE pour marquer." rules={["SIMPLE", "IMMÉDIAT"]} color={BLUE} onClick={() => setVariant("classic")} />
+      <ModeCard active={variant === "first_to"} icon="🏆" title="PREMIER À X" subtitle="Pas de chrono : gagne en atteignant le nombre de buts fixé." rules={["OBJECTIF", "LIBRE"]} color={BLUE} onClick={() => setVariant("first_to")} />
+      <ModeCard active={variant === "penalties"} icon="🥅" title="TIRS AU BUT" subtitle="Série réglable puis mort subite si nécessaire." rules={["DUEL", "PRÉCISION"]} color={RED} onClick={() => setVariant("penalties")} />
+      <ModeCard active={variant === "classic"} icon="🎯" title="CLASSIC" subtitle="BULL pour le ballon, DOUBLE pour marquer. Premier à X buts." rules={["SIMPLE", "IMMÉDIAT"]} color={BLUE} onClick={() => setVariant("classic")} />
     </div>
 
     {variant === "match" ? <div className="football-preset-row">
@@ -339,17 +361,40 @@ export default function FootballConfig(props: any) {
   const rulesBlock = <ConfigBlock title="RÈGLES DU MATCH" color={GOLD}>
     <div style={{ display: "grid", gap: 6 }}>
       {variant === "match" || variant === "golden_goal" ? <OptionRow label={variant === "match" ? "Tours par mi-temps" : "Limite avant penalties"} hint={variant === "match" ? "Chaque camp joue une fois par tour" : "Sécurité si aucun but n’est marqué"}>
-        <OptionSelect value={halfRounds} options={[3, 5, 8, 10, 12]} onChange={setHalfRounds} />
+        <OptionSelect value={halfRounds} options={[3, 5, 8, 10, 12, 15]} onChange={setHalfRounds} />
       </OptionRow> : null}
+
+      {variant === "first_to" || variant === "classic" ? <OptionRow label="Objectif de buts" hint="Le premier camp qui atteint ce total gagne">
+        <OptionSelect value={goalTarget} options={[1, 2, 3, 5, 7, 10]} onChange={setGoalTarget} />
+      </OptionRow> : null}
+
+      {variant === "penalties" ? <OptionRow label="Tirs par camp" hint="Puis mort subite si égalité">
+        <OptionSelect value={penaltyShots} options={[3, 5, 7, 9]} onChange={setPenaltyShots} />
+      </OptionRow> : null}
+
       {variant === "match" ? <>
         <OptionRow label="En cas d’égalité" hint="Issue du match après les deux périodes">
           <OptionSelect value={tieBreaker} options={[{ value: "draw", label: "Match nul" }, { value: "golden_goal", label: "Golden Goal" }, { value: "penalties", label: "Tirs au but" }]} onChange={setTieBreaker} />
         </OptionRow>
         {tieBreaker === "golden_goal" ? <OptionRow label="Tours de prolongation"><OptionSelect value={extraRounds} options={[1, 2, 3, 5]} onChange={setExtraRounds} /></OptionRow> : null}
+        <OptionRow label="Mercy rule" hint="0 = désactivée · sinon fin au nombre de buts d’écart choisi">
+          <OptionSelect value={mercyGoals} options={[{ value: 0, label: "Désactivée" }, { value: 3, label: "+3 buts" }, { value: 4, label: "+4 buts" }, { value: 5, label: "+5 buts" }]} onChange={setMercyGoals} />
+        </OptionRow>
       </> : null}
+
       {variant !== "penalties" && variant !== "classic" ? <OptionRow label="Gardien sur tirs cadrés" hint="Les frappes S/D ouvrent une phase de parade"><OptionToggle value={goalkeeperEnabled} onChange={setGoalkeeperEnabled} /></OptionRow> : null}
-      {variant === "match" || variant === "golden_goal" ? <OptionRow label="Volée sans cible = ballon perdu" hint="Accélère le rythme et récompense la précision"><OptionToggle value={missLosesPossession} onChange={setMissLosesPossession} /></OptionRow> : null}
-      {participantMode === "players" ? <OptionRow label="Ordre de départ aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
+      {variant === "match" || variant === "golden_goal" || variant === "first_to" ? <OptionRow label="Volée sans cible = ballon perdu" hint="Accélère le rythme et récompense la précision"><OptionToggle value={missLosesPossession} onChange={setMissLosesPossession} /></OptionRow> : null}
+
+      {variant !== "classic" ? <OptionRow label="Difficulté des secteurs" hint="Accessible = davantage de cibles · Expert = moins de cibles">
+        <OptionSelect value={targetDifficulty} options={[{ value: "accessible", label: "Accessible" }, { value: "standard", label: "Standard" }, { value: "expert", label: "Expert" }]} onChange={setTargetDifficulty} />
+      </OptionRow> : null}
+
+      {variant !== "penalties" ? <OptionRow label="Coup d’envoi" hint="Choisit le camp qui démarre avec le ballon">
+        <OptionSelect value={kickoffMode} options={[{ value: "home", label: "Camp 1" }, { value: "away", label: "Camp 2" }, { value: "random", label: "Aléatoire" }]} onChange={setKickoffMode} />
+      </OptionRow> : null}
+
+      <OptionRow label="Coach tactique" hint="Affiche les effets S / D / T et les conseils de cible"><OptionToggle value={coachHints} onChange={setCoachHints} /></OptionRow>
+      {participantMode === "players" ? <OptionRow label="Ordre des joueurs aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
       <OptionRow label="Méthode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Clavier compact" }, { value: "dartboard", label: "Cible tactile" }]} onChange={setScoreInputMethod} /></OptionRow>
     </div>
     <div className="football-config-note">

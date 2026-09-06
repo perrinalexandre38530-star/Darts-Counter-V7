@@ -157,7 +157,7 @@ function MissionCard({ state }: { state: FootballState }) {
     <div className="football-targets">
       {(specialTargets.length ? specialTargets : targets).map((target: any) => <span key={String(target)} className="football-target-chip" style={{ color }}>{target}</span>)}
     </div>
-    <div className="football-effects">{meta.effects.map((effect) => <span key={effect} className="football-effect">{effect}</span>)}</div>
+    {state.config.coachHints !== false ? <div className="football-effects">{meta.effects.map((effect) => <span key={effect} className="football-effect">{effect}</span>)}</div> : null}
   </section>;
 }
 
@@ -236,6 +236,30 @@ function Kpi({ label, value, detail, color = GREEN }: any) {
   </div>;
 }
 
+function sideStat(state: FootballState, sideIndex: number, key: string) {
+  const side = state.sides[sideIndex];
+  return (side?.playerIds || []).reduce((total: number, id: string) => total + Number((state.statsByPlayer[id] as any)?.[key] || 0), 0);
+}
+
+function possessionPercent(state: FootballState, sideIndex: number) {
+  if (!state.visits.length) return 50;
+  const sideId = state.sides[sideIndex]?.id;
+  const touches = state.visits.filter((visit: any) => visit.possessionSideIdBefore === sideId).length;
+  return Math.round((touches / state.visits.length) * 100);
+}
+
+function buildMatchHighlights(state: FootballState, rows: any[]) {
+  const by = (score: (row: any) => number) => [...rows].sort((a, b) => score(b) - score(a))[0] || null;
+  return {
+    mvp: by((row) => Number(row.goals || 0) * 12 + Number(row.saves || 0) * 6 + Number(row.interceptions || 0) * 4 + Number(row.successfulActions || 0) + Number(row.counterAttacks || 0) * 2),
+    topScorer: by((row) => Number(row.goals || 0)),
+    topKeeper: by((row) => Number(row.saves || 0)),
+    topDefender: by((row) => Number(row.interceptions || 0) + Number(row.tackles || 0) * .35),
+    mostAccurate: by((row) => Number(row.accuracy || 0)),
+    longestProgress: by((row) => Number(row.bestProgress || 0)),
+  };
+}
+
 export default function FootballPlay(props: any) {
   const { theme } = useTheme();
   const store = props?.store ?? props?.params?.store;
@@ -285,9 +309,12 @@ export default function FootballPlay(props: any) {
   const score1 = Number(state.scoreBySide[state.sides[1]?.id] || 0);
   const lastVisit = state.visits[state.visits.length - 1];
   const lastEvent = lastVisit?.events?.map((event: any) => event.label).join(" · ") || "Coup d’envoi : construis la première attaque.";
-  const stageLabel = state.stage === "penalties" ? "TIRS AU BUT" : state.stage === "extra_time" ? "PROLONGATION" : `PÉRIODE ${state.period}`;
+  const stageLabel = state.stage === "penalties" ? "TIRS AU BUT" : state.stage === "extra_time" ? "PROLONGATION" : config.variant === "first_to" ? `PREMIER À ${config.goalTarget}` : config.variant === "classic" ? `CLASSIC · ${config.goalTarget} BUTS` : config.variant === "golden_goal" ? "GOLDEN GOAL" : `PÉRIODE ${state.period}`;
   const roundLimit = state.stage === "extra_time" ? config.extraRounds : config.halfRounds;
-  const progressPercent = state.stage === "penalties" ? Math.min(100, (state.turnCount / 10) * 100) : Math.min(100, (state.roundInPeriod / Math.max(1, roundLimit)) * 100);
+  const penaltyDone = Math.max((state.penaltyAttemptsBySide[state.sides[0]?.id] || []).length, (state.penaltyAttemptsBySide[state.sides[1]?.id] || []).length);
+  const progressPercent = state.stage === "penalties" ? Math.min(100, (penaltyDone / Math.max(1, config.penaltyShots)) * 100) : (config.variant === "first_to" || config.variant === "classic") ? Math.min(100, (Math.max(score0, score1) / Math.max(1, config.goalTarget)) * 100) : Math.min(100, (state.roundInPeriod / Math.max(1, roundLimit)) * 100);
+  const possession0 = possessionPercent(state, 0);
+  const possession1 = 100 - possession0;
 
   function backToConfig() {
     if (typeof go === "function") go("football_config", { config });
@@ -399,6 +426,7 @@ export default function FootballPlay(props: any) {
     });
     const matchStats = buildFootballMatchStats(state);
     const winnerSides = state.sides.filter((side) => state.winnerSideIds.includes(side.id));
+    const records = buildMatchHighlights(state, playerRows);
     const summary: any = {
       kind: "football",
       mode: "football",
@@ -407,8 +435,9 @@ export default function FootballPlay(props: any) {
       variantLabel: footballVariantLabel(config.variant),
       finished,
       draw: state.draw,
-      statisticsVersion: 2,
+      statisticsVersion: 3,
       telemetryVersion: 1,
+      records,
       winnerId: finished ? state.winnerPlayerIds[0] || null : null,
       winnerIds: finished ? state.winnerPlayerIds : [],
       winnerSideIds: finished ? state.winnerSideIds : [],
@@ -421,7 +450,7 @@ export default function FootballPlay(props: any) {
       config,
       scoreBySide: state.scoreBySide,
       scoreLine: `${state.sides[0]?.name} ${score0} - ${score1} ${state.sides[1]?.name}`,
-      game: { mode: "football", variant: config.variant, halfRounds: config.halfRounds, tieBreaker: config.tieBreaker },
+      game: { mode: "football", variant: config.variant, halfRounds: config.halfRounds, tieBreaker: config.tieBreaker, goalTarget: config.goalTarget, penaltyShots: config.penaltyShots, targetDifficulty: config.targetDifficulty },
     };
     const record: any = {
       id: matchIdRef.current,
@@ -430,7 +459,7 @@ export default function FootballPlay(props: any) {
       mode: "football",
       sport: "darts",
       status,
-      statisticsVersion: 2,
+      statisticsVersion: 3,
       telemetryVersion: 1,
       createdAt: state.startedAt,
       startedAt: state.startedAt,
@@ -449,7 +478,7 @@ export default function FootballPlay(props: any) {
         mode: "football",
         sport: "darts",
         variant: config.variant,
-        statisticsVersion: 2,
+        statisticsVersion: 3,
         telemetryVersion: 1,
         config,
         players: playerRows,
@@ -512,6 +541,16 @@ export default function FootballPlay(props: any) {
         </div>
       </section>
 
+      <section className="football-live-strip football-glass">
+        <div className="football-live-side is-left" style={{ color: state.sides[0]?.color || BLUE }}>
+          <strong>{sideStat(state, 0, "shots")}</strong><span>TIRS</span><strong>{sideStat(state, 0, "shotsOnTarget")}</strong><span>CAD.</span><strong>{possession0}%</strong><span>POS.</span><strong>{sideStat(state, 0, "interceptions")}</strong><span>INT.</span>
+        </div>
+        <div className="football-live-center">LIVE</div>
+        <div className="football-live-side is-right" style={{ color: state.sides[1]?.color || RED }}>
+          <strong>{sideStat(state, 1, "shots")}</strong><span>TIRS</span><strong>{sideStat(state, 1, "shotsOnTarget")}</strong><span>CAD.</span><strong>{possession1}%</strong><span>POS.</span><strong>{sideStat(state, 1, "interceptions")}</strong><span>INT.</span>
+        </div>
+      </section>
+
       <FootballField state={state} />
 
       <div className="football-command-row">
@@ -527,7 +566,7 @@ export default function FootballPlay(props: any) {
       </div>
 
       <section className="football-quick-actions">
-        <QuickAction icon="⚽" label="FEUILLE DE MATCH" value={`${score0}-${score1}`} color={BLUE} onClick={() => setOverlay("teams")} />
+        <QuickAction icon="⚽" label="TABLEAU DU MATCH" value={`${score0}-${score1}`} color={BLUE} onClick={() => setOverlay("teams")} />
         <QuickAction icon="📊" label="MES STATISTIQUES" value={`${footballAccuracy(activeStats)}%`} color={GREEN} onClick={() => setOverlay("stats")} />
         <QuickAction icon="🕘" label="DERNIÈRE ACTION" value={state.visits.length} color={GOLD} onClick={() => setOverlay("log")} />
       </section>
@@ -577,6 +616,14 @@ export default function FootballPlay(props: any) {
     {overlay === "teams" ? <OverlayShell title="FEUILLE DE MATCH" subtitle={`${footballVariantLabel(config.variant)} · ${state.visits.length} volées`} color={BLUE} onClose={() => setOverlay(null)}>
       <div style={{ display: "grid", gap: 9 }}>{state.sides.map((side: any) => <div key={side.id} style={{ borderRadius: 16, padding: 10, border: `1px solid ${side.color}55`, background: `${side.color}0d` }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: side.color }}>{side.name}</strong><strong style={{ color: WHITE, fontSize: 18 }}>{state.scoreBySide[side.id] || 0}</strong></div>
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+          {[
+            ["TIRS", sideStat(state, state.sides.indexOf(side), "shots")],
+            ["CAD.", sideStat(state, state.sides.indexOf(side), "shotsOnTarget")],
+            ["ARRÊTS", sideStat(state, state.sides.indexOf(side), "saves")],
+            ["INT.", sideStat(state, state.sides.indexOf(side), "interceptions")],
+          ].map(([label, value]: any) => <div key={label} style={{ borderRadius: 9, padding: 5, textAlign: "center", background: "rgba(0,0,0,.18)" }}><div style={{ color: SOFT, fontSize: 5.7 }}>{label}</div><strong style={{ color: side.color, fontSize: 10 }}>{value}</strong></div>)}
+        </div>
         <div style={{ marginTop: 8, display: "grid", gap: 6 }}>{side.playerIds.map((id: string) => {
           const profile = profilesById.get(id);
           const stats = state.statsByPlayer[id] || {};

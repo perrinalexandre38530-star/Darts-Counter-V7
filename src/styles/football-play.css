@@ -623,3 +623,56 @@
   .football-pad-cell { min-height: 30px; }
   .football-pad-bull, .football-pad-backspace, .football-pad-validate { min-height: 36px; }
 }
+
+/* V3 — tableau live compact */
+.football-live-strip {
+  min-width: 0;
+  padding: 4px 7px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 28px minmax(0,1fr);
+  gap: 5px;
+  align-items: center;
+  border-radius: 12px;
+}
+
+.football-live-side {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(8, auto);
+  gap: 3px;
+  align-items: baseline;
+  justify-content: start;
+  overflow: hidden;
+}
+
+.football-live-side.is-right {
+  justify-content: end;
+}
+
+.football-live-side strong {
+  font-size: 8px;
+  font-weight: 1150;
+  white-space: nowrap;
+}
+
+.football-live-side span {
+  color: #7f8a9b;
+  font-size: 4.9px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.football-live-center {
+  text-align: center;
+  color: #65e5aa;
+  font-size: 5.3px;
+  font-weight: 1150;
+  letter-spacing: .7px;
+}
+
+@media (max-width: 520px) {
+  .football-live-strip { padding-inline: 5px; gap: 3px; grid-template-columns: minmax(0,1fr) 22px minmax(0,1fr); }
+  .football-live-side { gap: 2px; }
+  .football-live-side strong { font-size: 7px; }
+  .football-live-side span { font-size: 4.4px; }
+}

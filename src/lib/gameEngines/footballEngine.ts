@@ -6,9 +6,11 @@
 import type { GameDart, Player } from "../types-game";
 
 export type FootballParticipantMode = "players" | "teams";
-export type FootballVariant = "match" | "golden_goal" | "penalties" | "classic";
+export type FootballVariant = "match" | "golden_goal" | "first_to" | "penalties" | "classic";
 export type FootballTieBreaker = "draw" | "golden_goal" | "penalties";
 export type FootballBotLevel = "easy" | "normal" | "hard";
+export type FootballTargetDifficulty = "accessible" | "standard" | "expert";
+export type FootballKickoffMode = "home" | "away" | "random";
 export type FootballAction =
   | "attack"
   | "defense"
@@ -39,9 +41,15 @@ export type FootballConfigPayload = {
   halfRounds: number;
   extraRounds: number;
   tieBreaker: FootballTieBreaker;
+  goalTarget?: number;
+  penaltyShots?: number;
+  mercyGoals?: number;
+  targetDifficulty?: FootballTargetDifficulty;
+  kickoffMode?: FootballKickoffMode;
   goalkeeperEnabled: boolean;
   missLosesPossession: boolean;
   randomOrder: boolean;
+  coachHints?: boolean;
   scoreInputMethod?: "keypad" | "dartboard";
 };
 
@@ -78,6 +86,10 @@ export type FootballPlayerStats = {
   saves: number;
   possessionWins: number;
   possessionLosses: number;
+  clearances: number;
+  counterAttacks: number;
+  penaltiesScored: number;
+  penaltiesMissed: number;
   bestProgress: number;
 };
 
@@ -129,6 +141,7 @@ export type FootballState = {
   players: Player[];
   sides: FootballSide[];
   sideByPlayer: Record<string, number>;
+  kickoffSideIndex: number;
   activeSideIndex: number;
   sidePlayerCursor: [number, number];
   possessionSideIndex: number;
@@ -188,7 +201,8 @@ function emptyStats(): FootballPlayerStats {
     bulls: 0, dbulls: 0, attackVisits: 0, defenseVisits: 0, goalkeeperVisits: 0,
     penaltyVisits: 0, successfulActions: 0, advances: 0, passes: 0, tackles: 0,
     interceptions: 0, shots: 0, shotsOnTarget: 0, goals: 0, saves: 0,
-    possessionWins: 0, possessionLosses: 0, bestProgress: 0,
+    possessionWins: 0, possessionLosses: 0, clearances: 0, counterAttacks: 0,
+    penaltiesScored: 0, penaltiesMissed: 0, bestProgress: 0,
   };
 }
 function cleanPlayers(playersInput: Player[]): Player[] {
@@ -204,10 +218,12 @@ function cleanPlayers(playersInput: Player[]): Player[] {
 }
 
 export function normalizeFootballConfig(raw: Partial<FootballConfigPayload> | any = {}): FootballConfigPayload {
-  const variant: FootballVariant = ["match", "golden_goal", "penalties", "classic"].includes(raw?.variant) ? raw.variant : "match";
+  const variant: FootballVariant = ["match", "golden_goal", "first_to", "penalties", "classic"].includes(raw?.variant) ? raw.variant : "match";
   const participantMode: FootballParticipantMode = raw?.participantMode === "teams" ? "teams" : "players";
   const tieBreaker: FootballTieBreaker = ["draw", "golden_goal", "penalties"].includes(raw?.tieBreaker) ? raw.tieBreaker : "penalties";
   const botLevel: FootballBotLevel = raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal";
+  const targetDifficulty: FootballTargetDifficulty = raw?.targetDifficulty === "accessible" || raw?.targetDifficulty === "expert" ? raw.targetDifficulty : "standard";
+  const kickoffMode: FootballKickoffMode = raw?.kickoffMode === "away" || raw?.kickoffMode === "random" ? raw.kickoffMode : "home";
   return {
     mode: "football",
     participantMode,
@@ -221,9 +237,15 @@ export function normalizeFootballConfig(raw: Partial<FootballConfigPayload> | an
     halfRounds: clampInt(raw?.halfRounds, 2, 20, 5),
     extraRounds: clampInt(raw?.extraRounds, 1, 10, 3),
     tieBreaker,
+    goalTarget: clampInt(raw?.goalTarget, 1, 15, variant === "golden_goal" ? 1 : 3),
+    penaltyShots: clampInt(raw?.penaltyShots, 3, 9, 5),
+    mercyGoals: clampInt(raw?.mercyGoals, 0, 10, 0),
+    targetDifficulty,
+    kickoffMode,
     goalkeeperEnabled: raw?.goalkeeperEnabled !== false,
     missLosesPossession: raw?.missLosesPossession !== false,
     randomOrder: raw?.randomOrder === true,
+    coachHints: raw?.coachHints !== false,
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
   };
 }
@@ -258,9 +280,10 @@ export function createFootballState(playersInput: Player[], configInput: Footbal
   const scoreBySide = Object.fromEntries(sides.map((side) => [side.id, 0]));
   const penaltyAttemptsBySide = Object.fromEntries(sides.map((side) => [side.id, []]));
   const statsByPlayer = Object.fromEntries(players.map((player) => [player.id, emptyStats()]));
+  const kickoffSide = config.kickoffMode === "away" ? 1 : config.kickoffMode === "random" ? (rng() < 0.5 ? 0 : 1) : 0;
   return {
-    sport: "darts", mode: "football", config, players, sides, sideByPlayer,
-    activeSideIndex: 0, sidePlayerCursor: [0, 0], possessionSideIndex: 0,
+    sport: "darts", mode: "football", config, players, sides, sideByPlayer, kickoffSideIndex: kickoffSide,
+    activeSideIndex: kickoffSide, sidePlayerCursor: [0, 0], possessionSideIndex: kickoffSide,
     ballPosition: CENTER, period: 1, roundInPeriod: 1, completedTurnsInPeriod: 0,
     turnCount: 0, stage: config.variant === "penalties" ? "penalties" : "regulation",
     phase: "playing", pendingShot: null, scoreBySide, penaltyAttemptsBySide,
@@ -275,6 +298,7 @@ export function cloneFootballState(state: FootballState): FootballState {
 
 export function footballVariantLabel(value: FootballVariant): string {
   if (value === "golden_goal") return "Golden Goal";
+  if (value === "first_to") return "Premier à X buts";
   if (value === "penalties") return "Tirs au but";
   if (value === "classic") return "Classic";
   return "Match";
@@ -321,6 +345,18 @@ function safePattern(patterns: number[][], index: number): number[] {
   return [...patterns[Math.abs(index) % patterns.length]];
 }
 
+function tuneTargets(state: FootballState, action: FootballAction, base: number[]): number[] {
+  if (action === "classic_possession" || action === "classic_shot" || action === "goalkeeper") return base;
+  const clean = Array.from(new Set((base || []).filter((value) => value >= 1 && value <= 20)));
+  if (state.config.targetDifficulty === "expert") return clean.slice(0, Math.max(1, Math.min(2, clean.length)));
+  if (state.config.targetDifficulty === "accessible" && clean.length) {
+    const seed = clean[0];
+    const extra = neighborTargets(seed).find((value) => !clean.includes(value));
+    if (extra) clean.push(extra);
+  }
+  return clean;
+}
+
 export function getFootballAction(state: FootballState): FootballAction {
   if (state.phase === "goalkeeper") return "goalkeeper";
   if (state.stage === "penalties" || state.config.variant === "penalties") return "penalty";
@@ -333,11 +369,11 @@ export function getFootballAction(state: FootballState): FootballAction {
 export function getFootballTargets(state: FootballState, actionInput?: FootballAction): number[] {
   const action = actionInput || getFootballAction(state);
   const seed = state.turnCount + state.period * 3 + state.activeSideIndex;
-  if (action === "attack") return safePattern(ATTACK_PATTERNS, seed);
-  if (action === "defense") return safePattern(DEFENSE_PATTERNS, seed);
-  if (action === "shot") return safePattern(SHOT_PATTERNS, seed);
-  if (action === "goalkeeper") return [...(state.pendingShot?.saveTargets || [])];
-  if (action === "penalty") return safePattern(PENALTY_PATTERNS, Math.floor(state.turnCount / 2));
+  if (action === "attack") return tuneTargets(state, action, safePattern(ATTACK_PATTERNS, seed));
+  if (action === "defense") return tuneTargets(state, action, safePattern(DEFENSE_PATTERNS, seed));
+  if (action === "shot") return tuneTargets(state, action, safePattern(SHOT_PATTERNS, seed));
+  if (action === "goalkeeper") return tuneTargets(state, action, [...(state.pendingShot?.saveTargets || [])]);
+  if (action === "penalty") return tuneTargets(state, action, safePattern(PENALTY_PATTERNS, Math.floor(state.turnCount / 2)));
   if (action === "classic_possession") return [];
   return Array.from({ length: 20 }, (_, index) => index + 1);
 }
@@ -396,7 +432,18 @@ function scoreValue(state: FootballState, sideIndex: number): number {
   return Number(state.scoreBySide[state.sides[sideIndex].id] || 0);
 }
 function maybeFinishAfterGoal(state: FootballState, scoringSide: number) {
-  if (state.config.variant === "golden_goal" || state.stage === "extra_time") finish(state, [scoringSide], false);
+  if (state.config.variant === "golden_goal" || state.stage === "extra_time") {
+    finish(state, [scoringSide], false);
+    return;
+  }
+  if (state.config.variant === "first_to" || state.config.variant === "classic") {
+    if (scoreValue(state, scoringSide) >= Math.max(1, state.config.goalTarget || 3)) finish(state, [scoringSide], false);
+    return;
+  }
+  if (state.config.variant === "match" && Number(state.config.mercyGoals || 0) > 0) {
+    const gap = Math.abs(scoreValue(state, 0) - scoreValue(state, 1));
+    if (gap >= Number(state.config.mercyGoals)) finish(state, [scoringSide], false);
+  }
 }
 function beginPenalties(state: FootballState) {
   state.stage = "penalties";
@@ -404,8 +451,9 @@ function beginPenalties(state: FootballState) {
   state.period = 3;
   state.roundInPeriod = 1;
   state.completedTurnsInPeriod = 0;
-  state.activeSideIndex = 0;
-  state.possessionSideIndex = 0;
+  const kickoff = Number(state.kickoffSideIndex ?? 0);
+  state.activeSideIndex = kickoff;
+  state.possessionSideIndex = kickoff;
   state.ballPosition = CENTER;
   state.pendingShot = null;
 }
@@ -424,8 +472,9 @@ function finishRegulationOrAdvance(state: FootballState) {
     state.period = 2;
     state.roundInPeriod = 1;
     state.completedTurnsInPeriod = 0;
-    state.activeSideIndex = 1;
-    state.possessionSideIndex = 1;
+    const secondHalfKickoff = opponent(Number(state.kickoffSideIndex ?? 0));
+    state.activeSideIndex = secondHalfKickoff;
+    state.possessionSideIndex = secondHalfKickoff;
     state.ballPosition = CENTER;
     return;
   }
@@ -458,9 +507,17 @@ function advanceNormalTurn(state: FootballState, currentSide: number) {
 function penaltyFinished(state: FootballState): boolean {
   const a = state.penaltyAttemptsBySide[state.sides[0].id] || [];
   const b = state.penaltyAttemptsBySide[state.sides[1].id] || [];
-  if (a.length < 5 || b.length < 5) return false;
-  if (a.length === b.length && a.filter(Boolean).length !== b.filter(Boolean).length) return true;
-  return a.length > 5 && b.length > 5 && a.length === b.length && a.filter(Boolean).length !== b.filter(Boolean).length;
+  const base = Math.max(3, Number(state.config.penaltyShots || 5));
+  const aGoals = a.filter(Boolean).length;
+  const bGoals = b.filter(Boolean).length;
+  if (a.length < base || b.length < base) {
+    const aLeft = Math.max(0, base - a.length);
+    const bLeft = Math.max(0, base - b.length);
+    if (aGoals > bGoals + bLeft || bGoals > aGoals + aLeft) return true;
+    return false;
+  }
+  if (a.length === b.length && aGoals !== bGoals) return true;
+  return a.length > base && b.length > base && a.length === b.length && aGoals !== bGoals;
 }
 function playPenalty(state: FootballState, playerId: string, darts: GameDart[], targets: number[], events: FootballVisitEvent[]) {
   const sideIndex = state.activeSideIndex;
@@ -475,9 +532,12 @@ function playPenalty(state: FootballState, playerId: string, darts: GameDart[], 
   state.penaltyAttemptsBySide[side.id].push(scored);
   if (scored) {
     state.scoreBySide[side.id] += 1;
-    stats.goals += 1; stats.shotsOnTarget += 1; stats.successfulActions += 1;
+    stats.goals += 1; stats.shotsOnTarget += 1; stats.successfulActions += 1; stats.penaltiesScored += 1;
     events.push({ type: "penalty_goal", label: `⚽ Penalty marqué par ${side.name}` });
-  } else events.push({ type: "penalty_miss", label: `✕ Penalty manqué par ${side.name}` });
+  } else {
+    stats.penaltiesMissed += 1;
+    events.push({ type: "penalty_miss", label: `✕ Penalty manqué par ${side.name}` });
+  }
   state.turnCount += 1;
   state.sidePlayerCursor[sideIndex] = (state.sidePlayerCursor[sideIndex] + 1) % Math.max(1, side.playerIds.length);
   state.activeSideIndex = opponent(sideIndex);
@@ -531,7 +591,10 @@ export function playFootballVisit(stateInput: FootballState, dartsInput: GameDar
       state.ballPosition = currentSide === 0 ? 1 + counter : 5 - counter;
       state.pendingShot = null; state.phase = "playing";
       events.push({ type: "save", label: `🧤 Arrêt de ${player.name}` });
-      if (counter) events.push({ type: "counter", label: `Contre-attaque +${counter}` });
+      if (counter) {
+        stats.counterAttacks += 1;
+        events.push({ type: "counter", label: `Contre-attaque +${counter}` });
+      }
       state.activeSideIndex = pending.attackingSideIndex;
     } else if (pending) {
       addGoal(state, pending.attackingSideIndex, pending.shooterId, events);
@@ -561,7 +624,7 @@ export function playFootballVisit(stateInput: FootballState, dartsInput: GameDar
       state.possessionSideIndex = opponent(currentSide);
       events.push({ type: "shot_miss", label: "Frappe manquée : ballon perdu" });
     }
-    advanceNormalTurn(state, currentSide);
+    if ((state.phase as FootballPhase) !== "finished") advanceNormalTurn(state, currentSide);
   } else {
     for (let dartIndex = 0; dartIndex < darts.length && (state.phase as FootballPhase) !== "finished"; dartIndex += 1) {
       const dart = darts[dartIndex];
@@ -585,6 +648,7 @@ export function playFootballVisit(stateInput: FootballState, dartsInput: GameDar
           const oldPossession = state.possessionSideIndex;
           state.possessionSideIndex = currentSide;
           stats.interceptions += 1; stats.possessionWins += 1;
+          if (power >= 3) stats.counterAttacks += 1;
           const oldPlayer = state.sides[oldPossession]?.playerIds?.[state.sidePlayerCursor[oldPossession] % Math.max(1, state.sides[oldPossession]?.playerIds?.length || 1)];
           if (oldPlayer && state.statsByPlayer[oldPlayer]) state.statsByPlayer[oldPlayer].possessionLosses += 1;
           const counter = power >= 3 ? 2 : 1;
@@ -593,6 +657,7 @@ export function playFootballVisit(stateInput: FootballState, dartsInput: GameDar
         } else {
           const before = state.ballPosition;
           state.ballPosition = Math.max(FIELD_MIN, Math.min(FIELD_MAX, state.ballPosition - direction(state.possessionSideIndex)));
+          stats.clearances += 1;
           events.push({ type: "clearance", label: `${dartLabel(dart)} : ballon repoussé`, value: Math.abs(before - state.ballPosition) });
         }
       } else if (action === "shot") {
@@ -668,8 +733,11 @@ export function buildFootballMatchStats(state: FootballState) {
     totalDarts: total("darts"), totalVisits: total("visits"), goals: total("goals"),
     shots: total("shots"), shotsOnTarget: total("shotsOnTarget"), saves: total("saves"),
     tackles: total("tackles"), interceptions: total("interceptions"), advances: total("advances"),
+    clearances: total("clearances"), counterAttacks: total("counterAttacks"),
+    penaltiesScored: total("penaltiesScored"), penaltiesMissed: total("penaltiesMissed"),
     successfulActions: total("successfulActions"), misses: total("misses"),
     scoreBySide: { ...state.scoreBySide }, periodsPlayed: state.period, stage: state.stage,
+    goalTarget: state.config.goalTarget, penaltyShots: state.config.penaltyShots,
   };
 }
 

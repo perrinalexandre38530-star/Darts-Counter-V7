@@ -25,7 +25,7 @@ export type OutdoorRouteScoutResult = {
   warnings: string[];
 };
 
-const CACHE_KEY = "mss-outdoor-route-scout-v4";
+const CACHE_KEY = "mss-outdoor-route-scout-v5";
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_RESULTS = 48;
 
@@ -261,11 +261,13 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
       const result = await discoverOutdoorRoutes(normalizedRequest.center, normalizedRequest.sport, radius, Number(normalizedRequest.targetDistanceKm || 0));
       searched.push(radius);
       gathered.push(...result.routes);
-      const eligibleCount = rankOutdoorRouteCandidates(gathered, normalizedRequest).length;
-      if (eligibleCount >= enoughExisting) break;
-      // Preserve responsiveness: after two radius levels, 16+ good existing routes is
-      // already enough choice to avoid an unnecessarily slow 60 km request.
-      if (searched.length >= 2 && eligibleCount >= 16) break;
+      const currentRanked = rankOutdoorRouteCandidates(gathered, normalizedRequest);
+      const eligibleCount = currentRanked.length;
+      const strongCount = currentRanked.filter((route) => Number(route.scout?.score || 0) >= 60).length;
+      if (eligibleCount >= enoughExisting && strongCount >= Math.min(14, enoughExisting)) break;
+      // Do not stop merely because many weak/approximate routes were found. Keep
+      // widening until there is a healthy pool of genuinely useful candidates.
+      if (searched.length >= 2 && eligibleCount >= 16 && strongCount >= 10) break;
     } catch (error: any) {
       warnings.push(String(error?.message || `Échec rayon ${radius} km`));
     }
@@ -279,9 +281,10 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
   // If there are not enough genuinely relevant existing routes, create precise routes
   // at the requested distance using the local OSM router / ORS fallback. This prevents
   // the "0 result" dead-end while keeping real mapped/community routes ranked first.
-  if (ranked.length < minResults && Number(normalizedRequest.targetDistanceKm || 0) > 0) {
+  const strongBeforeFallback = ranked.filter((route) => Number(route.scout?.score || 0) >= 60).length;
+  if ((ranked.length < minResults || strongBeforeFallback < Math.min(10, minResults)) && Number(normalizedRequest.targetDistanceKm || 0) > 0) {
     try {
-      const missing = Math.max(1, Math.min(8, minResults - ranked.length));
+      const missing = Math.max(3, Math.min(12, minResults - Math.min(ranked.length, strongBeforeFallback)));
       const generated = await generateOutdoorRoutes({
         center: normalizedRequest.center,
         sport: normalizedRequest.sport,

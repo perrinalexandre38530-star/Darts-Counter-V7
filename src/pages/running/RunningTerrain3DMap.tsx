@@ -332,43 +332,122 @@ function applyRunningMapTheme(map: any, theme: RunningMapTheme, snapshot: PaintS
 type ManualCameraCleanup = () => void;
 
 type CameraPointer = { x: number; y: number };
+type CameraPairMetrics = { cx: number; cy: number; distance: number; angleRad: number };
 
 function clampCameraPitch(value: number) {
-  return Math.max(0, Math.min(85, value));
+  // 80°+ looks spectacular but becomes extremely difficult to navigate on a
+  // phone and amplifies terrain/tile jitter. 72° keeps a strong 3D effect while
+  // retaining a readable horizon and predictable gestures.
+  return Math.max(0, Math.min(72, value));
 }
 
-function pointerPairMetrics(rows: CameraPointer[]) {
+function clampCameraZoom(value: number) {
+  return Math.max(2.5, Math.min(18.7, value));
+}
+
+function normalizeAngleDelta(value: number) {
+  let next = value;
+  while (next > Math.PI) next -= Math.PI * 2;
+  while (next < -Math.PI) next += Math.PI * 2;
+  return next;
+}
+
+function pointerPairMetrics(rows: CameraPointer[]): CameraPairMetrics | null {
   if (rows.length < 2) return null;
   const a = rows[0], b = rows[1];
   return {
     cx: (a.x + b.x) / 2,
     cy: (a.y + b.y) / 2,
     distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+    angleRad: Math.atan2(b.y - a.y, b.x - a.x),
   };
 }
 
+function displayRoutePoints(points: GeoPoint[], maxPoints = 1600) {
+  if (points.length <= maxPoints) return points;
+  const step = Math.ceil(points.length / maxPoints);
+  const rows = points.filter((_, index) => index === 0 || index === points.length - 1 || index % step === 0);
+  if (rows[rows.length - 1] !== points[points.length - 1]) rows.push(points[points.length - 1]);
+  return rows;
+}
+
+function routeRenderFingerprint(points: GeoPoint[]) {
+  if (!points.length) return "empty";
+  const sampleCount = Math.min(10, points.length);
+  const rows: string[] = [String(points.length)];
+  for (let sample = 0; sample < sampleCount; sample += 1) {
+    const index = sampleCount <= 1 ? 0 : Math.round(sample * (points.length - 1) / (sampleCount - 1));
+    const point = points[index];
+    rows.push(`${Number(point?.lat || 0).toFixed(5)},${Number(point?.lon || 0).toFixed(5)}`);
+  }
+  return rows.join("|");
+}
+
+function routeGeoJsonFeatures(points: GeoPoint[], edges: any[], accent: string) {
+  if (edges?.some?.((edge: any) => edge?.score != null)) {
+    // Thousands of tiny GeoJSON line features are costly on Android WebView and
+    // are one of the main sources of stutter while pitching/rotating the map.
+    // Group them into at most ~220 coloured segments without changing the
+    // underlying route used for stats/navigation.
+    const maxSegments = 220;
+    const groupSize = Math.max(1, Math.ceil(edges.length / maxSegments));
+    const features: any[] = [];
+    for (let start = 0; start < edges.length; start += groupSize) {
+      const group = edges.slice(start, Math.min(edges.length, start + groupSize));
+      const first = group[0];
+      const last = group[group.length - 1];
+      if (!first || !last) continue;
+      const startIndex = Math.max(0, Math.min(points.length - 1, Number(first.startIndex || 0)));
+      const endIndex = Math.max(startIndex + 1, Math.min(points.length - 1, Number(last.endIndex || startIndex + 1)));
+      const coords = displayRoutePoints(points.slice(startIndex, endIndex + 1), 24).map((point) => [point.lon, point.lat]);
+      if (coords.length < 2) continue;
+      const colorEdge = group[Math.floor(group.length / 2)] || first;
+      features.push({ type: "Feature", properties: { color: colorEdge.color || accent }, geometry: { type: "LineString", coordinates: coords } });
+    }
+    if (features.length) return features;
+  }
+  return [{
+    type: "Feature",
+    properties: { color: accent },
+    geometry: { type: "LineString", coordinates: displayRoutePoints(points).map((point) => [point.lon, point.lat]) },
+  }];
+}
+
 /**
- * MapLibre's native right-drag/touch camera gestures can be swallowed by the
- * app/browser shell on Pages/WebView. This local controller shields secondary
- * mouse buttons from global navigation and drives bearing/pitch/zoom directly.
+ * Stable manual camera controller used on desktop and mobile.
  *
  * Desktop:
- *   - left drag: native MapLibre pan
- *   - right drag: free camera yaw + pitch
- *   - Ctrl/Meta + left drag: same free-camera gesture
- *   - wheel: native MapLibre zoom
+ *   - left drag: MapLibre native pan
+ *   - right drag or Ctrl/Meta + left drag: orbit (bearing + pitch)
+ *   - wheel: native zoom
  * Touch:
- *   - one finger: native MapLibre pan
- *   - two fingers: horizontal drag = yaw, vertical drag = pitch, pinch = zoom
+ *   - one finger: deterministic manual pan (no browser/app swipe conflict)
+ *   - two fingers: pinch zoom + twist rotation + vertical tilt + light pan
+ *
+ * Touch updates are batched through requestAnimationFrame. This prevents the
+ * camera from receiving 80-150 jumpTo calls per second on modern phones.
  */
-function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraCleanup {
+function bindManualCameraControls(map: any, host: HTMLElement, onUserInteraction?: () => void): ManualCameraCleanup {
   let mouseOrbit: null | { pointerId: number; x: number; y: number; bearing: number; pitch: number } = null;
   const touches = new Map<number, CameraPointer>();
-  let touchOrbit: null | { cx: number; cy: number; distance: number; bearing: number; pitch: number; zoom: number } = null;
+  let singleTouchLast: CameraPointer | null = null;
+  let pairLast: CameraPairMetrics | null = null;
   let dragPanSuspended = false;
+  let cameraFrame: number | null = null;
+  let pendingCameraUpdate: (() => void) | null = null;
 
-  const stopMapAnimation = () => {
-    try { map.stop?.(); } catch {}
+  const notifyInteraction = () => { try { onUserInteraction?.(); } catch {} };
+  const stopMapAnimation = () => { try { map.stop?.(); } catch {} };
+
+  const scheduleCamera = (update: () => void) => {
+    pendingCameraUpdate = update;
+    if (cameraFrame != null) return;
+    cameraFrame = requestAnimationFrame(() => {
+      cameraFrame = null;
+      const task = pendingCameraUpdate;
+      pendingCameraUpdate = null;
+      try { task?.(); } catch {}
+    });
   };
 
   const suspendDragPan = () => {
@@ -383,27 +462,30 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
     try { map.dragPan?.enable?.(); } catch {}
   };
 
-  const beginTouchOrbitIfReady = () => {
-    if (touches.size < 2) return;
-    const metrics = pointerPairMetrics(Array.from(touches.values()).slice(0, 2));
-    if (!metrics) return;
-    stopMapAnimation();
-    suspendDragPan();
-    touchOrbit = {
-      ...metrics,
-      bearing: Number(map.getBearing?.() || 0),
-      pitch: Number(map.getPitch?.() || 0),
-      zoom: Number(map.getZoom?.() || 0),
-    };
+  const projectedCenterAfterPan = (dx: number, dy: number) => {
+    try {
+      const centerPx = map.project(map.getCenter());
+      return map.unproject([centerPx.x - dx, centerPx.y - dy]);
+    } catch { return map.getCenter?.(); }
   };
 
   const onPointerDown = (event: PointerEvent) => {
     if (event.pointerType === "touch") {
+      // Capture before MapLibre's own pointer handlers. Native touch gestures are
+      // disabled below, so the app shell can never steal a horizontal swipe.
+      event.preventDefault();
+      event.stopPropagation();
+      stopMapAnimation();
+      notifyInteraction();
+      suspendDragPan();
       touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (touches.size === 2) {
-        event.preventDefault();
-        event.stopPropagation();
-        beginTouchOrbitIfReady();
+      try { host.setPointerCapture?.(event.pointerId); } catch {}
+      if (touches.size >= 2) {
+        pairLast = pointerPairMetrics(Array.from(touches.values()).slice(0, 2));
+        singleTouchLast = null;
+      } else {
+        singleTouchLast = { x: event.clientX, y: event.clientY };
+        pairLast = null;
       }
       return;
     }
@@ -412,11 +494,11 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
     const modifiedPrimary = event.button === 0 && (event.ctrlKey || event.metaKey);
     if (!secondary && !modifiedPrimary) return;
 
-    // Buttons 3/4 are browser back/forward on many mice. Swallow them inside
-    // the map as well so a camera gesture can never kick the user to GameSelect.
     event.preventDefault();
     event.stopPropagation();
     stopMapAnimation();
+    notifyInteraction();
+    suspendDragPan();
     mouseOrbit = {
       pointerId: event.pointerId,
       x: event.clientX,
@@ -430,25 +512,45 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
 
   const onPointerMove = (event: PointerEvent) => {
     if (event.pointerType === "touch") {
-      if (!touches.has(event.pointerId)) return;
-      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (touches.size < 2) return;
-      if (!touchOrbit) beginTouchOrbitIfReady();
-      if (!touchOrbit) return;
+      const previous = touches.get(event.pointerId);
+      if (!previous) return;
       event.preventDefault();
       event.stopPropagation();
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (touches.size === 1) {
+        const current = { x: event.clientX, y: event.clientY };
+        const before = singleTouchLast || previous;
+        const dx = current.x - before.x;
+        const dy = current.y - before.y;
+        singleTouchLast = current;
+        pairLast = null;
+        scheduleCamera(() => {
+          const center = projectedCenterAfterPan(dx, dy);
+          map.jumpTo({ center });
+        });
+        return;
+      }
+
       const metrics = pointerPairMetrics(Array.from(touches.values()).slice(0, 2));
       if (!metrics) return;
-      const dx = metrics.cx - touchOrbit.cx;
-      const dy = metrics.cy - touchOrbit.cy;
-      const zoomDelta = Math.log2(metrics.distance / Math.max(1, touchOrbit.distance)) * 1.9;
-      try {
+      if (!pairLast) { pairLast = metrics; return; }
+      const before = pairLast;
+      pairLast = metrics;
+      singleTouchLast = null;
+      const dx = metrics.cx - before.cx;
+      const dy = metrics.cy - before.cy;
+      const zoomDelta = Math.log2(metrics.distance / Math.max(1, before.distance)) * 1.28;
+      const angleDeltaDeg = normalizeAngleDelta(metrics.angleRad - before.angleRad) * 180 / Math.PI;
+      scheduleCamera(() => {
+        const center = projectedCenterAfterPan(dx * .72, dy * .18);
         map.jumpTo({
-          bearing: touchOrbit.bearing + dx * .34,
-          pitch: clampCameraPitch(touchOrbit.pitch - dy * .24),
-          zoom: Math.max(2, Math.min(20, touchOrbit.zoom + zoomDelta)),
+          center,
+          bearing: Number(map.getBearing?.() || 0) + angleDeltaDeg,
+          pitch: clampCameraPitch(Number(map.getPitch?.() || 0) - dy * .16),
+          zoom: clampCameraZoom(Number(map.getZoom?.() || 0) + zoomDelta),
         });
-      } catch {}
+      });
       return;
     }
 
@@ -457,27 +559,32 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
     event.stopPropagation();
     const dx = event.clientX - mouseOrbit.x;
     const dy = event.clientY - mouseOrbit.y;
-    try {
+    scheduleCamera(() => {
       map.jumpTo({
-        bearing: mouseOrbit.bearing + dx * .38,
-        pitch: clampCameraPitch(mouseOrbit.pitch - dy * .28),
+        bearing: mouseOrbit!.bearing + dx * .30,
+        pitch: clampCameraPitch(mouseOrbit!.pitch - dy * .22),
       });
-    } catch {}
+    });
   };
 
   const finishPointer = (event: PointerEvent) => {
     if (event.pointerType === "touch") {
-      const hadGesture = touches.size >= 2 || !!touchOrbit;
+      if (!touches.has(event.pointerId)) return;
+      event.preventDefault();
+      event.stopPropagation();
       touches.delete(event.pointerId);
-      if (hadGesture) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-      if (touches.size < 2) {
-        touchOrbit = null;
-        resumeDragPan();
+      try { host.releasePointerCapture?.(event.pointerId); } catch {}
+      if (touches.size >= 2) {
+        pairLast = pointerPairMetrics(Array.from(touches.values()).slice(0, 2));
+        singleTouchLast = null;
+      } else if (touches.size === 1) {
+        const only = Array.from(touches.values())[0];
+        singleTouchLast = only ? { ...only } : null;
+        pairLast = null;
       } else {
-        beginTouchOrbitIfReady();
+        singleTouchLast = null;
+        pairLast = null;
+        resumeDragPan();
       }
       return;
     }
@@ -487,21 +594,19 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
     event.stopPropagation();
     mouseOrbit = null;
     host.style.cursor = "";
+    resumeDragPan();
     try { host.releasePointerCapture?.(event.pointerId); } catch {}
   };
 
-  const blockContextMenu = (event: Event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
+  const blockContextMenu = (event: Event) => { event.preventDefault(); event.stopPropagation(); };
   const blockSecondaryClick = (event: MouseEvent) => {
     if (event.button < 2) return;
     event.preventDefault();
     event.stopPropagation();
   };
 
-  host.addEventListener("pointerdown", onPointerDown, { passive: false });
+  // Capture pointerdown so touch dragPan is disabled before MapLibre sees it.
+  host.addEventListener("pointerdown", onPointerDown, { passive: false, capture: true });
   window.addEventListener("pointermove", onPointerMove, { passive: false });
   window.addEventListener("pointerup", finishPointer, { passive: false });
   window.addEventListener("pointercancel", finishPointer, { passive: false });
@@ -511,7 +616,10 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
   host.addEventListener("mouseup", blockSecondaryClick, { capture: true });
 
   return () => {
-    host.removeEventListener("pointerdown", onPointerDown);
+    if (cameraFrame != null) cancelAnimationFrame(cameraFrame);
+    cameraFrame = null;
+    pendingCameraUpdate = null;
+    host.removeEventListener("pointerdown", onPointerDown, true);
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", finishPointer);
     window.removeEventListener("pointercancel", finishPointer);
@@ -519,6 +627,7 @@ function bindManualCameraControls(map: any, host: HTMLElement): ManualCameraClea
     host.removeEventListener("auxclick", blockSecondaryClick, true);
     host.removeEventListener("mousedown", blockSecondaryClick, true);
     host.removeEventListener("mouseup", blockSecondaryClick, true);
+    touches.clear();
     resumeDragPan();
     host.style.cursor = "";
   };
@@ -535,36 +644,35 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   const placeMarkersRef = React.useRef<any[]>([]);
   const replayFrameRef = React.useRef<number | null>(null);
   const lastCameraAtRef = React.useRef(0);
+  const lastReplayUiAtRef = React.useRef(0);
+  const lastFollowCameraAtRef = React.useRef(0);
+  const fullscreenRef = React.useRef(fullscreen);
+  const langRef = React.useRef(lang);
+  const safePointsRef = React.useRef<GeoPoint[]>([]);
+  const distancesRef = React.useRef<number[]>([]);
+  const manualInteractionRef = React.useRef<() => void>(() => {});
+  const contextRecoveryTimerRef = React.useRef<number | null>(null);
+
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = React.useState("");
+  const [recovering, setRecovering] = React.useState(false);
   const [replaying, setReplaying] = React.useState(false);
   const replayingRef = React.useRef(false);
   const [replayIndex, setReplayIndex] = React.useState(0);
+  const replayIndexRef = React.useRef(0);
+  const [followActive, setFollowActive] = React.useState(true);
   const [localTheme, setLocalTheme] = React.useState<RunningMapTheme>(() => mapTheme || loadRunningMapTheme());
   const [styleMenu, setStyleMenu] = React.useState(false);
   const effectiveTheme = mapTheme || localTheme;
-  React.useEffect(() => { replayingRef.current = replaying; }, [replaying]);
-  React.useEffect(() => {
-    themeRef.current = effectiveTheme;
-    saveRunningMapTheme(effectiveTheme);
-    const map = mapRef.current;
-    if (map && basePaintRef.current.size) {
-      try { applyRunningMapTheme(map, effectiveTheme, basePaintRef.current); } catch {}
-    }
-  }, [effectiveTheme]);
-  const changeTheme = React.useCallback((theme: RunningMapTheme) => {
-    saveRunningMapTheme(theme);
-    if (onMapThemeChange) onMapThemeChange(theme);
-    else setLocalTheme(theme);
-    setStyleMenu(false);
-  }, [onMapThemeChange]);
 
   const safePoints = React.useMemo(() => points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)), [points]);
   const distances = React.useMemo(() => cumulativeDistances(safePoints), [safePoints]);
   const totalDistanceM = distances[distances.length - 1] || 0;
   const terrain = React.useMemo(() => analyzeRunningTerrain(safePoints), [safePoints]);
   const activityAnalytics = React.useMemo(() => buildRunningActivityAnalytics({ route: safePoints, distanceM: totalDistanceM, movingMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0), elapsedMs: Number(safePoints[safePoints.length - 1]?.elapsedMs || 0) } as any), [safePoints, totalDistanceM]);
-  const hasPerformanceColors = activityAnalytics.routeEdges.some((edge) => edge.score != null);
+  const routeFeatures = React.useMemo(() => routeGeoJsonFeatures(safePoints, activityAnalytics.routeEdges, accent), [accent, activityAnalytics.routeEdges, safePoints]);
+  const renderFingerprint = React.useMemo(() => routeRenderFingerprint(safePoints), [safePoints]);
+  const canCreateMap = safePoints.length >= 2;
   const terrainSampleByIndex = React.useMemo(() => {
     const map = new Map<number, { gradePct: number; altitudeM: number }>();
     for (const sample of terrain.samples) map.set(sample.index, { gradePct: sample.gradePct, altitudeM: sample.altitudeM });
@@ -572,63 +680,153 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
   }, [terrain.samples]);
   const effectiveIndex = replaying ? replayIndex : activePointIndex == null ? null : Math.max(0, Math.min(safePoints.length - 1, activePointIndex));
 
-  const fitRoute = React.useCallback((pitch = 64) => {
-    const map = mapRef.current;
-    const bounds = routeBounds(safePoints);
-    if (!map || !bounds) return;
-    try {
-      map.fitBounds(bounds, { padding: fullscreen ? 72 : 42, pitch, bearing: 0, duration: 650, maxZoom: 16.8 });
-    } catch {}
-  }, [fullscreen, safePoints]);
+  fullscreenRef.current = fullscreen;
+  langRef.current = lang;
+  safePointsRef.current = safePoints;
+  replayIndexRef.current = replayIndex;
+  distancesRef.current = distances;
+  React.useEffect(() => { replayingRef.current = replaying; }, [replaying]);
 
+  const stopReplayNow = React.useCallback(() => {
+    replayingRef.current = false;
+    setReplaying(false);
+    if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
+    replayFrameRef.current = null;
+  }, []);
+
+  manualInteractionRef.current = () => {
+    setFollowActive(false);
+    setStyleMenu(false);
+    if (replayingRef.current) stopReplayNow();
+  };
+
+  React.useEffect(() => {
+    themeRef.current = effectiveTheme;
+    saveRunningMapTheme(effectiveTheme);
+    const map = mapRef.current;
+    if (map && basePaintRef.current.size) {
+      try { applyRunningMapTheme(map, effectiveTheme, basePaintRef.current); } catch {}
+      try { map.triggerRepaint?.(); } catch {}
+    }
+  }, [effectiveTheme]);
+
+  const changeTheme = React.useCallback((theme: RunningMapTheme) => {
+    saveRunningMapTheme(theme);
+    if (onMapThemeChange) onMapThemeChange(theme);
+    else setLocalTheme(theme);
+    setStyleMenu(false);
+  }, [onMapThemeChange]);
+
+  const fitRoute = React.useCallback((pitch = 52, userInitiated = false) => {
+    const map = mapRef.current;
+    const rows = safePointsRef.current;
+    const bounds = routeBounds(rows);
+    if (!map || !bounds) return;
+    if (userInitiated) {
+      setFollowActive(false);
+      if (replayingRef.current) stopReplayNow();
+    }
+    try {
+      map.stop?.();
+      map.fitBounds(bounds, {
+        padding: fullscreenRef.current ? 74 : 44,
+        pitch: clampCameraPitch(pitch),
+        bearing: 0,
+        duration: userInitiated ? 420 : 560,
+        maxZoom: 16.2,
+      });
+    } catch {}
+  }, [stopReplayNow]);
+
+  const resetOrientation = React.useCallback(() => {
+    manualInteractionRef.current();
+    const map = mapRef.current;
+    if (!map) return;
+    try { map.stop?.(); map.easeTo({ bearing: 0, pitch: 52, duration: 320 }); } catch {}
+  }, []);
+
+  const cyclePitch = React.useCallback(() => {
+    manualInteractionRef.current();
+    const map = mapRef.current;
+    if (!map) return;
+    const current = Number(map.getPitch?.() || 0);
+    const next = current < 43 ? 55 : current < 64 ? 70 : 32;
+    try { map.stop?.(); map.easeTo({ pitch: next, duration: 280 }); } catch {}
+  }, []);
+
+  const enableFollow = React.useCallback(() => {
+    if (activePointIndex == null) return;
+    const rows = safePointsRef.current;
+    const index = Math.max(0, Math.min(rows.length - 1, activePointIndex));
+    const point = rows[index];
+    const map = mapRef.current;
+    if (!map || !point) return;
+    stopReplayNow();
+    setFollowActive(true);
+    try { map.stop?.(); map.easeTo({ center: [point.lon, point.lat], pitch: Math.max(42, Math.min(62, Number(map.getPitch?.() || 52))), duration: 320 }); } catch {}
+  }, [activePointIndex, stopReplayNow]);
+
+  // Create MapLibre once for the life of the mounted map. Route updates, theme
+  // changes, fullscreen transitions and GPS active-point changes are handled by
+  // dedicated effects below and NEVER destroy/recreate the WebGL context.
   React.useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    if (!canCreateMap) {
+      setStatus("error");
+      setError(pickText(langRef.current, "Tracé insuffisant pour la 3D", "Not enough route points for 3D", "No hay suficientes puntos para 3D"));
+      return;
+    }
+    if (mapRef.current) return;
+
     let disposed = false;
     let readinessTimer: number | null = null;
-    let compatPreviewTimer: number | null = null; // legacy watchdog name: now triggers a harmless resize, never fake 3D.
     let resizeObserver: ResizeObserver | null = null;
+    let resizeFrame: number | null = null;
     let manualCameraCleanup: ManualCameraCleanup | null = null;
-    if (safePoints.length < 2) { setStatus("error"); setError(pickText(lang, "Tracé insuffisant pour la 3D", "Not enough route points for 3D", "No hay suficientes puntos para 3D")); return; }
+    let canvas: HTMLCanvasElement | null = null;
+    let onContextLost: ((event: Event) => void) | null = null;
+    let onContextRestored: (() => void) | null = null;
+
     setStatus("loading");
     setError("");
-    compatPreviewTimer = window.setTimeout(() => { if (!disposed) { try { mapRef.current?.resize(); } catch {} } }, 1200);
+    setRecovering(false);
 
     void loadMapLibre().then((maplibregl) => {
       if (disposed || !hostRef.current) return;
       maplibreRef.current = maplibregl;
-      const first = safePoints[0];
-      // Use OpenFreeMap's production vector style instead of hitting the public
-      // OpenStreetMap raster tile server directly. This removes the 429 bursts
-      // seen when the 3D camera loads many tiles at once.
+      const rows = safePointsRef.current;
+      const first = rows[0];
+      if (!first) throw new Error("No route point");
+
       const map = new maplibregl.Map({
         container: hostRef.current,
         style: OPENFREEMAP_STYLE,
         center: [first.lon, first.lat],
         zoom: 13,
-        pitch: 62,
+        pitch: 52,
         bearing: 0,
-        maxPitch: 85,
+        maxPitch: 72,
+        minZoom: 2.5,
+        maxZoom: 18.7,
         renderWorldCopies: false,
         attributionControl: false,
         cooperativeGestures: false,
         dragPan: true,
-        dragRotate: true,
+        dragRotate: false,
         scrollZoom: true,
-        touchZoomRotate: true,
-        touchPitch: true,
+        touchZoomRotate: false,
+        touchPitch: false,
         keyboard: true,
         doubleClickZoom: true,
-        pitchWithRotate: true,
-        canvasContextAttributes: { antialias: true },
+        pitchWithRotate: false,
+        canvasContextAttributes: { antialias: false, preserveDrawingBuffer: false },
         refreshExpiredTiles: false,
         fadeDuration: 0,
-        maxTileCacheSize: fullscreen ? 80 : 48,
+        maxTileCacheSize: fullscreenRef.current ? 64 : 44,
       });
       mapRef.current = map;
-      // OpenFreeMap styles can reference optional Maki sprites that are not
-      // bundled by every style endpoint. Supply a transparent 1x1 fallback so
-      // MapLibre does not spam styleimagemissing warnings or retry them.
+
       map.on("styleimagemissing", (event: any) => {
         const id = String(event?.id || "").trim();
         if (!id) return;
@@ -636,8 +834,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
           if (!map.hasImage?.(id)) map.addImage(id, { width: 1, height: 1, data: new Uint8Array([0, 0, 0, 0]) });
         } catch {}
       });
-      // Keep native pan/zoom, but own rotation/pitch gestures ourselves. This
-      // avoids browser/app conflicts where right-click was interpreted as Back.
+
       try { map.dragPan?.enable?.(); } catch {}
       try { map.dragRotate?.disable?.(); } catch {}
       try { map.scrollZoom?.enable?.(); } catch {}
@@ -645,92 +842,107 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       try { map.touchPitch?.disable?.(); } catch {}
       try { map.keyboard?.enable?.(); } catch {}
       try { map.doubleClickZoom?.enable?.(); } catch {}
-      try { map.getCanvas().style.touchAction = "none"; } catch {}
-      manualCameraCleanup = bindManualCameraControls(map, host);
+      try {
+        const mapCanvas = map.getCanvas();
+        mapCanvas.style.touchAction = "none";
+        mapCanvas.style.overscrollBehavior = "contain";
+      } catch {}
+
+      manualCameraCleanup = bindManualCameraControls(map, host, () => manualInteractionRef.current());
+
+      const nativeUserGesture = (event: any) => {
+        if (event?.originalEvent) manualInteractionRef.current();
+      };
+      map.on("dragstart", nativeUserGesture);
+      map.on("rotatestart", nativeUserGesture);
+      map.on("pitchstart", nativeUserGesture);
+      map.on("zoomstart", nativeUserGesture);
+
       readinessTimer = window.setTimeout(() => {
-        if (disposed || status === "ready") return;
-        setError(pickText(lang, "Le moteur 3D ne répond pas. Revenez en 2D puis réessayez.", "3D engine is not responding. Return to 2D and try again.", "El motor 3D no responde. Vuelve a 2D e inténtalo de nuevo."));
+        if (disposed || map.loaded?.()) return;
+        setError(pickText(langRef.current, "Le moteur 3D ne répond pas. Revenez en 2D puis réessayez.", "3D engine is not responding. Return to 2D and try again.", "El motor 3D no responde. Vuelve a 2D e inténtalo de nuevo."));
         setStatus("error");
-      }, 9000);
+      }, 11000);
 
       try { map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true, showZoom: false }), "top-right"); } catch {}
       try { map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right"); } catch {}
 
-      const stopFlyoverForManualCamera = (event: any) => {
-        if (!event?.originalEvent || !replayingRef.current) return;
-        replayingRef.current = false;
-        setReplaying(false);
-        if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
-        replayFrameRef.current = null;
-      };
-      map.on("dragstart", stopFlyoverForManualCamera);
-      map.on("rotatestart", stopFlyoverForManualCamera);
-      map.on("pitchstart", stopFlyoverForManualCamera);
-      map.on("zoomstart", stopFlyoverForManualCamera);
+      try {
+        canvas = map.getCanvas();
+        onContextLost = (event: Event) => {
+          event.preventDefault();
+          stopReplayNow();
+          setRecovering(true);
+          setError("");
+          if (contextRecoveryTimerRef.current != null) window.clearTimeout(contextRecoveryTimerRef.current);
+          contextRecoveryTimerRef.current = window.setTimeout(() => {
+            if (disposed) return;
+            setRecovering(false);
+            setError(pickText(langRef.current, "Le contexte graphique 3D n'a pas pu être restauré.", "The 3D graphics context could not be restored.", "No se pudo restaurar el contexto gráfico 3D."));
+            setStatus("error");
+          }, 6500);
+        };
+        onContextRestored = () => {
+          if (contextRecoveryTimerRef.current != null) window.clearTimeout(contextRecoveryTimerRef.current);
+          contextRecoveryTimerRef.current = null;
+          if (disposed) return;
+          setRecovering(false);
+          setStatus("ready");
+          window.setTimeout(() => {
+            try { map.resize?.(); map.triggerRepaint?.(); } catch {}
+          }, 80);
+        };
+        canvas?.addEventListener("webglcontextlost", onContextLost, false);
+        canvas?.addEventListener("webglcontextrestored", onContextRestored, false);
+      } catch {}
 
       map.on("load", () => {
         if (disposed) return;
         if (readinessTimer != null) window.clearTimeout(readinessTimer);
-        if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
+        readinessTimer = null;
         basePaintRef.current = captureBasePaint(map);
-        // Add the DEM only after the raster map is already alive. This is the
-        // key difference from the old implementation that could stay forever
-        // on “Chargement du relief 3D…”.
+
         try {
+          // One DEM source is enough for both terrain and hillshade. The old map
+          // declared the same tile URL twice, doubling DEM work in some WebViews.
           if (!map.getSource("terrainSource")) map.addSource("terrainSource", { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" });
-          if (!map.getSource("hillshadeSource")) map.addSource("hillshadeSource", { type: "raster-dem", tiles: [TERRAIN_TILES], encoding: "terrarium", tileSize: 512, maxzoom: 14, attribution: "© Mapterhorn" });
           if (!map.getLayer("terrain-hillshade")) {
             const firstSymbol = map.getStyle()?.layers?.find((layer: any) => layer.type === "symbol")?.id;
-            map.addLayer({ id: "terrain-hillshade", type: "hillshade", source: "hillshadeSource", paint: { "hillshade-exaggeration": .48, "hillshade-shadow-color": "#0c1118", "hillshade-highlight-color": "#f5f7fb", "hillshade-accent-color": "#657482" } }, firstSymbol);
+            map.addLayer({ id: "terrain-hillshade", type: "hillshade", source: "terrainSource", paint: { "hillshade-exaggeration": .38, "hillshade-shadow-color": "#0c1118", "hillshade-highlight-color": "#f5f7fb", "hillshade-accent-color": "#657482" } }, firstSymbol);
           }
-          map.setTerrain({ source: "terrainSource", exaggeration: 1.35 });
+          map.setTerrain({ source: "terrainSource", exaggeration: 1.18 });
         } catch (terrainError: any) {
-          // Keep the real MapLibre map visible even if individual DEM tiles fail.
-          setError(String(terrainError?.message || terrainError || "DEM unavailable"));
+          // DEM is enhancement-only: keep the vector map navigable if a terrain
+          // tile temporarily fails instead of replacing the whole screen by an error.
+          console.warn("[RUNNING 3D] Terrain temporarily unavailable", terrainError?.message || terrainError);
         }
-
-        try {
-          const features = hasPerformanceColors ? activityAnalytics.routeEdges.map((edge) => ({ type: "Feature", properties: { color: edge.color }, geometry: { type: "LineString", coordinates: [[safePoints[edge.startIndex].lon, safePoints[edge.startIndex].lat], [safePoints[edge.endIndex].lon, safePoints[edge.endIndex].lat]] } })) : [{ type: "Feature", properties: { color: accent }, geometry: { type: "LineString", coordinates: safePoints.map((point) => [point.lon, point.lat]) } }];
-          map.addSource("mss-route", { type: "geojson", data: { type: "FeatureCollection", features } });
-          map.addLayer({ id: "mss-route-shadow", type: "line", source: "mss-route", paint: { "line-color": "rgba(0,0,0,.86)", "line-width": 9.5, "line-opacity": .9 } });
-          map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", paint: { "line-color": ["get", "color"], "line-width": 5.4, "line-opacity": 1 } });
-        } catch {}
-
-        routeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
-        routeMarkersRef.current = [];
-        const startEl = markerElement("🚩", "#42ef7e", pickText(lang, "Départ", "Start", "Salida"), 32);
-        const endEl = markerElement("🏁", "#ff5668", pickText(lang, "Arrivée", "Finish", "Llegada"), 32);
-        routeMarkersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([safePoints[0].lon, safePoints[0].lat]).addTo(map));
-        const last = safePoints[safePoints.length - 1];
-        routeMarkersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([last.lon, last.lat]).addTo(map));
-
-        for (let km = 1; km * 1000 < totalDistanceM; km += 1) {
-          const index = indexAtDistance(distances, km * 1000);
-          const point = safePoints[index];
-          if (!point) continue;
-          const el = markerElement(String(km), accent, `KM ${km}`, 24);
-          routeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([point.lon, point.lat]).addTo(map));
-        }
-
 
         try { applyRunningMapTheme(map, themeRef.current, basePaintRef.current); } catch {}
         setStatus("ready");
-        window.setTimeout(() => { try { map.resize(); } catch {}; fitRoute(64); }, 60);
+        window.setTimeout(() => {
+          if (disposed) return;
+          try { map.resize(); } catch {}
+          fitRoute(52, false);
+        }, 90);
       });
 
       map.on("error", (event: any) => {
         const message = String(event?.error?.message || "");
-        if (/webgl|context lost|failed to initialize/i.test(message) && !disposed) {
+        if (/failed to initialize|webgl unavailable|could not create.*context/i.test(message) && !disposed) {
           setError(message || "WebGL unavailable");
           setStatus("error");
-          return;
         }
-        // Once the style is alive, isolated vector/DEM tile errors are non-fatal.
-        // Before first load, keep the watchdog responsible for the fallback UI.
+        // Vector/DEM/sprite tile failures are isolated and non-fatal.
       });
 
       if (typeof ResizeObserver !== "undefined") {
-        resizeObserver = new ResizeObserver(() => { try { map.resize(); } catch {} });
+        resizeObserver = new ResizeObserver(() => {
+          if (resizeFrame != null) cancelAnimationFrame(resizeFrame);
+          resizeFrame = requestAnimationFrame(() => {
+            resizeFrame = null;
+            try { map.resize(); } catch {}
+          });
+        });
         resizeObserver.observe(host);
       }
     }).catch((cause) => {
@@ -743,10 +955,13 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     return () => {
       disposed = true;
       if (readinessTimer != null) window.clearTimeout(readinessTimer);
-      if (compatPreviewTimer != null) window.clearTimeout(compatPreviewTimer);
+      if (resizeFrame != null) cancelAnimationFrame(resizeFrame);
+      if (contextRecoveryTimerRef.current != null) window.clearTimeout(contextRecoveryTimerRef.current);
+      contextRecoveryTimerRef.current = null;
       resizeObserver?.disconnect();
       manualCameraCleanup?.();
-      manualCameraCleanup = null;
+      if (canvas && onContextLost) canvas.removeEventListener("webglcontextlost", onContextLost, false);
+      if (canvas && onContextRestored) canvas.removeEventListener("webglcontextrestored", onContextRestored, false);
       if (replayFrameRef.current != null) cancelAnimationFrame(replayFrameRef.current);
       replayFrameRef.current = null;
       routeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
@@ -757,8 +972,49 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
       activeMarkerRef.current = null;
       try { mapRef.current?.remove(); } catch {}
       mapRef.current = null;
+      maplibreRef.current = null;
     };
-  }, [accent, fitRoute, fullscreen, hasPerformanceColors, lang, activityAnalytics.routeEdges, safePoints, distances, totalDistanceM]);
+  }, [canCreateMap, fitRoute, stopReplayNow]);
+
+  // Route geometry/style update: no WebGL teardown. This is the core stability
+  // improvement when the same map receives a different selected route or a live
+  // route array with new point objects.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const maplibregl = maplibreRef.current;
+    if (!map || !maplibregl || status !== "ready" || safePoints.length < 2) return;
+    const data = { type: "FeatureCollection", features: routeFeatures } as any;
+    try {
+      const source = map.getSource("mss-route");
+      if (source?.setData) source.setData(data);
+      else {
+        map.addSource("mss-route", { type: "geojson", data });
+        map.addLayer({ id: "mss-route-shadow", type: "line", source: "mss-route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "rgba(0,0,0,.82)", "line-width": 8.5, "line-opacity": .82 } });
+        map.addLayer({ id: "mss-route-line", type: "line", source: "mss-route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": ["get", "color"], "line-width": 5.0, "line-opacity": .98 } });
+      }
+    } catch {}
+
+    routeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
+    routeMarkersRef.current = [];
+    try {
+      const startEl = markerElement("🚩", "#42ef7e", pickText(lang, "Départ", "Start", "Salida"), 31);
+      const endEl = markerElement("🏁", "#ff5668", pickText(lang, "Arrivée", "Finish", "Llegada"), 31);
+      routeMarkersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([safePoints[0].lon, safePoints[0].lat]).addTo(map));
+      const last = safePoints[safePoints.length - 1];
+      routeMarkersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([last.lon, last.lat]).addTo(map));
+      const kmStep = totalDistanceM <= 16000 ? 1 : totalDistanceM <= 32000 ? 2 : 5;
+      for (let km = kmStep; km * 1000 < totalDistanceM && routeMarkersRef.current.length < 28; km += kmStep) {
+        const index = indexAtDistance(distances, km * 1000);
+        const point = safePoints[index];
+        if (!point) continue;
+        const el = markerElement(String(km), accent, `KM ${km}`, 23);
+        routeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([point.lon, point.lat]).addTo(map));
+      }
+    } catch {}
+
+    try { map.triggerRepaint?.(); } catch {}
+    return () => {};
+  }, [accent, distances, lang, renderFingerprint, routeFeatures, safePoints, status, totalDistanceM]);
 
   React.useEffect(() => {
     const map = mapRef.current;
@@ -766,8 +1022,8 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     placeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
     placeMarkersRef.current = [];
     if (!map || !maplibregl || status !== "ready") return;
-    for (const place of places.slice(0, fullscreen ? 18 : 10)) {
-      const el = markerElement(outdoorRoutePlaceIcon(place.category), "rgba(255,255,255,.86)", place.name, 30);
+    for (const place of places.slice(0, fullscreen ? 16 : 9)) {
+      const el = markerElement(outdoorRoutePlaceIcon(place.category), "rgba(255,255,255,.86)", place.name, 29);
       el.style.cursor = "pointer";
       el.addEventListener("click", (event) => { event.stopPropagation(); onPlaceSelect?.(place); });
       try { placeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([place.lon, place.lat]).addTo(map)); } catch {}
@@ -788,52 +1044,71 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     }
     const point = safePoints[effectiveIndex];
     if (!activeMarkerRef.current) {
-      const el = markerElement("●", accent, pickText(lang, "Position sélectionnée", "Selected position", "Posición seleccionada"), 26);
+      const el = markerElement("●", accent, pickText(lang, "Position sélectionnée", "Selected position", "Posición seleccionada"), 25);
       el.style.boxShadow = `0 0 0 6px ${accent}25,0 6px 18px rgba(0,0,0,.5)`;
       activeMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat([point.lon, point.lat]).addTo(map);
     } else {
       try { activeMarkerRef.current.setLngLat([point.lon, point.lat]); } catch {}
     }
-    if (!replaying) {
-      try { map.easeTo({ center: [point.lon, point.lat], duration: 260 }); } catch {}
+    if (!replaying && followActive) {
+      const now = Date.now();
+      if (now - lastFollowCameraAtRef.current >= 320) {
+        lastFollowCameraAtRef.current = now;
+        try { map.stop?.(); map.easeTo({ center: [point.lon, point.lat], duration: 240 }); } catch {}
+      }
     }
-  }, [accent, effectiveIndex, lang, replaying, safePoints]);
+  }, [accent, effectiveIndex, followActive, lang, replaying, safePoints]);
 
   React.useEffect(() => {
     if (!replaying || safePoints.length < 2) return;
     const startedAt = globalThis.performance?.now?.() ?? Date.now();
-    const startIndex = replayIndex >= safePoints.length - 2 ? 0 : replayIndex;
+    const currentReplayIndex = replayIndexRef.current;
+    const startIndex = currentReplayIndex >= safePoints.length - 2 ? 0 : currentReplayIndex;
     const startDistance = distances[startIndex] || 0;
     const remainingDistance = Math.max(1, totalDistanceM - startDistance);
     const durationMs = Math.max(14000, Math.min(38000, 12000 + (remainingDistance / 1000) * 420));
     lastCameraAtRef.current = 0;
+    lastReplayUiAtRef.current = 0;
 
     const step = (now: number) => {
       const progress = Math.max(0, Math.min(1, (now - startedAt) / durationMs));
       const targetDistance = startDistance + remainingDistance * progress;
       const index = indexAtDistance(distances, targetDistance);
-      setReplayIndex(index);
-      onActivePointChange?.(index);
+
+      // UI/React state at ~10 fps; camera at ~20 fps. This keeps the map smooth
+      // without forcing a full component render on every animation frame.
+      if (now - lastReplayUiAtRef.current >= 90 || progress >= 1) {
+        lastReplayUiAtRef.current = now;
+        replayIndexRef.current = index;
+        setReplayIndex(index);
+        onActivePointChange?.(index);
+      }
 
       const map = mapRef.current;
-      if (map && now - lastCameraAtRef.current > 120) {
+      if (map && now - lastCameraAtRef.current >= 48) {
         lastCameraAtRef.current = now;
         const point = safePoints[index];
-        const ahead = safePoints[Math.min(safePoints.length - 1, index + Math.max(1, Math.floor(safePoints.length / 180)))];
+        const ahead = safePoints[Math.min(safePoints.length - 1, index + Math.max(1, Math.floor(safePoints.length / 160)))];
+        const targetBearing = ahead ? bearingDegrees(point, ahead) : Number(map.getBearing?.() || 0);
+        const currentBearing = Number(map.getBearing?.() || 0);
+        let bearingDelta = ((targetBearing - currentBearing + 540) % 360) - 180;
+        if (!Number.isFinite(bearingDelta)) bearingDelta = 0;
         try {
-          map.easeTo({
+          map.jumpTo({
             center: [point.lon, point.lat],
-            bearing: ahead ? bearingDegrees(point, ahead) : map.getBearing(),
-            pitch: 70,
-            zoom: Math.max(14.2, Math.min(16.7, map.getZoom())),
-            duration: 180,
-            easing: (value: number) => value,
+            bearing: currentBearing + bearingDelta * .34,
+            pitch: 60,
+            zoom: Math.max(13.8, Math.min(16.2, Number(map.getZoom?.() || 14.5))),
           });
         } catch {}
       }
 
       if (progress < 1) replayFrameRef.current = requestAnimationFrame(step);
-      else { setReplaying(false); replayFrameRef.current = null; }
+      else {
+        replayingRef.current = false;
+        setReplaying(false);
+        replayFrameRef.current = null;
+      }
     };
     replayFrameRef.current = requestAnimationFrame(step);
     return () => {
@@ -853,33 +1128,40 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
 
   const startReplay = () => {
     if (safePoints.length < 2) return;
-    if (replayIndex >= safePoints.length - 2) { setReplayIndex(0); onActivePointChange?.(0); }
-    try { mapRef.current?.easeTo({ pitch: 70, zoom: Math.max(14.2, Math.min(16.7, mapRef.current.getZoom())), duration: 500 }); } catch {}
+    setFollowActive(false);
+    if (replayIndex >= safePoints.length - 2) { replayIndexRef.current = 0; setReplayIndex(0); onActivePointChange?.(0); }
+    try { mapRef.current?.stop?.(); mapRef.current?.easeTo({ pitch: 60, zoom: Math.max(13.8, Math.min(16.2, Number(mapRef.current?.getZoom?.() || 14.5))), duration: 360 }); } catch {}
+    replayingRef.current = true;
     setReplaying(true);
   };
 
-  const stopReplay = () => setReplaying(false);
+  return <div className="running-map-shell" style={{ position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)", touchAction: "none", overscrollBehavior: "contain" }}>
+    <div ref={hostRef} style={{ position: "absolute", inset: 0, touchAction: "none", overscrollBehavior: "contain" }}/>
 
-  return <div className="running-map-shell" style={{ position: "relative", width: "100%", height: fullscreen ? "100%" : height, minHeight: fullscreen ? 0 : 300, overflow: "hidden", borderRadius: fullscreen ? 0 : 20, background: "#101821", border: fullscreen ? 0 : "1px solid rgba(255,255,255,.09)", boxShadow: fullscreen ? undefined : "0 22px 56px rgba(0,0,0,.30)" }}>
-    <div ref={hostRef} style={{ position: "absolute", inset: 0 }}/>
     {status === "loading" ? <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "grid", placeItems: "center", background: "linear-gradient(145deg,#101821,#070b10)", color: textSoft }}><div style={{ textAlign: "center", fontSize: 9 }}><div style={{ color: accent, fontSize: 20, marginBottom: 8 }}>⛰</div>{pickText(lang, "Chargement du relief 3D…", "Loading 3D terrain…", "Cargando relieve 3D…")}</div></div> : null}
+
+    {recovering ? <div style={{ position: "absolute", left: "50%", top: 54, transform: "translateX(-50%)", zIndex: 25, padding: "7px 10px", borderRadius: 999, background: "rgba(5,8,13,.92)", border: `1px solid ${accent}44`, color: accent, fontSize: 7.4, fontWeight: 1000, pointerEvents: "none" }}>{pickText(lang, "RESTAURATION 3D…", "RESTORING 3D…", "RESTAURANDO 3D…")}</div> : null}
+
     {status === "error" ? <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "grid", placeItems: "center", padding: 20, background: "linear-gradient(145deg,#101821,#070b10)" }}><div style={{ width: "min(420px,100%)", padding: 16, borderRadius: 18, background: "rgba(5,8,13,.88)", border: "1px solid rgba(255,255,255,.12)", textAlign: "center", boxShadow: "0 18px 48px rgba(0,0,0,.35)" }}><div style={{ color: accent, fontSize: 26 }}>⛰</div><div style={{ marginTop: 7, color: "#fff", fontSize: 11, fontWeight: 1000 }}>{pickText(lang, "RELIEF 3D INDISPONIBLE", "3D TERRAIN UNAVAILABLE", "RELIEVE 3D NO DISPONIBLE")}</div><div style={{ marginTop: 6, color: textSoft, fontSize: 8.5, lineHeight: 1.45 }}>{error || pickText(lang, "Le moteur WebGL/DEM n'a pas pu démarrer.", "The WebGL/DEM engine could not start.", "El motor WebGL/DEM no pudo iniciarse.")}</div>{onFallback2D ? <button className="btn" onClick={onFallback2D} style={{ marginTop: 12, minHeight: 38, color: accent, borderColor: `${accent}55`, background: `${accent}0d`, fontSize: 8.5, fontWeight: 1000 }}>{pickText(lang, "REVENIR EN 2D", "BACK TO 2D MAP", "VOLVER AL MAPA 2D")}</button> : null}</div></div> : null}
 
     {status === "ready" ? <>
-      <div style={{ position: "absolute", left: 10, top: 10, zIndex: 15, display: "flex", gap: 6, pointerEvents: "auto" }}>
-        <button className="btn" onClick={() => fitRoute(64)} style={controlStyle} title={pickText(lang,"Recentrer","Recenter","Centrar")}>◎</button>
+      <div style={{ position: "absolute", left: 10, top: 10, zIndex: 15, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", maxWidth: "calc(100% - 62px)", pointerEvents: "auto" }}>
+        <button className="btn" onClick={() => fitRoute(52, true)} style={controlStyle} title={pickText(lang,"Voir tout le parcours","Fit route","Ver toda la ruta")}>◎</button>
+        {activePointIndex != null ? <button className="btn" onClick={enableFollow} style={{ ...controlStyle, color: followActive ? accent : "rgba(255,255,255,.72)", borderColor: followActive ? `${accent}66` : "rgba(255,255,255,.14)" }} title={pickText(lang,"Suivre ma position","Follow my position","Seguir mi posición")}>⌖</button> : null}
+        <button className="btn" onClick={resetOrientation} style={controlStyle} title={pickText(lang,"Nord + perspective stable","North + stable perspective","Norte + perspectiva estable")}>N</button>
+        <button className="btn" onClick={cyclePitch} style={controlStyle} title={pickText(lang,"Changer l'inclinaison","Change pitch","Cambiar inclinación")}>◭</button>
         {showStylePicker ? <div style={{ position: "relative" }}>
           <button className="btn" onClick={() => setStyleMenu((value) => !value)} style={{ ...controlStyle, color: accent }} title={pickText(lang,"Style 3D","3D style","Estilo 3D")}>{runningMapThemeIcon(effectiveTheme)}</button>
           {styleMenu ? <div style={{ position: "absolute", left: 0, top: 44, width: 146, padding: 5, borderRadius: 13, background: "rgba(5,8,13,.96)", border: "1px solid rgba(255,255,255,.13)", boxShadow: "0 14px 34px rgba(0,0,0,.42)", backdropFilter: "blur(16px)" }}>
             {runningMapThemes(lang).map(([id, label]) => <button key={id} className="btn" onClick={() => changeTheme(id)} style={{ width: "100%", minHeight: 33, margin: "2px 0", textAlign: "left", padding: "5px 8px", color: effectiveTheme === id ? accent : undefined, borderColor: effectiveTheme === id ? `${accent}55` : undefined, fontSize: 8 }}>{runningMapThemeIcon(id)} {label}</button>)}
           </div> : null}
         </div> : null}
-        <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: `1px solid ${accent}38`, color: accent, fontSize: 8.4, fontWeight: 1000, backdropFilter: "blur(12px)" }}>3D · {runningMapThemeLabel(effectiveTheme, lang)}</div>
+        <div style={{ padding: "6px 8px", borderRadius: 999, background: "rgba(5,8,13,.80)", border: `1px solid ${accent}38`, color: accent, fontSize: 7.6, fontWeight: 1000, backdropFilter: "blur(12px)" }}>3D · {followActive && activePointIndex != null ? pickText(lang,"SUIVI","FOLLOW","SEGUIR") : runningMapThemeLabel(effectiveTheme, lang)}</div>
       </div>
 
       {showReplay ? <div className="running-3d-replay" style={{ position: "absolute", left: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 16, maxWidth: "calc(100% - 20px)", pointerEvents: "auto" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "stretch", flexWrap: "wrap" }}>
-          <button className="btn" onClick={replaying ? stopReplay : startReplay} style={{ minHeight: 38, padding: "6px 10px", color: accent, borderColor: `${accent}55`, background: "rgba(5,8,13,.88)", backdropFilter: "blur(12px)", fontSize: 8.5, fontWeight: 1000 }}>{replaying ? "Ⅱ " : "▶ "}{replaying ? pickText(lang,"PAUSE","PAUSE","PAUSA") : pickText(lang,"SURVOL 3D","3D FLYOVER","VUELO 3D")}</button>
+          <button className="btn" onClick={replaying ? stopReplayNow : startReplay} style={{ minHeight: 38, padding: "6px 10px", color: accent, borderColor: `${accent}55`, background: "rgba(5,8,13,.88)", backdropFilter: "blur(12px)", fontSize: 8.5, fontWeight: 1000 }}>{replaying ? "Ⅱ " : "▶ "}{replaying ? pickText(lang,"PAUSE","PAUSE","PAUSA") : pickText(lang,"SURVOL 3D","3D FLYOVER","VUELO 3D")}</button>
           {effectiveIndex != null ? <div className="running-3d-replay-metrics" style={{ display: "grid", gap: 4, padding: 5, borderRadius: 13, background: "rgba(5,8,13,.84)", border: "1px solid rgba(255,255,255,.10)", backdropFilter: "blur(12px)" }}>
             <ReplayMetric label={pickText(lang,"DIST.","DIST.","DIST.")} value={`${((distances[currentIndex] || 0) / 1000).toFixed(2)} km`} accent={accent}/>
             <ReplayMetric label={pickText(lang,"TEMPS","TIME","TIEMPO")} value={elapsedMs == null ? "—" : formatDuration(elapsedMs)} accent={accent}/>
@@ -890,9 +1172,9 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
         </div>
       </div> : null}
 
-      {routeName ? <div className="running-map-route-name" style={{ position: "absolute", left: "50%", top: 10, transform: "translateX(-50%)", zIndex: 10, maxWidth: "52%", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.70)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.8)", fontSize: 7, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none", backdropFilter: "blur(10px)" }}>{routeName}</div> : null}
-      <div className="running-map-camera-help" style={{ position: "absolute", right: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 14, maxWidth: "52%", padding: "5px 7px", borderRadius: 10, background: "rgba(5,8,13,.74)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.66)", fontSize: 6.6, fontWeight: 800, lineHeight: 1.25, pointerEvents: "none", backdropFilter: "blur(10px)", textAlign: "right" }}>
-        {pickText(lang, "Souris : gauche = déplacer · clic droit + glisser = rotation 360° / inclinaison · molette = zoom · tactile : 1 doigt = déplacer · 2 doigts = tourner / incliner / zoomer", "Mouse: left-drag = pan · right-drag = 360° rotate / tilt · wheel = zoom · touch: 1 finger = pan · 2 fingers = rotate / tilt / zoom", "Ratón: izquierdo = mover · derecho + arrastrar = giro 360° / inclinación · rueda = zoom · táctil: 1 dedo = mover · 2 dedos = girar / inclinar / zoom") }
+      {routeName ? <div className="running-map-route-name" style={{ position: "absolute", left: "50%", top: 10, transform: "translateX(-50%)", zIndex: 10, maxWidth: "44%", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.70)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.8)", fontSize: 7, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none", backdropFilter: "blur(10px)" }}>{routeName}</div> : null}
+      <div className="running-map-camera-help" style={{ position: "absolute", right: 10, bottom: fullscreen ? "max(18px,env(safe-area-inset-bottom))" : 12, zIndex: 14, maxWidth: "48%", padding: "5px 7px", borderRadius: 10, background: "rgba(5,8,13,.74)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.66)", fontSize: 6.6, fontWeight: 800, lineHeight: 1.25, pointerEvents: "none", backdropFilter: "blur(10px)", textAlign: "right" }}>
+        {pickText(lang, "1 doigt : déplacer · 2 doigts : zoomer, tourner, incliner · ◎ : vue complète · ⌖ : reprendre le suivi", "1 finger: pan · 2 fingers: zoom, rotate, tilt · ◎: fit route · ⌖: resume follow", "1 dedo: mover · 2 dedos: zoom, girar, inclinar · ◎: ruta completa · ⌖: reanudar seguimiento")}
       </div>
     </> : null}
   </div>;

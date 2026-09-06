@@ -29,9 +29,15 @@ function config(overrides: Partial<FootballConfigPayload> = {}): FootballConfigP
     halfRounds: 5,
     extraRounds: 2,
     tieBreaker: "penalties",
+    goalTarget: 3,
+    penaltyShots: 5,
+    mercyGoals: 0,
+    targetDifficulty: "standard",
+    kickoffMode: "home",
     goalkeeperEnabled: true,
     missLosesPossession: true,
     randomOrder: false,
+    coachHints: true,
     scoreInputMethod: "keypad",
     ...overrides,
   };
@@ -83,20 +89,58 @@ function fresh(overrides: Partial<FootballConfigPayload> = {}): FootballState {
   assert.equal(saved.statsByPlayer.p2.saves, 1);
 }
 
-// Défense : un double valide récupère la possession.
+// Défense : un double valide récupère la possession ; un simple est compté comme dégagement.
 {
-  const state = fresh();
+  let state = fresh();
   state.activeSideIndex = 1;
   state.possessionSideIndex = 0;
-  const target = getFootballTargets(state, "defense")[0];
-  const next = playFootballVisit(state, [{ bed: "D", number: target }]);
+  let target = getFootballTargets(state, "defense")[0];
+  let next = playFootballVisit(state, [{ bed: "D", number: target }]);
   assert.equal(next.possessionSideIndex, 1);
   assert.equal(next.statsByPlayer.p2.interceptions, 1);
+
+  state = fresh();
+  state.activeSideIndex = 1;
+  state.possessionSideIndex = 0;
+  target = getFootballTargets(state, "defense")[0];
+  next = playFootballVisit(state, [{ bed: "S", number: target }]);
+  assert.equal(next.statsByPlayer.p2.clearances, 1);
 }
 
-// Variante Classic : Bull pour la possession, double pour le but.
+// Difficulté : Accessible propose plus de secteurs, Expert moins de secteurs.
 {
-  let state = fresh({ variant: "classic" });
+  const accessible = fresh({ targetDifficulty: "accessible" });
+  const standard = fresh({ targetDifficulty: "standard" });
+  const expert = fresh({ targetDifficulty: "expert" });
+  assert.ok(getFootballTargets(accessible).length >= getFootballTargets(standard).length);
+  assert.ok(getFootballTargets(expert).length <= 2);
+}
+
+// Coup d'envoi : le camp 2 peut être imposé.
+{
+  const state = fresh({ kickoffMode: "away" });
+  assert.equal(state.activeSideIndex, 1);
+  assert.equal(state.possessionSideIndex, 1);
+}
+
+// Premier à X : la partie s'arrête dès l'objectif atteint.
+{
+  let state = fresh({ variant: "first_to", goalTarget: 2, goalkeeperEnabled: false });
+  for (let goal = 0; goal < 2; goal += 1) {
+    state.ballPosition = 5;
+    state.activeSideIndex = 0;
+    state.possessionSideIndex = 0;
+    const target = getFootballTargets(state, "shot")[0];
+    state = playFootballVisit(state, [{ bed: "T", number: target }]);
+  }
+  assert.equal(state.scoreBySide[state.sides[0].id], 2);
+  assert.equal(state.phase, "finished");
+  assert.deepEqual(state.winnerSideIds, [state.sides[0].id]);
+}
+
+// Variante Classic : Bull pour la possession, double pour le but, avec vraie condition de fin.
+{
+  let state = fresh({ variant: "classic", goalTarget: 1 });
   state.activeSideIndex = 1;
   state.possessionSideIndex = 0;
   state = playFootballVisit(state, [{ bed: "OB" }]);
@@ -104,18 +148,31 @@ function fresh(overrides: Partial<FootballConfigPayload> = {}): FootballState {
   state.activeSideIndex = 1;
   state = playFootballVisit(state, [{ bed: "D", number: 20 }]);
   assert.equal(state.scoreBySide[state.sides[1].id], 1);
+  assert.equal(state.phase, "finished");
 }
 
-// Penalties : cinq buts contre cinq échecs terminent la séance avec le bon vainqueur.
+// Penalties : série configurable de trois tirs puis décision anticipée/mort subite.
 {
-  let state = fresh({ variant: "penalties" });
-  for (let index = 0; index < 10 && state.phase !== "finished"; index += 1) {
+  let state = fresh({ variant: "penalties", penaltyShots: 3 });
+  for (let index = 0; index < 6 && state.phase !== "finished"; index += 1) {
     const active = state.activeSideIndex;
     const target = getFootballTargets(state, "penalty")[0];
     state = playFootballVisit(state, active === 0 ? [{ bed: "S", number: target }] : [{ bed: "MISS" }]);
   }
   assert.equal(state.phase, "finished");
   assert.deepEqual(state.winnerSideIds, [state.sides[0].id]);
+  assert.ok(state.statsByPlayer.p1.penaltiesScored >= 1);
+}
+
+// Mercy rule : un écart configuré termine immédiatement le match.
+{
+  let state = fresh({ mercyGoals: 1, goalkeeperEnabled: false });
+  state.ballPosition = 5;
+  state.activeSideIndex = 0;
+  state.possessionSideIndex = 0;
+  const target = getFootballTargets(state, "shot")[0];
+  state = playFootballVisit(state, [{ bed: "T", number: target }]);
+  assert.equal(state.phase, "finished");
 }
 
 // Bots et agrégats restent exploitables.
@@ -126,6 +183,7 @@ function fresh(overrides: Partial<FootballConfigPayload> = {}): FootballState {
   const stats = buildFootballMatchStats(playFootballVisit(state, darts));
   assert.ok(stats.totalDarts >= 1);
   assert.equal(typeof stats.scoreBySide, "object");
+  assert.equal(typeof stats.clearances, "number");
 }
 
-console.log("DARTS FOOTBALL engine regression: OK");
+console.log("DARTS FOOTBALL engine regression V3: OK");

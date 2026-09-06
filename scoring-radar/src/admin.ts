@@ -129,7 +129,7 @@ export function adminHtml(): string {
     const monitor = $('scanMonitor');
     monitor.className = 'scanMonitor';
     if (!run) {
-      $('scanTitle').textContent = 'RADAR prêt'; $('scanSubtitle').textContent = 'Le prochain scan affichera chaque étape ici.'; $('scanBar').style.width='0%'; $('scanClock').textContent='00:00'; $('scanDetail').textContent='Aucun scan suivi pour l\'instant.'; $('scanError').className='scanError'; runButton.disabled=false; return;
+      $('scanTitle').textContent = 'RADAR prêt'; $('scanSubtitle').textContent = 'Le prochain scan affichera chaque étape ici.'; $('scanBar').style.width='0%'; $('scanClock').textContent='00:00'; $('scanDetail').textContent="Aucun scan suivi pour l'instant."; $('scanError').className='scanError'; runButton.disabled=false; return;
     }
     const active = isActive(run); const failed = run.status === 'failed'; const warning = run.status === 'completed_with_warnings';
     if (failed) monitor.classList.add('failed'); else if (!active) monitor.classList.add('done');

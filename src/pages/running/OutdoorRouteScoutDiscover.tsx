@@ -8,6 +8,7 @@ import { fetchOutdoorRouteCoverPhoto, type OutdoorRoutePhoto } from "../../activ
 import type { GeoPoint } from "../../activity/activityTypes";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
 import { formatDistance, formatDuration } from "../../activity/activityMath";
+import { outdoorRouteDistanceBand, outdoorRouteSearchPolicy } from "../../activity/outdoorRouteSearchPolicy";
 
 type SortMode = "recommended" | "nearby" | "distance" | "climb";
 type DistanceMode = "all" | "short" | "medium" | "long";
@@ -39,11 +40,8 @@ function isFavorite(route: RunningRouteTemplate, saved: RunningRouteTemplate[]) 
   return saved.some((item) => item.id === route.id || (!!route.externalId && item.externalId === route.externalId) || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId));
 }
 
-function distanceModeFor(route: RunningRouteTemplate): Exclude<DistanceMode, "all"> {
-  const km = Number(route.distanceM || 0) / 1000;
-  if (km < 7) return "short";
-  if (km <= 15) return "medium";
-  return "long";
+function distanceModeFor(route: RunningRouteTemplate, sport: OutdoorPerformanceSport): Exclude<DistanceMode, "all"> {
+  return outdoorRouteDistanceBand(Number(route.distanceM || 0), sport);
 }
 
 function cardTitle(route: RunningRouteTemplate, lang: string) {
@@ -53,6 +51,17 @@ function cardTitle(route: RunningRouteTemplate, lang: string) {
   return `${pickText(lang, "Parcours", "Route", "Ruta")} ${km < 10 ? km.toFixed(1) : km.toFixed(0)} km`;
 }
 
+
+function targetDistanceLabel(route: RunningRouteTemplate, targetDistanceKm: number, lang: string) {
+  const targetM = Number(targetDistanceKm || 0) * 1000;
+  if (!(targetM > 0)) return null;
+  const deltaM = Number(route.distanceM || 0) - targetM;
+  const absKm = Math.abs(deltaM) / 1000;
+  const prefix = deltaM > 0 ? "+" : deltaM < 0 ? "−" : "±";
+  const pct = Math.round(Math.abs(deltaM) / targetM * 100);
+  const label = pickText(lang, "CIBLE", "TARGET", "OBJETIVO");
+  return `${label} ${prefix}${absKm < 1 ? absKm.toFixed(1) : absKm.toFixed(absKm < 10 ? 1 : 0)} km · ${pct}%`;
+}
 function nearLabel(meters: number, lang: string) {
   if (!(meters > 0)) return pickText(lang, "AUTOUR DE TOI", "AROUND YOU", "CERCA DE TI");
   return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
@@ -60,6 +69,7 @@ function nearLabel(meters: number, lang: string) {
 
 export default function OutdoorRouteScoutDiscover(props: Props) {
   const { routes, selectedRouteId, savedRoutes, sport, lang, accent, textSoft } = props;
+  const searchPolicy = outdoorRouteSearchPolicy(sport);
   const [sortMode, setSortMode] = React.useState<SortMode>("recommended");
   const [distanceMode, setDistanceMode] = React.useState<DistanceMode>("all");
   const [loopOnly, setLoopOnly] = React.useState(false);
@@ -74,7 +84,7 @@ export default function OutdoorRouteScoutDiscover(props: Props) {
 
   const filtered = React.useMemo(() => {
     const rows = routes.filter((route) => {
-      if (distanceMode !== "all" && distanceModeFor(route) !== distanceMode) return false;
+      if (distanceMode !== "all" && distanceModeFor(route, sport) !== distanceMode) return false;
       if (loopOnly && !route.scout?.loop) return false;
       if (Number(route.scout?.score || 0) < minScore) return false;
       return true;
@@ -85,7 +95,7 @@ export default function OutdoorRouteScoutDiscover(props: Props) {
       if (sortMode === "climb") return Number(a.elevationGainM || 0) - Number(b.elevationGainM || 0);
       return Number(b.scout?.score || 0) - Number(a.scout?.score || 0);
     });
-  }, [distanceMode, loopOnly, minScore, routes, sortMode]);
+  }, [distanceMode, loopOnly, minScore, routes, sortMode, sport]);
 
   const selected = filtered.find((route) => route.id === selectedRouteId) || filtered[0] || null;
   const activeFilters = Number(distanceMode !== "all") + Number(loopOnly) + Number(minScore > 0) + Number(sortMode !== "recommended");
@@ -106,8 +116,8 @@ export default function OutdoorRouteScoutDiscover(props: Props) {
       {searchOpen ? <div style={{ padding: "0 13px 13px" }}>
         <div style={{ padding: 11, borderRadius: 17, background: "rgba(255,255,255,.026)", border: "1px solid rgba(255,255,255,.07)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <ChoiceBlock label={pickText(lang, "RAYON", "RADIUS", "RADIO")} values={[10, 20, 35]} value={props.radiusKm} suffix="KM" accent={accent} onChange={props.onRadiusChange}/>
-            <ChoiceBlock label={pickText(lang, "DISTANCE", "DISTANCE", "DISTANCIA")} values={[5, 10, 20]} value={props.targetDistanceKm} suffix="KM" accent={accent} onChange={props.onTargetDistanceChange}/>
+            <ChoiceBlock label={pickText(lang, "RAYON", "RADIUS", "RADIO")} values={searchPolicy.radiusOptionsKm} value={props.radiusKm} suffix="KM" accent={accent} onChange={props.onRadiusChange}/>
+            <ChoiceBlock label={pickText(lang, "DISTANCE", "DISTANCE", "DISTANCIA")} values={searchPolicy.distanceOptionsKm} value={props.targetDistanceKm} suffix="KM" accent={accent} onChange={props.onTargetDistanceChange}/>
           </div>
           <button className="btn" disabled={props.busy} onClick={props.onSearch} style={{ width: "100%", minHeight: 44, marginTop: 9, color: accent, borderColor: `${accent}70`, background: `${accent}0c`, fontWeight: 1000, fontSize: 8.5 }}>{props.busy ? pickText(lang, "✦ ANALYSE DE LA ZONE…", "✦ ANALYSING AREA…", "✦ ANALIZANDO LA ZONA…") : pickText(lang, "✦ TROUVER DES PARCOURS", "✦ FIND ROUTES", "✦ ENCONTRAR RUTAS")}</button>
           {props.message ? <div style={{ marginTop: 7, color: textSoft, fontSize: 7.6, lineHeight: 1.4 }}>{props.message}</div> : null}
@@ -129,7 +139,7 @@ export default function OutdoorRouteScoutDiscover(props: Props) {
           {([['recommended', pickText(lang, '✦ RECOMMANDÉS', '✦ RECOMMENDED', '✦ RECOMENDADAS')], ['nearby', pickText(lang, '📍 PROCHES', '📍 NEARBY', '📍 CERCANAS')], ['distance', pickText(lang, '↔ DISTANCE', '↔ DISTANCE', '↔ DISTANCIA')], ['climb', pickText(lang, '⛰️ D+', '⛰️ CLIMB', '⛰️ D+')]] as Array<[SortMode,string]>).map(([id,label]) => <Chip key={id} active={sortMode === id} label={label} accent={accent} onClick={() => setSortMode(id)}/>) }
         </FilterRail>
         <FilterRail title={pickText(lang, "FILTRER", "FILTER", "FILTRAR")}>
-          {([['all', pickText(lang,'TOUTES','ALL','TODAS')], ['short','< 7 KM'], ['medium','7–15 KM'], ['long','15+ KM']] as Array<[DistanceMode,string]>).map(([id,label]) => <Chip key={id} active={distanceMode === id} label={label} accent={accent} onClick={() => setDistanceMode(id)}/>) }
+          {([['all', pickText(lang,'TOUTES','ALL','TODAS')], ['short',`< ${searchPolicy.distanceBandsKm.shortMax} KM`], ['medium',`${searchPolicy.distanceBandsKm.shortMax}–${searchPolicy.distanceBandsKm.mediumMax} KM`], ['long',`${searchPolicy.distanceBandsKm.mediumMax}+ KM`]] as Array<[DistanceMode,string]>).map(([id,label]) => <Chip key={id} active={distanceMode === id} label={label} accent={accent} onClick={() => setDistanceMode(id)}/>) }
           <Chip active={loopOnly} label={`↻ ${pickText(lang,"BOUCLES","LOOPS","BUCLES")}`} accent={accent} onClick={() => setLoopOnly((value) => !value)}/>
           <Chip active={minScore > 0} label={`✦ ${minScore ? `${minScore}+` : pickText(lang,"SCORE","SCORE","PUNT.")}`} accent={accent} onClick={() => setMinScore((value) => value >= 75 ? 0 : value >= 60 ? 75 : 60)}/>
         </FilterRail>
@@ -137,11 +147,11 @@ export default function OutdoorRouteScoutDiscover(props: Props) {
 
       {viewMode === "map" ? <div style={{ display: "grid", gap: 9 }}>
         <ScoutOverviewMap routes={filtered.slice(0, 10)} selectedRouteId={selected?.id || null} onSelect={props.onSelect} accent={accent} textSoft={textSoft} lang={lang}/>
-        {selected ? <SelectedRouteStrip route={selected} favorite={isFavorite(selected, savedRoutes)} sport={sport} lang={lang} accent={accent} textSoft={textSoft} onDetails={() => props.onOpenDetails(selected)} onGuide={() => props.onGuide(selected)} onFavorite={() => props.onToggleFavorite(selected)} onMaps={() => props.onOpenMaps(selected)}/> : null}
+        {selected ? <SelectedRouteStrip route={selected} favorite={isFavorite(selected, savedRoutes)} sport={sport} targetDistanceKm={props.targetDistanceKm} lang={lang} accent={accent} textSoft={textSoft} onDetails={() => props.onOpenDetails(selected)} onGuide={() => props.onGuide(selected)} onFavorite={() => props.onToggleFavorite(selected)} onMaps={() => props.onOpenMaps(selected)}/> : null}
       </div> : <div style={{ display: "grid", gap: 9 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}><div style={{ color: "#fff", fontSize: 9.3, fontWeight: 1000 }}>{filtered.length} {pickText(lang,"parcours","routes","rutas")}</div><div style={{ color: textSoft, fontSize: 7.1 }}>{pickText(lang,"Touchez une carte pour la sélectionner","Tap a card to select it","Toca una tarjeta para seleccionarla")}</div></div>
         {filtered.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,270px),1fr))", gap: 11 }}>
-          {filtered.slice(0, 12).map((route, index) => <ScoutRouteCard key={route.id} route={route} rank={index + 1} active={route.id === selected?.id} favorite={isFavorite(route, savedRoutes)} sport={sport} lang={lang} accent={accent} textSoft={textSoft} onSelect={() => props.onSelect(route)} onDetails={() => props.onOpenDetails(route)} onGuide={() => props.onGuide(route)} onFavorite={() => props.onToggleFavorite(route)} onMaps={() => props.onOpenMaps(route)}/>) }
+          {filtered.slice(0, 12).map((route, index) => <ScoutRouteCard key={route.id} route={route} rank={index + 1} active={route.id === selected?.id} favorite={isFavorite(route, savedRoutes)} sport={sport} targetDistanceKm={props.targetDistanceKm} lang={lang} accent={accent} textSoft={textSoft} onSelect={() => props.onSelect(route)} onDetails={() => props.onOpenDetails(route)} onGuide={() => props.onGuide(route)} onFavorite={() => props.onToggleFavorite(route)} onMaps={() => props.onOpenMaps(route)}/>) }
         </div> : <EmptyFilters lang={lang} textSoft={textSoft}/>} 
       </div>}
     </> : <div style={{ padding: 20, textAlign: "center", color: textSoft, borderRadius: 20, border: "1px solid rgba(255,255,255,.07)", background: "linear-gradient(145deg,rgba(255,255,255,.035),rgba(5,8,13,.72))", lineHeight: 1.5, fontSize: 8.4 }}><div style={{ fontSize: 25, marginBottom: 8 }}>⌖</div><b style={{ color: "#fff" }}>{pickText(lang,"Aucun parcours affiché","No routes yet","Todavía no hay rutas")}</b><div style={{ marginTop: 5 }}>{pickText(lang,"Lance le Scout pour remplir cette page avec de vrais tracés existants.","Run Scout to fill this page with real existing routes.","Lanza Scout para llenar esta página con rutas reales existentes.")}</div></div>}
@@ -149,7 +159,7 @@ export default function OutdoorRouteScoutDiscover(props: Props) {
 }
 
 function ChoiceBlock({ label, values, value, suffix, accent, onChange }: { label: string; values: number[]; value: number; suffix: string; accent: string; onChange: (value: number) => void }) {
-  return <div><div style={{ color: "rgba(255,255,255,.5)", fontSize: 6.6, fontWeight: 1000, letterSpacing: .5 }}>{label}</div><div style={{ marginTop: 6, display: "grid", gridTemplateColumns: `repeat(${values.length},minmax(0,1fr))`, gap: 4 }}>{values.map((item) => <button key={item} className="btn" onClick={() => onChange(item)} style={{ minHeight: 30, padding: "3px 3px", fontSize: 7.2, fontWeight: 1000, color: value === item ? accent : undefined, borderColor: value === item ? `${accent}66` : undefined, background: value === item ? `${accent}0d` : undefined }}>{item} {suffix}</button>)}</div></div>;
+  return <div style={{ minWidth: 0 }}><div style={{ color: "rgba(255,255,255,.5)", fontSize: 6.6, fontWeight: 1000, letterSpacing: .5 }}>{label}</div><div style={{ marginTop: 6, display: "flex", gap: 4, overflowX: "auto", paddingBottom: 2 }}>{values.map((item) => <button key={item} className="btn" onClick={() => onChange(item)} style={{ flex: "0 0 auto", minWidth: 44, minHeight: 30, padding: "3px 6px", fontSize: 7.2, fontWeight: 1000, color: value === item ? accent : undefined, borderColor: value === item ? `${accent}66` : undefined, background: value === item ? `${accent}0d` : undefined }}>{item} {suffix}</button>)}</div></div>;
 }
 
 function Segment({ active, label, accent, onClick }: { active: boolean; label: string; accent: string; onClick: () => void }) {
@@ -168,13 +178,14 @@ function EmptyFilters({ lang, textSoft }: { lang: string; textSoft: string }) {
   return <div style={{ padding: 18, textAlign: "center", color: textSoft, borderRadius: 16, border: "1px solid rgba(255,255,255,.07)" }}>{pickText(lang,"Aucun parcours ne correspond à ces filtres.","No route matches these filters.","Ninguna ruta coincide con estos filtros.")}</div>;
 }
 
-function SelectedRouteStrip({ route, favorite, sport, lang, accent, textSoft, onDetails, onGuide, onFavorite, onMaps }: { route: RunningRouteTemplate; favorite: boolean; sport: OutdoorPerformanceSport; lang: string; accent: string; textSoft: string; onDetails: () => void; onGuide: () => void; onFavorite: () => void; onMaps: () => void }) {
+function SelectedRouteStrip({ route, favorite, sport, targetDistanceKm, lang, accent, textSoft, onDetails, onGuide, onFavorite, onMaps }: { route: RunningRouteTemplate; favorite: boolean; sport: OutdoorPerformanceSport; targetDistanceKm: number; lang: string; accent: string; textSoft: string; onDetails: () => void; onGuide: () => void; onFavorite: () => void; onMaps: () => void }) {
   const terrain = React.useMemo(() => analyzeRunningTerrain(route.route), [route.route]);
   const near = Number(route.scout?.distanceFromCenterM || 0);
   const score = Math.round(Number(route.scout?.score || 0));
+  const targetDelta = targetDistanceLabel(route, targetDistanceKm, lang);
   return <div style={{ display: "grid", gap: 9, padding: 11, borderRadius: 18, background: "linear-gradient(145deg,rgba(255,255,255,.052),rgba(5,8,13,.90))", border: `1px solid ${accent}38`, boxShadow: "0 16px 36px rgba(0,0,0,.24)" }}>
     <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 9, alignItems: "start" }}>
-      <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 9.8, fontWeight: 1000, lineHeight: 1.2 }}>{cardTitle(route, lang)}</div><div style={{ marginTop: 4, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={`✦ ${score}%`} accent={accent}/><Pill text={`📍 ${nearLabel(near, lang)}`} accent={accent} muted/>{route.scout?.loop ? <Pill text={`↻ ${pickText(lang,"BOUCLE","LOOP","BUCLE")}`} accent={accent} muted/> : null}{terrain.hasElevation ? <Pill text={`◒ ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div></div>
+      <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 9.8, fontWeight: 1000, lineHeight: 1.2 }}>{cardTitle(route, lang)}</div><div style={{ marginTop: 4, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={`✦ ${score}%`} accent={accent}/><Pill text={`📍 ${nearLabel(near, lang)}`} accent={accent} muted/>{targetDelta ? <Pill text={targetDelta} accent={accent} muted/> : null}{route.scout?.loop ? <Pill text={`↻ ${pickText(lang,"BOUCLE","LOOP","BUCLE")}`} accent={accent} muted/> : null}{terrain.hasElevation ? <Pill text={`◒ ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div></div>
       <button className="btn" onClick={onFavorite} style={{ minWidth: 36, minHeight: 36, padding: 0, color: favorite ? accent : undefined, borderColor: favorite ? `${accent}55` : undefined }}>{favorite ? "★" : "☆"}</button>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><Metric label={pickText(lang,"DISTANCE","DISTANCE","DISTANCIA")} value={formatDistance(route.distanceM)} accent={accent}/><Metric label="D+" value={terrain.hasElevation ? `+${Math.round(terrain.gainM)} m` : route.elevationGainM ? `+${Math.round(route.elevationGainM)} m` : "—"} accent={accent}/><Metric label={pickText(lang,"DURÉE","TIME","TIEMPO")} value={formatDuration(estimateOutdoorRouteDurationMs(route, sport))} accent={accent}/></div>
@@ -182,7 +193,7 @@ function SelectedRouteStrip({ route, favorite, sport, lang, accent, textSoft, on
   </div>;
 }
 
-function ScoutRouteCard({ route, rank, active, favorite, sport, lang, accent, textSoft, onSelect, onDetails, onGuide, onFavorite, onMaps }: { route: RunningRouteTemplate; rank: number; active: boolean; favorite: boolean; sport: OutdoorPerformanceSport; lang: string; accent: string; textSoft: string; onSelect: () => void; onDetails: () => void; onGuide: () => void; onFavorite: () => void; onMaps: () => void }) {
+function ScoutRouteCard({ route, rank, active, favorite, sport, targetDistanceKm, lang, accent, textSoft, onSelect, onDetails, onGuide, onFavorite, onMaps }: { route: RunningRouteTemplate; rank: number; active: boolean; favorite: boolean; sport: OutdoorPerformanceSport; targetDistanceKm: number; lang: string; accent: string; textSoft: string; onSelect: () => void; onDetails: () => void; onGuide: () => void; onFavorite: () => void; onMaps: () => void }) {
   const articleRef = React.useRef<HTMLElement | null>(null);
   const [photo, setPhoto] = React.useState<OutdoorRoutePhoto | null>(null);
   const [loadCover, setLoadCover] = React.useState(active);
@@ -198,12 +209,13 @@ function ScoutRouteCard({ route, rank, active, favorite, sport, lang, accent, te
   const terrain = React.useMemo(() => analyzeRunningTerrain(route.route), [route.route]);
   const score = Math.round(Number(route.scout?.score || 0));
   const near = Number(route.scout?.distanceFromCenterM || 0);
+  const targetDelta = targetDistanceLabel(route, targetDistanceKm, lang);
   return <article ref={articleRef} style={{ overflow: "hidden", borderRadius: 21, background: "linear-gradient(145deg,rgba(255,255,255,.052),rgba(4,7,11,.94))", border: `1px solid ${active ? `${accent}70` : "rgba(255,255,255,.085)"}`, boxShadow: active ? `0 22px 48px ${accent}16` : "0 17px 38px rgba(0,0,0,.24)", transform: active ? "translateY(-2px)" : undefined, transition: "transform .18s ease, box-shadow .18s ease" }}>
     <button onClick={onSelect} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer" }}>
       <div style={{ height: 176, position: "relative", overflow: "hidden", background: "linear-gradient(135deg,#17222c,#0d1219)" }}>
         {photo ? <img src={photo.thumbUrl} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <ScoutMiniMap route={route} accent={accent}/>} 
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,.04),rgba(0,0,0,.08) 45%,rgba(0,0,0,.76))" }}/>
-        <div style={{ position: "absolute", left: 10, top: 10, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={`✦ ${score}%`} accent={accent}/>{route.scout?.loop ? <Pill text={`↻ ${pickText(lang,"BOUCLE","LOOP","BUCLE")}`} accent={accent} muted/> : null}{terrain.hasElevation ? <Pill text={`◒ ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div>
+        <div style={{ position: "absolute", left: 10, top: 10, display: "flex", gap: 5, flexWrap: "wrap" }}><Pill text={`✦ ${score}%`} accent={accent}/>{targetDelta ? <Pill text={targetDelta} accent={accent} muted/> : null}{route.scout?.loop ? <Pill text={`↻ ${pickText(lang,"BOUCLE","LOOP","BUCLE")}`} accent={accent} muted/> : null}{terrain.hasElevation ? <Pill text={`◒ ${terrain.difficultyScore}/100`} accent={accent} muted/> : null}</div>
         <div style={{ position: "absolute", right: 10, top: 10, width: 31, height: 31, display: "grid", placeItems: "center", borderRadius: 999, background: "rgba(5,8,13,.80)", border: "1px solid rgba(255,255,255,.14)", color: "#fff", fontSize: 8, fontWeight: 1000 }}>#{rank}</div>
         <div style={{ position: "absolute", left: 11, right: 11, bottom: 10 }}><div style={{ color: "#fff", fontSize: 10.4, fontWeight: 1000, lineHeight: 1.18, textShadow: "0 2px 12px rgba(0,0,0,.7)" }}>{cardTitle(route, lang)}</div><div style={{ marginTop: 5, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}><span style={{ color: "rgba(255,255,255,.82)", fontSize: 6.8, fontWeight: 900 }}>📍 {nearLabel(near, lang)}</span>{photo?.placeName ? <><span style={{ color: "rgba(255,255,255,.42)" }}>·</span><span style={{ color: "rgba(255,255,255,.72)", fontSize: 6.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 170 }}>{photo.placeName}</span></> : null}</div></div>
       </div>

@@ -276,3 +276,13 @@
   .football-preset { padding: 5px; }
   .football-versus-card { grid-template-columns: 30px minmax(0, 1fr); }
 }
+
+/* V3 — davantage de formats sans alourdir la page */
+@media (min-width: 700px) {
+  .football-mode-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.football-config-block button,
+.football-config-block select {
+  max-width: 100%;
+}
