@@ -500,8 +500,10 @@ function viewerSnapshotKey(sessionId: string) {
 
 async function handleViewerCreate(_request: Request, env: Env): Promise<Response> {
   let sessionId = "";
-  for (let i = 0; i < 6; i++) {
-    const candidate = generateToken(12);
+  for (let i = 0; i < 8; i++) {
+    // Le Viewer Samsung TV saisit un code court de 6 caractères.
+    // Garder la même longueur sur tous les backends évite toute troncature.
+    const candidate = generateToken(6);
     const existing = await env.DC_SYNC.get(viewerSessionKey(candidate));
     if (!existing) {
       sessionId = candidate;

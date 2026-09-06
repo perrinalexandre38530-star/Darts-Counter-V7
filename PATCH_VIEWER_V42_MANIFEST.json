@@ -1,0 +1,26 @@
+{
+  "base": "Darts-Counter-V7(42).zip",
+  "purpose": "Fix Viewer session creation + Samsung TV routing",
+  "modified": [
+    "src/lib/viewer/viewerClient.ts",
+    "src/online/server/worker.ts",
+    "tools/build-samsung-tv.mjs",
+    "vite.samsung-tv.config.ts",
+    "wrangler.toml",
+    "tools/check-samsung-tv.mjs"
+  ],
+  "key_fixes": [
+    "Viewer API defaults to dc-online-v3 Worker with DC_SYNC instead of NAS/local packaged origin",
+    "HTTP 200 HTML/wrong payload no longer stops fallback routing",
+    "Viewer Worker generates 6-character codes matching Samsung TV keypad",
+    "Samsung TV build embeds the same Worker Viewer API",
+    "Pages gets DC_SYNC KV as fallback",
+    "Samsung TV precheck verifies Worker Viewer endpoint is embedded"
+  ],
+  "next_commands": [
+    "npm run deploy:online",
+    "npm run deploy:pages",
+    "npm run tv:samsung:build",
+    "npm run tv:samsung:check"
+  ]
+}

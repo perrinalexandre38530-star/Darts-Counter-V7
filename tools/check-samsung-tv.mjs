@@ -47,8 +47,13 @@ const assetsDir = path.join(out, "assets");
 if (!fs.existsSync(assetsDir)) fail("Dossier assets absent : build TV non généré");
 else {
   const files = fs.readdirSync(assetsDir);
-  if (files.some((f) => f.endsWith(".js"))) pass("Bundle JavaScript TV généré");
+  const jsFiles = files.filter((f) => f.endsWith(".js"));
+  if (jsFiles.length) pass("Bundle JavaScript TV généré");
   else fail("Bundle JavaScript TV absent");
+
+  const bundleText = jsFiles.map((file) => fs.readFileSync(path.join(assetsDir, file), "utf8")).join("\n");
+  if (bundleText.includes("dc-online-v3.perrin-alexandre38530.workers.dev")) pass("Viewer TV routé vers le Worker ONLINE DC_SYNC");
+  else fail("Viewer TV non routé vers le Worker ONLINE (risque session absente)");
 }
 
 function dirSize(dir) {

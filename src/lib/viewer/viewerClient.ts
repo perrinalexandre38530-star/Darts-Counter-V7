@@ -3,27 +3,51 @@ import type { ViewerCreateSessionResult, ViewerLiveSnapshot } from "./types";
 
 const VIEWER_TIMEOUT_MS = 3500;
 
+// Source de vérité Viewer : le Worker ONLINE possède déjà le KV DC_SYNC et
+// les routes /viewer/session. Cela évite qu'Android (https://localhost), Tizen
+// ou une Pages Function non configurée tombent sur une réponse HTML / générique.
+export const DEFAULT_VIEWER_API_URL = "https://dc-online-v3.perrin-alexandre38530.workers.dev";
+
+type ViewerFetchInit = RequestInit & {
+  timeoutMs?: number;
+  acceptPayload?: (payload: any) => boolean;
+};
+
 function normalizeBase(raw: any) {
   const s = String(raw || "").trim();
   if (!s) return "";
   return s.replace(/^wss:/, "https:").replace(/^ws:/, "http:").replace(/\/+$/, "");
 }
 
+function isLocalPackagedRuntime() {
+  if (typeof window === "undefined") return false;
+  const protocol = String(window.location?.protocol || "").toLowerCase();
+  const hostname = String(window.location?.hostname || "").toLowerCase();
+  if (["file:", "capacitor:", "tizen:", "app:"].includes(protocol)) return true;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+}
+
 function baseCandidates() {
   const env = (import.meta as any)?.env || {};
-  const protocol = typeof window !== "undefined" ? String(window.location?.protocol || "").toLowerCase() : "";
-  const packagedFallback = protocol && protocol !== "http:" && protocol !== "https:"
-    ? normalizeBase(PUBLIC_PAGES_ORIGIN)
+  const localPackaged = isLocalPackagedRuntime();
+  const currentOrigin = typeof window !== "undefined" && !localPackaged && /^https?:$/i.test(String(window.location?.protocol || ""))
+    ? normalizeBase(window.location.origin)
     : "";
+
+  // Ordre volontaire : override explicite > Worker ONLINE stable > Pages >
+  // origine Web courante > anciens backends. Le Worker ONLINE sait créer des
+  // sessions Viewer et possède le binding KV DC_SYNC.
   const list = [
     normalizeBase(env.VITE_VIEWER_API_URL),
-    packagedFallback,
-    normalizeBase(NAS_API_URL),
     normalizeBase(env.VITE_ONLINE_API_URL),
+    normalizeBase(DEFAULT_VIEWER_API_URL),
+    normalizeBase(PUBLIC_PAGES_ORIGIN),
+    currentOrigin,
     normalizeBase(env.VITE_ONLINE_WS_BASE_URL),
-    "",
+    normalizeBase(NAS_API_URL),
   ];
-  return Array.from(new Set(list.filter((v, idx, arr) => arr.indexOf(v) === idx)));
+
+  return Array.from(new Set(list.filter(Boolean)));
 }
 
 function normalizePath(path: string) {
@@ -36,7 +60,7 @@ function pathCandidates(path: string) {
   return Array.from(new Set([apiPath, normalized]));
 }
 
-async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number }) {
+async function apiFetch(path: string, init?: ViewerFetchInit) {
   const bases = baseCandidates();
   let lastError: any = null;
 
@@ -50,14 +74,16 @@ async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number 
         } catch {}
       }, timeout);
 
+      const { timeoutMs: _timeoutMs, acceptPayload, headers, ...fetchInit } = init || {};
+
       try {
         const url = `${base}${candidatePath}`;
         const res = await fetch(url, {
-          ...init,
+          ...fetchInit,
           signal: ctrl.signal,
           headers: {
             "Content-Type": "application/json",
-            ...((init?.headers as any) || {}),
+            ...(headers || {}),
           },
         });
         const text = await res.text();
@@ -67,6 +93,7 @@ async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number 
         } catch {
           json = { raw: text };
         }
+
         if (!res.ok) {
           const msg = String(json?.message || json?.error || `Viewer API ${res.status}`);
           const err: any = new Error(msg);
@@ -75,10 +102,34 @@ async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number 
           err.url = url;
           throw err;
         }
+
+        // Un SPA local / un reverse-proxy peut répondre HTTP 200 avec index.html.
+        // Avant ce correctif, createViewerSession() prenait cette réponse pour
+        // un succès puis levait « identifiant absent » sans essayer le Worker.
+        const raw = String(json?.raw || "").trim();
+        if (raw && /^<!doctype\s+html|^<html/i.test(raw)) {
+          const err: any = new Error("Réponse HTML reçue à la place de l'API Viewer.");
+          err.status = 502;
+          err.payload = json;
+          err.url = url;
+          throw err;
+        }
+
+        if (acceptPayload && !acceptPayload(json)) {
+          const err: any = new Error("Réponse Viewer API invalide pour cette route.");
+          err.status = 502;
+          err.payload = json;
+          err.url = url;
+          throw err;
+        }
+
         return json;
       } catch (e: any) {
         lastError = e;
         const status = Number(e?.status || 0);
+        // Pour une réponse qui prouve que ce backend n'est pas le bon, on passe
+        // directement au backend suivant. 404/405 peuvent encore justifier de
+        // tenter l'alias /api ou sans /api sur le même backend.
         if (status && ![401, 403, 404, 405].includes(status)) break;
       } finally {
         window.clearTimeout(timer);
@@ -86,7 +137,8 @@ async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number 
     }
   }
 
-  throw lastError || new Error("Viewer API indisponible.");
+  const detail = String(lastError?.message || lastError || "Viewer API indisponible.");
+  throw new Error(`${detail} [Viewer API: ${bases.join(" → ")}]`);
 }
 
 function cleanCode(input: string) {
@@ -106,6 +158,7 @@ export async function createViewerSession(): Promise<ViewerCreateSessionResult> 
   const json = await apiFetch("/viewer/session", {
     method: "POST",
     body: JSON.stringify({ app: "multisports-scoring", kind: "viewer_live_v1" }),
+    acceptPayload: (payload) => Boolean(cleanCode(payload?.sessionId || payload?.id || payload?.code || "")),
   });
 
   const sessionId = cleanCode(json?.sessionId || json?.id || json?.code || "");
@@ -126,6 +179,7 @@ export async function publishViewerSnapshot(sessionId: string, snapshot: ViewerL
     method: "POST",
     body: JSON.stringify(snapshot),
     timeoutMs: 2800,
+    acceptPayload: (payload) => payload && typeof payload === "object" && payload.ok !== false,
   });
   return { ok: json?.ok !== false, rev: Number(json?.rev || 0) || undefined };
 }
@@ -136,6 +190,10 @@ export async function fetchViewerSnapshot(sessionId: string): Promise<ViewerLive
   const json = await apiFetch(`/viewer/session/${encodeURIComponent(sid)}/snapshot`, {
     method: "GET",
     timeoutMs: 3200,
+    acceptPayload: (payload) => {
+      const snap = payload?.snapshot || payload?.payload || payload;
+      return Boolean(snap && typeof snap === "object" && Array.isArray(snap.players));
+    },
   });
   const snap = json?.snapshot || json?.payload || json;
   if (!snap || typeof snap !== "object" || !Array.isArray(snap.players)) return null;

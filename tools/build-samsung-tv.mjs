@@ -23,9 +23,13 @@ if (!fs.existsSync(viteBin)) {
   process.exit(1);
 }
 
+const DEFAULT_VIEWER_API_URL = "https://dc-online-v3.perrin-alexandre38530.workers.dev";
+
 const env = {
   ...process.env,
-  VITE_VIEWER_API_URL: process.env.VITE_VIEWER_API_URL || process.env.VITE_PUBLIC_PAGES_ORIGIN || "https://multisports-scoring.pages.dev",
+  // Viewer TV et téléphone utilisent le même Worker KV DC_SYNC.
+  VITE_VIEWER_API_URL: process.env.VITE_VIEWER_API_URL || DEFAULT_VIEWER_API_URL,
+  VITE_ONLINE_API_URL: process.env.VITE_ONLINE_API_URL || DEFAULT_VIEWER_API_URL,
   VITE_PUBLIC_PAGES_ORIGIN: process.env.VITE_PUBLIC_PAGES_ORIGIN || "https://multisports-scoring.pages.dev",
 };
 

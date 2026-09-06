@@ -10,7 +10,8 @@ const tizenOut = path.resolve(projectRoot, "MULTISPORTSSCORINGTV");
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, projectRoot, "");
   const publicOrigin = String(env.VITE_PUBLIC_PAGES_ORIGIN || "https://multisports-scoring.pages.dev").replace(/\/+$/, "");
-  const viewerApi = String(env.VITE_VIEWER_API_URL || publicOrigin).replace(/\/+$/, "");
+  const onlineWorker = String(env.VITE_ONLINE_API_URL || "https://dc-online-v3.perrin-alexandre38530.workers.dev").replace(/\/+$/, "");
+  const viewerApi = String(env.VITE_VIEWER_API_URL || onlineWorker).replace(/\/+$/, "");
 
   return {
     root: tvRoot,
@@ -19,6 +20,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       "import.meta.env.VITE_VIEWER_API_URL": JSON.stringify(viewerApi),
+      "import.meta.env.VITE_ONLINE_API_URL": JSON.stringify(onlineWorker),
       "import.meta.env.VITE_PUBLIC_PAGES_ORIGIN": JSON.stringify(publicOrigin),
     },
     build: {
