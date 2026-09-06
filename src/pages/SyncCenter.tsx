@@ -19,7 +19,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { loadStore, saveStore, exportAll } from "../lib/storage";
 import { exportCloudBackupAsJson } from "../lib/cloudBackup/exportBackup";
-import { shareOrDownload } from "../lib/backup/fileExport";
+import { saveJsonToDevice } from "../lib/backup/fileExport";
+import { saveJsonStringToDevice } from "../lib/nativeJsonFileTransfer";
 import { createAutoBackup, getAutoBackups, clearAutoBackups } from "../lib/backup/autoBackupService";
 import { supabase } from "../lib/supabaseClient";
 import { EventBuffer } from "../lib/sync/EventBuffer";
@@ -405,7 +406,7 @@ const setAutoBackupEnabledPersist = (v: boolean) => {
           })
         : backupObj;
 
-      await shareOrDownload(exportObj, "dc_recovery_backup.json", "Sauvegarde Darts Counter");
+      await saveJsonToDevice(exportObj, "dc_recovery_backup.json");
 
       // ✅ Upload cloud en "non-bloquant" pour éviter de figer l'UI
       if (secureExportEnabled && secureCloudUploadEnabled) {
@@ -454,7 +455,7 @@ const setAutoBackupEnabledPersist = (v: boolean) => {
     try {
       setLocalMessage(t("syncCenter.snapshot.exporting", "Export snapshot complet…"));
       const data = await exportAll();
-      await shareOrDownload(data, "dc_full_snapshot.json", "Snapshot complet Darts Counter");
+      await saveJsonToDevice(data, "dc_full_snapshot.json");
       setLocalMessage(t("syncCenter.snapshot.exportOk", "Snapshot complet exporté."));
     } catch (e) {
       console.error(e);
@@ -482,7 +483,7 @@ const setAutoBackupEnabledPersist = (v: boolean) => {
         setLocalMessage(t("syncCenter.autobackup.none", "Aucune sauvegarde auto disponible."));
         return;
       }
-      await shareOrDownload(latest.backup, "dc_recovery_autobackup_latest.json", "Auto-backup Darts Counter");
+      await saveJsonToDevice(latest.backup, "dc_recovery_autobackup_latest.json");
       setLocalMessage(t("syncCenter.autobackup.exported", "Dernier auto-backup exporté."));
     } catch (e) {
       console.error(e);
@@ -500,21 +501,15 @@ const setAutoBackupEnabledPersist = (v: boolean) => {
     }
   }
 
-  // Download fichier .dcstats.json
-  function handleDownloadJson() {
+  // Vrai fichier .dcstats.json : Android => Téléchargements/MULTISPORTS SCORING.
+  async function handleDownloadJson() {
     if (!exportJson) return;
     try {
-      const blob = new Blob([exportJson], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "darts-counter-sync.dcstats.json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await saveJsonStringToDevice(exportJson, "darts-counter-sync.dcstats.json");
+      setLocalMessage(t("syncCenter.local.fileSaved", "Fichier enregistré dans les téléchargements."));
     } catch (e) {
       console.error(e);
+      setLocalMessage(t("syncCenter.local.fileSaveError", "Impossible d'enregistrer le fichier."));
     }
   }
 

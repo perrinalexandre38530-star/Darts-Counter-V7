@@ -1,6 +1,41 @@
 export const MAX_AVATAR_FILE_MB = 8;
 export const MAX_AVATAR_DATA_URL_CHARS = 380_000;
 
+function escapeAvatarSvgText(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char] || char));
+}
+
+function avatarSeedHash(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Avatar de secours déterministe : aucun profil sans photo ne doit produire
+ * une icône d'image cassée. Le même profil garde toujours le même médaillon.
+ */
+export function makeAvatarPlaceholderDataUrl(name?: string | null, seed?: string | null): string {
+  const safeName = String(name || "Joueur").trim() || "Joueur";
+  const words = safeName.split(/\s+/).filter(Boolean);
+  const initials = (words.length > 1 ? `${words[0][0] || ""}${words[words.length - 1][0] || ""}` : safeName.slice(0, 2)).toUpperCase();
+  const hash = avatarSeedHash(String(seed || safeName));
+  const hue = hash % 360;
+  const hue2 = (hue + 38 + (hash % 47)) % 360;
+  const label = escapeAvatarSvgText(initials || "MS");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${hue} 62% 34%)"/><stop offset="1" stop-color="hsl(${hue2} 74% 17%)"/></linearGradient></defs><rect width="256" height="256" rx="128" fill="url(#g)"/><circle cx="128" cy="128" r="116" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="6"/><text x="128" y="147" text-anchor="middle" font-family="Arial,sans-serif" font-size="78" font-weight="800" fill="white">${label}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 export function sanitizeAvatarDataUrl(input: any, maxChars = MAX_AVATAR_DATA_URL_CHARS): string | null {
   try {
     const s = String(input || "").trim();

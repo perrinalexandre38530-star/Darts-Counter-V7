@@ -1,4 +1,5 @@
 import { loadStoragePrefs } from "../storagePlans";
+import { saveJsonValueToDevice, tryShareJsonValueNative } from "../nativeJsonFileTransfer";
 
 /**
  * src/lib/backup/fileExport.ts
@@ -81,6 +82,10 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
+export async function saveJsonToDevice(data: unknown, filename: string) {
+  return saveJsonValueToDevice(data, filename);
+}
+
 export function downloadJsonFile(data: unknown, filename: string) {
   const json = safeJsonStringify(data, false);
   const blob = new Blob([json], { type: "application/json" });
@@ -95,6 +100,15 @@ export async function shareOrDownload(
   // Stringify once (avoid doing it twice for fallback).
   const json = safeJsonStringify(data, false);
   const blob = new Blob([json], { type: "application/json" });
+
+  // Android natif : partage un vrai fichier. Si la méthode n'existe pas (ancienne APK),
+  // on conserve intégralement le comportement historique ci-dessous.
+  try {
+    const nativeResult = await tryShareJsonValueNative(data, filename, title);
+    if (nativeResult) return nativeResult;
+  } catch {
+    // fallback historique ci-dessous
+  }
 
   // Si l'utilisateur a choisi "fichier local / carte SD", on tente d'abord
   // le sélecteur natif quand il est disponible. Sinon, on continue vers share/download.

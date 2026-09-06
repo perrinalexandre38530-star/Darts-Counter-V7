@@ -148,6 +148,62 @@ export type SharedMatchItem = {
   targetUser?: OnlineFriendUser & { email?: string | null };
 };
 
+const PUBLIC_SHARED_MATCH_META_TYPE = "mss-shared-match-v1";
+const PUBLIC_SHARED_MATCH_STATUS_KEY = "mss-public-shared-match-status-v1";
+
+type PublicSharedMatchStatusMap = Record<string, { status: string; updatedAt: string }>;
+
+function readPublicSharedMatchStatuses(): PublicSharedMatchStatusMap {
+  try {
+    const raw = localStorage.getItem(PUBLIC_SHARED_MATCH_STATUS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function setPublicSharedMatchStatus(id: string, status: "accepted" | "refused" | "imported") {
+  try {
+    const all = readPublicSharedMatchStatuses();
+    all[String(id)] = { status, updatedAt: new Date().toISOString() };
+    localStorage.setItem(PUBLIC_SHARED_MATCH_STATUS_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+function publicSharedMatchFromMessage(message: any): SharedMatchItem | null {
+  const meta = message?.metadata;
+  if (!meta || meta?.type !== PUBLIC_SHARED_MATCH_META_TYPE) return null;
+  const shared = meta?.sharedMatch;
+  if (!shared || typeof shared !== "object" || !shared.payload) return null;
+
+  const id = String(message?.id || "").trim();
+  if (!id) return null;
+  const direction = message?.direction === "outgoing" ? "outgoing" : "incoming";
+  const localStatus = readPublicSharedMatchStatuses()[id]?.status;
+  const status = direction === "incoming" ? (localStatus || "pending") : "pending";
+  const statusAt = readPublicSharedMatchStatuses()[id]?.updatedAt;
+
+  return {
+    id,
+    type: "match",
+    title: shared.title || shared.payload?.summary?.title || "Partie partagée",
+    sport: shared.sport || shared.payload?.kind || "darts",
+    matchId: shared.matchId || shared.payload?.matchId || "",
+    status,
+    message: shared.message || message?.text || "",
+    payload: shared.payload,
+    createdAt: message?.createdAt,
+    readAt: message?.readAt || null,
+    acceptedAt: status === "accepted" ? statusAt : null,
+    refusedAt: status === "refused" ? statusAt : null,
+    importedAt: status === "imported" ? statusAt : null,
+    direction,
+    ownerUser: message?.fromUser || null,
+    targetUser: message?.toUser || null,
+  };
+}
+
 export async function shareMatchToFriend(input: {
   targetUserId: string;
   title?: string;
@@ -156,41 +212,72 @@ export async function shareMatchToFriend(input: {
   message?: string;
   payload: any;
 }) {
-  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Le partage de partie");
+  if (publicBackendActive()) {
+    const note = String(input.message || "").trim();
+    return cloudSendPrivateMessage(
+      input.targetUserId,
+      note || `Partie partagée : ${input.title || input.sport || "MULTISPORTS SCORING"}`,
+      {
+        type: PUBLIC_SHARED_MATCH_META_TYPE,
+        version: 1,
+        sharedMatch: {
+          title: input.title || null,
+          sport: input.sport || null,
+          matchId: input.matchId || null,
+          message: note || null,
+          payload: input.payload,
+        },
+      },
+    );
+  }
   const res = await apiPost("/online/share-match", input);
   return res?.item ?? res;
 }
 
 export async function listSharedMatches(): Promise<SharedMatchItem[]> {
-  if (publicBackendActive()) return [];
+  if (publicBackendActive()) {
+    const messages = await cloudListPrivateMessages();
+    return (Array.isArray(messages) ? messages : [])
+      .map(publicSharedMatchFromMessage)
+      .filter(Boolean) as SharedMatchItem[];
+  }
   const res = await apiGet("/online/shared-matches");
   return Array.isArray(res?.items) ? res.items : [];
 }
 
 export async function countPendingSharedMatches(): Promise<number> {
-  if (publicBackendActive()) return 0;
+  if (publicBackendActive()) {
+    const items = await listSharedMatches();
+    return items.filter((item) => item.direction !== "outgoing" && String(item.status || "pending") === "pending").length;
+  }
   const res = await apiGet("/online/shared-matches/count");
   return Number(res?.pending || 0);
 }
 
 export async function markSharedMatchRead(id: string) {
-  if (publicBackendActive()) return null;
+  if (publicBackendActive()) return cloudMarkPrivateMessageRead(id);
   const res = await apiPut(`/online/shared-matches/${qs(id)}/read`, {});
   return res?.item ?? res;
 }
 
+async function setPublicSharedMatchState(id: string, status: "accepted" | "refused" | "imported") {
+  setPublicSharedMatchStatus(id, status);
+  try { await cloudMarkPrivateMessageRead(id); } catch {}
+  return { id, status };
+}
+
 export async function acceptSharedMatch(id: string) {
-  if (publicBackendActive()) return legacyPublicFeatureUnavailable("L'acceptation de partie partagée");
+  if (publicBackendActive()) return setPublicSharedMatchState(id, "accepted");
   return apiPost(`/online/shared-matches/${qs(id)}/accept`, {});
 }
 
 export async function importSharedMatch(id: string) {
-  if (publicBackendActive()) return legacyPublicFeatureUnavailable("L'import de partie partagée");
+  if (publicBackendActive()) return setPublicSharedMatchState(id, "imported");
   return apiPost(`/online/shared-matches/${qs(id)}/import`, {});
 }
 
 export async function refuseSharedMatch(id: string) {
-  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Le refus de partie partagée");
+  if (publicBackendActive()) return setPublicSharedMatchState(id, "refused");
   const res = await apiPost(`/online/shared-matches/${qs(id)}/refuse`, {});
   return res?.item ?? res;
 }

@@ -7,6 +7,8 @@
 // - Fallback: clipboard + download
 // ============================================
 
+import { tryShareJsonValueNative } from "./nativeJsonFileTransfer";
+
 export type MatchSharePacketV1 = {
   version: 1;
   app: "multisports-scoring";
@@ -166,6 +168,21 @@ function downloadBlob(content: string, filename: string, mime: string) {
 export async function shareMatchPacket(packet: MatchSharePacketV1) {
   const json = safeJsonStringify(packet);
   const fileName = `match_${packet.kind}_${packet.matchId}.json`;
+
+  // Android natif : partage le vrai fichier. Sur web/ancienne APK, on conserve
+  // tous les fallbacks historiques (Web Share texte/fichier, presse-papiers, download).
+  try {
+    const nativeResult = await tryShareJsonValueNative(
+      packet,
+      fileName,
+      packet.summary.title || "Partie MULTISPORTS SCORING",
+      (packet.summary.scoreLine || "").trim(),
+    );
+    if (nativeResult) return nativeResult;
+  } catch {
+    // fallback historique ci-dessous
+  }
+
   const nav: any = navigator as any;
   const file = typeof File !== "undefined" ? new File([json], fileName, { type: "application/json" }) : null;
   const canShareFiles = !!file && !!nav?.share && (typeof nav?.canShare !== "function" || !!nav.canShare({ files: [file] }));

@@ -6,6 +6,7 @@
 // ============================================================
 
 import type { HistoryDumpV1 } from "./historyCloud";
+import { trySaveJsonValueNativeToDownloads } from "./nativeJsonFileTransfer";
 
 export const HISTORY_BACKUP_FORMAT = "multisports-scoring-history-backup" as const;
 export const HISTORY_BACKUP_VERSION = 1 as const;
@@ -88,13 +89,22 @@ function downloadJson(content: string, filename: string): void {
 
 export async function saveFullHistoryBackupFile(backup: FullHistoryBackupV1): Promise<{
   ok: boolean;
-  method?: "share-file" | "download";
+  method?: "share-file" | "download" | "android-downloads" | "android-file-picker";
   cancelled?: boolean;
   error?: any;
 }> {
   const json = stringifyBackup(backup);
   const filename = buildHistoryBackupFilename(new Date(backup.exportedAt));
   const nav: any = typeof navigator !== "undefined" ? navigator : null;
+
+  // Android récent : écrit directement le vrai fichier dans Téléchargements.
+  // Sur web ou ancienne APK, null => on reprend exactement le partage/téléchargement historique.
+  try {
+    const nativeSaved = await trySaveJsonValueNativeToDownloads(backup, filename);
+    if (nativeSaved) return nativeSaved;
+  } catch {
+    // fallback historique ci-dessous
+  }
 
   try {
     const file = typeof File !== "undefined" ? new File([json], filename, { type: "application/json" }) : null;

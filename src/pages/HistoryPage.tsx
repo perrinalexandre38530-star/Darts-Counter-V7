@@ -33,6 +33,8 @@ import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } 
 import { applyBabyFootImportRules, isBabyFootShareLike } from "../lib/babyfootImportRules";
 import { listInboxCloud, sendMatchToFriendUserId, setInboxStatusCloud, type InboxRowCloud } from "../lib/matchInboxCloud";
 import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
+import { makeAvatarPlaceholderDataUrl } from "../lib/avatarSafe";
+import { saveJsonValueToDevice } from "../lib/nativeJsonFileTransfer";
 import logoDarts from "../assets/games/logo-darts.webp";
 import logoPingPong from "../assets/games/logo-pingpong.webp";
 import logoPetanque from "../assets/games/logo-petanque.webp";
@@ -3399,6 +3401,7 @@ export default function HistoryPage({
   const [inboxLoading, setInboxLoading] = useState(false);
   const [friendShareEntry, setFriendShareEntry] = useState<SavedEntry | null>(null);
   const [friendShareFriends, setFriendShareFriends] = useState<OnlineFriendUser[]>([]);
+  const [friendShareParticipantIds, setFriendShareParticipantIds] = useState<string[]>([]);
   const [friendShareLoading, setFriendShareLoading] = useState(false);
   const [friendShareSending, setFriendShareSending] = useState<string | null>(null);
   const [friendShareMessage, setFriendShareMessage] = useState("");
@@ -3758,7 +3761,11 @@ export default function HistoryPage({
       const saved = await saveFullHistoryBackupFile(backup);
       if (!saved.ok) throw saved.error || new Error("création du fichier impossible");
       if (!saved.cancelled) {
-        window.alert(`Export terminé ✅\n${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.`);
+        const locationLine = saved.method === "android-downloads"
+          ? "\nFichier : Téléchargements/MULTISPORTS SCORING"
+          : "";
+        window.alert(`Export terminé ✅
+${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLine}`);
       }
     } catch (e: any) {
       console.error("[HistoryPage] export historique complet impossible", e);
@@ -4011,6 +4018,24 @@ export default function HistoryPage({
     }
   }
 
+
+  async function handleExportMatchFile(entry: SavedEntry) {
+    try {
+      const hydrated = await hydrateSavedEntry(entry);
+      const packet = buildMatchSharePacket(hydrated);
+      const safeKind = String(packet.kind || "match").replace(/[^a-z0-9_-]+/gi, "_");
+      const safeId = String(packet.matchId || (hydrated as any)?.id || Date.now()).replace(/[^a-z0-9_-]+/gi, "_");
+      const saved = await saveJsonValueToDevice(packet, `MULTISPORTS_SCORING_${safeKind}_${safeId}.json`);
+      if (!saved.cancelled) {
+        const where = saved.method === "android-downloads" ? "\nTéléchargements/MULTISPORTS SCORING" : "";
+        window.alert(`Fichier de partie créé ✅${where}`);
+      }
+    } catch (error: any) {
+      console.error("[HistoryPage] export unitaire impossible", error);
+      window.alert(`Export de la partie impossible : ${String(error?.message || error || "erreur inconnue")}`);
+    }
+  }
+
   function enrichPacketWithProfileFriendLinks(entry: SavedEntry, packet: MatchSharePacketV1) {
     const profiles = Array.isArray((storeRef.current as any)?.profiles) ? (storeRef.current as any).profiles : [];
     const byProfileId = new Map<string, any>();
@@ -4064,16 +4089,64 @@ export default function HistoryPage({
     } as MatchSharePacketV1;
   }
 
+  function friendMatchKey(value: any): string {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
   async function openFriendShare(entry: SavedEntry) {
     setFriendShareEntry(entry);
     setFriendShareMessage("");
+    setFriendShareParticipantIds([]);
     setFriendShareLoading(true);
     try {
-      const friends = await listFriends();
-      setFriendShareFriends(Array.isArray(friends) ? friends : []);
+      const packet = enrichPacketWithProfileFriendLinks(entry, buildMatchSharePacket(entry));
+      const linkedIds = new Set<string>();
+      const playerNames = new Set<string>();
+      for (const player of Array.isArray((packet as any)?.summary?.players) ? (packet as any).summary.players : []) {
+        const linkedId = String((player as any)?.linkedUserId || "").trim();
+        if (linkedId) linkedIds.add(linkedId);
+        const key = friendMatchKey((player as any)?.name);
+        if (key) playerNames.add(key);
+      }
+      const metaLinks = (packet as any)?.payload?.__shareMeta?.profileFriendLinks;
+      for (const link of Array.isArray(metaLinks) ? metaLinks : []) {
+        const linkedId = String((link as any)?.linkedUserId || "").trim();
+        if (linkedId) linkedIds.add(linkedId);
+      }
+
+      const friendsRaw = await listFriends();
+      const friends = Array.isArray(friendsRaw) ? friendsRaw : [];
+      const participantIds = new Set<string>();
+      for (const friend of friends as any[]) {
+        const id = String(friend?.userId || friend?.id || "").trim();
+        if (!id) continue;
+        const nameKey = friendMatchKey(friend?.displayName || friend?.nickname || friend?.name);
+        if (linkedIds.has(id) || (nameKey && playerNames.has(nameKey))) participantIds.add(id);
+      }
+
+      const sorted = [...friends].sort((a: any, b: any) => {
+        const aId = String(a?.userId || a?.id || "");
+        const bId = String(b?.userId || b?.id || "");
+        const aPlayed = participantIds.has(aId) ? 1 : 0;
+        const bPlayed = participantIds.has(bId) ? 1 : 0;
+        if (aPlayed !== bPlayed) return bPlayed - aPlayed;
+        const aOnline = a?.status === "online" ? 1 : 0;
+        const bOnline = b?.status === "online" ? 1 : 0;
+        if (aOnline !== bOnline) return bOnline - aOnline;
+        return String(a?.displayName || a?.nickname || "").localeCompare(String(b?.displayName || b?.nickname || ""));
+      });
+      setFriendShareParticipantIds([...participantIds]);
+      setFriendShareFriends(sorted);
     } catch (error: any) {
       setFriendShareFriends([]);
-      window.alert("Impossible de charger la liste d'amis NAS : " + (error?.message || error));
+      setFriendShareParticipantIds([]);
+      window.alert("Impossible de charger la liste d'amis : " + (error?.message || error));
     } finally {
       setFriendShareLoading(false);
     }
@@ -4092,7 +4165,7 @@ export default function HistoryPage({
         setFriendShareMessage("");
         window.alert("Partie envoyée ✅ (en attente d'acceptation côté ami)");
       } else {
-        window.alert("Erreur envoi : " + ((res as any)?.message || (res as any)?.error || "NAS"));
+        window.alert("Erreur envoi : " + ((res as any)?.message || (res as any)?.error || "service de partage"));
       }
     } catch (error: any) {
       window.alert("Erreur envoi : " + (error?.message || String(error)));
@@ -5089,16 +5162,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       const url = getAvatarUrl(store, p);
                       return (
                         <div key={i} style={{ ...S.avWrap, marginLeft: i === 0 ? 0 : -8 }}>
-                          {url ? (
-                            <img src={url} style={S.avImg} />
-                          ) : (
-                            <ProfileAvatar
-                              profile={{ ...(p || {}), id: getId(p), name: nm }}
-                              size={42}
-                              showStars={false}
-                              noFrame
-                            />
-                          )}
+                          <ProfileAvatar
+                            profile={{ ...(p || {}), id: getId(p), name: nm, avatarDataUrl: url || (p as any)?.avatarDataUrl || makeAvatarPlaceholderDataUrl(nm, getId(p)) }}
+                            size={42}
+                            showStars={false}
+                            noFrame
+                          />
                         </div>
                       );
                     })}
@@ -5135,8 +5204,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       </div>
                     )}
 
-                    <div style={S.iconBtn} onClick={() => handleShare(e)} title="Partager (fichier .json / feuille Android)">
+                    <div style={S.iconBtn} onClick={() => handleShare(e)} title="Partager le vrai fichier de partie">
                       <Icon.Share />
+                    </div>
+
+                    <div style={S.iconBtn} onClick={() => handleExportMatchFile(e)} title="Enregistrer le fichier dans Téléchargements">
+                      <Icon.Export />
                     </div>
 
                     <div style={S.iconBtn} onClick={() => handleSendToFriend(e)} title="Envoyer directement à un ami">
@@ -5212,7 +5285,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
               <div>
                 <div style={{ color: theme.primary, fontWeight: 950, letterSpacing: 0.4 }}>Envoyer à un ami</div>
-                <div style={{ fontSize: 12, opacity: 0.72 }}>Partage interne NAS avec acceptation côté ami.</div>
+                <div style={{ fontSize: 12, opacity: 0.72 }}>Partage direct avec acceptation côté ami.</div>
               </div>
               <button
                 type="button"
@@ -5249,7 +5322,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
               <div style={{ opacity: 0.75, padding: 12, textAlign: "center" }}>Chargement des amis…</div>
             ) : friendShareFriends.length === 0 ? (
               <div style={{ opacity: 0.75, padding: 12, textAlign: "center" }}>
-                Aucun ami NAS disponible. Ajoute d'abord un ami dans ONLINE / AMIS.
+                Aucun ami disponible. Ajoute d'abord un ami dans ONLINE / AMIS.
               </div>
             ) : (
               <div style={{ display: "grid", gap: 8 }}>
@@ -5258,6 +5331,8 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                   const name = f?.displayName || f?.nickname || f?.name || "Ami";
                   const avatar = f?.avatarUrl || null;
                   const sending = friendShareSending === id;
+                  const playedThisMatch = friendShareParticipantIds.includes(id);
+                  const avatarFallback = makeAvatarPlaceholderDataUrl(name, id);
                   return (
                     <button
                       key={id}
@@ -5279,13 +5354,20 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       }}
                     >
                       <div style={{ width: 38, height: 38, borderRadius: "50%", overflow: "hidden", border: `1px solid ${theme.primary}66`, display: "grid", placeItems: "center", flex: "0 0 auto" }}>
-                        {avatar ? <img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: theme.primary, fontWeight: 900 }}>{String(name).slice(0,2).toUpperCase()}</span>}
+                        <img
+                          src={avatar || avatarFallback}
+                          alt={name}
+                          onError={(event) => { event.currentTarget.src = avatarFallback; }}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
                       </div>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontWeight: 900, color: theme.primary }}>{name}</div>
-                        <div style={{ fontSize: 11, opacity: 0.7 }}>{f?.status === "online" ? "En ligne" : "Ami NAS"}</div>
+                        <div style={{ fontSize: 11, opacity: playedThisMatch ? 0.95 : 0.7, color: playedThisMatch ? theme.primary : undefined, fontWeight: playedThisMatch ? 850 : 500 }}>
+                          {playedThisMatch ? "A joué cette partie · raccourci" : (f?.status === "online" ? "En ligne" : "Ami")}
+                        </div>
                       </div>
-                      <span style={{ fontWeight: 900 }}>{sending ? "Envoi…" : "Envoyer"}</span>
+                      <span style={{ fontWeight: 900 }}>{sending ? "Envoi…" : (playedThisMatch ? "Partager" : "Envoyer")}</span>
                     </button>
                   );
                 })}

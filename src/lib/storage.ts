@@ -11,7 +11,7 @@ import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { isSensitiveAuthStorageKey } from "./authSessionGuard";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
-import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
+import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS, makeAvatarPlaceholderDataUrl } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
@@ -1732,7 +1732,9 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; c
 
       const avatarUrl = typeof p.avatarUrl === "string" ? p.avatarUrl.trim() : "";
       const avatarPath = typeof p.avatarPath === "string" ? p.avatarPath.trim() : "";
+      const rawAvatarDataUrl = typeof p.avatarDataUrl === "string" ? p.avatarDataUrl.trim() : "";
       const avatarDataUrl = sanitizeAvatarFieldSync(p.avatarDataUrl);
+      const rawAvatarDataIsUsableUrl = /^(?:https?:|blob:)/i.test(rawAvatarDataUrl);
 
       // ✅ legacy champs rencontrés dans d'anciennes versions
       const legacyAvatar =
@@ -1743,7 +1745,10 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; c
       if (!avatarDataUrl) {
         if (typeof p?.avatarDataUrl === "string" && p.avatarDataUrl.length > MAX_AVATAR_DATA_URL_CHARS) {
           changed = true;
-          return { ...p, avatarDataUrl: undefined };
+          return { ...p, avatarDataUrl: makeAvatarPlaceholderDataUrl(p?.name, p?.id), avatarGeneratedFallback: true };
+        }
+        if (rawAvatarDataIsUsableUrl) {
+          return p;
         }
         if (avatarUrl) {
           changed = true;
@@ -1771,6 +1776,14 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; c
           changed = true;
           return { ...p, avatarDataUrl: avatarPath };
         }
+
+        // Aucun média utilisable : médaillon local déterministe au lieu d'une image cassée.
+        changed = true;
+        return {
+          ...p,
+          avatarDataUrl: makeAvatarPlaceholderDataUrl(p?.name, p?.id),
+          avatarGeneratedFallback: true,
+        };
       }
 
       return p;

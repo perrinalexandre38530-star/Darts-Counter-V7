@@ -5,6 +5,7 @@
 // ============================================
 
 import React from "react";
+import { makeAvatarPlaceholderDataUrl } from "../lib/avatarSafe";
 
 type Props = {
   leftAvatarUrl: string;
@@ -23,6 +24,8 @@ export const DuelHeaderCompact: React.FC<Props> = ({
   leftLegs,
   rightLegs,
 }) => {
+  const leftFallback = makeAvatarPlaceholderDataUrl("Joueur 1", "duel-left");
+  const rightFallback = makeAvatarPlaceholderDataUrl("Joueur 2", "duel-right");
   // Style “triple” pour les petits ronds de sets
   const setPillStyle: React.CSSProperties = {
     minWidth: 16,
@@ -82,8 +85,9 @@ export const DuelHeaderCompact: React.FC<Props> = ({
         }}
       >
         <img
-          src={leftAvatarUrl}
+          src={leftAvatarUrl || leftFallback}
           alt=""
+          onError={(event) => { event.currentTarget.src = leftFallback; }}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       </div>
@@ -167,8 +171,9 @@ export const DuelHeaderCompact: React.FC<Props> = ({
         }}
       >
         <img
-          src={rightAvatarUrl}
+          src={rightAvatarUrl || rightFallback}
           alt=""
+          onError={(event) => { event.currentTarget.src = rightFallback; }}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       </div>

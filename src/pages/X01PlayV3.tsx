@@ -55,6 +55,7 @@ import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
 import { normalizeBotCountryCode, resolveProBotCountryCode } from "../lib/botCountries";
 import { getProBotDartsBrandLogo } from "../lib/botDartsBrands";
 import { getDartSetById } from "../lib/dartSetsStore";
+import { makeAvatarPlaceholderDataUrl } from "../lib/avatarSafe";
 import OnlineCameraPanel, { type OnlineCameraSignal } from "../online/client/OnlineCameraPanel";
 import type { OnlineCameraPlayerState } from "../online/client/useOnlineCamera";
 
@@ -5455,7 +5456,8 @@ if (isLandscapeTablet) {
         >
           <BackDot onClick={handleQuit} size={40} />
 
-          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+          <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
+            {!useSetsUi ? <X01HeaderTicker compact /> : null}
             {useSetsUi && (
               <div
                 style={{
@@ -5509,14 +5511,18 @@ if (isLandscapeTablet) {
             )}
           </div>
 
-          <SetLegChip
-            currentSet={(state as any).currentSet ?? 1}
-            currentLegInSet={(state as any).currentLeg ?? 1}
-            setsTarget={setsTarget}
-            legsTarget={legsTarget}
-            useSets={useSetsUi}
-            unit={matchFormatUnitForUi as any}
-          />
+          {useSetsUi ? (
+            <SetLegChip
+              currentSet={(state as any).currentSet ?? 1}
+              currentLegInSet={(state as any).currentLeg ?? 1}
+              setsTarget={setsTarget}
+              legsTarget={legsTarget}
+              useSets={useSetsUi}
+              unit={matchFormatUnitForUi as any}
+            />
+          ) : (
+            <span aria-hidden style={{ width: 40, flex: "0 0 40px" }} />
+          )}
         </div>
       </div>
 
@@ -5862,7 +5868,7 @@ if (isLandscapeTablet) {
         title=""
         onBack={handleQuit}
         showInfo={false}
-        topRightExtra={isTabletUi ? (
+        topRightExtra={isTabletUi && useSetsUi ? (
           <SetLegChip
                 currentSet={(state as any).currentSet ?? 1}
                 currentLegInSet={(state as any).currentLeg ?? 1}
@@ -5883,7 +5889,8 @@ if (isLandscapeTablet) {
                 gap: 10,
               }}
             >
-              <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+              <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
+                {!useSetsUi ? <X01HeaderTicker /> : null}
                 {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
                   (teamsView as any[]).length === 2 ? (
                     <DuelHeaderCompact
@@ -5916,14 +5923,16 @@ if (isLandscapeTablet) {
                 )}
               </div>
 
-              <SetLegChip
-                currentSet={(state as any).currentSet ?? 1}
-                currentLegInSet={(state as any).currentLeg ?? 1}
-                setsTarget={setsTarget}
-                legsTarget={legsTarget}
-                useSets={useSetsUi}
-                unit={matchFormatUnitForUi as any}
-              />
+              {useSetsUi ? (
+                <SetLegChip
+                  currentSet={(state as any).currentSet ?? 1}
+                  currentLegInSet={(state as any).currentLeg ?? 1}
+                  setsTarget={setsTarget}
+                  legsTarget={legsTarget}
+                  useSets={useSetsUi}
+                  unit={matchFormatUnitForUi as any}
+                />
+              ) : null}
             </div>
           </div>
         
@@ -5932,7 +5941,8 @@ if (isLandscapeTablet) {
           <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
             {isTabletUi ? (
               <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
-                <div style={{ display: "flex", justifyContent: "center" }}>
+                <div style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
+                {!useSetsUi ? <X01HeaderTicker /> : null}
                 {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
                   (teamsView as any[]).length === 2 ? (
                     <DuelHeaderCompact
@@ -6447,6 +6457,8 @@ function HeaderBlock(props: HeaderBlockProps) {
   } = props;
 
   const isVisitScoreMode = configuredScoreInputMethod === "visit_score";
+  const avatarFallback = makeAvatarPlaceholderDataUrl(currentPlayer?.name, currentPlayer?.id);
+  const displayAvatar = currentAvatar || avatarFallback;
 
   const legsWonThisSet =
     (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
@@ -6467,7 +6479,7 @@ function HeaderBlock(props: HeaderBlockProps) {
   // SOLO avatar en fond — sur toute la carte (fade à gauche)
   // même concept que le logo TEAM en mode TEAMS
   // =====================================================
-  const bgAvatarUrl = currentAvatar || null;
+  const bgAvatarUrl = displayAvatar;
 
   return (
     <div
@@ -6497,6 +6509,7 @@ function HeaderBlock(props: HeaderBlockProps) {
       {bgAvatarUrl && (
         <img
         src={bgAvatarUrl}
+              onError={(event) => { const img = event.currentTarget; if (img.src !== avatarFallback) img.src = avatarFallback; }}
               aria-hidden
               style={{
                 position: "absolute",
@@ -6524,13 +6537,28 @@ function HeaderBlock(props: HeaderBlockProps) {
 
 
       <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: 10,
+          bottom: 10,
+          width: 1,
+          transform: "translateX(-0.5px)",
+          background: "linear-gradient(180deg, transparent, rgba(255,255,255,.18) 24%, rgba(255,195,26,.26) 50%, rgba(255,255,255,.18) 76%, transparent)",
+          pointerEvents: "none",
+          zIndex: 2,
+        }}
+      />
+
+      <div
         style={{
           display: "grid",
-          gridTemplateColumns: "auto 1fr",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
           gap: 8,
           alignItems: "center",
           position: "relative",
-          zIndex: 2,
+          zIndex: 3,
           maxWidth: "100%",
           minWidth: 0,
           overflow: "hidden",
@@ -6544,12 +6572,15 @@ function HeaderBlock(props: HeaderBlockProps) {
             flexDirection: "column",
             alignItems: "center",
             gap: 5,
+            width: "100%",
+            minWidth: 0,
+            overflow: "hidden",
           }}
         >
           <div
             style={{
-              width: 96,
-              height: 96,
+              width: "min(96px, 72%)",
+              aspectRatio: "1 / 1",
               borderRadius: "50%",
               overflow: "visible",
               background:
@@ -6558,31 +6589,17 @@ function HeaderBlock(props: HeaderBlockProps) {
               position: "relative",
             }}
           >
-            {currentAvatar ? (
-              <img
-                src={currentAvatar}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  borderRadius: "50%",
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  color: "#999",
-                  fontWeight: 700,
-                }}
-              >
-                ?
-              </div>
-            )}
+            <img
+              src={displayAvatar}
+              alt={currentPlayer?.name || "Joueur"}
+              onError={(event) => { const img = event.currentTarget; if (img.src !== avatarFallback) img.src = avatarFallback; }}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: "50%",
+              }}
+            />
             {dartSetThumbSrc ? (
               <span
                 aria-label={dartSetIsBrand ? "Marque de fléchettes du bot professionnel" : "Set de fléchettes du joueur"}
@@ -6683,8 +6700,12 @@ function HeaderBlock(props: HeaderBlockProps) {
           <div
             style={{
               fontWeight: 900,
-              fontSize: 17,
+              fontSize: "clamp(12px, 4.2vw, 17px)",
               color: "#ffcf57",
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
             {currentPlayer?.name ?? "—"}
@@ -6692,8 +6713,12 @@ function HeaderBlock(props: HeaderBlockProps) {
           {!onlineCameraActive ? (
           <div
             style={{
-              fontSize: 11.5,
+              fontSize: "clamp(9px, 3vw, 11.5px)",
               color: "#d9dbe3",
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
             {liveRanking?.length ? (
@@ -6708,7 +6733,9 @@ function HeaderBlock(props: HeaderBlockProps) {
           <div
             style={{
               ...miniCard,
-              width: 176,
+              width: "100%",
+              maxWidth: 176,
+              boxSizing: "border-box",
               minHeight: onlineCameraActive ? 92 : undefined,
               height: "auto",
               padding: onlineCameraActive ? 8 : 7,
@@ -6828,7 +6855,7 @@ function HeaderBlock(props: HeaderBlockProps) {
           {!onlineCameraActive ? (
           <div
             style={{
-              fontSize: 64,
+              fontSize: "clamp(40px, 15.5vw, 64px)",
               fontWeight: 900,
               position: "relative",
               zIndex: 2,
@@ -6878,15 +6905,18 @@ function HeaderBlock(props: HeaderBlockProps) {
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    minWidth: 40,
+                    flex: "1 1 0",
+                    minWidth: 0,
+                    maxWidth: 54,
                     height: 28,
-                    padding: "0 10px",
+                    padding: "0 4px",
                     borderRadius: 10,
                     border: voiceBlink ? "1px solid rgba(255,255,255,.96)" : (st.border as string),
                     background: voiceBlink ? "rgba(255,255,255,.20)" : (st.background as string),
                     color: voiceBlink ? "#fff" : (st.color as string),
                     fontWeight: 800,
-                    fontSize: 13,
+                    fontSize: "clamp(10px, 3.2vw, 13px)",
+                    overflow: "hidden",
                     boxShadow: voiceBlink ? "0 0 22px rgba(255,255,255,.58)" : undefined,
                     animation: voiceBlink ? "dcVoiceBlink .85s ease-in-out infinite" : undefined,
                   }}
@@ -6915,12 +6945,14 @@ function HeaderBlock(props: HeaderBlockProps) {
                   display: "inline-flex",
                   padding: 5,
                   borderRadius: 12,
+                  width: "100%",
+                  minWidth: 0,
                   maxWidth: "100%",
                   overflow: "hidden",
+                  boxSizing: "border-box",
                   border: "1px solid rgba(255,255,255,.08)",
                   background:
                     "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
-                  minWidth: 170,
                   gap: 6,
                   alignItems: "center",
                   justifyContent: "center",
@@ -6934,8 +6966,10 @@ function HeaderBlock(props: HeaderBlockProps) {
                     background: "rgba(255,187,51,.12)",
                     color: "#ffc63a",
                     fontWeight: 900,
-                    whiteSpace: "nowrap",
-                    fontSize: 13,
+                    whiteSpace: "normal",
+                    overflowWrap: "anywhere",
+                    lineHeight: 1.15,
+                    fontSize: "clamp(10px, 3.1vw, 13px)",
                   }}
                 >
                   {checkoutText}
@@ -6949,7 +6983,9 @@ function HeaderBlock(props: HeaderBlockProps) {
             style={{
               ...miniCard,
               alignSelf: "center",
-              width: "min(310px,100%)",
+              width: "100%",
+              maxWidth: 310,
+              boxSizing: "border-box",
               height: onlineCameraActive ? 72 : "auto",
               padding: 6,
               flex: onlineCameraActive ? "0 0 72px" : undefined,
@@ -7134,13 +7170,32 @@ function TeamHeaderBlock(props: {
       />
 
       <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: 10,
+          bottom: 10,
+          width: 1,
+          transform: "translateX(-0.5px)",
+          background: "linear-gradient(180deg, transparent, rgba(255,255,255,.18) 24%, rgba(255,195,26,.26) 50%, rgba(255,255,255,.18) 76%, transparent)",
+          pointerEvents: "none",
+          zIndex: 2,
+        }}
+      />
+
+      <div
         style={{
           display: "grid",
-          gridTemplateColumns: "auto 1fr",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
           gap: 8,
           alignItems: "center",
           position: "relative",
-          zIndex: 2,
+          zIndex: 3,
+          maxWidth: "100%",
+          minWidth: 0,
+          overflow: "hidden",
+          boxSizing: "border-box",
         }}
       >
         {/* TEAM MEDALLIONS + STATS */}
@@ -7150,14 +7205,18 @@ function TeamHeaderBlock(props: {
             flexDirection: "column",
             alignItems: "center",
             gap: 5,
+            width: "100%",
+            minWidth: 0,
+            overflow: "hidden",
           }}
         >
           {/* Medaillons superposés */}
-          <div style={{ position: "relative", width: 112, height: 96 }}>
+          <div style={{ position: "relative", width: "min(112px, 100%)", height: 96, maxWidth: "100%" }}>
             {teamPlayers.slice(0, 4).map((p, i) => {
               const isActive = p.id === activePlayerId;
-              const size = isActive ? 86 : 76;
-              const left = 8 + i * 14;
+              const dense = teamPlayers.length >= 3;
+              const size = dense ? (isActive ? 74 : 66) : (isActive ? 86 : 76);
+              const left = dense ? 2 + i * 10 : 8 + i * 14;
               const top = isActive ? 4 : 10;
               const z = isActive ? 50 : 10 + i;
 
@@ -7181,26 +7240,12 @@ function TeamHeaderBlock(props: {
                     border: "1px solid rgba(255,255,255,.10)",
                   }}
                 >
-                  {p.avatar ? (
-                    <img
-                      src={p.avatar}
-                      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", overflow: "hidden" }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        color: "#999",
-                        fontWeight: 700,
-                      }}
-                    >
-                      ?
-                    </div>
-                  )}
+                  <img
+                    src={p.avatar || makeAvatarPlaceholderDataUrl(p.name, p.id)}
+                    alt={p.name || "Joueur"}
+                    onError={(event) => { event.currentTarget.src = makeAvatarPlaceholderDataUrl(p.name, p.id); }}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", overflow: "hidden" }}
+                  />
                   {isActive && p.dartSetThumb ? (
                     <span
                       aria-label={(p as any).dartSetIsBrand ? "Marque de fléchettes du bot professionnel" : "Set de fléchettes du joueur"}
@@ -7257,7 +7302,7 @@ function TeamHeaderBlock(props: {
           <div
             style={{
               fontWeight: 900,
-              fontSize: 17,
+              fontSize: "clamp(12px, 4.2vw, 17px)",
               color,
               textAlign: "center",
             }}
@@ -7267,7 +7312,7 @@ function TeamHeaderBlock(props: {
 
           {null}
 
-          <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
+          <div style={{ ...miniCard, width: "100%", maxWidth: 176, boxSizing: "border-box", height: "auto", padding: 7 }}>
             <div style={miniText}>
               <div>
                 {isVisitScoreMode ? "Meilleur score" : "Meilleure volée"} : <b>{bestVisit}</b>
@@ -7296,11 +7341,14 @@ function TeamHeaderBlock(props: {
             gap: 5,
             position: "relative",
             overflow: "hidden",
+            width: "100%",
+            minWidth: 0,
+            boxSizing: "border-box",
           }}
         >
           <div
             style={{
-              fontSize: 64,
+              fontSize: "clamp(40px, 15.5vw, 64px)",
               fontWeight: 900,
               color,
               textShadow: "0 4px 18px rgba(0,0,0,.35)",
@@ -7357,9 +7405,11 @@ function TeamHeaderBlock(props: {
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    minWidth: 40,
+                    flex: "1 1 0",
+                    minWidth: 0,
+                    maxWidth: 54,
                     height: 28,
-                    padding: "0 10px",
+                    padding: "0 4px",
                     borderRadius: 10,
                     border: st.border as string,
                     background: st.background as string,
@@ -7385,7 +7435,7 @@ function TeamHeaderBlock(props: {
                   border: "1px solid rgba(255,255,255,.08)",
                   background:
                     "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
-                  minWidth: 170,
+                  width: "100%", minWidth: 0, boxSizing: "border-box",
                   gap: 6,
                   alignItems: "center",
                   justifyContent: "center",
@@ -7414,7 +7464,7 @@ function TeamHeaderBlock(props: {
             style={{
               ...miniCard,
               alignSelf: "center",
-              width: "min(310px,100%)",
+              width: "100%", maxWidth: 310, boxSizing: "border-box",
               height: "auto",
               padding: 6,
             }}
@@ -7566,6 +7616,7 @@ function TeamsPlayersListInner(props: {
             {(team.players || []).map((p: any) => {
               const prof = profileById[p.id];
               const avatarSrc = prof?.avatarDataUrl ?? p?.avatarDataUrl ?? p?.avatarUrl ?? p?.photoUrl ?? p?.avatar ?? null;
+              const avatarFallback = makeAvatarPlaceholderDataUrl(prof?.name || p?.name, p?.id);
               const live = liveStatsByPlayer[p.id];
 
               const dCount: number = live?.dartsThrown ?? 0;
@@ -7603,30 +7654,16 @@ function TeamsPlayersListInner(props: {
                       background: "rgba(255,255,255,.06)",
                     }}
                   >
-                    {avatarSrc ? (
-                      <img
-                        src={avatarSrc}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontWeight: 700,
-                          color: "#999",
-                        }}
-                      >
-                        ?
-                      </div>
-                    )}
+                    <img
+                      src={avatarSrc || avatarFallback}
+                      alt={prof?.name || p?.name || "Joueur"}
+                      onError={(event) => { event.currentTarget.src = avatarFallback; }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -7775,6 +7812,7 @@ function PlayersListOnlyInner(props: {
       {players.map((p: any) => {
         const prof = profileById[p.id];
         const avatarSrc = prof?.avatarDataUrl ?? p?.avatarDataUrl ?? p?.avatarUrl ?? p?.photoUrl ?? p?.avatar ?? null;
+        const avatarFallback = makeAvatarPlaceholderDataUrl(prof?.name || p?.name, p?.id);
         const live = liveStatsByPlayer[p.id];
 
         const dCount: number = live?.dartsThrown ?? 0;
@@ -7813,30 +7851,16 @@ function PlayersListOnlyInner(props: {
                 background: "rgba(255,255,255,.06)",
               }}
             >
-              {avatarSrc ? (
-                <img
-                  src={avatarSrc}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 700,
-                    color: "#999",
-                  }}
-                >
-                  ?
-                </div>
-              )}
+              <img
+                src={avatarSrc || avatarFallback}
+                alt={prof?.name || p?.name || "Joueur"}
+                onError={(event) => { event.currentTarget.src = avatarFallback; }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
             </div>
 
             {/* Bloc central */}
@@ -7956,6 +7980,7 @@ function TeamsHeaderCompact({
     >
       {shown.map((t) => {
         const avatar = (t as any)?.players?.[0]?.avatar ?? "";
+        const compactAvatarFallback = makeAvatarPlaceholderDataUrl((t as any)?.players?.[0]?.name || t.name, String(t.id));
         const sets = teamSetsWon?.[String(t.id)] ?? 0;
         const legs = teamLegsWon?.[String(t.id)] ?? 0;
         return (
@@ -7980,13 +8005,12 @@ function TeamsHeaderCompact({
                 overflow: "hidden",
               }}
             >
-              {avatar ? (
-                <img
-                  src={avatar}
-                  alt={t.name}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              ) : null}
+              <img
+                src={avatar || compactAvatarFallback}
+                alt={t.name}
+                onError={(event) => { event.currentTarget.src = compactAvatarFallback; }}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
             </div>
 
             <div
@@ -8004,6 +8028,33 @@ function TeamsHeaderCompact({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function X01HeaderTicker({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      aria-label="X01"
+      style={{
+        width: compact ? "min(156px, 58vw)" : "min(190px, 62vw)",
+        height: compact ? 38 : 42,
+        maxWidth: "100%",
+        borderRadius: 12,
+        overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(180deg, rgba(255,195,26,.10), rgba(5,6,8,.88))",
+        border: "1px solid rgba(255,207,87,.28)",
+        boxShadow: "0 7px 20px rgba(0,0,0,.34)",
+      }}
+    >
+      <img
+        src={tickerX01}
+        alt="X01"
+        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+      />
     </div>
   );
 }
