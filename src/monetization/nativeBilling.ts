@@ -1,5 +1,6 @@
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import { getPlayBillingProductSpec, type PlayBillingProductSpec } from "./billingCatalog";
+import { getDistributionStore } from "../lib/distributionStore";
 
 export type NativeBillingStatus = {
   native: boolean;
@@ -52,6 +53,10 @@ function env(name: string): string {
  * activés APRÈS branchement de la vérification serveur Google Play.
  */
 export function areNativePurchasesEnabled(): boolean {
+  // Un binaire Galaxy Store ne doit jamais ouvrir Google Play Billing.
+  // Samsung IAP sera branché dans une étape dédiée avant d'activer les achats
+  // sur cette distribution.
+  if (getDistributionStore() === "galaxy") return false;
   return env("VITE_PLAY_BILLING_PURCHASES_ENABLED") === "1";
 }
 

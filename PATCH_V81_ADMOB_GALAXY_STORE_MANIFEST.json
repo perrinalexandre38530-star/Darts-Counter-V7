@@ -1,0 +1,47 @@
+{
+  "base": "Darts-Counter-V7(32).zip",
+  "patch": "V81_ADMOB_LIVE_GALAXY_STORE",
+  "changes": [
+    "Ajout télémétrie native AdMob impression/clic/revenu au niveau impression.",
+    "Ajout affichage diagnostic bannières LIVE dans Réglages > AdMob.",
+    "Préparation d'un build Galaxy Store dédié avec package com.multisportsscoring.app.galaxy.",
+    "Configuration AdMob Galaxy séparée pour éviter un package/AdMob incohérent.",
+    "Google Play Billing automatiquement désactivé dans le build Galaxy.",
+    "Ajout précheck et commande de génération AAB Galaxy Store."
+  ],
+  "important": [
+    "Les vraies bannières Google Play déjà présentes restent inchangées et actives.",
+    "Le build Galaxy est volontairement bloqué tant que config/admob.galaxy.public.json n'a pas reçu de vrais IDs AdMob Galaxy.",
+    "Aucun ID publicitaire n'a été inventé."
+  ],
+  "tests": {
+    "test-admob-ilrd-v81.mjs": "PASS",
+    "test-galaxy-store-v1.mjs": "PASS",
+    "test-admob-native.mjs": "PASS 21/21",
+    "test-admob-live-banners.mjs": "PASS",
+    "test-admob-release-gate-v80.mjs": "PASS",
+    "galaxy-precheck": "EXPECTED BLOCK until Galaxy AdMob IDs are created"
+  },
+  "files": [
+    "android/app/build.gradle",
+    "android/app/src/build.gradle",
+    "android/app/src/main/java/com/multisportsscoring/app/InlineAdMobPlugin.java",
+    "config/admob.galaxy.public.json",
+    "config/distribution-stores.json",
+    "docs/GALAXY-STORE-RELEASE.md",
+    "env.example",
+    "package.json",
+    "src/lib/distributionStore.ts",
+    "src/monetization/MonetizationSettingsPanel.tsx",
+    "src/monetization/adMobConfig.ts",
+    "src/monetization/inlineAdMob.ts",
+    "src/monetization/nativeBilling.ts",
+    "tools/admob-release-check.mjs",
+    "tools/build-galaxy-store-aab.mjs",
+    "tools/check-galaxy-store-readiness.mjs",
+    "tools/configure-android-admob.mjs",
+    "tools/run-android-gradle.mjs",
+    "tools/test-admob-ilrd-v81.mjs",
+    "tools/test-galaxy-store-v1.mjs"
+  ]
+}

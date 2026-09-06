@@ -86,6 +86,7 @@ export function adminHtml(): string {
   const tokenInput = $('token');
   const runButton = $('run');
   tokenInput.value = sessionStorage.getItem('scoringRadarToken') || '';
+  let authenticatedToken = '';
   const headers = () => ({ Authorization: 'Bearer ' + tokenInput.value.trim() });
   const setStatus = (text, kind='') => { status.textContent = text; status.className = 'status ' + kind; };
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
@@ -93,8 +94,27 @@ export function adminHtml(): string {
   async function request(path, init={}) {
     const response = await fetch(path, { ...init, headers: { ...headers(), ...(init.headers || {}) } });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) { const error = new Error(data.error || ('HTTP ' + response.status)); error.status = response.status; throw error; }
+    if (!response.ok) {
+      if (response.status === 401) {
+        authenticatedToken = '';
+        sessionStorage.removeItem('scoringRadarToken');
+      }
+      const error = new Error(data.error || ('HTTP ' + response.status)); error.status = response.status; throw error;
+    }
     return data;
+  }
+
+  async function ensureAuth() {
+    const token = tokenInput.value.trim();
+    if (!token) {
+      const error = new Error('Token administrateur requis.');
+      error.status = 401;
+      throw error;
+    }
+    if (authenticatedToken === token) return;
+    await request('/api/auth/check');
+    authenticatedToken = token;
+    sessionStorage.setItem('scoringRadarToken', token);
   }
 
   const STAGES = [
@@ -156,7 +176,7 @@ export function adminHtml(): string {
       const t = Number(timings[entry[0]] || 0); const time = t > 0 ? (t/1000).toFixed(1) + ' s' : (finishedStep ? 'Terminé' : label);
       return '<div class="'+cls+'"><b>'+mark+' '+esc(entry[1])+'</b>'+esc(time)+'</div>';
     }).join('');
-    const detail=[]; if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&run.details.intent)detail.push('Intent : '+run.details.intent); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
+    const detail=[]; if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&run.details.intent)detail.push('Intent : '+run.details.intent); if(run.details&&run.details.query_source)detail.push('Source requête : '+run.details.query_source); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
     $('scanDetail').textContent = detail.join(' • ') || 'Progression enregistrée côté Worker.';
     const errorBox=$('scanError'); if(run.error){errorBox.textContent='Erreur : '+run.error;errorBox.className='scanError visible';}else{errorBox.textContent='';errorBox.className='scanError';}
     updateClock();
@@ -190,6 +210,7 @@ export function adminHtml(): string {
     if(!tokenInput.value.trim()){setStatus('Token administrateur requis.','err');return;}
     if(showLoading)setStatus('Chargement…');
     try{
+      await ensureAuth();
       const minScore=Math.max(0,Math.min(100,Number($('minScore').value||70)));
       const [statsData,oppData,socialData,campaignData,assetData,runData]=await Promise.all([
         request('/api/stats'),request('/api/opportunities?minScore='+minScore+'&limit=200'),request('/api/social/stats'),request('/api/social/campaigns?limit=100'),request('/api/social/assets?approvedOnly=1'),request('/api/runs/latest')
@@ -207,12 +228,13 @@ export function adminHtml(): string {
   }
 
   $('assetForm').addEventListener('submit',async(e)=>{e.preventDefault();try{const body={url:$('assetUrl').value.trim(),title:$('assetTitle').value.trim(),mediaType:$('assetType').value,qualityScore:Number($('assetQuality').value),technicalScore:Number($('assetTechnical').value),brandScore:Number($('assetBrand').value),humanApproved:$('assetApproved').checked,platforms:['facebook_page','instagram_reel','youtube_short','tiktok']};const result=await request('/api/social/assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setStatus(result.humanApproved?'Média ajouté et approuvé.':'Média ajouté mais NON approuvé : vérifie les scores et la validation humaine.','ok');e.target.reset();$('assetQuality').value='95';$('assetTechnical').value='95';$('assetBrand').value='95';load(false);}catch(error){setStatus('Erreur ajout média : '+error.message,'err');}});
-  $('save').addEventListener('click',()=>{sessionStorage.setItem('scoringRadarToken',tokenInput.value.trim());load();});
+  $('save').addEventListener('click',()=>{authenticatedToken='';load();});
   $('refresh').addEventListener('click',()=>load()); $('minScore').addEventListener('change',()=>load(false));
   runButton.addEventListener('click',async()=>{
     if(!tokenInput.value.trim())return setStatus('Token administrateur requis.','err');
     runButton.disabled=true; setStatus('Démarrage du scan…','ok');
     try{
+      await ensureAuth();
       const result=await request('/api/run',{method:'POST'}); activeRunId=result.run_id;
       if(result.run)renderRun(result.run); else renderRun({run_id:result.run_id,status:'running',stage:'starting',started_at:result.triggered_at,updated_at:result.triggered_at,elapsed_ms:0,queries:0,brave_results:0,new_candidates:0,queued:0,analyzed:0,eligible:0,high_intent:0,social_campaigns:0,error:null,details:{}});
       setStatus(result.already_running?'Un scan était déjà actif : suivi repris.':'Scan démarré. Le bouton ne bloque plus le navigateur.','ok');

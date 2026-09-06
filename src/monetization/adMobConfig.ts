@@ -1,4 +1,5 @@
 import publicAdMobConfig from "../../config/admob.public.json";
+import galaxyAdMobConfig from "../../config/admob.galaxy.public.json";
 import type { AdPlacement } from "./types";
 
 export type AdMobMode = "google_test" | "real_test" | "production";
@@ -40,7 +41,16 @@ type PublicAdMobConfig = {
   consentDebugGeography?: string;
 };
 
-const PUBLIC_CONFIG = publicAdMobConfig as PublicAdMobConfig;
+const DISTRIBUTION_STORE = (() => {
+  try { return String((import.meta as any)?.env?.VITE_DISTRIBUTION_STORE || "play").trim().toLowerCase(); }
+  catch { return "play"; }
+})();
+
+const PUBLIC_CONFIG = (
+  DISTRIBUTION_STORE === "galaxy" || DISTRIBUTION_STORE === "samsung" || DISTRIBUTION_STORE === "galaxy_store"
+    ? galaxyAdMobConfig
+    : publicAdMobConfig
+) as PublicAdMobConfig;
 
 const GOOGLE_ANDROID_TEST_IDS = {
   appId: "ca-app-pub-3940256099942544~3347511713",

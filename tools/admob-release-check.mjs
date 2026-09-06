@@ -5,7 +5,12 @@ import path from "node:path";
 const root = process.cwd();
 const requireFullscreen = process.argv.includes("--require-fullscreen") || process.env.ADMOB_REQUIRE_FULLSCREEN === "1";
 const envPath = path.join(root, ".env");
-const publicConfigPath = path.join(root, "config", "admob.public.json");
+const distributionStore = String(process.env.MSS_DISTRIBUTION_STORE || process.env.VITE_DISTRIBUTION_STORE || "play").trim().toLowerCase();
+const publicConfigPath = path.join(
+  root,
+  "config",
+  distributionStore === "galaxy" || distributionStore === "samsung" ? "admob.galaxy.public.json" : "admob.public.json"
+);
 const stringsPath = path.join(root, "android", "app", "src", "main", "res", "values", "strings.xml");
 const appAdsPath = path.join(root, "public", "app-ads.txt");
 const GOOGLE_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";

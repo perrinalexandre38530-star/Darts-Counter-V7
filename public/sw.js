@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-09-02-maplibre-terrain-v6";
+const SW_VERSION = "dc-sw-2026-09-06-auth-network-v7";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 const MAP_TILE_CACHE = "mss-map-tiles-v1";
@@ -166,7 +166,11 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(serveMapTileRequest(event.request));
     return;
   }
-  event.respondWith(fetch(event.request).catch(async () => (await caches.match(event.request)) || new Response("", { status: 503, statusText: "Network unavailable" })));
+  // Le SW n'a aucune raison d'intercepter le shell/auth/navigation générale.
+  // L'ancien fallback fabriquait un HTTP 503 "Network unavailable" qui polluait
+  // la console (et pouvait gêner un retour OAuth) lors d'une micro-coupure.
+  // On laisse donc le navigateur gérer normalement tous les GET non spécialisés.
+  return;
 });
 
 self.addEventListener("notificationclick", (event) => {

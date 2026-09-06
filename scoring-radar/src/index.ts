@@ -178,6 +178,10 @@ async function maybeCreateSocialCampaign(
 async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: ExecutionContext): Promise<Response> {
   if (!isAdminAuthorized(request, env)) return unauthorized();
 
+  if (request.method === 'GET' && url.pathname === '/api/auth/check') {
+    return json({ ok: true });
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/runs/latest') {
     const run = await getLatestRunProgress(env);
     return json({ ok: true, run: runProgressPayload(env, run) });
@@ -477,9 +481,11 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
         details
       });
       const localizationStarted = Date.now();
-      const queryText = await localizeQuery(env, market, selectedIntent);
+      const localized = await localizeQuery(env, market, selectedIntent);
+      const queryText = localized.query;
       timings.localizing = (timings.localizing ?? 0) + (Date.now() - localizationStarted);
       details.query = queryText;
+      details.query_source = localized.source;
 
       currentStage = 'brave_search';
       await updateRunProgress(env, runId, {
@@ -531,26 +537,47 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
       });
 
       if (newCandidates.length > 0) {
+        // Record the handoff before sendBatch so a fast queue consumer cannot be overwritten by the scheduler.
+        queued += newCandidates.length;
+        await updateRunProgress(env, runId, {
+          status: 'queued',
+          stage: 'queueing',
+          elapsedMs: elapsedSince(startedMs),
+          queries,
+          braveResults: candidates,
+          newCandidates: newCandidatesTotal,
+          queued,
+          details
+        });
+
         const queueStarted = Date.now();
         await env.CANDIDATE_QUEUE.sendBatch(newCandidates.map((body) => ({ body })));
         timings.queueing = (timings.queueing ?? 0) + (Date.now() - queueStarted);
+
+        const afterHandoff = await getRunProgress(env, runId);
+        if (afterHandoff?.status === 'queued' && afterHandoff.stage === 'queueing') {
+          await updateRunProgress(env, runId, { elapsedMs: elapsedSince(startedMs), details });
+        }
       }
     }
 
     const searchFinishedAt = new Date().toISOString();
     if (queued > 0) {
-      currentStage = 'awaiting_classification';
-      await updateRunProgress(env, runId, {
-        status: 'queued',
-        stage: currentStage,
-        elapsedMs: elapsedSince(startedMs),
-        queries,
-        braveResults: candidates,
-        newCandidates: newCandidatesTotal,
-        queued,
-        error: null,
-        details
-      });
+      const afterSearch = await getRunProgress(env, runId);
+      if (afterSearch?.status === 'queued' && afterSearch.stage === 'queueing') {
+        currentStage = 'awaiting_classification';
+        await updateRunProgress(env, runId, {
+          status: 'queued',
+          stage: currentStage,
+          elapsedMs: elapsedSince(startedMs),
+          queries,
+          braveResults: candidates,
+          newCandidates: newCandidatesTotal,
+          queued,
+          error: null,
+          details
+        });
+      }
     } else {
       await updateRunProgress(env, runId, {
         status: 'completed',

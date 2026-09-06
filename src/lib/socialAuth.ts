@@ -44,11 +44,26 @@ export const SOCIAL_AUTH_CONFIG: Record<SocialAuthProvider, SocialAuthConfig> = 
     label: "Instagram Pro",
     oauthProvider: "custom:instagram",
     custom: true,
+    // Instagram API with Instagram Login (2025+) : compte Business / Creator.
+    // On force le scope moderne, l'ancien business_basic étant déprécié.
+    scopes: "instagram_business_basic",
     note: "Comptes Business / Creator",
   },
   // Snapchat Login Kit est configuré comme Custom OAuth2 dans Supabase.
   // custom:true empêche /auth/v1/settings de masquer le bouton.
-  snapchat: { label: "Snapchat", oauthProvider: "custom:snapchat", custom: true },
+  snapchat: {
+    label: "Snapchat",
+    oauthProvider: "custom:snapchat",
+    custom: true,
+    // Login Kit OAuth2 exige explicitement un scope. external_id fournit
+    // l'identifiant stable nécessaire à Supabase; display_name / avatar servent
+    // à l'import du profil MULTISPORTS.
+    scopes: [
+      "https://auth.snapchat.com/oauth2/api/user.external_id",
+      "https://auth.snapchat.com/oauth2/api/user.display_name",
+      "https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar",
+    ].join(" "),
+  },
   // TikTok Login Kit n'est pas un provider natif Supabase : Custom OAuth/OIDC.
   tiktok: { label: "TikTok", oauthProvider: "custom:tiktok", custom: true, scopes: "user.info.basic" },
   github: { label: "GitHub", oauthProvider: "github", settingsKeys: ["github"] },

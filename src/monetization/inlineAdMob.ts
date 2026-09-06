@@ -35,9 +35,150 @@ type InlineAdMobPlugin = {
   hide: (options: { slotId: string }) => Promise<void>;
   hideAll: () => Promise<void>;
   setAdsAllowed: (options: { allowed: boolean }) => Promise<void>;
+  addListener?: (
+    eventName: "inlineAdLoaded" | "inlineAdFailed" | "inlineAdImpression" | "inlineAdClicked" | "inlineAdPaid",
+    listener: (event: any) => void
+  ) => Promise<{ remove: () => Promise<void> }> | { remove: () => Promise<void> };
 };
 
 let pluginCache: InlineAdMobPlugin | null | undefined;
+
+export type InlineAdMobTelemetrySnapshot = {
+  loaded: number;
+  failed: number;
+  impressions: number;
+  clicks: number;
+  paidEvents: number;
+  testImpressions: number;
+  valueMicrosByCurrency: Record<string, number>;
+  lastEventAt: number;
+  lastSlotId?: string;
+  lastPlacement?: AdPlacement;
+  lastFailureCode?: number;
+  lastFailureMessage?: string;
+};
+
+const TELEMETRY_KEY = "mss.admob.inline.telemetry.v1";
+const slotPlacements = new Map<string, AdPlacement>();
+const telemetrySubscribers = new Set<() => void>();
+let telemetryListenersInstalled = false;
+
+const EMPTY_TELEMETRY: InlineAdMobTelemetrySnapshot = {
+  loaded: 0,
+  failed: 0,
+  impressions: 0,
+  clicks: 0,
+  paidEvents: 0,
+  testImpressions: 0,
+  valueMicrosByCurrency: {},
+  lastEventAt: 0,
+};
+
+function loadTelemetry(): InlineAdMobTelemetrySnapshot {
+  if (typeof window === "undefined") return { ...EMPTY_TELEMETRY, valueMicrosByCurrency: {} };
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(TELEMETRY_KEY) || "{}");
+    return {
+      ...EMPTY_TELEMETRY,
+      ...parsed,
+      valueMicrosByCurrency: parsed?.valueMicrosByCurrency && typeof parsed.valueMicrosByCurrency === "object"
+        ? { ...parsed.valueMicrosByCurrency }
+        : {},
+    };
+  } catch {
+    return { ...EMPTY_TELEMETRY, valueMicrosByCurrency: {} };
+  }
+}
+
+function saveTelemetry(next: InlineAdMobTelemetrySnapshot): void {
+  if (typeof window !== "undefined") {
+    try { window.localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next)); } catch {}
+  }
+  telemetrySubscribers.forEach((listener) => {
+    try { listener(); } catch {}
+  });
+}
+
+function patchTelemetry(
+  event: any,
+  patch: (current: InlineAdMobTelemetrySnapshot) => InlineAdMobTelemetrySnapshot
+): void {
+  const current = loadTelemetry();
+  const slotId = String(event?.slotId || "").trim();
+  const placement = slotPlacements.get(slotId);
+  const next = patch({
+    ...current,
+    lastEventAt: Date.now(),
+    ...(slotId ? { lastSlotId: slotId } : {}),
+    ...(placement ? { lastPlacement: placement } : {}),
+  });
+  saveTelemetry(next);
+}
+
+function installTelemetryListeners(plugin: InlineAdMobPlugin): void {
+  if (telemetryListenersInstalled || typeof plugin.addListener !== "function") return;
+  telemetryListenersInstalled = true;
+
+  const listen = (name: Parameters<NonNullable<InlineAdMobPlugin["addListener"]>>[0], handler: (event: any) => void) => {
+    try {
+      void Promise.resolve(plugin.addListener?.(name, handler));
+    } catch {
+      // La télémétrie locale ne doit jamais empêcher une bannière de se charger.
+    }
+  };
+
+  listen("inlineAdLoaded", (event) => {
+    patchTelemetry(event, (current) => ({ ...current, loaded: current.loaded + 1 }));
+  });
+  listen("inlineAdFailed", (event) => {
+    patchTelemetry(event, (current) => ({
+      ...current,
+      failed: current.failed + 1,
+      lastFailureCode: Number(event?.code) || 0,
+      lastFailureMessage: String(event?.message || ""),
+    }));
+  });
+  listen("inlineAdImpression", (event) => {
+    patchTelemetry(event, (current) => ({
+      ...current,
+      impressions: current.impressions + (event?.isTesting ? 0 : 1),
+      testImpressions: current.testImpressions + (event?.isTesting ? 1 : 0),
+    }));
+  });
+  listen("inlineAdClicked", (event) => {
+    patchTelemetry(event, (current) => ({
+      ...current,
+      clicks: current.clicks + (event?.isTesting ? 0 : 1),
+    }));
+  });
+  listen("inlineAdPaid", (event) => {
+    const currency = String(event?.currencyCode || "").trim().toUpperCase();
+    const micros = Math.max(0, Number(event?.valueMicros) || 0);
+    patchTelemetry(event, (current) => ({
+      ...current,
+      paidEvents: current.paidEvents + (event?.isTesting ? 0 : 1),
+      valueMicrosByCurrency: event?.isTesting || !currency
+        ? current.valueMicrosByCurrency
+        : {
+            ...current.valueMicrosByCurrency,
+            [currency]: Math.max(0, Number(current.valueMicrosByCurrency[currency]) || 0) + micros,
+          },
+    }));
+  });
+}
+
+export function getInlineAdMobTelemetrySnapshot(): InlineAdMobTelemetrySnapshot {
+  return loadTelemetry();
+}
+
+export function subscribeInlineAdMobTelemetry(listener: () => void): () => void {
+  telemetrySubscribers.add(listener);
+  return () => telemetrySubscribers.delete(listener);
+}
+
+export function resetInlineAdMobTelemetry(): void {
+  saveTelemetry({ ...EMPTY_TELEMETRY, valueMicrosByCurrency: {} });
+}
 
 const slotEpochs = new Map<string, number>();
 let nativeLoadQueue: Promise<void> = Promise.resolve();
@@ -88,9 +229,11 @@ function getPlugin(): InlineAdMobPlugin | null {
     const cap = (window as any).Capacitor;
     if (typeof cap?.registerPlugin === "function") {
       pluginCache = cap.registerPlugin("InlineAdMob") as InlineAdMobPlugin;
+      installTelemetryListeners(pluginCache);
       return pluginCache;
     }
     pluginCache = cap?.Plugins?.InlineAdMob || null;
+    if (pluginCache) installTelemetryListeners(pluginCache);
     return pluginCache;
   } catch {
     pluginCache = null;
@@ -131,6 +274,7 @@ export async function showInlineGoogleAd(
   rect: InlineAdRect
 ): Promise<boolean> {
   ensureInlineAdsPolicyGuard();
+  slotPlacements.set(slotId, placement);
   if (!canRequestBannerAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
     await hideInlineGoogleAd(slotId);
     return false;
@@ -196,6 +340,7 @@ export async function updateInlineGoogleAd(slotId: string, rect: InlineAdRect): 
 
 export async function hideInlineGoogleAd(slotId: string): Promise<void> {
   invalidateSlot(slotId);
+  slotPlacements.delete(slotId);
   const plugin = getPlugin();
   if (!plugin) return;
   try {
@@ -208,6 +353,7 @@ export async function hideInlineGoogleAd(slotId: string): Promise<void> {
 export async function hideAllInlineGoogleAds(): Promise<void> {
   ensureInlineAdsPolicyGuard();
   for (const slotId of slotEpochs.keys()) invalidateSlot(slotId);
+  slotPlacements.clear();
   const plugin = getPlugin();
   if (!plugin) return;
   try {

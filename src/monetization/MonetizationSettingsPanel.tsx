@@ -18,6 +18,7 @@ import { getNativeAdMobStatus, showNativePrivacyOptions, type NativeAdMobStatus 
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import { areNativePurchasesEnabled, getNativeBillingStatus, purchaseNativeProduct, queryNativeBillingProduct, restoreNativePurchases, type NativeBillingProduct, type NativeBillingStatus } from "./nativeBilling";
 import { getAdMobRuntimeConfig } from "./adMobConfig";
+import { getInlineAdMobTelemetrySnapshot, subscribeInlineAdMobTelemetry } from "./inlineAdMob";
 import { localeForLang } from "../i18n/legacyLocalizedText";
 import { monetizationUiDynamic, monetizationUiText } from "../i18n/monetizationUiLiteralRegistry";
 
@@ -44,6 +45,7 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
   const locale = localeForLang(lang);
   const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
   const [runtimeTick, setRuntimeTick] = React.useState(0);
+  const [adTelemetryRevision, setAdTelemetryRevision] = React.useState(0);
   const [nativeStatus, setNativeStatus] = React.useState<NativeAdMobStatus | null>(null);
   const [billingStatus, setBillingStatus] = React.useState<NativeBillingStatus | null>(null);
   const [nativeBusy, setNativeBusy] = React.useState(false);
@@ -60,6 +62,7 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
   const premium = React.useMemo(() => getVerifiedPremiumState(), [entitlementRevision]);
   const adFree = React.useMemo(() => getVerifiedAdFreeState(), [entitlementRevision]);
   const runtime = React.useMemo(() => MonetizationManager.getMonetizationRuntimeSnapshot(), [runtimeTick]);
+  const adTelemetry = React.useMemo(() => getInlineAdMobTelemetrySnapshot(), [adTelemetryRevision]);
   const adMobConfig = getAdMobRuntimeConfig();
   const productionAdsLocked = adMobConfig.mode === "production";
   const freeAdsLocked = arePaidAdsLockedForFreeAccount();
@@ -67,6 +70,7 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
   React.useEffect(() => subscribeVerifiedEntitlements(() => setEntitlementRevision((value) => value + 1)), []);
+  React.useEffect(() => subscribeInlineAdMobTelemetry(() => setAdTelemetryRevision((value) => value + 1)), []);
   React.useEffect(() => {
     if (mode === "shop") setShopTab(initialShopTab);
   }, [mode, initialShopTab]);
@@ -449,6 +453,54 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
                       ? M("Les bannières réelles sont déjà prêtes. L’interstitiel et le rewarded resteront désactivés tant que leurs deux IDs AdMob réels ne sont pas renseignés.")
                       : M("La configuration AdMob n’est pas encore prête pour une release publicitaire complète.")}
                 </div>
+              </div>
+
+              <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${theme.primary}33`, background: "rgba(255,255,255,.025)", padding: 10 }}>
+                <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 10.5 }}>{M("BANNIÈRES LIVE · CONTRÔLE DES IMPRESSIONS")}</div>
+                <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.2, lineHeight: 1.45 }}>
+                  {M("Compteurs locaux issus directement des callbacks Google Mobile Ads. Ils servent à confirmer sur le téléphone qu’une bannière réelle a été chargée, vue et valorisée. Le revenu officiel reste celui affiché dans AdMob.")}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+                  <div style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, padding: 8 }}>
+                    <div style={{ color: theme.textSoft, fontSize: 8.5, fontWeight: 900 }}>{M("CHARGEMENTS")}</div>
+                    <div style={{ color: theme.text, fontSize: 16, fontWeight: 1000 }}>{adTelemetry.loaded}</div>
+                  </div>
+                  <div style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, padding: 8 }}>
+                    <div style={{ color: theme.textSoft, fontSize: 8.5, fontWeight: 900 }}>{M("IMPRESSIONS LIVE")}</div>
+                    <div style={{ color: theme.text, fontSize: 16, fontWeight: 1000 }}>{adTelemetry.impressions}</div>
+                  </div>
+                  <div style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, padding: 8 }}>
+                    <div style={{ color: theme.textSoft, fontSize: 8.5, fontWeight: 900 }}>{M("CLICS")}</div>
+                    <div style={{ color: theme.text, fontSize: 16, fontWeight: 1000 }}>{adTelemetry.clicks}</div>
+                  </div>
+                  <div style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, padding: 8 }}>
+                    <div style={{ color: theme.textSoft, fontSize: 8.5, fontWeight: 900 }}>{M("ÉVÉNEMENTS PAYÉS")}</div>
+                    <div style={{ color: theme.text, fontSize: 16, fontWeight: 1000 }}>{adTelemetry.paidEvents}</div>
+                  </div>
+                </div>
+                {Object.keys(adTelemetry.valueMicrosByCurrency).length ? (
+                  <div style={{ marginTop: 8, color: theme.text, fontSize: 9.5, lineHeight: 1.45 }}>
+                    {M("Valeur estimée observée sur cet appareil :")}{" "}
+                    {Object.entries(adTelemetry.valueMicrosByCurrency).map(([currency, micros]) => {
+                      const amount = Math.max(0, Number(micros) || 0) / 1_000_000;
+                      try {
+                        return new Intl.NumberFormat(locale, { style: "currency", currency }).format(amount);
+                      } catch {
+                        return `${amount.toFixed(6)} ${currency}`;
+                      }
+                    }).join(" · ")}
+                  </div>
+                ) : null}
+                {adTelemetry.testImpressions > 0 ? (
+                  <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 8.8 }}>
+                    {M("Impressions de test exclues des compteurs live :")} {adTelemetry.testImpressions}
+                  </div>
+                ) : null}
+                {adTelemetry.lastFailureMessage ? (
+                  <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 8.8 }}>
+                    {M("Dernier échec :")} {adTelemetry.lastFailureCode || "—"} · {adTelemetry.lastFailureMessage}
+                  </div>
+                ) : null}
               </div>
 
               <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${theme.primary}33`, background: `${theme.primary}08`, padding: 10 }}>

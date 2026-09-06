@@ -1,0 +1,15 @@
+{
+  "base": "Darts-Counter-V7(31).zip",
+  "patch": "SOCIAL_AUTH_V32",
+  "modified": [
+    "src/lib/socialAuth.ts",
+    "public/sw.js"
+  ],
+  "created": [
+    "cloudflare/multisports-social-oauth-worker-v7.js",
+    "tools/configure-social-custom-providers.ps1",
+    "tools/test-social-auth-hardening-v32.mjs",
+    "docs/SOCIAL_AUTH_FIX_V32.md",
+    "PATCH_MANIFEST_SOCIAL_AUTH_V32.json"
+  ]
+}

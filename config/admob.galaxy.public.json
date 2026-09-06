@@ -1,0 +1,13 @@
+{
+  "mode": "google_test",
+  "publisherId": "pub-5323277022978157",
+  "androidAppId": "",
+  "androidBannerId": "",
+  "androidBannerIds": {},
+  "androidInterstitialId": "",
+  "androidRewardedId": "",
+  "testDeviceIds": [],
+  "testDevicesManagedByAdMobConsole": true,
+  "consentDebugGeography": "DISABLED",
+  "realTestUseGoogleDemoBanners": false
+}

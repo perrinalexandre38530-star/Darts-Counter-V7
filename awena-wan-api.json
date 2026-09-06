@@ -1,7 +1,7 @@
 {
   "1": {
     "inputs": {
-      "text": "__NEGATIVE_PROMPT__",
+      "text": "camera movement, camera shake, zoom, dolly, pan, tilt, camera rotation, changing perspective, changing framing, character moving across the frame, scene change, background change,\n\nhands sliding, hands moving inward, hands changing position, narrow grip push-up, hands under shoulders, feet sliding, feet moving, jumping, knee push-up,\n\nhips rising, hips sagging, arched back, bent knees, twisted torso, asymmetric movement, lateral movement, body rotation,\n\nelbows tucked against torso, incorrect push-up form,\n\nsecond repetition, upward push-up movement, bouncing,\n\nchanging face, different face, face morphing, changing hairstyle, changing hair length, changing body shape, changing breasts, changing clothing, changing leggings, changing shoes, changing gloves,\n\nextra arms, extra legs, extra hands, extra feet, extra fingers, missing fingers, fused fingers, malformed fingers, deformed hands, deformed feet, broken wrists, broken elbows, broken shoulders, broken anatomy, duplicated limbs,\n\nwarping, morphing, melting body, ghosting, flickering, temporal inconsistency, jitter, motion artifacts, motion blur,\n\ncropped body, cropped feet, cropped hands, body out of frame,\n\ntext, subtitles, logo, watermark",
       "clip": [
         "2",
         0
@@ -60,7 +60,7 @@
   },
   "10": {
     "inputs": {
-      "image": "__AWENA_REFERENCE__"
+      "image": "awena_pompe_prise_large_01_haute.webp"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -81,6 +81,23 @@
       "title": "LoraLoaderModelOnly"
     }
   },
+  "19": {
+    "inputs": {
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto",
+      "video-preview": "",
+      "video": [
+        "232:15",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Enregistrer la vidéo"
+    }
+  },
   "20": {
     "inputs": {
       "unet_name": "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
@@ -93,7 +110,7 @@
   },
   "21": {
     "inputs": {
-      "text": "__POSITIVE_PROMPT__",
+      "text": "Static locked camera, full body shot of the exact same female fitness character from the input images. Preserve her identity perfectly: same face, same facial features, same brown ponytail hairstyle, same body proportions, same black sports bra, same black leggings with colorful accents, same black fingerless gloves, same black athletic shoes with colorful details.\n\nShe performs only the downward phase of one strict wide-grip push-up.\n\nHer hands remain firmly planted on the floor much wider than shoulder width for the entire movement. Palms stay flat, fingers stay spread, wrists do not slide. Both feet remain completely fixed on the floor.\n\nStarting from a high plank with both arms extended, she slowly and smoothly bends both elbows symmetrically and lowers her entire body toward the floor.\n\nHer elbows move diagonally outward during the descent, appropriate for a wide-grip push-up.\n\nHer chest progressively approaches the floor until it is just above the ground. Her shoulders, torso, hips and legs move together as one rigid unit.\n\nHer body remains straight and aligned from shoulders through hips to ankles. Core strongly engaged. Hips never rise and never sag. Legs remain straight. Knees never touch the ground.\n\nThe movement is slow, controlled, biomechanically correct and continuous, like a professional exercise demonstration.\n\nHer head remains naturally aligned with the spine, gaze slightly forward and downward.\n\nAbsolutely no movement of the camera. No zoom, no pan, no tilt, no rotation. Character size and framing remain constant throughout the shot.\n\nPreserve the exact anatomy, face, hairstyle, clothing, colors, hands, fingers, shoes and body proportions throughout the entire animation.\n\nOnly one controlled downward push-up movement.",
       "clip": [
         "2",
         0
@@ -187,6 +204,28 @@
       "title": "DWPose Estimator"
     }
   },
+  "107": {
+    "inputs": {
+      "keep_model_loaded": true,
+      "individual_objects": false,
+      "sam2_model": [
+        "108",
+        0
+      ],
+      "image": [
+        "212",
+        0
+      ],
+      "coordinates_positive": [
+        "229",
+        0
+      ]
+    },
+    "class_type": "Sam2Segmentation",
+    "_meta": {
+      "title": "Sam2Segmentation"
+    }
+  },
   "108": {
     "inputs": {
       "model": "sam2_hiera_base_plus.safetensors",
@@ -201,7 +240,7 @@
   },
   "145": {
     "inputs": {
-      "file": "__MOTION_REFERENCE_VIDEO__",
+      "file": "Pompes à main large - Guide vidéo Lyfta.mp4",
       "video-preview": ""
     },
     "class_type": "LoadVideo",
@@ -289,6 +328,69 @@
     "class_type": "PointsEditor",
     "_meta": {
       "title": "Points Editor"
+    }
+  },
+  "243": {
+    "inputs": {
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto",
+      "video-preview": "",
+      "video": [
+        "242:88",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Enregistrer la vidéo"
+    }
+  },
+  "274": {
+    "inputs": {
+      "expand": 10,
+      "tapered_corners": true,
+      "mask": [
+        "107",
+        0
+      ]
+    },
+    "class_type": "GrowMask",
+    "_meta": {
+      "title": "GrowMask"
+    }
+  },
+  "275": {
+    "inputs": {
+      "color": "0, 0, 0",
+      "device": "cpu",
+      "image": [
+        "212",
+        0
+      ],
+      "mask": [
+        "276",
+        0
+      ]
+    },
+    "class_type": "DrawMaskOnImage",
+    "_meta": {
+      "title": "Draw Mask On Image"
+    }
+  },
+  "276": {
+    "inputs": {
+      "block_size": 32,
+      "device": "cpu",
+      "masks": [
+        "274",
+        0
+      ]
+    },
+    "class_type": "BlockifyMask",
+    "_meta": {
+      "title": "Blockify Mask"
     }
   },
   "232:57": {
@@ -388,9 +490,28 @@
       "title": "ImageDeBatch"
     }
   },
+  "232:15": {
+    "inputs": {
+      "fps": 16,
+      "bit_depth": "auto",
+      "color_space": "sRGB",
+      "images": [
+        "232:230",
+        0
+      ],
+      "audio": [
+        "23",
+        1
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Créer une vidéo"
+    }
+  },
   "232:63": {
     "inputs": {
-      "seed": "__SEED__",
+      "seed": 1104686086158198,
       "steps": 6,
       "cfg": 1,
       "sampler_name": "euler",
@@ -418,78 +539,181 @@
       "title": "KSampler"
     }
   },
-  "300": {
+  "242:87": {
     "inputs": {
-      "keep_model_loaded": true,
-      "individual_objects": false,
-      "sam2_model": [
-        "108",
+      "samples": [
+        "242:92",
         0
       ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "242:92": {
+    "inputs": {
+      "trim_amount": [
+        "242:90",
+        3
+      ],
+      "samples": [
+        "242:91",
+        0
+      ]
+    },
+    "class_type": "TrimVideoLatent",
+    "_meta": {
+      "title": "TrimVideoLatent"
+    }
+  },
+  "242:85": {
+    "inputs": {
+      "batch_index": [
+        "242:90",
+        4
+      ],
+      "length": 4096,
       "image": [
+        "242:87",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "ImageDeBatch"
+    }
+  },
+  "242:90": {
+    "inputs": {
+      "width": [
+        "159",
+        0
+      ],
+      "height": [
+        "159",
+        0
+      ],
+      "length": 77,
+      "batch_size": 1,
+      "continue_motion_max_frames": 5,
+      "video_frame_offset": [
+        "232:62",
+        5
+      ],
+      "positive": [
+        "21",
+        0
+      ],
+      "negative": [
+        "1",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "clip_vision_output": [
+        "9",
+        0
+      ],
+      "reference_image": [
+        "10",
+        0
+      ],
+      "face_video": [
+        "100",
+        0
+      ],
+      "pose_video": [
+        "101",
+        0
+      ],
+      "background_video": [
+        "275",
+        0
+      ],
+      "character_mask": [
+        "276",
+        0
+      ],
+      "continue_motion": [
+        "232:58",
+        0
+      ]
+    },
+    "class_type": "WanAnimateToVideo",
+    "_meta": {
+      "title": "WanAnimateToVideo"
+    }
+  },
+  "242:88": {
+    "inputs": {
+      "fps": 16,
+      "bit_depth": "auto",
+      "color_space": "sRGB",
+      "images": [
+        "242:86",
+        0
+      ],
+      "audio": [
+        "23",
+        1
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Créer une vidéo"
+    }
+  },
+  "242:91": {
+    "inputs": {
+      "seed": 387378783691198,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "60",
+        0
+      ],
+      "positive": [
+        "242:90",
+        0
+      ],
+      "negative": [
+        "242:90",
+        1
+      ],
+      "latent_image": [
+        "242:90",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "242:86": {
+    "inputs": {
+      "image1": [
         "232:58",
         0
       ],
-      "coordinates_positive": [
-        "229",
+      "image2": [
+        "242:85",
         0
       ]
     },
-    "class_type": "Sam2Segmentation",
+    "class_type": "ImageBatch",
     "_meta": {
-      "title": "FIT AWENA · final character matte"
-    }
-  },
-  "301": {
-    "inputs": {
-      "expand": 2,
-      "tapered_corners": true,
-      "mask": [
-        "300",
-        0
-      ]
-    },
-    "class_type": "GrowMask",
-    "_meta": {
-      "title": "FIT AWENA · soften matte edge"
-    }
-  },
-  "302": {
-    "inputs": {
-      "mask": [
-        "301",
-        0
-      ]
-    },
-    "class_type": "MaskToImage",
-    "_meta": {
-      "title": "FIT AWENA · matte to image"
-    }
-  },
-  "303": {
-    "inputs": {
-      "filename_prefix": "__RGB_FRAME_PREFIX__",
-      "images": [
-        "232:58",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "FIT AWENA · save RGB frames"
-    }
-  },
-  "304": {
-    "inputs": {
-      "filename_prefix": "__MASK_FRAME_PREFIX__",
-      "images": [
-        "302",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "FIT AWENA · save alpha matte frames"
+      "title": "Images en lot"
     }
   }
 }

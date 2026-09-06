@@ -1,0 +1,13 @@
+{
+  "play": {
+    "packageId": "com.multisportsscoring.app",
+    "store": "Google Play",
+    "adMobConfig": "config/admob.public.json"
+  },
+  "galaxy": {
+    "packageId": "com.multisportsscoring.app.galaxy",
+    "store": "Samsung Galaxy Store",
+    "adMobConfig": "config/admob.galaxy.public.json",
+    "billing": "Samsung IAP à intégrer avant activation des achats"
+  }
+}

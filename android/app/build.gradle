@@ -14,6 +14,9 @@ android {
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.multisportsscoring.app"
+        if (project.hasProperty("MSS_APPLICATION_ID")) {
+            applicationId project.property("MSS_APPLICATION_ID").toString()
+        }
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 14

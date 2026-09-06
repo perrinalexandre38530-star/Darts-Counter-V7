@@ -17,11 +17,13 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.google.android.gms.ads.AdListener;
+import com.google.android.gms.ads.AdValue;
 import com.google.android.gms.ads.AdRequest;
 import com.google.android.gms.ads.AdSize;
 import com.google.android.gms.ads.AdView;
 import com.google.android.gms.ads.LoadAdError;
 import com.google.android.gms.ads.MobileAds;
+import com.google.android.gms.ads.ResponseInfo;
 import com.google.android.gms.ads.RequestConfiguration;
 
 import java.util.ArrayList;
@@ -47,12 +49,14 @@ public class InlineAdMobPlugin extends Plugin {
         final String adUnitId;
         final FrameLayout container;
         final AdView adView;
+        final boolean testing;
         boolean loaded = false;
 
-        SlotHolder(String adUnitId, FrameLayout container, AdView adView) {
+        SlotHolder(String adUnitId, FrameLayout container, AdView adView, boolean testing) {
             this.adUnitId = adUnitId;
             this.container = container;
             this.adView = adView;
+            this.testing = testing;
         }
     }
 
@@ -154,6 +158,42 @@ public class InlineAdMobPlugin extends Plugin {
         }
     }
 
+    private JSObject baseEventData(String slotId, SlotHolder holder) {
+        JSObject data = new JSObject();
+        data.put("slotId", slotId);
+        data.put("adUnitId", holder.adUnitId);
+        data.put("isTesting", holder.testing);
+        return data;
+    }
+
+    private void attachPaidEventTelemetry(String slotId, SlotHolder holder) {
+        holder.adView.setOnPaidEventListener((AdValue adValue) -> {
+            JSObject data = baseEventData(slotId, holder);
+            data.put("valueMicros", adValue.getValueMicros());
+            data.put("currencyCode", adValue.getCurrencyCode());
+            data.put("precisionType", adValue.getPrecisionType());
+
+            try {
+                ResponseInfo responseInfo = holder.adView.getResponseInfo();
+                if (responseInfo != null && responseInfo.getLoadedAdapterResponseInfo() != null) {
+                    data.put("adSourceName", responseInfo.getLoadedAdapterResponseInfo().getAdSourceName());
+                    data.put("adSourceId", responseInfo.getLoadedAdapterResponseInfo().getAdSourceId());
+                    data.put("adSourceInstanceName", responseInfo.getLoadedAdapterResponseInfo().getAdSourceInstanceName());
+                    data.put("adSourceInstanceId", responseInfo.getLoadedAdapterResponseInfo().getAdSourceInstanceId());
+                }
+            } catch (Exception ignored) {
+                // Les métriques de revenu ne doivent jamais perturber l'affichage.
+            }
+
+            notifyListeners("inlineAdPaid", data);
+            Log.i(LOG_TAG,
+                "PAID slot=" + slotId
+                    + " micros=" + adValue.getValueMicros()
+                    + " currency=" + adValue.getCurrencyCode()
+                    + " precision=" + adValue.getPrecisionType());
+        });
+    }
+
     @PluginMethod
     public void setAdsAllowed(PluginCall call) {
         final boolean allowed = Boolean.TRUE.equals(call.getBoolean("allowed", true));
@@ -188,6 +228,7 @@ public class InlineAdMobPlugin extends Plugin {
                     return;
                 }
                 applyTestDeviceConfiguration(call);
+                final boolean testing = Boolean.TRUE.equals(call.getBoolean("isTesting", false));
 
                 SlotHolder existing = slots.get(slotId);
                 if (existing != null && existing.adUnitId.equals(adId) && existing.loaded) {
@@ -227,7 +268,8 @@ public class InlineAdMobPlugin extends Plugin {
                 container.addView(adView, adParams);
                 root.addView(container);
 
-                SlotHolder holder = new SlotHolder(adId, container, adView);
+                SlotHolder holder = new SlotHolder(adId, container, adView, testing);
+                attachPaidEventTelemetry(slotId, holder);
                 slots.put(slotId, holder);
                 applyRect(holder, call);
 
@@ -250,6 +292,20 @@ public class InlineAdMobPlugin extends Plugin {
                         // réellement chargée. Cela permet au React de retenter si
                         // AdMob répond temporairement par une erreur/no-fill.
                         call.resolve();
+                    }
+
+                    @Override
+                    public void onAdImpression() {
+                        JSObject data = baseEventData(slotId, holder);
+                        notifyListeners("inlineAdImpression", data);
+                        Log.i(LOG_TAG, "IMPRESSION slot=" + slotId + " unit=" + adId);
+                    }
+
+                    @Override
+                    public void onAdClicked() {
+                        JSObject data = baseEventData(slotId, holder);
+                        notifyListeners("inlineAdClicked", data);
+                        Log.i(LOG_TAG, "CLICK slot=" + slotId + " unit=" + adId);
                     }
 
                     @Override

@@ -28,7 +28,7 @@
     "android:open": "npx cap open android",
     "android:doctor": "npx cap doctor",
     "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs",
-    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs && node ./tools/test-admob-fullscreen-v76.mjs && node ./tools/test-admob-diagnostics-v78.mjs && node ./tools/test-admob-rewarded-pass-v79.mjs && node ./tools/test-admob-release-gate-v80.mjs",
+    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs && node ./tools/test-admob-fullscreen-v76.mjs && node ./tools/test-admob-diagnostics-v78.mjs && node ./tools/test-admob-rewarded-pass-v79.mjs && node ./tools/test-admob-release-gate-v80.mjs && node ./tools/test-admob-ilrd-v81.mjs",
     "android:configure-admob": "node ./tools/configure-android-admob.mjs",
     "android:configure-play": "node ./tools/configure-android-play-billing.mjs",
     "android:release-check": "node ./tools/android-release-check.mjs",
@@ -144,7 +144,11 @@
     "routes:catalog:import-gpx": "node ./tools/import-running-route-catalog-gpx.mjs",
     "test:route-catalog:v118": "node ./tools/test-running-route-catalog-v118.mjs",
     "routes:catalog:world:sync": "node ./tools/sync-running-route-catalog-world.mjs",
-    "test:route-catalog:world": "node ./tools/test-running-route-catalog-world-v2.mjs"
+    "test:route-catalog:world": "node ./tools/test-running-route-catalog-world-v2.mjs",
+    "test:admob-ilrd": "node ./tools/test-admob-ilrd-v81.mjs",
+    "android:galaxy:check": "node ./tools/check-galaxy-store-readiness.mjs",
+    "android:galaxy:aab": "node ./tools/build-galaxy-store-aab.mjs",
+    "test:galaxy-store": "node ./tools/test-galaxy-store-v1.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

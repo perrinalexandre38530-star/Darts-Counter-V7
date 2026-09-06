@@ -8,7 +8,12 @@ const manifestPath = path.join(androidRoot, "app", "src", "main", "AndroidManife
 const stringsPath = path.join(androidRoot, "app", "src", "main", "res", "values", "strings.xml");
 const appGradlePath = path.join(androidRoot, "app", "build.gradle");
 const envPath = path.join(root, ".env");
-const publicConfigPath = path.join(root, "config", "admob.public.json");
+const distributionStore = String(process.env.MSS_DISTRIBUTION_STORE || process.env.VITE_DISTRIBUTION_STORE || "play").trim().toLowerCase();
+const publicConfigPath = path.join(
+  root,
+  "config",
+  distributionStore === "galaxy" || distributionStore === "samsung" ? "admob.galaxy.public.json" : "admob.public.json"
+);
 
 const GOOGLE_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";
 
@@ -117,5 +122,5 @@ console.log(`   Mode   : ${mode === "production" ? "PRODUCTION · BANNIÈRES LIV
 if (isGoogleTest) {
   console.log("   Aucune vraie impression publicitaire ne sera monétisée avec cet App ID de démonstration.");
 } else {
-  console.log("   L'App ID réel vient de .env ou de config/admob.public.json (compatible CI GitHub Actions).");
+  console.log(`   L\'App ID réel vient de .env ou de ${path.relative(root, publicConfigPath)} (compatible CI GitHub Actions).`);
 }

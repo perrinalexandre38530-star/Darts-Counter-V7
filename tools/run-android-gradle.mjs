@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { resolveAndroidJavaRuntime } from "./android-java-runtime.mjs";
 
 const task = String(process.argv[2] || "assembleDebug").trim();
+const extraArgs = process.argv.slice(3).filter(Boolean);
 const projectRoot = process.cwd();
 const androidDir = path.resolve(projectRoot, "android");
 const command = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
@@ -26,7 +27,7 @@ const env = {
   Path: `${binDir}${separator}${currentPath}`,
 };
 
-const result = spawnSync(command, [task], {
+const result = spawnSync(command, [task, ...extraArgs], {
   cwd: androidDir,
   stdio: "inherit",
   shell: process.platform === "win32",

@@ -3,7 +3,14 @@ import { cacheQuery, getCachedQuery } from './db';
 import { intFromEnv, marketKey } from './config';
 import { withTimeout } from './timeout';
 
-const AI_MODEL = '@cf/zai-org/glm-4.7-flash' as const;
+const CLASSIFIER_MODEL = '@cf/zai-org/glm-4.7-flash' as const;
+const TRANSLATION_MODEL = '@cf/meta/m2m100-1.2b' as const;
+const memoryQueryCache = new Map<string, string>();
+
+export type LocalizedQueryResult = {
+  query: string;
+  source: 'canonical_en' | 'memory_cache' | 'd1_cache' | 'm2m100' | 'fallback';
+};
 
 function extractText(output: unknown): string {
   if (typeof output === 'string') return output;
@@ -13,13 +20,9 @@ function extractText(output: unknown): string {
 
   const record = output as Record<string, unknown>;
 
-  // Legacy Workers AI text-generation shape.
   if (typeof record.response === 'string') return record.response;
-
-  // Some specialized Workers AI endpoints use a dedicated text field.
   if (typeof record.translated_text === 'string') return record.translated_text;
 
-  // OpenAI-compatible chat-completion shape used by GLM-4.7-Flash.
   if (Array.isArray(record.choices) && record.choices.length > 0) {
     const firstChoice = record.choices[0];
     if (firstChoice && typeof firstChoice === 'object') {
@@ -63,41 +66,69 @@ function clampScore(value: unknown): number {
   return Math.max(0, Math.min(100, Math.round(numeric)));
 }
 
-export async function localizeQuery(env: RadarEnv, market: Market, intent: SearchIntent): Promise<string> {
-  if (market.language === 'en') return intent.canonicalQuery;
+function translationLanguageCode(market: Market): string {
+  const language = market.language.toLowerCase();
+  if (language === 'zh-hans' || language === 'zh-hant' || language === 'zh-cn' || language === 'zh-tw') return 'zh';
+  if (language === 'en-gb') return 'en';
+  return language;
+}
+
+function normalizeForComparison(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+    .trim();
+}
+
+function usefulLocalizedQuery(query: string, canonical: string): boolean {
+  const normalized = normalizeForComparison(query);
+  if (normalized.length < 4) return false;
+  return normalized !== normalizeForComparison(canonical);
+}
+
+export async function localizeQuery(env: RadarEnv, market: Market, intent: SearchIntent): Promise<LocalizedQueryResult> {
+  if (market.language === 'en') return { query: intent.canonicalQuery, source: 'canonical_en' };
+
   const key = marketKey(market);
+  const memoryKey = `${key}|${intent.key}`;
+  const memoryCached = memoryQueryCache.get(memoryKey);
+  if (memoryCached && usefulLocalizedQuery(memoryCached, intent.canonicalQuery)) {
+    return { query: memoryCached, source: 'memory_cache' };
+  }
+
   const cached = await getCachedQuery(env, key, intent.key);
-  if (cached) return cached;
+  if (cached && usefulLocalizedQuery(cached, intent.canonicalQuery)) {
+    memoryQueryCache.set(memoryKey, cached);
+    return { query: cached, source: 'd1_cache' };
+  }
 
   try {
-    const timeoutMs = intFromEnv(env.RADAR_TRANSLATION_TIMEOUT_MS, 15_000, 2_000, 60_000);
-    const output = await withTimeout(env.AI.run(AI_MODEL, {
-      messages: [
-        {
-          role: 'system',
-          content: 'Translate a search-engine query into the requested language. Keep product-neutral wording, sport names, and user-intent words. Return only the translated query, no quotes and no explanation.'
-        },
-        {
-          role: 'user',
-          content: `Language code: ${market.language}\nCountry: ${market.country}\nQuery: ${intent.canonicalQuery}`
-        }
-      ]
+    const timeoutMs = intFromEnv(env.RADAR_TRANSLATION_TIMEOUT_MS, 5_000, 1_000, 20_000);
+    const output = await withTimeout(env.AI.run(TRANSLATION_MODEL, {
+      text: intent.canonicalQuery,
+      source_lang: 'en',
+      target_lang: translationLanguageCode(market)
     }), timeoutMs, 'Workers AI query localization');
 
-    const translated = extractText(output).trim().replace(/^['"]|['"]$/g, '');
-    const query = translated.slice(0, 380) || intent.canonicalQuery;
-    await cacheQuery(env, key, intent.key, query);
-    return query;
+    const translated = extractText(output).trim().replace(/^['"]|['"]$/g, '').slice(0, 380);
+    if (!usefulLocalizedQuery(translated, intent.canonicalQuery)) {
+      throw new Error('Translation model returned an unchanged or empty query');
+    }
+
+    memoryQueryCache.set(memoryKey, translated);
+    await cacheQuery(env, key, intent.key, translated);
+    return { query: translated, source: 'm2m100' };
   } catch (error) {
     console.warn(JSON.stringify({
       event: 'radar_translation_fallback',
       market: key,
+      model: TRANSLATION_MODEL,
       error: error instanceof Error ? error.message : String(error)
     }));
 
-    // Query localization is an optimization, not a hard dependency.
-    // If Workers AI fails, Brave Search must still run with the canonical query.
-    return intent.canonicalQuery;
+    // Localization improves recall, but it must never block the actual Brave search.
+    return { query: intent.canonicalQuery, source: 'fallback' };
   }
 }
 
@@ -115,7 +146,7 @@ export async function classifyCandidates(env: RadarEnv, candidates: Candidate[])
   }));
 
   const timeoutMs = intFromEnv(env.RADAR_CLASSIFY_TIMEOUT_MS, 30_000, 5_000, 90_000);
-  const output = await withTimeout(env.AI.run(AI_MODEL, {
+  const output = await withTimeout(env.AI.run(CLASSIFIER_MODEL, {
     messages: [
       {
         role: 'system',
