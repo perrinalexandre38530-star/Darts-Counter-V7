@@ -5818,6 +5818,13 @@ export function Settings({ go, params }: Props) {
               onClick={() => setTab("account")}
             />
             <SettingsMenuCard
+              title={L("PARTENARIATS & ORGANISATIONS", "PARTNERSHIPS & ORGANIZATIONS", "ALIANZAS Y ORGANIZACIONES")}
+              subtitle={L("Clubs, associations, entreprises, bars et groupes : membres, équipes, agenda, compétitions, stats et offres professionnelles.", "Clubs, associations, companies, venues and groups: members, teams, calendar, competitions, stats and professional plans.", "Clubes, asociaciones, empresas, locales y grupos: miembros, equipos, agenda, competiciones, estadísticas y planes profesionales.")}
+              theme={theme}
+              rightHint={L("CLUB / PRO / BUSINESS", "CLUB / PRO / BUSINESS", "CLUB / PRO / BUSINESS")}
+              onClick={() => go?.("organizations")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.lang", L("Langues", "Languages", "Idiomas"))}
               subtitle={t("settings.menu.lang.sub", L("Choisis la langue de l’interface et explore la carte linguistique.", "Choose the interface language and explore the language map.", "Elige el idioma de la interfaz y explora el mapa lingüístico."))}
               theme={theme}

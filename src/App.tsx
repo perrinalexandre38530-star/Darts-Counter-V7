@@ -195,6 +195,7 @@ const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
+const OrganizationsPage = React.lazy(() => import("./pages/OrganizationsPage"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
 const StorageVaultPage = React.lazy(() => import("./pages/StorageVaultPage"));
@@ -1026,6 +1027,7 @@ type Tab =
   | "messages"
   | "spectator"
   | "settings"
+  | "organizations"
   | "stats"
   | "statsHub"
   | "stats_online"
@@ -2655,6 +2657,11 @@ useEffect(() => {
         setTab("online");
         return;
       }
+      if (h.startsWith("#/organizations")) {
+        setRouteParams(null);
+        setTab("organizations");
+        return;
+      }
       if (h.startsWith("#/messages")) {
         setRouteParams(null);
         setTab("messages");
@@ -2855,6 +2862,7 @@ useEffect(() => {
       else if (next === "auth_v7_signup") window.location.hash = "#/auth/signup";
       else if (next === "account_start") window.location.hash = "#/account/start";
       else if (next === "online") window.location.hash = "#/online";
+      else if (next === "organizations") window.location.hash = "#/organizations";
       else if (next === "messages") window.location.hash = "#/messages";
       else if (next === "spectator") window.location.hash = "#/spectator";
       else if (next === "cast_host") {
@@ -4844,6 +4852,10 @@ case "babyfoot_team_edit":
 
       case "settings":
         page = <Settings go={go} params={routeParams} />;
+        break;
+
+      case "organizations":
+        page = <OrganizationsPage go={go} params={routeParams} />;
         break;
 
       // ✅ STATS (sport-aware) — même onglet BottomNav "stats"

@@ -1,0 +1,34 @@
+{
+  "patch": "MSS_PARTNERSHIPS_ORGANIZATIONS_V1",
+  "date": "2026-09-07",
+  "base": "Darts-Counter-V7(46)(2).zip",
+  "features": [
+    "Réglages > PARTENARIATS & ORGANISATIONS",
+    "Route dédiée #/organizations",
+    "Création et sélection d'organisation",
+    "Rejoindre une organisation par code d'invitation",
+    "Types club, association, entreprise, venue, école, collectivité, organisateur, autre",
+    "Plans MSS GROUP, CLUB, PRO, BUSINESS, SUR MESURE",
+    "Rôles owner/admin/manager/captain/member/guest",
+    "Persistance locale séparée par compte utilisateur",
+    "Création locale de groupes/équipes",
+    "Création locale d'événements d'agenda",
+    "Dashboard Organisation et modules membres, compétitions, stats, communication, paiements, sponsors, admin",
+    "Migration Supabase multi-tenant avec RLS et RPC create/list/join"
+  ],
+  "modified": [
+    "src/App.tsx",
+    "src/pages/Settings.tsx"
+  ],
+  "created": [
+    "src/pages/OrganizationsPage.tsx",
+    "src/organizations/organizationService.ts",
+    "supabase/migrations/20260907165000_partnership_organizations_v1.sql",
+    "tools/test-organizations-partnership-v1.mjs"
+  ],
+  "validation": {
+    "typescript": "passed",
+    "integration_checks": "7/7 passed",
+    "vite_build": "not executed in sandbox because project dependencies were not available; npm install timed out"
+  }
+}
