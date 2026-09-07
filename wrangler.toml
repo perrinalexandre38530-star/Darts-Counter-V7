@@ -11,12 +11,6 @@ compatibility_flags = ["nodejs_compat"]
 binding = "USER_DATA_BUCKET"
 bucket_name = "multisports-user-data"
 
-# Viewer live : même KV que le Worker ONLINE afin que /api/viewer/* reste
-# également fonctionnel si le client bascule sur l'origine Cloudflare Pages.
-[[kv_namespaces]]
-binding = "DC_SYNC"
-id = "96adf0e2754949f88153f796c053d2cef"
-
 [vars]
 SUPABASE_URL = "https://rckbdaqksujehszafior.supabase.co"
 SUPABASE_ANON_KEY = "sb_publishable_QlOTwTh-mKNLxQM9-dmIiw_EDegyTtU"
