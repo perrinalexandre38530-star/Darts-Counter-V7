@@ -169,6 +169,14 @@ export function groupCoverMediaKey(groupId: unknown): string {
   return cleanKey(`group_cover:${String(groupId || "").trim()}`);
 }
 
+export function organizationLogoMediaKey(organizationId: unknown): string {
+  return cleanKey(`club_logo:${String(organizationId || "").trim()}`);
+}
+
+export function organizationCoverMediaKey(organizationId: unknown): string {
+  return cleanKey(`club_cover:${String(organizationId || "").trim()}`);
+}
+
 function isImageDataUrl(value: unknown): boolean {
   return typeof value === "string" && /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(value.trim());
 }
@@ -182,11 +190,11 @@ function sourceSignature(value: string): string {
 }
 
 function imagePolicy(kind: string) {
-  if (kind === "profile_avatar" || kind === "local_profile_avatar" || kind === "bot_avatar" || kind === "online_avatar" || kind === "group_avatar" || kind === "team_logo" || kind === "gallery_item" || kind === "avatar_ai_gallery") {
+  if (kind === "profile_avatar" || kind === "local_profile_avatar" || kind === "bot_avatar" || kind === "online_avatar" || kind === "group_avatar" || kind === "team_logo" || kind === "club_logo" || kind === "gallery_item" || kind === "avatar_ai_gallery") {
     return { maxEdge: 320, quality: 0.82, maxChars: 260_000 };
   }
   if (kind === "dartset_thumb") return { maxEdge: 420, quality: 0.82, maxChars: 420_000 };
-  if (kind === "group_cover") return { maxEdge: 1280, quality: 0.80, maxChars: 1_350_000 };
+  if (kind === "group_cover" || kind === "club_cover") return { maxEdge: 1280, quality: 0.80, maxChars: 1_350_000 };
   return { maxEdge: 900, quality: 0.82, maxChars: 1_100_000 };
 }
 
