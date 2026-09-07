@@ -46,6 +46,25 @@ import logoChess from "../assets/games/logo-chess.png";
 // Elles sont utilisées comme masques CSS : la couleur vient donc du thème/currentColor.
 import showcaseBabyFootIcon from "../assets/game-select-icons/babyfoot.ico";
 import showcaseBadmintonIcon from "../assets/game-select-icons/badminton.ico";
+import showcaseBasketIcon from "../assets/game-select-icons/basket.ico";
+import showcaseBillardIcon from "../assets/game-select-icons/billard.ico";
+import showcaseChessIcon from "../assets/game-select-icons/chess.ico";
+import showcaseCornholeIcon from "../assets/game-select-icons/cornhole.ico";
+import showcaseDartsIcon from "../assets/game-select-icons/darts.ico";
+import showcaseDiceGameIcon from "../assets/game-select-icons/dicegame.ico";
+import showcaseFootIcon from "../assets/game-select-icons/foot.ico";
+import showcaseFrisbeeIcon from "../assets/game-select-icons/frisbee.ico";
+import showcaseMolkkyIcon from "../assets/game-select-icons/molkky.ico";
+import showcasePadelIcon from "../assets/game-select-icons/padel.ico";
+import showcaseArcheryIcon from "../assets/game-select-icons/archery.ico";
+import showcaseEsportsIcon from "../assets/game-select-icons/esports.ico";
+import showcasePetanqueIcon from "../assets/game-select-icons/petanque.ico";
+import showcasePickleballIcon from "../assets/game-select-icons/pickleball.ico";
+import showcasePingPongIcon from "../assets/game-select-icons/pingpong.ico";
+import showcaseRugbyIcon from "../assets/game-select-icons/rugby.ico";
+import showcaseRunningIcon from "../assets/game-select-icons/running.ico";
+import showcaseTennisIcon from "../assets/game-select-icons/tennis.ico";
+import showcaseVolleyIcon from "../assets/game-select-icons/volley.ico";
 
 type Props = {
   go: (route: any) => void;
@@ -152,94 +171,47 @@ function SportShowcaseIcon({ id }: { id: ShowcaseSportId }) {
     case "badminton":
       return <ShowcaseMaskedIcon src={showcaseBadmintonIcon} />;
     case "basket":
-      return svg(<>
-        <circle {...p} cx="12" cy="12" r="8" /><path {...p} d="M4.6 9.2c4.4.3 8.3 4.2 9.8 10.2M9 4.6c.2 4.4 4.2 8.4 10.3 9.8M4.4 14.5c5.8-1.1 10.1-5.4 11.1-10.1M12 4v16" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseBasketIcon} />;
     case "billard":
-      return svg(<>
-        <circle {...p} cx="9" cy="12" r="6.5" /><circle {...p} cx="9" cy="12" r="2.1" /><path {...p} d="M16 18 22 4" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseBillardIcon} />;
     case "cornhole":
-      return svg(<>
-        <path {...p} d="m5 5 12-2 3 15-12 2L5 5Z" /><ellipse {...p} cx="12.2" cy="8" rx="2.2" ry="1.7" /><path {...p} d="M3 19c3-2 5-2 8 0" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseCornholeIcon} />;
     case "darts":
-      return svg(<>
-        <circle {...p} cx="10" cy="12" r="7" /><circle {...p} cx="10" cy="12" r="3.5" /><circle {...p} cx="10" cy="12" r="1" /><path {...p} d="m14.8 7.2 6.2-4.2-1 3 3-1-4.2 6.2" /><path {...p} d="m19 5-6.2 6.2" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseDartsIcon} />;
     case "dicegame":
-      return svg(<>
-        <rect {...p} x="5" y="5" width="14" height="14" rx="2.5" />
-        <circle cx="9" cy="9" r="1" fill="currentColor" />
-        <circle cx="15" cy="9" r="1" fill="currentColor" />
-        <circle cx="12" cy="12" r="1" fill="currentColor" />
-        <circle cx="9" cy="15" r="1" fill="currentColor" />
-        <circle cx="15" cy="15" r="1" fill="currentColor" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseDiceGameIcon} />;
     case "esports":
-      return svg(<>
-        <path {...p} d="M7 10h10c2.2 0 4 1.8 4 4v1.5c0 1.1-.9 2-2 2h-2.2l-2.1-2.2H9.3l-2.1 2.2H5c-1.1 0-2-.9-2-2V14c0-2.2 1.8-4 4-4Z" />
-        <path {...p} d="M8 7l2-2h4l2 2" />
-        <path {...p} d="M8.5 13.5h3M10 12v3" />
-        <circle {...p} cx="15.7" cy="13.2" r=".8" />
-        <circle {...p} cx="18.2" cy="14.8" r=".8" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseEsportsIcon} />;
     case "chess":
-      return svg(<>
-        <path {...p} d="M8 20h8M7 17h10M9 17l1-6h4l1 6M10 11 8 7l4-3 4 3-2 4M10 7h4" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseChessIcon} />;
     case "fit":
       return svg(<>
         <path {...p} d="M3 9v6M6 7v10M9 10h6M18 7v10M21 9v6" />
       </>);
     case "foot":
-      return svg(<>
-        <circle {...p} cx="12" cy="12" r="8" /><path {...p} d="m12 8 3 2-1 3.5h-4L9 10l3-2ZM9 10 6 8M15 10l3-2M10 13.5l-2 3M14 13.5l2 3M8 16.5l-2 .5M16 16.5l2 .5" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseFootIcon} />;
     case "frisbee":
-      return svg(<>
-        <ellipse {...p} cx="12" cy="12" rx="9" ry="4" /><path {...p} d="M6 12c2.5 1.8 9.5 1.8 12 0" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseFrisbeeIcon} />;
     case "molkky":
-      return svg(<>
-        <path {...p} d="M5 20V9l3-3 3 3v11M13 20V7l3-3 3 3v13" /><path {...p} d="M5 14h6M13 12h6" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseMolkkyIcon} />;
     case "padel":
-      return svg(<>
-        <ellipse {...p} cx="10" cy="9" rx="5.3" ry="6.5" transform="rotate(25 10 9)" /><path {...p} d="m13 14 4.4 6" /><circle cx="8" cy="7" r=".6" fill="currentColor" /><circle cx="11" cy="8" r=".6" fill="currentColor" /><circle cx="9" cy="10.5" r=".6" fill="currentColor" /><circle cx="12" cy="11" r=".6" fill="currentColor" /><circle {...p} cx="19" cy="5" r="1.7" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcasePadelIcon} />;
     case "petanque":
-      return svg(<>
-        <circle {...p} cx="8" cy="13" r="4.5" /><circle {...p} cx="15" cy="11" r="4.5" /><circle {...p} cx="18.5" cy="18" r="1.3" /><path {...p} d="m5 11 6 4M12 9l6 4" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcasePetanqueIcon} />;
     case "pickleball":
-      return svg(<>
-        <path {...p} d="M5 5c3-3 8-1 10 2s1 7-2 9l-3 2-5-5V5Z" /><path {...p} d="m10 18 3 3" /><circle {...p} cx="19" cy="7" r="2.2" /><path {...p} d="M18.3 6.4h0M19.7 7.6h0" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcasePickleballIcon} />;
     case "pingpong":
-      return svg(<>
-        <circle {...p} cx="9" cy="9" r="5.5" /><path {...p} d="m12.8 13 6.2 6" /><path {...p} d="m16.8 20 3.2-3.2" /><circle {...p} cx="18.5" cy="6" r="1.7" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcasePingPongIcon} />;
     case "rugby":
-      return svg(<>
-        <path {...p} d="M4 15c2-6 8-10 16-10 0 7-4 13-10 15-3 1-5-1-6-5Z" /><path {...p} d="m8 16 8-8M11 12l2 2M13 10l2 2" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseRugbyIcon} />;
     case "running":
-      return svg(<>
-        <circle {...p} cx="15.5" cy="4.5" r="2" /><path {...p} d="m13.5 8-3 3 3 2.5 3.5-1.2M13.5 8l3 2 2.5-.5M13.5 13.5 10 20M16.5 12.5l2.5 6M10.5 11 7 10" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseRunningIcon} />;
     case "tennis":
-      return svg(<>
-        <ellipse {...p} cx="9" cy="8" rx="4.5" ry="5.7" transform="rotate(35 9 8)" /><path {...p} d="m12 12 7 7M16.8 20l3.2-3.2" /><circle {...p} cx="18.5" cy="5" r="2" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseTennisIcon} />;
     case "archery":
-      return svg(<>
-        <path {...p} d="M7 3c5 4 5 14 0 18M7 3c-2 5-2 13 0 18M7 12h13" /><path {...p} d="m17 9 3 3-3 3M4 12h3" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseArcheryIcon} />;
     case "volley":
-      return svg(<>
-        <circle {...p} cx="12" cy="12" r="8" /><path {...p} d="M12 4c2 3 2.5 6 .5 8.5M4.5 9c3.5-.5 6.5.5 8 3.5M8 19c1.5-3.5 4-5.5 8-6.5M17.5 6.5c-3 .5-5 2-6.5 4.5" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseVolleyIcon} />;
     default:
       return null;
   }
