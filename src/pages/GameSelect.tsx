@@ -42,6 +42,11 @@ import logoVolley from "../assets/games/logo-volley.png";
 import logoTennis from "../assets/games/logo-tennis.png";
 import logoChess from "../assets/games/logo-chess.png";
 
+// Icônes monochromes dédiées aux bandes du GameSelect.
+// Elles sont utilisées comme masques CSS : la couleur vient donc du thème/currentColor.
+import showcaseBabyFootIcon from "../assets/game-select-icons/babyfoot.ico";
+import showcaseBadmintonIcon from "../assets/game-select-icons/badminton.ico";
+
 type Props = {
   go: (route: any) => void;
 };
@@ -143,17 +148,9 @@ function SportShowcaseIcon({ id }: { id: ShowcaseSportId }) {
 
   switch (id) {
     case "babyfoot":
-      return svg(<>
-        <path {...p} d="M2 7h20M2 17h20" />
-        <circle {...p} cx="7" cy="7" r="1.6" /><path {...p} d="M7 8.6v4M4.7 10.5h4.6M7 12.6l-1.4 2.2M7 12.6l1.4 2.2" />
-        <circle {...p} cx="17" cy="17" r="1.6" /><path {...p} d="M17 15.4v-4M14.7 13.5h4.6M17 11.4l-1.4-2.2M17 11.4l1.4-2.2" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseBabyFootIcon} />;
     case "badminton":
-      return svg(<>
-        <ellipse {...p} cx="9" cy="8" rx="4.4" ry="5.2" transform="rotate(-38 9 8)" />
-        <path {...p} d="m12.2 11.7 7 7" /><path {...p} d="m17.4 18.8 2-2" />
-        <path {...p} d="M15.5 4.2 20 6l-3 2.4-1.5-4.2Z" />
-      </>);
+      return <ShowcaseMaskedIcon src={showcaseBadmintonIcon} />;
     case "basket":
       return svg(<>
         <circle {...p} cx="12" cy="12" r="8" /><path {...p} d="M4.6 9.2c4.4.3 8.3 4.2 9.8 10.2M9 4.6c.2 4.4 4.2 8.4 10.3 9.8M4.4 14.5c5.8-1.1 10.1-5.4 11.1-10.1M12 4v16" />
@@ -246,6 +243,27 @@ function SportShowcaseIcon({ id }: { id: ShowcaseSportId }) {
     default:
       return null;
   }
+}
+
+function ShowcaseMaskedIcon({ src }: { src: string }) {
+  return (
+    <span
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "block",
+        backgroundColor: "currentColor",
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+      }}
+    />
+  );
 }
 
 const sportShowcaseBandStyle: React.CSSProperties = {
