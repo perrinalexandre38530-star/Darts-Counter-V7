@@ -1,0 +1,27 @@
+{
+  "base": "Darts-Counter-V7(46)(3).zip",
+  "purpose": "Correctif minimal de déploiement Worker ONLINE/Viewer rebased strictement sur V46.",
+  "modified_files": [
+    "wrangler.online.toml"
+  ],
+  "intentionally_untouched": [
+    "wrangler.toml",
+    "src/online/server/worker.ts",
+    "src/lib/viewer/viewerClient.ts",
+    "vite.samsung-tv.config.ts",
+    "tools/build-samsung-tv.mjs",
+    "tools/check-samsung-tv.mjs"
+  ],
+  "why": [
+    "La V46 contient déjà le correctif RoomDO et les codes Viewer 6 caractères.",
+    "La V46 contient déjà le routage Viewer vers dc-online-v3 et le build Samsung TV associé.",
+    "Le wrangler.toml racine est une configuration Cloudflare Pages valide et ne doit pas recevoir la configuration Worker ONLINE.",
+    "wrangler.online.toml conserve Durable Objects, migration RoomDO, KV DC_SYNC/AVATAR_CACHE, R2, AI et vars.",
+    "Seul l'account_id figé est retiré pour éviter le blocage d'authentification Wrangler."
+  ],
+  "after_apply": [
+    "npm run deploy:online",
+    "npm run tv:samsung:build",
+    "npm run tv:samsung:check"
+  ]
+}

@@ -7,8 +7,8 @@ main = "src/online/server/worker.ts"
 compatibility_date = "2024-11-15"
 compatibility_flags = ["nodejs_compat"]
 
-# 🔑 Ton Account ID Cloudflare (celui que tu vois partout dans le dashboard)
-account_id = "d20710874f38557e1b8e34bb7c001812"
+# Compte Cloudflare : ne pas figer account_id ici.
+# Wrangler utilisera le compte actuellement authentifié pour `npm run deploy:online`.
 
 [durable_objects]
 bindings = [
