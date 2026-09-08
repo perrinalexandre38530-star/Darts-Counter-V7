@@ -39,8 +39,11 @@ const checks = [
   [config.includes("language === 'ja'"), 'Japanese Brave language normalization'],
   [config.includes("'pt-br'"), 'Brazilian Portuguese normalization'],
   [config.includes("'zh-hans'"), 'Simplified Chinese normalization'],
-  [brave.includes("freshness', 'pd'"), '24h freshness filter'],
+  [wrangler.includes('"RADAR_FRESHNESS": "pw"') && brave.includes('braveFreshness(env)'), 'configurable one-week Brave freshness window'],
   [brave.includes("'Cache-Control': 'no-cache'"), 'fresh-search no-cache request'],
+  [brave.includes('normalizedResultUrl') && brave.includes('TRACKING_QUERY_PARAMS'), 'result URLs are normalized before deduplication'],
+  [brave.includes('brave|v2|${queryKey}|${sourceUrl}'), 'candidate identity is intent-aware without multiplying by market'],
+
   [ai.includes('@cf/zai-org/glm-4.7-flash'), 'multilingual Workers AI classifier model'],
   [ai.includes('@cf/meta/m2m100-1.2b'), 'dedicated Workers AI translation model'],
   [ai.includes('memoryQueryCache') && ai.includes('d1_cache'), 'two-level localized-query cache'],
@@ -61,6 +64,9 @@ const checks = [
   [index.includes("url.pathname === '/api/auth/check'"), 'single-call admin authentication probe'],
   [index.includes('queued += newCandidates.length'), 'queued candidate count advances after batch handoff'],
   [index.includes('details.query_source = localized.source'), 'scan exposes localization source'],
+  [index.includes('details.duplicates') && admin.includes('mDuplicates'), 'duplicate count is persisted and visible in scan monitor'],
+  [admin.includes('Fenêtre Brave') && admin.includes('déjà connus'), 'dashboard explains freshness window and duplicate-only scans'],
+
   [index.includes("url.pathname === '/api/runs/latest'") && index.includes('getRunProgress'), 'run progress API'],
   [index.includes('ctx.waitUntil(runScheduled'), 'manual scan starts asynchronously'],
   [index.includes('CANDIDATE_QUEUE.sendBatch'), 'candidate queue uses batch handoff'],

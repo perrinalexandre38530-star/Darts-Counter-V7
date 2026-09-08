@@ -444,6 +444,8 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
   const details: Record<string, unknown> = {
     intent: selectedIntent.key,
     intent_description: selectedIntent.description,
+    freshness: (env.RADAR_FRESHNESS || 'pw').toLowerCase(),
+    duplicates: 0,
     timings
   };
 
@@ -523,6 +525,7 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
       }
       timings.deduplicating = (timings.deduplicating ?? 0) + (Date.now() - dedupeStarted);
       newCandidatesTotal += newCandidates.length;
+      details.duplicates = Number(details.duplicates || 0) + Math.max(0, found.length - newCandidates.length);
 
       currentStage = newCandidates.length > 0 ? 'queueing' : 'deduplicating';
       await updateRunProgress(env, runId, {

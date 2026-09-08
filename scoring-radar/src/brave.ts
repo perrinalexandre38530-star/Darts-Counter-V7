@@ -16,6 +16,33 @@ interface BraveResponse {
   };
 }
 
+const TRACKING_QUERY_PARAMS = new Set([
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+  'gclid', 'fbclid', 'msclkid', 'ref', 'ref_src', 'source'
+]);
+
+function normalizedResultUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    url.hash = '';
+    const trackingKeys: string[] = [];
+    url.searchParams.forEach((_, key) => {
+      if (TRACKING_QUERY_PARAMS.has(key.toLowerCase())) trackingKeys.push(key);
+    });
+    for (const key of trackingKeys) url.searchParams.delete(key);
+    url.hostname = url.hostname.toLowerCase();
+    if (url.pathname !== '/') url.pathname = url.pathname.replace(/\/+$/, '');
+    return url.toString();
+  } catch {
+    return raw.trim();
+  }
+}
+
+function braveFreshness(env: RadarEnv): 'pd' | 'pw' | 'pm' | 'py' {
+  const configured = (env.RADAR_FRESHNESS || 'pw').trim().toLowerCase();
+  return configured === 'pd' || configured === 'pm' || configured === 'py' ? configured : 'pw';
+}
+
 export async function searchBrave(
   env: RadarEnv,
   queryKey: string,
@@ -34,7 +61,7 @@ export async function searchBrave(
   url.searchParams.set('country', market.country);
   const searchLanguage = braveSearchLanguage(market);
   if (searchLanguage) url.searchParams.set('search_lang', searchLanguage);
-  url.searchParams.set('freshness', 'pd');
+  url.searchParams.set('freshness', braveFreshness(env));
   url.searchParams.set('safesearch', 'moderate');
   url.searchParams.set('text_decorations', 'false');
   url.searchParams.set('extra_snippets', 'true');
@@ -73,9 +100,12 @@ export async function searchBrave(
   const candidates: Candidate[] = [];
 
   for (const result of results) {
-    const sourceUrl = result.url?.trim();
-    if (!sourceUrl) continue;
-    const id = await sha256Hex(`brave|${sourceUrl}`);
+    const rawSourceUrl = result.url?.trim();
+    if (!rawSourceUrl) continue;
+    const sourceUrl = normalizedResultUrl(rawSourceUrl);
+    // Deduplicate the same page across countries/languages for one intent, while
+    // allowing the same page to be evaluated separately for another user need.
+    const id = await sha256Hex(`brave|v2|${queryKey}|${sourceUrl}`);
     const snippets = [result.description, ...(result.extra_snippets ?? [])]
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
       .map((value) => value.trim());

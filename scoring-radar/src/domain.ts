@@ -11,6 +11,7 @@ export type RadarSecrets = {
   SOCIAL_MAX_CAMPAIGNS_PER_DAY?: string;
   RADAR_TRANSLATION_TIMEOUT_MS?: string;
   RADAR_BRAVE_TIMEOUT_MS?: string;
+  RADAR_FRESHNESS?: string;
   RADAR_CLASSIFY_TIMEOUT_MS?: string;
   RADAR_STALL_TIMEOUT_MS?: string;
   SOCIAL_AI_TIMEOUT_MS?: string;
