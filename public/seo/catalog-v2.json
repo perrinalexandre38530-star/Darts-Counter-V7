@@ -1,0 +1,389 @@
+{
+  "product": "MULTISPORTS SCORING",
+  "canonicalBase": "https://multisports-scoring.pages.dev",
+  "googlePlay": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+  "generatedAt": "2026-09-08",
+  "languages": [
+    {
+      "code": "fr",
+      "name": "Français"
+    },
+    {
+      "code": "en",
+      "name": "English"
+    },
+    {
+      "code": "es",
+      "name": "Español"
+    },
+    {
+      "code": "de",
+      "name": "Deutsch"
+    },
+    {
+      "code": "it",
+      "name": "Italiano"
+    },
+    {
+      "code": "pt",
+      "name": "Português"
+    },
+    {
+      "code": "nl",
+      "name": "Nederlands"
+    },
+    {
+      "code": "ru",
+      "name": "Русский"
+    },
+    {
+      "code": "zh",
+      "name": "中文"
+    },
+    {
+      "code": "ja",
+      "name": "日本語"
+    },
+    {
+      "code": "ar",
+      "name": "العربية"
+    },
+    {
+      "code": "hi",
+      "name": "हिन्दी"
+    },
+    {
+      "code": "tr",
+      "name": "Türkçe"
+    },
+    {
+      "code": "da",
+      "name": "Dansk"
+    },
+    {
+      "code": "no",
+      "name": "Norsk"
+    },
+    {
+      "code": "sv",
+      "name": "Svenska"
+    },
+    {
+      "code": "is",
+      "name": "Íslenska"
+    },
+    {
+      "code": "pl",
+      "name": "Polski"
+    },
+    {
+      "code": "ro",
+      "name": "Română"
+    },
+    {
+      "code": "sr",
+      "name": "Srpski"
+    },
+    {
+      "code": "hr",
+      "name": "Hrvatski"
+    },
+    {
+      "code": "cs",
+      "name": "Čeština"
+    }
+  ],
+  "sports": [
+    {
+      "id": "darts",
+      "androidPublicV1": true,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/",
+        "de": "https://multisports-scoring.pages.dev/de/darts/",
+        "it": "https://multisports-scoring.pages.dev/it/freccette/",
+        "pt": "https://multisports-scoring.pages.dev/pt/dardos/",
+        "nl": "https://multisports-scoring.pages.dev/nl/darts/",
+        "ru": "https://multisports-scoring.pages.dev/ru/darts/",
+        "zh": "https://multisports-scoring.pages.dev/zh/darts/",
+        "ja": "https://multisports-scoring.pages.dev/ja/darts/",
+        "ar": "https://multisports-scoring.pages.dev/ar/darts/",
+        "hi": "https://multisports-scoring.pages.dev/hi/darts/",
+        "tr": "https://multisports-scoring.pages.dev/tr/darts/",
+        "da": "https://multisports-scoring.pages.dev/da/darts/",
+        "no": "https://multisports-scoring.pages.dev/no/darts/",
+        "sv": "https://multisports-scoring.pages.dev/sv/darts/",
+        "is": "https://multisports-scoring.pages.dev/is/darts/",
+        "pl": "https://multisports-scoring.pages.dev/pl/darts/",
+        "ro": "https://multisports-scoring.pages.dev/ro/darts/",
+        "sr": "https://multisports-scoring.pages.dev/sr/darts/",
+        "hr": "https://multisports-scoring.pages.dev/hr/darts/",
+        "cs": "https://multisports-scoring.pages.dev/cs/darts/"
+      }
+    },
+    {
+      "id": "running",
+      "androidPublicV1": true,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/running/",
+        "en": "https://multisports-scoring.pages.dev/en/running/",
+        "es": "https://multisports-scoring.pages.dev/es/running/",
+        "de": "https://multisports-scoring.pages.dev/de/laufen/",
+        "it": "https://multisports-scoring.pages.dev/it/corsa/",
+        "pt": "https://multisports-scoring.pages.dev/pt/corrida/",
+        "nl": "https://multisports-scoring.pages.dev/nl/hardlopen/",
+        "ru": "https://multisports-scoring.pages.dev/ru/running/",
+        "zh": "https://multisports-scoring.pages.dev/zh/running/",
+        "ja": "https://multisports-scoring.pages.dev/ja/running/",
+        "ar": "https://multisports-scoring.pages.dev/ar/running/",
+        "hi": "https://multisports-scoring.pages.dev/hi/running/",
+        "tr": "https://multisports-scoring.pages.dev/tr/running/",
+        "da": "https://multisports-scoring.pages.dev/da/running/",
+        "no": "https://multisports-scoring.pages.dev/no/running/",
+        "sv": "https://multisports-scoring.pages.dev/sv/running/",
+        "is": "https://multisports-scoring.pages.dev/is/running/",
+        "pl": "https://multisports-scoring.pages.dev/pl/running/",
+        "ro": "https://multisports-scoring.pages.dev/ro/running/",
+        "sr": "https://multisports-scoring.pages.dev/sr/running/",
+        "hr": "https://multisports-scoring.pages.dev/hr/running/",
+        "cs": "https://multisports-scoring.pages.dev/cs/running/"
+      }
+    },
+    {
+      "id": "fit",
+      "androidPublicV1": true,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/fit-perf/",
+        "en": "https://multisports-scoring.pages.dev/en/fit-perf/",
+        "es": "https://multisports-scoring.pages.dev/es/fit-perf/",
+        "de": "https://multisports-scoring.pages.dev/de/fit-perf/",
+        "it": "https://multisports-scoring.pages.dev/it/fit-perf/",
+        "pt": "https://multisports-scoring.pages.dev/pt/fit-perf/",
+        "nl": "https://multisports-scoring.pages.dev/nl/fit-perf/",
+        "ru": "https://multisports-scoring.pages.dev/ru/fit-perf/",
+        "zh": "https://multisports-scoring.pages.dev/zh/fit-perf/",
+        "ja": "https://multisports-scoring.pages.dev/ja/fit-perf/",
+        "ar": "https://multisports-scoring.pages.dev/ar/fit-perf/",
+        "hi": "https://multisports-scoring.pages.dev/hi/fit-perf/",
+        "tr": "https://multisports-scoring.pages.dev/tr/fit-perf/",
+        "da": "https://multisports-scoring.pages.dev/da/fit-perf/",
+        "no": "https://multisports-scoring.pages.dev/no/fit-perf/",
+        "sv": "https://multisports-scoring.pages.dev/sv/fit-perf/",
+        "is": "https://multisports-scoring.pages.dev/is/fit-perf/",
+        "pl": "https://multisports-scoring.pages.dev/pl/fit-perf/",
+        "ro": "https://multisports-scoring.pages.dev/ro/fit-perf/",
+        "sr": "https://multisports-scoring.pages.dev/sr/fit-perf/",
+        "hr": "https://multisports-scoring.pages.dev/hr/fit-perf/",
+        "cs": "https://multisports-scoring.pages.dev/cs/fit-perf/"
+      }
+    },
+    {
+      "id": "foot",
+      "androidPublicV1": false,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/football/",
+        "en": "https://multisports-scoring.pages.dev/en/football/",
+        "es": "https://multisports-scoring.pages.dev/es/futbol/",
+        "de": "https://multisports-scoring.pages.dev/de/fussball/",
+        "it": "https://multisports-scoring.pages.dev/it/calcio/",
+        "pt": "https://multisports-scoring.pages.dev/pt/futebol/",
+        "nl": "https://multisports-scoring.pages.dev/nl/voetbal/",
+        "ru": "https://multisports-scoring.pages.dev/ru/football/",
+        "zh": "https://multisports-scoring.pages.dev/zh/football/",
+        "ja": "https://multisports-scoring.pages.dev/ja/football/",
+        "ar": "https://multisports-scoring.pages.dev/ar/football/",
+        "hi": "https://multisports-scoring.pages.dev/hi/football/",
+        "tr": "https://multisports-scoring.pages.dev/tr/football/",
+        "da": "https://multisports-scoring.pages.dev/da/football/",
+        "no": "https://multisports-scoring.pages.dev/no/football/",
+        "sv": "https://multisports-scoring.pages.dev/sv/football/",
+        "is": "https://multisports-scoring.pages.dev/is/football/",
+        "pl": "https://multisports-scoring.pages.dev/pl/football/",
+        "ro": "https://multisports-scoring.pages.dev/ro/football/",
+        "sr": "https://multisports-scoring.pages.dev/sr/football/",
+        "hr": "https://multisports-scoring.pages.dev/hr/football/",
+        "cs": "https://multisports-scoring.pages.dev/cs/football/"
+      }
+    },
+    {
+      "id": "babyfoot",
+      "androidPublicV1": true,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/baby-foot/",
+        "en": "https://multisports-scoring.pages.dev/en/foosball/",
+        "es": "https://multisports-scoring.pages.dev/es/futbolin/",
+        "de": "https://multisports-scoring.pages.dev/de/tischfussball/",
+        "it": "https://multisports-scoring.pages.dev/it/calcio-balilla/",
+        "pt": "https://multisports-scoring.pages.dev/pt/matraquilhos/",
+        "nl": "https://multisports-scoring.pages.dev/nl/tafelvoetbal/",
+        "ru": "https://multisports-scoring.pages.dev/ru/table-football/",
+        "zh": "https://multisports-scoring.pages.dev/zh/table-football/",
+        "ja": "https://multisports-scoring.pages.dev/ja/table-football/",
+        "ar": "https://multisports-scoring.pages.dev/ar/table-football/",
+        "hi": "https://multisports-scoring.pages.dev/hi/table-football/",
+        "tr": "https://multisports-scoring.pages.dev/tr/table-football/",
+        "da": "https://multisports-scoring.pages.dev/da/table-football/",
+        "no": "https://multisports-scoring.pages.dev/no/table-football/",
+        "sv": "https://multisports-scoring.pages.dev/sv/table-football/",
+        "is": "https://multisports-scoring.pages.dev/is/table-football/",
+        "pl": "https://multisports-scoring.pages.dev/pl/table-football/",
+        "ro": "https://multisports-scoring.pages.dev/ro/table-football/",
+        "sr": "https://multisports-scoring.pages.dev/sr/table-football/",
+        "hr": "https://multisports-scoring.pages.dev/hr/table-football/",
+        "cs": "https://multisports-scoring.pages.dev/cs/table-football/"
+      }
+    },
+    {
+      "id": "pingpong",
+      "androidPublicV1": false,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/ping-pong/",
+        "en": "https://multisports-scoring.pages.dev/en/table-tennis/",
+        "es": "https://multisports-scoring.pages.dev/es/tenis-de-mesa/",
+        "de": "https://multisports-scoring.pages.dev/de/tischtennis/",
+        "it": "https://multisports-scoring.pages.dev/it/tennistavolo/",
+        "pt": "https://multisports-scoring.pages.dev/pt/tenis-de-mesa/",
+        "nl": "https://multisports-scoring.pages.dev/nl/tafeltennis/",
+        "ru": "https://multisports-scoring.pages.dev/ru/table-tennis/",
+        "zh": "https://multisports-scoring.pages.dev/zh/table-tennis/",
+        "ja": "https://multisports-scoring.pages.dev/ja/table-tennis/",
+        "ar": "https://multisports-scoring.pages.dev/ar/table-tennis/",
+        "hi": "https://multisports-scoring.pages.dev/hi/table-tennis/",
+        "tr": "https://multisports-scoring.pages.dev/tr/table-tennis/",
+        "da": "https://multisports-scoring.pages.dev/da/table-tennis/",
+        "no": "https://multisports-scoring.pages.dev/no/table-tennis/",
+        "sv": "https://multisports-scoring.pages.dev/sv/table-tennis/",
+        "is": "https://multisports-scoring.pages.dev/is/table-tennis/",
+        "pl": "https://multisports-scoring.pages.dev/pl/table-tennis/",
+        "ro": "https://multisports-scoring.pages.dev/ro/table-tennis/",
+        "sr": "https://multisports-scoring.pages.dev/sr/table-tennis/",
+        "hr": "https://multisports-scoring.pages.dev/hr/table-tennis/",
+        "cs": "https://multisports-scoring.pages.dev/cs/table-tennis/"
+      }
+    },
+    {
+      "id": "petanque",
+      "androidPublicV1": true,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/petanque/",
+        "en": "https://multisports-scoring.pages.dev/en/petanque/",
+        "es": "https://multisports-scoring.pages.dev/es/petanca/",
+        "de": "https://multisports-scoring.pages.dev/de/petanque/",
+        "it": "https://multisports-scoring.pages.dev/it/petanque/",
+        "pt": "https://multisports-scoring.pages.dev/pt/petanca/",
+        "nl": "https://multisports-scoring.pages.dev/nl/petanque/",
+        "ru": "https://multisports-scoring.pages.dev/ru/petanque/",
+        "zh": "https://multisports-scoring.pages.dev/zh/petanque/",
+        "ja": "https://multisports-scoring.pages.dev/ja/petanque/",
+        "ar": "https://multisports-scoring.pages.dev/ar/petanque/",
+        "hi": "https://multisports-scoring.pages.dev/hi/petanque/",
+        "tr": "https://multisports-scoring.pages.dev/tr/petanque/",
+        "da": "https://multisports-scoring.pages.dev/da/petanque/",
+        "no": "https://multisports-scoring.pages.dev/no/petanque/",
+        "sv": "https://multisports-scoring.pages.dev/sv/petanque/",
+        "is": "https://multisports-scoring.pages.dev/is/petanque/",
+        "pl": "https://multisports-scoring.pages.dev/pl/petanque/",
+        "ro": "https://multisports-scoring.pages.dev/ro/petanque/",
+        "sr": "https://multisports-scoring.pages.dev/sr/petanque/",
+        "hr": "https://multisports-scoring.pages.dev/hr/petanque/",
+        "cs": "https://multisports-scoring.pages.dev/cs/petanque/"
+      }
+    },
+    {
+      "id": "molkky",
+      "androidPublicV1": false,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/molkky/",
+        "en": "https://multisports-scoring.pages.dev/en/molkky/",
+        "es": "https://multisports-scoring.pages.dev/es/molkky/",
+        "de": "https://multisports-scoring.pages.dev/de/molkky/",
+        "it": "https://multisports-scoring.pages.dev/it/molkky/",
+        "pt": "https://multisports-scoring.pages.dev/pt/molkky/",
+        "nl": "https://multisports-scoring.pages.dev/nl/molkky/",
+        "ru": "https://multisports-scoring.pages.dev/ru/molkky/",
+        "zh": "https://multisports-scoring.pages.dev/zh/molkky/",
+        "ja": "https://multisports-scoring.pages.dev/ja/molkky/",
+        "ar": "https://multisports-scoring.pages.dev/ar/molkky/",
+        "hi": "https://multisports-scoring.pages.dev/hi/molkky/",
+        "tr": "https://multisports-scoring.pages.dev/tr/molkky/",
+        "da": "https://multisports-scoring.pages.dev/da/molkky/",
+        "no": "https://multisports-scoring.pages.dev/no/molkky/",
+        "sv": "https://multisports-scoring.pages.dev/sv/molkky/",
+        "is": "https://multisports-scoring.pages.dev/is/molkky/",
+        "pl": "https://multisports-scoring.pages.dev/pl/molkky/",
+        "ro": "https://multisports-scoring.pages.dev/ro/molkky/",
+        "sr": "https://multisports-scoring.pages.dev/sr/molkky/",
+        "hr": "https://multisports-scoring.pages.dev/hr/molkky/",
+        "cs": "https://multisports-scoring.pages.dev/cs/molkky/"
+      }
+    },
+    {
+      "id": "dicegame",
+      "androidPublicV1": false,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/dice-game/",
+        "en": "https://multisports-scoring.pages.dev/en/dice-game/",
+        "es": "https://multisports-scoring.pages.dev/es/juego-de-dados/",
+        "de": "https://multisports-scoring.pages.dev/de/wuerfelspiel/",
+        "it": "https://multisports-scoring.pages.dev/it/gioco-dadi/",
+        "pt": "https://multisports-scoring.pages.dev/pt/jogo-de-dados/",
+        "nl": "https://multisports-scoring.pages.dev/nl/dobbelspel/",
+        "ru": "https://multisports-scoring.pages.dev/ru/dice-game/",
+        "zh": "https://multisports-scoring.pages.dev/zh/dice-game/",
+        "ja": "https://multisports-scoring.pages.dev/ja/dice-game/",
+        "ar": "https://multisports-scoring.pages.dev/ar/dice-game/",
+        "hi": "https://multisports-scoring.pages.dev/hi/dice-game/",
+        "tr": "https://multisports-scoring.pages.dev/tr/dice-game/",
+        "da": "https://multisports-scoring.pages.dev/da/dice-game/",
+        "no": "https://multisports-scoring.pages.dev/no/dice-game/",
+        "sv": "https://multisports-scoring.pages.dev/sv/dice-game/",
+        "is": "https://multisports-scoring.pages.dev/is/dice-game/",
+        "pl": "https://multisports-scoring.pages.dev/pl/dice-game/",
+        "ro": "https://multisports-scoring.pages.dev/ro/dice-game/",
+        "sr": "https://multisports-scoring.pages.dev/sr/dice-game/",
+        "hr": "https://multisports-scoring.pages.dev/hr/dice-game/",
+        "cs": "https://multisports-scoring.pages.dev/cs/dice-game/"
+      }
+    },
+    {
+      "id": "esports",
+      "androidPublicV1": false,
+      "webPwa": true,
+      "routes": {
+        "fr": "https://multisports-scoring.pages.dev/fr/esports/",
+        "en": "https://multisports-scoring.pages.dev/en/esports/",
+        "es": "https://multisports-scoring.pages.dev/es/esports/",
+        "de": "https://multisports-scoring.pages.dev/de/esport/",
+        "it": "https://multisports-scoring.pages.dev/it/esports/",
+        "pt": "https://multisports-scoring.pages.dev/pt/esports/",
+        "nl": "https://multisports-scoring.pages.dev/nl/esports/",
+        "ru": "https://multisports-scoring.pages.dev/ru/esports/",
+        "zh": "https://multisports-scoring.pages.dev/zh/esports/",
+        "ja": "https://multisports-scoring.pages.dev/ja/esports/",
+        "ar": "https://multisports-scoring.pages.dev/ar/esports/",
+        "hi": "https://multisports-scoring.pages.dev/hi/esports/",
+        "tr": "https://multisports-scoring.pages.dev/tr/esports/",
+        "da": "https://multisports-scoring.pages.dev/da/esports/",
+        "no": "https://multisports-scoring.pages.dev/no/esports/",
+        "sv": "https://multisports-scoring.pages.dev/sv/esports/",
+        "is": "https://multisports-scoring.pages.dev/is/esports/",
+        "pl": "https://multisports-scoring.pages.dev/pl/esports/",
+        "ro": "https://multisports-scoring.pages.dev/ro/esports/",
+        "sr": "https://multisports-scoring.pages.dev/sr/esports/",
+        "hr": "https://multisports-scoring.pages.dev/hr/esports/",
+        "cs": "https://multisports-scoring.pages.dev/cs/esports/"
+      }
+    }
+  ],
+  "note": "Android public V1 availability is intentionally distinct from the broader Web/PWA catalogue."
+}

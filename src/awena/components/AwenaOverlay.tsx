@@ -360,6 +360,14 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
   const proceduralRoute = !currentMode && isAwenaComplexRoute(String(route || runtime.route || ""));
   const proceduralPrompt = proceduralRoute ? awenaProcedurePromptForRoute(String(route || runtime.route || "")) : "";
 
+  const isGameSelectRoute = String(route || runtime.route || "") === "gameSelect";
+  const awenaLauncherBottom = !inGame && isGameSelectRoute
+    ? "calc(env(safe-area-inset-bottom, 0px) + 18px)"
+    : 96;
+  const awenaPanelBottom = !inGame && isGameSelectRoute
+    ? "calc(env(safe-area-inset-bottom, 0px) + 88px)"
+    : 166;
+
   async function submit(text: string) {
     const clean = text.trim();
     if (!clean || busy) return;
@@ -391,7 +399,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
           style={{
             position: "fixed",
             right: 16,
-            bottom: 96,
+            bottom: awenaLauncherBottom,
             width: 74,
             height: 74,
             zIndex: 1200,
@@ -483,7 +491,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
 
       {open && (
         <div data-awena-overlay="1" style={{
-          position: "fixed", right: 12, ...(inGame ? { top: 78, bottom: "auto" } : { bottom: 166 }), zIndex: 1199,
+          position: "fixed", right: 12, ...(inGame ? { top: 78, bottom: "auto" } : { bottom: awenaPanelBottom }), zIndex: 1199,
           width: "min(390px, calc(100vw - 24px))", maxHeight: inGame ? "min(620px, calc(100vh - 96px))" : "min(620px, calc(100vh - 210px))",
           display: "flex", flexDirection: "column", overflow: "hidden",
           borderRadius: 22, border: `1px solid ${primary}88`,

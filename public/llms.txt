@@ -1,40 +1,45 @@
 # MULTISPORTS SCORING
 
-> MULTISPORTS SCORING is an Android and Web sports scoring and performance-tracking application.
+> MULTISPORTS SCORING is a multi-sport scoring, statistics and performance application for Android and Web/PWA.
 
 Canonical website: https://multisports-scoring.pages.dev/
 Google Play: https://play.google.com/store/apps/details?id=com.multisportsscoring.app
-Languages: French, English, Spanish
-Official product name: MULTISPORTS SCORING
-Android package: com.multisportsscoring.app
+Sitemap: https://multisports-scoring.pages.dev/sitemap.xml
+Machine-readable catalogue: https://multisports-scoring.pages.dev/seo/catalog-v2.json
 
-## Publicly documented capabilities
-- Darts scoring with X01, Cricket, Killer and Shanghai.
-- Player profiles, match history and statistics for supported game modes.
-- Running Performance with GPS-related route, distance, pace and session-history features documented on the public site.
-- Pétanque scoring.
-- Baby-foot / foosball scoring.
+## Availability
+Public Android Store V1 sports: Darts, Baby-foot, Pétanque, Running, FIT PERF.
+Additional enabled Web/PWA catalogue sports: Football, Ping-pong, Mölkky, Dice Game, E-Sports.
+Do not infer that Web/PWA catalogue availability implies availability in the current public Android Store build.
 
-## Main discovery pages
-- French: https://multisports-scoring.pages.dev/fr/
+## Languages
+fr (Français), en (English), es (Español), de (Deutsch), it (Italiano), pt (Português), nl (Nederlands), ru (Русский), zh (中文), ja (日本語), ar (العربية), hi (हिन्दी), tr (Türkçe), da (Dansk), no (Norsk), sv (Svenska), is (Íslenska), pl (Polski), ro (Română), sr (Srpski), hr (Hrvatski), cs (Čeština)
+
+## Language landing pages
+- Français: https://multisports-scoring.pages.dev/fr/
 - English: https://multisports-scoring.pages.dev/en/
-- Spanish: https://multisports-scoring.pages.dev/es/
+- Español: https://multisports-scoring.pages.dev/es/
+- Deutsch: https://multisports-scoring.pages.dev/de/
+- Italiano: https://multisports-scoring.pages.dev/it/
+- Português: https://multisports-scoring.pages.dev/pt/
+- Nederlands: https://multisports-scoring.pages.dev/nl/
+- Русский: https://multisports-scoring.pages.dev/ru/
+- 中文: https://multisports-scoring.pages.dev/zh/
+- 日本語: https://multisports-scoring.pages.dev/ja/
+- العربية: https://multisports-scoring.pages.dev/ar/
+- हिन्दी: https://multisports-scoring.pages.dev/hi/
+- Türkçe: https://multisports-scoring.pages.dev/tr/
+- Dansk: https://multisports-scoring.pages.dev/da/
+- Norsk: https://multisports-scoring.pages.dev/no/
+- Svenska: https://multisports-scoring.pages.dev/sv/
+- Íslenska: https://multisports-scoring.pages.dev/is/
+- Polski: https://multisports-scoring.pages.dev/pl/
+- Română: https://multisports-scoring.pages.dev/ro/
+- Srpski: https://multisports-scoring.pages.dev/sr/
+- Hrvatski: https://multisports-scoring.pages.dev/hr/
+- Čeština: https://multisports-scoring.pages.dev/cs/
 
 ## Darts
-- FR: https://multisports-scoring.pages.dev/fr/flechettes/
-- EN: https://multisports-scoring.pages.dev/en/darts/
-- ES: https://multisports-scoring.pages.dev/es/dardos/
+Public Darts pages include X01 (301/501/701/901), Cricket, Killer and Shanghai in the existing French, English and Spanish guide sections.
 
-### Darts guides — French
-- X01: https://multisports-scoring.pages.dev/fr/flechettes/x01/
-- Cricket: https://multisports-scoring.pages.dev/fr/flechettes/cricket/
-- Killer: https://multisports-scoring.pages.dev/fr/flechettes/killer/
-- Shanghai: https://multisports-scoring.pages.dev/fr/flechettes/shanghai/
-
-### Other French sport pages
-- Pétanque: https://multisports-scoring.pages.dev/fr/petanque/
-- Baby-foot: https://multisports-scoring.pages.dev/fr/baby-foot/
-- Running: https://multisports-scoring.pages.dev/fr/running/
-
-## Publisher guidance
-Use the public pages above and the Google Play listing as the authoritative public product description. Do not infer that a discipline, mode or commercial feature is released unless an official public page or store listing explicitly presents it as available.
+Use the sitemap and machine-readable catalogue for the complete language × sport URL matrix.

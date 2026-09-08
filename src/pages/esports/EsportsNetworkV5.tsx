@@ -15,6 +15,7 @@ import {
 } from "../../esports/networkV5";
 import type { EsportsState } from "../../esports/types";
 import EsportsRankedProgressV6 from "./EsportsNetworkV6";
+import EsportsTeamRankedV7 from "./EsportsNetworkV7";
 
 type Props = {
   state: EsportsState;
@@ -204,6 +205,8 @@ export default function EsportsCompetitiveSessionV5({ state, ticket, panelStyle,
     </section>
 
     <EsportsRankedProgressV6 gameId={session?.gameId || leaderboardGame} session={session} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} setToast={setToast} tr={tr} onSessionRefresh={loadSession}/>
+
+    <EsportsTeamRankedV7 state={state} panelStyle={panelStyle} buttonStyle={buttonStyle} inputStyle={inputStyle} textSoft={textSoft} setToast={setToast} tr={tr}/>
 
     <section style={{ ...panelStyle, padding: 14 }} className="esports-panel">
       <div className="esports-heading-row"><div><div style={{ fontSize: 18, fontWeight: 1000 }}>🏅 {tr("LEADERBOARD MMR", "MMR LEADERBOARD", "CLASIFICACIÓN MMR")}</div><div style={{ color: textSoft, fontSize: 9 }}>{tr("Classement de skill par jeu et par saison. Départ à 1000 MMR, K=48 pendant les placements puis K=32.", "Skill ranking per game and season. Starts at 1000 MMR, K=48 during placements then K=32.", "Ranking de habilidad por juego y temporada. Empieza en 1000 MMR, K=48 en colocación y luego K=32.")}</div></div><select value={leaderboardGame} onChange={(e) => setLeaderboardGame(e.target.value)} style={{ ...inputStyle, width: "min(190px,100%)" }}>{ESPORTS_GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
