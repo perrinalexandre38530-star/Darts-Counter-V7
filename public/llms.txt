@@ -7,39 +7,34 @@ Google Play: https://play.google.com/store/apps/details?id=com.multisportsscorin
 Sitemap: https://multisports-scoring.pages.dev/sitemap.xml
 Machine-readable catalogue: https://multisports-scoring.pages.dev/seo/catalog-v2.json
 
-## Availability
-Public Android Store V1 sports: Darts, Baby-foot, Pétanque, Running, FIT PERF.
-Additional enabled Web/PWA catalogue sports: Football, Ping-pong, Mölkky, Dice Game, E-Sports.
-Do not infer that Web/PWA catalogue availability implies availability in the current public Android Store build.
+## Public Android availability
+Darts, Baby-foot, Pétanque, Running, FIT PERF.
+
+## Additional enabled Web/PWA catalogue modules
+Football, Ping-pong, Mölkky, Dice Game, E-Sports.
 
 ## Languages
-fr (Français), en (English), es (Español), de (Deutsch), it (Italiano), pt (Português), nl (Nederlands), ru (Русский), zh (中文), ja (日本語), ar (العربية), hi (हिन्दी), tr (Türkçe), da (Dansk), no (Norsk), sv (Svenska), is (Íslenska), pl (Polski), ro (Română), sr (Srpski), hr (Hrvatski), cs (Čeština)
+- fr: Français — https://multisports-scoring.pages.dev/fr/
+- en: English — https://multisports-scoring.pages.dev/en/
+- es: Español — https://multisports-scoring.pages.dev/es/
+- de: Deutsch — https://multisports-scoring.pages.dev/de/
+- it: Italiano — https://multisports-scoring.pages.dev/it/
+- pt: Português — https://multisports-scoring.pages.dev/pt/
+- nl: Nederlands — https://multisports-scoring.pages.dev/nl/
+- ru: Русский — https://multisports-scoring.pages.dev/ru/
+- zh: 中文 — https://multisports-scoring.pages.dev/zh/
+- ja: 日本語 — https://multisports-scoring.pages.dev/ja/
+- ar: العربية — https://multisports-scoring.pages.dev/ar/
+- hi: हिन्दी — https://multisports-scoring.pages.dev/hi/
+- tr: Türkçe — https://multisports-scoring.pages.dev/tr/
+- da: Dansk — https://multisports-scoring.pages.dev/da/
+- no: Norsk — https://multisports-scoring.pages.dev/no/
+- sv: Svenska — https://multisports-scoring.pages.dev/sv/
+- is: Íslenska — https://multisports-scoring.pages.dev/is/
+- pl: Polski — https://multisports-scoring.pages.dev/pl/
+- ro: Română — https://multisports-scoring.pages.dev/ro/
+- sr: Srpski — https://multisports-scoring.pages.dev/sr/
+- hr: Hrvatski — https://multisports-scoring.pages.dev/hr/
+- cs: Čeština — https://multisports-scoring.pages.dev/cs/
 
-## Language landing pages
-- Français: https://multisports-scoring.pages.dev/fr/
-- English: https://multisports-scoring.pages.dev/en/
-- Español: https://multisports-scoring.pages.dev/es/
-- Deutsch: https://multisports-scoring.pages.dev/de/
-- Italiano: https://multisports-scoring.pages.dev/it/
-- Português: https://multisports-scoring.pages.dev/pt/
-- Nederlands: https://multisports-scoring.pages.dev/nl/
-- Русский: https://multisports-scoring.pages.dev/ru/
-- 中文: https://multisports-scoring.pages.dev/zh/
-- 日本語: https://multisports-scoring.pages.dev/ja/
-- العربية: https://multisports-scoring.pages.dev/ar/
-- हिन्दी: https://multisports-scoring.pages.dev/hi/
-- Türkçe: https://multisports-scoring.pages.dev/tr/
-- Dansk: https://multisports-scoring.pages.dev/da/
-- Norsk: https://multisports-scoring.pages.dev/no/
-- Svenska: https://multisports-scoring.pages.dev/sv/
-- Íslenska: https://multisports-scoring.pages.dev/is/
-- Polski: https://multisports-scoring.pages.dev/pl/
-- Română: https://multisports-scoring.pages.dev/ro/
-- Srpski: https://multisports-scoring.pages.dev/sr/
-- Hrvatski: https://multisports-scoring.pages.dev/hr/
-- Čeština: https://multisports-scoring.pages.dev/cs/
-
-## Darts
-Public Darts pages include X01 (301/501/701/901), Cricket, Killer and Shanghai in the existing French, English and Spanish guide sections.
-
-Use the sitemap and machine-readable catalogue for the complete language × sport URL matrix.
+Use the sitemap for the complete public URL matrix.

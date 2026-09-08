@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://multisports-scoring.pages.dev/fr/</loc>
@@ -7023,71 +7024,119 @@
     <lastmod>2026-09-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://multisports-scoring.pages.dev/fr/flechettes/cricket/</loc>
-    <lastmod>2026-09-08</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://multisports-scoring.pages.dev/fr/flechettes/killer/</loc>
-    <lastmod>2026-09-08</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://multisports-scoring.pages.dev/fr/flechettes/shanghai/</loc>
-    <lastmod>2026-09-08</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/x01/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/x01/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/x01/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/x01/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/en/darts/x01/</loc>
     <lastmod>2026-09-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://multisports-scoring.pages.dev/en/darts/cricket/</loc>
-    <lastmod>2026-09-08</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://multisports-scoring.pages.dev/en/darts/killer/</loc>
-    <lastmod>2026-09-08</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://multisports-scoring.pages.dev/en/darts/shanghai/</loc>
-    <lastmod>2026-09-08</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/x01/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/x01/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/x01/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/x01/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/es/dardos/x01/</loc>
     <lastmod>2026-09-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/x01/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/x01/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/x01/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/x01/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/fr/flechettes/cricket/</loc>
+    <lastmod>2026-09-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/cricket/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/cricket/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/cricket/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/cricket/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/en/darts/cricket/</loc>
+    <lastmod>2026-09-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/cricket/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/cricket/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/cricket/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/cricket/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/es/dardos/cricket/</loc>
     <lastmod>2026-09-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/cricket/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/cricket/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/cricket/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/cricket/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/fr/flechettes/killer/</loc>
+    <lastmod>2026-09-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/killer/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/killer/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/killer/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/killer/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/en/darts/killer/</loc>
+    <lastmod>2026-09-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/killer/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/killer/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/killer/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/killer/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/es/dardos/killer/</loc>
     <lastmod>2026-09-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/killer/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/killer/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/killer/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/killer/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/fr/flechettes/shanghai/</loc>
+    <lastmod>2026-09-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/shanghai/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/en/darts/shanghai/</loc>
+    <lastmod>2026-09-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/shanghai/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/es/dardos/shanghai/</loc>
     <lastmod>2026-09-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/flechettes/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/darts/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/dardos/shanghai/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/darts/shanghai/" />
   </url>
 </urlset>

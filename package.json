@@ -150,7 +150,9 @@
     "test:admob-ilrd": "node ./tools/test-admob-ilrd-v81.mjs",
     "android:galaxy:check": "node ./tools/check-galaxy-store-readiness.mjs",
     "android:galaxy:aab": "node ./tools/build-galaxy-store-aab.mjs",
-    "test:galaxy-store": "node ./tools/test-galaxy-store-v1.mjs"
+    "test:galaxy-store": "node ./tools/test-galaxy-store-v1.mjs",
+    "test:seo": "node ./tools/test-seo-public-pages.mjs",
+    "seo:indexnow": "node ./tools/submit-indexnow.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
