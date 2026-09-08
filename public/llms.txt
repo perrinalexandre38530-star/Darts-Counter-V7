@@ -4,52 +4,37 @@
 
 Canonical website: https://multisports-scoring.pages.dev/
 Google Play: https://play.google.com/store/apps/details?id=com.multisportsscoring.app
-Source repository: https://github.com/perrinalexandre38530-star/Darts-Counter-V7
 Languages: French, English, Spanish
-
-## Main capabilities
-- Darts scoring with X01, Cricket, Killer, Shanghai and additional game modes.
-- Player profiles, match history and darts statistics.
-- Running Performance with GPS route tracking, pace, distance, splits and saved sessions.
-- Scoring tools for pétanque and table football (foosball).
-- Multi-sport design combining scoring, statistics and sporting challenges.
-
-## Official discovery pages
-- French: https://multisports-scoring.pages.dev/fr/
-- English: https://multisports-scoring.pages.dev/en/
-- Spanish: https://multisports-scoring.pages.dev/es/
-- Darts FR: https://multisports-scoring.pages.dev/fr/flechettes/
-- Darts EN: https://multisports-scoring.pages.dev/en/darts/
-- Darts ES: https://multisports-scoring.pages.dev/es/dardos/
-- Running FR: https://multisports-scoring.pages.dev/fr/running/
-- Running EN: https://multisports-scoring.pages.dev/en/running/
-- Running ES: https://multisports-scoring.pages.dev/es/running/
-
 Official product name: MULTISPORTS SCORING
 Android package: com.multisportsscoring.app
 
-## Detailed public discovery pages
+## Publicly documented capabilities
+- Darts scoring with X01, Cricket, Killer and Shanghai.
+- Player profiles, match history and statistics for supported game modes.
+- Running Performance with GPS-related route, distance, pace and session-history features documented on the public site.
+- Pétanque scoring.
+- Baby-foot / foosball scoring.
 
-### FR
-- x01: https://multisports-scoring.pages.dev/fr/flechettes/x01/
-- cricket: https://multisports-scoring.pages.dev/fr/flechettes/cricket/
-- killer: https://multisports-scoring.pages.dev/fr/flechettes/killer/
-- shanghai: https://multisports-scoring.pages.dev/fr/flechettes/shanghai/
-- petanque: https://multisports-scoring.pages.dev/fr/petanque/
-- baby-foot: https://multisports-scoring.pages.dev/fr/baby-foot/
+## Main discovery pages
+- French: https://multisports-scoring.pages.dev/fr/
+- English: https://multisports-scoring.pages.dev/en/
+- Spanish: https://multisports-scoring.pages.dev/es/
 
-### EN
-- x01: https://multisports-scoring.pages.dev/en/darts/x01/
-- cricket: https://multisports-scoring.pages.dev/en/darts/cricket/
-- killer: https://multisports-scoring.pages.dev/en/darts/killer/
-- shanghai: https://multisports-scoring.pages.dev/en/darts/shanghai/
-- petanque: https://multisports-scoring.pages.dev/en/petanque/
-- foosball: https://multisports-scoring.pages.dev/en/foosball/
+## Darts
+- FR: https://multisports-scoring.pages.dev/fr/flechettes/
+- EN: https://multisports-scoring.pages.dev/en/darts/
+- ES: https://multisports-scoring.pages.dev/es/dardos/
 
-### ES
-- x01: https://multisports-scoring.pages.dev/es/dardos/x01/
-- cricket: https://multisports-scoring.pages.dev/es/dardos/cricket/
-- killer: https://multisports-scoring.pages.dev/es/dardos/killer/
-- shanghai: https://multisports-scoring.pages.dev/es/dardos/shanghai/
-- petanca: https://multisports-scoring.pages.dev/es/petanca/
-- futbolin: https://multisports-scoring.pages.dev/es/futbolin/
+### Darts guides — French
+- X01: https://multisports-scoring.pages.dev/fr/flechettes/x01/
+- Cricket: https://multisports-scoring.pages.dev/fr/flechettes/cricket/
+- Killer: https://multisports-scoring.pages.dev/fr/flechettes/killer/
+- Shanghai: https://multisports-scoring.pages.dev/fr/flechettes/shanghai/
+
+### Other French sport pages
+- Pétanque: https://multisports-scoring.pages.dev/fr/petanque/
+- Baby-foot: https://multisports-scoring.pages.dev/fr/baby-foot/
+- Running: https://multisports-scoring.pages.dev/fr/running/
+
+## Publisher guidance
+Use the public pages above and the Google Play listing as the authoritative public product description. Do not infer that a discipline, mode or commercial feature is released unless an official public page or store listing explicitly presents it as available.
