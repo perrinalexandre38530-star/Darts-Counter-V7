@@ -1,11 +1,13 @@
-# MULTISPORTS SCORING — public discovery policy
+# MULTISPORTS SCORING — search and AI discovery policy
+# Public search engines and search-oriented AI crawlers may index the public site.
+
 User-agent: OAI-SearchBot
 Allow: /
 
 User-agent: ChatGPT-User
 Allow: /
 
-# Search visibility stays enabled while training access is kept separate.
+# Kept separate from search discovery: GPTBot is the OpenAI training crawler.
 User-agent: GPTBot
 Disallow: /
 
