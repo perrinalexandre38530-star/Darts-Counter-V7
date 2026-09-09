@@ -10,7 +10,7 @@ const orgPage = read("src/pages/OrganizationsPage.tsx");
 const teams = read("src/pages/petanque/PetanqueTeams.tsx");
 
 const checks = [
-  ["global workspace selector", switcher.includes("ESPACE PERSO") && switcher.includes("organization_home")],
+  ["global workspace selector", switcher.includes("Espace personnel") && switcher.includes("organization_home")],
   ["persistent personal/org context", workspace.includes("msc_organization_workspace_v1") && workspace.includes("ORGANIZATION_WORKSPACE_EVENT")],
   ["organization-native routes", app.includes('"organization_members"') && app.includes('"organization_teams"') && app.includes('"organization_stats"')],
   ["organization bottom navigation", nav.includes("organizationMode") && nav.includes('label: tr("Membres"') && nav.includes('label: tr("Équipes"')],

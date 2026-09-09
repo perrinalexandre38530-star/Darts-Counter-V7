@@ -1,0 +1,18 @@
+{
+  "patch": "MSS-V64-ORGANISATIONS-TYPE-ICONS-V6",
+  "base_reference": "Darts-Counter-V7(64)(2).zip",
+  "description": "Remplace les badges texte 'ME' / acronymes par de vrais mini-icones par type d'organisation et pour l'espace individuel, intégrés au médaillon flottant et aux sélecteurs d'espace.",
+  "changes": [
+    "Ajout du composant src/components/OrganizationTypeIcon.tsx avec mini-icones vectoriels cohérents avec le thème MSS.",
+    "Le médaillon flottant de switch d'espace affiche désormais un badge icône en bas à droite au lieu de 'ME' ou d'un texte brut.",
+    "L'entrée 'Espace personnel' dans le switcher reçoit aussi son petit badge individuel.",
+    "Les organisations dans le switcher affichent un icône par type (club, association, entreprise, bar/pub/salle, école, collectivité, organisateur, autre).",
+    "Le wizard de création d'organisation et le bloc 'Pour qui ?' utilisent les mêmes icônes pour homogénéiser la lecture visuelle."
+  ],
+  "supabase_migration_required": false,
+  "files": [
+    "src/components/OrganizationTypeIcon.tsx",
+    "src/components/OrganizationWorkspaceSwitcher.tsx",
+    "src/pages/OrganizationsPage.tsx"
+  ]
+}

@@ -6,7 +6,7 @@ const media=read('src/lib/userMediaFallback.ts');
 const sql=read('supabase/migrations/20260907180500_partnership_organizations_profile_v2.sql');
 const checks=[
   ['guided wizard', page.includes('WIZARD_STEPS = 8') && page.includes('CRÉATION GUIDÉE')],
-  ['organization profile view', page.includes('FICHE ORGANISME') && page.includes('profileCompleted')],
+  ['organization profile view', page.includes('Fiche organisme') && page.includes('profileCompleted')],
   ['logo + cover pickers', page.includes('organizationLogoMediaKey') && page.includes('organizationCoverMediaKey')],
   ['selected storage respected', page.includes('loadStoragePrefs') && page.includes('selectedDestination === "cloud_r2"')],
   ['media vault integration', page.includes('captureUserMediaFallback') && media.includes('club_logo') && media.includes('club_cover')],

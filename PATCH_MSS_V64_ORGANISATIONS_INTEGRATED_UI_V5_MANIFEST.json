@@ -1,0 +1,36 @@
+{
+  "patch": "MSS-V64-ORGANISATIONS-INTEGRATED-UI-V5",
+  "base": "Darts-Counter-V7(64).zip",
+  "created_at": "2026-09-09",
+  "summary": [
+    "Supprime le badge ME du medaillon compte en espace personnel; le badge ne s affiche que pour une organisation active.",
+    "Refonte l accueil Organisation pour reprendre la grammaire visuelle de l accueil individuel: bloc BIENVENUE, identite active, VUE GLOBALE, KPI et cartes detaillees.",
+    "Supprime le double en-tete Multisports Scoring dans le workspace Organisation.",
+    "Uniformise Agenda, Membres, Equipes, Competitions, Classements et Administration avec des headers/cartes/empty states proches du design individuel.",
+    "Conserve le workspace global, la BottomNav organisation, la fusion Teams et le stockage Supabase/R2 deja en place.",
+    "Aucune migration Supabase supplementaire."
+  ],
+  "changed_files": [
+    "src/components/OrganizationWorkspaceSwitcher.tsx",
+    "src/pages/OrganizationsPage.tsx",
+    "tools/test-organizations-partnership-v1.mjs",
+    "tools/test-organizations-guided-onboarding-v2.mjs",
+    "tools/test-organizations-workspace-v3.mjs",
+    "tools/test-organizations-integrated-ui-v5.mjs"
+  ],
+  "validation": {
+    "typescript": "PASS (tsc -p tsconfig.json --noEmit)",
+    "organizations_v1": "7/7 PASS",
+    "onboarding_v2": "9/9 PASS",
+    "workspace_v3": "10/10 PASS",
+    "integrated_ui_v5": "6/6 PASS"
+  },
+  "files_sha256": {
+    "src/components/OrganizationWorkspaceSwitcher.tsx": "b1b265148215d216729f3ca359d34156737edbbf65127fec2dce3c6ca63b4139",
+    "src/pages/OrganizationsPage.tsx": "9696a062774a0e5970df04206ece30864c3dbf68d7f3e6346129501485edec20",
+    "tools/test-organizations-partnership-v1.mjs": "8e39efe918c828ff98aad5275dbbccb7fae37875efe8478f30511c3c45ca9f73",
+    "tools/test-organizations-guided-onboarding-v2.mjs": "bbb5c0fe108a2ac45d5e5ffb59730cca14e6c7af762d8dbbc97fe9fa40a45620",
+    "tools/test-organizations-workspace-v3.mjs": "9a260838fe78fbf9ecf5441f9547bd23db1ea2e34b75568ed9fb6321f95c7958",
+    "tools/test-organizations-integrated-ui-v5.mjs": "b7a745a99526ed4a5dcd7d9bd76a3a8f7eb4846cf6d6972c24108309058385d0"
+  }
+}

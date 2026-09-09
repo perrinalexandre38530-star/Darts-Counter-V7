@@ -10,7 +10,7 @@ const migration = read('supabase/migrations/20260907165000_partnership_organizat
 const checks = [
   ['Settings card', settings.includes('PARTENARIATS & ORGANISATIONS') && settings.includes('go?.("organizations")')],
   ['Dedicated route', app.includes('| "organizations"') && app.includes('case "organizations"') && app.includes('#/organizations')],
-  ['Organization page', page.includes('MODE ORGANISATION') && page.includes('ÉQUIPES & GROUPES') && page.includes('AGENDA ORGANISATION')],
+  ['Organization page', page.includes('Bienvenue') && page.includes('Équipes & groupes') && page.includes('Agenda')],
   ['Account-scoped persistence', service.includes('msc_organizations_v1') && service.includes('normalizeUserKey')],
   ['Create/join cloud RPC', service.includes('ms_org_create') && service.includes('ms_org_join_by_code') && service.includes('ms_org_list_mine')],
   ['Multi-tenant schema', migration.includes('ms_organizations') && migration.includes('ms_organization_members') && migration.includes('organization_id')],

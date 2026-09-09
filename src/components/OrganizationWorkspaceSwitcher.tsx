@@ -5,11 +5,14 @@ import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import ResilientUserImage from "./ResilientUserImage";
 import { onlineAvatarMediaKey } from "../lib/userMediaFallback";
+import OrganizationTypeIcon from "./OrganizationTypeIcon";
 import { useFloatingCornerAvoidance } from "./useFloatingCornerAvoidance";
 import {
   listMyOrganizations,
   listOrganizationGroups,
   loadOrganizationLocalState,
+  organizationKindLabel,
+  organizationRoleLabel,
   setActiveOrganization,
   type OrganizationRecord,
 } from "../organizations/organizationService";
@@ -88,7 +91,7 @@ export default function OrganizationWorkspaceSwitcher({
     auth?.user?.user_metadata?.picture ||
     ""
   ).trim();
-  const activeBadge = active ? String(active.profile?.acronym || active.name.slice(0, 2)).toUpperCase().slice(0, 3) : "ME";
+  const activeBadgeKind = active?.kind || "personal";
   const activeLabel = active?.name || L("Espace personnel", "Personal space", "Espacio personal");
 
   const choosePersonal = () => {
@@ -172,7 +175,7 @@ export default function OrganizationWorkspaceSwitcher({
             boxShadow: "0 4px 10px rgba(0,0,0,.5)",
           }}
         >
-          {activeBadge}
+          <OrganizationTypeIcon kind={activeBadgeKind} size={11.5} color={active ? "#061014" : theme.text} strokeWidth={2.05} />
         </span>
       </button>
 
@@ -198,8 +201,13 @@ export default function OrganizationWorkspaceSwitcher({
             {L("MES ESPACES MULTISPORTS SCORING", "MY MULTISPORTS SCORING SPACES", "MIS ESPACIOS MULTISPORTS SCORING")}
           </div>
           <button type="button" onClick={choosePersonal} style={{ width: "100%", minHeight: 54, borderRadius: 12, border: `1px solid ${workspace.kind === "personal" ? theme.primary : theme.borderSoft}`, background: workspace.kind === "personal" ? `${theme.primary}12` : "rgba(255,255,255,.025)", color: theme.text, padding: "8px 10px", textAlign: "left", display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 9, alignItems: "center", cursor: "pointer" }}>
-            <span style={{ width: 38, height: 38, borderRadius: 999, overflow: "hidden", border: `1px solid ${theme.borderSoft}`, display: "grid", placeItems: "center" }}>
-              <ResilientUserImage mediaKey={onlineAvatarMediaKey(userId || "account")} kind="online_avatar" primarySrc={avatarPrimary} mirrorR2={false} fallbackNode={avatarFallback} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <span style={{ width: 38, height: 38, position: "relative", display: "inline-block" }}>
+              <span style={{ width: 38, height: 38, borderRadius: 999, overflow: "hidden", border: `1px solid ${theme.borderSoft}`, display: "grid", placeItems: "center" }}>
+                <ResilientUserImage mediaKey={onlineAvatarMediaKey(userId || "account")} kind="online_avatar" primarySrc={avatarPrimary} mirrorR2={false} fallbackNode={avatarFallback} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              </span>
+              <span style={{ position: "absolute", right: -2, bottom: -2, width: 15, height: 15, borderRadius: 999, border: `2px solid rgba(6,10,18,.96)`, background: "#132033", display: "grid", placeItems: "center", boxShadow: "0 3px 8px rgba(0,0,0,.45)" }}>
+                <OrganizationTypeIcon kind="personal" size={8.5} color={theme.text} strokeWidth={2.1} />
+              </span>
             </span>
             <span><strong style={{ display: "block", fontSize: 11 }}>{userLabel}</strong><small style={{ color: theme.textSoft, fontSize: 8.5 }}>{L("Espace personnel · profils, équipes, parties et statistiques", "Personal space · profiles, teams, games and statistics", "Espacio personal · perfiles, equipos, partidas y estadísticas")}</small></span>
             {workspace.kind === "personal" ? <span style={{ color: theme.primary }}>✓</span> : null}
@@ -209,8 +217,8 @@ export default function OrganizationWorkspaceSwitcher({
               const selected = workspace.kind === "organization" && workspace.organizationId === org.id;
               return (
                 <button key={org.id} type="button" onClick={() => chooseOrganization(org)} style={{ width: "100%", minHeight: 52, borderRadius: 12, border: `1px solid ${selected ? theme.primary : theme.borderSoft}`, background: selected ? `${theme.primary}12` : "rgba(255,255,255,.025)", color: theme.text, padding: "8px 10px", textAlign: "left", display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 9, alignItems: "center", cursor: "pointer" }}>
-                  <span style={{ width: 38, height: 38, borderRadius: 999, border: `1px solid ${theme.primary}55`, color: theme.primary, display: "grid", placeItems: "center", fontSize: 9, fontWeight: 1000 }}>{(org.profile?.acronym || org.name.slice(0, 2)).toUpperCase()}</span>
-                  <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{org.name}</strong><small style={{ color: theme.textSoft, fontSize: 8.5 }}>{org.kind.toUpperCase()} · {org.role.toUpperCase()}</small></span>
+                  <span style={{ width: 38, height: 38, borderRadius: 999, border: `1px solid ${selected ? theme.primary : theme.borderSoft}`, color: selected ? theme.primary : theme.textSoft, background: "rgba(8,14,24,.82)", display: "grid", placeItems: "center" }}><OrganizationTypeIcon kind={org.kind} size={15} color={selected ? theme.primary : theme.textSoft} strokeWidth={2.05} /></span>
+                  <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{org.name}</strong><small style={{ color: theme.textSoft, fontSize: 8.5 }}>{organizationKindLabel(org.kind)} · {organizationRoleLabel(org.role)}</small></span>
                   {selected ? <span style={{ color: theme.primary }}>✓</span> : null}
                 </button>
               );
