@@ -25,9 +25,11 @@ binding = "AVATAR_CACHE"
 id = "65729b90e2d44fbe90db28bda837cd63"
 
 # ➕ KV pour la synchronisation Cloud des stats (dc-sync)
+# V68 DEPLOY FIX : DC_SYNC pointe sur le namespace KV existant et valide AVATAR_CACHE.
+# Les clés du Worker sont isolées par préfixes sync: et viewer:, donc pas de collision.
 [[kv_namespaces]]
 binding = "DC_SYNC"
-id = "96adf0e2754949f88153f796c053d2cef"
+id = "65729b90e2d44fbe90db28bda837cd63"
 
 # 🔥 Ton bucket R2 réel
 [[r2_buckets]]

@@ -62,15 +62,15 @@ type WizardDraft = {
   foundedYear: string;
 };
 
-const KIND_OPTIONS: Array<{ id: OrganizationKind; label: string; short: string; detail: string }> = [
-  { id: "club", label: "Club sportif", short: "CLUB", detail: "Équipes, licenciés, coachs et compétitions" },
-  { id: "association", label: "Association", short: "ASSO", detail: "Adhérents, sections et événements" },
-  { id: "company", label: "Entreprise", short: "PRO", detail: "Collaborateurs, challenges et événements internes" },
-  { id: "venue", label: "Bar / Pub / Salle", short: "VENUE", detail: "Clients, installations, ligues et leaderboards" },
-  { id: "school", label: "École / Université", short: "EDU", detail: "Classes, équipes et compétitions scolaires" },
-  { id: "local_authority", label: "Collectivité", short: "CITY", detail: "Associations, équipements et événements locaux" },
-  { id: "organizer", label: "Organisateur", short: "EVENT", detail: "Tournois, événements et participants" },
-  { id: "other", label: "Autre", short: "MSS", detail: "Structure personnalisée" },
+const KIND_OPTIONS: Array<{ id: OrganizationKind; label: string; short: string; detail: string; ticker: string }> = [
+  { id: "club", label: "Club sportif", short: "CLUB", detail: "Équipes, licenciés, coachs et compétitions", ticker: "/organizations/tickers/club.webp" },
+  { id: "association", label: "Association", short: "ASSO", detail: "Adhérents, sections et événements", ticker: "/organizations/tickers/association.webp" },
+  { id: "company", label: "Entreprise", short: "PRO", detail: "Collaborateurs, challenges et événements internes", ticker: "/organizations/tickers/company.webp" },
+  { id: "venue", label: "Bar / Pub / Salle", short: "VENUE", detail: "Clients, installations, ligues et leaderboards", ticker: "/organizations/tickers/venue.webp" },
+  { id: "school", label: "École / Université", short: "EDU", detail: "Classes, équipes et compétitions scolaires", ticker: "/organizations/tickers/school.webp" },
+  { id: "local_authority", label: "Collectivité", short: "CITY", detail: "Associations, équipements et événements locaux", ticker: "/organizations/tickers/local-authority.webp" },
+  { id: "organizer", label: "Organisateur", short: "EVENT", detail: "Tournois, événements et participants", ticker: "/organizations/tickers/organizer.webp" },
+  { id: "other", label: "Autre", short: "MSS", detail: "Structure personnalisée", ticker: "/organizations/tickers/other.webp" },
 ];
 
 const PLAN_OPTIONS: Array<{ id: OrganizationPlan; title: string; subtitle: string; audience: string }> = [
@@ -474,7 +474,81 @@ export default function OrganizationsPage({ go, params }: Props) {
   ][wizardStep];
 
   const renderWizardStep = () => {
-    if (wizardStep === 0) return <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{KIND_OPTIONS.map((kind) => <button key={kind.id} type="button" onClick={() => setKind(kind.id)} style={{ minHeight: 83, borderRadius: 14, border: `1px solid ${draft.kind === kind.id ? theme.primary : theme.borderSoft}`, background: draft.kind === kind.id ? `${theme.primary}15` : "rgba(255,255,255,.025)", color: draft.kind === kind.id ? theme.primary : theme.text, cursor: "pointer", textAlign: "left", padding: "11px" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 26, height: 26, borderRadius: 999, border: `1px solid ${draft.kind === kind.id ? theme.primary : theme.borderSoft}`, background: "rgba(6,10,18,.9)", display: "grid", placeItems: "center", flexShrink: 0 }}><OrganizationTypeIcon kind={kind.id} size={12.5} color={draft.kind === kind.id ? theme.primary : theme.textSoft} strokeWidth={2.05} /></span><div style={{ fontSize: 8.5, fontWeight: 1000, opacity: .72, letterSpacing: .8 }}>{kind.short}</div></div><div style={{ marginTop: 7, fontSize: 11.5, fontWeight: 1000 }}>{kind.label}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 8.6, lineHeight: 1.35 }}>{kind.detail}</div></button>)}</div>;
+    if (wizardStep === 0) return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
+        {KIND_OPTIONS.map((kind) => {
+          const selected = draft.kind === kind.id;
+          return (
+            <button
+              key={kind.id}
+              type="button"
+              onClick={() => setKind(kind.id)}
+              style={{
+                minHeight: 108,
+                borderRadius: 14,
+                border: `1px solid ${theme.borderSoft}`,
+                background: selected ? `${theme.primary}0b` : "rgba(255,255,255,.022)",
+                color: selected ? theme.primary : theme.text,
+                cursor: "pointer",
+                textAlign: "left",
+                padding: 0,
+                position: "relative",
+                overflow: "hidden",
+                isolation: "isolate",
+                boxShadow: "0 9px 22px rgba(0,0,0,.22)",
+              }}
+            >
+              <img
+                src={kind.ticker}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                style={{
+                  position: "absolute",
+                  inset: "-25% -8% auto -8%",
+                  width: "116%",
+                  height: 92,
+                  objectFit: "cover",
+                  objectPosition: "center 66%",
+                  opacity: selected ? .9 : .63,
+                  filter: selected
+                    ? `saturate(1.12) brightness(1.06) drop-shadow(0 0 6px ${theme.primary}aa) drop-shadow(0 0 14px ${theme.primary}66)`
+                    : "saturate(.92) brightness(.82)",
+                  pointerEvents: "none",
+                  userSelect: "none",
+                  zIndex: 0,
+                  transition: "opacity .18s ease, filter .18s ease, transform .18s ease",
+                }}
+              />
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 1,
+                  background: selected
+                    ? "linear-gradient(180deg, rgba(4,8,16,.02) 0%, rgba(4,8,16,.18) 42%, rgba(4,8,16,.88) 74%, rgba(4,8,16,.96) 100%)"
+                    : "linear-gradient(180deg, rgba(4,8,16,.08) 0%, rgba(4,8,16,.32) 42%, rgba(4,8,16,.9) 74%, rgba(4,8,16,.97) 100%)",
+                  pointerEvents: "none",
+                }}
+              />
+              <span style={{ position: "relative", zIndex: 2, minHeight: 108, padding: "10px 10px 9px", display: "flex", flexDirection: "column" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 26, height: 26, borderRadius: 999, border: `1px solid ${selected ? theme.primary : theme.borderSoft}`, background: "rgba(6,10,18,.9)", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: selected ? `0 0 11px ${theme.primary}55` : "none" }}>
+                    <OrganizationTypeIcon kind={kind.id} size={12.5} color={selected ? theme.primary : theme.textSoft} strokeWidth={2.05} />
+                  </span>
+                  <span style={{ fontSize: 8.5, fontWeight: 1000, opacity: selected ? .98 : .78, letterSpacing: .8 }}>{kind.short}</span>
+                </span>
+                <span style={{ marginTop: "auto", paddingTop: 12 }}>
+                  <span style={{ display: "block", color: selected ? theme.primary : theme.text, fontSize: 11.5, fontWeight: 1000, textShadow: "0 2px 7px rgba(0,0,0,.9)" }}>{kind.label}</span>
+                  <span style={{ display: "block", marginTop: 4, color: theme.textSoft, fontSize: 8.6, lineHeight: 1.3, textShadow: "0 2px 6px rgba(0,0,0,.9)" }}>{kind.detail}</span>
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
 
     if (wizardStep === 1) return <div style={{ display: "grid", gap: 11 }}>
       <div>{fieldLabel(L("Nom public de l’organisme", "Public organization name", "Nombre público de la organización"))}<input autoFocus style={input} value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder={L("Ex. Darts Club Grenoble", "e.g. Darts Club Grenoble", "Ej. Darts Club Grenoble")} /></div>
@@ -616,20 +690,27 @@ export default function OrganizationsPage({ go, params }: Props) {
   return (
     <div style={{ minHeight: "100vh", background: pageBg, color: theme.text, padding: "14px 12px 104px" }}>
       <div style={{ width: "100%", maxWidth: 680, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 10, alignItems: "center", marginBottom: 12 }}>
-          <BackDot size={40} onClick={() => {
-            if (entryMode !== "none") { setEntryMode("none"); resetWizard(); return; }
-            if (view !== "home") { navigateView("home"); return; }
-            if (workspaceMode) {
-              enterPersonalWorkspace(userId);
-              setActiveOrganization(userId, null);
-              go?.("home", { workspaceKind: "personal" });
-              return;
-            }
-            go?.("settings");
-          }} />
-          <div style={{ minWidth: 0 }}><div style={{ color: theme.primary, fontSize: 15, fontWeight: 1000, letterSpacing: .75 }}>{workspaceMode ? (active?.name || L("ESPACE ORGANISATION", "ORGANIZATION SPACE", "ESPACIO ORGANIZACIÓN")) : L("PARTENARIATS & ORGANISATIONS", "PARTNERSHIPS & ORGANIZATIONS", "ALIANZAS Y ORGANIZACIONES")}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5 }}>{workspaceMode ? L("Espace collectif connecté à MULTISPORTS SCORING", "Collective space connected to MULTISPORTS SCORING", "Espacio colectivo conectado a MULTISPORTS SCORING") : L("Club · Association · Entreprise · Bar · École · Événement", "Club · Association · Company · Venue · School · Event", "Club · Asociación · Empresa · Local · Escuela · Evento")}</div></div>
-          {!workspaceMode && organizations.length && entryMode !== "create" ? <button type="button" onClick={startCreate} style={{ ...primaryButton, minHeight: 36, padding: "7px 10px", fontSize: 9 }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : <span/>}
+        <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <div style={{ justifySelf: "start" }}>
+            <BackDot size={40} onClick={() => {
+              if (entryMode !== "none") { setEntryMode("none"); resetWizard(); return; }
+              if (view !== "home") { navigateView("home"); return; }
+              if (workspaceMode) {
+                enterPersonalWorkspace(userId);
+                setActiveOrganization(userId, null);
+                go?.("home", { workspaceKind: "personal" });
+                return;
+              }
+              go?.("settings");
+            }} />
+          </div>
+          <div style={{ minWidth: 0, textAlign: "center" }}>
+            <div style={{ color: theme.primary, fontSize: 15, lineHeight: 1.08, fontWeight: 1000, letterSpacing: .75, textAlign: "center" }}>{workspaceMode ? (active?.name || L("ESPACE ORGANISATION", "ORGANIZATION SPACE", "ESPACIO ORGANIZACIÓN")) : L("PARTENARIATS & ORGANISATIONS", "PARTNERSHIPS & ORGANIZATIONS", "ALIANZAS Y ORGANIZACIONES")}</div>
+            <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.25, textAlign: "center" }}>{workspaceMode ? L("Espace collectif connecté à MULTISPORTS SCORING", "Collective space connected to MULTISPORTS SCORING", "Espacio colectivo conectado a MULTISPORTS SCORING") : L("Club · Association · Entreprise · Bar · École · Événement", "Club · Association · Company · Venue · School · Event", "Club · Asociación · Empresa · Local · Escuela · Evento")}</div>
+          </div>
+          <div style={{ justifySelf: "end" }}>
+            {!workspaceMode && organizations.length && entryMode !== "create" ? <button type="button" onClick={startCreate} style={{ ...primaryButton, minHeight: 36, padding: "7px 8px", fontSize: 8.5 }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : <span style={{ display: "block", width: 40 }} />}
+          </div>
         </div>
 
         {!workspaceMode && organizations.length > 0 && entryMode !== "create" ? <div style={{ ...card, padding: 9, marginBottom: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}><select aria-label={L("Organisation active", "Active organization", "Organización activa")} style={{ ...input, minHeight: 38, padding: "7px 9px", fontWeight: 900 }} value={active?.id || ""} onChange={(e) => selectOrganization(e.target.value)}>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name} · {organizationKindLabel(org.kind)}</option>)}</select><button type="button" style={{ ...secondaryButton, minHeight: 38, padding: "7px 10px", fontSize: 9 }} onClick={() => { setEntryMode("join"); setView("home"); }}>{L("REJOINDRE", "JOIN", "UNIRSE")}</button></div> : null}

@@ -33,8 +33,8 @@ The public site exposes a sitemap, structured `SoftwareApplication` metadata and
 
 ## Current release
 
-Version de référence : **1.0.0-rc15**  
-Code Google Play : **16**  
+Version de référence : **1.0.0-rc16**  
+Code Google Play : **17**  
 Package Android : `com.multisportsscoring.app`
 
 La source unique de version est `config/release-version.json`.

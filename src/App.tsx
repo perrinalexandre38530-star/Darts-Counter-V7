@@ -6405,7 +6405,7 @@ case "babyfoot_team_edit":
 
         {!isThemePreviewFrame && <NavigationBackgroundMusic route={String(tab)} />}
 
-        {appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
+        {appChromeAllowed && tab === "home" && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
           <React.Suspense fallback={null}>
             <OrganizationWorkspaceSwitcher go={go} currentTab={String(tab)} />
           </React.Suspense>
