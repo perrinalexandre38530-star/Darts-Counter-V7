@@ -2,6 +2,7 @@ import React from "react";
 import { ESPORTS_GAMES, getEsportsGame } from "../../esports/catalog";
 import { createOnlineEsportsRoom, joinOnlineEsportsRoom } from "../../esports/online";
 import type { EsportsState } from "../../esports/types";
+import EsportsCompetitiveSeasonsV8 from "./EsportsNetworkV8";
 import {
   archiveTeamRosterV7,
   claimTeamCompetitiveRoomV7,
@@ -268,5 +269,16 @@ export default function EsportsTeamRankedV7({ state, panelStyle, buttonStyle, in
       <div className="esports-v7-palmares-grid" style={{ marginTop: 10 }}>{profile.ratings.length ? profile.ratings.map((r) => <div key={`${r.gameId}-${r.teamSize}`} className="esports-v7-palmares-card"><strong>{getEsportsGame(r.gameId).shortName} · {r.teamSize}v{r.teamSize}</strong><span>MMR {r.rating} · Peak {r.peakRating}</span><span>{r.wins}W · {r.losses}L · {r.draws}D · {r.matches} matchs</span><span>{r.seasonName}</span></div>) : <div className="esports-v7-empty">{tr("Pas encore de palmarès classé.", "No ranked record yet.", "Aún no hay palmarés ranked.")}</div>}</div>
       <div className="esports-v7-member-grid" style={{ marginTop: 10 }}>{profile.members.map((m) => <MemberChip key={m.userId} name={m.displayName} role={m.role} rating={m.rating} accent={myTeamIds.has(profile.teamId) ? "#34d399" : "#a78bfa"}/>)}</div>
     </section> : null}
+
+    <EsportsCompetitiveSeasonsV8
+      teamId={currentTeam?.teamId || ""}
+      gameId={gameId}
+      teamSize={teamSize}
+      panelStyle={panelStyle}
+      buttonStyle={buttonStyle}
+      textSoft={textSoft}
+      setToast={setToast}
+      tr={tr}
+    />
   </div>;
 }

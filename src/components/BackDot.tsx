@@ -44,6 +44,7 @@ export default function BackDot({
   return (
     <div
       role="button"
+      data-mss-protected-control="true"
       aria-label={title}
       title={title}
       tabIndex={0}

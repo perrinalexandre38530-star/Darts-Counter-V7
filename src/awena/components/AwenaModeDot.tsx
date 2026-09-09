@@ -83,6 +83,7 @@ export default function AwenaModeDot({ modeId, size = 40, disabled = false }: Pr
     <div
       ref={anchorRef}
       role="button"
+      data-mss-protected-control="true"
       tabIndex={disabled ? -1 : 0}
       aria-label={`Awena · ${mode.label}`}
       aria-expanded={menuOpen}

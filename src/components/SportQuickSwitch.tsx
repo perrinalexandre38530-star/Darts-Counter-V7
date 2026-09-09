@@ -1,6 +1,7 @@
 import React from "react";
 import { useSport, type SportId } from "../contexts/SportContext";
 import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
+import { useFloatingCornerAvoidance } from "./useFloatingCornerAvoidance";
 
 import logoDarts from "../assets/games/logo-darts.webp";
 import logoPetanque from "../assets/games/logo-petanque.webp";
@@ -54,13 +55,14 @@ function readStoredSport(): QuickSportId {
   }
 }
 
-export default function SportQuickSwitch({ onAfterSwitch }: { onAfterSwitch?: () => void }) {
+export default function SportQuickSwitch({ onAfterSwitch, collisionKey }: { onAfterSwitch?: () => void; collisionKey?: string | number | null }) {
   const sportApi = useSport() as any;
   const availableSports = React.useMemo(() => filterSportsForCurrentRuntime(SPORTS), []);
   const currentSport = normalizeSport(sportApi?.sport ?? readStoredSport());
   const currentIndex = Math.max(0, availableSports.findIndex((sport) => sport.id === currentSport));
   const current = availableSports[currentIndex] || availableSports[0] || SPORTS[0];
   const next = availableSports[(currentIndex + 1) % Math.max(1, availableSports.length)] || current;
+  const floating = useFloatingCornerAvoidance({ side: "right", size: 54, baseInset: 8, baseTop: 8, collisionKey });
 
   const switchSport = React.useCallback(() => {
     const nextSport = next.id;
@@ -90,14 +92,16 @@ export default function SportQuickSwitch({ onAfterSwitch }: { onAfterSwitch?: ()
 
   return (
     <button
+      ref={floating.ref as any}
+      data-mss-floating-control="sport-switch"
       type="button"
       onClick={switchSport}
       aria-label={`Sport actif : ${current.label}. Cliquer pour passer à ${next.label}.`}
       title={`Sport actif : ${current.label} → ${next.label}`}
       style={{
         position: "fixed",
-        top: "calc(env(safe-area-inset-top, 0px) + 8px)",
-        right: "calc(env(safe-area-inset-right, 0px) + 8px)",
+        top: `calc(env(safe-area-inset-top, 0px) + ${floating.top}px)`,
+        right: `calc(env(safe-area-inset-right, 0px) + ${floating.inset}px)`,
         zIndex: 80,
         width: 54,
         height: 54,

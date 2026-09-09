@@ -408,6 +408,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
         >
           <button
             type="button"
+            data-mss-protected-control="true"
             aria-label={ui.openAwena}
             onClick={togglePanel}
             style={{

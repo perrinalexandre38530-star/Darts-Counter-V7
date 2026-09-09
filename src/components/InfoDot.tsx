@@ -140,6 +140,7 @@ export default function InfoDot({
     return (
       <div
         role="button"
+        data-mss-protected-control="true"
         aria-label={`Awena · ${title}`}
         title={`Awena · ${title}`}
         tabIndex={0}
@@ -185,6 +186,7 @@ export default function InfoDot({
     return (
       <div
         role="button"
+        data-mss-protected-control="true"
         aria-label="Ouvrir Awena"
         title="Awena · Assistante"
         tabIndex={0}
@@ -226,6 +228,7 @@ export default function InfoDot({
     <>
       <div
         role="button"
+        data-mss-protected-control="true"
         aria-label={title}
         title={title}
         tabIndex={0}

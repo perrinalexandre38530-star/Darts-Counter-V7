@@ -6374,6 +6374,7 @@ case "babyfoot_team_edit":
         <GlobalMessengerCallBridge />
         {showSportQuickSwitch && (
           <SportQuickSwitch
+            collisionKey={String(tab)}
             onAfterSwitch={() => {
               if (tab === "home" || tab === "games" || tab === "stats" || tab === "statsHub" || tab === "tournaments") return;
               go("home");
@@ -6385,7 +6386,9 @@ case "babyfoot_team_edit":
           className={`container dc-themed-route dc-themed-route--${themePageScope}`}
           style={{
             paddingBottom: 88,
-            paddingTop: appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) ? 48 : undefined,
+            // Les sélecteurs Compte/Organisation et Sport sont désormais des médaillons
+            // flottants anti-collision : plus de barre réservée en haut de page.
+            paddingTop: undefined,
             minHeight: "100dvh",
             background: routedPageBackground,
             backgroundAttachment: themePageScope === "full" ? "fixed" : undefined,

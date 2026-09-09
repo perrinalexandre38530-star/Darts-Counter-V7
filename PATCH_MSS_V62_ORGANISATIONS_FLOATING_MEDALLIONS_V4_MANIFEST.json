@@ -1,0 +1,39 @@
+{
+  "patch": "MSS-V62-ORGANISATIONS-FLOATING-MEDALLIONS-V4",
+  "base": "Darts-Counter-V7(62).zip",
+  "created_at": "2026-09-09",
+  "summary": [
+    "Remplace la barre ESPACE PERSO par un medaillon de compte flottant a gauche.",
+    "Conserve avatar personnel et affiche un badge pour l organisation active.",
+    "Le menu du medaillon permet de basculer entre espace personnel et organisations.",
+    "Ajoute une regle anti-chevauchement commune aux medaillons Compte et Sport.",
+    "BackDot, InfoDot et Awena sont marques comme controles proteges.",
+    "Aucun MutationObserver global afin de preserver les performances Android.",
+    "Supprime la reserve verticale de 48 px de l ancienne barre workspace."
+  ],
+  "changed_files": [
+    "src/App.tsx",
+    "src/awena/components/AwenaModeDot.tsx",
+    "src/awena/components/AwenaOverlay.tsx",
+    "src/components/BackDot.tsx",
+    "src/components/InfoDot.tsx",
+    "src/components/OrganizationWorkspaceSwitcher.tsx",
+    "src/components/SportQuickSwitch.tsx",
+    "src/components/useFloatingCornerAvoidance.ts"
+  ],
+  "validation": {
+    "typescript": "PASS (npx --no-install tsc -p tsconfig.json --noEmit)",
+    "static_contract": "6/6 PASS",
+    "vite_build": "NON EXECUTE: vite absent de node_modules dans le ZIP fourni"
+  },
+  "files_sha256": {
+    "src/App.tsx": "fd3a86efad065c48494b55e754a2d380645bb60b43ad9e3b58f37dedccd6dd5c",
+    "src/awena/components/AwenaModeDot.tsx": "b113a9a71159e66cc3a2c66585ef4afc7946b68a64d4fc07903a053cf4adaa02",
+    "src/awena/components/AwenaOverlay.tsx": "a51c489832ddea0970339fcaff9fc968f71f461949f1a6bf6dec1af11e63d354",
+    "src/components/BackDot.tsx": "e9b4974d184139c3239c95da31cbc91cdbdcd6c1a01114099768cd305d598d98",
+    "src/components/InfoDot.tsx": "4f2201824bc8233f256d4c5264398eb9fc063d831a341cf2482764eee3dbc230",
+    "src/components/OrganizationWorkspaceSwitcher.tsx": "1b91e7a39e17949ac6146c137696c8ef821e7397e43cf0a8b8276b356f933594",
+    "src/components/SportQuickSwitch.tsx": "4be2e3238b440099869321fbf8243b2cc01661329d65ce09506b9ff0bf33f92a",
+    "src/components/useFloatingCornerAvoidance.ts": "c273c8a4246b4111d7c69ff2adc0572905bb58eb9dd41837de2e5394928d4370"
+  }
+}
