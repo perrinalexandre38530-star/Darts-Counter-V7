@@ -1,7 +1,7 @@
 {
   "name": "darts-counter-v5",
   "private": true,
-  "version": "1.0.0-rc15",
+  "version": "1.0.0-rc16",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -56,7 +56,7 @@
     "android:play:signing-check": "node ./tools/check-android-play-signing.mjs",
     "android:bundle:release": "npm run android:sync && npm run android:play:signing-check && node ./tools/run-android-gradle.mjs bundleRelease",
     "android:play:verify-aab": "node ./tools/verify-android-aab.mjs",
-    "android:play:aab": "npm run version:check && npm run typecheck && npm run test:android-store-v1 && npm run test:admob-native && npm run test:play-billing && npm run test:android-jdk && npm run android:bundle:release && npm run android:content-budget && npm run android:play:verify-aab",
+    "android:play:aab": "npm run version:check && npm run typecheck && npm run test:health-connect && npm run test:android-store-v1 && npm run test:admob-native && npm run test:play-billing && npm run test:android-jdk && npm run android:bundle:release && npm run android:content-budget && npm run android:play:verify-aab",
     "android:version": "node ./tools/set-android-version.mjs",
     "test:account-restore": "node ./tools/test-android-account-restore.mjs",
     "test:play-privacy": "node ./tools/test-play-privacy.mjs",
@@ -154,7 +154,8 @@
     "test:seo": "node ./tools/test-seo-public-pages.mjs",
     "seo:indexnow": "node ./tools/submit-indexnow.mjs",
     "seo:build": "node ./tools/build-seo-public-pages.mjs",
-    "seo:check": "npm run seo:build && npm run test:seo"
+    "seo:check": "npm run seo:build && npm run test:seo",
+    "test:health-connect": "node ./tools/test-health-connect-compliance-v16.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

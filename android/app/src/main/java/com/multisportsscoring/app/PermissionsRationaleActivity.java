@@ -40,6 +40,21 @@ public class PermissionsRationaleActivity extends Activity {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
+        TextView disclosure = new TextView(this);
+        disclosure.setText(
+            "Health Connect est facultatif. MULTISPORTS SCORING l’utilise uniquement pour les fonctions visibles de RUNNING PERF : " +
+            "importer vos séances et leurs données sportives, ou exporter les séances réellement enregistrées dans l’application. " +
+            "L’import et l’export sont autorisés séparément. La fréquence cardiaque et la cadence ne sont exportées que si un capteur les a réellement mesurées."
+        );
+        disclosure.setTextColor(Color.rgb(205, 215, 225));
+        disclosure.setTextSize(13f);
+        disclosure.setLineSpacing(0f, 1.15f);
+        disclosure.setPadding(32, 0, 32, 24);
+        root.addView(disclosure, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(false);

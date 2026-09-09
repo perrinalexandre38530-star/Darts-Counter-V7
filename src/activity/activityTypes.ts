@@ -104,6 +104,10 @@ export type ActivityRecord = {
         clientRecordId: string;
         recordIds: string[];
         exportedAt: number;
+        routeWritten?: boolean;
+        heartRateSamplesWritten?: number;
+        speedSamplesWritten?: number;
+        cadenceSamplesWritten?: number;
     };
     createdAt: number;
 };

@@ -1,0 +1,20 @@
+{
+  "base": "Darts-Counter-V7(64)(1).zip",
+  "target": {
+    "versionName": "1.0.0-rc16",
+    "versionCode": 17
+  },
+  "purpose": "Google Play Health Connect refusal remediation without removing useful Health Connect capabilities.",
+  "changes": [
+    "Split Health Connect permission requests into import/read and export/write flows.",
+    "WRITE_HEART_RATE now writes real sensor heart-rate samples when recorded.",
+    "WRITE_SPEED now writes sensor speed or speed derived from recorded GPS points.",
+    "WRITE_STEPS now writes real measured step cadence through StepsCadenceRecord.",
+    "Optional Health Connect reads are permission guarded.",
+    "RUNNING PERF shows explicit Health Connect import/export disclosure and separate authorization actions.",
+    "Health Connect rationale screen explains the visible fitness use case.",
+    "New release bumped to rc16 / code 17.",
+    "Added a Health Connect compliance regression check to the Play AAB command.",
+    "Added exact Play Console declaration guidance."
+  ]
+}

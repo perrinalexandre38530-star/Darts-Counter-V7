@@ -18,6 +18,7 @@ import androidx.health.connect.client.records.HeartRateRecord;
 import androidx.health.connect.client.records.Record;
 import androidx.health.connect.client.records.SpeedRecord;
 import androidx.health.connect.client.records.StepsCadenceRecord;
+import androidx.health.connect.client.units.Velocity;
 import androidx.health.connect.client.records.metadata.Metadata;
 import androidx.health.connect.client.request.ReadRecordsRequest;
 import androidx.health.connect.client.response.ReadRecordsResponse;
@@ -66,23 +67,34 @@ import kotlin.jvm.JvmClassMappingKt;
 public class HealthConnectPlugin extends Plugin {
     private static final String PROVIDER = "com.google.android.apps.healthdata";
     private static final String READ_ROUTES = "android.permission.health.READ_EXERCISE_ROUTES";
-    private static final Set<String> CORE_WORKOUT_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
-        "android.permission.health.READ_EXERCISE",
+    private static final String WRITE_ROUTES = "android.permission.health.WRITE_EXERCISE_ROUTE";
+
+    // Google Play / Health Connect compliance:
+    // - import only asks for data the app reads;
+    // - export only asks for data the app really writes;
+    // - optional metrics are skipped safely if the user denies one permission.
+    private static final Set<String> IMPORT_CORE_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
+        "android.permission.health.READ_EXERCISE"
+    ));
+    private static final Set<String> EXPORT_CORE_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
         "android.permission.health.WRITE_EXERCISE"
     ));
-    private static final Set<String> WORKOUT_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
+    private static final Set<String> IMPORT_WORKOUT_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
         "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_EXERCISE_ROUTES",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_SPEED",
+        "android.permission.health.READ_ELEVATION_GAINED",
+        "android.permission.health.READ_STEPS"
+    ));
+    private static final Set<String> EXPORT_WORKOUT_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
         "android.permission.health.WRITE_EXERCISE",
         "android.permission.health.WRITE_EXERCISE_ROUTE",
-        "android.permission.health.READ_HEART_RATE",
         "android.permission.health.WRITE_HEART_RATE",
-        "android.permission.health.READ_DISTANCE",
         "android.permission.health.WRITE_DISTANCE",
-        "android.permission.health.READ_SPEED",
         "android.permission.health.WRITE_SPEED",
-        "android.permission.health.READ_ELEVATION_GAINED",
         "android.permission.health.WRITE_ELEVATION_GAINED",
-        "android.permission.health.READ_STEPS",
         "android.permission.health.WRITE_STEPS"
     ));
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -183,8 +195,14 @@ public class HealthConnectPlugin extends Plugin {
             out.put("available", status == HealthConnectClient.SDK_AVAILABLE);
             out.put("status", status == HealthConnectClient.SDK_AVAILABLE ? "available" : status == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ? "update-required" : "unavailable");
             out.put("provider", PROVIDER);
-            out.put("permissionsGranted", granted.containsAll(CORE_WORKOUT_PERMISSIONS));
-            out.put("exerciseRouteWriteGranted", granted.contains("android.permission.health.WRITE_EXERCISE_ROUTE"));
+            boolean importCoreGranted = granted.containsAll(IMPORT_CORE_PERMISSIONS);
+            boolean exportCoreGranted = granted.containsAll(EXPORT_CORE_PERMISSIONS);
+            out.put("permissionsGranted", importCoreGranted || exportCoreGranted); // legacy compatibility
+            out.put("importPermissionsGranted", importCoreGranted);
+            out.put("importAllPermissionsGranted", granted.containsAll(IMPORT_WORKOUT_PERMISSIONS));
+            out.put("exportPermissionsGranted", exportCoreGranted);
+            out.put("exportAllPermissionsGranted", granted.containsAll(EXPORT_WORKOUT_PERMISSIONS));
+            out.put("exerciseRouteWriteGranted", granted.contains(WRITE_ROUTES));
             out.put("exerciseRoutesGranted", granted.contains(READ_ROUTES));
             JSArray rows = new JSArray();
             for (String permission : granted) rows.put(permission);
@@ -199,8 +217,10 @@ public class HealthConnectPlugin extends Plugin {
             call.reject("Health Connect unavailable", "HEALTH_CONNECT_UNAVAILABLE"); return;
         }
         try {
+            String mode = call.getString("mode", "import");
+            Set<String> requested = "export".equalsIgnoreCase(mode) ? EXPORT_WORKOUT_PERMISSIONS : IMPORT_WORKOUT_PERMISSIONS;
             ActivityResultContract<Set<String>, Set<String>> contract = PermissionController.createRequestPermissionResultContract(PROVIDER);
-            Intent intent = contract.createIntent(getContext(), WORKOUT_PERMISSIONS);
+            Intent intent = contract.createIntent(getContext(), requested);
             startActivityForResult(call, intent, "healthPermissionsResult");
         } catch (Exception error) {
             call.reject("Unable to request Health Connect permissions: " + error.getMessage(), error);
@@ -213,8 +233,11 @@ public class HealthConnectPlugin extends Plugin {
         try {
             ActivityResultContract<Set<String>, Set<String>> contract = PermissionController.createRequestPermissionResultContract(PROVIDER);
             Set<String> permissions = contract.parseResult(result == null ? Activity.RESULT_CANCELED : result.getResultCode(), result == null ? null : result.getData());
+            String mode = call.getString("mode", "import");
+            Set<String> core = "export".equalsIgnoreCase(mode) ? EXPORT_CORE_PERMISSIONS : IMPORT_CORE_PERMISSIONS;
             JSObject out = new JSObject();
-            out.put("granted", permissions != null && permissions.containsAll(CORE_WORKOUT_PERMISSIONS));
+            out.put("mode", "export".equalsIgnoreCase(mode) ? "export" : "import");
+            out.put("granted", permissions != null && permissions.containsAll(core));
             JSArray rows = new JSArray();
             if (permissions != null) for (String permission : permissions) rows.put(permission);
             out.put("permissions", rows);
@@ -247,7 +270,7 @@ public class HealthConnectPlugin extends Plugin {
                 JSArray out = new JSArray();
                 for (ExerciseSessionRecord session : sessions) {
                     if (!isOutdoorPerformanceType(session.getExerciseType())) continue;
-                    out.put(sessionToJson(client, session, permissions.contains(READ_ROUTES)));
+                    out.put(sessionToJson(client, session, permissions));
                 }
                 JSObject result = new JSObject();
                 result.put("days", days);
@@ -274,6 +297,7 @@ public class HealthConnectPlugin extends Plugin {
         final Double distanceM = call.getDouble("distanceM", 0.0);
         final Double elevationGainM = call.getDouble("elevationGainM", 0.0);
         final JSArray routeInput = call.getArray("route", new JSArray());
+        final JSArray sensorInput = call.getArray("sensorSamples", new JSArray());
         if (clientRecordId == null || clientRecordId.trim().isEmpty() || startedAt == null || endedAt == null || endedAt <= startedAt) {
             call.reject("Invalid workout payload"); return;
         }
@@ -292,7 +316,7 @@ public class HealthConnectPlugin extends Plugin {
                 Metadata sessionMetadata = Metadata.manualEntry(clientRecordId);
                 ExerciseRoute exerciseRoute = null;
 
-                if (routeInput != null && routeInput.length() >= 2 && permissions.contains("android.permission.health.WRITE_EXERCISE_ROUTE")) {
+                if (routeInput != null && routeInput.length() >= 2 && permissions.contains(WRITE_ROUTES)) {
                     List<ExerciseRoute.Location> locations = new ArrayList<>();
                     for (int i = 0; i < routeInput.length(); i++) {
                         JSONObject point = routeInput.getJSONObject(i);
@@ -326,6 +350,61 @@ public class HealthConnectPlugin extends Plugin {
                     records.add(new ElevationGainedRecord(start, startOffset, end, endOffset, Length.meters(elevationGainM), Metadata.manualEntry(clientRecordId + ":elevation")));
                 }
 
+                // Real metric export: only values actually recorded by MULTISPORTS SCORING
+                // (BLE heart-rate strap, footpod/FTMS cadence+speed, or GPS-computed speed)
+                // are written. No synthetic heart-rate/cadence values are invented.
+                List<HeartRateRecord.Sample> heartRateSamples = new ArrayList<>();
+                List<SpeedRecord.Sample> speedSamples = new ArrayList<>();
+                List<StepsCadenceRecord.Sample> cadenceSamples = new ArrayList<>();
+                long lastHrTs = Long.MIN_VALUE, lastSpeedTs = Long.MIN_VALUE, lastCadenceTs = Long.MIN_VALUE;
+
+                if (sensorInput != null) {
+                    for (int i = 0; i < sensorInput.length(); i++) {
+                        JSONObject sample = sensorInput.optJSONObject(i);
+                        if (sample == null) continue;
+                        long timestamp = sample.optLong("timestamp", 0L);
+                        if (timestamp < startedAt || timestamp >= endedAt) continue;
+                        Instant sampleTime = Instant.ofEpochMilli(timestamp);
+
+                        if (permissions.contains("android.permission.health.WRITE_HEART_RATE") && sample.has("heartRateBpm")) {
+                            double raw = sample.optDouble("heartRateBpm", Double.NaN);
+                            long bpm = Math.round(raw);
+                            if (Double.isFinite(raw) && bpm >= 1 && bpm <= 300 && timestamp != lastHrTs) {
+                                heartRateSamples.add(new HeartRateRecord.Sample(sampleTime, bpm));
+                                lastHrTs = timestamp;
+                            }
+                        }
+                        if (permissions.contains("android.permission.health.WRITE_SPEED") && sample.has("sensorSpeedMps")) {
+                            double speed = sample.optDouble("sensorSpeedMps", Double.NaN);
+                            if (Double.isFinite(speed) && speed >= 0 && speed <= 100 && timestamp != lastSpeedTs) {
+                                speedSamples.add(new SpeedRecord.Sample(sampleTime, Velocity.metersPerSecond(speed)));
+                                lastSpeedTs = timestamp;
+                            }
+                        }
+                        if (permissions.contains("android.permission.health.WRITE_STEPS") && sample.has("cadenceSpm")) {
+                            double cadence = sample.optDouble("cadenceSpm", Double.NaN);
+                            if (Double.isFinite(cadence) && cadence >= 0 && cadence <= 1000 && timestamp != lastCadenceTs) {
+                                cadenceSamples.add(new StepsCadenceRecord.Sample(sampleTime, cadence));
+                                lastCadenceTs = timestamp;
+                            }
+                        }
+                    }
+                }
+
+                heartRateSamples.sort(Comparator.comparing(HeartRateRecord.Sample::getTime));
+                speedSamples.sort(Comparator.comparing(SpeedRecord.Sample::getTime));
+                cadenceSamples.sort(Comparator.comparing(StepsCadenceRecord.Sample::getTime));
+
+                if (!heartRateSamples.isEmpty()) {
+                    records.add(new HeartRateRecord(start, startOffset, end, endOffset, heartRateSamples, Metadata.manualEntry(clientRecordId + ":heart-rate")));
+                }
+                if (!speedSamples.isEmpty()) {
+                    records.add(new SpeedRecord(start, startOffset, end, endOffset, speedSamples, Metadata.manualEntry(clientRecordId + ":speed")));
+                }
+                if (!cadenceSamples.isEmpty()) {
+                    records.add(new StepsCadenceRecord(start, startOffset, end, endOffset, cadenceSamples, Metadata.manualEntry(clientRecordId + ":cadence")));
+                }
+
                 InsertRecordsResponse inserted = awaitSuspend(continuation -> client.insertRecords(records, continuation));
                 JSObject result = new JSObject();
                 result.put("clientRecordId", clientRecordId);
@@ -333,6 +412,9 @@ public class HealthConnectPlugin extends Plugin {
                 for (String id : inserted.getRecordIdsList()) recordIds.put(id);
                 result.put("recordIds", recordIds);
                 result.put("routeWritten", exerciseRoute != null);
+                result.put("heartRateSamplesWritten", heartRateSamples.size());
+                result.put("speedSamplesWritten", speedSamples.size());
+                result.put("cadenceSamplesWritten", cadenceSamples.size());
                 call.resolve(result);
             } catch (Exception error) {
                 call.reject("Unable to write Health Connect workout: " + safeMessage(error), error);
@@ -394,7 +476,7 @@ public class HealthConnectPlugin extends Plugin {
         return response.getRecords();
     }
 
-    private JSObject sessionToJson(HealthConnectClient client, ExerciseSessionRecord session, boolean routesGranted) throws Exception {
+    private JSObject sessionToJson(HealthConnectClient client, ExerciseSessionRecord session, Set<String> permissions) throws Exception {
         Instant start = session.getStartTime();
         Instant end = session.getEndTime();
         Metadata metadata = session.getMetadata();
@@ -411,51 +493,61 @@ public class HealthConnectPlugin extends Plugin {
         String originPackage = metadata.getDataOrigin().getPackageName();
 
         double distanceM = 0;
-        for (DistanceRecord record : read(client, DistanceRecord.class, start, end, true, 1000)) {
-            if (!sameOrigin(record, originPackage)) continue;
-            distanceM += record.getDistance().getMeters();
+        if (permissions.contains("android.permission.health.READ_DISTANCE")) {
+            for (DistanceRecord record : read(client, DistanceRecord.class, start, end, true, 1000)) {
+                if (!sameOrigin(record, originPackage)) continue;
+                distanceM += record.getDistance().getMeters();
+            }
         }
         row.put("distanceM", distanceM);
 
         double elevationM = 0;
-        for (ElevationGainedRecord record : read(client, ElevationGainedRecord.class, start, end, true, 1000)) {
-            if (!sameOrigin(record, originPackage)) continue;
-            elevationM += record.getElevation().getMeters();
+        if (permissions.contains("android.permission.health.READ_ELEVATION_GAINED")) {
+            for (ElevationGainedRecord record : read(client, ElevationGainedRecord.class, start, end, true, 1000)) {
+                if (!sameOrigin(record, originPackage)) continue;
+                elevationM += record.getElevation().getMeters();
+            }
         }
         row.put("elevationGainM", elevationM);
 
         JSArray hr = new JSArray();
-        for (HeartRateRecord record : read(client, HeartRateRecord.class, start, end, true, 1000)) {
-            if (!sameOrigin(record, originPackage)) continue;
-            for (HeartRateRecord.Sample sample : record.getSamples()) {
-                JSObject sampleJson = new JSObject();
-                sampleJson.put("timestamp", sample.getTime().toEpochMilli());
-                sampleJson.put("heartRateBpm", sample.getBeatsPerMinute());
-                hr.put(sampleJson);
+        if (permissions.contains("android.permission.health.READ_HEART_RATE")) {
+            for (HeartRateRecord record : read(client, HeartRateRecord.class, start, end, true, 1000)) {
+                if (!sameOrigin(record, originPackage)) continue;
+                for (HeartRateRecord.Sample sample : record.getSamples()) {
+                    JSObject sampleJson = new JSObject();
+                    sampleJson.put("timestamp", sample.getTime().toEpochMilli());
+                    sampleJson.put("heartRateBpm", sample.getBeatsPerMinute());
+                    hr.put(sampleJson);
+                }
             }
         }
         row.put("heartRate", hr);
 
         JSArray speed = new JSArray();
-        for (SpeedRecord record : read(client, SpeedRecord.class, start, end, true, 1000)) {
-            if (!sameOrigin(record, originPackage)) continue;
-            for (SpeedRecord.Sample sample : record.getSamples()) {
-                JSObject sampleJson = new JSObject();
-                sampleJson.put("timestamp", sample.getTime().toEpochMilli());
-                sampleJson.put("sensorSpeedMps", sample.getSpeed().getMetersPerSecond());
-                speed.put(sampleJson);
+        if (permissions.contains("android.permission.health.READ_SPEED")) {
+            for (SpeedRecord record : read(client, SpeedRecord.class, start, end, true, 1000)) {
+                if (!sameOrigin(record, originPackage)) continue;
+                for (SpeedRecord.Sample sample : record.getSamples()) {
+                    JSObject sampleJson = new JSObject();
+                    sampleJson.put("timestamp", sample.getTime().toEpochMilli());
+                    sampleJson.put("sensorSpeedMps", sample.getSpeed().getMetersPerSecond());
+                    speed.put(sampleJson);
+                }
             }
         }
         row.put("speed", speed);
 
         JSArray cadence = new JSArray();
-        for (StepsCadenceRecord record : read(client, StepsCadenceRecord.class, start, end, true, 1000)) {
-            if (!sameOrigin(record, originPackage)) continue;
-            for (StepsCadenceRecord.Sample sample : record.getSamples()) {
-                JSObject sampleJson = new JSObject();
-                sampleJson.put("timestamp", sample.getTime().toEpochMilli());
-                sampleJson.put("cadenceSpm", sample.getRate());
-                cadence.put(sampleJson);
+        if (permissions.contains("android.permission.health.READ_STEPS")) {
+            for (StepsCadenceRecord record : read(client, StepsCadenceRecord.class, start, end, true, 1000)) {
+                if (!sameOrigin(record, originPackage)) continue;
+                for (StepsCadenceRecord.Sample sample : record.getSamples()) {
+                    JSObject sampleJson = new JSObject();
+                    sampleJson.put("timestamp", sample.getTime().toEpochMilli());
+                    sampleJson.put("cadenceSpm", sample.getRate());
+                    cadence.put(sampleJson);
+                }
             }
         }
         row.put("cadence", cadence);
@@ -466,7 +558,7 @@ public class HealthConnectPlugin extends Plugin {
             row.put("routeStatus", "data");
         } else if (routeResult instanceof ExerciseRouteResult.ConsentRequired) {
             row.put("route", new JSArray());
-            row.put("routeStatus", routesGranted ? "consent-required" : "permission-required");
+            row.put("routeStatus", permissions.contains(READ_ROUTES) ? "consent-required" : "permission-required");
         } else {
             row.put("route", new JSArray());
             row.put("routeStatus", "none");

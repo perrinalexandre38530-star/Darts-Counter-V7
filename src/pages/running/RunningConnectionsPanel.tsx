@@ -23,11 +23,50 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
   React.useEffect(() => { if (!capabilities.healthConnectBridge) return; void getHealthConnectStatus().then(setHealthStatus); }, [capabilities.healthConnectBridge]);
 
   const copy = lang === "fr" ? {
-    title: "CONNEXIONS & CAPTEURS", sub: "Capteurs BLE, Health Connect et import FIT sont opérationnels pour les tests internes. Garmin Connect attend ton endpoint cloud approuvé.", hr: "CEINTURE CARDIO", foot: "FOOTPOD / CADENCE", treadmill: "TAPIS FTMS", connect: "CONNECTER", disconnect: "DÉCONNECTER", live: "LIVE", unavailable: "BLE NON DISPONIBLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "FICHIERS SPORT", native: "Bridge natif requis", detected: "Bridge détecté", cloud: "API cloud / OAuth requis", configured: "API configurée", filesReady: "FIT / GPX / TCX actifs", nativeGps: "GPS ANDROID NATIF", screenOff: "Écran éteint / arrière-plan", grant: "AUTORISER", manage: "GÉRER", hcReady: "Autorisations entraînement accordées", hcAvailable: "Disponible · autorisations à accorder", bpm: "bpm", spm: "pas/min", sync: "SYNCHRONISER 30 J", syncDone: "Synchronisation terminée", lastSync: "Dernière synchro", routesMissing: "parcours protégés", routesOk: "Parcours autorisés", routesOff: "Parcours à autoriser dans Health Connect", export: "ENVOYER MES SORTIES", exportDone: "Export Health Connect terminé", lastExport: "Dernier envoi",
+    title: "CONNEXIONS & CAPTEURS",
+    sub: "Connecte tes capteurs sportifs et synchronise tes séances avec Health Connect. Les autorisations sont demandées uniquement pour l’import ou l’export choisi.",
+    hr: "CEINTURE CARDIO", foot: "FOOTPOD / CADENCE", treadmill: "TAPIS FTMS",
+    connect: "CONNECTER", disconnect: "DÉCONNECTER", live: "LIVE", unavailable: "BLE NON DISPONIBLE",
+    health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "FICHIERS SPORT",
+    native: "Bridge natif requis", detected: "Bridge détecté", cloud: "API cloud / OAuth requis", configured: "API configurée", filesReady: "FIT / GPX / TCX actifs",
+    nativeGps: "GPS ANDROID NATIF", screenOff: "Écran éteint / arrière-plan",
+    importGrant: "AUTORISER IMPORT", exportGrant: "AUTORISER EXPORT", manage: "GÉRER",
+    importReady: "IMPORT ✓", exportReady: "EXPORT ✓", pending: "À AUTORISER",
+    hcAvailable: "Disponible", bpm: "bpm", spm: "pas/min",
+    sync: "IMPORTER 30 J", syncDone: "Import Health Connect terminé", lastSync: "Dernier import",
+    routesMissing: "parcours protégés", routesOk: "Parcours autorisés", routesOff: "Parcours non autorisés",
+    export: "ENVOYER MES SORTIES", exportDone: "Export Health Connect terminé", lastExport: "Dernier envoi",
+    disclosure: "Import : séances, parcours, distance, vitesse, dénivelé, fréquence cardiaque et cadence. Export : uniquement les données réellement enregistrées par MULTISPORTS SCORING ; cardio et cadence ne sont envoyés que lorsqu’un capteur les a mesurés.",
   } : lang === "es" ? {
-    title: "CONEXIONES Y SENSORES", sub: "Sensores BLE, Health Connect e importación FIT están operativos para pruebas internas. Garmin Connect espera tu endpoint cloud aprobado.", hr: "BANDA CARDÍACA", foot: "FOOTPOD / CADENCIA", treadmill: "CINTA FTMS", connect: "CONECTAR", disconnect: "DESCONECTAR", live: "LIVE", unavailable: "BLE NO DISPONIBLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "ARCHIVOS DEPORTIVOS", native: "Requiere puente nativo", detected: "Puente detectado", cloud: "Requiere API cloud / OAuth", configured: "API configurada", filesReady: "FIT / GPX / TCX activos", nativeGps: "GPS ANDROID NATIVO", screenOff: "Pantalla apagada / segundo plano", grant: "AUTORIZAR", manage: "GESTIONAR", hcReady: "Permisos de entrenamiento concedidos", hcAvailable: "Disponible · permisos pendientes", bpm: "bpm", spm: "pas/min", sync: "SINCRONIZAR 30 D", syncDone: "Sincronización terminada", lastSync: "Última sincronización", routesMissing: "rutas protegidas", routesOk: "Rutas autorizadas", routesOff: "Autoriza las rutas en Health Connect", export: "ENVIAR MIS ACTIVIDADES", exportDone: "Exportación Health Connect terminada", lastExport: "Último envío",
+    title: "CONEXIONES Y SENSORES",
+    sub: "Conecta tus sensores deportivos y sincroniza tus sesiones con Health Connect. Los permisos se solicitan solo para la importación o exportación elegida.",
+    hr: "BANDA CARDÍACA", foot: "FOOTPOD / CADENCIA", treadmill: "CINTA FTMS",
+    connect: "CONECTAR", disconnect: "DESCONECTAR", live: "LIVE", unavailable: "BLE NO DISPONIBLE",
+    health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "ARCHIVOS DEPORTIVOS",
+    native: "Requiere puente nativo", detected: "Puente detectado", cloud: "Requiere API cloud / OAuth", configured: "API configurada", filesReady: "FIT / GPX / TCX activos",
+    nativeGps: "GPS ANDROID NATIVO", screenOff: "Pantalla apagada / segundo plano",
+    importGrant: "AUTORIZAR IMPORTACIÓN", exportGrant: "AUTORIZAR EXPORTACIÓN", manage: "GESTIONAR",
+    importReady: "IMPORTACIÓN ✓", exportReady: "EXPORTACIÓN ✓", pending: "POR AUTORIZAR",
+    hcAvailable: "Disponible", bpm: "bpm", spm: "pas/min",
+    sync: "IMPORTAR 30 D", syncDone: "Importación Health Connect terminada", lastSync: "Última importación",
+    routesMissing: "rutas protegidas", routesOk: "Rutas autorizadas", routesOff: "Rutas no autorizadas",
+    export: "ENVIAR MIS ACTIVIDADES", exportDone: "Exportación Health Connect terminada", lastExport: "Último envío",
+    disclosure: "Importación: sesiones, rutas, distancia, velocidad, desnivel, frecuencia cardíaca y cadencia. Exportación: solo datos realmente registrados por MULTISPORTS SCORING; el pulso y la cadencia se envían únicamente cuando un sensor los ha medido.",
   } : {
-    title: "CONNECTIONS & SENSORS", sub: "BLE sensors, Health Connect and FIT import are active for internal testing. Garmin Connect is waiting for your approved cloud endpoint.", hr: "HEART RATE STRAP", foot: "FOOTPOD / CADENCE", treadmill: "FTMS TREADMILL", connect: "CONNECT", disconnect: "DISCONNECT", live: "LIVE", unavailable: "BLE UNAVAILABLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "SPORT FILES", native: "Native bridge required", detected: "Bridge detected", cloud: "Cloud API / OAuth required", configured: "API configured", filesReady: "FIT / GPX / TCX active", nativeGps: "NATIVE ANDROID GPS", screenOff: "Screen-off / background", grant: "AUTHORIZE", manage: "MANAGE", hcReady: "Workout permissions granted", hcAvailable: "Available · permissions pending", bpm: "bpm", spm: "steps/min", sync: "SYNC 30 DAYS", syncDone: "Sync complete", lastSync: "Last sync", routesMissing: "protected routes", routesOk: "Routes allowed", routesOff: "Allow exercise routes in Health Connect", export: "SEND MY WORKOUTS", exportDone: "Health Connect export complete", lastExport: "Last export",
+    title: "CONNECTIONS & SENSORS",
+    sub: "Connect your sport sensors and sync workouts with Health Connect. Permissions are requested only for the import or export action you choose.",
+    hr: "HEART RATE STRAP", foot: "FOOTPOD / CADENCE", treadmill: "FTMS TREADMILL",
+    connect: "CONNECT", disconnect: "DISCONNECT", live: "LIVE", unavailable: "BLE UNAVAILABLE",
+    health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "SPORT FILES",
+    native: "Native bridge required", detected: "Bridge detected", cloud: "Cloud API / OAuth required", configured: "API configured", filesReady: "FIT / GPX / TCX active",
+    nativeGps: "NATIVE ANDROID GPS", screenOff: "Screen-off / background",
+    importGrant: "AUTHORIZE IMPORT", exportGrant: "AUTHORIZE EXPORT", manage: "MANAGE",
+    importReady: "IMPORT ✓", exportReady: "EXPORT ✓", pending: "AUTHORIZE",
+    hcAvailable: "Available", bpm: "bpm", spm: "steps/min",
+    sync: "IMPORT 30 DAYS", syncDone: "Health Connect import complete", lastSync: "Last import",
+    routesMissing: "protected routes", routesOk: "Routes allowed", routesOff: "Routes not allowed",
+    export: "SEND MY WORKOUTS", exportDone: "Health Connect export complete", lastExport: "Last export",
+    disclosure: "Import: workouts, routes, distance, speed, elevation, heart rate and cadence. Export: only data actually recorded by MULTISPORTS SCORING; heart rate and cadence are sent only when a sensor measured them.",
   };
 
   const sensorDevices = Array.isArray(sensor.devices) ? sensor.devices : [];
@@ -44,25 +83,49 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
     finally { setBusy(null); }
   };
 
+  const refreshHealthStatus = async () => {
+    const next = await getHealthConnectStatus();
+    setHealthStatus(next);
+    return next;
+  };
+
+  const grantHealth = async (mode: "import" | "export") => {
+    if (!capabilities.healthConnectBridge) return null;
+    setHealthBusy(true); setMessage(""); setMessageKind("ok");
+    try {
+      await requestHealthConnectWorkoutPermissions(mode);
+      return await refreshHealthStatus();
+    } catch (error: any) {
+      setMessageKind("error"); setMessage(error?.message || String(error));
+      return null;
+    } finally {
+      setHealthBusy(false);
+    }
+  };
+
   const healthAction = async () => {
     if (!capabilities.healthConnectBridge) return;
     setHealthBusy(true); setMessage(""); setMessageKind("ok");
     try {
-      if (healthStatus?.permissionsGranted) await openHealthConnectSettings();
-      else await requestHealthConnectWorkoutPermissions();
-      setHealthStatus(await getHealthConnectStatus());
+      await openHealthConnectSettings();
+      await refreshHealthStatus();
     } catch (error: any) { setMessageKind("error"); setMessage(error?.message || String(error)); }
     finally { setHealthBusy(false); }
   };
 
   const syncHealth = async () => {
-    if (!capabilities.healthConnectBridge || !healthStatus?.permissionsGranted) return;
+    if (!capabilities.healthConnectBridge) return;
+    let status = healthStatus;
+    if (!status?.importPermissionsGranted) {
+      status = await grantHealth("import");
+      if (!status?.importPermissionsGranted) return;
+    }
     setSyncBusy(true); setMessage(""); setMessageKind("ok");
     try {
       const report = await syncHealthConnectWorkouts(30);
       setLastSyncAt(report.lastSyncAt);
       await onActivitiesChanged?.();
-      setHealthStatus(await getHealthConnectStatus());
+      await refreshHealthStatus();
       const detail = `${report.imported} + ${report.updated} ↻${report.routesMissing ? ` · ${report.routesMissing} ${copy.routesMissing}` : ""}`;
       setMessage(`${copy.syncDone} · ${detail}`);
     } catch (error: any) {
@@ -74,13 +137,25 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
   };
 
   const exportHealth = async () => {
-    if (!capabilities.healthConnectBridge || !healthStatus?.permissionsGranted) return;
+    if (!capabilities.healthConnectBridge) return;
+    let status = healthStatus;
+    if (!status?.exportPermissionsGranted) {
+      status = await grantHealth("export");
+      if (!status?.exportPermissionsGranted) return;
+    }
     setExportBusy(true); setMessage(""); setMessageKind("ok");
     try {
       const report = await exportLocalWorkoutsToHealthConnect(30);
       setLastExportAt(report.lastExportAt);
       await onActivitiesChanged?.();
-      const detail = `${report.exported} ✓${report.failed ? ` · ${report.failed} ✕` : ""}`;
+      await refreshHealthStatus();
+      const metrics = [
+        report.routesWritten ? `${report.routesWritten} GPS` : "",
+        report.heartRateSamplesWritten ? `${report.heartRateSamplesWritten} HR` : "",
+        report.speedSamplesWritten ? `${report.speedSamplesWritten} VIT` : "",
+        report.cadenceSamplesWritten ? `${report.cadenceSamplesWritten} CAD` : "",
+      ].filter(Boolean).join(" · ");
+      const detail = `${report.exported} ✓${report.failed ? ` · ${report.failed} ✕` : ""}${metrics ? ` · ${metrics}` : ""}`;
       setMessage(`${copy.exportDone} · ${detail}${report.errors.length ? ` · ${report.errors[0]}` : ""}`);
     } catch (error: any) {
       setMessageKind("error"); setMessage(error?.message || String(error));
@@ -111,12 +186,25 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
       <RunningSurface accent={accent} active={!!healthStatus?.available} padding={10}>
         <div style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 7, alignItems: "center" }}>
           <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", background: `${accent}10`, fontSize: 15 }}>♥</div>
-          <div><div style={{ fontSize: 8.5, fontWeight: 1000 }}>{copy.health}</div><div style={{ marginTop: 2, fontSize: 7.4, opacity: .55, lineHeight: 1.25 }}>{!capabilities.healthConnectBridge ? copy.native : healthStatus?.permissionsGranted ? `${copy.hcReady} · ${healthStatus?.exerciseRoutesGranted ? copy.routesOk : copy.routesOff}` : healthStatus?.available ? copy.hcAvailable : healthStatus?.status === "update-required" ? "Mise à jour requise" : copy.detected}</div>{lastSyncAt ? <div style={{ marginTop: 3, fontSize: 7.2, color: accent }}>{copy.lastSync}: {new Date(lastSyncAt).toLocaleString()}</div> : null}{lastExportAt ? <div style={{ marginTop: 2, fontSize: 7.2, color: accent }}>{copy.lastExport}: {new Date(lastExportAt).toLocaleString()}</div> : null}</div>
+          <div>
+            <div style={{ fontSize: 8.5, fontWeight: 1000 }}>{copy.health}</div>
+            <div style={{ marginTop: 2, fontSize: 7.4, opacity: .72, lineHeight: 1.35 }}>
+              {!capabilities.healthConnectBridge
+                ? copy.native
+                : !healthStatus?.available
+                  ? healthStatus?.status === "update-required" ? "Mise à jour requise" : copy.detected
+                  : `${copy.hcAvailable} · ${healthStatus?.importPermissionsGranted ? copy.importReady : `IMPORT ${copy.pending}`} · ${healthStatus?.exportPermissionsGranted ? copy.exportReady : `EXPORT ${copy.pending}`}`}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 7.1, opacity: .58, lineHeight: 1.35 }}>{copy.disclosure}</div>
+            {healthStatus?.importPermissionsGranted ? <div style={{ marginTop: 3, fontSize: 7.1, color: accent }}>{healthStatus?.exerciseRoutesGranted ? copy.routesOk : copy.routesOff}</div> : null}
+            {lastSyncAt ? <div style={{ marginTop: 3, fontSize: 7.2, color: accent }}>{copy.lastSync}: {new Date(lastSyncAt).toLocaleString()}</div> : null}
+            {lastExportAt ? <div style={{ marginTop: 2, fontSize: 7.2, color: accent }}>{copy.lastExport}: {new Date(lastExportAt).toLocaleString()}</div> : null}
+          </div>
         </div>
-        {capabilities.healthConnectBridge ? <div style={{ display: "grid", gridTemplateColumns: healthStatus?.permissionsGranted ? "repeat(3,minmax(0,1fr))" : "1fr", gap: 5, marginTop: 7 }}>
-          <button className="btn" onClick={healthAction} disabled={healthBusy || syncBusy || exportBusy} style={{ minHeight: 30, padding: "4px 5px", fontSize: 7, fontWeight: 1000, color: healthStatus?.available ? accent : undefined, borderColor: healthStatus?.available ? `${accent}55` : undefined }}>{healthBusy ? "…" : healthStatus?.permissionsGranted ? copy.manage : copy.grant}</button>
-          {healthStatus?.permissionsGranted ? <button className="btn" onClick={() => void syncHealth()} disabled={syncBusy || healthBusy || exportBusy} style={{ minHeight: 30, padding: "4px 5px", fontSize: 7, fontWeight: 1000, color: accent, borderColor: `${accent}66` }}>{syncBusy ? "…" : copy.sync}</button> : null}
-          {healthStatus?.permissionsGranted ? <button className="btn" onClick={() => void exportHealth()} disabled={exportBusy || healthBusy || syncBusy} style={{ minHeight: 30, padding: "4px 5px", fontSize: 6.6, fontWeight: 1000, color: accent, borderColor: `${accent}66` }}>{exportBusy ? "…" : copy.export}</button> : null}
+        {capabilities.healthConnectBridge ? <div style={{ display: "grid", gridTemplateColumns: (healthStatus?.importPermissionsGranted || healthStatus?.exportPermissionsGranted) ? "repeat(3,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))", gap: 5, marginTop: 7 }}>
+          <button className="btn" onClick={() => void syncHealth()} disabled={healthBusy || syncBusy || exportBusy || !healthStatus?.available} style={{ minHeight: 32, padding: "4px 5px", fontSize: 6.7, fontWeight: 1000, color: healthStatus?.available ? accent : undefined, borderColor: healthStatus?.available ? `${accent}55` : undefined }}>{healthBusy && !healthStatus?.importPermissionsGranted ? "…" : healthStatus?.importPermissionsGranted ? (syncBusy ? "…" : copy.sync) : copy.importGrant}</button>
+          <button className="btn" onClick={() => void exportHealth()} disabled={healthBusy || syncBusy || exportBusy || !healthStatus?.available} style={{ minHeight: 32, padding: "4px 5px", fontSize: 6.5, fontWeight: 1000, color: healthStatus?.available ? accent : undefined, borderColor: healthStatus?.available ? `${accent}55` : undefined }}>{healthBusy && !healthStatus?.exportPermissionsGranted ? "…" : healthStatus?.exportPermissionsGranted ? (exportBusy ? "…" : copy.export) : copy.exportGrant}</button>
+          {(healthStatus?.importPermissionsGranted || healthStatus?.exportPermissionsGranted) ? <button className="btn" onClick={healthAction} disabled={healthBusy || syncBusy || exportBusy} style={{ minHeight: 32, padding: "4px 5px", fontSize: 6.8, fontWeight: 1000 }}>{copy.manage}</button> : null}
         </div> : null}
       </RunningSurface>
       <Connector icon="📍" title={copy.nativeGps} status={capabilities.nativeTrackingBridge ? copy.screenOff : copy.native} accent={accent} active={capabilities.nativeTrackingBridge}/>

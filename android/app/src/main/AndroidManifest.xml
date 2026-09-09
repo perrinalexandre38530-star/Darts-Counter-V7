@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- RUNNING PERFORMANCE V14 / Health Connect workout permissions. -->
+    <!-- RUNNING PERF RC16 / Health Connect import + export permissions used by visible sync features. -->
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE_ROUTE" />

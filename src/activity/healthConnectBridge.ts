@@ -1,11 +1,15 @@
 import type { ActivityRecord, ActivitySensorSample, ActivitySport, GeoPoint } from "./activityTypes";
-import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGainMeters, movingTimeMs, routeDistanceMeters } from "./activityMath";
+import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGainMeters, haversineMeters, movingTimeMs, routeDistanceMeters } from "./activityMath";
 
 export type HealthConnectStatus = {
   available: boolean;
   status: "available" | "update-required" | "unavailable" | string;
   provider?: string;
   permissionsGranted?: boolean;
+  importPermissionsGranted?: boolean;
+  importAllPermissionsGranted?: boolean;
+  exportPermissionsGranted?: boolean;
+  exportAllPermissionsGranted?: boolean;
   exerciseRoutesGranted?: boolean;
   exerciseRouteWriteGranted?: boolean;
   grantedPermissions?: string[];
@@ -41,7 +45,7 @@ function healthPlugin(): any {
 
 export function isHealthConnectBridgeInstalled() { return !!healthPlugin(); }
 export async function getHealthConnectStatus(): Promise<HealthConnectStatus | null> { try { return await healthPlugin()?.getStatus?.(); } catch { return null; } }
-export async function requestHealthConnectWorkoutPermissions() { const p = healthPlugin(); if (!p) throw new Error("Health Connect bridge unavailable"); return p.requestWorkoutPermissions(); }
+export async function requestHealthConnectWorkoutPermissions(mode: "import" | "export" = "import") { const p = healthPlugin(); if (!p) throw new Error("Health Connect bridge unavailable"); return p.requestWorkoutPermissions({ mode }); }
 export async function openHealthConnectSettings() { const p = healthPlugin(); if (!p) throw new Error("Health Connect bridge unavailable"); return p.openHealthConnect(); }
 export async function readHealthConnectWorkoutSessions(days = 30): Promise<HealthConnectReadResult> {
   const p = healthPlugin();
@@ -53,7 +57,57 @@ export async function readHealthConnectWorkoutSessions(days = 30): Promise<Healt
 export type HealthConnectWriteResult = {
   clientRecordId: string;
   recordIds: string[];
+  routeWritten?: boolean;
+  heartRateSamplesWritten?: number;
+  speedSamplesWritten?: number;
+  cadenceSamplesWritten?: number;
 };
+
+function exportSensorSamples(activity: ActivityRecord) {
+  const byTime = new Map<number, ActivitySensorSample>();
+  const startedAt = Number(activity.startedAt || 0);
+  const endedAt = Number(activity.endedAt || 0);
+  const upsert = (timestamp: number, patch: Partial<ActivitySensorSample>) => {
+    if (!Number.isFinite(timestamp) || timestamp < startedAt || timestamp >= endedAt) return;
+    const current = byTime.get(timestamp) || { timestamp };
+    byTime.set(timestamp, { ...current, ...patch, timestamp });
+  };
+
+  // Real sensor values already stored by RUNNING PERF (BLE HR, footpod, FTMS).
+  for (const raw of activity.sensorSamples || []) {
+    const timestamp = Number(raw?.timestamp);
+    const patch: Partial<ActivitySensorSample> = {};
+    const hr = Number(raw?.heartRateBpm);
+    const cadence = Number(raw?.cadenceSpm);
+    const speed = Number(raw?.sensorSpeedMps);
+    if (Number.isFinite(hr) && hr >= 1 && hr <= 300) patch.heartRateBpm = hr;
+    if (Number.isFinite(cadence) && cadence >= 0 && cadence <= 1000) patch.cadenceSpm = cadence;
+    if (Number.isFinite(speed) && speed >= 0 && speed <= 100) patch.sensorSpeedMps = speed;
+    if (Object.keys(patch).length) upsert(timestamp, patch);
+  }
+
+  // Outdoor phone/native GPS already provides the speed used by RUNNING PERF.
+  // If a point has no native speed, derive segment speed from the same recorded GPS route.
+  const route = Array.isArray(activity.route) ? activity.route : [];
+  for (let i = 0; i < route.length; i += 1) {
+    const point = route[i];
+    const timestamp = Number(point?.timestamp);
+    let speed = Number(point?.speed);
+    if (!Number.isFinite(speed) && i > 0) {
+      const previous = route[i - 1];
+      const dt = (timestamp - Number(previous?.timestamp || timestamp)) / 1000;
+      if (dt >= 0.5 && dt <= 60) speed = haversineMeters(previous, point) / dt;
+    }
+    if (Number.isFinite(speed) && speed >= 0 && speed <= 50) upsert(timestamp, { sensorSpeedMps: speed });
+  }
+
+  return [...byTime.values()].sort((a, c) => a.timestamp - c.timestamp).map((sample) => ({
+    timestamp: sample.timestamp,
+    heartRateBpm: Number.isFinite(sample.heartRateBpm) ? sample.heartRateBpm : undefined,
+    cadenceSpm: Number.isFinite(sample.cadenceSpm) ? sample.cadenceSpm : undefined,
+    sensorSpeedMps: Number.isFinite(sample.sensorSpeedMps) ? sample.sensorSpeedMps : undefined,
+  }));
+}
 
 export async function writeHealthConnectActivity(activity: ActivityRecord): Promise<HealthConnectWriteResult> {
   const p = healthPlugin();
@@ -73,8 +127,16 @@ export async function writeHealthConnectActivity(activity: ActivityRecord): Prom
       lat: point.lat, lon: point.lon, timestamp: point.timestamp,
       accuracy: point.accuracy, altitude: point.altitude,
     })),
+    sensorSamples: exportSensorSamples(activity),
   });
-  return { clientRecordId: String(result?.clientRecordId || clientRecordId), recordIds: Array.isArray(result?.recordIds) ? result.recordIds.map(String) : [] };
+  return {
+    clientRecordId: String(result?.clientRecordId || clientRecordId),
+    recordIds: Array.isArray(result?.recordIds) ? result.recordIds.map(String) : [],
+    routeWritten: !!result?.routeWritten,
+    heartRateSamplesWritten: Number(result?.heartRateSamplesWritten || 0),
+    speedSamplesWritten: Number(result?.speedSamplesWritten || 0),
+    cadenceSamplesWritten: Number(result?.cadenceSamplesWritten || 0),
+  };
 }
 export async function requestHealthConnectExerciseRoute(sessionId: string) {
   const p = healthPlugin();

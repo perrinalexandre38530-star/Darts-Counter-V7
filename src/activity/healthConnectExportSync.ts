@@ -7,6 +7,10 @@ export type HealthConnectExportReport = {
   exported: number;
   skipped: number;
   failed: number;
+  routesWritten: number;
+  heartRateSamplesWritten: number;
+  speedSamplesWritten: number;
+  cadenceSamplesWritten: number;
   lastExportAt: number;
   errors: string[];
 };
@@ -31,6 +35,7 @@ export async function exportLocalWorkoutsToHealthConnect(days = 30): Promise<Hea
   const all = await listActivities();
   const candidates = all.filter((activity) => eligible(activity, cutoff)).sort((a, b) => a.startedAt - b.startedAt);
   let exported = 0, skipped = 0, failed = 0;
+  let routesWritten = 0, heartRateSamplesWritten = 0, speedSamplesWritten = 0, cadenceSamplesWritten = 0;
   const errors: string[] = [];
 
   for (const activity of candidates) {
@@ -42,9 +47,17 @@ export async function exportLocalWorkoutsToHealthConnect(days = 30): Promise<Hea
           clientRecordId: result.clientRecordId,
           recordIds: result.recordIds,
           exportedAt: Date.now(),
+          routeWritten: !!result.routeWritten,
+          heartRateSamplesWritten: Number(result.heartRateSamplesWritten || 0),
+          speedSamplesWritten: Number(result.speedSamplesWritten || 0),
+          cadenceSamplesWritten: Number(result.cadenceSamplesWritten || 0),
         },
       });
       exported += 1;
+      if (result.routeWritten) routesWritten += 1;
+      heartRateSamplesWritten += Number(result.heartRateSamplesWritten || 0);
+      speedSamplesWritten += Number(result.speedSamplesWritten || 0);
+      cadenceSamplesWritten += Number(result.cadenceSamplesWritten || 0);
     } catch (error: any) {
       failed += 1;
       errors.push(`${activity.title || activity.id}: ${error?.message || String(error)}`);
@@ -54,5 +67,16 @@ export async function exportLocalWorkoutsToHealthConnect(days = 30): Promise<Hea
   skipped = all.filter((activity) => activity.startedAt >= cutoff).length - candidates.length;
   const lastExportAt = Date.now();
   try { localStorage.setItem(LAST_EXPORT_KEY, String(lastExportAt)); } catch {}
-  return { considered: candidates.length, exported, skipped: Math.max(0, skipped), failed, lastExportAt, errors: errors.slice(0, 5) };
+  return {
+    considered: candidates.length,
+    exported,
+    skipped: Math.max(0, skipped),
+    failed,
+    routesWritten,
+    heartRateSamplesWritten,
+    speedSamplesWritten,
+    cadenceSamplesWritten,
+    lastExportAt,
+    errors: errors.slice(0, 5),
+  };
 }
