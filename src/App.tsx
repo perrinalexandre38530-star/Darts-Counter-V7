@@ -82,6 +82,7 @@ import NavigationBackgroundMusic from "./components/NavigationBackgroundMusic";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import RunningActiveSessionDock from "./components/RunningActiveSessionDock";
 import SportQuickSwitch from "./components/SportQuickSwitch";
+import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type OrganizationWorkspace } from "./organizations/organizationWorkspace";
 // MONETIZATION_V1
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
 
@@ -196,6 +197,7 @@ const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const OrganizationsPage = React.lazy(() => import("./pages/OrganizationsPage"));
+const OrganizationWorkspaceSwitcher = React.lazy(() => import("./components/OrganizationWorkspaceSwitcher"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
 const StorageVaultPage = React.lazy(() => import("./pages/StorageVaultPage"));
@@ -1028,6 +1030,13 @@ type Tab =
   | "spectator"
   | "settings"
   | "organizations"
+  | "organization_home"
+  | "organization_calendar"
+  | "organization_members"
+  | "organization_teams"
+  | "organization_competitions"
+  | "organization_stats"
+  | "organization_admin"
   | "stats"
   | "statsHub"
   | "stats_online"
@@ -2140,6 +2149,22 @@ useEffect(() => {
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)
   // ============================================================
   const online = useAuthOnline();
+  // ORGANIZATIONS V3 — le contexte PERSO / ORGANISATION est global à l'application.
+  const organizationUserId = String((online as any)?.userId || (online as any)?.user?.id || "") || null;
+  const [organizationWorkspace, setOrganizationWorkspaceState] = React.useState<OrganizationWorkspace>(() => loadOrganizationWorkspace(organizationUserId));
+  React.useEffect(() => {
+    setOrganizationWorkspaceState(loadOrganizationWorkspace(organizationUserId));
+  }, [organizationUserId]);
+  React.useEffect(() => {
+    const onWorkspaceChange = (event: Event) => {
+      const detail = (event as CustomEvent<OrganizationWorkspace>)?.detail;
+      setOrganizationWorkspaceState(detail?.kind ? detail : loadOrganizationWorkspace(organizationUserId));
+    };
+    window.addEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChange as EventListener);
+    return () => window.removeEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChange as EventListener);
+  }, [organizationUserId]);
+  const activeOrganizationId = organizationWorkspace.kind === "organization" ? organizationWorkspace.organizationId : null;
+  const organizationMode = !!activeOrganizationId;
   // PROFILES V7: on désactive l'hydratation automatique du store depuis le cloud
   // (elle écrasait des données locales et créait des états impossibles à déboguer).
   const [cloudHydrated, setCloudHydrated] = React.useState(false);
@@ -2657,6 +2682,25 @@ useEffect(() => {
         setTab("online");
         return;
       }
+      if (h.startsWith("#/organization/")) {
+        const raw = h.slice("#/organization/".length);
+        const [sectionRaw, queryRaw = ""] = raw.split("?");
+        const section = String(sectionRaw || "home").toLowerCase();
+        const routeMap: Record<string, Tab> = {
+          home: "organization_home",
+          agenda: "organization_calendar",
+          members: "organization_members",
+          teams: "organization_teams",
+          competitions: "organization_competitions",
+          stats: "organization_stats",
+          admin: "organization_admin",
+        };
+        const viewMap: Record<string, string> = { home: "home", agenda: "calendar", members: "members", teams: "groups", competitions: "competitions", stats: "stats", admin: "admin" };
+        const id = new URLSearchParams(queryRaw).get("id") || "";
+        setRouteParams({ organizationId: id || undefined, workspaceMode: true, view: viewMap[section] || "home" });
+        setTab(routeMap[section] || "organization_home");
+        return;
+      }
       if (h.startsWith("#/organizations")) {
         setRouteParams(null);
         setTab("organizations");
@@ -2863,6 +2907,20 @@ useEffect(() => {
       else if (next === "account_start") window.location.hash = "#/account/start";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "organizations") window.location.hash = "#/organizations";
+      else if (["organization_home", "organization_calendar", "organization_members", "organization_teams", "organization_competitions", "organization_stats", "organization_admin"].includes(String(next))) {
+        const sectionMap: Record<string, string> = {
+          organization_home: "home",
+          organization_calendar: "agenda",
+          organization_members: "members",
+          organization_teams: "teams",
+          organization_competitions: "competitions",
+          organization_stats: "stats",
+          organization_admin: "admin",
+        };
+        const organizationId = String(params?.organizationId || activeOrganizationId || "");
+        const suffix = organizationId ? `?id=${encodeURIComponent(organizationId)}` : "";
+        window.location.hash = `#/organization/${sectionMap[String(next)] || "home"}${suffix}`;
+      }
       else if (next === "messages") window.location.hash = "#/messages";
       else if (next === "spectator") window.location.hash = "#/spectator";
       else if (next === "cast_host") {
@@ -4858,6 +4916,28 @@ case "babyfoot_team_edit":
         page = <OrganizationsPage go={go} params={routeParams} />;
         break;
 
+      case "organization_home":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "home" }} />;
+        break;
+      case "organization_calendar":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "calendar" }} />;
+        break;
+      case "organization_members":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "members" }} />;
+        break;
+      case "organization_teams":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "groups" }} />;
+        break;
+      case "organization_competitions":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "competitions" }} />;
+        break;
+      case "organization_stats":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "stats" }} />;
+        break;
+      case "organization_admin":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "admin" }} />;
+        break;
+
       // ✅ STATS (sport-aware) — même onglet BottomNav "stats"
       // Pétanque => PetanqueStatsShell (UI identique StatsShell + ONLINE/TRAINING masqués)
       case "stats":
@@ -6305,6 +6385,7 @@ case "babyfoot_team_edit":
           className={`container dc-themed-route dc-themed-route--${themePageScope}`}
           style={{
             paddingBottom: 88,
+            paddingTop: appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) ? 48 : undefined,
             minHeight: "100dvh",
             background: routedPageBackground,
             backgroundAttachment: themePageScope === "full" ? "fixed" : undefined,
@@ -6321,6 +6402,12 @@ case "babyfoot_team_edit":
 
         {!isThemePreviewFrame && <NavigationBackgroundMusic route={String(tab)} />}
 
+        {appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
+          <React.Suspense fallback={null}>
+            <OrganizationWorkspaceSwitcher go={go} currentTab={String(tab)} />
+          </React.Suspense>
+        )}
+
         {appChromeAllowed && (
           <AwenaOverlay
             route={String(tab)}
@@ -6332,7 +6419,12 @@ case "babyfoot_team_edit":
 
         {/* Navigation totalement absente tant qu'aucune session n'est active. */}
         {appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
-          <BottomNav value={tab as any} onChange={(k: any) => go(k)} sportOverride={activeSport} />
+          <BottomNav
+            value={tab as any}
+            onChange={(k: any) => go(k, organizationMode ? { organizationId: activeOrganizationId, workspaceMode: true } : undefined)}
+            sportOverride={activeSport}
+            organizationMode={organizationMode}
+          />
         )}
 
         {appChromeAllowed && (

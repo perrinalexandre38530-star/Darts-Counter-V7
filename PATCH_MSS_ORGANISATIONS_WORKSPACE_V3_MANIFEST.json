@@ -1,0 +1,38 @@
+{
+  "patch": "MSS ORGANISATIONS WORKSPACE V3",
+  "base": "Darts-Counter-V7(58).zip",
+  "date": "2026-09-09",
+  "supabase_migration_required": false,
+  "architecture": {
+    "supabase": "auth + relations + permissions + light metadata only",
+    "heavy_data": "Cloudflare R2 or the storage destination chosen in MSS Storage Center"
+  },
+  "features": [
+    "Global PERSONAL / ORGANIZATION workspace switcher",
+    "Native organization navigation integrated into BottomNav",
+    "Organization routes: home, agenda, members, teams, competitions, rankings, admin",
+    "Settings remains the create/join/configure entry point",
+    "Creating or joining an organization enters its native workspace",
+    "Organization groups are exposed as linked read-only views in the individual Teams store",
+    "Linked organization teams cannot be deleted locally",
+    "Organization routes are hash-persisted and survive refresh",
+    "Organization team synchronization is deferred to browser idle time to protect Android navigation performance"
+  ],
+  "changed_files": [
+    "src/App.tsx",
+    "src/components/BottomNav.tsx",
+    "src/components/OrganizationWorkspaceSwitcher.tsx",
+    "src/organizations/organizationWorkspace.ts",
+    "src/organizations/organizationService.ts",
+    "src/pages/OrganizationsPage.tsx",
+    "src/pages/petanque/PetanqueTeams.tsx",
+    "tools/test-organizations-workspace-v3.mjs"
+  ],
+  "validation": {
+    "typescript": "npm run typecheck: PASS",
+    "organizations_v1": "7/7 PASS",
+    "organizations_v2": "9/9 PASS",
+    "organizations_v3": "10/10 PASS"
+  },
+  "rebase_note": "Rebased on V58. All five pre-existing files touched by V3 were byte-identical between V56 and V58 before applying the patch, so no V58 changes are overwritten."
+}

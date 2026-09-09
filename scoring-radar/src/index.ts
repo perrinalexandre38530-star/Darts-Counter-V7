@@ -27,7 +27,7 @@ import {
   startRun,
   updateRunProgress
 } from './db';
-import type { Candidate, RadarEnv, RunProgressRow, SocialCampaignRow } from './domain';
+import type { Analysis, Candidate, RadarEnv, RunProgressRow, SocialCampaignRow } from './domain';
 import { sha256Hex } from './hash';
 import { isAdminAuthorized, unauthorized } from './security';
 import { generateAndAuditSocialDraft, socialQaPasses } from './social';
@@ -671,8 +671,42 @@ export default {
 
     const classifyStarted = Date.now();
     let analyses: Awaited<ReturnType<typeof classifyCandidates>>;
+    const liveAnalyses = new Map<string, Analysis>();
+    let progressWrite = Promise.resolve();
     try {
-      analyses = await classifyCandidates(env, candidates);
+      analyses = await classifyCandidates(env, candidates, (classification) => {
+        for (const analysis of classification.analyses) liveAnalyses.set(analysis.id, analysis);
+        progressWrite = progressWrite.then(async () => {
+          for (const runId of runIds) {
+            const progress = progressByRun.get(runId);
+            const details = detailsByRun.get(runId) ?? {};
+            details.classification = {
+              completed: classification.completed,
+              total: classification.total,
+              chunk_size: classification.chunkSize,
+              concurrency: classification.concurrency,
+              chunks_completed: classification.chunksCompleted,
+              chunks_total: classification.chunksTotal
+            };
+            detailsByRun.set(runId, details);
+            const runCandidateIds = new Set(
+              candidates.filter((candidate) => candidate.runId === runId).map((candidate) => candidate.id)
+            );
+            const analyzed = [...liveAnalyses.values()].filter((analysis) => runCandidateIds.has(analysis.id));
+            await updateRunProgress(env, runId, {
+              status: 'processing',
+              stage: 'classifying',
+              elapsedMs: progress ? Math.max(0, Date.now() - Date.parse(progress.started_at)) : 0,
+              analyzed: analyzed.length,
+              eligible: analyzed.filter((analysis) => analysis.eligible).length,
+              highIntent: analyzed.filter((analysis) => analysis.eligible && analysis.score >= 90).length,
+              details
+            });
+          }
+        });
+        return progressWrite;
+      });
+      await progressWrite;
     } catch (caught) {
       const error = caught instanceof Error ? caught.message : String(caught);
       for (const runId of runIds) {

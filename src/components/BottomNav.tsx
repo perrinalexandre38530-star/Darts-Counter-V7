@@ -42,6 +42,13 @@ type TabKey =
   | "stats"
   | "statsHub"
   | "settings"
+  | "organization_home"
+  | "organization_calendar"
+  | "organization_members"
+  | "organization_teams"
+  | "organization_competitions"
+  | "organization_stats"
+  | "organization_admin"
   | "cast_host"
   | "viewer_host"
   | "cast_room"
@@ -83,6 +90,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
 
   switch (name) {
     case "home":
+    case "organization_home":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <path {...p} d="M3 11.5 12 4l9 7.5" />
@@ -103,6 +111,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "agenda":
+    case "organization_calendar":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <rect {...p} x="4" y="5" width="16" height="16" rx="2.5" />
@@ -129,6 +138,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "tournaments":
+    case "organization_competitions":
     case "esports_tournaments":
     case "tournament_create":
     case "tournament_list":
@@ -146,6 +156,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "profiles":
+    case "organization_members":
     case "esports_profile":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
@@ -183,6 +194,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "stats":
+    case "organization_stats":
     case "statsHub":
     case "esports_stats":
       return (
@@ -226,7 +238,18 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
         </svg>
       );
 
+    case "organization_teams":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <circle {...p} cx="8" cy="8" r="3" />
+          <circle {...p} cx="17" cy="9" r="2.5" />
+          <path {...p} d="M2.8 20c.5-4.2 2.3-6.3 5.2-6.3s4.8 2.1 5.3 6.3" />
+          <path {...p} d="M14 14.5c3.8-.5 6.2 1.4 6.8 5.5" />
+        </svg>
+      );
+
     case "settings":
+    case "organization_admin":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <path
@@ -269,10 +292,12 @@ export default function BottomNav({
   value,
   onChange,
   sportOverride,
+  organizationMode = false,
 }: {
   value: TabKey;
   onChange: (k: TabKey) => void;
   sportOverride?: SportId | null;
+  organizationMode?: boolean;
 }) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
@@ -356,7 +381,18 @@ export default function BottomNav({
     };
   }, [hideOnline]);
 
-  const tabs: NavItem[] = sportLc === "esports"
+  const tabs: NavItem[] = organizationMode
+    ? [
+        { k: "organization_home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="organization_home" /> },
+        { k: "organization_calendar", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="organization_calendar" /> },
+        { k: "organization_members", label: tr("Membres", "Members", "Miembros"), icon: <Icon name="organization_members" /> },
+        { k: "games", label: tr("Jouer", "Play", "Jugar"), icon: <Icon name="games" /> },
+        { k: "organization_competitions", label: tr("Compétitions", "Competitions", "Competiciones"), icon: <Icon name="organization_competitions" /> },
+        { k: "organization_teams", label: tr("Équipes", "Teams", "Equipos"), icon: <Icon name="organization_teams" /> },
+        { k: "organization_stats", label: tr("Classements", "Rankings", "Clasificaciones"), icon: <Icon name="organization_stats" /> },
+        { k: "organization_admin", label: tr("Admin", "Admin", "Admin"), icon: <Icon name="organization_admin" /> },
+      ]
+    : sportLc === "esports"
     ? [
         { k: "home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="home" /> },
         { k: "games", label: tr("Jeux", "Games", "Juegos"), icon: <Icon name="games" /> },

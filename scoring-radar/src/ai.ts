@@ -132,25 +132,19 @@ export async function localizeQuery(env: RadarEnv, market: Market, intent: Searc
   }
 }
 
-export async function classifyCandidates(env: RadarEnv, candidates: Candidate[]): Promise<Analysis[]> {
-  if (candidates.length === 0) return [];
+export type ClassificationProgress = {
+  completed: number;
+  total: number;
+  chunkSize: number;
+  concurrency: number;
+  chunksCompleted: number;
+  chunksTotal: number;
+  analyses: Analysis[];
+};
 
-  const compact = candidates.map((candidate) => ({
-    id: candidate.id,
-    source: candidate.source,
-    url: candidate.sourceUrl,
-    title: candidate.title,
-    snippet: candidate.snippet,
-    language_hint: candidate.languageHint,
-    matched_query: candidate.queryText
-  }));
+type ClassificationProgressCallback = (progress: ClassificationProgress) => void | Promise<void>;
 
-  const timeoutMs = intFromEnv(env.RADAR_CLASSIFY_TIMEOUT_MS, 30_000, 5_000, 90_000);
-  const output = await withTimeout(env.AI.run(CLASSIFIER_MODEL, {
-    messages: [
-      {
-        role: 'system',
-        content: `You are SCORING RADAR, an intent classifier for MULTISPORTS SCORING.
+const CLASSIFIER_SYSTEM_PROMPT = `You are SCORING RADAR, an intent classifier for MULTISPORTS SCORING.
 Analyze each public web result and decide whether a real person appears to be actively seeking a solution that the app could legitimately help with.
 Supported themes include darts scoring and statistics, running/GPS/performance comparison, multisport scoring, petanque/boules, table tennis, foosball, molkky, sport challenges, social sport/partners, rankings, sessions, and wearable imports.
 
@@ -159,18 +153,25 @@ Rules:
 - eligible=true only if a useful, non-spammy response would make sense.
 - Reject news articles, SEO pages, store listings, company pages, generic tutorials, and content with no user need.
 - Detect the actual language from the text, not only the hint.
-- suggestedReply must be in the same language as the source text, concise, useful first, and transparent about affiliation (for example: "Nous développons MULTISPORTS SCORING..."). Never pretend to be an unrelated satisfied customer.
+- reason must be concise (max 35 words).
+- suggestedReply must be in the same language as the source text, concise (max 80 words), useful first, and transparent about affiliation (for example: "Nous développons MULTISPORTS SCORING..."). Never pretend to be an unrelated satisfied customer.
 - Do not auto-post. The reply is only a draft for manual review.
 - Put the token {{APP_LINK}} where the tracked application link should go.
-- Return strict JSON only: an array of objects with exactly these keys: id, language, category, intent, score, eligible, reason, suggestedReply.`
-      },
-      {
-        role: 'user',
-        content: JSON.stringify(compact)
-      }
-    ]
-  }), timeoutMs, 'Workers AI candidate classification');
+- Return strict JSON only: an array of objects with exactly these keys: id, language, category, intent, score, eligible, reason, suggestedReply.`;
 
+function candidateCompact(candidate: Candidate) {
+  return {
+    id: candidate.id,
+    source: candidate.source,
+    url: candidate.sourceUrl,
+    title: candidate.title,
+    snippet: candidate.snippet,
+    language_hint: candidate.languageHint,
+    matched_query: candidate.queryText
+  };
+}
+
+function parseClassifierOutput(output: unknown, candidates: Candidate[]): Analysis[] {
   const parsed = JSON.parse(cleanJson(extractText(output))) as unknown;
   if (!Array.isArray(parsed)) throw new Error('Classifier did not return a JSON array');
 
@@ -195,4 +196,98 @@ Rules:
   }
 
   return analyses;
+}
+
+async function classifyChunk(env: RadarEnv, candidates: Candidate[]): Promise<Analysis[]> {
+  const timeoutMs = intFromEnv(env.RADAR_CLASSIFY_TIMEOUT_MS, 20_000, 5_000, 90_000);
+  const output = await withTimeout(env.AI.run(CLASSIFIER_MODEL, {
+    messages: [
+      { role: 'system', content: CLASSIFIER_SYSTEM_PROMPT },
+      { role: 'user', content: JSON.stringify(candidates.map(candidateCompact)) }
+    ]
+  }), timeoutMs, `Workers AI candidate classification (${candidates.length} candidates)`);
+
+  const analyses = parseClassifierOutput(output, candidates);
+  const returnedIds = new Set(analyses.map((analysis) => analysis.id));
+  const missing = candidates.filter((candidate) => !returnedIds.has(candidate.id));
+  if (missing.length > 0) {
+    throw new Error(`Classifier omitted ${missing.length}/${candidates.length} candidate(s)`);
+  }
+  return analyses;
+}
+
+async function classifyAdaptiveChunk(env: RadarEnv, candidates: Candidate[]): Promise<Analysis[]> {
+  try {
+    return await classifyChunk(env, candidates);
+  } catch (caught) {
+    if (candidates.length <= 1) throw caught;
+
+    const error = caught instanceof Error ? caught.message : String(caught);
+    console.warn(JSON.stringify({
+      event: 'radar_classify_chunk_split',
+      candidates: candidates.length,
+      error
+    }));
+
+    const midpoint = Math.ceil(candidates.length / 2);
+    const left = await classifyAdaptiveChunk(env, candidates.slice(0, midpoint));
+    const right = await classifyAdaptiveChunk(env, candidates.slice(midpoint));
+    return [...left, ...right];
+  }
+}
+
+export async function classifyCandidates(
+  env: RadarEnv,
+  candidates: Candidate[],
+  onProgress?: ClassificationProgressCallback
+): Promise<Analysis[]> {
+  if (candidates.length === 0) return [];
+
+  const chunkSize = intFromEnv(env.RADAR_CLASSIFY_CHUNK_SIZE, 2, 1, 5);
+  const concurrency = intFromEnv(env.RADAR_CLASSIFY_CONCURRENCY, 2, 1, 4);
+  const chunks: Candidate[][] = [];
+  for (let index = 0; index < candidates.length; index += chunkSize) {
+    chunks.push(candidates.slice(index, index + chunkSize));
+  }
+
+  const byId = new Map<string, Analysis>();
+  let cursor = 0;
+  let completed = 0;
+  let chunksCompleted = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const chunkIndex = cursor;
+      cursor += 1;
+      if (chunkIndex >= chunks.length) return;
+
+      const chunk = chunks[chunkIndex];
+      const analyses = await classifyAdaptiveChunk(env, chunk);
+      for (const analysis of analyses) byId.set(analysis.id, analysis);
+      completed += analyses.length;
+      chunksCompleted += 1;
+
+      if (onProgress) {
+        await onProgress({
+          completed,
+          total: candidates.length,
+          chunkSize,
+          concurrency,
+          chunksCompleted,
+          chunksTotal: chunks.length,
+          analyses
+        });
+      }
+    }
+  }
+
+  const workerCount = Math.min(concurrency, chunks.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  const missing = candidates.filter((candidate) => !byId.has(candidate.id));
+  if (missing.length > 0) {
+    throw new Error(`Classifier finished with ${missing.length} missing candidate result(s)`);
+  }
+
+  return candidates.map((candidate) => byId.get(candidate.id) as Analysis);
 }

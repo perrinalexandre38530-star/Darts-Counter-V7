@@ -13,6 +13,8 @@ export type RadarSecrets = {
   RADAR_BRAVE_TIMEOUT_MS?: string;
   RADAR_FRESHNESS?: string;
   RADAR_CLASSIFY_TIMEOUT_MS?: string;
+  RADAR_CLASSIFY_CHUNK_SIZE?: string;
+  RADAR_CLASSIFY_CONCURRENCY?: string;
   RADAR_STALL_TIMEOUT_MS?: string;
   SOCIAL_AI_TIMEOUT_MS?: string;
 };

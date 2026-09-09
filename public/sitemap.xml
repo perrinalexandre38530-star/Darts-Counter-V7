@@ -28,7 +28,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/en/</loc>
@@ -57,7 +57,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/es/</loc>
@@ -86,7 +86,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/de/</loc>
@@ -115,7 +115,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/it/</loc>
@@ -144,7 +144,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/pt/</loc>
@@ -173,7 +173,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/nl/</loc>
@@ -202,7 +202,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/ru/</loc>
@@ -231,7 +231,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/zh/</loc>
@@ -260,7 +260,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/ja/</loc>
@@ -289,7 +289,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/ar/</loc>
@@ -318,7 +318,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/hi/</loc>
@@ -347,7 +347,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/tr/</loc>
@@ -376,7 +376,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/da/</loc>
@@ -405,7 +405,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/no/</loc>
@@ -434,7 +434,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/sv/</loc>
@@ -463,7 +463,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/is/</loc>
@@ -492,7 +492,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/pl/</loc>
@@ -521,7 +521,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/ro/</loc>
@@ -550,7 +550,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/sr/</loc>
@@ -579,7 +579,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/hr/</loc>
@@ -608,7 +608,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/cs/</loc>
@@ -637,7 +637,7 @@
     <xhtml:link rel="alternate" hreflang="sr" href="https://multisports-scoring.pages.dev/sr/" />
     <xhtml:link rel="alternate" hreflang="hr" href="https://multisports-scoring.pages.dev/hr/" />
     <xhtml:link rel="alternate" hreflang="cs" href="https://multisports-scoring.pages.dev/cs/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
     <loc>https://multisports-scoring.pages.dev/fr/flechettes/</loc>

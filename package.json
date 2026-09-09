@@ -152,7 +152,9 @@
     "android:galaxy:aab": "node ./tools/build-galaxy-store-aab.mjs",
     "test:galaxy-store": "node ./tools/test-galaxy-store-v1.mjs",
     "test:seo": "node ./tools/test-seo-public-pages.mjs",
-    "seo:indexnow": "node ./tools/submit-indexnow.mjs"
+    "seo:indexnow": "node ./tools/submit-indexnow.mjs",
+    "seo:build": "node ./tools/build-seo-public-pages.mjs",
+    "seo:check": "npm run seo:build && npm run test:seo"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

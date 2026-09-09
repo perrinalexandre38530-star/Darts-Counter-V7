@@ -27,6 +27,7 @@ import {
   type OrganizationProfile,
   type OrganizationRecord,
 } from "../organizations/organizationService";
+import { enterOrganizationWorkspace, enterPersonalWorkspace } from "../organizations/organizationWorkspace";
 import {
   captureUserMediaFallback,
   organizationCoverMediaKey,
@@ -138,16 +139,20 @@ function ModuleIcon({ name, color }: { name: string; color: string }) {
   return <span style={{ width: 36, height: 36, display: "grid", placeItems: "center", color, flexShrink: 0 }}><svg width="25" height="25" viewBox="0 0 24 24">{paths[name] || paths.admin}</svg></span>;
 }
 
-export default function OrganizationsPage({ go }: Props) {
+export default function OrganizationsPage({ go, params }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang();
   const auth = useAuthOnline() as any;
   const userId = String(auth?.userId || auth?.user?.id || "") || null;
   const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
+  const workspaceMode = params?.workspaceMode === true;
+  const requestedOrganizationId = String(params?.organizationId || "").trim();
+  const requestedView = String(params?.view || "home") as View;
+  const validViews: View[] = ["home", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "billing", "sponsors", "admin", "offers"];
 
   const [organizations, setOrganizations] = React.useState<OrganizationRecord[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(() => loadOrganizationLocalState(userId).activeOrganizationId);
-  const [view, setView] = React.useState<View>("home");
+  const [view, setView] = React.useState<View>(() => validViews.includes(requestedView) ? requestedView : "home");
   const [entryMode, setEntryMode] = React.useState<EntryMode>("none");
   const [wizardStep, setWizardStep] = React.useState(0);
   const [draft, setDraft] = React.useState<WizardDraft>(() => emptyDraft());
@@ -179,11 +184,20 @@ export default function OrganizationsPage({ go }: Props) {
     setCloudAvailable(result.cloudAvailable);
     if (result.warning && !/migration Supabase PARTENARIATS/i.test(result.warning)) setNotice(result.warning);
     const localActive = loadOrganizationLocalState(userId).activeOrganizationId;
-    const nextId = localActive && result.organizations.some((org) => org.id === localActive) ? localActive : result.organizations[0]?.id || null;
+    const nextId = requestedOrganizationId && result.organizations.some((org) => org.id === requestedOrganizationId)
+      ? requestedOrganizationId
+      : localActive && result.organizations.some((org) => org.id === localActive)
+        ? localActive
+        : result.organizations[0]?.id || null;
     setActiveId(nextId);
-  }, [userId]);
+    if (nextId) setActiveOrganization(userId, nextId);
+  }, [userId, requestedOrganizationId]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  React.useEffect(() => {
+    if (workspaceMode && validViews.includes(requestedView)) setView(requestedView);
+  }, [workspaceMode, requestedView]);
 
   React.useEffect(() => {
     if (!active?.id) return;
@@ -245,6 +259,28 @@ export default function OrganizationsPage({ go }: Props) {
     setView("home");
     setEntryMode("none");
     setError("");
+  }
+
+  function navigateView(nextView: View) {
+    if (!workspaceMode) {
+      setView(nextView);
+      return;
+    }
+    const routes: Partial<Record<View, string>> = {
+      home: "organization_home",
+      calendar: "organization_calendar",
+      members: "organization_members",
+      groups: "organization_teams",
+      competitions: "organization_competitions",
+      stats: "organization_stats",
+      admin: "organization_admin",
+    };
+    const route = routes[nextView];
+    if (route) {
+      go?.(route, { organizationId: active?.id || requestedOrganizationId, workspaceMode: true, view: nextView });
+      return;
+    }
+    setView(nextView);
   }
 
   function setKind(kind: OrganizationKind) {
@@ -354,11 +390,13 @@ export default function OrganizationsPage({ go }: Props) {
       setCloudAvailable(created.cloudAvailable || profileResult.cloudAvailable);
       setActiveId(organization.id);
       setActiveOrganization(userId, organization.id);
+      enterOrganizationWorkspace(userId, organization.id);
       setEntryMode("none");
       setView("home");
       const baseNotice = L("Organisation créée : la fiche organisme est prête.", "Organization created: the organization profile is ready.", "Organización creada: la ficha de la organización está lista.");
       setNotice([baseNotice, profileResult.warning, mediaWarning].filter(Boolean).join(" "));
       resetWizard();
+      go?.("organization_home", { organizationId: organization.id, workspaceMode: true, view: "home" });
     } catch (e: any) {
       setError(String(e?.message || "Création impossible."));
     } finally { setBusy(false); }
@@ -370,9 +408,11 @@ export default function OrganizationsPage({ go }: Props) {
       const result = await joinOrganization(userId, joinCode);
       setOrganizations((prev) => [result.organization, ...prev.filter((item) => item.id !== result.organization.id)]);
       selectOrganization(result.organization.id);
+      enterOrganizationWorkspace(userId, result.organization.id);
       setCloudAvailable(result.cloudAvailable);
       setNotice(result.warning || L("Organisation rejointe.", "Organization joined.", "Organización unida."));
       setJoinCode("");
+      go?.("organization_home", { organizationId: result.organization.id, workspaceMode: true, view: "home" });
     } catch (e: any) {
       setError(String(e?.message || "Impossible de rejoindre cette organisation."));
     } finally { setBusy(false); }
@@ -526,11 +566,11 @@ export default function OrganizationsPage({ go }: Props) {
           <button type="button" onClick={copyJoinCode} style={{ ...secondaryButton, width: "100%", marginTop: 10, minHeight: 40, display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{L("CODE D’INVITATION", "INVITATION CODE", "CÓDIGO DE INVITACIÓN")}</span><strong style={{ color: theme.primary, letterSpacing: 1 }}>{active.joinCode || "—"}</strong></button>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{modules.map((module) => <button key={module.id} type="button" onClick={() => setView(module.id)} style={{ ...card, minHeight: 104, padding: 11, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "start", gap: 7 }}><ModuleIcon name={module.id} color={theme.primary}/><div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 5, alignItems: "center", justifyContent: "space-between" }}><div style={{ color: theme.primary, fontSize: 10.5, fontWeight: 1000, lineHeight: 1.15 }}>{module.name}</div>{module.hint ? <span style={{ minWidth: 22, textAlign: "center", borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 8, fontWeight: 1000, padding: "3px 5px" }}>{module.hint}</span> : null}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9, lineHeight: 1.35 }}>{module.subtitle}</div></div></button>)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{modules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: 104, padding: 11, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "start", gap: 7 }}><ModuleIcon name={module.id} color={theme.primary}/><div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 5, alignItems: "center", justifyContent: "space-between" }}><div style={{ color: theme.primary, fontSize: 10.5, fontWeight: 1000, lineHeight: 1.15 }}>{module.name}</div>{module.hint ? <span style={{ minWidth: 22, textAlign: "center", borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 8, fontWeight: 1000, padding: "3px 5px" }}>{module.hint}</span> : null}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9, lineHeight: 1.35 }}>{module.subtitle}</div></div></button>)}</div>
     </div>;
   };
 
-  const sectionHeader = (title: string, subtitle: string) => <div style={{ ...card, padding: 14 }}><div style={{ display: "flex", alignItems: "center", gap: 9 }}><button type="button" onClick={() => setView("home")} style={{ ...secondaryButton, minHeight: 36, padding: "7px 10px" }}>‹</button><div><div style={{ color: theme.primary, fontWeight: 1000, fontSize: 13 }}>{title}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5 }}>{subtitle}</div></div></div></div>;
+  const sectionHeader = (title: string, subtitle: string) => <div style={{ ...card, padding: 14 }}><div style={{ display: "flex", alignItems: "center", gap: 9 }}><button type="button" onClick={() => navigateView("home")} style={{ ...secondaryButton, minHeight: 36, padding: "7px 10px" }}>‹</button><div><div style={{ color: theme.primary, fontWeight: 1000, fontSize: 13 }}>{title}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5 }}>{subtitle}</div></div></div></div>;
 
   const renderProfile = () => {
     if (!active) return null;
@@ -576,12 +616,22 @@ export default function OrganizationsPage({ go }: Props) {
     <div style={{ minHeight: "100vh", background: pageBg, color: theme.text, padding: "14px 12px 104px" }}>
       <div style={{ width: "100%", maxWidth: 680, margin: "0 auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 10, alignItems: "center", marginBottom: 12 }}>
-          <BackDot size={40} onClick={() => entryMode !== "none" ? (setEntryMode("none"), resetWizard()) : view !== "home" ? setView("home") : go?.("settings")} />
-          <div style={{ minWidth: 0 }}><div style={{ color: theme.primary, fontSize: 15, fontWeight: 1000, letterSpacing: .75 }}>{L("PARTENARIATS & ORGANISATIONS", "PARTNERSHIPS & ORGANIZATIONS", "ALIANZAS Y ORGANIZACIONES")}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5 }}>{L("Club · Association · Entreprise · Bar · École · Événement", "Club · Association · Company · Venue · School · Event", "Club · Asociación · Empresa · Local · Escuela · Evento")}</div></div>
-          {organizations.length && entryMode !== "create" ? <button type="button" onClick={startCreate} style={{ ...primaryButton, minHeight: 36, padding: "7px 10px", fontSize: 9 }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : <span/>}
+          <BackDot size={40} onClick={() => {
+            if (entryMode !== "none") { setEntryMode("none"); resetWizard(); return; }
+            if (view !== "home") { navigateView("home"); return; }
+            if (workspaceMode) {
+              enterPersonalWorkspace(userId);
+              setActiveOrganization(userId, null);
+              go?.("home", { workspaceKind: "personal" });
+              return;
+            }
+            go?.("settings");
+          }} />
+          <div style={{ minWidth: 0 }}><div style={{ color: theme.primary, fontSize: 15, fontWeight: 1000, letterSpacing: .75 }}>{workspaceMode ? (active?.name || L("ESPACE ORGANISATION", "ORGANIZATION SPACE", "ESPACIO ORGANIZACIÓN")) : L("PARTENARIATS & ORGANISATIONS", "PARTNERSHIPS & ORGANIZATIONS", "ALIANZAS Y ORGANIZACIONES")}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5 }}>{workspaceMode ? L("Espace collectif connecté à MULTISPORTS SCORING", "Collective space connected to MULTISPORTS SCORING", "Espacio colectivo conectado a MULTISPORTS SCORING") : L("Club · Association · Entreprise · Bar · École · Événement", "Club · Association · Company · Venue · School · Event", "Club · Asociación · Empresa · Local · Escuela · Evento")}</div></div>
+          {!workspaceMode && organizations.length && entryMode !== "create" ? <button type="button" onClick={startCreate} style={{ ...primaryButton, minHeight: 36, padding: "7px 10px", fontSize: 9 }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : <span/>}
         </div>
 
-        {organizations.length > 0 && entryMode !== "create" ? <div style={{ ...card, padding: 9, marginBottom: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}><select aria-label={L("Organisation active", "Active organization", "Organización activa")} style={{ ...input, minHeight: 38, padding: "7px 9px", fontWeight: 900 }} value={active?.id || ""} onChange={(e) => selectOrganization(e.target.value)}>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name} · {organizationKindLabel(org.kind)}</option>)}</select><button type="button" style={{ ...secondaryButton, minHeight: 38, padding: "7px 10px", fontSize: 9 }} onClick={() => { setEntryMode("join"); setView("home"); }}>{L("REJOINDRE", "JOIN", "UNIRSE")}</button></div> : null}
+        {!workspaceMode && organizations.length > 0 && entryMode !== "create" ? <div style={{ ...card, padding: 9, marginBottom: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}><select aria-label={L("Organisation active", "Active organization", "Organización activa")} style={{ ...input, minHeight: 38, padding: "7px 9px", fontWeight: 900 }} value={active?.id || ""} onChange={(e) => selectOrganization(e.target.value)}>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name} · {organizationKindLabel(org.kind)}</option>)}</select><button type="button" style={{ ...secondaryButton, minHeight: 38, padding: "7px 10px", fontSize: 9 }} onClick={() => { setEntryMode("join"); setView("home"); }}>{L("REJOINDRE", "JOIN", "UNIRSE")}</button></div> : null}
 
         {notice ? <div style={{ marginBottom: 10, borderRadius: 12, border: `1px solid ${theme.primary}44`, background: `${theme.primary}0d`, color: theme.textSoft, padding: "9px 10px", fontSize: 9.5, lineHeight: 1.4 }}>{notice}</div> : null}
         {error ? <div style={{ marginBottom: 10, borderRadius: 12, border: "1px solid rgba(255,90,90,.55)", background: "rgba(255,60,60,.08)", color: "#ffb3b3", padding: "9px 10px", fontSize: 9.5, lineHeight: 1.4 }}>{error}</div> : null}

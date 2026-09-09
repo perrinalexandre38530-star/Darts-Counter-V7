@@ -169,6 +169,7 @@ export default function PetanqueTeams({ go, params }: Props) {
         ) : null}
 
         {teams.map((tm) => {
+          const isOrganizationLinked = !!tm.clubId && !!tm.syncedClubTeamId;
           const country = safeUpper2(tm.countryCode || "FR");
           const isFR = country === "FR";
           const flagSrc = getCountryFlagSrc(country);
@@ -203,13 +204,16 @@ export default function PetanqueTeams({ go, params }: Props) {
 
                 {/* Main content (clickable => edit) */}
                 <button
-                  onClick={() => go("petanque_team_edit" as any, { teamId: tm.id, sport: activeSport, returnTo })}
+                  onClick={() => isOrganizationLinked
+                    ? go("organization_teams" as any, { organizationId: tm.clubId, workspaceMode: true, view: "groups" })
+                    : go("petanque_team_edit" as any, { teamId: tm.id, sport: activeSport, returnTo })}
                   style={cardMainBtn(theme)}
-                  title={t("common.edit", "Éditer")}
+                  title={isOrganizationLinked ? `Ouvrir ${tm.clubName || "l’organisation"}` : t("common.edit", "Éditer")}
                 >
                   {/* name row */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <div style={teamName(theme)}>{tm.name || "Équipe"}</div>
+                    {isOrganizationLinked ? <span style={{ borderRadius: 999, border: `1px solid ${theme.primary}66`, background: `${theme.primary}12`, color: theme.primary, padding: "2px 6px", fontSize: 8, fontWeight: 1000, whiteSpace: "nowrap" }}>ORG LIÉE</span> : null}
 
                     {/* small flags inline */}
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
@@ -218,6 +222,7 @@ export default function PetanqueTeams({ go, params }: Props) {
                     </span>
                   </div>
 
+                  {isOrganizationLinked ? <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9, fontWeight: 850 }}>↗ {tm.clubName || "Organisation"} · {String(tm.clubRole || "membre").toUpperCase()}</div> : null}
                   {/* Avatars stack under name */}
                   <div style={{ marginTop: 6, display: "flex", alignItems: "center", minHeight: 22 }}>
                     {picked.length > 0 ? (
@@ -249,9 +254,15 @@ export default function PetanqueTeams({ go, params }: Props) {
                     {ids.length} {t("common.players", "joueurs")}
                   </div>
 
-                  <button onClick={() => handleDelete(tm.id)} title={t("common.delete", "Supprimer")} style={trashBtn(theme)}>
-                    🗑
-                  </button>
+                  {isOrganizationLinked ? (
+                    <button onClick={() => go("organization_teams" as any, { organizationId: tm.clubId, workspaceMode: true, view: "groups" })} title="Gérer dans l’organisation" style={trashBtn(theme)}>
+                      🔗
+                    </button>
+                  ) : (
+                    <button onClick={() => handleDelete(tm.id)} title={t("common.delete", "Supprimer")} style={trashBtn(theme)}>
+                      🗑
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

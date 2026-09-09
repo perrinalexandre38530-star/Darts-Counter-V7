@@ -414,13 +414,6 @@ export default function GameplayLayout({
                 </div>
               ) : null}
 
-              {/* 3) JOUEURS (modal) */}
-              {renderPlayersRow()}
-
-              <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
-                <div style={{ padding: 2 }}>{playersPanel}</div>
-              </RulesModal>
-
               {/* 4) VOLÉE */}
               {volleyInputDisplay ? (
                 <div className="card" style={{ padding: "10px 12px" }}>
@@ -428,6 +421,14 @@ export default function GameplayLayout({
                 </div>
               ) : null}
             </div>
+
+            {/* 3) JOUEURS — verrouillé entre le score et le keypad sur téléphone.
+                On réutilise EXACTEMENT le bandeau/panneau historique via renderPlayersRow(). */}
+            {renderPlayersRow()}
+
+            <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
+              <div style={{ padding: 2 }}>{playersPanel}</div>
+            </RulesModal>
 
             {/* 5) DOCK BAS: MODES DE SAISIE (KEYPAD / CIBLE) */}
             {inputModes ? (

@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabaseClient";
+import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
 
 export type OrganizationKind =
   | "club"
@@ -419,6 +420,8 @@ function cacheOrganizationGroups(userId: string | null | undefined, organization
   const groups = [...groupsInput, ...others];
   const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, groupCount: groupsInput.length, updatedAt: nowIso() } : org);
   saveOrganizationLocalState(userId, { ...state, groups, organizations });
+  const organization = organizations.find((org) => org.id === organizationId) || state.organizations.find((org) => org.id === organizationId);
+  if (organization) syncOrganizationGroupsToSharedTeams(organization, groupsInput);
 }
 
 export async function listOrganizationGroups(userId: string | null | undefined, organizationId: string): Promise<{ groups: OrganizationLocalGroup[]; cloudAvailable: boolean }> {
@@ -476,6 +479,8 @@ export function addLocalOrganizationGroup(userId: string | null | undefined, org
   const groups = [group, ...state.groups];
   const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, groupCount: groups.filter((item) => item.organizationId === organizationId).length, updatedAt: nowIso() } : org);
   saveOrganizationLocalState(userId, { ...state, groups, organizations });
+  const organization = organizations.find((org) => org.id === organizationId) || state.organizations.find((org) => org.id === organizationId);
+  if (organization) syncOrganizationGroupsToSharedTeams(organization, groups.filter((item) => item.organizationId === organizationId));
   return group;
 }
 
@@ -607,3 +612,79 @@ export function organizationPlanLabel(plan: OrganizationPlan): string {
   };
   return labels[plan];
 }
+
+function normalizeGroupSportForTeams(value: string): { sport: string; allSports: boolean; sportIds: string[] } {
+  const raw = String(value || "Multisport").trim().toLowerCase();
+  if (!raw || raw === "multisport") return { sport: "generic", allSports: true, sportIds: [] };
+  const aliases: Record<string, string> = {
+    "fléchettes": "darts",
+    "flechettes": "darts",
+    "darts": "darts",
+    "baby-foot": "babyfoot",
+    "babyfoot": "babyfoot",
+    "ping-pong": "pingpong",
+    "pingpong": "pingpong",
+    "pétanque": "petanque",
+    "petanque": "petanque",
+    "mölkky": "molkky",
+    "molkky": "molkky",
+    "running": "running",
+    "fit perf": "fit",
+    "fit": "fit",
+    "football": "football",
+  };
+  const sport = aliases[raw] || raw.replace(/\s+/g, "_");
+  return { sport, allSports: false, sportIds: [sport] };
+}
+
+/**
+ * FUSION ORGANISATIONS -> TEAMS
+ * Les groupes/équipes d'une organisation sont exposés dans le store Teams personnel
+ * comme des vues liées et identifiables. Ils ne dupliquent pas la source cloud :
+ * syncedClubTeamId + clubId restent la référence d'autorité.
+ */
+export function syncOrganizationGroupsToSharedTeams(organization: OrganizationRecord, groups: OrganizationLocalGroup[]): void {
+  if (typeof window === "undefined" || !organization?.id) return;
+  try {
+    const existing = loadTeams();
+    const linkedIds = new Set(groups.map((group) => String(group.id)));
+    const retained = existing.filter((team) => {
+      if (String(team.clubId || "") !== organization.id || !team.syncedClubTeamId) return true;
+      return !linkedIds.has(String(team.syncedClubTeamId));
+    });
+    // Supprime les anciennes vues liées de cette organisation avant de les reconstruire.
+    const withoutCurrentOrg = retained.filter((team) => !(String(team.clubId || "") === organization.id && !!team.syncedClubTeamId));
+    const now = Date.now();
+    const linked: TeamEntity[] = groups.map((group) => {
+      const sport = normalizeGroupSportForTeams(group.sportId);
+      return {
+        id: `org-${organization.id}-${group.id}`,
+        name: group.name,
+        sport: sport.sport,
+        allSports: sport.allSports,
+        sportIds: sport.sportIds,
+        teamKind: "club",
+        clubId: organization.id,
+        clubName: organization.name,
+        clubRole: organization.role,
+        clubVisibility: "members",
+        syncedClubTeamId: group.id,
+        description: `Équipe liée à ${organization.name}. Modifications depuis l'espace Organisation.`,
+        createdAt: Number(new Date(group.createdAt).getTime()) || now,
+        updatedAt: now,
+      };
+    });
+    saveTeams([...withoutCurrentOrg, ...linked]);
+  } catch (error) {
+    console.warn("[organizations] Teams fusion failed", error);
+  }
+}
+
+export async function syncAllOrganizationGroupsToSharedTeams(userId: string | null | undefined): Promise<void> {
+  const result = await listMyOrganizations(userId);
+  await Promise.allSettled(result.organizations.map(async (organization) => {
+    const groupsResult = await listOrganizationGroups(userId, organization.id);
+    syncOrganizationGroupsToSharedTeams(organization, groupsResult.groups);
+  }));
+}
+
