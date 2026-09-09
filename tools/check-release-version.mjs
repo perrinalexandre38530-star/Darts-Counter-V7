@@ -50,7 +50,10 @@ check("Nom Capacitor aligné", capacitor.appName === release.appName, `${capacit
 check("Package Capacitor aligné", capacitor.appId === release.packageId, `${capacitor.appId} != ${release.packageId}`);
 check("Package Android aligné", gradle.includes(`applicationId "${release.packageId}"`) && gradle.includes(`namespace = "${release.packageId}"`));
 
-for (const doc of ["README.md", "docs/ANDROID-CURRENT-STATE.md", "docs/GOOGLE_PLAY_INTERNAL_TEST.md"]) {
+// Only release documents shipped by the Android release workflow are authoritative.
+// A stale root README.md may remain when a patch ZIP is extracted over an older local tree
+// and must never block Google Play AAB generation.
+for (const doc of ["docs/ANDROID-CURRENT-STATE.md", "docs/GOOGLE_PLAY_INTERNAL_TEST.md"]) {
   const full = path.join(root, doc);
   if (!fs.existsSync(full)) {
     ok.push(`ℹ️ ${doc} absent — contrôle documentaire ignoré`);
