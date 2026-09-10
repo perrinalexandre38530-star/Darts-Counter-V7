@@ -1,5 +1,5 @@
 import type { Candidate, Market, RadarEnv } from './domain';
-import { braveSearchLanguage, intFromEnv } from './config';
+import { braveSearchCountry, braveSearchLanguage, intFromEnv } from './config';
 import { sha256Hex } from './hash';
 
 interface BraveWebResult {
@@ -58,7 +58,17 @@ export async function searchBrave(
   const url = new URL('https://api.search.brave.com/res/v1/web/search');
   url.searchParams.set('q', queryText);
   url.searchParams.set('count', String(count));
-  url.searchParams.set('country', market.country);
+  const requestedCountry = market.country.toUpperCase();
+  const searchCountry = braveSearchCountry(market);
+  url.searchParams.set('country', searchCountry);
+  if (searchCountry === 'ALL' && requestedCountry !== 'ALL') {
+    console.log(JSON.stringify({
+      event: 'brave_country_fallback',
+      requestedCountry,
+      effectiveCountry: searchCountry,
+      market: `${market.language}:${market.country}`
+    }));
+  }
   const searchLanguage = braveSearchLanguage(market);
   if (searchLanguage) url.searchParams.set('search_lang', searchLanguage);
   url.searchParams.set('freshness', braveFreshness(env));

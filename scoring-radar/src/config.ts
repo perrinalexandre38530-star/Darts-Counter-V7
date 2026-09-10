@@ -12,6 +12,13 @@ const DEFAULT_MARKETS = [
   'is:IS', 'ca:ES', 'eu:ES', 'gl:ES'
 ].join(',');
 
+
+const BRAVE_COUNTRIES = new Set([
+  'AR', 'AU', 'AT', 'BE', 'BR', 'CA', 'CL', 'DK', 'FI', 'FR', 'DE', 'GR',
+  'HK', 'IN', 'ID', 'IT', 'JP', 'KR', 'MY', 'MX', 'NL', 'NZ', 'NO', 'CN',
+  'PL', 'PT', 'PH', 'RU', 'ZA', 'ES', 'SE', 'CH', 'TW', 'TR', 'GB', 'US', 'ALL'
+]);
+
 const BRAVE_LANGUAGES = new Set([
   'ar', 'eu', 'bn', 'bg', 'ca', 'zh-hans', 'zh-hant', 'hr', 'cs', 'da',
   'nl', 'en', 'en-gb', 'et', 'fi', 'fr', 'gl', 'de', 'el', 'gu', 'he',
@@ -47,6 +54,18 @@ export function parseMarkets(env: RadarEnv): Market[] {
 
 export function marketKey(market: Market): string {
   return `${market.language}:${market.country}`;
+}
+
+
+/**
+ * Brave Web Search only accepts a limited country enum. For markets that Brave
+ * does not support directly (for example IS, UA or SG), use ALL instead of
+ * sending an invalid ISO country and failing the whole scan with HTTP 422.
+ * The localized query and search_lang still preserve the target language.
+ */
+export function braveSearchCountry(market: Market): string {
+  const country = market.country.toUpperCase();
+  return BRAVE_COUNTRIES.has(country) ? country : 'ALL';
 }
 
 /**
