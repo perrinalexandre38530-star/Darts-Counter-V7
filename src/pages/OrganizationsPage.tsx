@@ -484,7 +484,7 @@ export default function OrganizationsPage({ go, params }: Props) {
               type="button"
               onClick={() => setKind(kind.id)}
               style={{
-                minHeight: 116,
+                minHeight: 134,
                 border: "none",
                 outline: "none",
                 background: "transparent",
@@ -497,12 +497,12 @@ export default function OrganizationsPage({ go, params }: Props) {
                 WebkitTapHighlightColor: "transparent",
               }}
             >
-              <span style={{ display: "grid", gridTemplateRows: "72px auto", gap: 9 }}>
+              <span style={{ display: "grid", gridTemplateRows: "90px auto", gap: 9 }}>
                 <span
                   style={{
                     position: "relative",
                     display: "block",
-                    height: 72,
+                    height: 90,
                     overflow: "visible",
                     filter: selected ? `drop-shadow(0 0 5px ${theme.primary}dd) drop-shadow(0 0 18px ${theme.primary}88)` : "none",
                     transform: selected ? "translateY(-1px) scale(1.01)" : "none",
