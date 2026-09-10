@@ -20,4 +20,8 @@ Allow: /
 User-agent: *
 Allow: /
 
+# XML sitemap with hreflang relationships and human-readable XSL view.
 Sitemap: https://multisports-scoring.pages.dev/sitemap.xml
+
+# Minimal text sitemap for maximum parser compatibility (Google/Bing diagnostic fallback).
+Sitemap: https://multisports-scoring.pages.dev/sitemap-google.txt
