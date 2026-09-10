@@ -475,7 +475,7 @@ export default function OrganizationsPage({ go, params }: Props) {
 
   const renderWizardStep = () => {
     if (wizardStep === 0) return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", columnGap: 14, rowGap: 16 }}>
         {KIND_OPTIONS.map((kind) => {
           const selected = draft.kind === kind.id;
           return (
@@ -484,63 +484,91 @@ export default function OrganizationsPage({ go, params }: Props) {
               type="button"
               onClick={() => setKind(kind.id)}
               style={{
-                minHeight: 108,
-                borderRadius: 14,
-                border: `1px solid ${theme.borderSoft}`,
-                background: selected ? `${theme.primary}0b` : "rgba(255,255,255,.022)",
-                color: selected ? theme.primary : theme.text,
+                minHeight: 116,
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                color: theme.text,
                 cursor: "pointer",
                 textAlign: "left",
                 padding: 0,
                 position: "relative",
-                overflow: "hidden",
-                isolation: "isolate",
-                boxShadow: "0 9px 22px rgba(0,0,0,.22)",
+                overflow: "visible",
+                WebkitTapHighlightColor: "transparent",
               }}
             >
-              <img
-                src={kind.ticker}
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                style={{
-                  position: "absolute",
-                  inset: "-25% -8% auto -8%",
-                  width: "116%",
-                  height: 92,
-                  objectFit: "cover",
-                  objectPosition: "center 66%",
-                  opacity: selected ? .9 : .63,
-                  filter: selected
-                    ? `saturate(1.12) brightness(1.06) drop-shadow(0 0 6px ${theme.primary}aa) drop-shadow(0 0 14px ${theme.primary}66)`
-                    : "saturate(.92) brightness(.82)",
-                  pointerEvents: "none",
-                  userSelect: "none",
-                  zIndex: 0,
-                  transition: "opacity .18s ease, filter .18s ease, transform .18s ease",
-                }}
-              />
-              <span
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  zIndex: 1,
-                  background: selected
-                    ? "linear-gradient(180deg, rgba(4,8,16,.02) 0%, rgba(4,8,16,.18) 42%, rgba(4,8,16,.88) 74%, rgba(4,8,16,.96) 100%)"
-                    : "linear-gradient(180deg, rgba(4,8,16,.08) 0%, rgba(4,8,16,.32) 42%, rgba(4,8,16,.9) 74%, rgba(4,8,16,.97) 100%)",
-                  pointerEvents: "none",
-                }}
-              />
-              <span style={{ position: "relative", zIndex: 2, minHeight: 108, padding: "10px 10px 9px", display: "flex", flexDirection: "column" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ width: 26, height: 26, borderRadius: 999, border: `1px solid ${selected ? theme.primary : theme.borderSoft}`, background: "rgba(6,10,18,.9)", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: selected ? `0 0 11px ${theme.primary}55` : "none" }}>
-                    <OrganizationTypeIcon kind={kind.id} size={12.5} color={selected ? theme.primary : theme.textSoft} strokeWidth={2.05} />
+              <span style={{ display: "grid", gridTemplateRows: "72px auto", gap: 9 }}>
+                <span
+                  style={{
+                    position: "relative",
+                    display: "block",
+                    height: 72,
+                    overflow: "visible",
+                    filter: selected ? `drop-shadow(0 0 5px ${theme.primary}dd) drop-shadow(0 0 18px ${theme.primary}88)` : "none",
+                    transform: selected ? "translateY(-1px) scale(1.01)" : "none",
+                    transition: "filter .18s ease, transform .18s ease, opacity .18s ease",
+                  }}
+                >
+                  <img
+                    src={kind.ticker}
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      objectPosition: "center",
+                      opacity: selected ? 1 : .84,
+                      filter: selected ? "saturate(1.08) brightness(1.03)" : "saturate(.95) brightness(.88)",
+                      pointerEvents: "none",
+                      userSelect: "none",
+                    }}
+                  />
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: 2,
+                      top: 5,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 999,
+                        border: `1px solid ${selected ? theme.primary : theme.borderSoft}`,
+                        background: "rgba(6,10,18,.92)",
+                        display: "grid",
+                        placeItems: "center",
+                        flexShrink: 0,
+                        boxShadow: selected ? `0 0 12px ${theme.primary}66` : "0 4px 12px rgba(0,0,0,.34)",
+                      }}
+                    >
+                      <OrganizationTypeIcon kind={kind.id} size={13} color={selected ? theme.primary : theme.textSoft} strokeWidth={2.05} />
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 8.5,
+                        fontWeight: 1000,
+                        letterSpacing: .9,
+                        color: selected ? theme.primary : theme.text,
+                        textShadow: "0 2px 8px rgba(0,0,0,.92)",
+                      }}
+                    >
+                      {kind.short}
+                    </span>
                   </span>
-                  <span style={{ fontSize: 8.5, fontWeight: 1000, opacity: selected ? .98 : .78, letterSpacing: .8 }}>{kind.short}</span>
                 </span>
-                <span style={{ marginTop: "auto", paddingTop: 12 }}>
-                  <span style={{ display: "block", color: selected ? theme.primary : theme.text, fontSize: 11.5, fontWeight: 1000, textShadow: "0 2px 7px rgba(0,0,0,.9)" }}>{kind.label}</span>
+                <span style={{ display: "block", paddingRight: 6 }}>
+                  <span style={{ display: "block", color: selected ? theme.primary : theme.text, fontSize: 11.8, fontWeight: 1000, textShadow: "0 2px 8px rgba(0,0,0,.9)" }}>{kind.label}</span>
                   <span style={{ display: "block", marginTop: 4, color: theme.textSoft, fontSize: 8.6, lineHeight: 1.3, textShadow: "0 2px 6px rgba(0,0,0,.9)" }}>{kind.detail}</span>
                 </span>
               </span>

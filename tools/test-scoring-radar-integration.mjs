@@ -46,7 +46,7 @@ const checks = [
   [brave.includes('normalizedResultUrl') && brave.includes('TRACKING_QUERY_PARAMS'), 'result URLs are normalized before deduplication'],
   [brave.includes('brave|v2|${queryKey}|${sourceUrl}'), 'candidate identity is intent-aware without multiplying by market'],
 
-  [ai.includes('@cf/zai-org/glm-4.7-flash'), 'multilingual Workers AI classifier model'],
+  [ai.includes('@cf/meta/llama-3.1-8b-instruct-fast'), 'fast multilingual Workers AI classifier model'],
   [ai.includes('@cf/meta/m2m100-1.2b'), 'dedicated Workers AI translation model'],
   [ai.includes('memoryQueryCache') && ai.includes('d1_cache'), 'two-level localized-query cache'],
   [ai.includes('record.choices') && social.includes('record.choices'), 'OpenAI-compatible Workers AI response support'],
@@ -55,6 +55,9 @@ const checks = [
   [brave.includes('AbortController') && brave.includes('Brave Search timed out'), 'Brave request is cancellable and time-bounded'],
   [timeout.includes('OperationTimeoutError'), 'shared timeout helper'],
   [ai.includes('classifyAdaptiveChunk') && ai.includes('radar_classify_chunk_split'), 'classifier adaptively splits slow chunks'],
+  [ai.includes('CLASSIFIER_RESPONSE_FORMAT') && ai.includes("type: 'json_schema'"), 'classifier uses structured JSON mode'],
+  [ai.includes('radar_classify_candidate_skipped') && ai.includes('classifierFailureAnalysis'), 'single classifier timeout degrades gracefully instead of failing the run'],
+  [index.includes('classification_error') && index.includes('completed_with_warnings'), 'classification failures become run warnings while successful candidates continue'],
   [ai.includes('chunksCompleted') && ai.includes('onProgress'), 'classifier reports incremental progress'],
   [index.includes('liveAnalyses') && index.includes('details.classification'), 'queue consumer persists partial classification progress'],
   [admin.includes('Classification : ') && admin.includes('parallèle'), 'dashboard exposes chunked classifier progress'],

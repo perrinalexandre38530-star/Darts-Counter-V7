@@ -3,7 +3,7 @@ import { cacheQuery, getCachedQuery } from './db';
 import { intFromEnv, marketKey } from './config';
 import { withTimeout } from './timeout';
 
-const CLASSIFIER_MODEL = '@cf/zai-org/glm-4.7-flash' as const;
+const CLASSIFIER_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast' as const;
 const TRANSLATION_MODEL = '@cf/meta/m2m100-1.2b' as const;
 const memoryQueryCache = new Map<string, string>();
 
@@ -139,25 +139,74 @@ export type ClassificationProgress = {
   concurrency: number;
   chunksCompleted: number;
   chunksTotal: number;
+  failed: number;
+  model: string;
   analyses: Analysis[];
 };
 
 type ClassificationProgressCallback = (progress: ClassificationProgress) => void | Promise<void>;
 
-const CLASSIFIER_SYSTEM_PROMPT = `You are SCORING RADAR, an intent classifier for MULTISPORTS SCORING.
-Analyze each public web result and decide whether a real person appears to be actively seeking a solution that the app could legitimately help with.
-Supported themes include darts scoring and statistics, running/GPS/performance comparison, multisport scoring, petanque/boules, table tennis, foosball, molkky, sport challenges, social sport/partners, rankings, sessions, and wearable imports.
+const CLASSIFIER_SYSTEM_PROMPT = `Classify public web search results for MULTISPORTS SCORING.
+Decide whether a real person is actively seeking a solution the app could legitimately help with.
+
+Supported themes: darts scoring/statistics, running/GPS/performance, multisport scoring, petanque/boules, table tennis, foosball, molkky, sport challenges, finding sport partners, rankings/sessions, wearable imports.
 
 Rules:
-- Score 0-100 for commercial/recommendation intent. 90+ = explicitly asking for an app/recommendation; 70-89 = strong problem/need; 40-69 = related discussion; below 40 = weak mention.
-- eligible=true only if a useful, non-spammy response would make sense.
-- Reject news articles, SEO pages, store listings, company pages, generic tutorials, and content with no user need.
-- Detect the actual language from the text, not only the hint.
-- reason must be concise (max 35 words).
-- suggestedReply must be in the same language as the source text, concise (max 80 words), useful first, and transparent about affiliation (for example: "Nous développons MULTISPORTS SCORING..."). Never pretend to be an unrelated satisfied customer.
-- Do not auto-post. The reply is only a draft for manual review.
-- Put the token {{APP_LINK}} where the tracked application link should go.
-- Return strict JSON only: an array of objects with exactly these keys: id, language, category, intent, score, eligible, reason, suggestedReply.`;
+- score 0-100: 90+ explicit app/recommendation request; 70-89 strong need; 40-69 related discussion; below 40 weak.
+- eligible=true only when a useful, non-spammy reply would genuinely help.
+- reject news, SEO pages, stores, company pages, generic tutorials and content with no user need.
+- detect the source language from the text.
+- reason: max 18 words.
+- suggestedReply: only when eligible=true, same language as source, max 45 words, useful first and transparent about affiliation. Otherwise return "".
+- never impersonate a satisfied customer and never auto-post.
+- use {{APP_LINK}} for the tracked application link.
+- return exactly one result for every supplied id.`;
+
+const CLASSIFIER_RESPONSE_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    type: 'object',
+    properties: {
+      results: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            language: { type: 'string' },
+            category: { type: 'string' },
+            intent: { type: 'string' },
+            score: { type: 'number' },
+            eligible: { type: 'boolean' },
+            reason: { type: 'string' },
+            suggestedReply: { type: 'string' }
+          },
+          required: ['id', 'language', 'category', 'intent', 'score', 'eligible', 'reason', 'suggestedReply']
+        }
+      }
+    },
+    required: ['results']
+  }
+} as const;
+
+function classifierFailureAnalysis(candidate: Candidate, error: unknown): Analysis {
+  const raw = error instanceof Error ? error.message : String(error);
+  const reason = `Classification IA indisponible: ${raw}`.slice(0, 600);
+  return {
+    id: candidate.id,
+    language: candidate.languageHint || 'und',
+    category: 'classification_error',
+    intent: 'unclassified',
+    score: 0,
+    eligible: false,
+    reason,
+    suggestedReply: ''
+  };
+}
+
+function isClassificationFailure(analysis: Analysis): boolean {
+  return analysis.category === 'classification_error';
+}
 
 function candidateCompact(candidate: Candidate) {
   return {
@@ -172,8 +221,30 @@ function candidateCompact(candidate: Candidate) {
 }
 
 function parseClassifierOutput(output: unknown, candidates: Candidate[]): Analysis[] {
-  const parsed = JSON.parse(cleanJson(extractText(output))) as unknown;
-  if (!Array.isArray(parsed)) throw new Error('Classifier did not return a JSON array');
+  let parsed: unknown = output;
+
+  if (parsed && typeof parsed === 'object' && 'response' in parsed) {
+    parsed = (parsed as { response?: unknown }).response;
+  }
+
+  if (typeof parsed === 'string') {
+    parsed = JSON.parse(cleanJson(parsed)) as unknown;
+  } else if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const record = parsed as Record<string, unknown>;
+    if (Array.isArray(record.results)) parsed = record.results;
+  }
+
+  if (!Array.isArray(parsed)) {
+    // Backward compatibility for text-style model responses.
+    const text = extractText(output);
+    const decoded = JSON.parse(cleanJson(text)) as unknown;
+    if (Array.isArray(decoded)) parsed = decoded;
+    else if (decoded && typeof decoded === 'object' && Array.isArray((decoded as Record<string, unknown>).results)) {
+      parsed = (decoded as Record<string, unknown>).results;
+    }
+  }
+
+  if (!Array.isArray(parsed)) throw new Error('Classifier did not return a JSON result array');
 
   const allowedIds = new Set(candidates.map((candidate) => candidate.id));
   const analyses: Analysis[] = [];
@@ -204,7 +275,10 @@ async function classifyChunk(env: RadarEnv, candidates: Candidate[]): Promise<An
     messages: [
       { role: 'system', content: CLASSIFIER_SYSTEM_PROMPT },
       { role: 'user', content: JSON.stringify(candidates.map(candidateCompact)) }
-    ]
+    ],
+    response_format: CLASSIFIER_RESPONSE_FORMAT,
+    max_tokens: Math.min(700, 180 + candidates.length * 220),
+    temperature: 0
   }), timeoutMs, `Workers AI candidate classification (${candidates.length} candidates)`);
 
   const analyses = parseClassifierOutput(output, candidates);
@@ -220,7 +294,16 @@ async function classifyAdaptiveChunk(env: RadarEnv, candidates: Candidate[]): Pr
   try {
     return await classifyChunk(env, candidates);
   } catch (caught) {
-    if (candidates.length <= 1) throw caught;
+    if (candidates.length <= 1) {
+      const error = caught instanceof Error ? caught.message : String(caught);
+      console.error(JSON.stringify({
+        event: 'radar_classify_candidate_skipped',
+        candidateId: candidates[0]?.id ?? null,
+        model: CLASSIFIER_MODEL,
+        error
+      }));
+      return candidates.map((candidate) => classifierFailureAnalysis(candidate, caught));
+    }
 
     const error = caught instanceof Error ? caught.message : String(caught);
     console.warn(JSON.stringify({
@@ -275,6 +358,8 @@ export async function classifyCandidates(
           concurrency,
           chunksCompleted,
           chunksTotal: chunks.length,
+          failed: [...byId.values()].filter(isClassificationFailure).length,
+          model: CLASSIFIER_MODEL,
           analyses
         });
       }

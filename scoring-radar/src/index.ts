@@ -680,19 +680,23 @@ export default {
           for (const runId of runIds) {
             const progress = progressByRun.get(runId);
             const details = detailsByRun.get(runId) ?? {};
-            details.classification = {
-              completed: classification.completed,
-              total: classification.total,
-              chunk_size: classification.chunkSize,
-              concurrency: classification.concurrency,
-              chunks_completed: classification.chunksCompleted,
-              chunks_total: classification.chunksTotal
-            };
-            detailsByRun.set(runId, details);
             const runCandidateIds = new Set(
               candidates.filter((candidate) => candidate.runId === runId).map((candidate) => candidate.id)
             );
-            const analyzed = [...liveAnalyses.values()].filter((analysis) => runCandidateIds.has(analysis.id));
+            const attempted = [...liveAnalyses.values()].filter((analysis) => runCandidateIds.has(analysis.id));
+            const failures = attempted.filter((analysis) => analysis.category === 'classification_error');
+            const analyzed = attempted.filter((analysis) => analysis.category !== 'classification_error');
+            details.classification = {
+              completed: attempted.length,
+              total: runCandidateIds.size,
+              chunk_size: classification.chunkSize,
+              concurrency: classification.concurrency,
+              chunks_completed: classification.chunksCompleted,
+              chunks_total: classification.chunksTotal,
+              failed: failures.length,
+              model: classification.model
+            };
+            detailsByRun.set(runId, details);
             await updateRunProgress(env, runId, {
               status: 'processing',
               stage: 'classifying',
@@ -750,6 +754,13 @@ export default {
         throw new Error(error);
       }
       await applyAnalysis(env, analysis);
+      if (analysis.category === 'classification_error') {
+        console.warn(JSON.stringify({
+          event: 'radar_classification_candidate_warning',
+          candidateId: candidate.id,
+          reason: analysis.reason
+        }));
+      }
     }
 
     for (const runId of runIds) {
@@ -762,13 +773,21 @@ export default {
       details.timings = timings;
       const runCandidateIds = new Set(candidates.filter((candidate) => candidate.runId === runId).map((candidate) => candidate.id));
       const runAnalyses = analyses.filter((analysis) => runCandidateIds.has(analysis.id));
+      const successfulAnalyses = runAnalyses.filter((analysis) => analysis.category !== 'classification_error');
+      const classificationFailures = runAnalyses.length - successfulAnalyses.length;
+      const classificationDetails = details.classification && typeof details.classification === 'object'
+        ? details.classification as Record<string, unknown>
+        : {};
+      classificationDetails.failed = classificationFailures;
+      classificationDetails.model = '@cf/meta/llama-3.1-8b-instruct-fast';
+      details.classification = classificationDetails;
       await updateRunProgress(env, runId, {
         status: 'processing',
         stage: 'social_growth',
         elapsedMs: progress ? Math.max(0, Date.now() - Date.parse(progress.started_at)) : 0,
-        analyzed: runAnalyses.length,
-        eligible: runAnalyses.filter((analysis) => analysis.eligible).length,
-        highIntent: runAnalyses.filter((analysis) => analysis.eligible && analysis.score >= 90).length,
+        analyzed: successfulAnalyses.length,
+        eligible: successfulAnalyses.filter((analysis) => analysis.eligible).length,
+        highIntent: successfulAnalyses.filter((analysis) => analysis.eligible && analysis.score >= 90).length,
         details
       });
     }
@@ -797,17 +816,23 @@ export default {
       details.timings = timings;
       const runCandidateIds = new Set(candidates.filter((candidate) => candidate.runId === runId).map((candidate) => candidate.id));
       const runAnalyses = analyses.filter((analysis) => runCandidateIds.has(analysis.id));
+      const successfulAnalyses = runAnalyses.filter((analysis) => analysis.category !== 'classification_error');
+      const classificationFailures = runAnalyses.length - successfulAnalyses.length;
+      const classificationWarning = classificationFailures > 0
+        ? `${classificationFailures} candidat(s) non classé(s) après timeout IA`
+        : null;
+      const warningMessage = [classificationWarning, socialError].filter(Boolean).join(' • ') || null;
       const finishedAt = new Date().toISOString();
       await updateRunProgress(env, runId, {
-        status: socialError ? 'completed_with_warnings' : 'completed',
+        status: warningMessage ? 'completed_with_warnings' : 'completed',
         stage: socialError ? 'social_growth_failed' : 'completed',
         finishedAt,
         elapsedMs: progress ? Math.max(0, Date.now() - Date.parse(progress.started_at)) : 0,
-        analyzed: runAnalyses.length,
-        eligible: runAnalyses.filter((analysis) => analysis.eligible).length,
-        highIntent: runAnalyses.filter((analysis) => analysis.eligible && analysis.score >= 90).length,
+        analyzed: successfulAnalyses.length,
+        eligible: successfulAnalyses.filter((analysis) => analysis.eligible).length,
+        highIntent: successfulAnalyses.filter((analysis) => analysis.eligible && analysis.score >= 90).length,
         socialCampaigns: socialResult.created && campaignRunId === runId ? 1 : 0,
-        error: socialError,
+        error: warningMessage,
         details
       });
     }
