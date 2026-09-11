@@ -41,7 +41,7 @@ export function adminHtml(): string {
         <div class="scanMetric"><b id="mQueries">0</b><span>Requêtes Brave</span></div>
         <div class="scanMetric"><b id="mBrave">0</b><span>Résultats Brave</span></div>
         <div class="scanMetric"><b id="mNew">0</b><span>Nouveaux</span></div>
-        <div class="scanMetric"><b id="mDuplicates">0</b><span>Déjà connus</span></div>
+        <div class="scanMetric"><b id="mDuplicates">0</b><span>Déjà connus</span></div><div class="scanMetric"><b id="mRejected">0</b><span>Sources rejetées</span></div>
         <div class="scanMetric"><b id="mAnalyzed">0</b><span>Analysés IA</span></div>
         <div class="scanMetric"><b id="mEligible">0</b><span>Opportunités</span></div>
         <div class="scanMetric"><b id="mHot">0</b><span>Score 90+</span></div>
@@ -165,6 +165,7 @@ export function adminHtml(): string {
     $('scanSubtitle').textContent = 'ID ' + String(run.run_id || '').slice(0,8) + ' • étape : ' + String(run.stage || '—');
     $('mQueries').textContent = run.queries ?? 0; $('mBrave').textContent = run.brave_results ?? 0; $('mNew').textContent = run.new_candidates ?? 0;
     $('mDuplicates').textContent = run.details && Number.isFinite(Number(run.details.duplicates)) ? Number(run.details.duplicates) : Math.max(0, Number(run.brave_results||0)-Number(run.new_candidates||0));
+    $('mRejected').textContent = run.details && Number.isFinite(Number(run.details.source_rejected)) ? Number(run.details.source_rejected) : 0;
     $('mAnalyzed').textContent = run.analyzed ?? 0; $('mEligible').textContent = run.eligible ?? 0; $('mHot').textContent = run.high_intent ?? 0; $('mCampaigns').textContent = run.social_campaigns ?? 0;
     const current = stageIndex(run.stage); const terminalFailure = run.status==='failed' || String(run.stage||'').endsWith('_failed') || run.stage==='watchdog_timeout'; const skippedAfterSearch = run.status==='completed' && Number(run.queued||0)===0;
     $('scanSteps').innerHTML = STAGES.map((entry, idx) => {
@@ -178,7 +179,7 @@ export function adminHtml(): string {
       const t = Number(timings[entry[0]] || 0); const time = t > 0 ? (t/1000).toFixed(1) + ' s' : (finishedStep ? 'Terminé' : label);
       return '<div class="'+cls+'"><b>'+mark+' '+esc(entry[1])+'</b>'+esc(time)+'</div>';
     }).join('');
-    const detail=[]; if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&run.details.intent)detail.push('Intent : '+run.details.intent); if(run.details&&run.details.freshness)detail.push('Fenêtre Brave : '+run.details.freshness); if(run.details&&run.details.query_source)detail.push('Source requête : '+run.details.query_source); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.details&&run.details.classification){const c=run.details.classification;const failedCount=Number(c.failed||0);const model=String(c.model||'').replace('@cf/meta/','').replace('@cf/','');detail.push('Classification : '+Number(c.completed||0)+'/'+Number(c.total||0)+' • lots '+Number(c.chunk_size||0)+' • parallèle '+Number(c.concurrency||0)+(failedCount?' • échecs '+failedCount:'')+(model?' • modèle '+model:''));} if(Number(run.new_candidates||0)===0&&Number(run.brave_results||0)>0)detail.push('Tous les résultats étaient déjà connus pour cet intent'); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
+    const detail=[]; if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&run.details.intent)detail.push('Intent : '+run.details.intent); if(run.details&&run.details.freshness)detail.push('Fenêtre Brave : '+run.details.freshness); if(run.details&&Number(run.details.source_rejected||0)>0)detail.push('Sources rejetées : '+Number(run.details.source_rejected||0)); if(run.details&&run.details.query_source)detail.push('Source requête : '+run.details.query_source); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.details&&run.details.classification){const c=run.details.classification;const failedCount=Number(c.failed||0);const model=String(c.model||'').replace('@cf/meta/','').replace('@cf/','');detail.push('Classification : '+Number(c.completed||0)+'/'+Number(c.total||0)+' • lots '+Number(c.chunk_size||0)+' • parallèle '+Number(c.concurrency||0)+(failedCount?' • échecs '+failedCount:'')+(model?' • modèle '+model:''));} if(Number(run.new_candidates||0)===0&&Number(run.brave_results||0)>0)detail.push('Tous les résultats étaient déjà connus pour cet intent'); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
     $('scanDetail').textContent = detail.join(' • ') || 'Progression enregistrée côté Worker.';
     const errorBox=$('scanError'); if(run.error){errorBox.textContent=(warning?'Avertissement : ':'Erreur : ')+run.error;errorBox.className='scanError visible';}else{errorBox.textContent='';errorBox.className='scanError';}
     updateClock();

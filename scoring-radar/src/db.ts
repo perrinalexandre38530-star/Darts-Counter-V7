@@ -1,4 +1,5 @@
 import type { Analysis, Candidate, OpportunityRow, RadarEnv, RunProgressRow } from './domain';
+import { opportunityDedupeKey, sourceQualityReason } from './source-quality';
 
 export async function insertCandidate(env: RadarEnv, candidate: Candidate): Promise<boolean> {
   const result = await env.DB.prepare(`
@@ -57,6 +58,7 @@ export async function cacheQuery(env: RadarEnv, market: string, queryKey: string
 }
 
 export async function listOpportunities(env: RadarEnv, minScore: number, limit: number): Promise<OpportunityRow[]> {
+  const fetchLimit = Math.max(limit, Math.min(1000, limit * 5));
   const result = await env.DB.prepare(`
     SELECT id, source, source_url, title, snippet, query_key, market, language, category, intent,
            score, eligible, reason, suggested_reply, captured_at, analyzed_at
@@ -64,8 +66,20 @@ export async function listOpportunities(env: RadarEnv, minScore: number, limit: 
     WHERE status = 'analyzed' AND eligible = 1 AND score >= ?
     ORDER BY score DESC, analyzed_at DESC
     LIMIT ?
-  `).bind(minScore, limit).all<OpportunityRow>();
-  return result.results ?? [];
+  `).bind(minScore, fetchLimit).all<OpportunityRow>();
+
+  const rows = result.results ?? [];
+  const seen = new Set<string>();
+  const filtered: OpportunityRow[] = [];
+  for (const row of rows) {
+    if (sourceQualityReason(row)) continue;
+    const key = opportunityDedupeKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    filtered.push(row);
+    if (filtered.length >= limit) break;
+  }
+  return filtered;
 }
 
 export async function getOpportunity(env: RadarEnv, id: string): Promise<OpportunityRow | null> {
@@ -208,11 +222,31 @@ export async function getRadarStats(env: RadarEnv): Promise<{
   const counts = await env.DB.prepare(`
     SELECT
       COUNT(*) AS sightings,
-      SUM(CASE WHEN status = 'analyzed' THEN 1 ELSE 0 END) AS analyzed,
-      SUM(CASE WHEN eligible = 1 THEN 1 ELSE 0 END) AS eligible,
-      SUM(CASE WHEN eligible = 1 AND score >= 90 THEN 1 ELSE 0 END) AS high_intent
+      SUM(CASE WHEN status = 'analyzed' THEN 1 ELSE 0 END) AS analyzed
     FROM sightings
-  `).first<{ sightings: number; analyzed: number | null; eligible: number | null; high_intent: number | null }>();
+  `).first<{ sightings: number; analyzed: number | null }>();
+
+  const eligibleRows = await env.DB.prepare(`
+    SELECT id, source, source_url, title, snippet, query_key, market, language, category, intent,
+           score, eligible, reason, suggested_reply, captured_at, analyzed_at
+    FROM sightings
+    WHERE status = 'analyzed' AND eligible = 1
+    ORDER BY score DESC, analyzed_at DESC
+    LIMIT 2000
+  `).all<OpportunityRow>();
+
+  const seenEligible = new Set<string>();
+  let eligible = 0;
+  let highIntent = 0;
+  for (const row of eligibleRows.results ?? []) {
+    if (sourceQualityReason(row)) continue;
+    const key = opportunityDedupeKey(row);
+    if (seenEligible.has(key)) continue;
+    seenEligible.add(key);
+    eligible += 1;
+    if (Number(row.score ?? 0) >= 90) highIntent += 1;
+  }
+
   const clickRow = await env.DB.prepare('SELECT COUNT(*) AS clicks FROM clicks').first<{ clicks: number }>();
   const latestRun = await env.DB.prepare(`
     SELECT id, started_at, finished_at, markets, queries, candidates, queued, error
@@ -222,8 +256,8 @@ export async function getRadarStats(env: RadarEnv): Promise<{
   return {
     sightings: Number(counts?.sightings ?? 0),
     analyzed: Number(counts?.analyzed ?? 0),
-    eligible: Number(counts?.eligible ?? 0),
-    highIntent: Number(counts?.high_intent ?? 0),
+    eligible,
+    highIntent,
     clicks: Number(clickRow?.clicks ?? 0),
     latestRun: latestRun ?? null
   };

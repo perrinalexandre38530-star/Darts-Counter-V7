@@ -155,6 +155,7 @@ Rules:
 - score 0-100: 90+ explicit app/recommendation request; 70-89 strong need; 40-69 related discussion; below 40 weak.
 - eligible=true only when a useful, non-spammy reply would genuinely help.
 - reject news, SEO pages, stores, company pages, generic tutorials and content with no user need.
+- reject privacy/consent gates, cookie walls, access-denied pages, CAPTCHA/browser challenges, and placeholder snippets such as "We cannot provide a description for this page right now".
 - detect the source language from the text.
 - reason: max 18 words.
 - suggestedReply: only when eligible=true, same language as source, max 45 words, useful first and transparent about affiliation. Otherwise return "".

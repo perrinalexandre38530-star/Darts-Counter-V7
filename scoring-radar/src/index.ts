@@ -32,6 +32,7 @@ import { sha256Hex } from './hash';
 import { isAdminAuthorized, unauthorized } from './security';
 import { generateAndAuditSocialDraft, socialQaPasses } from './social';
 import { SEARCH_INTENTS } from './targets';
+import { sourceQualityReason } from './source-quality';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {
@@ -125,7 +126,11 @@ async function maybeCreateSocialCampaign(
   if (await countSocialCampaignsSince(env, since) >= maxPerDay) return { created: false };
 
   const best = analyses
-    .filter((analysis) => analysis.eligible && analysis.score >= minOpportunityScore)
+    .filter((analysis) => {
+      if (!analysis.eligible || analysis.score < minOpportunityScore) return false;
+      const candidate = candidates.find((item) => item.id === analysis.id);
+      return Boolean(candidate && !sourceQualityReason(candidate));
+    })
     .sort((a, b) => b.score - a.score)
     .find((analysis) => candidates.some((candidate) => candidate.id === analysis.id));
   if (!best) return { created: false };
@@ -446,6 +451,7 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
     intent_description: selectedIntent.description,
     freshness: (env.RADAR_FRESHNESS || 'pw').toLowerCase(),
     duplicates: 0,
+    source_rejected: 0,
     timings
   };
 
@@ -519,13 +525,27 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
       });
       const dedupeStarted = Date.now();
       const newCandidates: Candidate[] = [];
+      let sourceRejected = 0;
       for (const candidate of found) {
+        const qualityReason = sourceQualityReason(candidate);
+        if (qualityReason) {
+          sourceRejected += 1;
+          console.log(JSON.stringify({
+            event: 'radar_source_rejected',
+            candidateId: candidate.id,
+            reason: qualityReason,
+            title: candidate.title.slice(0, 160),
+            sourceUrl: candidate.sourceUrl
+          }));
+          continue;
+        }
         const queueCandidate: Candidate = { ...candidate, runId };
         if (await insertCandidate(env, queueCandidate)) newCandidates.push(queueCandidate);
       }
       timings.deduplicating = (timings.deduplicating ?? 0) + (Date.now() - dedupeStarted);
       newCandidatesTotal += newCandidates.length;
-      details.duplicates = Number(details.duplicates || 0) + Math.max(0, found.length - newCandidates.length);
+      details.source_rejected = Number(details.source_rejected || 0) + sourceRejected;
+      details.duplicates = Number(details.duplicates || 0) + Math.max(0, found.length - sourceRejected - newCandidates.length);
 
       currentStage = newCandidates.length > 0 ? 'queueing' : 'deduplicating';
       await updateRunProgress(env, runId, {

@@ -5,7 +5,7 @@ const root = process.cwd();
 const radar = path.join(root, 'scoring-radar');
 const required = [
   'package.json', 'wrangler.jsonc', 'schema.sql', 'README.md',
-  'src/index.ts', 'src/admin.ts', 'src/ai.ts', 'src/social.ts', 'src/brave.ts', 'src/config.ts', 'src/db.ts', 'src/domain.ts', 'src/timeout.ts'
+  'src/index.ts', 'src/admin.ts', 'src/ai.ts', 'src/social.ts', 'src/brave.ts', 'src/config.ts', 'src/db.ts', 'src/domain.ts', 'src/timeout.ts', 'src/source-quality.ts'
 ];
 
 for (const file of required) {
@@ -19,9 +19,11 @@ const config = fs.readFileSync(path.join(radar, 'src/config.ts'), 'utf8');
 const ai = fs.readFileSync(path.join(radar, 'src/ai.ts'), 'utf8');
 const social = fs.readFileSync(path.join(radar, 'src/social.ts'), 'utf8');
 const index = fs.readFileSync(path.join(radar, 'src/index.ts'), 'utf8');
+const db = fs.readFileSync(path.join(radar, 'src/db.ts'), 'utf8');
 const schema = fs.readFileSync(path.join(radar, 'schema.sql'), 'utf8');
 const admin = fs.readFileSync(path.join(radar, 'src/admin.ts'), 'utf8');
 const timeout = fs.readFileSync(path.join(radar, 'src/timeout.ts'), 'utf8');
+const sourceQuality = fs.readFileSync(path.join(radar, 'src/source-quality.ts'), 'utf8');
 
 const checks = [
   [wrangler.includes('https://multisports-scoring.pages.dev/'), 'official destination URL'],
@@ -87,6 +89,11 @@ const checks = [
   [admin.includes('ensureAuth') && admin.includes('/api/auth/check'), 'dashboard validates auth before parallel API loading'],
   [admin.includes('Source requête'), 'dashboard shows query localization source'],
   [admin.includes('Résultats Brave') && admin.includes('Analysés IA'), 'scan monitor exposes useful stage counters'],
+  [sourceQuality.includes('privacy gate') && sourceQuality.includes('missing_description_placeholder'), 'deterministic low-quality source shield'],
+  [index.includes('radar_source_rejected') && index.includes('source_rejected'), 'bad search-result sources are rejected before queueing'],
+  [db.includes('opportunityDedupeKey') && db.includes('sourceQualityReason'), 'stored opportunities are quality-filtered and deduplicated'],
+  [admin.includes('Sources rejetées') && admin.includes('mRejected'), 'dashboard exposes rejected-source count'],
+  [ai.includes('privacy/consent gates') && ai.includes('placeholder snippets'), 'classifier prompt independently rejects gate/placeholder pages'],
   [index.includes("url.pathname === '/api/social/campaigns'"), 'social campaign admin endpoint'],
   [index.includes('approved_asset_required'), 'campaign approval requires approved media'],
   [index.includes('hourlyTick'), 'hourly market rotation'],
