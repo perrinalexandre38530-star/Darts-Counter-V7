@@ -1,6 +1,6 @@
 import React from "react";
 import { pickRunningText as pickText, runningMercatorPixel as mercatorPixel } from "../../activity/runningShared";
-import { loadRunningMapTheme, runningMapRasterFilter, runningMapRasterTileUrl, type RunningMapTheme } from "./runningMapTheme";
+import { loadRunningMapTheme, runningMapAttribution, runningMapRasterFilter, runningMapRasterTileUrl, RUNNING_SATELLITE_TILES, type RunningMapTheme } from "./runningMapTheme";
 import { estimateOutdoorRouteDurationMs } from "../../activity/outdoorNavigation";
 import { outdoorSportLabel, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import { analyzeRunningTerrain, terrainLabel } from "../../activity/runningElevation";
@@ -238,15 +238,299 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
 
 type MapLayout = { width: number; height: number; zoom: number; center: { x: number; y: number }; tiles: Array<{ key: string; left: number; top: number; url: string }>; routes: Array<{ id: string; polyline: string; midpoint: { x: number; y: number } | null }> };
 
+const SCOUT_MAPLIBRE_VERSION = "5.24.0";
+const SCOUT_MAPLIBRE_SCRIPTS = [
+  `https://unpkg.com/maplibre-gl@${SCOUT_MAPLIBRE_VERSION}/dist/maplibre-gl.js`,
+  `https://cdn.jsdelivr.net/npm/maplibre-gl@${SCOUT_MAPLIBRE_VERSION}/dist/maplibre-gl.js`,
+];
+const SCOUT_MAPLIBRE_CSS = [
+  `https://unpkg.com/maplibre-gl@${SCOUT_MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
+  `https://cdn.jsdelivr.net/npm/maplibre-gl@${SCOUT_MAPLIBRE_VERSION}/dist/maplibre-gl.css`,
+];
+let scoutMapLibrePromise: Promise<any> | null = null;
+
+function ensureScoutMapLibreCss() {
+  if (typeof document === "undefined" || document.querySelector(`link[data-mss-maplibre="${SCOUT_MAPLIBRE_VERSION}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = SCOUT_MAPLIBRE_CSS[0];
+  link.dataset.mssMaplibre = SCOUT_MAPLIBRE_VERSION;
+  link.addEventListener("error", () => { if (link.href !== SCOUT_MAPLIBRE_CSS[1]) link.href = SCOUT_MAPLIBRE_CSS[1]; }, { once: true });
+  document.head.appendChild(link);
+}
+
+function loadScoutMapLibreScript(url: string, timeoutMs = 7000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const w = window as any;
+    if (w.maplibregl?.Map) { resolve(w.maplibregl); return; }
+    const existing = document.querySelector(`script[data-mss-maplibre-src="${url}"]`) as HTMLScriptElement | null;
+    const script = existing || document.createElement("script");
+    const timer = window.setTimeout(() => reject(new Error("Map timeout")), timeoutMs);
+    const finish = () => {
+      window.clearTimeout(timer);
+      if (w.maplibregl?.Map) resolve(w.maplibregl);
+      else reject(new Error("MapLibre indisponible"));
+    };
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", () => { window.clearTimeout(timer); reject(new Error("MapLibre CDN indisponible")); }, { once: true });
+    if (!existing) {
+      script.src = url;
+      script.async = true;
+      script.dataset.mssMaplibreSrc = url;
+      document.head.appendChild(script);
+    }
+  });
+}
+
+async function loadScoutMapLibre(): Promise<any> {
+  if (typeof window === "undefined") throw new Error("MapLibre indisponible");
+  const w = window as any;
+  if (w.maplibregl?.Map) return w.maplibregl;
+  if (w.__mssMapLibrePromise) return w.__mssMapLibrePromise;
+  if (scoutMapLibrePromise) return scoutMapLibrePromise;
+  ensureScoutMapLibreCss();
+  scoutMapLibrePromise = (async () => {
+    let lastError: unknown = null;
+    for (const url of SCOUT_MAPLIBRE_SCRIPTS) {
+      try { return await loadScoutMapLibreScript(url); }
+      catch (error) { lastError = error; }
+    }
+    throw lastError || new Error("MapLibre indisponible");
+  })().finally(() => { if (!(window as any).maplibregl?.Map) scoutMapLibrePromise = null; });
+  return scoutMapLibrePromise;
+}
+
+function scoutRasterTileTemplate(theme: RunningMapTheme): string {
+  if (theme === "tourist") return "https://tile.opentopomap.org/{z}/{x}/{y}.png";
+  if (theme === "satellite") return RUNNING_SATELLITE_TILES;
+  return "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+}
+
+function scoutRasterPaint(theme: RunningMapTheme): Record<string, unknown> {
+  if (theme === "night") return { "raster-brightness-max": .68, "raster-brightness-min": .08, "raster-saturation": -.42, "raster-contrast": .25 };
+  if (theme === "illustrated") return { "raster-saturation": .28, "raster-contrast": .08 };
+  if (theme === "light") return { "raster-brightness-max": 1, "raster-brightness-min": .16, "raster-saturation": -.18, "raster-contrast": -.08 };
+  if (theme === "satellite") return { "raster-saturation": .08, "raster-contrast": .05 };
+  return { "raster-saturation": .10, "raster-contrast": .04 };
+}
+
+function scoutRouteGeoJson(routes: RunningRouteTemplate[], selectedRouteId: string | null) {
+  return {
+    type: "FeatureCollection",
+    features: routes.filter((route) => (route.route || []).length > 1).map((route, index) => ({
+      type: "Feature",
+      properties: { routeId: route.id, order: index + 1, active: route.id === selectedRouteId },
+      geometry: { type: "LineString", coordinates: (route.route || []).map((point) => [point.lon, point.lat]) },
+    })),
+  } as any;
+}
+
+function scoutRouteBounds(routes: RunningRouteTemplate[]): [[number, number], [number, number]] | null {
+  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+  for (const route of routes) for (const point of route.route || []) {
+    if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) continue;
+    minLon = Math.min(minLon, point.lon); maxLon = Math.max(maxLon, point.lon);
+    minLat = Math.min(minLat, point.lat); maxLat = Math.max(maxLat, point.lat);
+  }
+  return Number.isFinite(minLon) ? [[minLon, minLat], [maxLon, maxLat]] : null;
+}
+
+function routeMidpoint(route: RunningRouteTemplate): GeoPoint | null {
+  const rows = route.route || [];
+  return rows.length ? rows[Math.floor(rows.length / 2)] : null;
+}
+
 function ScoutOverviewMap({ routes, selectedRouteId, onSelect, accent, textSoft, lang }: { routes: RunningRouteTemplate[]; selectedRouteId: string | null; onSelect: (route: RunningRouteTemplate) => void; accent: string; textSoft: string; lang: string }) {
   const theme = React.useMemo<RunningMapTheme>(() => loadRunningMapTheme(), []);
-  const layout = React.useMemo(() => buildCollectionMap(routes, 1000, 720, theme), [routes, theme]);
-  return <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", minHeight: 300, maxHeight: 500, overflow: "hidden", borderRadius: 22, background: "#101821", border: "1px solid rgba(255,255,255,.09)", boxShadow: "0 22px 52px rgba(0,0,0,.30)" }}>
-    {layout ? <>{layout.tiles.map((tile) => <img key={tile.key} src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left/layout.width*100}%`, top: `${tile.top/layout.height*100}%`, width: `${256/layout.width*100}%`, height: `${256/layout.height*100}%`, objectFit: "cover", filter: runningMapRasterFilter(theme), userSelect: "none" }}/>) }<div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(3,7,11,.04),rgba(3,7,11,.12))" }}/><svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>{layout.routes.map((row, index) => { const active = row.id === selectedRouteId; const route = routes.find((item) => item.id === row.id); return <g key={row.id} onClick={() => route && onSelect(route)} style={{ cursor: "pointer" }}><polyline points={row.polyline} fill="none" stroke="rgba(0,0,0,.70)" strokeWidth={active ? 11 : 7} strokeLinecap="round" strokeLinejoin="round"/><polyline points={row.polyline} fill="none" stroke={active ? accent : "rgba(255,255,255,.72)"} strokeWidth={active ? 5.8 : 3} opacity={active ? 1 : .66} strokeLinecap="round" strokeLinejoin="round"/><polyline points={row.polyline} fill="none" stroke="transparent" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/>{row.midpoint ? <g><circle cx={row.midpoint.x} cy={row.midpoint.y} r={active ? 14 : 10.5} fill={active ? accent : "rgba(7,10,15,.93)"} stroke="#fff" strokeWidth="2"/><text x={row.midpoint.x} y={row.midpoint.y+3} textAnchor="middle" fontSize={active ? 9 : 7} fontWeight="900" fill={active ? "#081018" : "#fff"}>{index+1}</text></g> : null}</g>;})}</svg></> : null}
-    <div style={{ position: "absolute", left: 10, top: 10, display: "flex", gap: 6, alignItems: "center" }}><div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.82)", border: `1px solid ${accent}40`, color: accent, fontSize: 7, fontWeight: 1000, backdropFilter: "blur(12px)" }}>⌖ {pickText(lang,"CARTE DES PARCOURS","ROUTE MAP","MAPA DE RUTAS")}</div><div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.76)", border: "1px solid rgba(255,255,255,.12)", color: "#fff", fontSize: 7, fontWeight: 1000 }}>{routes.length}</div></div>
-    <div style={{ position: "absolute", left: 10, right: 10, bottom: 10, padding: "7px 10px", borderRadius: 13, background: "rgba(5,8,13,.74)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,.09)", color: textSoft, fontSize: 6.8, textAlign: "center" }}>{pickText(lang,"Touchez un tracé pour le mettre en avant","Tap a route to bring it forward","Toca una ruta para destacarla")}</div>
-    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, top: 4, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.54)", color: "#fff", fontSize: 6, textDecoration: "none" }}>© OSM</a>
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
+  const mapRef = React.useRef<any>(null);
+  const maplibreRef = React.useRef<any>(null);
+  const markersRef = React.useRef<any[]>([]);
+  const routesRef = React.useRef(routes);
+  const selectedRef = React.useRef(selectedRouteId);
+  const expandedRef = React.useRef(false);
+  const previousRoutesKeyRef = React.useRef("");
+  const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
+  const [expanded, setExpanded] = React.useState(false);
+  routesRef.current = routes;
+  selectedRef.current = selectedRouteId;
+  expandedRef.current = expanded;
+
+  const routesKey = React.useMemo(() => routes.map((route) => `${route.id}:${Math.round(Number(route.distanceM || 0))}`).join("|"), [routes]);
+
+  const fitAll = React.useCallback((animate = true) => {
+    const map = mapRef.current;
+    const bounds = scoutRouteBounds(routesRef.current);
+    if (!map || !bounds) return;
+    try {
+      map.stop?.();
+      map.fitBounds(bounds, { padding: expandedRef.current ? 72 : 34, duration: animate ? 380 : 0, maxZoom: 15.5, bearing: 0, pitch: 0 });
+    } catch {}
+  }, []);
+
+  const zoomBy = React.useCallback((delta: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    try { map.stop?.(); map.easeTo({ zoom: Math.max(2, Math.min(19, Number(map.getZoom?.() || 10) + delta)), duration: 180 }); } catch {}
+  }, []);
+
+  React.useEffect(() => {
+    const host = hostRef.current;
+    if (!host || mapRef.current) return;
+    let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
+    let clickHandler: ((event: any) => void) | null = null;
+
+    void loadScoutMapLibre().then((maplibregl) => {
+      if (cancelled || !host) return;
+      maplibreRef.current = maplibregl;
+      const bounds = scoutRouteBounds(routesRef.current);
+      const center: [number, number] = bounds ? [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2] : [0, 0];
+      const map = new maplibregl.Map({
+        container: host,
+        style: {
+          version: 8,
+          sources: { basemap: { type: "raster", tiles: [scoutRasterTileTemplate(theme)], tileSize: 256, attribution: runningMapAttribution(theme) } },
+          layers: [{ id: "basemap", type: "raster", source: "basemap", paint: scoutRasterPaint(theme) }],
+        },
+        center,
+        zoom: 11,
+        minZoom: 2,
+        maxZoom: 19,
+        pitch: 0,
+        bearing: 0,
+        attributionControl: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false,
+        cooperativeGestures: false,
+      });
+      mapRef.current = map;
+      try { map.touchZoomRotate?.disableRotation?.(); } catch {}
+      try { map.keyboard?.enable?.(); } catch {}
+      try { map.doubleClickZoom?.enable?.(); } catch {}
+      try { map.scrollZoom?.enable?.(); } catch {}
+      try { map.dragPan?.enable?.(); } catch {}
+
+      map.on("load", () => {
+        if (cancelled) return;
+        try {
+          map.addSource("scout-routes", { type: "geojson", data: scoutRouteGeoJson(routesRef.current, selectedRef.current), lineMetrics: false });
+          map.addLayer({ id: "scout-route-shadow", type: "line", source: "scout-routes", paint: { "line-color": "rgba(0,0,0,.76)", "line-width": ["case", ["boolean", ["get", "active"], false], 10, 6], "line-opacity": .94 }, layout: { "line-cap": "round", "line-join": "round" } });
+          map.addLayer({ id: "scout-route-line", type: "line", source: "scout-routes", paint: { "line-color": ["case", ["boolean", ["get", "active"], false], accent, "rgba(255,255,255,.82)"], "line-width": ["case", ["boolean", ["get", "active"], false], 5.5, 2.8], "line-opacity": ["case", ["boolean", ["get", "active"], false], 1, .7] }, layout: { "line-cap": "round", "line-join": "round" } });
+          map.addLayer({ id: "scout-route-hit", type: "line", source: "scout-routes", paint: { "line-color": "rgba(0,0,0,0)", "line-width": 22 } });
+          clickHandler = (event: any) => {
+            const id = String(event?.features?.[0]?.properties?.routeId || "");
+            const route = routesRef.current.find((item) => item.id === id);
+            if (route) onSelect(route);
+          };
+          map.on("click", "scout-route-hit", clickHandler);
+          map.on("mouseenter", "scout-route-hit", () => { try { map.getCanvas().style.cursor = "pointer"; } catch {} });
+          map.on("mouseleave", "scout-route-hit", () => { try { map.getCanvas().style.cursor = ""; } catch {} });
+        } catch {}
+        setStatus("ready");
+        previousRoutesKeyRef.current = routesKey;
+        window.setTimeout(() => fitAll(false), 30);
+      });
+      map.on("error", (event: any) => {
+        const message = String(event?.error?.message || "");
+        if (!map.loaded?.() && /webgl|context|style|source/i.test(message)) setStatus("error");
+      });
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => { window.requestAnimationFrame(() => { try { map.resize(); } catch {} }); });
+        resizeObserver.observe(host);
+      }
+    }).catch(() => { if (!cancelled) setStatus("error"); });
+
+    return () => {
+      cancelled = true;
+      resizeObserver?.disconnect();
+      for (const marker of markersRef.current) { try { marker.remove(); } catch {} }
+      markersRef.current = [];
+      const map = mapRef.current;
+      if (map && clickHandler) { try { map.off("click", "scout-route-hit", clickHandler); } catch {} }
+      if (map) { try { map.remove(); } catch {} }
+      mapRef.current = null;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const maplibregl = maplibreRef.current;
+    if (!map || !maplibregl || status !== "ready") return;
+    try { map.getSource("scout-routes")?.setData(scoutRouteGeoJson(routes, selectedRouteId)); } catch {}
+    for (const marker of markersRef.current) { try { marker.remove(); } catch {} }
+    markersRef.current = routes.map((route, index) => {
+      const point = routeMidpoint(route);
+      if (!point) return null;
+      const active = route.id === selectedRouteId;
+      const el = document.createElement("button");
+      el.type = "button";
+      el.textContent = String(index + 1);
+      el.title = cardTitle(route, lang);
+      el.setAttribute("aria-label", `${index + 1}. ${cardTitle(route, lang)}`);
+      Object.assign(el.style, { width: active ? "28px" : "23px", height: active ? "28px" : "23px", borderRadius: "999px", border: "2px solid #fff", background: active ? accent : "rgba(7,10,15,.94)", color: active ? "#071018" : "#fff", fontSize: active ? "10px" : "8px", fontWeight: "1000", display: "grid", placeItems: "center", padding: "0", cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,.45)" });
+      el.addEventListener("click", (event) => { event.stopPropagation(); onSelect(route); });
+      try { return new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([point.lon, point.lat]).addTo(map); }
+      catch { return null; }
+    }).filter(Boolean);
+    if (previousRoutesKeyRef.current && previousRoutesKeyRef.current !== routesKey) window.setTimeout(() => fitAll(true), 20);
+    previousRoutesKeyRef.current = routesKey;
+  }, [accent, fitAll, lang, routes, routesKey, selectedRouteId, status]);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || status !== "ready") return;
+    const timer = window.setTimeout(() => { try { map.resize(); } catch {}; }, 60);
+    return () => window.clearTimeout(timer);
+  }, [expanded, status]);
+
+  React.useEffect(() => {
+    if (!expanded || typeof document === "undefined") return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, [expanded]);
+
+  const selected = routes.find((route) => route.id === selectedRouteId) || null;
+  const shellStyle: React.CSSProperties = expanded ? {
+    position: "fixed", inset: 0, zIndex: 100000, width: "100%", height: "100%", overflow: "hidden", background: "#101821", borderRadius: 0,
+  } : {
+    position: "relative", width: "100%", aspectRatio: "4/3", minHeight: 300, maxHeight: 500, overflow: "hidden", borderRadius: 22, background: "#101821", border: "1px solid rgba(255,255,255,.09)", boxShadow: "0 22px 52px rgba(0,0,0,.30)",
+  };
+
+  return <div style={shellStyle}>
+    <div ref={hostRef} style={{ position: "absolute", inset: 0, touchAction: "none" }}/>
+    {status === "error" ? <ScoutOverviewFallback routes={routes} selectedRouteId={selectedRouteId} onSelect={onSelect} accent={accent} theme={theme}/> : null}
+    {status === "loading" ? <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: accent, fontSize: 8, fontWeight: 1000, background: "rgba(6,10,16,.68)" }}>{pickText(lang,"CHARGEMENT DE LA CARTE…","LOADING MAP…","CARGANDO MAPA…")}</div> : null}
+
+    <div style={{ position: "absolute", left: 10, top: 10, display: "flex", gap: 6, alignItems: "center", pointerEvents: "none" }}>
+      <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.84)", border: `1px solid ${accent}40`, color: accent, fontSize: 7, fontWeight: 1000, backdropFilter: "blur(12px)" }}>⌖ {pickText(lang,"CARTE DES PARCOURS","ROUTE MAP","MAPA DE RUTAS")}</div>
+      <div style={{ padding: "6px 9px", borderRadius: 999, background: "rgba(5,8,13,.78)", border: "1px solid rgba(255,255,255,.12)", color: "#fff", fontSize: 7, fontWeight: 1000 }}>{routes.length}</div>
+    </div>
+
+    <div style={{ position: "absolute", right: 10, top: 10, display: "grid", gridTemplateColumns: "repeat(2,42px)", gap: 6 }}>
+      <MapButton label="+" title={pickText(lang,"Zoom avant","Zoom in","Acercar")} onClick={() => zoomBy(1)}/>
+      <MapButton label="−" title={pickText(lang,"Zoom arrière","Zoom out","Alejar")} onClick={() => zoomBy(-1)}/>
+      <MapButton label="⌖" title={pickText(lang,"Recentrer tous les parcours","Fit all routes","Centrar todas las rutas")} onClick={() => fitAll(true)}/>
+      <MapButton label={expanded ? "×" : "⛶"} title={expanded ? pickText(lang,"Réduire la carte","Close expanded map","Cerrar mapa ampliado") : pickText(lang,"Agrandir la carte","Expand map","Ampliar mapa")} onClick={() => setExpanded((value) => !value)}/>
+    </div>
+
+    <div style={{ position: "absolute", left: 10, right: 10, bottom: expanded ? 14 : 10, display: "grid", gap: 6, pointerEvents: "none" }}>
+      {selected ? <div style={{ justifySelf: "center", maxWidth: "78%", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.82)", border: `1px solid ${accent}42`, color: accent, fontSize: 7.2, fontWeight: 1000, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", backdropFilter: "blur(12px)" }}>{cardTitle(selected, lang)}</div> : null}
+      <div style={{ justifySelf: "center", padding: "6px 10px", borderRadius: 999, background: "rgba(5,8,13,.76)", border: "1px solid rgba(255,255,255,.09)", color: textSoft, fontSize: 6.6, textAlign: "center", backdropFilter: "blur(12px)" }}>{pickText(lang,"1 doigt : déplacer · 2 doigts : zoomer · Touchez un tracé pour le sélectionner","1 finger: pan · 2 fingers: zoom · Tap a route to select it","1 dedo: mover · 2 dedos: zoom · Toca una ruta para seleccionarla")}</div>
+    </div>
+    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", left: 4, bottom: expanded ? 4 : 4, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.54)", color: "#fff", fontSize: 6, textDecoration: "none" }}>© OSM</a>
   </div>;
+}
+
+function MapButton({ label, title, onClick }: { label: string; title: string; onClick: () => void }) {
+  return <button type="button" className="btn" aria-label={title} title={title} onClick={onClick} style={{ width: 42, height: 42, minHeight: 42, padding: 0, borderRadius: 13, background: "rgba(5,8,13,.86)", border: "1px solid rgba(255,255,255,.15)", color: "#fff", fontSize: label === "⛶" ? 15 : 18, fontWeight: 1000, backdropFilter: "blur(12px)", boxShadow: "0 5px 16px rgba(0,0,0,.32)" }}>{label}</button>;
+}
+
+function ScoutOverviewFallback({ routes, selectedRouteId, onSelect, accent, theme }: { routes: RunningRouteTemplate[]; selectedRouteId: string | null; onSelect: (route: RunningRouteTemplate) => void; accent: string; theme: RunningMapTheme }) {
+  const layout = React.useMemo(() => buildCollectionMap(routes, 1000, 720, theme), [routes, theme]);
+  return <div style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#101821" }}>{layout ? <>{layout.tiles.map((tile) => <img key={tile.key} src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left/layout.width*100}%`, top: `${tile.top/layout.height*100}%`, width: `${256/layout.width*100}%`, height: `${256/layout.height*100}%`, objectFit: "cover", filter: runningMapRasterFilter(theme), userSelect: "none" }}/>) }<svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>{layout.routes.map((row, index) => { const active = row.id === selectedRouteId; const route = routes.find((item) => item.id === row.id); return <g key={row.id} onClick={() => route && onSelect(route)} style={{ cursor: "pointer" }}><polyline points={row.polyline} fill="none" stroke="rgba(0,0,0,.70)" strokeWidth={active ? 11 : 7} strokeLinecap="round" strokeLinejoin="round"/><polyline points={row.polyline} fill="none" stroke={active ? accent : "rgba(255,255,255,.72)"} strokeWidth={active ? 5.8 : 3} opacity={active ? 1 : .66} strokeLinecap="round" strokeLinejoin="round"/><polyline points={row.polyline} fill="none" stroke="transparent" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/>{row.midpoint ? <g><circle cx={row.midpoint.x} cy={row.midpoint.y} r={active ? 14 : 10.5} fill={active ? accent : "rgba(7,10,15,.93)"} stroke="#fff" strokeWidth="2"/><text x={row.midpoint.x} y={row.midpoint.y+3} textAnchor="middle" fontSize={active ? 9 : 7} fontWeight="900" fill={active ? "#081018" : "#fff"}>{index+1}</text></g> : null}</g>;})}</svg></> : null}</div>;
 }
 
 function ScoutMiniMap({ route, accent }: { route: RunningRouteTemplate; accent: string }) {

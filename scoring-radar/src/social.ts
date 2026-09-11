@@ -2,7 +2,7 @@ import { intFromEnv } from './config';
 import type { Analysis, Candidate, RadarEnv, SocialDraft, SocialQa } from './domain';
 import { withTimeout } from './timeout';
 
-const AI_MODEL = '@cf/zai-org/glm-4.7-flash' as const;
+const SOCIAL_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast' as const;
 
 const VERIFIED_PRODUCT_FACTS = [
   'The product name is MULTISPORTS SCORING.',
@@ -13,6 +13,80 @@ const VERIFIED_PRODUCT_FACTS = [
   'The application can be discovered through the official application destination link supplied by the system.',
   'Do not claim user counts, ratings, awards, store rankings, medical benefits, guaranteed performance gains or features not explicitly listed here.'
 ].join('\n- ');
+
+
+const SOCIAL_DRAFT_RESPONSE_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    type: 'object',
+    properties: {
+      language: { type: 'string' },
+      topic: { type: 'string' },
+      angle: { type: 'string' },
+      hook: { type: 'string' },
+      callToAction: { type: 'string' },
+      hashtags: { type: 'array', items: { type: 'string' } },
+      mediaType: { type: 'string', enum: ['image', 'video'] },
+      mediaBrief: {
+        type: 'object',
+        properties: {
+          objective: { type: 'string' },
+          durationSeconds: { type: ['number', 'null'] },
+          aspectRatio: { type: 'string', enum: ['9:16', '1:1', '4:5', '16:9'] },
+          storyboard: { type: 'array', items: { type: 'string' } },
+          requiredApprovedAssets: { type: 'array', items: { type: 'string' } },
+          forbiddenElements: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['objective', 'durationSeconds', 'aspectRatio', 'storyboard', 'requiredApprovedAssets', 'forbiddenElements']
+      },
+      platformCopies: {
+        type: 'object',
+        properties: {
+          facebook_page: { type: 'string' },
+          instagram_reel: { type: 'string' },
+          youtube_short: { type: 'string' },
+          tiktok: { type: 'string' }
+        },
+        required: ['facebook_page', 'instagram_reel', 'youtube_short', 'tiktok']
+      }
+    },
+    required: ['language', 'topic', 'angle', 'hook', 'callToAction', 'hashtags', 'mediaType', 'mediaBrief', 'platformCopies']
+  }
+} as const;
+
+const SOCIAL_QA_RESPONSE_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    type: 'object',
+    properties: {
+      qualityScore: { type: 'number' },
+      factualScore: { type: 'number' },
+      brandScore: { type: 'number' },
+      usefulnessScore: { type: 'number' },
+      visualScore: { type: 'number' },
+      spamRisk: { type: 'number' },
+      cringeRisk: { type: 'number' },
+      decision: { type: 'string', enum: ['pass', 'reject'] },
+      reason: { type: 'string' }
+    },
+    required: ['qualityScore', 'factualScore', 'brandScore', 'usefulnessScore', 'visualScore', 'spamRisk', 'cringeRisk', 'decision', 'reason']
+  }
+} as const;
+
+function extractStructured(output: unknown): unknown {
+  if (output && typeof output === 'object' && 'response' in output) {
+    const response = (output as { response?: unknown }).response;
+    if (response && typeof response === 'object') return response;
+    if (typeof response === 'string') return JSON.parse(cleanJson(response));
+  }
+
+  if (output && typeof output === 'object' && !Array.isArray(output)) {
+    const record = output as Record<string, unknown>;
+    if ('language' in record || 'qualityScore' in record) return record;
+  }
+
+  return JSON.parse(cleanJson(extractText(output)));
+}
 
 function extractText(output: unknown): string {
   if (typeof output === 'string') return output;
@@ -164,34 +238,25 @@ export async function generateAndAuditSocialDraft(
   analysis: Analysis
 ): Promise<{ draft: SocialDraft; qa: SocialQa; passes: boolean }> {
   const timeoutMs = intFromEnv(env.SOCIAL_AI_TIMEOUT_MS, 30_000, 5_000, 90_000);
-  const generation = await withTimeout(env.AI.run(AI_MODEL, {
+
+  const generationStarted = Date.now();
+  const generation = await withTimeout(env.AI.run(SOCIAL_MODEL, {
     messages: [
       {
         role: 'system',
-        content: `You are SOCIAL GROWTH IA for MULTISPORTS SCORING. Create one premium organic social campaign inspired by a market need, never by copying or identifying the source person.
+        content: `Create one concise, premium organic campaign for MULTISPORTS SCORING from the supplied market need.
 
-The campaign must look like professional product marketing, not generic AI spam. It must be concise, credible, visually executable and useful. Avoid hype, clickbait, fake urgency, fake testimonials and unverifiable claims.
-
-VERIFIED PRODUCT FACTS ONLY:\n- ${VERIFIED_PRODUCT_FACTS}
-
-MEDIA SAFETY POLICY:
-- The media will NOT be generated and auto-published blindly.
-- Build a media brief that can be fulfilled only from a human-approved asset library: real app screen recordings, clean screenshots, already validated Awena videos/visuals, approved logos or approved product footage.
-- Never request random AI people, fake screenshots, fake UI, fake ratings or fake reviews.
-- Default to 9:16 video between 12 and 30 seconds when a short video is appropriate.
-- TikTok media must not require a baked-in promotional watermark, URL, logo overlay or promotional text overlay. Keep TikTok promotion in the caption/creative concept rather than a prohibited watermark-style treatment.
-
-PLATFORM COPY:
-- facebook_page may use {{APP_LINK}}.
-- youtube_short may use {{APP_LINK}} in its description.
-- instagram_reel should use a natural CTA without inventing a clickable-caption link.
-- tiktok should use a natural CTA without embedding a URL in the media.
-- Same language as the detected source language unless there is a compelling reason not to.
-
-Return strict JSON only with exactly these top-level keys:
-language, topic, angle, hook, callToAction, hashtags, mediaType, mediaBrief, platformCopies.
-mediaBrief keys: objective, durationSeconds, aspectRatio, storyboard, requiredApprovedAssets, forbiddenElements.
-platformCopies keys: facebook_page, instagram_reel, youtube_short, tiktok.`
+Rules:
+- Never identify, quote or impersonate the source person.
+- Use ONLY these verified facts:\n- ${VERIFIED_PRODUCT_FACTS}
+- No hype, fake urgency, fake reviews, fake ratings, invented numbers or unsupported features.
+- Media must use only a human-approved asset library: real app screenshots/screen recordings, approved Awena videos/visuals, approved logos or approved product footage.
+- Never request fake UI, random AI people or fabricated testimonials.
+- Prefer a 9:16 video of 12-30 seconds when suitable.
+- facebook_page and youtube_short may use {{APP_LINK}}.
+- instagram_reel and tiktok must use a natural CTA without inventing a clickable caption link or baked-in promotional watermark.
+- Keep copy in the detected source language.
+- Keep each platform copy concise and adapted to its platform.`
       },
       {
         role: 'user',
@@ -210,38 +275,52 @@ platformCopies keys: facebook_page, instagram_reel, youtube_short, tiktok.`
           }
         })
       }
-    ]
+    ],
+    response_format: SOCIAL_DRAFT_RESPONSE_FORMAT,
+    max_tokens: 1100,
+    temperature: 0.2
   }), timeoutMs, 'Workers AI social draft generation');
 
-  const draft = parseDraft(JSON.parse(cleanJson(extractText(generation))), analysis.language);
+  const draft = parseDraft(extractStructured(generation), analysis.language);
+  console.log(JSON.stringify({
+    event: 'social_draft_generated',
+    model: SOCIAL_MODEL,
+    elapsedMs: Date.now() - generationStarted,
+    language: draft.language,
+    mediaType: draft.mediaType
+  }));
 
-  const audit = await withTimeout(env.AI.run(AI_MODEL, {
+  const auditStarted = Date.now();
+  const audit = await withTimeout(env.AI.run(SOCIAL_MODEL, {
     messages: [
       {
         role: 'system',
-        content: `You are an independent senior creative director and brand-safety reviewer. Audit a proposed MULTISPORTS SCORING social campaign ruthlessly.
+        content: `Audit this MULTISPORTS SCORING campaign strictly for public use.
 
-Reject anything that feels cheap, generic, cringe, spammy, misleading, visually incoherent or dependent on fake/generated product UI. Reject unsupported product claims. Reject media concepts that cannot be made from an approved asset library. A merely acceptable campaign is not enough: PASS is reserved for work that is strong enough to represent a real consumer app publicly.
+Reject cheap, generic, spammy, cringe, misleading or visually impossible creative. Reject any claim not supported by these verified facts:\n- ${VERIFIED_PRODUCT_FACTS}
 
-Score 0-100:
-- qualityScore: overall professional creative quality
-- factualScore: confidence every product statement is supported by the verified facts
-- brandScore: consistency and credibility
-- usefulnessScore: gives audience a clear reason to care
-- visualScore: media brief can produce a clean, premium result from approved assets
-- spamRisk: higher is worse
-- cringeRisk: higher is worse
+PASS only if:
+qualityScore>=90, factualScore>=95, brandScore>=90, usefulnessScore>=85, visualScore>=90, spamRisk<=10, cringeRisk<=10.
 
-PASS only if quality>=90, factual>=95, brand>=90, usefulness>=85, visual>=90, spamRisk<=10, cringeRisk<=10.
-
-VERIFIED PRODUCT FACTS:\n- ${VERIFIED_PRODUCT_FACTS}
-
-Return strict JSON only with exactly: qualityScore, factualScore, brandScore, usefulnessScore, visualScore, spamRisk, cringeRisk, decision, reason.`
+The media brief must be executable only with approved real product assets. If uncertain, reject.`
       },
       { role: 'user', content: JSON.stringify(draft) }
-    ]
+    ],
+    response_format: SOCIAL_QA_RESPONSE_FORMAT,
+    max_tokens: 420,
+    temperature: 0
   }), timeoutMs, 'Workers AI social quality audit');
 
-  const qa = parseQa(JSON.parse(cleanJson(extractText(audit))));
+  const qa = parseQa(extractStructured(audit));
+  console.log(JSON.stringify({
+    event: 'social_qa_completed',
+    model: SOCIAL_MODEL,
+    elapsedMs: Date.now() - auditStarted,
+    decision: qa.decision,
+    qualityScore: qa.qualityScore,
+    factualScore: qa.factualScore,
+    visualScore: qa.visualScore
+  }));
+
   return { draft, qa, passes: socialQaPasses(env, qa) };
 }
