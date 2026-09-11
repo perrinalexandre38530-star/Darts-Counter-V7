@@ -152,9 +152,10 @@ Decide whether a real person is actively seeking a solution the app could legiti
 Supported themes: darts scoring/statistics, running/GPS/performance, multisport scoring, petanque/boules, table tennis, foosball, molkky, sport challenges, finding sport partners, rankings/sessions, wearable imports.
 
 Rules:
-- score 0-100: 90+ explicit app/recommendation request; 70-89 strong need; 40-69 related discussion; below 40 weak.
-- eligible=true only when a useful, non-spammy reply would genuinely help.
-- reject news, SEO pages, stores, company pages, generic tutorials and content with no user need.
+- score 0-100: 90+ only for an explicit first-person app/recommendation request from a real user; 70-89 strong user need; 40-69 related discussion; below 40 weak.
+- A product page, store listing, competitor page, editorial article, SEO listicle, news page or generic web page WITHOUT a real user asking for help MUST score 69 or lower and eligible=false, even if its content closely matches the search query.
+- eligible=true only when a useful, non-spammy reply to an actual user discussion/question would genuinely help.
+- reject news, SEO pages, stores, company/product pages, generic tutorials and content with no user need.
 - reject privacy/consent gates, cookie walls, access-denied pages, CAPTCHA/browser challenges, and placeholder snippets such as "We cannot provide a description for this page right now".
 - detect the source language from the text.
 - reason: max 18 words.

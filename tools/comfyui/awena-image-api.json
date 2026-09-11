@@ -1,17 +1,4 @@
 {
-  "9": {
-    "inputs": {
-      "filename_prefix": "Flux2-Klein",
-      "images": [
-        "75:65",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "Enregistrer Image"
-    }
-  },
   "76": {
     "inputs": {
       "image": "handbag_white.png"
@@ -30,7 +17,20 @@
       "title": "Charger Image"
     }
   },
-  "75:61": {
+  "94": {
+    "inputs": {
+      "filename_prefix": "Flux2-Klein",
+      "images": [
+        "92:105",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Enregistrer Image"
+    }
+  },
+  "92:101": {
     "inputs": {
       "sampler_name": "euler"
     },
@@ -39,7 +39,98 @@
       "title": "KSamplerSelect"
     }
   },
-  "75:70": {
+  "92:102": {
+    "inputs": {
+      "steps": 4,
+      "width": [
+        "92:114",
+        0
+      ],
+      "height": [
+        "92:114",
+        1
+      ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+      "title": "Flux2Scheduler"
+    }
+  },
+  "92:103": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "92:107",
+        0
+      ],
+      "positive": [
+        "92:84:120",
+        0
+      ],
+      "negative": [
+        "92:84:118",
+        0
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "GuideCFG"
+    }
+  },
+  "92:104": {
+    "inputs": {
+      "noise": [
+        "92:106",
+        0
+      ],
+      "guider": [
+        "92:103",
+        0
+      ],
+      "sampler": [
+        "92:101",
+        0
+      ],
+      "sigmas": [
+        "92:102",
+        0
+      ],
+      "latent_image": [
+        "92:113",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "ÉchantillonneurPersonnaliséAvancé"
+    }
+  },
+  "92:105": {
+    "inputs": {
+      "samples": [
+        "92:104",
+        0
+      ],
+      "vae": [
+        "92:110",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "92:106": {
+    "inputs": {
+      "noise_seed": 786795143695419
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "BruitAléatoire"
+    }
+  },
+  "92:107": {
     "inputs": {
       "unet_name": "flux-2-klein-4b-fp8.safetensors",
       "weight_dtype": "default"
@@ -49,7 +140,7 @@
       "title": "Charger Modèle Diffusion"
     }
   },
-  "75:71": {
+  "92:108": {
     "inputs": {
       "clip_name": "qwen_3_4b.safetensors",
       "type": "flux2",
@@ -60,7 +151,20 @@
       "title": "Charger CLIP"
     }
   },
-  "75:72": {
+  "92:109": {
+    "inputs": {
+      "text": "stylize the handbag in image1 with the colours and logo from image 2",
+      "clip": [
+        "92:108",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "92:110": {
     "inputs": {
       "vae_name": "flux2-vae.safetensors"
     },
@@ -69,24 +173,7 @@
       "title": "Charger VAE"
     }
   },
-  "75:66": {
-    "inputs": {
-      "width": [
-        "75:99",
-        0
-      ],
-      "height": [
-        "75:99",
-        1
-      ],
-      "batch_size": 1
-    },
-    "class_type": "EmptyFlux2LatentImage",
-    "_meta": {
-      "title": "Flux vide vers latent"
-    }
-  },
-  "75:80": {
+  "92:111": {
     "inputs": {
       "upscale_method": "nearest-exact",
       "megapixels": 1,
@@ -101,84 +188,29 @@
       "title": "Redimensionner l'image en fonction du nombre total de pixels"
     }
   },
-  "75:62": {
+  "92:85": {
     "inputs": {
-      "steps": 4,
-      "width": [
-        "75:99",
-        0
-      ],
-      "height": [
-        "75:99",
-        1
-      ]
-    },
-    "class_type": "Flux2Scheduler",
-    "_meta": {
-      "title": "Flux2Scheduler"
-    }
-  },
-  "75:74": {
-    "inputs": {
-      "text": "Change the bag color to blue.",
-      "clip": [
-        "75:71",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
-    }
-  },
-  "75:82": {
-    "inputs": {
-      "conditioning": [
-        "75:74",
-        0
-      ]
-    },
-    "class_type": "ConditioningZeroOut",
-    "_meta": {
-      "title": "ConditioningZeroOut"
-    }
-  },
-  "75:121": {
-    "inputs": {
-      "conditioning": [
-        "75:82",
-        0
-      ],
-      "latent": [
-        "75:122",
-        0
-      ]
-    },
-    "class_type": "ReferenceLatent",
-    "_meta": {
-      "title": "LatentDeRéférence"
-    }
-  },
-  "75:99": {
-    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
       "image": [
-        "75:80",
+        "81",
         0
       ]
     },
-    "class_type": "GetImageSize",
+    "class_type": "ImageScaleToTotalPixels",
     "_meta": {
-      "title": "Obtenir la taille de l'image"
+      "title": "Redimensionner l'image en fonction du nombre total de pixels"
     }
   },
-  "75:123": {
+  "92:112:115": {
     "inputs": {
       "conditioning": [
-        "75:74",
+        "92:86",
         0
       ],
       "latent": [
-        "75:122",
+        "92:112:116",
         0
       ]
     },
@@ -187,14 +219,14 @@
       "title": "LatentDeRéférence"
     }
   },
-  "75:122": {
+  "92:112:116": {
     "inputs": {
       "pixels": [
-        "75:80",
+        "92:111",
         0
       ],
       "vae": [
-        "75:72",
+        "92:110",
         0
       ]
     },
@@ -203,78 +235,109 @@
       "title": "VAE Encode"
     }
   },
-  "75:64": {
+  "92:112:117": {
     "inputs": {
-      "noise": [
-        "75:73",
+      "conditioning": [
+        "92:109",
         0
       ],
-      "guider": [
-        "75:63",
-        0
-      ],
-      "sampler": [
-        "75:61",
-        0
-      ],
-      "sigmas": [
-        "75:62",
-        0
-      ],
-      "latent_image": [
-        "75:66",
+      "latent": [
+        "92:112:116",
         0
       ]
     },
-    "class_type": "SamplerCustomAdvanced",
+    "class_type": "ReferenceLatent",
     "_meta": {
-      "title": "ÉchantillonneurPersonnaliséAvancé"
+      "title": "LatentDeRéférence"
     }
   },
-  "75:65": {
+  "92:84:118": {
     "inputs": {
-      "samples": [
-        "75:64",
+      "conditioning": [
+        "92:112:115",
+        0
+      ],
+      "latent": [
+        "92:84:119",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "LatentDeRéférence"
+    }
+  },
+  "92:84:119": {
+    "inputs": {
+      "pixels": [
+        "92:85",
         0
       ],
       "vae": [
-        "75:72",
+        "92:110",
         0
       ]
     },
-    "class_type": "VAEDecode",
+    "class_type": "VAEEncode",
     "_meta": {
-      "title": "VAE Decode"
+      "title": "VAE Encode"
     }
   },
-  "75:73": {
+  "92:84:120": {
     "inputs": {
-      "noise_seed": 43301611940728
-    },
-    "class_type": "RandomNoise",
-    "_meta": {
-      "title": "BruitAléatoire"
-    }
-  },
-  "75:63": {
-    "inputs": {
-      "cfg": 1,
-      "model": [
-        "75:70",
+      "conditioning": [
+        "92:112:117",
         0
       ],
-      "positive": [
-        "75:123",
-        0
-      ],
-      "negative": [
-        "75:121",
+      "latent": [
+        "92:84:119",
         0
       ]
     },
-    "class_type": "CFGGuider",
+    "class_type": "ReferenceLatent",
     "_meta": {
-      "title": "GuideCFG"
+      "title": "LatentDeRéférence"
+    }
+  },
+  "92:86": {
+    "inputs": {
+      "conditioning": [
+        "92:109",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "92:113": {
+    "inputs": {
+      "width": [
+        "92:114",
+        0
+      ],
+      "height": [
+        "92:114",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Flux vide vers latent"
+    }
+  },
+  "92:114": {
+    "inputs": {
+      "image": [
+        "92:111",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Obtenir la taille de l'image"
     }
   }
 }

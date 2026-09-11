@@ -5,7 +5,7 @@ const root = process.cwd();
 const radar = path.join(root, 'scoring-radar');
 const required = [
   'package.json', 'wrangler.jsonc', 'schema.sql', 'README.md',
-  'src/index.ts', 'src/admin.ts', 'src/ai.ts', 'src/social.ts', 'src/brave.ts', 'src/config.ts', 'src/db.ts', 'src/domain.ts', 'src/timeout.ts', 'src/source-quality.ts'
+  'src/index.ts', 'src/admin.ts', 'src/ai.ts', 'src/social.ts', 'src/brave.ts', 'src/config.ts', 'src/db.ts', 'src/domain.ts', 'src/timeout.ts', 'src/source-quality.ts', 'src/intent-shield.ts', 'src/targets.ts'
 ];
 
 for (const file of required) {
@@ -24,6 +24,8 @@ const schema = fs.readFileSync(path.join(radar, 'schema.sql'), 'utf8');
 const admin = fs.readFileSync(path.join(radar, 'src/admin.ts'), 'utf8');
 const timeout = fs.readFileSync(path.join(radar, 'src/timeout.ts'), 'utf8');
 const sourceQuality = fs.readFileSync(path.join(radar, 'src/source-quality.ts'), 'utf8');
+const intentShield = fs.readFileSync(path.join(radar, 'src/intent-shield.ts'), 'utf8');
+const targets = fs.readFileSync(path.join(radar, 'src/targets.ts'), 'utf8');
 
 const checks = [
   [wrangler.includes('https://multisports-scoring.pages.dev/'), 'official destination URL'],
@@ -94,6 +96,15 @@ const checks = [
   [db.includes('opportunityDedupeKey') && db.includes('sourceQualityReason'), 'stored opportunities are quality-filtered and deduplicated'],
   [admin.includes('Sources rejetées') && admin.includes('mRejected'), 'dashboard exposes rejected-source count'],
   [ai.includes('privacy/consent gates') && ai.includes('placeholder snippets'), 'classifier prompt independently rejects gate/placeholder pages'],
+  [intentShield.includes('app_store_listing') && intentShield.includes('seo_listicle') && intentShield.includes('commercial_product_page'), 'deterministic Intent Shield rejects stores, SEO lists and product pages'],
+  [intentShield.includes('no_real_user_intent_signal') && intentShield.includes('scoreCap: 69'), 'content without a real-user signal cannot become a 70+ opportunity'],
+  [intentShield.includes('COMMUNITY_HOSTS') && intentShield.includes('USER_SIGNAL_PATTERNS'), 'Intent Shield recognizes community/user-seeking context'],
+  [index.includes('hardIntentShieldReason') && index.includes('radar_intent_rejected'), 'hard intent false positives are rejected before AI queueing'],
+  [index.includes('enforceIntentShield') && db.includes('requalifyHistoricalIntentShield'), 'AI results are capped by Intent Shield and old opportunities are requalified'],
+  [db.includes('opportunityPassesIntentShield') && db.includes('intent_shield_rejected'), 'opportunity lists/stats hide invalid historical opportunities'],
+  [index.includes('destination_link: safeDestination') && index.includes("replace('{{APP_LINK}}', safeDestination"), 'user-facing replies use the official app destination instead of workers.dev tracking URLs'],
+  [targets.includes('forum discussion') && targets.includes('recommend'), 'search intents bias Brave toward real recommendation discussions'],
+  [admin.includes('Intents rejetés') && admin.includes('Historique nettoyé'), 'dashboard exposes Intent Shield decisions and history cleanup'],
   [index.includes("url.pathname === '/api/social/campaigns'"), 'social campaign admin endpoint'],
   [index.includes('approved_asset_required'), 'campaign approval requires approved media'],
   [index.includes('hourlyTick'), 'hourly market rotation'],

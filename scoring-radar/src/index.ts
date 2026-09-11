@@ -22,6 +22,7 @@ import {
   listSocialCampaigns,
   listOpportunities,
   logClick,
+  requalifyHistoricalIntentShield,
   setSocialCampaignStatus,
   socialCampaignExistsForSighting,
   startRun,
@@ -33,6 +34,7 @@ import { isAdminAuthorized, unauthorized } from './security';
 import { generateAndAuditSocialDraft, socialQaPasses } from './social';
 import { SEARCH_INTENTS } from './targets';
 import { sourceQualityReason } from './source-quality';
+import { enforceIntentShield, hardIntentShieldReason, opportunityPassesIntentShield } from './intent-shield';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {
@@ -81,12 +83,17 @@ function parseJsonField<T>(value: string, fallback: T): T {
   }
 }
 
-function socialCampaignPayload(row: SocialCampaignRow) {
+function socialCampaignPayload(row: SocialCampaignRow, appLink: string) {
+  const copies = parseJsonField<Record<string, string>>(row.platform_copy_json, {});
+  const platformCopy = Object.fromEntries(
+    Object.entries(copies).map(([key, value]) => [key, value.replaceAll('{{APP_LINK}}', appLink)])
+  );
   return {
     ...row,
+    call_to_action: row.call_to_action.replaceAll('{{APP_LINK}}', appLink),
     hashtags: parseJsonField<string[]>(row.hashtags_json, []),
     media_brief: parseJsonField<Record<string, unknown>>(row.media_brief_json, {}),
-    platform_copy: parseJsonField<Record<string, string>>(row.platform_copy_json, {})
+    platform_copy: platformCopy
   };
 }
 
@@ -129,7 +136,7 @@ async function maybeCreateSocialCampaign(
     .filter((analysis) => {
       if (!analysis.eligible || analysis.score < minOpportunityScore) return false;
       const candidate = candidates.find((item) => item.id === analysis.id);
-      return Boolean(candidate && !sourceQualityReason(candidate));
+      return Boolean(candidate && !sourceQualityReason(candidate) && opportunityPassesIntentShield(candidate));
     })
     .sort((a, b) => b.score - a.score)
     .find((analysis) => candidates.some((candidate) => candidate.id === analysis.id));
@@ -206,7 +213,7 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
   if (request.method === 'GET' && url.pathname === '/api/social/campaigns') {
     const limit = intFromEnv(url.searchParams.get('limit') ?? undefined, 100, 1, 300);
     const campaigns = await listSocialCampaigns(env, limit);
-    return json({ ok: true, campaigns: campaigns.map((row) => socialCampaignPayload(row)) });
+    return json({ ok: true, campaigns: campaigns.map((row) => socialCampaignPayload(row, env.APP_DESTINATION_URL)) });
   }
 
   if (request.method === 'GET' && url.pathname === '/api/social/assets') {
@@ -323,7 +330,8 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
       opportunities: rows.map((row) => ({
         ...row,
         tracked_link: `${publicBase}/go/${row.id}`,
-        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/${row.id}`) ?? null
+        destination_link: safeDestination(env.APP_DESTINATION_URL, row),
+        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', safeDestination(env.APP_DESTINATION_URL, row)) ?? null
       }))
     });
   }
@@ -338,7 +346,8 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
       opportunity: {
         ...row,
         tracked_link: `${publicBase}/go/${row.id}`,
-        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/${row.id}`) ?? null
+        destination_link: safeDestination(env.APP_DESTINATION_URL, row),
+        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', safeDestination(env.APP_DESTINATION_URL, row)) ?? null
       }
     });
   }
@@ -452,6 +461,8 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
     freshness: (env.RADAR_FRESHNESS || 'pw').toLowerCase(),
     duplicates: 0,
     source_rejected: 0,
+    intent_rejected: 0,
+    history_requalified: 0,
     timings
   };
 
@@ -472,6 +483,9 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
 
   try {
     if (selectedMarkets.length === 0) throw new Error('No radar market is configured');
+
+    const historyRequalified = await requalifyHistoricalIntentShield(env);
+    details.history_requalified = historyRequalified;
 
     for (const market of selectedMarkets) {
       const marketLabel = marketKey(market);
@@ -526,6 +540,7 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
       const dedupeStarted = Date.now();
       const newCandidates: Candidate[] = [];
       let sourceRejected = 0;
+      let intentRejected = 0;
       for (const candidate of found) {
         const qualityReason = sourceQualityReason(candidate);
         if (qualityReason) {
@@ -539,13 +554,26 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
           }));
           continue;
         }
+        const intentReason = hardIntentShieldReason(candidate);
+        if (intentReason) {
+          intentRejected += 1;
+          console.log(JSON.stringify({
+            event: 'radar_intent_rejected',
+            candidateId: candidate.id,
+            reason: intentReason,
+            title: candidate.title.slice(0, 160),
+            sourceUrl: candidate.sourceUrl
+          }));
+          continue;
+        }
         const queueCandidate: Candidate = { ...candidate, runId };
         if (await insertCandidate(env, queueCandidate)) newCandidates.push(queueCandidate);
       }
       timings.deduplicating = (timings.deduplicating ?? 0) + (Date.now() - dedupeStarted);
       newCandidatesTotal += newCandidates.length;
       details.source_rejected = Number(details.source_rejected || 0) + sourceRejected;
-      details.duplicates = Number(details.duplicates || 0) + Math.max(0, found.length - sourceRejected - newCandidates.length);
+      details.intent_rejected = Number(details.intent_rejected || 0) + intentRejected;
+      details.duplicates = Number(details.duplicates || 0) + Math.max(0, found.length - sourceRejected - intentRejected - newCandidates.length);
 
       currentStage = newCandidates.length > 0 ? 'queueing' : 'deduplicating';
       await updateRunProgress(env, runId, {
@@ -695,7 +723,10 @@ export default {
     let progressWrite = Promise.resolve();
     try {
       analyses = await classifyCandidates(env, candidates, (classification) => {
-        for (const analysis of classification.analyses) liveAnalyses.set(analysis.id, analysis);
+        for (const analysis of classification.analyses) {
+          const candidate = candidates.find((item) => item.id === analysis.id);
+          liveAnalyses.set(analysis.id, candidate ? enforceIntentShield(candidate, analysis) : analysis);
+        }
         progressWrite = progressWrite.then(async () => {
           for (const runId of runIds) {
             const progress = progressByRun.get(runId);
@@ -753,6 +784,11 @@ export default {
       console.error(JSON.stringify({ event: 'radar_classification_error', runIds, error }));
       throw caught;
     }
+
+    analyses = analyses.map((analysis) => {
+      const candidate = candidates.find((item) => item.id === analysis.id);
+      return candidate ? enforceIntentShield(candidate, analysis) : analysis;
+    });
 
     const classifyDuration = Date.now() - classifyStarted;
     const byId = new Map(analyses.map((analysis) => [analysis.id, analysis]));

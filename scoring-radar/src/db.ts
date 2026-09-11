@@ -1,5 +1,6 @@
 import type { Analysis, Candidate, OpportunityRow, RadarEnv, RunProgressRow } from './domain';
 import { opportunityDedupeKey, sourceQualityReason } from './source-quality';
+import { intentShieldDecision, opportunityPassesIntentShield } from './intent-shield';
 
 export async function insertCandidate(env: RadarEnv, candidate: Candidate): Promise<boolean> {
   const result = await env.DB.prepare(`
@@ -72,7 +73,7 @@ export async function listOpportunities(env: RadarEnv, minScore: number, limit: 
   const seen = new Set<string>();
   const filtered: OpportunityRow[] = [];
   for (const row of rows) {
-    if (sourceQualityReason(row)) continue;
+    if (sourceQualityReason(row) || !opportunityPassesIntentShield(row)) continue;
     const key = opportunityDedupeKey(row);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -239,7 +240,7 @@ export async function getRadarStats(env: RadarEnv): Promise<{
   let eligible = 0;
   let highIntent = 0;
   for (const row of eligibleRows.results ?? []) {
-    if (sourceQualityReason(row)) continue;
+    if (sourceQualityReason(row) || !opportunityPassesIntentShield(row)) continue;
     const key = opportunityDedupeKey(row);
     if (seenEligible.has(key)) continue;
     seenEligible.add(key);
@@ -261,6 +262,40 @@ export async function getRadarStats(env: RadarEnv): Promise<{
     clicks: Number(clickRow?.clicks ?? 0),
     latestRun: latestRun ?? null
   };
+}
+
+
+export async function requalifyHistoricalIntentShield(env: RadarEnv, limit = 500): Promise<number> {
+  const rows = await env.DB.prepare(`
+    SELECT id, source, source_url, title, snippet, query_key, market, language, category, intent,
+           score, eligible, reason, suggested_reply, captured_at, analyzed_at
+    FROM sightings
+    WHERE status = 'analyzed' AND eligible = 1
+      AND COALESCE(category, '') NOT LIKE 'intent_shield_%'
+    ORDER BY analyzed_at DESC
+    LIMIT ?
+  `).bind(limit).all<OpportunityRow>();
+
+  const updates: D1PreparedStatement[] = [];
+  for (const row of rows.results ?? []) {
+    const decision = intentShieldDecision(row);
+    if (!decision.reject && decision.scoreCap >= 70) continue;
+    const score = Math.min(Number(row.score ?? 0), decision.scoreCap);
+    const category = decision.reject ? 'intent_shield_rejected' : 'intent_shield_no_user_signal';
+    const reason = decision.reject
+      ? `Intent Shield: ${decision.reason ?? 'rejected'}`
+      : 'Intent Shield: aucun signal clair d’un utilisateur réel cherchant une solution.';
+    updates.push(env.DB.prepare(`
+      UPDATE sightings
+      SET eligible = 0, score = ?, category = ?, intent = 'non_user_content',
+          reason = ?, suggested_reply = ''
+      WHERE id = ?
+    `).bind(score, category, reason, row.id));
+  }
+
+  if (updates.length === 0) return 0;
+  await env.DB.batch(updates);
+  return updates.length;
 }
 
 export async function countSocialCampaignsSince(env: RadarEnv, sinceIso: string): Promise<number> {
