@@ -198,8 +198,11 @@ export function normalizeWgerExerciseRow(input: unknown): FitExercise | null {
   const rawSecondary = namedMuscles(row.muscles_secondary);
   const mappedPrimary = rawPrimary.map(mapMuscleName).filter((item): item is FitMuscle => Boolean(item));
   const mappedSecondary = rawSecondary.map(mapMuscleName).filter((item): item is FitMuscle => Boolean(item));
-  const muscle = mappedPrimary[0] || categoryFallback(text(row.category?.name));
-  const secondary = Array.from(new Set([...mappedPrimary.slice(1), ...mappedSecondary])).filter((item) => item !== muscle).slice(0, 5);
+  const isGluteBridge = inferMotionKey(name) === "glute-bridge";
+  const muscle: FitMuscle = isGluteBridge ? "Fessiers" : (mappedPrimary[0] || categoryFallback(text(row.category?.name)));
+  const secondary = isGluteBridge
+    ? ["Ischios", "Abdos", "Lombaires", "Quadriceps"] as FitMuscle[]
+    : Array.from(new Set([...mappedPrimary.slice(1), ...mappedSecondary])).filter((item) => item !== muscle).slice(0, 5);
   const imageRows = array<WgerMedia>(row.images).filter((item) => Boolean(text(item?.image))).sort((a, b) => Number(Boolean(b?.is_main)) - Number(Boolean(a?.is_main)));
   const images = mediaUrls(imageRows, "image");
   const videos = mediaUrls(row.videos, "video");

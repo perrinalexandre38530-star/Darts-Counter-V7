@@ -661,6 +661,10 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   const langKey = lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr";
   const guide = React.useMemo(() => buildGuide(exercise, lang), [exercise, lang]);
   const exerciseTitle = React.useMemo(() => canonicalExerciseName(exercise), [exercise.id, exercise.name, exercise.motionKey]);
+  const primaryMuscle: FitMuscle = specialExerciseKey(exercise) === "glute-bridge" ? "Fessiers" : exercise.muscle;
+  const displayExercise = React.useMemo(() => primaryMuscle === exercise.muscle && exerciseTitle === exercise.name
+    ? exercise
+    : { ...exercise, name: exerciseTitle, muscle: primaryMuscle, secondary: specialExerciseKey(exercise) === "glute-bridge" ? ["Ischios", "Abdos", "Lombaires", "Quadriceps"] as FitMuscle[] : exercise.secondary }, [exercise, exerciseTitle, primaryMuscle]);
   const [tab, setTab] = React.useState<DetailTab>("zone");
   const [viewerImage, setViewerImage] = React.useState<string | null>(null);
   const photos = React.useMemo(() => collectExercisePhotos(exercise), [exercise]);
@@ -669,13 +673,13 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   const totalSessions = detailRecord ? 1 : 0;
   const assistZones = React.useMemo(() => {
     const mapped = Object.entries(guide.intensityMap || {})
-      .filter(([muscle, intensity]) => muscle !== exercise.muscle && Number(intensity || 0) > 0)
+      .filter(([muscle, intensity]) => muscle !== primaryMuscle && Number(intensity || 0) > 0)
       .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
       .map(([muscle]) => FIT_MUSCLE_LABELS[muscle as FitMuscle]?.[langKey])
       .filter(Boolean);
     if (mapped.length) return mapped;
     return (exercise.secondary || []).map((item) => FIT_MUSCLE_LABELS[item]?.[langKey]).filter(Boolean);
-  }, [exercise, guide.intensityMap, langKey]);
+  }, [exercise, guide.intensityMap, langKey, primaryMuscle]);
   const mistakes = React.useMemo(() => {
     if (exercise.commonMistakes?.length) return exercise.commonMistakes.slice(0, 4).map((item) => localizeInstructionText(item, lang));
     return [
@@ -702,7 +706,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "start" }}>
           <div>
             <div style={{ fontSize: 26, lineHeight: 1.03, fontWeight: 1000, letterSpacing: -.7, color: accent }}>{exerciseTitle}</div>
-            <div style={{ marginTop: 10 }}><FilterGlyphRow exercise={exercise} lang={lang} accent={accent} /></div>
+            <div style={{ marginTop: 10 }}><FilterGlyphRow exercise={displayExercise} lang={lang} accent={accent} /></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <ActionCircle accent="#ffd869" onClick={onToggleFavorite} active={isFavorite} passiveGray>
@@ -714,7 +718,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
         </div>
 
         <div style={{ marginTop: 12, borderRadius: 26, overflow: "hidden", border: `1px solid ${accent}35`, background: `radial-gradient(circle at 50% 24%,${accent}10,rgba(3,6,11,.96) 72%)`, boxShadow: `inset 0 0 24px ${accent}08` }}>
-          <FitExerciseMotion exercise={exercise} accent={accent} cleanBranding />
+          <FitExerciseMotion exercise={displayExercise} accent={accent} cleanBranding />
         </div>
 
         <div style={{ marginTop: 10 }}>
@@ -734,7 +738,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 16, height: 16, borderRadius: 999, background: "#ff5d73" }} />{tr(lang, "Rouge : fortement travaillé", "Red: strongly worked", "Rojo: trabajo intenso")}</span>
             </div>
             <div style={{ marginTop: 12, display: "grid", gap: 7, fontSize: 8.8, color: "rgba(255,255,255,.82)" }}>
-              <div><span style={{ color: FIT_MUSCLE_COLORS[exercise.muscle], fontWeight: 1000 }}>{tr(lang, "Zone principale", "Primary zone", "Zona principal")}</span> — {FIT_MUSCLE_LABELS[exercise.muscle][langKey]}</div>
+              <div><span style={{ color: FIT_MUSCLE_COLORS[primaryMuscle], fontWeight: 1000 }}>{tr(lang, "Zone principale", "Primary zone", "Zona principal")}</span> — {FIT_MUSCLE_LABELS[primaryMuscle][langKey]}</div>
               {assistZones.length ? <div><span style={{ color: accent, fontWeight: 1000 }}>{tr(lang, "Zones d'assistance", "Assist zones", "Zonas de asistencia")}</span> — {assistZones.join(", ")}</div> : null}
             </div>
           </FitGlassCard>

@@ -145,8 +145,12 @@ function normalizeRow(row: FreeExerciseDbRow): FitExercise | null {
   if (!sourceId || !name) return null;
   const primary = asStringArray(row.primaryMuscles);
   const secondary = asStringArray(row.secondaryMuscles);
-  const muscle = primary.length ? mapMuscle(primary[0]) : "Full body";
-  const secondaryMapped = Array.from(new Set([...primary.slice(1), ...secondary].map(mapMuscle))).filter((entry) => entry !== muscle).slice(0, 4);
+  const isGluteBridge = inferMotionKey(name) === "glute-bridge";
+  const muscle: FitMuscle = isGluteBridge ? "Fessiers" : (primary.length ? mapMuscle(primary[0]) : "Full body");
+  const sourceSecondary = Array.from(new Set([...primary.slice(1), ...secondary].map(mapMuscle))).filter((entry) => entry !== muscle);
+  const secondaryMapped = isGluteBridge
+    ? ["Ischios", "Abdos", "Lombaires", "Quadriceps"] as FitMuscle[]
+    : sourceSecondary.slice(0, 4);
   const exercise: FitExercise = {
     id: `fedb:${sourceId}`,
     name,
