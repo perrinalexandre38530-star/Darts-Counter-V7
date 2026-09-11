@@ -1,0 +1,295 @@
+{
+  "id": "fit-awena",
+  "version": "2026.09.12.1",
+  "files": [
+    {
+      "path": "exercise-media/bench/awena-step-00-setup.webp",
+      "bytes": 46318,
+      "sha256": "613ec23e3b7ab2168ca64c71b9fa69fa083f6112ab64966751550ee9db7edffa",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/bench/awena-step-01-start.webp",
+      "bytes": 188832,
+      "sha256": "ab7c862b1b89d701e50ff96f7f7e1ec5460acec09aacd9193d870f964b125b62",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/bench/awena-step-02-descent.webp",
+      "bytes": 198916,
+      "sha256": "5f63077c648bc8bd0f25a3e16682815d96dd73e4a1c0c9e137493397d0b79375",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/bench/awena-step-03-bottom.webp",
+      "bytes": 183888,
+      "sha256": "48d30c76e02e2108882a65e2ddfc2edf9f3ba33549aaada3e19d236f827ccf66",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/bench/awena-step-04-press.webp",
+      "bytes": 187428,
+      "sha256": "9ea2a4f9fdfe9138922e46e3b8c595bd429b14fc4e6fa14f27b32d570c560102",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/burpee/awena-01.webp",
+      "bytes": 69902,
+      "sha256": "7aee9d831879cb301a50b99e9363381f1ce6a7cded600c708089562eefee484a",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/burpee/awena-02.webp",
+      "bytes": 67746,
+      "sha256": "0c6d2b76cfafc7e1d342c166b5404f8483ce480fff60d359b05ef7e842a737da",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/burpee/awena-03.webp",
+      "bytes": 120934,
+      "sha256": "a86481f0e7b46ac7ad618bc342533944c28d93cf9791820d3a8da68f7efc5039",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/burpee/awena-04.webp",
+      "bytes": 78324,
+      "sha256": "a6b07e0614b9ce159e1b79736d908a95723faaf36673a57012ec539bdd72f645",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/burpee/awena-05.webp",
+      "bytes": 64582,
+      "sha256": "b2e1886aced0528a20519308956ee6997718e64ab055b222a2f57ab1df9f0769",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/glute-bridge/awena-step-01-start.webp",
+      "bytes": 86838,
+      "sha256": "88ba3930cd71e05321015d72d57507e6bed8461267aecce8822148eb0f740b82",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/glute-bridge/awena-step-02-top.webp",
+      "bytes": 85010,
+      "sha256": "9bda77d8f79182a6fec2412fe398c617c38ae04604c9ab84f340b132c3e4a2cc",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/glute-bridge/awena-step-03-hold.webp",
+      "bytes": 83866,
+      "sha256": "1cc7e7842fd4afcd8015890950c08adeaf4a84689fe9332ab967cf2e9a9b7d29",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/pushup/awena-high.webp",
+      "bytes": 38938,
+      "sha256": "18a2eac897550ec49926f94c2d0317a39c252db6828df935f9246550cc1ba1de",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/pushup/awena-low.webp",
+      "bytes": 34444,
+      "sha256": "7e0e9b1acc8e3416f16702ae51bbc110171eb80ccc4bd626a2a5965382c04e44",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/pushup/awena-step-01-start.webp",
+      "bytes": 50420,
+      "sha256": "3b67ddab4d8db5530e4c7cc5cdee6052caefe1622a9ab3e70dc7b5b445574274",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/pushup/awena-step-02-descent.webp",
+      "bytes": 41628,
+      "sha256": "a5852f3e72b77c701eb583bedbe5ff6b5903d9c86677c37460691eb3706251a5",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/pushup/awena-step-03-bottom.webp",
+      "bytes": 39384,
+      "sha256": "b4c35e342957ea6425fd63e738616e45ef1d379ad10c5fa62c26f103db58f4eb",
+      "mime": "image/webp"
+    },
+    {
+      "path": "exercise-media/pushup/awena-step-04-press.webp",
+      "bytes": 43648,
+      "sha256": "f309ac9947ea89a3bb2458176ad33c1029653a7fdeaf5bda76bbd81b0f3f6aee",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/bench/frames/frame-01.webp",
+      "bytes": 50602,
+      "sha256": "661dbec2081a234d92e1b612efde7979ed3000af0bc0b7a4678ce5ef0238f201",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/bench/frames/frame-02.webp",
+      "bytes": 44190,
+      "sha256": "44ba9c6d99405e5c493c2a08b24ec8b7d49d4f915a83eefb701bd96a92aa1305",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/bench/frames/frame-03.webp",
+      "bytes": 50792,
+      "sha256": "86992a6e58770eb6e9a18dfbdfcd00233ce0acee0e8a5a18a8e85fbeb92554fe",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/bench/frames/frame-04.webp",
+      "bytes": 48960,
+      "sha256": "7d6fab206af7ffea799f52acf41f5f21b40c0d2c90e257003ed0593856cd5a18",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/bench/frames/frame-05.webp",
+      "bytes": 45832,
+      "sha256": "aa7d2b9562364d88833a3f4978dc135c3e2ffab76a758e949646548affbc070c",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/bench/motion.mp4",
+      "bytes": 89698,
+      "sha256": "dc15358314addceb3d094a92512717111dd6d148183b6f6392482a1bed733060",
+      "mime": "video/mp4"
+    },
+    {
+      "path": "motions/awena/premium/bench/poster.webp",
+      "bytes": 188832,
+      "sha256": "ab7c862b1b89d701e50ff96f7f7e1ec5460acec09aacd9193d870f964b125b62",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/burpee/motion.webm",
+      "bytes": 31016,
+      "sha256": "668798e4dcc91a02f458d8740733258414ab1db777a9a4db6d563c27be3d21f8",
+      "mime": "video/webm"
+    },
+    {
+      "path": "motions/awena/premium/burpee/poster.webp",
+      "bytes": 69902,
+      "sha256": "7aee9d831879cb301a50b99e9363381f1ce6a7cded600c708089562eefee484a",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/curl/frames/frame-01.webp",
+      "bytes": 37392,
+      "sha256": "c7e37136175c92f58dd814648a32d7a26705cc7735315d33d72cfb4fb63bad2a",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/curl/frames/frame-02.webp",
+      "bytes": 35346,
+      "sha256": "9fa5a89cc8feec1d467bd173c718cfd61e357d5cbb51f10f05eaa6694c7eea74",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/curl/frames/frame-03.webp",
+      "bytes": 37984,
+      "sha256": "a3c8f93d70631f7e2c067a6c31f49e42fdbfa1b5814ccc133aeab6b730b2e88d",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/curl/frames/frame-04.webp",
+      "bytes": 35360,
+      "sha256": "fb16a4ed39232988f5baaf8aecbe48f4016540787d4562f39c90f2b11d9798bd",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/curl/frames/frame-05.webp",
+      "bytes": 37230,
+      "sha256": "eda6200d3caac373e685aca62072b6626dec1d8b6d7c00d0afa6ba33ab8b57ec",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/curl/poster.webp",
+      "bytes": 37392,
+      "sha256": "c7e37136175c92f58dd814648a32d7a26705cc7735315d33d72cfb4fb63bad2a",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/deadlift/poster.webp",
+      "bytes": 37610,
+      "sha256": "3a2d9061816081c27a7158b43757811b4087b46a4b977d518831733e7596002c",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/glute-bridge/motion.webm",
+      "bytes": 301067,
+      "sha256": "65c0234a987f5da398fc4cecb0234423cd360415d73c2b848be853ecab55b612",
+      "mime": "video/webm"
+    },
+    {
+      "path": "motions/awena/premium/glute-bridge/poster.webp",
+      "bytes": 237776,
+      "sha256": "a3cae91ca5a8ece4c16141618a6577c0cf0dac1aa559e1440de97d83eab829ed",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/pushup/motion.webm",
+      "bytes": 75158,
+      "sha256": "f37b4b85ba605e930f71042474db81d7b53194c687fa6251c37985f29d9f53f6",
+      "mime": "video/webm"
+    },
+    {
+      "path": "motions/awena/premium/pushup/poster.webp",
+      "bytes": 6244,
+      "sha256": "872cadc064220b23435f1be802ddad27199390978e96d8464380870efeefd0a8",
+      "mime": "image/webp"
+    },
+    {
+      "path": "motions/awena/premium/squat/motion.mp4",
+      "bytes": 155507,
+      "sha256": "7418e28bc0eb5f96e45d7c896364c52364daf496e64bd8dd76a6a1c04d8de318",
+      "mime": "video/mp4"
+    },
+    {
+      "path": "motions/awena/premium/squat/poster.webp",
+      "bytes": 16728,
+      "sha256": "522cda75a555c9ba302bc57d6a83b920ee828b2a816ee488e0b17c72044029ae",
+      "mime": "image/webp"
+    },
+    {
+      "path": "reference-media/glute-bridge/photo-01.webp",
+      "bytes": 185490,
+      "sha256": "29f6dae6cc63db82245e49b2e1260a54918a32a6f5b7940a6bd1644c446bdb1b",
+      "mime": "image/webp"
+    },
+    {
+      "path": "reference-media/glute-bridge/photo-02.webp",
+      "bytes": 237776,
+      "sha256": "a3cae91ca5a8ece4c16141618a6577c0cf0dac1aa559e1440de97d83eab829ed",
+      "mime": "image/webp"
+    },
+    {
+      "path": "tickers/free-awena.webp",
+      "bytes": 39620,
+      "sha256": "0f92d3afa99026cbf52d906bc3e9f7e6386d1d16046817847b03198828944bb6",
+      "mime": "image/webp"
+    },
+    {
+      "path": "tickers/full-awena.webp",
+      "bytes": 38136,
+      "sha256": "5e5517cffb045f95069d49d3b8ea38a49476e56abbb4ef114a62ef89f8309c22",
+      "mime": "image/webp"
+    },
+    {
+      "path": "tickers/legs-awena.webp",
+      "bytes": 42384,
+      "sha256": "f7ba009950250e594c3df3ec234bc03f16a9e619014fa4ec640adbc3efb0fdae",
+      "mime": "image/webp"
+    },
+    {
+      "path": "tickers/pull-awena.webp",
+      "bytes": 46492,
+      "sha256": "eef2aed79471737e1e47860ce245e64c79af29e56601de88af7cb65defc1b4f6",
+      "mime": "image/webp"
+    },
+    {
+      "path": "tickers/push-awena.webp",
+      "bytes": 35478,
+      "sha256": "7c0db6bdd85c3d579bb4e7eccc9589416d6f150b400e4146a92b31b4fd9895ed",
+      "mime": "image/webp"
+    }
+  ],
+  "totalBytes": 4007040
+}

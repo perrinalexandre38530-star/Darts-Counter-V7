@@ -40,6 +40,11 @@ const BURPEE_AWENA_STEP_2 = contentPackAssetUrl("fit-awena", "exercise-media/bur
 const BURPEE_AWENA_STEP_3 = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-05.webp");
 const BURPEE_AWENA_STEP_4 = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-02.webp");
 const BURPEE_AWENA_PLANK = contentPackAssetUrl("fit-awena", "exercise-media/burpee/awena-04.webp");
+const GLUTE_BRIDGE_AWENA_STEP_1 = contentPackAssetUrl("fit-awena", "exercise-media/glute-bridge/awena-step-01-start.webp");
+const GLUTE_BRIDGE_AWENA_STEP_2 = contentPackAssetUrl("fit-awena", "exercise-media/glute-bridge/awena-step-02-top.webp");
+const GLUTE_BRIDGE_AWENA_STEP_3 = contentPackAssetUrl("fit-awena", "exercise-media/glute-bridge/awena-step-03-hold.webp");
+const GLUTE_BRIDGE_PHOTO_1 = contentPackAssetUrl("fit-awena", "reference-media/glute-bridge/photo-01.webp");
+const GLUTE_BRIDGE_PHOTO_2 = contentPackAssetUrl("fit-awena", "reference-media/glute-bridge/photo-02.webp");
 
 type GuideStep = { title: string; body: string; image: string | null; fallbackImage?: string | null };
 type ExerciseGuide = {
@@ -155,17 +160,27 @@ function equipmentIconName(value: string): "body" | "barbell" | "dumbbell" | "ca
 
 function specialExerciseKey(exercise: FitExercise) {
   if (exercise.id === "bench") return "bench";
-  const compact = String(exercise.name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const explicit = String(exercise.motionKey || "").toLowerCase().trim();
+  if (explicit) return explicit;
+  const compact = String(exercise.name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup"].includes(compact)) return "pushup";
   if (["bench press", "barbell bench press", "flat barbell bench press", "developpe couche"].includes(compact)) return "bench";
   if (["burpee", "burpees"].includes(compact)) return "burpee";
+  if (["glute bridge", "glute bridges", "hip bridge", "hip bridges", "floor glute bridge", "puente de gluteos", "pont fessier", "pont de fessiers"].includes(compact)) return "glute-bridge";
   return exercise.id;
 }
 
+function canonicalExerciseName(exercise: FitExercise) {
+  const key = specialExerciseKey(exercise);
+  if (key === "glute-bridge") return "Glute Bridge";
+  return exercise.name;
+}
+
 function collectExercisePhotos(exercise: FitExercise) {
+  const injected = specialExerciseKey(exercise) === "glute-bridge" ? [GLUTE_BRIDGE_PHOTO_1, GLUTE_BRIDGE_PHOTO_2] : [];
   const sourceUrls = (exercise.imagePaths || []).map((_, index) => freeExerciseImageUrl(exercise, index)).filter((item): item is string => Boolean(item));
   const fallback = freeExerciseImageUrl(exercise);
-  return Array.from(new Set([fallback, ...sourceUrls].filter((item): item is string => Boolean(item))));
+  return Array.from(new Set([...injected, fallback, ...sourceUrls].filter((item): item is string => Boolean(item))));
 }
 
 function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
@@ -224,6 +239,62 @@ function buildGuide(exercise: FitExercise, lang: string): ExerciseGuide {
       goalTags: [tr(lang, "Force", "Strength", "Fuerza"), tr(lang, "Hypertrophie", "Hypertrophy", "Hipertrofia"), tr(lang, "Endurance", "Endurance", "Resistencia")],
       typeCards: [
         { label: tr(lang, "Mouvement", "Movement", "Movimiento"), value: tr(lang, "Poussée", "Push", "Empuje") },
+        { label: tr(lang, "Matériel", "Equipment", "Material"), value: tr(lang, "Poids du corps", "Bodyweight", "Peso corporal") },
+        { label: tr(lang, "Catégorie", "Category", "Categoría"), value: tr(lang, "Renforcement", "Strength", "Fuerza") },
+        { label: tr(lang, "Mécanique", "Mechanic", "Mecánica"), value: tr(lang, "Polyarticulaire", "Compound", "Compuesto") },
+      ],
+    };
+  }
+
+  if (key === "glute-bridge") {
+    const summary = tr(
+      lang,
+      "Exercice d'extension de hanches au poids du corps qui cible principalement les fessiers, tout en sollicitant aussi les ischios et le gainage lombo-abdominal pour stabiliser le bassin.",
+      "A bodyweight hip-extension exercise that mainly targets the glutes while also recruiting the hamstrings and the core to stabilize the pelvis.",
+      "Ejercicio de extensión de cadera con peso corporal que trabaja principalmente los glúteos, al tiempo que solicita los isquiotibiales y el core para estabilizar la pelvis.",
+    );
+    const steps: GuideStep[] = [
+      {
+        title: tr(lang, "Position de départ", "Start position", "Posición inicial"),
+        body: tr(lang, "Allonge-toi sur le dos, genoux fléchis, pieds à plat environ à la largeur du bassin et talons proches des fessiers. Les bras restent le long du corps, paumes au sol.", "Lie on your back with knees bent, feet flat about hip-width apart and heels close to the glutes. Keep the arms alongside the body with palms on the floor.", "Túmbate boca arriba con las rodillas flexionadas, los pies apoyados a la anchura de la cadera y los talones cerca de los glúteos. Mantén los brazos a lo largo del cuerpo con las palmas en el suelo."),
+        image: GLUTE_BRIDGE_AWENA_STEP_1,
+      },
+      {
+        title: tr(lang, "Montée du bassin", "Lift the hips", "Elevación de la pelvis"),
+        body: tr(lang, "Pousse dans les talons et contracte fort les fessiers pour décoller le bassin jusqu'à aligner épaules, hanches et genoux. Garde la nuque neutre et les côtes gainées.", "Drive through the heels and squeeze the glutes to lift the pelvis until the shoulders, hips and knees form a straight line. Keep the neck neutral and the ribs braced.", "Empuja con los talones y contrae con fuerza los glúteos para elevar la pelvis hasta alinear hombros, caderas y rodillas. Mantén el cuello neutro y las costillas activas."),
+        image: GLUTE_BRIDGE_AWENA_STEP_2,
+      },
+      {
+        title: tr(lang, "Maintien et retour contrôlé", "Brief hold and controlled return", "Pausa y regreso controlado"),
+        body: tr(lang, "Marque une courte pause en haut sans cambrer le bas du dos, puis redescends vertèbre par vertèbre jusqu'à effleurer le sol avant la répétition suivante.", "Pause briefly at the top without arching the lower back, then lower under control vertebra by vertebra until the hips lightly touch down before the next repetition.", "Haz una breve pausa arriba sin arquear la zona lumbar y después baja de forma controlada vértebra a vértebra hasta rozar el suelo antes de la siguiente repetición."),
+        image: GLUTE_BRIDGE_AWENA_STEP_3,
+      },
+    ];
+    return {
+      summary,
+      steps,
+      placement: [
+        tr(lang, "Ancre toute la plante des pieds au sol et répartis bien la pression entre talon, gros orteil et petit orteil.", "Keep the full foot anchored and spread pressure through the heel, big toe and little toe.", "Mantén toda la planta del pie apoyada y reparte la presión entre talón, dedo gordo y dedo pequeño."),
+        tr(lang, "Rentre légèrement le menton et garde les côtes abaissées pour éviter une compensation excessive dans le bas du dos.", "Tuck the chin slightly and keep the ribs down to avoid excessive lower-back compensation.", "Recoge ligeramente la barbilla y mantén las costillas abajo para evitar compensar en exceso con la zona lumbar."),
+        tr(lang, "Cherche d'abord la qualité de la contraction des fessiers avant d'augmenter le volume, la charge ou une variante unilatérale.", "Prioritize glute contraction quality before increasing volume, load or moving to a single-leg variation.", "Prioriza la calidad de la contracción de los glúteos antes de aumentar el volumen, la carga o pasar a una variante unilateral."),
+      ],
+      breathing: [
+        tr(lang, "Inspire en bas pour te placer et verrouiller le tronc.", "Inhale at the bottom to set the trunk.", "Inspira abajo para colocarte y bloquear el tronco."),
+        tr(lang, "Expire pendant la montée, puis reprends une petite inspiration contrôlée avant la descente.", "Exhale during the lift, then take a small controlled breath before lowering.", "Exhala durante la subida y después toma una pequeña inspiración controlada antes de bajar."),
+      ],
+      intensityMap: { Fessiers: 3, Ischios: 2, Abdos: 1, Lombaires: 1, Quadriceps: 1 },
+      zoneSpeech: tr(lang, "Le glute bridge cible avant tout les fessiers. Les ischios participent à l'extension de hanche, tandis que les abdos et les lombaires stabilisent le bassin et la colonne pendant toute la répétition.", "The glute bridge primarily targets the glutes. The hamstrings assist hip extension, while the abs and lower back stabilize the pelvis and spine throughout the repetition.", "El glute bridge trabaja sobre todo los glúteos. Los isquiotibiales ayudan en la extensión de cadera y los abdominales junto con la zona lumbar estabilizan la pelvis y la columna durante toda la repetición."),
+      detailSpeech: tr(lang, "Allonge-toi sur le dos, place les pieds au sol, pousse dans les talons pour élever le bassin, contracte les fessiers en haut puis redescends lentement sans perdre l'alignement.", "Lie on your back, place the feet on the floor, drive through the heels to lift the hips, squeeze the glutes at the top and then lower slowly without losing alignment.", "Túmbate boca arriba, coloca los pies en el suelo, empuja con los talones para elevar la pelvis, contrae los glúteos arriba y baja lentamente sin perder la alineación."),
+      goalSpeech: tr(lang, "Cet exercice sert à renforcer les fessiers, améliorer le contrôle du bassin et construire une base solide pour les mouvements d'extension de hanche comme le hip thrust, le squat ou la course.", "This exercise is used to strengthen the glutes, improve pelvic control and build a strong base for hip-extension patterns such as hip thrusts, squats or running.", "Este ejercicio sirve para fortalecer los glúteos, mejorar el control pélvico y construir una base sólida para patrones de extensión de cadera como el hip thrust, la sentadilla o la carrera."),
+      typeSpeech: tr(lang, "Le glute bridge est un mouvement d'extension de hanche au poids du corps, orienté renforcement et activation de la chaîne postérieure.", "The glute bridge is a bodyweight hip-extension movement focused on strengthening and activating the posterior chain.", "El glute bridge es un movimiento de extensión de cadera con peso corporal enfocado en el fortalecimiento y la activación de la cadena posterior."),
+      goalParagraphs: [
+        tr(lang, "Il aide à développer la force et la connexion neuromusculaire des fessiers, ce qui est précieux si tu restes longtemps assis ou si tes ischios/lombaires prennent trop souvent le relais.", "It helps build glute strength and neuromuscular connection, which is especially valuable if you sit a lot or if the hamstrings and lower back tend to compensate.", "Ayuda a desarrollar la fuerza y la conexión neuromuscular de los glúteos, algo muy útil si pasas mucho tiempo sentado o si los isquiotibiales y la zona lumbar suelen compensar."),
+        tr(lang, "Le glute bridge améliore aussi la stabilité du bassin et peut servir d'exercice technique avant des mouvements plus lourds comme le hip thrust, le soulevé de terre ou le squat.", "The glute bridge also improves pelvic stability and can be used as a technical primer before heavier movements such as hip thrusts, deadlifts or squats.", "El glute bridge también mejora la estabilidad pélvica y puede usarse como ejercicio técnico antes de movimientos más pesados como el hip thrust, el peso muerto o la sentadilla."),
+        tr(lang, "Selon la variante choisie, il peut servir en échauffement, en travail d'activation, en renforcement général ou en fin de séance pour accumuler du volume proprement.", "Depending on the variation used, it can fit warm-ups, activation work, general strengthening or end-of-session volume work.", "Según la variante elegida, puede utilizarse en el calentamiento, como trabajo de activación, en fortalecimiento general o al final de la sesión para acumular volumen con buena técnica."),
+      ],
+      goalTags: [tr(lang, "Fessiers", "Glutes", "Glúteos"), tr(lang, "Activation", "Activation", "Activación"), tr(lang, "Chaîne postérieure", "Posterior chain", "Cadena posterior")],
+      typeCards: [
+        { label: tr(lang, "Mouvement", "Movement", "Movimiento"), value: tr(lang, "Extension de hanche", "Hip extension", "Extensión de cadera") },
         { label: tr(lang, "Matériel", "Equipment", "Material"), value: tr(lang, "Poids du corps", "Bodyweight", "Peso corporal") },
         { label: tr(lang, "Catégorie", "Category", "Categoría"), value: tr(lang, "Renforcement", "Strength", "Fuerza") },
         { label: tr(lang, "Mécanique", "Mechanic", "Mecánica"), value: tr(lang, "Polyarticulaire", "Compound", "Compuesto") },
@@ -589,6 +660,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
   const textSoft = "rgba(255,255,255,.68)";
   const langKey = lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr";
   const guide = React.useMemo(() => buildGuide(exercise, lang), [exercise, lang]);
+  const exerciseTitle = React.useMemo(() => canonicalExerciseName(exercise), [exercise.id, exercise.name, exercise.motionKey]);
   const [tab, setTab] = React.useState<DetailTab>("zone");
   const [viewerImage, setViewerImage] = React.useState<string | null>(null);
   const photos = React.useMemo(() => collectExercisePhotos(exercise), [exercise]);
@@ -629,7 +701,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "start" }}>
           <div>
-            <div style={{ fontSize: 26, lineHeight: 1.03, fontWeight: 1000, letterSpacing: -.7, color: accent }}>{exercise.name}</div>
+            <div style={{ fontSize: 26, lineHeight: 1.03, fontWeight: 1000, letterSpacing: -.7, color: accent }}>{exerciseTitle}</div>
             <div style={{ marginTop: 10 }}><FilterGlyphRow exercise={exercise} lang={lang} accent={accent} /></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -729,7 +801,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
                   {photos.map((url, index) => (
                     <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: `1px solid ${accent}2e`, background: "rgba(255,255,255,.02)", borderRadius: 18, overflow: "hidden", minWidth: 0, cursor: "pointer", boxShadow: `0 0 16px ${accent}10` }}>
-                      <img src={url} alt={`${exercise.name} ${index + 1}`} style={{ width: "100%", height: 166, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} />
+                      <img src={url} alt={`${exerciseTitle} ${index + 1}`} style={{ width: "100%", height: 166, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} />
                     </button>
                   ))}
                 </div>

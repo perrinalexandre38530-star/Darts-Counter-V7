@@ -61,6 +61,7 @@ function motionKey(exercise: FitExercise) {
   if (["push up", "push ups", "pushup", "pushups", "standard push up", "standard pushup", "pompes"].includes(compact)) return "pushup";
   if (["bench press", "barbell bench press", "flat barbell bench press", "developpe couche"].includes(compact)) return "bench";
   if (["burpee", "burpees"].includes(compact)) return "burpee";
+  if (["glute bridge", "glute bridges", "hip bridge", "hip bridges", "floor glute bridge", "puente de gluteos", "puente de glúteos", "pont fessier", "pont de fessiers"].includes(compact)) return "glute-bridge";
   if (["squat", "back squat", "barbell back squat"].includes(compact)) return "squat";
   if (["curl biceps", "biceps curl", "barbell curl"].includes(compact)) return "curl";
   return "";
@@ -93,6 +94,13 @@ export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_A
       fitPackUrl("exercise-media/burpee/awena-04.webp"),
     ];
   }
+  if (key === "glute-bridge") {
+    return [
+      fitPackUrl("exercise-media/glute-bridge/awena-step-01-start.webp"),
+      fitPackUrl("exercise-media/glute-bridge/awena-step-02-top.webp"),
+      fitPackUrl("exercise-media/glute-bridge/awena-step-03-hold.webp"),
+    ];
+  }
   // Squat/Curl legacy premium frames are useful motion references/posters, but
   // they are NOT considered final pedagogical step illustrations anymore.
   // Their dedicated APPROVED generated step pack fills this missing component.
@@ -102,7 +110,7 @@ export function fitAwenaStepImages(exercise: FitExercise, requestedCount = FIT_A
 
 export function fitAwenaKnownPoster(exercise: FitExercise): string | null {
   const key = motionKey(exercise);
-  if (["pushup", "bench", "squat", "curl", "burpee"].includes(key)) return fitPackUrl(`motions/awena/premium/${key}/poster.webp`);
+  if (["pushup", "bench", "squat", "curl", "burpee", "glute-bridge"].includes(key)) return fitPackUrl(`motions/awena/premium/${key}/poster.webp`);
   return null;
 }
 
@@ -110,6 +118,7 @@ export function fitAwenaKnownVideo(exercise: FitExercise): string | null {
   const key = motionKey(exercise);
   if (key === "pushup" || key === "burpee") return fitPackUrl(`motions/awena/premium/${key}/motion.webm`);
   if (key === "bench" || key === "squat") return fitPackUrl(`motions/awena/premium/${key}/motion.mp4`);
+  if (key === "glute-bridge") return fitPackUrl(`motions/awena/premium/${key}/motion.webm`);
   return null;
 }
 

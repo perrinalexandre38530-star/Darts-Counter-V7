@@ -12,7 +12,7 @@ export const WGER_EXERCISE_INFO_URL = `${WGER_API_ROOT}/exerciseinfo/?limit=250`
 export const WGER_REPOSITORY = "https://github.com/wger-project/wger";
 export const WGER_DATA_LICENSE = "wger exercise data — Creative Commons / per-item license metadata";
 
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_PAGES = 12;
 
@@ -156,6 +156,7 @@ function inferMotionKey(name: string): string | undefined {
   if (["romanian deadlift", "barbell romanian deadlift"].includes(compact)) return "rdl";
   if (["deadlift", "barbell deadlift", "conventional deadlift"].includes(compact)) return "deadlift";
   if (["hip thrust", "barbell hip thrust"].includes(compact)) return "hip-thrust";
+  if (["glute bridge", "glute bridges", "hip bridge", "hip bridges", "floor glute bridge", "barbell glute bridge", "barbell hip bridge", "single leg glute bridge"].includes(compact)) return "glute-bridge";
   if (["leg press", "machine leg press"].includes(compact)) return "leg-press";
   if (["standing calf raise", "calf raise", "machine calf raise"].includes(compact)) return "calf";
   if (["plank", "front plank"].includes(compact)) return "plank";
@@ -188,7 +189,9 @@ function licenseLabel(row: WgerRow, translation: WgerTranslation | null): string
 export function normalizeWgerExerciseRow(input: unknown): FitExercise | null {
   const row = (input || {}) as WgerRow;
   const translation = chooseTranslation(row.translations);
-  const name = cleanEnglishTitle(text(translation?.name));
+  const sourceName = cleanEnglishTitle(text(translation?.name));
+  const compactName = sourceName.toLowerCase();
+  const name = ["glute bridge", "glute bridges", "hip bridge", "hip bridges", "floor glute bridge", "barbell glute bridge", "barbell hip bridge", "single leg glute bridge"].includes(compactName) ? "Glute Bridge" : sourceName;
   const sourceId = text(row.uuid) || String(Number(row.id) || "");
   if (!name || !sourceId) return null;
   const rawPrimary = namedMuscles(row.muscles);

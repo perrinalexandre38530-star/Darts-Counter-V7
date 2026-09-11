@@ -12,7 +12,7 @@ export const FREE_EXERCISE_IMAGE_ROOT = "https://raw.githubusercontent.com/yuhon
 export const FREE_EXERCISE_DB_REPOSITORY = "https://github.com/yuhonas/free-exercise-db";
 export const FREE_EXERCISE_DB_LICENSE = "Unlicense / public domain";
 
-const CACHE_VERSION = 5;
+const CACHE_VERSION = 6;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FreeExerciseDbRow = {
@@ -119,6 +119,7 @@ function inferMotionKey(name: string): string | undefined {
   if (["romanian deadlift", "barbell romanian deadlift"].includes(compact)) return "rdl";
   if (["deadlift", "barbell deadlift", "conventional deadlift"].includes(compact)) return "deadlift";
   if (["hip thrust", "barbell hip thrust"].includes(compact)) return "hip-thrust";
+  if (["glute bridge", "glute bridges", "hip bridge", "hip bridges", "floor glute bridge", "barbell glute bridge", "barbell hip bridge", "single leg glute bridge"].includes(compact)) return "glute-bridge";
   if (["leg press", "machine leg press"].includes(compact)) return "leg-press";
   if (["standing calf raise", "calf raise", "machine calf raise"].includes(compact)) return "calf";
   if (["plank", "front plank"].includes(compact)) return "plank";
@@ -137,7 +138,10 @@ function inferMotionKey(name: string): string | undefined {
 function normalizeRow(row: FreeExerciseDbRow): FitExercise | null {
   const sourceId = asString(row.id);
   const sourceName = cleanEnglishTitle(asString(row.name));
-  const name = sourceName.toLowerCase() === "barbell bench press - medium grip" ? "Bench Press" : sourceName;
+  const compactName = sourceName.toLowerCase();
+  const name = compactName === "barbell bench press - medium grip" ? "Bench Press"
+    : ["glute bridge", "glute bridges", "hip bridge", "hip bridges", "floor glute bridge", "barbell glute bridge", "barbell hip bridge", "single leg glute bridge"].includes(compactName) ? "Glute Bridge"
+    : sourceName;
   if (!sourceId || !name) return null;
   const primary = asStringArray(row.primaryMuscles);
   const secondary = asStringArray(row.secondaryMuscles);
