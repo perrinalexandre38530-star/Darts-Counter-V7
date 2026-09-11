@@ -40,11 +40,11 @@ function stepPrompt(exercise,index){
     "controlled return / finish position",
   ];
   return [
-    "The input image is a TWO-PANEL reference board. LEFT panel is AWENA and defines identity/outfit ONLY. RIGHT panel defines exercise pose, body geometry and equipment ONLY.",
-    "Create ONE new instructional image, NOT a collage and NOT a split-screen.",
+    "Two SEPARATE reference images are provided. REFERENCE IMAGE 1 defines AWENA identity/outfit ONLY. REFERENCE IMAGE 2 defines exercise pose, body geometry and equipment ONLY.",
+    "Create exactly ONE instructional image containing exactly ONE person: AWENA. Never create a collage, split-screen, duplicate body or second athlete.",
     `AWENA demonstrates ${exercise.name}, pedagogical phase ${index+1}/4: ${instructions[index]||fallback[index]}.`,
-    "Preserve AWENA exactly from the LEFT panel: same adult female face, same brown ponytail, same athletic proportions, same black fitness outfit with multicolor accents, same gloves and shoes.",
-    "Copy the pose mechanics and required equipment from the RIGHT panel, but NEVER copy the right-side person's identity, face, clothing or background.",
+    "Preserve AWENA exactly from REFERENCE IMAGE 1: same adult female face, same brown ponytail, same athletic proportions, same black fitness outfit with multicolor accents, same gloves and shoes.",
+    "Copy ONLY the pose mechanics and required equipment from REFERENCE IMAGE 2, but NEVER copy that person's identity, face, clothing, body appearance or background.",
     equipmentRule(exercise),
     `${cameraHint(exercise)}.`,
     "Show AWENA completely from hair to soles. Keep every hand, foot and equipment item inside frame with at least 12 percent empty safety margin around the complete subject.",
