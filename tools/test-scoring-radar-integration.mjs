@@ -5,7 +5,7 @@ const root = process.cwd();
 const radar = path.join(root, 'scoring-radar');
 const required = [
   'package.json', 'wrangler.jsonc', 'schema.sql', 'README.md',
-  'src/index.ts', 'src/admin.ts', 'src/ai.ts', 'src/social.ts', 'src/brave.ts', 'src/config.ts', 'src/db.ts', 'src/domain.ts', 'src/timeout.ts', 'src/source-quality.ts', 'src/intent-shield.ts', 'src/targets.ts'
+  'src/index.ts', 'src/admin.ts', 'src/ai.ts', 'src/social.ts', 'src/brave.ts', 'src/config.ts', 'src/db.ts', 'src/domain.ts', 'src/timeout.ts', 'src/source-quality.ts', 'src/intent-shield.ts', 'src/targets.ts', 'src/diagnostic.ts'
 ];
 
 for (const file of required) {
@@ -26,6 +26,7 @@ const timeout = fs.readFileSync(path.join(radar, 'src/timeout.ts'), 'utf8');
 const sourceQuality = fs.readFileSync(path.join(radar, 'src/source-quality.ts'), 'utf8');
 const intentShield = fs.readFileSync(path.join(radar, 'src/intent-shield.ts'), 'utf8');
 const targets = fs.readFileSync(path.join(radar, 'src/targets.ts'), 'utf8');
+const diagnostic = fs.readFileSync(path.join(radar, 'src/diagnostic.ts'), 'utf8');
 
 const checks = [
   [wrangler.includes('https://multisports-scoring.pages.dev/'), 'official destination URL'],
@@ -105,6 +106,12 @@ const checks = [
   [index.includes('destination_link: safeDestination') && index.includes("replace('{{APP_LINK}}', safeDestination"), 'user-facing replies use the official app destination instead of workers.dev tracking URLs'],
   [targets.includes('forum discussion') && targets.includes('recommend'), 'search intents bias Brave toward real recommendation discussions'],
   [admin.includes('Intents rejetés') && admin.includes('Historique nettoyé'), 'dashboard exposes Intent Shield decisions and history cleanup'],
+  [index.includes("url.pathname === '/api/diagnostics/social-pipeline'") && index.includes('runSocialPipelineDiagnostic'), 'admin-only social pipeline diagnostic endpoint'],
+  [diagnostic.includes('braveRequests: 0') && diagnostic.includes('databaseWrites: 0') && diagnostic.includes('publicationAttempted: false'), 'diagnostic explicitly guarantees no Brave, no D1 writes and no publication'],
+  [diagnostic.includes('intentShieldDecision') && diagnostic.includes('classifyCandidates') && diagnostic.includes('generateAndAuditSocialDraft'), 'diagnostic exercises Intent Shield, classifier, Social Growth and QA'],
+  [diagnostic.includes('reddit.com/r/darts') && diagnostic.includes('Can anyone recommend one?'), 'diagnostic uses a synthetic explicit user-need community candidate'],
+  [admin.includes('Tester pipeline social') && admin.includes('/api/diagnostics/social-pipeline'), 'dashboard exposes explicit final pipeline diagnostic action'],
+  [admin.includes('Brave : ') && admin.includes('Écritures D1 : ') && admin.includes('Publication : '), 'dashboard diagnostic reports zero-side-effect guarantees'],
   [index.includes("url.pathname === '/api/social/campaigns'"), 'social campaign admin endpoint'],
   [index.includes('approved_asset_required'), 'campaign approval requires approved media'],
   [index.includes('hourlyTick'), 'hourly market rotation'],

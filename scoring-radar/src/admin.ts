@@ -18,7 +18,7 @@ export function adminHtml(): string {
   .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.card{border:1px solid #29374b;border-radius:16px;padding:15px;background:#0a1019}.card.hot{border-color:#d6ad15;box-shadow:inset 0 0 0 1px rgba(241,196,15,.15)}.card.pass{border-color:#2b7952}.card.reject{border-color:#6a3030;opacity:.86}
   .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pill{font-size:11px;border:1px solid #34465f;border-radius:999px;padding:5px 8px;color:#b7c5d8}.score{margin-left:auto;font-weight:900;font-size:19px;color:#f5d44c}.card h3{font-size:16px;margin:12px 0 7px}.snippet{font-size:13px;line-height:1.45;color:#aeb9c9;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.reason{font-size:12px;color:#7fd9ff;margin-top:10px}.reply,.copybox{font-size:13px;line-height:1.45;background:#0d1722;border-radius:12px;padding:11px;margin-top:10px;white-space:pre-wrap}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}.actions a,.actions button,.actions select{border:1px solid #34465f;border-radius:10px;background:#101b28;color:#fff;text-decoration:none;padding:8px 10px;font-size:12px;cursor:pointer}.actions button.danger{border-color:#703939;color:#ffaaaa}
   .qa{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:11px}.qa div{background:#0d1520;border-radius:10px;padding:8px;font-size:11px;color:#aeb9c9}.qa b{display:block;color:#fff;font-size:15px}.assetForm{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(160px,.7fr) 120px repeat(3,90px) 150px;gap:8px;margin-top:14px}.assetForm .wide{min-width:0}.check{height:44px;display:flex;align-items:center;gap:7px;padding:0 10px;border:1px solid #344358;border-radius:11px;background:#0c121c;color:#c4cfdb;font-size:12px}.check input{height:auto;margin:0;padding:0}
-  .safeBox{margin-top:12px;padding:12px;border-radius:13px;border:1px solid #31516b;background:#0b1722;color:#b9d5e9;font-size:13px;line-height:1.45}.empty{padding:28px;text-align:center;color:#8c9aad}.foot{padding:22px 0;color:#718095;font-size:12px;text-align:center}
+  .safeBox{margin-top:12px;padding:12px;border-radius:13px;border:1px solid #31516b;background:#0b1722;color:#b9d5e9;font-size:13px;line-height:1.45}.diagBox{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}.diagButton{border:1px solid #d6ad15;border-radius:11px;background:#f1c40f;color:#090b0e;padding:10px 14px;font-weight:900;cursor:pointer}.diagButton:disabled{opacity:.55;cursor:not-allowed}.diagnosticResult{grid-column:1/-1;margin-top:2px;padding:10px;border-radius:11px;background:#0c151f;color:#aeb9c9;font-size:12px;line-height:1.5}.diagnosticResult.ok{border:1px solid #2b7952;color:#a8efc4}.diagnosticResult.warn{border:1px solid #806a20;color:#ffe28a}.diagnosticResult.err{border:1px solid #7d3333;color:#ffaaaa}.diagMetrics{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.diagMetrics span{border:1px solid #34465f;border-radius:999px;padding:5px 8px;color:#c5d2e2}.empty{padding:28px;text-align:center;color:#8c9aad}.foot{padding:22px 0;color:#718095;font-size:12px;text-align:center}
   .scanMonitor{margin-top:14px;border:1px solid #31435a;border-radius:16px;background:#09111a;padding:14px}.scanMonitor.failed{border-color:#7d3333}.scanMonitor.done{border-color:#2c6d4d}.scanTop{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.scanTitle{font-weight:900;font-size:16px}.scanClock{font-variant-numeric:tabular-nums;color:#f6d65b;font-weight:900}.scanTrack{height:10px;background:#111d2b;border:1px solid #263b52;border-radius:999px;overflow:hidden;margin:12px 0}.scanBar{height:100%;width:0;background:linear-gradient(90deg,#f1c40f,#8de5ff);transition:width .35s ease}.scanMonitor.failed .scanBar{background:#ff7373}.scanMonitor.done .scanBar{background:#73dfa3}
   .scanSteps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.scanStep{border:1px solid #223146;background:#0c151f;border-radius:11px;padding:9px;font-size:12px;color:#75869a}.scanStep b{display:block;color:#b8c5d5;margin-bottom:3px}.scanStep.active{border-color:#c9a81c;color:#f3d868}.scanStep.active b{color:#fff}.scanStep.done{border-color:#2b694b;color:#8fe7b0}.scanStep.done b{color:#fff}.scanStep.failed{border-color:#7d3333;color:#ff9e9e}.scanMetrics{display:grid;grid-template-columns:repeat(5,minmax(80px,1fr));gap:7px;margin-top:12px}.scanMetric{background:#0c151f;border-radius:10px;padding:9px}.scanMetric b{display:block;font-size:18px}.scanMetric span{font-size:10px;color:#8292a5;text-transform:uppercase}.scanDetail{margin-top:10px;color:#9eb0c3;font-size:12px;line-height:1.45;overflow-wrap:anywhere}.scanError{margin-top:10px;padding:9px;border-radius:10px;background:#261313;color:#ffb0b0;display:none}.scanError.visible{display:block}
   @media(max-width:1100px){.scanSteps{grid-template-columns:repeat(2,1fr)}.scanMetrics{grid-template-columns:repeat(4,1fr)}.assetForm{grid-template-columns:1fr 1fr}.stats{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}
@@ -61,6 +61,7 @@ export function adminHtml(): string {
       <div class="stat"><b id="cTotal">—</b><span>Campagnes</span></div><div class="stat"><b id="cReady">—</b><span>À valider</span></div><div class="stat"><b id="cApproved">—</b><span>Approuvées</span></div><div class="stat"><b id="cRejected">—</b><span>Rejetées QA</span></div><div class="stat"><b id="cAssets">—</b><span>Médias approuvés</span></div>
     </div>
     <div class="safeBox"><b>Verrou média :</b> la V1 n'autorise que des captures/vidéos réellement approuvées. Les créations IA aléatoires, faux écrans, faux avis, faux chiffres et médias non contrôlés restent bloqués.</div>
+    <div class="safeBox diagBox"><div><b>Validation finale :</b> teste Intent Shield → classification IA → Social Growth → QA sans Brave, sans écriture D1 et sans publication.</div><button id="diagnosticSocial" class="diagButton" type="button">Tester pipeline social</button><div id="diagnosticResult" class="diagnosticResult">Diagnostic non lancé.</div></div>
     <form id="assetForm" class="assetForm">
       <input class="wide" id="assetUrl" placeholder="URL HTTPS du média approuvé" required />
       <input id="assetTitle" placeholder="Nom du média" />
@@ -86,6 +87,7 @@ export function adminHtml(): string {
   const status = $('status');
   const tokenInput = $('token');
   const runButton = $('run');
+  const diagnosticButton = $('diagnosticSocial');
   tokenInput.value = sessionStorage.getItem('scoringRadarToken') || '';
   let authenticatedToken = '';
   const headers = () => ({ Authorization: 'Bearer ' + tokenInput.value.trim() });
@@ -210,6 +212,25 @@ export function adminHtml(): string {
     root.querySelectorAll('[data-reject]').forEach((b)=>b.addEventListener('click',async()=>{try{await request('/api/social/campaigns/'+b.dataset.reject+'/reject',{method:'POST'});setStatus('Campagne rejetée.','ok');load(false);}catch(e){setStatus('Erreur : '+e.message,'err');}}));
   }
 
+  function renderDiagnostic(data){
+    const box=$('diagnosticResult');
+    const classification=data&&data.classification?data.classification:null;
+    const social=data&&data.social?data.social:null;
+    const qa=social&&social.qa?social.qa:null;
+    const draft=social&&social.draft?social.draft:null;
+    const pipelineOk=Boolean(data&&data.ok);
+    const qaPasses=social&&social.qaPasses===true;
+    box.className='diagnosticResult '+(pipelineOk?(qaPasses?'ok':'warn'):'err');
+    const parts=[];
+    parts.push('<b>'+(pipelineOk?'Pipeline exécuté':'Diagnostic en échec')+'</b> • étape '+esc(data&&data.stage||'—')+' • '+(Number(data&&data.elapsedMs||0)/1000).toFixed(1)+' s');
+    parts.push('<div class="diagMetrics"><span>Brave : '+esc((data&&data.braveRequests)??0)+'</span><span>Écritures D1 : '+esc((data&&data.databaseWrites)??0)+'</span><span>Publication : '+(data&&data.publicationAttempted?'OUI':'NON')+'</span><span>Intent Shield : '+(data&&data.intentShield&&data.intentShield.passed?'OK':'KO')+'</span><span>Classification : '+(classification?esc(classification.score)+'/100':'—')+'</span><span>QA : '+(qa?(qaPasses?'PASS':'REJECT'):'—')+'</span></div>');
+    if(classification)parts.push('<div>Classification : '+esc(classification.category)+' • '+esc(classification.intent)+' • '+esc(classification.reason||'')+'</div>');
+    if(qa)parts.push('<div>QA : qualité '+esc(qa.qualityScore)+' • factuel '+esc(qa.factualScore)+' • visuel '+esc(qa.visualScore)+' • spam '+esc(qa.spamRisk)+' • cringe '+esc(qa.cringeRisk)+' • '+esc(qa.reason||'')+'</div>');
+    if(draft)parts.push('<div>Campagne diagnostic : <b>'+esc(draft.hook||draft.topic||'')+'</b></div>');
+    if(data&&data.error)parts.push('<div>Erreur : '+esc(data.error)+'</div>');
+    box.innerHTML=parts.join('');
+  }
+
   async function load(showLoading=true){
     if(!tokenInput.value.trim()){setStatus('Token administrateur requis.','err');return;}
     if(showLoading)setStatus('Chargement…');
@@ -230,6 +251,30 @@ export function adminHtml(): string {
       } else setStatus(run.stalled?'Scan actif mais sans mise à jour récente : watchdog en surveillance.':'Scan en cours : suivi automatique actif.',run.stalled?'warn':'ok');
     }catch(error){setStatus('Erreur : '+error.message,'err');}
   }
+
+  diagnosticButton.addEventListener('click',async()=>{
+    if(!tokenInput.value.trim())return setStatus('Token administrateur requis.','err');
+    diagnosticButton.disabled=true;
+    $('diagnosticResult').className='diagnosticResult';
+    $('diagnosticResult').textContent='Diagnostic en cours : aucune recherche Brave, aucune écriture D1, aucune publication…';
+    setStatus('Test du pipeline Social Growth en cours…','ok');
+    try{
+      await ensureAuth();
+      const result=await request('/api/diagnostics/social-pipeline',{method:'POST'});
+      renderDiagnostic(result);
+      if(result.ok){
+        setStatus(result.social&&result.social.qaPasses?'Pipeline social validé de bout en bout.':'Pipeline social exécuté : la QA a correctement rejeté la création diagnostic.','ok');
+      }else{
+        setStatus('Diagnostic arrêté à l’étape '+String(result.stage||'inconnue')+' : '+String(result.error||'raison inconnue'),'err');
+      }
+    }catch(error){
+      $('diagnosticResult').className='diagnosticResult err';
+      $('diagnosticResult').textContent='Erreur diagnostic : '+error.message;
+      setStatus('Erreur diagnostic : '+error.message,'err');
+    }finally{
+      diagnosticButton.disabled=false;
+    }
+  });
 
   $('assetForm').addEventListener('submit',async(e)=>{e.preventDefault();try{const body={url:$('assetUrl').value.trim(),title:$('assetTitle').value.trim(),mediaType:$('assetType').value,qualityScore:Number($('assetQuality').value),technicalScore:Number($('assetTechnical').value),brandScore:Number($('assetBrand').value),humanApproved:$('assetApproved').checked,platforms:['facebook_page','instagram_reel','youtube_short','tiktok']};const result=await request('/api/social/assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setStatus(result.humanApproved?'Média ajouté et approuvé.':'Média ajouté mais NON approuvé : vérifie les scores et la validation humaine.','ok');e.target.reset();$('assetQuality').value='95';$('assetTechnical').value='95';$('assetBrand').value='95';load(false);}catch(error){setStatus('Erreur ajout média : '+error.message,'err');}});
   $('save').addEventListener('click',()=>{authenticatedToken='';load();});

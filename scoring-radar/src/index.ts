@@ -35,6 +35,7 @@ import { generateAndAuditSocialDraft, socialQaPasses } from './social';
 import { SEARCH_INTENTS } from './targets';
 import { sourceQualityReason } from './source-quality';
 import { enforceIntentShield, hardIntentShieldReason, opportunityPassesIntentShield } from './intent-shield';
+import { runSocialPipelineDiagnostic } from './diagnostic';
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {
@@ -204,6 +205,12 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     const run = await getRunProgress(env, runProgressMatch[1]!);
     if (!run) return json({ ok: false, error: 'run_not_found' }, 404);
     return json({ ok: true, run: runProgressPayload(env, run) });
+  }
+
+
+  if (request.method === 'POST' && url.pathname === '/api/diagnostics/social-pipeline') {
+    const result = await runSocialPipelineDiagnostic(env);
+    return json(result);
   }
 
   if (request.method === 'GET' && url.pathname === '/api/social/stats') {
