@@ -1,0 +1,8 @@
+import fs from "node:fs/promises";
+import fssync from "node:fs";
+import path from "node:path";
+function arg(name,fallback=""){const i=process.argv.indexOf(name);return i>=0?(process.argv[i+1]??fallback):fallback;}
+const pilotFile=path.resolve(arg("--pilot","var/fit-awena/pilot/pilot-queue.json"));const outFile=path.resolve(arg("--out","var/fit-awena/pilot/video-queue.json"));
+const q=JSON.parse(await fs.readFile(pilotFile,"utf8"));const jobs=[];
+for(const job of q.jobs||[]){const dir=path.resolve(job.outputRoot);const metaFile=path.join(dir,"metadata.json");if(!fssync.existsSync(metaFile))continue;let meta={};try{meta=JSON.parse(await fs.readFile(metaFile,"utf8"));}catch{continue;}if(meta?.visualReview?.status!=="APPROVED_FOR_VIDEO"||meta?.videoGate?.allowed!==true)continue;const steps=Array.from({length:4},(_,i)=>path.join(dir,`raw-step-${String(i+1).padStart(2,"0")}.webp`));if(!steps.every(f=>fssync.existsSync(f)))continue;jobs.push({version:1,pipelineStage:"VIDEO_FROM_REVIEWED_STEPS",exerciseId:job.exerciseId,assetKey:job.assetKey,name:job.name,equipment:job.equipment,identityReference:steps[0],awenaStepReferences:steps,motionReferenceVideos:job.referenceVideos||[],referenceImages:job.referenceImages||[],policy:{requiresReviewedStills:true,oneVideoJobAtATime:true,noAutomaticPublication:true},outputRoot:job.outputRoot});}
+await fs.mkdir(path.dirname(outFile),{recursive:true});await fs.writeFile(outFile,JSON.stringify({version:1,generatedAt:new Date().toISOString(),count:jobs.length,policy:{humanReviewedStillsRequired:true,rawDirectCatalogToWanForbidden:true},jobs},null,2));console.log(JSON.stringify({videoJobs:jobs.length},null,2));console.log(`Video queue gate -> ${path.relative(process.cwd(),outFile)}`);

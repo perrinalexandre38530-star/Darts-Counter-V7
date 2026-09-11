@@ -155,7 +155,13 @@
     "seo:indexnow": "node ./tools/submit-indexnow.mjs",
     "seo:build": "node ./tools/build-seo-public-pages.mjs",
     "seo:check": "npm run seo:build && npm run test:seo",
-    "test:health-connect": "node ./tools/test-health-connect-compliance-v16.mjs"
+    "test:health-connect": "node ./tools/test-health-connect-compliance-v16.mjs",
+    "fit:awena:pilot:build": "node ./tools/build-fit-awena-pilot-jobs.mjs",
+    "fit:awena:pilot:refs": "node ./tools/prepare-fit-awena-pilot-references.mjs",
+    "fit:awena:pilot:run": "node ./tools/run-comfyui-awena-image-pilot.mjs",
+    "fit:awena:pilot:review": "node ./tools/review-fit-awena-pilot-steps.mjs",
+    "fit:awena:pilot:video:queue": "node ./tools/build-fit-awena-video-jobs-from-reviewed-steps.mjs",
+    "test:fit-awena-pilot": "node ./tools/test-fit-awena-pilot-v118.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

@@ -1,0 +1,88 @@
+{
+  "name": "FIT_AWENA_V118_IMAGE_FIRST_PILOT_PATCH",
+  "displayName": "FIT PERF · AWENA image-first pilot V118",
+  "baseReference": "Darts-Counter-V7(71).zip",
+  "baseReferenceSha256": "d3796c40add23868948c4e7e5dc9b1c57e8dff3d1ab950347789208d4bc92cd5",
+  "generatedAt": "2026-09-10T17:00:00+02:00",
+  "policy": {
+    "directWanBatchDeprecated": true,
+    "stillsBeforeVideo": true,
+    "humanReviewBeforeVideo": true,
+    "oneImageAtATime": true,
+    "existingManualAwenaUntouched": true
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "bytes": 15331,
+      "sha256": "9dc9d63bc24b7c28a1a6bb73e637950491d0cf73d7500cef4b9e396510eb1539",
+      "status": "modified"
+    },
+    {
+      "path": "tools/comfyui/README-AWENA-FULL-LIBRARY.md",
+      "bytes": 6076,
+      "sha256": "6e6336b5f464e8caab0a3904a68a919ee203285e108102d33ca46634e24b1774",
+      "status": "modified"
+    },
+    {
+      "path": "tools/comfyui/AWENA_IMAGE_PILOT_WORKFLOW.md",
+      "bytes": 1450,
+      "sha256": "8e6cbab7f6bfef9f7bd4c70b51a12268ca39d02050af0c3ec83a9dc0e01421f8",
+      "status": "created"
+    },
+    {
+      "path": "tools/fit-awena-pilot-quality.mjs",
+      "bytes": 3340,
+      "sha256": "1da6057ceb3fa4d0b33a7e3cbc91853354880f4bf8d312046dd7aa61cea391e9",
+      "status": "created"
+    },
+    {
+      "path": "tools/build-fit-awena-pilot-jobs.mjs",
+      "bytes": 7458,
+      "sha256": "e49fd8a052adaf8d0212a3406a2cc466c8aed0d008c5302e60d5ef83a47a722b",
+      "status": "created"
+    },
+    {
+      "path": "tools/prepare-fit-awena-pilot-references.mjs",
+      "bytes": 6430,
+      "sha256": "b8dc129f6516cfebe2e4da97bc24163236cd82dae99fc7602367a1061512f4dd",
+      "status": "created"
+    },
+    {
+      "path": "tools/run-comfyui-awena-image-pilot.mjs",
+      "bytes": 11763,
+      "sha256": "2bee1f2cbd0684fc84fd9491fb796f6d4cb5372b6a3e89b0eb678c57f4cfb464",
+      "status": "created"
+    },
+    {
+      "path": "tools/review-fit-awena-pilot-steps.mjs",
+      "bytes": 1670,
+      "sha256": "2e3c610c21028450071e3b155fa83aff42fad4316de7230cb7cc7293e762ebde",
+      "status": "created"
+    },
+    {
+      "path": "tools/build-fit-awena-video-jobs-from-reviewed-steps.mjs",
+      "bytes": 1738,
+      "sha256": "12caf31ca22a1db794482b49f1668c17f750ac25e9923b99b1cdb527e97158b1",
+      "status": "created"
+    },
+    {
+      "path": "tools/test-fit-awena-pilot-v118.mjs",
+      "bytes": 1496,
+      "sha256": "4260c41036672ddbd011095b746d05466f7624787a150ca7cc566346fea77974",
+      "status": "created"
+    },
+    {
+      "path": "FIT_AWENA_V118_IMAGE_FIRST_INSTALL.txt",
+      "bytes": 2091,
+      "sha256": "9697101a4a0d6601ef0ec4e365c11054a9a671cfa0c3cb9e7fa32f34927581f4",
+      "status": "created"
+    },
+    {
+      "path": "PACKAGE_JSON_V118_VERIFICATION.txt",
+      "bytes": 502,
+      "sha256": "27fc67125c9504f8a71410ad694ee664afd65767a637ec5a8382f5c66e3df27e",
+      "status": "created"
+    }
+  ]
+}

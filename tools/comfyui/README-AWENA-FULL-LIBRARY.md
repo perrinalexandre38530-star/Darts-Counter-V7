@@ -1,3 +1,28 @@
+# V118 — pipeline AWENA image-first (RECOMMANDÉ)
+
+> **Ne plus lancer le catalogue complet directement dans WAN.** Les essais sur poste 12 Go VRAM ont montré qu'un rendu vidéo direct peut saturer la machine et produire cadrage/fond instables. Le pipeline par défaut devient : références -> 4 images AWENA -> contrôle technique -> validation humaine -> seulement ensuite vidéo.
+
+Commandes du pilote :
+
+```bash
+npm run fit:awena:pilot:build -- --limit 10 --refresh
+npm run fit:awena:pilot:refs
+npm run fit:awena:pilot:run -- --limit 1
+```
+
+Le runner image utilise le modèle local FLUX.2 Klein 4B et fonctionne **séquentiellement** (une image à la fois, avec retry et cooldown). Le workflow image n'est configuré qu'une fois ; voir `tools/comfyui/AWENA_IMAGE_PILOT_WORKFLOW.md`.
+
+Après inspection du contact sheet d'un exercice :
+
+```bash
+npm run fit:awena:pilot:review -- --asset <assetKey> --approve
+npm run fit:awena:pilot:video:queue
+```
+
+Aucun job vidéo n'est créé tant que les 4 images n'ont pas passé le QA technique **et** la validation visuelle. Les anciens médias AWENA manuels restent prioritaires et ne sont pas régénérés.
+
+---
+
 # FIT PERF · AWENA-WAN batch
 
 Le workflow API fourni dans ce dossier est maintenant adapté directement depuis le workflow ComfyUI AWENA push-up validé.
