@@ -51,3 +51,7 @@ var/fit-awena/
 
 # Temporary Cloudflare content-pack publish build (never commit)
 .mss-content-packs-build/
+
+# Generated local files
+app/.gradle/
+content-packs-dist/

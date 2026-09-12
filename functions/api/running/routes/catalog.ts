@@ -113,7 +113,7 @@ function overpassQuery(lat: number, lon: number, sport: string, radiusKm: number
   const bbox = bboxAround(lat, lon, radiusKm);
   const kinds = routeKindsForSport(sport);
   const box = `${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)}`;
-  return `[out:json][timeout:28];\nrelation["type"="route"]["route"~"^(${kinds})$"](${box});\nout geom(${box});`;
+  return `[out:json][timeout:12];\nrelation["type"="route"]["route"~"^(${kinds})$"](${box});\nout geom(${box});`;
 }
 
 function haversineMeters(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
@@ -226,14 +226,27 @@ function osmRelationToRoute(relation: any, sport: string): CatalogRoute | null {
   };
 }
 
+function endpointSignal(parent: AbortSignal, timeoutMs: number) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (parent.aborted) controller.abort();
+  else parent.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    dispose: () => { clearTimeout(timer); parent.removeEventListener("abort", abort); },
+  };
+}
+
 async function fetchOverpass(query: string, signal: AbortSignal) {
   const errors: string[] = [];
   for (const endpoint of OVERPASS_ENDPOINTS) {
+    const scoped = endpointSignal(signal, 2400);
     try {
       const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
         method: "GET",
         headers: { accept: "application/json", "user-agent": "MULTISPORTS-SCORING-RouteCatalog/2.0" },
-        signal,
+        signal: scoped.signal,
       });
       if (!response.ok) { errors.push(`${endpoint}:${response.status}`); continue; }
       const data = await response.json();
@@ -241,7 +254,9 @@ async function fetchOverpass(query: string, signal: AbortSignal) {
       return { data, endpoint };
     } catch (error: any) {
       if (signal.aborted) throw error;
-      errors.push(`${endpoint}:${String(error?.message || error || "network")}`);
+      errors.push(`${endpoint}:${error?.name === "AbortError" ? "timeout" : String(error?.message || error || "network")}`);
+    } finally {
+      scoped.dispose();
     }
   }
   throw new Error(errors.join(" | ") || "route_catalog_unavailable");
@@ -544,10 +559,18 @@ function providerScore(route: CatalogRoute) {
   return 12;
 }
 
-function dedupeAndRank(routes: CatalogRoute[], lat: number, lon: number, targetKm: number) {
+function minimumRouteDistanceM(sport: string) {
+  if (sport === "walking") return 1000;
+  if (sport === "nordic-walking" || sport === "running") return 1500;
+  if (sport === "trail" || sport === "hiking") return 2500;
+  return 1000;
+}
+
+function dedupeAndRank(routes: CatalogRoute[], lat: number, lon: number, targetKm: number, sport: string) {
   const exact = new Map<string, CatalogRoute>();
+  const minDistanceM = minimumRouteDistanceM(sport);
   for (const route of routes) {
-    if (!route?.route?.length || route.distanceM < 700) continue;
+    if (!route?.route?.length || route.distanceM < minDistanceM) continue;
     const key = route.externalId || route.id;
     const existing = exact.get(key);
     if (!existing || route.route.length > existing.route.length) exact.set(key, route);
@@ -584,6 +607,13 @@ function cacheRequestUrl(request: Request, lat: number, lon: number, sport: stri
   return new Request(u.toString(), { method: "GET" });
 }
 
+async function settleWithin<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((resolve) => { timer = setTimeout(() => resolve(fallback), timeoutMs); });
+  try { return await Promise.race([promise, timeout]); }
+  finally { if (timer) clearTimeout(timer); }
+}
+
 export const onRequestOptions: PagesFunction<Env> = async () => new Response(null, {
   status: 204,
   headers: {
@@ -614,11 +644,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 31_000);
+  const timer = setTimeout(() => controller.abort(), 9_500);
+  const startedAt = Date.now();
   const warnings: string[] = [];
   let osmElements: any[] = [];
   let osmUpstream = "";
   try {
+    // Start every source immediately, but never let a slow public provider hold the UI
+    // hostage. The persistent catalogue gets a very short fast-path budget; OSM and
+    // Outdooractive keep enriching the response only while they remain responsive.
     const storedPromise = searchPersistentCatalog(env, lat, lon, sport, radiusKm, targetKm, controller.signal);
     const osmPromise = fetchOverpass(overpassQuery(lat, lon, sport, radiusKm), controller.signal)
       .then(({ data, endpoint }) => {
@@ -630,8 +664,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
     const outdooractivePromise = fetchOutdooractive(env, lat, lon, sport, radiusKm, targetKm, controller.signal)
       .catch((error) => { warnings.push(`outdooractive:${String(error?.message || error)}`); return [] as CatalogRoute[]; });
 
-    const [stored, osmRoutes, outdooractiveRoutes] = await Promise.all([storedPromise, osmPromise, outdooractivePromise]);
-    const routes = dedupeAndRank([...stored, ...osmRoutes, ...outdooractiveRoutes], lat, lon, targetKm);
+    const stored = await settleWithin(storedPromise, 2200, [] as CatalogRoute[]);
+    const remoteBudget = stored.length >= 18 ? 1200 : 5200;
+    const [osmRoutes, outdooractiveRoutes] = await Promise.all([
+      settleWithin(osmPromise, remoteBudget, [] as CatalogRoute[]),
+      settleWithin(outdooractivePromise, stored.length >= 18 ? 900 : 4200, [] as CatalogRoute[]),
+    ]);
+    const routes = dedupeAndRank([...stored, ...osmRoutes, ...outdooractiveRoutes], lat, lon, targetKm, sport);
     if (osmRoutes.length) waitUntil(persistRoutes(env, osmRoutes));
 
     const providerCounts = routes.reduce((acc: Record<string, number>, route) => {
@@ -655,6 +694,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
       warnings,
       persistentCatalog: Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY),
       outdooractiveEnabled: Boolean(env.OUTDOORACTIVE_API_KEY && env.OUTDOORACTIVE_PROJECT_KEY),
+      elapsedMs: Date.now() - startedAt,
     }, 200, { "x-mss-route-catalog-cache": "MISS" });
     waitUntil(cache.put(cacheKey, response.clone()));
     return response;

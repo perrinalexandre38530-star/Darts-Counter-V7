@@ -331,6 +331,7 @@ export default function RunningModule({ go, params }: Props) {
     const checkpointAnnouncedRef = React.useRef<Set<string>>(new Set());
     const routeElevationTriedRef = React.useRef<Set<string>>(new Set());
     const routeSwipeStartXRef = React.useRef<number | null>(null);
+    const routeScoutRequestSeqRef = React.useRef(0);
     const rerouteAbortRef = React.useRef<AbortController | null>(null);
     const rerouteLastRequestedAtRef = React.useRef(0);
     const rerouteLastOriginRef = React.useRef<GeoPoint | null>(null);
@@ -441,7 +442,7 @@ export default function RunningModule({ go, params }: Props) {
             if (seen.has(key)) continue;
             seen.add(key);
             unique.push(routeElevationOverrides[route.id] || route);
-            if (unique.length >= 24) break;
+            if (unique.length >= 48) break;
         }
         return unique;
     }, [activities, activitySport, discoveredRoutes, offlineRoutes, routeElevationOverrides, savedRoutes]);
@@ -1636,7 +1637,7 @@ export default function RunningModule({ go, params }: Props) {
     }, []);
     const resolveRoutePosition = React.useCallback(async (): Promise<GeoPoint> => {
         const cachedPoint = routeDiscoveryCenter;
-        if (cachedPoint && Date.now() - Number(cachedPoint.timestamp || 0) < 90_000 && (!Number.isFinite(cachedPoint.accuracy) || Number(cachedPoint.accuracy) <= 30)) {
+        if (cachedPoint && Date.now() - Number(cachedPoint.timestamp || 0) < 5 * 60_000 && (!Number.isFinite(cachedPoint.accuracy) || Number(cachedPoint.accuracy) <= 250)) {
             setAccuracy(Number.isFinite(cachedPoint.accuracy) ? Number(cachedPoint.accuracy) : null);
             return cachedPoint;
         }
@@ -1652,10 +1653,10 @@ export default function RunningModule({ go, params }: Props) {
                 await openNativeLocationSettings();
                 throw new Error(pickLegacyLocalizedText(lang, "Active le GPS Android puis réessaie.", "Turn on Android location then try again.", "Activa la ubicación Android y vuelve a intentarlo."));
             }
-            point = await getNativeCurrentPosition(10000);
+            point = await getNativeCurrentPosition(6000);
         } else {
             try {
-                point = await acquireWebGpsFix({ timeoutMs: 16000, desiredAccuracyM: 30, maxAcceptableAccuracyM: 90 });
+                point = await acquireWebGpsFix({ timeoutMs: 6500, desiredAccuracyM: 80, maxAcceptableAccuracyM: 350 });
             } catch {
                 point = null;
             }
@@ -1668,35 +1669,76 @@ export default function RunningModule({ go, params }: Props) {
 
     const scoutExistingRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;
+        const requestSeq = ++routeScoutRequestSeqRef.current;
+        let selectedEarly = false;
+        let firstProgressApplied = false;
+        setRouteChooseMode("scout");
         setRouteScoutBusy(true);
-        setRouteScoutMessage(pickLegacyLocalizedText(lang, "RECHERCHE DES MEILLEURS PARCOURS…", "SEARCHING THE BEST ROUTES…", "BUSCANDO LAS MEJORES RUTAS…"));
+        setRouteScoutMessage(pickLegacyLocalizedText(lang, "SCOUT IA · recherche rapide multi-source…", "AI SCOUT · fast multi-source search…", "SCOUT IA · búsqueda rápida multifuente…"));
         try {
             const point = await resolveRoutePosition();
+            if (requestSeq !== routeScoutRequestSeqRef.current) return;
             const result = await scoutExistingOutdoorRoutes({
                 center: { lat: point.lat, lon: point.lon },
                 sport: activitySport,
                 radiusKm: routeScoutRadiusKm,
                 targetDistanceKm: routeGenerationDistanceKm,
-                minResults: 18,
+                minResults: 24,
                 profile: routeGenerationProfile,
                 shape: routeGenerationShape,
+                onProgress: (progress) => {
+                    if (requestSeq !== routeScoutRequestSeqRef.current || !progress.routes.length) return;
+                    firstProgressApplied = true;
+                    setDiscoveredRoutes(progress.routes);
+                    if (!selectedEarly) {
+                        selectedEarly = true;
+                        selectRoute(progress.routes[0]);
+                    }
+                    const exact = progress.routes.filter((route) => {
+                        const targetM = routeGenerationDistanceKm * 1000;
+                        return targetM > 0 && Math.abs(Number(route.distanceM || 0) - targetM) / targetM <= .15;
+                    }).length;
+                    const strong = progress.routes.filter((route) => Number(route.scout?.score || 0) >= 64).length;
+                    const stageLabel = progress.stage === "cache"
+                        ? pickLegacyLocalizedText(lang, "cache instantané", "instant cache", "caché instantánea")
+                        : progress.stage === "community"
+                        ? pickLegacyLocalizedText(lang, "communauté", "community", "comunidad")
+                        : progress.stage === "local"
+                        ? pickLegacyLocalizedText(lang, "zone proche", "nearby area", "zona cercana")
+                        : progress.stage === "expanded"
+                        ? pickLegacyLocalizedText(lang, "zone élargie", "expanded area", "zona ampliada")
+                        : progress.stage === "generated"
+                        ? pickLegacyLocalizedText(lang, "sur mesure", "custom routes", "rutas a medida")
+                        : pickLegacyLocalizedText(lang, "finalisation", "finalising", "finalizando");
+                    setRouteScoutMessage(pickLegacyLocalizedText(lang,
+                        `${progress.routes.length} propositions déjà disponibles · ${strong} solides · ${exact} très proches de ${routeGenerationDistanceKm} km · ${stageLabel}. Le Scout continue d’enrichir la sélection…`,
+                        `${progress.routes.length} routes already available · ${strong} strong · ${exact} very close to ${routeGenerationDistanceKm} km · ${stageLabel}. Scout is still enriching the selection…`,
+                        `${progress.routes.length} rutas ya disponibles · ${strong} sólidas · ${exact} muy cerca de ${routeGenerationDistanceKm} km · ${stageLabel}. Scout sigue enriqueciendo la selección…`));
+                },
             });
+            if (requestSeq !== routeScoutRequestSeqRef.current) return;
             if (!result.routes.length) {
-                setRouteScoutMessage(pickLegacyLocalizedText(lang, "Aucun tracé cohérent n’a pu être construit ici. Essaie une autre distance ou un rayon plus large.", "No coherent route could be built here. Try another distance or a larger radius.", "No se pudo construir una ruta coherente aquí. Prueba otra distancia o un radio mayor."));
+                if (!firstProgressApplied) setDiscoveredRoutes([]);
+                setRouteScoutMessage(pickLegacyLocalizedText(lang, "Aucun tracé exploitable n’a répondu assez vite. Essaie un rayon supérieur ou une autre distance.", "No usable route answered quickly enough. Try a larger radius or another distance.", "Ninguna ruta utilizable respondió a tiempo. Prueba un radio mayor u otra distancia."));
                 return;
             }
             setDiscoveredRoutes(result.routes);
-            selectRoute(result.routes[0]);
-            setRouteChooseMode("scout");
+            if (!selectedEarly) selectRoute(result.routes[0]);
             const best = result.routes[0];
             const bestScore = Math.round(Number(best.scout?.score || 0));
             const generatedCount = result.routes.filter((route) => route.source === "generated").length;
             const communityCount = result.routes.filter((route) => route.source === "community").length;
-            const referencedCount = result.routes.filter((route) => route.source === "osm").length;
+            const referencedCount = result.routes.filter((route) => route.source === "osm" || route.source === "catalog").length;
+            const exactCount = result.routes.filter((route) => {
+                const targetM = routeGenerationDistanceKm * 1000;
+                return targetM > 0 && Math.abs(Number(route.distanceM || 0) - targetM) / targetM <= .15;
+            }).length;
             const searched = result.searchedRadiiKm.length ? ` · ${result.searchedRadiiKm.join("/")} km` : "";
-            const sourceNote = ` · ${referencedCount} référencés · ${communityCount} communauté · ${generatedCount} sur mesure`;
-            setRouteScoutMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours pertinents pour ${outdoorSportLabel(activitySport, lang)} · objectif ${routeGenerationDistanceKm} km · meilleure correspondance ${bestScore}%${sourceNote}${searched}.`, `${result.routes.length} relevant routes for ${outdoorSportLabel(activitySport, lang)} · ${routeGenerationDistanceKm} km target · best match ${bestScore}%${sourceNote}${searched}.`, `${result.routes.length} rutas relevantes para ${outdoorSportLabel(activitySport, lang)} · objetivo ${routeGenerationDistanceKm} km · mejor coincidencia ${bestScore}%${sourceNote}${searched}.`));
-            void Promise.all(result.routes.slice(0, 6).filter((route) => !routeHasElevation(route)).map(async (route) => {
+            setRouteScoutMessage(pickLegacyLocalizedText(lang,
+                `${result.routes.length} propositions · ${exactCount} très proches de ${routeGenerationDistanceKm} km · ${referencedCount} référencées · ${communityCount} communauté · ${generatedCount} sur mesure · meilleur score ${bestScore}%${searched}.`,
+                `${result.routes.length} proposals · ${exactCount} very close to ${routeGenerationDistanceKm} km · ${referencedCount} referenced · ${communityCount} community · ${generatedCount} custom · best score ${bestScore}%${searched}.`,
+                `${result.routes.length} propuestas · ${exactCount} muy cerca de ${routeGenerationDistanceKm} km · ${referencedCount} referenciadas · ${communityCount} comunidad · ${generatedCount} a medida · mejor puntuación ${bestScore}%${searched}.`));
+            void Promise.all(result.routes.slice(0, 8).filter((route) => !routeHasElevation(route)).map(async (route) => {
                 try {
                     const enriched = await enrichOutdoorRouteElevation(route);
                     if (!routeHasElevation(enriched)) return;
@@ -1704,42 +1746,58 @@ export default function RunningModule({ go, params }: Props) {
                 } catch {}
             }));
         } catch (error: any) {
-            setRouteScoutMessage(error?.message || pickLegacyLocalizedText(lang, "Recherche de parcours indisponible pour le moment.", "Route search is currently unavailable.", "La búsqueda de rutas no está disponible por el momento."));
+            if (requestSeq === routeScoutRequestSeqRef.current) setRouteScoutMessage(error?.message || pickLegacyLocalizedText(lang, "Recherche de parcours indisponible pour le moment.", "Route search is currently unavailable.", "La búsqueda de rutas no está disponible por el momento."));
         } finally {
-            setRouteScoutBusy(false);
+            if (requestSeq === routeScoutRequestSeqRef.current) setRouteScoutBusy(false);
         }
     }, [activitySport, lang, resolveRoutePosition, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, routeScoutRadiusKm, selectRoute]);
 
     const discoverNearbyRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;
+        const requestSeq = ++routeScoutRequestSeqRef.current;
+        let selectedEarly = false;
         setRouteDiscoveryBusy(true);
-        setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, "RECHERCHE DES PARCOURS ADAPTÉS…", "SEARCHING SUITABLE ROUTES…", "BUSCANDO RUTAS ADECUADAS…"));
+        setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, "RECHERCHE RAPIDE DES PARCOURS ADAPTÉS…", "FAST SEARCH FOR SUITABLE ROUTES…", "BÚSQUEDA RÁPIDA DE RUTAS ADECUADAS…"));
         try {
             const point = await resolveRoutePosition();
+            if (requestSeq !== routeScoutRequestSeqRef.current) return;
             const result = await scoutExistingOutdoorRoutes({
                 center: { lat: point.lat, lon: point.lon },
                 sport: activitySport,
                 radiusKm: routeDiscoveryRadiusKm,
                 targetDistanceKm: routeGenerationDistanceKm,
-                minResults: 16,
+                minResults: 20,
                 profile: routeGenerationProfile,
                 shape: routeGenerationShape,
+                onProgress: (progress) => {
+                    if (requestSeq !== routeScoutRequestSeqRef.current || !progress.routes.length) return;
+                    setDiscoveredRoutes(progress.routes);
+                    if (!selectedEarly) {
+                        selectedEarly = true;
+                        selectRoute(progress.routes[0]);
+                    }
+                    setRouteDiscoveryMessage(pickLegacyLocalizedText(lang,
+                        `${progress.routes.length} parcours disponibles · recherche encore en cours…`,
+                        `${progress.routes.length} routes available · search still running…`,
+                        `${progress.routes.length} rutas disponibles · búsqueda todavía en curso…`));
+                },
             });
+            if (requestSeq !== routeScoutRequestSeqRef.current) return;
             setDiscoveredRoutes(result.routes);
             if (result.routes.length) {
                 const generatedCount = result.routes.filter((route) => route.source === "generated").length;
                 const existingCount = result.routes.length - generatedCount;
                 setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours adaptés trouvés pour ${routeGenerationDistanceKm} km · ${existingCount} existants · ${generatedCount} sur mesure.`, `${result.routes.length} suitable routes found for ${routeGenerationDistanceKm} km · ${existingCount} existing · ${generatedCount} custom.`, `${result.routes.length} rutas adecuadas encontradas para ${routeGenerationDistanceKm} km · ${existingCount} existentes · ${generatedCount} a medida.`));
-                if (!selectedRouteId) selectRoute(result.routes[0]);
+                if (!selectedEarly) selectRoute(result.routes[0]);
             } else {
-                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `Aucun parcours cohérent trouvé pour ${routeGenerationDistanceKm} km. Essaie une autre distance ou augmente le rayon.`, `No coherent route found for ${routeGenerationDistanceKm} km. Try another distance or increase the radius.`, `No se encontró una ruta coherente para ${routeGenerationDistanceKm} km. Prueba otra distancia o aumenta el radio.`));
+                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `Aucun parcours cohérent trouvé rapidement pour ${routeGenerationDistanceKm} km. Essaie une autre distance ou augmente le rayon.`, `No coherent route found quickly for ${routeGenerationDistanceKm} km. Try another distance or increase the radius.`, `No se encontró rápidamente una ruta coherente para ${routeGenerationDistanceKm} km. Prueba otra distancia o aumenta el radio.`));
             }
         } catch (error: any) {
-            setRouteDiscoveryMessage(error?.message || pickLegacyLocalizedText(lang, "Recherche cartographique indisponible.", "Map route search unavailable.", "Búsqueda cartográfica no disponible."));
+            if (requestSeq === routeScoutRequestSeqRef.current) setRouteDiscoveryMessage(error?.message || pickLegacyLocalizedText(lang, "Recherche cartographique indisponible.", "Map route search unavailable.", "Búsqueda cartográfica no disponible."));
         } finally {
-            setRouteDiscoveryBusy(false);
+            if (requestSeq === routeScoutRequestSeqRef.current) setRouteDiscoveryBusy(false);
         }
-    }, [activitySport, lang, resolveRoutePosition, routeDiscoveryRadiusKm, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, selectRoute, selectedRouteId]);
+    }, [activitySport, lang, resolveRoutePosition, routeDiscoveryRadiusKm, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, selectRoute]);
 
     const generateRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;

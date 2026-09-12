@@ -18,6 +18,7 @@ export type OutdoorRouteGenerationRequest = {
   count?: number;
   elevationGainMinM?: number | null;
   elevationGainMaxM?: number | null;
+  timeoutMs?: number;
 };
 
 export type OutdoorRouteGenerationResult = {
@@ -124,7 +125,7 @@ function orsProfileForSport(sport: OutdoorPerformanceSport) {
 async function generateOpenRouteServiceLoops(request: OutdoorRouteGenerationRequest, signal: AbortSignal): Promise<RunningRouteTemplate[]> {
   const apiKey = openRouteServiceApiKey();
   if (!apiKey || request.shape === "out-back" || request.sport === "treadmill") return [];
-  const count = clamp(Math.round(request.count || 3), 1, 5);
+  const count = clamp(Math.round(request.count || 3), 1, 8);
   const targetDistanceM = clamp(Number(request.distanceKm || 0) * 1000, 2000, 35000);
   const profile = request.profile || (request.sport === "trail" || request.sport === "hiking" ? "trails" : "balanced");
   const endpoint = `https://api.openrouteservice.org/v2/directions/${orsProfileForSport(request.sport)}/geojson`;
@@ -668,20 +669,28 @@ function labelProfile(profile: OutdoorRouteGenerationProfile) {
 async function fetchNetwork(query: string, signal: AbortSignal) {
   let lastError: unknown = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    const timer = window.setTimeout(() => controller.abort(), 3400);
     try {
       const url = `${endpoint}?data=${encodeURIComponent(query)}`;
       const response = await fetch(url, {
         method: "GET",
         headers: { Accept: "application/json" },
-        signal,
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
       const json = await response.json();
       if (!Array.isArray(json?.elements)) throw new Error("Réseau cartographique invalide.");
       return json.elements as OsmWay[];
-    } catch (error) {
+    } catch (error: any) {
       if (signal.aborted) throw error;
-      lastError = error;
+      lastError = error?.name === "AbortError" ? new Error("Overpass network timeout") : error;
+    } finally {
+      window.clearTimeout(timer);
+      signal.removeEventListener("abort", abort);
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Service cartographique indisponible.");
@@ -696,11 +705,11 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
   const targetDistanceM = distanceKm * 1000;
   const profile = request.profile || (sport === "trail" || sport === "hiking" ? "trails" : "balanced");
   const shape = request.shape || "loop";
-  const count = clamp(Math.round(request.count || 3), 1, 5);
+  const count = clamp(Math.round(request.count || 3), 1, 8);
   const elevationTarget = normalizeOutdoorElevationTarget(request.elevationGainMinM, request.elevationGainMaxM);
   const radiusM = Math.round(clamp(generationRadiusM(distanceKm, shape) * 1.28, 3000, 16500));
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 30000);
+  const timeout = window.setTimeout(() => controller.abort(), Math.max(4500, Math.min(30000, Number(request.timeoutMs || 30000))));
 
   try {
     try {
@@ -835,7 +844,7 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
       elevationTarget: elevationTargetResult,
     };
   } catch (error: any) {
-    if (error?.name === "AbortError") throw new Error("La génération a expiré. Réessaie avec une distance plus courte ou dans quelques secondes.");
+    if (error?.name === "AbortError") throw new Error("La génération rapide a atteint sa limite de temps. Le Scout conserve les parcours déjà trouvés.");
     throw error;
   } finally {
     window.clearTimeout(timeout);

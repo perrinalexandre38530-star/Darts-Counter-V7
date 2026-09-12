@@ -13,6 +13,10 @@ export type OutdoorRouteDiscoveryResult = {
   provider: "mss-global-route-catalog" | "openstreetmap-overpass";
 };
 
+export type OutdoorRouteDiscoveryOptions = {
+  timeoutMs?: number;
+};
+
 const OVERPASS_ENDPOINTS = [
   "https://overpass.private.coffee/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
@@ -48,7 +52,7 @@ function overpassQuery(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerfor
   const bbox = bboxAround(center, radiusKm);
   const routeKinds = routeKindsForSport(sport);
   const box = `${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)}`;
-  return `[out:json][timeout:22];\nrelation["type"="route"]["route"~"^(${routeKinds})$"](${box});\nout geom(${box});`;
+  return `[out:json][timeout:12];\nrelation["type"="route"]["route"~"^(${routeKinds})$"](${box});\nout geom(${box});`;
 }
 
 function sanitizeName(value: unknown, fallback: string) {
@@ -194,23 +198,38 @@ function relationToRoute(relation: any, center: OutdoorRouteDiscoveryCenter, spo
   };
 }
 
+function endpointSignal(parent: AbortSignal, timeoutMs: number) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (parent.aborted) controller.abort();
+  else parent.addEventListener("abort", abort, { once: true });
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    dispose: () => { window.clearTimeout(timer); parent.removeEventListener("abort", abort); },
+  };
+}
+
 async function fetchOverpass(query: string, signal: AbortSignal) {
   let lastError: unknown = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
+    const scoped = endpointSignal(signal, 2400);
     try {
       const url = `${endpoint}?data=${encodeURIComponent(query)}`;
       const response = await fetch(url, {
         method: "GET",
         headers: { Accept: "application/json" },
-        signal,
+        signal: scoped.signal,
       });
       if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
       const json = await response.json();
       if (!Array.isArray(json?.elements)) throw new Error("Réponse cartographique invalide.");
       return { json, provider: "openstreetmap-overpass" as const };
-    } catch (error) {
+    } catch (error: any) {
       if (signal.aborted) throw error;
-      lastError = error;
+      lastError = error?.name === "AbortError" ? new Error("Overpass timeout") : error;
+    } finally {
+      scoped.dispose();
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Service cartographique indisponible.");
@@ -290,12 +309,13 @@ export async function discoverOutdoorRoutes(
   sport: OutdoorPerformanceSport,
   radiusKm = 10,
   targetDistanceKm = 0,
+  options: OutdoorRouteDiscoveryOptions = {},
 ): Promise<OutdoorRouteDiscoveryResult> {
   if (!Number.isFinite(center.lat) || !Number.isFinite(center.lon)) throw new Error("Position invalide.");
   if (sport === "treadmill") return { routes: [], center, radiusKm, provider: "openstreetmap-overpass" };
   const safeRadius = Math.max(3, Math.min(60, Math.round(radiusKm)));
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 26000);
+  const timeout = window.setTimeout(() => controller.abort(), Math.max(3500, Math.min(12000, Number(options.timeoutMs || 9000))));
   try {
     const fetched = await fetchDiscoveryData(center, sport, safeRadius, controller.signal, targetDistanceKm);
     const json = fetched.json;
@@ -320,7 +340,7 @@ export async function discoverOutdoorRoutes(
     }
     return { routes: [...unique.values()], center, radiusKm: safeRadius, provider: fetched.provider };
   } catch (error: any) {
-    if (error?.name === "AbortError") throw new Error("La recherche de parcours a expiré. Réessaie dans quelques secondes.");
+    if (error?.name === "AbortError") throw new Error("La recherche cartographique a dépassé le délai rapide. Le Scout poursuit avec ses autres sources.");
     throw error;
   } finally {
     window.clearTimeout(timeout);
