@@ -28,6 +28,9 @@ const verifyThemes = read('tools/verify-theme-r2.mjs');
 const uploader = read('tools/upload-content-packs.mjs');
 const generatedCatalog = read('src/lib/contentPackCatalog.generated.ts');
 const themeCatalogGuard = read('tools/guard-theme-catalog.mjs');
+const contentPackWorker = read('cloudflare/mss-content-packs-worker.js');
+const contentPackWorkerConfig = read('wrangler.content-packs.toml');
+const fitPackManifest = JSON.parse(read('content-packs-dist/fit-awena/manifest.json'));
 
 
 
@@ -55,6 +58,16 @@ assert.ok(restoreThemes.includes('street-acier-urbain.webp'), 'restore parser mu
 assert.ok(auditThemes.includes('110'), 'theme audit must enforce the complete texture set');
 assert.ok(verifyThemes.includes('theme-textures'), 'R2 verifier must validate the theme pack through the public gateway');
 assert.ok(uploader.includes("--source="), 'uploader must support a dedicated temporary source directory');
+assert.equal(fitPackManifest.version, '2026.09.12.2', 'FIT pack upload manifest must match the runtime catalog version');
+assert.equal(fitPackManifest.files.length, 48, 'FIT pack upload manifest must contain the complete 48-file pack');
+assert.ok(fitPackManifest.files.some((item) => item.path === 'motions/awena/premium/glute-bridge/motion.webm'), 'FIT pack manifest must contain Glute Bridge video');
+assert.ok(fitPackManifest.files.some((item) => item.path === 'reference-media/glute-bridge/photo-01.webp'), 'FIT pack manifest must contain Glute Bridge reference photos');
+assert.ok(uploader.includes('Manifest périmé pour'), 'uploader must reject stale per-pack manifests before uploading');
+assert.ok(uploader.includes('Public gateway OK'), 'uploader must verify the public gateway after upload');
+assert.ok(contentPackWorker.includes('CONTENT_PACKS'), 'content-pack Worker must read from the private R2 binding');
+assert.ok(contentPackWorker.includes('mss-content-packs/v1/'), 'content-pack Worker must expose only the public pack prefix');
+assert.ok(contentPackWorkerConfig.includes('binding = "CONTENT_PACKS"') && contentPackWorkerConfig.includes('bucket_name = "dart-scans"'), 'content-pack Worker config must bind CONTENT_PACKS to dart-scans');
+assert.equal(pkg.scripts['deploy:content-packs-worker'], 'wrangler deploy --config wrangler.content-packs.toml', 'content-pack Worker deployment must be reproducible');
 
 assert.ok(music.includes('contentPackAssetUrl("navigation-music"'), 'navigation music must use the remote pack');
 assert.ok(!music.includes('midnight_enigma_nav.m4a";'), 'only the two local fallback tracks may stay statically imported');

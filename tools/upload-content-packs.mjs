@@ -13,6 +13,34 @@ const prefix = (process.env.MSS_CONTENT_PACK_PREFIX || 'mss-content-packs/v1').r
 const dryRun = process.argv.includes('--dry-run');
 const onlyArg = process.argv.find((arg) => arg.startsWith('--only='));
 const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',').map((x) => x.trim()).filter(Boolean)) : null;
+const skipPublicVerify = process.argv.includes('--skip-public-verify');
+const generatedCatalogPath = path.join(root, 'src', 'lib', 'contentPackCatalog.generated.ts');
+const publicBase = String(process.env.MSS_CONTENT_PACK_PUBLIC_URL || process.env.VITE_CONTENT_PACK_BASE_URL || 'https://mss-content-packs.perrin-alexandre38530.workers.dev/mss-content-packs/v1').replace(/\/+$/, '');
+
+function loadGeneratedCatalog() {
+  if (!fs.existsSync(generatedCatalogPath)) return null;
+  const source = fs.readFileSync(generatedCatalogPath, 'utf8');
+  const marker = 'export const CONTENT_PACK_CATALOG = ';
+  const start = source.indexOf(marker);
+  const end = source.lastIndexOf(' as const;');
+  if (start < 0 || end < 0) return null;
+  try { return JSON.parse(source.slice(start + marker.length, end)); } catch { return null; }
+}
+const generatedCatalog = loadGeneratedCatalog();
+
+async function verifyPublicManifest(pack, manifest) {
+  if (dryRun || skipPublicVerify) return;
+  const url = `${publicBase}/${encodeURIComponent(pack)}/${encodeURIComponent(String(manifest.version))}/manifest.json?verify=${Date.now()}`;
+  const response = await fetch(url, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+  if (!response.ok) {
+    throw new Error(`Upload R2 terminé mais passerelle publique HTTP ${response.status}: ${url}\nVérifie le Worker mss-content-packs et son binding CONTENT_PACKS -> ${bucket}.`);
+  }
+  const remote = await response.json();
+  if (String(remote?.version || '') !== String(manifest.version) || !Array.isArray(remote?.files) || remote.files.length !== manifest.files.length) {
+    throw new Error(`Passerelle publique incohérente pour ${pack}: attendu ${manifest.version}/${manifest.files.length} fichiers, reçu ${remote?.version}/${remote?.files?.length}.`);
+  }
+  console.log(`  Public gateway OK: ${pack} @ ${manifest.version}`);
+}
 
 const onlineConfig = path.join(root, 'wrangler.online.toml');
 const wranglerCliCandidates = [
@@ -179,6 +207,19 @@ for (const pack of packs) {
   const version = String(manifest.version || '').trim();
   if (!version) throw new Error(`Missing version in ${manifestPath}`);
 
+  const expected = generatedCatalog?.[pack];
+  if (expected) {
+    if (String(expected.version || '') !== version) {
+      throw new Error(`Manifest périmé pour ${pack}: content-packs-dist=${version}, catalogue runtime=${expected.version}. Lance npm run content-packs:prepare ou corrige le manifest avant l'upload.`);
+    }
+    if (!Array.isArray(manifest.files) || manifest.files.length !== expected.files.length) {
+      throw new Error(`Manifest incomplet pour ${pack}: content-packs-dist=${manifest.files?.length || 0} fichiers, catalogue runtime=${expected.files.length}.`);
+    }
+    const actualPaths = new Set(manifest.files.map((item) => String(item.path || '')));
+    const missingFromManifest = expected.files.map((item) => String(item.path || '')).filter((rel) => !actualPaths.has(rel));
+    if (missingFromManifest.length) throw new Error(`Manifest incomplet pour ${pack}: ${missingFromManifest.length} fichier(s) absent(s), ex: ${missingFromManifest.slice(0, 5).join(', ')}`);
+  }
+
   console.log(`\nUploading ${pack} @ ${version} (${manifest.files.length} files)`);
   let done = 0;
   for (const item of manifest.files) {
@@ -190,6 +231,7 @@ for (const pack of packs) {
     console.log(`  [${done}/${manifest.files.length}] ${rel}`);
   }
   await put(`${prefix}/${pack}/${version}/manifest.json`, manifestPath, false);
+  await verifyPublicManifest(pack, manifest);
   console.log(`OK ${pack} @ ${version}`);
 }
 console.log(dryRun ? '\nDry run complete.' : '\nContent packs uploaded successfully.');

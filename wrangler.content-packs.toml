@@ -1,0 +1,7 @@
+name = "mss-content-packs"
+main = "cloudflare/mss-content-packs-worker.js"
+compatibility_date = "2026-07-21"
+
+[[r2_buckets]]
+binding = "CONTENT_PACKS"
+bucket_name = "dart-scans"
