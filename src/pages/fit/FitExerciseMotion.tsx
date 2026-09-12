@@ -70,27 +70,35 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
           <img src={media.src} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block" }}/>
         )
       ) : knownVideo && knownVideoOk && useDetailVideoInThisContext ? (
-        <video
-          src={knownVideo}
-          poster={knownPoster || undefined}
-          muted
-          loop
-          autoPlay
-          playsInline
-          preload={compact ? "metadata" : "auto"}
-          onError={() => setKnownVideoOk(false)}
-          style={{
-            width: "100%",
-            height: compact ? 100 : 180,
-            objectFit: "contain",
-            display: "block",
-            background: "transparent",
-            ...(isGluteBridge && !compact ? {
-              WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 4%, #000 12%, #000 88%, rgba(0,0,0,.28) 96%, transparent 100%)",
-              maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 4%, #000 12%, #000 88%, rgba(0,0,0,.28) 96%, transparent 100%)",
-            } : {}),
-          }}
-        />
+        <div style={{ position: "relative", width: "100%", height: compact ? 100 : 180, overflow: "hidden" }}>
+          <video
+            src={knownVideo}
+            poster={knownPoster || undefined}
+            muted
+            loop
+            autoPlay
+            playsInline
+            preload={compact ? "metadata" : "auto"}
+            onError={() => setKnownVideoOk(false)}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              display: "block",
+              background: "transparent",
+              ...(isGluteBridge && !compact ? {
+                WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.08) 7%, rgba(0,0,0,.38) 15%, #000 30%, #000 70%, rgba(0,0,0,.38) 85%, rgba(0,0,0,.08) 93%, transparent 100%)",
+                maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.08) 7%, rgba(0,0,0,.38) 15%, #000 30%, #000 70%, rgba(0,0,0,.38) 85%, rgba(0,0,0,.08) 93%, transparent 100%)",
+              } : {}),
+            }}
+          />
+          {isGluteBridge && !compact ? (
+            <>
+              <div aria-hidden="true" style={{ position: "absolute", inset: "0 auto 0 0", width: "34%", pointerEvents: "none", background: "linear-gradient(90deg, rgba(3,5,10,.98) 0%, rgba(3,5,10,.90) 18%, rgba(3,5,10,.62) 42%, rgba(3,5,10,.24) 68%, rgba(3,5,10,0) 100%)", filter: "blur(.2px)" }} />
+              <div aria-hidden="true" style={{ position: "absolute", inset: "0 0 0 auto", width: "34%", pointerEvents: "none", background: "linear-gradient(270deg, rgba(3,5,10,.98) 0%, rgba(3,5,10,.90) 18%, rgba(3,5,10,.62) 42%, rgba(3,5,10,.24) 68%, rgba(3,5,10,0) 100%)", filter: "blur(.2px)" }} />
+            </>
+          ) : null}
+        </div>
       ) : compact && isGluteBridge && knownPoster ? (
         <div style={{ minHeight: 100, display: "grid", placeItems: "center", padding: 0, boxSizing: "border-box", overflow: "hidden" }}>
           <img

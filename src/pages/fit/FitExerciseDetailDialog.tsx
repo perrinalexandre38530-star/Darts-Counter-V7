@@ -628,12 +628,12 @@ function AwenaStepImage({ step, onOpen }: { step: GuideStep; onOpen: (url: strin
   React.useEffect(() => setSrc(step.image || step.fallbackImage || ""), [step.image, step.fallbackImage]);
   if (!src) return null;
   return (
-    <button type="button" onClick={() => onOpen(src)} style={{ width: "100%", padding: 0, border: 0, background: "#000", display: "block", cursor: "pointer" }}>
+    <button type="button" onClick={() => onOpen(src)} style={{ width: "100%", padding: 0, border: 0, background: "transparent", display: "block", cursor: "pointer", lineHeight: 0 }}>
       <img
         src={src}
         alt={step.title}
         onError={() => { if (step.fallbackImage && src !== step.fallbackImage) setSrc(step.fallbackImage); else setSrc(""); }}
-        style={{ width: "100%", height: 164, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }}
+        style={{ width: "100%", height: "auto", objectFit: "contain", objectPosition: "center center", display: "block", background: "transparent", borderRadius: 18 }}
       />
     </button>
   );
@@ -756,16 +756,16 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
             </FitGlassCard>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
               {guide.steps.map((step, index) => (
-                <FitGlassCard key={index} accent={accent} style={{ overflow: "hidden", borderRadius: 22, background: "rgba(255,255,255,.018)" }}>
+                <div key={index} style={{ minWidth: 0 }}>
                   <AwenaStepImage step={step} onOpen={setViewerImage} />
-                  <div style={{ padding: 12 }}>
+                  <div style={{ padding: "11px 4px 4px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 28, height: 28, borderRadius: 999, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, display: "grid", placeItems: "center", fontWeight: 1000, flex: "0 0 28px" }}>{index + 1}</div>
                       <div style={{ fontSize: 10, lineHeight: 1.15, fontWeight: 1000 }}>{step.title}</div>
                     </div>
                     <div style={{ marginTop: 10, color: "rgba(255,255,255,.82)", fontSize: 9, lineHeight: 1.5 }}>{step.body}</div>
                   </div>
-                </FitGlassCard>
+                </div>
               ))}
             </div>
             {guide.placement.length ? (
@@ -804,8 +804,8 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
                 <div style={{ color: "rgba(255,255,255,.52)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .6, marginBottom: 8 }}>{tr(lang, "PHOTOS EXISTANTES", "EXISTING PHOTOS", "FOTOS EXISTENTES")}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
                   {photos.map((url, index) => (
-                    <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: `1px solid ${accent}2e`, background: "rgba(255,255,255,.02)", borderRadius: 18, overflow: "hidden", minWidth: 0, cursor: "pointer", boxShadow: `0 0 16px ${accent}10` }}>
-                      <img src={url} alt={`${exerciseTitle} ${index + 1}`} style={{ width: "100%", height: 166, objectFit: "contain", objectPosition: "center center", display: "block", background: "#000" }} />
+                    <button key={`${url}-${index}`} type="button" onClick={() => setViewerImage(url)} style={{ padding: 0, border: 0, background: "transparent", borderRadius: 18, overflow: "visible", minWidth: 0, cursor: "pointer", lineHeight: 0 }}>
+                      <img src={url} alt={`${exerciseTitle} ${index + 1}`} style={{ width: "100%", height: "auto", objectFit: "contain", objectPosition: "center center", display: "block", background: "transparent", borderRadius: 18, boxShadow: `0 0 0 1px ${accent}24, 0 8px 22px rgba(0,0,0,.24)` }} />
                     </button>
                   ))}
                 </div>
@@ -815,7 +815,7 @@ export default function FitExerciseDetailDialog({ exercise, onClose, go, isFavor
               <div style={{ marginTop: photos.length ? 14 : 0 }}>
                 <div style={{ color: "rgba(255,255,255,.52)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .6, marginBottom: 8 }}>{tr(lang, "VIDÉOS EXISTANTES", "EXISTING VIDEOS", "VÍDEOS EXISTENTES")}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                  {referenceVideos.map((url, index) => <video key={`${url}-${index}`} src={url} controls playsInline preload="metadata" style={{ width: "100%", minHeight: 150, maxHeight: 220, objectFit: "contain", background: "#000", borderRadius: 18, border: `1px solid ${accent}2e` }} />)}
+                  {referenceVideos.map((url, index) => <video key={`${url}-${index}`} src={url} controls playsInline preload="metadata" style={{ width: "100%", height: "auto", objectFit: "contain", background: "transparent", borderRadius: 18, border: 0, boxShadow: `0 0 0 1px ${accent}24, 0 8px 22px rgba(0,0,0,.24)` }} />)}
                 </div>
               </div>
             ) : null}
