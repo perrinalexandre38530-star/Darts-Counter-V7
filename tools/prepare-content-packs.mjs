@@ -11,7 +11,7 @@ const ROOT = process.cwd();
 const OUT = path.join(ROOT, 'content-packs-dist');
 const GENERATED_TS = path.join(ROOT, 'src', 'lib', 'contentPackCatalog.generated.ts');
 const PACK_VERSIONS = {
-  'fit-awena': '2026.09.12.2',
+  'fit-awena': '2026.09.12.3',
   'navigation-music': '2026.09.01.3',
   'collectible-cards': '2026.09.01.3',
   // V106: only the theme pack gets a new immutable R2 version.

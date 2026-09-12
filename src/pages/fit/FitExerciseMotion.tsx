@@ -42,6 +42,8 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
   const [generatedVideoOk, setGeneratedVideoOk] = React.useState(true);
   const [knownVideoOk, setKnownVideoOk] = React.useState(Boolean(knownVideo));
   const motionExerciseId = exercise.motionKey || exercise.id;
+  const isGluteBridge = motionExerciseId === "glute-bridge";
+  const useDetailVideoInThisContext = !(compact && isGluteBridge);
   const premiumMotion = getAwenaPremiumMotion(motionExerciseId);
   const premiumPoster = premiumMotion?.video?.poster || premiumMotion?.frameSequence?.poster || premiumMotion?.frameSequence?.frames?.[0] || null;
   const referenceVideo = exercise.videoUrls?.find(Boolean) || null;
@@ -54,10 +56,10 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
     setThreeDFailed(false);
     setPremiumFailed(false);
     setGeneratedVideoOk(true);
-    setKnownVideoOk(Boolean(knownVideo));
+    setKnownVideoOk(Boolean(knownVideo) && useDetailVideoInThisContext);
     setReferenceVideoOk(Boolean(referenceVideo));
     setReferenceImageOk(Boolean(referenceImage));
-  }, [exercise.id, generatedMedia.videoUrl, knownVideo, referenceVideo, referenceImage]);
+  }, [exercise.id, generatedMedia.videoUrl, knownVideo, referenceVideo, referenceImage, useDetailVideoInThisContext]);
 
   return (
     <div style={{ position: "relative", overflow: "hidden", borderRadius: compact ? 12 : 16, minHeight: compact ? 100 : 180, border: `1px solid ${color}30`, background: `radial-gradient(circle at 50% 30%,${color}14,rgba(3,5,10,.96) 66%)`, boxShadow: `inset 0 0 24px ${color}09` }}>
@@ -67,7 +69,7 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
         ) : (
           <img src={media.src} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block" }}/>
         )
-      ) : knownVideo && knownVideoOk ? (
+      ) : knownVideo && knownVideoOk && useDetailVideoInThisContext ? (
         <video
           src={knownVideo}
           poster={knownPoster || undefined}
@@ -77,8 +79,34 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
           playsInline
           preload={compact ? "metadata" : "auto"}
           onError={() => setKnownVideoOk(false)}
-          style={{ width: "100%", height: compact ? 100 : 180, objectFit: "contain", display: "block", background: "transparent" }}
+          style={{
+            width: "100%",
+            height: compact ? 100 : 180,
+            objectFit: "contain",
+            display: "block",
+            background: "transparent",
+            ...(isGluteBridge && !compact ? {
+              WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 4%, #000 12%, #000 88%, rgba(0,0,0,.28) 96%, transparent 100%)",
+              maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 4%, #000 12%, #000 88%, rgba(0,0,0,.28) 96%, transparent 100%)",
+            } : {}),
+          }}
         />
+      ) : compact && isGluteBridge && knownPoster ? (
+        <div style={{ minHeight: 100, display: "grid", placeItems: "center", padding: 0, boxSizing: "border-box", overflow: "hidden" }}>
+          <img
+            src={knownPoster}
+            alt={`Aperçu Awena ${exercise.name}`}
+            loading="lazy"
+            style={{
+              width: "100%",
+              height: 100,
+              objectFit: "contain",
+              display: "block",
+              WebkitMaskImage: "radial-gradient(ellipse 96% 88% at 50% 50%, #000 58%, rgba(0,0,0,.82) 72%, transparent 100%)",
+              maskImage: "radial-gradient(ellipse 96% 88% at 50% 50%, #000 58%, rgba(0,0,0,.82) 72%, transparent 100%)",
+            }}
+          />
+        </div>
       ) : generatedVideoOk ? (
         <video
           src={generatedMedia.videoUrl}
@@ -124,6 +152,12 @@ export default function FitExerciseMotion({ exercise, accent, compact = false, c
           <div title="Vidéo AWENA en attente de génération" style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", color, background: `${color}0f`, border: `1px solid ${color}32`, opacity: .85 }}><FitIcon name="live" size={14}/></div>
         </div>
       )}
+      {isGluteBridge && !compact && knownVideo && knownVideoOk ? (
+        <>
+          <div aria-hidden="true" style={{ position: "absolute", inset: "0 auto 0 0", width: 46, pointerEvents: "none", zIndex: 2, background: "linear-gradient(90deg, rgba(3,5,10,.96) 0%, rgba(3,5,10,.60) 35%, rgba(3,5,10,0) 100%)", filter: "blur(5px)", transform: "translateX(-6px)" }} />
+          <div aria-hidden="true" style={{ position: "absolute", inset: "0 0 0 auto", width: 46, pointerEvents: "none", zIndex: 2, background: "linear-gradient(270deg, rgba(3,5,10,.96) 0%, rgba(3,5,10,.60) 35%, rgba(3,5,10,0) 100%)", filter: "blur(5px)", transform: "translateX(6px)" }} />
+        </>
+      ) : null}
       <style>{`@keyframes fitAwenaFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.02)}}`}</style>
     </div>
   );
