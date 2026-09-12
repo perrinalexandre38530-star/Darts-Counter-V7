@@ -4,7 +4,8 @@ import { formatDuration, formatPace, haversineMeters } from "../../activity/acti
 import { analyzeRunningTerrain } from "../../activity/runningElevation";
 import { buildRunningActivityAnalytics } from "../../activity/runningActivityAnalytics";
 import type { GeoPoint } from "../../activity/activityTypes";
-import { outdoorRoutePlaceIcon, type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
+import { type OutdoorRoutePlace } from "../../activity/outdoorRoutePlaces";
+import { outdoorMapMarkerColor, outdoorMapMarkerLabel, outdoorMapMarkerSvgMarkup, type OutdoorMapMarkerKind } from "./OutdoorMapMarkerIcon";
 import { RUNNING_SATELLITE_TILES, loadRunningMapTheme, runningMapThemeIcon, runningMapThemeLabel, runningMapThemes, saveRunningMapTheme, type RunningMapTheme } from "./runningMapTheme";
 import "./runningResponsive.css";
 
@@ -162,23 +163,28 @@ function paceAtIndex(points: GeoPoint[], distances: number[], index: number) {
   return speed > .2 ? 1000 / speed : null;
 }
 
-function markerElement(content: string, border: string, title: string, size = 30) {
+function markerElement(content: string, border: string, title: string, size = 30, isSvg = false) {
   const el = document.createElement("div");
   el.title = title;
-  el.textContent = content;
+  if (isSvg) el.innerHTML = content; else el.textContent = content;
   el.style.width = `${size}px`;
   el.style.height = `${size}px`;
   el.style.borderRadius = "999px";
   el.style.display = "grid";
   el.style.placeItems = "center";
-  el.style.background = "rgba(5,8,13,.90)";
-  el.style.border = `2px solid ${border}`;
-  el.style.boxShadow = "0 5px 16px rgba(0,0,0,.48)";
+  el.style.background = "rgba(6,10,16,.94)";
+  el.style.border = `1.5px solid ${border}`;
+  el.style.boxShadow = "0 6px 16px rgba(0,0,0,.46)";
   el.style.fontSize = size <= 25 ? "9px" : "14px";
   el.style.fontWeight = "1000";
-  el.style.color = "#fff";
+  el.style.color = border;
   el.style.pointerEvents = "auto";
   return el;
+}
+
+function semanticMarkerElement(kind: OutdoorMapMarkerKind, accent: string, title: string, size = 30) {
+  const color = outdoorMapMarkerColor(kind, accent);
+  return markerElement(outdoorMapMarkerSvgMarkup(kind, Math.max(15, Math.round(size * .55))), color, title, size, true);
 }
 
 
@@ -997,8 +1003,8 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     routeMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
     routeMarkersRef.current = [];
     try {
-      const startEl = markerElement("🚩", "#42ef7e", pickText(lang, "Départ", "Start", "Salida"), 31);
-      const endEl = markerElement("🏁", "#ff5668", pickText(lang, "Arrivée", "Finish", "Llegada"), 31);
+      const startEl = semanticMarkerElement("start", accent, outdoorMapMarkerLabel("start", lang), 33);
+      const endEl = semanticMarkerElement("finish", accent, outdoorMapMarkerLabel("finish", lang), 33);
       routeMarkersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([safePoints[0].lon, safePoints[0].lat]).addTo(map));
       const last = safePoints[safePoints.length - 1];
       routeMarkersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([last.lon, last.lat]).addTo(map));
@@ -1023,7 +1029,7 @@ export default function RunningTerrain3DMap({ points, accent, lang, textSoft = "
     placeMarkersRef.current = [];
     if (!map || !maplibregl || status !== "ready") return;
     for (const place of places.slice(0, fullscreen ? 16 : 9)) {
-      const el = markerElement(outdoorRoutePlaceIcon(place.category), "rgba(255,255,255,.86)", place.name, 29);
+      const el = semanticMarkerElement(place.category, accent, place.name, 29);
       el.style.cursor = "pointer";
       el.addEventListener("click", (event) => { event.stopPropagation(); onPlaceSelect?.(place); });
       try { placeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([place.lon, place.lat]).addTo(map)); } catch {}

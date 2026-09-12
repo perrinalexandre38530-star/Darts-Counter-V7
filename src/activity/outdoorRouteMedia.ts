@@ -23,11 +23,13 @@ export type OutdoorRoutePhoto = {
 
 const CACHE_KEY = "mss-route-photo-cache-v4";
 const COVER_CACHE_KEY = "mss-route-cover-photo-cache-v2";
+const PLACE_CACHE_KEY = "mss-route-place-photo-cache-v1";
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000;
 
 type CacheRow = { routeKey: string; photos: OutdoorRoutePhoto[]; updatedAt: number };
 
 type CoverCacheRow = { routeKey: string; photo: OutdoorRoutePhoto | null; updatedAt: number };
+type PlaceCacheRow = { key: string; photos: OutdoorRoutePhoto[]; updatedAt: number };
 
 const inflightPhotoRequests = new Map<string, Promise<OutdoorRoutePhoto[]>>();
 
@@ -80,10 +82,10 @@ function isDecorativeOrIrrelevant(title: string, description = "") {
   return /(coat of arms|blason|wappen|flag of|drapeau|logo|icon|map of|carte de|diagram|schema|schéma|portrait|signature|seal of|locator map|route map|trail map|plan de|panneau seul|sign only)/i.test(haystack);
 }
 
-async function fetchCommonsGeoPhotos(route: RunningRouteTemplate, anchor: ReturnType<typeof routeAnchors>[number], limit: number): Promise<OutdoorRoutePhoto[]> {
+async function fetchCommonsGeoPhotos(route: RunningRouteTemplate, anchor: ReturnType<typeof routeAnchors>[number], limit: number, radiusM = 8500): Promise<OutdoorRoutePhoto[]> {
   const params = new URLSearchParams({
     action: "query", format: "json", origin: "*", generator: "geosearch", ggsprimary: "all", ggsnamespace: "6",
-    ggsradius: "8500", ggslimit: String(Math.max(limit, 12)), ggscoord: `${anchor.point.lat}|${anchor.point.lon}`,
+    ggsradius: String(Math.max(100, Math.min(10000, Math.round(radiusM)))), ggslimit: String(Math.max(limit, 12)), ggscoord: `${anchor.point.lat}|${anchor.point.lon}`,
     prop: "imageinfo|info|coordinates", iiprop: "url|mime|mediatype|extmetadata", iiurlwidth: "1400", inprop: "url",
   });
   const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`);
@@ -125,10 +127,10 @@ function commonsPageToPhoto(route: RunningRouteTemplate, page: any, anchor: Outd
   };
 }
 
-async function fetchWikipediaNearby(route: RunningRouteTemplate, anchor: ReturnType<typeof routeAnchors>[number], lang: string, limit = 10): Promise<OutdoorRoutePhoto[]> {
+async function fetchWikipediaNearby(route: RunningRouteTemplate, anchor: ReturnType<typeof routeAnchors>[number], lang: string, limit = 10, radiusM = 10000): Promise<OutdoorRoutePhoto[]> {
   const wikiLang = lang.startsWith("fr") ? "fr" : lang.startsWith("es") ? "es" : "en";
   const params = new URLSearchParams({
-    action: "query", format: "json", origin: "*", generator: "geosearch", ggsnamespace: "0", ggsradius: "10000", ggslimit: String(Math.max(8, limit)), ggscoord: `${anchor.point.lat}|${anchor.point.lon}`,
+    action: "query", format: "json", origin: "*", generator: "geosearch", ggsnamespace: "0", ggsradius: String(Math.max(100, Math.min(10000, Math.round(radiusM)))), ggslimit: String(Math.max(8, limit)), ggscoord: `${anchor.point.lat}|${anchor.point.lon}`,
     prop: "pageimages|coordinates|extracts|info", piprop: "thumbnail|original|name", pithumbsize: "1400", exintro: "1", explaintext: "1", exsentences: "2", inprop: "url",
   });
   const response = await fetch(`https://${wikiLang}.wikipedia.org/w/api.php?${params.toString()}`);
@@ -162,11 +164,73 @@ async function fetchWikipediaNearby(route: RunningRouteTemplate, anchor: ReturnT
   }).filter(Boolean) as OutdoorRoutePhoto[];
 }
 
+function photoDistanceToPlace(photo: OutdoorRoutePhoto, place: OutdoorRoutePlace) {
+  if (!Number.isFinite(photo.lat) || !Number.isFinite(photo.lon)) return null;
+  return haversineMeters({ lat: place.lat, lon: place.lon, timestamp: 0 }, { lat: Number(photo.lat), lon: Number(photo.lon), timestamp: 0 });
+}
+
+function normalizedWords(value: string) {
+  return normalizeTitle(value).split(" ").filter((word) => word.length >= 3);
+}
+
+function photoNameAffinity(photo: OutdoorRoutePhoto, place: OutdoorRoutePlace) {
+  const words = normalizedWords(place.name);
+  if (!words.length) return 0;
+  const haystack = normalizeTitle(`${photo.title} ${photo.description || ""} ${photo.placeName || ""}`);
+  const matched = words.filter((word) => haystack.includes(word)).length;
+  return matched / words.length;
+}
+
+async function fetchWikipediaTaggedPlace(route: RunningRouteTemplate, place: OutdoorRoutePlace, lang: string): Promise<OutdoorRoutePhoto[]> {
+  const tag = String(place.wikipedia || place.tags?.wikipedia || "").trim();
+  if (!tag) return [];
+  const match = tag.match(/^([a-z]{2,3}):(.+)$/i);
+  const wikiLang = (match?.[1] || (lang.startsWith("fr") ? "fr" : lang.startsWith("es") ? "es" : "en")).toLowerCase();
+  const title = String(match?.[2] || tag).replace(/_/g, " ").trim();
+  if (!title) return [];
+  const params = new URLSearchParams({ action: "query", format: "json", origin: "*", titles: title, prop: "pageimages|coordinates|extracts|info", piprop: "thumbnail|original|name", pithumbsize: "1400", exintro: "1", explaintext: "1", exsentences: "2", inprop: "url" });
+  const response = await fetch(`https://${wikiLang}.wikipedia.org/w/api.php?${params.toString()}`);
+  if (!response.ok) return [];
+  const json = await response.json();
+  const pages = Object.values(json?.query?.pages || {}) as any[];
+  return pages.map((page): OutdoorRoutePhoto | null => {
+    const thumbUrl = String(page?.thumbnail?.source || page?.original?.source || "");
+    const imageUrl = String(page?.original?.source || thumbUrl || "");
+    if (!thumbUrl || !imageUrl) return null;
+    const coord = page?.coordinates?.[0] || {};
+    const lat = Number(coord.lat), lon = Number(coord.lon);
+    return { id: `wikipedia:${wikiLang}:${String(page.pageid || title)}`, title: String(page?.title || title), thumbUrl, imageUrl, pageUrl: String(page?.fullurl || `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`), description: stripHtml(page?.extract || ""), lat: Number.isFinite(lat) ? lat : place.lat, lon: Number.isFinite(lon) ? lon : place.lon, distanceToRouteM: distanceToRoute(route, Number.isFinite(lat) ? lat : place.lat, Number.isFinite(lon) ? lon : place.lon), anchor: "place", source: "wikipedia", placeName: place.name };
+  }).filter(Boolean) as OutdoorRoutePhoto[];
+}
+
+async function fetchCommonsTaggedPlace(route: RunningRouteTemplate, place: OutdoorRoutePlace): Promise<OutdoorRoutePhoto[]> {
+  const tag = String(place.tags?.wikimedia_commons || "").trim();
+  const imageTag = String(place.tags?.image || "").trim();
+  const titles: string[] = [];
+  if (/^File:/i.test(tag)) titles.push(tag);
+  if (/^File:/i.test(imageTag)) titles.push(imageTag);
+  if (!titles.length) return imageTag.startsWith("http") ? [{ id: `osm-image:${place.id}`, title: place.name, thumbUrl: imageTag, imageUrl: imageTag, pageUrl: imageTag, lat: place.lat, lon: place.lon, distanceToRouteM: place.distanceToRouteM, anchor: "place", source: "wikimedia", placeName: place.name }] : [];
+  const params = new URLSearchParams({ action: "query", format: "json", origin: "*", titles: titles.join("|"), prop: "imageinfo|info|coordinates", iiprop: "url|mime|mediatype|extmetadata", iiurlwidth: "1400", inprop: "url" });
+  const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`);
+  if (!response.ok) return [];
+  const json = await response.json();
+  const pages = Object.values(json?.query?.pages || {}) as any[];
+  return pages.map((page) => commonsPageToPhoto(route, page, "place", place.name)).filter(Boolean) as OutdoorRoutePhoto[];
+}
+
+function placePhotoScore(photo: OutdoorRoutePhoto, place: OutdoorRoutePlace) {
+  const distance = photoDistanceToPlace(photo, place);
+  const affinity = photoNameAffinity(photo, place);
+  const exactBonus = photo.placeName === place.name ? -1300 : 0;
+  const sourceBonus = photo.source === "wikipedia" ? -300 : 0;
+  return (distance == null ? 1400 : distance) - affinity * 1100 + exactBonus + sourceBonus;
+}
+
 async function fetchCommonsNamedPlace(route: RunningRouteTemplate, place: OutdoorRoutePlace, limit = 6): Promise<OutdoorRoutePhoto[]> {
   if (!place.name || place.name.length < 3) return [];
   const params = new URLSearchParams({
     action: "query", format: "json", origin: "*", generator: "search", gsrnamespace: "6", gsrlimit: String(limit),
-    gsrsearch: `${place.name} filetype:bitmap`, prop: "imageinfo|info|coordinates", iiprop: "url|mime|mediatype|extmetadata", iiurlwidth: "1400", inprop: "url",
+    gsrsearch: `"${place.name}" filetype:bitmap`, prop: "imageinfo|info|coordinates", iiprop: "url|mime|mediatype|extmetadata", iiurlwidth: "1400", inprop: "url",
   });
   const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`);
   if (!response.ok) throw new Error(`Wikimedia named HTTP ${response.status}`);
@@ -249,16 +313,41 @@ export async function fetchOutdoorRoutePhotos(route: RunningRouteTemplate, limit
 }
 
 export async function fetchOutdoorPlacePhotos(route: RunningRouteTemplate, place: OutdoorRoutePlace, lang = "fr", limit = 4): Promise<OutdoorRoutePhoto[]> {
+  const routeKey = outdoorRouteKey(route);
+  const cacheKey = `${routeKey}:${place.id}`;
+  const cached = loadRunningArrayCache<PlaceCacheRow>(PLACE_CACHE_KEY).find((row) => row.key === cacheKey && Date.now() - row.updatedAt < MAX_AGE_MS);
+  if (cached) return cached.photos.slice(0, limit);
+
   const anchor = { kind: "place" as const, point: { lat: place.lat, lon: place.lon, timestamp: Date.now() } };
+  const tightRadiusM = place.category === "viewpoint" || place.category === "peak" ? 1600 : place.category === "attraction" || place.category === "information" ? 1200 : 700;
   const settled = await Promise.allSettled([
-    fetchCommonsNamedPlace(route, place, Math.max(4, limit + 2)),
-    fetchWikipediaNearby(route, anchor as any, lang, Math.max(4, limit + 2)),
-    fetchCommonsGeoPhotos(route, anchor as any, Math.max(5, limit + 3)),
+    fetchWikipediaTaggedPlace(route, place, lang),
+    fetchCommonsTaggedPlace(route, place),
+    fetchCommonsNamedPlace(route, place, Math.max(5, limit + 3)),
+    fetchWikipediaNearby(route, anchor as any, lang, Math.max(5, limit + 3), tightRadiusM),
+    fetchCommonsGeoPhotos(route, anchor as any, Math.max(6, limit + 4), tightRadiusM),
   ]);
   const pool: OutdoorRoutePhoto[] = [];
   for (const result of settled) if (result.status === "fulfilled") pool.push(...result.value.map((photo) => ({ ...photo, anchor: "place" as const, placeName: photo.placeName || place.name })));
-  return dedupePhotos(pool).filter((photo) => photo.distanceToRouteM == null || photo.distanceToRouteM < 2500).slice(0, limit);
+
+  const photos = dedupePhotos(pool)
+    .filter((photo) => {
+      const distance = photoDistanceToPlace(photo, place);
+      const affinity = photoNameAffinity(photo, place);
+      // A named/tagged photo may have no coordinates. Generic geo-search results
+      // must actually be close to THIS POI, otherwise every marker can end up
+      // displaying the same two route-level pictures.
+      if (photo.placeName === place.name && affinity >= .34) return true;
+      return distance != null && distance <= tightRadiusM * 1.35;
+    })
+    .sort((a, b) => placePhotoScore(a, place) - placePhotoScore(b, place))
+    .slice(0, limit);
+
+  const current = loadRunningArrayCache<PlaceCacheRow>(PLACE_CACHE_KEY).filter((row) => row.key !== cacheKey);
+  saveRunningLocalJson(PLACE_CACHE_KEY, [{ key: cacheKey, photos, updatedAt: Date.now() }, ...current].slice(0, 80));
+  return photos;
 }
+
 
 
 export async function fetchOutdoorRouteCoverPhoto(route: RunningRouteTemplate, lang = "fr"): Promise<OutdoorRoutePhoto | null> {
