@@ -68,6 +68,7 @@ function nearLabel(meters: number, lang: string) {
 
 function routeSourceLabel(route: RunningRouteTemplate, lang: string) {
   const provider = String(route.catalog?.provider || "").toLowerCase();
+  if (route.source === "activity" || route.source === "gpx" || route.source === "fit" || route.source === "tcx") return pickText(lang, "MES TRACÉS", "MY ROUTES", "MIS RUTAS");
   if (route.source === "generated") return pickText(lang, "SUR MESURE", "CUSTOM", "A MEDIDA");
   if (route.source === "community") return pickText(lang, "COMMUNAUTÉ", "COMMUNITY", "COMUNIDAD");
   if (provider === "outdooractive") return "OUTDOORACTIVE";

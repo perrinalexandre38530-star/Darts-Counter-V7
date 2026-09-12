@@ -426,15 +426,28 @@ export default function RunningModule({ go, params }: Props) {
         setRoutePanelTab("choose");
         setRouteChooseMode("discover");
     }, [activitySport, params?.runningOpenRoutes]);
-    const routeOptions = React.useMemo(() => {
+    const localRouteSeedOptions = React.useMemo(() => {
         const savedSourceIds = new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean));
         const recent = activities
-            .filter((activity) => Array.isArray(activity.route) && activity.route.length >= 2 && activity.distanceM >= 300 && !savedSourceIds.has(activity.id))
-            .slice(0, 6)
+            .filter((activity) => Array.isArray(activity.route) && activity.route.length >= 2 && activity.distanceM >= 300 && !savedSourceIds.has(activity.id) && canonicalOutdoorPerformanceSport(activity.sport) === activitySport)
+            .slice(0, 12)
             .map((activity) => routeTemplateFromActivity(activity));
         const savedForSport = savedRoutes.filter((route) => !route.sport ? activitySport === "running" : route.sport === activitySport);
+        const candidates = [...savedForSport, ...offlineRoutes, ...recent];
+        const unique: RunningRouteTemplate[] = [];
+        const seen = new Set<string>();
+        for (const route of candidates) {
+            const key = route.externalId || route.id;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(routeElevationOverrides[route.id] || route);
+            if (unique.length >= 24) break;
+        }
+        return unique;
+    }, [activities, activitySport, offlineRoutes, routeElevationOverrides, savedRoutes]);
+    const routeOptions = React.useMemo(() => {
         const discoveredForSport = discoveredRoutes.filter((route) => !route.sport || route.sport === activitySport);
-        const candidates = [...discoveredForSport, ...savedForSport, ...offlineRoutes, ...recent];
+        const candidates = [...discoveredForSport, ...localRouteSeedOptions];
         const unique: RunningRouteTemplate[] = [];
         const seen = new Set<string>();
         for (const route of candidates) {
@@ -445,7 +458,7 @@ export default function RunningModule({ go, params }: Props) {
             if (unique.length >= 48) break;
         }
         return unique;
-    }, [activities, activitySport, discoveredRoutes, offlineRoutes, routeElevationOverrides, savedRoutes]);
+    }, [activitySport, discoveredRoutes, localRouteSeedOptions, routeElevationOverrides]);
     React.useEffect(() => {
         const requestedRouteId = String(params?.runningRouteId || "").trim();
         if (!requestedRouteId || selectedRouteId) return;
@@ -1686,6 +1699,7 @@ export default function RunningModule({ go, params }: Props) {
                 minResults: 24,
                 profile: routeGenerationProfile,
                 shape: routeGenerationShape,
+                seedRoutes: localRouteSeedOptions,
                 onProgress: (progress) => {
                     if (requestSeq !== routeScoutRequestSeqRef.current || !progress.routes.length) return;
                     firstProgressApplied = true;
@@ -1719,7 +1733,7 @@ export default function RunningModule({ go, params }: Props) {
             if (requestSeq !== routeScoutRequestSeqRef.current) return;
             if (!result.routes.length) {
                 if (!firstProgressApplied) setDiscoveredRoutes([]);
-                setRouteScoutMessage(pickLegacyLocalizedText(lang, "Aucun tracé exploitable n’a répondu assez vite. Essaie un rayon supérieur ou une autre distance.", "No usable route answered quickly enough. Try a larger radius or another distance.", "Ninguna ruta utilizable respondió a tiempo. Prueba un radio mayor u otra distancia."));
+                setRouteScoutMessage(pickLegacyLocalizedText(lang, "Aucune source distante n’a répondu avec un tracé exploitable. Tes tracés locaux restent proposés et Scout réessaiera les sources au prochain lancement.", "No remote source returned a usable route. Your local routes remain available and Scout will retry remote sources on the next search.", "Ninguna fuente remota devolvió una ruta utilizable. Tus rutas locales siguen disponibles y Scout volverá a intentar las fuentes remotas."));
                 return;
             }
             setDiscoveredRoutes(result.routes);
@@ -1750,7 +1764,7 @@ export default function RunningModule({ go, params }: Props) {
         } finally {
             if (requestSeq === routeScoutRequestSeqRef.current) setRouteScoutBusy(false);
         }
-    }, [activitySport, lang, resolveRoutePosition, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, routeScoutRadiusKm, selectRoute]);
+    }, [activitySport, lang, localRouteSeedOptions, resolveRoutePosition, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, routeScoutRadiusKm, selectRoute]);
 
     const discoverNearbyRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;
@@ -1769,6 +1783,7 @@ export default function RunningModule({ go, params }: Props) {
                 minResults: 20,
                 profile: routeGenerationProfile,
                 shape: routeGenerationShape,
+                seedRoutes: localRouteSeedOptions,
                 onProgress: (progress) => {
                     if (requestSeq !== routeScoutRequestSeqRef.current || !progress.routes.length) return;
                     setDiscoveredRoutes(progress.routes);
@@ -1797,7 +1812,7 @@ export default function RunningModule({ go, params }: Props) {
         } finally {
             if (requestSeq === routeScoutRequestSeqRef.current) setRouteDiscoveryBusy(false);
         }
-    }, [activitySport, lang, resolveRoutePosition, routeDiscoveryRadiusKm, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, selectRoute]);
+    }, [activitySport, lang, localRouteSeedOptions, resolveRoutePosition, routeDiscoveryRadiusKm, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, selectRoute]);
 
     const generateRoutes = React.useCallback(async () => {
         if (activitySport === "treadmill") return;

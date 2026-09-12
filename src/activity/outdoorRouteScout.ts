@@ -27,6 +27,7 @@ export type OutdoorRouteScoutRequest = {
   profile?: OutdoorRouteGenerationProfile;
   shape?: OutdoorRouteGenerationShape;
   onProgress?: (progress: OutdoorRouteScoutProgress) => void;
+  seedRoutes?: RunningRouteTemplate[];
 };
 
 export type OutdoorRouteScoutResult = {
@@ -40,8 +41,8 @@ const CACHE_KEY = "mss-outdoor-route-scout-v6";
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const STALE_CACHE_TTL_MS = 48 * 60 * 60 * 1000;
 const MAX_RESULTS = 48;
-const FAST_STAGE_WAIT_MS = 2200;
-const TOTAL_SCOUT_BUDGET_MS = 10_000;
+const FAST_STAGE_WAIT_MS = 1800;
+const TOTAL_SCOUT_BUDGET_MS = 14_000;
 
 function cacheKey(request: OutdoorRouteScoutRequest) {
   const lat = Math.round(request.center.lat * 50) / 50;
@@ -235,7 +236,7 @@ export function rankOutdoorRouteCandidates(routes: RunningRouteTemplate[], reque
       return {
         ...route,
         scout: {
-          provider: route.catalog?.provider === "outdooractive" ? "outdooractive" as const : route.catalog?.provider === "geotrek" ? "geotrek" as const : route.catalog?.provider === "gpx-import" ? "gpx-catalog" as const : route.source === "catalog" ? "mss-route-catalog" as const : "openstreetmap-route-scout" as const,
+          provider: route.source === "activity" || route.source === "gpx" || route.source === "fit" || route.source === "tcx" ? "gpx-catalog" as const : route.catalog?.provider === "outdooractive" ? "outdooractive" as const : route.catalog?.provider === "geotrek" ? "geotrek" as const : route.catalog?.provider === "gpx-import" ? "gpx-catalog" as const : route.source === "catalog" ? "mss-route-catalog" as const : "openstreetmap-route-scout" as const,
           ...rankedRoute,
           sourceUrl: route.catalog?.sourceUrl || (relationId && /^\d+$/.test(relationId) ? `https://www.openstreetmap.org/relation/${relationId}` : undefined),
           discoveredAt: Date.now(),
@@ -253,8 +254,47 @@ export function rankOutdoorRouteCandidates(routes: RunningRouteTemplate[], reque
 function displayRanked(routes: RunningRouteTemplate[], request: OutdoorRouteScoutRequest, minResults: number) {
   const strict = rankOutdoorRouteCandidates(routes, request, false);
   if (strict.length >= Math.min(12, minResults)) return strict.slice(0, MAX_RESULTS);
+
   const relaxed = rankOutdoorRouteCandidates(routes, request, true);
-  return relaxed.slice(0, MAX_RESULTS);
+  if (relaxed.length >= Math.min(8, minResults) || relaxed.length >= strict.length + 4) return relaxed.slice(0, MAX_RESULTS);
+
+  // Last-resort discovery must never hide otherwise usable routes just because the
+  // requested distance is uncommon locally. Keep the discipline minimum, reject only
+  // absurdly off-target distances, then rank target mismatch as a penalty instead of
+  // turning the whole result set into an empty screen.
+  const policy = outdoorRouteSearchPolicy(request.sport);
+  const targetKm = Math.max(0, Number(request.targetDistanceKm || 0));
+  const broad = dedupe(routes)
+    .filter((route) => {
+      const km = Math.max(0, Number(route.distanceM || routeDistanceMeters(route.route || [])) / 1000);
+      if (km < policy.absoluteMinKm) return false;
+      if (!(targetKm > 0)) return true;
+      const ratio = km / Math.max(.5, targetKm);
+      const minRatio = request.sport === "trail" || request.sport === "hiking" ? .28 : .32;
+      const maxRatio = request.sport === "trail" || request.sport === "hiking" ? 2.6 : 2.2;
+      return ratio >= minRatio && ratio <= maxRatio;
+    })
+    .map((route) => {
+      const rankedRoute = scoreScoutedRoute(route, request);
+      const relationId = String(route.externalId || "").replace("osm-relation:", "");
+      const existingReasons = rankedRoute.reasons.filter((reason) => reason !== "alternative distance");
+      if (targetKm > 0 && outdoorRouteDistanceFit(Number(route.distanceM || 0), request.sport, targetKm).grade === "poor") existingReasons.push("distance alternative");
+      return {
+        ...route,
+        scout: {
+          provider: route.source === "activity" ? "gpx-catalog" as const : route.catalog?.provider === "outdooractive" ? "outdooractive" as const : route.catalog?.provider === "geotrek" ? "geotrek" as const : route.catalog?.provider === "gpx-import" ? "gpx-catalog" as const : route.source === "catalog" ? "mss-route-catalog" as const : "openstreetmap-route-scout" as const,
+          ...rankedRoute,
+          reasons: [...new Set(existingReasons)].slice(0, 5),
+          sourceUrl: route.catalog?.sourceUrl || (relationId && /^\d+$/.test(relationId) ? `https://www.openstreetmap.org/relation/${relationId}` : undefined),
+          discoveredAt: Date.now(),
+        },
+      };
+    })
+    .sort((a, b) => Number(b.scout?.score || 0) - Number(a.scout?.score || 0)
+      || Math.abs(Number(a.distanceM || 0) - targetKm * 1000) - Math.abs(Number(b.distanceM || 0) - targetKm * 1000));
+
+  const merged = dedupe([...relaxed, ...broad]);
+  return merged.slice(0, MAX_RESULTS);
 }
 
 function radiiFor(request: OutdoorRouteScoutRequest) {
@@ -289,6 +329,13 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
   const gathered: RunningRouteTemplate[] = [];
   const searched: number[] = [];
   const warnings: string[] = [];
+
+  // Prime Scout with routes already known locally (history, favorites, offline GPX).
+  // Network sources still outrank them when better matches arrive, but the screen no
+  // longer starts from absolute zero or falls back to an empty state on a provider hiccup.
+  if (Array.isArray(normalizedRequest.seedRoutes) && normalizedRequest.seedRoutes.length) {
+    gathered.push(...normalizedRequest.seedRoutes.filter((route) => Array.isArray(route.route) && route.route.length >= 2));
+  }
   let closed = false;
   let enoughResolve: (() => void) | null = null;
   const enoughPromise = new Promise<void>((resolve) => { enoughResolve = resolve; });
@@ -304,6 +351,8 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
     }
     return ranked;
   };
+
+  if (gathered.length) snapshot("cache");
 
   const cached = readCache(key);
   if (cached?.routes.length) {
@@ -354,7 +403,7 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
 
   if (primaryRadius) {
     addTask("local", async () => {
-      const result = await discoverOutdoorRoutes(normalizedRequest.center, normalizedRequest.sport, primaryRadius, Number(normalizedRequest.targetDistanceKm || 0), { timeoutMs: 7000 });
+      const result = await discoverOutdoorRoutes(normalizedRequest.center, normalizedRequest.sport, primaryRadius, Number(normalizedRequest.targetDistanceKm || 0), { timeoutMs: 10500 });
       return result.routes;
     }, primaryRadius);
   }
@@ -366,7 +415,7 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
   if (current.length < minResults || strongNow < Math.min(12, minResults)) {
     if (expandedRadius && expandedRadius !== primaryRadius) {
       addTask("expanded", async () => {
-        const result = await discoverOutdoorRoutes(normalizedRequest.center, normalizedRequest.sport, expandedRadius, Number(normalizedRequest.targetDistanceKm || 0), { timeoutMs: 7600 });
+        const result = await discoverOutdoorRoutes(normalizedRequest.center, normalizedRequest.sport, expandedRadius, Number(normalizedRequest.targetDistanceKm || 0), { timeoutMs: 11500 });
         return result.routes;
       }, expandedRadius);
     }
@@ -380,7 +429,7 @@ export async function scoutExistingOutdoorRoutes(request: OutdoorRouteScoutReque
           profile: normalizedRequest.profile,
           shape: normalizedRequest.shape,
           count: 8,
-          timeoutMs: 7200,
+          timeoutMs: 10500,
         });
         if (result.routes.length) warnings.push(`fallback-generated:${result.routes.length}`);
         return result.routes;

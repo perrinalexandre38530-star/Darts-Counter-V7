@@ -52,7 +52,7 @@ function overpassQuery(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerfor
   const bbox = bboxAround(center, radiusKm);
   const routeKinds = routeKindsForSport(sport);
   const box = `${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)}`;
-  return `[out:json][timeout:12];\nrelation["type"="route"]["route"~"^(${routeKinds})$"](${box});\nout geom(${box});`;
+  return `[out:json][timeout:18];\nrelation["type"="route"]["route"~"^(${routeKinds})$"](${box});\nout geom;`;
 }
 
 function sanitizeName(value: unknown, fallback: string) {
@@ -211,10 +211,11 @@ function endpointSignal(parent: AbortSignal, timeoutMs: number) {
 }
 
 async function fetchOverpass(query: string, signal: AbortSignal) {
-  let lastError: unknown = null;
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    const scoped = endpointSignal(signal, 2400);
-    try {
+  const controllers: Array<ReturnType<typeof endpointSignal>> = [];
+  try {
+    const requests = OVERPASS_ENDPOINTS.map(async (endpoint) => {
+      const scoped = endpointSignal(signal, 6500);
+      controllers.push(scoped);
       const url = `${endpoint}?data=${encodeURIComponent(query)}`;
       const response = await fetch(url, {
         method: "GET",
@@ -225,14 +226,14 @@ async function fetchOverpass(query: string, signal: AbortSignal) {
       const json = await response.json();
       if (!Array.isArray(json?.elements)) throw new Error("Réponse cartographique invalide.");
       return { json, provider: "openstreetmap-overpass" as const };
-    } catch (error: any) {
-      if (signal.aborted) throw error;
-      lastError = error?.name === "AbortError" ? new Error("Overpass timeout") : error;
-    } finally {
-      scoped.dispose();
-    }
+    });
+    return await Promise.any(requests);
+  } catch (error: any) {
+    if (signal.aborted) throw error;
+    throw new Error(error?.message || "Service cartographique indisponible.");
+  } finally {
+    controllers.forEach((scoped) => scoped.dispose());
   }
-  throw lastError instanceof Error ? lastError : new Error("Service cartographique indisponible.");
 }
 
 function catalogPayloadToRoute(raw: any, sport: OutdoorPerformanceSport): RunningRouteTemplate | null {
@@ -295,12 +296,49 @@ async function fetchGlobalCatalog(center: OutdoorRouteDiscoveryCenter, sport: Ou
 }
 
 async function fetchDiscoveryData(center: OutdoorRouteDiscoveryCenter, sport: OutdoorPerformanceSport, radiusKm: number, signal: AbortSignal, targetDistanceKm = 0) {
+  const catalogScoped = endpointSignal(signal, 5200);
   try {
-    return await fetchGlobalCatalog(center, sport, radiusKm, signal, targetDistanceKm);
-  } catch (catalogError) {
-    if (signal.aborted) throw catalogError;
-    // Development/StackBlitz or a Pages deployment without the Function still works.
-    return fetchOverpass(overpassQuery(center, sport, radiusKm), signal);
+    // Run the MSS catalogue and direct OSM search in parallel. V119 waited for the
+    // catalogue first, so a slow backend consumed the whole client timeout and the
+    // direct Overpass fallback never even started.
+    const catalogPromise = fetchGlobalCatalog(center, sport, radiusKm, catalogScoped.signal, targetDistanceKm)
+      .catch(() => null);
+    const osmPromise = fetchOverpass(overpassQuery(center, sport, radiusKm), signal)
+      .catch(() => null);
+
+    const first = await Promise.race([
+      catalogPromise.then((value) => ({ kind: "catalog" as const, value })),
+      osmPromise.then((value) => ({ kind: "osm" as const, value })),
+    ]);
+    let catalog = first.kind === "catalog" ? first.value : null;
+    let osm = first.kind === "osm" ? first.value : null;
+
+    // Once one source has real data, wait only a short grace period for the second.
+    // This keeps cached/catalogue searches near-instant while still enriching them
+    // with OSM geometry when the public service answers quickly.
+    const firstHasData = first.kind === "catalog"
+      ? !!(catalog && (catalog.json?.routes?.length || catalog.json?.elements?.length))
+      : !!(osm && osm.json?.elements?.length);
+    if (firstHasData) {
+      const grace = new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 1100));
+      if (first.kind === "catalog") osm = await Promise.race([osmPromise, grace]);
+      else catalog = await Promise.race([catalogPromise, grace]);
+    } else if (first.kind === "catalog") {
+      osm = await osmPromise;
+    } else {
+      catalog = await catalogPromise;
+    }
+
+    if (!catalog && !osm) throw new Error("Aucune source cartographique n’a répondu.");
+    const catalogRoutes = Array.isArray(catalog?.json?.routes) ? catalog.json.routes : [];
+    const catalogElements = Array.isArray(catalog?.json?.elements) ? catalog.json.elements : [];
+    const osmElements = Array.isArray(osm?.json?.elements) ? osm.json.elements : [];
+    return {
+      json: { routes: catalogRoutes, elements: [...catalogElements, ...osmElements] },
+      provider: catalog ? "mss-global-route-catalog" as const : "openstreetmap-overpass" as const,
+    };
+  } finally {
+    catalogScoped.dispose();
   }
 }
 
@@ -315,7 +353,7 @@ export async function discoverOutdoorRoutes(
   if (sport === "treadmill") return { routes: [], center, radiusKm, provider: "openstreetmap-overpass" };
   const safeRadius = Math.max(3, Math.min(60, Math.round(radiusKm)));
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), Math.max(3500, Math.min(12000, Number(options.timeoutMs || 9000))));
+  const timeout = window.setTimeout(() => controller.abort(), Math.max(6500, Math.min(15000, Number(options.timeoutMs || 11000))));
   try {
     const fetched = await fetchDiscoveryData(center, sport, safeRadius, controller.signal, targetDistanceKm);
     const json = fetched.json;
@@ -340,7 +378,7 @@ export async function discoverOutdoorRoutes(
     }
     return { routes: [...unique.values()], center, radiusKm: safeRadius, provider: fetched.provider };
   } catch (error: any) {
-    if (error?.name === "AbortError") throw new Error("La recherche cartographique a dépassé le délai rapide. Le Scout poursuit avec ses autres sources.");
+    if (error?.name === "AbortError") throw new Error("La recherche cartographique a dépassé le délai. Le Scout poursuit avec ses autres sources.");
     throw error;
   } finally {
     window.clearTimeout(timeout);

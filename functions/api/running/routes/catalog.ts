@@ -113,7 +113,7 @@ function overpassQuery(lat: number, lon: number, sport: string, radiusKm: number
   const bbox = bboxAround(lat, lon, radiusKm);
   const kinds = routeKindsForSport(sport);
   const box = `${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)}`;
-  return `[out:json][timeout:12];\nrelation["type"="route"]["route"~"^(${kinds})$"](${box});\nout geom(${box});`;
+  return `[out:json][timeout:18];\nrelation["type"="route"]["route"~"^(${kinds})$"](${box});\nout geom;`;
 }
 
 function haversineMeters(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
@@ -239,27 +239,28 @@ function endpointSignal(parent: AbortSignal, timeoutMs: number) {
 }
 
 async function fetchOverpass(query: string, signal: AbortSignal) {
-  const errors: string[] = [];
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    const scoped = endpointSignal(signal, 2400);
+  const attempts = OVERPASS_ENDPOINTS.map(async (endpoint) => {
+    const scoped = endpointSignal(signal, 6200);
     try {
       const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
         method: "GET",
-        headers: { accept: "application/json", "user-agent": "MULTISPORTS-SCORING-RouteCatalog/2.0" },
+        headers: { accept: "application/json", "user-agent": "MULTISPORTS-SCORING-RouteCatalog/2.1" },
         signal: scoped.signal,
       });
-      if (!response.ok) { errors.push(`${endpoint}:${response.status}`); continue; }
+      if (!response.ok) throw new Error(`${endpoint}:${response.status}`);
       const data = await response.json();
-      if (!Array.isArray(data?.elements)) { errors.push(`${endpoint}:invalid-json`); continue; }
+      if (!Array.isArray(data?.elements)) throw new Error(`${endpoint}:invalid-json`);
       return { data, endpoint };
-    } catch (error: any) {
-      if (signal.aborted) throw error;
-      errors.push(`${endpoint}:${error?.name === "AbortError" ? "timeout" : String(error?.message || error || "network")}`);
     } finally {
       scoped.dispose();
     }
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch (error: any) {
+    if (signal.aborted) throw error;
+    throw new Error(error?.message || "overpass-unavailable");
   }
-  throw new Error(errors.join(" | ") || "route_catalog_unavailable");
 }
 
 function supabaseHeaders(key: string) {
@@ -603,7 +604,7 @@ function cacheRequestUrl(request: Request, lat: number, lon: number, sport: stri
   u.searchParams.set("sport", sport);
   u.searchParams.set("radiusKm", String(Math.round(radiusKm)));
   u.searchParams.set("targetKm", targetKm > 0 ? targetKm.toFixed(1) : "0");
-  u.searchParams.set("v", "3");
+  u.searchParams.set("v", "4");
   return new Request(u.toString(), { method: "GET" });
 }
 
@@ -644,7 +645,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 9_500);
+  const timer = setTimeout(() => controller.abort(), 11_500);
   const startedAt = Date.now();
   const warnings: string[] = [];
   let osmElements: any[] = [];
@@ -664,11 +665,11 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
     const outdooractivePromise = fetchOutdooractive(env, lat, lon, sport, radiusKm, targetKm, controller.signal)
       .catch((error) => { warnings.push(`outdooractive:${String(error?.message || error)}`); return [] as CatalogRoute[]; });
 
-    const stored = await settleWithin(storedPromise, 2200, [] as CatalogRoute[]);
-    const remoteBudget = stored.length >= 18 ? 1200 : 5200;
+    const stored = await settleWithin(storedPromise, 1800, [] as CatalogRoute[]);
+    const remoteBudget = stored.length >= 18 ? 1200 : 6500;
     const [osmRoutes, outdooractiveRoutes] = await Promise.all([
       settleWithin(osmPromise, remoteBudget, [] as CatalogRoute[]),
-      settleWithin(outdooractivePromise, stored.length >= 18 ? 900 : 4200, [] as CatalogRoute[]),
+      settleWithin(outdooractivePromise, stored.length >= 18 ? 900 : 5000, [] as CatalogRoute[]),
     ]);
     const routes = dedupeAndRank([...stored, ...osmRoutes, ...outdooractiveRoutes], lat, lon, targetKm, sport);
     if (osmRoutes.length) waitUntil(persistRoutes(env, osmRoutes));
@@ -680,7 +681,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
     }, {});
     const response = json({
       ok: true,
-      provider: "mss-global-route-catalog-v3",
+      provider: "mss-global-route-catalog-v4",
       sport,
       radiusKm,
       targetKm,
@@ -696,7 +697,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, waitUntil, env
       outdooractiveEnabled: Boolean(env.OUTDOORACTIVE_API_KEY && env.OUTDOORACTIVE_PROJECT_KEY),
       elapsedMs: Date.now() - startedAt,
     }, 200, { "x-mss-route-catalog-cache": "MISS" });
-    waitUntil(cache.put(cacheKey, response.clone()));
+    // Never poison Cloudflare cache with an empty search result. Public route providers
+    // can transiently fail; an empty response must be retried on the next search.
+    if (routes.length) waitUntil(cache.put(cacheKey, response.clone()));
     return response;
   } catch (error: any) {
     const reason = error?.name === "AbortError" ? "timeout" : String(error?.message || error || "unavailable");
