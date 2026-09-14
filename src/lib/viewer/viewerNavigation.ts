@@ -7,8 +7,8 @@ export type ViewerTvMenuItem = {
 };
 
 export const VIEWER_TV_MENU: ViewerTvMenuItem[] = [
-  { id: "scoreboard", label: "PARTIE EN COURS", subtitle: "Scoreboard live", kind: "scoreboard" },
-  { id: "games", label: "JEUX", subtitle: "Tous les sports", tab: "gameSelect", kind: "route" },
+  { id: "scoreboard", label: "LANCER / REPRENDRE", subtitle: "Nouvelle partie ou scoreboard live", kind: "scoreboard" },
+  { id: "games", label: "SPORTS", subtitle: "Choisir une discipline", tab: "gameSelect", kind: "route" },
   { id: "profiles", label: "PROFILS", subtitle: "Joueurs et équipes", tab: "profiles", kind: "route" },
   { id: "online", label: "ONLINE", subtitle: "Communauté et parties", tab: "online", kind: "route" },
   { id: "stats", label: "STATS", subtitle: "Performances et historiques", tab: "statsHub", kind: "route" },
@@ -51,8 +51,8 @@ const GAMEPLAY_TABS = new Set([
 
 const LABELS: Record<string, string> = {
   home: "Accueil",
-  gameSelect: "Jeux",
-  games: "Jeux",
+  gameSelect: "Sports",
+  games: "Sports",
   profiles: "Profils",
   online: "Online",
   stats: "Stats",
@@ -75,7 +75,28 @@ const LABELS: Record<string, string> = {
 };
 
 export function isViewerRemoteTabAllowed(tab: string) {
-  return REMOTE_ALLOWED_TABS.has(String(tab || ""));
+  const value = String(tab || "");
+  if (REMOTE_ALLOWED_TABS.has(value)) return true;
+
+  // Les écrans TV peuvent ouvrir les configurations de jeu déjà existantes
+  // sans transformer la télécommande en routeur arbitraire. On limite aux
+  // familles de routes de configuration/menus connues de l'application.
+  if (/^(?:petanque|babyfoot|pingpong|molkky|dice|foot|darts|killer|shanghai|warfare|five_lives|halve_it|count_up|prisoner|super_bull|happy_mille|game_170|bobs_27|bowling|knockout|shooter|darts_racer|baseball|attrape_moi|president|football|rugby|capital|loterie|departements|cargo|ocean_control|tic_tac_toe|batard|golf|scram|enculette).*_config$/.test(value)) return true;
+
+  return [
+    "cricket",
+    "shanghai",
+    "battle_royale",
+    "training",
+    "tournaments",
+    "running_plan",
+    "fit_plan",
+    "esports_rooms",
+    "esports_matches",
+    "esports_tournaments",
+    "esports_profile",
+    "esports_stats",
+  ].includes(value);
 }
 
 export function isViewerGameplayRoute(tab: string) {

@@ -55,11 +55,17 @@ else {
   if (bundleText.includes("dc-online-v3.perrin-alexandre38530.workers.dev")) pass("Viewer TV routé vers le Worker ONLINE DC_SYNC");
   else fail("Viewer TV non routé vers le Worker ONLINE (risque session absente)");
 
-  if (bundleText.includes("MSS_TV_INTERACTIVE_BUILD_20260914_01")) pass("Interface Samsung TV INTERACTIVE V1 intégrée au bundle");
-  else fail("ANCIEN BUNDLE TV détecté : l'interface interactive n'est pas dans les assets générés");
+  if (bundleText.includes("MSS_TV_FULL_APP_BUILD_20260914_02")) pass("Interface Samsung TV FULL APP V2 intégrée au bundle");
+  else fail("ANCIEN BUNDLE TV détecté : l'interface FULL APP V2 n'est pas dans les assets générés");
 
-  if (bundleText.includes("TV INTERACTIVE") && bundleText.includes("TÉLÉPHONE CONNECTÉ")) pass("Menu TV interactif présent");
-  else fail("Menu TV interactif absent du bundle");
+  if (bundleText.includes("TV FULL APP V2") && bundleText.includes("LANCER UNE PARTIE") && bundleText.includes("SPORTS")) pass("Navigation TV FULL APP V2 présente");
+  else fail("Navigation TV FULL APP V2 absente du bundle");
+
+  if (bundleText.includes("MATCH SIMPLE") && bundleText.includes("DICE DUEL") && bundleText.includes("MATCH 1V1")) pass("Lanceurs de sports TV intégrés");
+  else fail("Lanceurs de sports TV incomplets");
+
+  if (bundleText.includes("PROFIL ACTIF") && bundleText.includes("X01 PAR DÉFAUT")) pass("Profils / Stats / Réglages TV intégrés");
+  else fail("Écrans TV profils/réglages absents");
 
   if (bundleText.includes("/socket")) pass("Canal temps réel Viewer/WebSocket présent");
   else fail("Canal WebSocket Viewer absent du bundle");

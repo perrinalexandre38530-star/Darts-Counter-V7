@@ -348,18 +348,17 @@ html[data-mss-samsung-tv="1"] body {
   background: linear-gradient(180deg, rgba(255,255,255,.072), rgba(255,255,255,.035));
   color: #f8fafc;
   outline: none;
-  transform: scale(1);
-  transition: transform 100ms ease, border-color 100ms ease, background 100ms ease, box-shadow 100ms ease;
+  transform: none;
+  transition: none;
+  contain: layout paint style;
 }
 
 .mss-tv-menu-card.is-focused {
   z-index: 2;
-  transform: scale(1.025);
-  border-color: rgba(255,225,139,.94);
-  background:
-    radial-gradient(420px 140px at 12% 0%, rgba(255,213,106,.16), transparent 72%),
-    rgba(255,255,255,.09);
-  box-shadow: 0 0 0 5px rgba(255,213,106,.10), 0 18px 42px rgba(0,0,0,.30);
+  transform: none;
+  border-color: rgba(255,225,139,.96);
+  background: rgba(255,255,255,.115);
+  box-shadow: inset 0 0 0 2px rgba(255,213,106,.20);
 }
 
 .mss-tv-menu-card.is-disabled {
@@ -454,4 +453,488 @@ html[data-mss-samsung-tv="1"] body {
   letter-spacing: 1.4px;
   font-weight: 900;
   opacity: .56;
+}
+
+
+/* ==========================================================
+   MULTISPORTS SCORING TV · FULL APP V2
+   - pages locales TV
+   - navigation télécommande sans animation coûteuse
+   - logos sports en watermark à droite
+   ========================================================== */
+
+.mss-tv-section {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  padding: 42px 54px 30px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 20px;
+  background:
+    radial-gradient(860px 520px at 10% 0%, rgba(43, 149, 255, .18), transparent 64%),
+    radial-gradient(780px 480px at 92% 14%, rgba(255, 211, 97, .11), transparent 64%),
+    linear-gradient(145deg, #101a2e 0%, #070b13 52%, #020304 100%);
+}
+
+.mss-tv-page-header {
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.mss-tv-page-eyebrow {
+  color: rgba(255,213,106,.66);
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .20em;
+}
+
+.mss-tv-page-title {
+  margin-top: 3px;
+  color: #ffd56a;
+  font-size: clamp(34px, 3vw, 52px);
+  line-height: 1;
+  font-weight: 1100;
+  letter-spacing: .035em;
+}
+
+.mss-tv-page-subtitle {
+  max-width: 1050px;
+  margin-top: 7px;
+  color: rgba(255,255,255,.58);
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.mss-tv-page-footer {
+  color: rgba(255,255,255,.42);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.mss-tv-card-watermark {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  right: -2%;
+  width: 46%;
+  height: 128%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: .105;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 82%, transparent 100%);
+}
+
+.mss-tv-card-watermark.is-strong {
+  opacity: .16;
+}
+
+.mss-tv-card-watermark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: right center;
+  filter: saturate(1.05) contrast(1.04);
+}
+
+.mss-tv-menu-card > *:not(.mss-tv-card-watermark),
+.mss-tv-sport-card > *:not(.mss-tv-card-watermark),
+.mss-tv-sport-hero > *:not(.mss-tv-card-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.mss-tv-sport-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0,1fr));
+  grid-template-rows: repeat(2, minmax(0,1fr));
+  gap: 14px;
+}
+
+.mss-tv-sport-card {
+  --sport-accent: #ffd56a;
+  position: relative;
+  overflow: hidden;
+  min-height: 190px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  text-align: left;
+  border-radius: 24px;
+  border: 2px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.035));
+  color: #fff;
+  outline: none;
+  transition: none;
+  contain: layout paint style;
+}
+
+.mss-tv-sport-card.is-focused {
+  border-color: var(--sport-accent);
+  background: rgba(255,255,255,.11);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.08);
+}
+
+.mss-tv-sport-card.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--sport-accent);
+}
+
+.mss-tv-sport-card-label {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 1100;
+}
+
+.mss-tv-sport-card-subtitle {
+  margin-top: 7px;
+  color: rgba(255,255,255,.52);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.mss-tv-active-pill {
+  position: absolute !important;
+  top: 14px;
+  left: 14px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(52,211,153,.14);
+  border: 1px solid rgba(52,211,153,.35);
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .12em;
+}
+
+.mss-tv-sport-hero {
+  --sport-accent: #ffd56a;
+  position: relative;
+  overflow: hidden;
+  min-height: 120px;
+  padding: 20px 26px;
+  border-radius: 24px;
+  border: 1px solid var(--sport-accent);
+  background: rgba(255,255,255,.045);
+}
+
+.mss-tv-sport-hero-title {
+  font-size: 31px;
+  font-weight: 1100;
+  color: #fff;
+}
+
+.mss-tv-sport-hero-copy {
+  margin-top: 5px;
+  color: rgba(255,255,255,.58);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mss-tv-page-count {
+  position: absolute !important;
+  right: 20px;
+  bottom: 14px;
+  color: rgba(255,255,255,.54);
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.mss-tv-action-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  grid-template-rows: repeat(4, minmax(0,1fr));
+  gap: 12px;
+}
+
+.mss-tv-action-card,
+.mss-tv-profile-card,
+.mss-tv-profile-chip,
+.mss-tv-setting-card {
+  outline: none;
+  transition: none;
+  contain: layout paint style;
+}
+
+.mss-tv-action-card {
+  min-height: 72px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  border-radius: 18px;
+  border: 2px solid rgba(255,255,255,.075);
+  background: rgba(255,255,255,.052);
+  color: #fff;
+}
+
+.mss-tv-action-card.is-focused {
+  border-color: #ffe18b;
+  background: rgba(255,255,255,.115);
+  box-shadow: inset 0 0 0 2px rgba(255,213,106,.16);
+}
+
+.mss-tv-action-label {
+  font-size: 17px;
+  font-weight: 1050;
+}
+
+.mss-tv-action-subtitle {
+  margin-top: 4px;
+  color: rgba(255,255,255,.50);
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.mss-tv-profile-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  grid-auto-rows: minmax(118px, 1fr);
+  gap: 14px;
+  align-content: start;
+}
+
+.mss-tv-profile-card {
+  position: relative;
+  min-height: 118px;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 14px;
+  align-items: center;
+  text-align: left;
+  border-radius: 22px;
+  border: 2px solid rgba(255,255,255,.075);
+  background: rgba(255,255,255,.052);
+  color: #fff;
+}
+
+.mss-tv-profile-card.is-focused {
+  border-color: #ffe18b;
+  background: rgba(255,255,255,.115);
+}
+
+.mss-tv-profile-card.is-active {
+  box-shadow: inset 0 -4px 0 rgba(52,211,153,.82);
+}
+
+.mss-tv-profile-avatar {
+  grid-row: 1 / span 2;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #ffd56a;
+  background: rgba(255,213,106,.10);
+  border: 1px solid rgba(255,213,106,.18);
+  font-size: 17px;
+  font-weight: 1100;
+}
+
+.mss-tv-profile-name {
+  align-self: end;
+  font-size: 18px;
+  font-weight: 1050;
+}
+
+.mss-tv-profile-meta {
+  align-self: start;
+  margin-top: 3px;
+  color: rgba(255,255,255,.48);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.mss-tv-profile-strip {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0,1fr));
+  gap: 8px;
+}
+
+.mss-tv-profile-chip {
+  min-height: 46px;
+  padding: 8px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 14px;
+  border: 2px solid rgba(255,255,255,.07);
+  background: rgba(255,255,255,.045);
+  color: rgba(255,255,255,.72);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mss-tv-profile-chip.is-focused {
+  color: #fff;
+  border-color: #ffe18b;
+  background: rgba(255,255,255,.11);
+}
+
+.mss-tv-stats-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 14px;
+}
+
+.mss-tv-stats-player {
+  font-size: 28px;
+  font-weight: 1100;
+  color: #fff;
+}
+
+.mss-tv-stat-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  grid-template-rows: repeat(2, minmax(0,1fr));
+  gap: 14px;
+}
+
+.mss-tv-stat-card {
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.045);
+}
+
+.mss-tv-stat-card b {
+  color: #ffd56a;
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 1150;
+}
+
+.mss-tv-stat-card span {
+  margin-top: 8px;
+  color: rgba(255,255,255,.48);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .11em;
+}
+
+.mss-tv-online-dot {
+  grid-row: 1 / span 2;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: none;
+}
+
+.mss-tv-online-dot.is-online { background: #34d399; }
+.mss-tv-online-dot.is-away { background: #f59e0b; }
+
+.mss-tv-settings-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  grid-auto-rows: minmax(92px, 1fr);
+  gap: 14px;
+  align-content: start;
+}
+
+.mss-tv-setting-card {
+  min-height: 92px;
+  padding: 20px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-radius: 22px;
+  border: 2px solid rgba(255,255,255,.075);
+  background: rgba(255,255,255,.052);
+  color: #fff;
+  text-align: left;
+}
+
+.mss-tv-setting-card.is-focused {
+  border-color: #ffe18b;
+  background: rgba(255,255,255,.115);
+}
+
+.mss-tv-setting-card span {
+  font-size: 16px;
+  font-weight: 980;
+}
+
+.mss-tv-setting-card b {
+  color: #ffd56a;
+  font-size: 18px;
+  font-weight: 1100;
+}
+
+.mss-tv-info-panels {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+
+.mss-tv-info-card,
+.mss-tv-empty {
+  width: min(1120px, 86vw);
+  padding: 34px;
+  border-radius: 26px;
+  border: 1px solid rgba(255,255,255,.09);
+  background: rgba(255,255,255,.045);
+  color: rgba(255,255,255,.62);
+  font-size: 17px;
+  line-height: 1.55;
+  font-weight: 760;
+}
+
+.mss-tv-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mss-tv-info-card b {
+  color: #ffd56a;
+  font-size: 24px;
+  font-weight: 1100;
+}
+
+@media (max-height: 800px) {
+  .mss-tv-section { padding: 24px 38px 20px; gap: 12px; }
+  .mss-tv-page-header { min-height: 66px; }
+  .mss-tv-page-title { font-size: 34px; }
+  .mss-tv-page-subtitle { margin-top: 4px; font-size: 12px; }
+  .mss-tv-sport-card { min-height: 140px; padding: 16px; }
+  .mss-tv-sport-card-label { font-size: 18px; }
+  .mss-tv-sport-hero { min-height: 88px; padding: 14px 20px; }
+  .mss-tv-sport-hero-title { font-size: 24px; }
+  .mss-tv-action-grid { gap: 8px; }
+  .mss-tv-action-card { min-height: 58px; padding: 10px 14px; }
+  .mss-tv-profile-grid { grid-auto-rows: minmax(90px, 1fr); }
+  .mss-tv-profile-card { min-height: 90px; padding: 12px; }
+  .mss-tv-stat-card { min-height: 86px; padding: 16px; }
+  .mss-tv-stat-card b { font-size: 30px; }
 }

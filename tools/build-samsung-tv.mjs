@@ -52,11 +52,11 @@ const builtJs = fs.existsSync(builtAssetsDir)
 const builtBundle = builtJs
   .map((file) => fs.readFileSync(path.join(builtAssetsDir, file), "utf8"))
   .join("\n");
-if (!builtBundle.includes("MSS_TV_INTERACTIVE_BUILD_20260914_01")) {
-  console.error("❌ Le bundle Samsung généré ne contient pas TV INTERACTIVE V1. Build refusé.");
+if (!builtBundle.includes("MSS_TV_FULL_APP_BUILD_20260914_02")) {
+  console.error("❌ Le bundle Samsung généré ne contient pas TV FULL APP V2. Build refusé.");
   process.exit(1);
 }
-console.log("✅ Bundle Samsung TV INTERACTIVE V1 généré");
+console.log("✅ Bundle Samsung TV FULL APP V2 généré");
 
 const check = spawnSync(process.execPath, [path.join(root, "tools", "check-samsung-tv.mjs")], {
   cwd: root,

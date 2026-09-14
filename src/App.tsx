@@ -2956,6 +2956,69 @@ useEffect(() => {
     tab: String(tab || ""),
     routeParams,
     go: (next, params) => go(next as Tab, params),
+    store,
+    setActiveProfile: (profileId) => {
+      update((s) => ({ ...s, activeProfileId: profileId }));
+    },
+    updateSetting: (key, value) => {
+      update((s) => ({
+        ...s,
+        settings: { ...(s.settings as any), [key]: value } as any,
+      }));
+    },
+    startX01: (payload) => {
+      const requestedIds = Array.isArray(payload?.playerIds)
+        ? payload.playerIds.map((id: any) => String(id || "")).filter(Boolean)
+        : [];
+      const pool = Array.isArray(store.profiles) ? store.profiles : [];
+      const selectedProfiles = requestedIds
+        .map((id: string) => pool.find((profile: any) => String(profile?.id || "") === id))
+        .filter(Boolean) as any[];
+      const fallbackProfile =
+        pool.find((profile: any) => String(profile?.id || "") === String(store.activeProfileId || "")) ||
+        pool[0] ||
+        null;
+      const profiles = selectedProfiles.length ? selectedProfiles : (fallbackProfile ? [fallbackProfile] : []);
+      if (!profiles.length) {
+        go("profiles", { view: "me", autoCreate: true });
+        return;
+      }
+
+      const startScoreRaw = Number(payload?.startScore || 501);
+      const startScore = ([301, 501, 701, 901] as const).includes(startScoreRaw as any)
+        ? (startScoreRaw as 301 | 501 | 701 | 901)
+        : 501;
+      const outMode = ["single", "double", "master"].includes(String(payload?.outMode || ""))
+        ? String(payload.outMode)
+        : "double";
+      const inMode = ["single", "double", "master"].includes(String(payload?.inMode || ""))
+        ? String(payload.inMode)
+        : "single";
+
+      const cfg: X01ConfigV3Type = {
+        startScore,
+        inMode: inMode as any,
+        outMode: outMode as any,
+        gameMode: profiles.length > 1 ? "multi" : "solo",
+        players: profiles.map((profile: any) => ({
+          id: String(profile.id),
+          name: String(profile.name || "Joueur"),
+          avatar: profile.avatarCastAssetId || profile.avatarThumbAssetId || profile.avatarUrl || profile.avatarDataUrl || undefined,
+          dartSetId: profile.favoriteDartSetId ?? null,
+        })),
+        teams: null,
+        legsPerSet: Math.max(1, Number(payload?.legsPerSet || 1)),
+        setsToWin: Math.max(1, Number(payload?.setsToWin || 1)),
+        x01StartScore: startScore,
+        x01Variant: profiles.length > 2 ? "multi" : profiles.length === 2 ? "duo" : "solo",
+        serveMode: payload?.serveMode === "random" ? "random" : "alternate",
+        scoringSource: "manual",
+        createdAt: Date.now(),
+      };
+
+      setX01ConfigV3(cfg);
+      go("x01_play_v3", { fresh: Date.now(), source: "samsung-tv" });
+    },
   });
 
   /* centralized update */
