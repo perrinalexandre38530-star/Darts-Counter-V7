@@ -719,4 +719,212 @@ export async function syncAllOrganizationGroupsToSharedTeams(userId: string | nu
   }));
 }
 
-\n\nfunction parseOrganizationMember(row: any, organizationId = ""): OrganizationMember {\n  const rawGroups = Array.isArray(row?.groupIds) ? row.groupIds : Array.isArray(row?.group_ids) ? row.group_ids : [];\n  const statusRaw = String(row?.status || "active").toLowerCase();\n  return {\n    membershipId: String(row?.membershipId || row?.membership_id || row?.id || ""),\n    organizationId: String(row?.organizationId || row?.organization_id || organizationId || ""),\n    userId: String(row?.userId || row?.user_id || ""),\n    displayName: String(row?.displayName || row?.display_name || row?.nickname || "Joueur MSS").trim() || "Joueur MSS",\n    avatarUrl: String(row?.avatarUrl || row?.avatar_url || "").trim(),\n    countryCode: String(row?.countryCode || row?.country_code || "").trim().toUpperCase().slice(0, 2),\n    role: coerceRole(row?.role),\n    status: statusRaw === "suspended" ? "suspended" : statusRaw === "invited" ? "invited" : "active",\n    joinedAt: String(row?.joinedAt || row?.joined_at || nowIso()),\n    updatedAt: String(row?.updatedAt || row?.updated_at || nowIso()),\n    groupIds: Array.from(new Set(rawGroups.map((value: unknown) => String(value || "").trim()).filter(Boolean))),\n  };\n}\n\nfunction parseOrganizationInvitation(row: any): OrganizationInvitation {\n  const statusRaw = String(row?.status || "pending").toLowerCase();\n  return {\n    id: String(row?.id || row?.invitationId || row?.invitation_id || ""),\n    organizationId: String(row?.organizationId || row?.organization_id || ""),\n    organizationName: String(row?.organizationName || row?.organization_name || "").trim(),\n    organizationKind: coerceKind(row?.organizationKind || row?.organization_kind || "other"),\n    invitedUserId: String(row?.invitedUserId || row?.invited_user_id || ""),\n    invitedByUserId: String(row?.invitedByUserId || row?.invited_by_user_id || ""),\n    displayName: String(row?.displayName || row?.display_name || "Joueur MSS").trim() || "Joueur MSS",\n    avatarUrl: String(row?.avatarUrl || row?.avatar_url || "").trim(),\n    countryCode: String(row?.countryCode || row?.country_code || "").trim().toUpperCase().slice(0, 2),\n    invitedByDisplayName: String(row?.invitedByDisplayName || row?.invited_by_display_name || "").trim(),\n    role: coerceRole(row?.role),\n    status: statusRaw === "accepted" ? "accepted" : statusRaw === "declined" ? "declined" : statusRaw === "revoked" ? "revoked" : "pending",\n    createdAt: String(row?.createdAt || row?.created_at || nowIso()),\n    respondedAt: String(row?.respondedAt || row?.responded_at || ""),\n  };\n}\n\nfunction rpcRows(data: any): any[] {\n  if (Array.isArray(data)) return data;\n  if (data == null) return [];\n  return [data];\n}\n\nfunction rpcMessage(error: any, fallback: string): string {\n  const raw = String(error?.message || error?.details || error?.hint || fallback);\n  const labels: Record<string, string> = {\n    AUTH_REQUIRED: "Connexion requise.",\n    FORBIDDEN: "Tu n’as pas les droits nécessaires pour cette action.",\n    ORGANIZATION_NOT_FOUND: "Organisation introuvable.",\n    MEMBER_NOT_FOUND: "Membre introuvable.",\n    MEMBER_SUSPENDED: "Ce membre est suspendu.",\n    MEMBERSHIP_SUSPENDED: "Cette adhésion est suspendue.",\n    OWNER_PROTECTED: "Le propriétaire de l’organisation ne peut pas être modifié ou retiré ici.",\n    CANNOT_MANAGE_ROLE: "Ton rôle ne permet pas de modifier ce membre.",\n    INVALID_ROLE: "Rôle invalide.",\n    ALREADY_MEMBER: "Cet utilisateur est déjà membre de l’organisation.",\n    INVITATION_ALREADY_PENDING: "Une invitation est déjà en attente pour cet utilisateur.",\n    INVITATION_NOT_FOUND: "Invitation introuvable.",\n    USER_NOT_FOUND: "Utilisateur introuvable.",\n    GROUP_NOT_FOUND: "Équipe ou groupe introuvable.",\n  };\n  for (const [key, label] of Object.entries(labels)) if (raw.includes(key)) return label;\n  return raw || fallback;\n}\n\nexport async function listOrganizationMembers(\n  userId: string | null | undefined,\n  organizationId: string,\n): Promise<{ members: OrganizationMember[]; cloudAvailable: boolean }> {\n  if (!userId || !organizationId) return { members: [], cloudAvailable: false };\n  try {\n    const { data, error } = await supabase.rpc("ms_org_list_members", { p_org_id: organizationId });\n    if (error) throw error;\n    return { members: rpcRows(data).filter(Boolean).map((row) => parseOrganizationMember(row, organizationId)), cloudAvailable: true };\n  } catch (error) {\n    console.warn("[organizations] member list unavailable", error);\n    return { members: [], cloudAvailable: false };\n  }\n}\n\nexport async function setOrganizationMemberRole(\n  userId: string | null | undefined,\n  organizationId: string,\n  memberUserId: string,\n  role: OrganizationRole,\n): Promise<OrganizationMember> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { data, error } = await supabase.rpc("ms_org_set_member_role", { p_org_id: organizationId, p_user_id: memberUserId, p_role: role });\n  if (error) throw new Error(rpcMessage(error, "Modification du rôle impossible."));\n  const row = rpcRows(data)[0];\n  if (!row) throw new Error("Membre introuvable.");\n  return parseOrganizationMember(row, organizationId);\n}\n\nexport async function setOrganizationMemberStatus(\n  userId: string | null | undefined,\n  organizationId: string,\n  memberUserId: string,\n  status: "active" | "suspended",\n): Promise<OrganizationMember> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { data, error } = await supabase.rpc("ms_org_set_member_status", { p_org_id: organizationId, p_user_id: memberUserId, p_status: status });\n  if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));\n  const row = rpcRows(data)[0];\n  if (!row) throw new Error("Membre introuvable.");\n  return parseOrganizationMember(row, organizationId);\n}\n\nexport async function removeOrganizationMember(\n  userId: string | null | undefined,\n  organizationId: string,\n  memberUserId: string,\n): Promise<void> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { error } = await supabase.rpc("ms_org_remove_member", { p_org_id: organizationId, p_user_id: memberUserId });\n  if (error) throw new Error(rpcMessage(error, "Suppression du membre impossible."));\n}\n\nexport async function setOrganizationGroupMember(\n  userId: string | null | undefined,\n  groupId: string,\n  memberUserId: string,\n  assigned: boolean,\n): Promise<void> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { error } = await supabase.rpc("ms_org_set_group_member", { p_group_id: groupId, p_user_id: memberUserId, p_assigned: assigned });\n  if (error) throw new Error(rpcMessage(error, "Affectation à l’équipe impossible."));\n}\n\nexport async function inviteOrganizationUser(\n  userId: string | null | undefined,\n  organizationId: string,\n  invitedUserId: string,\n  role: OrganizationRole = "member",\n): Promise<OrganizationInvitation> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { data, error } = await supabase.rpc("ms_org_invite_user", { p_org_id: organizationId, p_user_id: invitedUserId, p_role: role });\n  if (error) throw new Error(rpcMessage(error, "Invitation impossible."));\n  const row = rpcRows(data)[0];\n  if (!row) throw new Error("Invitation impossible.");\n  return parseOrganizationInvitation(row);\n}\n\nexport async function listOrganizationInvitations(\n  userId: string | null | undefined,\n  organizationId: string,\n): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {\n  if (!userId || !organizationId) return { invitations: [], cloudAvailable: false };\n  try {\n    const { data, error } = await supabase.rpc("ms_org_list_invitations", { p_org_id: organizationId });\n    if (error) throw error;\n    return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };\n  } catch (error) {\n    console.warn("[organizations] invitation list unavailable", error);\n    return { invitations: [], cloudAvailable: false };\n  }\n}\n\nexport async function listMyOrganizationInvitations(\n  userId: string | null | undefined,\n): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {\n  if (!userId) return { invitations: [], cloudAvailable: false };\n  try {\n    const { data, error } = await supabase.rpc("ms_org_list_my_invitations");\n    if (error) throw error;\n    return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };\n  } catch (error) {\n    console.warn("[organizations] incoming invitations unavailable", error);\n    return { invitations: [], cloudAvailable: false };\n  }\n}\n\nexport async function respondOrganizationInvitation(\n  userId: string | null | undefined,\n  invitationId: string,\n  accept: boolean,\n): Promise<void> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { error } = await supabase.rpc("ms_org_respond_invitation", { p_invitation_id: invitationId, p_accept: accept });\n  if (error) throw new Error(rpcMessage(error, "Réponse à l’invitation impossible."));\n}\n\nexport async function cancelOrganizationInvitation(\n  userId: string | null | undefined,\n  invitationId: string,\n): Promise<void> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { error } = await supabase.rpc("ms_org_cancel_invitation", { p_invitation_id: invitationId });\n  if (error) throw new Error(rpcMessage(error, "Annulation de l’invitation impossible."));\n}\n\nexport async function rotateOrganizationJoinCode(\n  userId: string | null | undefined,\n  organizationId: string,\n): Promise<string> {\n  if (!userId) throw new Error("Connexion requise.");\n  const { data, error } = await supabase.rpc("ms_org_rotate_join_code", { p_org_id: organizationId });\n  if (error) throw new Error(rpcMessage(error, "Impossible de générer un nouveau code."));\n  const row = rpcRows(data)[0];\n  const code = String(row?.joinCode || row?.join_code || row || "").trim().toUpperCase();\n  if (!code) throw new Error("Nouveau code indisponible.");\n  const state = loadOrganizationLocalState(userId);\n  const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, joinCode: code, updatedAt: nowIso() } : org);\n  saveOrganizationLocalState(userId, { ...state, organizations });\n  return code;\n}\n
+
+
+function parseOrganizationMember(row: any, organizationId = ""): OrganizationMember {
+  const rawGroups = Array.isArray(row?.groupIds) ? row.groupIds : Array.isArray(row?.group_ids) ? row.group_ids : [];
+  const statusRaw = String(row?.status || "active").toLowerCase();
+  return {
+    membershipId: String(row?.membershipId || row?.membership_id || row?.id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || organizationId || ""),
+    userId: String(row?.userId || row?.user_id || ""),
+    displayName: String(row?.displayName || row?.display_name || row?.nickname || "Joueur MSS").trim() || "Joueur MSS",
+    avatarUrl: String(row?.avatarUrl || row?.avatar_url || "").trim(),
+    countryCode: String(row?.countryCode || row?.country_code || "").trim().toUpperCase().slice(0, 2),
+    role: coerceRole(row?.role),
+    status: statusRaw === "suspended" ? "suspended" : statusRaw === "invited" ? "invited" : "active",
+    joinedAt: String(row?.joinedAt || row?.joined_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || nowIso()),
+    groupIds: Array.from(new Set(rawGroups.map((value: unknown) => String(value || "").trim()).filter(Boolean))),
+  };
+}
+
+function parseOrganizationInvitation(row: any): OrganizationInvitation {
+  const statusRaw = String(row?.status || "pending").toLowerCase();
+  return {
+    id: String(row?.id || row?.invitationId || row?.invitation_id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    organizationName: String(row?.organizationName || row?.organization_name || "").trim(),
+    organizationKind: coerceKind(row?.organizationKind || row?.organization_kind || "other"),
+    invitedUserId: String(row?.invitedUserId || row?.invited_user_id || ""),
+    invitedByUserId: String(row?.invitedByUserId || row?.invited_by_user_id || ""),
+    displayName: String(row?.displayName || row?.display_name || "Joueur MSS").trim() || "Joueur MSS",
+    avatarUrl: String(row?.avatarUrl || row?.avatar_url || "").trim(),
+    countryCode: String(row?.countryCode || row?.country_code || "").trim().toUpperCase().slice(0, 2),
+    invitedByDisplayName: String(row?.invitedByDisplayName || row?.invited_by_display_name || "").trim(),
+    role: coerceRole(row?.role),
+    status: statusRaw === "accepted" ? "accepted" : statusRaw === "declined" ? "declined" : statusRaw === "revoked" ? "revoked" : "pending",
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    respondedAt: String(row?.respondedAt || row?.responded_at || ""),
+  };
+}
+
+function rpcRows(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (data == null) return [];
+  return [data];
+}
+
+function rpcMessage(error: any, fallback: string): string {
+  const raw = String(error?.message || error?.details || error?.hint || fallback);
+  const labels: Record<string, string> = {
+    AUTH_REQUIRED: "Connexion requise.",
+    FORBIDDEN: "Tu n’as pas les droits nécessaires pour cette action.",
+    ORGANIZATION_NOT_FOUND: "Organisation introuvable.",
+    MEMBER_NOT_FOUND: "Membre introuvable.",
+    MEMBER_SUSPENDED: "Ce membre est suspendu.",
+    MEMBERSHIP_SUSPENDED: "Cette adhésion est suspendue.",
+    OWNER_PROTECTED: "Le propriétaire de l’organisation ne peut pas être modifié ou retiré ici.",
+    CANNOT_MANAGE_ROLE: "Ton rôle ne permet pas de modifier ce membre.",
+    INVALID_ROLE: "Rôle invalide.",
+    ALREADY_MEMBER: "Cet utilisateur est déjà membre de l’organisation.",
+    INVITATION_ALREADY_PENDING: "Une invitation est déjà en attente pour cet utilisateur.",
+    INVITATION_NOT_FOUND: "Invitation introuvable.",
+    USER_NOT_FOUND: "Utilisateur introuvable.",
+    GROUP_NOT_FOUND: "Équipe ou groupe introuvable.",
+  };
+  for (const [key, label] of Object.entries(labels)) if (raw.includes(key)) return label;
+  return raw || fallback;
+}
+
+export async function listOrganizationMembers(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ members: OrganizationMember[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { members: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_members", { p_org_id: organizationId });
+    if (error) throw error;
+    return { members: rpcRows(data).filter(Boolean).map((row) => parseOrganizationMember(row, organizationId)), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] member list unavailable", error);
+    return { members: [], cloudAvailable: false };
+  }
+}
+
+export async function setOrganizationMemberRole(
+  userId: string | null | undefined,
+  organizationId: string,
+  memberUserId: string,
+  role: OrganizationRole,
+): Promise<OrganizationMember> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_set_member_role", { p_org_id: organizationId, p_user_id: memberUserId, p_role: role });
+  if (error) throw new Error(rpcMessage(error, "Modification du rôle impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Membre introuvable.");
+  return parseOrganizationMember(row, organizationId);
+}
+
+export async function setOrganizationMemberStatus(
+  userId: string | null | undefined,
+  organizationId: string,
+  memberUserId: string,
+  status: "active" | "suspended",
+): Promise<OrganizationMember> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_set_member_status", { p_org_id: organizationId, p_user_id: memberUserId, p_status: status });
+  if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Membre introuvable.");
+  return parseOrganizationMember(row, organizationId);
+}
+
+export async function removeOrganizationMember(
+  userId: string | null | undefined,
+  organizationId: string,
+  memberUserId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_remove_member", { p_org_id: organizationId, p_user_id: memberUserId });
+  if (error) throw new Error(rpcMessage(error, "Suppression du membre impossible."));
+}
+
+export async function setOrganizationGroupMember(
+  userId: string | null | undefined,
+  groupId: string,
+  memberUserId: string,
+  assigned: boolean,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_set_group_member", { p_group_id: groupId, p_user_id: memberUserId, p_assigned: assigned });
+  if (error) throw new Error(rpcMessage(error, "Affectation à l’équipe impossible."));
+}
+
+export async function inviteOrganizationUser(
+  userId: string | null | undefined,
+  organizationId: string,
+  invitedUserId: string,
+  role: OrganizationRole = "member",
+): Promise<OrganizationInvitation> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_invite_user", { p_org_id: organizationId, p_user_id: invitedUserId, p_role: role });
+  if (error) throw new Error(rpcMessage(error, "Invitation impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Invitation impossible.");
+  return parseOrganizationInvitation(row);
+}
+
+export async function listOrganizationInvitations(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { invitations: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_invitations", { p_org_id: organizationId });
+    if (error) throw error;
+    return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] invitation list unavailable", error);
+    return { invitations: [], cloudAvailable: false };
+  }
+}
+
+export async function listMyOrganizationInvitations(
+  userId: string | null | undefined,
+): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {
+  if (!userId) return { invitations: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_my_invitations");
+    if (error) throw error;
+    return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] incoming invitations unavailable", error);
+    return { invitations: [], cloudAvailable: false };
+  }
+}
+
+export async function respondOrganizationInvitation(
+  userId: string | null | undefined,
+  invitationId: string,
+  accept: boolean,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_respond_invitation", { p_invitation_id: invitationId, p_accept: accept });
+  if (error) throw new Error(rpcMessage(error, "Réponse à l’invitation impossible."));
+}
+
+export async function cancelOrganizationInvitation(
+  userId: string | null | undefined,
+  invitationId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_cancel_invitation", { p_invitation_id: invitationId });
+  if (error) throw new Error(rpcMessage(error, "Annulation de l’invitation impossible."));
+}
+
+export async function rotateOrganizationJoinCode(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<string> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_rotate_join_code", { p_org_id: organizationId });
+  if (error) throw new Error(rpcMessage(error, "Impossible de générer un nouveau code."));
+  const row = rpcRows(data)[0];
+  const code = String(row?.joinCode || row?.join_code || row || "").trim().toUpperCase();
+  if (!code) throw new Error("Nouveau code indisponible.");
+  const state = loadOrganizationLocalState(userId);
+  const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, joinCode: code, updatedAt: nowIso() } : org);
+  saveOrganizationLocalState(userId, { ...state, organizations });
+  return code;
+}

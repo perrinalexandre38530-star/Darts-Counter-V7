@@ -1132,7 +1132,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 justifyContent: "space-between",
                 gap: 10,
                 flexWrap: "wrap",
-                alignItems: "center",
               }}
             >
               <div style={{ fontWeight: 1100, letterSpacing: 0.4 }}>
@@ -1166,7 +1165,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 justifyContent: "space-between",
                 gap: 10,
                 flexWrap: "wrap",
-                alignItems: "center",
                 background: "rgba(0,0,0,0.10)",
               }}
             >
