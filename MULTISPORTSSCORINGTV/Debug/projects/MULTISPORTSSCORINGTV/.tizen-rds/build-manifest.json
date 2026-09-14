@@ -1,0 +1,45 @@
+{
+  "projectDir": "c:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\MULTISPORTSSCORINGTV",
+  "timestamp": "2026-09-06T19:39:12.883Z",
+  "hashAlgorithm": "xxh3-128",
+  "input": {
+    "config.xml": {
+      "hash": "4089ca069090d6927d3d2c0d64e9ae7c"
+    },
+    "icon.png": {
+      "hash": "61589fd1d1ed24c135605f2bf3b07527"
+    },
+    "assets/index-Bvp1y6Q2.js": {
+      "hash": "ac60555631c359d7ec141dc067e1ab23"
+    },
+    "assets/index-C0huf3_j.css": {
+      "hash": "b7de924a0b9ea75fbacf69c135b86b28"
+    },
+    "index.html": {
+      "hash": "784e5f392ef6bc4311e470ca578b4865"
+    }
+  },
+  "output": {
+    "Debug/projects/MULTISPORTSSCORINGTV/assets/index-Bvp1y6Q2.js": {
+      "hash": "ac60555631c359d7ec141dc067e1ab23"
+    },
+    "Debug/projects/MULTISPORTSSCORINGTV/assets/index-C0huf3_j.css": {
+      "hash": "b7de924a0b9ea75fbacf69c135b86b28"
+    },
+    "Debug/projects/MULTISPORTSSCORINGTV/config.xml": {
+      "hash": "4089ca069090d6927d3d2c0d64e9ae7c"
+    },
+    "Debug/projects/MULTISPORTSSCORINGTV/css/style.css": {
+      "hash": "0501cdb5a64315918af26768b9cdf9cd"
+    },
+    "Debug/projects/MULTISPORTSSCORINGTV/icon.png": {
+      "hash": "61589fd1d1ed24c135605f2bf3b07527"
+    },
+    "Debug/projects/MULTISPORTSSCORINGTV/index.html": {
+      "hash": "784e5f392ef6bc4311e470ca578b4865"
+    },
+    "Debug/projects/MULTISPORTSSCORINGTV/main.js": {
+      "hash": "99aa06d3014798d86001c324468d497f"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "projectDir": "c:\\Users\\barto\\Desktop\\Darts-Counter-V7-GIT\\MULTISPORTSSCORINGTV",
+  "deploys": {
+    "next": [
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/assets/index-Bvp1y6Q2.js",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/assets/index-C0huf3_j.css",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/config.xml",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/css/style.css",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/icon.png",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/index.html",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/main.js",
+        "type": "add"
+      }
+    ]
+  }
+}

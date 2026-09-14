@@ -126,6 +126,77 @@ export type OrganizationGroupInput = {
   status?: "active" | "archived";
 };
 
+
+export type OrganizationCompetitionFormat = "league" | "knockout" | "groups_knockout" | "ladder" | "challenge";
+export type OrganizationCompetitionParticipantMode = "teams" | "individuals";
+export type OrganizationCompetitionStatus = "draft" | "open" | "active" | "completed" | "archived";
+export type OrganizationCompetitionFixtureStatus = "scheduled" | "completed" | "cancelled";
+
+export type OrganizationCompetition = {
+  id: string;
+  organizationId: string;
+  name: string;
+  sportId: string;
+  format: OrganizationCompetitionFormat;
+  participantMode: OrganizationCompetitionParticipantMode;
+  status: OrganizationCompetitionStatus;
+  startsAt: string;
+  endsAt: string;
+  description: string;
+  participantCount: number;
+  fixtureCount: number;
+  completedFixtureCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationCompetitionParticipant = {
+  id: string;
+  competitionId: string;
+  organizationId: string;
+  entityType: "group" | "member";
+  entityId: string;
+  displayName: string;
+  avatarUrl: string;
+  seed: number;
+};
+
+export type OrganizationCompetitionFixture = {
+  id: string;
+  competitionId: string;
+  organizationId: string;
+  round: number;
+  sequence: number;
+  groupLabel: string;
+  homeParticipantId: string;
+  awayParticipantId: string;
+  homeName: string;
+  awayName: string;
+  scheduledAt: string;
+  status: OrganizationCompetitionFixtureStatus;
+  winnerParticipantId: string;
+  scoreLabel: string;
+  resultRef: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationCompetitionDetail = {
+  competition: OrganizationCompetition;
+  participants: OrganizationCompetitionParticipant[];
+  fixtures: OrganizationCompetitionFixture[];
+};
+
+export type OrganizationCompetitionInput = {
+  name: string;
+  sportId: string;
+  format: OrganizationCompetitionFormat;
+  participantMode: OrganizationCompetitionParticipantMode;
+  startsAt?: string;
+  description?: string;
+  entityIds: string[];
+};
+
 export type OrganizationLocalEvent = {
   id: string;
   organizationId: string;
@@ -940,6 +1011,11 @@ function rpcMessage(error: any, fallback: string): string {
     INVITATION_NOT_FOUND: "Invitation introuvable.",
     USER_NOT_FOUND: "Utilisateur introuvable.",
     GROUP_NOT_FOUND: "Équipe ou groupe introuvable.",
+    COMPETITION_NOT_FOUND: "Compétition introuvable.",
+    COMPETITION_PARTICIPANT_INVALID: "Participant invalide pour cette compétition.",
+    COMPETITION_NEEDS_PARTICIPANTS: "Il faut au moins deux participants.",
+    COMPETITION_FIXTURE_NOT_FOUND: "Rencontre introuvable.",
+    COMPETITION_FORMAT_NO_AUTOMATIC_FIXTURES: "Ce format utilise des rencontres ajoutées manuellement.",
   };
   for (const [key, label] of Object.entries(labels)) if (raw.includes(key)) return label;
   return raw || fallback;
@@ -1086,3 +1162,204 @@ export async function rotateOrganizationJoinCode(
   saveOrganizationLocalState(userId, { ...state, organizations });
   return code;
 }
+
+function coerceCompetitionFormat(value: unknown): OrganizationCompetitionFormat {
+  const raw = String(value || "league").toLowerCase();
+  const allowed: OrganizationCompetitionFormat[] = ["league","knockout","groups_knockout","ladder","challenge"];
+  return allowed.includes(raw as OrganizationCompetitionFormat) ? raw as OrganizationCompetitionFormat : "league";
+}
+
+function coerceCompetitionMode(value: unknown): OrganizationCompetitionParticipantMode {
+  return String(value || "teams").toLowerCase() === "individuals" ? "individuals" : "teams";
+}
+
+function coerceCompetitionStatus(value: unknown): OrganizationCompetitionStatus {
+  const raw = String(value || "draft").toLowerCase();
+  const allowed: OrganizationCompetitionStatus[] = ["draft","open","active","completed","archived"];
+  return allowed.includes(raw as OrganizationCompetitionStatus) ? raw as OrganizationCompetitionStatus : "draft";
+}
+
+function parseOrganizationCompetition(row: any): OrganizationCompetition {
+  return {
+    id: String(row?.id || row?.competitionId || row?.competition_id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    name: String(row?.name || "Compétition").trim().slice(0, 100) || "Compétition",
+    sportId: String(row?.sportId || row?.sport_id || "Multisport").trim().slice(0, 48) || "Multisport",
+    format: coerceCompetitionFormat(row?.format),
+    participantMode: coerceCompetitionMode(row?.participantMode || row?.participant_mode),
+    status: coerceCompetitionStatus(row?.status),
+    startsAt: String(row?.startsAt || row?.starts_at || ""),
+    endsAt: String(row?.endsAt || row?.ends_at || ""),
+    description: String(row?.description || "").trim().slice(0, 360),
+    participantCount: Math.max(0, Number(row?.participantCount ?? row?.participant_count ?? 0) || 0),
+    fixtureCount: Math.max(0, Number(row?.fixtureCount ?? row?.fixture_count ?? 0) || 0),
+    completedFixtureCount: Math.max(0, Number(row?.completedFixtureCount ?? row?.completed_fixture_count ?? 0) || 0),
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || row?.createdAt || row?.created_at || nowIso()),
+  };
+}
+
+function parseOrganizationCompetitionParticipant(row: any): OrganizationCompetitionParticipant {
+  return {
+    id: String(row?.id || row?.participantId || row?.participant_id || ""),
+    competitionId: String(row?.competitionId || row?.competition_id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    entityType: String(row?.entityType || row?.entity_type || "group") === "member" ? "member" : "group",
+    entityId: String(row?.entityId || row?.entity_id || ""),
+    displayName: String(row?.displayName || row?.display_name || "Participant").trim() || "Participant",
+    avatarUrl: String(row?.avatarUrl || row?.avatar_url || "").trim(),
+    seed: Math.max(1, Number(row?.seed || 1) || 1),
+  };
+}
+
+function parseOrganizationCompetitionFixture(row: any): OrganizationCompetitionFixture {
+  const rawStatus = String(row?.status || "scheduled").toLowerCase();
+  return {
+    id: String(row?.id || row?.fixtureId || row?.fixture_id || ""),
+    competitionId: String(row?.competitionId || row?.competition_id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    round: Math.max(1, Number(row?.round || 1) || 1),
+    sequence: Math.max(1, Number(row?.sequence || 1) || 1),
+    groupLabel: String(row?.groupLabel || row?.group_label || "").trim().slice(0, 24),
+    homeParticipantId: String(row?.homeParticipantId || row?.home_participant_id || ""),
+    awayParticipantId: String(row?.awayParticipantId || row?.away_participant_id || ""),
+    homeName: String(row?.homeName || row?.home_name || "À définir").trim() || "À définir",
+    awayName: String(row?.awayName || row?.away_name || "À définir").trim() || "À définir",
+    scheduledAt: String(row?.scheduledAt || row?.scheduled_at || ""),
+    status: rawStatus === "completed" ? "completed" : rawStatus === "cancelled" ? "cancelled" : "scheduled",
+    winnerParticipantId: String(row?.winnerParticipantId || row?.winner_participant_id || ""),
+    scoreLabel: String(row?.scoreLabel || row?.score_label || "").trim().slice(0, 60),
+    resultRef: String(row?.resultRef || row?.result_ref || "").trim().slice(0, 180),
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || row?.createdAt || row?.created_at || nowIso()),
+  };
+}
+
+export async function listOrganizationCompetitions(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ competitions: OrganizationCompetition[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { competitions: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_competitions", { p_org_id: organizationId });
+    if (error) throw error;
+    return { competitions: rpcRows(data).filter(Boolean).map(parseOrganizationCompetition), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] competition list unavailable", error);
+    return { competitions: [], cloudAvailable: false };
+  }
+}
+
+export async function createOrganizationCompetition(
+  userId: string | null | undefined,
+  organizationId: string,
+  input: OrganizationCompetitionInput,
+): Promise<OrganizationCompetition> {
+  if (!userId) throw new Error("Connexion requise.");
+  const entityIds = Array.from(new Set((input.entityIds || []).map((id) => String(id || "").trim()).filter(Boolean)));
+  if (String(input.name || "").trim().length < 2) throw new Error("Nom de compétition trop court.");
+  if (entityIds.length < 2) throw new Error("Sélectionne au moins deux participants.");
+  const { data, error } = await supabase.rpc("ms_org_create_competition", {
+    p_org_id: organizationId,
+    p_name: String(input.name || "").trim(),
+    p_sport_id: String(input.sportId || "Multisport").trim(),
+    p_format: input.format,
+    p_participant_mode: input.participantMode,
+    p_starts_at: input.startsAt || null,
+    p_description: String(input.description || "").trim(),
+    p_entity_ids: entityIds,
+  });
+  if (error) throw new Error(rpcMessage(error, "Création de la compétition impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Création de la compétition impossible.");
+  return parseOrganizationCompetition(row);
+}
+
+export async function getOrganizationCompetitionDetail(
+  userId: string | null | undefined,
+  competitionId: string,
+): Promise<OrganizationCompetitionDetail> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_get_competition", { p_competition_id: competitionId });
+  if (error) throw new Error(rpcMessage(error, "Chargement de la compétition impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row?.competition) throw new Error("Compétition introuvable.");
+  return {
+    competition: parseOrganizationCompetition(row.competition),
+    participants: Array.isArray(row.participants) ? row.participants.map(parseOrganizationCompetitionParticipant) : [],
+    fixtures: Array.isArray(row.fixtures) ? row.fixtures.map(parseOrganizationCompetitionFixture) : [],
+  };
+}
+
+export async function updateOrganizationCompetitionStatus(
+  userId: string | null | undefined,
+  competitionId: string,
+  status: OrganizationCompetitionStatus,
+): Promise<OrganizationCompetition> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_set_competition_status", { p_competition_id: competitionId, p_status: status });
+  if (error) throw new Error(rpcMessage(error, "Modification de la compétition impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Compétition introuvable.");
+  return parseOrganizationCompetition(row);
+}
+
+export async function deleteOrganizationCompetition(
+  userId: string | null | undefined,
+  competitionId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_delete_competition", { p_competition_id: competitionId });
+  if (error) throw new Error(rpcMessage(error, "Suppression de la compétition impossible."));
+}
+
+export async function generateOrganizationCompetitionFixtures(
+  userId: string | null | undefined,
+  competitionId: string,
+): Promise<number> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_generate_competition_fixtures", { p_competition_id: competitionId });
+  if (error) throw new Error(rpcMessage(error, "Génération du calendrier impossible."));
+  return Math.max(0, Number(data || 0) || 0);
+}
+
+export async function createOrganizationCompetitionFixture(
+  userId: string | null | undefined,
+  competitionId: string,
+  homeParticipantId: string,
+  awayParticipantId: string,
+  scheduledAt?: string,
+): Promise<OrganizationCompetitionFixture> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_create_competition_fixture", {
+    p_competition_id: competitionId,
+    p_home_participant_id: homeParticipantId,
+    p_away_participant_id: awayParticipantId,
+    p_scheduled_at: scheduledAt || null,
+  });
+  if (error) throw new Error(rpcMessage(error, "Création de la rencontre impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Création de la rencontre impossible.");
+  return parseOrganizationCompetitionFixture(row);
+}
+
+export async function setOrganizationCompetitionFixtureResult(
+  userId: string | null | undefined,
+  fixtureId: string,
+  winnerParticipantId: string,
+  scoreLabel: string,
+  resultRef = "",
+): Promise<OrganizationCompetitionFixture> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_set_competition_fixture_result", {
+    p_fixture_id: fixtureId,
+    p_winner_participant_id: winnerParticipantId,
+    p_score_label: String(scoreLabel || "").trim(),
+    p_result_ref: String(resultRef || "").trim(),
+  });
+  if (error) throw new Error(rpcMessage(error, "Enregistrement du résultat impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Rencontre introuvable.");
+  return parseOrganizationCompetitionFixture(row);
+}
+
