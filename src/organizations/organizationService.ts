@@ -279,6 +279,56 @@ export type OrganizationFederationLinkInput = {
   status?: OrganizationFederationStatus;
 };
 
+
+export type OrganizationFeeKind = "membership" | "license" | "event" | "other";
+export type OrganizationFeeCampaignStatus = "draft" | "open" | "closed" | "archived";
+export type OrganizationFeeMemberStatus = "pending" | "overdue" | "paid" | "waived";
+
+export type OrganizationFeeCampaign = {
+  id: string;
+  organizationId: string;
+  groupId: string;
+  groupName: string;
+  title: string;
+  feeKind: OrganizationFeeKind;
+  amountCents: number;
+  currency: string;
+  dueAt: string;
+  description: string;
+  paymentUrl: string;
+  status: OrganizationFeeCampaignStatus;
+  targetCount: number;
+  paidCount: number;
+  waivedCount: number;
+  myStatus: OrganizationFeeMemberStatus;
+  isTargeted: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationFeeCampaignInput = {
+  groupId?: string | null;
+  title: string;
+  feeKind: OrganizationFeeKind;
+  amountCents: number;
+  currency?: string;
+  dueAt?: string | null;
+  description?: string;
+  paymentUrl?: string;
+};
+
+export type OrganizationFeeMember = {
+  userId: string;
+  displayName: string;
+  avatarUrl: string;
+  countryCode: string;
+  status: OrganizationFeeMemberStatus;
+  paidAt: string;
+  note: string;
+  externalRef: string;
+  updatedAt: string;
+};
+
 export type OrganizationLocalEvent = {
   id: string;
   organizationId: string;
@@ -1098,6 +1148,13 @@ function rpcMessage(error: any, fallback: string): string {
     COMPETITION_NEEDS_PARTICIPANTS: "Il faut au moins deux participants.",
     COMPETITION_FIXTURE_NOT_FOUND: "Rencontre introuvable.",
     COMPETITION_FORMAT_NO_AUTOMATIC_FIXTURES: "Ce format utilise des rencontres ajoutées manuellement.",
+    FEE_NOT_FOUND: "Cotisation introuvable.",
+    FEE_TITLE_REQUIRED: "Le titre de la cotisation est requis.",
+    INVALID_FEE_KIND: "Type de cotisation invalide.",
+    INVALID_FEE_STATUS: "Statut de cotisation invalide.",
+    INVALID_AMOUNT: "Montant de cotisation invalide.",
+    PAYMENT_URL_MUST_BE_HTTPS: "Le lien de paiement doit utiliser HTTPS.",
+    MEMBER_NOT_TARGETED: "Ce membre n’est pas concerné par cette cotisation.",
   };
   for (const [key, label] of Object.entries(labels)) if (raw.includes(key)) return label;
   return raw || fallback;
@@ -1572,6 +1629,170 @@ export async function deleteOrganizationAnnouncement(
   if (!userId) throw new Error("Connexion requise.");
   const { error } = await supabase.rpc("ms_org_delete_announcement", { p_announcement_id: announcementId });
   if (error) throw new Error(rpcMessage(error, "Suppression impossible."));
+}
+
+
+function coerceFeeKind(value: unknown): OrganizationFeeKind {
+  const raw = String(value || "membership").toLowerCase();
+  return raw === "license" ? "license" : raw === "event" ? "event" : raw === "other" ? "other" : "membership";
+}
+
+function coerceFeeCampaignStatus(value: unknown): OrganizationFeeCampaignStatus {
+  const raw = String(value || "draft").toLowerCase();
+  return raw === "open" ? "open" : raw === "closed" ? "closed" : raw === "archived" ? "archived" : "draft";
+}
+
+function coerceFeeMemberStatus(value: unknown): OrganizationFeeMemberStatus {
+  const raw = String(value || "pending").toLowerCase();
+  return raw === "paid" ? "paid" : raw === "waived" ? "waived" : raw === "overdue" ? "overdue" : "pending";
+}
+
+function parseOrganizationFeeCampaign(row: any): OrganizationFeeCampaign {
+  return {
+    id: String(row?.id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    groupId: String(row?.groupId || row?.group_id || ""),
+    groupName: String(row?.groupName || row?.group_name || "").trim(),
+    title: String(row?.title || "Cotisation").trim().slice(0, 100) || "Cotisation",
+    feeKind: coerceFeeKind(row?.feeKind || row?.fee_kind),
+    amountCents: Math.max(0, Math.round(Number(row?.amountCents ?? row?.amount_cents ?? 0) || 0)),
+    currency: String(row?.currency || "EUR").trim().toUpperCase().slice(0, 3) || "EUR",
+    dueAt: String(row?.dueAt || row?.due_at || ""),
+    description: String(row?.description || "").trim().slice(0, 600),
+    paymentUrl: String(row?.paymentUrl || row?.payment_url || "").trim().slice(0, 400),
+    status: coerceFeeCampaignStatus(row?.status),
+    targetCount: Math.max(0, Number(row?.targetCount ?? row?.target_count ?? 0) || 0),
+    paidCount: Math.max(0, Number(row?.paidCount ?? row?.paid_count ?? 0) || 0),
+    waivedCount: Math.max(0, Number(row?.waivedCount ?? row?.waived_count ?? 0) || 0),
+    myStatus: coerceFeeMemberStatus(row?.myStatus || row?.my_status),
+    isTargeted: Boolean(row?.isTargeted ?? row?.is_targeted ?? true),
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || row?.createdAt || row?.created_at || nowIso()),
+  };
+}
+
+function parseOrganizationFeeMember(row: any): OrganizationFeeMember {
+  return {
+    userId: String(row?.userId || row?.user_id || ""),
+    displayName: String(row?.displayName || row?.display_name || "Membre MSS").trim() || "Membre MSS",
+    avatarUrl: String(row?.avatarUrl || row?.avatar_url || "").trim(),
+    countryCode: String(row?.countryCode || row?.country_code || "").trim().toUpperCase().slice(0, 2),
+    status: coerceFeeMemberStatus(row?.status),
+    paidAt: String(row?.paidAt || row?.paid_at || ""),
+    note: String(row?.note || "").trim().slice(0, 240),
+    externalRef: String(row?.externalRef || row?.external_ref || "").trim().slice(0, 120),
+    updatedAt: String(row?.updatedAt || row?.updated_at || ""),
+  };
+}
+
+export async function listOrganizationFeeCampaigns(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ campaigns: OrganizationFeeCampaign[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { campaigns: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_fee_campaigns", { p_org_id: organizationId });
+    if (error) throw error;
+    return { campaigns: rpcRows(data).filter(Boolean).map(parseOrganizationFeeCampaign), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] fee campaigns unavailable", error);
+    return { campaigns: [], cloudAvailable: false };
+  }
+}
+
+export async function createOrganizationFeeCampaign(
+  userId: string | null | undefined,
+  organizationId: string,
+  input: OrganizationFeeCampaignInput,
+): Promise<OrganizationFeeCampaign> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_create_fee_campaign", {
+    p_org_id: organizationId,
+    p_group_id: input.groupId || null,
+    p_title: String(input.title || "").trim(),
+    p_fee_kind: input.feeKind,
+    p_amount_cents: Math.max(0, Math.round(Number(input.amountCents || 0))),
+    p_currency: String(input.currency || "EUR").trim().toUpperCase(),
+    p_due_at: input.dueAt || null,
+    p_description: String(input.description || "").trim(),
+    p_payment_url: String(input.paymentUrl || "").trim(),
+  });
+  if (error) throw new Error(rpcMessage(error, "Création de la cotisation impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Cotisation introuvable.");
+  return parseOrganizationFeeCampaign(row);
+}
+
+export async function updateOrganizationFeeCampaign(
+  userId: string | null | undefined,
+  feeId: string,
+  input: OrganizationFeeCampaignInput,
+): Promise<OrganizationFeeCampaign> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_update_fee_campaign", {
+    p_fee_id: feeId,
+    p_group_id: input.groupId || null,
+    p_title: String(input.title || "").trim(),
+    p_fee_kind: input.feeKind,
+    p_amount_cents: Math.max(0, Math.round(Number(input.amountCents || 0))),
+    p_currency: String(input.currency || "EUR").trim().toUpperCase(),
+    p_due_at: input.dueAt || null,
+    p_description: String(input.description || "").trim(),
+    p_payment_url: String(input.paymentUrl || "").trim(),
+  });
+  if (error) throw new Error(rpcMessage(error, "Modification de la cotisation impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Cotisation introuvable.");
+  return parseOrganizationFeeCampaign(row);
+}
+
+export async function setOrganizationFeeCampaignStatus(
+  userId: string | null | undefined,
+  feeId: string,
+  status: OrganizationFeeCampaignStatus,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_set_fee_campaign_status", { p_fee_id: feeId, p_status: status });
+  if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));
+}
+
+export async function listOrganizationFeeMembers(
+  userId: string | null | undefined,
+  feeId: string,
+): Promise<OrganizationFeeMember[]> {
+  if (!userId || !feeId) return [];
+  const { data, error } = await supabase.rpc("ms_org_list_fee_members", { p_fee_id: feeId });
+  if (error) throw new Error(rpcMessage(error, "Liste des règlements indisponible."));
+  return rpcRows(data).filter(Boolean).map(parseOrganizationFeeMember);
+}
+
+export async function setOrganizationFeeMemberStatus(
+  userId: string | null | undefined,
+  feeId: string,
+  memberUserId: string,
+  status: OrganizationFeeMemberStatus,
+  note = "",
+  externalRef = "",
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const normalized = status === "paid" || status === "waived" ? status : "pending";
+  const { error } = await supabase.rpc("ms_org_set_fee_member_status", {
+    p_fee_id: feeId,
+    p_user_id: memberUserId,
+    p_status: normalized,
+    p_note: String(note || "").trim(),
+    p_external_ref: String(externalRef || "").trim(),
+  });
+  if (error) throw new Error(rpcMessage(error, "Mise à jour du règlement impossible."));
+}
+
+export async function deleteOrganizationFeeCampaign(
+  userId: string | null | undefined,
+  feeId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_delete_fee_campaign", { p_fee_id: feeId });
+  if (error) throw new Error(rpcMessage(error, "Suppression de la cotisation impossible."));
 }
 
 function coerceFederationMode(value: unknown): OrganizationFederationIntegrationMode {

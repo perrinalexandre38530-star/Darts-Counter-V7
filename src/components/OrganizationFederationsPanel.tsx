@@ -32,6 +32,38 @@ const PRESETS: FederationPreset[] = [
   { code: "FFD", name: "Fédération Française de Darts", countryCode: "FR", portalUrl: "https://www.ffdarts.fr/", connectorKey: "ffdarts", mode: "portal" },
 ];
 
+
+type OfficialResultSource = {
+  label: string;
+  detail: string;
+  url: string;
+};
+
+const OFFICIAL_RESULT_SOURCES: Record<string, OfficialResultSource[]> = {
+  fftt: [
+    { label: "Résultats FFTT", detail: "Épreuves par équipes et individuelles en accès libre dans MonClub / SPID.", url: "https://monclub.fftt.com/" },
+  ],
+  fff: [
+    { label: "Résultats FFF", detail: "Résultats, calendriers, classements et fiches équipes sur le portail officiel des épreuves.", url: "https://epreuves.fff.fr/" },
+  ],
+  ffpjp: [
+    { label: "Compétitions FFPJP", detail: "Recherche des concours fédéraux nationaux, calendriers et compétitions officielles.", url: "https://compet.ffpjp.org/compet" },
+  ],
+  ffdarts: [
+    { label: "Classements FFD", detail: "Classements nationaux officiels par catégorie.", url: "https://www.ffdarts.fr/classement/" },
+    { label: "Calendrier FFD", detail: "Calendrier des événements et compétitions organisés sous l’égide de la FFD.", url: "https://www.ffdarts.fr/calendrier/" },
+  ],
+};
+
+function federationResultSources(link: OrganizationFederationLink | null): OfficialResultSource[] {
+  if (!link) return [];
+  const connector = String(link.connectorKey || "").trim().toLowerCase();
+  const code = String(link.federationCode || "").trim().toLowerCase();
+  const keyed = OFFICIAL_RESULT_SOURCES[connector] || OFFICIAL_RESULT_SOURCES[code] || [];
+  if (keyed.length) return keyed;
+  return link.portalUrl ? [{ label: "Portail officiel", detail: "Consulter les résultats et informations disponibles sur le portail de la fédération.", url: link.portalUrl }] : [];
+}
+
 function fmtDate(value: string) {
   if (!value) return "—";
   const date = new Date(value);
@@ -163,6 +195,7 @@ export default function OrganizationFederationsPanel({ organization, userId }: {
   };
 
   const selectedLink = links.find((link) => link.id === selectedLinkId) || null;
+  const selectedOfficialSources = federationResultSources(selectedLink);
   const completedFixtures = detail?.fixtures.filter((fixture) => fixture.status === "completed") || [];
   const selectedFixture = completedFixtures.find((fixture) => fixture.id === selectedFixtureId) || null;
 
@@ -234,6 +267,32 @@ export default function OrganizationFederationsPanel({ organization, userId }: {
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}><div><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: theme.text, fontSize: 11.5 }}>{link.federationName}</strong>{link.federationCode ? <span style={{ borderRadius: 999, border: `1px solid ${theme.primary}55`, color: theme.primary, padding: "2px 6px", fontSize: 7.5, fontWeight: 1000 }}>{link.federationCode}</span> : null}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 8.5 }}>{link.season || "—"} · {link.affiliationNumber ? `${L("Affiliation", "Affiliation", "Afiliación")} ${link.affiliationNumber}` : L("N° d'affiliation non renseigné", "No affiliation number", "Sin número de afiliación")}</div></div><span style={{ alignSelf: "start", borderRadius: 999, padding: "4px 7px", border: `1px solid ${link.writeEnabled ? theme.primary : theme.borderSoft}`, color: link.writeEnabled ? theme.primary : theme.textSoft, fontSize: 7.3, fontWeight: 1000 }}>{link.writeEnabled ? L("ÉCRITURE API AUTORISÉE", "API WRITE ENABLED", "ESCRITURA API HABILITADA") : link.integrationMode === "api" ? L("API À AUTORISER", "API NEEDS AUTH", "API POR AUTORIZAR") : link.integrationMode === "portal" ? L("PORTAIL", "PORTAL", "PORTAL") : L("EXPORT", "EXPORT", "EXPORTAR")}</span></div>
         <div style={{ marginTop: 9, display: "flex", gap: 6, flexWrap: "wrap" }}>{link.portalUrl ? <button type="button" onClick={() => window.open(link.portalUrl, "_blank", "noopener,noreferrer")} style={primaryButton}>{L("OUVRIR LE PORTAIL", "OPEN PORTAL", "ABRIR PORTAL")}</button> : null}{canManage ? <button type="button" onClick={() => edit(link)} style={button}>{L("MODIFIER", "EDIT", "EDITAR")}</button> : null}{canManage ? <button type="button" onClick={() => void remove(link)} style={{ ...button, color: "#ff9a9a" }}>{L("SUPPRIMER", "DELETE", "ELIMINAR")}</button> : null}</div>
       </div>) : <div style={{ ...card, padding: 17, color: theme.textSoft, fontSize: 9.5 }}>{L("Aucune fédération liée. Ajouter une affiliation dans MSS ne crée pas automatiquement une adhésion auprès de la fédération : elle doit déjà exister ou être demandée via les canaux officiels.", "No federation linked. Adding an affiliation in MSS does not automatically create membership with the federation: it must already exist or be requested through official channels.", "No hay federación vinculada. Añadir una afiliación en MSS no crea automáticamente una afiliación federativa: debe existir o solicitarse por los canales oficiales.")}</div>}
+    </div>
+
+    <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
+      <div style={{ color: theme.primary, fontSize: 8.2, fontWeight: 1000, letterSpacing: 1 }}>{L("LECTURE OFFICIELLE", "OFFICIAL READ-ONLY", "LECTURA OFICIAL")}</div>
+      <div style={{ color: theme.text, fontSize: 10.8, fontWeight: 1000 }}>{L("CONSULTER LES RÉSULTATS OFFICIELS", "VIEW OFFICIAL RESULTS", "CONSULTAR RESULTADOS OFICIALES")}</div>
+      <div style={{ color: theme.textSoft, fontSize: 8.5, lineHeight: 1.45 }}>{L("MSS n'invente ni ne recopie ces résultats : le bouton ouvre la source officielle de la fédération. Cela fonctionne même sans autorisation d'écriture.", "MSS does not invent or duplicate these results: the button opens the federation's official source. This works even without write authorization.", "MSS no inventa ni duplica estos resultados: el botón abre la fuente oficial de la federación. Funciona incluso sin autorización de escritura.")}</div>
+      <select style={input} value={selectedLinkId} onChange={(e) => setSelectedLinkId(e.target.value)}>
+        <option value="">{L("Choisir une fédération liée", "Choose a linked federation", "Elegir una federación vinculada")}</option>
+        {links.filter((link) => link.status !== "disabled").map((link) => <option key={link.id} value={link.id}>{link.federationCode || link.federationName}</option>)}
+      </select>
+      {selectedLink ? selectedOfficialSources.length ? <div style={{ display: "grid", gap: 7 }}>
+        {selectedOfficialSources.map((source) => <div key={source.url} style={{ borderRadius: 12, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.2)", padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
+          <div><div style={{ color: theme.text, fontSize: 9.8, fontWeight: 950 }}>{source.label}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 8.2, lineHeight: 1.38 }}>{source.detail}</div></div>
+          <button type="button" onClick={() => window.open(source.url, "_blank", "noopener,noreferrer")} style={primaryButton}>{L("CONSULTER", "VIEW", "VER")}</button>
+        </div>)}
+      </div> : <div style={{ color: theme.textSoft, fontSize: 8.5 }}>{L("Aucune source publique prédéfinie pour cette fédération. Le portail officiel configuré reste accessible ci-dessus.", "No predefined public source for this federation. The configured official portal remains available above.", "No hay una fuente pública predefinida para esta federación. El portal oficial configurado sigue disponible arriba.")}</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+        {PRESETS.map((preset) => {
+          const sources = OFFICIAL_RESULT_SOURCES[preset.connectorKey] || [];
+          const first = sources[0];
+          return first ? <button key={preset.code} type="button" onClick={() => window.open(first.url, "_blank", "noopener,noreferrer")} style={{ ...button, textAlign: "left", minHeight: 52 }}>
+            <div style={{ color: theme.primary, fontSize: 8, fontWeight: 1000 }}>{preset.code}</div>
+            <div style={{ marginTop: 3, color: theme.text, fontSize: 8.8, fontWeight: 900 }}>{first.label}</div>
+          </button> : null;
+        })}
+      </div>}
+      <div style={{ borderRadius: 11, border: `1px solid ${theme.primary}33`, background: `${theme.primary}08`, padding: 9, color: theme.textSoft, fontSize: 8.1, lineHeight: 1.45 }}>{L("Étape suivante possible : pour une fédération disposant d'une API de lecture autorisée, MSS pourra afficher directement ces données dans l'application sans les stocker durablement.", "Next possible step: for a federation with an authorized read API, MSS can display these data directly in the app without storing them permanently.", "Siguiente paso posible: para una federación con API de lectura autorizada, MSS podrá mostrar estos datos directamente en la app sin almacenarlos permanentemente.")}</div>
     </div>
 
     <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
