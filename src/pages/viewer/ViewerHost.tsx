@@ -2,7 +2,7 @@
 import * as React from "react";
 import { PageAdBanner } from "../../monetization/AdSlot";
 import QRCode from "qrcode";
-import { createViewerSession, viewerJoinUrl } from "../../lib/viewer/viewerClient";
+import { createViewerSession, viewerJoinUrl, viewerTvUrl } from "../../lib/viewer/viewerClient";
 import { buildViewerWaitingSnapshot } from "../../lib/viewer/buildViewerSnapshot";
 import { publishViewerSnapshot } from "../../lib/viewer/viewerClient";
 import { clearActiveViewerSession, getActiveViewerSession, setActiveViewerSession, subscribeViewerSessionChanged } from "../../lib/viewer/viewerSession";
@@ -47,6 +47,8 @@ export default function ViewerHost({ go }: Props) {
     window.addEventListener("dc-viewer-diag", refresh as any);
     return () => window.removeEventListener("dc-viewer-diag", refresh as any);
   }, []);
+
+  const publicTvUrl = session?.sessionId ? viewerTvUrl(session.sessionId) : "";
 
   React.useEffect(() => {
     let alive = true;
@@ -106,9 +108,19 @@ export default function ViewerHost({ go }: Props) {
     }
   }
 
+  async function copyPublicTvLink() {
+    if (!publicTvUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicTvUrl);
+      setMessage("Lien TV public copié.");
+    } catch {
+      setMessage(publicTvUrl);
+    }
+  }
+
   return (
     <div style={{ minHeight: "100dvh", color: "#f8fafc", background: "radial-gradient(circle at top, #1b2436 0%, #080a10 58%, #030406 100%)" }}>
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 16px 110px" }}>
+      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "22px 16px 110px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18 }}>
           <button onClick={() => go("cast_host")} style={button(false)}>← Cast</button>
           <div style={{ fontSize: 28, fontWeight: 1100, color: "#ffd56a" }}>Viewer TV / tablette</div>
@@ -128,7 +140,7 @@ export default function ViewerHost({ go }: Props) {
 
             <h2 style={{ margin: "0 0 8px", fontSize: 22 }}>Samsung TV / écran secondaire sans Chromecast</h2>
             <p style={{ opacity: 0.84, lineHeight: 1.48, marginTop: 0 }}>
-              La Samsung TV rejoint la session avec le code à 6 caractères. Une tablette peut aussi utiliser le lien ou le QR code. Le Viewer reçoit uniquement le snapshot live : joueurs, scores, joueur actif, leg/set et résumé.
+              La Samsung TV rejoint la session avec le code à 6 caractères. Une tablette peut aussi utiliser le lien ou le QR code. Le Viewer reçoit le scoreboard live, et le nouveau mode TV public permet aussi d'ouvrir la même interface interactive depuis n'importe quel navigateur de télévision.
             </p>
 
             {session ? (
@@ -136,8 +148,19 @@ export default function ViewerHost({ go }: Props) {
                 <div style={{ fontSize: 13, opacity: 0.76, fontWeight: 900 }}>Code Samsung TV / Viewer</div>
                 <div style={{ fontSize: 42, letterSpacing: 3, fontWeight: 1200, color: "#ffd56a" }}>{session.code}</div>
                 <div style={{ overflowWrap: "anywhere", opacity: 0.78, fontSize: 13 }}>{session.joinUrl}</div>
+                {publicTvUrl ? (
+                  <div style={{ marginTop: 10, padding: 12, borderRadius: 18, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)" }}>
+                    <div style={{ fontSize: 12, letterSpacing: 0.8, fontWeight: 1000, color: "#ffd56a", textTransform: "uppercase" }}>Mode TV public</div>
+                    <div style={{ marginTop: 5, opacity: 0.82, fontSize: 13, lineHeight: 1.45 }}>
+                      Ouvre ce lien sur n'importe quelle Smart TV, navigateur web ou écran secondaire pour tester l'interface Samsung-like sans sideload.
+                    </div>
+                    <div style={{ marginTop: 8, overflowWrap: "anywhere", opacity: 0.9, fontSize: 13 }}>{publicTvUrl}</div>
+                  </div>
+                ) : null}
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-                  <button onClick={copyLink} style={button(true)}>Copier le lien</button>
+                  <button onClick={copyLink} style={button(true)}>Copier le lien viewer</button>
+                  {publicTvUrl ? <button onClick={copyPublicTvLink} style={button(false)}>Copier le lien TV</button> : null}
+                  {publicTvUrl ? <button onClick={() => window.open(publicTvUrl, "_blank", "noopener,noreferrer")} style={button(false)}>Ouvrir l'écran TV public</button> : null}
                   <button onClick={() => go("viewer_display", { sessionId: session.sessionId })} style={button(false)}>Aperçu local</button>
                   <button onClick={stopSession} style={button(false)}>Arrêter</button>
                 </div>

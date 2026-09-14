@@ -187,6 +187,17 @@ async function startupHardResetIfRequested() {
 }
 
 
+function isSamsungTvPublicShellRequest() {
+  if (typeof window === "undefined") return false;
+  try {
+    const hash = String(window.location.hash || "").toLowerCase();
+    const pathname = String(window.location.pathname || "").toLowerCase();
+    return hash === "#/tv" || hash === "#/tv/" || hash.startsWith("#/tv/") || pathname === "/tv" || pathname.startsWith("/tv/");
+  } catch {
+    return false;
+  }
+}
+
 // ---- ONLINE V9.1 / DEPLOY FIX: hard recovery for stale Vite chunks ----
 // Quand Cloudflare + Service Worker gardent un ancien index qui pointe vers un
 // chunk supprimé (ex: StatsHub-xxxx.js), on purge vraiment SW/CacheStorage
@@ -889,35 +900,55 @@ async function devUnregisterSW() {
     const container = document.getElementById("root");
     if (!container) throw new Error("❌ Élément #root introuvable dans index.html");
 
-    let mod: any;
-    try {
-      mod = await import("./App");
-    } catch (e) {
-      // Fallback: cache-bust the module URL once (helps when Vite/WebContainer serves stale ?t=... URLs)
-      if (isDynImportFail(e)) {
-        try {
-          mod = await import(/* @vite-ignore */ `./App?sb=${Date.now()}`);
-        } catch {
+    const renderRoot = (Component: React.ComponentType<any>) => {
+      createRoot(container).render(
+        <React.StrictMode>
+          <BootGuard>
+            <AsyncGuard>
+              <ErrorBoundary>
+                <Component />
+              </ErrorBoundary>
+            </AsyncGuard>
+          </BootGuard>
+        </React.StrictMode>
+      );
+    };
+
+    if (isSamsungTvPublicShellRequest()) {
+      await import("./tv/samsung/samsung-tv.css");
+      let tvMod: any;
+      try {
+        tvMod = await import("./tv/samsung/SamsungTvApp");
+      } catch (e) {
+        if (isDynImportFail(e)) {
+          try {
+            tvMod = await import(/* @vite-ignore */ `./tv/samsung/SamsungTvApp?sb=${Date.now()}`);
+          } catch {
+            throw e;
+          }
+        } else {
           throw e;
         }
-      } else {
-        throw e;
       }
+      renderRoot(tvMod.default);
+    } else {
+      let mod: any;
+      try {
+        mod = await import("./App");
+      } catch (e) {
+        // Fallback: cache-bust the module URL once (helps when Vite/WebContainer serves stale ?t=... URLs)
+        if (isDynImportFail(e)) {
+          try {
+            mod = await import(/* @vite-ignore */ `./App?sb=${Date.now()}`);
+          } catch {
+            throw e;
+          }
+        } else {
+          throw e;
+        }
+      }
+      renderRoot(mod.default);
     }
-    const AppRoot = mod.default;
-
-    // ✅ IMPORTANT: pas de AuthOnlineProvider ici
-    createRoot(container).render(
-      <React.StrictMode>
-        <BootGuard>
-          <AsyncGuard>
-            <ErrorBoundary>
-              <AppRoot />
-            </ErrorBoundary>
-          </AsyncGuard>
-        </BootGuard>
-      </React.StrictMode>
-    );
 
     // ✅ si ça render, on peut enlever safe mode + reset compteurs recovery
     setSafeMode(false);

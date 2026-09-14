@@ -148,20 +148,25 @@ function cleanCode(input: string) {
     .replace(/[^A-Z0-9-]/g, "");
 }
 
-function buildJoinUrl(sessionId: string) {
-  const sid = cleanCode(sessionId);
-  if (typeof window === "undefined") return `#/viewer/${sid}`;
+function buildPublicHashUrl(fragment: string) {
+  const suffix = String(fragment || "").replace(/^#?\/?/, "");
+  if (typeof window === "undefined") return `#/${suffix}`;
 
   // Android/Capacitor/Tizen s'exécutent sur une origine locale (souvent
-  // https://localhost). Un QR code construit sur cette origine est inutilisable
+  // https://localhost). Un lien construit sur cette origine est inutilisable
   // depuis une tablette ou un second appareil. En runtime packagé, on publie
-  // donc le lien Viewer sur l'origine Pages publique.
+  // donc les liens Viewer/TV sur l'origine Pages publique.
   if (isLocalPackagedRuntime()) {
     const publicOrigin = normalizeBase(PUBLIC_PAGES_ORIGIN);
-    return `${publicOrigin}/#/viewer/${sid}`;
+    return `${publicOrigin}/#/${suffix}`;
   }
 
-  return `${window.location.origin}${window.location.pathname}#/viewer/${sid}`;
+  return `${window.location.origin}${window.location.pathname}#/${suffix}`;
+}
+
+function buildJoinUrl(sessionId: string) {
+  const sid = cleanCode(sessionId);
+  return buildPublicHashUrl(`viewer/${sid}`);
 }
 
 export async function createViewerSession(): Promise<ViewerCreateSessionResult> {
@@ -216,6 +221,11 @@ export async function closeViewerSession(sessionId: string): Promise<void> {
   try {
     await apiFetch(`/viewer/session/${encodeURIComponent(sid)}`, { method: "DELETE", timeoutMs: 2000 });
   } catch {}
+}
+
+export function viewerTvUrl(sessionId?: string) {
+  const sid = cleanCode(sessionId || "");
+  return buildPublicHashUrl(sid ? `tv/${sid}` : "tv");
 }
 
 export const viewerJoinUrl = buildJoinUrl;

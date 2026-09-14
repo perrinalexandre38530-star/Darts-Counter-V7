@@ -49,7 +49,7 @@ function getCopy(): Copy {
     return {
       title: "MULTISPORTS SCORING",
       subtitle: "SAMSUNG TV · INTERACTIF",
-      enterCode: "Entre le code Viewer affiché sur le téléphone",
+      enterCode: "Entre le code Viewer affiché sur le téléphone ou ouvre le mode TV public",
       hint: "Télécommande : flèches pour naviguer · OK pour valider · Retour pour effacer",
       connect: "CONNECTER",
       clear: "EFFACER",
@@ -62,7 +62,7 @@ function getCopy(): Copy {
   return {
     title: "MULTISPORTS SCORING",
     subtitle: "SAMSUNG TV · INTERACTIVE",
-    enterCode: "Enter the Viewer code shown on your phone",
+    enterCode: "Enter the Viewer code shown on your phone or open the public TV mode",
     hint: "Remote: arrows to navigate · OK to select · Back to delete",
     connect: "CONNECT",
     clear: "CLEAR",
@@ -90,12 +90,23 @@ function saveLastCode(code: string) {
 
 function codeFromHash(hash: string) {
   const raw = String(hash || "");
-  if (!raw.startsWith("#/viewer/")) return "";
-  return normalizeViewerCode(raw.replace(/^#\/viewer\//, "").split(/[?#]/)[0] || "").slice(0, CODE_LENGTH);
+  const match = raw.match(/^#\/(?:viewer|tv)\/([^?#]+)/i);
+  return normalizeViewerCode(match?.[1] || "").slice(0, CODE_LENGTH);
+}
+
+function preferTvHashNamespace() {
+  try {
+    const hash = String(window.location.hash || "").toLowerCase();
+    const path = String(window.location.pathname || "").toLowerCase();
+    return hash === "#/tv" || hash.startsWith("#/tv/") || path === "/tv" || path.startsWith("/tv/");
+  } catch {
+    return false;
+  }
 }
 
 function setHash(code: string | null) {
-  const next = code ? `#/viewer/${encodeURIComponent(code)}` : "#/join";
+  const base = preferTvHashNamespace() ? "#/tv" : "#/viewer";
+  const next = code ? `${base}/${encodeURIComponent(code)}` : base;
   try {
     if (window.location.hash !== next) window.location.hash = next;
   } catch {}
@@ -404,17 +415,31 @@ function TvHub({
         </div>
       </header>
 
-      <section className="mss-tv-now">
-        <div className="mss-tv-now-kicker">SYNCHRONISATION TÉLÉPHONE ↔ TV</div>
-        <div className="mss-tv-now-title">{phoneNavigation?.label || "MULTISPORTS SCORING"}</div>
-        <div className="mss-tv-now-copy">
+      <section className="mss-tv-billboard" style={{ ["--sport-accent" as any]: activeSport.accent }}>
+        <TvWatermark src={activeSport.logo} strong />
+        <div className="mss-tv-billboard-kicker">{live ? "EN DIRECT MAINTENANT" : "EXPÉRIENCE TV COMPLÈTE"}</div>
+        <div className="mss-tv-billboard-title">
+          {live ? `${String(snapshot?.game || activeSport.label).toUpperCase()} · ${active?.name || "Joueur"}` : `${activeSport.label} sur grand écran`}
+        </div>
+        <div className="mss-tv-billboard-copy">
           {live
-            ? `${String(snapshot?.game || "partie").toUpperCase()} · ${active?.name || "Joueur"} · ${active?.score ?? "—"}`
-            : `${activeSport.label} sélectionné · navigue depuis la TV ou depuis le téléphone.`}
+            ? `${active?.name || "Joueur"} joue actuellement · score ${active?.score ?? "—"} · pilotage simultané téléphone + télécommande.`
+            : `${activeSport.label} sélectionné · lance une partie, consulte les profils, les stats et l'online directement sur la TV.`}
+        </div>
+        <div className="mss-tv-billboard-meta">
+          <span>SESSION {sessionId}</span>
+          <span>{phoneNavigation?.label || "ACCUEIL TV"}</span>
+          <span>{tvState.profiles.length} PROFILS</span>
+          <span>{tvState.friends.length} AMIS</span>
         </div>
       </section>
 
-      <section className="mss-tv-menu-grid">
+      <section className="mss-tv-shelf">
+        <div className="mss-tv-shelf-head">
+          <div className="mss-tv-shelf-title">Parcourir</div>
+          <div className="mss-tv-shelf-subtitle">Navigation type streaming · accès direct à toutes les rubriques TV</div>
+        </div>
+        <section className="mss-tv-menu-grid">
         {VIEWER_TV_MENU.map((item, index) => {
           const focused = focusIndex === index;
           const isScoreboard = item.kind === "scoreboard";
@@ -439,11 +464,12 @@ function TvHub({
             </button>
           );
         })}
+        </section>
       </section>
 
       <footer className="mss-tv-hub-footer">
         <span>← ↑ ↓ → naviguer · OK ouvrir</span>
-        <span>Retour : écran précédent / changer de code</span>
+        <span>Retour : écran précédent · changer de code</span>
       </footer>
     </main>
   );
