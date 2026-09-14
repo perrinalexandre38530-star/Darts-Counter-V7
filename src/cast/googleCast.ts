@@ -1,4 +1,5 @@
 import type { CastSnapshot } from "./castTypes";
+import { publishActiveViewerSnapshotFromCast } from "../lib/viewer/viewerPublisher";
 
 export const DEFAULT_GOOGLE_CAST_APP_ID = "3534BC6A";
 export const GOOGLE_CAST_NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
@@ -24,9 +25,9 @@ function hasActiveViewerSessionForBridge(): boolean {
 function bridgeSnapshotToViewerIfActive(payload: CastSnapshot, reason = "sendCastSnapshot") {
   if (!hasActiveViewerSessionForBridge()) return;
   try {
-    void import("../lib/viewer/viewerPublisher")
-      .then((mod) => mod.publishActiveViewerSnapshotFromCast(payload, reason))
-      .catch(() => {});
+    // Le Viewer ne dépend plus du chargement dynamique ni d'une session Google
+    // Cast. Toute page qui appelle sendCastSnapshot alimente directement la TV.
+    publishActiveViewerSnapshotFromCast(payload, reason);
   } catch {}
 }
 
@@ -745,8 +746,10 @@ function buildSnapshotSignaturePayload(payload: any) {
 
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
   if (!snapshot) return false;
+  // Publication Viewer AVANT la sanitation Google Cast : le flux Samsung TV
+  // reste indépendant du SDK Cast et conserve toutes les données utiles.
+  bridgeSnapshotToViewerIfActive(snapshot, "sendCastSnapshot_raw");
   const payload = await sanitizeSnapshot(snapshot);
-  bridgeSnapshotToViewerIfActive(payload as CastSnapshot, "sendCastSnapshot");
   const signature = buildSnapshotSignaturePayload(payload);
   lastSnapshotPayload = payload;
   lastSnapshotAt = Date.now();

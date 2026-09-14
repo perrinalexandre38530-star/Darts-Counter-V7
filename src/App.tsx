@@ -67,6 +67,7 @@
 // ============================================
 
 import * as React from "react";
+import { useViewerInteractiveBridge } from "./lib/viewer/useViewerInteractiveBridge";
 const { useEffect, useMemo, useState, useRef, useCallback } = React;
 import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
@@ -2948,6 +2949,14 @@ useEffect(() => {
       }
     } catch {}
   }
+
+  // Samsung TV / Viewer interactif : publie la navigation du téléphone et
+  // accepte les commandes de navigation envoyées par la télécommande TV.
+  useViewerInteractiveBridge({
+    tab: String(tab || ""),
+    routeParams,
+    go: (next, params) => go(next as Tab, params),
+  });
 
   /* centralized update */
   function update(mut: (s: Store) => Store) {

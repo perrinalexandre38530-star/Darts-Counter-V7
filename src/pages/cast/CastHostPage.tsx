@@ -591,7 +591,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
         {activeTab === "viewer" ? (
           <div style={{ display: "grid", gap: 12 }}>
             <section style={themedCard}>
-              <Head icon="viewer" title={L("VIEWER SAMSUNG TV / TABLETTE", "SAMSUNG TV / TABLET VIEWER", "VIEWER SAMSUNG TV / TABLETA")} subtitle={L("Samsung TV par code à 6 caractères, tablette par lien ou QR code.", "Samsung TV with a 6-character code, tablet via link or QR code.", "Samsung TV con código de 6 caracteres, tableta por enlace o QR.")} />
+              <Head icon="viewer" title={L("VIEWER SAMSUNG TV INTERACTIF / TABLETTE", "INTERACTIVE SAMSUNG TV / TABLET VIEWER", "VIEWER SAMSUNG TV INTERACTIVO / TABLETA")} subtitle={L("Samsung TV interactive par code à 6 caractères : menus, navigation liée et scoreboard live. Tablette par lien ou QR code.", "Interactive Samsung TV with a 6-character code: linked menus, navigation and live scoreboard. Tablet via link or QR code.", "Samsung TV interactiva con código de 6 caracteres: menús, navegación y marcador en vivo. Tableta por enlace o QR.")} />
               <div style={{ borderRadius: 14, border: `1px solid ${viewer?.sessionId ? `${theme.success}55` : theme.borderSoft}`, background: viewer?.sessionId ? `${theme.success}0d` : "rgba(255,255,255,.025)", padding: 12 }}>
                 <div style={{ color: viewer?.sessionId ? theme.success : theme.textSoft, fontWeight: 950, fontSize: 11 }}>
                   {viewer?.sessionId ? L("SESSION ACTIVE", "ACTIVE SESSION", "SESIÓN ACTIVA") : L("AUCUNE SESSION", "NO SESSION", "SIN SESIÓN")}

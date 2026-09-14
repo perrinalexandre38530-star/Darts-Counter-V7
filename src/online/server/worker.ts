@@ -42,6 +42,10 @@ export interface Env {
   DART_IMAGES_BUCKET: R2Bucket;
   PUBLIC_BASE_URL: string;
   ALLOW_ORIGINS?: string;
+  ROOMS: {
+    idFromName(name: string): any;
+    get(id: any): { fetch(request: Request): Promise<Response> | Response };
+  };
 }
 
 // --------- Rooms WebSocket en mémoire ---------
@@ -795,6 +799,19 @@ const worker = {
     if ((url.pathname === "/viewer/session" || url.pathname === "/api/viewer/session") && request.method === "POST") {
       const res = await handleViewerCreate(request, env);
       return withCors(env, request, res);
+    }
+
+    // ------- Viewer interactif temps réel : Durable Object -------
+    // Le code Viewer sert aussi de room bidirectionnelle téléphone <-> Samsung TV.
+    // On vérifie d'abord que la session existe afin qu'un code arbitraire ne crée
+    // pas de room interactive persistante.
+    const viewerSocketMatch = url.pathname.match(/^\/(?:api\/)?viewer\/session\/([^/]+)\/socket$/);
+    if (viewerSocketMatch && request.headers.get("Upgrade") === "websocket") {
+      const sessionId = normalizeViewerId(viewerSocketMatch[1]);
+      const sessionRaw = sessionId ? await env.DC_SYNC.get(viewerSessionKey(sessionId)) : null;
+      if (!sessionId || !sessionRaw) return withCors(env, request, jsonError("Viewer session not found", 404));
+      const id = env.ROOMS.idFromName(`viewer:${sessionId}`);
+      return await env.ROOMS.get(id).fetch(request);
     }
 
     const viewerMatch = url.pathname.match(/^\/(?:api\/)?viewer\/session\/([^/]+)(?:\/snapshot)?$/);

@@ -1,0 +1,27 @@
+{
+  "patch": "MSS-V106-ORGANISATIONS-MEMBERS-V3",
+  "base_reference": "Darts-Counter-V7(106).zip",
+  "date": "2026-09-12",
+  "description": "Moteur fonctionnel Membres / Rôles / Invitations / Affectations aux équipes pour les Organisations MSS.",
+  "supabase_migration_required": true,
+  "storage_rule": "Supabase ne stocke que comptes, relations, rôles, invitations et affectations légères. Aucun média, historique lourd ou statistique détaillée.",
+  "features": [
+    "Liste cloud réelle des membres avec profil public MSS",
+    "Rôles owner/admin/manager/captain/member/guest avec permissions hiérarchisées",
+    "Suspension, réactivation et retrait sécurisés",
+    "Affectation d'un membre à une ou plusieurs équipes/groupes",
+    "Invitation ciblée d'un utilisateur MSS via recherche de pseudo public",
+    "Invitations reçues avec accepter/refuser",
+    "Invitations en attente avec annulation",
+    "Partage du code d'invitation et régénération sécurisée",
+    "Écritures sensibles via RPC SECURITY DEFINER uniquement"
+  ],
+  "files": [
+    "src/organizations/organizationService.ts",
+    "src/components/OrganizationMembersPanel.tsx",
+    "src/components/OrganizationInvitationsInbox.tsx",
+    "src/pages/OrganizationsPage.tsx",
+    "supabase/migrations/20260912233500_partnership_organizations_members_v3.sql",
+    "tools/test-organizations-members-v3.mjs"
+  ]
+}

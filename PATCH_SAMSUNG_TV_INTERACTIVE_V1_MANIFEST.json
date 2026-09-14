@@ -1,0 +1,51 @@
+{
+  "base": "Darts-Counter-V7.zip (dernier ZIP fourni dans la conversation)",
+  "patch": "MULTISPORTS SCORING — Samsung TV Interactive V1",
+  "flow": "Téléphone ⇄ Durable Object WebSocket ⇄ Samsung TV + fallback snapshot HTTP/KV DC_SYNC",
+  "changed_files": [
+    "src/App.tsx",
+    "src/lib/viewer/viewerNavigation.ts",
+    "src/lib/viewer/viewerRealtime.ts",
+    "src/lib/viewer/useViewerInteractiveBridge.ts",
+    "src/lib/viewer/viewerPublisher.ts",
+    "src/cast/googleCast.ts",
+    "src/pages/cast/CastHostPage.tsx",
+    "src/online/server/worker.ts",
+    "src/online/server/RoomDO.ts",
+    "src/tv/samsung/SamsungTvApp.tsx",
+    "src/tv/samsung/samsung-tv.css",
+    "tools/test-samsung-viewer-bridge-v107.mjs",
+    "tools/test-samsung-tv-interactive-v1.mjs",
+    "package.json",
+    "docs/SAMSUNG-TV-INTERACTIVE-V1.md"
+  ],
+  "audit_findings": [
+    "Le Viewer TV était passif et ne connaissait pas la navigation du téléphone.",
+    "Le Durable Object RoomDO existait mais n'était pas utilisé par la session Viewer.",
+    "Le pont partie -> Viewer passait par une couche Google Cast trop couplée et un import dynamique.",
+    "Aucun canal bidirectionnel n'existait entre télécommande Samsung et navigation téléphone."
+  ],
+  "implemented": [
+    "Accueil TV interactif avec Partie en cours, Jeux, Profils, Online, Stats, Agenda, Réglages.",
+    "Navigation téléphone -> TV via navigation_state.",
+    "Navigation TV -> téléphone via commandes navigate sur allowlist.",
+    "Protection : la TV ne peut pas arracher le téléphone à un écran de partie en cours.",
+    "Snapshots live envoyés par WebSocket + HTTP/KV fallback.",
+    "Socket Viewer dédié /api/viewer/session/:code/socket adossé au RoomDO.",
+    "RoomDO broadcast via getWebSockets pour mieux survivre à l'hibernation.",
+    "Publication Viewer déclenchée avant la sanitation/SDK Google Cast.",
+    "Scoreboard TV auto à l'arrivée d'un snapshot live.",
+    "Retour télécommande depuis le scoreboard = retour menu TV sans quitter la partie mobile."
+  ],
+  "tests": [
+    "node ./tools/test-samsung-viewer-bridge-v107.mjs",
+    "node ./tools/test-samsung-tv-interactive-v1.mjs"
+  ],
+  "next_commands": [
+    "npm run test:viewer:samsung",
+    "npm run test:viewer:samsung:interactive",
+    "npm run deploy:online",
+    "npm run tv:samsung:build",
+    "npm run tv:samsung:check"
+  ]
+}

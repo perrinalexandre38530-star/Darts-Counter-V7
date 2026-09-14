@@ -79,13 +79,15 @@ export class RoomDO {
   // ---------------------------------------------------
 
   private isOriginAllowed(origin: string | null): boolean {
-    if (!origin) return false;
     const raw = this.env.ALLOW_ORIGINS || "";
     const allowed = raw
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    // Liste vide = mode développement/app packagée : on accepte aussi les
+    // WebSocket sans en-tête Origin (certains WebView/Tizen se comportent ainsi).
     if (allowed.length === 0) return true;
+    if (!origin) return false;
     return allowed.includes(origin);
   }
 
@@ -99,7 +101,16 @@ export class RoomDO {
 
   private broadcast(msg: ServerWsMessage, except?: ClientWs) {
     const payload = JSON.stringify(msg);
-    for (const sock of this.clients) {
+    // getWebSockets() survit à l'hibernation du Durable Object, contrairement
+    // au Set mémoire. On garde le Set comme fallback pour les runtimes anciens.
+    let sockets: ClientWs[] = [];
+    try {
+      const durableSockets = (this.state as any).getWebSockets?.();
+      if (Array.isArray(durableSockets) && durableSockets.length) sockets = durableSockets as ClientWs[];
+    } catch {}
+    if (!sockets.length) sockets = Array.from(this.clients);
+
+    for (const sock of sockets) {
       if (except && sock === except) continue;
       try {
         sock.send(payload);

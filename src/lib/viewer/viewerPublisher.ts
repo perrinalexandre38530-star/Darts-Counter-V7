@@ -4,6 +4,7 @@ import { publishViewerSnapshot } from "./viewerClient";
 import { getActiveViewerSession } from "./viewerSession";
 import { castSnapshotToViewerSnapshot } from "./buildViewerSnapshot";
 import { getViewerAutoPublish } from "./viewerSettings";
+import { sendViewerHostSnapshot } from "./viewerRealtime";
 
 const MIN_INTERVAL_MS = 350;
 const VIEWER_DIAG_KEY = "dc_viewer_diag_v1";
@@ -94,8 +95,17 @@ export async function publishActiveViewerSnapshot(snapshot: ViewerLiveSnapshot, 
   lastSignature = sig;
 
   try {
+    // Double transport : WebSocket pour l'instantanéité TV + HTTP/KV comme
+    // source de vérité et fallback après reconnexion/veille.
+    const realtimeSent = sendViewerHostSnapshot(payload);
     await publishViewerSnapshot(session.sessionId, payload);
-    diag("viewer_publish_ok", { reason, sessionId: session.sessionId, game: payload.game, players: payload.players?.length || 0 });
+    diag("viewer_publish_ok", {
+      reason,
+      sessionId: session.sessionId,
+      game: payload.game,
+      players: payload.players?.length || 0,
+      realtimeSent,
+    });
     return true;
   } catch (e: any) {
     const at = Date.now();

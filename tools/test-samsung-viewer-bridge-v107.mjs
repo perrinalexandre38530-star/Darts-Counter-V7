@@ -27,13 +27,13 @@ expect("Viewer API pointe vers dc-online-v3", viewerClient.includes("https://dc-
 expect("Android packagé ne génère plus de QR https://localhost", viewerClient.includes("isLocalPackagedRuntime()") && viewerClient.includes("PUBLIC_PAGES_ORIGIN"));
 expect("Session active persistée localement", viewerSession.includes("dc_viewer_active_session_v1"));
 expect("Publication automatique disponible", viewerPublisher.includes("publishActiveViewerSnapshotFromCast"));
-expect("Pont Cast -> Viewer exécuté à chaque snapshot", googleCast.includes('bridgeSnapshotToViewerIfActive(payload as CastSnapshot, "sendCastSnapshot")'));
+expect("Pont Cast -> Viewer exécuté à chaque snapshot", googleCast.includes('bridgeSnapshotToViewerIfActive(snapshot, "sendCastSnapshot_raw")'));
 expect("X01 émet des snapshots live", x01.includes("sendCastSnapshot(snapshot)"));
 expect("Écran Viewer mobile crée la session", castHost.includes("createViewerSession()"));
 expect("Création Viewer force la publication automatique", castHost.includes("setViewerAutoPublish(true)"));
 expect("Réglages ouvrent directement l'onglet Viewer", settings.includes('go?.("cast_host", { screenTab: "viewer" })'));
 expect("Samsung TV attend un code de 6 caractères", samsung.includes("const CODE_LENGTH = 6"));
-expect("Samsung TV affiche ViewerDisplay", samsung.includes("<ViewerDisplay"));
+expect("Samsung TV affiche ViewerScreen / hub interactif", samsung.includes("<ViewerScreen") && samsung.includes("VIEWER_TV_MENU"));
 expect("Worker crée des codes Viewer de 6 caractères", worker.includes("generateViewerCode(6)"));
 expect("Worker possède POST /viewer/session", worker.includes('url.pathname === "/viewer/session"') && worker.includes("handleViewerCreate"));
 expect("Worker possède POST/GET snapshot", worker.includes("handleViewerPostSnapshot") && worker.includes("handleViewerGetSnapshot"));
