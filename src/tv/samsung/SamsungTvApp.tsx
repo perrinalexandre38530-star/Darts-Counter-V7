@@ -1,5 +1,6 @@
 import * as React from "react";
 import { fetchViewerSnapshot, normalizeViewerCode } from "../../lib/viewer/viewerClient";
+import { getTicker } from "../../lib/tickers";
 import type { ViewerLiveSnapshot } from "../../lib/viewer/types";
 import { createViewerRealtimeConnection, type ViewerRealtimeConnection } from "../../lib/viewer/viewerRealtime";
 import {
@@ -20,7 +21,7 @@ const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_FULL_APP_BUILD_20260914_03";
+const TV_BUILD_MARKER = "MSS_TV_FULL_APP_BUILD_20260914_04";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -212,7 +213,7 @@ function TvJoin({ onJoin }: { onJoin: (code: string) => void }) {
   const renderKey = (label: string, index: number, kind: "char" | "delete" | "clear" | "connect" = "char") => {
     const active = focusIndex === index;
     return (
-      <button key={`${label}-${index}`} type="button" tabIndex={-1} className={`mss-tv-key mss-tv-key--${kind}${active ? " is-focused" : ""}`} onMouseEnter={() => setFocusIndex(index)} onClick={() => activate(index)}>
+      <button key={`${label}-${index}`} type="button" tabIndex={-1} className={`mss-tv-key mss-tv-key--${kind}${active ? " is-focused" : ""}`} onMouseEnter={() => setFocusIndex(index)} onClick={() => onActivate(index)}>
         {label}
       </button>
     );
@@ -313,11 +314,13 @@ type TvScreen =
   | "sports"
   | "sport"
   | "profiles"
+  | "profile_detail"
+  | "profile_edit"
   | "stats"
   | "online"
   | "agenda"
   | "settings"
-  | "x01setup"
+  | "setup"
   | "scoreboard";
 
 const EMPTY_TV_STATE: TvState = {
@@ -400,6 +403,59 @@ function applyTvTheme(theme: TvState["theme"]) {
   } catch {}
 }
 
+const TV_SPORT_HERO_TICKERS: Record<TvSportId, string[]> = {
+  darts: ["darts_games", "menu_games", "darts"],
+  petanque: ["petanque_games", "petanque_menu_games", "petanque_1v1"],
+  pingpong: ["pingpong_games", "pingpong_1v1"],
+  babyfoot: ["babyfoot_games", "babyfoot_match", "babyfoot_1v1"],
+  molkky: ["molkky_games", "molkky_classic"],
+  dicegame: ["dice_games", "dice_duel"],
+  foot: ["foot_games", "foot_home", "foot_1v1"],
+  running: ["running_games", "running"],
+  fit: ["fit_games", "fit_perf", "fit"],
+  esports: ["esports_games", "esports"],
+};
+
+function firstTicker(keys: Array<string | null | undefined>) {
+  for (const key of keys) {
+    if (!key) continue;
+    try {
+      const hit = getTicker(String(key));
+      if (hit) return hit;
+    } catch {}
+  }
+  return null;
+}
+
+function tvSportHeroImage(sportId: TvSportId) {
+  const sport = tvSportById(sportId);
+  return firstTicker(TV_SPORT_HERO_TICKERS[sportId] || []) || sport.art;
+}
+
+function tvActionImage(sportId: TvSportId, action: TvLaunchAction) {
+  const candidates = [
+    ...(action.tickerKeys || []),
+    `${sportId}_${action.id}`,
+    action.id,
+    action.params?.presetVariantId,
+    action.params?.preset,
+    action.params?.format ? `${sportId}_${action.params.format}` : null,
+  ];
+  return firstTicker(candidates) || tvSportById(sportId).logo;
+}
+
+function useKeepFocusedVisible(focusIndex: number, screen: TvScreen) {
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const node = document.querySelector<HTMLElement>(".is-focused");
+        node?.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      } catch {}
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [focusIndex, screen]);
+}
+
 function TvPageHeader({
   title,
   subtitle,
@@ -453,7 +509,7 @@ function TvHub({
         <div>
           <div className="mss-tv-hub-title">MULTISPORTS SCORING</div>
           <div className="mss-tv-hub-subtitle">TV COMPLÈTE · SESSION {sessionId}</div>
-          <div className="mss-tv-build-marker">TV FULL PREMIUM V3 · 2026.09.14-03</div>
+          <div className="mss-tv-build-marker">TV FULL PREMIUM V4 · 2026.09.14-04</div>
         </div>
         <div className={`mss-tv-link-state is-${connectionStatus}`}>
           <span className="mss-tv-link-dot" />
@@ -540,32 +596,32 @@ function TvSports({
   onChoose: (sport: TvSportId) => void;
 }) {
   return (
-    <main className="mss-tv-section">
+    <main className="mss-tv-section mss-tv-section--sports">
       <TvPageHeader
         title="SPORTS"
-        subtitle="Choisis une discipline. La sélection est immédiatement synchronisée avec le téléphone."
+        subtitle="Choisis une discipline. Une carte = un logo, sans surcharge visuelle."
         connectionStatus={connectionStatus}
       />
-      <section className="mss-tv-sport-grid">
+      <section className="mss-tv-sport-grid mss-tv-scroll-region">
         {TV_SPORTS.map((sport, index) => (
           <button
             type="button"
             tabIndex={-1}
+            aria-label={sport.label}
             key={sport.id}
-            className={`mss-tv-sport-card${index === focusIndex ? " is-focused" : ""}${sport.id === activeSport ? " is-active" : ""}`}
+            className={`mss-tv-sport-card mss-tv-sport-card--logo${index === focusIndex ? " is-focused" : ""}${sport.id === activeSport ? " is-active" : ""}`}
             style={{ ["--sport-accent" as any]: sport.accent }}
             onMouseEnter={() => onFocus(index)}
             onClick={() => onChoose(sport.id)}
           >
-            <img className="mss-tv-sport-card-art" src={sport.art} alt="" draggable={false} />
-            <TvWatermark src={sport.logo} strong />
-            <span className="mss-tv-sport-card-label">{sport.label}</span>
-            <span className="mss-tv-sport-card-subtitle">{sport.subtitle}</span>
-            {sport.id === activeSport ? <span className="mss-tv-active-pill">ACTIF</span> : null}
+            <img className="mss-tv-sport-logo-only" src={sport.logo} alt={sport.label} draggable={false} />
           </button>
         ))}
       </section>
-      <footer className="mss-tv-page-footer">OK : ouvrir le sport · Retour : menu TV</footer>
+      <footer className="mss-tv-page-footer">
+        <span>OK : ouvrir le sport · Retour : menu TV</span>
+        <span>{tvSportById(TV_SPORTS[focusIndex]?.id || activeSport).label}</span>
+      </footer>
     </main>
   );
 }
@@ -589,42 +645,44 @@ function TvSportLauncher({
   const page = Math.floor(Math.max(0, focusIndex) / pageSize);
   const start = page * pageSize;
   const visible = actions.slice(start, start + pageSize);
+  const heroImage = tvSportHeroImage(sportId);
 
   return (
-    <main className="mss-tv-section">
+    <main className="mss-tv-section mss-tv-section--launcher">
       <TvPageHeader
         title={sport.label}
-        subtitle={sportId === "darts" ? "Choisis un mode. X01 dispose déjà d'une configuration guidée complète sur TV." : "Choisis un mode ou une action. Le parcours TV guidé est progressivement activé sport par sport."}
+        subtitle="Choisis le ticker officiel du mode de jeu. OK ouvre sa configuration guidée TV."
         connectionStatus={connectionStatus}
       />
-      <section className="mss-tv-sport-hero" style={{ ["--sport-accent" as any]: sport.accent }}>
-        <img className="mss-tv-sport-hero-art" src={sport.art} alt="" draggable={false} />
-        <TvWatermark src={sport.logo} strong />
-        <div className="mss-tv-sport-hero-title">{sport.label}</div>
-        <div className="mss-tv-sport-hero-copy">Télécommande Samsung + téléphone · même session</div>
-        {actions.length > pageSize ? <div className="mss-tv-page-count">{page + 1} / {Math.ceil(actions.length / pageSize)}</div> : null}
-      </section>
-      <section className="mss-tv-action-grid">
-        {visible.map((action, localIndex) => {
-          const index = start + localIndex;
-          return (
-            <button
-              type="button"
-              tabIndex={-1}
-              key={`${action.id}-${index}`}
-              className={`mss-tv-action-card${focusIndex === index ? " is-focused" : ""}`}
-              onMouseEnter={() => onFocus(index)}
-              onClick={() => onLaunch(action)}
-            >
-              <img className="mss-tv-action-art" src={sport.art} alt="" draggable={false} />
-              <TvWatermark src={sport.logo} />
-              <span className="mss-tv-action-label">{action.label}</span>
-              <span className="mss-tv-action-subtitle">{action.subtitle || action.category || "Ouvrir"}</span>
-            </button>
-          );
-        })}
-      </section>
-      <footer className="mss-tv-page-footer">OK : ouvrir / lancer la configuration · Retour : SPORTS</footer>
+      <div className="mss-tv-launcher-body mss-tv-scroll-region">
+        <section className="mss-tv-sport-hero mss-tv-sport-hero--contained" style={{ ["--sport-accent" as any]: sport.accent }}>
+          <img className="mss-tv-sport-hero-art" src={heroImage} alt={sport.label} draggable={false} />
+          {actions.length > pageSize ? <div className="mss-tv-page-count">{page + 1} / {Math.ceil(actions.length / pageSize)}</div> : null}
+        </section>
+        <section className="mss-tv-action-grid mss-tv-action-grid--tickers">
+          {visible.map((action, localIndex) => {
+            const index = start + localIndex;
+            const ticker = tvActionImage(sportId, action);
+            return (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={action.label}
+                key={`${action.id}-${index}`}
+                className={`mss-tv-action-card mss-tv-action-card--ticker${focusIndex === index ? " is-focused" : ""}`}
+                onMouseEnter={() => onFocus(index)}
+                onClick={() => onLaunch(action)}
+              >
+                <img className="mss-tv-action-ticker" src={ticker} alt={action.label} draggable={false} />
+              </button>
+            );
+          })}
+        </section>
+      </div>
+      <footer className="mss-tv-page-footer">
+        <span>OK : configuration guidée · Retour : SPORTS</span>
+        {actions[focusIndex] ? <span>{actions[focusIndex].label}</span> : null}
+      </footer>
     </main>
   );
 }
@@ -634,47 +692,62 @@ function TvProfiles({
   tvState,
   focusIndex,
   onFocus,
-  onSelect,
+  onOpen,
+  onCreate,
 }: {
   connectionStatus: string;
   tvState: TvState;
   focusIndex: number;
   onFocus: (index: number) => void;
-  onSelect: (id: string) => void;
+  onOpen: (id: string) => void;
+  onCreate: () => void;
 }) {
-  const profiles = tvState.profiles;
+  const entries: Array<TvProfile | null> = [null, ...tvState.profiles];
   const page = Math.floor(Math.max(0, focusIndex) / TV_LIST_PAGE_SIZE);
   const pageStart = page * TV_LIST_PAGE_SIZE;
-  const visibleProfiles = profiles.slice(pageStart, pageStart + TV_LIST_PAGE_SIZE);
+  const visibleEntries = entries.slice(pageStart, pageStart + TV_LIST_PAGE_SIZE);
   return (
-    <main className="mss-tv-section">
-      <TvPageHeader title="PROFILS" subtitle="Tes vrais profils, avatars et performances sur grand écran." connectionStatus={connectionStatus} />
-      {profiles.length ? (
-        <section className="mss-tv-profile-grid">
-          {visibleProfiles.map((profile, localIndex) => {
-            const index = pageStart + localIndex;
+    <main className="mss-tv-section mss-tv-section--profiles">
+      <TvPageHeader title="PROFILS" subtitle="Créer, consulter, activer, renommer ou supprimer un profil directement depuis la TV." connectionStatus={connectionStatus} />
+      <section className="mss-tv-profile-grid mss-tv-scroll-region">
+        {visibleEntries.map((profile, localIndex) => {
+          const index = pageStart + localIndex;
+          if (!profile) {
             return (
+              <button
+                type="button"
+                tabIndex={-1}
+                key="create-profile"
+                className={`mss-tv-profile-card mss-tv-profile-card--create${focusIndex === index ? " is-focused" : ""}`}
+                onMouseEnter={() => onFocus(index)}
+                onClick={onCreate}
+              >
+                <span className="mss-tv-profile-create-plus">＋</span>
+                <span className="mss-tv-profile-name">CRÉER UN PROFIL</span>
+                <span className="mss-tv-profile-meta">Depuis la télécommande</span>
+              </button>
+            );
+          }
+          return (
             <button
               type="button"
               tabIndex={-1}
               key={profile.id}
               className={`mss-tv-profile-card${focusIndex === index ? " is-focused" : ""}${profile.id === tvState.activeProfileId ? " is-active" : ""}`}
               onMouseEnter={() => onFocus(index)}
-              onClick={() => onSelect(profile.id)}
+              onClick={() => onOpen(profile.id)}
             >
               <TvProfileAvatar profile={profile} size="medium" />
               <span className="mss-tv-profile-name">{profile.name}</span>
-              <span className="mss-tv-profile-meta">{profile.id === tvState.activeProfileId ? "PROFIL ACTIF" : "OK pour sélectionner"}</span>
+              <span className="mss-tv-profile-meta">{profile.id === tvState.activeProfileId ? "PROFIL ACTIF" : "OK pour consulter / modifier"}</span>
               <span className="mss-tv-profile-kpis">{statValue(profile.stats?.games)} parties · {statValue(profile.stats?.wins)} victoires</span>
             </button>
-          );})}
-        </section>
-      ) : (
-        <div className="mss-tv-empty">Aucun profil synchronisé. Crée un profil sur le téléphone puis reviens ici.</div>
-      )}
+          );
+        })}
+      </section>
       <footer className="mss-tv-page-footer">
-        <span>OK : profil actif · Retour : menu TV</span>
-        {profiles.length > TV_LIST_PAGE_SIZE ? <span>PAGE {page + 1}/{Math.ceil(profiles.length / TV_LIST_PAGE_SIZE)}</span> : null}
+        <span>OK : ouvrir · Retour : menu TV</span>
+        {entries.length > TV_LIST_PAGE_SIZE ? <span>PAGE {page + 1}/{Math.ceil(entries.length / TV_LIST_PAGE_SIZE)}</span> : null}
       </footer>
     </main>
   );
@@ -684,6 +757,106 @@ function statValue(value: any, decimals = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "0";
   return decimals ? n.toFixed(decimals) : String(Math.round(n));
+}
+
+type ProfileEditorState = {
+  mode: "create" | "rename";
+  profileId: string | null;
+  name: string;
+};
+
+const TV_PROFILE_KEYS = [
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((label) => ({ id: label, label, kind: "char" as const })),
+  { id: "space", label: "ESPACE", kind: "space" as const },
+  { id: "delete", label: "⌫", kind: "delete" as const },
+  { id: "clear", label: "EFFACER", kind: "clear" as const },
+  { id: "save", label: "ENREGISTRER", kind: "save" as const },
+];
+
+function TvProfileDetail({
+  connectionStatus, profile, isActive, focusIndex, deleteArmed, onFocus, onAction,
+}: {
+  connectionStatus: string;
+  profile: TvProfile;
+  isActive: boolean;
+  focusIndex: number;
+  deleteArmed: boolean;
+  onFocus: (index: number) => void;
+  onAction: (action: "activate" | "stats" | "rename" | "phone" | "delete") => void;
+}) {
+  const s = profile.stats || {};
+  const actions = [
+    { id: "activate", label: isActive ? "PROFIL ACTIF" : "DÉFINIR ACTIF", value: isActive ? "✓" : "OK" },
+    { id: "stats", label: "CONSULTER LES STATS", value: `${statValue(s.games)} parties` },
+    { id: "rename", label: "RENOMMER", value: profile.name },
+    { id: "phone", label: "ÉDITION AVANCÉE", value: "Téléphone" },
+    { id: "delete", label: deleteArmed ? "CONFIRMER SUPPRESSION" : "SUPPRIMER", value: deleteArmed ? "OK À NOUVEAU" : "" },
+  ] as const;
+  return (
+    <main className="mss-tv-section mss-tv-section--profile-detail">
+      <TvPageHeader title="PROFIL" subtitle="Consultation et gestion du profil depuis la TV." connectionStatus={connectionStatus} />
+      <section className="mss-tv-profile-detail-layout mss-tv-scroll-region">
+        <article className="mss-tv-profile-identity-card">
+          <TvProfileAvatar profile={profile} size="large" />
+          <div className="mss-tv-profile-detail-name">{profile.name}</div>
+          <div className="mss-tv-profile-detail-badge">{isActive ? "PROFIL ACTIF" : "PROFIL LOCAL"}</div>
+          <div className="mss-tv-profile-detail-stats">
+            <span><b>{statValue(s.games)}</b>PARTIES</span>
+            <span><b>{statValue(s.wins)}</b>VICTOIRES</span>
+            <span><b>{statValue(s.avg3, 1)}</b>MOY. / 3</span>
+            <span><b>{statValue(s.bestCheckout)}</b>BEST CO</span>
+          </div>
+        </article>
+        <div className="mss-tv-profile-actions">
+          {actions.map((action, index) => (
+            <button
+              key={action.id}
+              type="button"
+              tabIndex={-1}
+              className={`mss-tv-setting-card${focusIndex === index ? " is-focused" : ""}${action.id === "delete" ? " is-danger" : ""}`}
+              onMouseEnter={() => onFocus(index)}
+              onClick={() => onAction(action.id)}
+            >
+              <span>{action.label}</span><b>{action.value}</b>
+            </button>
+          ))}
+        </div>
+      </section>
+      <footer className="mss-tv-page-footer">OK : action · Retour : PROFILS</footer>
+    </main>
+  );
+}
+
+function TvProfileEditor({
+  connectionStatus, editor, focusIndex, onFocus, onActivate,
+}: {
+  connectionStatus: string;
+  editor: ProfileEditorState;
+  focusIndex: number;
+  onFocus: (index: number) => void;
+  onActivate: (index: number) => void;
+}) {
+  return (
+    <main className="mss-tv-section mss-tv-section--profile-editor">
+      <TvPageHeader title={editor.mode === "create" ? "CRÉER UN PROFIL" : "RENOMMER LE PROFIL"} subtitle="Saisie du nom avec la télécommande Samsung." connectionStatus={connectionStatus} />
+      <section className="mss-tv-profile-editor mss-tv-scroll-region">
+        <div className="mss-tv-profile-name-input">{editor.name || "NOM DU PROFIL"}</div>
+        <div className="mss-tv-profile-keyboard">
+          {TV_PROFILE_KEYS.map((key, index) => (
+            <button
+              key={key.id}
+              type="button"
+              tabIndex={-1}
+              className={`mss-tv-profile-key is-${key.kind}${focusIndex === index ? " is-focused" : ""}`}
+              onMouseEnter={() => onFocus(index)}
+              onClick={() => onActivate(index)}
+            >{key.label}</button>
+          ))}
+        </div>
+      </section>
+      <footer className="mss-tv-page-footer">OK : saisir · Retour : annuler</footer>
+    </main>
+  );
 }
 
 function TvStats({
@@ -851,116 +1024,191 @@ function TvSettings({
 }
 
 
-type X01QuickState = {
+type GuidedSetupState = {
+  sportId: TvSportId;
+  actionId: string;
+  playerCount: number;
+  playerIndexes: number[];
   startScore: 301 | 501 | 701 | 901;
-  playerOneIndex: number;
-  playerTwoIndex: number;
-  duel: boolean;
-  outMode: "single" | "double";
+  inMode: "single" | "double" | "master";
+  outMode: "single" | "double" | "master";
+  legsPerSet: number;
+  setsToWin: number;
+  serveMode: "alternate" | "random";
+  targetScore: number;
+  pointsPerSet: number;
+  winByTwo: boolean;
+  goldenGoal: boolean;
+  durationMin: number;
 };
 
-function TvX01QuickSetup({
-  connectionStatus,
-  tvState,
-  focusIndex,
-  state,
-  onFocus,
-  onChange,
-  onStart,
+type GuidedSetupRow = {
+  id: string;
+  label: string;
+  value: string;
+  primary?: boolean;
+  run: () => void;
+};
+
+function createGuidedSetup(sportId: TvSportId, action: TvLaunchAction, tvState: TvState): GuidedSetupState {
+  const profiles = tvState.profiles;
+  const minPlayers = Math.max(1, Number(action.minPlayers || 1));
+  const maxByAction = Math.max(minPlayers, Number(action.maxPlayers || 8));
+  const maxPlayers = profiles.length ? Math.min(maxByAction, profiles.length) : minPlayers;
+  const requested = Math.max(minPlayers, Number(action.defaultPlayers || minPlayers));
+  const playerCount = Math.max(minPlayers, Math.min(maxPlayers, requested));
+  const activeIndex = Math.max(0, profiles.findIndex((p) => p.id === tvState.activeProfileId));
+  const playerIndexes = Array.from({ length: Math.max(1, playerCount) }, (_, index) => profiles.length ? ((activeIndex + index) % profiles.length) : 0);
+  return {
+    sportId,
+    actionId: action.id,
+    playerCount,
+    playerIndexes,
+    startScore: ([301, 501, 701, 901].includes(Number(tvState.settings.defaultX01)) ? Number(tvState.settings.defaultX01) : 501) as 301 | 501 | 701 | 901,
+    inMode: "single",
+    outMode: tvState.settings.doubleOut ? "double" : "single",
+    legsPerSet: 1,
+    setsToWin: 1,
+    serveMode: tvState.settings.randomOrder ? "random" : "alternate",
+    targetScore: sportId === "petanque" ? 13 : sportId === "babyfoot" ? Number(action.params?.presetTarget || 10) : sportId === "molkky" ? 50 : 100,
+    pointsPerSet: 11,
+    winByTwo: true,
+    goldenGoal: !!action.params?.presetGoldenGoal,
+    durationMin: 10,
+  };
+}
+
+function cycleNumber(value: number, options: number[]) {
+  const at = Math.max(0, options.indexOf(Number(value)));
+  return options[(at + 1) % options.length];
+}
+
+function buildGuidedSetupRows(
+  state: GuidedSetupState,
+  action: TvLaunchAction,
+  profiles: TvProfile[],
+  onChange: (next: GuidedSetupState) => void,
+  onStart: () => void,
+): GuidedSetupRow[] {
+  const rows: GuidedSetupRow[] = [];
+  const minPlayers = Math.max(1, Number(action.minPlayers || 1));
+  const maxByAction = Math.max(minPlayers, Number(action.maxPlayers || 8));
+  const maxPlayers = profiles.length ? Math.min(maxByAction, profiles.length) : minPlayers;
+  const playerOptions = Array.from({ length: Math.max(1, maxPlayers - minPlayers + 1) }, (_, index) => minPlayers + index);
+
+  rows.push({
+    id: "player-count",
+    label: "NOMBRE DE JOUEURS",
+    value: String(state.playerCount),
+    run: () => {
+      const nextCount = playerOptions.length > 1 ? cycleNumber(state.playerCount, playerOptions) : state.playerCount;
+      const indexes = Array.from({ length: nextCount }, (_, index) => state.playerIndexes[index] ?? (profiles.length ? index % profiles.length : 0));
+      onChange({ ...state, playerCount: nextCount, playerIndexes: indexes });
+    },
+  });
+
+  for (let slot = 0; slot < state.playerCount; slot += 1) {
+    const profileIndex = state.playerIndexes[slot] ?? 0;
+    rows.push({
+      id: `player-${slot}`,
+      label: `JOUEUR ${slot + 1}`,
+      value: profiles[profileIndex]?.name || "Aucun profil",
+      run: () => {
+        if (!profiles.length) return;
+        let nextIndex = (profileIndex + 1) % profiles.length;
+        if (profiles.length > 1) {
+          const occupied = new Set(state.playerIndexes.filter((_, idx) => idx !== slot));
+          let guard = 0;
+          while (occupied.has(nextIndex) && guard < profiles.length) {
+            nextIndex = (nextIndex + 1) % profiles.length;
+            guard += 1;
+          }
+        }
+        const next = [...state.playerIndexes];
+        next[slot] = nextIndex;
+        onChange({ ...state, playerIndexes: next });
+      },
+    });
+  }
+
+  if (state.sportId === "darts" && action.id === "x01") {
+    const scores: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
+    const modes: Array<"single" | "double" | "master"> = ["single", "double", "master"];
+    rows.push({ id: "score", label: "SCORE DE DÉPART", value: String(state.startScore), run: () => onChange({ ...state, startScore: cycleNumber(state.startScore, scores) as 301 | 501 | 701 | 901 }) });
+    rows.push({ id: "in", label: "ENTRÉE", value: `${state.inMode.toUpperCase()} IN`, run: () => onChange({ ...state, inMode: modes[(modes.indexOf(state.inMode) + 1) % modes.length] }) });
+    rows.push({ id: "out", label: "SORTIE", value: `${state.outMode.toUpperCase()} OUT`, run: () => onChange({ ...state, outMode: modes[(modes.indexOf(state.outMode) + 1) % modes.length] }) });
+    rows.push({ id: "legs", label: "LEGS PAR SET", value: String(state.legsPerSet), run: () => onChange({ ...state, legsPerSet: cycleNumber(state.legsPerSet, [1, 2, 3, 5]) }) });
+    rows.push({ id: "sets", label: "SETS À GAGNER", value: String(state.setsToWin), run: () => onChange({ ...state, setsToWin: cycleNumber(state.setsToWin, [1, 2, 3, 5]) }) });
+    rows.push({ id: "serve", label: "ORDRE", value: state.serveMode === "random" ? "ALÉATOIRE" : "ALTERNÉ", run: () => onChange({ ...state, serveMode: state.serveMode === "random" ? "alternate" : "random" }) });
+  } else if (state.sportId === "petanque") {
+    rows.push({ id: "target", label: "SCORE CIBLE", value: String(state.targetScore), run: () => onChange({ ...state, targetScore: cycleNumber(state.targetScore, [7, 11, 13, 15]) }) });
+  } else if (state.sportId === "pingpong") {
+    rows.push({ id: "points", label: "POINTS PAR SET", value: String(state.pointsPerSet), run: () => onChange({ ...state, pointsPerSet: cycleNumber(state.pointsPerSet, [11, 21]) }) });
+    rows.push({ id: "sets", label: "SETS À GAGNER", value: String(state.setsToWin), run: () => onChange({ ...state, setsToWin: cycleNumber(state.setsToWin, [1, 2, 3, 4]) }) });
+    rows.push({ id: "win2", label: "2 POINTS D'ÉCART", value: state.winByTwo ? "OUI" : "NON", run: () => onChange({ ...state, winByTwo: !state.winByTwo }) });
+  } else if (state.sportId === "babyfoot") {
+    rows.push({ id: "target", label: "SCORE CIBLE", value: String(state.targetScore), run: () => onChange({ ...state, targetScore: cycleNumber(state.targetScore, [5, 7, 9, 10]) }) });
+    rows.push({ id: "sets", label: "SETS À GAGNER", value: String(state.setsToWin), run: () => onChange({ ...state, setsToWin: cycleNumber(state.setsToWin, [1, 2, 3]) }) });
+    rows.push({ id: "golden", label: "GOLDEN GOAL", value: state.goldenGoal ? "OUI" : "NON", run: () => onChange({ ...state, goldenGoal: !state.goldenGoal }) });
+  } else if (state.sportId === "molkky") {
+    rows.push({ id: "target", label: "SCORE CIBLE", value: String(state.targetScore), run: () => onChange({ ...state, targetScore: cycleNumber(state.targetScore, [30, 40, 50]) }) });
+  } else if (state.sportId === "dicegame") {
+    rows.push({ id: "target", label: "OBJECTIF", value: String(state.targetScore), run: () => onChange({ ...state, targetScore: cycleNumber(state.targetScore, [100, 200, 500, 1000, 10000]) }) });
+  } else if (state.sportId === "foot") {
+    rows.push({ id: "duration", label: "DURÉE", value: `${state.durationMin} MIN`, run: () => onChange({ ...state, durationMin: cycleNumber(state.durationMin, [5, 10, 15, 20, 30]) }) });
+  }
+
+  rows.push({ id: "launch", label: state.sportId === "darts" && action.id === "x01" ? "LANCER LA PARTIE" : "VALIDER LA CONFIGURATION", value: profiles.length ? "OK" : "PROFIL REQUIS", primary: true, run: onStart });
+  return rows;
+}
+
+function TvGuidedSetup({
+  connectionStatus, tvState, action, focusIndex, state, onFocus, onChange, onStart,
 }: {
   connectionStatus: string;
   tvState: TvState;
+  action: TvLaunchAction;
   focusIndex: number;
-  state: X01QuickState;
+  state: GuidedSetupState;
   onFocus: (index: number) => void;
-  onChange: (next: X01QuickState) => void;
+  onChange: (next: GuidedSetupState) => void;
   onStart: () => void;
 }) {
-  const profiles = tvState.profiles;
-  const p1 = profiles[state.playerOneIndex] || profiles[0];
-  const p2 = profiles[state.playerTwoIndex] || profiles.find((profile) => profile.id !== p1?.id) || profiles[0];
-  const scoreValues: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
-  const scoreIndex = Math.max(0, scoreValues.indexOf(state.startScore));
-
-  const actions = [
-    {
-      label: "SCORE DE DÉPART",
-      value: String(state.startScore),
-      run: () => onChange({ ...state, startScore: scoreValues[(scoreIndex + 1) % scoreValues.length] }),
-    },
-    {
-      label: "FORMAT",
-      value: state.duel && profiles.length > 1 ? "DUEL" : "SOLO",
-      run: () => onChange({ ...state, duel: profiles.length > 1 ? !state.duel : false }),
-    },
-    {
-      label: "JOUEUR 1",
-      value: p1?.name || "Aucun profil",
-      run: () => {
-        if (!profiles.length) return;
-        const next = (state.playerOneIndex + 1) % profiles.length;
-        onChange({ ...state, playerOneIndex: next });
-      },
-    },
-    {
-      label: "JOUEUR 2",
-      value: state.duel ? (p2?.name || "Aucun profil") : "—",
-      run: () => {
-        if (!state.duel || profiles.length < 2) return;
-        let next = (state.playerTwoIndex + 1) % profiles.length;
-        if (next === state.playerOneIndex) next = (next + 1) % profiles.length;
-        onChange({ ...state, playerTwoIndex: next });
-      },
-    },
-    {
-      label: "SORTIE",
-      value: state.outMode === "double" ? "DOUBLE OUT" : "SINGLE OUT",
-      run: () => onChange({ ...state, outMode: state.outMode === "double" ? "single" : "double" }),
-    },
-    {
-      label: "LANCER LA PARTIE",
-      value: profiles.length ? "OK" : "PROFIL REQUIS",
-      run: onStart,
-      primary: true,
-    },
-  ];
-
+  const sport = tvSportById(state.sportId);
+  const rows = buildGuidedSetupRows(state, action, tvState.profiles, onChange, onStart);
+  const selectedProfiles = state.playerIndexes.slice(0, state.playerCount).map((index) => tvState.profiles[index]).filter(Boolean);
+  const ticker = tvActionImage(state.sportId, action);
   return (
-    <main className="mss-tv-section">
-      <TvPageHeader
-        title="X01 · LANCEMENT RAPIDE"
-        subtitle="Configure et démarre réellement la partie depuis la télécommande Samsung."
-        connectionStatus={connectionStatus}
-      />
-      <section className="mss-tv-x01-setup">
-        <div className="mss-tv-x01-summary">
-          <div className="mss-tv-guide-kicker">CONFIGURATION GUIDÉE · X01</div>
-          <div className="mss-tv-x01-score">{state.startScore}</div>
-          <div className="mss-tv-x01-mode">{state.duel && profiles.length > 1 ? "DUEL" : "SOLO"} · {state.outMode === "double" ? "DOUBLE OUT" : "SINGLE OUT"}</div>
-          <div className="mss-tv-x01-player-stage">
-            <div className="mss-tv-x01-player-card"><TvProfileAvatar profile={p1} size="large" /><span>{p1?.name || "Aucun profil"}</span></div>
-            {state.duel && profiles.length > 1 ? <><b className="mss-tv-versus">VS</b><div className="mss-tv-x01-player-card"><TvProfileAvatar profile={p2} size="large" /><span>{p2?.name || "Joueur 2"}</span></div></> : null}
+    <main className="mss-tv-section mss-tv-section--setup">
+      <TvPageHeader title={`${action.label} · CONFIGURATION`} subtitle="Mode guidé TV : joueurs et paramètres réglables à la télécommande." connectionStatus={connectionStatus} />
+      <section className="mss-tv-guided-layout mss-tv-scroll-region" style={{ ["--sport-accent" as any]: sport.accent }}>
+        <aside className="mss-tv-guided-summary">
+          <img className="mss-tv-guided-ticker" src={ticker} alt={action.label} draggable={false} />
+          <div className="mss-tv-guided-roster">
+            {selectedProfiles.map((profile, index) => (
+              <div className="mss-tv-guided-player" key={`${profile.id}-${index}`}><TvProfileAvatar profile={profile} size="medium" /><span>{profile.name}</span></div>
+            ))}
           </div>
-          <div className="mss-tv-guide-copy">Tout se règle depuis la télécommande : score de départ, format, joueurs et sortie. Le téléphone reste synchronisé.</div>
-        </div>
-        <div className="mss-tv-x01-actions">
-          {actions.map((action, index) => (
+          <div className="mss-tv-guide-copy">{state.playerCount} joueur{state.playerCount > 1 ? "s" : ""} · tous les paramètres ci-contre se modifient avec OK.</div>
+        </aside>
+        <div className="mss-tv-guided-actions">
+          {rows.map((row, index) => (
             <button
-              key={action.label}
+              key={row.id}
               type="button"
               tabIndex={-1}
-              className={`mss-tv-setting-card${focusIndex === index ? " is-focused" : ""}${action.primary ? " is-primary" : ""}`}
+              className={`mss-tv-setting-card${focusIndex === index ? " is-focused" : ""}${row.primary ? " is-primary" : ""}`}
               onMouseEnter={() => onFocus(index)}
-              onClick={action.run}
+              onClick={row.run}
             >
               <i className="mss-tv-guide-step">{String(index + 1).padStart(2, "0")}</i>
-              <span>{action.label}</span>
-              <b>{action.value}</b>
+              <span>{row.label}</span>
+              <b>{row.value}</b>
             </button>
           ))}
         </div>
       </section>
-      <footer className="mss-tv-page-footer">OK : modifier / lancer · Retour : modes DARTS</footer>
+      <footer className="mss-tv-page-footer"><span>OK : modifier / valider · Retour : {sport.label}</span><span>{focusIndex + 1}/{rows.length}</span></footer>
     </main>
   );
 }
@@ -1138,13 +1386,11 @@ export default function SamsungTvApp() {
   const [autoFollowGame, setAutoFollowGame] = React.useState(true);
   const [tvState, setTvState] = React.useState<TvState>(EMPTY_TV_STATE);
   const [selectedSport, setSelectedSport] = React.useState<TvSportId>("darts");
-  const [x01Quick, setX01Quick] = React.useState<X01QuickState>({
-    startScore: 501,
-    playerOneIndex: 0,
-    playerTwoIndex: 1,
-    duel: true,
-    outMode: "double",
-  });
+  const [selectedAction, setSelectedAction] = React.useState<TvLaunchAction | null>(null);
+  const [guidedSetup, setGuidedSetup] = React.useState<GuidedSetupState | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(null);
+  const [profileEditor, setProfileEditor] = React.useState<ProfileEditorState | null>(null);
+  const [profileDeleteArmed, setProfileDeleteArmed] = React.useState(false);
   const [scoreBuffer, setScoreBuffer] = React.useState("");
   const realtimeRef = React.useRef<ViewerRealtimeConnection | null>(null);
   const autoFollowGameRef = React.useRef(true);
@@ -1172,6 +1418,8 @@ export default function SamsungTvApp() {
     applyTvTheme(tvState.theme);
   }, [tvState.theme]);
 
+  useKeepFocusedVisible(focusIndex, screen);
+
   const join = React.useCallback((code: string) => {
     const clean = normalizeViewerCode(code).slice(0, CODE_LENGTH);
     if (!clean) return;
@@ -1185,6 +1433,11 @@ export default function SamsungTvApp() {
     autoFollowGameRef.current = true;
     setTvState(EMPTY_TV_STATE);
     setSelectedSport("darts");
+    setSelectedAction(null);
+    setGuidedSetup(null);
+    setSelectedProfileId(null);
+    setProfileEditor(null);
+    setProfileDeleteArmed(false);
     setHash(clean);
   }, []);
 
@@ -1260,21 +1513,6 @@ export default function SamsungTvApp() {
           selectedSportRef.current = next.activeSport;
           setTvState(next);
           setSelectedSport(next.activeSport);
-          setX01Quick((prev) => {
-            const activeIndex = Math.max(0, next.profiles.findIndex((profile) => profile.id === next.activeProfileId));
-            const secondIndex = next.profiles.length > 1 ? (activeIndex === 0 ? 1 : 0) : 0;
-            const defaultScore = [301, 501, 701, 901].includes(Number(next.settings.defaultX01))
-              ? Number(next.settings.defaultX01) as 301 | 501 | 701 | 901
-              : prev.startScore;
-            return {
-              ...prev,
-              startScore: defaultScore,
-              playerOneIndex: activeIndex,
-              playerTwoIndex: secondIndex,
-              duel: next.profiles.length > 1 ? prev.duel : false,
-              outMode: next.settings.doubleOut ? "double" : "single",
-            };
-          });
           return;
         }
 
@@ -1313,7 +1551,7 @@ export default function SamsungTvApp() {
           setFocusIndex(Math.max(0, routeIndex));
         } else if (nextScreen === "profiles" || nextScreen === "stats") {
           const profileIndex = tvStateRef.current.profiles.findIndex((profile) => profile.id === tvStateRef.current.activeProfileId);
-          setFocusIndex(Math.max(0, profileIndex));
+          setFocusIndex(Math.max(0, profileIndex + (nextScreen === "profiles" ? 1 : 0)));
         } else {
           setFocusIndex(0);
         }
@@ -1388,11 +1626,13 @@ export default function SamsungTvApp() {
   }, [openScreen]);
 
   const launchAction = React.useCallback((action: TvLaunchAction) => {
-    if (selectedSport === "darts" && action.id === "x01") {
-      openScreen("x01setup");
+    if (["running", "fit", "esports"].includes(selectedSport)) {
+      sendNavigate(action.tab, action.params);
       return;
     }
-    sendNavigate(action.tab, action.params);
+    setSelectedAction(action);
+    setGuidedSetup(createGuidedSetup(selectedSport, action, tvStateRef.current));
+    openScreen("setup", 0);
   }, [openScreen, selectedSport, sendNavigate]);
 
   const selectProfile = React.useCallback((profileId: string) => {
@@ -1404,6 +1644,52 @@ export default function SamsungTvApp() {
     });
     setTvState((prev) => ({ ...prev, activeProfileId: profileId }));
   }, []);
+
+  const openProfile = React.useCallback((profileId: string) => {
+    setSelectedProfileId(profileId);
+    setProfileDeleteArmed(false);
+    openScreen("profile_detail", 0);
+  }, [openScreen]);
+
+  const beginCreateProfile = React.useCallback(() => {
+    setProfileEditor({ mode: "create", profileId: null, name: "" });
+    openScreen("profile_edit", 0);
+  }, [openScreen]);
+
+  const beginRenameProfile = React.useCallback((profile: TvProfile) => {
+    setProfileEditor({ mode: "rename", profileId: profile.id, name: profile.name });
+    openScreen("profile_edit", 0);
+  }, [openScreen]);
+
+  const saveProfileEditor = React.useCallback(() => {
+    const editor = profileEditor;
+    const name = String(editor?.name || "").trim().replace(/\s+/g, " ").slice(0, 22);
+    if (!editor || !name) return;
+    if (editor.mode === "create") {
+      realtimeRef.current?.sendCommand({ type: "profile_create", name, source: "samsung-tv", at: Date.now() });
+      setProfileEditor(null);
+      openScreen("profiles", 0);
+      return;
+    }
+    if (editor.profileId) {
+      realtimeRef.current?.sendCommand({ type: "profile_update", profileId: editor.profileId, patch: { name }, source: "samsung-tv", at: Date.now() });
+      setTvState((prev) => ({ ...prev, profiles: prev.profiles.map((profile) => profile.id === editor.profileId ? { ...profile, name } : profile) }));
+      setSelectedProfileId(editor.profileId);
+      setProfileEditor(null);
+      openScreen("profile_detail", 2);
+    }
+  }, [openScreen, profileEditor]);
+
+  const deleteSelectedProfile = React.useCallback((profileId: string) => {
+    realtimeRef.current?.sendCommand({ type: "profile_delete", profileId, source: "samsung-tv", at: Date.now() });
+    setTvState((prev) => {
+      const profiles = prev.profiles.filter((profile) => profile.id !== profileId);
+      return { ...prev, profiles, activeProfileId: prev.activeProfileId === profileId ? (profiles[0]?.id || null) : prev.activeProfileId };
+    });
+    setSelectedProfileId(null);
+    setProfileDeleteArmed(false);
+    openScreen("profiles", 0);
+  }, [openScreen]);
 
   const updateSetting = React.useCallback((key: string, value: any) => {
     realtimeRef.current?.sendCommand({
@@ -1462,54 +1748,94 @@ export default function SamsungTvApp() {
     }
   }, [scoreBuffer, sendTvScore]);
 
-  const startQuickX01 = React.useCallback(() => {
+  const activateProfileEditorKey = React.useCallback((index: number) => {
+    const editor = profileEditor;
+    const key = TV_PROFILE_KEYS[index];
+    if (!editor || !key) return;
+    if (key.kind === "char") setProfileEditor({ ...editor, name: `${editor.name}${key.label}`.slice(0, 22) });
+    else if (key.kind === "space") setProfileEditor({ ...editor, name: `${editor.name} `.slice(0, 22) });
+    else if (key.kind === "delete") setProfileEditor({ ...editor, name: editor.name.slice(0, -1) });
+    else if (key.kind === "clear") setProfileEditor({ ...editor, name: "" });
+    else if (key.kind === "save") saveProfileEditor();
+  }, [profileEditor, saveProfileEditor]);
+
+  const startGuidedSetup = React.useCallback(() => {
+    const state = guidedSetup;
+    const action = selectedAction;
+    if (!state || !action) return;
     const profiles = tvState.profiles;
-    const p1 = profiles[x01Quick.playerOneIndex] || profiles[0];
-    const p2 = profiles[x01Quick.playerTwoIndex] || profiles.find((profile) => profile.id !== p1?.id);
-    if (!p1) {
-      openScreen("profiles");
-      sendNavigate("profiles", { view: "me", autoCreate: true });
+    const selectedProfiles = state.playerIndexes
+      .slice(0, state.playerCount)
+      .map((index) => profiles[index])
+      .filter(Boolean);
+    if (!selectedProfiles.length) {
+      beginCreateProfile();
       return;
     }
-    const playerIds = x01Quick.duel && p2 && p2.id !== p1.id ? [p1.id, p2.id] : [p1.id];
-    realtimeRef.current?.sendCommand({
-      type: "start_x01",
-      config: {
-        startScore: x01Quick.startScore,
-        outMode: x01Quick.outMode,
-        inMode: "single",
-        playerIds,
-        legsPerSet: 1,
-        setsToWin: 1,
-        serveMode: "alternate",
-      },
+    const playerIds = selectedProfiles.map((profile) => profile.id);
+
+    if (state.sportId === "darts" && action.id === "x01") {
+      realtimeRef.current?.sendCommand({
+        type: "start_x01",
+        config: {
+          startScore: state.startScore,
+          outMode: state.outMode,
+          inMode: state.inMode,
+          playerIds,
+          legsPerSet: state.legsPerSet,
+          setsToWin: state.setsToWin,
+          serveMode: state.serveMode,
+        },
+        source: "samsung-tv",
+        at: Date.now(),
+      });
+      autoFollowGameRef.current = true;
+      setAutoFollowGame(true);
+      return;
+    }
+
+    const guidedParams = {
+      ...(action.params || {}),
       source: "samsung-tv",
-      at: Date.now(),
-    });
-    autoFollowGameRef.current = true;
-    setAutoFollowGame(true);
-  }, [openScreen, sendNavigate, tvState.profiles, x01Quick]);
+      tvGuided: true,
+      playerIds,
+      selectedPlayerIds: playerIds,
+      participantIds: playerIds,
+      playerCount: state.playerCount,
+      targetScore: state.targetScore,
+      pointsPerSet: state.pointsPerSet,
+      setsToWin: state.setsToWin,
+      legsPerSet: state.legsPerSet,
+      winByTwo: state.winByTwo,
+      goldenGoal: state.goldenGoal,
+      durationMin: state.durationMin,
+    };
+    sendNavigate(action.tab, guidedParams);
+  }, [beginCreateProfile, guidedSetup, selectedAction, sendNavigate, tvState.profiles]);
 
   const countForScreen = React.useCallback(() => {
     if (screen === "hub") return VIEWER_TV_MENU.length;
     if (screen === "sports") return TV_SPORTS.length;
     if (screen === "sport") return sportActions.length;
-    if (screen === "profiles") return tvState.profiles.length;
+    if (screen === "profiles") return tvState.profiles.length + 1;
+    if (screen === "profile_detail") return selectedProfileId ? 5 : 0;
+    if (screen === "profile_edit") return profileEditor ? TV_PROFILE_KEYS.length : 0;
     if (screen === "stats") return Math.min(TV_STATS_PROFILE_LIMIT, tvState.profiles.length);
     if (screen === "online") return tvState.friends.length;
     if (screen === "settings") return 5;
-    if (screen === "x01setup") return 6;
+    if (screen === "setup" && guidedSetup && selectedAction) return buildGuidedSetupRows(guidedSetup, selectedAction, tvState.profiles, setGuidedSetup, startGuidedSetup).length;
     if (screen === "agenda") return 1;
     if (screen === "scoreboard" && String(snapshot?.game || "").toLowerCase() === "x01") return TV_X01_SCORE_KEYS.length;
     return 0;
-  }, [screen, snapshot?.game, sportActions.length, tvState.friends.length, tvState.profiles.length]);
+  }, [guidedSetup, profileEditor, screen, selectedAction, selectedProfileId, snapshot?.game, sportActions.length, startGuidedSetup, tvState.friends.length, tvState.profiles]);
 
   const columnsForScreen = React.useCallback(() => {
-    if (screen === "hub") return 2;
+    if (screen === "hub") return 4;
     if (screen === "sports") return 5;
     if (screen === "sport") return 3;
     if (screen === "profiles" || screen === "stats" || screen === "online") return 4;
-    if (screen === "settings" || screen === "x01setup") return 2;
+    if (screen === "profile_detail" || screen === "settings" || screen === "setup") return 2;
+    if (screen === "profile_edit") return 7;
     if (screen === "scoreboard") return 4;
     return 1;
   }, [screen]);
@@ -1531,25 +1857,41 @@ export default function SamsungTvApp() {
       if (action) launchAction(action);
       return;
     }
-    if (screen === "profiles" || screen === "stats") {
+    if (screen === "profiles") {
+      if (focusIndex === 0) beginCreateProfile();
+      else {
+        const profile = tvState.profiles[focusIndex - 1];
+        if (profile) openProfile(profile.id);
+      }
+      return;
+    }
+    if (screen === "profile_detail") {
+      const profile = tvState.profiles.find((item) => item.id === selectedProfileId);
+      if (!profile) return;
+      if (focusIndex === 0) selectProfile(profile.id);
+      else if (focusIndex === 1) {
+        const profileIndex = Math.max(0, tvState.profiles.findIndex((item) => item.id === profile.id));
+        openScreen("stats", profileIndex);
+      } else if (focusIndex === 2) beginRenameProfile(profile);
+      else if (focusIndex === 3) sendNavigate("profiles", { view: "me", profileId: profile.id, edit: true, source: "samsung-tv" });
+      else if (focusIndex === 4) {
+        if (profileDeleteArmed) deleteSelectedProfile(profile.id);
+        else setProfileDeleteArmed(true);
+      }
+      return;
+    }
+    if (screen === "profile_edit") {
+      activateProfileEditorKey(focusIndex);
+      return;
+    }
+    if (screen === "stats") {
       const profile = tvState.profiles[focusIndex];
       if (profile) selectProfile(profile.id);
       return;
     }
-    if (screen === "x01setup") {
-      const profiles = tvState.profiles;
-      const scores: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
-      const scoreIndex = Math.max(0, scores.indexOf(x01Quick.startScore));
-      if (focusIndex === 0) setX01Quick((prev) => ({ ...prev, startScore: scores[(scoreIndex + 1) % scores.length] }));
-      else if (focusIndex === 1) setX01Quick((prev) => ({ ...prev, duel: profiles.length > 1 ? !prev.duel : false }));
-      else if (focusIndex === 2 && profiles.length) setX01Quick((prev) => ({ ...prev, playerOneIndex: (prev.playerOneIndex + 1) % profiles.length }));
-      else if (focusIndex === 3 && x01Quick.duel && profiles.length > 1) setX01Quick((prev) => {
-        let next = (prev.playerTwoIndex + 1) % profiles.length;
-        if (next === prev.playerOneIndex) next = (next + 1) % profiles.length;
-        return { ...prev, playerTwoIndex: next };
-      });
-      else if (focusIndex === 4) setX01Quick((prev) => ({ ...prev, outMode: prev.outMode === "double" ? "single" : "double" }));
-      else if (focusIndex === 5) startQuickX01();
+    if (screen === "setup" && guidedSetup && selectedAction) {
+      const rows = buildGuidedSetupRows(guidedSetup, selectedAction, tvState.profiles, setGuidedSetup, startGuidedSetup);
+      rows[focusIndex]?.run();
       return;
     }
     if (screen === "settings") {
@@ -1567,19 +1909,29 @@ export default function SamsungTvApp() {
       if (action) updateSetting(action[0], action[1]);
     }
   }, [
+    activateProfileEditorKey,
     activateScoreKey,
     activateHub,
+    beginCreateProfile,
+    beginRenameProfile,
     chooseSport,
+    deleteSelectedProfile,
     focusIndex,
+    guidedSetup,
     launchAction,
+    openProfile,
+    openScreen,
+    profileDeleteArmed,
     screen,
     selectProfile,
+    selectedAction,
+    selectedProfileId,
+    sendNavigate,
     sportActions,
-    startQuickX01,
+    startGuidedSetup,
     tvState.profiles,
     tvState.settings,
     updateSetting,
-    x01Quick,
   ]);
 
   React.useEffect(() => {
@@ -1599,8 +1951,19 @@ export default function SamsungTvApp() {
           openScreen("hub", viewerMenuIndexForRoute(phoneNavigation?.tab || ""));
           return;
         }
-        if (screen === "x01setup") {
-          openScreen("sport", Math.max(0, tvLaunchActionsForSport("darts").findIndex((action) => action.id === "x01")));
+        if (screen === "profile_edit") {
+          setProfileEditor(null);
+          if (selectedProfileId) openScreen("profile_detail", 0);
+          else openScreen("profiles", 0);
+          return;
+        }
+        if (screen === "profile_detail") {
+          setProfileDeleteArmed(false);
+          openScreen("profiles", Math.max(0, tvState.profiles.findIndex((profile) => profile.id === selectedProfileId) + 1));
+          return;
+        }
+        if (screen === "setup") {
+          openScreen("sport", Math.max(0, sportActions.findIndex((action) => action.id === selectedAction?.id)));
           return;
         }
         if (screen === "sport") {
@@ -1615,6 +1978,20 @@ export default function SamsungTvApp() {
         realtimeRef.current?.close();
         setSessionId("");
         setHash(null);
+        return;
+      }
+
+      if (screen === "profile_edit" && /^[a-zA-Z ]$/.test(key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (key === " ") setProfileEditor((prev) => prev ? { ...prev, name: `${prev.name} `.slice(0, 22) } : prev);
+        else setProfileEditor((prev) => prev ? { ...prev, name: `${prev.name}${key.toUpperCase()}`.slice(0, 22) } : prev);
+        return;
+      }
+      if (screen === "profile_edit" && (key === "Backspace" || key === "Delete")) {
+        event.preventDefault();
+        event.stopPropagation();
+        setProfileEditor((prev) => prev ? { ...prev, name: prev.name.slice(0, -1) } : prev);
         return;
       }
 
@@ -1659,8 +2036,12 @@ export default function SamsungTvApp() {
     phoneNavigation?.tab,
     screen,
     snapshot?.game,
+    selectedAction?.id,
+    selectedProfileId,
     selectedSport,
     sessionId,
+    sportActions,
+    tvState.profiles,
   ]);
 
   React.useEffect(() => {
@@ -1697,7 +2078,33 @@ export default function SamsungTvApp() {
   }
 
   if (screen === "profiles") {
-    return <TvProfiles connectionStatus={connectionStatus} tvState={tvState} focusIndex={focusIndex} onFocus={setFocusIndex} onSelect={selectProfile} />;
+    return <TvProfiles connectionStatus={connectionStatus} tvState={tvState} focusIndex={focusIndex} onFocus={setFocusIndex} onOpen={openProfile} onCreate={beginCreateProfile} />;
+  }
+
+  if (screen === "profile_detail") {
+    const profile = tvState.profiles.find((item) => item.id === selectedProfileId) || tvState.profiles[0] || null;
+    if (!profile) return <TvProfiles connectionStatus={connectionStatus} tvState={tvState} focusIndex={0} onFocus={setFocusIndex} onOpen={openProfile} onCreate={beginCreateProfile} />;
+    return (
+      <TvProfileDetail
+        connectionStatus={connectionStatus}
+        profile={profile}
+        isActive={profile.id === tvState.activeProfileId}
+        focusIndex={focusIndex}
+        deleteArmed={profileDeleteArmed}
+        onFocus={(index) => { setProfileDeleteArmed(false); setFocusIndex(index); }}
+        onAction={(action) => {
+          if (action === "activate") selectProfile(profile.id);
+          else if (action === "stats") openScreen("stats", Math.max(0, tvState.profiles.findIndex((item) => item.id === profile.id)));
+          else if (action === "rename") beginRenameProfile(profile);
+          else if (action === "phone") sendNavigate("profiles", { view: "me", profileId: profile.id, edit: true, source: "samsung-tv" });
+          else if (action === "delete") { if (profileDeleteArmed) deleteSelectedProfile(profile.id); else setProfileDeleteArmed(true); }
+        }}
+      />
+    );
+  }
+
+  if (screen === "profile_edit" && profileEditor) {
+    return <TvProfileEditor connectionStatus={connectionStatus} editor={profileEditor} focusIndex={focusIndex} onFocus={setFocusIndex} onActivate={activateProfileEditorKey} />;
   }
 
   if (screen === "stats") {
@@ -1712,16 +2119,17 @@ export default function SamsungTvApp() {
     return <TvAgenda connectionStatus={connectionStatus} />;
   }
 
-  if (screen === "x01setup") {
+  if (screen === "setup" && guidedSetup && selectedAction) {
     return (
-      <TvX01QuickSetup
+      <TvGuidedSetup
         connectionStatus={connectionStatus}
         tvState={tvState}
+        action={selectedAction}
         focusIndex={focusIndex}
-        state={x01Quick}
+        state={guidedSetup}
         onFocus={setFocusIndex}
-        onChange={setX01Quick}
-        onStart={startQuickX01}
+        onChange={setGuidedSetup}
+        onStart={startGuidedSetup}
       />
     );
   }

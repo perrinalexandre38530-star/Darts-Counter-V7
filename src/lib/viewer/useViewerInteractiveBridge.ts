@@ -21,6 +21,9 @@ type Props = {
   go: (tab: any, params?: any) => void;
   store?: any;
   setActiveProfile?: (profileId: string) => void;
+  createProfile?: (payload: { name: string }) => void;
+  updateProfile?: (profileId: string, patch: { name?: string }) => void;
+  deleteProfile?: (profileId: string) => void;
   updateSetting?: (key: string, value: any) => void;
   startX01?: (payload: any) => void;
 };
@@ -162,6 +165,9 @@ export function useViewerInteractiveBridge({
   go,
   store,
   setActiveProfile,
+  createProfile,
+  updateProfile,
+  deleteProfile,
   updateSetting,
   startX01,
 }: Props) {
@@ -175,6 +181,9 @@ export function useViewerInteractiveBridge({
     store,
     sport,
     setActiveProfile,
+    createProfile,
+    updateProfile,
+    deleteProfile,
     updateSetting,
     startX01,
   });
@@ -185,6 +194,9 @@ export function useViewerInteractiveBridge({
     store,
     sport,
     setActiveProfile,
+    createProfile,
+    updateProfile,
+    deleteProfile,
     updateSetting,
     startX01,
   };
@@ -266,6 +278,33 @@ export function useViewerInteractiveBridge({
           if (!exists) return;
           try { current.setActiveProfile?.(profileId); } catch {}
           window.setTimeout(() => publishTvState("tv_select_profile"), 30);
+          return;
+        }
+
+        if (data.type === "profile_create") {
+          const name = String(data.name || "").trim().replace(/\s+/g, " ").slice(0, 22);
+          if (!name) return;
+          try { current.createProfile?.({ name }); } catch {}
+          window.setTimeout(() => publishTvState("tv_profile_create"), 80);
+          return;
+        }
+
+        if (data.type === "profile_update") {
+          const profileId = String(data.profileId || "");
+          if (!profileId) return;
+          const patch: any = {};
+          if (typeof data.patch?.name === "string") patch.name = String(data.patch.name).trim().replace(/\s+/g, " ").slice(0, 22);
+          if (!patch.name) return;
+          try { current.updateProfile?.(profileId, patch); } catch {}
+          window.setTimeout(() => publishTvState("tv_profile_update"), 80);
+          return;
+        }
+
+        if (data.type === "profile_delete") {
+          const profileId = String(data.profileId || "");
+          if (!profileId) return;
+          try { current.deleteProfile?.(profileId); } catch {}
+          window.setTimeout(() => publishTvState("tv_profile_delete"), 80);
           return;
         }
 

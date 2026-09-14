@@ -2966,6 +2966,35 @@ useEffect(() => {
     setActiveProfile: (profileId) => {
       update((s) => ({ ...s, activeProfileId: profileId }));
     },
+    createProfile: ({ name }) => {
+      const cleanName = String(name || "").trim().replace(/\s+/g, " ").slice(0, 22);
+      if (!cleanName) return;
+      const id = globalThis.crypto?.randomUUID?.() || `tv-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const now = Date.now();
+      update((s: any) => {
+        const profiles = Array.isArray(s?.profiles) ? s.profiles : [];
+        const profile = { id, name: cleanName, avatarDataUrl: null, avatarUpdatedAt: now, createdAt: now, source: "samsung-tv" };
+        return { ...s, profiles: [...profiles, profile], activeProfileId: s?.activeProfileId || id };
+      });
+    },
+    updateProfile: (profileId, patch) => {
+      const id = String(profileId || "");
+      const cleanName = String(patch?.name || "").trim().replace(/\s+/g, " ").slice(0, 22);
+      if (!id || !cleanName) return;
+      update((s: any) => ({
+        ...s,
+        profiles: (Array.isArray(s?.profiles) ? s.profiles : []).map((profile: any) => String(profile?.id || "") === id ? { ...profile, name: cleanName, updatedAt: Date.now() } : profile),
+      }));
+    },
+    deleteProfile: (profileId) => {
+      const id = String(profileId || "");
+      if (!id) return;
+      update((s: any) => {
+        const profiles = (Array.isArray(s?.profiles) ? s.profiles : []).filter((profile: any) => String(profile?.id || "") !== id);
+        const activeProfileId = String(s?.activeProfileId || "") === id ? (profiles[0]?.id || null) : (s?.activeProfileId ?? null);
+        return { ...s, profiles, activeProfileId };
+      });
+    },
     updateSetting: (key, value) => {
       update((s) => ({
         ...s,

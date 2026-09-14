@@ -55,11 +55,11 @@ else {
   if (bundleText.includes("dc-online-v3.perrin-alexandre38530.workers.dev")) pass("Viewer TV routé vers le Worker ONLINE DC_SYNC");
   else fail("Viewer TV non routé vers le Worker ONLINE (risque session absente)");
 
-  if (bundleText.includes("MSS_TV_FULL_APP_BUILD_20260914_03")) pass("Interface Samsung TV FULL PREMIUM V3 intégrée au bundle");
-  else fail("ANCIEN BUNDLE TV détecté : l'interface FULL PREMIUM V3 n'est pas dans les assets générés");
+  if (bundleText.includes("MSS_TV_FULL_APP_BUILD_20260914_04")) pass("Interface Samsung TV FULL PREMIUM V4 intégrée au bundle");
+  else fail("ANCIEN BUNDLE TV détecté : l'interface FULL PREMIUM V4 n'est pas dans les assets générés");
 
-  if (bundleText.includes("TV FULL PREMIUM V3") && bundleText.includes("LANCER UNE PARTIE") && bundleText.includes("SPORTS")) pass("Navigation TV FULL PREMIUM V3 présente");
-  else fail("Navigation TV FULL PREMIUM V3 absente du bundle");
+  if (bundleText.includes("TV FULL PREMIUM V4") && bundleText.includes("LANCER UNE PARTIE") && bundleText.includes("SPORTS")) pass("Navigation TV FULL PREMIUM V4 présente");
+  else fail("Navigation TV FULL PREMIUM V4 absente du bundle");
 
   if (bundleText.includes("MATCH SIMPLE") && bundleText.includes("DICE DUEL") && bundleText.includes("MATCH 1V1")) pass("Lanceurs de sports TV intégrés");
   else fail("Lanceurs de sports TV incomplets");
@@ -70,8 +70,17 @@ else {
   if (bundleText.includes("SAISIE TV") && bundleText.includes("x01_tv_score") && bundleText.includes("VALIDER")) pass("Keypad X01 interactif TV intégré");
   else fail("Keypad X01 TV absent du bundle");
 
-  if (bundleText.includes("mss-tv-sport-card-art") && bundleText.includes("mss-tv-avatar")) pass("Artwork sports + avatars premium intégrés");
-  else fail("Assets premium TV absents");
+  if (bundleText.includes("mss-tv-sport-logo-only") && bundleText.includes("mss-tv-action-ticker") && bundleText.includes("mss-tv-avatar")) pass("Sélecteur sports épuré + vrais tickers + avatars premium intégrés");
+  else fail("Assets premium TV V4 absents");
+
+  if (bundleText.includes("CRÉER UN PROFIL") && bundleText.includes("profile_create") && bundleText.includes("profile_update") && bundleText.includes("profile_delete")) pass("Gestion profils TV complète intégrée");
+  else fail("Gestion profils TV V4 incomplète");
+
+  if (bundleText.includes("NOMBRE DE JOUEURS") && bundleText.includes("Mode guidé TV") && bundleText.includes("mss-tv-guided-layout")) pass("Configuration guidée multi-sport intégrée");
+  else fail("Configuration guidée TV V4 absente");
+
+  if (bundleText.includes("mss-tv-scroll-region")) pass("Scroll/pagination TV V4 intégrés");
+  else fail("Scroll TV V4 absent");
 
   if (bundleText.includes("/socket")) pass("Canal temps réel Viewer/WebSocket présent");
   else fail("Canal WebSocket Viewer absent du bundle");

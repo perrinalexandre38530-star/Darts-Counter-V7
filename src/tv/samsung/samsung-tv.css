@@ -1986,3 +1986,628 @@ html[data-mss-samsung-tv="1"] body {
   .mss-tv-scorepad-grid { gap: 6px; }
   .mss-tv-score-key { min-height: 39px; font-size: 17px; border-radius: 12px; }
 }
+
+/* ==========================================================
+   MULTISPORTS SCORING TV · FULL PREMIUM V4
+   - pages full-screen / scrollables
+   - sports = logo only
+   - modes = tickers officiels sans texte superposé
+   - profils gérables depuis la TV
+   - configuration guidée multi-sports
+   ========================================================== */
+
+.mss-tv-scroll-region {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  padding: 4px 6px 12px 4px;
+}
+
+.mss-tv-scroll-region::-webkit-scrollbar {
+  width: 7px;
+}
+
+.mss-tv-scroll-region::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: rgba(255,255,255,.22);
+}
+
+/* HOME : tout doit rester visible sur un écran 16/9. */
+.mss-tv-hub {
+  padding: 24px 38px 20px;
+  gap: 12px;
+  grid-template-rows: auto minmax(150px, 26vh) minmax(0, 1fr) auto;
+}
+
+.mss-tv-hub-header {
+  min-height: 68px;
+}
+
+.mss-tv-hub-title {
+  font-size: clamp(32px, 3vw, 48px);
+}
+
+.mss-tv-hub-subtitle {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.mss-tv-build-marker {
+  margin-top: 3px;
+  font-size: 9px;
+}
+
+.mss-tv-billboard {
+  min-height: 0;
+  height: 100%;
+  padding: 20px 28px;
+  border-radius: 24px;
+}
+
+.mss-tv-billboard-art {
+  width: 58%;
+  object-fit: contain;
+  object-position: right center;
+  padding: 8px 18px 8px 0;
+  opacity: .92;
+}
+
+.mss-tv-billboard .mss-tv-card-watermark {
+  width: 23%;
+  height: 92%;
+  right: 1%;
+  opacity: .22;
+}
+
+.mss-tv-billboard-title {
+  max-width: 620px;
+  margin-top: 6px;
+  font-size: clamp(30px, 3.3vw, 48px);
+}
+
+.mss-tv-billboard-copy {
+  max-width: 610px;
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 1.32;
+}
+
+.mss-tv-billboard-meta {
+  margin-top: 10px;
+  gap: 6px;
+}
+
+.mss-tv-billboard-meta span {
+  padding: 5px 8px;
+  font-size: 9px;
+}
+
+.mss-tv-shelf {
+  overflow: hidden;
+  gap: 8px;
+}
+
+.mss-tv-shelf-head {
+  min-height: 28px;
+}
+
+.mss-tv-shelf-title {
+  font-size: 21px;
+}
+
+.mss-tv-shelf-subtitle {
+  font-size: 10px;
+}
+
+.mss-tv-hub .mss-tv-menu-grid {
+  min-height: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(74px, 1fr));
+  grid-auto-rows: minmax(74px, 1fr);
+  gap: 9px;
+}
+
+.mss-tv-hub .mss-tv-menu-card {
+  min-height: 74px;
+  padding: 10px 12px;
+  grid-template-columns: 42px minmax(0,1fr);
+  column-gap: 10px;
+  border-radius: 16px;
+}
+
+.mss-tv-hub .mss-tv-menu-index {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.mss-tv-hub .mss-tv-menu-label {
+  font-size: 15px;
+}
+
+.mss-tv-hub .mss-tv-menu-subtitle {
+  font-size: 9px;
+}
+
+.mss-tv-hub .mss-tv-menu-art {
+  width: 52%;
+  opacity: .34;
+}
+
+.mss-tv-hub .mss-tv-menu-card.is-focused {
+  transform: translateY(-2px) scale(1.012);
+}
+
+/* PAGES : zone centrale scrollable si nécessaire. */
+.mss-tv-section {
+  padding: 24px 38px 20px;
+  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.mss-tv-page-header {
+  min-height: 68px;
+}
+
+.mss-tv-page-title {
+  font-size: clamp(30px, 3vw, 44px);
+}
+
+.mss-tv-page-subtitle {
+  max-width: 900px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+/* SPORTS : uniquement le vrai logo dans la carte. */
+.mss-tv-section--sports .mss-tv-sport-grid {
+  grid-template-columns: repeat(5, minmax(0,1fr));
+  grid-template-rows: repeat(2, minmax(0,1fr));
+  gap: 14px;
+  padding: 4px 8px 10px 4px;
+}
+
+.mss-tv-sport-card--logo {
+  min-height: 0;
+  height: 100%;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255,255,255,.10), rgba(255,255,255,.035) 56%, rgba(0,0,0,.12) 100%),
+    var(--mss-tv-card);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 14px 34px rgba(0,0,0,.24);
+}
+
+.mss-tv-sport-card--logo::before,
+.mss-tv-sport-card--logo::after {
+  display: none;
+}
+
+.mss-tv-sport-logo-only {
+  width: min(74%, 230px);
+  height: min(78%, 190px);
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 24px rgba(0,0,0,.34));
+  transform: scale(1);
+  transition: transform 110ms ease, filter 110ms ease;
+}
+
+.mss-tv-sport-card--logo.is-active {
+  box-shadow: inset 0 -4px 0 var(--sport-accent), 0 14px 34px rgba(0,0,0,.24);
+}
+
+.mss-tv-sport-card--logo.is-focused {
+  transform: translateY(-4px) scale(1.018);
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255,255,255,.17), rgba(255,255,255,.055) 58%, rgba(0,0,0,.12) 100%),
+    var(--mss-tv-card);
+}
+
+.mss-tv-sport-card--logo.is-focused .mss-tv-sport-logo-only {
+  transform: scale(1.06);
+  filter: drop-shadow(0 18px 28px rgba(0,0,0,.42));
+}
+
+/* LANCEUR SPORT : ticker du sport entier, jamais recadré. */
+.mss-tv-launcher-body {
+  display: grid;
+  grid-template-rows: minmax(116px, 22vh) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.mss-tv-sport-hero--contained {
+  min-height: 116px;
+  height: 100%;
+  padding: 8px 12px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: rgba(0,0,0,.18);
+}
+
+.mss-tv-sport-hero--contained::after {
+  display: none;
+}
+
+.mss-tv-sport-hero--contained .mss-tv-sport-hero-art {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 1;
+}
+
+.mss-tv-action-grid--tickers {
+  min-height: 0;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  grid-template-rows: repeat(4, minmax(0,1fr));
+  gap: 9px;
+  align-content: stretch;
+}
+
+.mss-tv-action-card--ticker {
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  border-radius: 15px;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.12);
+  overflow: hidden;
+  display: grid;
+  place-items: stretch;
+}
+
+.mss-tv-action-card--ticker::after {
+  display: none;
+}
+
+.mss-tv-action-ticker {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+  background: rgba(0,0,0,.16);
+}
+
+.mss-tv-action-card--ticker.is-focused {
+  transform: translateY(-3px) scale(1.016);
+  border-color: var(--mss-tv-accent);
+  box-shadow: 0 16px 34px rgba(0,0,0,.30), 0 0 0 2px rgba(255,213,106,.18);
+}
+
+/* PROFILS : création + consultation + édition. */
+.mss-tv-profile-grid {
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  grid-auto-rows: minmax(118px, 1fr);
+  grid-template-rows: none;
+  align-content: start;
+  padding-bottom: 14px;
+}
+
+.mss-tv-profile-card--create {
+  display: grid;
+  grid-template-columns: 74px minmax(0,1fr);
+  grid-template-rows: auto auto;
+}
+
+.mss-tv-profile-create-plus {
+  grid-row: 1 / span 2;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  border-radius: 50%;
+  border: 2px dashed var(--mss-tv-accent);
+  color: var(--mss-tv-accent);
+  font-size: 34px;
+  font-weight: 800;
+  background: rgba(255,255,255,.035);
+}
+
+.mss-tv-profile-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(360px,.78fr) minmax(560px,1.22fr);
+  gap: 18px;
+}
+
+.mss-tv-profile-identity-card {
+  min-height: 0;
+  padding: 26px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  border-radius: 26px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(155deg, rgba(255,255,255,.09), rgba(0,0,0,.24));
+}
+
+.mss-tv-profile-identity-card .mss-tv-avatar--large {
+  width: 132px;
+  height: 132px;
+}
+
+.mss-tv-profile-detail-name {
+  font-size: 34px;
+  font-weight: 1100;
+  text-align: center;
+}
+
+.mss-tv-profile-detail-badge {
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  color: var(--mss-tv-accent);
+  background: rgba(255,255,255,.05);
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .12em;
+}
+
+.mss-tv-profile-detail-stats {
+  width: 100%;
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 8px;
+}
+
+.mss-tv-profile-detail-stats span {
+  min-height: 72px;
+  padding: 10px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: rgba(255,255,255,.045);
+  border: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.52);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.mss-tv-profile-detail-stats b {
+  color: #fff;
+  font-size: 24px;
+}
+
+.mss-tv-profile-actions {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  grid-auto-rows: minmax(82px, 1fr);
+  gap: 10px;
+  align-content: start;
+}
+
+.mss-tv-setting-card.is-danger {
+  border-color: rgba(255,105,125,.22);
+}
+
+.mss-tv-setting-card.is-danger.is-focused {
+  border-color: #ff6b7e;
+  box-shadow: 0 16px 36px rgba(0,0,0,.24), 0 0 0 2px rgba(255,107,126,.18);
+}
+
+.mss-tv-profile-editor {
+  display: grid;
+  grid-template-rows: auto minmax(0,1fr);
+  gap: 16px;
+}
+
+.mss-tv-profile-name-input {
+  min-height: 82px;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  border: 1px solid var(--mss-tv-accent);
+  background: rgba(0,0,0,.28);
+  color: #fff;
+  font-size: 34px;
+  font-weight: 1100;
+  letter-spacing: .05em;
+}
+
+.mss-tv-profile-keyboard {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0,1fr));
+  grid-auto-rows: minmax(52px,1fr);
+  gap: 8px;
+}
+
+.mss-tv-profile-key {
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.055);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 1000;
+  outline: none;
+}
+
+.mss-tv-profile-key.is-space,
+.mss-tv-profile-key.is-clear,
+.mss-tv-profile-key.is-save {
+  font-size: 12px;
+}
+
+.mss-tv-profile-key.is-save {
+  grid-column: span 2;
+  color: #06100b;
+  background: linear-gradient(180deg, #c7ffdf, #45e99a);
+}
+
+.mss-tv-profile-key.is-focused {
+  transform: scale(1.04);
+  border-color: #fff;
+  background: rgba(255,213,106,.18);
+  box-shadow: 0 0 0 3px rgba(255,213,106,.20), 0 12px 28px rgba(0,0,0,.32);
+}
+
+/* CONFIGURATION GUIDÉE MULTI-SPORTS. */
+.mss-tv-guided-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(360px,.72fr) minmax(620px,1.28fr);
+  gap: 16px;
+}
+
+.mss-tv-guided-summary {
+  min-height: 0;
+  padding: 16px;
+  display: grid;
+  grid-template-rows: minmax(100px, 180px) auto auto;
+  gap: 12px;
+  align-content: start;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.11);
+  background: linear-gradient(155deg, rgba(255,255,255,.08), rgba(0,0,0,.25));
+}
+
+.mss-tv-guided-ticker {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 14px;
+}
+
+.mss-tv-guided-roster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 7px;
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+.mss-tv-guided-player {
+  min-width: 0;
+  min-height: 54px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+}
+
+.mss-tv-guided-player .mss-tv-avatar--medium {
+  width: 40px;
+  height: 40px;
+  font-size: 10px;
+}
+
+.mss-tv-guided-player span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mss-tv-guided-actions {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  grid-auto-rows: minmax(74px, auto);
+  gap: 9px;
+  align-content: start;
+}
+
+.mss-tv-guided-actions .mss-tv-setting-card {
+  min-height: 74px;
+  padding: 13px 15px;
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr) auto;
+  gap: 9px;
+}
+
+.mss-tv-guided-actions .mss-tv-setting-card span {
+  font-size: 13px;
+}
+
+.mss-tv-guided-actions .mss-tv-setting-card b {
+  font-size: 14px;
+}
+
+.mss-tv-guided-actions .mss-tv-setting-card.is-primary {
+  border-color: rgba(78,235,158,.42);
+  background: linear-gradient(145deg, rgba(78,235,158,.15), rgba(255,255,255,.045));
+}
+
+.mss-tv-guide-step {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--mss-tv-accent);
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.09);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 1000;
+}
+
+@media (max-height: 800px) {
+  .mss-tv-hub {
+    padding: 16px 28px 14px;
+    gap: 8px;
+    grid-template-rows: auto minmax(118px, 23vh) minmax(0,1fr) auto;
+  }
+  .mss-tv-hub-header { min-height: 52px; }
+  .mss-tv-hub-title { font-size: 30px; }
+  .mss-tv-billboard { padding: 12px 18px; }
+  .mss-tv-billboard-title { font-size: 28px; }
+  .mss-tv-billboard-copy { font-size: 10px; }
+  .mss-tv-billboard-meta span { padding: 3px 6px; font-size: 8px; }
+  .mss-tv-hub .mss-tv-menu-grid { gap: 6px; }
+  .mss-tv-hub .mss-tv-menu-card { min-height: 56px; padding: 7px 9px; }
+  .mss-tv-hub .mss-tv-menu-label { font-size: 12px; }
+  .mss-tv-hub .mss-tv-menu-subtitle { font-size: 7px; }
+  .mss-tv-section { padding: 16px 28px 14px; gap: 8px; }
+  .mss-tv-page-header { min-height: 52px; }
+  .mss-tv-page-title { font-size: 28px; }
+  .mss-tv-page-subtitle { font-size: 9px; }
+  .mss-tv-section--sports .mss-tv-sport-grid { gap: 8px; }
+  .mss-tv-sport-card--logo { padding: 10px; border-radius: 16px; }
+  .mss-tv-sport-logo-only { width: 68%; height: 72%; }
+  .mss-tv-launcher-body { grid-template-rows: minmax(88px, 19vh) minmax(0,1fr); gap: 8px; }
+  .mss-tv-action-grid--tickers { gap: 6px; }
+  .mss-tv-action-card--ticker { border-radius: 10px; }
+  .mss-tv-profile-grid { gap: 8px; grid-auto-rows: minmax(86px,1fr); }
+  .mss-tv-profile-card { min-height: 86px; }
+  .mss-tv-profile-detail-layout { grid-template-columns: minmax(300px,.72fr) minmax(500px,1.28fr); gap: 10px; }
+  .mss-tv-profile-identity-card { padding: 16px; }
+  .mss-tv-profile-identity-card .mss-tv-avatar--large { width: 88px; height: 88px; }
+  .mss-tv-profile-detail-name { font-size: 24px; }
+  .mss-tv-profile-detail-stats span { min-height: 50px; }
+  .mss-tv-profile-detail-stats b { font-size: 18px; }
+  .mss-tv-profile-actions { gap: 7px; grid-auto-rows: minmax(64px,1fr); }
+  .mss-tv-profile-keyboard { gap: 5px; grid-auto-rows: minmax(39px,1fr); }
+  .mss-tv-profile-key { min-height: 39px; font-size: 14px; }
+  .mss-tv-profile-name-input { min-height: 58px; font-size: 25px; }
+  .mss-tv-guided-layout { grid-template-columns: minmax(300px,.67fr) minmax(540px,1.33fr); gap: 10px; }
+  .mss-tv-guided-summary { padding: 10px; grid-template-rows: minmax(72px,120px) auto auto; gap: 7px; }
+  .mss-tv-guided-actions { gap: 6px; grid-auto-rows: minmax(56px,auto); }
+  .mss-tv-guided-actions .mss-tv-setting-card { min-height: 56px; padding: 8px 10px; }
+  .mss-tv-guided-actions .mss-tv-setting-card span { font-size: 10px; }
+  .mss-tv-guided-actions .mss-tv-setting-card b { font-size: 11px; }
+}

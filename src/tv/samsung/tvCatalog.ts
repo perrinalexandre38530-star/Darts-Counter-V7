@@ -50,6 +50,11 @@ export type TvLaunchAction = {
   tab: string;
   params?: Record<string, any>;
   category?: string;
+  tickerKeys?: string[];
+  minPlayers?: number;
+  maxPlayers?: number;
+  defaultPlayers?: number;
+  supportsTeams?: boolean;
 };
 
 export const TV_SPORTS: readonly TvSportDef[] = [
@@ -72,54 +77,54 @@ export function tvSportById(id: any): TvSportDef {
 }
 
 const PETANQUE_ACTIONS: TvLaunchAction[] = [
-  { id: "simple", label: "MATCH SIMPLE", subtitle: "1 contre 1", tab: "petanque_config", params: { mode: "simple", maxEndPoints: 3, meta: { kind: "teams", teams: 2, teamSize: 1 } } },
-  { id: "ffa3", label: "MATCH À 3", subtitle: "Chacun pour soi", tab: "petanque_config", params: { mode: "ffa3", maxEndPoints: 3, meta: { kind: "ffa", players: 3 } } },
-  { id: "doublette", label: "DOUBLETTE", subtitle: "2 contre 2", tab: "petanque_config", params: { mode: "doublette", maxEndPoints: 6, meta: { kind: "teams" } } },
-  { id: "triplette", label: "TRIPLETTE", subtitle: "3 contre 3", tab: "petanque_config", params: { mode: "triplette", maxEndPoints: 6, meta: { kind: "teams" } } },
-  { id: "tournament", label: "TOURNOIS", subtitle: "Compétitions pétanque", tab: "tournaments", params: { forceMode: "petanque" } },
+  { id: "simple", label: "MATCH SIMPLE", subtitle: "1 contre 1", tab: "petanque_config", tickerKeys: ["petanque_1v1"], minPlayers: 2, maxPlayers: 2, defaultPlayers: 2, params: { mode: "simple", maxEndPoints: 3, meta: { kind: "teams", teams: 2, teamSize: 1 } } },
+  { id: "ffa3", label: "MATCH À 3", subtitle: "Chacun pour soi", tab: "petanque_config", tickerKeys: ["petanque_free_for_all", "petanque_ffa3"], minPlayers: 3, maxPlayers: 3, defaultPlayers: 3, params: { mode: "ffa3", maxEndPoints: 3, meta: { kind: "ffa", players: 3 } } },
+  { id: "doublette", label: "DOUBLETTE", subtitle: "2 contre 2", tab: "petanque_config", tickerKeys: ["petanque_2v2"], minPlayers: 4, maxPlayers: 4, defaultPlayers: 4, supportsTeams: true, params: { mode: "doublette", maxEndPoints: 6, meta: { kind: "teams" } } },
+  { id: "triplette", label: "TRIPLETTE", subtitle: "3 contre 3", tab: "petanque_config", tickerKeys: ["petanque_3v3"], minPlayers: 6, maxPlayers: 6, defaultPlayers: 6, supportsTeams: true, params: { mode: "triplette", maxEndPoints: 6, meta: { kind: "teams" } } },
+  { id: "tournament", label: "TOURNOIS", subtitle: "Compétitions pétanque", tab: "tournaments", tickerKeys: ["petanque_tournois", "competitions"], minPlayers: 2, maxPlayers: 12, defaultPlayers: 4, params: { forceMode: "petanque" } },
 ];
 
 const PINGPONG_ACTIONS: TvLaunchAction[] = [
-  { id: "match_1v1", label: "1V1", tab: "pingpong_config", params: { mode: "match_1v1" } },
-  { id: "match_2v2", label: "2V2", tab: "pingpong_config", params: { mode: "match_2v2" } },
-  { id: "match_2v1", label: "2V1", tab: "pingpong_config", params: { mode: "match_2v1" } },
-  { id: "tournante", label: "TOURNANTE", tab: "pingpong_config", params: { mode: "tournante" } },
-  { id: "training", label: "TRAINING", tab: "pingpong_config", params: { mode: "training" } },
+  { id: "match_1v1", label: "1V1", tab: "pingpong_config", tickerKeys: ["pingpong_1v1"], minPlayers: 2, maxPlayers: 2, defaultPlayers: 2, params: { mode: "match_1v1" } },
+  { id: "match_2v2", label: "2V2", tab: "pingpong_config", tickerKeys: ["pingpong_2v2"], minPlayers: 4, maxPlayers: 4, defaultPlayers: 4, supportsTeams: true, params: { mode: "match_2v2" } },
+  { id: "match_2v1", label: "2V1", tab: "pingpong_config", tickerKeys: ["pingpong_2v1"], minPlayers: 3, maxPlayers: 3, defaultPlayers: 3, supportsTeams: true, params: { mode: "match_2v1" } },
+  { id: "tournante", label: "TOURNANTE", tab: "pingpong_config", tickerKeys: ["pingpong_tournante"], minPlayers: 3, maxPlayers: 12, defaultPlayers: 4, params: { mode: "tournante" } },
+  { id: "training", label: "TRAINING", tab: "pingpong_config", tickerKeys: ["pingpong_training"], minPlayers: 1, maxPlayers: 2, defaultPlayers: 1, params: { mode: "training" } },
 ];
 
 const BABYFOOT_ACTIONS: TvLaunchAction[] = [
-  { id: "1v1", label: "MATCH 1V1", subtitle: "Classique", tab: "babyfoot_config", params: { mode: "match_1v1", meta: { kind: "teams", teams: 2, teamSizeA: 1, teamSizeB: 1 }, presetCategory: "match", presetVariantId: "match_1v1", presetMode: "1v1" } },
-  { id: "2v2", label: "MATCH 2V2", subtitle: "Équipes de 2", tab: "babyfoot_config", params: { mode: "match_2v2", meta: { kind: "teams", teams: 2, teamSizeA: 2, teamSizeB: 2 }, presetCategory: "match", presetVariantId: "match_2v2", presetMode: "2v2" } },
-  { id: "2v1", label: "MATCH 2V1", subtitle: "Asymétrique", tab: "babyfoot_config", params: { mode: "match_2v1", meta: { kind: "teams", teams: 2, teamSizeA: 2, teamSizeB: 1 }, presetCategory: "match", presetVariantId: "match_2v1", presetMode: "2v1" } },
-  { id: "classic9", label: "CLASSIQUE 9", subtitle: "Fun", tab: "babyfoot_config", params: { presetCategory: "fun", presetVariantId: "classic9", presetMode: "1v1", presetTarget: 9 } },
-  { id: "golden_goal", label: "GOLDEN GOAL", subtitle: "Premier but", tab: "babyfoot_config", params: { presetCategory: "fun", presetVariantId: "golden_goal", presetMode: "1v1", presetGoldenGoal: true, presetTarget: 1 } },
+  { id: "1v1", label: "MATCH 1V1", subtitle: "Classique", tab: "babyfoot_config", tickerKeys: ["babyfoot_1v1"], minPlayers: 2, maxPlayers: 2, defaultPlayers: 2, params: { mode: "match_1v1", meta: { kind: "teams", teams: 2, teamSizeA: 1, teamSizeB: 1 }, presetCategory: "match", presetVariantId: "match_1v1", presetMode: "1v1" } },
+  { id: "2v2", label: "MATCH 2V2", subtitle: "Équipes de 2", tab: "babyfoot_config", tickerKeys: ["babyfoot_2v2"], minPlayers: 4, maxPlayers: 4, defaultPlayers: 4, supportsTeams: true, params: { mode: "match_2v2", meta: { kind: "teams", teams: 2, teamSizeA: 2, teamSizeB: 2 }, presetCategory: "match", presetVariantId: "match_2v2", presetMode: "2v2" } },
+  { id: "2v1", label: "MATCH 2V1", subtitle: "Asymétrique", tab: "babyfoot_config", tickerKeys: ["babyfoot_2v1"], minPlayers: 3, maxPlayers: 3, defaultPlayers: 3, supportsTeams: true, params: { mode: "match_2v1", meta: { kind: "teams", teams: 2, teamSizeA: 2, teamSizeB: 1 }, presetCategory: "match", presetVariantId: "match_2v1", presetMode: "2v1" } },
+  { id: "classic9", label: "CLASSIQUE 9", subtitle: "Fun", tab: "babyfoot_config", tickerKeys: ["babyfoot_fun_classic9"], minPlayers: 2, maxPlayers: 4, defaultPlayers: 2, params: { presetCategory: "fun", presetVariantId: "classic9", presetMode: "1v1", presetTarget: 9 } },
+  { id: "golden_goal", label: "GOLDEN GOAL", subtitle: "Premier but", tab: "babyfoot_config", tickerKeys: ["babyfoot_fun_goldengoal", "babyfoot_golden_goal"], minPlayers: 2, maxPlayers: 4, defaultPlayers: 2, params: { presetCategory: "fun", presetVariantId: "golden_goal", presetMode: "1v1", presetGoldenGoal: true, presetTarget: 1 } },
 ];
 
 const MOLKKY_ACTIONS: TvLaunchAction[] = [
-  { id: "classic", label: "CLASSIQUE", subtitle: "50 exact", tab: "molkky_config", params: { preset: "classic" } },
-  { id: "fast", label: "RAPIDE", subtitle: "Partie courte", tab: "molkky_config", params: { preset: "fast" } },
-  { id: "custom", label: "PERSONNALISÉ", subtitle: "Règles au choix", tab: "molkky_config", params: { preset: "custom" } },
+  { id: "classic", label: "CLASSIQUE", subtitle: "50 exact", tab: "molkky_config", tickerKeys: ["molkky_classic"], minPlayers: 2, maxPlayers: 12, defaultPlayers: 2, params: { preset: "classic" } },
+  { id: "fast", label: "RAPIDE", subtitle: "Partie courte", tab: "molkky_config", tickerKeys: ["molkky_rapide"], minPlayers: 2, maxPlayers: 12, defaultPlayers: 2, params: { preset: "fast" } },
+  { id: "custom", label: "PERSONNALISÉ", subtitle: "Règles au choix", tab: "molkky_config", tickerKeys: ["molkky_custom"], minPlayers: 2, maxPlayers: 12, defaultPlayers: 2, params: { preset: "custom" } },
 ];
 
 const DICE_ACTIONS: TvLaunchAction[] = [
-  { id: "duel", label: "DICE DUEL", subtitle: "2 dés · cible 100", tab: "dice_config", params: { preset: "duel" } },
-  { id: "race", label: "DICE RACE", subtitle: "3 dés · cible 200", tab: "dice_config", params: { preset: "race" } },
-  { id: "tenk", label: "10 000", subtitle: "6 dés", tab: "dice_config", params: { preset: "tenk" } },
-  { id: "yams", label: "YAM'S", subtitle: "Scorecard", tab: "dice_yams_config" },
-  { id: "farkle", label: "FARKLE", subtitle: "Push-your-luck", tab: "dice_farkle_config" },
-  { id: "421", label: "421", subtitle: "Combinaisons", tab: "dice_421_config" },
-  { id: "poker", label: "POKER DICE", subtitle: "Combinaisons poker", tab: "dice_poker_config" },
+  { id: "duel", tickerKeys: ["dice_duel"], minPlayers: 1, maxPlayers: 8, defaultPlayers: 2, label: "DICE DUEL", subtitle: "2 dés · cible 100", tab: "dice_config", params: { preset: "duel" } },
+  { id: "race", tickerKeys: ["dice_race"], minPlayers: 1, maxPlayers: 8, defaultPlayers: 2, label: "DICE RACE", subtitle: "3 dés · cible 200", tab: "dice_config", params: { preset: "race" } },
+  { id: "tenk", tickerKeys: ["dice_10k"], minPlayers: 1, maxPlayers: 8, defaultPlayers: 2, label: "10 000", subtitle: "6 dés", tab: "dice_config", params: { preset: "tenk" } },
+  { id: "yams", tickerKeys: ["dice_yams"], minPlayers: 1, maxPlayers: 8, defaultPlayers: 2, label: "YAM'S", subtitle: "Scorecard", tab: "dice_yams_config" },
+  { id: "farkle", tickerKeys: ["dice_farkle"], minPlayers: 1, maxPlayers: 8, defaultPlayers: 2, label: "FARKLE", subtitle: "Push-your-luck", tab: "dice_farkle_config" },
+  { id: "421", tickerKeys: ["dice_421"], minPlayers: 1, maxPlayers: 8, defaultPlayers: 2, label: "421", subtitle: "Combinaisons", tab: "dice_421_config" },
+  { id: "poker", tickerKeys: ["dice_poker"], minPlayers: 1, maxPlayers: 8, defaultPlayers: 2, label: "POKER DICE", subtitle: "Combinaisons poker", tab: "dice_poker_config" },
 ];
 
 const FOOT_ACTIONS: TvLaunchAction[] = [
-  { id: "penalty", label: "PENALTY", subtitle: "Tirs au but", tab: "foot_config", params: { format: "penalty" } },
-  { id: "1v1", label: "1V1", tab: "foot_config", params: { format: "1v1" } },
-  { id: "2v2", label: "2V2", tab: "foot_config", params: { format: "2v2" } },
-  { id: "3v3", label: "3V3", tab: "foot_config", params: { format: "3v3" } },
-  { id: "5v5", label: "FIVE", tab: "foot_config", params: { format: "5v5" } },
-  { id: "7v7", label: "7V7", tab: "foot_config", params: { format: "7v7" } },
-  { id: "8v8", label: "8V8", tab: "foot_config", params: { format: "8v8" } },
-  { id: "11v11", label: "11V11", tab: "foot_config", params: { format: "11v11" } },
+  { id: "penalty", tickerKeys: ["foot_penalty"], minPlayers: 2, maxPlayers: 2, defaultPlayers: 2, label: "PENALTY", subtitle: "Tirs au but", tab: "foot_config", params: { format: "penalty" } },
+  { id: "1v1", tickerKeys: ["foot_1v1"], minPlayers: 2, maxPlayers: 2, defaultPlayers: 2, label: "1V1", tab: "foot_config", params: { format: "1v1" } },
+  { id: "2v2", tickerKeys: ["foot_2v2"], minPlayers: 2, maxPlayers: 4, defaultPlayers: 4, label: "2V2", tab: "foot_config", params: { format: "2v2" } },
+  { id: "3v3", tickerKeys: ["foot_3v3"], minPlayers: 2, maxPlayers: 6, defaultPlayers: 4, label: "3V3", tab: "foot_config", params: { format: "3v3" } },
+  { id: "5v5", tickerKeys: ["foot_5v5"], minPlayers: 2, maxPlayers: 10, defaultPlayers: 4, label: "FIVE", tab: "foot_config", params: { format: "5v5" } },
+  { id: "7v7", tickerKeys: ["foot_7v7"], minPlayers: 2, maxPlayers: 14, defaultPlayers: 4, label: "7V7", tab: "foot_config", params: { format: "7v7" } },
+  { id: "8v8", tickerKeys: ["foot_8v8"], minPlayers: 2, maxPlayers: 16, defaultPlayers: 4, label: "8V8", tab: "foot_config", params: { format: "8v8" } },
+  { id: "11v11", tickerKeys: ["foot_11v11"], minPlayers: 2, maxPlayers: 22, defaultPlayers: 4, label: "11V11", tab: "foot_config", params: { format: "11v11" } },
 ];
 
 const RUNNING_ACTIONS: TvLaunchAction[] = [
@@ -152,6 +157,11 @@ export function tvLaunchActionsForSport(sportId: TvSportId): TvLaunchAction[] {
         subtitle: game.category === "classic" ? "Classique" : game.category === "variant" ? "Variante" : game.category === "challenge" ? "Défi" : game.category === "fun" ? "Fun" : "Training",
         category: game.category,
         tab: String(game.tab),
+        tickerKeys: [String(game.id), String(game.id).replace(/^game_/, "v")],
+        minPlayers: 1,
+        maxPlayers: Math.max(1, Number(game.maxPlayers || 8)),
+        defaultPlayers: game.id === "x01" ? 2 : Math.min(2, Math.max(1, Number(game.maxPlayers || 8))),
+        supportsTeams: !!game.supportsTeams,
         params: game.variantId
           ? { gameId: game.id, baseGame: game.baseGame, variantId: game.variantId }
           : undefined,
