@@ -54,6 +54,15 @@ else {
   const bundleText = jsFiles.map((file) => fs.readFileSync(path.join(assetsDir, file), "utf8")).join("\n");
   if (bundleText.includes("dc-online-v3.perrin-alexandre38530.workers.dev")) pass("Viewer TV routé vers le Worker ONLINE DC_SYNC");
   else fail("Viewer TV non routé vers le Worker ONLINE (risque session absente)");
+
+  if (bundleText.includes("MSS_TV_INTERACTIVE_BUILD_20260914_01")) pass("Interface Samsung TV INTERACTIVE V1 intégrée au bundle");
+  else fail("ANCIEN BUNDLE TV détecté : l'interface interactive n'est pas dans les assets générés");
+
+  if (bundleText.includes("TV INTERACTIVE") && bundleText.includes("TÉLÉPHONE CONNECTÉ")) pass("Menu TV interactif présent");
+  else fail("Menu TV interactif absent du bundle");
+
+  if (bundleText.includes("/socket")) pass("Canal temps réel Viewer/WebSocket présent");
+  else fail("Canal WebSocket Viewer absent du bundle");
 }
 
 function dirSize(dir) {

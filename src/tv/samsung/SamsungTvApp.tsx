@@ -14,6 +14,7 @@ const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
+const TV_BUILD_MARKER = "MSS_TV_INTERACTIVE_BUILD_20260914_01";
 
 type Copy = {
   title: string;
@@ -254,11 +255,12 @@ function TvHub({
   const live = !!snapshot && Array.isArray(snapshot.players) && snapshot.players.length > 0 && snapshot.phase !== "lobby";
   const active = snapshot?.players?.find((p) => p.isActive) || snapshot?.players?.[0] || null;
   return (
-    <main className="mss-tv-hub">
+    <main className="mss-tv-hub" data-build={TV_BUILD_MARKER}>
       <header className="mss-tv-hub-header">
         <div>
           <div className="mss-tv-hub-title">MULTISPORTS SCORING</div>
           <div className="mss-tv-hub-subtitle">TV INTERACTIVE · SESSION {sessionId}</div>
+          <div className="mss-tv-build-marker">INTERACTIVE V1 · 2026.09.14-01</div>
         </div>
         <div className={`mss-tv-link-state is-${connectionStatus}`}>
           <span className="mss-tv-link-dot" />

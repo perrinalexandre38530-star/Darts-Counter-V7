@@ -446,3 +446,12 @@ html[data-mss-samsung-tv="1"] body {
   .mss-tv-menu-index { width: 44px; height: 44px; }
   .mss-tv-menu-label { font-size: 18px; }
 }
+
+.mss-tv-build-marker {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 1.4px;
+  font-weight: 900;
+  opacity: .56;
+}

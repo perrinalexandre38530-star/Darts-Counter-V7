@@ -12,7 +12,10 @@ if (!fs.existsSync(configPath)) {
   process.exit(1);
 }
 
-for (const entry of ["assets", "index.html"]) {
+// Force un rebuild/install TV complet.
+// Debug + .tizen-rds pouvaient conserver un ancien bundle Tizen même lorsque
+// SamsungTvApp.tsx avait déjà été mis à jour.
+for (const entry of ["assets", "index.html", "Debug", "Release", ".tizen-rds"]) {
   const target = path.join(out, entry);
   fs.rmSync(target, { recursive: true, force: true });
 }
@@ -40,6 +43,20 @@ const result = spawnSync(process.execPath, [viteBin, "build", "--config", path.j
 });
 
 if (result.status !== 0) process.exit(result.status || 1);
+
+// Refuse de continuer si Vite a généré l'ancien Viewer passif.
+const builtAssetsDir = path.join(out, "assets");
+const builtJs = fs.existsSync(builtAssetsDir)
+  ? fs.readdirSync(builtAssetsDir).filter((file) => file.endsWith(".js"))
+  : [];
+const builtBundle = builtJs
+  .map((file) => fs.readFileSync(path.join(builtAssetsDir, file), "utf8"))
+  .join("\n");
+if (!builtBundle.includes("MSS_TV_INTERACTIVE_BUILD_20260914_01")) {
+  console.error("❌ Le bundle Samsung généré ne contient pas TV INTERACTIVE V1. Build refusé.");
+  process.exit(1);
+}
+console.log("✅ Bundle Samsung TV INTERACTIVE V1 généré");
 
 const check = spawnSync(process.execPath, [path.join(root, "tools", "check-samsung-tv.mjs")], {
   cwd: root,
