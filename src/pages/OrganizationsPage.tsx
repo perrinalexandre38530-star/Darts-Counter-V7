@@ -3,6 +3,8 @@ import BackDot from "../components/BackDot";
 import OrganizationTypeIcon from "../components/OrganizationTypeIcon";
 import OrganizationCompetitionsPanel from "../components/OrganizationCompetitionsPanel";
 import OrganizationStatsPanel from "../components/OrganizationStatsPanel";
+import OrganizationCommunicationPanel from "../components/OrganizationCommunicationPanel";
+import OrganizationFederationsPanel from "../components/OrganizationFederationsPanel";
 import OrganizationMembersPanel from "../components/OrganizationMembersPanel";
 import OrganizationTeamsPanel from "../components/OrganizationTeamsPanel";
 import OrganizationInvitationsInbox from "../components/OrganizationInvitationsInbox";
@@ -42,7 +44,7 @@ import {
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
 
 type Props = { go?: (tab: any, params?: any) => void; params?: any };
-type View = "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "billing" | "sponsors" | "admin" | "offers";
+type View = "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "admin" | "offers";
 type EntryMode = "none" | "create" | "join";
 
 type WizardDraft = {
@@ -136,6 +138,7 @@ function ModuleIcon({ name, color }: { name: string; color: string }) {
     competitions: <><path {...common} d="M8 4h8v4c0 4-1.7 6-4 6s-4-2-4-6V4Z"/><path {...common} d="M8 6H4c0 3 1.3 5 4.5 5M16 6h4c0 3-1.3 5-4.5 5M12 14v4M8 21h8M9 18h6"/></>,
     stats: <><path {...common} d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
     communication: <><path {...common} d="M4 5h16v11H9l-5 4V5Z"/><path {...common} d="M8 9h8M8 12h5"/></>,
+    federations: <><path {...common} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...common} d="M8 11h8M10 8h4M10 14h4"/></>,
     billing: <><rect {...common} x="3" y="5" width="18" height="14" rx="2"/><path {...common} d="M3 9h18M7 15h3"/></>,
     sponsors: <><path {...common} d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 5.5-7 10-7 10Z"/></>,
     admin: <><path {...common} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...common} d="M9 12h6M12 9v6"/></>,
@@ -153,7 +156,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   const workspaceMode = params?.workspaceMode === true;
   const requestedOrganizationId = String(params?.organizationId || "").trim();
   const requestedView = String(params?.view || "home") as View;
-  const validViews: View[] = ["home", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "billing", "sponsors", "admin", "offers"];
+  const validViews: View[] = ["home", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "federations", "billing", "sponsors", "admin", "offers"];
 
   const [organizations, setOrganizations] = React.useState<OrganizationRecord[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(() => loadOrganizationLocalState(userId).activeOrganizationId);
@@ -276,6 +279,8 @@ export default function OrganizationsPage({ go, params }: Props) {
       groups: "organization_teams",
       competitions: "organization_competitions",
       stats: "organization_stats",
+      communication: "organization_communication",
+      federations: "organization_federations",
       admin: "organization_admin",
     };
     const route = routes[nextView];
@@ -445,6 +450,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     { id: "competitions", name: L("Compétitions", "Competitions", "Competiciones"), subtitle: L("Tournois, championnats, challenges", "Tournaments, leagues, challenges", "Torneos, ligas y retos") },
     { id: "stats", name: L("Classements & stats", "Rankings & stats", "Clasificaciones y estadísticas"), subtitle: L("Résultats MSS, records et performances", "MSS results, records and performance", "Resultados MSS, récords y rendimiento") },
     { id: "communication", name: L("Communication", "Communication", "Comunicación"), subtitle: L("Annonces et informations du groupe", "Group announcements and information", "Anuncios e información del grupo") },
+    { id: "federations", name: L("Fédérations", "Federations", "Federaciones"), subtitle: L("Affiliations, portails et transmission des résultats", "Affiliations, portals and result transfer", "Afiliaciones, portales y envío de resultados") },
     { id: "billing", name: L("Cotisations & paiements", "Fees & payments", "Cuotas y pagos"), subtitle: L("Suivi financier de l’organisation", "Organization payment tracking", "Seguimiento financiero de la organización") },
     { id: "sponsors", name: L("Sponsors & partenaires", "Sponsors & partners", "Patrocinadores y socios"), subtitle: L("Visibilité et offres partenaires", "Partner visibility and offers", "Visibilidad y ofertas de socios") },
     { id: "admin", name: L("Administration", "Administration", "Administración"), subtitle: L("Droits, identité et paramètres", "Permissions, identity and settings", "Permisos, identidad y ajustes") },
@@ -694,12 +700,12 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "groups") return <OrganizationTeamsPanel organization={active} userId={userId} initialGroups={localGroups} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} />;
     if (view === "competitions") return <OrganizationCompetitionsPanel organization={active} userId={userId} initialGroups={localGroups} />;
     if (view === "stats") return <OrganizationStatsPanel organization={active} userId={userId} />;
+    if (view === "communication") return <OrganizationCommunicationPanel organization={active} userId={userId} />;
+    if (view === "federations") return <OrganizationFederationsPanel organization={active} userId={userId} />;
     if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<div style={{ ...card, padding: 14 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Planifier un événement", "Schedule an event", "Programar un evento")}</div><div style={{ marginTop: 9, display: "grid", gap: 8 }}><input style={input} value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder={L("Entraînement, match, tournoi…", "Training, match, tournament…", "Entrenamiento, partido, torneo…")} /><input type="datetime-local" style={input} value={eventDate} onChange={(e) => setEventDate(e.target.value)} /><input style={input} value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder={L("Lieu (optionnel)", "Location (optional)", "Lugar (opcional)")} /><button type="button" style={primaryButton} onClick={() => void addEvent()}>{L("AJOUTER À L’AGENDA", "ADD TO CALENDAR", "AÑADIR A LA AGENDA")}</button></div></div>{localEvents.length ? localEvents.map((evt) => <div key={evt.id} style={{ ...card, padding: 12 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 950 }}>{evt.title}</div><div style={{ marginTop: 4, color: theme.primary, fontSize: 9.5, fontWeight: 850 }}>{new Date(evt.startsAt).toLocaleString()}</div>{evt.location ? <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9 }}>{evt.location}</div> : null}</div>) : <div style={{ ...card, padding: 18, color: theme.textSoft, fontSize: 10.5 }}>{L("Aucun événement planifié.", "No scheduled events.", "No hay eventos programados.")}</div>}</div>;
     if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), L("Architecture prête pour la souscription B2B", "Architecture ready for B2B subscription", "Arquitectura lista para suscripción B2B"))}{PLAN_OPTIONS.map((plan) => <div key={plan.id} style={{ ...card, padding: 14, border: `1px solid ${active.plan === plan.id ? theme.primary : theme.borderSoft}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: theme.primary, fontSize: 12, fontWeight: 1000 }}>{plan.title}</div><div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10, lineHeight: 1.4 }}>{plan.subtitle}</div></div><div style={{ color: active.plan === plan.id ? theme.primary : theme.textSoft, fontSize: 8, fontWeight: 1000 }}>{active.plan === plan.id ? L("SÉLECTIONNÉ", "SELECTED", "SELECCIONADO") : plan.audience}</div></div></div>)}</div>;
 
-    const generic: Record<Exclude<View, "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "offers">, { title: string; subtitle: string; bullets: string[] }> = {
-      stats: { title: L("CLASSEMENTS & STATISTIQUES", "RANKINGS & STATISTICS", "CLASIFICACIONES Y ESTADÍSTICAS"), subtitle: active.name, bullets: [L("Classements organisation, records, séries, confrontations et performances par discipline.", "Organization rankings, records, streaks, head-to-head and per-sport performance.", "Clasificaciones, récords, rachas, enfrentamientos y rendimiento por disciplina."), L("Les agrégats légers pourront être indexés ; les historiques détaillés restent dans R2 ou le stockage choisi.", "Light aggregates can be indexed; detailed history remains in R2 or the selected storage.", "Los agregados ligeros podrán indexarse; el historial detallado queda en R2 o en el almacenamiento elegido.")] },
-      communication: { title: L("COMMUNICATION", "COMMUNICATION", "COMUNICACIÓN"), subtitle: active.name, bullets: [L("Annonces générales, informations par équipe et notifications.", "General announcements, team information and notifications.", "Anuncios generales, información por equipo y notificaciones."), L("Les rôles permettront de contrôler qui peut publier.", "Roles will control who can publish.", "Los roles controlarán quién puede publicar.")] },
+    const generic: Record<Exclude<View, "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "offers">, { title: string; subtitle: string; bullets: string[] }> = {
       billing: { title: L("COTISATIONS & PAIEMENTS", "FEES & PAYMENTS", "CUOTAS Y PAGOS"), subtitle: active.name, bullets: [L("Structure prête pour cotisations, inscriptions, licences et suivi des règlements.", "Structure ready for fees, registrations, licenses and payment tracking.", "Estructura lista para cuotas, inscripciones, licencias y seguimiento de pagos."), L("Le paiement réel sera branché sur la couche billing existante quand les offres/prix seront figés.", "Real payment will connect to the existing billing layer once plans/prices are finalized.", "El pago real se conectará a la capa de facturación existente cuando se definan los planes/precios.")] },
       sponsors: { title: L("SPONSORS & PARTENAIRES", "SPONSORS & PARTNERS", "PATROCINADORES Y SOCIOS"), subtitle: active.name, bullets: [L("Logos, offres partenaires et visibilité configurable dans l’espace organisation.", "Logos, partner offers and configurable visibility in the organization space.", "Logos, ofertas de socios y visibilidad configurable en el espacio de la organización."), L("Compatible avec le futur mode VENUE pour bars, pubs et salles.", "Compatible with the future VENUE mode for bars, pubs and halls.", "Compatible con el futuro modo VENUE para bares, pubs y salas.")] },
       admin: { title: L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), subtitle: active.name, bullets: [L("Identité, type d’organisation, rôles, droits et paramètres.", "Identity, organization type, roles, permissions and settings.", "Identidad, tipo de organización, roles, permisos y ajustes."), `${L("Ton rôle", "Your role", "Tu rol")}: ${organizationRoleLabel(active.role)}`, `${L("Isolation des données", "Data isolation", "Aislamiento de datos")}: organization_id`, `${L("Médias", "Media", "Multimedia")}: ${getStorageDestination(loadStoragePrefs().selectedDestination).shortLabel}`] },

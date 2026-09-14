@@ -1,5 +1,4 @@
 import * as React from "react";
-import ViewerScreen from "../../components/viewer/ViewerScreen";
 import { fetchViewerSnapshot, normalizeViewerCode } from "../../lib/viewer/viewerClient";
 import type { ViewerLiveSnapshot } from "../../lib/viewer/types";
 import { createViewerRealtimeConnection, type ViewerRealtimeConnection } from "../../lib/viewer/viewerRealtime";
@@ -21,7 +20,7 @@ const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_FULL_APP_BUILD_20260914_02";
+const TV_BUILD_MARKER = "MSS_TV_FULL_APP_BUILD_20260914_03";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -256,6 +255,8 @@ type PhoneNavigation = {
 type TvProfile = {
   id: string;
   name: string;
+  avatar?: string | null;
+  countryCode?: string;
   stats?: {
     games?: number;
     wins?: number;
@@ -293,6 +294,17 @@ type TvState = {
     ttsOnThird: boolean;
     neonTheme: boolean;
   };
+  theme: {
+    id: string;
+    primary: string;
+    accent: string;
+    bg: string;
+    card: string;
+    text: string;
+    textSoft: string;
+    texture: string;
+    textureOpacity: string;
+  };
   at: number;
 };
 
@@ -321,6 +333,17 @@ const EMPTY_TV_STATE: TvState = {
     randomOrder: false,
     ttsOnThird: false,
     neonTheme: true,
+  },
+  theme: {
+    id: "gold",
+    primary: "#ffd56a",
+    accent: "#4fb4ff",
+    bg: "#05070b",
+    card: "#101522",
+    text: "#f8fafc",
+    textSoft: "rgba(255,255,255,.62)",
+    texture: "none",
+    textureOpacity: "0",
   },
   at: 0,
 };
@@ -353,6 +376,28 @@ function TvWatermark({ src, strong = false }: { src?: string; strong?: boolean }
       <img src={src} alt="" draggable={false} />
     </span>
   );
+}
+
+function TvProfileAvatar({ profile, size = "medium" }: { profile?: TvProfile | null; size?: "small" | "medium" | "large" }) {
+  const name = String(profile?.name || "?");
+  return (
+    <span className={`mss-tv-avatar mss-tv-avatar--${size}`}>
+      {profile?.avatar ? <img src={profile.avatar} alt="" draggable={false} /> : <b>{name.slice(0, 2).toUpperCase()}</b>}
+    </span>
+  );
+}
+
+function applyTvTheme(theme: TvState["theme"]) {
+  try {
+    const root = document.documentElement;
+    root.dataset.mssTvTheme = String(theme?.id || "gold");
+    root.style.setProperty("--mss-tv-accent", theme?.primary || "#ffd56a");
+    root.style.setProperty("--mss-tv-accent-2", theme?.accent || "#4fb4ff");
+    root.style.setProperty("--mss-tv-bg", theme?.bg || "#05070b");
+    root.style.setProperty("--mss-tv-card", theme?.card || "#101522");
+    root.style.setProperty("--mss-tv-text", theme?.text || "#f8fafc");
+    root.style.setProperty("--mss-tv-muted", theme?.textSoft || "rgba(255,255,255,.62)");
+  } catch {}
 }
 
 function TvPageHeader({
@@ -401,13 +446,14 @@ function TvHub({
   const live = !!snapshot && Array.isArray(snapshot.players) && snapshot.players.length > 0 && snapshot.phase !== "lobby";
   const active = snapshot?.players?.find((p) => p.isActive) || snapshot?.players?.[0] || null;
   const activeSport = tvSportById(tvState.activeSport);
+  const activeProfile = tvState.profiles.find((profile) => profile.id === tvState.activeProfileId) || tvState.profiles[0] || null;
   return (
     <main className="mss-tv-hub" data-build={TV_BUILD_MARKER}>
       <header className="mss-tv-hub-header">
         <div>
           <div className="mss-tv-hub-title">MULTISPORTS SCORING</div>
           <div className="mss-tv-hub-subtitle">TV COMPLÈTE · SESSION {sessionId}</div>
-          <div className="mss-tv-build-marker">TV FULL APP V2 · 2026.09.14-02</div>
+          <div className="mss-tv-build-marker">TV FULL PREMIUM V3 · 2026.09.14-03</div>
         </div>
         <div className={`mss-tv-link-state is-${connectionStatus}`}>
           <span className="mss-tv-link-dot" />
@@ -416,6 +462,7 @@ function TvHub({
       </header>
 
       <section className="mss-tv-billboard" style={{ ["--sport-accent" as any]: activeSport.accent }}>
+        <img className="mss-tv-billboard-art" src={activeSport.art} alt="" draggable={false} />
         <TvWatermark src={activeSport.logo} strong />
         <div className="mss-tv-billboard-kicker">{live ? "EN DIRECT MAINTENANT" : "EXPÉRIENCE TV COMPLÈTE"}</div>
         <div className="mss-tv-billboard-title">
@@ -447,6 +494,9 @@ function TvHub({
           const subtitle = isScoreboard
             ? (live ? "Ouvrir le scoreboard live" : "Choisir un sport et démarrer")
             : item.subtitle;
+          const cardArt = item.id === "games" || isScoreboard
+            ? activeSport.art
+            : (item.id === "profiles" || item.id === "stats") ? (activeProfile?.avatar || activeSport.art) : activeSport.art;
           return (
             <button
               key={item.id}
@@ -456,6 +506,7 @@ function TvHub({
               onMouseEnter={() => onFocus(index)}
               onClick={() => onActivate(index)}
             >
+              {cardArt ? <img className="mss-tv-menu-art" src={cardArt} alt="" draggable={false} /> : null}
               {item.id === "games" || item.kind === "scoreboard" ? <TvWatermark src={activeSport.logo} strong={item.id === "games"} /> : null}
               <span className="mss-tv-menu-index">{String(index + 1).padStart(2, "0")}</span>
               <span className="mss-tv-menu-label">{label}</span>
@@ -506,6 +557,7 @@ function TvSports({
             onMouseEnter={() => onFocus(index)}
             onClick={() => onChoose(sport.id)}
           >
+            <img className="mss-tv-sport-card-art" src={sport.art} alt="" draggable={false} />
             <TvWatermark src={sport.logo} strong />
             <span className="mss-tv-sport-card-label">{sport.label}</span>
             <span className="mss-tv-sport-card-subtitle">{sport.subtitle}</span>
@@ -542,10 +594,11 @@ function TvSportLauncher({
     <main className="mss-tv-section">
       <TvPageHeader
         title={sport.label}
-        subtitle={sportId === "darts" ? "Choisis un mode de jeu. OK ouvre sa configuration sur le téléphone et garde la TV synchronisée." : "Choisis un mode ou une action."}
+        subtitle={sportId === "darts" ? "Choisis un mode. X01 dispose déjà d'une configuration guidée complète sur TV." : "Choisis un mode ou une action. Le parcours TV guidé est progressivement activé sport par sport."}
         connectionStatus={connectionStatus}
       />
       <section className="mss-tv-sport-hero" style={{ ["--sport-accent" as any]: sport.accent }}>
+        <img className="mss-tv-sport-hero-art" src={sport.art} alt="" draggable={false} />
         <TvWatermark src={sport.logo} strong />
         <div className="mss-tv-sport-hero-title">{sport.label}</div>
         <div className="mss-tv-sport-hero-copy">Télécommande Samsung + téléphone · même session</div>
@@ -563,6 +616,8 @@ function TvSportLauncher({
               onMouseEnter={() => onFocus(index)}
               onClick={() => onLaunch(action)}
             >
+              <img className="mss-tv-action-art" src={sport.art} alt="" draggable={false} />
+              <TvWatermark src={sport.logo} />
               <span className="mss-tv-action-label">{action.label}</span>
               <span className="mss-tv-action-subtitle">{action.subtitle || action.category || "Ouvrir"}</span>
             </button>
@@ -588,12 +643,17 @@ function TvProfiles({
   onSelect: (id: string) => void;
 }) {
   const profiles = tvState.profiles;
+  const page = Math.floor(Math.max(0, focusIndex) / TV_LIST_PAGE_SIZE);
+  const pageStart = page * TV_LIST_PAGE_SIZE;
+  const visibleProfiles = profiles.slice(pageStart, pageStart + TV_LIST_PAGE_SIZE);
   return (
     <main className="mss-tv-section">
-      <TvPageHeader title="PROFILS" subtitle="Consulte et sélectionne le profil actif directement depuis la TV." connectionStatus={connectionStatus} />
+      <TvPageHeader title="PROFILS" subtitle="Tes vrais profils, avatars et performances sur grand écran." connectionStatus={connectionStatus} />
       {profiles.length ? (
         <section className="mss-tv-profile-grid">
-          {profiles.map((profile, index) => (
+          {visibleProfiles.map((profile, localIndex) => {
+            const index = pageStart + localIndex;
+            return (
             <button
               type="button"
               tabIndex={-1}
@@ -602,16 +662,20 @@ function TvProfiles({
               onMouseEnter={() => onFocus(index)}
               onClick={() => onSelect(profile.id)}
             >
-              <span className="mss-tv-profile-avatar">{profile.name.slice(0, 2).toUpperCase()}</span>
+              <TvProfileAvatar profile={profile} size="medium" />
               <span className="mss-tv-profile-name">{profile.name}</span>
               <span className="mss-tv-profile-meta">{profile.id === tvState.activeProfileId ? "PROFIL ACTIF" : "OK pour sélectionner"}</span>
+              <span className="mss-tv-profile-kpis">{statValue(profile.stats?.games)} parties · {statValue(profile.stats?.wins)} victoires</span>
             </button>
-          ))}
+          );})}
         </section>
       ) : (
         <div className="mss-tv-empty">Aucun profil synchronisé. Crée un profil sur le téléphone puis reviens ici.</div>
       )}
-      <footer className="mss-tv-page-footer">OK : profil actif · Retour : menu TV</footer>
+      <footer className="mss-tv-page-footer">
+        <span>OK : profil actif · Retour : menu TV</span>
+        {profiles.length > TV_LIST_PAGE_SIZE ? <span>PAGE {page + 1}/{Math.ceil(profiles.length / TV_LIST_PAGE_SIZE)}</span> : null}
+      </footer>
     </main>
   );
 }
@@ -653,12 +717,13 @@ function TvStats({
                 onMouseEnter={() => onFocus(index)}
                 onClick={() => onSelectProfile(profile.id)}
               >
-                {profile.name}
+                <TvProfileAvatar profile={profile} size="small" />
+                <span>{profile.name}</span>
               </button>
             ))}
           </section>
           <section className="mss-tv-stats-layout">
-            <div className="mss-tv-stats-player">{selected?.name || "Joueur"}</div>
+            <div className="mss-tv-stats-player"><TvProfileAvatar profile={selected} size="large" /><span>{selected?.name || "Joueur"}</span></div>
             <div className="mss-tv-stat-grid">
               <div className="mss-tv-stat-card"><b>{statValue(s.games)}</b><span>PARTIES</span></div>
               <div className="mss-tv-stat-card"><b>{statValue(s.wins)}</b><span>VICTOIRES</span></div>
@@ -869,12 +934,14 @@ function TvX01QuickSetup({
       />
       <section className="mss-tv-x01-setup">
         <div className="mss-tv-x01-summary">
+          <div className="mss-tv-guide-kicker">CONFIGURATION GUIDÉE · X01</div>
           <div className="mss-tv-x01-score">{state.startScore}</div>
           <div className="mss-tv-x01-mode">{state.duel && profiles.length > 1 ? "DUEL" : "SOLO"} · {state.outMode === "double" ? "DOUBLE OUT" : "SINGLE OUT"}</div>
-          <div className="mss-tv-x01-players">
-            <span>{p1?.name || "Aucun profil"}</span>
-            {state.duel && profiles.length > 1 ? <><b>VS</b><span>{p2?.name || "Joueur 2"}</span></> : null}
+          <div className="mss-tv-x01-player-stage">
+            <div className="mss-tv-x01-player-card"><TvProfileAvatar profile={p1} size="large" /><span>{p1?.name || "Aucun profil"}</span></div>
+            {state.duel && profiles.length > 1 ? <><b className="mss-tv-versus">VS</b><div className="mss-tv-x01-player-card"><TvProfileAvatar profile={p2} size="large" /><span>{p2?.name || "Joueur 2"}</span></div></> : null}
           </div>
+          <div className="mss-tv-guide-copy">Tout se règle depuis la télécommande : score de départ, format, joueurs et sortie. Le téléphone reste synchronisé.</div>
         </div>
         <div className="mss-tv-x01-actions">
           {actions.map((action, index) => (
@@ -886,6 +953,7 @@ function TvX01QuickSetup({
               onMouseEnter={() => onFocus(index)}
               onClick={action.run}
             >
+              <i className="mss-tv-guide-step">{String(index + 1).padStart(2, "0")}</i>
               <span>{action.label}</span>
               <b>{action.value}</b>
             </button>
@@ -893,6 +961,168 @@ function TvX01QuickSetup({
         </div>
       </section>
       <footer className="mss-tv-page-footer">OK : modifier / lancer · Retour : modes DARTS</footer>
+    </main>
+  );
+}
+
+
+type TvScoreKey = {
+  id: string;
+  label: string;
+  kind: "digit" | "delete" | "clear" | "preset" | "bust" | "submit";
+  value?: string;
+};
+
+const TV_X01_SCORE_KEYS: TvScoreKey[] = [
+  { id: "1", label: "1", kind: "digit", value: "1" },
+  { id: "2", label: "2", kind: "digit", value: "2" },
+  { id: "3", label: "3", kind: "digit", value: "3" },
+  { id: "del", label: "⌫", kind: "delete" },
+  { id: "4", label: "4", kind: "digit", value: "4" },
+  { id: "5", label: "5", kind: "digit", value: "5" },
+  { id: "6", label: "6", kind: "digit", value: "6" },
+  { id: "60", label: "60", kind: "preset", value: "60" },
+  { id: "7", label: "7", kind: "digit", value: "7" },
+  { id: "8", label: "8", kind: "digit", value: "8" },
+  { id: "9", label: "9", kind: "digit", value: "9" },
+  { id: "100", label: "100", kind: "preset", value: "100" },
+  { id: "clear", label: "C", kind: "clear" },
+  { id: "0", label: "0", kind: "digit", value: "0" },
+  { id: "140", label: "140", kind: "preset", value: "140" },
+  { id: "180", label: "180", kind: "preset", value: "180" },
+  { id: "bust", label: "BUST", kind: "bust" },
+  { id: "26", label: "26", kind: "preset", value: "26" },
+  { id: "45", label: "45", kind: "preset", value: "45" },
+  { id: "ok", label: "VALIDER", kind: "submit" },
+];
+
+function playerProfileFallback(player: any, tvState: TvState): TvProfile | null {
+  const pid = String(player?.id || "");
+  const name = String(player?.name || "").trim().toLowerCase();
+  return tvState.profiles.find((profile) => String(profile.id) === pid)
+    || tvState.profiles.find((profile) => String(profile.name || "").trim().toLowerCase() === name)
+    || null;
+}
+
+function playerAvatarSrc(player: any, tvState: TvState) {
+  const direct = String(player?.avatarUrl || player?.avatarDataUrl || "");
+  if (direct) return direct;
+  return playerProfileFallback(player, tvState)?.avatar || null;
+}
+
+function TvInteractiveScoreboard({
+  snapshot,
+  tvState,
+  connectionStatus,
+  focusIndex,
+  scoreBuffer,
+  onFocus,
+  onScoreKey,
+}: {
+  snapshot: ViewerLiveSnapshot;
+  tvState: TvState;
+  connectionStatus: string;
+  focusIndex: number;
+  scoreBuffer: string;
+  onFocus: (index: number) => void;
+  onScoreKey: (key: TvScoreKey) => void;
+}) {
+  const players = Array.isArray(snapshot.players) ? snapshot.players : [];
+  const active = players.find((player: any) => player?.isActive) || players.find((player: any) => String(player?.id || "") === String(snapshot.activePlayerId || "")) || players[0];
+  const game = String(snapshot.game || "").toLowerCase();
+  const sport = tvSportById(snapshot.sport || tvState.activeSport);
+  const isX01 = game === "x01";
+  const match = snapshot.match || {};
+  const activeStats: any = active?.stats || {};
+
+  return (
+    <main className="mss-tv-game-shell" style={{ ["--sport-accent" as any]: sport.accent }}>
+      <img className="mss-tv-game-bg" src={sport.art} alt="" draggable={false} />
+      <header className="mss-tv-game-header">
+        <div className="mss-tv-game-brand">
+          <img src={sport.logo} alt="" draggable={false} />
+          <div>
+            <div className="mss-tv-game-eyebrow">MULTISPORTS SCORING · {sport.label}</div>
+            <div className="mss-tv-game-title">{snapshot.title || game.toUpperCase()} <span>LIVE</span></div>
+          </div>
+        </div>
+        <div className="mss-tv-game-meta">
+          <span className={`mss-tv-link-state is-${connectionStatus}`}><i className="mss-tv-link-dot" />{connectionText(connectionStatus)}</span>
+          {match.setIndex != null ? <span>SET {match.setIndex}</span> : null}
+          {match.legIndex != null ? <span>LEG {match.legIndex}</span> : null}
+          {match.round != null ? <span>TOUR {match.round}</span> : null}
+        </div>
+      </header>
+
+      <section className={`mss-tv-game-layout${isX01 ? " has-keypad" : ""}`}>
+        <div className="mss-tv-score-stage">
+          <section className="mss-tv-active-player">
+            <div className="mss-tv-active-avatar">
+              {playerAvatarSrc(active, tvState)
+                ? <img src={String(playerAvatarSrc(active, tvState))} alt="" draggable={false} />
+                : <span>{String(active?.name || "?").slice(0, 2).toUpperCase()}</span>}
+            </div>
+            <div className="mss-tv-active-copy">
+              <div className="mss-tv-game-eyebrow">AU TOUR DE</div>
+              <div className="mss-tv-active-name">{active?.name || "Joueur"}</div>
+              <div className="mss-tv-active-stats">
+                <span>MOY. {activeStats.avg3d ?? activeStats.avg ?? "—"}</span>
+                <span>BEST {activeStats.bestVisit ?? "—"}</span>
+                <span>DARTS {activeStats.totalThrows ?? activeStats.dartsThrown ?? "—"}</span>
+              </div>
+            </div>
+            <div className="mss-tv-active-score">{active?.score ?? "—"}</div>
+          </section>
+
+          <div className="mss-tv-players-rail">
+            {players.map((player: any) => {
+              const avatar = playerAvatarSrc(player, tvState);
+              return (
+                <article key={String(player.id || player.name)} className={`mss-tv-player-tile${player?.isActive ? " is-active" : ""}`}>
+                  <div className="mss-tv-player-tile-avatar">
+                    {avatar ? <img src={String(avatar)} alt="" draggable={false} /> : <span>{String(player?.name || "?").slice(0, 2).toUpperCase()}</span>}
+                  </div>
+                  <div className="mss-tv-player-tile-copy"><b>{player?.name || "Joueur"}</b><span>{player?.isActive ? "EN JEU" : "EN ATTENTE"}</span></div>
+                  <strong>{player?.score ?? "—"}</strong>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+
+        {isX01 ? (
+          <aside className="mss-tv-scorepad">
+            <div className="mss-tv-scorepad-head">
+              <div><span>SAISIE TV</span><b>Entre le score de la volée</b></div>
+              <div className="mss-tv-scorepad-display">{scoreBuffer || "0"}</div>
+            </div>
+            <div className="mss-tv-scorepad-grid">
+              {TV_X01_SCORE_KEYS.map((key, index) => (
+                <button
+                  key={key.id}
+                  type="button"
+                  tabIndex={-1}
+                  className={`mss-tv-score-key is-${key.kind}${focusIndex === index ? " is-focused" : ""}`}
+                  onMouseEnter={() => onFocus(index)}
+                  onClick={() => onScoreKey(key)}
+                >
+                  {key.label}
+                </button>
+              ))}
+            </div>
+            <div className="mss-tv-scorepad-help">Télécommande : chiffres ou flèches · OK valider · téléphone utilisable en parallèle</div>
+          </aside>
+        ) : (
+          <aside className="mss-tv-game-side-panel">
+            <div className="mss-tv-game-side-title">PARTIE EN DIRECT</div>
+            <p>Le scoreboard reprend le même snapshot que Google Cast avec une mise en page dédiée TV.</p>
+            <div className="mss-tv-game-side-pill">{players.length} joueur{players.length > 1 ? "s" : ""}</div>
+            <div className="mss-tv-game-side-pill">{String(snapshot.phase || "playing").toUpperCase()}</div>
+          </aside>
+        )}
+      </section>
+
+      <footer className="mss-tv-game-footer"><span>Retour : menu TV</span><span>{isX01 ? "Score 0–180 · BUST disponible" : "Scoreboard temps réel"}</span></footer>
     </main>
   );
 }
@@ -915,6 +1145,7 @@ export default function SamsungTvApp() {
     duel: true,
     outMode: "double",
   });
+  const [scoreBuffer, setScoreBuffer] = React.useState("");
   const realtimeRef = React.useRef<ViewerRealtimeConnection | null>(null);
   const autoFollowGameRef = React.useRef(true);
   const screenRef = React.useRef<TvScreen>("hub");
@@ -936,6 +1167,10 @@ export default function SamsungTvApp() {
   React.useEffect(() => {
     selectedSportRef.current = selectedSport;
   }, [selectedSport]);
+
+  React.useEffect(() => {
+    applyTvTheme(tvState.theme);
+  }, [tvState.theme]);
 
   const join = React.useCallback((code: string) => {
     const clean = normalizeViewerCode(code).slice(0, CODE_LENGTH);
@@ -980,6 +1215,7 @@ export default function SamsungTvApp() {
       if (hasGame && autoFollowGameRef.current) {
         screenRef.current = "scoreboard";
         setScreen("scoreboard");
+        setFocusIndex(0);
       }
     };
 
@@ -1014,6 +1250,7 @@ export default function SamsungTvApp() {
             ...EMPTY_TV_STATE,
             ...data,
             settings: { ...EMPTY_TV_STATE.settings, ...(data.settings || {}) },
+            theme: { ...EMPTY_TV_STATE.theme, ...(data.theme || {}) },
             activeSport: tvSportById(data.activeSport).id,
             profiles: Array.isArray(data.profiles) ? data.profiles : [],
             friends: Array.isArray(data.friends) ? data.friends : [],
@@ -1056,6 +1293,7 @@ export default function SamsungTvApp() {
           setAutoFollowGame(true);
           screenRef.current = "scoreboard";
           setScreen("scoreboard");
+          setFocusIndex(0);
           return;
         }
 
@@ -1181,6 +1419,49 @@ export default function SamsungTvApp() {
     }));
   }, []);
 
+  const sendTvScore = React.useCallback((value: number | "BUST") => {
+    realtimeRef.current?.sendCommand({
+      type: "x01_tv_score",
+      score: value,
+      source: "samsung-tv",
+      at: Date.now(),
+    });
+    setScoreBuffer("");
+  }, []);
+
+  const activateScoreKey = React.useCallback((keyDef: TvScoreKey) => {
+    if (!keyDef) return;
+    if (keyDef.kind === "digit") {
+      setScoreBuffer((prev) => {
+        const next = `${prev}${keyDef.value || ""}`.replace(/^0+(?=\d)/, "").slice(0, 3);
+        const value = Number(next || 0);
+        return value <= 180 ? next : prev;
+      });
+      return;
+    }
+    if (keyDef.kind === "delete") {
+      setScoreBuffer((prev) => prev.slice(0, -1));
+      return;
+    }
+    if (keyDef.kind === "clear") {
+      setScoreBuffer("");
+      return;
+    }
+    if (keyDef.kind === "bust") {
+      sendTvScore("BUST");
+      return;
+    }
+    if (keyDef.kind === "preset") {
+      const value = Number(keyDef.value || 0);
+      if (Number.isFinite(value) && value >= 0 && value <= 180) sendTvScore(value);
+      return;
+    }
+    if (keyDef.kind === "submit") {
+      const value = Number(scoreBuffer || 0);
+      if (Number.isFinite(value) && value >= 0 && value <= 180) sendTvScore(value);
+    }
+  }, [scoreBuffer, sendTvScore]);
+
   const startQuickX01 = React.useCallback(() => {
     const profiles = tvState.profiles;
     const p1 = profiles[x01Quick.playerOneIndex] || profiles[0];
@@ -1219,8 +1500,9 @@ export default function SamsungTvApp() {
     if (screen === "settings") return 5;
     if (screen === "x01setup") return 6;
     if (screen === "agenda") return 1;
+    if (screen === "scoreboard" && String(snapshot?.game || "").toLowerCase() === "x01") return TV_X01_SCORE_KEYS.length;
     return 0;
-  }, [screen, sportActions.length, tvState.friends.length, tvState.profiles.length]);
+  }, [screen, snapshot?.game, sportActions.length, tvState.friends.length, tvState.profiles.length]);
 
   const columnsForScreen = React.useCallback(() => {
     if (screen === "hub") return 2;
@@ -1228,10 +1510,16 @@ export default function SamsungTvApp() {
     if (screen === "sport") return 3;
     if (screen === "profiles" || screen === "stats" || screen === "online") return 4;
     if (screen === "settings" || screen === "x01setup") return 2;
+    if (screen === "scoreboard") return 4;
     return 1;
   }, [screen]);
 
   const activateCurrent = React.useCallback(() => {
+    if (screen === "scoreboard") {
+      const keyDef = TV_X01_SCORE_KEYS[focusIndex];
+      if (keyDef) activateScoreKey(keyDef);
+      return;
+    }
     if (screen === "hub") return activateHub(focusIndex);
     if (screen === "sports") {
       const sport = TV_SPORTS[focusIndex];
@@ -1279,6 +1567,7 @@ export default function SamsungTvApp() {
       if (action) updateSetting(action[0], action[1]);
     }
   }, [
+    activateScoreKey,
     activateHub,
     chooseSport,
     focusIndex,
@@ -1329,7 +1618,13 @@ export default function SamsungTvApp() {
         return;
       }
 
-      if (screen === "scoreboard") return;
+      if (screen === "scoreboard" && String(snapshot?.game || "").toLowerCase() === "x01" && /^[0-9]$/.test(key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        activateScoreKey({ id: `remote-${key}`, label: key, kind: "digit", value: key });
+        return;
+      }
+      if (screen === "scoreboard" && String(snapshot?.game || "").toLowerCase() !== "x01") return;
 
       const count = countForScreen();
       if (!count) return;
@@ -1356,12 +1651,14 @@ export default function SamsungTvApp() {
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
   }, [
     activateCurrent,
+    activateScoreKey,
     columnsForScreen,
     countForScreen,
     focusIndex,
     openScreen,
     phoneNavigation?.tab,
     screen,
+    snapshot?.game,
     selectedSport,
     sessionId,
   ]);
@@ -1377,12 +1674,17 @@ export default function SamsungTvApp() {
 
   if (!sessionId) return <TvJoin onJoin={join} />;
 
-  if (screen === "scoreboard" && hasLiveGame) {
+  if (screen === "scoreboard" && hasLiveGame && snapshot) {
     return (
-      <div className="mss-samsung-tv-viewer">
-        <div className="mss-tv-scoreboard-hint">Retour : menu TV</div>
-        <ViewerScreen snapshot={snapshot} connectionLabel={connectionStatus === "connected" ? "temps réel" : "reconnexion…"} displayMode="tv" />
-      </div>
+      <TvInteractiveScoreboard
+        snapshot={snapshot}
+        tvState={tvState}
+        connectionStatus={connectionStatus}
+        focusIndex={focusIndex}
+        scoreBuffer={scoreBuffer}
+        onFocus={setFocusIndex}
+        onScoreKey={activateScoreKey}
+      />
     );
   }
 

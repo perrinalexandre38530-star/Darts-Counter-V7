@@ -221,6 +221,64 @@ export type OrganizationCompetitionInput = {
   entityIds: string[];
 };
 
+export type OrganizationAnnouncement = {
+  id: string;
+  organizationId: string;
+  groupId: string;
+  groupName: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  expiresAt: string;
+  createdByUserId: string;
+  authorName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationAnnouncementInput = {
+  groupId?: string | null;
+  title: string;
+  body: string;
+  pinned?: boolean;
+  expiresAt?: string | null;
+};
+
+export type OrganizationFederationIntegrationMode = "manual" | "portal" | "api";
+export type OrganizationFederationStatus = "pending" | "active" | "disabled";
+
+export type OrganizationFederationLink = {
+  id: string;
+  organizationId: string;
+  federationName: string;
+  federationCode: string;
+  countryCode: string;
+  season: string;
+  affiliationNumber: string;
+  externalClubId: string;
+  portalUrl: string;
+  integrationMode: OrganizationFederationIntegrationMode;
+  connectorKey: string;
+  status: OrganizationFederationStatus;
+  writeEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationFederationLinkInput = {
+  id?: string | null;
+  federationName: string;
+  federationCode?: string;
+  countryCode?: string;
+  season?: string;
+  affiliationNumber?: string;
+  externalClubId?: string;
+  portalUrl?: string;
+  integrationMode?: OrganizationFederationIntegrationMode;
+  connectorKey?: string;
+  status?: OrganizationFederationStatus;
+};
+
 export type OrganizationLocalEvent = {
   id: string;
   organizationId: string;
@@ -1426,3 +1484,174 @@ export async function getOrganizationRankings(
   return rpcRows(data).filter(Boolean).map(parseOrganizationRankingRow);
 }
 
+
+
+function parseOrganizationAnnouncement(row: any): OrganizationAnnouncement {
+  return {
+    id: String(row?.id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    groupId: String(row?.groupId || row?.group_id || ""),
+    groupName: String(row?.groupName || row?.group_name || "").trim(),
+    title: String(row?.title || "Annonce").trim().slice(0, 100) || "Annonce",
+    body: String(row?.body || "").trim().slice(0, 1200),
+    pinned: Boolean(row?.pinned),
+    expiresAt: String(row?.expiresAt || row?.expires_at || ""),
+    createdByUserId: String(row?.createdByUserId || row?.created_by_user_id || row?.created_by || ""),
+    authorName: String(row?.authorName || row?.author_name || "Membre MSS").trim() || "Membre MSS",
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || row?.createdAt || row?.created_at || nowIso()),
+  };
+}
+
+export async function listOrganizationAnnouncements(
+  userId: string | null | undefined,
+  organizationId: string,
+  groupId?: string | null,
+): Promise<{ announcements: OrganizationAnnouncement[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { announcements: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_announcements", {
+      p_org_id: organizationId,
+      p_group_id: groupId || null,
+    });
+    if (error) throw error;
+    return { announcements: rpcRows(data).filter(Boolean).map(parseOrganizationAnnouncement), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] announcements unavailable", error);
+    return { announcements: [], cloudAvailable: false };
+  }
+}
+
+export async function createOrganizationAnnouncement(
+  userId: string | null | undefined,
+  organizationId: string,
+  input: OrganizationAnnouncementInput,
+): Promise<OrganizationAnnouncement> {
+  if (!userId) throw new Error("Connexion requise.");
+  const title = String(input.title || "").trim();
+  const body = String(input.body || "").trim();
+  if (title.length < 2) throw new Error("Titre requis.");
+  if (!body) throw new Error("Message requis.");
+  const { data, error } = await supabase.rpc("ms_org_create_announcement", {
+    p_org_id: organizationId,
+    p_group_id: input.groupId || null,
+    p_title: title.slice(0, 100),
+    p_body: body.slice(0, 1200),
+    p_pinned: Boolean(input.pinned),
+    p_expires_at: input.expiresAt || null,
+  });
+  if (error) throw new Error(rpcMessage(error, "Publication impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Publication impossible.");
+  return parseOrganizationAnnouncement(row);
+}
+
+export async function updateOrganizationAnnouncement(
+  userId: string | null | undefined,
+  announcementId: string,
+  input: Omit<OrganizationAnnouncementInput, "groupId">,
+): Promise<OrganizationAnnouncement> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_update_announcement", {
+    p_announcement_id: announcementId,
+    p_title: String(input.title || "").trim().slice(0, 100),
+    p_body: String(input.body || "").trim().slice(0, 1200),
+    p_pinned: Boolean(input.pinned),
+    p_expires_at: input.expiresAt || null,
+  });
+  if (error) throw new Error(rpcMessage(error, "Modification impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Annonce introuvable.");
+  return parseOrganizationAnnouncement(row);
+}
+
+export async function deleteOrganizationAnnouncement(
+  userId: string | null | undefined,
+  announcementId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_delete_announcement", { p_announcement_id: announcementId });
+  if (error) throw new Error(rpcMessage(error, "Suppression impossible."));
+}
+
+function coerceFederationMode(value: unknown): OrganizationFederationIntegrationMode {
+  const raw = String(value || "manual").toLowerCase();
+  return raw === "api" ? "api" : raw === "portal" ? "portal" : "manual";
+}
+
+function coerceFederationStatus(value: unknown): OrganizationFederationStatus {
+  const raw = String(value || "pending").toLowerCase();
+  return raw === "active" ? "active" : raw === "disabled" ? "disabled" : "pending";
+}
+
+function parseOrganizationFederationLink(row: any): OrganizationFederationLink {
+  return {
+    id: String(row?.id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    federationName: String(row?.federationName || row?.federation_name || "Fédération").trim().slice(0, 100) || "Fédération",
+    federationCode: String(row?.federationCode || row?.federation_code || "").trim().slice(0, 32),
+    countryCode: String(row?.countryCode || row?.country_code || "FR").trim().toUpperCase().slice(0, 3) || "FR",
+    season: String(row?.season || "").trim().slice(0, 20),
+    affiliationNumber: String(row?.affiliationNumber || row?.affiliation_number || "").trim().slice(0, 64),
+    externalClubId: String(row?.externalClubId || row?.external_club_id || "").trim().slice(0, 80),
+    portalUrl: String(row?.portalUrl || row?.portal_url || "").trim().slice(0, 300),
+    integrationMode: coerceFederationMode(row?.integrationMode || row?.integration_mode),
+    connectorKey: String(row?.connectorKey || row?.connector_key || "").trim().slice(0, 64),
+    status: coerceFederationStatus(row?.status),
+    writeEnabled: Boolean(row?.writeEnabled ?? row?.write_enabled),
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || row?.createdAt || row?.created_at || nowIso()),
+  };
+}
+
+export async function listOrganizationFederationLinks(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ links: OrganizationFederationLink[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { links: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_federation_links", { p_org_id: organizationId });
+    if (error) throw error;
+    return { links: rpcRows(data).filter(Boolean).map(parseOrganizationFederationLink), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] federation links unavailable", error);
+    return { links: [], cloudAvailable: false };
+  }
+}
+
+export async function saveOrganizationFederationLink(
+  userId: string | null | undefined,
+  organizationId: string,
+  input: OrganizationFederationLinkInput,
+): Promise<OrganizationFederationLink> {
+  if (!userId) throw new Error("Connexion requise.");
+  const federationName = String(input.federationName || "").trim();
+  if (federationName.length < 2) throw new Error("Nom de fédération requis.");
+  const { data, error } = await supabase.rpc("ms_org_upsert_federation_link", {
+    p_org_id: organizationId,
+    p_link_id: input.id || null,
+    p_federation_name: federationName,
+    p_federation_code: String(input.federationCode || "").trim(),
+    p_country_code: String(input.countryCode || "FR").trim().toUpperCase(),
+    p_season: String(input.season || "").trim(),
+    p_affiliation_number: String(input.affiliationNumber || "").trim(),
+    p_external_club_id: String(input.externalClubId || "").trim(),
+    p_portal_url: String(input.portalUrl || "").trim(),
+    p_integration_mode: input.integrationMode || "manual",
+    p_connector_key: String(input.connectorKey || "").trim(),
+    p_status: input.status || "pending",
+  });
+  if (error) throw new Error(rpcMessage(error, "Enregistrement de l’affiliation impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Affiliation introuvable.");
+  return parseOrganizationFederationLink(row);
+}
+
+export async function deleteOrganizationFederationLink(
+  userId: string | null | undefined,
+  linkId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_delete_federation_link", { p_link_id: linkId });
+  if (error) throw new Error(rpcMessage(error, "Suppression de l’affiliation impossible."));
+}

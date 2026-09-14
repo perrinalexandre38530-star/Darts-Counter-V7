@@ -1,0 +1,149 @@
+{
+  "routes": [
+    {
+      "routePath": "/api/viewer/session/:sessionId/snapshot",
+      "mountPath": "/api/viewer/session/:sessionId",
+      "method": "GET",
+      "module": [
+        "api/viewer/session/[sessionId]/snapshot.ts:onRequestGet"
+      ]
+    },
+    {
+      "routePath": "/api/viewer/session/:sessionId/snapshot",
+      "mountPath": "/api/viewer/session/:sessionId",
+      "method": "OPTIONS",
+      "module": [
+        "api/viewer/session/[sessionId]/snapshot.ts:onRequestOptions"
+      ]
+    },
+    {
+      "routePath": "/api/viewer/session/:sessionId/snapshot",
+      "mountPath": "/api/viewer/session/:sessionId",
+      "method": "POST",
+      "module": [
+        "api/viewer/session/[sessionId]/snapshot.ts:onRequestPost"
+      ]
+    },
+    {
+      "routePath": "/api/running/routes/catalog",
+      "mountPath": "/api/running/routes",
+      "method": "GET",
+      "module": [
+        "api/running/routes/catalog.ts:onRequestGet"
+      ]
+    },
+    {
+      "routePath": "/api/running/routes/catalog",
+      "mountPath": "/api/running/routes",
+      "method": "OPTIONS",
+      "module": [
+        "api/running/routes/catalog.ts:onRequestOptions"
+      ]
+    },
+    {
+      "routePath": "/api/viewer/session/:sessionId",
+      "mountPath": "/api/viewer/session",
+      "method": "DELETE",
+      "module": [
+        "api/viewer/session/[sessionId].ts:onRequestDelete"
+      ]
+    },
+    {
+      "routePath": "/api/viewer/session/:sessionId",
+      "mountPath": "/api/viewer/session",
+      "method": "OPTIONS",
+      "module": [
+        "api/viewer/session/[sessionId].ts:onRequestOptions"
+      ]
+    },
+    {
+      "routePath": "/api/storage/backups/:path*",
+      "mountPath": "/api/storage/backups",
+      "method": "",
+      "module": [
+        "api/storage/backups/[[path]].ts:onRequest"
+      ]
+    },
+    {
+      "routePath": "/api/avatar/cartoon",
+      "mountPath": "/api/avatar",
+      "method": "POST",
+      "module": [
+        "api/avatar/cartoon.ts:onRequestPost"
+      ]
+    },
+    {
+      "routePath": "/api/avatar/checkout",
+      "mountPath": "/api/avatar",
+      "method": "POST",
+      "module": [
+        "api/avatar/checkout.ts:onRequestPost"
+      ]
+    },
+    {
+      "routePath": "/api/avatar/checkout-verify",
+      "mountPath": "/api/avatar",
+      "method": "GET",
+      "module": [
+        "api/avatar/checkout-verify.ts:onRequestGet"
+      ]
+    },
+    {
+      "routePath": "/api/avatar/debug",
+      "mountPath": "/api/avatar",
+      "method": "GET",
+      "module": [
+        "api/avatar/debug.ts:onRequestGet"
+      ]
+    },
+    {
+      "routePath": "/api/avatar/stripe-webhook",
+      "mountPath": "/api/avatar",
+      "method": "POST",
+      "module": [
+        "api/avatar/stripe-webhook.ts:onRequestPost"
+      ]
+    },
+    {
+      "routePath": "/api/avatar/test",
+      "mountPath": "/api/avatar",
+      "method": "GET",
+      "module": [
+        "api/avatar/test.ts:onRequestGet"
+      ]
+    },
+    {
+      "routePath": "/api/viewer/session",
+      "mountPath": "/api/viewer",
+      "method": "OPTIONS",
+      "module": [
+        "api/viewer/session.ts:onRequestOptions"
+      ]
+    },
+    {
+      "routePath": "/api/viewer/session",
+      "mountPath": "/api/viewer",
+      "method": "POST",
+      "module": [
+        "api/viewer/session.ts:onRequestPost"
+      ]
+    },
+    {
+      "routePath": "/api/storage/backups",
+      "mountPath": "/api/storage/backups",
+      "method": "",
+      "middleware": [
+        "api/storage/backups/_middleware.ts:onRequest"
+      ]
+    },
+    {
+      "routePath": "/api/backend/:path*",
+      "mountPath": "/api/backend",
+      "method": "",
+      "module": [
+        "api/backend/[[path]].ts:onRequest"
+      ]
+    }
+  ],
+  "baseURL": "/"
+}

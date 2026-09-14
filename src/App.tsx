@@ -1037,6 +1037,8 @@ type Tab =
   | "organization_teams"
   | "organization_competitions"
   | "organization_stats"
+  | "organization_communication"
+  | "organization_federations"
   | "organization_admin"
   | "stats"
   | "statsHub"
@@ -2694,9 +2696,11 @@ useEffect(() => {
           teams: "organization_teams",
           competitions: "organization_competitions",
           stats: "organization_stats",
+          communication: "organization_communication",
+          federations: "organization_federations",
           admin: "organization_admin",
         };
-        const viewMap: Record<string, string> = { home: "home", agenda: "calendar", members: "members", teams: "groups", competitions: "competitions", stats: "stats", admin: "admin" };
+        const viewMap: Record<string, string> = { home: "home", agenda: "calendar", members: "members", teams: "groups", competitions: "competitions", stats: "stats", communication: "communication", federations: "federations", admin: "admin" };
         const id = new URLSearchParams(queryRaw).get("id") || "";
         setRouteParams({ organizationId: id || undefined, workspaceMode: true, view: viewMap[section] || "home" });
         setTab(routeMap[section] || "organization_home");
@@ -2908,7 +2912,7 @@ useEffect(() => {
       else if (next === "account_start") window.location.hash = "#/account/start";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "organizations") window.location.hash = "#/organizations";
-      else if (["organization_home", "organization_calendar", "organization_members", "organization_teams", "organization_competitions", "organization_stats", "organization_admin"].includes(String(next))) {
+      else if (["organization_home", "organization_calendar", "organization_members", "organization_teams", "organization_competitions", "organization_stats", "organization_communication", "organization_federations", "organization_admin"].includes(String(next))) {
         const sectionMap: Record<string, string> = {
           organization_home: "home",
           organization_calendar: "agenda",
@@ -2916,6 +2920,8 @@ useEffect(() => {
           organization_teams: "teams",
           organization_competitions: "competitions",
           organization_stats: "stats",
+          organization_communication: "communication",
+          organization_federations: "federations",
           organization_admin: "admin",
         };
         const organizationId = String(params?.organizationId || activeOrganizationId || "");
@@ -5005,6 +5011,12 @@ case "babyfoot_team_edit":
         break;
       case "organization_stats":
         page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "stats" }} />;
+        break;
+      case "organization_communication":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "communication" }} />;
+        break;
+      case "organization_federations":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "federations" }} />;
         break;
       case "organization_admin":
         page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "admin" }} />;

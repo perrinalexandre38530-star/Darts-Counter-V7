@@ -48,6 +48,8 @@ type TabKey =
   | "organization_teams"
   | "organization_competitions"
   | "organization_stats"
+  | "organization_communication"
+  | "organization_federations"
   | "organization_admin"
   | "cast_host"
   | "viewer_host"

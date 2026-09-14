@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useSport } from "../../contexts/SportContext";
+import { getAvatarCacheFast } from "../avatarCache";
 import { getActiveViewerSession, subscribeViewerSessionChanged } from "./viewerSession";
 import {
   closeViewerRealtimeHost,
@@ -64,6 +65,51 @@ function profileStatsForTv(raw: any) {
   };
 }
 
+
+function safeRemoteAvatar(profile: any, index: number) {
+  const directUrl = [profile?.avatarUrl, profile?.photoUrl, profile?.imageUrl]
+    .map((value) => typeof value === "string" ? value.trim() : "")
+    .find((value) => value && !value.startsWith("data:"));
+  if (directUrl) return directUrl;
+
+  const cached = getAvatarCacheFast(String(profile?.id || ""));
+  const cachedUrl = [cached?.avatarUrl, cached?.avatarPath]
+    .map((value) => typeof value === "string" ? value.trim() : "")
+    .find((value) => value && !value.startsWith("data:"));
+  if (cachedUrl) return cachedUrl;
+
+  // Les miniatures du cache sont volontairement plafonnées et seules les
+  // premières cartes de la page TV les transportent pour éviter un état WS énorme.
+  if (index < 16) {
+    const thumb = String(cached?.avatarThumbDataUrl || profile?.avatarThumbDataUrl || "");
+    if (thumb.startsWith("data:image/") && thumb.length <= 72_000) return thumb;
+    const local = String(profile?.avatarDataUrl || "");
+    if (local.startsWith("data:image/") && local.length <= 72_000) return local;
+  }
+  return null;
+}
+
+function readTvTheme() {
+  try {
+    const root = document.documentElement;
+    const styles = getComputedStyle(root);
+    const pick = (key: string, fallback: string) => styles.getPropertyValue(key).trim() || fallback;
+    return {
+      id: String(root.dataset.dcTheme || "gold"),
+      primary: pick("--dc-accent", "#ffd56a"),
+      accent: pick("--dc-accent-soft", "#4fb4ff"),
+      bg: pick("--dc-bg", "#05070b"),
+      card: pick("--dc-card", "#101522"),
+      text: pick("--dc-text", "#f8fafc"),
+      textSoft: pick("--muted", "rgba(255,255,255,.62)"),
+      texture: pick("--dc-theme-texture", "none"),
+      textureOpacity: pick("--dc-theme-texture-opacity", "0"),
+    };
+  } catch {
+    return { id: "gold", primary: "#ffd56a", accent: "#4fb4ff", bg: "#05070b", card: "#101522", text: "#f8fafc", textSoft: "rgba(255,255,255,.62)", texture: "none", textureOpacity: "0" };
+  }
+}
+
 function buildTvState(store: any, sport: string) {
   const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
   const friends = Array.isArray(store?.friends) ? store.friends : [];
@@ -74,9 +120,11 @@ function buildTvState(store: any, sport: string) {
     type: "tv_state",
     activeSport: TV_SPORT_IDS.has(String(sport || "")) ? String(sport) : "darts",
     activeProfileId: store?.activeProfileId ?? null,
-    profiles: profiles.slice(0, 40).map((profile: any) => ({
+    profiles: profiles.slice(0, 40).map((profile: any, index: number) => ({
       id: String(profile?.id || ""),
       name: String(profile?.name || "Joueur"),
+      avatar: safeRemoteAvatar(profile, index),
+      countryCode: String(profile?.countryCode || profile?.country || ""),
       stats: profileStatsForTv(profile?.stats),
     })),
     friends: friends.slice(0, 40).map((friend: any) => ({
@@ -103,6 +151,7 @@ function buildTvState(store: any, sport: string) {
       ttsOnThird: !!settings?.ttsOnThird,
       neonTheme: !!settings?.neonTheme,
     },
+    theme: readTvTheme(),
     at: Date.now(),
   };
 }
@@ -228,6 +277,15 @@ export function useViewerInteractiveBridge({
           return;
         }
 
+        if (data.type === "x01_tv_score") {
+          try {
+            window.dispatchEvent(new CustomEvent("dc:x01v3:tv-score", {
+              detail: { score: data.score, source: "samsung-tv", at: Date.now() },
+            }));
+          } catch {}
+          return;
+        }
+
         if (data.type === "start_x01") {
           try { current.startX01?.(data.config || {}); } catch {}
           return;
@@ -291,4 +349,19 @@ export function useViewerInteractiveBridge({
     store?.saved,
     publishTvState,
   ]);
+
+  React.useEffect(() => {
+    if (!sessionId || typeof MutationObserver === "undefined") return;
+    const root = document.documentElement;
+    let timer: number | null = null;
+    const observer = new MutationObserver(() => {
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => publishTvState("theme_change"), 80);
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ["data-dc-theme"] });
+    return () => {
+      observer.disconnect();
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [publishTvState, sessionId]);
 }

@@ -73,6 +73,14 @@
       {
         "path": "Debug/projects/MULTISPORTSSCORINGTV/assets/logo-running-performance-BHtL0nwc.webp",
         "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/assets/index-BHRMaQZa.js",
+        "type": "add"
+      },
+      {
+        "path": "Debug/projects/MULTISPORTSSCORINGTV/assets/index-CRXaBiyC.css",
+        "type": "add"
       }
     ]
   }

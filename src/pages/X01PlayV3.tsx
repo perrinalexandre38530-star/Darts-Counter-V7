@@ -56,6 +56,7 @@ import { normalizeBotCountryCode, resolveProBotCountryCode } from "../lib/botCou
 import { getProBotDartsBrandLogo } from "../lib/botDartsBrands";
 import { getDartSetById } from "../lib/dartSetsStore";
 import { makeAvatarPlaceholderDataUrl } from "../lib/avatarSafe";
+import { getAvatarCacheFast } from "../lib/avatarCache";
 import OnlineCameraPanel, { type OnlineCameraSignal } from "../online/client/OnlineCameraPanel";
 import type { OnlineCameraPlayerState } from "../online/client/useOnlineCamera";
 
@@ -1466,7 +1467,20 @@ const resolveAvatar = React.useCallback(
 
     if (direct) return direct;
 
-    // 2) fallback BOT : on tente via botsMap (id du player)
+    // 2) cache avatar local/R2 : indispensable pour Cast/TV quand la config
+    // de partie ne transporte qu'un id de profil.
+    try {
+      const cached = getAvatarCacheFast(String(p.id || ""));
+      const cachedSrc =
+        cached?.avatarUrl ??
+        cached?.avatarPath ??
+        cached?.avatarThumbDataUrl ??
+        cached?.avatarDataUrl ??
+        null;
+      if (cachedSrc) return cachedSrc;
+    } catch {}
+
+    // 3) fallback BOT : on tente via botsMap (id du player)
     if (p.isBot) {
       const b = botsMap[String(p.id)];
       return (
@@ -4182,6 +4196,25 @@ const emitExternalPayload = React.useCallback((raw: any, source = "device") => {
   dispatchExternalVisitEvent,
 ]);
 
+// Score saisi depuis MULTISPORTS SCORING TV. On réutilise exactement le
+// convertisseur de score de volée déjà utilisé par les bridges externes.
+React.useEffect(() => {
+  if (typeof window === "undefined") return;
+  const onTvScore = (event: any) => {
+    const detail = event?.detail || {};
+    const raw = String(detail?.score ?? "").toUpperCase();
+    if (raw === "BUST") {
+      emitExternalPayload({ bust: true }, "samsung-tv");
+      return;
+    }
+    const score = Number(detail?.score);
+    if (!Number.isFinite(score) || score < 0 || score > 180) return;
+    emitExternalPayload({ score }, "samsung-tv");
+  };
+  window.addEventListener("dc:x01v3:tv-score", onTvScore as any);
+  return () => window.removeEventListener("dc:x01v3:tv-score", onTvScore as any);
+}, [emitExternalPayload]);
+
 React.useEffect(() => {
   if (scoringSource !== "external") {
     setExternalDeviceState({ status: "idle", label: "Keypad manuel" });
@@ -4357,14 +4390,19 @@ React.useEffect(() => {
 // =====================================================
 React.useEffect(() => {
   if (typeof window === "undefined") return;
-  if (scoringSource !== "external") return;
 
-  // Si c'est un tour BOT, ou qu'on rejoue un autosave, on ignore les events externes
+  // Les appareils externes classiques restent réservés au mode external,
+  // mais la Samsung TV est autorisée aussi en mode keypad manuel : la TV
+  // devient alors un deuxième clavier de score sans casser la saisie téléphone.
   if (isBotTurn) return;
+
+  const canUseRemoteInput = (detail: any) =>
+    scoringSource === "external" || String(detail?.source || "") === "samsung-tv";
 
   const onDart = (ev: any) => {
     try {
       const detail = ev?.detail;
+      if (!canUseRemoteInput(detail)) return;
       const dart = normalizeExternalDart(detail);
       if (!dart) return;
 
@@ -4409,6 +4447,7 @@ React.useEffect(() => {
   const onVisit = (ev: any) => {
     try {
       const detail = ev?.detail;
+      if (!canUseRemoteInput(detail)) return;
       const darts = normalizeExternalVisit(detail);
       if (!darts.length) return;
 

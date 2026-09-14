@@ -33,7 +33,7 @@ expect("Écran Viewer mobile crée la session", castHost.includes("createViewerS
 expect("Création Viewer force la publication automatique", castHost.includes("setViewerAutoPublish(true)"));
 expect("Réglages ouvrent directement l'onglet Viewer", settings.includes('go?.("cast_host", { screenTab: "viewer" })'));
 expect("Samsung TV attend un code de 6 caractères", samsung.includes("const CODE_LENGTH = 6"));
-expect("Samsung TV affiche ViewerScreen / hub interactif", samsung.includes("<ViewerScreen") && samsung.includes("VIEWER_TV_MENU"));
+expect("Samsung TV affiche un scoreboard TV / hub interactif", samsung.includes("TvInteractiveScoreboard") && samsung.includes("VIEWER_TV_MENU"));
 expect("Worker crée des codes Viewer de 6 caractères", worker.includes("generateViewerCode(6)"));
 expect("Worker possède POST /viewer/session", worker.includes('url.pathname === "/viewer/session"') && worker.includes("handleViewerCreate"));
 expect("Worker possède POST/GET snapshot", worker.includes("handleViewerPostSnapshot") && worker.includes("handleViewerGetSnapshot"));

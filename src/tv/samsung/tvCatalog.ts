@@ -11,6 +11,17 @@ import logoMolkky from "../../assets/games/logo-molkky.png";
 import logoDiceGame from "../../assets/games/logo-dicegame.webp";
 import logoFoot from "../../assets/games/logo-foot.png";
 
+import artDarts from "../../assets/agenda/agenda-darts.webp";
+import artPetanque from "../../assets/agenda/agenda-petanque.webp";
+import artPingPong from "../../assets/agenda/agenda-pingpong.webp";
+import artBabyFoot from "../../assets/agenda/agenda-babyfoot.webp";
+import artRunning from "../../assets/agenda/agenda-running.webp";
+import artFitPerf from "../../assets/agenda/agenda-fit.webp";
+import artEsports from "../../assets/agenda/agenda-esports.webp";
+import artMolkky from "../../assets/agenda/agenda-molkky.webp";
+import artDiceGame from "../../assets/agenda/agenda-dicegame.webp";
+import artFoot from "../../assets/agenda/agenda-foot.webp";
+
 export type TvSportId =
   | "darts"
   | "petanque"
@@ -28,6 +39,7 @@ export type TvSportDef = {
   label: string;
   subtitle: string;
   logo: string;
+  art: string;
   accent: string;
 };
 
@@ -41,16 +53,16 @@ export type TvLaunchAction = {
 };
 
 export const TV_SPORTS: readonly TvSportDef[] = [
-  { id: "darts", label: "DARTS", subtitle: "Fléchettes", logo: logoDarts, accent: "#EEFF31" },
-  { id: "petanque", label: "PÉTANQUE", subtitle: "Mènes & équipes", logo: logoPetanque, accent: "#D79A2B" },
-  { id: "pingpong", label: "PING-PONG", subtitle: "Simple, double, training", logo: logoPingPong, accent: "#FF3FA4" },
-  { id: "babyfoot", label: "BABY-FOOT", subtitle: "Matchs & défis", logo: logoBabyFoot, accent: "#248BFF" },
-  { id: "molkky", label: "MÖLKKY", subtitle: "Classique & variantes", logo: logoMolkky, accent: "#F2C98F" },
-  { id: "dicegame", label: "DICE GAME", subtitle: "Jeux de dés", logo: logoDiceGame, accent: "#9C6BFF" },
-  { id: "foot", label: "FOOT", subtitle: "Formats football", logo: logoFoot, accent: "#72FF24" },
-  { id: "running", label: "RUNNING PERF", subtitle: "Sorties & plans", logo: logoRunning, accent: "#FF7A00" },
-  { id: "fit", label: "FIT PERF", subtitle: "Séances & programmes", logo: logoFitPerf, accent: "#F4B942" },
-  { id: "esports", label: "E-SPORTS", subtitle: "Hub gaming", logo: logoEsports, accent: "#31D6FF" },
+  { id: "darts", label: "DARTS", subtitle: "Fléchettes", logo: logoDarts, art: artDarts, accent: "#EEFF31" },
+  { id: "petanque", label: "PÉTANQUE", subtitle: "Mènes & équipes", logo: logoPetanque, art: artPetanque, accent: "#D79A2B" },
+  { id: "pingpong", label: "PING-PONG", subtitle: "Simple, double, training", logo: logoPingPong, art: artPingPong, accent: "#FF3FA4" },
+  { id: "babyfoot", label: "BABY-FOOT", subtitle: "Matchs & défis", logo: logoBabyFoot, art: artBabyFoot, accent: "#248BFF" },
+  { id: "molkky", label: "MÖLKKY", subtitle: "Classique & variantes", logo: logoMolkky, art: artMolkky, accent: "#F2C98F" },
+  { id: "dicegame", label: "DICE GAME", subtitle: "Jeux de dés", logo: logoDiceGame, art: artDiceGame, accent: "#9C6BFF" },
+  { id: "foot", label: "FOOT", subtitle: "Formats football", logo: logoFoot, art: artFoot, accent: "#72FF24" },
+  { id: "running", label: "RUNNING PERF", subtitle: "Sorties & plans", logo: logoRunning, art: artRunning, accent: "#FF7A00" },
+  { id: "fit", label: "FIT PERF", subtitle: "Séances & programmes", logo: logoFitPerf, art: artFitPerf, accent: "#F4B942" },
+  { id: "esports", label: "E-SPORTS", subtitle: "Hub gaming", logo: logoEsports, art: artEsports, accent: "#31D6FF" },
 ] as const;
 
 const BY_ID = new Map<string, TvSportDef>(TV_SPORTS.map((sport) => [sport.id, sport]));
