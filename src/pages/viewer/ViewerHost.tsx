@@ -8,6 +8,7 @@ import { publishViewerSnapshot } from "../../lib/viewer/viewerClient";
 import { clearActiveViewerSession, getActiveViewerSession, setActiveViewerSession, subscribeViewerSessionChanged } from "../../lib/viewer/viewerSession";
 import { clearViewerDiagLog, getViewerDiagLog } from "../../lib/viewer/viewerPublisher";
 import type { ViewerSessionInfo } from "../../lib/viewer/types";
+import { setViewerAutoPublish } from "../../lib/viewer/viewerSettings";
 
 type Props = { go: (tab: any, params?: any) => void };
 
@@ -37,7 +38,7 @@ export default function ViewerHost({ go }: Props) {
   const [session, setSession] = React.useState<ViewerSessionInfo | null>(() => getActiveViewerSession());
   const [qr, setQr] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [message, setMessage] = React.useState("Crée une session viewer, puis ouvre le lien sur la tablette.");
+  const [message, setMessage] = React.useState("Crée une session sur le téléphone, puis saisis le code sur la Samsung TV ou ouvre le QR code sur une tablette.");
   const [diag, setDiag] = React.useState<any[]>(() => getViewerDiagLog());
 
   React.useEffect(() => subscribeViewerSessionChanged(() => setSession(getActiveViewerSession())), []);
@@ -62,8 +63,9 @@ export default function ViewerHost({ go }: Props) {
 
   async function startSession() {
     setBusy(true);
-    setMessage("Création de la session viewer…");
+    setMessage("Création de la session Viewer Samsung TV / tablette…");
     try {
+      setViewerAutoPublish(true);
       const res = await createViewerSession();
       const now = Date.now();
       const info: ViewerSessionInfo = {
@@ -79,7 +81,7 @@ export default function ViewerHost({ go }: Props) {
       try {
         await publishViewerSnapshot(info.sessionId, buildViewerWaitingSnapshot(info.sessionId));
       } catch {}
-      setMessage("Session viewer active. Lance une partie : les snapshots Cast seront envoyés à la tablette.");
+      setMessage(`Session Viewer active. Saisis ${info.code || info.sessionId} sur la Samsung TV, puis lance la partie sur le téléphone.`);
     } catch (e: any) {
       setMessage(`Erreur viewer : ${String(e?.message || e || "création impossible")}`);
     } finally {
@@ -109,7 +111,7 @@ export default function ViewerHost({ go }: Props) {
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 16px 110px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18 }}>
           <button onClick={() => go("cast_host")} style={button(false)}>← Cast</button>
-          <div style={{ fontSize: 28, fontWeight: 1100, color: "#ffd56a" }}>Viewer tablette</div>
+          <div style={{ fontSize: 28, fontWeight: 1100, color: "#ffd56a" }}>Viewer TV / tablette</div>
           <button onClick={() => go("viewer_join")} style={button(false)}>Rejoindre</button>
         </div>
 
@@ -124,14 +126,14 @@ export default function ViewerHost({ go }: Props) {
               {session?.expiresAt ? <div style={{ borderRadius: 999, padding: "8px 12px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.13)", fontWeight: 900 }}>Expire automatiquement</div> : null}
             </div>
 
-            <h2 style={{ margin: "0 0 8px", fontSize: 22 }}>Écran secondaire sans Chromecast</h2>
+            <h2 style={{ margin: "0 0 8px", fontSize: 22 }}>Samsung TV / écran secondaire sans Chromecast</h2>
             <p style={{ opacity: 0.84, lineHeight: 1.48, marginTop: 0 }}>
-              La tablette ouvre un lien viewer et reçoit uniquement un mini snapshot live : joueurs, scores, joueur actif, leg/set et résumé. Ce flux est séparé de la sauvegarde NAS complète.
+              La Samsung TV rejoint la session avec le code à 6 caractères. Une tablette peut aussi utiliser le lien ou le QR code. Le Viewer reçoit uniquement le snapshot live : joueurs, scores, joueur actif, leg/set et résumé.
             </p>
 
             {session ? (
               <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 13, opacity: 0.76, fontWeight: 900 }}>Code tablette</div>
+                <div style={{ fontSize: 13, opacity: 0.76, fontWeight: 900 }}>Code Samsung TV / Viewer</div>
                 <div style={{ fontSize: 42, letterSpacing: 3, fontWeight: 1200, color: "#ffd56a" }}>{session.code}</div>
                 <div style={{ overflowWrap: "anywhere", opacity: 0.78, fontSize: 13 }}>{session.joinUrl}</div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
@@ -150,7 +152,7 @@ export default function ViewerHost({ go }: Props) {
           </section>
 
           <aside style={card()}>
-            <div style={{ fontSize: 14, opacity: 0.78, fontWeight: 900, marginBottom: 10 }}>QR code tablette</div>
+            <div style={{ fontSize: 14, opacity: 0.78, fontWeight: 900, marginBottom: 10 }}>QR code tablette (optionnel)</div>
             <div style={{ borderRadius: 22, padding: 12, background: "#fff", minHeight: 278, display: "grid", placeItems: "center" }}>
               {qr ? <img src={qr} alt="QR code viewer" style={{ width: 260, height: 260 }} /> : <div style={{ color: "#111", fontWeight: 900, textAlign: "center" }}>Crée une session pour générer le QR code</div>}
             </div>

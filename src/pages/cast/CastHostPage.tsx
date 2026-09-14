@@ -65,7 +65,7 @@ function ScreenIcon({ name, size = 24 }: { name: "cast" | "viewer" | "settings" 
 
 function ScreensAwenaDot({ activeTab, theme }: { activeTab: ScreenTab; theme: any }) {
   const awena = useAwenaOptional();
-  const label = activeTab === "cast" ? "Cast TV" : activeTab === "viewer" ? "Viewer tablette" : "Réglages Écrans";
+  const label = activeTab === "cast" ? "Cast TV" : activeTab === "viewer" ? "Viewer TV / tablette" : "Réglages Écrans";
   const open = async () => {
     if (!awena) return;
     awena.setRuntime({ route: "cast_host", mode: "settings-screens", phase: "menu", inGame: false, screenLabel: label, extra: { settingsSection: activeTab } });
@@ -258,7 +258,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
   const { theme } = useTheme() as any;
   const { lang } = useLang() as any;
   const L = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
-  const [activeTab, setActiveTab] = React.useState<ScreenTab>(() => initialTab || consumeStoredInitialTab() || "cast");
+  const [activeTab, setActiveTab] = React.useState<ScreenTab>(() => initialTab || consumeStoredInitialTab() || "viewer");
 
   const [castState, setCastState] = React.useState(getGoogleCastState());
   const [appId, setAppIdState] = React.useState(getGoogleCastAppId());
@@ -268,7 +268,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
 
   const [viewer, setViewer] = React.useState<ViewerSessionInfo | null>(() => getActiveViewerSession());
   const [viewerDiag, setViewerDiag] = React.useState<any[]>(() => getViewerDiagLog());
-  const [viewerMessage, setViewerMessage] = React.useState("Crée une session viewer avant la partie, puis ouvre le lien ou le QR code sur la tablette.");
+  const [viewerMessage, setViewerMessage] = React.useState("Crée une session Viewer sur le téléphone, puis saisis le code à 6 caractères sur la Samsung TV (ou ouvre le QR code sur une tablette).");
   const [viewerBusy, setViewerBusy] = React.useState(false);
   const [qr, setQr] = React.useState("");
 
@@ -389,8 +389,12 @@ export default function CastHostPage({ go, initialTab }: Props) {
 
   async function startViewer() {
     setViewerBusy(true);
-    setViewerMessage("Création de la session viewer…");
+    setViewerMessage("Création de la session Viewer Samsung TV / tablette…");
     try {
+      // Pour le flux téléphone -> Worker -> Samsung TV, la publication live
+      // doit être active. On l'active automatiquement au démarrage d'une session.
+      setViewerAutoPublish(true);
+      setAutoPublishState(true);
       const res = await createViewerSession();
       const now = Date.now();
       const info: ViewerSessionInfo = {
@@ -406,7 +410,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
       try {
         await publishViewerSnapshot(info.sessionId, buildViewerWaitingSnapshot(info.sessionId));
       } catch {}
-      setViewerMessage("Session viewer active. Ouvre le lien ou le QR code sur la tablette, puis lance ta partie.");
+      setViewerMessage(`Session Viewer active. Sur la Samsung TV, saisis le code ${info.code || info.sessionId}, puis lance la partie sur ce téléphone.`);
     } catch (e: any) {
       const message = String(e?.message || e || "création impossible");
       setViewerMessage(
@@ -442,6 +446,17 @@ export default function CastHostPage({ go, initialTab }: Props) {
     }
   }
 
+  async function copyViewerCode() {
+    const code = String(viewer?.code || viewer?.sessionId || "").trim().toUpperCase();
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setViewerMessage(`Code Samsung TV copié : ${code}`);
+    } catch {
+      setViewerMessage(`Code Samsung TV : ${code}`);
+    }
+  }
+
   function clearViewerDiag() {
     clearViewerDiagLog();
     setViewerDiag([]);
@@ -457,7 +472,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
 
   const tabMeta: Array<{ key: ScreenTab; title: string; subtitle: string; icon: "cast" | "viewer" | "settings" }> = [
     { key: "cast", title: "CAST", subtitle: "TV", icon: "cast" },
-    { key: "viewer", title: "VIEWER", subtitle: L("Tablette", "Tablet", "Tableta"), icon: "viewer" },
+    { key: "viewer", title: "VIEWER", subtitle: L("TV / tablette", "TV / tablet", "TV / tableta"), icon: "viewer" },
     { key: "settings", title: L("RÉGLAGES", "SETTINGS", "AJUSTES"), subtitle: L("Options", "Options", "Opciones"), icon: "settings" },
   ];
 
@@ -520,7 +535,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
           <BackDot onClick={handleBack} size={40} color={theme.primary} glow={`${theme.primary}55`} title={L("Retour", "Back", "Volver")} />
           <div style={{ textAlign: "center", minWidth: 0 }}>
             <div style={{ color: theme.primary, fontSize: "clamp(22px,6.5vw,34px)", fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}44` }}>{L("ÉCRANS", "SCREENS", "PANTALLAS")}</div>
-            <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 11 }}>{L("Cast TV & Viewer tablette", "Cast TV & tablet Viewer", "Cast TV y Viewer para tableta")}</div>
+            <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 11 }}>{L("Cast TV & Viewer Samsung / tablette", "Cast TV & Samsung / tablet Viewer", "Cast TV y Viewer Samsung / tableta")}</div>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}><ScreensAwenaDot activeTab={activeTab} theme={theme} /></div>
         </header>
@@ -576,17 +591,36 @@ export default function CastHostPage({ go, initialTab }: Props) {
         {activeTab === "viewer" ? (
           <div style={{ display: "grid", gap: 12 }}>
             <section style={themedCard}>
-              <Head icon="viewer" title={L("VIEWER TABLETTE", "TABLET VIEWER", "VIEWER TABLETA")} subtitle={L("Un second écran synchronisé via lien ou QR code.", "A synchronized second screen via link or QR code.", "Una segunda pantalla sincronizada por enlace o QR.")} />
-              <div style={{ borderRadius: 14, border: `1px solid ${viewer?.sessionId ? `${theme.success}55` : theme.borderSoft}`, background: viewer?.sessionId ? `${theme.success}0d` : "rgba(255,255,255,.025)", padding: 10 }}><div style={{ color: viewer?.sessionId ? theme.success : theme.textSoft, fontWeight: 950, fontSize: 11 }}>{viewer?.sessionId ? L("SESSION ACTIVE", "ACTIVE SESSION", "SESIÓN ACTIVA") : L("AUCUNE SESSION", "NO SESSION", "SIN SESIÓN")}</div>{viewer?.sessionId ? <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.5 }}>{viewer.code || viewer.sessionId}</div> : null}</div>
+              <Head icon="viewer" title={L("VIEWER SAMSUNG TV / TABLETTE", "SAMSUNG TV / TABLET VIEWER", "VIEWER SAMSUNG TV / TABLETA")} subtitle={L("Samsung TV par code à 6 caractères, tablette par lien ou QR code.", "Samsung TV with a 6-character code, tablet via link or QR code.", "Samsung TV con código de 6 caracteres, tableta por enlace o QR.")} />
+              <div style={{ borderRadius: 14, border: `1px solid ${viewer?.sessionId ? `${theme.success}55` : theme.borderSoft}`, background: viewer?.sessionId ? `${theme.success}0d` : "rgba(255,255,255,.025)", padding: 12 }}>
+                <div style={{ color: viewer?.sessionId ? theme.success : theme.textSoft, fontWeight: 950, fontSize: 11 }}>
+                  {viewer?.sessionId ? L("SESSION ACTIVE", "ACTIVE SESSION", "SESIÓN ACTIVA") : L("AUCUNE SESSION", "NO SESSION", "SIN SESIÓN")}
+                </div>
+                {viewer?.sessionId ? (
+                  <>
+                    <div style={{ marginTop: 8, color: theme.textSoft, fontSize: 9.5, fontWeight: 900 }}>
+                      {L("CODE SAMSUNG TV", "SAMSUNG TV CODE", "CÓDIGO SAMSUNG TV")}
+                    </div>
+                    <div style={{ marginTop: 2, color: theme.primary, fontSize: 30, lineHeight: 1, letterSpacing: 4, fontWeight: 1200 }}>
+                      {viewer.code || viewer.sessionId}
+                    </div>
+                    <div style={{ marginTop: 7, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>
+                      {L("Ouvre MULTISPORTS SCORING sur la TV Samsung et saisis ce code. Ensuite lance la partie sur ce téléphone.", "Open MULTISPORTS SCORING on the Samsung TV and enter this code. Then start the game on this phone.", "Abre MULTISPORTS SCORING en la TV Samsung e introduce este código. Después inicia la partida en este teléfono.")}
+                    </div>
+                  </>
+                ) : null}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 9 }}>
                 <button disabled={viewerBusy} onClick={viewer?.sessionId ? stopViewer : startViewer} style={actionBtn(true)}>{viewer?.sessionId ? <ScreenIcon name="stop" size={18}/> : <ScreenIcon name="play" size={18}/>} {viewer?.sessionId ? L("Arrêter", "Stop", "Detener") : viewerBusy ? L("Création…", "Creating…", "Creando…") : L("Créer session", "Create session", "Crear sesión")}</button>
-                <button disabled={!viewer?.sessionId} onClick={() => viewer?.sessionId && go("viewer_display", { sessionId: viewer.sessionId })} style={{ ...actionBtn(false), opacity: viewer?.sessionId ? 1 : .45 }}><ScreenIcon name="viewer" size={18}/>{L("Ouvrir", "Open", "Abrir")}</button>
+                <button disabled={!viewer?.sessionId} onClick={copyViewerCode} style={{ ...actionBtn(false), opacity: viewer?.sessionId ? 1 : .45 }}><ScreenIcon name="link" size={18}/>{L("Copier code TV", "Copy TV code", "Copiar código TV")}</button>
+                <button disabled={!viewer?.sessionId} onClick={() => viewer?.sessionId && go("viewer_display", { sessionId: viewer.sessionId })} style={{ ...actionBtn(false), opacity: viewer?.sessionId ? 1 : .45 }}><ScreenIcon name="viewer" size={18}/>{L("Aperçu", "Preview", "Vista previa")}</button>
+                <button disabled={!viewerLink} onClick={copyViewerLink} style={{ ...actionBtn(false), opacity: viewerLink ? 1 : .45 }}><ScreenIcon name="qr" size={18}/>{L("Lien tablette", "Tablet link", "Enlace tableta")}</button>
               </div>
               <div style={{ marginTop: 10, color: viewerMessage.startsWith("Erreur") ? theme.danger : theme.textSoft, fontSize: 10.5, lineHeight: 1.4 }}>{viewerMessage}</div>
             </section>
 
             <section style={themedCard}>
-              <Head icon="qr" title="QR CODE" subtitle={L("Scanne depuis la tablette pour ouvrir directement le Viewer.", "Scan from the tablet to open the Viewer directly.", "Escanea desde la tableta para abrir el Viewer directamente.")} />
+              <Head icon="qr" title="QR CODE" subtitle={L("Option tablette : scanne pour ouvrir directement le Viewer. Sur Samsung TV, utilise le code ci-dessus.", "Tablet option: scan to open the Viewer directly. On Samsung TV, use the code above.", "Opción tableta: escanea para abrir el Viewer. En Samsung TV, usa el código de arriba.")} />
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 132px", gap: 10, alignItems: "center" }} className="screens-viewer-grid">
                 <div>
                   <button disabled={!viewerLink} onClick={copyViewerLink} style={{ ...actionBtn(false), width: "100%", opacity: viewerLink ? 1 : .45 }}><ScreenIcon name="link" size={18}/>{L("Copier le lien", "Copy link", "Copiar enlace")}</button>
@@ -616,7 +650,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 9 }}><button onClick={saveViewerSettings} style={actionBtn(true)}><ScreenIcon name="save" size={18}/>{L("Enregistrer", "Save", "Guardar")}</button><button onClick={() => { setPollMsState(700); setAutoPublishState(true); setViewerPollMs(700); setViewerAutoPublish(true); }} style={actionBtn(false)}><ScreenIcon name="reset" size={18}/>{L("Défaut", "Default", "Predeterminado")}</button></div>
             </section>
 
-            <section style={themedCard}><details><summary style={{ color: theme.primary, fontWeight: 950, fontSize: 11, cursor: "pointer" }}>{L("Comment l’utiliser ?", "How to use it?", "¿Cómo usarlo?")}</summary><div style={{ marginTop: 8, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.5 }}>1. {L("Lance Cast ou Viewer avant la partie.", "Start Cast or Viewer before the game.", "Inicia Cast o Viewer antes de la partida.")}<br/>2. {L("Reviens à la configuration du jeu.", "Return to game setup.", "Vuelve a la configuración del juego.")}<br/>3. {L("L’affichage externe se synchronise pendant la partie.", "The external display syncs during the game.", "La pantalla externa se sincroniza durante la partida.")}</div></details></section>
+            <section style={themedCard}><details><summary style={{ color: theme.primary, fontWeight: 950, fontSize: 11, cursor: "pointer" }}>{L("Comment l’utiliser ?", "How to use it?", "¿Cómo usarlo?")}</summary><div style={{ marginTop: 8, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.5 }}>1. {L("Dans VIEWER, crée une session sur le téléphone.", "In VIEWER, create a session on the phone.", "En VIEWER, crea una sesión en el teléfono.")}<br/>2. {L("Sur la Samsung TV, saisis le code à 6 caractères affiché.", "On the Samsung TV, enter the displayed 6-character code.", "En la Samsung TV, introduce el código de 6 caracteres mostrado.")}<br/>3. {L("Lance ensuite la partie sur le téléphone : les scores sont publiés automatiquement.", "Then start the game on the phone: scores are published automatically.", "Después inicia la partida en el teléfono: los marcadores se publican automáticamente.")}</div></details></section>
           </div>
         ) : null}
       </div>

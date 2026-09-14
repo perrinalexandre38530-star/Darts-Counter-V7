@@ -163,7 +163,8 @@
     "fit:awena:pilot:video:queue": "node ./tools/build-fit-awena-video-jobs-from-reviewed-steps.mjs",
     "test:fit-awena-pilot": "node ./tools/test-fit-awena-pilot-v118.mjs",
     "deploy:content-packs-worker": "wrangler deploy --config wrangler.content-packs.toml",
-    "content-packs:verify": "node ./tools/verify-content-pack-r2.mjs"
+    "content-packs:verify": "node ./tools/verify-content-pack-r2.mjs",
+    "test:viewer:samsung": "node ./tools/test-samsung-viewer-bridge-v107.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

@@ -151,6 +151,16 @@ function cleanCode(input: string) {
 function buildJoinUrl(sessionId: string) {
   const sid = cleanCode(sessionId);
   if (typeof window === "undefined") return `#/viewer/${sid}`;
+
+  // Android/Capacitor/Tizen s'exécutent sur une origine locale (souvent
+  // https://localhost). Un QR code construit sur cette origine est inutilisable
+  // depuis une tablette ou un second appareil. En runtime packagé, on publie
+  // donc le lien Viewer sur l'origine Pages publique.
+  if (isLocalPackagedRuntime()) {
+    const publicOrigin = normalizeBase(PUBLIC_PAGES_ORIGIN);
+    return `${publicOrigin}/#/viewer/${sid}`;
+  }
+
   return `${window.location.origin}${window.location.pathname}#/viewer/${sid}`;
 }
 

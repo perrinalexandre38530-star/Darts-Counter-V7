@@ -5865,9 +5865,9 @@ export function Settings({ go, params }: Props) {
             />
             <SettingsMenuCard
               title={t("settings.menu.castViewer", "Cast / Viewer")}
-              subtitle={L("Cast TV, Viewer tablette et réglages d’écran dans une interface simplifiée.", "Cast TV, tablet Viewer and screen settings in a simplified interface.", "Cast TV, Viewer para tableta y ajustes de pantalla en una interfaz simplificada.")}
+              subtitle={L("Samsung TV : crée un code Viewer à 6 caractères sur le téléphone, puis saisis-le sur la TV. Google Cast reste disponible séparément.", "Samsung TV: create a 6-character Viewer code on the phone, then enter it on the TV. Google Cast remains available separately.", "Samsung TV: crea un código Viewer de 6 caracteres en el teléfono y escríbelo en la TV. Google Cast sigue disponible por separado.")}
               theme={theme}
-              onClick={() => go?.("cast_host", { screenTab: "settings" })}
+              onClick={() => go?.("cast_host", { screenTab: "viewer" })}
             />
             <SettingsMenuCard
               title={L("PUBLICITÉ", "ADVERTISING", "PUBLICIDAD")}

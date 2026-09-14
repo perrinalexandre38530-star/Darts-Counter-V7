@@ -1,0 +1,14 @@
+{
+  "base": "Darts-Counter-V7(107).zip",
+  "purpose": "Align phone Viewer session creation with Samsung TV 6-character code flow.",
+  "changed_files": [
+    "docs/SAMSUNG-VIEWER-V107-AUDIT.md",
+    "package.json",
+    "src/lib/viewer/viewerClient.ts",
+    "src/pages/Settings.tsx",
+    "src/pages/cast/CastHostPage.tsx",
+    "src/pages/viewer/ViewerHost.tsx",
+    "tools/test-samsung-viewer-bridge-v107.mjs"
+  ],
+  "flow": "Phone -> dc-online-v3 -> DC_SYNC -> Samsung TV"
+}
