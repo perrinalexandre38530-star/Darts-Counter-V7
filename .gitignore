@@ -51,3 +51,10 @@ var/fit-awena/
 
 # Temporary Cloudflare content-pack publish build (never commit)
 .mss-content-packs-build/
+
+# Samsung TV / Tizen generated build outputs
+MULTISPORTSSCORINGTV/assets/
+MULTISPORTSSCORINGTV/Debug/
+MULTISPORTSSCORINGTV/Release/
+MULTISPORTSSCORINGTV/.tizen-rds
+MULTISPORTSSCORINGTV/index.html

@@ -16,12 +16,14 @@ import {
   type TvLaunchAction,
   type TvSportId,
 } from "./tvCatalog";
+import tickerGolfOfficial from "../../assets/tickers/ticker_golf.png";
+import tickerDartsRacerOfficial from "../../assets/tickers/ticker_darts_racer.png";
 
 const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_FULL_APP_BUILD_20260914_04";
+const TV_BUILD_MARKER = "MSS_TV_FULL_APP_BUILD_20260914_05";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -321,6 +323,7 @@ type TvScreen =
   | "agenda"
   | "settings"
   | "setup"
+  | "setup_picker"
   | "scoreboard";
 
 const EMPTY_TV_STATE: TvState = {
@@ -433,6 +436,11 @@ function tvSportHeroImage(sportId: TvSportId) {
 }
 
 function tvActionImage(sportId: TvSportId, action: TvLaunchAction) {
+  if (sportId === "darts" && action.id === "golf") return tickerGolfOfficial;
+  if (sportId === "darts" && action.id === "mario_kart") return tickerDartsRacerOfficial;
+  if (sportId === "darts" && action.id === "killer_progressive") {
+    return firstTicker(["killer"]) || tvSportById(sportId).logo;
+  }
   const candidates = [
     ...(action.tickerKeys || []),
     `${sportId}_${action.id}`,
@@ -502,14 +510,13 @@ function TvHub({
   const live = !!snapshot && Array.isArray(snapshot.players) && snapshot.players.length > 0 && snapshot.phase !== "lobby";
   const active = snapshot?.players?.find((p) => p.isActive) || snapshot?.players?.[0] || null;
   const activeSport = tvSportById(tvState.activeSport);
-  const activeProfile = tvState.profiles.find((profile) => profile.id === tvState.activeProfileId) || tvState.profiles[0] || null;
   return (
     <main className="mss-tv-hub" data-build={TV_BUILD_MARKER}>
       <header className="mss-tv-hub-header">
         <div>
           <div className="mss-tv-hub-title">MULTISPORTS SCORING</div>
           <div className="mss-tv-hub-subtitle">TV COMPLÈTE · SESSION {sessionId}</div>
-          <div className="mss-tv-build-marker">TV FULL PREMIUM V4 · 2026.09.14-04</div>
+          <div className="mss-tv-build-marker">TV FULL PREMIUM V5 · 2026.09.14-05</div>
         </div>
         <div className={`mss-tv-link-state is-${connectionStatus}`}>
           <span className="mss-tv-link-dot" />
@@ -550,23 +557,16 @@ function TvHub({
           const subtitle = isScoreboard
             ? (live ? "Ouvrir le scoreboard live" : "Choisir un sport et démarrer")
             : item.subtitle;
-          const cardArt = item.id === "games" || isScoreboard
-            ? activeSport.art
-            : (item.id === "profiles" || item.id === "stats") ? (activeProfile?.avatar || activeSport.art) : activeSport.art;
           return (
             <button
               key={item.id}
               type="button"
               tabIndex={-1}
-              className={`mss-tv-menu-card${focused ? " is-focused" : ""}`}
+              className={`mss-tv-menu-card mss-tv-menu-card--clean${focused ? " is-focused" : ""}`}
               onMouseEnter={() => onFocus(index)}
               onClick={() => onActivate(index)}
             >
-              {cardArt ? <img className="mss-tv-menu-art" src={cardArt} alt="" draggable={false} /> : null}
-              {item.id === "games" || item.kind === "scoreboard" ? <TvWatermark src={activeSport.logo} strong={item.id === "games"} /> : null}
-              <span className="mss-tv-menu-index">{String(index + 1).padStart(2, "0")}</span>
               <span className="mss-tv-menu-label">{label}</span>
-              <span className="mss-tv-menu-subtitle">{subtitle}</span>
               {isScoreboard && live ? <span className="mss-tv-live-pill">LIVE</span> : null}
             </button>
           );
@@ -1050,6 +1050,107 @@ type GuidedSetupRow = {
   run: () => void;
 };
 
+type GuidedPickerOption = {
+  id: string;
+  label: string;
+  value: any;
+  profile?: TvProfile;
+};
+
+function guidedPickerOptions(rowId: string, state: GuidedSetupState, action: TvLaunchAction, profiles: TvProfile[]): GuidedPickerOption[] {
+  const minPlayers = Math.max(1, Number(action.minPlayers || 1));
+  const maxByAction = Math.max(minPlayers, Number(action.maxPlayers || 8));
+  const maxPlayers = profiles.length ? Math.min(maxByAction, profiles.length) : minPlayers;
+  if (rowId === "player-count") {
+    return Array.from({ length: Math.max(1, maxPlayers - minPlayers + 1) }, (_, index) => {
+      const value = minPlayers + index;
+      return { id: `count-${value}`, label: `${value} JOUEUR${value > 1 ? "S" : ""}`, value };
+    });
+  }
+  if (rowId.startsWith("player-")) {
+    return profiles.map((profile, index) => ({ id: profile.id || `profile-${index}`, label: profile.name || `Joueur ${index + 1}`, value: index, profile }));
+  }
+  if (rowId === "score") return [301, 501, 701, 901].map((value) => ({ id: String(value), label: String(value), value }));
+  if (rowId === "in") return [
+    { id: "single", label: "SINGLE IN", value: "single" },
+    { id: "double", label: "DOUBLE IN", value: "double" },
+    { id: "master", label: "MASTER IN", value: "master" },
+  ];
+  if (rowId === "out") return [
+    { id: "single", label: "SINGLE OUT", value: "single" },
+    { id: "double", label: "DOUBLE OUT", value: "double" },
+    { id: "master", label: "MASTER OUT", value: "master" },
+  ];
+  if (rowId === "legs") return [1, 2, 3, 5].map((value) => ({ id: `legs-${value}`, label: `${value} LEG${value > 1 ? "S" : ""}`, value }));
+  if (rowId === "sets") {
+    const values = state.sportId === "pingpong" ? [1, 2, 3, 4] : state.sportId === "babyfoot" ? [1, 2, 3] : [1, 2, 3, 5];
+    return values.map((value) => ({ id: `sets-${value}`, label: `${value} SET${value > 1 ? "S" : ""}`, value }));
+  }
+  if (rowId === "serve") return [
+    { id: "alternate", label: "ORDRE ALTERNÉ", value: "alternate" },
+    { id: "random", label: "ORDRE ALÉATOIRE", value: "random" },
+  ];
+  if (rowId === "target") {
+    const values = state.sportId === "petanque" ? [7, 11, 13, 15] : state.sportId === "babyfoot" ? [1, 5, 7, 9, 10] : state.sportId === "molkky" ? [30, 40, 50] : [100, 200, 500, 1000, 10000];
+    return values.map((value) => ({ id: `target-${value}`, label: String(value), value }));
+  }
+  if (rowId === "points") return [11, 21].map((value) => ({ id: `points-${value}`, label: `${value} POINTS`, value }));
+  if (rowId === "win2") return [{ id: "yes", label: "OUI", value: true }, { id: "no", label: "NON", value: false }];
+  if (rowId === "golden") return [{ id: "yes", label: "OUI", value: true }, { id: "no", label: "NON", value: false }];
+  if (rowId === "duration") return [5, 10, 15, 20, 30].map((value) => ({ id: `duration-${value}`, label: `${value} MIN`, value }));
+  return [];
+}
+
+function guidedPickerSelectedIndex(rowId: string, state: GuidedSetupState, action: TvLaunchAction, profiles: TvProfile[]) {
+  const options = guidedPickerOptions(rowId, state, action, profiles);
+  let value: any = null;
+  if (rowId === "player-count") value = state.playerCount;
+  else if (rowId.startsWith("player-")) value = state.playerIndexes[Math.max(0, Number(rowId.split("-")[1] || 0))] ?? 0;
+  else if (rowId === "score") value = state.startScore;
+  else if (rowId === "in") value = state.inMode;
+  else if (rowId === "out") value = state.outMode;
+  else if (rowId === "legs") value = state.legsPerSet;
+  else if (rowId === "sets") value = state.setsToWin;
+  else if (rowId === "serve") value = state.serveMode;
+  else if (rowId === "target") value = state.targetScore;
+  else if (rowId === "points") value = state.pointsPerSet;
+  else if (rowId === "win2") value = state.winByTwo;
+  else if (rowId === "golden") value = state.goldenGoal;
+  else if (rowId === "duration") value = state.durationMin;
+  const at = options.findIndex((option) => option.value === value);
+  return Math.max(0, at);
+}
+
+function applyGuidedPickerValue(rowId: string, value: any, state: GuidedSetupState, profiles: TvProfile[]): GuidedSetupState {
+  if (rowId === "player-count") {
+    const nextCount = Math.max(1, Number(value || 1));
+    const nextIndexes = Array.from({ length: nextCount }, (_, index) => state.playerIndexes[index] ?? (profiles.length ? index % profiles.length : 0));
+    return { ...state, playerCount: nextCount, playerIndexes: nextIndexes };
+  }
+  if (rowId.startsWith("player-")) {
+    const slot = Math.max(0, Number(rowId.split("-")[1] || 0));
+    const nextIndex = Math.max(0, Number(value || 0));
+    const next = [...state.playerIndexes];
+    const previous = next[slot] ?? 0;
+    const otherSlot = next.findIndex((profileIndex, index) => index !== slot && profileIndex === nextIndex);
+    if (otherSlot >= 0) next[otherSlot] = previous;
+    next[slot] = nextIndex;
+    return { ...state, playerIndexes: next };
+  }
+  if (rowId === "score") return { ...state, startScore: Number(value) as 301 | 501 | 701 | 901 };
+  if (rowId === "in") return { ...state, inMode: value };
+  if (rowId === "out") return { ...state, outMode: value };
+  if (rowId === "legs") return { ...state, legsPerSet: Number(value) };
+  if (rowId === "sets") return { ...state, setsToWin: Number(value) };
+  if (rowId === "serve") return { ...state, serveMode: value };
+  if (rowId === "target") return { ...state, targetScore: Number(value) };
+  if (rowId === "points") return { ...state, pointsPerSet: Number(value) };
+  if (rowId === "win2") return { ...state, winByTwo: !!value };
+  if (rowId === "golden") return { ...state, goldenGoal: !!value };
+  if (rowId === "duration") return { ...state, durationMin: Number(value) };
+  return state;
+}
+
 function createGuidedSetup(sportId: TvSportId, action: TvLaunchAction, tvState: TvState): GuidedSetupState {
   const profiles = tvState.profiles;
   const minPlayers = Math.max(1, Number(action.minPlayers || 1));
@@ -1202,7 +1303,7 @@ function TvGuidedSetup({
               onClick={row.run}
             >
               <i className="mss-tv-guide-step">{String(index + 1).padStart(2, "0")}</i>
-              <span>{row.label}</span>
+              <span>{row.label}<small>{row.id === "launch" ? "OK POUR VALIDER" : "OK POUR CHOISIR"}</small></span>
               <b>{row.value}</b>
             </button>
           ))}
@@ -1213,6 +1314,39 @@ function TvGuidedSetup({
   );
 }
 
+
+function TvGuidedPicker({
+  connectionStatus, title, options, focusIndex, onFocus, onSelect,
+}: {
+  connectionStatus: string;
+  title: string;
+  options: GuidedPickerOption[];
+  focusIndex: number;
+  onFocus: (index: number) => void;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <main className="mss-tv-section mss-tv-section--picker">
+      <TvPageHeader title={title} subtitle="Choisis précisément la valeur avec les flèches puis valide avec OK." connectionStatus={connectionStatus} />
+      <section className="mss-tv-picker-grid mss-tv-scroll-region">
+        {options.map((option, index) => (
+          <button
+            key={`${option.id}-${index}`}
+            type="button"
+            tabIndex={-1}
+            className={`mss-tv-picker-card${focusIndex === index ? " is-focused" : ""}`}
+            onMouseEnter={() => onFocus(index)}
+            onClick={() => onSelect(index)}
+          >
+            {option.profile ? <TvProfileAvatar profile={option.profile} size="medium" /> : null}
+            <span>{option.label}</span>
+          </button>
+        ))}
+      </section>
+      <footer className="mss-tv-page-footer"><span>Flèches : parcourir · OK : sélectionner · Retour : configuration</span><span>{options.length ? `${focusIndex + 1}/${options.length}` : ""}</span></footer>
+    </main>
+  );
+}
 
 type TvScoreKey = {
   id: string;
@@ -1388,6 +1522,8 @@ export default function SamsungTvApp() {
   const [selectedSport, setSelectedSport] = React.useState<TvSportId>("darts");
   const [selectedAction, setSelectedAction] = React.useState<TvLaunchAction | null>(null);
   const [guidedSetup, setGuidedSetup] = React.useState<GuidedSetupState | null>(null);
+  const [setupPickerRowId, setSetupPickerRowId] = React.useState<string | null>(null);
+  const [setupPickerReturnFocus, setSetupPickerReturnFocus] = React.useState(0);
   const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(null);
   const [profileEditor, setProfileEditor] = React.useState<ProfileEditorState | null>(null);
   const [profileDeleteArmed, setProfileDeleteArmed] = React.useState(false);
@@ -1626,12 +1762,13 @@ export default function SamsungTvApp() {
   }, [openScreen]);
 
   const launchAction = React.useCallback((action: TvLaunchAction) => {
-    if (["running", "fit", "esports"].includes(selectedSport)) {
+    if (action.direct || ["running", "fit", "esports"].includes(selectedSport)) {
       sendNavigate(action.tab, action.params);
       return;
     }
     setSelectedAction(action);
     setGuidedSetup(createGuidedSetup(selectedSport, action, tvStateRef.current));
+    setSetupPickerRowId(null);
     openScreen("setup", 0);
   }, [openScreen, selectedSport, sendNavigate]);
 
@@ -1813,6 +1950,30 @@ export default function SamsungTvApp() {
     sendNavigate(action.tab, guidedParams);
   }, [beginCreateProfile, guidedSetup, selectedAction, sendNavigate, tvState.profiles]);
 
+  const openGuidedPicker = React.useCallback((rowId: string, rowIndex: number) => {
+    const state = guidedSetup;
+    const action = selectedAction;
+    if (!state || !action) return;
+    const options = guidedPickerOptions(rowId, state, action, tvStateRef.current.profiles);
+    if (!options.length) return;
+    setSetupPickerRowId(rowId);
+    setSetupPickerReturnFocus(rowIndex);
+    openScreen("setup_picker", guidedPickerSelectedIndex(rowId, state, action, tvStateRef.current.profiles));
+  }, [guidedSetup, openScreen, selectedAction]);
+
+  const selectGuidedPickerOption = React.useCallback((index: number) => {
+    const state = guidedSetup;
+    const action = selectedAction;
+    const rowId = setupPickerRowId;
+    if (!state || !action || !rowId) return;
+    const options = guidedPickerOptions(rowId, state, action, tvStateRef.current.profiles);
+    const option = options[index];
+    if (!option) return;
+    setGuidedSetup(applyGuidedPickerValue(rowId, option.value, state, tvStateRef.current.profiles));
+    setSetupPickerRowId(null);
+    openScreen("setup", setupPickerReturnFocus);
+  }, [guidedSetup, openScreen, selectedAction, setupPickerReturnFocus, setupPickerRowId]);
+
   const countForScreen = React.useCallback(() => {
     if (screen === "hub") return VIEWER_TV_MENU.length;
     if (screen === "sports") return TV_SPORTS.length;
@@ -1824,10 +1985,11 @@ export default function SamsungTvApp() {
     if (screen === "online") return tvState.friends.length;
     if (screen === "settings") return 5;
     if (screen === "setup" && guidedSetup && selectedAction) return buildGuidedSetupRows(guidedSetup, selectedAction, tvState.profiles, setGuidedSetup, startGuidedSetup).length;
+    if (screen === "setup_picker" && guidedSetup && selectedAction && setupPickerRowId) return guidedPickerOptions(setupPickerRowId, guidedSetup, selectedAction, tvState.profiles).length;
     if (screen === "agenda") return 1;
     if (screen === "scoreboard" && String(snapshot?.game || "").toLowerCase() === "x01") return TV_X01_SCORE_KEYS.length;
     return 0;
-  }, [guidedSetup, profileEditor, screen, selectedAction, selectedProfileId, snapshot?.game, sportActions.length, startGuidedSetup, tvState.friends.length, tvState.profiles]);
+  }, [guidedSetup, profileEditor, screen, selectedAction, selectedProfileId, setupPickerRowId, snapshot?.game, sportActions.length, startGuidedSetup, tvState.friends.length, tvState.profiles]);
 
   const columnsForScreen = React.useCallback(() => {
     if (screen === "hub") return 4;
@@ -1835,6 +1997,7 @@ export default function SamsungTvApp() {
     if (screen === "sport") return 3;
     if (screen === "profiles" || screen === "stats" || screen === "online") return 4;
     if (screen === "profile_detail" || screen === "settings" || screen === "setup") return 2;
+    if (screen === "setup_picker") return 4;
     if (screen === "profile_edit") return 7;
     if (screen === "scoreboard") return 4;
     return 1;
@@ -1891,7 +2054,14 @@ export default function SamsungTvApp() {
     }
     if (screen === "setup" && guidedSetup && selectedAction) {
       const rows = buildGuidedSetupRows(guidedSetup, selectedAction, tvState.profiles, setGuidedSetup, startGuidedSetup);
-      rows[focusIndex]?.run();
+      const row = rows[focusIndex];
+      if (!row) return;
+      if (row.id === "launch") row.run();
+      else openGuidedPicker(row.id, focusIndex);
+      return;
+    }
+    if (screen === "setup_picker") {
+      selectGuidedPickerOption(focusIndex);
       return;
     }
     if (screen === "settings") {
@@ -1919,10 +2089,12 @@ export default function SamsungTvApp() {
     focusIndex,
     guidedSetup,
     launchAction,
+    openGuidedPicker,
     openProfile,
     openScreen,
     profileDeleteArmed,
     screen,
+    selectGuidedPickerOption,
     selectProfile,
     selectedAction,
     selectedProfileId,
@@ -1962,7 +2134,13 @@ export default function SamsungTvApp() {
           openScreen("profiles", Math.max(0, tvState.profiles.findIndex((profile) => profile.id === selectedProfileId) + 1));
           return;
         }
+        if (screen === "setup_picker") {
+          setSetupPickerRowId(null);
+          openScreen("setup", setupPickerReturnFocus);
+          return;
+        }
         if (screen === "setup") {
+          setSetupPickerRowId(null);
           openScreen("sport", Math.max(0, sportActions.findIndex((action) => action.id === selectedAction?.id)));
           return;
         }
@@ -2039,6 +2217,7 @@ export default function SamsungTvApp() {
     selectedAction?.id,
     selectedProfileId,
     selectedSport,
+    setupPickerReturnFocus,
     sessionId,
     sportActions,
     tvState.profiles,
@@ -2117,6 +2296,22 @@ export default function SamsungTvApp() {
 
   if (screen === "agenda") {
     return <TvAgenda connectionStatus={connectionStatus} />;
+  }
+
+  if (screen === "setup_picker" && guidedSetup && selectedAction && setupPickerRowId) {
+    const rows = buildGuidedSetupRows(guidedSetup, selectedAction, tvState.profiles, setGuidedSetup, startGuidedSetup);
+    const row = rows.find((item) => item.id === setupPickerRowId);
+    const options = guidedPickerOptions(setupPickerRowId, guidedSetup, selectedAction, tvState.profiles);
+    return (
+      <TvGuidedPicker
+        connectionStatus={connectionStatus}
+        title={row?.label || "CHOISIR"}
+        options={options}
+        focusIndex={focusIndex}
+        onFocus={setFocusIndex}
+        onSelect={selectGuidedPickerOption}
+      />
+    );
   }
 
   if (screen === "setup" && guidedSetup && selectedAction) {

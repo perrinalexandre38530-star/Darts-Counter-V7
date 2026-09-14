@@ -52,11 +52,11 @@ const builtJs = fs.existsSync(builtAssetsDir)
 const builtBundle = builtJs
   .map((file) => fs.readFileSync(path.join(builtAssetsDir, file), "utf8"))
   .join("\n");
-if (!builtBundle.includes("MSS_TV_FULL_APP_BUILD_20260914_04")) {
-  console.error("❌ Le bundle Samsung généré ne contient pas TV FULL PREMIUM V4. Build refusé.");
+if (!builtBundle.includes("MSS_TV_FULL_APP_BUILD_20260914_05")) {
+  console.error("❌ Le bundle Samsung généré ne contient pas TV FULL PREMIUM V5. Build refusé.");
   process.exit(1);
 }
-console.log("✅ Bundle Samsung TV FULL PREMIUM V4 généré");
+console.log("✅ Bundle Samsung TV FULL PREMIUM V5 généré");
 
 const check = spawnSync(process.execPath, [path.join(root, "tools", "check-samsung-tv.mjs")], {
   cwd: root,

@@ -55,6 +55,7 @@ export type TvLaunchAction = {
   maxPlayers?: number;
   defaultPlayers?: number;
   supportsTeams?: boolean;
+  direct?: boolean;
 };
 
 export const TV_SPORTS: readonly TvSportDef[] = [
@@ -147,25 +148,54 @@ const ESPORTS_ACTIONS: TvLaunchAction[] = [
 
 export function tvLaunchActionsForSport(sportId: TvSportId): TvLaunchAction[] {
   if (sportId === "darts") {
-    return DARTS_GAMES
+    const games = DARTS_GAMES
       .filter((game) => game.ready && game.entry === "games")
       .slice()
       .sort((a, b) => (a.popularityRank ?? 999) - (b.popularityRank ?? 999) || a.label.localeCompare(b.label, "fr"))
-      .map((game) => ({
-        id: String(game.id),
-        label: String(game.label),
-        subtitle: game.category === "classic" ? "Classique" : game.category === "variant" ? "Variante" : game.category === "challenge" ? "Défi" : game.category === "fun" ? "Fun" : "Training",
-        category: game.category,
-        tab: String(game.tab),
-        tickerKeys: [String(game.id), String(game.id).replace(/^game_/, "v")],
-        minPlayers: 1,
-        maxPlayers: Math.max(1, Number(game.maxPlayers || 8)),
-        defaultPlayers: game.id === "x01" ? 2 : Math.min(2, Math.max(1, Number(game.maxPlayers || 8))),
-        supportsTeams: !!game.supportsTeams,
-        params: game.variantId
-          ? { gameId: game.id, baseGame: game.baseGame, variantId: game.variantId }
-          : undefined,
-      }));
+      .map((game) => {
+        const id = String(game.id);
+        const tickerKeys = id === "killer_progressive"
+          ? ["killer"]
+          : id === "mario_kart"
+            ? ["darts_racer"]
+            : id === "golf"
+              ? ["golf"]
+              : [id, id.replace(/^game_/, "v")];
+        return {
+          id,
+          label: String(game.label),
+          subtitle: game.category === "classic" ? "Classique" : game.category === "variant" ? "Variante" : game.category === "challenge" ? "Défi" : game.category === "fun" ? "Fun" : "Training",
+          category: game.category,
+          tab: String(game.tab),
+          tickerKeys,
+          minPlayers: 1,
+          maxPlayers: Math.max(1, Number(game.maxPlayers || 8)),
+          defaultPlayers: game.id === "x01" ? 2 : Math.min(2, Math.max(1, Number(game.maxPlayers || 8))),
+          supportsTeams: !!game.supportsTeams,
+          params: game.variantId
+            ? { gameId: game.id, baseGame: game.baseGame, variantId: game.variantId }
+            : undefined,
+        };
+      });
+
+    // Le hub Training de l'application doit rester accessible depuis la TV.
+    // Il ouvre directement l'écran Training du téléphone au lieu de passer
+    // par une fausse configuration générique.
+    const training: TvLaunchAction = {
+      id: "training_menu",
+      label: "TRAINING",
+      subtitle: "Entraînement",
+      category: "training",
+      tab: "training",
+      tickerKeys: ["menu_training_fr", "menu_training_en", "training"],
+      minPlayers: 1,
+      maxPlayers: 1,
+      defaultPlayers: 1,
+      direct: true,
+    };
+
+    const insertAt = Math.min(3, games.length);
+    return [...games.slice(0, insertAt), training, ...games.slice(insertAt)];
   }
   if (sportId === "petanque") return PETANQUE_ACTIONS;
   if (sportId === "pingpong") return PINGPONG_ACTIONS;
