@@ -93,12 +93,37 @@ export type OrganizationCreateInput = {
   profile?: Partial<OrganizationProfile>;
 };
 
+export type OrganizationGroupKind = "team" | "section" | "department" | "class" | "group";
+
 export type OrganizationLocalGroup = {
   id: string;
   organizationId: string;
   name: string;
   sportId: string;
+  kind: OrganizationGroupKind;
+  description: string;
+  primaryColor: string;
+  secondaryColor: string;
+  captainUserId: string;
+  captainDisplayName: string;
+  captainAvatarUrl: string;
+  logoMediaKey: string;
+  status: "active" | "archived";
+  memberCount: number;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationGroupInput = {
+  name: string;
+  sportId: string;
+  kind?: OrganizationGroupKind;
+  description?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  captainUserId?: string | null;
+  logoMediaKey?: string;
+  status?: "active" | "archived";
 };
 
 export type OrganizationLocalEvent = {
@@ -143,7 +168,7 @@ function safeParseState(value: string | null): LocalState {
     return {
       organizations: Array.isArray(parsed.organizations) ? parsed.organizations.map((item: any) => parseOrganizationRow(item, item?.source === "cloud" ? "cloud" : "local")) : [],
       activeOrganizationId: typeof parsed.activeOrganizationId === "string" ? parsed.activeOrganizationId : null,
-      groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+      groups: Array.isArray(parsed.groups) ? parsed.groups.map(parseGroupRow) : [],
       events: Array.isArray(parsed.events) ? parsed.events : [],
     };
   } catch {
@@ -435,13 +460,37 @@ export async function joinOrganization(userId: string | null | undefined, rawCod
   throw new Error("Impossible de rejoindre cette organisation tant que le backend PARTENARIATS n’est pas déployé, ou le code n’existe pas.");
 }
 
+function coerceGroupKind(value: unknown): OrganizationGroupKind {
+  const kind = String(value || "team").trim().toLowerCase();
+  return (["team", "section", "department", "class", "group"] as OrganizationGroupKind[]).includes(kind as OrganizationGroupKind)
+    ? kind as OrganizationGroupKind
+    : "team";
+}
+
+function cleanHexColor(value: unknown, fallback: string): string {
+  const raw = String(value || "").trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(raw) ? raw : fallback;
+}
+
 function parseGroupRow(row: any): OrganizationLocalGroup {
+  const statusRaw = String(row?.status || "active").trim().toLowerCase();
   return {
     id: String(row?.id || localId("grp")),
     organizationId: String(row?.organizationId || row?.organization_id || ""),
     name: String(row?.name || "Groupe").trim().slice(0,72) || "Groupe",
     sportId: String(row?.sportId || row?.sport_id || "Multisport").trim().slice(0,48) || "Multisport",
+    kind: coerceGroupKind(row?.kind),
+    description: String(row?.description || "").trim().slice(0,280),
+    primaryColor: cleanHexColor(row?.primaryColor || row?.primary_color, "#22D3EE"),
+    secondaryColor: cleanHexColor(row?.secondaryColor || row?.secondary_color, "#0F172A"),
+    captainUserId: String(row?.captainUserId || row?.captain_user_id || "").trim(),
+    captainDisplayName: String(row?.captainDisplayName || row?.captain_display_name || "").trim(),
+    captainAvatarUrl: String(row?.captainAvatarUrl || row?.captain_avatar_url || "").trim(),
+    logoMediaKey: String(row?.logoMediaKey || row?.logo_media_key || "").trim().slice(0,180),
+    status: statusRaw === "archived" ? "archived" : "active",
+    memberCount: Math.max(0, Number(row?.memberCount ?? row?.member_count ?? 0) || 0),
     createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || row?.createdAt || row?.created_at || nowIso()),
   };
 }
 
@@ -449,54 +498,151 @@ function cacheOrganizationGroups(userId: string | null | undefined, organization
   const state = loadOrganizationLocalState(userId);
   const others = state.groups.filter((item) => item.organizationId !== organizationId);
   const groups = [...groupsInput, ...others];
-  const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, groupCount: groupsInput.length, updatedAt: nowIso() } : org);
+  const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, groupCount: groupsInput.filter((group) => group.status !== "archived").length, updatedAt: nowIso() } : org);
   saveOrganizationLocalState(userId, { ...state, groups, organizations });
   const organization = organizations.find((org) => org.id === organizationId) || state.organizations.find((org) => org.id === organizationId);
-  if (organization) syncOrganizationGroupsToSharedTeams(organization, groupsInput);
+  if (organization) syncOrganizationGroupsToSharedTeams(organization, groupsInput.filter((group) => group.status !== "archived"));
 }
 
 export async function listOrganizationGroups(userId: string | null | undefined, organizationId: string): Promise<{ groups: OrganizationLocalGroup[]; cloudAvailable: boolean }> {
   const local = listLocalOrganizationGroups(userId, organizationId);
   if (!userId || !organizationId) return { groups: local, cloudAvailable: false };
   try {
-    const { data, error } = await supabase
-      .from("ms_organization_groups")
-      .select("id,organization_id,name,sport_id,created_at")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.rpc("ms_org_list_groups", { p_org_id: organizationId });
     if (error) throw error;
-    const groups = Array.isArray(data) ? data.map(parseGroupRow) : [];
+    const groups = rpcRows(data).filter(Boolean).map(parseGroupRow);
     cacheOrganizationGroups(userId, organizationId, groups);
     return { groups, cloudAvailable: true };
-  } catch {
-    return { groups: local, cloudAvailable: false };
-  }
-}
-
-export async function createOrganizationGroup(userId: string | null | undefined, organizationId: string, name: string, sportId: string): Promise<{ group: OrganizationLocalGroup; cloudAvailable: boolean }> {
-  const cleanName = String(name || "").trim().slice(0,72);
-  const cleanSport = String(sportId || "Multisport").trim().slice(0,48) || "Multisport";
-  if (cleanName.length < 2) throw new Error("Nom de groupe trop court.");
-  if (userId) {
+  } catch (rpcError) {
     try {
       const { data, error } = await supabase
         .from("ms_organization_groups")
-        .insert({ organization_id: organizationId, name: cleanName, sport_id: cleanSport, kind: "team", created_by: userId })
-        .select("id,organization_id,name,sport_id,created_at")
-        .single();
+        .select("id,organization_id,name,sport_id,kind,created_at,updated_at")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false });
       if (error) throw error;
-      const group = parseGroupRow(data);
+      const groups = Array.isArray(data) ? data.map(parseGroupRow) : [];
+      cacheOrganizationGroups(userId, organizationId, groups);
+      return { groups, cloudAvailable: true };
+    } catch {
+      console.warn("[organizations] group list unavailable", rpcError);
+      return { groups: local, cloudAvailable: false };
+    }
+  }
+}
+
+export async function createOrganizationGroup(
+  userId: string | null | undefined,
+  organizationId: string,
+  name: string,
+  sportId: string,
+  options: Partial<OrganizationGroupInput> = {},
+): Promise<{ group: OrganizationLocalGroup; cloudAvailable: boolean }> {
+  const cleanName = String(name || "").trim().slice(0,72);
+  const cleanSport = String(sportId || "Multisport").trim().slice(0,48) || "Multisport";
+  if (cleanName.length < 2) throw new Error("Nom de groupe trop court.");
+  const payload = {
+    name: cleanName,
+    sportId: cleanSport,
+    kind: coerceGroupKind(options.kind),
+    description: String(options.description || "").trim().slice(0,280),
+    primaryColor: cleanHexColor(options.primaryColor, "#22D3EE"),
+    secondaryColor: cleanHexColor(options.secondaryColor, "#0F172A"),
+  };
+  if (userId) {
+    try {
+      const { data, error } = await supabase.rpc("ms_org_create_group", {
+        p_org_id: organizationId,
+        p_name: payload.name,
+        p_sport_id: payload.sportId,
+        p_kind: payload.kind,
+        p_description: payload.description,
+        p_primary_color: payload.primaryColor,
+        p_secondary_color: payload.secondaryColor,
+      });
+      if (error) throw error;
+      const group = parseGroupRow(rpcRows(data)[0]);
       const current = listLocalOrganizationGroups(userId, organizationId).filter((item) => item.id !== group.id);
       cacheOrganizationGroups(userId, organizationId, [group, ...current]);
       return { group, cloudAvailable: true };
-    } catch (error) {
-      console.warn("[organizations] cloud group create unavailable, using local fallback", error);
+    } catch (rpcError) {
+      try {
+        const { data, error } = await supabase
+          .from("ms_organization_groups")
+          .insert({ organization_id: organizationId, name: payload.name, sport_id: payload.sportId, kind: payload.kind, created_by: userId })
+          .select("id,organization_id,name,sport_id,kind,created_at,updated_at")
+          .single();
+        if (error) throw error;
+        const group = parseGroupRow(data);
+        const current = listLocalOrganizationGroups(userId, organizationId).filter((item) => item.id !== group.id);
+        cacheOrganizationGroups(userId, organizationId, [group, ...current]);
+        return { group, cloudAvailable: true };
+      } catch {
+        console.warn("[organizations] cloud group create unavailable, using local fallback", rpcError);
+      }
     }
   }
-  return { group: addLocalOrganizationGroup(userId, organizationId, cleanName, cleanSport), cloudAvailable: false };
+  return { group: addLocalOrganizationGroup(userId, organizationId, cleanName, cleanSport, payload), cloudAvailable: false };
 }
 
-export function addLocalOrganizationGroup(userId: string | null | undefined, organizationId: string, name: string, sportId: string): OrganizationLocalGroup {
+export async function updateOrganizationGroup(
+  userId: string | null | undefined,
+  groupId: string,
+  patch: Partial<OrganizationGroupInput>,
+): Promise<OrganizationLocalGroup> {
+  if (!userId) throw new Error("Connexion requise.");
+  const current = loadOrganizationLocalState(userId).groups.find((item) => item.id === groupId);
+  if (!current) throw new Error("Équipe ou groupe introuvable.");
+  const payload = {
+    name: String(patch.name ?? current.name).trim().slice(0,72),
+    sportId: String(patch.sportId ?? current.sportId).trim().slice(0,48) || "Multisport",
+    kind: coerceGroupKind(patch.kind ?? current.kind),
+    description: String(patch.description ?? current.description).trim().slice(0,280),
+    primaryColor: cleanHexColor(patch.primaryColor ?? current.primaryColor, "#22D3EE"),
+    secondaryColor: cleanHexColor(patch.secondaryColor ?? current.secondaryColor, "#0F172A"),
+    captainUserId: String(patch.captainUserId ?? current.captainUserId ?? "").trim() || null,
+    logoMediaKey: String(patch.logoMediaKey ?? current.logoMediaKey ?? "").trim().slice(0,180),
+    status: patch.status === "archived" ? "archived" : "active",
+  };
+  if (payload.name.length < 2) throw new Error("Nom de groupe trop court.");
+  const { data, error } = await supabase.rpc("ms_org_update_group", {
+    p_group_id: groupId,
+    p_name: payload.name,
+    p_sport_id: payload.sportId,
+    p_kind: payload.kind,
+    p_description: payload.description,
+    p_primary_color: payload.primaryColor,
+    p_secondary_color: payload.secondaryColor,
+    p_captain_user_id: payload.captainUserId,
+    p_logo_media_key: payload.logoMediaKey,
+    p_status: payload.status,
+  });
+  if (error) throw new Error(rpcMessage(error, "Modification de l’équipe impossible."));
+  const group = parseGroupRow(rpcRows(data)[0]);
+  if (!group.id) throw new Error("Équipe ou groupe introuvable.");
+  const state = loadOrganizationLocalState(userId);
+  const orgGroups = state.groups.filter((item) => item.organizationId === group.organizationId && item.id !== group.id);
+  cacheOrganizationGroups(userId, group.organizationId, [group, ...orgGroups]);
+  return group;
+}
+
+export async function deleteOrganizationGroup(userId: string | null | undefined, groupId: string): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const state = loadOrganizationLocalState(userId);
+  const current = state.groups.find((item) => item.id === groupId);
+  if (!current) throw new Error("Équipe ou groupe introuvable.");
+  const { error } = await supabase.rpc("ms_org_delete_group", { p_group_id: groupId });
+  if (error) throw new Error(rpcMessage(error, "Suppression de l’équipe impossible."));
+  cacheOrganizationGroups(userId, current.organizationId, state.groups.filter((item) => item.organizationId === current.organizationId && item.id !== groupId));
+}
+
+export function addLocalOrganizationGroup(
+  userId: string | null | undefined,
+  organizationId: string,
+  name: string,
+  sportId: string,
+  options: Partial<OrganizationGroupInput> = {},
+): OrganizationLocalGroup {
   const cleanName = String(name || "").trim().slice(0, 72);
   if (cleanName.length < 2) throw new Error("Nom de groupe trop court.");
   const state = loadOrganizationLocalState(userId);
@@ -504,14 +650,25 @@ export function addLocalOrganizationGroup(userId: string | null | undefined, org
     id: localId("grp"),
     organizationId,
     name: cleanName,
-    sportId: String(sportId || "multisport").trim().slice(0, 48) || "multisport",
+    sportId: String(sportId || "Multisport").trim().slice(0, 48) || "Multisport",
+    kind: coerceGroupKind(options.kind),
+    description: String(options.description || "").trim().slice(0,280),
+    primaryColor: cleanHexColor(options.primaryColor, "#22D3EE"),
+    secondaryColor: cleanHexColor(options.secondaryColor, "#0F172A"),
+    captainUserId: "",
+    captainDisplayName: "",
+    captainAvatarUrl: "",
+    logoMediaKey: "",
+    status: "active",
+    memberCount: 0,
     createdAt: nowIso(),
+    updatedAt: nowIso(),
   };
   const groups = [group, ...state.groups];
-  const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, groupCount: groups.filter((item) => item.organizationId === organizationId).length, updatedAt: nowIso() } : org);
+  const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, groupCount: groups.filter((item) => item.organizationId === organizationId && item.status !== "archived").length, updatedAt: nowIso() } : org);
   saveOrganizationLocalState(userId, { ...state, groups, organizations });
   const organization = organizations.find((org) => org.id === organizationId) || state.organizations.find((org) => org.id === organizationId);
-  if (organization) syncOrganizationGroupsToSharedTeams(organization, groups.filter((item) => item.organizationId === organizationId));
+  if (organization) syncOrganizationGroupsToSharedTeams(organization, groups.filter((item) => item.organizationId === organizationId && item.status !== "archived"));
   return group;
 }
 
@@ -700,7 +857,8 @@ export function syncOrganizationGroupsToSharedTeams(organization: OrganizationRe
         clubRole: organization.role,
         clubVisibility: "members",
         syncedClubTeamId: group.id,
-        description: `Équipe liée à ${organization.name}. Modifications depuis l'espace Organisation.`,
+        description: group.description || `Équipe liée à ${organization.name}. Modifications depuis l'espace Organisation.`,
+        slogan: group.captainDisplayName ? `Capitaine · ${group.captainDisplayName}` : undefined,
         createdAt: Number(new Date(group.createdAt).getTime()) || now,
         updatedAt: now,
       };

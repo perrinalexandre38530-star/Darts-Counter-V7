@@ -2,6 +2,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import OrganizationTypeIcon from "../components/OrganizationTypeIcon";
 import OrganizationMembersPanel from "../components/OrganizationMembersPanel";
+import OrganizationTeamsPanel from "../components/OrganizationTeamsPanel";
 import OrganizationInvitationsInbox from "../components/OrganizationInvitationsInbox";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -10,7 +11,6 @@ import { useAuthOnline } from "../hooks/useAuthOnline";
 import {
   createOrganization,
   createOrganizationEvent,
-  createOrganizationGroup,
   joinOrganization,
   listLocalOrganizationEvents,
   listLocalOrganizationGroups,
@@ -166,8 +166,6 @@ export default function OrganizationsPage({ go, params }: Props) {
   const [notice, setNotice] = React.useState("");
   const [error, setError] = React.useState("");
   const [joinCode, setJoinCode] = React.useState("");
-  const [groupName, setGroupName] = React.useState("");
-  const [groupSport, setGroupSport] = React.useState("Multisport");
   const [eventTitle, setEventTitle] = React.useState("");
   const [eventDate, setEventDate] = React.useState("");
   const [eventLocation, setEventLocation] = React.useState("");
@@ -424,17 +422,6 @@ export default function OrganizationsPage({ go, params }: Props) {
   function copyJoinCode() {
     if (!active?.joinCode) return;
     void navigator.clipboard?.writeText(active.joinCode).then(() => setNotice(L("Code d’invitation copié.", "Invitation code copied.", "Código de invitación copiado."))).catch(() => setNotice(active.joinCode));
-  }
-
-  async function addGroup() {
-    if (!active) return;
-    setError("");
-    try {
-      const result = await createOrganizationGroup(userId, active.id, groupName, groupSport);
-      setGroupName(""); setGroupSport("Multisport"); setRefreshTick((v) => v + 1);
-      if (result.cloudAvailable) setCloudAvailable(true);
-      setOrganizations((prev) => prev.map((org) => org.id === active.id ? { ...org, groupCount: Math.max(org.groupCount, localGroups.length + 1) } : org));
-    } catch (e: any) { setError(String(e?.message || "Création du groupe impossible.")); }
   }
 
   async function addEvent() {
@@ -702,7 +689,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "home") return renderHome();
     if (view === "profile") return renderProfile();
     if (view === "members") return <OrganizationMembersPanel organization={active} groups={localGroups} userId={userId} onChanged={() => void load()} />;
-    if (view === "groups") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("ÉQUIPES & GROUPES", "TEAMS & GROUPS", "EQUIPOS Y GRUPOS"), active.name)}<div style={{ ...card, padding: 14 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Créer un groupe", "Create a group", "Crear un grupo")}</div><div style={{ marginTop: 9, display: "grid", gap: 8 }}><input style={input} value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder={L("Ex. Équipe A / Section Darts", "e.g. Team A / Darts section", "Ej. Equipo A / Sección Darts")} /><select style={input} value={groupSport} onChange={(e) => setGroupSport(e.target.value)}>{SPORTS.map((sport) => <option key={sport}>{sport}</option>)}</select><button type="button" style={primaryButton} onClick={() => void addGroup()}>{L("AJOUTER LE GROUPE", "ADD GROUP", "AÑADIR GRUPO")}</button></div></div>{localGroups.length ? localGroups.map((group) => <div key={group.id} style={{ ...card, padding: 12, display: "flex", justifyContent: "space-between", gap: 8 }}><div><div style={{ color: theme.text, fontSize: 11, fontWeight: 950 }}>{group.name}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9 }}>{group.sportId}</div></div><span style={{ color: theme.primary, fontSize: 8, fontWeight: 1000 }}>ACTIF</span></div>) : <div style={{ ...card, padding: 18, color: theme.textSoft, fontSize: 10.5 }}>{L("Aucun groupe créé pour le moment.", "No group created yet.", "Aún no se ha creado ningún grupo.")}</div>}</div>;
+    if (view === "groups") return <OrganizationTeamsPanel organization={active} userId={userId} initialGroups={localGroups} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} />;
     if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<div style={{ ...card, padding: 14 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Planifier un événement", "Schedule an event", "Programar un evento")}</div><div style={{ marginTop: 9, display: "grid", gap: 8 }}><input style={input} value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder={L("Entraînement, match, tournoi…", "Training, match, tournament…", "Entrenamiento, partido, torneo…")} /><input type="datetime-local" style={input} value={eventDate} onChange={(e) => setEventDate(e.target.value)} /><input style={input} value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder={L("Lieu (optionnel)", "Location (optional)", "Lugar (opcional)")} /><button type="button" style={primaryButton} onClick={() => void addEvent()}>{L("AJOUTER À L’AGENDA", "ADD TO CALENDAR", "AÑADIR A LA AGENDA")}</button></div></div>{localEvents.length ? localEvents.map((evt) => <div key={evt.id} style={{ ...card, padding: 12 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 950 }}>{evt.title}</div><div style={{ marginTop: 4, color: theme.primary, fontSize: 9.5, fontWeight: 850 }}>{new Date(evt.startsAt).toLocaleString()}</div>{evt.location ? <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9 }}>{evt.location}</div> : null}</div>) : <div style={{ ...card, padding: 18, color: theme.textSoft, fontSize: 10.5 }}>{L("Aucun événement planifié.", "No scheduled events.", "No hay eventos programados.")}</div>}</div>;
     if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), L("Architecture prête pour la souscription B2B", "Architecture ready for B2B subscription", "Arquitectura lista para suscripción B2B"))}{PLAN_OPTIONS.map((plan) => <div key={plan.id} style={{ ...card, padding: 14, border: `1px solid ${active.plan === plan.id ? theme.primary : theme.borderSoft}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: theme.primary, fontSize: 12, fontWeight: 1000 }}>{plan.title}</div><div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10, lineHeight: 1.4 }}>{plan.subtitle}</div></div><div style={{ color: active.plan === plan.id ? theme.primary : theme.textSoft, fontSize: 8, fontWeight: 1000 }}>{active.plan === plan.id ? L("SÉLECTIONNÉ", "SELECTED", "SELECCIONADO") : plan.audience}</div></div></div>)}</div>;
 
