@@ -187,6 +187,30 @@ export type OrganizationCompetitionDetail = {
   fixtures: OrganizationCompetitionFixture[];
 };
 
+export type OrganizationRankingRow = {
+  rank: number;
+  entityType: "group" | "member";
+  entityId: string;
+  displayName: string;
+  played: number;
+  wins: number;
+  losses: number;
+  points: number;
+  winRate: number;
+  scoreFor: number;
+  scoreAgainst: number;
+  scoreDiff: number;
+  currentStreak: number;
+  currentStreakType: "W" | "L";
+  bestWinStreak: number;
+  recentForm: string;
+};
+
+export type OrganizationRankingFilters = {
+  competitionId?: string | null;
+  sportId?: string | null;
+};
+
 export type OrganizationCompetitionInput = {
   name: string;
   sportId: string;
@@ -1361,5 +1385,44 @@ export async function setOrganizationCompetitionFixtureResult(
   const row = rpcRows(data)[0];
   if (!row) throw new Error("Rencontre introuvable.");
   return parseOrganizationCompetitionFixture(row);
+}
+
+function parseOrganizationRankingRow(row: any): OrganizationRankingRow {
+  const streakType = String(row?.currentStreakType || row?.current_streak_type || "L").toUpperCase() === "W" ? "W" : "L";
+  return {
+    rank: Math.max(1, Number(row?.rank || 1) || 1),
+    entityType: String(row?.entityType || row?.entity_type || "group") === "member" ? "member" : "group",
+    entityId: String(row?.entityId || row?.entity_id || ""),
+    displayName: String(row?.displayName || row?.display_name || "Participant").trim() || "Participant",
+    played: Math.max(0, Number(row?.played || 0) || 0),
+    wins: Math.max(0, Number(row?.wins || 0) || 0),
+    losses: Math.max(0, Number(row?.losses || 0) || 0),
+    points: Number(row?.points || 0) || 0,
+    winRate: Math.max(0, Math.min(100, Number(row?.winRate ?? row?.win_rate ?? 0) || 0)),
+    scoreFor: Number(row?.scoreFor ?? row?.score_for ?? 0) || 0,
+    scoreAgainst: Number(row?.scoreAgainst ?? row?.score_against ?? 0) || 0,
+    scoreDiff: Number(row?.scoreDiff ?? row?.score_diff ?? 0) || 0,
+    currentStreak: Math.max(0, Number(row?.currentStreak ?? row?.current_streak ?? 0) || 0),
+    currentStreakType: streakType,
+    bestWinStreak: Math.max(0, Number(row?.bestWinStreak ?? row?.best_win_streak ?? 0) || 0),
+    recentForm: String(row?.recentForm || row?.recent_form || "").replace(/[^WL]/g, "").slice(0, 5),
+  };
+}
+
+export async function getOrganizationRankings(
+  userId: string | null | undefined,
+  organizationId: string,
+  filters: OrganizationRankingFilters = {},
+): Promise<OrganizationRankingRow[]> {
+  if (!userId || !organizationId) return [];
+  const competitionId = String(filters.competitionId || "").trim();
+  const sportId = String(filters.sportId || "").trim();
+  const { data, error } = await supabase.rpc("ms_org_get_rankings", {
+    p_org_id: organizationId,
+    p_competition_id: competitionId || null,
+    p_sport_id: sportId || null,
+  });
+  if (error) throw new Error(rpcMessage(error, "Classement indisponible."));
+  return rpcRows(data).filter(Boolean).map(parseOrganizationRankingRow);
 }
 
