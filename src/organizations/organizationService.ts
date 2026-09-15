@@ -46,6 +46,14 @@ export type OrganizationInvitation = {
   respondedAt: string;
 };
 
+export type OrganizationAdminSettings = {
+  defaultLanguage: "auto" | "fr" | "en" | "es";
+  timezone: string;
+  compactDashboard: boolean;
+  enabledModules: string[];
+  requestedPlan: OrganizationPlan | "";
+};
+
 export type OrganizationProfile = {
   legalName: string;
   acronym: string;
@@ -62,6 +70,7 @@ export type OrganizationProfile = {
   logoMediaKey: string;
   coverMediaKey: string;
   profileCompleted: boolean;
+  adminSettings: OrganizationAdminSettings;
 };
 
 export type OrganizationRecord = {
@@ -482,6 +491,21 @@ export function normalizeOrganizationProfile(input: any = {}): OrganizationProfi
     : [];
   const yearRaw = String(input?.foundedYear || input?.founded_year || "").replace(/[^0-9]/g, "").slice(0, 4);
   const estimate = Math.max(0, Math.min(1_000_000, Math.round(Number(input?.memberEstimate ?? input?.member_estimate ?? 0) || 0)));
+  const rawAdmin = input?.adminSettings && typeof input.adminSettings === "object"
+    ? input.adminSettings
+    : input?.admin_settings && typeof input.admin_settings === "object"
+      ? input.admin_settings
+      : {};
+  const allowedModules = ["communication", "federations", "billing", "sponsors"];
+  const enabledModules = Array.isArray(rawAdmin?.enabledModules ?? rawAdmin?.enabled_modules)
+    ? Array.from(new Set((rawAdmin.enabledModules ?? rawAdmin.enabled_modules).map((value: unknown) => String(value || "").trim()).filter((value: string) => allowedModules.includes(value))))
+    : [...allowedModules];
+  const requestedPlanRaw = String(rawAdmin?.requestedPlan ?? rawAdmin?.requested_plan ?? "").toLowerCase();
+  const requestedPlan = (["group", "club", "pro", "business", "custom"] as string[]).includes(requestedPlanRaw) ? requestedPlanRaw as OrganizationPlan : "";
+  const defaultLanguageRaw = String(rawAdmin?.defaultLanguage ?? rawAdmin?.default_language ?? "auto").toLowerCase();
+  const defaultLanguage = (["auto", "fr", "en", "es"] as string[]).includes(defaultLanguageRaw)
+    ? defaultLanguageRaw as OrganizationAdminSettings["defaultLanguage"]
+    : "auto";
   return {
     legalName: String(input?.legalName || input?.legal_name || "").trim().slice(0, 140),
     acronym: String(input?.acronym || "").trim().slice(0, 24),
@@ -498,6 +522,13 @@ export function normalizeOrganizationProfile(input: any = {}): OrganizationProfi
     logoMediaKey: String(input?.logoMediaKey || input?.logo_media_key || "").trim().slice(0, 220),
     coverMediaKey: String(input?.coverMediaKey || input?.cover_media_key || "").trim().slice(0, 220),
     profileCompleted: input?.profileCompleted === true || input?.profile_completed === true,
+    adminSettings: {
+      defaultLanguage,
+      timezone: String(rawAdmin?.timezone || "").trim().slice(0, 80),
+      compactDashboard: rawAdmin?.compactDashboard === true || rawAdmin?.compact_dashboard === true,
+      enabledModules,
+      requestedPlan,
+    },
   };
 }
 
@@ -673,6 +704,20 @@ export async function updateOrganizationProfile(
   }
 
   return { organization: localOrganization, cloudAvailable: false };
+}
+
+export async function updateOrganizationAdminSettings(
+  userId: string | null | undefined,
+  organizationId: string,
+  patch: Partial<OrganizationAdminSettings>,
+): Promise<{ organization: OrganizationRecord; cloudAvailable: boolean; warning?: string }> {
+  const current = loadOrganizationLocalState(userId).organizations.find((item) => item.id === organizationId);
+  if (!current) throw new Error("Organisation introuvable.");
+  const next = normalizeOrganizationProfile({
+    ...current.profile,
+    adminSettings: { ...current.profile.adminSettings, ...patch },
+  }).adminSettings;
+  return updateOrganizationProfile(userId, organizationId, { adminSettings: next });
 }
 
 export async function joinOrganization(userId: string | null | undefined, rawCode: string): Promise<{ organization: OrganizationRecord; cloudAvailable: boolean; warning?: string }> {

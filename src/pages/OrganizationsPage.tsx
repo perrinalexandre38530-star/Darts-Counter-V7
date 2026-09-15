@@ -7,6 +7,8 @@ import OrganizationCommunicationPanel from "../components/OrganizationCommunicat
 import OrganizationFederationsPanel from "../components/OrganizationFederationsPanel";
 import OrganizationBillingPanel from "../components/OrganizationBillingPanel";
 import OrganizationSponsorsPanel from "../components/OrganizationSponsorsPanel";
+import OrganizationAdminPanel from "../components/OrganizationAdminPanel";
+import OrganizationPlansPanel from "../components/OrganizationPlansPanel";
 import OrganizationMembersPanel from "../components/OrganizationMembersPanel";
 import OrganizationTeamsPanel from "../components/OrganizationTeamsPanel";
 import OrganizationInvitationsInbox from "../components/OrganizationInvitationsInbox";
@@ -444,6 +446,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     } catch (e: any) { setError(String(e?.message || "Création de l’événement impossible.")); }
   }
 
+  const optionalModules = active?.profile.adminSettings.enabledModules || ["communication", "federations", "billing", "sponsors"];
   const modules: Array<{ id: View; name: string; subtitle: string; hint?: string }> = [
     { id: "profile", name: L("Fiche organisme", "Organization profile", "Ficha de la organización"), subtitle: L("Identité, coordonnées, activités et visuels", "Identity, contacts, activities and visuals", "Identidad, contactos, actividades y visuales") },
     { id: "members", name: L("Membres", "Members", "Miembros"), subtitle: L("Invitations, rôles et effectifs", "Invites, roles and roster", "Invitaciones, roles y plantilla"), hint: String(Math.max(active?.memberCount || 0, 1)) },
@@ -457,7 +460,11 @@ export default function OrganizationsPage({ go, params }: Props) {
     { id: "sponsors", name: L("Sponsors & partenaires", "Sponsors & partners", "Patrocinadores y socios"), subtitle: L("Visibilité et offres partenaires", "Partner visibility and offers", "Visibilidad y ofertas de socios") },
     { id: "admin", name: L("Administration", "Administration", "Administración"), subtitle: L("Droits, identité et paramètres", "Permissions, identity and settings", "Permisos, identidad y ajustes") },
     { id: "offers", name: L("Offres MSS", "MSS plans", "Planes MSS"), subtitle: L("GROUP, CLUB, PRO et BUSINESS", "GROUP, CLUB, PRO and BUSINESS", "GROUP, CLUB, PRO y BUSINESS") },
-  ];
+  ].filter((module) => {
+    if (["communication", "federations", "billing", "sponsors"].includes(module.id)) return optionalModules.includes(module.id);
+    if (["admin", "offers"].includes(module.id)) return active?.role === "owner" || active?.role === "admin";
+    return true;
+  });
 
   const fieldLabel = (title: string, optional = false) => <div style={{ color: theme.text, fontSize: 10.5, fontWeight: 950, marginBottom: 6 }}>{title}{optional ? <span style={{ color: theme.textSoft, fontWeight: 700 }}> · {L("optionnel", "optional", "opcional")}</span> : null}</div>;
 
@@ -669,7 +676,7 @@ export default function OrganizationsPage({ go, params }: Props) {
           <button type="button" onClick={copyJoinCode} style={{ ...secondaryButton, width: "100%", marginTop: 10, minHeight: 40, display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{L("CODE D’INVITATION", "INVITATION CODE", "CÓDIGO DE INVITACIÓN")}</span><strong style={{ color: theme.primary, letterSpacing: 1 }}>{active.joinCode || "—"}</strong></button>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{modules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: 104, padding: 11, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "start", gap: 7 }}><ModuleIcon name={module.id} color={theme.primary}/><div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 5, alignItems: "center", justifyContent: "space-between" }}><div style={{ color: theme.primary, fontSize: 10.5, fontWeight: 1000, lineHeight: 1.15 }}>{module.name}</div>{module.hint ? <span style={{ minWidth: 22, textAlign: "center", borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 8, fontWeight: 1000, padding: "3px 5px" }}>{module.hint}</span> : null}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9, lineHeight: 1.35 }}>{module.subtitle}</div></div></button>)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{modules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: active.profile.adminSettings.compactDashboard ? 80 : 104, padding: active.profile.adminSettings.compactDashboard ? 9 : 11, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "start", gap: 7 }}><ModuleIcon name={module.id} color={theme.primary}/><div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 5, alignItems: "center", justifyContent: "space-between" }}><div style={{ color: theme.primary, fontSize: 10.5, fontWeight: 1000, lineHeight: 1.15 }}>{module.name}</div>{module.hint ? <span style={{ minWidth: 22, textAlign: "center", borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 8, fontWeight: 1000, padding: "3px 5px" }}>{module.hint}</span> : null}</div>{active.profile.adminSettings.compactDashboard ? null : <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9, lineHeight: 1.35 }}>{module.subtitle}</div>}</div></button>)}</div>
     </div>;
   };
 
@@ -707,13 +714,10 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "billing") return <OrganizationBillingPanel organization={active} userId={userId} />;
     if (view === "sponsors") return <OrganizationSponsorsPanel organization={active} userId={userId} />;
     if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<div style={{ ...card, padding: 14 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Planifier un événement", "Schedule an event", "Programar un evento")}</div><div style={{ marginTop: 9, display: "grid", gap: 8 }}><input style={input} value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder={L("Entraînement, match, tournoi…", "Training, match, tournament…", "Entrenamiento, partido, torneo…")} /><input type="datetime-local" style={input} value={eventDate} onChange={(e) => setEventDate(e.target.value)} /><input style={input} value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder={L("Lieu (optionnel)", "Location (optional)", "Lugar (opcional)")} /><button type="button" style={primaryButton} onClick={() => void addEvent()}>{L("AJOUTER À L’AGENDA", "ADD TO CALENDAR", "AÑADIR A LA AGENDA")}</button></div></div>{localEvents.length ? localEvents.map((evt) => <div key={evt.id} style={{ ...card, padding: 12 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 950 }}>{evt.title}</div><div style={{ marginTop: 4, color: theme.primary, fontSize: 9.5, fontWeight: 850 }}>{new Date(evt.startsAt).toLocaleString()}</div>{evt.location ? <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9 }}>{evt.location}</div> : null}</div>) : <div style={{ ...card, padding: 18, color: theme.textSoft, fontSize: 10.5 }}>{L("Aucun événement planifié.", "No scheduled events.", "No hay eventos programados.")}</div>}</div>;
-    if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), L("Architecture prête pour la souscription B2B", "Architecture ready for B2B subscription", "Arquitectura lista para suscripción B2B"))}{PLAN_OPTIONS.map((plan) => <div key={plan.id} style={{ ...card, padding: 14, border: `1px solid ${active.plan === plan.id ? theme.primary : theme.borderSoft}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: theme.primary, fontSize: 12, fontWeight: 1000 }}>{plan.title}</div><div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10, lineHeight: 1.4 }}>{plan.subtitle}</div></div><div style={{ color: active.plan === plan.id ? theme.primary : theme.textSoft, fontSize: 8, fontWeight: 1000 }}>{active.plan === plan.id ? L("SÉLECTIONNÉ", "SELECTED", "SELECCIONADO") : plan.audience}</div></div></div>)}</div>;
+    if (view === "admin") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), active.name)}<OrganizationAdminPanel organization={active} userId={userId} go={go} onOpenProfile={() => navigateView("profile")} onChanged={() => void load()} /></div>;
+    if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), active.name)}<OrganizationPlansPanel organization={active} userId={userId} onChanged={() => void load()} /></div>;
 
-    const generic: Record<Exclude<View, "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "offers">, { title: string; subtitle: string; bullets: string[] }> = {
-      admin: { title: L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), subtitle: active.name, bullets: [L("Identité, type d’organisation, rôles, droits et paramètres.", "Identity, organization type, roles, permissions and settings.", "Identidad, tipo de organización, roles, permisos y ajustes."), `${L("Ton rôle", "Your role", "Tu rol")}: ${organizationRoleLabel(active.role)}`, `${L("Isolation des données", "Data isolation", "Aislamiento de datos")}: organization_id`, `${L("Médias", "Media", "Multimedia")}: ${getStorageDestination(loadStoragePrefs().selectedDestination).shortLabel}`] },
-    };
-    const data = generic[view as keyof typeof generic];
-    return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(data.title, data.subtitle)}<div style={{ ...card, padding: 15 }}><div style={{ display: "grid", gap: 9 }}>{data.bullets.map((line, index) => <div key={index} style={{ display: "grid", gridTemplateColumns: "8px minmax(0,1fr)", gap: 8, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.45 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: theme.primary, boxShadow: `0 0 8px ${theme.primary}`, marginTop: 5 }}/><span>{line}</span></div>)}</div></div></div>;
+    return renderHome();
   };
 
   return (

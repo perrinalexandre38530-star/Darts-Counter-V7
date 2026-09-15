@@ -149,6 +149,8 @@ const KillerSummaryPage = React.lazy(() => import("./pages/KillerSummaryPage"));
 // ✅ NEW: LES 5 VIES (CONFIG + PLAY)
 const FiveLivesConfig = React.lazy(() => import("./pages/FiveLivesConfig"));
 const FiveLivesPlay = React.lazy(() => import("./pages/FiveLivesPlay"));
+const Gros6Config = React.lazy(() => import("./pages/Gros6Config"));
+const Gros6Play = React.lazy(() => import("./pages/Gros6Play"));
 
 const ShanghaiPlay = React.lazy(() => import("./pages/ShanghaiPlay"));
 const LobbyPick = React.lazy(() => import("./pages/LobbyPick"));
@@ -519,6 +521,8 @@ const ONLINE_CONTEXT_TABS = new Set<string>([
   "battle_royale_play",
   "five_lives_config",
   "five_lives_play",
+  "gros_6_config",
+  "gros_6_play",
   "scram_config",
   "scram_play",
   "batard_config",
@@ -544,6 +548,7 @@ const ONLINE_GAMEPLAY_TABS = new Set<string>([
   "warfare_play",
   "battle_royale_play",
   "five_lives_play",
+  "gros_6_play",
   "scram_play",
   "batard_play",
   "capital_play",
@@ -1058,6 +1063,8 @@ type Tab =
   | "killer_summary"
   | "five_lives_config"
   | "five_lives_play"
+  | "gros_6_config"
+  | "gros_6_play"
   | "shanghai"
   | "shanghai_play"
   | "warfare_config"
@@ -3979,7 +3986,7 @@ useEffect(() => {
     } catch {}
 
     try {
-      const supported = ["x01", "cricket", "killer", "shanghai", "golf", "warfare", "battle_royale", "five_lives", "scram", "batard", "capital", "territories", "clock"];
+      const supported = ["x01", "cricket", "killer", "shanghai", "golf", "warfare", "battle_royale", "five_lives", "gros_6", "scram", "batard", "capital", "territories", "clock"];
       const lobbyCode = String((saved.payload as any)?.lobbyCode || "").trim().toUpperCase();
       if (supported.includes(saved.kind) && lobbyCode) {
         onlineApi
@@ -5689,6 +5696,25 @@ case "babyfoot_team_edit":
         break;
       }
 
+      case "gros_6_config":
+        page = <Gros6Config store={store} go={go} />;
+        break;
+
+      case "gros_6_play": {
+        const cfg = routeParams?.config;
+        if (!cfg) {
+          page = (
+            <div style={{ padding: 16 }}>
+              <button onClick={() => go("gros_6_config")}>← Retour</button>
+              <p>Configuration « Gros 6 » manquante.</p>
+            </div>
+          );
+          break;
+        }
+        page = <Gros6Play store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "gros_6", routeParams))} />;
+        break;
+      }
+
       case "shanghai":
         page = <ShanghaiConfigPage store={store} go={go} />;
         break;
@@ -6404,6 +6430,7 @@ case "babyfoot_team_edit":
     "warfare_play",
     "battle_royale_play",
     "five_lives_play",
+    "gros_6_play",
     "training_x01_play",
     "training_clock",
 

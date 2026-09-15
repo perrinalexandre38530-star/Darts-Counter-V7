@@ -123,6 +123,7 @@ function safeUpper(s: string) {
 // langue non FR sans traduction dédiée, on utilise l'anglais par défaut.
 const GAME_LABELS_I18N: Record<string, { en: string; es?: string }> = {
   five_lives: { en: "Five Lives", es: "Cinco vidas" },
+  gros_6: { en: "Big 6", es: "Gran 6" },
   killer_progressive: { en: "Progressive Killer", es: "Killer progresivo" },
   attrape_moi: { en: "Catch Me If You Can!", es: "¡Atrápame si puedes!" },
   president: { en: "President", es: "Presidente" },

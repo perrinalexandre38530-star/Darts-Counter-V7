@@ -18,6 +18,7 @@ export type DartsGameTab =
   | "battle_royale"
   | "warfare_config"
   | "five_lives_config"
+  | "gros_6_config"
   | "golf_config"
   | "scram_config"
   | "enculette_config"
@@ -233,6 +234,22 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "Les 5 vies",
     infoBody:
       "Chaque joueur commence avec 5 vies. Vollee de 3 fleches: tu dois faire STRICTEMENT plus que le score total de la vollee precedente (du joueur avant toi). Si tu echoues, tu perds 1 vie. A 0 vie: elimine. Dernier joueur avec des vies = victoire.",
+  },
+  {
+    id: "gros_6",
+    label: "Gros 6",
+    category: "classic",
+    entry: "games",
+    tab: "gros_6_config",
+    popularityRank: 8,
+    ready: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:gros_6",
+    infoTitle: "Gros 6",
+    infoBody:
+      "Depart sur S6. Le joueur a 3 fleches pour toucher la cible courante. En cas d'echec il perd 1 vie. S'il valide, les flechettes restantes servent a definir la cible suivante. Variante integree: zones exterieures / fermees (exterieur du cercle des chiffres, rond du 6, du 9, du 10, etc.) et bonus de 3 flechettes de selection si la validation arrive sur la 3e flechette.",
   },
 
   // ✅ (12) GOLF en Classique (placeholder engine)
