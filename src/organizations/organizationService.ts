@@ -329,6 +329,46 @@ export type OrganizationFeeMember = {
   updatedAt: string;
 };
 
+export type OrganizationPartnerKind = "sponsor" | "partner" | "supplier" | "institutional";
+export type OrganizationPartnerStatus = "draft" | "active" | "paused" | "archived";
+export type OrganizationPartnerPlacement = "organization" | "team" | "competition" | "venue" | "all";
+
+export type OrganizationPartner = {
+  id: string;
+  organizationId: string;
+  groupId: string;
+  groupName: string;
+  partnerKind: OrganizationPartnerKind;
+  name: string;
+  category: string;
+  websiteUrl: string;
+  offerTitle: string;
+  offerText: string;
+  promoCode: string;
+  placement: OrganizationPartnerPlacement;
+  startsAt: string;
+  endsAt: string;
+  logoMediaKey: string;
+  status: OrganizationPartnerStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationPartnerInput = {
+  groupId?: string | null;
+  partnerKind: OrganizationPartnerKind;
+  name: string;
+  category?: string;
+  websiteUrl?: string;
+  offerTitle?: string;
+  offerText?: string;
+  promoCode?: string;
+  placement?: OrganizationPartnerPlacement;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  logoMediaKey?: string;
+};
+
 export type OrganizationLocalEvent = {
   id: string;
   organizationId: string;
@@ -1793,6 +1833,132 @@ export async function deleteOrganizationFeeCampaign(
   if (!userId) throw new Error("Connexion requise.");
   const { error } = await supabase.rpc("ms_org_delete_fee_campaign", { p_fee_id: feeId });
   if (error) throw new Error(rpcMessage(error, "Suppression de la cotisation impossible."));
+}
+
+function coercePartnerKind(value: unknown): OrganizationPartnerKind {
+  const raw = String(value || "sponsor").toLowerCase();
+  return raw === "partner" ? "partner" : raw === "supplier" ? "supplier" : raw === "institutional" ? "institutional" : "sponsor";
+}
+
+function coercePartnerStatus(value: unknown): OrganizationPartnerStatus {
+  const raw = String(value || "draft").toLowerCase();
+  return raw === "active" ? "active" : raw === "paused" ? "paused" : raw === "archived" ? "archived" : "draft";
+}
+
+function coercePartnerPlacement(value: unknown): OrganizationPartnerPlacement {
+  const raw = String(value || "organization").toLowerCase();
+  return raw === "team" ? "team" : raw === "competition" ? "competition" : raw === "venue" ? "venue" : raw === "all" ? "all" : "organization";
+}
+
+function parseOrganizationPartner(row: any): OrganizationPartner {
+  return {
+    id: String(row?.id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    groupId: String(row?.groupId || row?.group_id || ""),
+    groupName: String(row?.groupName || row?.group_name || "").trim(),
+    partnerKind: coercePartnerKind(row?.partnerKind || row?.partner_kind),
+    name: String(row?.name || "Partenaire").trim().slice(0, 100) || "Partenaire",
+    category: String(row?.category || "").trim().slice(0, 80),
+    websiteUrl: String(row?.websiteUrl || row?.website_url || "").trim().slice(0, 400),
+    offerTitle: String(row?.offerTitle || row?.offer_title || "").trim().slice(0, 120),
+    offerText: String(row?.offerText || row?.offer_text || "").trim().slice(0, 600),
+    promoCode: String(row?.promoCode || row?.promo_code || "").trim().slice(0, 80),
+    placement: coercePartnerPlacement(row?.placement),
+    startsAt: String(row?.startsAt || row?.starts_at || ""),
+    endsAt: String(row?.endsAt || row?.ends_at || ""),
+    logoMediaKey: String(row?.logoMediaKey || row?.logo_media_key || "").trim().slice(0, 180),
+    status: coercePartnerStatus(row?.status),
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || row?.createdAt || row?.created_at || nowIso()),
+  };
+}
+
+export async function listOrganizationPartners(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ partners: OrganizationPartner[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { partners: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_partners", { p_org_id: organizationId });
+    if (error) throw error;
+    return { partners: rpcRows(data).filter(Boolean).map(parseOrganizationPartner), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] partners unavailable", error);
+    return { partners: [], cloudAvailable: false };
+  }
+}
+
+export async function createOrganizationPartner(
+  userId: string | null | undefined,
+  organizationId: string,
+  input: OrganizationPartnerInput,
+): Promise<OrganizationPartner> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_create_partner", {
+    p_org_id: organizationId,
+    p_group_id: input.groupId || null,
+    p_partner_kind: input.partnerKind,
+    p_name: String(input.name || "").trim(),
+    p_category: String(input.category || "").trim(),
+    p_website_url: String(input.websiteUrl || "").trim(),
+    p_offer_title: String(input.offerTitle || "").trim(),
+    p_offer_text: String(input.offerText || "").trim(),
+    p_promo_code: String(input.promoCode || "").trim(),
+    p_placement: input.placement || "organization",
+    p_starts_at: input.startsAt || null,
+    p_ends_at: input.endsAt || null,
+    p_logo_media_key: String(input.logoMediaKey || "").trim(),
+  });
+  if (error) throw new Error(rpcMessage(error, "Création du partenaire impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Partenaire introuvable.");
+  return parseOrganizationPartner(row);
+}
+
+export async function updateOrganizationPartner(
+  userId: string | null | undefined,
+  partnerId: string,
+  input: OrganizationPartnerInput,
+): Promise<OrganizationPartner> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_update_partner", {
+    p_partner_id: partnerId,
+    p_group_id: input.groupId || null,
+    p_partner_kind: input.partnerKind,
+    p_name: String(input.name || "").trim(),
+    p_category: String(input.category || "").trim(),
+    p_website_url: String(input.websiteUrl || "").trim(),
+    p_offer_title: String(input.offerTitle || "").trim(),
+    p_offer_text: String(input.offerText || "").trim(),
+    p_promo_code: String(input.promoCode || "").trim(),
+    p_placement: input.placement || "organization",
+    p_starts_at: input.startsAt || null,
+    p_ends_at: input.endsAt || null,
+    p_logo_media_key: String(input.logoMediaKey || "").trim(),
+  });
+  if (error) throw new Error(rpcMessage(error, "Modification du partenaire impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Partenaire introuvable.");
+  return parseOrganizationPartner(row);
+}
+
+export async function setOrganizationPartnerStatus(
+  userId: string | null | undefined,
+  partnerId: string,
+  status: OrganizationPartnerStatus,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_set_partner_status", { p_partner_id: partnerId, p_status: status });
+  if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));
+}
+
+export async function deleteOrganizationPartner(
+  userId: string | null | undefined,
+  partnerId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_delete_partner", { p_partner_id: partnerId });
+  if (error) throw new Error(rpcMessage(error, "Suppression du partenaire impossible."));
 }
 
 function coerceFederationMode(value: unknown): OrganizationFederationIntegrationMode {
