@@ -244,12 +244,12 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     popularityRank: 8,
     ready: true,
     maxPlayers: 12,
-    supportsTeams: false,
+    supportsTeams: true,
     supportsBots: true,
     statsKey: "game:gros_6",
     infoTitle: "Gros 6",
     infoBody:
-      "Depart sur S6. Le joueur a 3 fleches pour toucher la cible courante. En cas d'echec il perd 1 vie. S'il valide, les flechettes restantes servent a definir la cible suivante. Variante integree: zones exterieures / fermees (exterieur du cercle des chiffres, rond du 6, du 9, du 10, etc.) et bonus de 3 flechettes de selection si la validation arrive sur la 3e flechette.",
+      "Depart sur S6. 3 fleches pour toucher la cible courante, sinon perte d'une vie. Une cible validee permet d'imposer la suivante. Mode complet: individuel ou equipes, vies individuelles ou reserve commune, bots, configuration guidee/complete, Bull/DBull, zones exterieures/fermees (cercle des chiffres et ronds des numeros 1 a 20), variantes Facile/PRO/Sudden Death/Endurance et bonus de selection si la validation arrive sur la 3e flechette.",
   },
 
   // ✅ (12) GOLF en Classique (placeholder engine)
