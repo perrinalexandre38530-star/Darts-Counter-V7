@@ -12,6 +12,7 @@
 
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import ProfileAvatar from "../components/ProfileAvatar";
@@ -26,6 +27,7 @@ import { generateShuffledTeams, rememberGeneratedTeams } from "../lib/teamAutoSh
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { makeGros6Segment, randomGros6StartTarget } from "../lib/gros6Engine";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
+import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
 
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
 import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
@@ -243,6 +245,7 @@ function TeamCard({ team, active, primary, onClick, members, memberSelection, on
 
 export default function Gros6Config({ store, go }: any) {
   const { theme } = useTheme();
+  const { lang } = useLang();
   const primary = theme.primary || "#ff9d25";
   const primarySoft = `${primary}20`;
 
@@ -720,7 +723,7 @@ export default function Gros6Config({ store, go }: any) {
     <div style={{ minHeight: "100vh", background: theme.pageBg || theme.bg || "#070912", color: theme.text || "#fff", display: "flex", flexDirection: "column", padding: 12 }}>
       <header style={{ position: "sticky", top: 0, zIndex: 60, margin: "-12px -12px 12px", background: theme.pageBg || theme.bg || "#070912", paddingTop: "env(safe-area-inset-top)" }}>
         <div style={{ position: "relative", height: 92, overflow: "hidden", boxShadow: "0 12px 30px rgba(0,0,0,.42)" }}>
-          <img src={tickerGros6 as any} alt="Gros 6" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          <img src={(lang === "fr" ? tickerGros6 : tickerBig6) as any} alt={lang === "fr" ? "Gros 6" : "Big 6"} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", pointerEvents: "none" }}>
             <div style={{ pointerEvents: "auto" }}><BackDot onClick={() => go?.("games")} size={42} color={primary} glow={`${primary}AA`} /></div>
             <div style={{ pointerEvents: "auto" }}><InfoDot onClick={() => setRulesOpen(true)} title="Règles du Gros 6" size={42} color={primary} glow={`${primary}AA`} /></div>

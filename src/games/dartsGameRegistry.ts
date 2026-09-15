@@ -1266,6 +1266,7 @@ const READY_IDS = new Set<string>([
   "battle_royale",
   "warfare",
   "five_lives",
+  "gros_6", // GROS 6 / BIG 6 — mode disponible
   "scram",
   "baseball",
   "football",

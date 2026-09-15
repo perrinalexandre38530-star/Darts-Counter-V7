@@ -14,7 +14,9 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
+import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
 import {
   GROS6_NUMBER_ORDER,
   GROS6_SPECIAL_ZONES,
@@ -137,6 +139,7 @@ function TeamBadge({ team, game, theme }: any) {
 
 export default function Gros6Play({ store, go, config, onFinish }: any) {
   const { theme } = useTheme();
+  const { lang } = useLang();
   const [game, setGame] = React.useState(() => buildGros6InitialState(config));
   const undoStackRef = React.useRef<any[]>([]);
   const reportedRef = React.useRef(false);
@@ -230,7 +233,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     <div style={{ minHeight: "100vh", background: theme.pageBg || theme.bg || "#070912", color: theme.text || "#fff", padding: 12 }}>
       <header style={{ position: "sticky", top: 0, zIndex: 60, margin: "-12px -12px 12px", background: theme.pageBg || theme.bg || "#070912", paddingTop: "env(safe-area-inset-top)" }}>
         <div style={{ position: "relative", height: 92, overflow: "hidden", boxShadow: "0 12px 30px rgba(0,0,0,.42)" }}>
-          <img src={tickerGros6 as any} alt="Gros 6" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          <img src={(lang === "fr" ? tickerGros6 : tickerBig6) as any} alt={lang === "fr" ? "Gros 6" : "Big 6"} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", pointerEvents: "none" }}>
             <div style={{ pointerEvents: "auto" }}><BackDot onClick={() => go?.("gros_6_config")} size={42} color={theme.primary} glow={`${theme.primary}AA`} /></div>
             <div style={{ pointerEvents: "auto" }}><InfoDot onClick={() => setRulesOpen(true)} title="Règles du Gros 6" size={42} color={theme.primary} glow={`${theme.primary}AA`} /></div>
