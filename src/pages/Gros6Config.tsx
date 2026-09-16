@@ -304,11 +304,13 @@ export default function Gros6Config({ store, go }: any) {
   const [targetRule, setTargetRule] = React.useState<"strict" | "value">("strict");
   const [allowBull, setAllowBull] = React.useState(true);
   const [allowSpecialZones, setAllowSpecialZones] = React.useState(true);
+  const [allowOuterRing, setAllowOuterRing] = React.useState(true);
   const [selectionPolicy, setSelectionPolicy] = React.useState<SelectionPolicy>("open");
   const [startingTargetMode, setStartingTargetMode] = React.useState<StartingTargetMode>("s6");
   const [thirdDartBonusSelection, setThirdDartBonusSelection] = React.useState(true);
   const [thirdDartBonusCount, setThirdDartBonusCount] = React.useState(3);
   const [randomStartOrder, setRandomStartOrder] = React.useState(false);
+  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "visit_score" | "dartboard" | "presets" | "voice">("keypad");
   const [teamLifeMode, setTeamLifeMode] = React.useState<TeamLifeMode>("individual");
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -355,6 +357,7 @@ export default function Gros6Config({ store, go }: any) {
     setTargetRule(v.targetRule);
     setAllowBull(v.allowBull);
     setAllowSpecialZones(v.allowSpecialZones);
+    setAllowOuterRing(v.allowOuterRing !== false);
     setThirdDartBonusSelection(v.thirdDartBonusSelection);
     setThirdDartBonusCount(v.thirdDartBonusCount);
     setSelectionPolicy(v.selectionPolicy);
@@ -476,7 +479,7 @@ export default function Gros6Config({ store, go }: any) {
     let players = [...built.players];
     if (participantMode === "players" && randomStartOrder) players = shuffle(players);
     const startingTarget = startingTargetMode === "random"
-      ? randomGros6StartTarget({ selectionPolicy, allowBull, allowSpecialZones })
+      ? randomGros6StartTarget({ selectionPolicy, allowBull, allowSpecialZones, allowOuterRing })
       : makeGros6Segment("S", 6);
     const config = {
       id: `gros6-${Date.now()}`,
@@ -489,19 +492,21 @@ export default function Gros6Config({ store, go }: any) {
       targetRule,
       allowBull,
       allowSpecialZones,
+      allowOuterRing,
       selectionPolicy,
       startingTargetMode,
       startingTarget,
       randomStartOrder,
       thirdDartBonusSelection,
       thirdDartBonusCount,
+      scoreInputDefaultMethod: scoreInputMethod,
       presetId,
       players,
       teams: built.teams || undefined,
     };
     try { recordProfileUsageForMode("gros_6", players.map((p: any) => String(p.id))); } catch {}
     go?.("gros_6_play", { config });
-  }, [participantMode, teamsSourceMode, teamLifeMode, startingLives, targetRule, allowBull, allowSpecialZones, selectionPolicy, startingTargetMode, randomStartOrder, thirdDartBonusSelection, thirdDartBonusCount, presetId, go, selectedIds, selectedSavedTeamIds, selectedBotTeamIds, teamMemberSelections, manualAssignments, autoTeams]);
+  }, [participantMode, teamsSourceMode, teamLifeMode, startingLives, targetRule, allowBull, allowSpecialZones, allowOuterRing, selectionPolicy, startingTargetMode, randomStartOrder, thirdDartBonusSelection, thirdDartBonusCount, scoreInputMethod, presetId, go, selectedIds, selectedSavedTeamIds, selectedBotTeamIds, teamMemberSelections, manualAssignments, autoTeams]);
 
   const ParticipantsSelector = () => (
     <Section title={participantMode === "players" ? "2. Joueurs" : "2. Participants des équipes"} subtitle={participantMode === "players" ? "Sélectionne les profils locaux puis, si besoin, des BOTS IA." : teamsSourceMode === "saved" ? "Choisis des équipes déjà enregistrées ou des équipes BOTS IA." : "Sélectionne d'abord les joueurs utilisés pour la composition des équipes."} primary={primary}>
@@ -664,8 +669,9 @@ export default function Gros6Config({ store, go }: any) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <PillButton label={allowBull ? "Bull / DBull ON" : "Bull / DBull OFF"} active={allowBull} onClick={() => { setAllowBull((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
             <PillButton label={allowSpecialZones ? "Zones fermées ON" : "Zones fermées OFF"} active={allowSpecialZones} onClick={() => { setAllowSpecialZones((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
+            <PillButton label={allowOuterRing ? "Contour extérieur ON" : "Contour extérieur OFF"} active={allowOuterRing} onClick={() => { setAllowOuterRing((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} disabled={!allowSpecialZones} compact />
           </div>
-          <div style={{ color: "#8f94b5", fontSize: 10.5, lineHeight: 1.4, marginTop: 7 }}>Zones fermées : extérieur du cercle des chiffres + rond intérieur des numéros 1 à 20 (dont 6, 9, 10, 8, 18, 20, 19…).</div>
+          <div style={{ color: "#8f94b5", fontSize: 10.5, lineHeight: 1.4, marginTop: 7 }}>Zones fermées : gros/petit 6, gros/petit 8, zones 9, 10, 16, 18, 19, 20. Le contour extérieur peut être activé ou coupé séparément.</div>
         </div>
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Cible imposable</div>
@@ -702,14 +708,25 @@ export default function Gros6Config({ store, go }: any) {
             <PillButton label="Aléatoire" active={randomStartOrder} onClick={() => setRandomStartOrder(true)} primary={primary} primarySoft={primarySoft} />
           </div>
         </div>
+        <div>
+          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Mode de saisie en partie</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => setScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} compact />
+            <PillButton label="SCORE VOLÉE" active={scoreInputMethod === "visit_score"} onClick={() => setScoreInputMethod("visit_score")} primary={primary} primarySoft={primarySoft} compact />
+            <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => setScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} compact />
+            <PillButton label="PRESETS" active={scoreInputMethod === "presets"} onClick={() => setScoreInputMethod("presets")} primary={primary} primarySoft={primarySoft} compact />
+            <PillButton label="VOICE" active={scoreInputMethod === "voice"} onClick={() => setScoreInputMethod("voice")} primary={primary} primarySoft={primarySoft} compact />
+          </div>
+        </div>
 
         <div style={{ borderRadius: 16, border: `1px solid ${primary}33`, background: `${primary}0b`, padding: 12 }}>
           <div style={{ color: primary, fontSize: 11, fontWeight: 950, letterSpacing: .8, textTransform: "uppercase", marginBottom: 7 }}>Récapitulatif</div>
           <div style={{ color: "#d7d9e9", fontSize: 11, lineHeight: 1.55 }}>
             {participantMode === "players" ? `Individuel • ${selectedPlayers.length} joueur(s)` : `Équipes • ${teamsSourceMode} • ${guidedSelectionLabel}`}<br />
             {startingLives} vie(s) • {targetRule === "strict" ? "S/D/T stricts" : "valeur libre"} • {selectionPolicy === "pro" ? "sélection PRO" : "sélection libre"}<br />
-            Bull {allowBull ? "ON" : "OFF"} • Zones spéciales {allowSpecialZones ? "ON" : "OFF"} • Départ {startingTargetMode === "s6" ? "S6" : "aléatoire"}<br />
-            Bonus D3 : {thirdDartBonusSelection ? `${thirdDartBonusCount} fléchette(s)` : "OFF"}{participantMode === "teams" ? ` • vies ${teamLifeMode === "shared" ? "communes" : "individuelles"}` : ""}
+            Bull {allowBull ? "ON" : "OFF"} • Zones spéciales {allowSpecialZones ? "ON" : "OFF"} • Contour ext. {allowOuterRing ? "ON" : "OFF"} • Départ {startingTargetMode === "s6" ? "S6" : "aléatoire"}<br />
+            Bonus D3 : {thirdDartBonusSelection ? `${thirdDartBonusCount} fléchette(s)` : "OFF"}{participantMode === "teams" ? ` • vies ${teamLifeMode === "shared" ? "communes" : "individuelles"}` : ""}<br />
+            Saisie : {scoreInputMethod === "visit_score" ? "Score volée" : scoreInputMethod === "dartboard" ? "Cible" : scoreInputMethod === "presets" ? "Presets" : scoreInputMethod === "voice" ? "Voice" : "Keypad"}
           </div>
         </div>
 

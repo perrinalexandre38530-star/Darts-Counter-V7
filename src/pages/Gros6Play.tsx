@@ -19,6 +19,8 @@ import { useLang } from "../contexts/LangContext";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
 import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
+import playersPanelTicker from "../assets/tickers/ticker_gros_6_players_panel.png";
+import activePanelTicker from "../assets/tickers/ticker_gros_6_active_panel.png";
 import {
   GROS6_SPECIAL_ZONES,
   applyGros6AttackHit,
@@ -87,15 +89,89 @@ function ModeInlineInfo({ label, value, accent }: any) {
   );
 }
 
+const BOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+const SPECIAL_ZONE_META: Record<string, any> = {
+  outer_numbers_ring: { fr: "Contour extérieur", en: "Outer ring", tone: "outer" },
+  big_6: { fr: "GROS 6", en: "BIG 6", number: 6, ring: "outer" },
+  small_6: { fr: "PETIT 6", en: "SMALL 6", number: 6, ring: "inner" },
+  big_8: { fr: "GROS 8", en: "BIG 8", number: 8, ring: "outer" },
+  small_8: { fr: "PETIT 8", en: "SMALL 8", number: 8, ring: "inner" },
+  ring_9: { fr: "ZONE 9", en: "ZONE 9", number: 9, ring: "outer" },
+  ring_10: { fr: "ZONE 10", en: "ZONE 10", number: 10, ring: "outer" },
+  ring_16: { fr: "ZONE 16", en: "ZONE 16", number: 16, ring: "outer" },
+  ring_18: { fr: "ZONE 18", en: "ZONE 18", number: 18, ring: "outer" },
+  ring_19: { fr: "ZONE 19", en: "ZONE 19", number: 19, ring: "outer" },
+  ring_20: { fr: "ZONE 20", en: "ZONE 20", number: 20, ring: "outer" },
+};
+
+function specialZoneLabel(code: string, lang: string) {
+  const meta = SPECIAL_ZONE_META[String(code || "")];
+  if (meta) return lang === "fr" ? meta.fr : meta.en;
+  return String(code || "—");
+}
+
 function targetUiLabel(target: any, lang: string) {
   if (!target) return "—";
-  if (target.kind === "special") {
-    const code = String(target.code || "");
-    const digit = code.match(/^digit_(\d+)$/);
-    if (digit) return lang === "fr" ? `Rond du ${digit[1]}` : `No. ${digit[1]} ring`;
-    if (code === "outer_numbers_ring") return lang === "fr" ? "Extérieur chiffres" : "Outer number ring";
-  }
+  if (target.kind === "special") return specialZoneLabel(String(target.code || ""), lang);
   return gros6TargetLabel(target);
+}
+
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function annulusPath(cx: number, cy: number, rOuter: number, rInner: number, startDeg: number, endDeg: number) {
+  const startOuter = polar(cx, cy, rOuter, startDeg);
+  const endOuter = polar(cx, cy, rOuter, endDeg);
+  const startInner = polar(cx, cy, rInner, endDeg);
+  const endInner = polar(cx, cy, rInner, startDeg);
+  const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${startOuter.x} ${startOuter.y} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${endOuter.x} ${endOuter.y} L ${startInner.x} ${startInner.y} A ${rInner} ${rInner} 0 ${largeArc} 0 ${endInner.x} ${endInner.y} Z`;
+}
+
+function zoneAngles(number: number) {
+  const idx = BOARD_ORDER.indexOf(Number(number));
+  const start = idx < 0 ? 0 : idx * 18;
+  return { start, end: start + 18 };
+}
+
+function SpecialZoneIcon({ code, accent }: any) {
+  const meta = SPECIAL_ZONE_META[String(code || "")];
+  const highlight = accent || "#42d6ff";
+  const num = meta?.number;
+  const ang = typeof num === "number" ? zoneAngles(num) : null;
+  const ringPath = ang
+    ? annulusPath(36, 36, meta?.ring === "inner" ? 24 : 30, meta?.ring === "inner" ? 14 : 24, ang.start, ang.end)
+    : null;
+  return (
+    <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
+      <circle cx="36" cy="36" r="30" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" />
+      <circle cx="36" cy="36" r="24" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+      <circle cx="36" cy="36" r="14" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+      <circle cx="36" cy="36" r="7" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+      {Array.from({ length: 20 }, (_, i) => {
+        const a = i * 18;
+        const p1 = polar(36, 36, 7, a);
+        const p2 = polar(36, 36, 30, a);
+        return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,.12)" strokeWidth="1" />;
+      })}
+      {code === "outer_numbers_ring" ? <circle cx="36" cy="36" r="33" fill="none" stroke={highlight} strokeWidth="4" opacity="0.95" /> : null}
+      {ringPath ? <path d={ringPath} fill={highlight} opacity="0.78" stroke={highlight} strokeWidth="1" /> : null}
+      {typeof num === "number" ? <text x="36" y="40" textAnchor="middle" fill="#fff" fontSize="15" fontWeight="900">{num}</text> : <text x="36" y="40" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="900">ZONE</text>}
+    </svg>
+  );
+}
+
+function ZoneMiniIcon({ color = "currentColor" }: any) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" fill="none" stroke={color} strokeWidth="1.8" opacity="0.95" />
+      <circle cx="12" cy="12" r="5.5" fill="none" stroke={color} strokeWidth="1.6" opacity="0.8" />
+      <circle cx="12" cy="12" r="2.3" fill={color} opacity="0.9" />
+      <path d="M12 3.5V20.5M3.5 12H20.5" fill="none" stroke={color} strokeWidth="1.5" opacity="0.75" />
+    </svg>
+  );
 }
 
 function toUiDarts(items: any[]) {
@@ -178,7 +254,7 @@ function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
           const lives = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(team?.lives || 0) : Number(p.lives || 0);
           return (
             <div key={p.id} style={{ ...panelStyle(), padding: "8px 10px", opacity: alive ? 1 : .55, border: `1px solid ${active ? `${accent}66` : "rgba(255,255,255,.08)"}`, boxShadow: active ? `0 0 16px ${accent}22` : "none", display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 10 }}>
-              <ProfileAvatar name={p.name} avatarDataUrl={p.avatarDataUrl} size={40} />
+              <ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={40} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 7, alignItems: "center", minWidth: 0 }}>
                   <span style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
@@ -200,14 +276,47 @@ function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
   );
 }
 
-function SpecialZonesModal({ onClose, onPick, accent, lang }: any) {
+function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = true }: any) {
   const L = (fr: string, en: string) => lang === "fr" ? fr : en;
   return (
-    <ModalShell onClose={onClose} title={L("ZONES SPÉCIALES", "SPECIAL ZONES")} subtitle={L("Sélectionne exactement la zone touchée", "Select the exact zone hit")} accent={accent}>
-      <button type="button" onClick={() => onPick({ code: "outer_numbers_ring", label: "Extérieur cercle chiffres" })} style={{ width: "100%", minHeight: 42, borderRadius: 13, border: `1px solid ${accent}55`, background: `${accent}12`, color: "#fff", fontWeight: 1000, cursor: "pointer", marginBottom: 9 }}>{L("EXTÉRIEUR DU CERCLE DES CHIFFRES", "OUTSIDE THE NUMBER RING")}</button>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>
-        {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
-          <button key={n} type="button" onClick={() => onPick({ code: `digit_${n}`, label: `Rond du ${n}` })} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "#fff", fontWeight: 1000, cursor: "pointer" }}>{n}</button>
+    <ModalShell onClose={onClose} title={L("ZONES SPÉCIALES", "SPECIAL ZONES")} subtitle={L("Sélectionne exactement la zone touchée sur la cible", "Select the exact hit zone on the board")} accent={accent}>
+      <div style={{ color: SOFT, fontSize: 10.5, lineHeight: 1.45, marginBottom: 10 }}>
+        {includeOuterRing ? L("11 zones spéciales : gros/petit 6, gros/petit 8, zones 9, 10, 16, 18, 19, 20 et contour extérieur.", "11 special zones: big/small 6, big/small 8, zones 9, 10, 16, 18, 19, 20 and the outer ring.") : L("10 zones spéciales : gros/petit 6, gros/petit 8, zones 9, 10, 16, 18, 19 et 20.", "10 special zones: big/small 6, big/small 8, zones 9, 10, 16, 18, 19 and 20.")}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 9 }}>
+        {GROS6_SPECIAL_ZONES.filter((zone: any) => includeOuterRing || zone.code !== "outer_numbers_ring").map((zone: any) => (
+          <button
+            key={zone.code}
+            type="button"
+            onClick={() => onPick({ code: zone.code, label: specialZoneLabel(zone.code, "fr") })}
+            style={{
+              minHeight: 112,
+              borderRadius: 16,
+              border: `1px solid ${accent}33`,
+              background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.28))",
+              color: "#fff",
+              display: "grid",
+              gridTemplateColumns: "72px 1fr",
+              alignItems: "center",
+              gap: 10,
+              padding: 10,
+              textAlign: "left",
+              cursor: "pointer",
+              boxShadow: `0 0 16px ${accent}12`,
+            }}
+          >
+            <div style={{ display: "grid", placeItems: "center" }}><SpecialZoneIcon code={zone.code} accent={accent} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: accent, fontSize: 13, fontWeight: 1000, letterSpacing: .5 }}>{specialZoneLabel(zone.code, lang)}</div>
+              <div style={{ marginTop: 4, color: SOFT, fontSize: 9.2, lineHeight: 1.35 }}>
+                {zone.code === "outer_numbers_ring"
+                  ? L("Contour extérieur de la cible, autour du cercle des chiffres.", "Outer contour of the dartboard, around the number ring.")
+                  : SPECIAL_ZONE_META[zone.code]?.ring === "inner"
+                  ? L("Zone intérieure entre le triple et le Bull.", "Inner zone between the treble and the Bull.")
+                  : L("Zone extérieure entre le double et le triple.", "Outer zone between the double and the treble.")}
+              </div>
+            </div>
+          </button>
         ))}
       </div>
     </ModalShell>
@@ -390,19 +499,19 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         </div>
       </div>
 
-      {/* BLOC JOUEUR ACTIF — structure LOTERIE adaptée au Gros 6 */}
+      {/* BLOC JOUEUR ACTIF */}
       <section style={{ ...panelStyle(), flex: `0 0 ${activeHeight}px`, padding: 0, overflow: "hidden", borderColor: `${accent}88`, boxShadow: `0 0 24px ${accent}20` }}>
-        <div style={{ position: "relative", height: "100%", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(122px,138px)", gap: 4, alignItems: "stretch", padding: compact ? "7px 8px" : "8px 10px" }}>
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.36), rgba(0,0,0,.18) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))" }} />
+        <div style={{ position: "relative", height: "100%", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(124px,142px)", gap: 6, alignItems: "stretch", padding: compact ? "7px 8px" : "8px 10px" }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.40), rgba(0,0,0,.14) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.26))" }} />
           <div style={{ position: "absolute", left: -20, top: -4, bottom: -4, width: "26%", minWidth: 82, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: -14, top: 14, transform: "scale(1.25)", transformOrigin: "left top", filter: "saturate(.86)" }}><ProfileAvatar name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={82} /></div>
+            <div style={{ position: "absolute", left: -14, top: 14, transform: "scale(1.25)", transformOrigin: "left top", filter: "saturate(.86)" }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={82} /></div>
           </div>
 
           <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minWidth: 0, textAlign: "center", padding: "6px 8px 4px 5px" }}>
             <div style={{ color: accent, fontSize: compact ? 12 : 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activePlayer?.name || "—"}</div>
             {activeTeam ? <div style={{ marginTop: 2, color: SOFT, fontSize: 8.2, fontWeight: 900 }}>{activeTeam.name}</div> : null}
             <div style={{ marginTop: 3, color: SOFT, fontSize: 8.5, fontWeight: 1000, letterSpacing: .7 }}>{phaseText}</div>
-            <div style={{ marginTop: 1, color: accent, fontSize: compact ? 50 : 58, fontWeight: 1000, lineHeight: 1, textShadow: `0 4px 18px ${accent}35`, whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{targetUiLabel(activeTarget, lang)}</div>
+            <div style={{ marginTop: 1, color: accent, fontSize: compact ? 43 : 50, fontWeight: 1000, lineHeight: 1, textShadow: `0 4px 18px ${accent}35`, whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{targetUiLabel(activeTarget, lang)}</div>
             <div style={{ marginTop: "auto", display: "flex", gap: "clamp(5px, 1.7vw, 14px)", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", width: "100%", minWidth: 0, overflow: "hidden" }}>
               <ModeInlineInfo label={L("DARTS", "DARTS")} value={String(dartsLeft)} accent={accent} />
               <ModeInlineInfo label={L("RÈGLE", "RULE")} value={config?.targetRule === "value" ? L("VALEUR", "VALUE") : "S/D/T"} accent={accent} />
@@ -410,21 +519,26 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             </div>
           </div>
 
-          <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, minWidth: 0, overflow: "hidden", borderRadius: 18, border: `1px solid ${accent}55`, background: "#080b12", padding: 0, color: "#fff" }}>
-            <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.32), rgba(4,8,16,.72)), url(${headerTicker})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .72 }} />
-            <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "5px 4px" }}>
-              <ProfileAvatar name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 48 : 56} />
-              <div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4, width: "100%" }}>
-                <div style={{ textAlign: "center" }}><div style={{ color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>{L("VIES", "LIVES")}</div><div style={{ color: BAD, fontSize: 14, fontWeight: 1000 }}>❤️ {lifeValue}</div></div>
-                <div style={{ textAlign: "center" }}><div style={{ color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>DARTS</div><div style={{ color: accent, fontSize: 14, fontWeight: 1000 }}>{dartsLeft}</div></div>
-                <div style={{ textAlign: "center" }}><div style={{ color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>{L("TOUR", "TURN")}</div><div style={{ color: "#fff", fontSize: 14, fontWeight: 1000 }}>#{game.turnNo}</div></div>
+          <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#080b12", padding: 0, color: "#fff", boxShadow: `0 0 0 1px ${accent}33 inset, 0 0 18px ${accent}18` }}>
+            <img src={activePanelTicker as any} alt="Active player panel" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .92 }} />
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(8,10,16,.16), rgba(8,10,16,.48) 60%, rgba(8,10,16,.72))" }} />
+            <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "8px 6px 7px" }}>
+              <div style={{ alignSelf: "stretch", display: "flex", justifyContent: "flex-end" }}>
+                <div style={{ borderRadius: 999, padding: 2, background: "rgba(0,0,0,.28)", boxShadow: `0 0 0 1px ${accent}44, 0 0 16px rgba(0,0,0,.24)` }}>
+                  <ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 46 : 52} />
+                </div>
+              </div>
+              <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4 }}>
+                <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>{L("VIES", "LIVES")}</div><div style={{ color: BAD, fontSize: 14, fontWeight: 1000 }}>❤️ {lifeValue}</div></div>
+                <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>DARTS</div><div style={{ color: accent, fontSize: 14, fontWeight: 1000 }}>{dartsLeft}</div></div>
+                <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>{L("TOUR", "TURN")}</div><div style={{ color: "#fff", fontSize: 14, fontWeight: 1000 }}>#{game.turnNo}</div></div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* KPI LIVE — exactement le principe Loterie, clic -> popin détaillée */}
+      {/* KPI LIVE */}
       <section style={{ ...panelStyle(), flex: "0 0 52px", padding: 7 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
           <MiniKpi label={L("CIBLES", "TARGETS")} value={activePlayer?.stats?.targetsCleared || 0} color={accent} onClick={() => setStatsOpen(true)} />
@@ -434,20 +548,27 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         </div>
       </section>
 
-      {/* BANDEAU JOUEURS — même structure que Killer */}
-      <button type="button" onClick={() => setPlayersOpen(true)} style={{ ...panelStyle(), flex: compact ? "0 0 76px" : "0 0 84px", padding: 0, overflow: "hidden", cursor: "pointer", textAlign: "left", backgroundImage: `url(${headerTicker})`, backgroundBlendMode: "screen", backgroundColor: "rgba(0,0,0,.18)", backgroundSize: "cover", backgroundPosition: "center" }} title={L("Liste des joueurs", "Players list")}>
-        <div style={{ padding: "7px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "linear-gradient(90deg, rgba(0,0,0,.58), rgba(0,0,0,.18) 55%, rgba(0,0,0,.48))", borderBottom: "1px solid rgba(255,255,255,.10)" }}>
-          <span style={{ fontWeight: 1000, letterSpacing: 1.2, color: accent, textTransform: "uppercase", whiteSpace: "nowrap", fontSize: 11 }}>{L("Joueurs", "Players")}</span>
-          <span style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.players.length}</span>
-        </div>
-        <div style={{ padding: "5px 8px 6px", background: "rgba(0,0,0,.38)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto", overflowY: "hidden", padding: "2px 1px", scrollbarWidth: "none" }}>
+      {/* BLOC LISTE DES JOUEURS — sans contour de bloc, l'image fait le contour */}
+      <button
+        type="button"
+        onClick={() => setPlayersOpen(true)}
+        title={L("Liste des joueurs", "Players list")}
+        style={{ flex: compact ? "0 0 76px" : "0 0 84px", padding: 0, overflow: "hidden", cursor: "pointer", textAlign: "left", background: "transparent", border: 0, boxShadow: "none", position: "relative" }}
+      >
+        <img src={playersPanelTicker as any} alt="Players panel" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.36), rgba(0,0,0,.14) 45%, rgba(0,0,0,.48))" }} />
+        <div style={{ position: "absolute", inset: 0, padding: compact ? "7px 9px" : "8px 10px", display: "grid", gridTemplateRows: "auto 1fr", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <span style={{ fontWeight: 1000, letterSpacing: 1.2, color: accent, textTransform: "uppercase", whiteSpace: "nowrap", fontSize: 11 }}>{L("Liste joueurs", "Players list")}</span>
+            <span style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.players.length}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, overflowX: "auto", overflowY: "hidden", padding: "0 1px", scrollbarWidth: "none" }}>
             {game.players.map((p: any, idx: number) => {
               const active = idx === game.turnIndex && !finished;
               const alive = gros6IsPlayerActive(game, p);
               return (
                 <div key={p.id} style={{ flex: "0 0 auto", opacity: alive ? 1 : .42, display: "grid", justifyItems: "center", gap: 2 }}>
-                  <div style={{ borderRadius: 999, padding: 1, boxShadow: active ? `0 0 0 2px ${accent}, 0 0 12px ${accent}66` : "none" }}><ProfileAvatar name={p.name} avatarDataUrl={p.avatarDataUrl} size={compact ? 34 : 38} /></div>
+                  <div style={{ borderRadius: 999, padding: 1, boxShadow: active ? `0 0 0 2px ${accent}, 0 0 12px ${accent}66` : "0 0 0 1px rgba(255,255,255,.14)" }}><ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={compact ? 34 : 38} /></div>
                   <div style={{ maxWidth: 58, color: active ? accent : "#fff", fontSize: 7.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                 </div>
               );
@@ -456,12 +577,9 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         </div>
       </button>
 
-      {/* SCORE INPUT HUB NATIF — mêmes méthodes / même composant que X01, Territories, Killer */}
+      {/* SCORE INPUT HUB NATIF */}
       {activeHuman ? (
         <div className="gros6-scorehub" style={{ position: "relative" }}>
-          {config?.allowSpecialZones && String(config?.selectionPolicy || "open") !== "pro" ? (
-            <button type="button" onClick={() => setSpecialOpen(true)} style={{ position: "absolute", top: 2, right: 4, zIndex: 8, height: 28, borderRadius: 999, border: `1px solid ${accent}55`, background: "rgba(7,10,18,.94)", color: accent, padding: "0 9px", fontSize: 8.5, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 12px ${accent}20` }}>{L("ZONES", "ZONES")}</button>
-          ) : null}
           <ScoreInputHub
             currentThrow={currentThrow as any}
             multiplier={multiplier}
@@ -475,13 +593,22 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             onValidate={phaseSelect ? finishSelectionNow : (() => {})}
             onDirectDart={submitUiDart}
             onSetVisitDarts={applyPresetDarts}
-            preferredMethod={(config as any)?.scoreInputDefaultMethod || (config as any)?.scoreInputMethod || null}
+            preferredMethod={(config as any)?.scoreInputDefaultMethod || (config as any)?.scoreInputMethod || "keypad"}
+            keypadAuxActionOverride={config?.allowSpecialZones && String(config?.selectionPolicy || "open") !== "pro" ? {
+              label: L("ZONE", "ZONE"),
+              icon: <ZoneMiniIcon color="currentColor" />,
+              onClick: () => setSpecialOpen(true),
+              disabled: false,
+              active: false,
+              title: L("Ouvrir les zones spéciales", "Open special zones"),
+              ariaLabel: L("Ouvrir les zones spéciales", "Open special zones"),
+            } : null}
             hidePreview
             hideTotal
             showPlaceholders={false}
-            hideSwitcher={false}
-            hideTabs={false}
-            switcherMode="inline"
+            hideSwitcher
+            hideTabs
+            switcherMode="hidden"
             fitToParent
             validateLabel={phaseSelect ? L("VALIDER CIBLE", "CONFIRM TARGET") : L("TOUR EN COURS", "TURN ACTIVE")}
             validateDisabled={!phaseSelect}
@@ -498,7 +625,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
 
       {statsOpen ? <PlayerStatsModal player={activePlayer} teamName={statsPlayerTeam} onClose={() => setStatsOpen(false)} accent={accent} lang={lang} /> : null}
       {playersOpen ? <PlayersModal game={game} activeIndex={game.turnIndex} onClose={() => setPlayersOpen(false)} accent={accent} lang={lang} /> : null}
-      {specialOpen ? <SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={pickSpecial} accent={accent} lang={lang} /> : null}
+      {specialOpen ? <SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={pickSpecial} accent={accent} lang={lang} includeOuterRing={(config as any)?.allowOuterRing !== false} /> : null}
       {rulesOpen ? (
         <ModalShell onClose={() => setRulesOpen(false)} title={L("GROS 6 — RÈGLES", "BIG 6 — RULES")} accent={accent}>
           <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.65 }}>{L("Touchez la cible courante avec vos 3 fléchettes. Un échec fait perdre une vie. Une réussite permet d'utiliser les fléchettes restantes pour imposer la prochaine cible. Les zones fermées/extérieures activées dans la configuration sont de vraies cibles distinctes. Si la cible est validée sur la 3e fléchette, le bonus configuré ouvre une nouvelle volée de sélection.", "Hit the current target within 3 darts. Missing it costs one life. If you succeed, use the remaining darts to set the next target. Enabled closed/outer zones are distinct targets. If the target is cleared with the 3rd dart, the configured bonus opens a new selection visit.")}</div>

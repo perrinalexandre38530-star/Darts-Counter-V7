@@ -15,8 +15,17 @@ export type Gros6Target =
 
 export const GROS6_NUMBER_ORDER = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 export const GROS6_SPECIAL_ZONES = [
-  { code: "outer_numbers_ring", label: "Extérieur cercle chiffres" },
-  ...Array.from({ length: 20 }, (_, i) => ({ code: `digit_${i + 1}`, label: `Rond du ${i + 1}` })),
+  { code: "outer_numbers_ring", label: "Contour extérieur" },
+  { code: "big_6", label: "Gros 6" },
+  { code: "small_6", label: "Petit 6" },
+  { code: "big_8", label: "Gros 8" },
+  { code: "small_8", label: "Petit 8" },
+  { code: "ring_9", label: "Zone 9" },
+  { code: "ring_10", label: "Zone 10" },
+  { code: "ring_16", label: "Zone 16" },
+  { code: "ring_18", label: "Zone 18" },
+  { code: "ring_19", label: "Zone 19" },
+  { code: "ring_20", label: "Zone 20" },
 ];
 
 export function gros6Clone<T>(value: T): T {
@@ -67,6 +76,7 @@ export function isGros6TargetAllowedForSelection(target: any, config: any): bool
   if (!target || target.kind === "miss") return false;
   if (target.kind === "special") {
     if (!config?.allowSpecialZones) return false;
+    if (String(target?.code || "") === "outer_numbers_ring" && config?.allowOuterRing === false) return false;
     return String(config?.selectionPolicy || "open") !== "pro";
   }
   if (target.kind === "bull") return !!config?.allowBull;
@@ -376,8 +386,9 @@ function randomHit(config: any): Gros6Target {
   const r = Math.random();
   if (config?.allowBull && r < 0.05) return Math.random() < 0.2 ? makeGros6Bull(true) : makeGros6Bull(false);
   if (config?.allowSpecialZones && r < 0.14) {
-    const zone = GROS6_SPECIAL_ZONES[Math.floor(Math.random() * GROS6_SPECIAL_ZONES.length)];
-    return makeGros6Special(zone.code, zone.label);
+    const zones = GROS6_SPECIAL_ZONES.filter((zone) => !(config?.allowOuterRing === false && zone.code === "outer_numbers_ring"));
+    const zone = zones[Math.floor(Math.random() * zones.length)];
+    return makeGros6Special((zone || GROS6_SPECIAL_ZONES[0]).code, (zone || GROS6_SPECIAL_ZONES[0]).label);
   }
   return randomSegment();
 }
@@ -410,8 +421,9 @@ export function chooseGros6BotTarget(skill: number, config: any): Gros6Target {
   ];
   if (config?.allowBull) options.push(makeGros6Bull(true), makeGros6Bull(false));
   if (config?.allowSpecialZones) {
-    [20, 19, 18, 10, 9, 8, 6].forEach((n) => options.push(makeGros6Special(`digit_${n}`, `Rond du ${n}`)));
-    options.push(makeGros6Special("outer_numbers_ring", "Extérieur cercle chiffres"));
+    for (const zone of GROS6_SPECIAL_ZONES.filter((item) => !(config?.allowOuterRing === false && item.code === "outer_numbers_ring"))) {
+      options.push(makeGros6Special(zone.code, zone.label));
+    }
   }
   const allowed = options.filter((target) => isGros6TargetAllowedForSelection(target, config));
   const ordered = skill >= 4 ? allowed : [...allowed].reverse();

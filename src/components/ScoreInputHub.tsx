@@ -30,6 +30,16 @@ type VoiceControl = {
   onReset?: () => void;
 };
 
+type ExternalKeypadAuxAction = {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  title?: string;
+  ariaLabel?: string;
+};
+
 type Props = {
   /** Volée en cours (0..3 flèches) */
   currentThrow: UIDart[];
@@ -65,6 +75,9 @@ type Props = {
 
   /** Autoriser PRESETS (par défaut: auto si onDirectDart ou onSetVisitDarts est fourni) */
   enablePresets?: boolean;
+
+  /** Force une action compacte spécifique dans le keypad (ex: bouton ZONE d'un mode de jeu). */
+  keypadAuxActionOverride?: ExternalKeypadAuxAction | null;
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
@@ -167,6 +180,7 @@ export default function ScoreInputHub({
   preferredMethod,
   voiceControl,
   enablePresets = true,
+  keypadAuxActionOverride = null,
   hidePreview,
   hideTotal,
   centerSlot,
@@ -308,6 +322,8 @@ export default function ScoreInputHub({
   );
 
   const keypadAuxAction = React.useMemo(() => {
+    if (keypadAuxActionOverride) return keypadAuxActionOverride;
+
     if (method === "presets" && allowPresets) {
       return {
         label: "PRESET",
@@ -348,6 +364,7 @@ export default function ScoreInputHub({
   }, [
     allowPresets,
     disabled,
+    keypadAuxActionOverride,
     method,
     presetOpen,
     voiceAwaitingManualValidate,
