@@ -116,7 +116,12 @@ function targetUiLabel(target: any, lang: string) {
   if (target.kind === "special") return specialZoneLabel(String(target.code || ""), lang);
   if (target.kind === "bull") return target.bull === "DB" ? "DBULL" : "BULL";
   if (target.kind === "segment") {
-    if (target.ring === "S") return gros6TargetLabel(target);
+    if (target.ring === "S") {
+      const prefix = target.singleArea === "small"
+        ? (lang === "fr" ? "P" : "L")
+        : (lang === "fr" ? "G" : "B");
+      return `${prefix}${target.value}`;
+    }
     return `${target.ring}${target.value}`;
   }
   return gros6TargetLabel(target);
@@ -166,17 +171,17 @@ function SpecialZoneIcon({ code, accent, size = 78 }: any) {
     );
   }
 
-  const filledZones: Record<string, any[]> = {
-    closed_6: [{ cx: 43, cy: 48, r: 9 }],
-    closed_8_top: [{ cx: 39, cy: 25, r: 8 }],
-    closed_8_bottom: [{ cx: 39, cy: 50, r: 8 }],
-    closed_9: [{ cx: 44, cy: 25, r: 8 }],
-    closed_10: [{ cx: 50, cy: 39, r: 8 }],
-    closed_16: [{ cx: 52, cy: 47, r: 8 }],
-    closed_18_top: [{ cx: 43, cy: 25, r: 8 }],
-    closed_18_bottom: [{ cx: 43, cy: 50, r: 8 }],
-    closed_19: [{ cx: 50, cy: 25, r: 8 }],
-    closed_20: [{ cx: 50, cy: 39, r: 8 }],
+  const fills: Record<string, any[]> = {
+    closed_6: [{ type: "ellipse", cx: 42.8, cy: 45.6, rx: 7.2, ry: 8.4 }],
+    closed_8_top: [{ type: "ellipse", cx: 39, cy: 25.4, rx: 8, ry: 8 }],
+    closed_8_bottom: [{ type: "ellipse", cx: 39, cy: 49.7, rx: 8, ry: 8 }],
+    closed_9: [{ type: "ellipse", cx: 44.5, cy: 29.2, rx: 6.8, ry: 8 }],
+    closed_10: [{ type: "ellipse", cx: 50.8, cy: 39.2, rx: 7.2, ry: 10.3 }],
+    closed_16: [{ type: "ellipse", cx: 52.3, cy: 45.8, rx: 7.2, ry: 8.6 }],
+    closed_18_top: [{ type: "ellipse", cx: 50.8, cy: 25.7, rx: 7.6, ry: 7.6 }],
+    closed_18_bottom: [{ type: "ellipse", cx: 50.8, cy: 49.4, rx: 7.6, ry: 7.6 }],
+    closed_19: [{ type: "ellipse", cx: 51.1, cy: 29.2, rx: 6.8, ry: 8 }],
+    closed_20: [{ type: "ellipse", cx: 50.8, cy: 39.2, rx: 7.2, ry: 10.3 }],
   };
 
   const fontSize = num.length > 1 ? 44 : 56;
@@ -190,7 +195,7 @@ function SpecialZoneIcon({ code, accent, size = 78 }: any) {
         textAnchor="middle"
         fontSize={fontSize}
         fontWeight="1000"
-        fill="rgba(0,0,0,0)"
+        fill="#0a0d14"
         stroke="rgba(255,255,255,.96)"
         strokeWidth="4"
         paintOrder="stroke"
@@ -198,8 +203,10 @@ function SpecialZoneIcon({ code, accent, size = 78 }: any) {
       >
         {num}
       </text>
-      {(filledZones[String(code || '')] || []).map((shape, idx) => (
-        <circle key={idx} cx={shape.cx} cy={shape.cy} r={shape.r} fill={highlight} opacity="0.95" />
+      {(fills[String(code || '')] || []).map((shape, idx) => (
+        shape.type === "ellipse"
+          ? <ellipse key={idx} cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry} fill={highlight} stroke="rgba(255,255,255,.18)" strokeWidth="1" opacity="0.98" />
+          : null
       ))}
     </svg>
   );
@@ -214,9 +221,11 @@ function TargetVisual({ target, lang, accent, compact = false }: any) {
       </div>
     );
   }
+  const label = targetUiLabel(target, lang);
+  const sizeMap = compact ? (label.length >= 5 ? 14 : label.length >= 4 ? 15.5 : 18) : (label.length >= 5 ? 34 : label.length >= 4 ? 40 : label.length >= 3 ? 48 : 58);
   return (
-    <div style={{ color: accent, fontSize: compact ? 18 : 48, fontWeight: 1000, lineHeight: 1, textShadow: `0 4px 18px ${accent}35`, whiteSpace: compact ? "pre-line" : "nowrap", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
-      {targetUiLabel(target, lang)}
+    <div style={{ color: accent, fontSize: sizeMap, fontWeight: 1000, lineHeight: 0.96, textShadow: `0 4px 18px ${accent}35`, whiteSpace: "nowrap", maxWidth: "100%", overflow: "visible", textOverflow: "clip" }}>
+      {label}
     </div>
   );
 }
@@ -600,11 +609,11 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             <div style={{ position: "absolute", left: -10, top: 10, transform: "scale(1.42)", transformOrigin: "left top", filter: "saturate(.9) blur(.15px)" }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={84} /></div>
           </div>
 
-          <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minWidth: 0, textAlign: "center", padding: compact ? "6px 10px 4px 88px" : "6px 12px 4px 96px" }}>
+          <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minWidth: 0, textAlign: "center", padding: compact ? "6px 8px 4px 66px" : "6px 12px 4px 76px" }}>
             <div style={{ color: accent, fontSize: compact ? 12 : 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activePlayer?.name || "—"}</div>
             {activeTeam ? <div style={{ marginTop: 2, color: SOFT, fontSize: 8.2, fontWeight: 900 }}>{activeTeam.name}</div> : null}
             <div style={{ marginTop: 3, color: SOFT, fontSize: 8.5, fontWeight: 1000, letterSpacing: .7 }}>{phaseText}</div>
-            <div style={{ marginTop: 2, minHeight: compact ? 58 : 92, display: "grid", placeItems: "center", width: "100%" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact={false} /></div>
+            <div style={{ marginTop: 2, minHeight: compact ? 60 : 94, display: "grid", placeItems: "center", width: "100%" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact={false} /></div>
             <div style={{ marginTop: "auto", width: "100%", display: "grid", placeItems: "center", gap: 5 }}>
               <CricketVisitDarts used={topDartsCount} total={phaseSelect ? Math.max(1, Number(game.selectionAllowed || 1)) : 3} accent={accent} />
             </div>
