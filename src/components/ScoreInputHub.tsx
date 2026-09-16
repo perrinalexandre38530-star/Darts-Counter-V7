@@ -36,6 +36,7 @@ type ExternalKeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -44,7 +45,7 @@ type ExternalKeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "magenta" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
   title?: string;
   ariaLabel?: string;
 };

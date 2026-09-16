@@ -16,6 +16,7 @@ type KeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -24,7 +25,7 @@ type KeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "magenta" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -303,21 +304,54 @@ export default function Keypad({
     const tones = {
       blue: active
         ? { background: 'linear-gradient(180deg, rgba(0,196,255,.28), rgba(0,70,120,.42))', color: '#dcf6ff', border: '1px solid rgba(129,230,255,.9)' }
-        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+        : { background: 'linear-gradient(180deg, rgba(0,196,255,.12), rgba(0,70,120,.18))', color: '#d8f6ff', border: '1px solid rgba(129,230,255,.35)' },
+      teal: active
+        ? { background: 'linear-gradient(180deg, rgba(71,219,201,.32), rgba(11,90,86,.44))', color: '#e7fffb', border: '1px solid rgba(130,255,243,.92)' }
+        : { background: 'linear-gradient(180deg, rgba(71,219,201,.14), rgba(11,90,86,.22))', color: '#c7fffa', border: '1px solid rgba(130,255,243,.34)' },
       magenta: active
         ? { background: 'linear-gradient(180deg, rgba(255,105,214,.30), rgba(92,20,84,.44))', color: '#ffe1ff', border: '1px solid rgba(255,189,245,.9)' }
-        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+        : { background: 'linear-gradient(180deg, rgba(255,105,214,.12), rgba(92,20,84,.20))', color: '#ffd9fa', border: '1px solid rgba(255,189,245,.35)' },
+      violet: active
+        ? { background: 'linear-gradient(180deg, rgba(200,132,255,.30), rgba(74,26,120,.44))', color: '#f7e8ff', border: '1px solid rgba(228,196,255,.92)' }
+        : { background: 'linear-gradient(180deg, rgba(200,132,255,.12), rgba(74,26,120,.22))', color: '#efd9ff', border: '1px solid rgba(228,196,255,.35)' },
       green: active
         ? { background: 'linear-gradient(180deg, rgba(100,255,160,.24), rgba(20,92,52,.40))', color: '#e7fff1', border: '1px solid rgba(175,255,208,.9)' }
-        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+        : { background: 'linear-gradient(180deg, rgba(100,255,160,.11), rgba(20,92,52,.18))', color: '#e7fff1', border: '1px solid rgba(175,255,208,.32)' },
       gold: active
         ? { background: 'linear-gradient(180deg, rgba(255,227,120,.35), rgba(122,87,12,.42))', color: '#fff5cc', border: '1px solid rgba(255,230,156,.92)' }
-        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+        : { background: 'linear-gradient(180deg, rgba(255,227,120,.16), rgba(122,87,12,.24))', color: '#fff0bf', border: '1px solid rgba(255,230,156,.38)' },
       dark: active
         ? { background: 'linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.08))', color: '#fff', border: '1px solid rgba(255,255,255,.88)' }
         : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
     } as const;
     return { ...btnBase, ...(tones[tone] || tones.dark), boxShadow: active ? '0 0 18px rgba(255,255,255,.15)' : 'none' };
+  };
+
+  const auxToneStyles = (tone: KeypadAuxAction['tone'] = 'dark', active = false) => {
+    const map = {
+      blue: active
+        ? { background: 'linear-gradient(180deg, rgba(0,196,255,.24), rgba(0,0,0,.38))', color: '#dcf6ff', border: '1px solid rgba(129,230,255,.55)', boxShadow: '0 0 22px rgba(0,196,255,.14)' }
+        : { background: 'linear-gradient(180deg, rgba(0,196,255,.12), rgba(0,0,0,.30))', color: '#d8f6ff', border: '1px solid rgba(129,230,255,.24)', boxShadow: 'none' },
+      teal: active
+        ? { background: 'linear-gradient(180deg, rgba(71,219,201,.24), rgba(0,0,0,.38))', color: '#e7fffb', border: '1px solid rgba(130,255,243,.55)', boxShadow: '0 0 22px rgba(71,219,201,.14)' }
+        : { background: 'linear-gradient(180deg, rgba(71,219,201,.12), rgba(0,0,0,.30))', color: '#c7fffa', border: '1px solid rgba(130,255,243,.24)', boxShadow: 'none' },
+      magenta: active
+        ? { background: 'linear-gradient(180deg, rgba(255,105,214,.22), rgba(0,0,0,.38))', color: '#ffe1ff', border: '1px solid rgba(255,189,245,.55)', boxShadow: '0 0 22px rgba(255,105,214,.14)' }
+        : { background: 'linear-gradient(180deg, rgba(255,105,214,.12), rgba(0,0,0,.30))', color: '#ffd9fa', border: '1px solid rgba(255,189,245,.24)', boxShadow: 'none' },
+      violet: active
+        ? { background: 'linear-gradient(180deg, rgba(200,132,255,.24), rgba(0,0,0,.38))', color: '#f7e8ff', border: '1px solid rgba(228,196,255,.55)', boxShadow: '0 0 22px rgba(200,132,255,.14)' }
+        : { background: 'linear-gradient(180deg, rgba(200,132,255,.12), rgba(0,0,0,.30))', color: '#efd9ff', border: '1px solid rgba(228,196,255,.24)', boxShadow: 'none' },
+      green: active
+        ? { background: 'linear-gradient(180deg, rgba(100,255,160,.22), rgba(0,0,0,.38))', color: '#e7fff1', border: '1px solid rgba(175,255,208,.55)', boxShadow: '0 0 22px rgba(100,255,160,.14)' }
+        : { background: 'linear-gradient(180deg, rgba(100,255,160,.11), rgba(0,0,0,.30))', color: '#e7fff1', border: '1px solid rgba(175,255,208,.24)', boxShadow: 'none' },
+      gold: active
+        ? { background: 'linear-gradient(180deg, rgba(255,205,54,.42), rgba(0,0,0,.22))', color: '#fff5cc', border: '1px solid rgba(255,230,156,.60)', boxShadow: '0 0 22px rgba(255,175,0,.18)' }
+        : { background: 'linear-gradient(180deg, rgba(255,205,54,.18), rgba(0,0,0,.30))', color: '#fff0bf', border: '1px solid rgba(255,230,156,.28)', boxShadow: 'none' },
+      dark: active
+        ? { background: 'linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))', color: '#d8ff66', border: '1px solid rgba(180,255,30,.55)', boxShadow: '0 0 22px rgba(180,255,30,.22)' }
+        : { background: 'rgba(255,255,255,.055)', color: 'rgba(255,255,255,.92)', border: '1px solid rgba(255,255,255,.12)', boxShadow: 'none' },
+    } as const;
+    return map[tone] || map.dark;
   };
 
   return (
@@ -489,12 +523,7 @@ export default function Keypad({
                 type="button"
                 style={{
                   ...splitActionBase,
-                  background: auxAction.active
-                    ? "linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))"
-                    : "rgba(255,255,255,.055)",
-                  color: auxAction.active ? "#d8ff66" : "rgba(255,255,255,.92)",
-                  border: auxAction.active ? "1px solid rgba(180,255,30,.55)" : "1px solid rgba(255,255,255,.12)",
-                  boxShadow: auxAction.active ? "0 0 22px rgba(180,255,30,.22)" : "none",
+                  ...auxToneStyles(auxAction.tone || 'dark', !!auxAction.active),
                   opacity: auxAction.disabled ? 0.45 : 1,
                 }}
                 onClick={auxAction.onClick}
@@ -570,12 +599,7 @@ export default function Keypad({
                 type="button"
                 style={{
                   ...splitActionBase,
-                  background: auxAction.active
-                    ? "linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))"
-                    : "rgba(255,255,255,.055)",
-                  color: auxAction.active ? "#d8ff66" : "rgba(255,255,255,.92)",
-                  border: auxAction.active ? "1px solid rgba(180,255,30,.55)" : "1px solid rgba(255,255,255,.12)",
-                  boxShadow: auxAction.active ? "0 0 22px rgba(180,255,30,.22)" : "none",
+                  ...auxToneStyles(auxAction.tone || 'dark', !!auxAction.active),
                   opacity: auxAction.disabled ? 0.45 : 1,
                 }}
                 onClick={auxAction.onClick}

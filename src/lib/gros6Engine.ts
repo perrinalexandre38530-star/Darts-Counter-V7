@@ -71,9 +71,9 @@ export function gros6MatchesTarget(hit: any, target: any, config: any): boolean 
   if (target.kind === "bull") return hit.kind === "bull" && String(hit.bull) === String(target.bull);
   if (target.kind === "segment") {
     if (hit.kind !== "segment") return false;
+    if (String(config?.targetRule || "strict") === "value") return Number(hit.value) === Number(target.value);
     if (String(hit.ring) !== String(target.ring) || Number(hit.value) !== Number(target.value)) return false;
     if (String(target.ring) === "S") return String(hit.singleArea || "big") === String(target.singleArea || "big");
-    if (String(config?.targetRule || "strict") === "value") return Number(hit.value) === Number(target.value);
     return true;
   }
   return false;
@@ -222,6 +222,33 @@ function syncIndividualTeamElimination(next: any) {
   }
 }
 
+function applyLifePenalty(next: any, player: any, team: any) {
+  player.stats.livesLost += 1;
+  let eliminationMessage = "";
+
+  if (next.participantMode === "teams" && next.teamLifeMode === "shared" && team) {
+    team.lives = Math.max(0, Number(team.lives || 0) - 1);
+    team.stats.livesLost += 1;
+    if (team.lives <= 0) {
+      team.eliminated = true;
+      for (const member of next.players || []) {
+        if (String(member?.teamId || "") === String(team.id)) member.eliminated = true;
+      }
+      eliminationMessage = `${team.name} est éliminée.`;
+    } else {
+      eliminationMessage = `${team.name} perd une vie (${team.lives} restante${team.lives > 1 ? "s" : ""}).`;
+    }
+  } else {
+    player.lives = Math.max(0, Number(player.lives || 0) - 1);
+    if (player.lives <= 0) player.eliminated = true;
+    if (next.participantMode === "teams") syncIndividualTeamElimination(next);
+    eliminationMessage = player.eliminated
+      ? `${player.name} est éliminé${player?.name?.endsWith?.("e") ? "e" : ""}.`
+      : `${player.name} perd une vie (${player.lives} restante${player.lives > 1 ? "s" : ""}).`;
+  }
+  return eliminationMessage;
+}
+
 function finishIfWinner(next: any) {
   const winner = gros6FindWinner(next);
   if (!winner) return next;
@@ -313,29 +340,7 @@ export function applyGros6AttackHit(state: any, hit: any, config: any) {
   }
 
   if (next.attackDarts.length >= 3) {
-    player.stats.livesLost += 1;
-    let eliminationMessage = "";
-
-    if (next.participantMode === "teams" && next.teamLifeMode === "shared" && team) {
-      team.lives = Math.max(0, Number(team.lives || 0) - 1);
-      team.stats.livesLost += 1;
-      if (team.lives <= 0) {
-        team.eliminated = true;
-        for (const member of next.players || []) {
-          if (String(member?.teamId || "") === String(team.id)) member.eliminated = true;
-        }
-        eliminationMessage = `${team.name} est éliminée.`;
-      } else {
-        eliminationMessage = `${team.name} perd une vie (${team.lives} restante${team.lives > 1 ? "s" : ""}).`;
-      }
-    } else {
-      player.lives = Math.max(0, Number(player.lives || 0) - 1);
-      if (player.lives <= 0) player.eliminated = true;
-      if (next.participantMode === "teams") syncIndividualTeamElimination(next);
-      eliminationMessage = player.eliminated
-        ? `${player.name} est éliminé${player?.name?.endsWith?.("e") ? "e" : ""}.`
-        : `${player.name} perd une vie (${player.lives} restante${player.lives > 1 ? "s" : ""}).`;
-    }
+    const eliminationMessage = applyLifePenalty(next, player, team);
 
     next.history.push({
       ...historyEntry(player, next.currentTarget, "attack", next.attackDarts),
@@ -357,22 +362,47 @@ export function applyGros6AttackHit(state: any, hit: any, config: any) {
 export function applyGros6SelectionHit(state: any, hit: any, config: any) {
   const next = gros6Clone(state);
   if (next.phase !== "select" || next.winnerId) return next;
+  const player = next.players[next.turnIndex];
+  if (!player || !gros6IsPlayerActive(next, player)) return next;
+  const team = gros6TeamForPlayer(next, player);
+
   const normalized = hit?.kind ? normalizeGros6Target(hit) : makeGros6Miss();
   next.selectionDarts.push(normalized);
+  player.stats.dartsThrown += 1;
+
   const candidate = gros6HitToTarget(normalized);
   const allowed = candidate && isGros6TargetAllowedForSelection(candidate, config);
-  if (allowed) next.pendingNextTarget = candidate;
 
-  if (next.selectionDarts.length >= Number(next.selectionAllowed || 0)) return finalizeGros6Selection(next);
-
-  if (candidate && !allowed) {
-    next.message = `Zone ${gros6TargetLabel(candidate)} non autorisée par cette variante. Il reste ${Math.max(0, Number(next.selectionAllowed || 0) - next.selectionDarts.length)} fléchette(s).`;
-  } else {
-    next.message = next.pendingNextTarget
-      ? `Cible provisoire : ${gros6TargetLabel(next.pendingNextTarget)}.`
-      : `Choisissez la prochaine zone (${Math.max(0, Number(next.selectionAllowed || 0) - next.selectionDarts.length)} fléchette(s) restante(s)).`;
+  if (allowed && candidate) {
+    const chosen = normalizeGros6Target(candidate);
+    next.pendingNextTarget = chosen;
+    next.currentTarget = chosen;
+    player.stats.targetsImposed += 1;
+    if (team) team.stats.targetsImposed += 1;
+    next.history.push({
+      ...historyEntry(player, state.currentTarget, "select", next.selectionDarts),
+      success: true,
+      nextTarget: gros6TargetLabel(chosen),
+      selectionResolved: true,
+    });
+    next.message = `Nouvelle cible imposée : ${gros6TargetLabel(chosen)}.`;
+    return advanceTurn(next);
   }
-  return next;
+
+  const eliminationMessage = applyLifePenalty(next, player, team);
+  next.history.push({
+    ...historyEntry(player, state.currentTarget, "select", next.selectionDarts),
+    success: false,
+    lifeLost: true,
+    nextTarget: gros6TargetLabel(state.currentTarget),
+    livesAfter: player.lives,
+    teamLivesAfter: team?.lives ?? null,
+    missSelection: true,
+  });
+  const winner = gros6FindWinner(next);
+  if (winner) return finishIfWinner(next);
+  next.message = `${eliminationMessage} La cible reste ${gros6TargetLabel(state.currentTarget)}.`;
+  return advanceTurn(next);
 }
 
 export function gros6BotSkill(player: any): number {

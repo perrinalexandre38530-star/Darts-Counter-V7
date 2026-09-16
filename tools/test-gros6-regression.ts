@@ -36,11 +36,11 @@ assert.equal(gros6MatchesTarget(makeGros6Segment("D", 6), makeGros6Segment("S", 
 
 // zone fermée : cible distincte et réellement validable
 assert.equal(
-  gros6MatchesTarget(makeGros6Special("digit_9", "Rond du 9"), makeGros6Special("digit_9", "Rond du 9"), baseConfig()),
+  gros6MatchesTarget(makeGros6Special("closed_9", "Hors cible 9"), makeGros6Special("closed_9", "Hors cible 9"), baseConfig()),
   true,
 );
 assert.equal(
-  gros6MatchesTarget(makeGros6Special("digit_8", "Rond du 8"), makeGros6Special("digit_9", "Rond du 9"), baseConfig()),
+  gros6MatchesTarget(makeGros6Special("closed_8_top", "Hors cible 8 haut"), makeGros6Special("closed_9", "Hors cible 9"), baseConfig()),
   false,
 );
 
@@ -56,29 +56,41 @@ assert.equal(
   assert.equal(state.players[0].stats.lastDartSaves, 1);
 }
 
-// la dernière cible valide de la volée de sélection devient la nouvelle cible
+// en sélection, la première nouvelle cible valide met fin immédiatement au tour
 {
   const config = baseConfig();
   let state = buildGros6InitialState(config);
-  state = applyGros6AttackHit(state, makeGros6Segment("S", 6), config); // réussite D1 => 2 sélections
-  state = applyGros6SelectionHit(state, makeGros6Segment("D", 18), config);
-  state = applyGros6SelectionHit(state, makeGros6Special("digit_10", "Rond du 10"), config);
+  state = applyGros6AttackHit(state, makeGros6Segment("S", 6), config);
+  state = applyGros6SelectionHit(state, makeGros6Special("closed_10", "Hors cible 10"), config);
   assert.equal(state.phase, "attack");
+  assert.equal(state.turnIndex, 1);
   assert.equal(state.currentTarget.kind, "special");
-  assert.equal((state.currentTarget as any).code, "digit_10");
+  assert.equal((state.currentTarget as any).code, "closed_10");
 }
 
-// variante PRO : un simple ne peut pas devenir la prochaine cible
+// en sélection, un miss fait perdre une vie et conserve l'ancienne cible
+{
+  const config = baseConfig({ allowSpecialZones: false });
+  let state = buildGros6InitialState(config);
+  state = applyGros6AttackHit(state, makeGros6Segment("S", 6), config);
+  state = applyGros6SelectionHit(state, makeGros6Miss(), config);
+  assert.equal(state.phase, "attack");
+  assert.equal(state.turnIndex, 1);
+  assert.equal(state.players[0].lives, 4);
+  assert.equal((state.currentTarget as any).value, 6);
+}
+
+// variante PRO : un simple ne peut pas devenir la prochaine cible et fait perdre l'avantage
 {
   const config = baseConfig({ selectionPolicy: "pro", allowSpecialZones: false });
   let state = buildGros6InitialState(config);
   state = applyGros6AttackHit(state, makeGros6Segment("S", 6), config);
   state = applyGros6SelectionHit(state, makeGros6Segment("S", 20), config);
-  state = applyGros6SelectionHit(state, makeGros6Segment("D", 16), config);
   assert.equal(state.phase, "attack");
+  assert.equal(state.turnIndex, 1);
+  assert.equal(state.players[0].lives, 4);
   assert.equal(state.currentTarget.kind, "segment");
-  assert.equal((state.currentTarget as any).ring, "D");
-  assert.equal((state.currentTarget as any).value, 16);
+  assert.equal((state.currentTarget as any).value, 6);
 }
 
 // équipes avec réserve commune : l'échec retire une vie à l'équipe, pas au joueur

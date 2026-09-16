@@ -171,42 +171,59 @@ function SpecialZoneIcon({ code, accent, size = 78 }: any) {
     );
   }
 
+  const singleDigit = num.length === 1;
+  const chars = singleDigit
+    ? [{ char: num, x: 39, y: 54, size: 56 }]
+    : [
+        { char: num[0], x: 24, y: 53, size: 46 },
+        { char: num[1], x: 52, y: 53, size: 46 },
+      ];
+
   const fills: Record<string, any[]> = {
-    closed_6: [{ type: "ellipse", cx: 42.8, cy: 45.6, rx: 7.2, ry: 8.4 }],
-    closed_8_top: [{ type: "ellipse", cx: 39, cy: 25.4, rx: 8, ry: 8 }],
-    closed_8_bottom: [{ type: "ellipse", cx: 39, cy: 49.7, rx: 8, ry: 8 }],
-    closed_9: [{ type: "ellipse", cx: 44.5, cy: 29.2, rx: 6.8, ry: 8 }],
-    closed_10: [{ type: "ellipse", cx: 50.8, cy: 39.2, rx: 7.2, ry: 10.3 }],
-    closed_16: [{ type: "ellipse", cx: 52.3, cy: 45.8, rx: 7.2, ry: 8.6 }],
-    closed_18_top: [{ type: "ellipse", cx: 50.8, cy: 25.7, rx: 7.6, ry: 7.6 }],
-    closed_18_bottom: [{ type: "ellipse", cx: 50.8, cy: 49.4, rx: 7.6, ry: 7.6 }],
-    closed_19: [{ type: "ellipse", cx: 51.1, cy: 29.2, rx: 6.8, ry: 8 }],
-    closed_20: [{ type: "ellipse", cx: 50.8, cy: 39.2, rx: 7.2, ry: 10.3 }],
+    closed_6: [{ cx: 39.8, cy: 46.4, rx: 7.8, ry: 9.1 }],
+    closed_8_top: [{ cx: 39.1, cy: 25.1, rx: 8.1, ry: 8.2 }],
+    closed_8_bottom: [{ cx: 39.1, cy: 49.6, rx: 8.1, ry: 8.2 }],
+    closed_9: [{ cx: 44.7, cy: 29.0, rx: 7.0, ry: 8.1 }],
+    closed_10: [{ cx: 51.8, cy: 39.0, rx: 7.3, ry: 10.1 }],
+    closed_16: [{ cx: 52.2, cy: 45.6, rx: 7.5, ry: 9.0 }],
+    closed_18_top: [{ cx: 52.0, cy: 25.0, rx: 7.7, ry: 7.8 }],
+    closed_18_bottom: [{ cx: 52.0, cy: 49.2, rx: 7.7, ry: 7.8 }],
+    closed_19: [{ cx: 52.3, cy: 29.0, rx: 7.1, ry: 8.2 }],
+    closed_20: [{ cx: 52.1, cy: 39.1, rx: 7.3, ry: 10.1 }],
   };
 
-  const fontSize = num.length > 1 ? 44 : 56;
-  const x = num.length > 1 ? 35 : 39;
   return (
     <svg width={size} height={size} viewBox="0 0 78 78" aria-hidden="true">
       <rect x="6" y="6" width="66" height="66" rx="16" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)" />
-      <text
-        x={x}
-        y="54"
-        textAnchor="middle"
-        fontSize={fontSize}
-        fontWeight="1000"
-        fill="#0a0d14"
-        stroke="rgba(255,255,255,.96)"
-        strokeWidth="4"
-        paintOrder="stroke"
-        fontFamily="inherit"
-      >
-        {num}
-      </text>
-      {(fills[String(code || '')] || []).map((shape, idx) => (
-        shape.type === "ellipse"
-          ? <ellipse key={idx} cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry} fill={highlight} stroke="rgba(255,255,255,.18)" strokeWidth="1" opacity="0.98" />
-          : null
+      {chars.map((g, idx) => (
+        <text
+          key={idx}
+          x={g.x}
+          y={g.y}
+          textAnchor="middle"
+          fontSize={g.size}
+          fontWeight="1000"
+          fill="#0a0d14"
+          stroke="rgba(255,255,255,.98)"
+          strokeWidth="4"
+          paintOrder="stroke"
+          fontFamily="inherit"
+        >
+          {g.char}
+        </text>
+      ))}
+      {(fills[String(code || "")] || []).map((shape, idx) => (
+        <ellipse
+          key={idx}
+          cx={shape.cx}
+          cy={shape.cy}
+          rx={shape.rx}
+          ry={shape.ry}
+          fill={highlight}
+          stroke="rgba(255,255,255,.22)"
+          strokeWidth="0.9"
+          opacity="0.99"
+        />
       ))}
     </svg>
   );
@@ -333,7 +350,12 @@ function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
           const alive = gros6IsPlayerActive(game, p);
           const team = game.participantMode === "teams" ? game.teams.find((t: any) => String(t.id) === String(p.teamId)) : null;
           const last = [...(game.history || [])].reverse().find((ev: any) => String(ev?.playerId) === String(p.id) && Array.isArray(ev?.darts));
-          const lastDarts = Array.isArray(last?.darts) ? last.darts.slice(0, 3) : [];
+          const liveDarts = idx === activeIndex
+            ? (game.phase === "select" ? (game.selectionDarts || []) : (game.attackDarts || []))
+            : null;
+          const lastDarts = Array.isArray(liveDarts) && liveDarts.length
+            ? liveDarts.map((dart: any) => targetUiLabel(dart, lang)).slice(0, 3)
+            : (Array.isArray(last?.darts) ? last.darts.slice(0, 3) : []);
           const lives = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(team?.lives || 0) : Number(p.lives || 0);
           return (
             <div key={p.id} style={{ ...panelStyle(), padding: "8px 10px", opacity: alive ? 1 : .55, border: `1px solid ${active ? `${accent}66` : "rgba(255,255,255,.08)"}`, boxShadow: active ? `0 0 16px ${accent}22` : "none", display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 10 }}>
@@ -573,7 +595,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     return () => window.clearTimeout(timer);
   }, [game.phase, game.turnIndex, game.winnerId, game.players, config]);
 
-  const activeTarget = phaseSelect && game.pendingNextTarget ? game.pendingNextTarget : game.currentTarget;
+  const activeTarget = phaseSelect ? (game.pendingNextTarget || null) : game.currentTarget;
   const phaseText = phaseSelect ? L("CHOISIS LA PROCHAINE CIBLE", "CHOOSE NEXT TARGET") : L("CIBLE À TOUCHER", "TARGET TO HIT");
   const topDartsCount = currentHits.length;
   const liveKpis = [
@@ -693,8 +715,8 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             onSetVisitDarts={applyPresetDarts}
             preferredMethod={(config as any)?.scoreInputDefaultMethod || (config as any)?.scoreInputMethod || "keypad"}
             keypadExtraMainButtons={[
-              { label: L("GROS", "BIG"), onClick: () => setSpecialMode((v) => v === "big" ? null : "big"), active: specialMode === "big", tone: "blue", title: L("Prépare un Gros 6 ou Gros 8", "Prepare a Big 6 or Big 8") },
-              { label: L("PETIT", "SMALL"), onClick: () => setSpecialMode((v) => v === "small" ? null : "small"), active: specialMode === "small", tone: "magenta", title: L("Prépare un Petit 6 ou Petit 8", "Prepare a Small 6 or Small 8") },
+              { label: L("GROS", "BIG"), onClick: () => setSpecialMode((v) => v === "big" ? null : "big"), active: specialMode === "big", tone: "teal", title: L("Prépare un Gros 6 ou Gros 8", "Prepare a Big 6 or Big 8") },
+              { label: L("PETIT", "SMALL"), onClick: () => setSpecialMode((v) => v === "small" ? null : "small"), active: specialMode === "small", tone: "violet", title: L("Prépare un Petit 6 ou Petit 8", "Prepare a Small 6 or Small 8") },
             ]}
             keypadAuxActionOverride={config?.allowSpecialZones && String(config?.selectionPolicy || "open") !== "pro" ? {
               label: L("ZONE", "ZONE"),
@@ -702,6 +724,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
               onClick: () => setSpecialOpen(true),
               disabled: false,
               active: false,
+              tone: "gold",
               title: L("Ouvrir les zones spéciales", "Open special zones"),
               ariaLabel: L("Ouvrir les zones spéciales", "Open special zones"),
             } : null}
@@ -713,7 +736,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             switcherMode="hidden"
             fitToParent
             validateLabel={phaseSelect ? L("VALIDER CIBLE", "CONFIRM TARGET") : L("TOUR EN COURS", "TURN ACTIVE")}
-            validateDisabled={!phaseSelect}
+            validateDisabled={!phaseSelect || !game.pendingNextTarget}
             centerSlot={<span style={{ display: "inline-grid", minWidth: 58, placeItems: "center", textAlign: "center", padding: "6px 10px", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 17, lineHeight: 1.02, boxShadow: `0 0 16px ${accent}22`, whiteSpace: "pre-line" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact /></span>}
           />
         </div>
