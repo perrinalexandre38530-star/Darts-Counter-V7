@@ -40,6 +40,15 @@ type ExternalKeypadAuxAction = {
   ariaLabel?: string;
 };
 
+type ExternalKeypadExtraMainButton = {
+  label: React.ReactNode;
+  onClick: () => void;
+  active?: boolean;
+  tone?: "blue" | "magenta" | "green" | "gold" | "dark";
+  title?: string;
+  ariaLabel?: string;
+};
+
 type Props = {
   /** Volée en cours (0..3 flèches) */
   currentThrow: UIDart[];
@@ -78,6 +87,8 @@ type Props = {
 
   /** Force une action compacte spécifique dans le keypad (ex: bouton ZONE d'un mode de jeu). */
   keypadAuxActionOverride?: ExternalKeypadAuxAction | null;
+  /** Boutons principaux supplémentaires dans le keypad (ex: GROS / PETIT). */
+  keypadExtraMainButtons?: ExternalKeypadExtraMainButton[] | null;
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
@@ -109,9 +120,6 @@ type Props = {
   fitToParent?: boolean;
   /** Afficher le sélecteur en overlay (compat ancienne API). */
   switcherOverlay?: boolean;
-  /** Libellés personnalisés des deux boutons de mode du keypad. */
-  doubleLabel?: React.ReactNode;
-  tripleLabel?: React.ReactNode;
 };
 
 function safeReadDevModeEnabled(): boolean {
@@ -184,6 +192,7 @@ export default function ScoreInputHub({
   voiceControl,
   enablePresets = true,
   keypadAuxActionOverride = null,
+  keypadExtraMainButtons = null,
   hidePreview,
   hideTotal,
   centerSlot,
@@ -199,8 +208,6 @@ export default function ScoreInputHub({
   lockContentHeight = false,
   fitToParent = false,
   switcherOverlay: _switcherOverlay = false,
-  doubleLabel,
-  tripleLabel,
 }: Props) {
   const devEnabled = safeReadDevModeEnabled();
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod) : null;
@@ -423,8 +430,7 @@ export default function ScoreInputHub({
       hideTotal={hideTotal}
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}
-      doubleLabel={doubleLabel}
-      tripleLabel={tripleLabel}
+      extraMainButtons={keypadExtraMainButtons}
       noticeSlot={voiceNotice}
       validateAttention={voiceAwaitingManualValidate}
       validateLabel={validateLabel}

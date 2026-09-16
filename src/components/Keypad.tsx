@@ -20,6 +20,14 @@ type KeypadAuxAction = {
   ariaLabel?: string;
 };
 
+type KeypadExtraMainButton = {
+  label: React.ReactNode;
+  onClick: () => void;
+  active?: boolean;
+  tone?: "blue" | "magenta" | "green" | "gold" | "dark";
+  title?: string;
+  ariaLabel?: string;
+};
 
 type KeypadSingleRingSelector = {
   value: "outer" | "inner";
@@ -57,6 +65,9 @@ type Props = {
   /** Action compacte à droite d'ANNULER : PRESET ou MICRO selon la méthode choisie */
   auxAction?: KeypadAuxAction | null;
 
+  /** Boutons principaux supplémentaires (ex: GROS / PETIT). */
+  extraMainButtons?: KeypadExtraMainButton[] | null;
+
   /** Sélecteur optionnel des deux zones simples physiques (ex: PRISONER). */
   singleRingSelector?: KeypadSingleRingSelector | null;
 
@@ -75,9 +86,6 @@ type Props = {
 
   /** Espace horizontal entre BULL, score central et VALIDER. Défaut: 10px. */
   footerGap?: number;
-  /** Libellés personnalisés des 2 boutons de mode (défaut: DOUBLE/TRIPLE). */
-  doubleLabel?: React.ReactNode;
-  tripleLabel?: React.ReactNode;
 };
 
 /* ---------- Helpers ---------- */
@@ -270,6 +278,7 @@ export default function Keypad({
   hideTotal = false,
   centerSlot = null,
   auxAction = null,
+  extraMainButtons = null,
   singleRingSelector = null,
   noticeSlot = null,
   validateAttention = false,
@@ -277,8 +286,6 @@ export default function Keypad({
   validateDisabled = false,
   safeBottomPad = true,
   footerGap = 10,
-  doubleLabel = "DOUBLE",
-  tripleLabel = "TRIPLE",
 }: Props) {
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
   const total = throwTotal(currentThrow);
@@ -288,6 +295,30 @@ export default function Keypad({
   const handleNumber = React.useCallback((n: number) => {
     onNumberRef.current(n);
   }, []);
+
+  const extraButtons = Array.isArray(extraMainButtons) ? extraMainButtons.filter(Boolean).slice(0, 2) : [];
+  const useExtendedMainRow = extraButtons.length > 0;
+
+  const extraButtonStyle = (active = false, tone: KeypadExtraMainButton['tone'] = 'dark'): React.CSSProperties => {
+    const tones = {
+      blue: active
+        ? { background: 'linear-gradient(180deg, rgba(0,196,255,.28), rgba(0,70,120,.42))', color: '#dcf6ff', border: '1px solid rgba(129,230,255,.9)' }
+        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+      magenta: active
+        ? { background: 'linear-gradient(180deg, rgba(255,105,214,.30), rgba(92,20,84,.44))', color: '#ffe1ff', border: '1px solid rgba(255,189,245,.9)' }
+        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+      green: active
+        ? { background: 'linear-gradient(180deg, rgba(100,255,160,.24), rgba(20,92,52,.40))', color: '#e7fff1', border: '1px solid rgba(175,255,208,.9)' }
+        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+      gold: active
+        ? { background: 'linear-gradient(180deg, rgba(255,227,120,.35), rgba(122,87,12,.42))', color: '#fff5cc', border: '1px solid rgba(255,230,156,.92)' }
+        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+      dark: active
+        ? { background: 'linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.08))', color: '#fff', border: '1px solid rgba(255,255,255,.88)' }
+        : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
+    } as const;
+    return { ...btnBase, ...(tones[tone] || tones.dark), boxShadow: active ? '0 0 18px rgba(255,255,255,.15)' : 'none' };
+  };
 
   return (
     <div
@@ -372,54 +403,77 @@ export default function Keypad({
         </div>
       ) : null}
 
-      {/* DOUBLE / TRIPLE / ANNULER + action compacte PRESET ou MICRO */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 10,
-          marginBottom: noticeSlot ? 8 : 10,
-        }}
-      >
-        <button
-          type="button"
-          style={{
-            ...btnDouble,
-            borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
-          }}
-          aria-pressed={multiplier === 2}
-          onClick={onDouble}
-          onMouseUp={onSimple}
-          title="Double"
-        >
-          {doubleLabel}
-        </button>
-
-        <button
-          type="button"
-          style={{
-            ...btnTriple,
-            borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
-          }}
-          aria-pressed={multiplier === 3}
-          onClick={onTriple}
-          onMouseUp={onSimple}
-          title="Triple"
-        >
-          {tripleLabel}
-        </button>
-
-        {auxAction ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, minWidth: 0 }}>
+      {/* DOUBLE / TRIPLE / GROS / PETIT + commandes intégrées */}
+      {useExtendedMainRow ? (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${2 + extraButtons.length}, minmax(0, 1fr))`,
+              gap: 10,
+              marginBottom: 8,
+            }}
+          >
             <button
               type="button"
               style={{
+                ...btnDouble,
+                borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
+              }}
+              aria-pressed={multiplier === 2}
+              onClick={onDouble}
+              onMouseUp={onSimple}
+              title="Double"
+            >
+              DOUBLE
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...btnTriple,
+                borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
+              }}
+              aria-pressed={multiplier === 3}
+              onClick={onTriple}
+              onMouseUp={onSimple}
+              title="Triple"
+            >
+              TRIPLE
+            </button>
+
+            {extraButtons.map((btn, idx) => (
+              <button
+                key={idx}
+                type="button"
+                style={extraButtonStyle(!!btn.active, btn.tone || (idx === 0 ? 'blue' : 'magenta'))}
+                aria-pressed={!!btn.active}
+                onClick={btn.onClick}
+                title={btn.title || String(btn.label)}
+                aria-label={btn.ariaLabel || String(btn.label)}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: auxAction ? "1fr 1fr" : "1fr",
+              gap: 8,
+              marginBottom: noticeSlot ? 8 : 10,
+            }}
+          >
+            <button
+              type="button"
+              style={auxAction ? {
                 ...splitActionBase,
                 background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
                 color: "#1a1a1a",
                 border: "1px solid rgba(255,180,0,.34)",
                 boxShadow: "0 10px 22px rgba(255,170,0,.24)",
-              }}
+              } : btnCancel}
               onClick={onCancel}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -428,45 +482,127 @@ export default function Keypad({
               title="Annuler (clic droit : supprimer la dernière entrée locale)"
               aria-label="Annuler"
             >
-              <ActionIcon><UndoMiniIcon /></ActionIcon>
+              {auxAction ? <ActionIcon><UndoMiniIcon /></ActionIcon> : "ANNULER"}
             </button>
-
-            <button
-              type="button"
-              style={{
-                ...splitActionBase,
-                background: auxAction.active
-                  ? "linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))"
-                  : "rgba(255,255,255,.055)",
-                color: auxAction.active ? "#d8ff66" : "rgba(255,255,255,.92)",
-                border: auxAction.active ? "1px solid rgba(180,255,30,.55)" : "1px solid rgba(255,255,255,.12)",
-                boxShadow: auxAction.active ? "0 0 22px rgba(180,255,30,.22)" : "none",
-                opacity: auxAction.disabled ? 0.45 : 1,
-              }}
-              onClick={auxAction.onClick}
-              disabled={auxAction.disabled}
-              title={auxAction.title || auxAction.label}
-              aria-label={auxAction.ariaLabel || auxAction.label}
-            >
-              <ActionIcon>{auxAction.icon}</ActionIcon>
-            </button>
+            {auxAction ? (
+              <button
+                type="button"
+                style={{
+                  ...splitActionBase,
+                  background: auxAction.active
+                    ? "linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))"
+                    : "rgba(255,255,255,.055)",
+                  color: auxAction.active ? "#d8ff66" : "rgba(255,255,255,.92)",
+                  border: auxAction.active ? "1px solid rgba(180,255,30,.55)" : "1px solid rgba(255,255,255,.12)",
+                  boxShadow: auxAction.active ? "0 0 22px rgba(180,255,30,.22)" : "none",
+                  opacity: auxAction.disabled ? 0.45 : 1,
+                }}
+                onClick={auxAction.onClick}
+                disabled={auxAction.disabled}
+                title={auxAction.title || auxAction.label}
+                aria-label={auxAction.ariaLabel || auxAction.label}
+              >
+                <ActionIcon>{auxAction.icon}</ActionIcon>
+              </button>
+            ) : null}
           </div>
-        ) : (
+        </>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 10,
+            marginBottom: noticeSlot ? 8 : 10,
+          }}
+        >
           <button
             type="button"
-            style={btnCancel}
-            onClick={onCancel}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              onBackspace?.();
+            style={{
+              ...btnDouble,
+              borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
             }}
-            title="Annuler (clic droit : supprimer la dernière entrée locale)"
-            aria-label="Annuler"
+            aria-pressed={multiplier === 2}
+            onClick={onDouble}
+            onMouseUp={onSimple}
+            title="Double"
           >
-            ANNULER
+            DOUBLE
           </button>
-        )}
-      </div>
+
+          <button
+            type="button"
+            style={{
+              ...btnTriple,
+              borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
+            }}
+            aria-pressed={multiplier === 3}
+            onClick={onTriple}
+            onMouseUp={onSimple}
+            title="Triple"
+          >
+            TRIPLE
+          </button>
+
+          {auxAction ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, minWidth: 0 }}>
+              <button
+                type="button"
+                style={{
+                  ...splitActionBase,
+                  background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
+                  color: "#1a1a1a",
+                  border: "1px solid rgba(255,180,0,.34)",
+                  boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+                }}
+                onClick={onCancel}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onBackspace?.();
+                }}
+                title="Annuler (clic droit : supprimer la dernière entrée locale)"
+                aria-label="Annuler"
+              >
+                <ActionIcon><UndoMiniIcon /></ActionIcon>
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...splitActionBase,
+                  background: auxAction.active
+                    ? "linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))"
+                    : "rgba(255,255,255,.055)",
+                  color: auxAction.active ? "#d8ff66" : "rgba(255,255,255,.92)",
+                  border: auxAction.active ? "1px solid rgba(180,255,30,.55)" : "1px solid rgba(255,255,255,.12)",
+                  boxShadow: auxAction.active ? "0 0 22px rgba(180,255,30,.22)" : "none",
+                  opacity: auxAction.disabled ? 0.45 : 1,
+                }}
+                onClick={auxAction.onClick}
+                disabled={auxAction.disabled}
+                title={auxAction.title || auxAction.label}
+                aria-label={auxAction.ariaLabel || auxAction.label}
+              >
+                <ActionIcon>{auxAction.icon}</ActionIcon>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              style={btnCancel}
+              onClick={onCancel}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onBackspace?.();
+              }}
+              title="Annuler (clic droit : supprimer la dernière entrée locale)"
+              aria-label="Annuler"
+            >
+              ANNULER
+            </button>
+          )}
+        </div>
+      )}
 
       {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
 
