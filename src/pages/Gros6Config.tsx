@@ -120,13 +120,13 @@ const PRESETS = [
     id: "easy",
     label: "Facile",
     detail: "Même valeur acceptée en simple/double/triple",
-    values: { startingLives: 5, targetRule: "value", allowBull: true, allowSpecialZones: false, thirdDartBonusSelection: true, thirdDartBonusCount: 3, selectionPolicy: "open", startingTargetMode: "s6" },
+    values: { startingLives: 6, targetRule: "value", allowBull: true, allowSpecialZones: false, thirdDartBonusSelection: true, thirdDartBonusCount: 3, selectionPolicy: "open", startingTargetMode: "s6" },
   },
   {
     id: "pro",
     label: "PRO",
     detail: "Cibles imposées limitées aux doubles/triples et Bulls",
-    values: { startingLives: 5, targetRule: "strict", allowBull: true, allowSpecialZones: false, thirdDartBonusSelection: true, thirdDartBonusCount: 3, selectionPolicy: "pro", startingTargetMode: "s6" },
+    values: { startingLives: 6, targetRule: "strict", allowBull: true, allowSpecialZones: false, thirdDartBonusSelection: true, thirdDartBonusCount: 3, selectionPolicy: "pro", startingTargetMode: "s6" },
   },
   {
     id: "sudden",
@@ -300,7 +300,7 @@ export default function Gros6Config({ store, go }: any) {
   const [autoTeams, setAutoTeams] = React.useState<any[]>([]);
 
   const [presetId, setPresetId] = React.useState("mss");
-  const [startingLives, setStartingLives] = React.useState(5);
+  const [startingLives, setStartingLives] = React.useState(6);
   const [targetRule, setTargetRule] = React.useState<"strict" | "value">("strict");
   const [allowBull, setAllowBull] = React.useState(true);
   const [allowSpecialZones, setAllowSpecialZones] = React.useState(true);
@@ -639,7 +639,7 @@ export default function Gros6Config({ store, go }: any) {
       </div>
       <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Vies de départ</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: participantMode === "teams" ? 14 : 0 }}>
-        {[1,3,5,7,10,15,20].map((n) => <PillButton key={n} label={`${n} vie${n > 1 ? "s" : ""}`} active={startingLives === n} onClick={() => { setStartingLives(n); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />)}
+        {[1,3,5,6,7,10,15,20].map((n) => <PillButton key={n} label={`${n} vie${n > 1 ? "s" : ""}`} active={startingLives === n} onClick={() => { setStartingLives(n); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />)}
       </div>
       {participantMode === "teams" ? (
         <div>

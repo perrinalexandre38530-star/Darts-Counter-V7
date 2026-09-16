@@ -105,7 +105,7 @@ export function randomGros6StartTarget(config: any): Gros6Target {
 function makePlayerState(player: any, startingLives: number) {
   return {
     ...player,
-    lives: Number(startingLives || 5),
+    lives: Number(startingLives || 6),
     eliminated: false,
     stats: {
       dartsThrown: 0,
@@ -124,7 +124,7 @@ function makePlayerState(player: any, startingLives: number) {
 function makeTeamState(team: any, startingLives: number) {
   return {
     ...team,
-    lives: Number(startingLives || 5),
+    lives: Number(startingLives || 6),
     eliminated: false,
     stats: { livesLost: 0, targetsCleared: 0, targetsImposed: 0 },
   };
@@ -176,7 +176,7 @@ export function gros6NextAliveIndex(state: any, fromIndex: number): number {
 export function buildGros6InitialState(config: any) {
   const participantMode = config?.participantMode === "teams" ? "teams" : "players";
   const teamLifeMode = config?.teamLifeMode === "shared" ? "shared" : "individual";
-  const startingLives = Number(config?.startingLives || 5);
+  const startingLives = Number(config?.startingLives || 6);
   const initialTarget = normalizeGros6Target(
     config?.startingTarget || makeGros6Segment("S", 6, "big"),
   );

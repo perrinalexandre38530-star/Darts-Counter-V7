@@ -93,16 +93,16 @@ function ModeInlineInfo({ label, value, accent }: any) {
 const BOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const SPECIAL_ZONE_META: Record<string, any> = {
   outer_numbers_ring: { fr: "Contour extérieur", en: "Outer ring", tone: "outer" },
-  big_6: { fr: "GROS 6", en: "BIG 6", number: 6, ring: "outer" },
-  small_6: { fr: "PETIT 6", en: "SMALL 6", number: 6, ring: "inner" },
-  big_8: { fr: "GROS 8", en: "BIG 8", number: 8, ring: "outer" },
-  small_8: { fr: "PETIT 8", en: "SMALL 8", number: 8, ring: "inner" },
-  ring_9: { fr: "ZONE 9", en: "ZONE 9", number: 9, ring: "outer" },
-  ring_10: { fr: "ZONE 10", en: "ZONE 10", number: 10, ring: "outer" },
-  ring_16: { fr: "ZONE 16", en: "ZONE 16", number: 16, ring: "outer" },
-  ring_18: { fr: "ZONE 18", en: "ZONE 18", number: 18, ring: "outer" },
-  ring_19: { fr: "ZONE 19", en: "ZONE 19", number: 19, ring: "outer" },
-  ring_20: { fr: "ZONE 20", en: "ZONE 20", number: 20, ring: "outer" },
+  closed_6: { fr: "HORS CIBLE 6", en: "OFF-TARGET 6", number: 6, closed: "6" },
+  closed_8_top: { fr: "HORS CIBLE 8 HAUT", en: "OFF-TARGET 8 TOP", number: 8, closed: "8-top" },
+  closed_8_bottom: { fr: "HORS CIBLE 8 BAS", en: "OFF-TARGET 8 BOTTOM", number: 8, closed: "8-bottom" },
+  closed_9: { fr: "HORS CIBLE 9", en: "OFF-TARGET 9", number: 9, closed: "9" },
+  closed_10: { fr: "HORS CIBLE 10", en: "OFF-TARGET 10", number: 10, closed: "10" },
+  closed_16: { fr: "HORS CIBLE 16", en: "OFF-TARGET 16", number: 16, closed: "16" },
+  closed_18_top: { fr: "HORS CIBLE 18 HAUT", en: "OFF-TARGET 18 TOP", number: 18, closed: "18-top" },
+  closed_18_bottom: { fr: "HORS CIBLE 18 BAS", en: "OFF-TARGET 18 BOTTOM", number: 18, closed: "18-bottom" },
+  closed_19: { fr: "HORS CIBLE 19", en: "OFF-TARGET 19", number: 19, closed: "19" },
+  closed_20: { fr: "HORS CIBLE 20", en: "OFF-TARGET 20", number: 20, closed: "20" },
 };
 
 function specialZoneLabel(code: string, lang: string) {
@@ -116,9 +116,8 @@ function targetUiLabel(target: any, lang: string) {
   if (target.kind === "special") return specialZoneLabel(String(target.code || ""), lang);
   if (target.kind === "bull") return target.bull === "DB" ? "DBULL" : "BULL";
   if (target.kind === "segment") {
-    if (target.ring === "D") return `${lang === "fr" ? "DOUBLE" : "DOUBLE"} ${target.value}`;
-    if (target.ring === "T") return `${lang === "fr" ? "TRIPLE" : "TRIPLE"} ${target.value}`;
-    return `${target.value}`;
+    if (target.ring === "S") return gros6TargetLabel(target);
+    return `${target.ring}${target.value}`;
   }
   return gros6TargetLabel(target);
 }
@@ -143,14 +142,14 @@ function zoneAngles(number: number) {
   return { start, end: start + 18 };
 }
 
-function SpecialZoneIcon({ code, accent }: any) {
+function SpecialZoneIcon({ code, accent, size = 78 }: any) {
   const meta = SPECIAL_ZONE_META[String(code || "")];
   const highlight = accent || "#42d6ff";
-  const num = meta?.number;
+  const num = String(meta?.number ?? "");
 
   if (code === "outer_numbers_ring") {
     return (
-      <svg width="78" height="78" viewBox="0 0 78 78" aria-hidden="true">
+      <svg width={size} height={size} viewBox="0 0 78 78" aria-hidden="true">
         <circle cx="39" cy="39" r="29" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" />
         <circle cx="39" cy="39" r="24" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
         <circle cx="39" cy="39" r="14" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
@@ -167,43 +166,58 @@ function SpecialZoneIcon({ code, accent }: any) {
     );
   }
 
-  const shapes: Record<string, any[]> = {
-    big_6: [{ type: 'circle', cx: 45, cy: 46, r: 9 }],
-    small_6: [{ type: 'circle', cx: 38, cy: 24, r: 9 }],
-    big_8: [{ type: 'circle', cx: 39, cy: 24, r: 8 }],
-    small_8: [{ type: 'circle', cx: 39, cy: 52, r: 8 }],
-    ring_9: [{ type: 'circle', cx: 42, cy: 24, r: 8 }],
-    ring_10: [{ type: 'circle', cx: 50, cy: 41, r: 8 }],
-    ring_16: [{ type: 'circle', cx: 49, cy: 46, r: 8 }],
-    ring_18: [{ type: 'circle', cx: 41, cy: 24, r: 8 }],
-    ring_19: [{ type: 'circle', cx: 44, cy: 26, r: 8 }],
-    ring_20: [{ type: 'circle', cx: 51, cy: 39, r: 8 }],
+  const filledZones: Record<string, any[]> = {
+    closed_6: [{ cx: 43, cy: 48, r: 9 }],
+    closed_8_top: [{ cx: 39, cy: 25, r: 8 }],
+    closed_8_bottom: [{ cx: 39, cy: 50, r: 8 }],
+    closed_9: [{ cx: 44, cy: 25, r: 8 }],
+    closed_10: [{ cx: 50, cy: 39, r: 8 }],
+    closed_16: [{ cx: 52, cy: 47, r: 8 }],
+    closed_18_top: [{ cx: 43, cy: 25, r: 8 }],
+    closed_18_bottom: [{ cx: 43, cy: 50, r: 8 }],
+    closed_19: [{ cx: 50, cy: 25, r: 8 }],
+    closed_20: [{ cx: 50, cy: 39, r: 8 }],
   };
 
-  const fontSize = num && String(num).length > 1 ? 44 : 56;
+  const fontSize = num.length > 1 ? 44 : 56;
+  const x = num.length > 1 ? 35 : 39;
   return (
-    <svg width="78" height="78" viewBox="0 0 78 78" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 78 78" aria-hidden="true">
       <rect x="6" y="6" width="66" height="66" rx="16" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)" />
       <text
-        x="39"
+        x={x}
         y="54"
         textAnchor="middle"
         fontSize={fontSize}
         fontWeight="1000"
-        fill="rgba(0,0,0,.18)"
-        stroke="rgba(255,255,255,.92)"
+        fill="rgba(0,0,0,0)"
+        stroke="rgba(255,255,255,.96)"
         strokeWidth="4"
         paintOrder="stroke"
         fontFamily="inherit"
       >
         {num}
       </text>
-      {(shapes[String(code || '')] || []).map((shape, idx) => (
-        shape.type === 'circle' ? (
-          <circle key={idx} cx={shape.cx} cy={shape.cy} r={shape.r} fill={highlight} opacity="0.95" />
-        ) : null
+      {(filledZones[String(code || '')] || []).map((shape, idx) => (
+        <circle key={idx} cx={shape.cx} cy={shape.cy} r={shape.r} fill={highlight} opacity="0.95" />
       ))}
     </svg>
+  );
+}
+
+function TargetVisual({ target, lang, accent, compact = false }: any) {
+  if (target?.kind === "special") {
+    return (
+      <div style={{ display: "grid", justifyItems: "center", alignItems: "center", gap: 2, minWidth: 0 }}>
+        <SpecialZoneIcon code={target.code} accent={accent} size={compact ? 54 : 88} />
+        <div style={{ color: accent, fontSize: compact ? 8.6 : 10.5, fontWeight: 1000, lineHeight: 1.1, letterSpacing: .35, textTransform: "uppercase", textAlign: "center", maxWidth: compact ? 92 : 170, whiteSpace: "normal" }}>{specialZoneLabel(String(target.code || ""), lang)}</div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ color: accent, fontSize: compact ? 18 : 48, fontWeight: 1000, lineHeight: 1, textShadow: `0 4px 18px ${accent}35`, whiteSpace: compact ? "pre-line" : "nowrap", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
+      {targetUiLabel(target, lang)}
+    </div>
   );
 }
 
@@ -247,7 +261,7 @@ function fromUiDart(d: any) {
   const mult = Number(d?.mult || 1);
   if (v <= 0) return makeGros6Miss();
   if (v === 25) return makeGros6Bull(mult === 2);
-  return makeGros6Segment(mult === 3 ? "T" : mult === 2 ? "D" : "S", v);
+  return makeGros6Segment(mult === 3 ? "T" : mult === 2 ? "D" : "S", v, d?.singleArea === "small" ? "small" : "big");
 }
 
 function dartLabel(hit: any, lang: string) {
@@ -348,7 +362,7 @@ function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = t
           <button
             key={zone.code}
             type="button"
-            onClick={() => onPick({ code: zone.code, label: specialZoneLabel(zone.code, "fr") })}
+            onClick={() => onPick({ code: zone.code, label: specialZoneLabel(zone.code, lang) })}
             style={{
               minHeight: 112,
               borderRadius: 16,
@@ -371,9 +385,15 @@ function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = t
               <div style={{ marginTop: 4, color: SOFT, fontSize: 9.2, lineHeight: 1.35 }}>
                 {zone.code === "outer_numbers_ring"
                   ? L("Contour extérieur de la cible, autour du cercle des chiffres.", "Outer contour of the dartboard, around the number ring.")
-                  : SPECIAL_ZONE_META[zone.code]?.ring === "inner"
-                  ? L("Zone intérieure entre le triple et le Bull.", "Inner zone between the treble and the Bull.")
-                  : L("Zone extérieure entre le double et le triple.", "Outer zone between the double and the treble.")}
+                  : zone.code === "closed_8_top"
+                  ? L("Zone fermée hors cible : boucle haute du 8.", "Closed off-target zone: upper loop of the 8.")
+                  : zone.code === "closed_8_bottom"
+                  ? L("Zone fermée hors cible : boucle basse du 8.", "Closed off-target zone: lower loop of the 8.")
+                  : zone.code === "closed_18_top"
+                  ? L("Zone fermée hors cible : boucle haute du 18.", "Closed off-target zone: upper loop of the 18.")
+                  : zone.code === "closed_18_bottom"
+                  ? L("Zone fermée hors cible : boucle basse du 18.", "Closed off-target zone: lower loop of the 18.")
+                  : L("Zone fermée hors cible jouable : si elle est touchée, le joueur suivant doit viser exactement la même zone fermée.", "Playable off-target closed zone: if hit, the next player must hit the exact same closed zone.")}
               </div>
             </div>
           </button>
@@ -459,16 +479,12 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
 
   const submitNumber = React.useCallback((n: number) => {
     if (n === 0) return submitUiDart({ v: 0, mult: 1 });
-    if (specialMode && (n === 6 || n === 8)) {
-      const code = specialMode === "big" ? (n === 6 ? "big_6" : "big_8") : (n === 6 ? "small_6" : "small_8");
-      const label = n === 6 ? (specialMode === "big" ? "Gros 6" : "Petit 6") : (specialMode === "big" ? "Gros 8" : "Petit 8");
-      submitHit(makeGros6Special(code, label));
-      setSpecialMode(null);
-      setMultiplier(1);
+    if (specialMode && multiplier === 1) {
+      submitUiDart({ v: n, mult: 1, singleArea: specialMode });
       return;
     }
     submitUiDart({ v: n, mult: multiplier });
-  }, [submitUiDart, multiplier, specialMode, submitHit]);
+  }, [submitUiDart, multiplier, specialMode]);
 
   const submitBull = React.useCallback(() => {
     submitUiDart({ v: 25, mult: multiplier === 2 ? 2 : 1 });
@@ -584,11 +600,11 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             <div style={{ position: "absolute", left: -10, top: 10, transform: "scale(1.42)", transformOrigin: "left top", filter: "saturate(.9) blur(.15px)" }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={84} /></div>
           </div>
 
-          <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minWidth: 0, textAlign: "center", padding: "6px 8px 4px 5px" }}>
+          <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minWidth: 0, textAlign: "center", padding: compact ? "6px 10px 4px 88px" : "6px 12px 4px 96px" }}>
             <div style={{ color: accent, fontSize: compact ? 12 : 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activePlayer?.name || "—"}</div>
             {activeTeam ? <div style={{ marginTop: 2, color: SOFT, fontSize: 8.2, fontWeight: 900 }}>{activeTeam.name}</div> : null}
             <div style={{ marginTop: 3, color: SOFT, fontSize: 8.5, fontWeight: 1000, letterSpacing: .7 }}>{phaseText}</div>
-            <div style={{ marginTop: 1, color: accent, fontSize: compact ? 43 : 50, fontWeight: 1000, lineHeight: 1, textShadow: `0 4px 18px ${accent}35`, whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{targetUiLabel(activeTarget, lang)}</div>
+            <div style={{ marginTop: 2, minHeight: compact ? 58 : 92, display: "grid", placeItems: "center", width: "100%" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact={false} /></div>
             <div style={{ marginTop: "auto", width: "100%", display: "grid", placeItems: "center", gap: 5 }}>
               <CricketVisitDarts used={topDartsCount} total={phaseSelect ? Math.max(1, Number(game.selectionAllowed || 1)) : 3} accent={accent} />
             </div>
@@ -689,7 +705,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             fitToParent
             validateLabel={phaseSelect ? L("VALIDER CIBLE", "CONFIRM TARGET") : L("TOUR EN COURS", "TURN ACTIVE")}
             validateDisabled={!phaseSelect}
-            centerSlot={<span style={{ display: "inline-block", minWidth: 58, textAlign: "center", padding: "8px 12px", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 17, lineHeight: 1.02, boxShadow: `0 0 16px ${accent}22`, whiteSpace: "pre-line" }}>{targetUiLabel(activeTarget, lang)}</span>}
+            centerSlot={<span style={{ display: "inline-grid", minWidth: 58, placeItems: "center", textAlign: "center", padding: "6px 10px", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 17, lineHeight: 1.02, boxShadow: `0 0 16px ${accent}22`, whiteSpace: "pre-line" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact /></span>}
           />
         </div>
       ) : !finished && activePlayer?.isBot ? (
