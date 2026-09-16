@@ -8,7 +8,7 @@
 
 export type Gros6SegmentRing = "S" | "D" | "T";
 export type Gros6Target =
-  | { kind: "segment"; ring: Gros6SegmentRing; value: number; label: string }
+  | { kind: "segment"; ring: Gros6SegmentRing; value: number; label: string; singleArea?: "big" | "small" }
   | { kind: "bull"; bull: "SB" | "DB"; label: string }
   | { kind: "special"; code: string; label: string }
   | { kind: "miss"; label: "MISS" };
@@ -16,24 +16,29 @@ export type Gros6Target =
 export const GROS6_NUMBER_ORDER = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 export const GROS6_SPECIAL_ZONES = [
   { code: "outer_numbers_ring", label: "Contour extérieur" },
-  { code: "big_6", label: "Gros 6" },
-  { code: "small_6", label: "Petit 6" },
-  { code: "big_8", label: "Gros 8" },
-  { code: "small_8", label: "Petit 8" },
-  { code: "ring_9", label: "Zone 9" },
-  { code: "ring_10", label: "Zone 10" },
-  { code: "ring_16", label: "Zone 16" },
-  { code: "ring_18", label: "Zone 18" },
-  { code: "ring_19", label: "Zone 19" },
-  { code: "ring_20", label: "Zone 20" },
+  { code: "closed_6", label: "Hors cible 6" },
+  { code: "closed_8_top", label: "Hors cible 8 haut" },
+  { code: "closed_8_bottom", label: "Hors cible 8 bas" },
+  { code: "closed_9", label: "Hors cible 9" },
+  { code: "closed_10", label: "Hors cible 10" },
+  { code: "closed_16", label: "Hors cible 16" },
+  { code: "closed_18_top", label: "Hors cible 18 haut" },
+  { code: "closed_18_bottom", label: "Hors cible 18 bas" },
+  { code: "closed_19", label: "Hors cible 19" },
+  { code: "closed_20", label: "Hors cible 20" },
 ];
 
 export function gros6Clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
-export function makeGros6Segment(ring: Gros6SegmentRing, value: number): Gros6Target {
-  return { kind: "segment", ring, value: Number(value), label: `${ring}${Number(value)}` };
+export function makeGros6Segment(ring: Gros6SegmentRing, value: number, singleArea?: "big" | "small"): Gros6Target {
+  const safeValue = Number(value);
+  const safeArea = ring === "S" ? (singleArea === "small" ? "small" : "big") : undefined;
+  const label = ring === "S"
+    ? `${safeArea === "small" ? "PETIT" : "GROS"} ${safeValue}`
+    : `${ring}${safeValue}`;
+  return { kind: "segment", ring, value: safeValue, label, ...(safeArea ? { singleArea: safeArea } : {}) };
 }
 export function makeGros6Bull(doubleBull = false): Gros6Target {
   return { kind: "bull", bull: doubleBull ? "DB" : "SB", label: doubleBull ? "DBULL" : "BULL" };
@@ -48,12 +53,12 @@ export function gros6TargetLabel(target: any): string {
   return target?.label || "—";
 }
 export function normalizeGros6Target(target: any): Gros6Target {
-  if (!target) return makeGros6Segment("S", 6);
-  if (target.kind === "segment") return makeGros6Segment((target.ring || "S") as Gros6SegmentRing, Number(target.value || 6));
+  if (!target) return makeGros6Segment("S", 6, "big");
+  if (target.kind === "segment") return makeGros6Segment((target.ring || "S") as Gros6SegmentRing, Number(target.value || 6), target.singleArea === "small" ? "small" : "big");
   if (target.kind === "bull") return makeGros6Bull(target.bull === "DB");
   if (target.kind === "special") return makeGros6Special(String(target.code), String(target.label || target.code));
   if (target.kind === "miss") return makeGros6Miss();
-  return makeGros6Segment("S", 6);
+  return makeGros6Segment("S", 6, "big");
 }
 export function gros6HitToTarget(hit: any): Gros6Target | null {
   if (!hit || hit.kind === "miss") return null;
@@ -66,8 +71,10 @@ export function gros6MatchesTarget(hit: any, target: any, config: any): boolean 
   if (target.kind === "bull") return hit.kind === "bull" && String(hit.bull) === String(target.bull);
   if (target.kind === "segment") {
     if (hit.kind !== "segment") return false;
+    if (String(hit.ring) !== String(target.ring) || Number(hit.value) !== Number(target.value)) return false;
+    if (String(target.ring) === "S") return String(hit.singleArea || "big") === String(target.singleArea || "big");
     if (String(config?.targetRule || "strict") === "value") return Number(hit.value) === Number(target.value);
-    return String(hit.ring) === String(target.ring) && Number(hit.value) === Number(target.value);
+    return true;
   }
   return false;
 }
@@ -92,7 +99,7 @@ export function randomGros6StartTarget(config: any): Gros6Target {
   const ringPool: Gros6SegmentRing[] = String(config?.selectionPolicy || "open") === "pro" ? ["D", "T"] : ["S", "D", "T"];
   const ring = ringPool[Math.floor(Math.random() * ringPool.length)] || "S";
   const value = GROS6_NUMBER_ORDER[Math.floor(Math.random() * GROS6_NUMBER_ORDER.length)] || 6;
-  return makeGros6Segment(ring, value);
+  return makeGros6Segment(ring, value, Math.random() < 0.5 ? "big" : "small");
 }
 
 function makePlayerState(player: any, startingLives: number) {
@@ -171,7 +178,7 @@ export function buildGros6InitialState(config: any) {
   const teamLifeMode = config?.teamLifeMode === "shared" ? "shared" : "individual";
   const startingLives = Number(config?.startingLives || 5);
   const initialTarget = normalizeGros6Target(
-    config?.startingTarget || (config?.startingTargetMode === "random" ? randomGros6StartTarget(config) : makeGros6Segment("S", 6)),
+    config?.startingTarget || makeGros6Segment("S", 6, "big"),
   );
   return {
     players: (config?.players || []).map((player: any) => makePlayerState(player, startingLives)),
@@ -379,7 +386,7 @@ function randomSegment(): Gros6Target {
   const value = GROS6_NUMBER_ORDER[Math.floor(Math.random() * GROS6_NUMBER_ORDER.length)] || 20;
   const rings: Gros6SegmentRing[] = ["S", "D", "T"];
   const ring = rings[Math.floor(Math.random() * rings.length)] || "S";
-  return makeGros6Segment(ring, value);
+  return makeGros6Segment(ring, value, Math.random() < 0.5 ? "big" : "small");
 }
 
 function randomHit(config: any): Gros6Target {
@@ -407,7 +414,7 @@ function targetDifficulty(target: any): number {
   if (target.kind === "bull") return target.bull === "DB" ? 0.9 : 0.72;
   if (target.kind === "segment") {
     const high = [20, 19, 18, 17, 16, 15].includes(Number(target.value)) ? 0.05 : 0;
-    const base = target.ring === "T" ? 0.82 : target.ring === "D" ? 0.7 : 0.36;
+    const base = target.ring === "T" ? 0.82 : target.ring === "D" ? 0.7 : (target.singleArea === "small" ? 0.58 : 0.44);
     return Math.min(0.94, base + high);
   }
   return 0.5;
@@ -417,7 +424,7 @@ export function chooseGros6BotTarget(skill: number, config: any): Gros6Target {
   const options: Gros6Target[] = [
     makeGros6Segment("T", 20), makeGros6Segment("T", 19), makeGros6Segment("D", 20),
     makeGros6Segment("D", 18), makeGros6Segment("D", 16), makeGros6Segment("T", 18),
-    makeGros6Segment("S", 20), makeGros6Segment("S", 19), makeGros6Segment("S", 18), makeGros6Segment("S", 6),
+    makeGros6Segment("S", 20, "big"), makeGros6Segment("S", 20, "small"), makeGros6Segment("S", 19, "big"), makeGros6Segment("S", 18, "big"), makeGros6Segment("S", 6, "big"), makeGros6Segment("S", 6, "small"),
   ];
   if (config?.allowBull) options.push(makeGros6Bull(true), makeGros6Bull(false));
   if (config?.allowSpecialZones) {
@@ -427,7 +434,7 @@ export function chooseGros6BotTarget(skill: number, config: any): Gros6Target {
   }
   const allowed = options.filter((target) => isGros6TargetAllowedForSelection(target, config));
   const ordered = skill >= 4 ? allowed : [...allowed].reverse();
-  return gros6Clone(ordered[Math.floor(Math.random() * Math.max(1, ordered.length))] || makeGros6Segment("S", 20));
+  return gros6Clone(ordered[Math.floor(Math.random() * Math.max(1, ordered.length))] || makeGros6Segment("S", 20, "big"));
 }
 
 export function simulateGros6BotAttack(state: any, config: any): { darts: Gros6Target[]; successIndex: number } {

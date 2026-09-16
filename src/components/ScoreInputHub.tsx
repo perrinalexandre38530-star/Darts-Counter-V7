@@ -109,6 +109,9 @@ type Props = {
   fitToParent?: boolean;
   /** Afficher le sélecteur en overlay (compat ancienne API). */
   switcherOverlay?: boolean;
+  /** Libellés personnalisés des deux boutons de mode du keypad. */
+  doubleLabel?: React.ReactNode;
+  tripleLabel?: React.ReactNode;
 };
 
 function safeReadDevModeEnabled(): boolean {
@@ -196,6 +199,8 @@ export default function ScoreInputHub({
   lockContentHeight = false,
   fitToParent = false,
   switcherOverlay: _switcherOverlay = false,
+  doubleLabel,
+  tripleLabel,
 }: Props) {
   const devEnabled = safeReadDevModeEnabled();
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod) : null;
@@ -418,6 +423,8 @@ export default function ScoreInputHub({
       hideTotal={hideTotal}
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}
+      doubleLabel={doubleLabel}
+      tripleLabel={tripleLabel}
       noticeSlot={voiceNotice}
       validateAttention={voiceAwaitingManualValidate}
       validateLabel={validateLabel}

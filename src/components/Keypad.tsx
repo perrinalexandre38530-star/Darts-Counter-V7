@@ -75,6 +75,9 @@ type Props = {
 
   /** Espace horizontal entre BULL, score central et VALIDER. Défaut: 10px. */
   footerGap?: number;
+  /** Libellés personnalisés des 2 boutons de mode (défaut: DOUBLE/TRIPLE). */
+  doubleLabel?: React.ReactNode;
+  tripleLabel?: React.ReactNode;
 };
 
 /* ---------- Helpers ---------- */
@@ -274,6 +277,8 @@ export default function Keypad({
   validateDisabled = false,
   safeBottomPad = true,
   footerGap = 10,
+  doubleLabel = "DOUBLE",
+  tripleLabel = "TRIPLE",
 }: Props) {
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
   const total = throwTotal(currentThrow);
@@ -387,7 +392,7 @@ export default function Keypad({
           onMouseUp={onSimple}
           title="Double"
         >
-          DOUBLE
+          {doubleLabel}
         </button>
 
         <button
@@ -401,7 +406,7 @@ export default function Keypad({
           onMouseUp={onSimple}
           title="Triple"
         >
-          TRIPLE
+          {tripleLabel}
         </button>
 
         {auxAction ? (

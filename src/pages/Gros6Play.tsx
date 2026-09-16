@@ -17,6 +17,7 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
+import { History } from "../lib/history";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
 import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
 import playersPanelTicker from "../assets/tickers/ticker_gros_6_players_panel.png";
@@ -91,17 +92,17 @@ function ModeInlineInfo({ label, value, accent }: any) {
 
 const BOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const SPECIAL_ZONE_META: Record<string, any> = {
-  outer_numbers_ring: { fr: "Contour extérieur", en: "Outer ring", tone: "outer" },
-  big_6: { fr: "GROS 6", en: "BIG 6", number: 6, ring: "outer" },
-  small_6: { fr: "PETIT 6", en: "SMALL 6", number: 6, ring: "inner" },
-  big_8: { fr: "GROS 8", en: "BIG 8", number: 8, ring: "outer" },
-  small_8: { fr: "PETIT 8", en: "SMALL 8", number: 8, ring: "inner" },
-  ring_9: { fr: "ZONE 9", en: "ZONE 9", number: 9, ring: "outer" },
-  ring_10: { fr: "ZONE 10", en: "ZONE 10", number: 10, ring: "outer" },
-  ring_16: { fr: "ZONE 16", en: "ZONE 16", number: 16, ring: "outer" },
-  ring_18: { fr: "ZONE 18", en: "ZONE 18", number: 18, ring: "outer" },
-  ring_19: { fr: "ZONE 19", en: "ZONE 19", number: 19, ring: "outer" },
-  ring_20: { fr: "ZONE 20", en: "ZONE 20", number: 20, ring: "outer" },
+  outer_numbers_ring: { fr: "CONTOUR EXTÉRIEUR", en: "OUTER RING", tone: "outer" },
+  closed_6: { fr: "HORS CIBLE 6", en: "OFF-TARGET 6", number: 6, glyph: "6", holes: ["center"] },
+  closed_8_top: { fr: "HORS CIBLE 8 HAUT", en: "OFF-TARGET 8 TOP", number: 8, glyph: "8", holes: ["top"] },
+  closed_8_bottom: { fr: "HORS CIBLE 8 BAS", en: "OFF-TARGET 8 BOTTOM", number: 8, glyph: "8", holes: ["bottom"] },
+  closed_9: { fr: "HORS CIBLE 9", en: "OFF-TARGET 9", number: 9, glyph: "9", holes: ["center"] },
+  closed_10: { fr: "HORS CIBLE 10", en: "OFF-TARGET 10", number: 10, glyph: "10", holes: ["one-zero"] },
+  closed_16: { fr: "HORS CIBLE 16", en: "OFF-TARGET 16", number: 16, glyph: "16", holes: ["six"] },
+  closed_18_top: { fr: "HORS CIBLE 18 HAUT", en: "OFF-TARGET 18 TOP", number: 18, glyph: "18", holes: ["top"] },
+  closed_18_bottom: { fr: "HORS CIBLE 18 BAS", en: "OFF-TARGET 18 BOTTOM", number: 18, glyph: "18", holes: ["bottom"] },
+  closed_19: { fr: "HORS CIBLE 19", en: "OFF-TARGET 19", number: 19, glyph: "19", holes: ["nine"] },
+  closed_20: { fr: "HORS CIBLE 20", en: "OFF-TARGET 20", number: 20, glyph: "20", holes: ["zero"] },
 };
 
 function specialZoneLabel(code: string, lang: string) {
@@ -136,29 +137,46 @@ function zoneAngles(number: number) {
   return { start, end: start + 18 };
 }
 
+function ClosedHole({ x, y, rx, ry, fill }: any) {
+  return <ellipse cx={x} cy={y} rx={rx} ry={ry} fill={fill} opacity="0.96" />;
+}
+
 function SpecialZoneIcon({ code, accent }: any) {
   const meta = SPECIAL_ZONE_META[String(code || "")];
   const highlight = accent || "#42d6ff";
-  const num = meta?.number;
-  const ang = typeof num === "number" ? zoneAngles(num) : null;
-  const ringPath = ang
-    ? annulusPath(36, 36, meta?.ring === "inner" ? 24 : 30, meta?.ring === "inner" ? 14 : 24, ang.start, ang.end)
-    : null;
+  if (code === "outer_numbers_ring") {
+    return (
+      <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
+        <circle cx="36" cy="36" r="30" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" />
+        <circle cx="36" cy="36" r="24" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+        <circle cx="36" cy="36" r="14" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+        <circle cx="36" cy="36" r="7" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+        {Array.from({ length: 20 }, (_, i) => {
+          const a = i * 18;
+          const p1 = polar(36, 36, 7, a);
+          const p2 = polar(36, 36, 30, a);
+          return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,.12)" strokeWidth="1" />;
+        })}
+        <circle cx="36" cy="36" r="33" fill="none" stroke={highlight} strokeWidth="4" opacity="0.95" />
+        <text x="36" y="40" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="900">ZONE</text>
+      </svg>
+    );
+  }
+
   return (
     <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
-      <circle cx="36" cy="36" r="30" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" />
-      <circle cx="36" cy="36" r="24" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
-      <circle cx="36" cy="36" r="14" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
-      <circle cx="36" cy="36" r="7" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
-      {Array.from({ length: 20 }, (_, i) => {
-        const a = i * 18;
-        const p1 = polar(36, 36, 7, a);
-        const p2 = polar(36, 36, 30, a);
-        return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,.12)" strokeWidth="1" />;
-      })}
-      {code === "outer_numbers_ring" ? <circle cx="36" cy="36" r="33" fill="none" stroke={highlight} strokeWidth="4" opacity="0.95" /> : null}
-      {ringPath ? <path d={ringPath} fill={highlight} opacity="0.78" stroke={highlight} strokeWidth="1" /> : null}
-      {typeof num === "number" ? <text x="36" y="40" textAnchor="middle" fill="#fff" fontSize="15" fontWeight="900">{num}</text> : <text x="36" y="40" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="900">ZONE</text>}
+      <rect x="1.5" y="1.5" width="69" height="69" rx="18" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.16)" />
+      <text x="36" y="51" textAnchor="middle" fill="#fff" fontSize={String(meta?.glyph || '').length > 1 ? 36 : 54} fontWeight="1000" fontFamily="Arial, Helvetica, sans-serif">{meta?.glyph || "?"}</text>
+      {code === "closed_6" ? <ClosedHole x={36} y={36} rx={9.5} ry={10.5} fill={highlight} /> : null}
+      {code === "closed_8_top" ? <ClosedHole x={36} y={25} rx={8.7} ry={9.4} fill={highlight} /> : null}
+      {code === "closed_8_bottom" ? <ClosedHole x={36} y={44} rx={9.3} ry={10.1} fill={highlight} /> : null}
+      {code === "closed_9" ? <ClosedHole x={39} y={27} rx={8.6} ry={9.2} fill={highlight} /> : null}
+      {code === "closed_10" ? <ClosedHole x={44} y={37} rx={8.5} ry={11.5} fill={highlight} /> : null}
+      {code === "closed_16" ? <ClosedHole x={47} y={39} rx={8.6} ry={9.8} fill={highlight} /> : null}
+      {code === "closed_18_top" ? <ClosedHole x={42} y={25} rx={8.7} ry={9.4} fill={highlight} /> : null}
+      {code === "closed_18_bottom" ? <ClosedHole x={42} y={44} rx={9.3} ry={10.1} fill={highlight} /> : null}
+      {code === "closed_19" ? <ClosedHole x={46} y={27} rx={8.6} ry={9.2} fill={highlight} /> : null}
+      {code === "closed_20" ? <ClosedHole x={44} y={37} rx={8.5} ry={11.5} fill={highlight} /> : null}
     </svg>
   );
 }
@@ -187,7 +205,7 @@ function fromUiDart(d: any) {
   const mult = Number(d?.mult || 1);
   if (v <= 0) return makeGros6Miss();
   if (v === 25) return makeGros6Bull(mult === 2);
-  return makeGros6Segment(mult === 3 ? "T" : mult === 2 ? "D" : "S", v);
+  return makeGros6Segment(mult === 3 ? "T" : mult === 2 ? "D" : "S", v, "big");
 }
 
 function dartLabel(hit: any, lang: string) {
@@ -311,9 +329,7 @@ function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = t
               <div style={{ marginTop: 4, color: SOFT, fontSize: 9.2, lineHeight: 1.35 }}>
                 {zone.code === "outer_numbers_ring"
                   ? L("Contour extérieur de la cible, autour du cercle des chiffres.", "Outer contour of the dartboard, around the number ring.")
-                  : SPECIAL_ZONE_META[zone.code]?.ring === "inner"
-                  ? L("Zone intérieure entre le triple et le Bull.", "Inner zone between the treble and the Bull.")
-                  : L("Zone extérieure entre le double et le triple.", "Outer zone between the double and the treble.")}
+                  : L("Zone fermée hors cible jouable : si elle est touchée, le joueur suivant doit viser exactement la même zone fermée.", "Playable off-target closed zone: when hit, the next player must hit that same closed area.")}
               </div>
             </div>
           </button>
@@ -331,8 +347,9 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const accent = theme?.primary || "#42d6ff";
   const pageBg = theme?.pageBg || theme?.bg || "#05070e";
 
-  const [game, setGame] = React.useState(() => buildGros6InitialState(config));
-  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+  const resumeState = React.useMemo(() => (config as any)?.__resumeState ?? (config as any)?.resumeState ?? null, [config]);
+  const [game, setGame] = React.useState(() => resumeState ? gros6Clone(resumeState) : buildGros6InitialState(config));
+  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(2);
   const [playersOpen, setPlayersOpen] = React.useState(false);
   const [statsOpen, setStatsOpen] = React.useState(false);
   const [specialOpen, setSpecialOpen] = React.useState(false);
@@ -340,6 +357,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const [viewport, setViewport] = React.useState(() => ({ w: typeof window !== "undefined" ? window.innerWidth : 1200, h: typeof window !== "undefined" ? window.innerHeight : 900 }));
   const undoStackRef = React.useRef<any[]>([]);
   const reportedRef = React.useRef(false);
+  const matchIdRef = React.useRef(String((config as any)?.resumeId || `gros6_${Date.now()}`));
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -367,8 +385,14 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const lifeValue = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(activeTeam?.lives || 0) : Number(activePlayer?.lives || 0);
   const headerTicker = lang === "fr" ? tickerGros6 : tickerBig6;
   const statsPlayerTeam = activeTeam?.name || null;
+  const activeTarget = phaseSelect && game.pendingNextTarget ? game.pendingNextTarget : game.currentTarget;
+  const phaseText = phaseSelect ? L("CHOISIS LA PROCHAINE CIBLE", "CHOOSE NEXT TARGET") : L("CIBLE À TOUCHER", "TARGET TO HIT");
+  const useSegmentMultiplierMode = (phaseSelect && String(config?.selectionPolicy || "open") === "pro") || (activeTarget?.kind === "segment" && (activeTarget?.ring === "D" || activeTarget?.ring === "T"));
+  const keypadDoubleLabel = useSegmentMultiplierMode ? L("DOUBLE", "DOUBLE") : L("GROS", "BIG");
+  const keypadTripleLabel = useSegmentMultiplierMode ? L("TRIPLE", "TRIPLE") : L("PETIT", "SMALL");
+  const defaultModeValue: 1 | 2 | 3 = useSegmentMultiplierMode && activeTarget?.kind === "segment" && activeTarget?.ring === "T" ? 3 : 2;
 
-  React.useEffect(() => { setMultiplier(1); }, [game.turnIndex, game.phase]);
+  React.useEffect(() => { setMultiplier(defaultModeValue); }, [defaultModeValue, game.turnIndex, game.phase]);
 
   const commit = React.useCallback((reducer: any) => {
     setGame((prev: any) => {
@@ -382,7 +406,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     const previous = undoStackRef.current.pop();
     if (previous) {
       setGame(previous);
-      setMultiplier(1);
+      setMultiplier(defaultModeValue);
     }
   }, []);
 
@@ -392,13 +416,17 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
 
   const submitUiDart = React.useCallback((d: any) => {
     submitHit(fromUiDart(d));
-    setMultiplier(1);
-  }, [submitHit]);
+    setMultiplier(defaultModeValue);
+  }, [submitHit, defaultModeValue]);
 
   const submitNumber = React.useCallback((n: number) => {
-    if (n === 0) return submitUiDart({ v: 0, mult: 1 });
-    submitUiDart({ v: n, mult: multiplier });
-  }, [submitUiDart, multiplier]);
+    if (n === 0) return submitHit(makeGros6Miss());
+    if (useSegmentMultiplierMode) {
+      submitHit(makeGros6Segment(multiplier === 3 ? "T" : "D", n, "big"));
+      return;
+    }
+    submitHit(makeGros6Segment("S", n, multiplier === 3 ? "small" : "big"));
+  }, [submitHit, multiplier, useSegmentMultiplierMode]);
 
   const submitBull = React.useCallback(() => {
     submitUiDart({ v: 25, mult: multiplier === 2 ? 2 : 1 });
@@ -422,7 +450,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
       }
       return next;
     });
-    setMultiplier(1);
+    setMultiplier(2);
   }, [commit, config]);
 
   const pickSpecial = React.useCallback((zone: any) => {
@@ -430,12 +458,43 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     setSpecialOpen(false);
   }, [submitHit]);
 
+  const buildSummary = React.useCallback((state: any) => ({
+    finished: state?.phase === "finished",
+    turnNo: Number(state?.turnNo || 0),
+    winnerId: state?.winnerId || null,
+    winnerName: state?.winnerName || null,
+    participantMode: state?.participantMode || "players",
+    statsByPlayer: Object.fromEntries((state?.players || []).map((p: any) => [String(p.id), { ...(p.stats || {}), lives: p.lives, eliminated: !!p.eliminated }])),
+  }), []);
+
+  React.useEffect(() => {
+    if (reportedRef.current || game?.phase === "finished") return;
+    const timer = window.setTimeout(() => {
+      const snapshot: any = {
+        id: matchIdRef.current,
+        matchId: matchIdRef.current,
+        kind: "gros_6",
+        status: "in_progress",
+        createdAt: (config as any)?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        players: (game?.players || []).map((p: any) => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl || null })),
+        summary: buildSummary(game),
+        resume: { config: { ...(config || {}), resumeId: matchIdRef.current }, state: game },
+        payload: { kind: "gros_6", mode: "gros_6", config: { ...(config || {}), resumeId: matchIdRef.current }, state: game, summary: buildSummary(game) },
+      };
+      History.upsert(snapshot).catch(() => {});
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [game, config, buildSummary]);
+
   React.useEffect(() => {
     if (!game.winnerId || reportedRef.current) return;
     reportedRef.current = true;
     try {
       onFinish?.({
-        id: `gros6-match-${Date.now()}`,
+        id: matchIdRef.current,
+        matchId: matchIdRef.current,
+        status: "finished",
         kind: "gros_6",
         mode: "gros_6",
         createdAt: config?.createdAt || Date.now(),
@@ -448,6 +507,9 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         players: game.players,
         config,
         history: game.history,
+        summary: buildSummary(game),
+        resume: { config: { ...(config || {}), resumeId: matchIdRef.current }, state: game },
+        payload: { kind: "gros_6", mode: "gros_6", config: { ...(config || {}), resumeId: matchIdRef.current }, state: game, summary: buildSummary(game) },
       });
     } catch {}
   }, [game.winnerId, game.winnerName, game.winnerType, game.participantMode, game.teams, game.players, game.history, config, onFinish]);
@@ -478,9 +540,6 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     return () => window.clearTimeout(timer);
   }, [game.phase, game.turnIndex, game.winnerId, game.players, config]);
 
-  const activeTarget = phaseSelect && game.pendingNextTarget ? game.pendingNextTarget : game.currentTarget;
-  const phaseText = phaseSelect ? L("CHOISIS LA PROCHAINE CIBLE", "CHOOSE NEXT TARGET") : L("CIBLE À TOUCHER", "TARGET TO HIT");
-
   return (
     <div style={{ position: "fixed", inset: 0, height: "100dvh", overflow: "hidden", background: pageBg, color: "#fff", display: "flex", flexDirection: "column", padding: compact ? 6 : 10, gap: compact ? 5 : 8, overscrollBehavior: "none" }}>
       <style>{`
@@ -503,10 +562,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
       <section style={{ ...panelStyle(), flex: `0 0 ${activeHeight}px`, padding: 0, overflow: "hidden", borderColor: `${accent}88`, boxShadow: `0 0 24px ${accent}20` }}>
         <div style={{ position: "relative", height: "100%", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(124px,142px)", gap: 6, alignItems: "stretch", padding: compact ? "7px 8px" : "8px 10px" }}>
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.40), rgba(0,0,0,.14) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.26))" }} />
-          <div style={{ position: "absolute", left: -20, top: -4, bottom: -4, width: "26%", minWidth: 82, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: -14, top: 14, transform: "scale(1.25)", transformOrigin: "left top", filter: "saturate(.86)" }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={82} /></div>
-          </div>
-
+          
           <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minWidth: 0, textAlign: "center", padding: "6px 8px 4px 5px" }}>
             <div style={{ color: accent, fontSize: compact ? 12 : 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activePlayer?.name || "—"}</div>
             {activeTeam ? <div style={{ marginTop: 2, color: SOFT, fontSize: 8.2, fontWeight: 900 }}>{activeTeam.name}</div> : null}
@@ -520,12 +576,12 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
           </div>
 
           <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#080b12", padding: 0, color: "#fff", boxShadow: `0 0 0 1px ${accent}33 inset, 0 0 18px ${accent}18` }}>
-            <img src={activePanelTicker as any} alt="Active player panel" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .92 }} />
-            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(8,10,16,.16), rgba(8,10,16,.48) 60%, rgba(8,10,16,.72))" }} />
-            <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "8px 6px 7px" }}>
-              <div style={{ alignSelf: "stretch", display: "flex", justifyContent: "flex-end" }}>
+            <img src={activePanelTicker as any} alt="Active player panel" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .94 }} />
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(8,10,16,.10), rgba(8,10,16,.44) 58%, rgba(8,10,16,.76))" }} />
+            <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "6px 6px 7px" }}>
+              <div style={{ alignSelf: "stretch", display: "flex", justifyContent: "center" }}>
                 <div style={{ borderRadius: 999, padding: 2, background: "rgba(0,0,0,.28)", boxShadow: `0 0 0 1px ${accent}44, 0 0 16px rgba(0,0,0,.24)` }}>
-                  <ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 46 : 52} />
+                  <ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 48 : 54} />
                 </div>
               </div>
               <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4 }}>
@@ -553,26 +609,27 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         type="button"
         onClick={() => setPlayersOpen(true)}
         title={L("Liste des joueurs", "Players list")}
-        style={{ flex: compact ? "0 0 76px" : "0 0 84px", padding: 0, overflow: "hidden", cursor: "pointer", textAlign: "left", background: "transparent", border: 0, boxShadow: "none", position: "relative" }}
+        style={{ flex: compact ? "0 0 88px" : "0 0 96px", padding: 0, overflow: "hidden", cursor: "pointer", textAlign: "left", background: "transparent", border: 0, boxShadow: "none", position: "relative" }}
       >
-        <img src={playersPanelTicker as any} alt="Players panel" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.36), rgba(0,0,0,.14) 45%, rgba(0,0,0,.48))" }} />
-        <div style={{ position: "absolute", inset: 0, padding: compact ? "7px 9px" : "8px 10px", display: "grid", gridTemplateRows: "auto 1fr", gap: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <span style={{ fontWeight: 1000, letterSpacing: 1.2, color: accent, textTransform: "uppercase", whiteSpace: "nowrap", fontSize: 11 }}>{L("Liste joueurs", "Players list")}</span>
-            <span style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.players.length}</span>
+        <img src={playersPanelTicker as any} alt="Players panel" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center center", display: "block" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.08) 45%, rgba(0,0,0,.34))" }} />
+        <div style={{ position: "absolute", inset: 0, padding: compact ? "6px 8px" : "8px 10px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", maxWidth: "80%" }}>
+              {game.players.map((p: any, idx: number) => {
+                const active = idx === game.turnIndex && !finished;
+                const alive = gros6IsPlayerActive(game, p);
+                return (
+                  <div key={p.id} style={{ borderRadius: 999, padding: 1, opacity: alive ? 1 : .42, boxShadow: active ? `0 0 0 2px ${accent}, 0 0 12px ${accent}66` : "0 0 0 1px rgba(255,255,255,.14)" }}>
+                    <ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={compact ? 28 : 30} />
+                  </div>
+                );
+              })}
+            </div>
+            <span style={{ width: 24, height: 24, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.players.length}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, overflowX: "auto", overflowY: "hidden", padding: "0 1px", scrollbarWidth: "none" }}>
-            {game.players.map((p: any, idx: number) => {
-              const active = idx === game.turnIndex && !finished;
-              const alive = gros6IsPlayerActive(game, p);
-              return (
-                <div key={p.id} style={{ flex: "0 0 auto", opacity: alive ? 1 : .42, display: "grid", justifyItems: "center", gap: 2 }}>
-                  <div style={{ borderRadius: 999, padding: 1, boxShadow: active ? `0 0 0 2px ${accent}, 0 0 12px ${accent}66` : "0 0 0 1px rgba(255,255,255,.14)" }}><ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={compact ? 34 : 38} /></div>
-                  <div style={{ maxWidth: 58, color: active ? accent : "#fff", fontSize: 7.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
-                </div>
-              );
-            })}
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <span style={{ fontWeight: 1000, letterSpacing: 1, color: accent, textTransform: "uppercase", whiteSpace: "nowrap", fontSize: 9.2 }}>{L("Liste des joueurs", "Players list")}</span>
           </div>
         </div>
       </button>
@@ -583,7 +640,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
           <ScoreInputHub
             currentThrow={currentThrow as any}
             multiplier={multiplier}
-            onSimple={() => setMultiplier(1)}
+            onSimple={() => setMultiplier(defaultModeValue)}
             onDouble={() => setMultiplier(2)}
             onTriple={() => setMultiplier(3)}
             onBackspace={undo}
@@ -610,6 +667,8 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             hideTabs
             switcherMode="hidden"
             fitToParent
+            doubleLabel={keypadDoubleLabel}
+            tripleLabel={keypadTripleLabel}
             validateLabel={phaseSelect ? L("VALIDER CIBLE", "CONFIRM TARGET") : L("TOUR EN COURS", "TURN ACTIVE")}
             validateDisabled={!phaseSelect}
             centerSlot={<span style={{ display: "inline-block", minWidth: 58, textAlign: "center", padding: "8px 12px", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 19, lineHeight: 1, boxShadow: `0 0 16px ${accent}22` }}>{targetUiLabel(activeTarget, lang)}</span>}
@@ -626,9 +685,29 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
       {statsOpen ? <PlayerStatsModal player={activePlayer} teamName={statsPlayerTeam} onClose={() => setStatsOpen(false)} accent={accent} lang={lang} /> : null}
       {playersOpen ? <PlayersModal game={game} activeIndex={game.turnIndex} onClose={() => setPlayersOpen(false)} accent={accent} lang={lang} /> : null}
       {specialOpen ? <SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={pickSpecial} accent={accent} lang={lang} includeOuterRing={(config as any)?.allowOuterRing !== false} /> : null}
+      {finished ? (
+        <ModalShell onClose={() => {}} title={L("FIN DE PARTIE", "MATCH OVER")} subtitle={game.winnerName ? `${L("Vainqueur", "Winner")}: ${game.winnerName}` : ""} accent={accent}>
+          <div style={{ display: "grid", gap: 8 }}>
+            {(game.players || []).map((p: any) => (
+              <div key={p.id} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto", gap: 8, alignItems: "center", border: `1px solid ${accent}22`, borderRadius: 14, padding: 8, background: "rgba(255,255,255,.03)" }}>
+                <ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={34} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#fff", fontSize: 12 }}>{p.name}</div>
+                  <div style={{ color: SOFT, fontSize: 9 }}>{L("Vies restantes", "Lives left")} : {p.lives}</div>
+                </div>
+                <div style={{ textAlign: "center" }}><div style={{ color: SOFT, fontSize: 8 }}>{L("CIBLES", "TARGETS")}</div><div style={{ color: accent, fontWeight: 1000 }}>{p.stats?.targetsCleared || 0}</div></div>
+                <div style={{ textAlign: "center" }}><div style={{ color: SOFT, fontSize: 8 }}>{L("IMPOSÉES", "SET")}</div><div style={{ color: GOOD, fontWeight: 1000 }}>{p.stats?.targetsImposed || 0}</div></div>
+                <div style={{ textAlign: "center" }}><div style={{ color: SOFT, fontSize: 8 }}>{L("VIES -", "LIVES -")}</div><div style={{ color: BAD, fontWeight: 1000 }}>{p.stats?.livesLost || 0}</div></div>
+              </div>
+            ))}
+            <div style={{ color: SOFT, fontSize: 10.2, lineHeight: 1.45 }}>{L("La partie est sauvegardée automatiquement dans l'historique et pourra être exploitée dans les statistiques/classements via les enregistrements GROS 6.", "The match is automatically saved to history and can be reused in statistics/rankings through GROS 6 records.")}</div>
+          </div>
+        </ModalShell>
+      ) : null}
+
       {rulesOpen ? (
         <ModalShell onClose={() => setRulesOpen(false)} title={L("GROS 6 — RÈGLES", "BIG 6 — RULES")} accent={accent}>
-          <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.65 }}>{L("Touchez la cible courante avec vos 3 fléchettes. Un échec fait perdre une vie. Une réussite permet d'utiliser les fléchettes restantes pour imposer la prochaine cible. Les zones fermées/extérieures activées dans la configuration sont de vraies cibles distinctes. Si la cible est validée sur la 3e fléchette, le bonus configuré ouvre une nouvelle volée de sélection.", "Hit the current target within 3 darts. Missing it costs one life. If you succeed, use the remaining darts to set the next target. Enabled closed/outer zones are distinct targets. If the target is cleared with the 3rd dart, the configured bonus opens a new selection visit.")}</div>
+          <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.65 }}>{L("Chaque partie démarre sur GROS 6. Touchez la cible courante avec vos 3 fléchettes. Un échec fait perdre une vie. Une réussite permet d'utiliser les fléchettes restantes pour imposer la prochaine cible. Les zones fermées hors cible et le contour extérieur activés dans la configuration sont de vraies cibles distinctes. Si la cible est validée sur la 3e fléchette, le bonus configuré ouvre une nouvelle volée de sélection.", "Hit the current target within 3 darts. Missing it costs one life. If you succeed, use the remaining darts to set the next target. Enabled closed/outer zones are distinct targets. If the target is cleared with the 3rd dart, the configured bonus opens a new selection visit.")}</div>
         </ModalShell>
       ) : null}
     </div>
