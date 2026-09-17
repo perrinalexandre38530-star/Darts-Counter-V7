@@ -14,7 +14,7 @@ import { loadBotPlayers } from "../../lib/bots";
 import { recordProfileUsageForMode } from "../../lib/profileUsage";
 import { X01_PRO_BOTS } from "../X01ConfigV3";
 
-export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados";
+export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase";
 type BotLevel = "easy" | "normal" | "hard";
 type ConfigViewMode = "guided" | "complete";
 
@@ -154,6 +154,29 @@ export default function NewDartsModeConfig(props: Props) {
   const [cradosBullWash, setCradosBullWash] = React.useState(saved.cradosBullWash !== false);
   const [cradosStealMode, setCradosStealMode] = React.useState<"block" | "flip">(saved.cradosStealMode === "flip" ? "flip" : "block");
 
+  // 51 BY 5
+  const [fiftyOneTarget, setFiftyOneTarget] = React.useState<31 | 51 | 71 | 101>([31, 71, 101].includes(Number(saved.fiftyOneTarget)) ? Number(saved.fiftyOneTarget) as any : 51);
+  const [fiftyOneRequireThreeScoringDarts, setFiftyOneRequireThreeScoringDarts] = React.useState(saved.fiftyOneRequireThreeScoringDarts !== false);
+  const [fiftyOneBust, setFiftyOneBust] = React.useState<"hold" | "zero">(saved.fiftyOneBust === "zero" ? "zero" : "hold");
+
+  // LOOPER
+  const [looperLives, setLooperLives] = React.useState<3 | 4 | 5>(saved.looperLives === 3 || saved.looperLives === 4 ? saved.looperLives : 5);
+  const [looperStartTarget, setLooperStartTarget] = React.useState<"offhand" | "random">(saved.looperStartTarget === "random" ? "random" : "offhand");
+  const [looperNumberLoops, setLooperNumberLoops] = React.useState(saved.looperNumberLoops !== false);
+  const [looperSetterShield, setLooperSetterShield] = React.useState(saved.looperSetterShield !== false);
+
+  // CALL THREE
+  const [callThreeRounds, setCallThreeRounds] = React.useState<5 | 10 | 15>(saved.callThreeRounds === 5 || saved.callThreeRounds === 15 ? saved.callThreeRounds : 10);
+  const [callThreeCaller, setCallThreeCaller] = React.useState<"next" | "random">(saved.callThreeCaller === "random" ? "random" : "next");
+  const [callThreeOrderStrict, setCallThreeOrderStrict] = React.useState(saved.callThreeOrderStrict !== false);
+  const [callThreeBull, setCallThreeBull] = React.useState(saved.callThreeBull !== false);
+
+  // STEEPLECHASE
+  const [steepleDirection, setSteepleDirection] = React.useState<"clockwise" | "counter">(saved.steepleDirection === "counter" ? "counter" : "clockwise");
+  const [steepleFences, setSteepleFences] = React.useState(saved.steepleFences !== false);
+  const [steepleFinishBull, setSteepleFinishBull] = React.useState<"any" | "double">(saved.steepleFinishBull === "double" ? "double" : "any");
+  const [steepleZone, setSteepleZone] = React.useState<"inner_single" | "any_single">(saved.steepleZone === "any_single" ? "any_single" : "inner_single");
+
   const humanProfiles = React.useMemo(() => {
     const raw = Array.isArray(store?.profiles) ? store.profiles : [];
     return raw.filter((p: any) => !isBotLike(p)).map((p: any) => normalizeProfile(p, false));
@@ -197,9 +220,13 @@ export default function NewDartsModeConfig(props: Props) {
       penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution,
       menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed,
       cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode,
+      fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust,
+      looperLives, looperStartTarget, looperNumberLoops, looperSetterShield,
+      callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull,
+      steepleDirection, steepleFences, steepleFinishBull, steepleZone,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -218,7 +245,11 @@ export default function NewDartsModeConfig(props: Props) {
     if (mode === "hare_hounds") return { houndStart, targetZone: hareTargetZone, roleMode: hareRoleMode, direction: hareDirection, hareStart: 20 };
     if (mode === "pendu") return { partsToLose: penduPartsToLose, challengeMode: penduChallengeMode, targetFamily: penduTargetFamily, executionMode: penduExecution };
     if (mode === "menteur") return { lives: menteurLives, contractDeck: menteurContractDeck, raiseStep: menteurRaiseStep, bullAllowed: menteurBullAllowed };
-    return { dirtLimit: cradosDirtLimit, layersToOwn: cradosLayersToOwn, bullWash: cradosBullWash, stealMode: cradosStealMode };
+    if (mode === "crados") return { dirtLimit: cradosDirtLimit, layersToOwn: cradosLayersToOwn, bullWash: cradosBullWash, stealMode: cradosStealMode };
+    if (mode === "fifty_one_by_five") return { target: fiftyOneTarget, divisor: 5, requireThreeScoringDarts: fiftyOneRequireThreeScoringDarts, bustRule: fiftyOneBust, exactFinish: true };
+    if (mode === "looper") return { lives: looperLives, startTarget: looperStartTarget, exactSegment: true, numberLoopsEnabled: looperNumberLoops, setterShield: looperSetterShield };
+    if (mode === "call_three") return { rounds: callThreeRounds, callerMode: callThreeCaller, orderedTargets: callThreeOrderStrict, bullAllowed: callThreeBull, multiplierScoring: true };
+    return { direction: steepleDirection, innerSingleOnly: steepleZone === "inner_single", fencesEnabled: steepleFences, fences: [13, 17, 8, 5], finishBull: steepleFinishBull };
   }
 
   function start() {
@@ -237,7 +268,7 @@ export default function NewDartsModeConfig(props: Props) {
       scoreInputMethod,
       seriesWins,
       rules: modeRulesPayload(),
-      menuVersion: 1,
+      menuVersion: 2,
     };
     try { recordProfileUsageForMode(mode, orderedIds); } catch {}
     go(definition.playTab, { config: payload });
@@ -329,6 +360,48 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
+  const fiftyOneBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles 51 BY 5</div>
+    <div style={panel}>
+      <OptionRow label="Objectif"><OptionSelect value={fiftyOneTarget} options={[{ value: 31, label: "31 — express" }, { value: 51, label: "51 — classique" }, { value: 71, label: "71 — long" }, { value: 101, label: "101 — endurance" }]} onChange={(v: any) => setFiftyOneTarget(Number(v) as any)} /></OptionRow>
+      <OptionRow label="3 fléchettes doivent scorer"><OptionToggle value={fiftyOneRequireThreeScoringDarts} onChange={setFiftyOneRequireThreeScoringDarts} /></OptionRow>
+      <OptionRow label="Dépassement de l'objectif"><OptionSelect value={fiftyOneBust} options={[{ value: "hold", label: "Bust — score du tour annulé" }, { value: "zero", label: "Hardcore — retour à 0" }]} onChange={setFiftyOneBust} /></OptionRow>
+    </div>
+    <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>La somme de la volée doit être divisible par 5. Le quotient devient le score de la volée.</div>
+  </section>;
+
+  const looperBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles LOOPER</div>
+    <div style={panel}>
+      <OptionRow label="Vies"><OptionSelect value={looperLives} options={[3,4,5]} onChange={(v: any) => setLooperLives(Number(v) === 3 ? 3 : Number(v) === 4 ? 4 : 5)} /></OptionRow>
+      <OptionRow label="Première cible"><OptionSelect value={looperStartTarget} options={[{ value: "offhand", label: "Lancer main opposée — classique" }, { value: "random", label: "Cible aléatoire" }]} onChange={setLooperStartTarget} /></OptionRow>
+      <OptionRow label="Boucles des chiffres actives"><OptionToggle value={looperNumberLoops} onChange={setLooperNumberLoops} /></OptionRow>
+      <OptionRow label="Poseur protégé si le tour revient"><OptionToggle value={looperSetterShield} onChange={setLooperSetterShield} /></OptionRow>
+    </div>
+    <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Le segment doit être touché exactement : simple intérieur/extérieur, double, triple, bull ou boucle fermée d'un chiffre si activée.</div>
+  </section>;
+
+  const callThreeBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles CALL THREE</div>
+    <div style={panel}>
+      <OptionRow label="Nombre de rounds"><OptionSelect value={callThreeRounds} options={[5,10,15]} onChange={(v: any) => setCallThreeRounds(Number(v) === 5 ? 5 : Number(v) === 15 ? 15 : 10)} /></OptionRow>
+      <OptionRow label="Qui appelle les 3 cibles ?"><OptionSelect value={callThreeCaller} options={[{ value: "next", label: "Joueur suivant — classique" }, { value: "random", label: "Application — aléatoire" }]} onChange={setCallThreeCaller} /></OptionRow>
+      <OptionRow label="Ordre des 3 cibles obligatoire"><OptionToggle value={callThreeOrderStrict} onChange={setCallThreeOrderStrict} /></OptionRow>
+      <OptionRow label="Bull autorisé"><OptionToggle value={callThreeBull} onChange={setCallThreeBull} /></OptionRow>
+    </div>
+    <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Simple = 1 point, Double = 2, Triple = 3. Chaque fléchette correspond à la cible appelée au même rang.</div>
+  </section>;
+
+  const steeplechaseBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles STEEPLECHASE</div>
+    <div style={panel}>
+      <OptionRow label="Sens du parcours"><OptionSelect value={steepleDirection} options={[{ value: "clockwise", label: "Horaire — classique" }, { value: "counter", label: "Anti-horaire — variante" }]} onChange={setSteepleDirection} /></OptionRow>
+      <OptionRow label="Zone normale"><OptionSelect value={steepleZone} options={[{ value: "inner_single", label: "Petit simple intérieur — classique" }, { value: "any_single", label: "Tout simple — accessible" }]} onChange={setSteepleZone} /></OptionRow>
+      <OptionRow label="Haies T13 / T17 / T8 / T5"><OptionToggle value={steepleFences} onChange={setSteepleFences} /></OptionRow>
+      <OptionRow label="Arrivée Bull"><OptionSelect value={steepleFinishBull} options={[{ value: "any", label: "SBULL ou DBULL" }, { value: "double", label: "DBULL uniquement" }]} onChange={setSteepleFinishBull} /></OptionRow>
+    </div>
+  </section>;
+
   const inputBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Saisie</div>
     <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: "CIBLE INTERACTIVE" }]} onChange={setScoreInputMethod} /></OptionRow>
@@ -348,11 +421,24 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Défis" value={penduTargetFamily === "segments" ? "Segments" : penduTargetFamily === "scores" ? "Scores" : "Mixte"} /></> : null}
       {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
       {mode === "crados" ? <><SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /></> : null}
+      {mode === "fifty_one_by_five" ? <><SummaryLine label="Objectif" value={`${fiftyOneTarget}`} /><SummaryLine label="Calcul" value="Total ÷ 5 si divisible" /></> : null}
+      {mode === "looper" ? <><SummaryLine label="Vies" value={`${looperLives}`} /><SummaryLine label="Cible" value="Segment exact" /></> : null}
+      {mode === "call_three" ? <><SummaryLine label="Rounds" value={`${callThreeRounds}`} /><SummaryLine label="Appel" value={callThreeCaller === "next" ? "Joueur suivant" : "Aléatoire"} /></> : null}
+      {mode === "steeplechase" ? <><SummaryLine label="Parcours" value={steepleDirection === "clockwise" ? "Horaire" : "Anti-horaire"} /><SummaryLine label="Haies" value={steepleFences ? "T13 · T17 · T8 · T5" : "Désactivées"} /></> : null}
     </div>
     {!validSelection ? <div style={{ marginTop: 10, color: "#ff9baa", fontSize: 11.5, fontWeight: 900, textAlign: "center" }}>Sélectionne au moins {definition.minPlayers} participants pour continuer.</div> : null}
   </section>;
 
-  const modeBlock = mode === "castle" ? castleBlock : mode === "gotcha" ? gotchaBlock : mode === "hare_hounds" ? hareBlock : mode === "pendu" ? penduBlock : mode === "menteur" ? menteurBlock : cradosBlock;
+  const modeBlock = mode === "castle" ? castleBlock
+    : mode === "gotcha" ? gotchaBlock
+    : mode === "hare_hounds" ? hareBlock
+    : mode === "pendu" ? penduBlock
+    : mode === "menteur" ? menteurBlock
+    : mode === "crados" ? cradosBlock
+    : mode === "fifty_one_by_five" ? fiftyOneBlock
+    : mode === "looper" ? looperBlock
+    : mode === "call_three" ? callThreeBlock
+    : steeplechaseBlock;
   const steps = definition.guidedSteps;
   const maxStep = steps.length - 1;
 
@@ -362,7 +448,7 @@ export default function NewDartsModeConfig(props: Props) {
       <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)` }}>
         <div style={{ color: accent, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration {definition.title}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Pill active={viewMode === "guided"} onClick={() => selectView("guided")} accent={accent}>Guidée</Pill><Pill active={viewMode === "complete"} onClick={() => selectView("complete")} accent={accent}>Complète</Pill></div>
-        <div style={{ marginTop: 8, color: soft, fontSize: 11 }}>Le menu est prêt pour le moteur de jeu : participants, règles, format et saisie sont déjà persistés.</div>
+        <div style={{ marginTop: 8, color: soft, fontSize: 11 }}>Le moteur de jeu est intégré : participants, règles, format, saisie, sauvegarde et reprise sont prêts.</div>
       </section>
 
       {viewMode === "guided" ? <>
@@ -378,7 +464,7 @@ export default function NewDartsModeConfig(props: Props) {
         <div style={{ display: "flex", gap: 9, marginBottom: 12 }}><button type="button" disabled={guidedStep === 0} onClick={() => setGuidedStep((s) => Math.max(0, s - 1))} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button><button type="button" disabled={guidedStep === maxStep} onClick={() => setGuidedStep((s) => Math.min(maxStep, s + 1))} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: `1px solid ${accent}`, background: `${accent}18`, color: guidedStep === maxStep ? "#565b76" : accent, fontWeight: 950 }}>Suivant →</button></div>
       </> : <>{participantsBlock}{modeBlock}{matchBlock}{inputBlock}{summaryBlock}</>}
 
-      {(viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>Le bouton ouvre l'écran de jeu dédié préparé pour la prochaine étape d'implémentation.</div></div> : null}
+      {(viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>La partie démarre avec le moteur complet, les BOTS, l’UNDO, la sauvegarde en cours et les statistiques de fin.</div></div> : null}
     </div>
   </div>;
 }

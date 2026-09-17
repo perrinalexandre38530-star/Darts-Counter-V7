@@ -364,6 +364,9 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "darts_firefighter", label: "DARTS FIREFIGHTER", aliases: ["darts_firefighter", "darts firefighter", "firefighter"] },
     { key: "darts_poker", label: "DARTS POKER", aliases: ["darts_poker", "darts poker", "dartspoker"] },
     { key: "cargo", label: "CARGO", aliases: ["cargo"] },
+    { key: "castle", label: "CASTLE", aliases: ["castle", "chateau", "château"] },
+    { key: "gotcha", label: "GOTCHA", aliases: ["gotcha"] },
+    { key: "hare_hounds", label: "HARE & HOUNDS", aliases: ["hare_hounds", "hare & hounds", "harehounds", "hare and hounds"] },
     { key: "ocean_control", label: "OCEAN CONTROL", aliases: ["ocean_control", "ocean control", "oceancontrol"] },
     { key: "football", label: "DARTS FOOTBALL", aliases: ["football", "darts football", "football_darts"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
@@ -519,6 +522,10 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "dartspoker",
     "darts_poker",
     "cargo",
+    "castle",
+    "gotcha",
+    "harehounds",
+    "hare_hounds",
     "ocean_control",
     "oceancontrol",
     "football",
@@ -643,6 +650,9 @@ function modeLabel(e: SavedEntry) {
   if (m === "darts_poker" || m === "dartspoker") return "DARTS POKER";
   if (m === "gros_6" || m === "gros6" || m === "big_6" || m === "big6") return "GROS 6";
   if (m === "cargo") return "CARGO";
+  if (m === "castle") return "CASTLE";
+  if (m === "gotcha") return "GOTCHA";
+  if (m === "hare_hounds" || m === "harehounds") return "HARE & HOUNDS";
   if (m === "ocean_control" || m === "oceancontrol") return "OCEAN CONTROL";
   if (m === "football" || m === "football_darts" || m === "footballdarts") return "DARTS FOOTBALL";
   if (m === "x01") {
@@ -4457,6 +4467,21 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       });
       if (!ok) go("cargo_play", { rec: e, resumeId, config, mode: "cargo", from: preview ? "history_preview" : "history", preview: !!preview });
       return;
+    }
+
+    // CASTLE / GOTCHA / HARE & HOUNDS : reprise exacte du snapshot de partie.
+    {
+      const rawMode = normalizeToken(inferredMode || baseMode(e));
+      const newModeRoute = rawMode === "castle" ? "castle_play" : rawMode === "gotcha" ? "gotcha_play" : (rawMode === "harehounds" || rawMode === "hare_hounds") ? "hare_hounds_play" : null;
+      if (newModeRoute && statusOf(e) === "in_progress") {
+        const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null) || {};
+        const config = (e as any)?.resume?.config || payload?.config || (e as any)?.summary?.config || null;
+        const snapshot = (e as any)?.resume?.state || payload?.stateSnapshot || payload?.state || null;
+        const mode = rawMode === "harehounds" ? "hare_hounds" : rawMode;
+        const ok = safeGo([newModeRoute], { rec: e, resumeId, config, snapshot, mode, from: preview ? "history_preview" : "history", preview: !!preview });
+        if (!ok) go(newModeRoute, { rec: e, resumeId, config, snapshot, mode, from: preview ? "history_preview" : "history", preview: !!preview });
+        return;
+      }
     }
 
     // LOTERIE : une partie `in_progress` possède désormais un snapshot complet

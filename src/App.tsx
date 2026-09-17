@@ -409,6 +409,14 @@ const MenteurConfig = React.lazy(() => import("./pages/MenteurConfig"));
 const MenteurPlay = React.lazy(() => import("./pages/MenteurPlay"));
 const CradosConfig = React.lazy(() => import("./pages/CradosConfig"));
 const CradosPlay = React.lazy(() => import("./pages/CradosPlay"));
+const FiftyOneByFiveConfig = React.lazy(() => import("./pages/FiftyOneByFiveConfig"));
+const FiftyOneByFivePlay = React.lazy(() => import("./pages/FiftyOneByFivePlay"));
+const LooperConfig = React.lazy(() => import("./pages/LooperConfig"));
+const LooperPlay = React.lazy(() => import("./pages/LooperPlay"));
+const CallThreeConfig = React.lazy(() => import("./pages/CallThreeConfig"));
+const CallThreePlay = React.lazy(() => import("./pages/CallThreePlay"));
+const SteeplechaseConfig = React.lazy(() => import("./pages/SteeplechaseConfig"));
+const SteeplechasePlay = React.lazy(() => import("./pages/SteeplechasePlay"));
 const EnculetteConfig = React.lazy(() => import("./pages/EnculetteConfig"));
 const EnculettePlay = React.lazy(() => import("./pages/EnculettePlay"));
 const CastJoinPage = React.lazy(() => import("./pages/cast/CastJoinPage"));
@@ -1178,6 +1186,14 @@ type Tab =
   | "menteur_play"
   | "crados_config"
   | "crados_play"
+  | "fifty_one_by_five_config"
+  | "fifty_one_by_five_play"
+  | "looper_config"
+  | "looper_play"
+  | "call_three_config"
+  | "call_three_play"
+  | "steeplechase_config"
+  | "steeplechase_play"
   | "enculette_config"
   | "enculette_play"
   | "auth_reset";
@@ -6444,21 +6460,51 @@ case "babyfoot_team_edit":
         page = <CastleConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "castle_play":
-        page = <CastlePlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <CastlePlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "castle", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "gotcha_config":
         page = <GotchaConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "gotcha_play":
-        page = <GotchaPlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <GotchaPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "gotcha", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "hare_hounds_config":
         page = <HareHoundsConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "hare_hounds_play":
-        page = <HareHoundsPlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <HareHoundsPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "hare_hounds", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "pendu_config":
@@ -6480,6 +6526,34 @@ case "babyfoot_team_edit":
         break;
       case "crados_play":
         page = <CradosPlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "fifty_one_by_five_config":
+        page = <FiftyOneByFiveConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "fifty_one_by_five_play":
+        page = <FiftyOneByFivePlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "looper_config":
+        page = <LooperConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "looper_play":
+        page = <LooperPlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "call_three_config":
+        page = <CallThreeConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "call_three_play":
+        page = <CallThreePlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "steeplechase_config":
+        page = <SteeplechaseConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "steeplechase_play":
+        page = <SteeplechasePlay store={store} go={go} setTab={go} params={routeParams} />;
         break;
 
       case "enculette_config":
@@ -6561,6 +6635,9 @@ case "babyfoot_team_edit":
     "darts_poker_play",
     "cargo_play",
     "ocean_control_play",
+    "castle_play",
+    "gotcha_play",
+    "hare_hounds_play",
     "enculette_play",
 
     // Tournois: match en cours (plein écran)

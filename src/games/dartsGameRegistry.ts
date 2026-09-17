@@ -52,6 +52,10 @@ export type DartsGameTab =
   | "pendu_config"
   | "menteur_config"
   | "crados_config"
+  | "fifty_one_by_five_config"
+  | "looper_config"
+  | "call_three_config"
+  | "steeplechase_config"
   | "training"
   | "tournaments"
   | "darts_mode"
@@ -647,6 +651,78 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "LOTERIE",
     infoBody:
       "Chaque joueur reçoit 1 à 4 cartons. LOTERIE : une volée de 1 à 3 fléchettes produit un total à retrouver sur les cartons, avec une plage adaptée au niveau (10 à 120 max). EXPRESS : vise un simple, un double exact ou un triple exact avec 1 essai ou jusqu’à 3 essais ; le tour s’arrête dès que la cible demandée est touchée et l’option MISS peut faire passer immédiatement le tour. Toutes les occurrences correspondantes sont révélées. Le premier joueur qui complète entièrement un carton gagne.",
+  },
+  {
+    id: "fifty_one_by_five",
+    label: "51 BY 5",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "fifty_one_by_five_config",
+    popularityRank: 47.61,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:fifty_one_by_five",
+    infoTitle: "51 BY 5",
+    infoBody:
+      "Chaque joueur lance 3 fléchettes. La somme de la volée ne marque que si elle est divisible par 5 ; le quotient est ajouté au score. Le premier à atteindre exactement 51 gagne, avec variantes 31, 71 ou 101 et règle de bust configurable.",
+  },
+  {
+    id: "looper",
+    label: "LOOPER",
+    category: "fun",
+    subCategory: "survie",
+    entry: "games",
+    tab: "looper_config",
+    popularityRank: 47.62,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:looper",
+    infoTitle: "LOOPER",
+    infoBody:
+      "Jeu de suivi du meneur à vies : il faut toucher exactement la cible posée, y compris la distinction entre simple intérieur et extérieur. Une réussite permet de poser la cible suivante ; les boucles fermées des chiffres peuvent aussi être jouées. Dernier survivant = victoire.",
+  },
+  {
+    id: "call_three",
+    label: "CALL THREE",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "call_three_config",
+    popularityRank: 47.63,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:call_three",
+    infoTitle: "CALL THREE",
+    infoBody:
+      "Trois cibles sont appelées avant la volée et doivent être visées dans l'ordre, une par fléchette. Simple = 1 point, Double = 2, Triple = 3. Après les rounds prévus, le meilleur total gagne.",
+  },
+  {
+    id: "steeplechase",
+    label: "STEEPLECHASE",
+    category: "fun",
+    subCategory: "arcade",
+    entry: "games",
+    tab: "steeplechase_config",
+    popularityRank: 47.64,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:steeplechase",
+    infoTitle: "STEEPLECHASE",
+    infoBody:
+      "Course autour de la cible : départ 20 puis progression horaire par les petits simples jusqu'au 5, avec haies T13, T17, T8 et T5, puis arrivée au Bull. Le premier à boucler le parcours gagne.",
   },
   {
     id: "pendu",
