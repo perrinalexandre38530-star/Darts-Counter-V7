@@ -198,9 +198,8 @@ function SpecialZoneIcon({ code, accent, size = 78 }: any) {
 function TargetVisual({ target, lang, accent, compact = false }: any) {
   if (target?.kind === "special") {
     return (
-      <div style={{ display: "grid", justifyItems: "center", alignItems: "center", gap: 2, minWidth: 0 }}>
-        <SpecialZoneIcon code={target.code} accent={accent} size={compact ? 54 : 88} />
-        <div style={{ color: accent, fontSize: compact ? 8.6 : 10.5, fontWeight: 1000, lineHeight: 1.1, letterSpacing: .35, textTransform: "uppercase", textAlign: "center", maxWidth: compact ? 92 : 170, whiteSpace: "normal" }}>{specialZoneLabel(String(target.code || ""), lang)}</div>
+      <div style={{ display: "grid", placeItems: "center", minWidth: 0 }}>
+        <SpecialZoneIcon code={target.code} accent={accent} size={compact ? 38 : 72} />
       </div>
     );
   }
@@ -236,9 +235,91 @@ function ZoneMiniIcon() {
       alt=""
       aria-hidden="true"
       draggable={false}
-      style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 10, border: "1px solid rgba(255,255,255,.32)", boxShadow: "0 0 12px rgba(255,220,120,.18)" }}
+      style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
     />
   );
+}
+
+function normalizeHistoryText(value: any) {
+  return String(value || "").trim();
+}
+
+function specialCodeFromHistoryValue(value: any) {
+  if (value && typeof value === "object" && value.kind === "special") return String(value.code || "");
+  const raw = normalizeHistoryText(value).toLowerCase();
+  if (!raw) return "";
+  if (raw.includes("contour") || raw.includes("outer ring") || raw.includes("outer_numbers_ring")) return "outer_numbers_ring";
+  if (raw.includes("18") && (raw.includes("haut") || raw.includes("top"))) return "closed_18_top";
+  if (raw.includes("18") && (raw.includes("bas") || raw.includes("bottom"))) return "closed_18_bottom";
+  if (raw.includes("8") && (raw.includes("haut") || raw.includes("top"))) return "closed_8_top";
+  if (raw.includes("8") && (raw.includes("bas") || raw.includes("bottom"))) return "closed_8_bottom";
+  for (const n of [4, 6, 9, 10, 14, 16, 19, 20]) {
+    if ((raw.includes("hors cible") || raw.includes("off-target") || raw.includes("off target") || raw.includes("closed_")) && new RegExp(`(^|\\D)${n}(\\D|$)`).test(raw)) return `closed_${n}`;
+  }
+  return "";
+}
+
+function compactHistoryLabel(value: any, lang: string) {
+  if (value && typeof value === "object") return targetUiLabel(value, lang);
+  const raw = normalizeHistoryText(value);
+  if (!raw) return "—";
+  const upper = raw.toUpperCase();
+  let m = upper.match(/^GROS\s*(\d+)$/);
+  if (m) return `${lang === "fr" ? "G" : "B"}${m[1]}`;
+  m = upper.match(/^PETIT\s*(\d+)$/);
+  if (m) return `${lang === "fr" ? "P" : "L"}${m[1]}`;
+  if (/^(D|T)\d+$/.test(upper) || upper === "BULL" || upper === "DBULL" || upper === "MISS") return upper;
+  return raw.length <= 6 ? raw : raw.slice(0, 6);
+}
+
+function HistoryDartChip({ value, lang, accent, size = 30 }: any) {
+  const specialCode = specialCodeFromHistoryValue(value);
+  const target = value && typeof value === "object" ? value : null;
+  if (specialCode) {
+    return (
+      <span title={specialZoneLabel(specialCode, lang)} style={{ width: size, height: size, borderRadius: 8, display: "grid", placeItems: "center", border: `1px solid ${accent}44`, background: "rgba(0,0,0,.34)", overflow: "hidden", flex: "0 0 auto" }}>
+        <SpecialZoneIcon code={specialCode} accent={accent} size={Math.max(22, size - 4)} />
+      </span>
+    );
+  }
+  const label = compactHistoryLabel(target || value, lang);
+  const tone = label === "BULL" || label === "DBULL"
+    ? "#8be0b8"
+    : String(label).startsWith("G") || String(label).startsWith("B")
+    ? "#70efbd"
+    : String(label).startsWith("P") || String(label).startsWith("L")
+    ? "#d7a9ff"
+    : String(label).startsWith("D")
+    ? "#bfeaff"
+    : String(label).startsWith("T")
+    ? "#ffccff"
+    : "#fff";
+  return (
+    <span style={{ minWidth: size, height: size, padding: "0 4px", borderRadius: 8, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.34)", color: tone, fontSize: size <= 26 ? 8.5 : 9.5, fontWeight: 1000, lineHeight: 1, flex: "0 0 auto" }}>
+      {label}
+    </span>
+  );
+}
+
+function eventDarts(ev: any) {
+  if (Array.isArray(ev?.dartTargets) && ev.dartTargets.length) return ev.dartTargets;
+  if (Array.isArray(ev?.darts)) return ev.darts;
+  return [];
+}
+
+function lastCompletedTurnDarts(game: any, playerId: any) {
+  const events = (Array.isArray(game?.history) ? game.history : []).filter((ev: any) => String(ev?.playerId) === String(playerId));
+  if (!events.length) return [];
+  const numbered = events.filter((ev: any) => Number(ev?.turnNo || 0) > 0);
+  if (numbered.length) {
+    const latestTurn = Math.max(...numbered.map((ev: any) => Number(ev.turnNo || 0)));
+    return numbered
+      .filter((ev: any) => Number(ev.turnNo || 0) === latestTurn)
+      .sort((a: any, b: any) => Number(a?.at || 0) - Number(b?.at || 0))
+      .flatMap((ev: any) => eventDarts(ev))
+      .slice(0, 6);
+  }
+  return eventDarts(events[events.length - 1]).slice(0, 6);
 }
 
 function toUiDarts(items: any[]) {
@@ -316,13 +397,12 @@ function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
           const active = idx === activeIndex && game.phase !== "finished";
           const alive = gros6IsPlayerActive(game, p);
           const team = game.participantMode === "teams" ? game.teams.find((t: any) => String(t.id) === String(p.teamId)) : null;
-          const last = [...(game.history || [])].reverse().find((ev: any) => String(ev?.playerId) === String(p.id) && Array.isArray(ev?.darts));
           const liveDarts = idx === activeIndex
-            ? (game.phase === "select" ? (game.selectionDarts || []) : (game.attackDarts || []))
+            ? [...(Array.isArray(game.attackDarts) ? game.attackDarts : []), ...(game.phase === "select" && Array.isArray(game.selectionDarts) ? game.selectionDarts : [])]
             : null;
           const lastDarts = Array.isArray(liveDarts) && liveDarts.length
-            ? liveDarts.map((dart: any) => targetUiLabel(dart, lang)).slice(0, 3)
-            : (Array.isArray(last?.darts) ? last.darts.slice(0, 3) : []);
+            ? liveDarts.slice(0, 6)
+            : lastCompletedTurnDarts(game, p.id);
           const lives = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(team?.lives || 0) : Number(p.lives || 0);
           return (
             <div key={p.id} style={{ ...panelStyle(), padding: "8px 10px", opacity: alive ? 1 : .55, border: `1px solid ${active ? `${accent}66` : "rgba(255,255,255,.08)"}`, boxShadow: active ? `0 0 16px ${accent}22` : "none", display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 10 }}>
@@ -333,8 +413,8 @@ function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
                   {p.isBot ? <span style={{ fontSize: 10, color: SOFT }}>🤖 {p.botLevel || ""}</span> : null}
                 </div>
                 {team ? <div style={{ marginTop: 2, color: accent, fontSize: 9, fontWeight: 900 }}>{team.name}</div> : null}
-                <div style={{ marginTop: 5, display: "flex", gap: 4 }}>
-                  {[0, 1, 2].map((i) => <span key={i} style={{ minWidth: 36, height: 23, borderRadius: 8, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.32)", color: "#fff", fontSize: 9.5, fontWeight: 1000 }}>{lastDarts[i] || "—"}</span>)}
+                <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                  {lastDarts.length ? lastDarts.slice(0, 6).map((dart: any, i: number) => <HistoryDartChip key={i} value={dart} lang={lang} accent={accent} size={26} />) : <span style={{ color: SOFT, fontSize: 9 }}>{L("Aucune volée", "No visit yet")}</span>}
                 </div>
               </div>
               <div style={{ minWidth: 58, borderRadius: 14, padding: "8px 10px", background: alive ? "rgba(0,0,0,.42)" : "rgba(120,12,28,.22)", border: `1px solid ${alive ? "rgba(255,255,255,.08)" : "rgba(255,80,100,.35)"}`, color: alive ? "#fff" : BAD, textAlign: "center", fontWeight: 1000 }}>
@@ -460,6 +540,10 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const activeHuman = !!activePlayer && !activePlayer.isBot && !finished;
   const currentHits = phaseSelect ? game.selectionDarts : game.attackDarts;
   const currentThrow = toUiDarts(currentHits);
+  const currentVisitDarts = [...(Array.isArray(game.attackDarts) ? game.attackDarts : []), ...(phaseSelect && Array.isArray(game.selectionDarts) ? game.selectionDarts : [])].slice(0, 6);
+  const currentVisitCapacity = phaseSelect
+    ? Math.max(3, Math.min(6, Number(game.attackDarts?.length || 0) + Number(game.selectionAllowed || 0)))
+    : 3;
   const dartsLeft = phaseSelect ? Math.max(0, Number(game.selectionAllowed || 0) - game.selectionDarts.length) : Math.max(0, 3 - game.attackDarts.length);
   const lifeValue = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(activeTeam?.lives || 0) : Number(activePlayer?.lives || 0);
   const headerTicker = lang === "fr" ? tickerGros6 : tickerBig6;
@@ -733,6 +817,19 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         </div>
       </button>
 
+      {/* VOLÉE EN COURS — 3 fléchettes normales, jusqu'à 6 avec bonus D3 */}
+      <section style={{ ...panelStyle(), flex: "0 0 auto", minHeight: compact ? 42 : 46, padding: compact ? "5px 8px" : "6px 10px", display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "center", gap: 8 }}>
+        <div style={{ color: accent, fontSize: compact ? 8.2 : 9, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8, whiteSpace: "nowrap" }}>{L("Volée en cours", "Current visit")}</div>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${currentVisitCapacity}, minmax(0, 1fr))`, gap: 4, minWidth: 0 }}>
+          {Array.from({ length: currentVisitCapacity }).map((_, i) => {
+            const dart = currentVisitDarts[i];
+            return dart
+              ? <HistoryDartChip key={i} value={dart} lang={lang} accent={accent} size={compact ? 28 : 30} />
+              : <span key={i} style={{ height: compact ? 28 : 30, minWidth: 0, borderRadius: 8, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.22)", color: "rgba(255,255,255,.22)", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 900 }}>—</span>;
+          })}
+        </div>
+      </section>
+
       {/* SCORE INPUT HUB NATIF */}
       {activeHuman ? (
         <div className="gros6-scorehub" style={{ position: "relative" }}>
@@ -763,6 +860,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
               tone: "gold",
               title: L("Ouvrir les zones spéciales", "Open special zones"),
               ariaLabel: L("Ouvrir les zones spéciales", "Open special zones"),
+              fullBleedIcon: true,
             } : null}
             hidePreview
             hideTotal

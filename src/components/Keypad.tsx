@@ -19,6 +19,8 @@ type KeypadAuxAction = {
   tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
   title?: string;
   ariaLabel?: string;
+  /** L’icône remplit toute la surface de la touche (ex: visuel ZONES du Gros 6). */
+  fullBleedIcon?: boolean;
 };
 
 type KeypadExtraMainButton = {
@@ -525,13 +527,21 @@ export default function Keypad({
                   ...splitActionBase,
                   ...auxToneStyles(auxAction.tone || 'dark', !!auxAction.active),
                   opacity: auxAction.disabled ? 0.45 : 1,
+                  position: "relative",
+                  overflow: "hidden",
                 }}
                 onClick={auxAction.onClick}
                 disabled={auxAction.disabled}
                 title={auxAction.title || auxAction.label}
                 aria-label={auxAction.ariaLabel || auxAction.label}
               >
-                <ActionIcon>{auxAction.icon}</ActionIcon>
+                {auxAction.fullBleedIcon ? (
+                  <span style={{ position: "absolute", inset: 0, display: "block", overflow: "hidden", borderRadius: "inherit" }}>
+                    {auxAction.icon}
+                  </span>
+                ) : (
+                  <ActionIcon>{auxAction.icon}</ActionIcon>
+                )}
               </button>
             ) : null}
           </div>
@@ -601,13 +611,21 @@ export default function Keypad({
                   ...splitActionBase,
                   ...auxToneStyles(auxAction.tone || 'dark', !!auxAction.active),
                   opacity: auxAction.disabled ? 0.45 : 1,
+                  position: "relative",
+                  overflow: "hidden",
                 }}
                 onClick={auxAction.onClick}
                 disabled={auxAction.disabled}
                 title={auxAction.title || auxAction.label}
                 aria-label={auxAction.ariaLabel || auxAction.label}
               >
-                <ActionIcon>{auxAction.icon}</ActionIcon>
+                {auxAction.fullBleedIcon ? (
+                  <span style={{ position: "absolute", inset: 0, display: "block", overflow: "hidden", borderRadius: "inherit" }}>
+                    {auxAction.icon}
+                  </span>
+                ) : (
+                  <ActionIcon>{auxAction.icon}</ActionIcon>
+                )}
               </button>
             </div>
           ) : (

@@ -203,16 +203,22 @@ export function buildGros6InitialState(config: any) {
   };
 }
 
-function historyEntry(player: any, target: any, phase: string, darts: any[]) {
+function historyEntry(player: any, target: any, phase: string, darts: any[], turnNo?: number) {
   return {
     at: Date.now(),
+    turnNo: Number(turnNo || 0),
     playerId: player?.id,
     playerName: player?.name,
     teamId: player?.teamId || null,
     teamName: player?.teamName || null,
     phase,
     target: gros6TargetLabel(target),
+    targetData: normalizeGros6Target(target),
+    // `darts` reste présent pour compatibilité avec les historiques déjà écrits.
     darts: (darts || []).map((dart: any) => gros6TargetLabel(dart)),
+    // `dartTargets` conserve désormais la vraie zone afin que l'UI puisse afficher
+    // G6 / P7 / D18 / T20 ou l'image exacte d'une zone hors cible.
+    dartTargets: (darts || []).map((dart: any) => normalizeGros6Target(dart)),
   };
 }
 
@@ -288,8 +294,9 @@ export function finalizeGros6Selection(state: any) {
     if (team) team.stats.targetsImposed += 1;
   }
   next.history.push({
-    ...historyEntry(player, chosen, "select", next.selectionDarts),
+    ...historyEntry(player, chosen, "select", next.selectionDarts, next.turnNo),
     nextTarget: gros6TargetLabel(chosen),
+    nextTargetData: chosen,
   });
   return advanceTurn(next);
 }
@@ -323,7 +330,7 @@ export function applyGros6AttackHit(state: any, hit: any, config: any) {
     const selectionAllowed = remaining > 0 ? remaining : bonus;
     if (dartIndex === 2) player.stats.lastDartSaves += 1;
     next.history.push({
-      ...historyEntry(player, next.currentTarget, "attack", next.attackDarts),
+      ...historyEntry(player, next.currentTarget, "attack", next.attackDarts, next.turnNo),
       success: true,
       selectionAllowed,
     });
@@ -345,7 +352,7 @@ export function applyGros6AttackHit(state: any, hit: any, config: any) {
     const eliminationMessage = applyLifePenalty(next, player, team);
 
     next.history.push({
-      ...historyEntry(player, next.currentTarget, "attack", next.attackDarts),
+      ...historyEntry(player, next.currentTarget, "attack", next.attackDarts, next.turnNo),
       success: false,
       lifeLost: true,
       livesAfter: player.lives,
@@ -382,21 +389,33 @@ export function applyGros6SelectionHit(state: any, hit: any, config: any) {
     player.stats.targetsImposed += 1;
     if (team) team.stats.targetsImposed += 1;
     next.history.push({
-      ...historyEntry(player, state.currentTarget, "select", next.selectionDarts),
+      ...historyEntry(player, state.currentTarget, "select", next.selectionDarts, next.turnNo),
       success: true,
       nextTarget: gros6TargetLabel(chosen),
+      nextTargetData: chosen,
       selectionResolved: true,
     });
     next.message = `Nouvelle cible imposée : ${gros6TargetLabel(chosen)}.`;
     return advanceTurn(next);
   }
 
+  // Une tentative de sélection ratée ne termine pas immédiatement le bonus.
+  // Le joueur peut utiliser TOUTES les fléchettes de sélection disponibles
+  // (jusqu'à 3 après une validation sur D3, soit jusqu'à 6 fléchettes sur le tour).
+  const selectionLimit = Math.max(1, Number(next.selectionAllowed || 1));
+  if (next.selectionDarts.length < selectionLimit) {
+    const remaining = selectionLimit - next.selectionDarts.length;
+    next.message = `Sélection manquée : encore ${remaining} fléchette${remaining > 1 ? "s" : ""} pour imposer la prochaine cible.`;
+    return next;
+  }
+
   const eliminationMessage = applyLifePenalty(next, player, team);
   next.history.push({
-    ...historyEntry(player, state.currentTarget, "select", next.selectionDarts),
+    ...historyEntry(player, state.currentTarget, "select", next.selectionDarts, next.turnNo),
     success: false,
     lifeLost: true,
     nextTarget: gros6TargetLabel(state.currentTarget),
+    nextTargetData: normalizeGros6Target(state.currentTarget),
     livesAfter: player.lives,
     teamLivesAfter: team?.lives ?? null,
     missSelection: true,

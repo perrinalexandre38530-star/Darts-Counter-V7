@@ -114,7 +114,7 @@ const PRESETS = [
   {
     id: "classic",
     label: "Classique",
-    detail: "5 vies • S/D/T distincts • départ S6",
+    detail: "5 vies • S/D/T distincts • départ G6",
     values: { startingLives: 5, targetRule: "strict", allowBull: true, allowSpecialZones: false, thirdDartBonusSelection: true, thirdDartBonusCount: 3, selectionPolicy: "open", startingTargetMode: "s6" },
   },
   {
@@ -672,7 +672,7 @@ export default function Gros6Config({ store, go }: any) {
             <PillButton label={allowSpecialZones ? "Zones fermées ON" : "Zones fermées OFF"} active={allowSpecialZones} onClick={() => { setAllowSpecialZones((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
             <PillButton label={allowOuterRing ? "Contour extérieur ON" : "Contour extérieur OFF"} active={allowOuterRing} onClick={() => { setAllowOuterRing((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} disabled={!allowSpecialZones} compact />
           </div>
-          <div style={{ color: "#8f94b5", fontSize: 10.5, lineHeight: 1.4, marginTop: 7 }}>Zones fermées : gros/petit 6, gros/petit 8, zones 9, 10, 16, 18, 19, 20. Le contour extérieur peut être activé ou coupé séparément.</div>
+          <div style={{ color: "#8f94b5", fontSize: 10.5, lineHeight: 1.4, marginTop: 7 }}>Zones hors cible : zones fermées des 4, 6, 8 haut/bas, 9, 10, 14, 16, 18 haut/bas, 19 et 20. Le contour extérieur peut être activé ou coupé séparément.</div>
         </div>
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Cible imposable</div>
@@ -684,7 +684,7 @@ export default function Gros6Config({ store, go }: any) {
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Première cible</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label="S6 classique" active={startingTargetMode === "s6"} onClick={() => setStartingTargetMode("s6")} primary={primary} primarySoft={primarySoft} />
+            <PillButton label="G6 classique" active={startingTargetMode === "s6"} onClick={() => setStartingTargetMode("s6")} primary={primary} primarySoft={primarySoft} />
             <PillButton label="Aléatoire" active={startingTargetMode === "random"} onClick={() => setStartingTargetMode("random")} primary={primary} primarySoft={primarySoft} />
           </div>
         </div>
@@ -725,7 +725,7 @@ export default function Gros6Config({ store, go }: any) {
           <div style={{ color: "#d7d9e9", fontSize: 11, lineHeight: 1.55 }}>
             {participantMode === "players" ? `Individuel • ${selectedPlayers.length} joueur(s)` : `Équipes • ${teamsSourceMode} • ${guidedSelectionLabel}`}<br />
             {startingLives} vie(s) • {targetRule === "strict" ? "S/D/T stricts" : "valeur libre"} • {selectionPolicy === "pro" ? "sélection PRO" : "sélection libre"}<br />
-            Bull {allowBull ? "ON" : "OFF"} • Zones spéciales {allowSpecialZones ? "ON" : "OFF"} • Contour ext. {allowOuterRing ? "ON" : "OFF"} • Départ {startingTargetMode === "s6" ? "S6" : "aléatoire"}<br />
+            Bull {allowBull ? "ON" : "OFF"} • Zones spéciales {allowSpecialZones ? "ON" : "OFF"} • Contour ext. {allowOuterRing ? "ON" : "OFF"} • Départ {startingTargetMode === "s6" ? "G6" : "aléatoire"}<br />
             Bonus D3 : {thirdDartBonusSelection ? `${thirdDartBonusCount} fléchette(s)` : "OFF"}{participantMode === "teams" ? ` • vies ${teamLifeMode === "shared" ? "communes" : "individuelles"}` : ""}<br />
             Saisie : {scoreInputMethod === "visit_score" ? "Score volée" : scoreInputMethod === "dartboard" ? "Cible" : scoreInputMethod === "presets" ? "Presets" : scoreInputMethod === "voice" ? "Voice" : "Keypad"}
           </div>

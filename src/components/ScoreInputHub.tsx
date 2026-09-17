@@ -39,6 +39,7 @@ type ExternalKeypadAuxAction = {
   tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
   title?: string;
   ariaLabel?: string;
+  fullBleedIcon?: boolean;
 };
 
 type ExternalKeypadExtraMainButton = {

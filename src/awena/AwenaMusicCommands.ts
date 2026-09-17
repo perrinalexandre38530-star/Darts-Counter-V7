@@ -99,8 +99,15 @@ const EXTERNAL_WORDS = [
 function includesPhrase(normalizedText: string, phrase: string) {
   const needle = normalize(phrase);
   if (!needle) return false;
-  if (/[^a-z0-9 ]/i.test(needle)) return normalizedText.includes(needle);
-  return ` ${normalizedText} `.includes(` ${needle} `) || normalizedText.includes(needle);
+  // Pour les langues latines, on exige une vraie limite de mot.
+  // Important : sans cela, « configuration » contient « son » et déclenchait
+  // à tort l'intention MUSIQUE quand on demandait la configuration d'un mode.
+  if (/^[a-z0-9 ]+$/i.test(needle)) {
+    return ` ${normalizedText} `.includes(` ${needle} `);
+  }
+  // Pour les écritures sans séparateur d'espaces fiable (CJK, arabe, etc.),
+  // le contains reste le comportement attendu.
+  return normalizedText.includes(needle);
 }
 
 function hasAny(text: string, phrases: readonly string[]) {

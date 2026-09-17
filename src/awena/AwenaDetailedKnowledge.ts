@@ -82,6 +82,75 @@ const DEEP: Record<string, ModeDeepDetail> = {
     ],
   },
 
+  gros_6: {
+    rules: [
+      { title: "OBJECTIF", body: "Le **Gros 6 / Big 6** est un jeu d’élimination à vies. La partie commence normalement sur **G6 / B6** (Gros 6 / Big 6). Le dernier joueur — ou la dernière équipe — qui possède encore au moins une vie gagne." },
+      { title: "VOLÉE D’ATTAQUE", body: "Le joueur actif dispose de **3 fléchettes maximum** pour reproduire exactement la cible courante. En règle stricte, la zone compte : **G** = Gros simple, **P** = Petit simple, **D** = Double, **T** = Triple, **BULL** et **DBULL** sont distincts." },
+      { title: "ÉCHEC", body: "Si aucune des 3 fléchettes ne valide la cible, le joueur perd **1 vie**. La cible ne change pas : le joueur suivant doit tenter exactement la même cible." },
+      { title: "CIBLE VALIDÉE", body: "Dès que la cible est touchée, les fléchettes restantes de la volée servent à **imposer la prochaine cible**. Une cible valide choisie met immédiatement fin à la sélection et le tour passe au joueur suivant." },
+      { title: "BONUS 3e FLÉCHETTE", body: "Si la cible courante est validée avec la **3e fléchette**, il ne reste normalement plus de fléchette. Lorsque le bonus est activé, une nouvelle mini-volée de **1, 2 ou 3 fléchettes** — 3 par défaut dans le réglage dédié — est accordée pour choisir la prochaine cible. Si une cible valide est trouvée avant la fin, la sélection s’arrête immédiatement." },
+      { title: "ZONES HORS CIBLE", body: "Quand **Zones fermées** est activé, certaines surfaces physiques situées **hors de la zone de score classique de la cible** deviennent jouables. Elles ne correspondent ni à un simple, ni à un double, ni à un triple. Le mode reconnaît le **contour extérieur** et les zones fermées associées aux numéros **4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19 et 20**. Si l’une de ces zones est imposée, le joueur suivant doit toucher exactement cette zone." },
+      { title: "ÉQUIPES", body: "Le mode accepte les équipes. Les vies peuvent rester **individuelles** ou être placées dans une **réserve commune** partagée par toute l’équipe." },
+    ],
+    configuration: [
+      { title: "MODE DE CONFIGURATION", bullets: [
+        "**Guidée** : 5 étapes — Type de partie, Participants, Vies & variante, Cibles & zones, Options & lancement.",
+        "**Complète** : les mêmes réglages sont accessibles directement sur une seule page.",
+      ] },
+      { title: "TYPE DE PARTIE / PARTICIPANTS", bullets: [
+        "**Joueurs** : duel ou multi-joueurs avec profils locaux et Bots IA.",
+        "**Équipes** : équipes manuelles, enregistrées, équipes Bots IA ou brassage automatique.",
+        "En équipes, les vies peuvent être **individuelles** ou en **réserve commune**.",
+      ] },
+      { title: "VIES DE DÉPART", bullets: [
+        "Valeurs proposées : **1, 3, 5, 6, 7, 10, 15 ou 20 vies**.",
+        "L’écran démarre actuellement sur **6 vies** avant modification.",
+      ] },
+      { title: "PRESETS / VARIANTES", bullets: [
+        "**Gros 6 MSS** : strict, Bull, zones spéciales et bonus de 3e fléchette.",
+        "**Classique** : S / D / T distincts, Bull, sans zones spéciales.",
+        "**Facile** : la même valeur peut être acceptée quelle que soit la zone Simple / Double / Triple selon la règle valeur.",
+        "**PRO** : seules les cibles imposables Double / Triple / Bulls sont autorisées.",
+        "**Sudden Death** : 1 vie.",
+        "**Endurance** : 10 vies.",
+      ] },
+      { title: "VALIDATION DE LA CIBLE", bullets: [
+        "**Strict : S / D / T distincts** : la zone exacte doit correspondre. Pour les simples, **Gros** et **Petit** sont eux aussi distincts.",
+        "**Facile : même valeur** : la valeur numérique est prioritaire pour les segments classiques.",
+      ] },
+      { title: "CIBLES AUTORISÉES", bullets: [
+        "**Bull / DBull ON/OFF**.",
+        "**Zones fermées ON/OFF**.",
+        "**Contour extérieur ON/OFF** séparément ; ce réglage n’est utile que lorsque les zones spéciales sont actives.",
+        "Zones hors cible disponibles : **4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19, 20**, plus le **contour extérieur** si activé.",
+      ] },
+      { title: "CIBLE IMPOSABLE", bullets: [
+        "**Libre** : Gros/Petit simples, Doubles, Triples, Bulls et zones spéciales autorisées par la configuration.",
+        "**PRO** : seulement Doubles, Triples et Bulls ; les zones spéciales ne peuvent pas être imposées dans cette politique.",
+      ] },
+      { title: "PREMIÈRE CIBLE", bullets: [
+        "**G6 / B6 classique** : Gros 6 / Big 6.",
+        "**Aléatoire** : le moteur choisit une cible autorisée selon les réglages actifs.",
+      ] },
+      { title: "BONUS APRÈS VALIDATION SUR D3", bullets: [
+        "**Bonus ON/OFF**.",
+        "Si ON : **1, 2 ou 3 fléchettes** supplémentaires pour définir la cible suivante lorsqu’on a validé la cible courante sur la 3e fléchette.",
+      ] },
+      { title: "ORDRE DE DÉPART", bullets: [
+        "**Ordre sélectionné** : conserve l’ordre choisi dans la configuration.",
+        "**Aléatoire** : mélange l’ordre de départ ; en équipes, l’ordre des équipes et des membres peut être mélangé.",
+      ] },
+      { title: "MÉTHODE DE SAISIE", bullets: [
+        "**KEYPAD** : saisie fléchette par fléchette avec Double, Triple, Gros, Petit, Bull et touche Zones hors cible.",
+        "**SCORE VOLÉE**.",
+        "**CIBLE** interactive.",
+        "**PRESETS**.",
+        "**VOICE** lorsque la saisie vocale est disponible.",
+      ] },
+      { title: "ZONES HORS CIBLE — COMMENT LES LIRE", body: "Dans le keypad, la touche illustrée par un fragment de cible ouvre la sélection des zones hors cible. Chaque zone est représentée par son **image dédiée** : le remplissage cyan indique exactement la surface physique à toucher. Ces images servent également à l’affichage de la cible et à l’historique lorsque la cible n’est pas un segment classique." },
+    ],
+  },
+
   attrape_moi: {
     rules: [
       { title: "OBJECTIF", body: "Le **Fuyard** commence avec une avance. Il doit rester devant jusqu’à la fin de la poursuite. Le **Chasseur** doit atteindre ou dépasser son score avant la limite." },
