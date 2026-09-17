@@ -49,6 +49,9 @@ import golfIntroUrl from "../assets/sounds/golf_intro.mp3";
 // 🏃 ATTRAPE-MOI SI TU PEUX — musique d’intro optimisée
 import attrapeMoiIntroUrl from "../assets/sounds/attrape_moi_intro.mp3";
 
+// 🎯 GROS 6 / BIG 6 — musique d’intro
+import gros6IntroUrl from "../assets/sounds/gros6_intro.mp3";
+
 // 🏌️ Golf — bruitages "arcade" tickers
 import golfTickerEagleUrl from "../assets/sounds/golf_ticker_eagle.wav";
 import golfTickerBirdieUrl from "../assets/sounds/golf_ticker_birdie.wav";
@@ -82,6 +85,9 @@ const SFX = {
 
   // 🏃 ATTRAPE-MOI SI TU PEUX (assets import)
   attrapeMoiIntro: attrapeMoiIntroUrl,
+
+  // 🎯 GROS 6 / BIG 6 (assets import)
+  gros6Intro: gros6IntroUrl,
 } as const;
 
 type SfxKey = keyof typeof SFX;
@@ -262,6 +268,43 @@ export function stopAttrapeMoiIntro() {
       try { _attrapeMoiIntroAudio.pause(); } catch {}
       try { _attrapeMoiIntroAudio.currentTime = 0; } catch {}
       _attrapeMoiIntroAudio = null;
+    }
+  } catch {}
+}
+
+// 🎯 GROS 6 / BIG 6 — musique d'intro (arrivée dans Gros6Play)
+let _gros6IntroAudio: HTMLAudioElement | null = null;
+export function playGros6Intro(volume: number = 0.5) {
+  try {
+    if (_gros6IntroAudio) {
+      try { _gros6IntroAudio.pause(); } catch {}
+      _gros6IntroAudio = null;
+    }
+    if (!isSfxEnabled("arcade")) return;
+
+    const a = getFromPool(SFX.gros6Intro);
+    if (!a) return;
+
+    try {
+      a.preload = "auto";
+      (a as any).playsInline = true;
+      a.volume = resolveAudioVolume(volume, "arcade");
+      a.currentTime = 0;
+    } catch {}
+
+    _gros6IntroAudio = a;
+
+    const p = a.play();
+    if (p && typeof (p as any).catch === "function") p.catch(() => {});
+  } catch {}
+}
+
+export function stopGros6Intro() {
+  try {
+    if (_gros6IntroAudio) {
+      try { _gros6IntroAudio.pause(); } catch {}
+      try { _gros6IntroAudio.currentTime = 0; } catch {}
+      _gros6IntroAudio = null;
     }
   } catch {}
 }

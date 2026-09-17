@@ -28,6 +28,7 @@ import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { makeGros6Segment, randomGros6StartTarget } from "../lib/gros6Engine";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
 import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
+import gros6RulesBoard from "../assets/gros6/gros6_rules_board.webp";
 
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
 import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
@@ -792,12 +793,48 @@ export default function Gros6Config({ store, go }: any) {
 
       {rulesOpen ? (
         <div onClick={() => setRulesOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 120, background: "rgba(0,0,0,.72)", display: "grid", placeItems: "center", padding: 18 }}>
-          <div onClick={(event) => event.stopPropagation()} style={{ width: "min(720px,96vw)", maxHeight: "86vh", overflow: "auto", borderRadius: 20, border: `1px solid ${primary}66`, background: "linear-gradient(180deg,rgba(13,16,31,.99),rgba(5,7,16,.99))", padding: 18, boxShadow: `0 0 44px ${primary}33` }}>
-            <div style={{ color: primary, fontWeight: 1000, fontSize: 20, marginBottom: 10 }}>RÈGLES — GROS 6</div>
-            <div style={{ color: "#e2e4ef", fontSize: 13, lineHeight: 1.6 }}>
-              La première cible est S6. Chaque joueur a 3 fléchettes pour toucher la cible. Un échec coûte une vie. Dès qu'une cible est validée, les fléchettes restantes servent à définir la cible du joueur suivant. Dans MULTISPORTS SCORING, la variante étendue permet aussi d'imposer l'extérieur du cercle des chiffres et le rond fermé de chacun des numéros 1 à 20. Si la cible est touchée avec la 3e fléchette, le bonus configuré fournit une nouvelle volée de sélection — 3 fléchettes par défaut.
+          <div onClick={(event) => event.stopPropagation()} style={{ width: "min(820px,96vw)", maxHeight: "88vh", overflow: "auto", borderRadius: 20, border: `1px solid ${primary}66`, background: "linear-gradient(180deg,rgba(13,16,31,.99),rgba(5,7,16,.99))", padding: 18, boxShadow: `0 0 44px ${primary}33` }}>
+            <div style={{ color: primary, fontWeight: 1000, fontSize: 20, marginBottom: 10 }}>{lang === "fr" ? "RÈGLES — GROS 6" : "RULES — BIG 6"}</div>
+            <div style={{ display: "grid", gap: 14 }}>
+              <img src={gros6RulesBoard as any} alt="Gros 6 board" style={{ width: "100%", maxWidth: 460, margin: "0 auto", display: "block", borderRadius: 18, border: `1px solid ${primary}44`, boxShadow: `0 0 24px ${primary}22` }} />
+
+              <div style={{ color: "#e2e4ef", fontSize: 13, lineHeight: 1.68 }}>
+                {lang === "fr"
+                  ? "Le Gros 6 / Big 6 est un mode à élimination. La partie démarre généralement sur GROS 6. Chaque joueur dispose de 3 fléchettes pour toucher exactement la cible courante. Si la cible n'est pas validée avant la 3e fléchette, le joueur — ou l'équipe si la réserve commune est activée — perd une vie. Le dernier joueur ou la dernière équipe encore en vie gagne la partie."
+                  : "Big 6 is an elimination game. The match usually starts on BIG 6. Each player has 3 darts to hit the exact current target. If the target is not cleared within 3 darts, the player — or the team when shared lives are enabled — loses one life. The last surviving player or team wins the match."}
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ color: primary, fontWeight: 900, fontSize: 14 }}>{lang === "fr" ? "Déroulement d'un tour" : "Turn flow"}</div>
+                <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.5, lineHeight: 1.6 }}>
+                  <li>{lang === "fr" ? "Touchez la cible exacte : GROS 6, PETIT 6, D6, T6, BULL, DBULL ou une zone spéciale selon la configuration." : "Hit the exact target: BIG 6, SMALL 6, D6, T6, BULL, DBULL or a special off-board zone depending on the configuration."}</li>
+                  <li>{lang === "fr" ? "Dès qu'une cible est validée, les fléchettes restantes servent à imposer la cible du joueur suivant." : "As soon as the target is cleared, all remaining darts are used to set the next target for the following player."}</li>
+                  <li>{lang === "fr" ? "Si la validation arrive sur la 3e fléchette, le bonus de 3e fléchette peut ouvrir une nouvelle mini-volée de sélection pour définir la prochaine cible." : "If the target is cleared with the 3rd dart, the 3rd-dart bonus can open a fresh selection mini-visit to define the next target."}</li>
+                  <li>{lang === "fr" ? "Rater la cible pendant toute la volée fait perdre 1 vie et la cible reste inchangée pour le tour suivant." : "Failing to clear the target within the whole visit costs 1 life and the same target stays in play for the next turn."}</li>
+                </ul>
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ color: primary, fontWeight: 900, fontSize: 14 }}>{lang === "fr" ? "Zones hors cible / spéciales" : "Off-board / special zones"}</div>
+                <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.66 }}>
+                  {lang === "fr"
+                    ? "Avec l'option Zones spéciales, certaines zones hors cible deviennent de vraies cibles jouables. Cela comprend le contour extérieur du cercle des chiffres ainsi que plusieurs zones fermées autour des numéros 4, 6, 8, 9, 10, 14, 16, 18, 19 et 20. Lorsqu'un joueur impose l'une de ces zones, le joueur suivant doit toucher exactement cette zone précise pour sauver sa vie."
+                    : "With Special Zones enabled, several off-board areas become real playable targets. This includes the outer number ring and several closed areas around numbers 4, 6, 8, 9, 10, 14, 16, 18, 19 and 20. When a player sets one of these zones, the next player must hit that exact area to save their life."}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ color: primary, fontWeight: 900, fontSize: 14 }}>{lang === "fr" ? "Variantes principales" : "Main variants"}</div>
+                <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.5, lineHeight: 1.6 }}>
+                  <li>{lang === "fr" ? "Classique : départ Gros 6, règle stricte S / D / T, Bull actif." : "Classic: starts on Big 6, strict S / D / T targeting, Bull enabled."}</li>
+                  <li>{lang === "fr" ? "Facile : la valeur seule peut suffire, même si simple/double/triple diffèrent." : "Easy: the value alone may count even if simple/double/triple differ."}</li>
+                  <li>{lang === "fr" ? "PRO : les cibles imposées se limitent aux doubles, triples et Bulls." : "PRO: the targets you may set are limited to doubles, triples and Bulls."}</li>
+                  <li>{lang === "fr" ? "Sudden Death : une seule vie par joueur ou équipe." : "Sudden Death: only one life per player or team."}</li>
+                  <li>{lang === "fr" ? "Endurance : plus de vies pour des parties longues." : "Endurance: extra lives for longer matches."}</li>
+                </ul>
+              </div>
             </div>
-            <button type="button" onClick={() => setRulesOpen(false)} style={{ marginTop: 16, borderRadius: 999, border: `1px solid ${primary}`, background: primarySoft, color: "#fff", padding: "8px 13px", fontWeight: 950, cursor: "pointer" }}>FERMER</button>
+            <button type="button" onClick={() => setRulesOpen(false)} style={{ marginTop: 16, borderRadius: 999, border: `1px solid ${primary}`, background: primarySoft, color: "#fff", padding: "8px 13px", fontWeight: 950, cursor: "pointer" }}>{lang === "fr" ? "FERMER" : "CLOSE"}</button>
           </div>
         </div>
       ) : null}

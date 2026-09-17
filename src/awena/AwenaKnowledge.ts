@@ -38,6 +38,7 @@ const TICKER_KEYS: Record<string, string> = {
   warfare: "warfare",
   five_lives: "five_lives",
   golf: "golf",
+  gros_6: "gros_6",
   scram: "scram",
   super_bull: "super_bull",
   halve_it: "halve_it",
@@ -94,6 +95,7 @@ const ALIAS_OVERRIDES: Record<string, string[]> = {
   darts_poker: ["darts poker", "poker flechettes"],
   attrape_moi: ["attrape moi", "attrape-moi", "attrape moi si tu peux", "chasseur", "fuyard", "catch me"],
   mario_kart: ["darts racer", "racer", "mario kart"],
+  gros_6: ["gros 6", "gros six", "big 6", "big six"],
   departements: ["territories", "territoires", "departements", "départements"],
   bastard: ["batard", "bâtard"],
   bobs_27: ["bobs 27", "bob s 27", "bob's 27"],
@@ -122,6 +124,11 @@ const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" 
   },
   darts_poker: {
     howToPlayInApp: "Ouvre Jeux > Fléchettes > Darts Poker. Sélectionne les joueurs ou bots puis démarre. Le marché associe ensuite les secteurs 1 à 20 aux cartes visibles ; chaque main se construit dans la limite prévue par le mode.",
+  },
+  gros_6: {
+    summary: "En Gros 6 / Big 6, la partie démarre en général sur Gros 6. Chaque joueur a 3 fléchettes pour toucher exactement la cible courante. En cas d'échec après 3 fléchettes, il perd une vie. S'il valide la cible, il utilise les fléchettes restantes — ou une volée bonus si l'option de 3e fléchette est activée — pour imposer la cible suivante au joueur ou à l'équipe suivante.",
+    tip: "Les simples Gros/Petit, les doubles, les triples, Bull/Double Bull et les zones hors cible peuvent être des cibles différentes selon la configuration. Choisir une cible difficile met la pression, mais rater sa sélection fait perdre une vie.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > Gros 6. Choisis le mode guidé ou complet, les joueurs ou équipes, le nombre de vies, la règle stricte ou par valeur, l'activation du Bull, des zones spéciales et du bonus de 3e fléchette, puis démarre la partie.",
   },
   attrape_moi: {
     tip: "Le Fuyard doit protéger son avance ; le Chasseur doit réduire l'écart sans gaspiller de tours. La prise de risque dépend donc du rôle et du nombre de rounds restants.",

@@ -93,6 +93,23 @@ const DETAILS: Record<string, AwenaModeConfigDetail> = {
     options: ["participants / équipes selon le format proposé", "bots IA", "paramètres du parcours et de la partie affichés dans la configuration"],
     victory: "terminer le parcours avec le meilleur résultat selon le barème Golf du mode",
   },
+  gros_6: {
+    options: [
+      "joueurs seuls ou mode équipes",
+      "bots IA possibles",
+      "vies individuelles ou réserve commune d'équipe",
+      "cible de départ fixée sur Gros 6 ou cible aléatoire",
+      "règle stricte S / D / T exacte ou règle par valeur",
+      "activation Bull et Double Bull",
+      "activation des zones spéciales hors cible et du contour extérieur",
+      "politique de sélection libre ou PRO (doubles / triples et Bulls)",
+      "bonus de sélection lorsque la cible est validée sur la 3e fléchette",
+      "saisie keypad, score volée, cible interactive, presets ou voice selon les réglages",
+    ],
+    victory: "survivre plus longtemps que les autres : un joueur ou une équipe perd une vie à chaque fois qu'il ne valide pas la cible courante dans sa volée ; le dernier encore en vie gagne",
+    variants: ["Gros 6 MSS", "Classique", "Facile", "PRO", "Sudden Death", "Endurance", "mode Équipes", "réserve commune"],
+    notes: ["Les zones hors cible jouables incluent le contour extérieur ainsi que plusieurs zones fermées autour des numéros 4, 6, 8, 9, 10, 14, 16, 18, 19 et 20 lorsque l'option est activée."],
+  },
   scram: {
     options: [
       "mode Joueurs ou Équipes",

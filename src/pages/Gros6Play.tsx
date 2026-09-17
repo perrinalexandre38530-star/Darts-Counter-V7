@@ -22,6 +22,8 @@ import tickerGros6 from "../assets/tickers/ticker_gros_6.webp";
 import tickerBig6 from "../assets/tickers/ticker_gros_6_en.webp";
 import playersPanelTicker from "../assets/tickers/ticker_gros_6_players_panel.webp";
 import activePanelTicker from "../assets/tickers/ticker_gros_6_active_panel.webp";
+import gros6ZonesKeypad from "../assets/gros6/gros6_zones_keypad.webp";
+import gros6RulesBoard from "../assets/gros6/gros6_rules_board.webp";
 import zoneOuterRing from "../assets/gros6-zones/zone_outer_ring.webp";
 import zoneClosed4 from "../assets/gros6-zones/zone_closed_4.webp";
 import zoneClosed6 from "../assets/gros6-zones/zone_closed_6.webp";
@@ -53,6 +55,8 @@ import {
   simulateGros6BotAttack,
   simulateGros6BotSelection,
 } from "../lib/gros6Engine";
+import { playGros6Intro, stopGros6Intro, playImpactFromDart, playSfx, unlockAudio } from "../lib/sfx";
+import { speak } from "../lib/voice";
 
 const STROKE = "rgba(255,255,255,.105)";
 const SOFT = "rgba(226,232,240,.72)";
@@ -225,14 +229,15 @@ function CricketVisitDarts({ used, total = 3, accent }: { used: number; total?: 
   );
 }
 
-function ZoneMiniIcon({ color = "currentColor" }: any) {
+function ZoneMiniIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="8.5" fill="none" stroke={color} strokeWidth="1.8" opacity="0.95" />
-      <circle cx="12" cy="12" r="5.5" fill="none" stroke={color} strokeWidth="1.6" opacity="0.8" />
-      <circle cx="12" cy="12" r="2.3" fill={color} opacity="0.9" />
-      <path d="M12 3.5V20.5M3.5 12H20.5" fill="none" stroke={color} strokeWidth="1.5" opacity="0.75" />
-    </svg>
+    <img
+      src={gros6ZonesKeypad as any}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 10, border: "1px solid rgba(255,255,255,.32)", boxShadow: "0 0 12px rgba(255,220,120,.18)" }}
+    />
   );
 }
 
@@ -414,6 +419,12 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const [viewport, setViewport] = React.useState(() => ({ w: typeof window !== "undefined" ? window.innerWidth : 1200, h: typeof window !== "undefined" ? window.innerHeight : 900 }));
   const undoStackRef = React.useRef<any[]>([]);
   const reportedRef = React.useRef(false);
+  const introPlayedRef = React.useRef(false);
+  const announcedTurnRef = React.useRef("");
+  const announcedHistoryRef = React.useRef<number>(0);
+  const announcedWinnerRef = React.useRef("");
+
+  const speechLang = lang === "fr" ? "fr-FR" : "en-US";
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -421,6 +432,18 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     update();
     window.addEventListener("resize", update, { passive: true });
     return () => window.removeEventListener("resize", update as any);
+  }, []);
+
+  React.useEffect(() => {
+    try { unlockAudio(); } catch {}
+    if (!introPlayedRef.current) {
+      introPlayedRef.current = true;
+      playGros6Intro(0.52);
+    }
+    return () => {
+      stopGros6Intro();
+      try { window.speechSynthesis?.cancel?.(); } catch {}
+    };
   }, []);
 
   const compact = viewport.w < 720;
@@ -464,11 +487,24 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     commit((prev: any) => prev.phase === "select" ? applyGros6SelectionHit(prev, hit, config) : applyGros6AttackHit(prev, hit, config));
   }, [commit, config]);
 
+  const playHitSfx = React.useCallback((d: any) => {
+    try {
+      const value = Number(d?.v || 0);
+      const mult = Number(d?.mult || 1);
+      if (value > 0) {
+        playImpactFromDart({ value, mult });
+      } else {
+        playSfx("hit", { volume: 0.72 });
+      }
+    } catch {}
+  }, []);
+
   const submitUiDart = React.useCallback((d: any) => {
+    playHitSfx(d);
     submitHit(fromUiDart(d));
     setMultiplier(1);
     setSpecialMode(null);
-  }, [submitHit]);
+  }, [playHitSfx, submitHit]);
 
   const submitNumber = React.useCallback((n: number) => {
     if (n === 0) return submitUiDart({ v: 0, mult: 1 });
@@ -505,6 +541,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   }, [commit, config]);
 
   const pickSpecial = React.useCallback((zone: any) => {
+    playSfx("hit", { volume: 0.78 });
     submitHit(makeGros6Special(zone.code, zone.label));
     setSpecialOpen(false);
   }, [submitHit]);
@@ -556,6 +593,43 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     }, 700);
     return () => window.clearTimeout(timer);
   }, [game.phase, game.turnIndex, game.winnerId, game.players, config]);
+
+  React.useEffect(() => {
+    if (finished || !activePlayer?.name) return;
+    const key = `${game.turnNo}-${game.turnIndex}-${game.phase}`;
+    if (announcedTurnRef.current === key) return;
+    announcedTurnRef.current = key;
+    speak(lang === "fr" ? `${activePlayer.name}, à toi de jouer` : `${activePlayer.name}, your turn`, { lang: speechLang, rate: 0.98 });
+  }, [activePlayer?.name, finished, game.phase, game.turnIndex, game.turnNo, lang, speechLang]);
+
+  React.useEffect(() => {
+    const history = Array.isArray(game.history) ? game.history : [];
+    if (!history.length) return;
+    const last = history[history.length - 1];
+    const stamp = Number(last?.at || history.length);
+    if (announcedHistoryRef.current === stamp) return;
+    announcedHistoryRef.current = stamp;
+
+    let message = "";
+    if (last?.selectionResolved && last?.nextTarget) {
+      message = lang === "fr" ? `Nouvelle cible ${last.nextTarget}` : `New target ${last.nextTarget}`;
+    } else if (last?.lifeLost) {
+      message = lang === "fr" ? `${last.playerName || "Joueur"} perd une vie` : `${last.playerName || "Player"} loses a life`;
+      playSfx("bust", { volume: 0.76 });
+    } else if (last?.success && last?.phase === "attack") {
+      message = lang === "fr" ? "Cible validée" : "Target cleared";
+    }
+
+    if (message) speak(message, { lang: speechLang, rate: 0.98 });
+  }, [game.history, lang, speechLang]);
+
+  React.useEffect(() => {
+    if (!game.winnerId || !game.winnerName) return;
+    const key = `${game.winnerType || "player"}:${game.winnerId}`;
+    if (announcedWinnerRef.current === key) return;
+    announcedWinnerRef.current = key;
+    speak(lang === "fr" ? `Victoire ${game.winnerName}` : `${game.winnerName} wins`, { lang: speechLang, rate: 0.96 });
+  }, [game.winnerId, game.winnerName, game.winnerType, lang, speechLang]);
 
   const activeTarget = phaseSelect ? (game.pendingNextTarget || null) : game.currentTarget;
   const phaseText = phaseSelect ? L("CHOISIS LA PROCHAINE CIBLE", "CHOOSE NEXT TARGET") : L("CIBLE À TOUCHER", "TARGET TO HIT");
@@ -682,7 +756,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             ]}
             keypadAuxActionOverride={config?.allowSpecialZones && String(config?.selectionPolicy || "open") !== "pro" ? {
               label: L("ZONE", "ZONE"),
-              icon: <ZoneMiniIcon color="currentColor" />,
+              icon: <ZoneMiniIcon />,
               onClick: () => setSpecialOpen(true),
               disabled: false,
               active: false,
@@ -715,7 +789,45 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
       {specialOpen ? <SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={pickSpecial} accent={accent} lang={lang} includeOuterRing={(config as any)?.allowOuterRing !== false} /> : null}
       {rulesOpen ? (
         <ModalShell onClose={() => setRulesOpen(false)} title={L("GROS 6 — RÈGLES", "BIG 6 — RULES")} accent={accent}>
-          <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.65 }}>{L("Touchez la cible courante avec vos 3 fléchettes. Un échec fait perdre une vie. Une réussite permet d'utiliser les fléchettes restantes pour imposer la prochaine cible. Les zones fermées/extérieures activées dans la configuration sont de vraies cibles distinctes. Si la cible est validée sur la 3e fléchette, le bonus configuré ouvre une nouvelle volée de sélection.", "Hit the current target within 3 darts. Missing it costs one life. If you succeed, use the remaining darts to set the next target. Enabled closed/outer zones are distinct targets. If the target is cleared with the 3rd dart, the configured bonus opens a new selection visit.")}</div>
+          <div style={{ display: "grid", gap: 14 }}>
+            <img src={gros6RulesBoard as any} alt="Gros 6 board" style={{ width: "100%", maxWidth: 420, margin: "0 auto", display: "block", borderRadius: 18, border: `1px solid ${accent}44`, boxShadow: `0 0 24px ${accent}22` }} />
+
+            <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.68 }}>
+              {L(
+                "Touchez exactement la cible courante avec 3 fléchettes maximum. La partie commence en général sur GROS 6. Si vous ne touchez pas la cible dans la volée, vous perdez une vie. Le dernier joueur ou la dernière équipe encore en vie remporte la partie.",
+                "Hit the exact current target within a maximum of 3 darts. The game usually starts on BIG 6. If you fail to clear the target during the visit, you lose one life. The last surviving player or team wins the game."
+              )}
+            </div>
+
+            <div>
+              <div style={{ color: accent, fontWeight: 900, fontSize: 13.5, marginBottom: 6 }}>{L("Comment imposer la cible suivante", "How to set the next target")}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.2, lineHeight: 1.62 }}>
+                <li>{L("Dès que la cible est validée, les fléchettes restantes servent à choisir la cible du joueur suivant.", "As soon as the target is cleared, the remaining darts are used to choose the next target for the following player.")}</li>
+                <li>{L("Vous pouvez imposer un GROS simple, un PETIT simple, un double, un triple, le Bull, le Double Bull ou une zone spéciale autorisée.", "You may set a BIG single, a SMALL single, a double, a triple, Bull, Double Bull or any enabled special zone.")}</li>
+                <li>{L("Si la cible est validée avec la 3e fléchette, le bonus configuré ouvre une nouvelle volée de sélection pour définir la prochaine cible.", "If the target is cleared with the 3rd dart, the configured bonus opens a fresh selection visit to define the next target.")}</li>
+              </ul>
+            </div>
+
+            <div>
+              <div style={{ color: accent, fontWeight: 900, fontSize: 13.5, marginBottom: 6 }}>{L("Zones hors cible", "Off-board zones")}</div>
+              <div style={{ color: "#e2e4ef", fontSize: 12.2, lineHeight: 1.64 }}>
+                {L(
+                  "Quand l'option est activée, plusieurs zones hors cible deviennent jouables : le contour extérieur autour des chiffres ainsi que des zones fermées spécifiques autour des 4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19 et 20. Si une de ces zones est imposée, le joueur suivant doit toucher exactement cette zone précise.",
+                  "When the option is enabled, several off-board areas become playable: the outer contour around the numbers as well as specific closed areas around 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19 and 20. If one of these zones is set, the next player must hit that exact area."
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ color: accent, fontWeight: 900, fontSize: 13.5, marginBottom: 6 }}>{L("Variantes", "Variants")}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.2, lineHeight: 1.62 }}>
+                <li>{L("Classique : règle stricte S / D / T.", "Classic: strict S / D / T targeting.")}</li>
+                <li>{L("Facile : la valeur seule peut suffire selon la configuration.", "Easy: value-only matching may be enough depending on the configuration.")}</li>
+                <li>{L("PRO : les cibles imposées sont limitées aux doubles, triples et Bulls.", "PRO: settable targets are limited to doubles, triples and Bulls.")}</li>
+                <li>{L("Sudden Death / Endurance : peu ou beaucoup de vies selon l'intensité recherchée.", "Sudden Death / Endurance: fewer or more lives depending on the desired intensity.")}</li>
+              </ul>
+            </div>
+          </div>
         </ModalShell>
       ) : null}
     </div>
