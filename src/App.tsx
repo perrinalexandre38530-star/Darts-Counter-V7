@@ -1071,6 +1071,7 @@ type Tab =
   | "organization_venue_scan"
   | "organization_venue_board"
   | "organization_admin"
+  | "organization_more"
   | "stats"
   | "statsHub"
   | "stats_online"
@@ -2758,6 +2759,7 @@ useEffect(() => {
         const section = String(sectionRaw || "home").toLowerCase();
         const routeMap: Record<string, Tab> = {
           home: "organization_home",
+          more: "organization_more",
           agenda: "organization_calendar",
           members: "organization_members",
           teams: "organization_teams",
@@ -2768,7 +2770,7 @@ useEffect(() => {
           venue: "organization_venue",
           admin: "organization_admin",
         };
-        const viewMap: Record<string, string> = { home: "home", agenda: "calendar", members: "members", teams: "groups", competitions: "competitions", stats: "stats", communication: "communication", federations: "federations", venue: "venue", admin: "admin" };
+        const viewMap: Record<string, string> = { home: "home", more: "more", agenda: "calendar", members: "members", teams: "groups", competitions: "competitions", stats: "stats", communication: "communication", federations: "federations", venue: "venue", admin: "admin" };
         const id = new URLSearchParams(queryRaw).get("id") || "";
         setRouteParams({ organizationId: id || undefined, workspaceMode: true, view: viewMap[section] || "home" });
         setTab(routeMap[section] || "organization_home");
@@ -2980,9 +2982,10 @@ useEffect(() => {
       else if (next === "account_start") window.location.hash = "#/account/start";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "organizations") window.location.hash = "#/organizations";
-      else if (["organization_home", "organization_calendar", "organization_members", "organization_teams", "organization_competitions", "organization_stats", "organization_communication", "organization_federations", "organization_venue", "organization_admin"].includes(String(next))) {
+      else if (["organization_home", "organization_more", "organization_calendar", "organization_members", "organization_teams", "organization_competitions", "organization_stats", "organization_communication", "organization_federations", "organization_venue", "organization_admin"].includes(String(next))) {
         const sectionMap: Record<string, string> = {
           organization_home: "home",
+          organization_more: "more",
           organization_calendar: "agenda",
           organization_members: "members",
           organization_teams: "teams",
@@ -5095,6 +5098,9 @@ case "babyfoot_team_edit":
 
       case "organization_home":
         page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "home" }} />;
+        break;
+      case "organization_more":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "more" }} />;
         break;
       case "organization_calendar":
         page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "calendar" }} />;

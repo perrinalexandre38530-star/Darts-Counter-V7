@@ -4605,7 +4605,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     // ✅ GROS 6 : tableau de bord dédié.
     if (isGros6Entry(e) || ["gros6", "big6"].includes(normalizeToken(m)) || ["gros6", "big6"].includes(normalizeToken(inferredMode))) {
       const wid = (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
-      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || (e as any)?.payload?.players?.[0]?.id || null;
+      const winnerType = String((e.summary as any)?.winnerType || (e as any)?.winnerType || (e as any)?.payload?.summary?.winnerType || "");
+      const allPlayers = (Array.isArray((e as any)?.players) && (e as any).players.length ? (e as any).players : ((e as any)?.payload?.players || []));
+      const winnerPlayerId = winnerType === "team" && wid
+        ? allPlayers.find((p: any) => String(p?.teamId || "") === String(wid))?.id || null
+        : wid;
+      const firstPlayerId = winnerPlayerId || (allPlayers.length ? getId(allPlayers[0]) : null) || null;
       go("statsHub", { tab: "stats", initialStatsSubTab: "gros_6", initialPlayerId: firstPlayerId, playerId: firstPlayerId, matchId: e.id, resumeId, from: "history" });
       return;
     }

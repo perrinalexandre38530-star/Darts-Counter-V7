@@ -50,7 +50,7 @@ import {
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
 
 type Props = { go?: (tab: any, params?: any) => void; params?: any };
-type View = "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "venue" | "admin" | "offers";
+type View = "home" | "more" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "venue" | "admin" | "offers";
 type EntryMode = "none" | "create" | "join";
 
 type WizardDraft = {
@@ -163,7 +163,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   const workspaceMode = params?.workspaceMode === true;
   const requestedOrganizationId = String(params?.organizationId || "").trim();
   const requestedView = String(params?.view || "home") as View;
-  const validViews: View[] = ["home", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "federations", "billing", "sponsors", "venue", "admin", "offers"];
+  const validViews: View[] = ["home", "more", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "federations", "billing", "sponsors", "venue", "admin", "offers"];
 
   const [organizations, setOrganizations] = React.useState<OrganizationRecord[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(() => loadOrganizationLocalState(userId).activeOrganizationId);
@@ -278,6 +278,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     }
     const routes: Partial<Record<View, string>> = {
       home: "organization_home",
+      more: "organization_more",
       calendar: "organization_calendar",
       members: "organization_members",
       groups: "organization_teams",
@@ -655,23 +656,98 @@ export default function OrganizationsPage({ go, params }: Props) {
     </div>
   );
 
+  const compactDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  };
+
+  const compactTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  };
+
   const renderHome = () => {
     if (!active) return renderEntry();
-    const metrics = [[L("MEMBRES", "MEMBERS", "MIEMBROS"), Math.max(active.memberCount, 1)], [L("GROUPES", "GROUPS", "GRUPOS"), Math.max(active.groupCount, localGroups.length)], [L("ÉVÉNEMENTS", "EVENTS", "EVENTOS"), Math.max(active.eventCount, localEvents.length)], [L("SOURCE", "SOURCE", "ORIGEN"), active.source === "cloud" ? "CLOUD" : "LOCAL"]] as const;
-    return <div style={{ display: "grid", gap: 12 }}>
+    const memberCount = Math.max(active.memberCount || 0, 1);
+    const teamCount = Math.max(active.groupCount || 0, localGroups.length);
+    const eventCount = Math.max(active.eventCount || 0, localEvents.length);
+    const now = Date.now();
+    const nextEvent = [...localEvents]
+      .filter((event) => {
+        const ts = new Date(event.startsAt).getTime();
+        return Number.isFinite(ts) && ts >= now - 60 * 60 * 1000;
+      })
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0] || null;
+    const quickIds: View[] = ["members", "competitions", "stats", optionalModules.includes("communication") ? "communication" : "profile"];
+    const quickModules = quickIds.map((id) => modules.find((module) => module.id === id)).filter(Boolean) as typeof modules;
+
+    return <div style={{ display: "grid", gap: 11 }}>
       <div style={{ ...card, overflow: "hidden", background: cardBg }}>
-        <div style={{ minHeight: activeCover ? 164 : 112, position: "relative", background: activeCover ? `url(${activeCover}) center/cover no-repeat` : `linear-gradient(145deg, ${theme.primary}16, rgba(0,0,0,.2))` }}><div style={{ position: "absolute", inset: 0, background: activeCover ? "linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.78))" : "transparent" }} /><div style={{ position: "absolute", left: 14, right: 14, bottom: 13, display: "grid", gridTemplateColumns: "68px minmax(0,1fr) auto", gap: 11, alignItems: "end" }}><div style={{ width: 66, height: 66, borderRadius: 18, border: `1px solid ${theme.primary}88`, background: "rgba(4,8,16,.88)", display: "grid", placeItems: "center", overflow: "hidden" }}>{activeLogo ? <img src={activeLogo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: theme.primary, fontSize: 19, fontWeight: 1000 }}>{active.profile.acronym || active.name.slice(0, 2).toUpperCase()}</span>}</div><div style={{ minWidth: 0 }}><div style={{ color: theme.primary, fontSize: 8.2, fontWeight: 1000, letterSpacing: 1.1 }}>MODE ORGANISATION</div><div style={{ marginTop: 3, color: theme.text, fontSize: 21, fontWeight: 1000, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis" }}>{active.name}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9.5 }}>{organizationKindLabel(active.kind)} · {organizationPlanLabel(active.plan)} · {organizationRoleLabel(active.role)}</div></div><div style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${cloudAvailable ? theme.primary : theme.borderSoft}`, color: cloudAvailable ? theme.primary : theme.textSoft, fontSize: 8, fontWeight: 1000 }}>{cloudAvailable ? "SYNC" : "LOCAL"}</div></div></div>
-        <div style={{ padding: 14 }}>
-          {active.description ? <div style={{ color: theme.textSoft, fontSize: 10.5, lineHeight: 1.45 }}>{active.description}</div> : null}
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>{metrics.map(([label, value]) => <div key={label} style={{ minWidth: 0, borderRadius: 11, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.22)", padding: "8px 6px", textAlign: "center" }}><div style={{ color: theme.primary, fontSize: 14, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 7.2, fontWeight: 900 }}>{label}</div></div>)}</div>
-          <button type="button" onClick={copyJoinCode} style={{ ...secondaryButton, width: "100%", marginTop: 10, minHeight: 40, display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{L("CODE D’INVITATION", "INVITATION CODE", "CÓDIGO DE INVITACIÓN")}</span><strong style={{ color: theme.primary, letterSpacing: 1 }}>{active.joinCode || "—"}</strong></button>
+        <div style={{ minHeight: active.profile.adminSettings.compactDashboard ? 112 : (activeCover ? 136 : 112), position: "relative", background: activeCover ? `url(${activeCover}) center/cover no-repeat` : `linear-gradient(145deg, ${theme.primary}17, rgba(0,0,0,.24))` }}>
+          <div style={{ position: "absolute", inset: 0, background: activeCover ? "linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.82))" : "linear-gradient(180deg, transparent, rgba(0,0,0,.22))" }} />
+          <div style={{ position: "absolute", left: 12, right: 12, bottom: 11, display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 10, alignItems: "end" }}>
+            <div style={{ width: 54, height: 54, borderRadius: 16, border: `1px solid ${theme.primary}77`, background: "rgba(4,8,16,.9)", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 8px 20px rgba(0,0,0,.35)" }}>{activeLogo ? <img src={activeLogo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: theme.primary, fontSize: 16, fontWeight: 1000 }}>{active.profile.acronym || active.name.slice(0, 2).toUpperCase()}</span>}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: theme.text, fontSize: 19, fontWeight: 1000, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.name}</div>
+              <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 5 }}>
+                <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.7)", color: theme.textSoft, fontSize: 7.8, fontWeight: 900 }}>{organizationKindLabel(active.kind)}</span>
+                <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.primary}44`, background: `${theme.primary}10`, color: theme.primary, fontSize: 7.8, fontWeight: 900 }}>{organizationRoleLabel(active.role)}</span>
+              </div>
+            </div>
+            <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.76)", color: theme.text, fontSize: 17, fontWeight: 1000, cursor: "pointer" }}>•••</button>
+          </div>
+        </div>
+        <div style={{ padding: "10px 12px 12px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+          {[[L("Membres", "Members", "Miembros"), memberCount], [L("Équipes", "Teams", "Equipos"), teamCount], [L("Événements", "Events", "Eventos"), eventCount]].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: "rgba(255,255,255,.025)", padding: "7px 6px", textAlign: "center" }}><div style={{ color: theme.text, fontSize: 13, fontWeight: 1000 }}>{value}</div><div style={{ marginTop: 1, color: theme.textSoft, fontSize: 7.4, fontWeight: 850 }}>{label}</div></div>)}
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{modules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: active.profile.adminSettings.compactDashboard ? 80 : 104, padding: active.profile.adminSettings.compactDashboard ? 9 : 11, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "start", gap: 7 }}><ModuleIcon name={module.id} color={theme.primary}/><div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 5, alignItems: "center", justifyContent: "space-between" }}><div style={{ color: theme.primary, fontSize: 10.5, fontWeight: 1000, lineHeight: 1.15 }}>{module.name}</div>{module.hint ? <span style={{ minWidth: 22, textAlign: "center", borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 8, fontWeight: 1000, padding: "3px 5px" }}>{module.hint}</span> : null}</div>{active.profile.adminSettings.compactDashboard ? null : <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9, lineHeight: 1.35 }}>{module.subtitle}</div>}</div></button>)}</div>
+
+      <button type="button" onClick={() => navigateView("calendar")} style={{ ...card, border: `1px solid ${nextEvent ? `${theme.primary}55` : theme.borderSoft}`, padding: 12, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+        <span style={{ width: 40, height: 40, borderRadius: 13, background: `${theme.primary}12`, color: theme.primary, display: "grid", placeItems: "center" }}><ModuleIcon name="calendar" color={theme.primary}/></span>
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: "block", color: theme.primary, fontSize: 7.8, fontWeight: 1000, letterSpacing: .85 }}>{nextEvent ? L("PROCHAIN RENDEZ-VOUS", "UP NEXT", "PRÓXIMO EVENTO") : L("AGENDA", "CALENDAR", "AGENDA")}</span>
+          <strong style={{ display: "block", marginTop: 3, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextEvent?.title || L("Rien de planifié pour le moment", "Nothing planned yet", "Nada planificado por ahora")}</strong>
+          <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextEvent ? `${compactDate(nextEvent.startsAt)} · ${compactTime(nextEvent.startsAt)}${nextEvent.location ? ` · ${nextEvent.location}` : ""}` : L("Touchez pour organiser un entraînement, match ou événement", "Tap to schedule a training, match or event", "Toca para organizar un entrenamiento, partido o evento")}</span>
+        </span>
+        <span style={{ color: theme.primary, fontSize: 18 }}>›</span>
+      </button>
+
+      <div>
+        <div style={{ margin: "1px 2px 7px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: theme.text, fontSize: 11.5 }}>{L("Essentiel", "Essentials", "Esencial")}</strong><button type="button" onClick={() => navigateView("more")} style={{ border: 0, background: "transparent", color: theme.primary, fontSize: 8.5, fontWeight: 900, cursor: "pointer" }}>{L("TOUT VOIR", "SEE ALL", "VER TODO")} ›</button></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+          {quickModules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: 72, padding: 9, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "32px minmax(0,1fr)", gap: 7, alignItems: "center" }}><span style={{ transform: "scale(.82)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><span style={{ display: "flex", alignItems: "center", gap: 5 }}><strong style={{ color: theme.text, fontSize: 10.2, lineHeight: 1.15 }}>{module.name}</strong>{module.hint ? <span style={{ borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 7, fontWeight: 1000, padding: "2px 5px" }}>{module.hint}</span> : null}</span>{active.profile.adminSettings.compactDashboard ? null : <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.1, lineHeight: 1.25 }}>{module.subtitle}</span>}</span></button>)}
+        </div>
+      </div>
     </div>;
   };
 
-  const sectionHeader = (title: string, subtitle: string) => <div style={{ ...card, padding: 14 }}><div style={{ display: "flex", alignItems: "center", gap: 9 }}><button type="button" onClick={() => navigateView("home")} style={{ ...secondaryButton, minHeight: 36, padding: "7px 10px" }}>‹</button><div><div style={{ color: theme.primary, fontWeight: 1000, fontSize: 13 }}>{title}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5 }}>{subtitle}</div></div></div></div>;
+  const sectionHeader = (title: string, subtitle: string) => <div style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr)", gap: 9, alignItems: "center", padding: "2px 2px 4px" }}><button type="button" onClick={() => navigateView("home")} aria-label={L("Retour à l’accueil de l’organisation", "Back to organization home", "Volver al inicio de la organización")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.035)", color: theme.text, fontSize: 18, cursor: "pointer" }}>‹</button><div style={{ minWidth: 0 }}><div style={{ color: theme.text, fontWeight: 1000, fontSize: 14, lineHeight: 1.08 }}>{title}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 8.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div></div></div>;
+
+  const renderMore = () => {
+    if (!active) return null;
+    const moduleMap = new Map(modules.map((module) => [module.id, module]));
+    const groups: Array<{ title: string; ids: View[] }> = [
+      { title: L("Sport & vie du collectif", "Sport & club life", "Deporte y vida colectiva"), ids: ["members", "competitions", "stats", "communication"] },
+      { title: L("Gestion & services", "Management & services", "Gestión y servicios"), ids: ["federations", "billing", "sponsors", "venue"] },
+      { title: L("Organisation", "Organization", "Organización"), ids: ["profile", "admin", "offers"] },
+    ];
+    return <div style={{ display: "grid", gap: 13 }}>
+      {sectionHeader(L("PLUS", "MORE", "MÁS"), active.name)}
+      {groups.map((group) => {
+        const entries = group.ids.map((id) => moduleMap.get(id)).filter(Boolean) as typeof modules;
+        if (!entries.length) return null;
+        return <div key={group.title}>
+          <div style={{ margin: "0 3px 6px", color: theme.textSoft, fontSize: 8, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase" }}>{group.title}</div>
+          <div style={{ ...card, overflow: "hidden" }}>
+            {entries.map((module, index) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ width: "100%", minHeight: 56, border: 0, borderBottom: index < entries.length - 1 ? `1px solid ${theme.borderSoft}` : 0, background: "transparent", color: theme.text, padding: "8px 10px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}><span style={{ transform: "scale(.8)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 10.5 }}>{module.name}</strong><span style={{ display: "block", marginTop: 2, color: theme.textSoft, fontSize: 8.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{module.subtitle}</span></span><span style={{ color: theme.primary, fontSize: 17 }}>›</span></button>)}
+          </div>
+        </div>;
+      })}
+      {(active.role === "owner" || active.role === "admin") ? <button type="button" onClick={copyJoinCode} style={{ ...secondaryButton, width: "100%", minHeight: 42, display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{L("Code d’invitation", "Invitation code", "Código de invitación")}</span><strong style={{ color: theme.primary, letterSpacing: .8 }}>{active.joinCode || "—"}</strong></button> : null}
+    </div>;
+  };
 
   const renderProfile = () => {
     if (!active) return null;
@@ -695,6 +771,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   const renderSection = () => {
     if (!active) return renderEntry();
     if (view === "home") return renderHome();
+    if (view === "more") return renderMore();
     if (view === "profile") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("FICHE ORGANISME", "ORGANIZATION PROFILE", "FICHA DE LA ORGANIZACIÓN"), active.name)}<OrganizationProfilePanel organization={active} userId={userId} logoUrl={activeLogo} coverUrl={activeCover} onChanged={() => void load()} /></div>;
     if (view === "members") return <OrganizationMembersPanel organization={active} groups={localGroups} userId={userId} onChanged={() => void load()} />;
     if (view === "groups") return <OrganizationTeamsPanel organization={active} userId={userId} initialGroups={localGroups} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} />;
@@ -715,9 +792,9 @@ export default function OrganizationsPage({ go, params }: Props) {
   return (
     <div style={{ minHeight: "100vh", background: pageBg, color: theme.text, padding: "14px 12px 104px" }}>
       <div style={{ width: "100%", maxWidth: 680, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 48px", gap: 6, alignItems: "center", marginBottom: workspaceMode ? 8 : 12 }}>
           <div style={{ justifySelf: "start" }}>
-            <BackDot size={40} onClick={() => {
+            <BackDot size={38} onClick={() => {
               if (entryMode !== "none") { setEntryMode("none"); resetWizard(); return; }
               if (view !== "home") { navigateView("home"); return; }
               if (workspaceMode) {
@@ -730,11 +807,11 @@ export default function OrganizationsPage({ go, params }: Props) {
             }} />
           </div>
           <div style={{ minWidth: 0, textAlign: "center" }}>
-            <div style={{ color: theme.primary, fontSize: 15, lineHeight: 1.08, fontWeight: 1000, letterSpacing: .75, textAlign: "center" }}>{workspaceMode ? (active?.name || L("ESPACE ORGANISATION", "ORGANIZATION SPACE", "ESPACIO ORGANIZACIÓN")) : L("PARTENARIATS & ORGANISATIONS", "PARTNERSHIPS & ORGANIZATIONS", "ALIANZAS Y ORGANIZACIONES")}</div>
-            <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.25, textAlign: "center" }}>{workspaceMode ? L("Espace collectif connecté à MULTISPORTS SCORING", "Collective space connected to MULTISPORTS SCORING", "Espacio colectivo conectado a MULTISPORTS SCORING") : L("Club · Association · Entreprise · Bar · École · Événement", "Club · Association · Company · Venue · School · Event", "Club · Asociación · Empresa · Local · Escuela · Evento")}</div>
+            <div style={{ color: workspaceMode ? theme.textSoft : theme.primary, fontSize: workspaceMode ? 9 : 14, lineHeight: 1.08, fontWeight: 1000, letterSpacing: workspaceMode ? .8 : .65, textAlign: "center", textTransform: workspaceMode ? "uppercase" : "none" }}>{workspaceMode ? L("Espace organisation", "Organization space", "Espacio organización") : L("PARTENARIATS & ORGANISATIONS", "PARTNERSHIPS & ORGANIZATIONS", "ALIANZAS Y ORGANIZACIONES")}</div>
+            {!workspaceMode ? <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.2, lineHeight: 1.2, textAlign: "center" }}>{L("Club · Association · Entreprise · Bar · École · Événement", "Club · Association · Company · Venue · School · Event", "Club · Asociación · Empresa · Local · Escuela · Evento")}</div> : null}
           </div>
           <div style={{ justifySelf: "end" }}>
-            {!workspaceMode && organizations.length && entryMode !== "create" ? <button type="button" onClick={startCreate} style={{ ...primaryButton, minHeight: 36, padding: "7px 8px", fontSize: 8.5 }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : <span style={{ display: "block", width: 40 }} />}
+            {workspaceMode && active ? <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.035)", color: theme.text, fontSize: 16, cursor: "pointer" }}>•••</button> : (!workspaceMode && organizations.length && entryMode !== "create" ? <button type="button" onClick={startCreate} style={{ ...primaryButton, minHeight: 34, padding: "6px 8px", fontSize: 8 }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : <span style={{ display: "block", width: 36 }} />)}
           </div>
         </div>
 

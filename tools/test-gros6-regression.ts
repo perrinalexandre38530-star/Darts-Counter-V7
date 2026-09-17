@@ -88,6 +88,8 @@ assert.equal(
   let state = buildGros6InitialState(config);
   state = applyGros6AttackHit(state, makeGros6Segment("S", 6), config);
   state = applyGros6SelectionHit(state, makeGros6Miss(), config);
+  assert.equal(state.phase, "select");
+  state = applyGros6SelectionHit(state, makeGros6Miss(), config);
   assert.equal(state.phase, "attack");
   assert.equal(state.turnIndex, 1);
   assert.equal(state.players[0].lives, 4);
@@ -100,6 +102,8 @@ assert.equal(
   let state = buildGros6InitialState(config);
   state = applyGros6AttackHit(state, makeGros6Segment("S", 6), config);
   state = applyGros6SelectionHit(state, makeGros6Segment("S", 20), config);
+  assert.equal(state.phase, "select");
+  state = applyGros6SelectionHit(state, makeGros6Segment("S", 19), config);
   assert.equal(state.phase, "attack");
   assert.equal(state.turnIndex, 1);
   assert.equal(state.players[0].lives, 4);
@@ -133,3 +137,76 @@ assert.equal(gros6MatchesTarget(makeGros6Bull(false), makeGros6Bull(true), baseC
 assert.equal(gros6MatchesTarget(makeGros6Bull(true), makeGros6Bull(true), baseConfig()), true);
 
 console.log("✅ GROS 6 regression OK");
+
+// --- TEAMS V2 : alternance équitable, rotation interne et protection d'équipe ---
+function missVisit(state: any, config: any) {
+  let next = state;
+  for (let i = 0; i < 3; i += 1) next = applyGros6AttackHit(next, makeGros6Miss(), config);
+  return next;
+}
+
+{
+  const config: any = baseConfig({
+    participantMode: "teams",
+    teamLifeMode: "individual",
+    startingLives: 20,
+    teams: [
+      { id: "A", name: "Alpha", playerIds: ["A1", "A2", "A3"] },
+      { id: "B", name: "Bravo", playerIds: ["B1", "B2"] },
+    ],
+    players: [
+      player("A1", "A1", "A"), player("B1", "B1", "B"), player("A2", "A2", "A"), player("B2", "B2", "B"), player("A3", "A3", "A"),
+    ],
+  });
+  let state = buildGros6InitialState(config);
+  assert.equal(state.players[state.turnIndex].id, "A1");
+  state = missVisit(state, config); assert.equal(state.players[state.turnIndex].id, "B1");
+  state = missVisit(state, config); assert.equal(state.players[state.turnIndex].id, "A2");
+  state = missVisit(state, config); assert.equal(state.players[state.turnIndex].id, "B2");
+  state = missVisit(state, config); assert.equal(state.players[state.turnIndex].id, "A3");
+  state = missVisit(state, config); assert.equal(state.players[state.turnIndex].id, "B1");
+}
+
+{
+  const config: any = baseConfig({
+    participantMode: "teams",
+    teamLifeMode: "shared",
+    startingLives: 6,
+    teams: [
+      { id: "A", name: "Alpha", playerIds: ["A1", "A2"] },
+      { id: "B", name: "Bravo", playerIds: ["B1", "B2"] },
+    ],
+    players: [player("A1", "A1", "A"), player("B1", "B1", "B"), player("A2", "A2", "A"), player("B2", "B2", "B")],
+  });
+  let state = buildGros6InitialState(config);
+  state = missVisit(state, config);
+  assert.equal(state.teams.find((t: any) => t.id === "A")?.lives, 5);
+  assert.equal(state.players.find((p: any) => p.id === "A1")?.lives, 6);
+  assert.equal(state.players.find((p: any) => p.id === "A1")?.stats?.livesLost, 1);
+}
+
+{
+  const config: any = baseConfig({
+    participantMode: "teams",
+    teamLifeMode: "individual",
+    startingLives: 20,
+    teams: [
+      { id: "A", name: "Alpha", playerIds: ["A1", "A2"] },
+      { id: "B", name: "Bravo", playerIds: ["B1", "B2"] },
+    ],
+    players: [player("A1", "A1", "A"), player("B1", "B1", "B"), player("A2", "A2", "A"), player("B2", "B2", "B")],
+  });
+  let state = buildGros6InitialState(config);
+  state = applyGros6AttackHit(state, makeGros6Segment("S", 6, "big"), config);
+  state = applyGros6SelectionHit(state, makeGros6Segment("D", 20), config);
+  assert.equal(state.currentTargetOwnerId, "A1");
+  assert.equal(state.currentTargetOwnerTeamId, "A");
+  assert.equal(state.players[state.turnIndex].id, "B1");
+  state = missVisit(state, config);
+  assert.equal(state.players[state.turnIndex].id, "B2");
+  const lastAttack = state.history.filter((e: any) => e.phase === "attack").at(-1);
+  assert.equal(lastAttack.targetOwnerTeamId, "A");
+  assert.equal(lastAttack.lifeLost, true);
+}
+
+console.log("✅ GROS 6 TEAMS V2 regression OK");

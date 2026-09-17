@@ -17,20 +17,42 @@ function num(v: any, digits = 0) { const n = Number(v || 0); return Number.isFin
 function topEntries(map: any, n = 5) {
   return Object.entries(map || {}).map(([label, value]) => ({ label, value: Number(value || 0) })).filter((x) => x.value > 0).sort((a,b) => b.value-a.value).slice(0,n);
 }
-function Kpi({ label, value, sub }: any) {
+function Kpi({ label, value, sub, color = ACCENT }: any) {
   return <div style={{ border:`1px solid ${STROKE}`, background:PANEL, borderRadius:15, padding:11, minWidth:0 }}>
     <div style={{ color:"rgba(226,232,240,.68)", fontSize:9, fontWeight:900, letterSpacing:.7, textTransform:"uppercase" }}>{label}</div>
-    <div style={{ marginTop:4, color:ACCENT, fontSize:21, lineHeight:1, fontWeight:1000 }}>{value}</div>
+    <div style={{ marginTop:4, color, fontSize:21, lineHeight:1, fontWeight:1000 }}>{value}</div>
     {sub ? <div style={{ marginTop:5, color:"rgba(226,232,240,.58)", fontSize:9.5 }}>{sub}</div> : null}
   </div>;
 }
-function Bar({ label, value, total }: any) {
+function Bar({ label, value, total, color = ACCENT }: any) {
   const pc = total > 0 ? Math.max(0, Math.min(100, Number(value||0)*100/total)) : 0;
   return <div style={{ display:"grid", gridTemplateColumns:"92px 1fr 38px", alignItems:"center", gap:8 }}>
     <div style={{ color:"#e8e9f2", fontSize:10, fontWeight:850, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</div>
-    <div style={{ height:8, background:"rgba(255,255,255,.07)", borderRadius:999, overflow:"hidden" }}><div style={{ height:"100%", width:`${pc}%`, background:ACCENT, borderRadius:999 }} /></div>
+    <div style={{ height:8, background:"rgba(255,255,255,.07)", borderRadius:999, overflow:"hidden" }}><div style={{ height:"100%", width:`${pc}%`, background:color, borderRadius:999 }} /></div>
     <div style={{ color:"#fff", fontSize:10, fontWeight:950, textAlign:"right" }}>{value}</div>
   </div>;
+}
+function statsPlayers(rec: any) { return rec?.payload?.stats?.players || rec?.stats?.players || rec?.summary?.perPlayer || rec?.summary?.rankings || []; }
+function statsTeams(rec: any) { return rec?.payload?.stats?.teams || rec?.stats?.teams || rec?.summary?.perTeam || rec?.summary?.teamRankings || []; }
+
+function aggregate(rows: any[]) {
+  const out:any = {
+    games:rows.length,wins:0,targetsFaced:0,validations:0,attackDarts:0,selectionDarts:0,d1:0,d2:0,d3:0,livesLost:0,lastDartSaves:0,targetsImposed:0,
+    selectionAttempts:0,selectionSuccesses:0,selectionFailures:0,selectionLifeLosses:0,selectionD1:0,selectionD2:0,selectionD3Plus:0,imposedTargetKills:0,
+    bestValidationStreak:0,bestSurvivalStreak:0,distribution:{},specialZones:{},playedTargets:{},validatedTargets:{},imposedTargets:{}
+  };
+  const merge=(dst:any,src:any)=>Object.entries(src||{}).forEach(([k,v])=>dst[k]=Number(dst[k]||0)+Number(v||0));
+  for (const r of rows) {
+    if (r.isWinner) out.wins++;
+    for (const k of ["targetsFaced","validations","attackDarts","selectionDarts","d1","d2","d3","livesLost","lastDartSaves","targetsImposed","selectionAttempts","selectionSuccesses","selectionFailures","selectionLifeLosses","selectionD1","selectionD2","selectionD3Plus","imposedTargetKills"]) out[k]+=Number(r[k]||0);
+    out.bestValidationStreak = Math.max(out.bestValidationStreak, Number(r.bestValidationStreak||0));
+    out.bestSurvivalStreak = Math.max(out.bestSurvivalStreak, Number(r.bestSurvivalStreak||0));
+    merge(out.distribution,r.distribution); merge(out.specialZones,r.specialZones); merge(out.playedTargets,r.playedTargets); merge(out.validatedTargets,r.validatedTargets); merge(out.imposedTargets,r.imposedTargets);
+  }
+  out.validationRate = out.targetsFaced ? out.validations*100/out.targetsFaced : 0;
+  out.dartsPerTarget = out.targetsFaced ? out.attackDarts/out.targetsFaced : 0;
+  out.selectionEfficiency = out.selectionAttempts ? out.selectionSuccesses*100/out.selectionAttempts : 0;
+  return out;
 }
 
 export default function Gros6StatsTabFull({ records, playerId }: Props) {
@@ -38,72 +60,92 @@ export default function Gros6StatsTabFull({ records, playerId }: Props) {
     const m = modeOf(r); return m.includes("gros_6") || m.includes("gros 6") || m.includes("gros6") || m.includes("big_6") || m.includes("big 6") || m.includes("big6");
   }).sort((a:any,b:any)=>dateOf(b)-dateOf(a)), [records]);
 
-  const rows = React.useMemo(() => matches.map((rec:any) => {
-    const candidates = rec?.payload?.stats?.players || rec?.stats?.players || rec?.summary?.perPlayer || rec?.summary?.rankings || [];
+  const playerRows = React.useMemo(() => matches.map((rec:any) => {
+    const candidates = statsPlayers(rec);
     const row = Array.isArray(candidates) ? candidates.find((p:any) => String(p?.playerId ?? p?.id ?? "") === String(playerId ?? "")) : null;
     return row ? { ...row, rec } : null;
   }).filter(Boolean), [matches, playerId]);
 
-  const agg = React.useMemo(() => {
-    const out:any = { games:rows.length,wins:0,targetsFaced:0,validations:0,attackDarts:0,d1:0,d2:0,d3:0,livesLost:0,lastDartSaves:0,targetsImposed:0,selectionAttempts:0,selectionSuccesses:0,distribution:{},specialZones:{},playedTargets:{},validatedTargets:{},imposedTargets:{} };
-    const merge=(dst:any,src:any)=>Object.entries(src||{}).forEach(([k,v])=>dst[k]=Number(dst[k]||0)+Number(v||0));
-    for (const r of rows) {
-      if (r.isWinner) out.wins++;
-      for (const k of ["targetsFaced","validations","attackDarts","d1","d2","d3","livesLost","lastDartSaves","targetsImposed","selectionAttempts","selectionSuccesses"]) out[k]+=Number(r[k]||0);
-      merge(out.distribution,r.distribution); merge(out.specialZones,r.specialZones); merge(out.playedTargets,r.playedTargets); merge(out.validatedTargets,r.validatedTargets); merge(out.imposedTargets,r.imposedTargets);
+  const selectedTeamId = React.useMemo(() => {
+    const direct = playerRows.find((r:any) => r?.teamId)?.teamId;
+    if (direct) return String(direct);
+    for (const rec of matches) {
+      const players = statsPlayers(rec);
+      const p = Array.isArray(players) ? players.find((x:any) => String(x?.playerId ?? x?.id ?? "") === String(playerId ?? "")) : null;
+      if (p?.teamId) return String(p.teamId);
     }
-    out.validationRate = out.targetsFaced ? out.validations*100/out.targetsFaced : 0;
-    out.dartsPerTarget = out.targetsFaced ? out.attackDarts/out.targetsFaced : 0;
-    out.selectionEfficiency = out.selectionAttempts ? out.selectionSuccesses*100/out.selectionAttempts : 0;
-    return out;
-  }, [rows]);
+    return null;
+  }, [matches, playerRows, playerId]);
+
+  const teamRows = React.useMemo(() => selectedTeamId ? matches.map((rec:any) => {
+    const candidates = statsTeams(rec);
+    const row = Array.isArray(candidates) ? candidates.find((t:any) => String(t?.teamId ?? t?.id ?? "") === selectedTeamId) : null;
+    return row ? { ...row, rec } : null;
+  }).filter(Boolean) : [], [matches, selectedTeamId]);
+
+  const hasTeams = teamRows.length > 0;
+  const [scope, setScope] = React.useState<"player"|"team">("player");
+  React.useEffect(() => { if (!hasTeams && scope === "team") setScope("player"); }, [hasTeams, scope]);
+  const rows = scope === "team" && hasTeams ? teamRows : playerRows;
+  const agg = React.useMemo(() => aggregate(rows), [rows]);
+  const displayColor = scope === "team" ? (rows[0]?.color || ACCENT) : (rows[0]?.teamColor || ACCENT);
 
   if (!playerId) return <div style={{ padding:18, color:"#cdd1e5" }}>Sélectionne un joueur pour afficher ses statistiques Gros 6.</div>;
-  if (!rows.length) return <div style={{ padding:18, color:"#cdd1e5" }}>Aucune statistique Gros 6 détaillée pour ce joueur.</div>;
+  if (!playerRows.length && !teamRows.length) return <div style={{ padding:18, color:"#cdd1e5" }}>Aucune statistique Gros 6 détaillée pour cette sélection.</div>;
 
   const dartTotal = Object.values(agg.distribution).reduce((a:any,b:any)=>Number(a)+Number(b||0),0) as number;
   const distOrder = ["GROS","PETIT","DOUBLE","TRIPLE","BULL","DBULL","MISS","SPECIAL"];
+  const scopeName = scope === "team" ? (rows[0]?.name || "Équipe") : (rows[0]?.name || "Joueur");
   return <div style={{ display:"grid", gap:14, color:"#fff" }}>
-    <div style={{ border:`1px solid ${ACCENT}55`, background:"linear-gradient(180deg,rgba(255,157,37,.12),rgba(0,0,0,.18))", borderRadius:18, padding:14 }}>
-      <div style={{ color:ACCENT, fontSize:18, fontWeight:1000, letterSpacing:.8 }}>GROS 6 — STATISTIQUES</div>
-      <div style={{ color:"rgba(226,232,240,.70)", fontSize:10.5, marginTop:4 }}>{agg.games} partie(s) analysée(s)</div>
+    <div style={{ border:`1px solid ${displayColor}55`, background:"linear-gradient(180deg,rgba(255,157,37,.12),rgba(0,0,0,.18))", borderRadius:18, padding:14 }}>
+      <div style={{ display:"flex", gap:10, alignItems:"center", justifyContent:"space-between", flexWrap:"wrap" }}>
+        <div><div style={{ color:displayColor, fontSize:18, fontWeight:1000, letterSpacing:.8 }}>GROS 6 — STATISTIQUES</div><div style={{ color:"rgba(226,232,240,.70)", fontSize:10.5, marginTop:4 }}>{scopeName} • {agg.games} partie(s) analysée(s)</div></div>
+        {hasTeams ? <div style={{ display:"flex", gap:6, padding:4, borderRadius:999, background:"rgba(0,0,0,.28)", border:`1px solid ${STROKE}` }}>
+          <button type="button" onClick={()=>setScope("player")} style={{ border:0, borderRadius:999, padding:"7px 12px", background:scope==="player"?displayColor:"transparent", color:scope==="player"?"#151018":"#fff", fontWeight:1000, fontSize:10, cursor:"pointer" }}>JOUEUR</button>
+          <button type="button" onClick={()=>setScope("team")} style={{ border:0, borderRadius:999, padding:"7px 12px", background:scope==="team"?displayColor:"transparent", color:scope==="team"?"#151018":"#fff", fontWeight:1000, fontSize:10, cursor:"pointer" }}>ÉQUIPE</button>
+        </div> : null}
+      </div>
     </div>
 
     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(125px,1fr))", gap:8 }}>
-      <Kpi label="Victoires" value={agg.wins} />
-      <Kpi label="Validation" value={pct(agg.validationRate)} sub={`${agg.validations}/${agg.targetsFaced} cibles`} />
-      <Kpi label="Darts / cible" value={num(agg.dartsPerTarget,2)} />
-      <Kpi label="D1 / D2 / D3" value={`${agg.d1} / ${agg.d2} / ${agg.d3}`} />
-      <Kpi label="Vies perdues" value={agg.livesLost} />
-      <Kpi label="Sauvetages D3" value={agg.lastDartSaves} />
-      <Kpi label="Cibles imposées" value={agg.targetsImposed} />
-      <Kpi label="Efficacité sélection" value={pct(agg.selectionEfficiency)} sub={`${agg.selectionSuccesses}/${agg.selectionAttempts}`} />
+      <Kpi label="Victoires" value={agg.wins} color={displayColor} />
+      <Kpi label="Validation" value={pct(agg.validationRate)} sub={`${agg.validations}/${agg.targetsFaced} cibles`} color={displayColor} />
+      <Kpi label="Darts / cible" value={num(agg.dartsPerTarget,2)} color={displayColor} />
+      <Kpi label="D1 / D2 / D3" value={`${agg.d1} / ${agg.d2} / ${agg.d3}`} color={displayColor} />
+      <Kpi label="Vies perdues" value={agg.livesLost} color={displayColor} />
+      <Kpi label="Sauvetages D3" value={agg.lastDartSaves} color={displayColor} />
+      <Kpi label="Cibles imposées" value={agg.targetsImposed} color={displayColor} />
+      <Kpi label="Efficacité sélection" value={pct(agg.selectionEfficiency)} sub={`${agg.selectionSuccesses}/${agg.selectionAttempts}`} color={displayColor} />
+      <Kpi label="Darts de sélection" value={agg.selectionDarts} sub={`D1 ${agg.selectionD1} • D2 ${agg.selectionD2} • D3+ ${agg.selectionD3Plus}`} color={displayColor} />
+      <Kpi label="Échecs sélection" value={agg.selectionFailures} sub={`${agg.selectionLifeLosses} vie(s) perdue(s)`} color={displayColor} />
+      <Kpi label="Cibles piégées" value={agg.imposedTargetKills} sub="vies adverses perdues sur une cible imposée" color={displayColor} />
+      <Kpi label="Meilleure série" value={agg.bestValidationStreak} sub={`survie ${agg.bestSurvivalStreak} tour(s)`} color={displayColor} />
     </div>
 
     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))", gap:10 }}>
       <section style={{ border:`1px solid ${STROKE}`, background:PANEL, borderRadius:16, padding:12 }}>
-        <div style={{ color:ACCENT, fontWeight:950, fontSize:11, marginBottom:10 }}>RÉPARTITION DES TOUCHES</div>
-        <div style={{ display:"grid", gap:8 }}>{distOrder.map(k => <Bar key={k} label={k === "SPECIAL" ? "ZONES HORS CIBLE" : k} value={Number(agg.distribution[k]||0)} total={dartTotal} />)}</div>
+        <div style={{ color:displayColor, fontWeight:950, fontSize:11, marginBottom:10 }}>RÉPARTITION DES TOUCHES</div>
+        <div style={{ display:"grid", gap:8 }}>{distOrder.map(k => <Bar key={k} label={k === "SPECIAL" ? "ZONES HORS CIBLE" : k} value={Number(agg.distribution[k]||0)} total={dartTotal} color={displayColor} />)}</div>
       </section>
       <section style={{ border:`1px solid ${STROKE}`, background:PANEL, borderRadius:16, padding:12 }}>
-        <div style={{ color:ACCENT, fontWeight:950, fontSize:11, marginBottom:10 }}>ZONES SPÉCIALES TOUCHÉES</div>
-        {topEntries(agg.specialZones,8).length ? <div style={{ display:"grid", gap:8 }}>{topEntries(agg.specialZones,8).map(x=><Bar key={x.label} label={x.label} value={x.value} total={Math.max(1,Object.values(agg.specialZones).reduce((a:any,b:any)=>Number(a)+Number(b||0),0) as number)} />)}</div> : <div style={{ color:"rgba(226,232,240,.55)", fontSize:10 }}>Aucune zone spéciale enregistrée.</div>}
+        <div style={{ color:displayColor, fontWeight:950, fontSize:11, marginBottom:10 }}>ZONES SPÉCIALES TOUCHÉES</div>
+        {topEntries(agg.specialZones,8).length ? <div style={{ display:"grid", gap:8 }}>{topEntries(agg.specialZones,8).map(x=><Bar key={x.label} label={x.label} value={x.value} total={Math.max(1,Object.values(agg.specialZones).reduce((a:any,b:any)=>Number(a)+Number(b||0),0) as number)} color={displayColor} />)}</div> : <div style={{ color:"rgba(226,232,240,.55)", fontSize:10 }}>Aucune zone spéciale enregistrée.</div>}
       </section>
     </div>
 
     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>
       {[ ["CIBLES LES PLUS JOUÉES",agg.playedTargets], ["CIBLES LES PLUS VALIDÉES",agg.validatedTargets], ["CIBLES LES PLUS IMPOSÉES",agg.imposedTargets] ].map(([title,map]:any)=><section key={title} style={{ border:`1px solid ${STROKE}`, background:PANEL, borderRadius:16, padding:12 }}>
-        <div style={{ color:ACCENT, fontWeight:950, fontSize:10.5, marginBottom:9 }}>{title}</div>
-        <div style={{ display:"grid", gap:6 }}>{topEntries(map,6).map((x,i)=><div key={x.label} style={{ display:"flex", justifyContent:"space-between", gap:8, fontSize:10.5 }}><span style={{ color:"#e9eaf3" }}>{i+1}. {x.label}</span><b style={{ color:ACCENT }}>{x.value}</b></div>)}</div>
+        <div style={{ color:displayColor, fontWeight:950, fontSize:10.5, marginBottom:9 }}>{title}</div>
+        <div style={{ display:"grid", gap:6 }}>{topEntries(map,6).map((x,i)=><div key={x.label} style={{ display:"flex", justifyContent:"space-between", gap:8, fontSize:10.5 }}><span style={{ color:"#e9eaf3" }}>{i+1}. {x.label}</span><b style={{ color:displayColor }}>{x.value}</b></div>)}</div>
       </section>)}
     </div>
 
     <section style={{ border:`1px solid ${STROKE}`, background:PANEL, borderRadius:16, padding:12 }}>
-      <div style={{ color:ACCENT, fontWeight:950, fontSize:11, marginBottom:9 }}>DERNIÈRES PARTIES</div>
+      <div style={{ color:displayColor, fontWeight:950, fontSize:11, marginBottom:9 }}>DERNIÈRES PARTIES</div>
       <div style={{ display:"grid", gap:7 }}>{rows.slice(0,8).map((r:any,i:number)=><div key={`${r.rec?.id||i}`} style={{ display:"grid", gridTemplateColumns:"90px 1fr auto", gap:8, alignItems:"center", padding:"8px 9px", borderRadius:11, background:"rgba(0,0,0,.20)" }}>
         <span style={{ color:"rgba(226,232,240,.58)", fontSize:9.5 }}>{new Date(dateOf(r.rec)).toLocaleDateString("fr-FR")}</span>
         <span style={{ color:"#fff", fontSize:10.5 }}>{r.isWinner ? "Victoire" : "Partie"} • {r.validations || 0}/{r.targetsFaced || 0} validées</span>
-        <b style={{ color:ACCENT, fontSize:10 }}>{pct(r.validationRate)}</b>
+        <b style={{ color:displayColor, fontSize:10 }}>{pct(r.validationRate)}</b>
       </div>)}</div>
     </section>
   </div>;

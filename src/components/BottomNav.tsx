@@ -54,6 +54,7 @@ type TabKey =
   | "organization_venue_scan"
   | "organization_venue_board"
   | "organization_admin"
+  | "organization_more"
   | "cast_host"
   | "viewer_host"
   | "cast_room"
@@ -253,6 +254,15 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
         </svg>
       );
 
+    case "organization_more":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+          <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+        </svg>
+      );
+
     case "settings":
     case "organization_admin":
       return (
@@ -390,12 +400,9 @@ export default function BottomNav({
     ? [
         { k: "organization_home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="organization_home" /> },
         { k: "organization_calendar", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="organization_calendar" /> },
-        { k: "organization_members", label: tr("Membres", "Members", "Miembros"), icon: <Icon name="organization_members" /> },
         { k: "games", label: tr("Jouer", "Play", "Jugar"), icon: <Icon name="games" /> },
-        { k: "organization_competitions", label: tr("Compétitions", "Competitions", "Competiciones"), icon: <Icon name="organization_competitions" /> },
         { k: "organization_teams", label: tr("Équipes", "Teams", "Equipos"), icon: <Icon name="organization_teams" /> },
-        { k: "organization_stats", label: tr("Classements", "Rankings", "Clasificaciones"), icon: <Icon name="organization_stats" /> },
-        { k: "organization_admin", label: tr("Admin", "Admin", "Admin"), icon: <Icon name="organization_admin" /> },
+        { k: "organization_more", label: tr("Plus", "More", "Más"), icon: <Icon name="organization_more" /> },
       ]
     : sportLc === "esports"
     ? [

@@ -429,7 +429,7 @@ export default function Gros6Config({ store, go }: any) {
         const all = resolveStoredTeamMembers(team);
         const chosenIds = teamMemberSelections[id] || all.map((m: any) => String(m.id));
         const players = all.filter((m: any) => chosenIds.includes(String(m.id)));
-        if (players.length) teams.push({ id: String(team.id), name: team.name, logoDataUrl: team.logoDataUrl || team.logoUrl || null, players });
+        if (players.length) teams.push({ id: String(team.id), name: team.name, color: team.color || null, logoDataUrl: team.logoDataUrl || team.logoUrl || null, players });
       }
       for (const id of selectedBotTeamIds) {
         const team = botTeams.find((t: any) => String(t.id) === id);
@@ -437,7 +437,7 @@ export default function Gros6Config({ store, go }: any) {
         const all = team.members || [];
         const chosenIds = teamMemberSelections[id] || all.map((m: any) => String(m.id));
         const players = all.filter((m: any) => chosenIds.includes(String(m.id)));
-        if (players.length) teams.push({ id: String(team.id), name: team.name, logoDataUrl: team.logoDataUrl || null, isBotTeam: true, players });
+        if (players.length) teams.push({ id: String(team.id), name: team.name, color: team.color || null, logoDataUrl: team.logoDataUrl || null, isBotTeam: true, players });
       }
       return teams;
     }
@@ -487,6 +487,7 @@ export default function Gros6Config({ store, go }: any) {
           teamId: String(team.id),
           teamName: String(team.name),
           teamLogoDataUrl: team.logoDataUrl || team.logoUrl || null,
+          teamColor: team.color || null,
         });
       }
     }
@@ -494,6 +495,7 @@ export default function Gros6Config({ store, go }: any) {
       id: String(team.id),
       name: String(team.name),
       logoDataUrl: team.logoDataUrl || team.logoUrl || null,
+      color: team.color || null,
       isBotTeam: !!team.isBotTeam,
       playerIds: team.players.map((p: any) => String(p.id)),
     }));
@@ -682,7 +684,7 @@ export default function Gros6Config({ store, go }: any) {
             <PillButton label="Vies individuelles" active={teamLifeMode === "individual"} onClick={() => setTeamLifeMode("individual")} primary={primary} primarySoft={primarySoft} />
             <PillButton label="Réserve commune" active={teamLifeMode === "shared"} onClick={() => setTeamLifeMode("shared")} primary={primary} primarySoft={primarySoft} />
           </div>
-          <div style={{ marginTop: 7, color: "#8f94b5", fontSize: 10.5 }}>{teamLifeMode === "shared" ? `Chaque équipe partage ${startingLives} vies.` : `Chaque joueur possède ${startingLives} vies. L'équipe reste en jeu tant qu'un de ses membres survit.`}</div>
+          <div style={{ marginTop: 7, color: "#8f94b5", fontSize: 10.5 }}>{teamLifeMode === "shared" ? `Chaque équipe partage ${startingLives} vies.` : `Chaque joueur possède ${startingLives} vies. L'équipe reste en jeu tant qu'un de ses membres survit.`} Une équipe joue une fois par cycle, puis fait tourner ses membres : les effectifs différents restent équitables.</div>
         </div>
       ) : null}
     </Section>
@@ -846,8 +848,8 @@ export default function Gros6Config({ store, go }: any) {
 
               <div style={{ color: "#e2e4ef", fontSize: 13, lineHeight: 1.68 }}>
                 {lang === "fr"
-                  ? "Le Gros 6 / Big 6 est un mode à élimination. La partie démarre généralement sur GROS 6. Chaque joueur dispose de 3 fléchettes pour toucher exactement la cible courante. Si la cible n'est pas validée avant la 3e fléchette, le joueur — ou l'équipe si la réserve commune est activée — perd une vie. Le dernier joueur ou la dernière équipe encore en vie gagne la partie. Lorsqu'un joueur impose la nouvelle cible, il ne rejoue plus tant qu'un autre joueur n'a pas validé une autre cible."
-                  : "Big 6 is an elimination game. The match usually starts on BIG 6. Each player has 3 darts to hit the exact current target. If the target is not cleared within 3 darts, the player — or the team when shared lives are enabled — loses one life. The last surviving player or team wins the match. When a player sets the new target, that player is skipped until another player clears a different target."}
+                  ? "Le Gros 6 / Big 6 est un mode à élimination. La partie démarre généralement sur GROS 6. Chaque joueur dispose de 3 fléchettes pour toucher exactement la cible courante. Si la cible n'est pas validée avant la 3e fléchette, le joueur — ou l'équipe si la réserve commune est activée — perd une vie. Le dernier joueur ou la dernière équipe encore en vie gagne la partie. Lorsqu'un joueur impose la nouvelle cible, il est protégé ; en mode équipes, toute son équipe est protégée et saute ses tours jusqu'à ce qu'une autre équipe valide une nouvelle cible."
+                  : "Big 6 is an elimination game. The match usually starts on BIG 6. Each player has 3 darts to hit the exact current target. If the target is not cleared within 3 darts, the player — or the team when shared lives are enabled — loses one life. The last surviving player or team wins the match. When a player sets the new target, that player is protected; in Teams mode, the whole team is skipped until another team clears a different target."}
               </div>
 
               <div style={{ display: "grid", gap: 10 }}>

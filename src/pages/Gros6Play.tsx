@@ -104,6 +104,21 @@ function bump(map: Record<string, number>, key: any) {
 
 function buildGros6Stats(game: any) {
   const history = Array.isArray(game?.history) ? game.history : [];
+  const mergeMap = (dst: Record<string, number>, src: Record<string, number>) => Object.entries(src || {}).forEach(([k, v]) => { dst[k] = Number(dst[k] || 0) + Number(v || 0); });
+  const computeStreaks = (attacks: any[]) => {
+    let bestValidationStreak = 0;
+    let validationStreak = 0;
+    let bestSurvivalStreak = 0;
+    let survivalStreak = 0;
+    for (const event of attacks) {
+      if (event?.success) { validationStreak += 1; bestValidationStreak = Math.max(bestValidationStreak, validationStreak); }
+      else validationStreak = 0;
+      if (event?.lifeLost) survivalStreak = 0;
+      else { survivalStreak += 1; bestSurvivalStreak = Math.max(bestSurvivalStreak, survivalStreak); }
+    }
+    return { bestValidationStreak, bestSurvivalStreak };
+  };
+
   const rows = (game?.players || []).map((player: any) => {
     const pid = String(player?.id || "");
     const events = history.filter((e: any) => String(e?.playerId || "") === pid);
@@ -116,6 +131,7 @@ function buildGros6Stats(game: any) {
     const validatedTargets: Record<string, number> = {};
     const imposedTargets: Record<string, number> = {};
     let attackDarts = 0;
+    let selectionDarts = 0;
     for (const event of events) {
       const darts = Array.isArray(event?.dartTargets) ? event.dartTargets : [];
       for (const dart of darts) {
@@ -130,34 +146,85 @@ function buildGros6Stats(game: any) {
       bump(playedTargets, event?.target || event?.targetData?.label);
       if (event?.success) bump(validatedTargets, event?.target || event?.targetData?.label);
     }
-    for (const event of selections) if (event?.selectionResolved) bump(imposedTargets, event?.nextTarget || event?.nextTargetData?.label);
-    const d1 = validated.filter((e: any) => (e?.dartTargets || []).length === 1).length;
-    const d2 = validated.filter((e: any) => (e?.dartTargets || []).length === 2).length;
-    const d3 = validated.filter((e: any) => (e?.dartTargets || []).length >= 3).length;
+    for (const event of selections) {
+      selectionDarts += Array.isArray(event?.dartTargets) ? event.dartTargets.length : 0;
+      if (event?.selectionResolved) bump(imposedTargets, event?.nextTarget || event?.nextTargetData?.label);
+    }
+    const d1 = validated.filter((e: any) => Number(e?.validationDart || (e?.dartTargets || []).length) === 1).length;
+    const d2 = validated.filter((e: any) => Number(e?.validationDart || (e?.dartTargets || []).length) === 2).length;
+    const d3 = validated.filter((e: any) => Number(e?.validationDart || (e?.dartTargets || []).length) >= 3).length;
     const selectionAttempts = selections.length;
     const selectionSuccesses = selections.filter((e: any) => !!e?.selectionResolved).length;
+    const selectionFailures = selections.filter((e: any) => !!e?.missSelection || e?.success === false).length;
+    const selectionD1 = selections.filter((e: any) => !!e?.selectionResolved && Number(e?.selectionDart || (e?.dartTargets || []).length) === 1).length;
+    const selectionD2 = selections.filter((e: any) => !!e?.selectionResolved && Number(e?.selectionDart || (e?.dartTargets || []).length) === 2).length;
+    const selectionD3Plus = selections.filter((e: any) => !!e?.selectionResolved && Number(e?.selectionDart || (e?.dartTargets || []).length) >= 3).length;
+    const selectionLifeLosses = selections.filter((e: any) => !!e?.lifeLost).length;
+    const imposedTargetKills = attacks.filter((e: any) => !!e?.lifeLost && String(e?.targetOwnerId || "") === pid).length;
+    const imposedTeamTargetKills = attacks.filter((e: any) => !!e?.lifeLost && player?.teamId && String(e?.targetOwnerTeamId || "") === String(player.teamId)).length;
     const isWinner = game?.winnerType === "team"
       ? String(player?.teamId || "") === String(game?.winnerId || "")
       : String(player?.id || "") === String(game?.winnerId || "");
+    const team = game?.participantMode === "teams" ? (game?.teams || []).find((t: any) => String(t?.id || "") === String(player?.teamId || "")) : null;
+    const streaks = computeStreaks(attacks);
     return {
-      id: player?.id, playerId: player?.id, name: player?.name, teamId: player?.teamId || null, teamName: player?.teamName || null, isBot: !!player?.isBot, isWinner,
-      livesRemaining: Number(player?.lives || 0), eliminated: !!player?.eliminated,
+      id: player?.id, playerId: player?.id, name: player?.name, teamId: player?.teamId || null, teamName: player?.teamName || team?.name || null, teamColor: player?.teamColor || team?.color || null, isBot: !!player?.isBot, isWinner,
+      livesRemaining: game?.participantMode === "teams" && game?.teamLifeMode === "shared" ? Number(team?.lives || 0) : Number(player?.lives || 0), eliminated: !!player?.eliminated,
       targetsFaced: attacks.length, validations: validated.length, validationRate: attacks.length ? (validated.length / attacks.length) * 100 : 0,
-      attackDarts, dartsPerTarget: attacks.length ? attackDarts / attacks.length : 0,
+      attackDarts, selectionDarts, dartsPerTarget: attacks.length ? attackDarts / attacks.length : 0,
       d1, d2, d3,
-      livesLost: Number(player?.stats?.livesLost || events.filter((e: any) => !!e?.lifeLost).length),
+      livesLost: Number(player?.stats?.livesLost || attacks.filter((e: any) => !!e?.lifeLost).length + selectionLifeLosses),
       lastDartSaves: Number(player?.stats?.lastDartSaves || d3),
       targetsImposed: Number(player?.stats?.targetsImposed || selectionSuccesses),
-      selectionAttempts, selectionSuccesses, selectionEfficiency: selectionAttempts ? (selectionSuccesses / selectionAttempts) * 100 : 0,
-      dartsThrown: Number(player?.stats?.dartsThrown || 0), distribution, specialZones, playedTargets, validatedTargets, imposedTargets,
+      selectionAttempts, selectionSuccesses, selectionFailures, selectionLifeLosses, selectionD1, selectionD2, selectionD3Plus,
+      selectionEfficiency: selectionAttempts ? (selectionSuccesses / selectionAttempts) * 100 : 0,
+      imposedTargetKills, imposedTeamTargetKills,
+      bestValidationStreak: streaks.bestValidationStreak, bestSurvivalStreak: streaks.bestSurvivalStreak,
+      dartsThrown: Number(player?.stats?.dartsThrown || attackDarts + selectionDarts), distribution, specialZones, playedTargets, validatedTargets, imposedTargets,
     };
   });
+
+  const teamRows = game?.participantMode === "teams" ? (game?.teams || []).map((team: any) => {
+    const members = rows.filter((row: any) => String(row?.teamId || "") === String(team?.id || ""));
+    const sum = (key: string) => members.reduce((acc: number, row: any) => acc + Number(row?.[key] || 0), 0);
+    const distribution: Record<string, number> = {};
+    const specialZones: Record<string, number> = {};
+    const playedTargets: Record<string, number> = {};
+    const validatedTargets: Record<string, number> = {};
+    const imposedTargets: Record<string, number> = {};
+    for (const row of members) {
+      mergeMap(distribution, row.distribution); mergeMap(specialZones, row.specialZones); mergeMap(playedTargets, row.playedTargets); mergeMap(validatedTargets, row.validatedTargets); mergeMap(imposedTargets, row.imposedTargets);
+    }
+    const targetsFaced = sum("targetsFaced");
+    const validations = sum("validations");
+    const selectionAttempts = sum("selectionAttempts");
+    const selectionSuccesses = sum("selectionSuccesses");
+    return {
+      id: team?.id, teamId: team?.id, name: team?.name, color: team?.color || null, logoDataUrl: team?.logoDataUrl || team?.avatarUrl || null,
+      memberIds: members.map((m: any) => m.playerId), memberNames: members.map((m: any) => m.name), membersCount: members.length,
+      isWinner: game?.winnerType === "team" && String(game?.winnerId || "") === String(team?.id || ""), eliminated: !!team?.eliminated,
+      livesRemaining: game?.teamLifeMode === "shared" ? Number(team?.lives || 0) : members.reduce((acc: number, row: any) => acc + Number(row?.livesRemaining || 0), 0),
+      targetsFaced, validations, validationRate: targetsFaced ? validations * 100 / targetsFaced : 0,
+      attackDarts: sum("attackDarts"), selectionDarts: sum("selectionDarts"), dartsThrown: sum("dartsThrown"), dartsPerTarget: targetsFaced ? sum("attackDarts") / targetsFaced : 0,
+      d1: sum("d1"), d2: sum("d2"), d3: sum("d3"), livesLost: sum("livesLost"), lastDartSaves: sum("lastDartSaves"), targetsImposed: sum("targetsImposed"),
+      selectionAttempts, selectionSuccesses, selectionFailures: sum("selectionFailures"), selectionLifeLosses: sum("selectionLifeLosses"), selectionD1: sum("selectionD1"), selectionD2: sum("selectionD2"), selectionD3Plus: sum("selectionD3Plus"),
+      selectionEfficiency: selectionAttempts ? selectionSuccesses * 100 / selectionAttempts : 0,
+      imposedTargetKills: history.filter((e: any) => !!e?.lifeLost && String(e?.targetOwnerTeamId || "") === String(team?.id || "")).length,
+      bestValidationStreak: Math.max(0, ...members.map((m: any) => Number(m.bestValidationStreak || 0))),
+      bestSurvivalStreak: Math.max(0, ...members.map((m: any) => Number(m.bestSurvivalStreak || 0))),
+      distribution, specialZones, playedTargets, validatedTargets, imposedTargets,
+    };
+  }) : [];
+
   const total = (key: string) => rows.reduce((sum: number, row: any) => sum + Number(row?.[key] || 0), 0);
+  const attackTurns = history.filter((event: any) => event?.phase === "attack").length;
   return {
     players: rows,
+    teams: teamRows,
     global: {
-      turns: history.length, targetsFaced: total("targetsFaced"), validations: total("validations"), attackDarts: total("attackDarts"),
+      turns: attackTurns, targetsFaced: total("targetsFaced"), validations: total("validations"), attackDarts: total("attackDarts"), selectionDarts: total("selectionDarts"),
       livesLost: total("livesLost"), lastDartSaves: total("lastDartSaves"), targetsImposed: total("targetsImposed"), dartsThrown: total("dartsThrown"),
+      selectionAttempts: total("selectionAttempts"), selectionSuccesses: total("selectionSuccesses"), selectionFailures: total("selectionFailures"), imposedTargetKills: history.filter((e: any) => !!e?.lifeLost && (!!e?.targetOwnerId || !!e?.targetOwnerTeamId)).length,
     },
   };
 }
@@ -486,7 +553,7 @@ function ModalShell({ onClose, title, subtitle, accent, children }: any) {
   );
 }
 
-function PlayerStatsModal({ player, onClose, accent, lang, teamName }: any) {
+function PlayerStatsModal({ player, onClose, accent, lang, teamName, livesRemaining }: any) {
   if (!player) return null;
   const L = (fr: string, en: string) => lang === "fr" ? fr : en;
   const stats = [
@@ -499,7 +566,7 @@ function PlayerStatsModal({ player, onClose, accent, lang, teamName }: any) {
     ["Bull / DBull", player.stats?.bullsCleared || 0, GOOD],
     [L("Doubles validés", "Doubles cleared"), player.stats?.doublesCleared || 0, GOOD],
     [L("Triples validés", "Trebles cleared"), player.stats?.triplesCleared || 0, PINK],
-    [L("Vies restantes", "Lives left"), player.lives || 0, BAD],
+    [L("Vies restantes", "Lives left"), Number(livesRemaining ?? player.lives ?? 0), BAD],
   ];
   return (
     <ModalShell onClose={onClose} title={L("STATISTIQUES GROS 6", "BIG 6 STATISTICS")} subtitle={`${player.name}${teamName ? ` · ${teamName}` : ""}`} accent={accent}>
@@ -517,38 +584,57 @@ function PlayerStatsModal({ player, onClose, accent, lang, teamName }: any) {
 
 function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
   const L = (fr: string, en: string) => lang === "fr" ? fr : en;
-  return (
-    <ModalShell onClose={onClose} title={L("JOUEURS", "PLAYERS")} subtitle={L("Ordre de jeu et récapitulatif", "Turn order and overview")} accent={accent}>
-      <div style={{ display: "grid", gap: 8 }}>
-        {game.players.map((p: any, idx: number) => {
-          const active = idx === activeIndex && game.phase !== "finished";
-          const alive = gros6IsPlayerActive(game, p);
-          const team = game.participantMode === "teams" ? game.teams.find((t: any) => String(t.id) === String(p.teamId)) : null;
-          // Toujours afficher la DERNIÈRE VOLÉE TERMINÉE.
-          // La volée en cours reste exclusivement dans le bandeau VOLÉE EN COURS
-          // et ne remplace l'historique qu'une fois le tour réellement passé.
-          const lastDarts = lastCompletedTurnDarts(game, p.id);
-          const lives = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(team?.lives || 0) : Number(p.lives || 0);
-          return (
-            <div key={p.id} style={{ ...panelStyle(), padding: "8px 10px", opacity: alive ? 1 : .55, border: `1px solid ${active ? `${accent}66` : "rgba(255,255,255,.08)"}`, boxShadow: active ? `0 0 16px ${accent}22` : "none", display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 10 }}>
-              <ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={40} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", gap: 7, alignItems: "center", minWidth: 0 }}>
-                  <span style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
-                  {p.isBot ? <span style={{ fontSize: 10, color: SOFT }}>🤖 {p.botLevel || ""}</span> : null}
-                </div>
-                {team ? <div style={{ marginTop: 2, color: accent, fontSize: 9, fontWeight: 900 }}>{team.name}</div> : null}
-                <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-                  {lastDarts.length ? lastDarts.slice(0, 6).map((dart: any, i: number) => <HistoryDartChip key={i} value={dart} lang={lang} accent={accent} size={26} />) : <span style={{ color: SOFT, fontSize: 9 }}>{L("Aucune volée", "No visit yet")}</span>}
-                </div>
-              </div>
-              <div style={{ minWidth: 58, borderRadius: 14, padding: "8px 10px", background: alive ? "rgba(0,0,0,.42)" : "rgba(120,12,28,.22)", border: `1px solid ${alive ? "rgba(255,255,255,.08)" : "rgba(255,80,100,.35)"}`, color: alive ? "#fff" : BAD, textAlign: "center", fontWeight: 1000 }}>
-                {alive ? `❤️ ${lives}` : L("OUT", "OUT")}
-              </div>
-            </div>
-          );
-        })}
+  const renderPlayer = (p: any, idx: number, team: any = null) => {
+    const active = idx === activeIndex && game.phase !== "finished";
+    const alive = gros6IsPlayerActive(game, p);
+    const protectedOwner = gros6IsProtectedTargetOwner(game, p);
+    const lastDarts = lastCompletedTurnDarts(game, p.id);
+    const lives = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(team?.lives || 0) : Number(p.lives || 0);
+    const teamColor = team?.color || accent;
+    return (
+      <div key={p.id} style={{ padding: "8px 9px", opacity: alive ? 1 : .5, borderRadius: 13, border: `1px solid ${active ? `${teamColor}88` : protectedOwner ? "rgba(255,190,92,.48)" : "rgba(255,255,255,.07)"}`, background: active ? `${teamColor}13` : "rgba(0,0,0,.22)", boxShadow: active ? `0 0 15px ${teamColor}22` : "none", display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 9 }}>
+        <div style={{ borderRadius: 999, padding: 2, boxShadow: active ? `0 0 0 2px ${teamColor}` : protectedOwner ? "0 0 0 2px rgba(255,190,92,.92)" : "0 0 0 1px rgba(255,255,255,.15)" }}><ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={38} /></div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 7, alignItems: "center", minWidth: 0 }}>
+            <span style={{ fontWeight: 1000, color: active ? teamColor : "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+            {p.isBot ? <span style={{ fontSize: 9.5, color: SOFT }}>🤖 {p.botLevel || ""}</span> : null}
+            {protectedOwner ? <span style={{ fontSize: 8.5, fontWeight: 1000, color: "#ffcf78" }}>{L("PROTÉGÉ", "PROTECTED")}</span> : null}
+          </div>
+          <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+            {lastDarts.length ? lastDarts.slice(0, 6).map((dart: any, i: number) => <HistoryDartChip key={i} value={dart} lang={lang} accent={teamColor} size={25} />) : <span style={{ color: SOFT, fontSize: 9 }}>{L("Aucune volée", "No visit yet")}</span>}
+          </div>
+        </div>
+        <div style={{ minWidth: 58, borderRadius: 13, padding: "7px 9px", background: alive ? "rgba(0,0,0,.42)" : "rgba(120,12,28,.22)", border: `1px solid ${alive ? `${teamColor}33` : "rgba(255,80,100,.35)"}`, color: alive ? "#fff" : BAD, textAlign: "center", fontWeight: 1000 }}>
+          {alive ? `❤️ ${lives}` : L("OUT", "OUT")}
+        </div>
       </div>
+    );
+  };
+
+  return (
+    <ModalShell onClose={onClose} title={game.participantMode === "teams" ? L("ÉQUIPES", "TEAMS") : L("JOUEURS", "PLAYERS")} subtitle={game.participantMode === "teams" ? L("Alternance des équipes et rotation interne des joueurs", "Team alternation and internal player rotation") : L("Ordre de jeu et récapitulatif", "Turn order and overview")} accent={accent}>
+      {game.participantMode === "teams" ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          {(game.teams || []).map((team: any) => {
+            const color = team?.color || accent;
+            const logo = team?.logoDataUrl || team?.avatarUrl || null;
+            const members = (game.players || []).map((p: any, idx: number) => ({ p, idx })).filter(({ p }: any) => String(p?.teamId || "") === String(team?.id || ""));
+            const teamAlive = members.some(({ p }: any) => gros6IsPlayerActive(game, p));
+            const protectedTeam = members.some(({ p }: any) => gros6IsProtectedTargetOwner(game, p));
+            const teamLives = game.teamLifeMode === "shared" ? Number(team?.lives || 0) : members.reduce((sum: number, { p }: any) => sum + Math.max(0, Number(p?.lives || 0)), 0);
+            return (
+              <section key={team.id} style={{ borderRadius: 16, border: `1px solid ${protectedTeam ? "rgba(255,190,92,.55)" : `${color}55`}`, background: "linear-gradient(180deg,rgba(28,28,32,.60),rgba(11,12,16,.72))", padding: 8, opacity: teamAlive ? 1 : .55 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 9, marginBottom: 7 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 12, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${color}66`, background: `${color}12` }}>{logo ? <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color, fontWeight: 1000 }}>{String(team?.name || "E").slice(0,1)}</span>}</div>
+                  <div style={{ minWidth: 0 }}><div style={{ color, fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team?.name || L("Équipe", "Team")}</div><div style={{ color: SOFT, fontSize: 9.5, marginTop: 2 }}>{members.length} {L("joueur(s)", "player(s)")} • {game.teamLifeMode === "shared" ? L("réserve commune", "shared lives") : L("vies individuelles", "individual lives")}</div></div>
+                  <div style={{ color: teamAlive ? BAD : SOFT, fontWeight: 1000, fontSize: 12 }}>{teamAlive ? `❤️ ${teamLives}` : L("OUT", "OUT")}</div>
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>{members.map(({ p, idx }: any) => renderPlayer(p, idx, team))}</div>
+              </section>
+            );
+          })}
+        </div>
+      ) : <div style={{ display: "grid", gap: 8 }}>{game.players.map((p: any, idx: number) => renderPlayer(p, idx, null))}</div>}
     </ModalShell>
   );
 }
@@ -684,6 +770,8 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
   const lifeValue = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(activeTeam?.lives || 0) : Number(activePlayer?.lives || 0);
   const headerTicker = lang === "fr" ? tickerGros6 : tickerBig6;
   const statsPlayerTeam = activeTeam?.name || null;
+  const teamAccent = activeTeam?.color || accent;
+  const activeTeamLogo = activeTeam?.logoDataUrl || activeTeam?.avatarUrl || activePlayer?.teamLogoDataUrl || null;
 
   React.useEffect(() => { setMultiplier(1); setSpecialMode(null); }, [game.turnIndex, game.phase]);
 
@@ -842,8 +930,8 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
         createdAt: config?.createdAt || finishedAt, finishedAt, updatedAt: finishedAt,
         winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType,
         participantMode: game.participantMode, teams: game.teams, players: game.players, config, history: game.history, stats,
-        summary: { kind: "gros_6", mode: "gros_6", finished: true, winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType, participantMode: game.participantMode, perPlayer: stats.players, rankings: stats.players, ...stats.global },
-        payload: { kind: "gros_6", mode: "gros_6", status: "finished", config, state: finalState, finalState, history: game.history, players: game.players, teams: game.teams, stats, summary: { winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType, perPlayer: stats.players, rankings: stats.players, ...stats.global } },
+        summary: { kind: "gros_6", mode: "gros_6", finished: true, winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType, participantMode: game.participantMode, perPlayer: stats.players, perTeam: stats.teams, teamRankings: stats.teams, rankings: stats.players, ...stats.global },
+        payload: { kind: "gros_6", mode: "gros_6", status: "finished", config, state: finalState, finalState, history: game.history, players: game.players, teams: game.teams, stats, summary: { winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType, perPlayer: stats.players, perTeam: stats.teams, teamRankings: stats.teams, rankings: stats.players, ...stats.global } },
       });
     } catch {}
   }, [game.winnerId, game.winnerName, game.winnerType, game.participantMode, game.teams, game.players, game.history, config, onFinish]);
@@ -945,35 +1033,31 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
         </div>
       </div>
 
-      {/* BLOC JOUEUR ACTIF */}
-      <section style={{ ...panelStyle(), flex: `0 0 ${activeHeight}px`, padding: 0, overflow: "hidden", borderColor: `${accent}88`, boxShadow: `0 0 24px ${accent}20` }}>
+      {/* BLOC JOUEUR / ÉQUIPE ACTIF — identité Teams inspirée de X01 */}
+      <section style={{ ...panelStyle(), flex: `0 0 ${activeHeight}px`, padding: 0, overflow: "hidden", borderColor: `${teamAccent}88`, boxShadow: `0 0 24px ${teamAccent}20` }}>
         <div style={{ position: "relative", height: "100%", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(124px,142px)", gap: 6, alignItems: "stretch", padding: compact ? "7px 8px" : "8px 10px" }}>
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.40), rgba(0,0,0,.14) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.26))" }} />
-          <div style={{ position: "absolute", left: -12, top: -4, bottom: -4, width: "31%", minWidth: 90, overflow: "hidden", opacity: .22, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: -10, top: 10, transform: "scale(1.42)", transformOrigin: "left top", filter: "saturate(.9) blur(.15px)" }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={84} /></div>
-          </div>
+          {activeTeamLogo ? <img src={activeTeamLogo} alt="" draggable={false} style={{ position: "absolute", inset: "-12% auto -12% -2%", width: "43%", height: "124%", objectFit: "contain", opacity: .14, filter: "saturate(.85)", pointerEvents: "none" }} /> : null}
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, ${teamAccent}12, rgba(0,0,0,.16) 35%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.28))` }} />
+          {!activeTeamLogo ? <div style={{ position: "absolute", left: -12, top: -4, bottom: -4, width: "31%", minWidth: 90, overflow: "hidden", opacity: .20, pointerEvents: "none" }}><div style={{ position: "absolute", left: -10, top: 10, transform: "scale(1.42)", transformOrigin: "left top", filter: "saturate(.9) blur(.15px)" }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={84} /></div></div> : null}
 
           <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: compact ? "4px 8px 4px 66px" : "5px 12px 4px 76px" }}>
-            <div style={{ minHeight: compact ? 48 : 66, display: "grid", placeItems: "center", width: "100%" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact={false} /></div>
-            <div style={{ marginTop: 3, width: "100%", display: "grid", placeItems: "center" }}>
-              <CricketVisitDarts used={topDartsCount} total={phaseSelect ? Math.max(1, Number(game.selectionAllowed || 1)) : 3} accent={accent} />
-            </div>
+            {activeTeam ? <div style={{ marginBottom: 2, maxWidth: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: teamAccent, fontSize: compact ? 8.5 : 9.5, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeTeamLogo ? <img src={activeTeamLogo} alt="" style={{ width: 20, height: 20, borderRadius: 7, objectFit: "cover", border: `1px solid ${teamAccent}66` }} /> : null}<span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{activeTeam.name}</span>{game.teamLifeMode === "shared" ? <span style={{ color: BAD }}>❤️ {Number(activeTeam.lives || 0)}</span> : null}</div> : null}
+            <div style={{ minHeight: compact ? 48 : 62, display: "grid", placeItems: "center", width: "100%" }}><TargetVisual target={activeTarget} lang={lang} accent={teamAccent} compact={false} /></div>
+            <div style={{ marginTop: 3, width: "100%", display: "grid", placeItems: "center" }}><CricketVisitDarts used={topDartsCount} total={phaseSelect ? Math.max(1, Number(game.selectionAllowed || 1)) : 3} accent={teamAccent} /></div>
           </div>
 
-          <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#080b12", padding: 0, color: "#fff", boxShadow: `0 0 0 1px ${accent}33 inset, 0 0 18px ${accent}18` }}>
-            <img src={activePanelTicker as any} alt="Active player panel" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .92 }} />
-            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(8,10,16,.16), rgba(8,10,16,.48) 60%, rgba(8,10,16,.72))" }} />
-            <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "8px 6px 7px" }}>
-              <div style={{ alignSelf: "stretch", display: "flex", justifyContent: "center" }}>
-                <div style={{ borderRadius: 999, padding: 2, background: "rgba(0,0,0,.28)", boxShadow: `0 0 0 1px ${accent}44, 0 0 16px rgba(0,0,0,.24)` }}>
-                  <ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 42 : 48} loading="eager" />
-                </div>
-              </div>
-              <div style={{ width: "100%", color: accent, fontSize: compact ? 9.5 : 10.5, fontWeight: 1000, textAlign: "center", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>{activePlayer?.name || "—"}</div>
+          <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#080b12", padding: 0, color: "#fff", boxShadow: `0 0 0 1px ${teamAccent}44 inset, 0 0 18px ${teamAccent}20` }}>
+            <img src={activePanelTicker as any} alt="Active player panel" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .88 }} />
+            {activeTeamLogo ? <img src={activeTeamLogo} alt="" draggable={false} style={{ position: "absolute", width: "76%", height: "76%", left: "12%", top: "7%", objectFit: "contain", opacity: .10 }} /> : null}
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(8,10,16,.12), rgba(8,10,16,.48) 58%, rgba(8,10,16,.76))" }} />
+            <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "7px 6px 7px" }}>
+              {activeTeam ? <div style={{ width: "100%", color: teamAccent, fontSize: 7.6, fontWeight: 1000, textAlign: "center", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeTeam.name}</div> : <span />}
+              <div style={{ borderRadius: 999, padding: 2, background: "rgba(0,0,0,.28)", boxShadow: `0 0 0 1px ${teamAccent}66, 0 0 16px ${teamAccent}22` }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 40 : 46} loading="eager" /></div>
+              <div style={{ width: "100%", color: teamAccent, fontSize: compact ? 9.2 : 10.2, fontWeight: 1000, textAlign: "center", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>{activePlayer?.name || "—"}</div>
               <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4 }}>
-                <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>{L("VIES", "LIVES")}</div><div style={{ color: BAD, fontSize: 14, fontWeight: 1000 }}>❤️ {lifeValue}</div></div>
-                <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>DARTS</div><div style={{ color: accent, fontSize: 14, fontWeight: 1000 }}>{dartsLeft}</div></div>
-                <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>{L("TOUR", "TURN")}</div><div style={{ color: "#fff", fontSize: 14, fontWeight: 1000 }}>#{game.turnNo}</div></div>
+                <div style={{ textAlign: "center", padding: "4px 2px", borderRadius: 10, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7, fontWeight: 1000 }}>{game.participantMode === "teams" && game.teamLifeMode === "shared" ? L("ÉQUIPE", "TEAM") : L("VIES", "LIVES")}</div><div style={{ color: BAD, fontSize: 13.5, fontWeight: 1000 }}>❤️ {lifeValue}</div></div>
+                <div style={{ textAlign: "center", padding: "4px 2px", borderRadius: 10, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7, fontWeight: 1000 }}>DARTS</div><div style={{ color: teamAccent, fontSize: 13.5, fontWeight: 1000 }}>{dartsLeft}</div></div>
+                <div style={{ textAlign: "center", padding: "4px 2px", borderRadius: 10, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7, fontWeight: 1000 }}>{L("TOUR", "TURN")}</div><div style={{ color: "#fff", fontSize: 13.5, fontWeight: 1000 }}>#{game.turnNo}</div></div>
               </div>
             </div>
           </div>
@@ -1000,7 +1084,17 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.16), rgba(0,0,0,.04) 40%, rgba(0,0,0,.42))" }} />
         <div style={{ position: "absolute", inset: 0, padding: compact ? "6px 10px" : "8px 12px" }}>
           <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: compact ? 6 : 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, maxWidth: "calc(100% - 56px)", overflowX: "auto", scrollbarWidth: "none", padding: compact ? "4px 0 5px" : "5px 0 6px" }}>
-            {game.players.map((p: any, idx: number) => {
+            {game.participantMode === "teams" ? (game.teams || []).map((team: any) => {
+              const members = (game.players || []).filter((p: any) => String(p?.teamId || "") === String(team?.id || ""));
+              const isActiveTeam = String(activePlayer?.teamId || "") === String(team?.id || "") && !finished;
+              const protectedTeam = members.some((p: any) => gros6IsProtectedTargetOwner(game, p));
+              const color = team?.color || accent;
+              const logo = team?.logoDataUrl || team?.avatarUrl || null;
+              return <div key={team.id} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 3, borderRadius: 999, padding: "2px 5px 2px 2px", background: "rgba(0,0,0,.30)", boxShadow: isActiveTeam ? `0 0 0 2px ${color}, 0 0 14px ${color}66` : protectedTeam ? "0 0 0 2px rgba(255,190,92,.92), 0 0 14px rgba(255,190,92,.34)" : `0 0 0 1px ${color}44` }}>
+                {logo ? <img src={logo} alt="" style={{ width: compact ? 27 : 31, height: compact ? 27 : 31, borderRadius: 999, objectFit: "cover" }} /> : <div style={{ width: compact ? 27 : 31, height: compact ? 27 : 31, borderRadius: 999, display: "grid", placeItems: "center", background: `${color}22`, color, fontSize: 9, fontWeight: 1000 }}>{String(team?.name || "E").slice(0,1)}</div>}
+                <span style={{ color, fontSize: compact ? 8 : 8.5, fontWeight: 1000 }}>{members.filter((p: any) => gros6IsPlayerActive(game, p)).length}/{members.length}</span>
+              </div>;
+            }) : game.players.map((p: any, idx: number) => {
               const active = idx === game.turnIndex && !finished;
               const alive = gros6IsPlayerActive(game, p);
               const protectedOwner = gros6IsProtectedTargetOwner(game, p);
@@ -1011,9 +1105,9 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
               );
             })}
           </div>
-          <span style={{ position: "absolute", right: compact ? 10 : 12, bottom: compact ? 8 : 10, width: 24, height: 24, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.players.length}</span>
+          <span style={{ position: "absolute", right: compact ? 10 : 12, bottom: compact ? 8 : 10, width: 24, height: 24, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.participantMode === "teams" ? game.teams.length : game.players.length}</span>
           <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: compact ? 6 : 8, display: "grid", gap: 1, justifyItems: "center", textAlign: "center" }}>
-            <span style={{ fontWeight: 1000, letterSpacing: 1, color: accent, textTransform: "uppercase", whiteSpace: "nowrap", fontSize: compact ? 8.6 : 9.4 }}>{L("Liste des joueurs", "Players list")}</span>
+            <span style={{ fontWeight: 1000, letterSpacing: 1, color: accent, textTransform: "uppercase", whiteSpace: "nowrap", fontSize: compact ? 8.6 : 9.4 }}>{game.participantMode === "teams" ? L("Liste des équipes", "Teams list") : L("Liste des joueurs", "Players list")}</span>
           </div>
         </div>
       </button>
@@ -1096,7 +1190,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
         </div>
       )}
 
-      {statsOpen ? <PlayerStatsModal player={activePlayer} teamName={statsPlayerTeam} onClose={() => setStatsOpen(false)} accent={accent} lang={lang} /> : null}
+      {statsOpen ? <PlayerStatsModal player={activePlayer} teamName={statsPlayerTeam} livesRemaining={lifeValue} onClose={() => setStatsOpen(false)} accent={teamAccent} lang={lang} /> : null}
       {playersOpen ? <PlayersModal game={game} activeIndex={game.turnIndex} onClose={() => setPlayersOpen(false)} accent={accent} lang={lang} /> : null}
       {specialOpen ? <SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={pickSpecial} accent={accent} lang={lang} includeOuterRing={(config as any)?.allowOuterRing !== false} /> : null}
       {rulesOpen ? (
@@ -1106,8 +1200,8 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
 
             <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.68 }}>
               {L(
-                "Touchez exactement la cible courante avec 3 fléchettes maximum. La partie commence en général sur GROS 6. Si vous ne touchez pas la cible dans la volée, vous perdez une vie. Le dernier joueur ou la dernière équipe encore en vie remporte la partie. Quand un joueur impose la nouvelle cible, il ne rejoue plus tant qu'un autre joueur n'a pas validé une nouvelle cible.",
-                "Hit the exact current target within a maximum of 3 darts. The game usually starts on BIG 6. If you fail to clear the target during the visit, you lose one life. The last surviving player or team wins the game. When a player sets the new target, that player does not play again until another player clears a new target."
+                "Touchez exactement la cible courante avec 3 fléchettes maximum. La partie commence en général sur GROS 6. Si vous ne touchez pas la cible dans la volée, vous perdez une vie. Le dernier joueur ou la dernière équipe encore en vie remporte la partie. Quand un joueur impose la nouvelle cible, il est protégé ; en mode équipes, toute son équipe est protégée et saute ses tours tant qu'une autre équipe n'a pas validé une nouvelle cible.",
+                "Hit the exact current target within a maximum of 3 darts. The game usually starts on BIG 6. If you fail to clear the target during the visit, you lose one life. The last surviving player or team wins the game. When a player sets the new target, that player is protected; in Teams mode, the whole team is protected and skips its turns until another team clears a new target."
               )}
             </div>
 
@@ -1115,7 +1209,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
               <div style={{ color: accent, fontWeight: 900, fontSize: 13.5, marginBottom: 6 }}>{L("Comment imposer la cible suivante", "How to set the next target")}</div>
               <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.2, lineHeight: 1.62 }}>
                 <li>{L("Dès que la cible est validée, les fléchettes restantes servent à choisir la cible du joueur suivant.", "As soon as the target is cleared, the remaining darts are used to choose the next target for the following player.")}</li>
-                <li>{L("Le joueur qui impose cette cible est protégé : tant que personne n'a validé une autre cible, il est sauté dans l'ordre de jeu et ne perd aucune vie.", "The player who sets that target is protected: until someone else clears another target, that player is skipped in the turn order and loses no life.")}</li>
+                <li>{L("Le joueur qui impose cette cible est protégé. En équipes, cette protection s'applique à toute son équipe : elle est sautée jusqu'à ce qu'une autre équipe valide une nouvelle cible.", "The player who sets that target is protected. In Teams mode, that protection applies to the whole team: it is skipped until another team clears a new target.")}</li>
                 <li>{L("Vous pouvez imposer un GROS simple, un PETIT simple, un double, un triple, le Bull, le Double Bull ou une zone spéciale autorisée.", "You may set a BIG single, a SMALL single, a double, a triple, Bull, Double Bull or any enabled special zone.")}</li>
                 <li>{L("Si la cible est validée avec la 3e fléchette, le bonus configuré ouvre une nouvelle volée de sélection pour définir la prochaine cible.", "If the target is cleared with the 3rd dart, the configured bonus opens a fresh selection visit to define the next target.")}</li>
               </ul>

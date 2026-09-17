@@ -111,10 +111,14 @@ function makePlayerState(player: any, startingLives: number) {
     eliminated: false,
     stats: {
       dartsThrown: 0,
+      attackDarts: 0,
+      selectionDarts: 0,
       targetsCleared: 0,
       targetsImposed: 0,
       livesLost: 0,
       lastDartSaves: 0,
+      selectionFailures: 0,
+      selectionLifeLosses: 0,
       specialTargetsCleared: 0,
       bullsCleared: 0,
       doublesCleared: 0,
@@ -128,7 +132,7 @@ function makeTeamState(team: any, startingLives: number) {
     ...team,
     lives: Number(startingLives || 6),
     eliminated: false,
-    stats: { livesLost: 0, targetsCleared: 0, targetsImposed: 0 },
+    stats: { livesLost: 0, targetsCleared: 0, targetsImposed: 0, dartsThrown: 0, attackDarts: 0, selectionDarts: 0, selectionFailures: 0 },
   };
 }
 
@@ -146,9 +150,25 @@ export function gros6IsPlayerActive(state: any, player: any): boolean {
   return Number(player.lives || 0) > 0;
 }
 
+export function gros6CurrentTargetOwnerTeamId(state: any): string | null {
+  if (state?.participantMode !== "teams") return null;
+  if (state?.currentTargetOwnerTeamId) return String(state.currentTargetOwnerTeamId);
+  const ownerId = String(state?.currentTargetOwnerId || "");
+  if (!ownerId) return null;
+  const owner = (state?.players || []).find((player: any) => String(player?.id || "") === ownerId);
+  return owner?.teamId ? String(owner.teamId) : null;
+}
+
 export function gros6IsProtectedTargetOwner(state: any, player: any): boolean {
   if (!player || !state?.currentTargetOwnerId) return false;
   if (!gros6IsPlayerActive(state, player)) return false;
+  // En équipes, la cible appartient à toute l'équipe qui l'a imposée.
+  // Cela évite qu'un coéquipier profite de sa propre cible et aligne le mode
+  // sur une vraie alternance équipe contre équipe.
+  if (state?.participantMode === "teams") {
+    const ownerTeamId = gros6CurrentTargetOwnerTeamId(state);
+    return !!ownerTeamId && String(player?.teamId || "") === ownerTeamId;
+  }
   return String(player?.id || "") === String(state.currentTargetOwnerId || "");
 }
 
@@ -177,18 +197,54 @@ export function gros6FindWinner(state: any): any | null {
 }
 
 export function gros6NextAliveIndex(state: any, fromIndex: number): number {
+  return findNextPlayableTurn(state, fromIndex).index;
+}
+
+function teamMemberIds(state: any, team: any): string[] {
+  const configured = Array.isArray(team?.playerIds) ? team.playerIds.map(String) : [];
+  if (configured.length) return configured;
+  return (state?.players || []).filter((player: any) => String(player?.teamId || "") === String(team?.id || "")).map((player: any) => String(player?.id || ""));
+}
+
+function nextActiveMemberIndexForTeam(state: any, team: any): number {
   const players = Array.isArray(state?.players) ? state.players : [];
-  if (!players.length) return 0;
-  for (let step = 1; step <= players.length; step += 1) {
-    const index = (fromIndex + step) % players.length;
-    if (gros6CanTakeTurn(state, players[index])) return index;
+  const ids = teamMemberIds(state, team);
+  if (!ids.length) return -1;
+  const cursors = state?.teamMemberCursor || {};
+  const last = Number(cursors[String(team?.id || "")] ?? -1);
+  for (let step = 1; step <= ids.length; step += 1) {
+    const memberPos = (last + step) % ids.length;
+    const idx = players.findIndex((player: any) => String(player?.id || "") === String(ids[memberPos]));
+    if (idx >= 0 && gros6CanTakeTurn(state, players[idx])) {
+      state.teamMemberCursor = { ...(state.teamMemberCursor || {}), [String(team?.id || "")]: memberPos };
+      return idx;
+    }
   }
-  return fromIndex;
+  return -1;
 }
 
 function findNextPlayableTurn(state: any, fromIndex: number) {
   const players = Array.isArray(state?.players) ? state.players : [];
   if (!players.length) return { index: 0, crossedRoundStart: false };
+
+  if (state?.participantMode === "teams" && Array.isArray(state?.teams) && state.teams.length) {
+    const teams = state.teams;
+    const currentPlayer = players[fromIndex];
+    let currentTeamIndex = Math.max(0, teams.findIndex((team: any) => String(team?.id || "") === String(currentPlayer?.teamId || "")));
+    if (currentTeamIndex < 0) currentTeamIndex = 0;
+    for (let step = 1; step <= teams.length; step += 1) {
+      const teamIndex = (currentTeamIndex + step) % teams.length;
+      const team = teams[teamIndex];
+      if (!gros6AliveTeams(state).some((alive: any) => String(alive?.id || "") === String(team?.id || ""))) continue;
+      // Si cette équipe a imposé la cible courante, elle est protégée et saute son tour.
+      const ownerTeamId = gros6CurrentTargetOwnerTeamId(state);
+      if (ownerTeamId && String(team?.id || "") === ownerTeamId) continue;
+      const index = nextActiveMemberIndexForTeam(state, team);
+      if (index >= 0) return { index, crossedRoundStart: teamIndex <= currentTeamIndex };
+    }
+    return { index: fromIndex, crossedRoundStart: false };
+  }
+
   const roundStartIndex = Math.max(0, Math.min(players.length - 1, Number(state?.roundStartIndex || 0)));
   let crossedRoundStart = false;
   for (let step = 1; step <= players.length; step += 1) {
@@ -214,9 +270,15 @@ export function buildGros6InitialState(config: any) {
     turnIndex: 0,
     turnNo: 1,
     roundStartIndex: 0,
+    // Curseur indépendant par équipe : chaque équipe joue une fois par cycle,
+    // même si les effectifs sont différents, puis fait tourner ses membres.
+    teamMemberCursor: participantMode === "teams"
+      ? Object.fromEntries((config?.teams || []).map((team: any, teamIndex: number) => [String(team?.id || teamIndex), teamIndex === 0 ? 0 : -1]))
+      : {},
     phase: "attack",
     currentTarget: initialTarget,
     currentTargetOwnerId: null,
+    currentTargetOwnerTeamId: null,
     attackDarts: [],
     selectionDarts: [],
     selectionAllowed: 0,
@@ -317,8 +379,9 @@ export function finalizeGros6Selection(state: any) {
   next.currentTarget = chosen;
   if (next.pendingNextTarget) {
     next.currentTargetOwnerId = player?.id ?? null;
-    player.stats.targetsImposed += 1;
     const team = gros6TeamForPlayer(next, player);
+    next.currentTargetOwnerTeamId = team?.id ?? null;
+    player.stats.targetsImposed += 1;
     if (team) team.stats.targetsImposed += 1;
   }
   next.history.push({
@@ -348,6 +411,11 @@ export function applyGros6AttackHit(state: any, hit: any, config: any) {
   const normalized = hit?.kind ? normalizeGros6Target(hit) : makeGros6Miss();
   next.attackDarts.push(normalized);
   player.stats.dartsThrown += 1;
+  player.stats.attackDarts = Number(player.stats.attackDarts || 0) + 1;
+  if (team) {
+    team.stats.dartsThrown = Number(team.stats.dartsThrown || 0) + 1;
+    team.stats.attackDarts = Number(team.stats.attackDarts || 0) + 1;
+  }
   const dartIndex = next.attackDarts.length - 1;
   const success = gros6MatchesTarget(normalized, next.currentTarget, config);
 
@@ -361,6 +429,9 @@ export function applyGros6AttackHit(state: any, hit: any, config: any) {
       ...historyEntry(player, next.currentTarget, "attack", next.attackDarts, next.turnNo),
       success: true,
       selectionAllowed,
+      validationDart: dartIndex + 1,
+      targetOwnerId: state?.currentTargetOwnerId || null,
+      targetOwnerTeamId: gros6CurrentTargetOwnerTeamId(state),
     });
     if (selectionAllowed > 0) {
       next.phase = "select";
@@ -384,6 +455,8 @@ export function applyGros6AttackHit(state: any, hit: any, config: any) {
       success: false,
       lifeLost: true,
       livesAfter: player.lives,
+      targetOwnerId: state?.currentTargetOwnerId || null,
+      targetOwnerTeamId: gros6CurrentTargetOwnerTeamId(state),
       teamLivesAfter: team?.lives ?? null,
     });
     const winner = gros6FindWinner(next);
@@ -406,6 +479,11 @@ export function applyGros6SelectionHit(state: any, hit: any, config: any) {
   const normalized = hit?.kind ? normalizeGros6Target(hit) : makeGros6Miss();
   next.selectionDarts.push(normalized);
   player.stats.dartsThrown += 1;
+  player.stats.selectionDarts = Number(player.stats.selectionDarts || 0) + 1;
+  if (team) {
+    team.stats.dartsThrown = Number(team.stats.dartsThrown || 0) + 1;
+    team.stats.selectionDarts = Number(team.stats.selectionDarts || 0) + 1;
+  }
 
   const candidate = gros6HitToTarget(normalized);
   const allowed = candidate && isGros6TargetAllowedForSelection(candidate, config);
@@ -415,6 +493,7 @@ export function applyGros6SelectionHit(state: any, hit: any, config: any) {
     next.pendingNextTarget = chosen;
     next.currentTarget = chosen;
     next.currentTargetOwnerId = player?.id ?? null;
+    next.currentTargetOwnerTeamId = team?.id ?? null;
     player.stats.targetsImposed += 1;
     if (team) team.stats.targetsImposed += 1;
     next.history.push({
@@ -423,6 +502,9 @@ export function applyGros6SelectionHit(state: any, hit: any, config: any) {
       nextTarget: gros6TargetLabel(chosen),
       nextTargetData: chosen,
       selectionResolved: true,
+      selectionDart: next.selectionDarts.length,
+      targetOwnerId: player?.id ?? null,
+      targetOwnerTeamId: team?.id ?? null,
     });
     next.message = `Nouvelle cible imposée : ${gros6TargetLabel(chosen)}.`;
     return advanceTurn(next);
@@ -438,6 +520,9 @@ export function applyGros6SelectionHit(state: any, hit: any, config: any) {
     return next;
   }
 
+  player.stats.selectionFailures = Number(player.stats.selectionFailures || 0) + 1;
+  player.stats.selectionLifeLosses = Number(player.stats.selectionLifeLosses || 0) + 1;
+  if (team) team.stats.selectionFailures = Number(team.stats.selectionFailures || 0) + 1;
   const eliminationMessage = applyLifePenalty(next, player, team);
   next.history.push({
     ...historyEntry(player, state.currentTarget, "select", next.selectionDarts, next.turnNo),
@@ -448,6 +533,8 @@ export function applyGros6SelectionHit(state: any, hit: any, config: any) {
     livesAfter: player.lives,
     teamLivesAfter: team?.lives ?? null,
     missSelection: true,
+    targetOwnerId: state?.currentTargetOwnerId || null,
+    targetOwnerTeamId: gros6CurrentTargetOwnerTeamId(state),
   });
   const winner = gros6FindWinner(next);
   if (winner) return finishIfWinner(next);

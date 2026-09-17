@@ -13,7 +13,7 @@ const checks = [
   ["global workspace selector", switcher.includes("Espace personnel") && switcher.includes("organization_home")],
   ["persistent personal/org context", workspace.includes("msc_organization_workspace_v1") && workspace.includes("ORGANIZATION_WORKSPACE_EVENT")],
   ["organization-native routes", app.includes('"organization_members"') && app.includes('"organization_teams"') && app.includes('"organization_stats"')],
-  ["organization bottom navigation", nav.includes("organizationMode") && nav.includes('label: tr("Membres"') && nav.includes('label: tr("Équipes"')],
+  ["organization bottom navigation", nav.includes("organizationMode") && nav.includes('label: tr("Équipes"') && nav.includes('label: tr("Plus"')],
   ["guided settings page becomes workspace", orgPage.includes("workspaceMode") && orgPage.includes("navigateView") && orgPage.includes("enterOrganizationWorkspace")],
   ["organization groups fused into shared Teams", service.includes("syncOrganizationGroupsToSharedTeams") && service.includes("syncedClubTeamId")],
   ["linked Teams are visibly identified", teams.includes("ORG LIÉE") && teams.includes("isOrganizationLinked")],
