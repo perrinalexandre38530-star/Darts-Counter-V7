@@ -84,6 +84,7 @@ import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import RunningActiveSessionDock from "./components/RunningActiveSessionDock";
 import SportQuickSwitch from "./components/SportQuickSwitch";
 import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type OrganizationWorkspace } from "./organizations/organizationWorkspace";
+import { applyOrganizationPlayContext } from "./organizations/organizationPlayContext";
 // MONETIZATION_V1
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
 
@@ -200,6 +201,8 @@ const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const OrganizationsPage = React.lazy(() => import("./pages/OrganizationsPage"));
+const OrganizationVenueLandingPage = React.lazy(() => import("./pages/OrganizationVenueLandingPage"));
+const OrganizationVenueBoardPage = React.lazy(() => import("./pages/OrganizationVenueBoardPage"));
 const OrganizationWorkspaceSwitcher = React.lazy(() => import("./components/OrganizationWorkspaceSwitcher"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
@@ -1044,6 +1047,9 @@ type Tab =
   | "organization_stats"
   | "organization_communication"
   | "organization_federations"
+  | "organization_venue"
+  | "organization_venue_scan"
+  | "organization_venue_board"
   | "organization_admin"
   | "stats"
   | "statsHub"
@@ -2692,6 +2698,20 @@ useEffect(() => {
         setTab("online");
         return;
       }
+      if (h.startsWith("#/venue-board/")) {
+        const venueToken = decodeURIComponent(h.slice("#/venue-board/".length).split(/[?#]/)[0] || "").trim();
+        setShowSplash(false);
+        setRouteParams({ venueToken });
+        setTab("organization_venue_board");
+        return;
+      }
+      if (h.startsWith("#/venue/")) {
+        const venueToken = decodeURIComponent(h.slice("#/venue/".length).split(/[?#]/)[0] || "").trim();
+        setShowSplash(false);
+        setRouteParams({ venueToken });
+        setTab("organization_venue_scan");
+        return;
+      }
       if (h.startsWith("#/organization/")) {
         const raw = h.slice("#/organization/".length);
         const [sectionRaw, queryRaw = ""] = raw.split("?");
@@ -2705,9 +2725,10 @@ useEffect(() => {
           stats: "organization_stats",
           communication: "organization_communication",
           federations: "organization_federations",
+          venue: "organization_venue",
           admin: "organization_admin",
         };
-        const viewMap: Record<string, string> = { home: "home", agenda: "calendar", members: "members", teams: "groups", competitions: "competitions", stats: "stats", communication: "communication", federations: "federations", admin: "admin" };
+        const viewMap: Record<string, string> = { home: "home", agenda: "calendar", members: "members", teams: "groups", competitions: "competitions", stats: "stats", communication: "communication", federations: "federations", venue: "venue", admin: "admin" };
         const id = new URLSearchParams(queryRaw).get("id") || "";
         setRouteParams({ organizationId: id || undefined, workspaceMode: true, view: viewMap[section] || "home" });
         setTab(routeMap[section] || "organization_home");
@@ -2919,7 +2940,7 @@ useEffect(() => {
       else if (next === "account_start") window.location.hash = "#/account/start";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "organizations") window.location.hash = "#/organizations";
-      else if (["organization_home", "organization_calendar", "organization_members", "organization_teams", "organization_competitions", "organization_stats", "organization_communication", "organization_federations", "organization_admin"].includes(String(next))) {
+      else if (["organization_home", "organization_calendar", "organization_members", "organization_teams", "organization_competitions", "organization_stats", "organization_communication", "organization_federations", "organization_venue", "organization_admin"].includes(String(next))) {
         const sectionMap: Record<string, string> = {
           organization_home: "home",
           organization_calendar: "agenda",
@@ -2929,6 +2950,7 @@ useEffect(() => {
           organization_stats: "stats",
           organization_communication: "communication",
           organization_federations: "federations",
+          organization_venue: "venue",
           organization_admin: "admin",
         };
         const organizationId = String(params?.organizationId || activeOrganizationId || "");
@@ -3772,6 +3794,7 @@ useEffect(() => {
   // ============================================================
   async function persistFinishedMatchForAds(saved: any, mode: string): Promise<boolean> {
     try {
+      applyOrganizationPlayContext(saved);
       await History.upsert(saved);
       try { markCompletedMatchForAds(String(saved?.id || ""), String(mode || saved?.kind || "game")); } catch {}
       return true;
@@ -5053,6 +5076,15 @@ case "babyfoot_team_edit":
         break;
       case "organization_federations":
         page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "federations" }} />;
+        break;
+      case "organization_venue":
+        page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "venue" }} />;
+        break;
+      case "organization_venue_scan":
+        page = <OrganizationVenueLandingPage go={go} params={routeParams} />;
+        break;
+      case "organization_venue_board":
+        page = <OrganizationVenueBoardPage params={routeParams} />;
         break;
       case "organization_admin":
         page = <OrganizationsPage go={go} params={{ ...(routeParams || {}), organizationId: routeParams?.organizationId || activeOrganizationId, workspaceMode: true, view: "admin" }} />;

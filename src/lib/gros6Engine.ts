@@ -146,6 +146,17 @@ export function gros6IsPlayerActive(state: any, player: any): boolean {
   return Number(player.lives || 0) > 0;
 }
 
+export function gros6IsProtectedTargetOwner(state: any, player: any): boolean {
+  if (!player || !state?.currentTargetOwnerId) return false;
+  if (!gros6IsPlayerActive(state, player)) return false;
+  return String(player?.id || "") === String(state.currentTargetOwnerId || "");
+}
+
+export function gros6CanTakeTurn(state: any, player: any): boolean {
+  if (!gros6IsPlayerActive(state, player)) return false;
+  return !gros6IsProtectedTargetOwner(state, player);
+}
+
 export function gros6AliveTeams(state: any): any[] {
   if (state?.participantMode !== "teams") return [];
   return (state?.teams || []).filter((team: any) => {
@@ -170,9 +181,22 @@ export function gros6NextAliveIndex(state: any, fromIndex: number): number {
   if (!players.length) return 0;
   for (let step = 1; step <= players.length; step += 1) {
     const index = (fromIndex + step) % players.length;
-    if (gros6IsPlayerActive(state, players[index])) return index;
+    if (gros6CanTakeTurn(state, players[index])) return index;
   }
   return fromIndex;
+}
+
+function findNextPlayableTurn(state: any, fromIndex: number) {
+  const players = Array.isArray(state?.players) ? state.players : [];
+  if (!players.length) return { index: 0, crossedRoundStart: false };
+  const roundStartIndex = Math.max(0, Math.min(players.length - 1, Number(state?.roundStartIndex || 0)));
+  let crossedRoundStart = false;
+  for (let step = 1; step <= players.length; step += 1) {
+    const index = (fromIndex + step) % players.length;
+    if (index === roundStartIndex) crossedRoundStart = true;
+    if (gros6CanTakeTurn(state, players[index])) return { index, crossedRoundStart };
+  }
+  return { index: fromIndex, crossedRoundStart };
 }
 
 export function buildGros6InitialState(config: any) {
@@ -189,8 +213,10 @@ export function buildGros6InitialState(config: any) {
     teamLifeMode,
     turnIndex: 0,
     turnNo: 1,
+    roundStartIndex: 0,
     phase: "attack",
     currentTarget: initialTarget,
+    currentTargetOwnerId: null,
     attackDarts: [],
     selectionDarts: [],
     selectionAllowed: 0,
@@ -271,8 +297,9 @@ function finishIfWinner(next: any) {
 function advanceTurn(next: any) {
   const winner = gros6FindWinner(next);
   if (winner) return finishIfWinner(next);
-  next.turnIndex = gros6NextAliveIndex(next, next.turnIndex);
-  next.turnNo += 1;
+  const nav = findNextPlayableTurn(next, next.turnIndex);
+  next.turnIndex = nav.index;
+  if (nav.crossedRoundStart) next.turnNo += 1;
   next.phase = "attack";
   next.attackDarts = [];
   next.selectionDarts = [];
@@ -289,6 +316,7 @@ export function finalizeGros6Selection(state: any) {
   const chosen = next.pendingNextTarget ? normalizeGros6Target(next.pendingNextTarget) : next.currentTarget;
   next.currentTarget = chosen;
   if (next.pendingNextTarget) {
+    next.currentTargetOwnerId = player?.id ?? null;
     player.stats.targetsImposed += 1;
     const team = gros6TeamForPlayer(next, player);
     if (team) team.stats.targetsImposed += 1;
@@ -386,6 +414,7 @@ export function applyGros6SelectionHit(state: any, hit: any, config: any) {
     const chosen = normalizeGros6Target(candidate);
     next.pendingNextTarget = chosen;
     next.currentTarget = chosen;
+    next.currentTargetOwnerId = player?.id ?? null;
     player.stats.targetsImposed += 1;
     if (team) team.stats.targetsImposed += 1;
     next.history.push({

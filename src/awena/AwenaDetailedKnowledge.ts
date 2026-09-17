@@ -85,9 +85,9 @@ const DEEP: Record<string, ModeDeepDetail> = {
   gros_6: {
     rules: [
       { title: "OBJECTIF", body: "Le **Gros 6 / Big 6** est un jeu d’élimination à vies. La partie commence normalement sur **G6 / B6** (Gros 6 / Big 6). Le dernier joueur — ou la dernière équipe — qui possède encore au moins une vie gagne." },
-      { title: "VOLÉE D’ATTAQUE", body: "Le joueur actif dispose de **3 fléchettes maximum** pour reproduire exactement la cible courante. En règle stricte, la zone compte : **G** = Gros simple, **P** = Petit simple, **D** = Double, **T** = Triple, **BULL** et **DBULL** sont distincts." },
+      { title: "VOLÉE D’ATTAQUE", body: "Le joueur actif dispose de **3 fléchettes maximum** pour reproduire exactement la cible courante. En règle stricte, les zones **gros simple**, **petit simple**, **double**, **triple**, **BULL** et **DBULL** sont toutes distinctes." },
       { title: "ÉCHEC", body: "Si aucune des 3 fléchettes ne valide la cible, le joueur perd **1 vie**. La cible ne change pas : le joueur suivant doit tenter exactement la même cible." },
-      { title: "CIBLE VALIDÉE", body: "Dès que la cible est touchée, les fléchettes restantes de la volée servent à **imposer la prochaine cible**. Une cible valide choisie met immédiatement fin à la sélection et le tour passe au joueur suivant." },
+      { title: "CIBLE VALIDÉE", body: "Dès que la cible est touchée, les fléchettes restantes de la volée servent à **imposer la prochaine cible**. Une cible valide choisie met immédiatement fin à la sélection et le tour passe au joueur suivant. Le joueur qui a imposé cette cible est ensuite **protégé** : tant que personne n'a pas validé une autre cible, il est sauté dans l'ordre de jeu et ne perd aucune vie." },
       { title: "BONUS 3e FLÉCHETTE", body: "Si la cible courante est validée avec la **3e fléchette**, il ne reste normalement plus de fléchette. Lorsque le bonus est activé, une nouvelle mini-volée de **1, 2 ou 3 fléchettes** — 3 par défaut dans le réglage dédié — est accordée pour choisir la prochaine cible. Si une cible valide est trouvée avant la fin, la sélection s’arrête immédiatement." },
       { title: "ZONES HORS CIBLE", body: "Quand **Zones fermées** est activé, certaines surfaces physiques situées **hors de la zone de score classique de la cible** deviennent jouables. Elles ne correspondent ni à un simple, ni à un double, ni à un triple. Le mode reconnaît le **contour extérieur** et les zones fermées associées aux numéros **4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19 et 20**. Si l’une de ces zones est imposée, le joueur suivant doit toucher exactement cette zone." },
       { title: "ÉQUIPES", body: "Le mode accepte les équipes. Les vies peuvent rester **individuelles** ou être placées dans une **réserve commune** partagée par toute l’équipe." },
@@ -108,14 +108,14 @@ const DEEP: Record<string, ModeDeepDetail> = {
       ] },
       { title: "PRESETS / VARIANTES", bullets: [
         "**Gros 6 MSS** : strict, Bull, zones spéciales et bonus de 3e fléchette.",
-        "**Classique** : S / D / T distincts, Bull, sans zones spéciales.",
+        "**Classique** : gros simple, petit simple, double et triple distincts, Bull, sans zones spéciales.",
         "**Facile** : la même valeur peut être acceptée quelle que soit la zone Simple / Double / Triple selon la règle valeur.",
         "**PRO** : seules les cibles imposables Double / Triple / Bulls sont autorisées.",
         "**Sudden Death** : 1 vie.",
         "**Endurance** : 10 vies.",
       ] },
       { title: "VALIDATION DE LA CIBLE", bullets: [
-        "**Strict : S / D / T distincts** : la zone exacte doit correspondre. Pour les simples, **Gros** et **Petit** sont eux aussi distincts.",
+        "**Strict** : la zone exacte doit correspondre. Les **gros simples**, **petits simples**, **doubles** et **triples** sont distincts.",
         "**Facile : même valeur** : la valeur numérique est prioritaire pour les segments classiques.",
       ] },
       { title: "CIBLES AUTORISÉES", bullets: [

@@ -6,6 +6,7 @@ import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import ResilientUserImage from "./ResilientUserImage";
 import { onlineAvatarMediaKey } from "../lib/userMediaFallback";
 import OrganizationTypeIcon from "./OrganizationTypeIcon";
+import { clearOrganizationPlayContext, loadOrganizationPlayContext } from "../organizations/organizationPlayContext";
 import { useFloatingCornerAvoidance } from "./useFloatingCornerAvoidance";
 import {
   listMyOrganizations,
@@ -95,6 +96,7 @@ export default function OrganizationWorkspaceSwitcher({
   const activeLabel = active?.name || L("Espace personnel", "Personal space", "Espacio personal");
 
   const choosePersonal = () => {
+    clearOrganizationPlayContext();
     enterPersonalWorkspace(userId);
     setActiveOrganization(userId, null);
     setWorkspace({ kind: "personal" });
@@ -102,6 +104,8 @@ export default function OrganizationWorkspaceSwitcher({
     go?.("home", { workspaceKind: "personal" });
   };
   const chooseOrganization = (org: OrganizationRecord) => {
+    const venueContext = loadOrganizationPlayContext();
+    if (venueContext && venueContext.organizationId !== org.id) clearOrganizationPlayContext();
     setActiveOrganization(userId, org.id);
     enterOrganizationWorkspace(userId, org.id);
     setWorkspace({ kind: "organization", organizationId: org.id });

@@ -102,6 +102,36 @@ export type OrganizationCreateInput = {
   profile?: Partial<OrganizationProfile>;
 };
 
+
+
+export type OrganizationInstallationKind = "dartboard" | "table" | "pitch" | "court" | "lane" | "room" | "station" | "other";
+export type OrganizationInstallationStatus = "active" | "maintenance" | "archived";
+
+export type OrganizationInstallation = {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationKind: OrganizationKind;
+  name: string;
+  kind: OrganizationInstallationKind;
+  sportId: string;
+  zoneLabel: string;
+  qrToken: string;
+  status: OrganizationInstallationStatus;
+  playCount: number;
+  lastPlayedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationInstallationInput = {
+  name: string;
+  kind: OrganizationInstallationKind;
+  sportId: string;
+  zoneLabel?: string;
+  status?: OrganizationInstallationStatus;
+};
+
 export type OrganizationGroupKind = "team" | "section" | "department" | "class" | "group";
 
 export type OrganizationLocalGroup = {
@@ -1240,6 +1270,11 @@ function rpcMessage(error: any, fallback: string): string {
     INVALID_AMOUNT: "Montant de cotisation invalide.",
     PAYMENT_URL_MUST_BE_HTTPS: "Le lien de paiement doit utiliser HTTPS.",
     MEMBER_NOT_TARGETED: "Ce membre n’est pas concerné par cette cotisation.",
+    INSTALLATION_NOT_FOUND: "Installation introuvable.",
+    INSTALLATION_NAME_REQUIRED: "Le nom de l’installation est requis.",
+    INVALID_INSTALLATION_KIND: "Type d’installation invalide.",
+    INVALID_INSTALLATION_STATUS: "Statut d’installation invalide.",
+    INVALID_QR_TOKEN: "QR code d’installation invalide ou expiré.",
   };
   for (const [key, label] of Object.entries(labels)) if (raw.includes(key)) return label;
   return raw || fallback;
@@ -2086,4 +2121,129 @@ export async function deleteOrganizationFederationLink(
   if (!userId) throw new Error("Connexion requise.");
   const { error } = await supabase.rpc("ms_org_delete_federation_link", { p_link_id: linkId });
   if (error) throw new Error(rpcMessage(error, "Suppression de l’affiliation impossible."));
+}
+
+
+function coerceInstallationKind(value: unknown): OrganizationInstallationKind {
+  const raw = String(value || "other").toLowerCase();
+  const allowed: OrganizationInstallationKind[] = ["dartboard","table","pitch","court","lane","room","station","other"];
+  return allowed.includes(raw as OrganizationInstallationKind) ? raw as OrganizationInstallationKind : "other";
+}
+
+function coerceInstallationStatus(value: unknown): OrganizationInstallationStatus {
+  const raw = String(value || "active").toLowerCase();
+  return raw === "maintenance" ? "maintenance" : raw === "archived" ? "archived" : "active";
+}
+
+function parseOrganizationInstallation(row: any): OrganizationInstallation {
+  return {
+    id: String(row?.id || row?.installationId || row?.installation_id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    organizationName: String(row?.organizationName || row?.organization_name || "").trim(),
+    organizationKind: coerceKind(row?.organizationKind || row?.organization_kind || "other"),
+    name: String(row?.name || row?.installationName || row?.installation_name || "Installation").trim().slice(0, 100) || "Installation",
+    kind: coerceInstallationKind(row?.kind || row?.installationKind || row?.installation_kind),
+    sportId: String(row?.sportId || row?.sport_id || "Multisport").trim().slice(0, 48) || "Multisport",
+    zoneLabel: String(row?.zoneLabel || row?.zone_label || "").trim().slice(0, 120),
+    qrToken: String(row?.qrToken || row?.qr_token || "").trim(),
+    status: coerceInstallationStatus(row?.status),
+    playCount: Math.max(0, Number(row?.playCount ?? row?.play_count ?? 0) || 0),
+    lastPlayedAt: String(row?.lastPlayedAt || row?.last_played_at || ""),
+    createdAt: String(row?.createdAt || row?.created_at || ""),
+    updatedAt: String(row?.updatedAt || row?.updated_at || ""),
+  };
+}
+
+export async function listOrganizationInstallations(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ installations: OrganizationInstallation[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { installations: [], cloudAvailable: false };
+  try {
+    const { data, error } = await supabase.rpc("ms_org_list_installations", { p_org_id: organizationId });
+    if (error) throw error;
+    return { installations: rpcRows(data).filter(Boolean).map(parseOrganizationInstallation), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] installations unavailable", error);
+    return { installations: [], cloudAvailable: false };
+  }
+}
+
+export async function createOrganizationInstallation(
+  userId: string | null | undefined,
+  organizationId: string,
+  input: OrganizationInstallationInput,
+): Promise<OrganizationInstallation> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_create_installation", {
+    p_org_id: organizationId,
+    p_name: String(input.name || "").trim(),
+    p_kind: input.kind || "other",
+    p_sport_id: String(input.sportId || "Multisport").trim(),
+    p_zone_label: String(input.zoneLabel || "").trim(),
+  });
+  if (error) throw new Error(rpcMessage(error, "Création de l’installation impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Installation introuvable.");
+  return parseOrganizationInstallation(row);
+}
+
+export async function updateOrganizationInstallation(
+  userId: string | null | undefined,
+  installationId: string,
+  input: OrganizationInstallationInput,
+): Promise<OrganizationInstallation> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_update_installation", {
+    p_installation_id: installationId,
+    p_name: String(input.name || "").trim(),
+    p_kind: input.kind || "other",
+    p_sport_id: String(input.sportId || "Multisport").trim(),
+    p_zone_label: String(input.zoneLabel || "").trim(),
+    p_status: input.status || "active",
+  });
+  if (error) throw new Error(rpcMessage(error, "Modification de l’installation impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Installation introuvable.");
+  return parseOrganizationInstallation(row);
+}
+
+export async function deleteOrganizationInstallation(userId: string | null | undefined, installationId: string): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await supabase.rpc("ms_org_delete_installation", { p_installation_id: installationId });
+  if (error) throw new Error(rpcMessage(error, "Suppression de l’installation impossible."));
+}
+
+export async function rotateOrganizationInstallationQr(userId: string | null | undefined, installationId: string): Promise<OrganizationInstallation> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_rotate_installation_qr", { p_installation_id: installationId });
+  if (error) throw new Error(rpcMessage(error, "Régénération du QR impossible."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Installation introuvable.");
+  return parseOrganizationInstallation(row);
+}
+
+export async function resolveOrganizationInstallationQr(
+  userId: string | null | undefined,
+  token: string,
+): Promise<OrganizationInstallation> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await supabase.rpc("ms_org_resolve_installation_qr", { p_token: String(token || "").trim() });
+  if (error) throw new Error(rpcMessage(error, "QR code invalide."));
+  const row = rpcRows(data)[0] || data;
+  if (!row) throw new Error("Installation introuvable.");
+  return parseOrganizationInstallation(row);
+}
+
+export async function touchOrganizationInstallation(
+  userId: string | null | undefined,
+  token: string,
+): Promise<void> {
+  if (!userId || !token) return;
+  try {
+    const { error } = await supabase.rpc("ms_org_touch_installation", { p_token: String(token).trim() });
+    if (error) throw error;
+  } catch (error) {
+    console.warn("[organizations] venue usage counter unavailable", error);
+  }
 }

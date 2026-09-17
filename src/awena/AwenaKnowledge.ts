@@ -126,7 +126,7 @@ const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" 
     howToPlayInApp: "Ouvre Jeux > Fléchettes > Darts Poker. Sélectionne les joueurs ou bots puis démarre. Le marché associe ensuite les secteurs 1 à 20 aux cartes visibles ; chaque main se construit dans la limite prévue par le mode.",
   },
   gros_6: {
-    summary: "En Gros 6 / Big 6, la partie démarre en général sur Gros 6. Chaque joueur a 3 fléchettes pour toucher exactement la cible courante. En cas d'échec après 3 fléchettes, il perd une vie. S'il valide la cible, il utilise les fléchettes restantes — ou une volée bonus si l'option de 3e fléchette est activée — pour imposer la cible suivante au joueur ou à l'équipe suivante.",
+    summary: "En Gros 6 / Big 6, la partie démarre en général sur Gros 6. Chaque joueur a 3 fléchettes pour toucher exactement la cible courante. En cas d'échec après 3 fléchettes, il perd une vie. S'il valide la cible, il utilise les fléchettes restantes — ou une volée bonus si l'option de 3e fléchette est activée — pour imposer la cible suivante au joueur ou à l'équipe suivante. Le joueur qui a imposé cette cible ne rejoue plus tant qu'un autre joueur n'a pas validé une nouvelle cible.",
     tip: "Les simples Gros/Petit, les doubles, les triples, Bull/Double Bull et les zones hors cible peuvent être des cibles différentes selon la configuration. Choisir une cible difficile met la pression, mais rater sa sélection fait perdre une vie.",
     howToPlayInApp: "Ouvre Jeux > Fléchettes > Gros 6. Choisis le mode guidé ou complet, les joueurs ou équipes, le nombre de vies, la règle stricte ou par valeur, l'activation du Bull, des zones spéciales et du bonus de 3e fléchette, puis démarre la partie.",
   },

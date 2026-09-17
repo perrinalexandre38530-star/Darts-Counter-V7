@@ -800,8 +800,8 @@ export default function Gros6Config({ store, go }: any) {
 
               <div style={{ color: "#e2e4ef", fontSize: 13, lineHeight: 1.68 }}>
                 {lang === "fr"
-                  ? "Le Gros 6 / Big 6 est un mode à élimination. La partie démarre généralement sur GROS 6. Chaque joueur dispose de 3 fléchettes pour toucher exactement la cible courante. Si la cible n'est pas validée avant la 3e fléchette, le joueur — ou l'équipe si la réserve commune est activée — perd une vie. Le dernier joueur ou la dernière équipe encore en vie gagne la partie."
-                  : "Big 6 is an elimination game. The match usually starts on BIG 6. Each player has 3 darts to hit the exact current target. If the target is not cleared within 3 darts, the player — or the team when shared lives are enabled — loses one life. The last surviving player or team wins the match."}
+                  ? "Le Gros 6 / Big 6 est un mode à élimination. La partie démarre généralement sur GROS 6. Chaque joueur dispose de 3 fléchettes pour toucher exactement la cible courante. Si la cible n'est pas validée avant la 3e fléchette, le joueur — ou l'équipe si la réserve commune est activée — perd une vie. Le dernier joueur ou la dernière équipe encore en vie gagne la partie. Lorsqu'un joueur impose la nouvelle cible, il ne rejoue plus tant qu'un autre joueur n'a pas validé une autre cible."
+                  : "Big 6 is an elimination game. The match usually starts on BIG 6. Each player has 3 darts to hit the exact current target. If the target is not cleared within 3 darts, the player — or the team when shared lives are enabled — loses one life. The last surviving player or team wins the match. When a player sets the new target, that player is skipped until another player clears a different target."}
               </div>
 
               <div style={{ display: "grid", gap: 10 }}>
@@ -826,7 +826,7 @@ export default function Gros6Config({ store, go }: any) {
               <div style={{ display: "grid", gap: 10 }}>
                 <div style={{ color: primary, fontWeight: 900, fontSize: 14 }}>{lang === "fr" ? "Variantes principales" : "Main variants"}</div>
                 <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.5, lineHeight: 1.6 }}>
-                  <li>{lang === "fr" ? "Classique : départ Gros 6, règle stricte S / D / T, Bull actif." : "Classic: starts on Big 6, strict S / D / T targeting, Bull enabled."}</li>
+                  <li>{lang === "fr" ? "Classique : départ Gros 6, règle stricte avec gros simple, petit simple, double et triple distincts, Bull actif." : "Classic: starts on Big 6, strict big single, small single, double and treble targeting, Bull enabled."}</li>
                   <li>{lang === "fr" ? "Facile : la valeur seule peut suffire, même si simple/double/triple diffèrent." : "Easy: the value alone may count even if simple/double/triple differ."}</li>
                   <li>{lang === "fr" ? "PRO : les cibles imposées se limitent aux doubles, triples et Bulls." : "PRO: the targets you may set are limited to doubles, triples and Bulls."}</li>
                   <li>{lang === "fr" ? "Sudden Death : une seule vie par joueur ou équipe." : "Sudden Death: only one life per player or team."}</li>

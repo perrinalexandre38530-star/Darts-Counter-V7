@@ -11,6 +11,7 @@ import OrganizationAdminPanel from "../components/OrganizationAdminPanel";
 import OrganizationPlansPanel from "../components/OrganizationPlansPanel";
 import OrganizationMembersPanel from "../components/OrganizationMembersPanel";
 import OrganizationTeamsPanel from "../components/OrganizationTeamsPanel";
+import OrganizationVenuePanel from "../components/OrganizationVenuePanel";
 import OrganizationInvitationsInbox from "../components/OrganizationInvitationsInbox";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -48,7 +49,7 @@ import {
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
 
 type Props = { go?: (tab: any, params?: any) => void; params?: any };
-type View = "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "admin" | "offers";
+type View = "home" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "venue" | "admin" | "offers";
 type EntryMode = "none" | "create" | "join";
 
 type WizardDraft = {
@@ -145,6 +146,7 @@ function ModuleIcon({ name, color }: { name: string; color: string }) {
     federations: <><path {...common} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...common} d="M8 11h8M10 8h4M10 14h4"/></>,
     billing: <><rect {...common} x="3" y="5" width="18" height="14" rx="2"/><path {...common} d="M3 9h18M7 15h3"/></>,
     sponsors: <><path {...common} d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 5.5-7 10-7 10Z"/></>,
+    venue: <><path {...common} d="M4 20h16M6 20V9h12v11M8 9V6h8v3M9 13h2M13 13h2M9 17h2M13 17h2"/><path {...common} d="M18 6h2v5"/></>,
     admin: <><path {...common} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...common} d="M9 12h6M12 9v6"/></>,
     offers: <><path {...common} d="M4 4h16v16H4z"/><path {...common} d="M8 9h8M8 13h5"/></>,
   };
@@ -160,7 +162,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   const workspaceMode = params?.workspaceMode === true;
   const requestedOrganizationId = String(params?.organizationId || "").trim();
   const requestedView = String(params?.view || "home") as View;
-  const validViews: View[] = ["home", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "federations", "billing", "sponsors", "admin", "offers"];
+  const validViews: View[] = ["home", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "federations", "billing", "sponsors", "venue", "admin", "offers"];
 
   const [organizations, setOrganizations] = React.useState<OrganizationRecord[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(() => loadOrganizationLocalState(userId).activeOrganizationId);
@@ -285,6 +287,7 @@ export default function OrganizationsPage({ go, params }: Props) {
       stats: "organization_stats",
       communication: "organization_communication",
       federations: "organization_federations",
+      venue: "organization_venue",
       admin: "organization_admin",
     };
     const route = routes[nextView];
@@ -458,6 +461,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     { id: "federations", name: L("Fédérations", "Federations", "Federaciones"), subtitle: L("Affiliations, portails et transmission des résultats", "Affiliations, portals and result transfer", "Afiliaciones, portales y envío de resultados") },
     { id: "billing", name: L("Cotisations & paiements", "Fees & payments", "Cuotas y pagos"), subtitle: L("Suivi financier de l’organisation", "Organization payment tracking", "Seguimiento financiero de la organización") },
     { id: "sponsors", name: L("Sponsors & partenaires", "Sponsors & partners", "Patrocinadores y socios"), subtitle: L("Visibilité et offres partenaires", "Partner visibility and offers", "Visibilidad y ofertas de socios") },
+    { id: "venue", name: L("Installations & QR", "Installations & QR", "Instalaciones y QR"), subtitle: L("Cibles, tables, terrains, salles et QR de jeu", "Boards, tables, pitches, rooms and play QR codes", "Dianas, mesas, campos, salas y QR de juego") },
     { id: "admin", name: L("Administration", "Administration", "Administración"), subtitle: L("Droits, identité et paramètres", "Permissions, identity and settings", "Permisos, identidad y ajustes") },
     { id: "offers", name: L("Offres MSS", "MSS plans", "Planes MSS"), subtitle: L("GROUP, CLUB, PRO et BUSINESS", "GROUP, CLUB, PRO and BUSINESS", "GROUP, CLUB, PRO y BUSINESS") },
   ].filter((module) => {
@@ -713,6 +717,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "federations") return <OrganizationFederationsPanel organization={active} userId={userId} />;
     if (view === "billing") return <OrganizationBillingPanel organization={active} userId={userId} />;
     if (view === "sponsors") return <OrganizationSponsorsPanel organization={active} userId={userId} />;
+    if (view === "venue") return <OrganizationVenuePanel organization={active} userId={userId} go={go} />;
     if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<div style={{ ...card, padding: 14 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Planifier un événement", "Schedule an event", "Programar un evento")}</div><div style={{ marginTop: 9, display: "grid", gap: 8 }}><input style={input} value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder={L("Entraînement, match, tournoi…", "Training, match, tournament…", "Entrenamiento, partido, torneo…")} /><input type="datetime-local" style={input} value={eventDate} onChange={(e) => setEventDate(e.target.value)} /><input style={input} value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder={L("Lieu (optionnel)", "Location (optional)", "Lugar (opcional)")} /><button type="button" style={primaryButton} onClick={() => void addEvent()}>{L("AJOUTER À L’AGENDA", "ADD TO CALENDAR", "AÑADIR A LA AGENDA")}</button></div></div>{localEvents.length ? localEvents.map((evt) => <div key={evt.id} style={{ ...card, padding: 12 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 950 }}>{evt.title}</div><div style={{ marginTop: 4, color: theme.primary, fontSize: 9.5, fontWeight: 850 }}>{new Date(evt.startsAt).toLocaleString()}</div>{evt.location ? <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9 }}>{evt.location}</div> : null}</div>) : <div style={{ ...card, padding: 18, color: theme.textSoft, fontSize: 10.5 }}>{L("Aucun événement planifié.", "No scheduled events.", "No hay eventos programados.")}</div>}</div>;
     if (view === "admin") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), active.name)}<OrganizationAdminPanel organization={active} userId={userId} go={go} onOpenProfile={() => navigateView("profile")} onChanged={() => void load()} /></div>;
     if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), active.name)}<OrganizationPlansPanel organization={active} userId={userId} onChanged={() => void load()} /></div>;

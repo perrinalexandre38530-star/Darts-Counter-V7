@@ -47,6 +47,7 @@ import {
   gros6AliveTeams,
   gros6Clone,
   gros6IsPlayerActive,
+  gros6IsProtectedTargetOwner,
   gros6TargetLabel,
   isGros6TargetAllowedForSelection,
   makeGros6Bull,
@@ -301,19 +302,18 @@ function HistoryDartChip({ value, lang, accent, size = 30 }: any) {
     );
   }
   const label = compactHistoryLabel(target || value, lang);
-  const tone = label === "BULL" || label === "DBULL"
-    ? "#8be0b8"
-    : String(label).startsWith("G") || String(label).startsWith("B")
-    ? "#70efbd"
-    : String(label).startsWith("P") || String(label).startsWith("L")
-    ? "#d7a9ff"
-    : String(label).startsWith("D")
-    ? "#bfeaff"
-    : String(label).startsWith("T")
-    ? "#ffccff"
-    : "#fff";
+  const chipStyle = (() => {
+    if (label === "DBULL") return { color: "#d9ffe9", border: "rgba(96,255,182,.55)", bg: "linear-gradient(180deg, rgba(34,102,68,.92), rgba(11,30,19,.96))" };
+    if (label === "BULL") return { color: "#c9ffe1", border: "rgba(96,255,182,.42)", bg: "linear-gradient(180deg, rgba(26,82,56,.92), rgba(9,25,16,.96))" };
+    if (label === "MISS") return { color: "#ffd2d7", border: "rgba(255,97,122,.46)", bg: "linear-gradient(180deg, rgba(101,22,34,.94), rgba(35,8,12,.97))" };
+    if (String(label).startsWith("G") || String(label).startsWith("B")) return { color: "#fff2cf", border: "rgba(255,176,72,.5)", bg: "linear-gradient(180deg, rgba(180,93,19,.92), rgba(54,24,8,.97))" };
+    if (String(label).startsWith("P") || String(label).startsWith("L")) return { color: "#6b3f12", border: "rgba(255,232,150,.56)", bg: "linear-gradient(180deg, rgba(255,239,156,.96), rgba(214,188,101,.96))" };
+    if (String(label).startsWith("D")) return { color: "#edfaff", border: "rgba(125,224,255,.5)", bg: "linear-gradient(180deg, rgba(61,113,139,.94), rgba(15,28,35,.97))" };
+    if (String(label).startsWith("T")) return { color: "#ffe8ff", border: "rgba(229,144,255,.48)", bg: "linear-gradient(180deg, rgba(111,64,126,.94), rgba(29,15,34,.97))" };
+    return { color: "#fff", border: "rgba(255,255,255,.12)", bg: "rgba(0,0,0,.34)" };
+  })();
   return (
-    <span style={{ minWidth: size, height: size, padding: "0 4px", borderRadius: 8, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.34)", color: tone, fontSize: size <= 26 ? 8.5 : 9.5, fontWeight: 1000, lineHeight: 1, flex: "0 0 auto" }}>
+    <span style={{ minWidth: size, height: size, padding: "0 4px", borderRadius: 8, display: "grid", placeItems: "center", border: `1px solid ${chipStyle.border}`, background: chipStyle.bg, color: chipStyle.color, fontSize: size <= 26 ? 8.5 : 9.5, fontWeight: 1000, lineHeight: 1, flex: "0 0 auto", boxShadow: "inset 0 1px 0 rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.18)" }}>
       {label}
     </span>
   );
@@ -886,19 +886,20 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         <img src={playersPanelTicker as any} alt="Players panel" draggable={false} style={{ width: "100%", height: "auto", display: "block" }} />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.16), rgba(0,0,0,.04) 40%, rgba(0,0,0,.42))" }} />
         <div style={{ position: "absolute", inset: 0, padding: compact ? "6px 10px" : "8px 12px" }}>
-          <div style={{ position: "absolute", left: compact ? 8 : 12, top: compact ? 8 : 10, display: "flex", alignItems: "center", gap: 6, maxWidth: "78%", overflowX: "auto", scrollbarWidth: "none" }}>
+          <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: compact ? 6 : 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, maxWidth: "calc(100% - 56px)", overflowX: "auto", scrollbarWidth: "none", padding: compact ? "4px 0 5px" : "5px 0 6px" }}>
             {game.players.map((p: any, idx: number) => {
               const active = idx === game.turnIndex && !finished;
               const alive = gros6IsPlayerActive(game, p);
+              const protectedOwner = gros6IsProtectedTargetOwner(game, p);
               return (
-                <div key={p.id} style={{ flex: "0 0 auto", opacity: alive ? 1 : .4, borderRadius: 999, padding: 1, boxShadow: active ? `0 0 0 2px ${accent}, 0 0 14px ${accent}66` : "0 0 0 1px rgba(255,255,255,.16)" }}>
+                <div key={p.id} style={{ flex: "0 0 auto", opacity: alive ? 1 : .4, borderRadius: 999, padding: 2, margin: "2px 0", boxShadow: active ? `0 0 0 2px ${accent}, 0 0 14px ${accent}66` : protectedOwner ? "0 0 0 2px rgba(255,190,92,.92), 0 0 14px rgba(255,190,92,.34)" : "0 0 0 1px rgba(255,255,255,.16)" }}>
                   <ProfileAvatar profile={p} name={p.name} avatarDataUrl={p.avatarDataUrl} size={compact ? 28 : 32} loading="eager" />
                 </div>
               );
             })}
           </div>
-          <span style={{ position: "absolute", right: compact ? 10 : 12, top: compact ? 8 : 10, width: 24, height: 24, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.players.length}</span>
-          <div style={{ position: "absolute", left: compact ? 10 : 12, bottom: compact ? 6 : 8, display: "grid", gap: 1 }}>
+          <span style={{ position: "absolute", right: compact ? 10 : 12, bottom: compact ? 8 : 10, width: 24, height: 24, borderRadius: 999, border: `1px solid ${accent}AA`, color: accent, background: "rgba(0,0,0,.28)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 }}>{game.players.length}</span>
+          <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: compact ? 6 : 8, display: "grid", gap: 1, justifyItems: "center", textAlign: "center" }}>
             <span style={{ fontWeight: 1000, letterSpacing: 1, color: accent, textTransform: "uppercase", whiteSpace: "nowrap", fontSize: compact ? 8.6 : 9.4 }}>{L("Liste des joueurs", "Players list")}</span>
           </div>
         </div>
@@ -993,8 +994,8 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
 
             <div style={{ color: "#e2e4ef", fontSize: 12.5, lineHeight: 1.68 }}>
               {L(
-                "Touchez exactement la cible courante avec 3 fléchettes maximum. La partie commence en général sur GROS 6. Si vous ne touchez pas la cible dans la volée, vous perdez une vie. Le dernier joueur ou la dernière équipe encore en vie remporte la partie.",
-                "Hit the exact current target within a maximum of 3 darts. The game usually starts on BIG 6. If you fail to clear the target during the visit, you lose one life. The last surviving player or team wins the game."
+                "Touchez exactement la cible courante avec 3 fléchettes maximum. La partie commence en général sur GROS 6. Si vous ne touchez pas la cible dans la volée, vous perdez une vie. Le dernier joueur ou la dernière équipe encore en vie remporte la partie. Quand un joueur impose la nouvelle cible, il ne rejoue plus tant qu'un autre joueur n'a pas validé une nouvelle cible.",
+                "Hit the exact current target within a maximum of 3 darts. The game usually starts on BIG 6. If you fail to clear the target during the visit, you lose one life. The last surviving player or team wins the game. When a player sets the new target, that player does not play again until another player clears a new target."
               )}
             </div>
 
@@ -1002,6 +1003,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
               <div style={{ color: accent, fontWeight: 900, fontSize: 13.5, marginBottom: 6 }}>{L("Comment imposer la cible suivante", "How to set the next target")}</div>
               <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.2, lineHeight: 1.62 }}>
                 <li>{L("Dès que la cible est validée, les fléchettes restantes servent à choisir la cible du joueur suivant.", "As soon as the target is cleared, the remaining darts are used to choose the next target for the following player.")}</li>
+                <li>{L("Le joueur qui impose cette cible est protégé : tant que personne n'a validé une autre cible, il est sauté dans l'ordre de jeu et ne perd aucune vie.", "The player who sets that target is protected: until someone else clears another target, that player is skipped in the turn order and loses no life.")}</li>
                 <li>{L("Vous pouvez imposer un GROS simple, un PETIT simple, un double, un triple, le Bull, le Double Bull ou une zone spéciale autorisée.", "You may set a BIG single, a SMALL single, a double, a triple, Bull, Double Bull or any enabled special zone.")}</li>
                 <li>{L("Si la cible est validée avec la 3e fléchette, le bonus configuré ouvre une nouvelle volée de sélection pour définir la prochaine cible.", "If the target is cleared with the 3rd dart, the configured bonus opens a fresh selection visit to define the next target.")}</li>
               </ul>
@@ -1020,7 +1022,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             <div>
               <div style={{ color: accent, fontWeight: 900, fontSize: 13.5, marginBottom: 6 }}>{L("Variantes", "Variants")}</div>
               <ul style={{ margin: 0, paddingLeft: 18, color: "#dfe3f8", fontSize: 12.2, lineHeight: 1.62 }}>
-                <li>{L("Classique : règle stricte S / D / T.", "Classic: strict S / D / T targeting.")}</li>
+                <li>{L("Classique : règle stricte simple gros, simple petit, double et triple distincts.", "Classic: strict big single, small single, double and treble targeting.")}</li>
                 <li>{L("Facile : la valeur seule peut suffire selon la configuration.", "Easy: value-only matching may be enough depending on the configuration.")}</li>
                 <li>{L("PRO : les cibles imposées sont limitées aux doubles, triples et Bulls.", "PRO: settable targets are limited to doubles, triples and Bulls.")}</li>
                 <li>{L("Sudden Death / Endurance : peu ou beaucoup de vies selon l'intensité recherchée.", "Sudden Death / Endurance: fewer or more lives depending on the desired intensity.")}</li>
