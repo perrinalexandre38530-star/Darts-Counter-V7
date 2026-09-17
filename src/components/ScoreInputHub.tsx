@@ -42,6 +42,25 @@ type ExternalKeypadAuxAction = {
   fullBleedIcon?: boolean;
 };
 
+type ExternalKeypadSecondaryAction = {
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  title?: string;
+  ariaLabel?: string;
+};
+
+type ExternalKeypadFooterAction = {
+  label: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  title?: string;
+  ariaLabel?: string;
+};
+
 type ExternalKeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
@@ -91,6 +110,12 @@ type Props = {
   keypadAuxActionOverride?: ExternalKeypadAuxAction | null;
   /** Boutons principaux supplémentaires dans le keypad (ex: GROS / PETIT). */
   keypadExtraMainButtons?: ExternalKeypadExtraMainButton[] | null;
+  /** Action secondaire dans la zone retour (ex: micro Gros 6). */
+  keypadSecondaryAction?: ExternalKeypadSecondaryAction | null;
+  /** Remplace le bouton footer VALIDER (ex: DBULL Gros 6). */
+  keypadFooterAction?: ExternalKeypadFooterAction | null;
+  /** Grise 1..20 tant que la zone/ring n'est pas choisie. */
+  keypadDisableSegmentNumbers?: boolean;
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
@@ -195,6 +220,9 @@ export default function ScoreInputHub({
   enablePresets = true,
   keypadAuxActionOverride = null,
   keypadExtraMainButtons = null,
+  keypadSecondaryAction = null,
+  keypadFooterAction = null,
+  keypadDisableSegmentNumbers = false,
   hidePreview,
   hideTotal,
   centerSlot,
@@ -433,6 +461,9 @@ export default function ScoreInputHub({
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}
       extraMainButtons={keypadExtraMainButtons}
+      secondaryAction={keypadSecondaryAction}
+      footerAction={keypadFooterAction}
+      disableSegmentNumbers={keypadDisableSegmentNumbers}
       noticeSlot={voiceNotice}
       validateAttention={voiceAwaitingManualValidate}
       validateLabel={validateLabel}

@@ -32,6 +32,25 @@ type KeypadExtraMainButton = {
   ariaLabel?: string;
 };
 
+type KeypadSecondaryAction = {
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  title?: string;
+  ariaLabel?: string;
+};
+
+type KeypadFooterAction = {
+  label: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  title?: string;
+  ariaLabel?: string;
+};
+
 type KeypadSingleRingSelector = {
   value: "outer" | "inner";
   onOuter: () => void;
@@ -73,6 +92,15 @@ type Props = {
 
   /** Sélecteur optionnel des deux zones simples physiques (ex: PRISONER). */
   singleRingSelector?: KeypadSingleRingSelector | null;
+
+  /** Action secondaire à côté du bouton retour/annuler (ex: MICRO Gros 6). */
+  secondaryAction?: KeypadSecondaryAction | null;
+
+  /** Remplace le bouton VALIDER du footer par une action dédiée (ex: DBULL Gros 6). */
+  footerAction?: KeypadFooterAction | null;
+
+  /** Grise les touches numériques 1..20 tant qu'un type de zone n'a pas été choisi. */
+  disableSegmentNumbers?: boolean;
 
   /** Petit retour d'état intégré dans le keypad, sans bande séparée au-dessus */
   noticeSlot?: React.ReactNode;
@@ -207,8 +235,10 @@ const NUMBER_ROWS = [
 // du score. Le parent lui fournit volontairement un callback stable.
 const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
   onNumber,
+  disableSegmentNumbers = false,
 }: {
   onNumber: (n: number) => void;
+  disableSegmentNumbers?: boolean;
 }) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -221,17 +251,22 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
             gap: 8,
           }}
         >
-          {row.map((n) => (
+          {row.map((n) => {
+            const blocked = disableSegmentNumbers && n !== 0;
+            return (
             <button
               key={n}
               type="button"
-              style={cell}
-              onClick={() => onNumber(n)}
-              title={n === 0 ? "MISS" : String(n)}
+              style={{ ...cell, ...(blocked ? { opacity: .28, filter: "grayscale(1)", cursor: "not-allowed", boxShadow: "none" } : null) }}
+              onClick={() => { if (!blocked) onNumber(n); }}
+              disabled={blocked}
+              aria-disabled={blocked}
+              title={blocked ? "Choisis d'abord DOUBLE, TRIPLE, GROS ou PETIT" : (n === 0 ? "MISS" : String(n))}
             >
               {n}
             </button>
-          ))}
+            );
+          })}
         </div>
       ))}
     </div>
@@ -283,6 +318,9 @@ export default function Keypad({
   auxAction = null,
   extraMainButtons = null,
   singleRingSelector = null,
+  secondaryAction = null,
+  footerAction = null,
+  disableSegmentNumbers = false,
   noticeSlot = null,
   validateAttention = false,
   validateLabel = "VALIDER",
@@ -501,25 +539,36 @@ export default function Keypad({
               marginBottom: noticeSlot ? 8 : 10,
             }}
           >
-            <button
-              type="button"
-              style={auxAction ? {
-                ...splitActionBase,
-                background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
-                color: "#1a1a1a",
-                border: "1px solid rgba(255,180,0,.34)",
-                boxShadow: "0 10px 22px rgba(255,170,0,.24)",
-              } : btnCancel}
-              onClick={onCancel}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onBackspace?.();
-              }}
-              title="Annuler (clic droit : supprimer la dernière entrée locale)"
-              aria-label="Annuler"
-            >
-              {auxAction ? <ActionIcon><UndoMiniIcon /></ActionIcon> : "ANNULER"}
-            </button>
+            <div style={{ display: "grid", gridTemplateColumns: secondaryAction ? "1fr 1fr" : "1fr", gap: 8, minWidth: 0 }}>
+              <button
+                type="button"
+                style={auxAction ? {
+                  ...splitActionBase,
+                  background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
+                  color: "#1a1a1a",
+                  border: "1px solid rgba(255,180,0,.34)",
+                  boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+                } : btnCancel}
+                onClick={onCancel}
+                onContextMenu={(e) => { e.preventDefault(); onBackspace?.(); }}
+                title="Retour / effacer"
+                aria-label="Retour / effacer"
+              >
+                {auxAction ? <ActionIcon><UndoMiniIcon /></ActionIcon> : "ANNULER"}
+              </button>
+              {secondaryAction ? (
+                <button
+                  type="button"
+                  style={{ ...splitActionBase, ...auxToneStyles(secondaryAction.tone || 'teal', !!secondaryAction.active), opacity: secondaryAction.disabled ? .45 : 1 }}
+                  onClick={secondaryAction.onClick}
+                  disabled={secondaryAction.disabled}
+                  title={secondaryAction.title || "Action"}
+                  aria-label={secondaryAction.ariaLabel || secondaryAction.title || "Action"}
+                >
+                  <ActionIcon>{secondaryAction.icon}</ActionIcon>
+                </button>
+              ) : null}
+            </div>
             {auxAction ? (
               <button
                 type="button"
@@ -649,7 +698,7 @@ export default function Keypad({
       {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
 
       {/* Grille chiffres statique : mémoïsée pour rester instantanée sur mobile. */}
-      <KeypadNumberGrid onNumber={handleNumber} />
+      <KeypadNumberGrid onNumber={handleNumber} disableSegmentNumbers={disableSegmentNumbers} />
 
       {/* BULL + (TOTAL ou SLOT) CENTRÉ + VALIDER */}
       <div
@@ -687,37 +736,35 @@ export default function Keypad({
           )}
         </div>
 
-        <button
-          type="button"
-          style={{
-            ...btnGold,
-            width: "100%",
-            ...(validateAttention
-              ? {
-                  color: "#050505",
-                  background: "linear-gradient(180deg, #ffffff, #ffd666)",
-                  border: "1px solid rgba(255,255,255,.92)",
-                  boxShadow: "0 0 24px rgba(255,255,255,.56), 0 10px 22px rgba(255,170,0,.28)",
-                  animation: "dcVoiceGlow .9s ease-in-out infinite",
-                }
-              : null),
-            ...(validateDisabled
-              ? {
-                  opacity: .48,
-                  cursor: "not-allowed",
-                  boxShadow: "none",
-                  filter: "saturate(.55)",
-                }
-              : null),
-          }}
-          onClick={onValidate}
-          disabled={validateDisabled}
-          title={validateAttention ? "Volée vocale prête : clique pour valider" : "Valider la volée"}
-          aria-label={validateAttention ? "Valider la volée vocale" : "Valider la volée"}
-          aria-disabled={validateDisabled}
-        >
-          {validateLabel}
-        </button>
+        {footerAction ? (
+          <button
+            type="button"
+            style={{ ...btnBase, width: "100%", ...auxToneStyles(footerAction.tone || 'green', false), fontWeight: 1000 }}
+            onClick={footerAction.onClick}
+            disabled={footerAction.disabled}
+            title={footerAction.title || String(footerAction.label)}
+            aria-label={footerAction.ariaLabel || footerAction.title || String(footerAction.label)}
+          >
+            {footerAction.label}
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={{
+              ...btnGold,
+              width: "100%",
+              ...(validateAttention ? { color: "#050505", background: "linear-gradient(180deg, #ffffff, #ffd666)", border: "1px solid rgba(255,255,255,.92)", boxShadow: "0 0 24px rgba(255,255,255,.56), 0 10px 22px rgba(255,170,0,.28)", animation: "dcVoiceGlow .9s ease-in-out infinite" } : null),
+              ...(validateDisabled ? { opacity: .48, cursor: "not-allowed", boxShadow: "none", filter: "saturate(.55)" } : null),
+            }}
+            onClick={onValidate}
+            disabled={validateDisabled}
+            title={validateAttention ? "Volée vocale prête : clique pour valider" : "Valider la volée"}
+            aria-label={validateAttention ? "Valider la volée vocale" : "Valider la volée"}
+            aria-disabled={validateDisabled}
+          >
+            {validateLabel}
+          </button>
+        )}
       </div>
     </div>
   );

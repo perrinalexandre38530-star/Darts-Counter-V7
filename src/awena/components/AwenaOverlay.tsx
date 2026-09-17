@@ -551,7 +551,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             {messages.map((m) => (
               <div key={m.id} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
                 <div style={{ padding: "9px 11px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", border: m.role === "user" ? "1px solid rgba(255,255,255,.10)" : `1px solid ${primary}44`, background: m.role === "user" ? "rgba(255,255,255,.07)" : `linear-gradient(135deg,${primary}12,rgba(255,56,199,.08))`, color: "#f7f8ff", fontSize: 12.5, lineHeight: 1.45 }}>
-                  {m.role === "awena" && currentMode?.id === "gros_6" && /##\s*(OBJECTIF|CONFIGURATION)|ZONES? HORS CIBLE|OFF-BOARD ZONES/i.test(String(m.text || "").toUpperCase()) ? (
+                  {m.role === "awena" && currentMode?.id === "gros_6" && /##\s*(ZONES HORS CIBLE|OFF-BOARD ZONES)/i.test(String(m.text || "").toUpperCase()) ? (
                     <img src={gros6RulesBoard as any} alt="Zones hors cible Gros 6" draggable={false} style={{ width: "100%", maxWidth: 260, aspectRatio: "1 / 1", objectFit: "contain", display: "block", margin: "0 auto 9px", borderRadius: 12, background: "rgba(0,0,0,.18)", border: `1px solid ${primary}33` }} />
                   ) : null}
                   {m.role === "awena" ? <ProgressiveAwenaText messageId={m.id} text={m.text} primary={primary} speechCue={speechCue} voicePreparing={ui.voicePreparing} /> : m.text}

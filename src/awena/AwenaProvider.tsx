@@ -51,6 +51,11 @@ function textForSpeech(text: string) {
     .replace(/^[-•]\s+/gm, "")
     .replace(/^>\s+/gm, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
+    // Ne jamais faire lire la ponctuation technique à Awena.
+    .replace(/\bS\s*\/\s*D\s*\/\s*T\b/gi, "simple, double, triple")
+    .replace(/Bull\s*\/\s*DBull/gi, "Bull et Double Bull")
+    .replace(/Gros\s*6\s*\/\s*Big\s*6/gi, "Gros 6, Big 6")
+    .replace(/\s*\/\s*/g, ", ")
     .replace(/[_`#]/g, " ")
     .replace(/\n{2,}/g, ". ")
     .replace(/\n/g, ", ")

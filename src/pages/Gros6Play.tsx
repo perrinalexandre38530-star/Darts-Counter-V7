@@ -14,6 +14,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ScoreInputHub from "../components/ScoreInputHub";
+import { MicroMiniIcon } from "../components/Keypad";
 import { DartIconColorizable } from "../components/MaskIcon";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -146,6 +147,23 @@ function targetUiLabel(target: any, lang: string) {
   return gros6TargetLabel(target);
 }
 
+function targetSpeechLabel(target: any, lang: string) {
+  if (!target) return lang === "fr" ? "aucune cible" : "no target";
+  if (target.kind === "special") {
+    const label = specialZoneLabel(String(target.code || ""), lang);
+    return lang === "fr" ? `zone ${label.toLowerCase().replace("hors cible ", "hors cible ")}` : `zone ${label.toLowerCase()}`;
+  }
+  if (target.kind === "bull") return target.bull === "DB" ? (lang === "fr" ? "double bull" : "double bull") : "bull";
+  if (target.kind === "segment") {
+    const n = Number(target.value || 0);
+    if (target.ring === "D") return lang === "fr" ? `double ${n}` : `double ${n}`;
+    if (target.ring === "T") return lang === "fr" ? `triple ${n}` : `treble ${n}`;
+    if (target.singleArea === "small") return lang === "fr" ? `petit ${n}` : `little ${n}`;
+    return lang === "fr" ? `gros ${n}` : `big ${n}`;
+  }
+  return targetUiLabel(target, lang);
+}
+
 function polar(cx: number, cy: number, r: number, deg: number) {
   const rad = ((deg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
@@ -199,7 +217,7 @@ function TargetVisual({ target, lang, accent, compact = false }: any) {
   if (target?.kind === "special") {
     return (
       <div style={{ display: "grid", placeItems: "center", minWidth: 0 }}>
-        <SpecialZoneIcon code={target.code} accent={accent} size={compact ? 38 : 72} />
+        <SpecialZoneIcon code={target.code} accent={accent} size={compact ? 34 : 54} />
       </div>
     );
   }
@@ -235,7 +253,7 @@ function ZoneMiniIcon() {
       alt=""
       aria-hidden="true"
       draggable={false}
-      style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
+      style={{ width: "100%", height: "100%", objectFit: "fill", objectPosition: "center", display: "block" }}
     />
   );
 }
@@ -397,12 +415,10 @@ function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
           const active = idx === activeIndex && game.phase !== "finished";
           const alive = gros6IsPlayerActive(game, p);
           const team = game.participantMode === "teams" ? game.teams.find((t: any) => String(t.id) === String(p.teamId)) : null;
-          const liveDarts = idx === activeIndex
-            ? [...(Array.isArray(game.attackDarts) ? game.attackDarts : []), ...(game.phase === "select" && Array.isArray(game.selectionDarts) ? game.selectionDarts : [])]
-            : null;
-          const lastDarts = Array.isArray(liveDarts) && liveDarts.length
-            ? liveDarts.slice(0, 6)
-            : lastCompletedTurnDarts(game, p.id);
+          // Toujours afficher la DERNIÈRE VOLÉE TERMINÉE.
+          // La volée en cours reste exclusivement dans le bandeau VOLÉE EN COURS
+          // et ne remplace l'historique qu'une fois le tour réellement passé.
+          const lastDarts = lastCompletedTurnDarts(game, p.id);
           const lives = game.participantMode === "teams" && game.teamLifeMode === "shared" ? Number(team?.lives || 0) : Number(p.lives || 0);
           return (
             <div key={p.id} style={{ ...panelStyle(), padding: "8px 10px", opacity: alive ? 1 : .55, border: `1px solid ${active ? `${accent}66` : "rgba(255,255,255,.08)"}`, boxShadow: active ? `0 0 16px ${accent}22` : "none", display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 10 }}>
@@ -503,8 +519,12 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const announcedTurnRef = React.useRef("");
   const announcedHistoryRef = React.useRef<number>(0);
   const announcedWinnerRef = React.useRef("");
+  const voiceRecognitionRef = React.useRef<any>(null);
+  const [voiceListening, setVoiceListening] = React.useState(false);
 
   const speechLang = lang === "fr" ? "fr-FR" : "en-US";
+  const preferredInputMethod = String((config as any)?.scoreInputDefaultMethod || (config as any)?.scoreInputMethod || "keypad");
+  const voiceInputRequested = preferredInputMethod === "voice";
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -590,8 +610,13 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     setSpecialMode(null);
   }, [playHitSfx, submitHit]);
 
+  const segmentZoneSelected = multiplier === 2 || multiplier === 3 || specialMode === "big" || specialMode === "small";
+
   const submitNumber = React.useCallback((n: number) => {
     if (n === 0) return submitUiDart({ v: 0, mult: 1 });
+    // GROS 6 : aucune valeur numérique ne doit partir avec une zone implicite.
+    // Le joueur choisit d'abord DOUBLE, TRIPLE, GROS ou PETIT.
+    if (!(multiplier === 2 || multiplier === 3 || specialMode === "big" || specialMode === "small")) return;
     if (specialMode && multiplier === 1) {
       submitUiDart({ v: n, mult: 1, singleArea: specialMode });
       return;
@@ -600,8 +625,12 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   }, [submitUiDart, multiplier, specialMode]);
 
   const submitBull = React.useCallback(() => {
-    submitUiDart({ v: 25, mult: multiplier === 2 ? 2 : 1 });
-  }, [submitUiDart, multiplier]);
+    submitUiDart({ v: 25, mult: 1 });
+  }, [submitUiDart]);
+
+  const submitDoubleBull = React.useCallback(() => {
+    submitUiDart({ v: 25, mult: 2 });
+  }, [submitUiDart]);
 
   const finishSelectionNow = React.useCallback(() => {
     if (!phaseSelect) return;
@@ -623,6 +652,60 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     });
     setMultiplier(1);
   }, [commit, config]);
+
+  const stopGros6Voice = React.useCallback(() => {
+    try { voiceRecognitionRef.current?.stop?.(); } catch {}
+    voiceRecognitionRef.current = null;
+    setVoiceListening(false);
+  }, []);
+
+  const startGros6Voice = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Ctor) {
+      speak(lang === "fr" ? "La reconnaissance vocale n'est pas disponible sur cet appareil." : "Voice recognition is not available on this device.", { lang: speechLang, rate: .98 });
+      return;
+    }
+    try {
+      stopGros6Voice();
+      const rec = new Ctor();
+      voiceRecognitionRef.current = rec;
+      rec.lang = speechLang;
+      rec.interimResults = false;
+      rec.maxAlternatives = 4;
+      rec.continuous = false;
+      rec.onstart = () => setVoiceListening(true);
+      rec.onend = () => { voiceRecognitionRef.current = null; setVoiceListening(false); };
+      rec.onerror = () => { voiceRecognitionRef.current = null; setVoiceListening(false); };
+      rec.onresult = (event: any) => {
+        const heard = Array.from(event?.results?.[0] || []).map((a: any) => String(a?.transcript || "")).join(" ").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+        const numberMatch = heard.match(/\b(20|1[0-9]|[1-9])\b/);
+        const n = numberMatch ? Number(numberMatch[1]) : 0;
+        const specialMap: Array<[RegExp,string,string]> = [
+          [/contour|outer ring|exterieur/, "outer_numbers_ring", "Contour extérieur"],
+          [/18.*(haut|top)|(haut|top).*18/, "closed_18_top", "HORS CIBLE 18 HAUT"],
+          [/18.*(bas|bottom)|(bas|bottom).*18/, "closed_18_bottom", "HORS CIBLE 18 BAS"],
+          [/8.*(haut|top)|(haut|top).*8/, "closed_8_top", "HORS CIBLE 8 HAUT"],
+          [/8.*(bas|bottom)|(bas|bottom).*8/, "closed_8_bottom", "HORS CIBLE 8 BAS"],
+        ];
+        const special = specialMap.find(([re]) => re.test(heard));
+        if (special) { submitHit(makeGros6Special(special[1], special[2])); return; }
+        if ((/hors cible|off target|zone/.test(heard)) && n && [4,6,9,10,14,16,19,20].includes(n)) { submitHit(makeGros6Special(`closed_${n}`, `HORS CIBLE ${n}`)); return; }
+        if (/double bull|dbull|bullseye/.test(heard)) { submitDoubleBull(); return; }
+        if (/\bbull\b/.test(heard)) { submitBull(); return; }
+        if (/miss|rate|rater|dehors|zero/.test(heard)) { submitUiDart({ v: 0, mult: 1 }); return; }
+        if (!n) return;
+        if (/triple|treble|\bt\s*\d+/.test(heard)) { submitUiDart({ v: n, mult: 3 }); return; }
+        if (/double|\bd\s*\d+/.test(heard)) { submitUiDart({ v: n, mult: 2 }); return; }
+        if (/petit|little|small|\bp\s*\d+|\bl\s*\d+/.test(heard)) { submitUiDart({ v: n, mult: 1, singleArea: "small" }); return; }
+        if (/gros|big|\bg\s*\d+|\bb\s*\d+/.test(heard)) { submitUiDart({ v: n, mult: 1, singleArea: "big" }); return; }
+        speak(lang === "fr" ? "Précise la zone. Dis par exemple gros 6, petit 7, double 18 ou triple 20." : "Please specify the zone. Say for example big 6, little 7, double 18 or treble 20.", { lang: speechLang, rate: .98 });
+      };
+      rec.start();
+    } catch { setVoiceListening(false); }
+  }, [lang, speechLang, stopGros6Voice, submitBull, submitDoubleBull, submitHit, submitUiDart]);
+
+  React.useEffect(() => () => stopGros6Voice(), [stopGros6Voice]);
 
   const pickSpecial = React.useCallback((zone: any) => {
     playSfx("hit", { volume: 0.78 });
@@ -679,12 +762,18 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   }, [game.phase, game.turnIndex, game.winnerId, game.players, config]);
 
   React.useEffect(() => {
-    if (finished || !activePlayer?.name) return;
-    const key = `${game.turnNo}-${game.turnIndex}-${game.phase}`;
+    if (finished || !activePlayer?.name || game.phase !== "attack") return;
+    const key = `${game.turnNo}-${game.turnIndex}`;
     if (announcedTurnRef.current === key) return;
     announcedTurnRef.current = key;
-    speak(lang === "fr" ? `${activePlayer.name}, à toi de jouer` : `${activePlayer.name}, your turn`, { lang: speechLang, rate: 0.98 });
-  }, [activePlayer?.name, finished, game.phase, game.turnIndex, game.turnNo, lang, speechLang]);
+    const objective = targetSpeechLabel(game.currentTarget, lang);
+    speak(
+      lang === "fr"
+        ? `${activePlayer.name}, à toi de jouer. Ta cible est ${objective}.`
+        : `${activePlayer.name}, your turn. Your target is ${objective}.`,
+      { lang: speechLang, rate: 0.98 }
+    );
+  }, [activePlayer?.name, finished, game.currentTarget, game.phase, game.turnIndex, game.turnNo, lang, speechLang]);
 
   React.useEffect(() => {
     const history = Array.isArray(game.history) ? game.history : [];
@@ -751,12 +840,9 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             <div style={{ position: "absolute", left: -10, top: 10, transform: "scale(1.42)", transformOrigin: "left top", filter: "saturate(.9) blur(.15px)" }}><ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={84} /></div>
           </div>
 
-          <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minWidth: 0, textAlign: "center", padding: compact ? "6px 8px 4px 66px" : "6px 12px 4px 76px" }}>
-            <div style={{ color: accent, fontSize: compact ? 12 : 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activePlayer?.name || "—"}</div>
-            {activeTeam ? <div style={{ marginTop: 2, color: SOFT, fontSize: 8.2, fontWeight: 900 }}>{activeTeam.name}</div> : null}
-            <div style={{ marginTop: 3, color: SOFT, fontSize: 8.5, fontWeight: 1000, letterSpacing: .7 }}>{phaseText}</div>
-            <div style={{ marginTop: 2, minHeight: compact ? 60 : 94, display: "grid", placeItems: "center", width: "100%" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact={false} /></div>
-            <div style={{ marginTop: "auto", width: "100%", display: "grid", placeItems: "center", gap: 5 }}>
+          <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: compact ? "4px 8px 4px 66px" : "5px 12px 4px 76px" }}>
+            <div style={{ minHeight: compact ? 48 : 66, display: "grid", placeItems: "center", width: "100%" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact={false} /></div>
+            <div style={{ marginTop: 3, width: "100%", display: "grid", placeItems: "center" }}>
               <CricketVisitDarts used={topDartsCount} total={phaseSelect ? Math.max(1, Number(game.selectionAllowed || 1)) : 3} accent={accent} />
             </div>
           </div>
@@ -767,9 +853,10 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "8px 6px 7px" }}>
               <div style={{ alignSelf: "stretch", display: "flex", justifyContent: "center" }}>
                 <div style={{ borderRadius: 999, padding: 2, background: "rgba(0,0,0,.28)", boxShadow: `0 0 0 1px ${accent}44, 0 0 16px rgba(0,0,0,.24)` }}>
-                  <ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 46 : 52} loading="eager" />
+                  <ProfileAvatar profile={activePlayer} name={activePlayer?.name || "?"} avatarDataUrl={activePlayer?.avatarDataUrl} size={compact ? 42 : 48} loading="eager" />
                 </div>
               </div>
+              <div style={{ width: "100%", color: accent, fontSize: compact ? 9.5 : 10.5, fontWeight: 1000, textAlign: "center", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>{activePlayer?.name || "—"}</div>
               <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4 }}>
                 <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>{L("VIES", "LIVES")}</div><div style={{ color: BAD, fontSize: 14, fontWeight: 1000 }}>❤️ {lifeValue}</div></div>
                 <div style={{ textAlign: "center", padding: "5px 2px", borderRadius: 11, background: "rgba(0,0,0,.34)" }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>DARTS</div><div style={{ color: accent, fontSize: 14, fontWeight: 1000 }}>{dartsLeft}</div></div>
@@ -846,11 +933,27 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             onValidate={phaseSelect ? finishSelectionNow : (() => {})}
             onDirectDart={submitUiDart}
             onSetVisitDarts={applyPresetDarts}
-            preferredMethod={(config as any)?.scoreInputDefaultMethod || (config as any)?.scoreInputMethod || "keypad"}
+            preferredMethod={preferredInputMethod}
             keypadExtraMainButtons={[
               { label: L("GROS", "BIG"), onClick: () => setSpecialMode((v) => v === "big" ? null : "big"), active: specialMode === "big", tone: "teal", title: L("Prépare un Gros 6 ou Gros 8", "Prepare a Big 6 or Big 8") },
               { label: L("PETIT", "SMALL"), onClick: () => setSpecialMode((v) => v === "small" ? null : "small"), active: specialMode === "small", tone: "violet", title: L("Prépare un Petit 6 ou Petit 8", "Prepare a Small 6 or Small 8") },
             ]}
+            keypadSecondaryAction={voiceInputRequested ? {
+              icon: <MicroMiniIcon size={21} />,
+              onClick: voiceListening ? stopGros6Voice : startGros6Voice,
+              active: voiceListening,
+              tone: "teal",
+              title: voiceListening ? L("Arrêter l'écoute", "Stop listening") : L("Commande vocale Gros 6", "Big 6 voice input"),
+              ariaLabel: voiceListening ? L("Arrêter l'écoute", "Stop listening") : L("Saisie vocale", "Voice input"),
+            } : null}
+            keypadFooterAction={{
+              label: "DBULL",
+              onClick: submitDoubleBull,
+              tone: "green",
+              title: L("Double Bull", "Double Bull"),
+              ariaLabel: L("Double Bull", "Double Bull"),
+            }}
+            keypadDisableSegmentNumbers={!segmentZoneSelected}
             keypadAuxActionOverride={config?.allowSpecialZones && String(config?.selectionPolicy || "open") !== "pro" ? {
               label: L("ZONE", "ZONE"),
               icon: <ZoneMiniIcon />,
@@ -869,8 +972,6 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             hideTabs
             switcherMode="hidden"
             fitToParent
-            validateLabel={phaseSelect ? L("VALIDER CIBLE", "CONFIRM TARGET") : L("TOUR EN COURS", "TURN ACTIVE")}
-            validateDisabled={!phaseSelect || !game.pendingNextTarget}
             centerSlot={<span style={{ display: "inline-grid", minWidth: 58, placeItems: "center", textAlign: "center", padding: "6px 10px", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 17, lineHeight: 1.02, boxShadow: `0 0 16px ${accent}22`, whiteSpace: "pre-line" }}><TargetVisual target={activeTarget} lang={lang} accent={accent} compact /></span>}
           />
         </div>
