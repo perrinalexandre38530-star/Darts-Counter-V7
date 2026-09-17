@@ -18,10 +18,23 @@ import { DartIconColorizable } from "../components/MaskIcon";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
-import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
-import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
-import playersPanelTicker from "../assets/tickers/ticker_gros_6_players_panel.png";
-import activePanelTicker from "../assets/tickers/ticker_gros_6_active_panel.png";
+import tickerGros6 from "../assets/tickers/ticker_gros_6.webp";
+import tickerBig6 from "../assets/tickers/ticker_gros_6_en.webp";
+import playersPanelTicker from "../assets/tickers/ticker_gros_6_players_panel.webp";
+import activePanelTicker from "../assets/tickers/ticker_gros_6_active_panel.webp";
+import zoneOuterRing from "../assets/gros6-zones/zone_outer_ring.webp";
+import zoneClosed4 from "../assets/gros6-zones/zone_closed_4.webp";
+import zoneClosed6 from "../assets/gros6-zones/zone_closed_6.webp";
+import zoneClosed8Top from "../assets/gros6-zones/zone_closed_8_top.webp";
+import zoneClosed8Bottom from "../assets/gros6-zones/zone_closed_8_bottom.webp";
+import zoneClosed9 from "../assets/gros6-zones/zone_closed_9.webp";
+import zoneClosed10 from "../assets/gros6-zones/zone_closed_10.webp";
+import zoneClosed14 from "../assets/gros6-zones/zone_closed_14.webp";
+import zoneClosed16 from "../assets/gros6-zones/zone_closed_16.webp";
+import zoneClosed18Top from "../assets/gros6-zones/zone_closed_18_top.webp";
+import zoneClosed18Bottom from "../assets/gros6-zones/zone_closed_18_bottom.webp";
+import zoneClosed19 from "../assets/gros6-zones/zone_closed_19.webp";
+import zoneClosed20 from "../assets/gros6-zones/zone_closed_20.webp";
 import {
   GROS6_SPECIAL_ZONES,
   applyGros6AttackHit,
@@ -92,17 +105,19 @@ function ModeInlineInfo({ label, value, accent }: any) {
 
 const BOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const SPECIAL_ZONE_META: Record<string, any> = {
-  outer_numbers_ring: { fr: "Contour extérieur", en: "Outer ring", tone: "outer" },
-  closed_6: { fr: "HORS CIBLE 6", en: "OFF-TARGET 6", number: 6, closed: "6" },
-  closed_8_top: { fr: "HORS CIBLE 8 HAUT", en: "OFF-TARGET 8 TOP", number: 8, closed: "8-top" },
-  closed_8_bottom: { fr: "HORS CIBLE 8 BAS", en: "OFF-TARGET 8 BOTTOM", number: 8, closed: "8-bottom" },
-  closed_9: { fr: "HORS CIBLE 9", en: "OFF-TARGET 9", number: 9, closed: "9" },
-  closed_10: { fr: "HORS CIBLE 10", en: "OFF-TARGET 10", number: 10, closed: "10" },
-  closed_16: { fr: "HORS CIBLE 16", en: "OFF-TARGET 16", number: 16, closed: "16" },
-  closed_18_top: { fr: "HORS CIBLE 18 HAUT", en: "OFF-TARGET 18 TOP", number: 18, closed: "18-top" },
-  closed_18_bottom: { fr: "HORS CIBLE 18 BAS", en: "OFF-TARGET 18 BOTTOM", number: 18, closed: "18-bottom" },
-  closed_19: { fr: "HORS CIBLE 19", en: "OFF-TARGET 19", number: 19, closed: "19" },
-  closed_20: { fr: "HORS CIBLE 20", en: "OFF-TARGET 20", number: 20, closed: "20" },
+  outer_numbers_ring: { fr: "Contour extérieur", en: "Outer ring", asset: zoneOuterRing },
+  closed_4: { fr: "HORS CIBLE 4", en: "OFF-TARGET 4", number: 4, asset: zoneClosed4 },
+  closed_6: { fr: "HORS CIBLE 6", en: "OFF-TARGET 6", number: 6, asset: zoneClosed6 },
+  closed_8_top: { fr: "HORS CIBLE 8 HAUT", en: "OFF-TARGET 8 TOP", number: 8, asset: zoneClosed8Top },
+  closed_8_bottom: { fr: "HORS CIBLE 8 BAS", en: "OFF-TARGET 8 BOTTOM", number: 8, asset: zoneClosed8Bottom },
+  closed_9: { fr: "HORS CIBLE 9", en: "OFF-TARGET 9", number: 9, asset: zoneClosed9 },
+  closed_10: { fr: "HORS CIBLE 10", en: "OFF-TARGET 10", number: 10, asset: zoneClosed10 },
+  closed_14: { fr: "HORS CIBLE 14", en: "OFF-TARGET 14", number: 14, asset: zoneClosed14 },
+  closed_16: { fr: "HORS CIBLE 16", en: "OFF-TARGET 16", number: 16, asset: zoneClosed16 },
+  closed_18_top: { fr: "HORS CIBLE 18 HAUT", en: "OFF-TARGET 18 TOP", number: 18, asset: zoneClosed18Top },
+  closed_18_bottom: { fr: "HORS CIBLE 18 BAS", en: "OFF-TARGET 18 BOTTOM", number: 18, asset: zoneClosed18Bottom },
+  closed_19: { fr: "HORS CIBLE 19", en: "OFF-TARGET 19", number: 19, asset: zoneClosed19 },
+  closed_20: { fr: "HORS CIBLE 20", en: "OFF-TARGET 20", number: 20, asset: zoneClosed20 },
 };
 
 function specialZoneLabel(code: string, lang: string) {
@@ -149,83 +164,30 @@ function zoneAngles(number: number) {
 
 function SpecialZoneIcon({ code, accent, size = 78 }: any) {
   const meta = SPECIAL_ZONE_META[String(code || "")];
-  const highlight = accent || "#42d6ff";
-  const num = String(meta?.number ?? "");
-
-  if (code === "outer_numbers_ring") {
-    return (
-      <svg width={size} height={size} viewBox="0 0 78 78" aria-hidden="true">
-        <circle cx="39" cy="39" r="29" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" />
-        <circle cx="39" cy="39" r="24" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
-        <circle cx="39" cy="39" r="14" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
-        <circle cx="39" cy="39" r="8" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
-        {Array.from({ length: 20 }, (_, i) => {
-          const a = i * 18;
-          const p1 = polar(39, 39, 8, a);
-          const p2 = polar(39, 39, 29, a);
-          return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,.12)" strokeWidth="1" />;
-        })}
-        <circle cx="39" cy="39" r="32.5" fill="none" stroke={highlight} strokeWidth="4" />
-        <text x="39" y="44" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="1000">ZONE</text>
-      </svg>
-    );
-  }
-
-  const singleDigit = num.length === 1;
-  const chars = singleDigit
-    ? [{ char: num, x: 39, y: 54, size: 56 }]
-    : [
-        { char: num[0], x: 24, y: 53, size: 46 },
-        { char: num[1], x: 52, y: 53, size: 46 },
-      ];
-
-  const fills: Record<string, any[]> = {
-    closed_6: [{ cx: 39.8, cy: 46.4, rx: 7.8, ry: 9.1 }],
-    closed_8_top: [{ cx: 39.1, cy: 25.1, rx: 8.1, ry: 8.2 }],
-    closed_8_bottom: [{ cx: 39.1, cy: 49.6, rx: 8.1, ry: 8.2 }],
-    closed_9: [{ cx: 44.7, cy: 29.0, rx: 7.0, ry: 8.1 }],
-    closed_10: [{ cx: 51.8, cy: 39.0, rx: 7.3, ry: 10.1 }],
-    closed_16: [{ cx: 52.2, cy: 45.6, rx: 7.5, ry: 9.0 }],
-    closed_18_top: [{ cx: 52.0, cy: 25.0, rx: 7.7, ry: 7.8 }],
-    closed_18_bottom: [{ cx: 52.0, cy: 49.2, rx: 7.7, ry: 7.8 }],
-    closed_19: [{ cx: 52.3, cy: 29.0, rx: 7.1, ry: 8.2 }],
-    closed_20: [{ cx: 52.1, cy: 39.1, rx: 7.3, ry: 10.1 }],
-  };
-
+  const asset = meta?.asset;
+  if (!asset) return null;
   return (
-    <svg width={size} height={size} viewBox="0 0 78 78" aria-hidden="true">
-      <rect x="6" y="6" width="66" height="66" rx="16" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)" />
-      {chars.map((g, idx) => (
-        <text
-          key={idx}
-          x={g.x}
-          y={g.y}
-          textAnchor="middle"
-          fontSize={g.size}
-          fontWeight="1000"
-          fill="#0a0d14"
-          stroke="rgba(255,255,255,.98)"
-          strokeWidth="4"
-          paintOrder="stroke"
-          fontFamily="inherit"
-        >
-          {g.char}
-        </text>
-      ))}
-      {(fills[String(code || "")] || []).map((shape, idx) => (
-        <ellipse
-          key={idx}
-          cx={shape.cx}
-          cy={shape.cy}
-          rx={shape.rx}
-          ry={shape.ry}
-          fill={highlight}
-          stroke="rgba(255,255,255,.22)"
-          strokeWidth="0.9"
-          opacity="0.99"
-        />
-      ))}
-    </svg>
+    <div
+      style={{
+        width: size,
+        height: size,
+        display: "grid",
+        placeItems: "center",
+        filter: `drop-shadow(0 0 8px ${accent || "#42d6ff"}22)`,
+      }}
+    >
+      <img
+        src={asset as any}
+        alt=""
+        draggable={false}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          display: "block",
+        }}
+      />
+    </div>
   );
 }
 
@@ -386,7 +348,7 @@ function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = t
   return (
     <ModalShell onClose={onClose} title={L("ZONES SPÉCIALES", "SPECIAL ZONES")} subtitle={L("Sélectionne exactement la zone touchée sur la cible", "Select the exact hit zone on the board")} accent={accent}>
       <div style={{ color: SOFT, fontSize: 10.5, lineHeight: 1.45, marginBottom: 10 }}>
-        {includeOuterRing ? L("11 zones spéciales : gros/petit 6, gros/petit 8, zones 9, 10, 16, 18, 19, 20 et contour extérieur.", "11 special zones: big/small 6, big/small 8, zones 9, 10, 16, 18, 19, 20 and the outer ring.") : L("10 zones spéciales : gros/petit 6, gros/petit 8, zones 9, 10, 16, 18, 19 et 20.", "10 special zones: big/small 6, big/small 8, zones 9, 10, 16, 18, 19 and 20.")}
+        {includeOuterRing ? L("13 zones hors cible jouables : 4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19, 20 et contour extérieur.", "13 playable off-board zones: 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19, 20 and the outer ring.") : L("12 zones hors cible jouables : 4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19 et 20.", "12 playable off-board zones: 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19 and 20.")}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 9 }}>
         {GROS6_SPECIAL_ZONES.filter((zone: any) => includeOuterRing || zone.code !== "outer_numbers_ring").map((zone: any) => (
@@ -424,7 +386,7 @@ function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = t
                   ? L("Zone fermée hors cible : boucle haute du 18.", "Closed off-target zone: upper loop of the 18.")
                   : zone.code === "closed_18_bottom"
                   ? L("Zone fermée hors cible : boucle basse du 18.", "Closed off-target zone: lower loop of the 18.")
-                  : L("Zone fermée hors cible jouable : si elle est touchée, le joueur suivant doit viser exactement la même zone fermée.", "Playable off-target closed zone: if hit, the next player must hit the exact same closed zone.")}
+                  : L("Zone fermée hors cible jouable. Si elle est touchée, elle devient la cible exacte du joueur suivant.", "Playable closed zone outside the dartboard. If hit, it becomes the exact target for the next player.")}
               </div>
             </div>
           </button>

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  GROS6_SPECIAL_ZONES,
   applyGros6AttackHit,
   applyGros6SelectionHit,
   buildGros6InitialState,
@@ -42,6 +43,19 @@ assert.equal(
 assert.equal(
   gros6MatchesTarget(makeGros6Special("closed_8_top", "Hors cible 8 haut"), makeGros6Special("closed_9", "Hors cible 9"), baseConfig()),
   false,
+);
+
+
+// zones hors cible 4 et 14 intégrées au moteur
+assert.equal(GROS6_SPECIAL_ZONES.some((zone: any) => zone.code === "closed_4"), true);
+assert.equal(GROS6_SPECIAL_ZONES.some((zone: any) => zone.code === "closed_14"), true);
+assert.equal(
+  gros6MatchesTarget(makeGros6Special("closed_4", "Hors cible 4"), makeGros6Special("closed_4", "Hors cible 4"), baseConfig()),
+  true,
+);
+assert.equal(
+  gros6MatchesTarget(makeGros6Special("closed_14", "Hors cible 14"), makeGros6Special("closed_14", "Hors cible 14"), baseConfig()),
+  true,
 );
 
 // validation à la 3e fléchette => 3 fléchettes bonus de sélection

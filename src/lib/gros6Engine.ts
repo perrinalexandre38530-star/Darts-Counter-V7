@@ -16,11 +16,13 @@ export type Gros6Target =
 export const GROS6_NUMBER_ORDER = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 export const GROS6_SPECIAL_ZONES = [
   { code: "outer_numbers_ring", label: "Contour extérieur" },
+  { code: "closed_4", label: "Hors cible 4" },
   { code: "closed_6", label: "Hors cible 6" },
   { code: "closed_8_top", label: "Hors cible 8 haut" },
   { code: "closed_8_bottom", label: "Hors cible 8 bas" },
   { code: "closed_9", label: "Hors cible 9" },
   { code: "closed_10", label: "Hors cible 10" },
+  { code: "closed_14", label: "Hors cible 14" },
   { code: "closed_16", label: "Hors cible 16" },
   { code: "closed_18_top", label: "Hors cible 18 haut" },
   { code: "closed_18_bottom", label: "Hors cible 18 bas" },
