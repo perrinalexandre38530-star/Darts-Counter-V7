@@ -49,6 +49,9 @@ export type DartsGameTab =
   | "castle_config"
   | "gotcha_config"
   | "hare_hounds_config"
+  | "pendu_config"
+  | "menteur_config"
+  | "crados_config"
   | "training"
   | "tournaments"
   | "darts_mode"
@@ -644,6 +647,60 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "LOTERIE",
     infoBody:
       "Chaque joueur reçoit 1 à 4 cartons. LOTERIE : une volée de 1 à 3 fléchettes produit un total à retrouver sur les cartons, avec une plage adaptée au niveau (10 à 120 max). EXPRESS : vise un simple, un double exact ou un triple exact avec 1 essai ou jusqu’à 3 essais ; le tour s’arrête dès que la cible demandée est touchée et l’option MISS peut faire passer immédiatement le tour. Toutes les occurrences correspondantes sont révélées. Le premier joueur qui complète entièrement un carton gagne.",
+  },
+  {
+    id: "pendu",
+    label: "PENDU",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "pendu_config",
+    popularityRank: 48.01,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:pendu",
+    infoTitle: "PENDU",
+    infoBody:
+      "Le joueur actif annonce ou tire un défi et doit le réussir. Tous les autres doivent ensuite le reproduire. Chaque échec ajoute une partie au pendu ; quand le corps est complet, le joueur est éliminé. Le dernier survivant gagne.",
+  },
+  {
+    id: "menteur",
+    label: "MENTEUR",
+    category: "fun",
+    subCategory: "battle",
+    entry: "games",
+    tab: "menteur_config",
+    popularityRank: 48.02,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:menteur",
+    infoTitle: "MENTEUR",
+    infoBody:
+      "Les joueurs enchaînent des annonces de plus en plus ambitieuses. À ton tour, tu surenchéris ou tu cries MENTEUR ! Le joueur défié doit alors réussir son contrat avec sa volée ; s'il échoue, il perd une vie, sinon c'est le challenger qui la perd.",
+  },
+  {
+    id: "crados",
+    label: "CRADOS",
+    category: "fun",
+    subCategory: "survie",
+    entry: "games",
+    tab: "crados_config",
+    popularityRank: 48.03,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:crados",
+    infoTitle: "CRADOS",
+    infoBody:
+      "Les secteurs de la cible se salissent progressivement à ta couleur. Marcher dans la crasse des autres te contamine, tandis que le Bull peut te nettoyer. Le dernier joueur encore propre, ou le moins sale, remporte la partie.",
   },
   {
     id: "castle",
@@ -1338,6 +1395,9 @@ const READY_IDS = new Set<string>([
   "castle",
   "gotcha",
   "hare_hounds",
+  "pendu",
+  "menteur",
+  "crados",
 
   // ✅ LOTERIE — mode PARTY disponible
   "loterie",

@@ -403,6 +403,12 @@ const GotchaConfig = React.lazy(() => import("./pages/GotchaConfig"));
 const GotchaPlay = React.lazy(() => import("./pages/GotchaPlay"));
 const HareHoundsConfig = React.lazy(() => import("./pages/HareHoundsConfig"));
 const HareHoundsPlay = React.lazy(() => import("./pages/HareHoundsPlay"));
+const PenduConfig = React.lazy(() => import("./pages/PenduConfig"));
+const PenduPlay = React.lazy(() => import("./pages/PenduPlay"));
+const MenteurConfig = React.lazy(() => import("./pages/MenteurConfig"));
+const MenteurPlay = React.lazy(() => import("./pages/MenteurPlay"));
+const CradosConfig = React.lazy(() => import("./pages/CradosConfig"));
+const CradosPlay = React.lazy(() => import("./pages/CradosPlay"));
 const EnculetteConfig = React.lazy(() => import("./pages/EnculetteConfig"));
 const EnculettePlay = React.lazy(() => import("./pages/EnculettePlay"));
 const CastJoinPage = React.lazy(() => import("./pages/cast/CastJoinPage"));
@@ -1166,6 +1172,12 @@ type Tab =
   | "gotcha_play"
   | "hare_hounds_config"
   | "hare_hounds_play"
+  | "pendu_config"
+  | "pendu_play"
+  | "menteur_config"
+  | "menteur_play"
+  | "crados_config"
+  | "crados_play"
   | "enculette_config"
   | "enculette_play"
   | "auth_reset";
@@ -6447,6 +6459,27 @@ case "babyfoot_team_edit":
         break;
       case "hare_hounds_play":
         page = <HareHoundsPlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "pendu_config":
+        page = <PenduConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "pendu_play":
+        page = <PenduPlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "menteur_config":
+        page = <MenteurConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "menteur_play":
+        page = <MenteurPlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "crados_config":
+        page = <CradosConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "crados_play":
+        page = <CradosPlay store={store} go={go} setTab={go} params={routeParams} />;
         break;
 
       case "enculette_config":

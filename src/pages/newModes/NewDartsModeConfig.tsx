@@ -14,7 +14,7 @@ import { loadBotPlayers } from "../../lib/bots";
 import { recordProfileUsageForMode } from "../../lib/profileUsage";
 import { X01_PRO_BOTS } from "../X01ConfigV3";
 
-export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds";
+export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados";
 type BotLevel = "easy" | "normal" | "hard";
 type ConfigViewMode = "guided" | "complete";
 
@@ -136,6 +136,24 @@ export default function NewDartsModeConfig(props: Props) {
   const [hareRoleMode, setHareRoleMode] = React.useState<"first" | "random" | "rotate">(["random","rotate"].includes(saved.hareRoleMode) ? saved.hareRoleMode : "first");
   const [hareDirection, setHareDirection] = React.useState<"clockwise" | "counter">(saved.hareDirection === "counter" ? "counter" : "clockwise");
 
+  // PENDU
+  const [penduPartsToLose, setPenduPartsToLose] = React.useState<6 | 8>(saved.penduPartsToLose === 8 ? 8 : 6);
+  const [penduChallengeMode, setPenduChallengeMode] = React.useState<"caller" | "random" | "mixed">(["random", "mixed"].includes(saved.penduChallengeMode) ? saved.penduChallengeMode : "caller");
+  const [penduTargetFamily, setPenduTargetFamily] = React.useState<"segments" | "scores" | "mixed">(["scores", "mixed"].includes(saved.penduTargetFamily) ? saved.penduTargetFamily : "segments");
+  const [penduExecution, setPenduExecution] = React.useState<"strict" | "flex">(saved.penduExecution === "flex" ? "flex" : "strict");
+
+  // MENTEUR
+  const [menteurLives, setMenteurLives] = React.useState<3 | 5 | 7>(saved.menteurLives === 3 || saved.menteurLives === 7 ? saved.menteurLives : 5);
+  const [menteurContractDeck, setMenteurContractDeck] = React.useState<"score" | "mixed" | "advanced">(["mixed", "advanced"].includes(saved.menteurContractDeck) ? saved.menteurContractDeck : "score");
+  const [menteurRaiseStep, setMenteurRaiseStep] = React.useState<5 | 10 | 20>(saved.menteurRaiseStep === 10 || saved.menteurRaiseStep === 20 ? saved.menteurRaiseStep : 5);
+  const [menteurBullAllowed, setMenteurBullAllowed] = React.useState(saved.menteurBullAllowed !== false);
+
+  // CRADOS
+  const [cradosDirtLimit, setCradosDirtLimit] = React.useState<10 | 15 | 20>(saved.cradosDirtLimit === 15 || saved.cradosDirtLimit === 20 ? saved.cradosDirtLimit : 10);
+  const [cradosLayersToOwn, setCradosLayersToOwn] = React.useState<2 | 3 | 4>(saved.cradosLayersToOwn === 2 || saved.cradosLayersToOwn === 4 ? saved.cradosLayersToOwn : 3);
+  const [cradosBullWash, setCradosBullWash] = React.useState(saved.cradosBullWash !== false);
+  const [cradosStealMode, setCradosStealMode] = React.useState<"block" | "flip">(saved.cradosStealMode === "flip" ? "flip" : "block");
+
   const humanProfiles = React.useMemo(() => {
     const raw = Array.isArray(store?.profiles) ? store.profiles : [];
     return raw.filter((p: any) => !isBotLike(p)).map((p: any) => normalizeProfile(p, false));
@@ -176,9 +194,12 @@ export default function NewDartsModeConfig(props: Props) {
       castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg,
       gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust,
       houndStart, hareTargetZone, hareRoleMode, hareDirection,
+      penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution,
+      menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed,
+      cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -194,7 +215,10 @@ export default function NewDartsModeConfig(props: Props) {
   function modeRulesPayload() {
     if (mode === "castle") return { targetBricks: castleBricks, numberAssignment: castleAssignment, attacksEnabled: castleAttacks, reassignEachLeg: castleReassignEachLeg };
     if (mode === "gotcha") return { targetScore: gotchaTarget, outMode: gotchaOut, maxRounds: gotchaMaxRounds, bustRule: gotchaBust, gotchaReset: "zero" };
-    return { houndStart, targetZone: hareTargetZone, roleMode: hareRoleMode, direction: hareDirection, hareStart: 20 };
+    if (mode === "hare_hounds") return { houndStart, targetZone: hareTargetZone, roleMode: hareRoleMode, direction: hareDirection, hareStart: 20 };
+    if (mode === "pendu") return { partsToLose: penduPartsToLose, challengeMode: penduChallengeMode, targetFamily: penduTargetFamily, executionMode: penduExecution };
+    if (mode === "menteur") return { lives: menteurLives, contractDeck: menteurContractDeck, raiseStep: menteurRaiseStep, bullAllowed: menteurBullAllowed };
+    return { dirtLimit: cradosDirtLimit, layersToOwn: cradosLayersToOwn, bullWash: cradosBullWash, stealMode: cradosStealMode };
   }
 
   function start() {
@@ -275,6 +299,36 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
+  const penduBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles PENDU</div>
+    <div style={panel}>
+      <OptionRow label="Erreurs avant élimination"><OptionSelect value={penduPartsToLose} options={[{ value: 6, label: "6 parties — pendu classique" }, { value: 8, label: "8 parties — version longue" }]} onChange={(v: any) => setPenduPartsToLose(Number(v) === 8 ? 8 : 6)} /></OptionRow>
+      <OptionRow label="Création des défis"><OptionSelect value={penduChallengeMode} options={[{ value: "caller", label: "Annonce libre par le joueur actif" }, { value: "random", label: "Défi tiré au hasard" }, { value: "mixed", label: "Mixte — libre + aléatoire" }]} onChange={setPenduChallengeMode} /></OptionRow>
+      <OptionRow label="Famille de défis"><OptionSelect value={penduTargetFamily} options={[{ value: "segments", label: "Segments exacts" }, { value: "scores", label: "Scores / objectifs" }, { value: "mixed", label: "Mixte" }]} onChange={setPenduTargetFamily} /></OptionRow>
+      <OptionRow label="Validation"><OptionSelect value={penduExecution} options={[{ value: "strict", label: "Stricte — défi exact" }, { value: "flex", label: "Souple — défi ou mieux" }]} onChange={setPenduExecution} /></OptionRow>
+    </div>
+  </section>;
+
+  const menteurBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles MENTEUR</div>
+    <div style={panel}>
+      <OptionRow label="Vies"><OptionSelect value={menteurLives} options={[3,5,7]} onChange={(v: any) => setMenteurLives(Number(v) === 3 ? 3 : Number(v) === 7 ? 7 : 5)} /></OptionRow>
+      <OptionRow label="Contrats"><OptionSelect value={menteurContractDeck} options={[{ value: "score", label: "Scores uniquement" }, { value: "mixed", label: "Mixte — scores + zones" }, { value: "advanced", label: "Avancé — inclut combos / checkout" }]} onChange={setMenteurContractDeck} /></OptionRow>
+      <OptionRow label="Pas minimal de surenchère"><OptionSelect value={menteurRaiseStep} options={[5,10,20]} onChange={(v: any) => setMenteurRaiseStep(Number(v) === 10 ? 10 : Number(v) === 20 ? 20 : 5)} /></OptionRow>
+      <OptionRow label="Bull autorisé dans les annonces"><OptionToggle value={menteurBullAllowed} onChange={setMenteurBullAllowed} /></OptionRow>
+    </div>
+  </section>;
+
+  const cradosBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles CRADOS</div>
+    <div style={panel}>
+      <OptionRow label="Jauge de crasse"><OptionSelect value={cradosDirtLimit} options={[10,15,20]} onChange={(v: any) => setCradosDirtLimit(Number(v) === 15 ? 15 : Number(v) === 20 ? 20 : 10)} /></OptionRow>
+      <OptionRow label="Couches pour salir un secteur"><OptionSelect value={cradosLayersToOwn} options={[{ value: 2, label: "2 couches — rapide" }, { value: 3, label: "3 couches — classique" }, { value: 4, label: "4 couches — endurance" }]} onChange={(v: any) => setCradosLayersToOwn(Number(v) === 2 ? 2 : Number(v) === 4 ? 4 : 3)} /></OptionRow>
+      <OptionRow label="Bull douche / nettoyage"><OptionToggle value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
+      <OptionRow label="Action sur secteur adverse"><OptionSelect value={cradosStealMode} options={[{ value: "block", label: "Blocage — secteur sale piégé" }, { value: "flip", label: "Vol — la propriété peut changer" }]} onChange={setCradosStealMode} /></OptionRow>
+    </div>
+  </section>;
+
   const inputBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Saisie</div>
     <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: "CIBLE INTERACTIVE" }]} onChange={setScoreInputMethod} /></OptionRow>
@@ -291,11 +345,14 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "castle" ? <><SummaryLine label="Objectif" value={`${castleBricks} briques`} /><SummaryLine label="Combat" value={castleAttacks ? "Construction + attaque" : "Construction seule"} /></> : null}
       {mode === "gotcha" ? <><SummaryLine label="Cible" value={gotchaTarget} /><SummaryLine label="Sortie" value={gotchaOut === "straight" ? "Straight" : gotchaOut === "double" ? "Double" : "Master"} /></> : null}
       {mode === "hare_hounds" ? <><SummaryLine label="Départs" value={`Lièvre 20 · Limier ${houndStart}`} /><SummaryLine label="Zone" value={hareTargetZone === "any" ? "S/D/T" : hareTargetZone === "double" ? "Doubles" : "Triples"} /></> : null}
+      {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Défis" value={penduTargetFamily === "segments" ? "Segments" : penduTargetFamily === "scores" ? "Scores" : "Mixte"} /></> : null}
+      {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
+      {mode === "crados" ? <><SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /></> : null}
     </div>
     {!validSelection ? <div style={{ marginTop: 10, color: "#ff9baa", fontSize: 11.5, fontWeight: 900, textAlign: "center" }}>Sélectionne au moins {definition.minPlayers} participants pour continuer.</div> : null}
   </section>;
 
-  const modeBlock = mode === "castle" ? castleBlock : mode === "gotcha" ? gotchaBlock : hareBlock;
+  const modeBlock = mode === "castle" ? castleBlock : mode === "gotcha" ? gotchaBlock : mode === "hare_hounds" ? hareBlock : mode === "pendu" ? penduBlock : mode === "menteur" ? menteurBlock : cradosBlock;
   const steps = definition.guidedSteps;
   const maxStep = steps.length - 1;
 

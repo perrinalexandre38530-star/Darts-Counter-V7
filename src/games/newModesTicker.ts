@@ -12,6 +12,9 @@ import type { NewTickerItem } from "../components/NewGameTickerBar";
 
 // ✅ Mets ici la liste des IDs "nouveautés" (c’est LA “liste” demandée)
 export const NEW_MODE_IDS: string[] = [
+  "pendu",
+  "menteur",
+  "crados",
   "halve_it",
   "bobs_27",
   "happy_mille",
