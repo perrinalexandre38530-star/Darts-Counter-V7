@@ -482,7 +482,9 @@ export default function Games({ setTab, params }: Props) {
       ? "darts_racer"
       : id === "killer_progressive"
         ? "killer"
-        : id;
+        : id === "fifty_one_by_five"
+          ? "51_by_5"
+          : id;
 
     if (lang !== "fr") {
       const preferred = lang === "es" ? "es" : "en";
