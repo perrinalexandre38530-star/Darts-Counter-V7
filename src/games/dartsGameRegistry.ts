@@ -46,6 +46,9 @@ export type DartsGameTab =
   | "prisoner_config"
   | "tic_tac_toe_config"
   | "batard_config"
+  | "castle_config"
+  | "gotcha_config"
+  | "hare_hounds_config"
   | "training"
   | "tournaments"
   | "darts_mode"
@@ -642,6 +645,61 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoBody:
       "Chaque joueur reçoit 1 à 4 cartons. LOTERIE : une volée de 1 à 3 fléchettes produit un total à retrouver sur les cartons, avec une plage adaptée au niveau (10 à 120 max). EXPRESS : vise un simple, un double exact ou un triple exact avec 1 essai ou jusqu’à 3 essais ; le tour s’arrête dès que la cible demandée est touchée et l’option MISS peut faire passer immédiatement le tour. Toutes les occurrences correspondantes sont révélées. Le premier joueur qui complète entièrement un carton gagne.",
   },
+  {
+    id: "castle",
+    label: "CASTLE",
+    category: "fun",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "castle_config",
+    popularityRank: 48.1,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:castle",
+    infoTitle: "CASTLE",
+    infoBody:
+      "Chaque joueur possède un numéro unique et construit un château. Simple = 1 brique, Double = 2, Triple = 3. Toucher le numéro d’un adversaire détruit autant de briques chez lui. La règle classique se joue à 15 briques : le premier château terminé gagne.",
+  },
+  {
+    id: "gotcha",
+    label: "GOTCHA",
+    category: "fun",
+    subCategory: "battle",
+    entry: "games",
+    tab: "gotcha_config",
+    popularityRank: 48.2,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:gotcha",
+    infoTitle: "GOTCHA",
+    infoBody:
+      "Course depuis 0 jusqu’à un total exact, classiquement 301. Si ton score cumulé devient exactement égal à celui d’un adversaire, GOTCHA : son score est remis à 0. Sortie Straight, Double ou Master et règle de bust configurables.",
+  },
+  {
+    id: "hare_hounds",
+    label: "HARE & HOUNDS",
+    category: "fun",
+    subCategory: "battle",
+    entry: "games",
+    tab: "hare_hounds_config",
+    popularityRank: 48.3,
+    ready: true,
+    isNew: true,
+    maxPlayers: 8,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:hare_hounds",
+    infoTitle: "HARE & HOUNDS",
+    infoBody:
+      "Jeu de poursuite autour de la cible. Le Lièvre part sur 20 et tente de boucler un tour complet ; le ou les Limiers partent derrière, généralement sur 5 ou 12, et cherchent à le rattraper. Chaque touche valide fait avancer d’une position dans l’ordre physique des secteurs.",
+  },
+
   {
     id: "prisoner",
     label: "Prisoner",
@@ -1277,6 +1335,9 @@ const READY_IDS = new Set<string>([
   "shooter",
   "mario_kart", // DARTS RACER (identifiant technique historique conservé)
   "prisoner",
+  "castle",
+  "gotcha",
+  "hare_hounds",
 
   // ✅ LOTERIE — mode PARTY disponible
   "loterie",

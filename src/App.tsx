@@ -397,6 +397,12 @@ const CargoConfig = React.lazy(() => import("./pages/CargoConfig"));
 const CargoPlay = React.lazy(() => import("./pages/CargoPlay"));
 const OceanControlConfig = React.lazy(() => import("./pages/OceanControlConfig"));
 const OceanControlPlay = React.lazy(() => import("./pages/OceanControlPlay"));
+const CastleConfig = React.lazy(() => import("./pages/CastleConfig"));
+const CastlePlay = React.lazy(() => import("./pages/CastlePlay"));
+const GotchaConfig = React.lazy(() => import("./pages/GotchaConfig"));
+const GotchaPlay = React.lazy(() => import("./pages/GotchaPlay"));
+const HareHoundsConfig = React.lazy(() => import("./pages/HareHoundsConfig"));
+const HareHoundsPlay = React.lazy(() => import("./pages/HareHoundsPlay"));
 const EnculetteConfig = React.lazy(() => import("./pages/EnculetteConfig"));
 const EnculettePlay = React.lazy(() => import("./pages/EnculettePlay"));
 const CastJoinPage = React.lazy(() => import("./pages/cast/CastJoinPage"));
@@ -1154,6 +1160,12 @@ type Tab =
   | "cargo_play"
   | "ocean_control_config"
   | "ocean_control_play"
+  | "castle_config"
+  | "castle_play"
+  | "gotcha_config"
+  | "gotcha_play"
+  | "hare_hounds_config"
+  | "hare_hounds_play"
   | "enculette_config"
   | "enculette_play"
   | "auth_reset";
@@ -6414,6 +6426,27 @@ case "babyfoot_team_edit":
             }
           />
         );
+        break;
+
+      case "castle_config":
+        page = <CastleConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "castle_play":
+        page = <CastlePlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "gotcha_config":
+        page = <GotchaConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "gotcha_play":
+        page = <GotchaPlay store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
+      case "hare_hounds_config":
+        page = <HareHoundsConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "hare_hounds_play":
+        page = <HareHoundsPlay store={store} go={go} setTab={go} params={routeParams} />;
         break;
 
       case "enculette_config":
