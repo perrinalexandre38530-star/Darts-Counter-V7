@@ -6,7 +6,7 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
   <div><b style={{ color: "#d4ff44" }}>CONTAMINATION</b><br/>Simple = 1 couche, Double = 2, Triple = 3. Quand un secteur atteint le nombre de couches demandé, il devient « crado » et appartient au joueur.</div>
   <div><b style={{ color: "#9eea3a" }}>PIÈGES</b><br/>Toucher un secteur sale adverse ajoute de la crasse à ta jauge. Selon la variante, tu peux simplement le subir ou tenter de retourner le secteur.</div>
   <div><b style={{ color: "#74d92d" }}>DOUCHE</b><br/>Le Bull peut nettoyer : SBULL retire un peu de crasse, DBULL lave beaucoup plus si l'option est activée.</div>
-  <div><b style={{ color: "#d4ff44" }}>VICTOIRE</b><br/>Le dernier joueur encore sous la limite de crasse, ou le plus propre en fin de partie, l'emporte.</div>
+  <div><b style={{ color: "#d4ff44" }}>VICTOIRE</b><br/>Le dernier joueur encore sous la limite de crasse remporte la manche.</div>
 </div>;
 
 export default function CradosConfig(props: any) {
