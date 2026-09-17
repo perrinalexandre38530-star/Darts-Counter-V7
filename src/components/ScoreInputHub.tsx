@@ -36,7 +36,7 @@ type ExternalKeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
   fullBleedIcon?: boolean;
@@ -47,7 +47,7 @@ type ExternalKeypadSecondaryAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -56,7 +56,7 @@ type ExternalKeypadFooterAction = {
   label: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -65,7 +65,7 @@ type ExternalKeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };

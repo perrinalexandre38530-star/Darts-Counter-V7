@@ -12,6 +12,8 @@ import OrganizationPlansPanel from "../components/OrganizationPlansPanel";
 import OrganizationMembersPanel from "../components/OrganizationMembersPanel";
 import OrganizationTeamsPanel from "../components/OrganizationTeamsPanel";
 import OrganizationVenuePanel from "../components/OrganizationVenuePanel";
+import OrganizationCalendarPanel from "../components/OrganizationCalendarPanel";
+import OrganizationProfilePanel from "../components/OrganizationProfilePanel";
 import OrganizationInvitationsInbox from "../components/OrganizationInvitationsInbox";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -19,7 +21,6 @@ import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import {
   createOrganization,
-  createOrganizationEvent,
   joinOrganization,
   listLocalOrganizationEvents,
   listLocalOrganizationGroups,
@@ -177,9 +178,6 @@ export default function OrganizationsPage({ go, params }: Props) {
   const [notice, setNotice] = React.useState("");
   const [error, setError] = React.useState("");
   const [joinCode, setJoinCode] = React.useState("");
-  const [eventTitle, setEventTitle] = React.useState("");
-  const [eventDate, setEventDate] = React.useState("");
-  const [eventLocation, setEventLocation] = React.useState("");
   const [refreshTick, setRefreshTick] = React.useState(0);
   const [activeLogo, setActiveLogo] = React.useState("");
   const [activeCover, setActiveCover] = React.useState("");
@@ -436,17 +434,6 @@ export default function OrganizationsPage({ go, params }: Props) {
   function copyJoinCode() {
     if (!active?.joinCode) return;
     void navigator.clipboard?.writeText(active.joinCode).then(() => setNotice(L("Code d’invitation copié.", "Invitation code copied.", "Código de invitación copiado."))).catch(() => setNotice(active.joinCode));
-  }
-
-  async function addEvent() {
-    if (!active) return;
-    setError("");
-    try {
-      const result = await createOrganizationEvent(userId, active.id, eventTitle, eventDate, eventLocation);
-      setEventTitle(""); setEventDate(""); setEventLocation(""); setRefreshTick((v) => v + 1);
-      if (result.cloudAvailable) setCloudAvailable(true);
-      setOrganizations((prev) => prev.map((org) => org.id === active.id ? { ...org, eventCount: Math.max(org.eventCount, localEvents.length + 1) } : org));
-    } catch (e: any) { setError(String(e?.message || "Création de l’événement impossible.")); }
   }
 
   const optionalModules = active?.profile.adminSettings.enabledModules || ["communication", "federations", "billing", "sponsors"];
@@ -708,7 +695,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   const renderSection = () => {
     if (!active) return renderEntry();
     if (view === "home") return renderHome();
-    if (view === "profile") return renderProfile();
+    if (view === "profile") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("FICHE ORGANISME", "ORGANIZATION PROFILE", "FICHA DE LA ORGANIZACIÓN"), active.name)}<OrganizationProfilePanel organization={active} userId={userId} logoUrl={activeLogo} coverUrl={activeCover} onChanged={() => void load()} /></div>;
     if (view === "members") return <OrganizationMembersPanel organization={active} groups={localGroups} userId={userId} onChanged={() => void load()} />;
     if (view === "groups") return <OrganizationTeamsPanel organization={active} userId={userId} initialGroups={localGroups} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} />;
     if (view === "competitions") return <OrganizationCompetitionsPanel organization={active} userId={userId} initialGroups={localGroups} />;
@@ -718,7 +705,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "billing") return <OrganizationBillingPanel organization={active} userId={userId} />;
     if (view === "sponsors") return <OrganizationSponsorsPanel organization={active} userId={userId} />;
     if (view === "venue") return <OrganizationVenuePanel organization={active} userId={userId} go={go} />;
-    if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<div style={{ ...card, padding: 14 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Planifier un événement", "Schedule an event", "Programar un evento")}</div><div style={{ marginTop: 9, display: "grid", gap: 8 }}><input style={input} value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder={L("Entraînement, match, tournoi…", "Training, match, tournament…", "Entrenamiento, partido, torneo…")} /><input type="datetime-local" style={input} value={eventDate} onChange={(e) => setEventDate(e.target.value)} /><input style={input} value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder={L("Lieu (optionnel)", "Location (optional)", "Lugar (opcional)")} /><button type="button" style={primaryButton} onClick={() => void addEvent()}>{L("AJOUTER À L’AGENDA", "ADD TO CALENDAR", "AÑADIR A LA AGENDA")}</button></div></div>{localEvents.length ? localEvents.map((evt) => <div key={evt.id} style={{ ...card, padding: 12 }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 950 }}>{evt.title}</div><div style={{ marginTop: 4, color: theme.primary, fontSize: 9.5, fontWeight: 850 }}>{new Date(evt.startsAt).toLocaleString()}</div>{evt.location ? <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9 }}>{evt.location}</div> : null}</div>) : <div style={{ ...card, padding: 18, color: theme.textSoft, fontSize: 10.5 }}>{L("Aucun événement planifié.", "No scheduled events.", "No hay eventos programados.")}</div>}</div>;
+    if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<OrganizationCalendarPanel organization={active} userId={userId} groups={localGroups} initialEvents={localEvents} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} /></div>;
     if (view === "admin") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), active.name)}<OrganizationAdminPanel organization={active} userId={userId} go={go} onOpenProfile={() => navigateView("profile")} onChanged={() => void load()} /></div>;
     if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), active.name)}<OrganizationPlansPanel organization={active} userId={userId} onChanged={() => void load()} /></div>;
 

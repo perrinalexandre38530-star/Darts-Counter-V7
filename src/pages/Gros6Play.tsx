@@ -59,12 +59,121 @@ import {
 } from "../lib/gros6Engine";
 import { playGros6Intro, stopGros6Intro, playImpactFromDart, playSfx, unlockAudio } from "../lib/sfx";
 import { speak } from "../lib/voice";
+import { History } from "../lib/history";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 
 const STROKE = "rgba(255,255,255,.105)";
 const SOFT = "rgba(226,232,240,.72)";
 const GOOD = "#70efbd";
 const BAD = "#ff718a";
 const PINK = "#ff63b8";
+
+function restoreGros6Snapshot(config: any, snapshot: any) {
+  const base = buildGros6InitialState(config);
+  if (!snapshot || typeof snapshot !== "object") return base;
+  try {
+    const saved = gros6Clone(snapshot);
+    return {
+      ...base,
+      ...saved,
+      players: Array.isArray(saved.players) && saved.players.length ? saved.players : base.players,
+      teams: Array.isArray(saved.teams) ? saved.teams : base.teams,
+      history: Array.isArray(saved.history) ? saved.history : [],
+      attackDarts: Array.isArray(saved.attackDarts) ? saved.attackDarts : [],
+      selectionDarts: Array.isArray(saved.selectionDarts) ? saved.selectionDarts : [],
+    };
+  } catch { return base; }
+}
+
+function hitBucket(hit: any): string {
+  if (!hit || hit.kind === "miss") return "MISS";
+  if (hit.kind === "special") return "SPECIAL";
+  if (hit.kind === "bull") return hit.bull === "DB" ? "DBULL" : "BULL";
+  if (hit.kind === "segment") {
+    if (hit.ring === "D") return "DOUBLE";
+    if (hit.ring === "T") return "TRIPLE";
+    return hit.singleArea === "small" ? "PETIT" : "GROS";
+  }
+  return "MISS";
+}
+
+function bump(map: Record<string, number>, key: any) {
+  const k = String(key || "—");
+  map[k] = Number(map[k] || 0) + 1;
+}
+
+function buildGros6Stats(game: any) {
+  const history = Array.isArray(game?.history) ? game.history : [];
+  const rows = (game?.players || []).map((player: any) => {
+    const pid = String(player?.id || "");
+    const events = history.filter((e: any) => String(e?.playerId || "") === pid);
+    const attacks = events.filter((e: any) => e?.phase === "attack");
+    const selections = events.filter((e: any) => e?.phase === "select");
+    const validated = attacks.filter((e: any) => !!e?.success);
+    const distribution: Record<string, number> = { GROS: 0, PETIT: 0, DOUBLE: 0, TRIPLE: 0, BULL: 0, DBULL: 0, MISS: 0, SPECIAL: 0 };
+    const specialZones: Record<string, number> = {};
+    const playedTargets: Record<string, number> = {};
+    const validatedTargets: Record<string, number> = {};
+    const imposedTargets: Record<string, number> = {};
+    let attackDarts = 0;
+    for (const event of events) {
+      const darts = Array.isArray(event?.dartTargets) ? event.dartTargets : [];
+      for (const dart of darts) {
+        const bucket = hitBucket(dart);
+        distribution[bucket] = Number(distribution[bucket] || 0) + 1;
+        if (bucket === "SPECIAL") bump(specialZones, dart?.label || dart?.code);
+      }
+    }
+    for (const event of attacks) {
+      const darts = Array.isArray(event?.dartTargets) ? event.dartTargets : [];
+      attackDarts += darts.length;
+      bump(playedTargets, event?.target || event?.targetData?.label);
+      if (event?.success) bump(validatedTargets, event?.target || event?.targetData?.label);
+    }
+    for (const event of selections) if (event?.selectionResolved) bump(imposedTargets, event?.nextTarget || event?.nextTargetData?.label);
+    const d1 = validated.filter((e: any) => (e?.dartTargets || []).length === 1).length;
+    const d2 = validated.filter((e: any) => (e?.dartTargets || []).length === 2).length;
+    const d3 = validated.filter((e: any) => (e?.dartTargets || []).length >= 3).length;
+    const selectionAttempts = selections.length;
+    const selectionSuccesses = selections.filter((e: any) => !!e?.selectionResolved).length;
+    const isWinner = game?.winnerType === "team"
+      ? String(player?.teamId || "") === String(game?.winnerId || "")
+      : String(player?.id || "") === String(game?.winnerId || "");
+    return {
+      id: player?.id, playerId: player?.id, name: player?.name, teamId: player?.teamId || null, teamName: player?.teamName || null, isBot: !!player?.isBot, isWinner,
+      livesRemaining: Number(player?.lives || 0), eliminated: !!player?.eliminated,
+      targetsFaced: attacks.length, validations: validated.length, validationRate: attacks.length ? (validated.length / attacks.length) * 100 : 0,
+      attackDarts, dartsPerTarget: attacks.length ? attackDarts / attacks.length : 0,
+      d1, d2, d3,
+      livesLost: Number(player?.stats?.livesLost || events.filter((e: any) => !!e?.lifeLost).length),
+      lastDartSaves: Number(player?.stats?.lastDartSaves || d3),
+      targetsImposed: Number(player?.stats?.targetsImposed || selectionSuccesses),
+      selectionAttempts, selectionSuccesses, selectionEfficiency: selectionAttempts ? (selectionSuccesses / selectionAttempts) * 100 : 0,
+      dartsThrown: Number(player?.stats?.dartsThrown || 0), distribution, specialZones, playedTargets, validatedTargets, imposedTargets,
+    };
+  });
+  const total = (key: string) => rows.reduce((sum: number, row: any) => sum + Number(row?.[key] || 0), 0);
+  return {
+    players: rows,
+    global: {
+      turns: history.length, targetsFaced: total("targetsFaced"), validations: total("validations"), attackDarts: total("attackDarts"),
+      livesLost: total("livesLost"), lastDartSaves: total("lastDartSaves"), targetsImposed: total("targetsImposed"), dartsThrown: total("dartsThrown"),
+    },
+  };
+}
+
+function buildGros6Checkpoint(config: any, game: any) {
+  const id = String(config?.id || `gros6-${config?.createdAt || Date.now()}`);
+  const state = gros6Clone(game);
+  return {
+    id, matchId: id, resumeId: id, kind: "gros_6", mode: "gros_6", status: "in_progress",
+    createdAt: Number(config?.createdAt || Date.now()), updatedAt: Date.now(),
+    participantMode: game?.participantMode, players: game?.players || [], teams: game?.teams || [],
+    summary: { kind: "gros_6", mode: "gros_6", finished: false, currentTarget: gros6TargetLabel(game?.currentTarget), turnIndex: game?.turnIndex, turnNo: game?.turnNo },
+    resume: { config, state, updatedAt: Date.now() },
+    payload: { kind: "gros_6", mode: "gros_6", status: "in_progress", config, state, history: state?.history || [] },
+  };
+}
 
 function panelStyle(): React.CSSProperties {
   return {
@@ -446,50 +555,29 @@ function PlayersModal({ game, onClose, accent, lang, activeIndex }: any) {
 
 function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = true }: any) {
   const L = (fr: string, en: string) => lang === "fr" ? fr : en;
+  const awena = useAwenaOptional();
+  const askAwena = React.useCallback(async () => {
+    if (!awena) return;
+    try {
+      awena.setRuntime?.({ mode: "gros_6", sport: "darts", phase: "special_zones" });
+      awena.openPanel?.();
+      await awena.ask?.(
+        "Explique-moi spécifiquement le module Zones spéciales du Gros 6 : quelles zones hors cible sont jouables, comment les sélectionner et comment elles deviennent la cible exacte du joueur suivant.",
+        { canonicalFrench: true }
+      );
+    } catch {}
+  }, [awena]);
   return (
-    <ModalShell onClose={onClose} title={L("ZONES SPÉCIALES", "SPECIAL ZONES")} subtitle={L("Sélectionne exactement la zone touchée sur la cible", "Select the exact hit zone on the board")} accent={accent}>
-      <div style={{ color: SOFT, fontSize: 10.5, lineHeight: 1.45, marginBottom: 10 }}>
-        {includeOuterRing ? L("13 zones hors cible jouables : 4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19, 20 et contour extérieur.", "13 playable off-board zones: 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19, 20 and the outer ring.") : L("12 zones hors cible jouables : 4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19 et 20.", "12 playable off-board zones: 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19 and 20.")}
+    <ModalShell onClose={onClose} title={L("ZONES SPÉCIALES", "SPECIAL ZONES")} subtitle={L("Sélectionne exactement la zone touchée", "Select the exact hit zone")} accent={accent}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+        <button type="button" onClick={askAwena} title={L("Demander à Awena d'expliquer les zones spéciales", "Ask Awena to explain special zones")} aria-label={L("Awena explique les zones spéciales", "Awena explains special zones")} style={{ width: 58, height: 58, padding: 0, borderRadius: 999, border: `2px solid ${accent}`, background: "rgba(0,0,0,.38)", overflow: "hidden", cursor: "pointer", boxShadow: `0 0 20px ${accent}55` }}>
+          <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        </button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 9 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(92px,1fr))", gap: 9 }}>
         {GROS6_SPECIAL_ZONES.filter((zone: any) => includeOuterRing || zone.code !== "outer_numbers_ring").map((zone: any) => (
-          <button
-            key={zone.code}
-            type="button"
-            onClick={() => onPick({ code: zone.code, label: specialZoneLabel(zone.code, lang) })}
-            style={{
-              minHeight: 112,
-              borderRadius: 16,
-              border: `1px solid ${accent}33`,
-              background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.28))",
-              color: "#fff",
-              display: "grid",
-              gridTemplateColumns: "72px 1fr",
-              alignItems: "center",
-              gap: 10,
-              padding: 10,
-              textAlign: "left",
-              cursor: "pointer",
-              boxShadow: `0 0 16px ${accent}12`,
-            }}
-          >
-            <div style={{ display: "grid", placeItems: "center" }}><SpecialZoneIcon code={zone.code} accent={accent} /></div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: accent, fontSize: 13, fontWeight: 1000, letterSpacing: .5 }}>{specialZoneLabel(zone.code, lang)}</div>
-              <div style={{ marginTop: 4, color: SOFT, fontSize: 9.2, lineHeight: 1.35 }}>
-                {zone.code === "outer_numbers_ring"
-                  ? L("Contour extérieur de la cible, autour du cercle des chiffres.", "Outer contour of the dartboard, around the number ring.")
-                  : zone.code === "closed_8_top"
-                  ? L("Zone fermée hors cible : boucle haute du 8.", "Closed off-target zone: upper loop of the 8.")
-                  : zone.code === "closed_8_bottom"
-                  ? L("Zone fermée hors cible : boucle basse du 8.", "Closed off-target zone: lower loop of the 8.")
-                  : zone.code === "closed_18_top"
-                  ? L("Zone fermée hors cible : boucle haute du 18.", "Closed off-target zone: upper loop of the 18.")
-                  : zone.code === "closed_18_bottom"
-                  ? L("Zone fermée hors cible : boucle basse du 18.", "Closed off-target zone: lower loop of the 18.")
-                  : L("Zone fermée hors cible jouable. Si elle est touchée, elle devient la cible exacte du joueur suivant.", "Playable closed zone outside the dartboard. If hit, it becomes the exact target for the next player.")}
-              </div>
-            </div>
+          <button key={zone.code} type="button" onClick={() => onPick({ code: zone.code, label: specialZoneLabel(zone.code, lang) })} title={specialZoneLabel(zone.code, lang)} aria-label={specialZoneLabel(zone.code, lang)} style={{ minHeight: 100, borderRadius: 16, border: 0, background: "transparent", color: "#fff", display: "grid", placeItems: "center", padding: 7, cursor: "pointer", boxShadow: "none" }}>
+            <SpecialZoneIcon code={zone.code} accent={accent} />
           </button>
         ))}
       </div>
@@ -497,7 +585,7 @@ function SpecialZonesModal({ onClose, onPick, accent, lang, includeOuterRing = t
   );
 }
 
-export default function Gros6Play({ store, go, config, onFinish }: any) {
+export default function Gros6Play({ store, go, config, onFinish, initialSnapshot }: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
   const { theme } = useTheme();
   const { lang } = useLang();
@@ -505,7 +593,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const accent = theme?.primary || "#42d6ff";
   const pageBg = theme?.pageBg || theme?.bg || "#05070e";
 
-  const [game, setGame] = React.useState(() => buildGros6InitialState(config));
+  const [game, setGame] = React.useState(() => restoreGros6Snapshot(config, initialSnapshot));
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const [specialMode, setSpecialMode] = React.useState<null | "big" | "small">(null);
   const [playersOpen, setPlayersOpen] = React.useState(false);
@@ -521,6 +609,34 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
   const announcedWinnerRef = React.useRef("");
   const voiceRecognitionRef = React.useRef<any>(null);
   const [voiceListening, setVoiceListening] = React.useState(false);
+  const gameRef = React.useRef(game);
+  React.useEffect(() => { gameRef.current = game; }, [game]);
+
+  const persistCheckpoint = React.useCallback((state?: any) => {
+    const current = state || gameRef.current;
+    if (!current || current.phase === "finished" || current.winnerId) return;
+    try { void History.upsertInProgressCheckpoint(buildGros6Checkpoint(config, current)); } catch {}
+  }, [config]);
+
+  React.useEffect(() => {
+    if (game.phase === "finished" || game.winnerId) return;
+    const timer = window.setTimeout(() => persistCheckpoint(game), 100);
+    return () => window.clearTimeout(timer);
+  }, [game, persistCheckpoint]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const flush = () => persistCheckpoint(gameRef.current);
+    const visibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [persistCheckpoint]);
 
   const speechLang = lang === "fr" ? "fr-FR" : "en-US";
   const preferredInputMethod = String((config as any)?.scoreInputDefaultMethod || (config as any)?.scoreInputMethod || "keypad");
@@ -717,20 +833,17 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
     if (!game.winnerId || reportedRef.current) return;
     reportedRef.current = true;
     try {
+      const id = String(config?.id || `gros6-${config?.createdAt || Date.now()}`);
+      const finishedAt = Date.now();
+      const stats = buildGros6Stats(game);
+      const finalState = gros6Clone(game);
       onFinish?.({
-        id: `gros6-match-${Date.now()}`,
-        kind: "gros_6",
-        mode: "gros_6",
-        createdAt: config?.createdAt || Date.now(),
-        finishedAt: Date.now(),
-        winnerId: game.winnerId,
-        winnerName: game.winnerName,
-        winnerType: game.winnerType,
-        participantMode: game.participantMode,
-        teams: game.teams,
-        players: game.players,
-        config,
-        history: game.history,
+        id, matchId: id, resumeId: id, kind: "gros_6", mode: "gros_6", status: "finished",
+        createdAt: config?.createdAt || finishedAt, finishedAt, updatedAt: finishedAt,
+        winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType,
+        participantMode: game.participantMode, teams: game.teams, players: game.players, config, history: game.history, stats,
+        summary: { kind: "gros_6", mode: "gros_6", finished: true, winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType, participantMode: game.participantMode, perPlayer: stats.players, rankings: stats.players, ...stats.global },
+        payload: { kind: "gros_6", mode: "gros_6", status: "finished", config, state: finalState, finalState, history: game.history, players: game.players, teams: game.teams, stats, summary: { winnerId: game.winnerId, winnerName: game.winnerName, winnerType: game.winnerType, perPlayer: stats.players, rankings: stats.players, ...stats.global } },
       });
     } catch {}
   }, [game.winnerId, game.winnerName, game.winnerType, game.participantMode, game.teams, game.players, game.history, config, onFinish]);
@@ -827,7 +940,7 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         <img src={headerTicker as any} alt={lang === "fr" ? "Gros 6" : "Big 6"} draggable={false} style={{ width: "100%", height: tickerHeight, objectFit: "cover", display: "block" }} />
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(90deg,rgba(5,5,7,.94),rgba(5,5,7,0) 15%,rgba(5,5,7,0) 85%,rgba(5,5,7,.94))" }} />
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px", pointerEvents: "none" }}>
-          <div style={{ pointerEvents: "auto" }}><BackDot onClick={() => go?.("gros_6_config")} title={L("Retour", "Back")} size={compact ? 34 : 38} color={accent} glow={`${accent}AA`} /></div>
+          <div style={{ pointerEvents: "auto" }}><BackDot onClick={() => { persistCheckpoint(gameRef.current); go?.("gros_6_config"); }} title={L("Retour", "Back")} size={compact ? 34 : 38} color={accent} glow={`${accent}AA`} /></div>
           <div style={{ pointerEvents: "auto" }}><InfoDot onClick={() => setRulesOpen(true)} size={compact ? 34 : 38} color={accent} glow={`${accent}AA`} /></div>
         </div>
       </div>
@@ -905,10 +1018,9 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
         </div>
       </button>
 
-      {/* VOLÉE EN COURS — 3 fléchettes normales, jusqu'à 6 avec bonus D3 */}
-      <section style={{ ...panelStyle(), flex: "0 0 auto", minHeight: compact ? 42 : 46, padding: compact ? "5px 8px" : "6px 10px", display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "center", gap: 8 }}>
-        <div style={{ color: accent, fontSize: compact ? 8.2 : 9, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8, whiteSpace: "nowrap" }}>{L("Volée en cours", "Current visit")}</div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${currentVisitCapacity}, minmax(0, 1fr))`, gap: 4, minWidth: 0 }}>
+      {/* Volée centrée — 3 fléchettes normales, jusqu'à 6 avec bonus D3 */}
+      <section style={{ ...panelStyle(), flex: "0 0 auto", minHeight: compact ? 42 : 46, padding: compact ? "5px 8px" : "6px 10px", display: "grid", placeItems: "center" }}>
+        <div style={{ width: "100%", display: "grid", gridTemplateColumns: `repeat(${currentVisitCapacity}, minmax(0, 1fr))`, gap: 4, minWidth: 0, margin: "0 auto" }}>
           {Array.from({ length: currentVisitCapacity }).map((_, i) => {
             const dart = currentVisitDarts[i];
             return dart
@@ -936,8 +1048,8 @@ export default function Gros6Play({ store, go, config, onFinish }: any) {
             onSetVisitDarts={applyPresetDarts}
             preferredMethod={preferredInputMethod}
             keypadExtraMainButtons={[
-              { label: L("GROS", "BIG"), onClick: () => setSpecialMode((v) => v === "big" ? null : "big"), active: specialMode === "big", tone: "teal", title: L("Prépare un Gros 6 ou Gros 8", "Prepare a Big 6 or Big 8") },
-              { label: L("PETIT", "SMALL"), onClick: () => setSpecialMode((v) => v === "small" ? null : "small"), active: specialMode === "small", tone: "violet", title: L("Prépare un Petit 6 ou Petit 8", "Prepare a Small 6 or Small 8") },
+              { label: L("GROS", "BIG"), onClick: () => setSpecialMode((v) => v === "big" ? null : "big"), active: specialMode === "big", tone: "orange", title: L("Prépare un Gros 6 ou Gros 8", "Prepare a Big 6 or Big 8") },
+              { label: L("PETIT", "SMALL"), onClick: () => setSpecialMode((v) => v === "small" ? null : "small"), active: specialMode === "small", tone: "yellow", title: L("Prépare un Petit 6 ou Petit 8", "Prepare a Small 6 or Small 8") },
             ]}
             keypadSecondaryAction={voiceInputRequested ? {
               icon: <MicroMiniIcon size={21} />,

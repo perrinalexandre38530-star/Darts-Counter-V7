@@ -369,6 +369,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
     { key: "warfare", label: "Warfare", aliases: ["warfare"] },
     { key: "five_lives", label: "Les 5 vies", aliases: ["five_lives", "five lives", "5 vies", "cinq vies"] },
+    { key: "gros_6", label: "GROS 6", aliases: ["gros_6", "gros 6", "gros6", "big_6", "big 6", "big6"] },
     { key: "scram", label: "SCRAM", aliases: ["scram"] },
     { key: "baseball", label: "Baseball", aliases: ["baseball", "baseball darts"] },
     { key: "attrape_moi", label: "Attrape-moi", aliases: ["attrape_moi", "attrape moi", "attrape-moi", "catch me", "catchme"] },
@@ -475,7 +476,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -488,6 +489,10 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "warfare",
     "fivelives",
     "five_lives",
+    "gros6",
+    "gros_6",
+    "big6",
+    "big_6",
     "les5vies",
     "scram",
     "baseball",
@@ -636,6 +641,7 @@ function modeLabel(e: SavedEntry) {
   if (m === "darts_racer" || m === "dartsracer" || m === "mario_kart" || m === "mariokart") return "DARTS RACER";
   if (m === "darts_firefighter" || m === "dartsfirefighter" || m === "firefighter") return "DARTS FIREFIGHTER";
   if (m === "darts_poker" || m === "dartspoker") return "DARTS POKER";
+  if (m === "gros_6" || m === "gros6" || m === "big_6" || m === "big6") return "GROS 6";
   if (m === "cargo") return "CARGO";
   if (m === "ocean_control" || m === "oceancontrol") return "OCEAN CONTROL";
   if (m === "football" || m === "football_darts" || m === "footballdarts") return "DARTS FOOTBALL";
@@ -836,6 +842,10 @@ const modeColor: Record<string, string> = {
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
+  gros_6: "#ff9d25",
+  gros6: "#ff9d25",
+  big_6: "#ff9d25",
+  big6: "#ff9d25",
   scram: "#42d6ff",
   baseball: "#67d4ff",
   attrape_moi: "#ff5d9e",
@@ -4320,6 +4330,11 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     return false;
   }
 
+  function isGros6Entry(e: SavedEntry) {
+    const tokens = collectEntryModeTokens(e);
+    return tokens.some((token) => ["gros6", "big6"].includes(normalizeToken(token)));
+  }
+
   function goResume(e: SavedEntry, preview?: boolean) {
     const resumeId = e.resumeId || matchLink(e) || e.id;
 
@@ -4385,6 +4400,16 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     }
 
     const inferredMode = inferGameFilterKey(e, "darts");
+
+    // GROS 6 : reprise exacte du snapshot de partie (vies, tour, cible, volée et historique).
+    if ((isGros6Entry(e) || ["gros6", "big6"].includes(normalizeToken(inferredMode))) && statusOf(e) === "in_progress") {
+      const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null) || {};
+      const config = (e as any)?.resume?.config || payload?.config || (e as any)?.summary?.config || null;
+      const snapshot = (e as any)?.resume?.state || payload?.state || payload?.snapshot || null;
+      const ok = safeGo(["gros_6_play"], { rec: e, resumeId, config, snapshot, mode: "gros_6", from: preview ? "history_preview" : "history", preview: !!preview });
+      if (!ok) go("gros_6_play", { rec: e, resumeId, config, snapshot, mode: "gros_6", from: preview ? "history_preview" : "history", preview: !!preview });
+      return;
+    }
 
     // DARTS POKER : reprise exacte du marché, des mains, pouvoirs, volées et manche active.
     if ((isDartsPokerHistoryEntry(e) || normalizeToken(baseMode(e)) === "dartspoker" || normalizeToken(inferredMode) === "dartspoker") && statusOf(e) === "in_progress") {
@@ -4549,6 +4574,14 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         rec: full,
         from: "history",
       });
+      return;
+    }
+
+    // ✅ GROS 6 : tableau de bord dédié.
+    if (isGros6Entry(e) || ["gros6", "big6"].includes(normalizeToken(m)) || ["gros6", "big6"].includes(normalizeToken(inferredMode))) {
+      const wid = (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
+      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || (e as any)?.payload?.players?.[0]?.id || null;
+      go("statsHub", { tab: "stats", initialStatsSubTab: "gros_6", initialPlayerId: firstPlayerId, playerId: firstPlayerId, matchId: e.id, resumeId, from: "history" });
       return;
     }
 

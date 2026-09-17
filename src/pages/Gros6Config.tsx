@@ -24,7 +24,7 @@ import { loadBotPlayers } from "../lib/bots";
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { generateShuffledTeams, rememberGeneratedTeams } from "../lib/teamAutoShuffle";
-import { recordProfileUsageForMode } from "../lib/profileUsage";
+import { readProfileUsageCounts, recordProfileUsageForMode } from "../lib/profileUsage";
 import { makeGros6Segment, randomGros6StartTarget } from "../lib/gros6Engine";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
 import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
@@ -311,7 +311,7 @@ export default function Gros6Config({ store, go }: any) {
   const [thirdDartBonusSelection, setThirdDartBonusSelection] = React.useState(true);
   const [thirdDartBonusCount, setThirdDartBonusCount] = React.useState(3);
   const [randomStartOrder, setRandomStartOrder] = React.useState(false);
-  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "visit_score" | "dartboard" | "presets" | "voice">("keypad");
+  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "voice">("keypad");
   const [teamLifeMode, setTeamLifeMode] = React.useState<TeamLifeMode>("individual");
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -319,6 +319,35 @@ export default function Gros6Config({ store, go }: any) {
   React.useEffect(() => {
     try { localStorage.setItem("dc_gros6_config_view_mode", configViewMode); } catch {}
   }, [configViewMode]);
+
+  const restoredSelectionRef = React.useRef(false);
+  React.useEffect(() => {
+    if (restoredSelectionRef.current || !allSelectable.length) return;
+    restoredSelectionRef.current = true;
+    let remembered: string[] = [];
+    try {
+      const raw = localStorage.getItem("dc_gros6_last_participants_v1");
+      const parsed = raw ? JSON.parse(raw) : null;
+      const ids = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.ids) ? parsed.ids : [];
+      remembered = ids.map(String).filter((id: string) => byId.has(id));
+    } catch {}
+
+    if (remembered.length >= 2) {
+      setSelectedIds(remembered);
+      return;
+    }
+
+    try {
+      const counts = readProfileUsageCounts("gros_6");
+      const mostUsed = allSelectable
+        .map((profile: any) => ({ id: String(profile.id), uses: Number(counts?.[String(profile.id)] || 0) }))
+        .filter((row: any) => row.uses > 0)
+        .sort((a: any, b: any) => b.uses - a.uses)
+        .slice(0, 2)
+        .map((row: any) => row.id);
+      if (mostUsed.length >= 2) setSelectedIds(mostUsed);
+    } catch {}
+  }, [allSelectable, byId]);
 
   const selectedPlayers = React.useMemo(() => selectedIds.map((id) => byId.get(String(id))).filter(Boolean), [selectedIds, byId]);
 
@@ -382,7 +411,7 @@ export default function Gros6Config({ store, go }: any) {
     setAutoTeams([]);
   }, [selectedIds, autoTeamCount, autoTeamSize, autoShuffleMode, teamsSourceMode]);
 
-  const guidedSteps = ["Type de partie", "Participants", "Vies & variante", "Cibles & zones", "Options & lancement"];
+  const guidedSteps = ["Type de partie", "Participants", "Vies & variante", "Cibles", "Zones spéciales", "Options", "Saisie & lancement"];
   const guidedSelectionLabel = participantMode === "players"
     ? `${selectedPlayers.length} joueur${selectedPlayers.length > 1 ? "s" : ""}`
     : teamsSourceMode === "saved"
@@ -505,7 +534,11 @@ export default function Gros6Config({ store, go }: any) {
       players,
       teams: built.teams || undefined,
     };
-    try { recordProfileUsageForMode("gros_6", players.map((p: any) => String(p.id))); } catch {}
+    try {
+      const ids = players.map((p: any) => String(p.id));
+      localStorage.setItem("dc_gros6_last_participants_v1", JSON.stringify({ ids, participantMode, savedAt: Date.now() }));
+      recordProfileUsageForMode("gros_6", ids);
+    } catch {}
     go?.("gros_6_play", { config });
   }, [participantMode, teamsSourceMode, teamLifeMode, startingLives, targetRule, allowBull, allowSpecialZones, allowOuterRing, selectionPolicy, startingTargetMode, randomStartOrder, thirdDartBonusSelection, thirdDartBonusCount, scoreInputMethod, presetId, go, selectedIds, selectedSavedTeamIds, selectedBotTeamIds, teamMemberSelections, manualAssignments, autoTeams]);
 
@@ -656,7 +689,7 @@ export default function Gros6Config({ store, go }: any) {
   );
 
   const TargetsSection = () => (
-    <Section title="4. Cibles & zones" subtitle="Le moteur gère les segments classiques et les zones fermées/extérieures demandées." primary={primary}>
+    <Section title="4. Cibles" subtitle="Règles de validation, Bull, cible imposable et cible de départ." primary={primary}>
       <div style={{ display: "grid", gap: 14 }}>
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Validation de la cible</div>
@@ -666,13 +699,8 @@ export default function Gros6Config({ store, go }: any) {
           </div>
         </div>
         <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Cibles autorisées</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label={allowBull ? "Bull / DBull ON" : "Bull / DBull OFF"} active={allowBull} onClick={() => { setAllowBull((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
-            <PillButton label={allowSpecialZones ? "Zones fermées ON" : "Zones fermées OFF"} active={allowSpecialZones} onClick={() => { setAllowSpecialZones((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
-            <PillButton label={allowOuterRing ? "Contour extérieur ON" : "Contour extérieur OFF"} active={allowOuterRing} onClick={() => { setAllowOuterRing((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} disabled={!allowSpecialZones} compact />
-          </div>
-          <div style={{ color: "#8f94b5", fontSize: 10.5, lineHeight: 1.4, marginTop: 7 }}>Zones hors cible : zones fermées des 4, 6, 8 haut/bas, 9, 10, 14, 16, 18 haut/bas, 19 et 20. Le contour extérieur peut être activé ou coupé séparément.</div>
+          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Bull</div>
+          <PillButton label={allowBull ? "Bull / DBull ON" : "Bull / DBull OFF"} active={allowBull} onClick={() => { setAllowBull((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
         </div>
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Cible imposable</div>
@@ -692,8 +720,18 @@ export default function Gros6Config({ store, go }: any) {
     </Section>
   );
 
+  const SpecialZonesSection = () => (
+    <Section title="5. Zones spéciales" subtitle="Active ou désactive les zones fermées hors cible et le fin contour extérieur." primary={primary}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <PillButton label={allowSpecialZones ? "Zones fermées ON" : "Zones fermées OFF"} active={allowSpecialZones} onClick={() => { setAllowSpecialZones((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
+        <PillButton label={allowOuterRing ? "Contour extérieur ON" : "Contour extérieur OFF"} active={allowOuterRing} onClick={() => { setAllowOuterRing((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} disabled={!allowSpecialZones} compact />
+      </div>
+      <div style={{ color: "#8f94b5", fontSize: 10.5, lineHeight: 1.4, marginTop: 9 }}>Zones hors cible : zones fermées des 4, 6, 8 haut/bas, 9, 10, 14, 16, 18 haut/bas, 19 et 20. Le contour extérieur reste indépendant.</div>
+    </Section>
+  );
+
   const OptionsSection = () => (
-    <Section title="5. Options & lancement" subtitle="Le bonus 3e fléchette demandé est activé par défaut : une validation sur D3 ouvre une nouvelle volée de sélection." primary={primary}>
+    <Section title="6. Options" subtitle="Bonus de validation sur D3 et ordre de départ." primary={primary}>
       <div style={{ display: "grid", gap: 14 }}>
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Validation sur la dernière fléchette</div>
@@ -709,13 +747,17 @@ export default function Gros6Config({ store, go }: any) {
             <PillButton label="Aléatoire" active={randomStartOrder} onClick={() => setRandomStartOrder(true)} primary={primary} primarySoft={primarySoft} />
           </div>
         </div>
+      </div>
+    </Section>
+  );
+
+  const InputLaunchSection = () => (
+    <Section title="7. Saisie & lancement" subtitle="Gros 6 utilise uniquement le keypad natif ou la saisie vocale." primary={primary}>
+      <div style={{ display: "grid", gap: 14 }}>
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Mode de saisie en partie</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => setScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} compact />
-            <PillButton label="SCORE VOLÉE" active={scoreInputMethod === "visit_score"} onClick={() => setScoreInputMethod("visit_score")} primary={primary} primarySoft={primarySoft} compact />
-            <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => setScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} compact />
-            <PillButton label="PRESETS" active={scoreInputMethod === "presets"} onClick={() => setScoreInputMethod("presets")} primary={primary} primarySoft={primarySoft} compact />
             <PillButton label="VOICE" active={scoreInputMethod === "voice"} onClick={() => setScoreInputMethod("voice")} primary={primary} primarySoft={primarySoft} compact />
           </div>
         </div>
@@ -727,7 +769,7 @@ export default function Gros6Config({ store, go }: any) {
             {startingLives} vie(s) • {targetRule === "strict" ? "S/D/T stricts" : "valeur libre"} • {selectionPolicy === "pro" ? "sélection PRO" : "sélection libre"}<br />
             Bull {allowBull ? "ON" : "OFF"} • Zones spéciales {allowSpecialZones ? "ON" : "OFF"} • Contour ext. {allowOuterRing ? "ON" : "OFF"} • Départ {startingTargetMode === "s6" ? "G6" : "aléatoire"}<br />
             Bonus D3 : {thirdDartBonusSelection ? `${thirdDartBonusCount} fléchette(s)` : "OFF"}{participantMode === "teams" ? ` • vies ${teamLifeMode === "shared" ? "communes" : "individuelles"}` : ""}<br />
-            Saisie : {scoreInputMethod === "visit_score" ? "Score volée" : scoreInputMethod === "dartboard" ? "Cible" : scoreInputMethod === "presets" ? "Presets" : scoreInputMethod === "voice" ? "Voice" : "Keypad"}
+            Saisie : {scoreInputMethod === "voice" ? "Voice" : "Keypad"}
           </div>
         </div>
 
@@ -773,7 +815,9 @@ export default function Gros6Config({ store, go }: any) {
             {guidedStep === 1 ? <ParticipantsSelector /> : null}
             {guidedStep === 2 ? <LivesSection /> : null}
             {guidedStep === 3 ? <TargetsSection /> : null}
-            {guidedStep === 4 ? <OptionsSection /> : null}
+            {guidedStep === 4 ? <SpecialZonesSection /> : null}
+            {guidedStep === 5 ? <OptionsSection /> : null}
+            {guidedStep === 6 ? <InputLaunchSection /> : null}
 
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 18 }}>
               <button type="button" disabled={guidedStep === 0} onClick={() => setGuidedStep((step) => Math.max(0, step - 1))} style={{ borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: guidedStep === 0 ? "#60657c" : "#fff", padding: "9px 14px", fontWeight: 900, cursor: guidedStep === 0 ? "default" : "pointer" }}>← PRÉCÉDENT</button>
@@ -786,7 +830,9 @@ export default function Gros6Config({ store, go }: any) {
             <ParticipantsSelector />
             <LivesSection />
             <TargetsSection />
+            <SpecialZonesSection />
             <OptionsSection />
+            <InputLaunchSection />
           </>
         )}
       </div>

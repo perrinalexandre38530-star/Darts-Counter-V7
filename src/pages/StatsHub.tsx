@@ -295,6 +295,9 @@ const X01MultiStatsTabFull = React.lazy(
 const FiveLivesStatsTabFull = React.lazy(
   () => import("../stats/FiveLivesStatsTabFull")
 );
+const Gros6StatsTabFull = React.lazy(
+  () => import("../stats/Gros6StatsTabFull")
+);
 const CapitalStatsTabFull = React.lazy(
   () => import("../components/stats/CapitalStatsTabFull")
 );
@@ -893,6 +896,7 @@ type Props = {
     | "killer"
     | "territories"
     | "darts_firefighter"
+    | "gros_6"
     | "darts_poker"
     | "cargo"
     | "ocean_control"
@@ -1247,7 +1251,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const mode = classifyRecordMode(r);
@@ -1563,6 +1567,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("prisoner")) return "prisoner";
   if (tag.includes("loterie")) return "loterie";
   if (tag.includes("warfare")) return "warfare";
+  if (tag.includes("gros_6") || tag.includes("gros 6") || tag.includes("gros6") || tag.includes("big_6") || tag.includes("big 6") || tag.includes("big6")) return "gros_6";
   if (tag.includes("five_lives") || tag.includes("five lives") || tag.includes("5 vies") || tag.includes("cinq vies")) return "five_lives";
   if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour de")) return "clock";
   if (tag.includes("battle") || tag.includes("royale")) return "battle_royale";
@@ -5220,6 +5225,7 @@ const modeDefs = React.useMemo(
               { key: "battle_royale", label: "Battle Royale" },
               { key: "warfare", label: "Warfare" },
               { key: "five_lives", label: "Les 5 vies" },
+              { key: "gros_6", label: "GROS 6" },
               { key: "scram", label: "SCRAM" },
               { key: "baseball", label: "Baseball" },
               { key: "attrape_moi", label: "Attrape-moi" },
@@ -6783,6 +6789,7 @@ const modeThemeColor: Record<string, string> = {
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
+  gros_6: "#ff9d25",
   scram: "#42d6ff",
   baseball: "#67d4ff",
   attrape_moi: "#ff5d9e",
@@ -6830,6 +6837,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     battle_royale: "Battle Royale",
     warfare: "Warfare",
     five_lives: "Les 5 vies",
+    gros_6: "GROS 6",
     scram: "SCRAM",
     baseball: "Baseball",
     attrape_moi: "Attrape-moi",
@@ -6851,7 +6859,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -7663,6 +7671,41 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       mergeFavMap(a.favMap, flFav);
     }
 
+    if (mode === "gros_6") {
+      const g6 =
+        findPlayerIn(r?.payload?.stats?.players) ||
+        findPlayerIn(r?.stats?.players) ||
+        findPlayerIn(r?.payload?.summary?.perPlayer) ||
+        findPlayerIn(r?.summary?.perPlayer) ||
+        findPlayerIn(r?.summary?.rankings) ||
+        (modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : null) ||
+        (payloadPlayer && Object.keys(payloadPlayer).length ? payloadPlayer : null) ||
+        pl || {};
+      const dist = g6?.distribution || {};
+      const faced = n(g6?.targetsFaced);
+      const valid = n(g6?.validations);
+      a.visits = Number(a.visits || 0) + faced;
+      a.targetsFaced = Number(a.targetsFaced || 0) + faced;
+      a.successfulVisits = Number(a.successfulVisits || 0) + valid;
+      a.failedVisits = Number(a.failedVisits || 0) + Math.max(0, faced - valid);
+      a.livesLost = Number(a.livesLost || 0) + n(g6?.livesLost);
+      a.captures = Number(a.captures || 0) + n(g6?.targetsImposed);
+      a.extra = Number(a.extra || 0) + n(g6?.selectionAttempts);
+      a.autoHit = Number(a.autoHit || 0) + n(g6?.selectionSuccesses);
+      darts = pickNum(darts, g6?.dartsThrown, g6?.attackDarts);
+      hits = pickNum(hits, n(dist?.GROS) + n(dist?.PETIT) + n(dist?.DOUBLE) + n(dist?.TRIPLE) + n(dist?.BULL) + n(dist?.DBULL) + n(dist?.SPECIAL));
+      miss = pickNum(miss, dist?.MISS);
+      a.simpleHits = Number(a.simpleHits || 0) + n(dist?.GROS) + n(dist?.PETIT);
+      a.doubleHits = Number(a.doubleHits || 0) + n(dist?.DOUBLE);
+      a.tripleHits = Number(a.tripleHits || 0) + n(dist?.TRIPLE);
+      a.bullHits = Number(a.bullHits || 0) + n(dist?.BULL);
+      a.dbullHits = Number(a.dbullHits || 0) + n(dist?.DBULL);
+      a.missHits = Number(a.missHits || 0) + n(dist?.MISS);
+      a.bestRound = Math.max(Number(a.bestRound || 0), n(g6?.d1), n(g6?.d2), n(g6?.d3));
+      mergeFavMap(a.favMap, g6?.validatedTargets || g6?.playedTargets || {});
+      a.statsRecordedMatches = Number(a.statsRecordedMatches || 0) + 1;
+    }
+
     if (mode === "loterie") {
       const lo =
         findPlayerIn(r?.payload?.summary?.perPlayer) ||
@@ -8032,6 +8075,25 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Best volée", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
           { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
+      : a.key === "gros_6"
+      ? (() => {
+          const targets = Number(a.targetsFaced || 0);
+          const success = Number(a.successfulVisits || 0);
+          const attempts = Number(a.extra || 0);
+          const selected = Number(a.autoHit || 0);
+          return [
+            { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+            { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+            { label: "Validation", value: targets ? fmtStatValue((success / targets) * 100, "%") : "—", tone: "green" },
+            { label: "Cibles", value: fmtStatValue(targets), tone: "gold" },
+            { label: "Vies perdues", value: fmtStatValue(a.livesLost || 0), tone: "red" },
+            { label: "Cibles imposées", value: fmtStatValue(a.captures || 0), tone: "blue" },
+            { label: "Sélection", value: attempts ? fmtStatValue((selected / attempts) * 100, "%") : "—", tone: "green" },
+            { label: "GROS / PETIT", value: `${fmtStatValue(a.simpleHits || 0)} touches`, tone: "gold" },
+            { label: "D / T", value: `${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}`, tone: "blue" },
+            { label: "Bull + DBull", value: fmtStatValue(Number(a.bullHits || 0) + Number(a.dbullHits || 0)), tone: "blue" },
+          ];
+        })()
       : a.key === "five_lives"
       ? (() => {
           const visits = Number(a.visits || 0);
@@ -8863,7 +8925,7 @@ return (
                             <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : m.key === "golf" ? 12 : m.key === "shanghai" ? 12 : m.key === "cricket" ? 13 : m.key === "five_lives" ? 14 : m.key === "loterie" ? 17 : 4).map((it) => {
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : m.key === "golf" ? 12 : m.key === "shanghai" ? 12 : m.key === "cricket" ? 13 : m.key === "five_lives" ? 14 : m.key === "gros_6" ? 10 : m.key === "loterie" ? 17 : 4).map((it) => {
                               const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>
@@ -9510,6 +9572,18 @@ return (
               </div>
             )}
 
+            {currentMode === "gros_6" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement GROS 6…" />}>
+                    <Gros6StatsTabFull records={records as any[]} playerId={selectedPlayer.id} />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher les statistiques GROS 6.</div>
+                )}
+              </div>
+            )}
+
 {currentMode === "bobs_27" && (
               <div style={card}>
                 {selectedPlayer ? (
@@ -9719,6 +9793,7 @@ return (
                       battle_royale: ["battle_royale", "battle royale", "battle", "royale"],
                       warfare: ["warfare"],
                       five_lives: ["five_lives", "five lives", "5 vies", "cinq vies"],
+                      gros_6: ["gros_6", "gros 6", "gros6", "big_6", "big 6", "big6"],
                       scram: ["scram"],
                       baseball: ["baseball", "baseball darts"],
                       attrape_moi: ["attrape_moi", "attrape moi", "attrape-moi", "attrapemoi", "catch me", "catchme"],

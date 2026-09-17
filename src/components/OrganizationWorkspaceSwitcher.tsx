@@ -71,8 +71,6 @@ export default function OrganizationWorkspaceSwitcher({
     return () => window.removeEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspace as EventListener);
   }, [refresh, userId]);
 
-  if (!organizations.length) return null;
-
   const active = workspace.kind === "organization"
     ? organizations.find((org) => org.id === workspace.organizationId) || null
     : null;

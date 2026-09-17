@@ -408,13 +408,28 @@ export type OrganizationPartnerInput = {
   logoMediaKey?: string;
 };
 
+export type OrganizationEventType = "event" | "training" | "match" | "tournament" | "meeting" | "other";
+
 export type OrganizationLocalEvent = {
   id: string;
   organizationId: string;
+  groupId: string;
   title: string;
+  eventType: OrganizationEventType;
   startsAt: string;
+  endsAt: string;
   location: string;
+  createdBy: string;
   createdAt: string;
+};
+
+export type OrganizationEventInput = {
+  groupId?: string | null;
+  title: string;
+  eventType?: OrganizationEventType;
+  startsAt: string;
+  endsAt?: string | null;
+  location?: string;
 };
 
 type LocalState = {
@@ -736,6 +751,42 @@ export async function updateOrganizationProfile(
   return { organization: localOrganization, cloudAvailable: false };
 }
 
+export async function updateOrganizationIdentity(
+  userId: string | null | undefined,
+  organizationId: string,
+  patch: { name?: string; kind?: OrganizationKind; city?: string; countryCode?: string; description?: string },
+): Promise<{ organization: OrganizationRecord; cloudAvailable: boolean; warning?: string }> {
+  const state = loadOrganizationLocalState(userId);
+  const current = state.organizations.find((item) => item.id === organizationId);
+  if (!current) throw new Error("Organisation introuvable.");
+  const name = String(patch.name ?? current.name).trim().slice(0,96);
+  if (name.length < 2) throw new Error("Nom d’organisation trop court.");
+  const kind = coerceKind(patch.kind ?? current.kind);
+  const city = String(patch.city ?? current.city).trim().slice(0,120);
+  const countryCode = String((patch.countryCode ?? current.countryCode) || "FR").trim().toUpperCase().slice(0,2) || "FR";
+  const description = String(patch.description ?? current.description).trim().slice(0,500);
+  const localOrganization: OrganizationRecord = { ...current, name, kind, city, countryCode, description, updatedAt: nowIso() };
+  cacheOrganization(userId, localOrganization);
+  if (userId && current.source === "cloud") {
+    try {
+      const { data, error } = await supabase.rpc("ms_org_update_identity", {
+        p_org_id: organizationId, p_name: name, p_kind: kind, p_city: city || null, p_country_code: countryCode, p_description: description || null,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row && typeof row === "object") {
+        const organization = parseOrganizationRow(row, "cloud");
+        cacheOrganization(userId, organization);
+        return { organization, cloudAvailable: true };
+      }
+    } catch (error) {
+      console.warn("[organizations] cloud identity update unavailable, keeping local metadata", error);
+      return { organization: localOrganization, cloudAvailable: false, warning: "Identité conservée localement ; la synchronisation cloud est indisponible." };
+    }
+  }
+  return { organization: localOrganization, cloudAvailable: false };
+}
+
 export async function updateOrganizationAdminSettings(
   userId: string | null | undefined,
   organizationId: string,
@@ -995,12 +1046,20 @@ export function listLocalOrganizationGroups(userId: string | null | undefined, o
 }
 
 function parseEventRow(row: any): OrganizationLocalEvent {
+  const rawType = String(row?.eventType || row?.event_type || "event").trim().toLowerCase();
+  const eventType = (["event","training","match","tournament","meeting","other"] as OrganizationEventType[]).includes(rawType as OrganizationEventType)
+    ? rawType as OrganizationEventType
+    : "event";
   return {
     id: String(row?.id || localId("evt")),
     organizationId: String(row?.organizationId || row?.organization_id || ""),
+    groupId: String(row?.groupId || row?.group_id || ""),
     title: String(row?.title || "Événement").trim().slice(0,96) || "Événement",
+    eventType,
     startsAt: String(row?.startsAt || row?.starts_at || nowIso()),
-    location: String(row?.location || "").trim().slice(0,120),
+    endsAt: String(row?.endsAt || row?.ends_at || ""),
+    location: String(row?.location || "").trim().slice(0,160),
+    createdBy: String(row?.createdBy || row?.created_by || ""),
     createdAt: String(row?.createdAt || row?.created_at || nowIso()),
   };
 }
@@ -1019,7 +1078,7 @@ export async function listOrganizationEvents(userId: string | null | undefined, 
   try {
     const { data, error } = await supabase
       .from("ms_organization_events")
-      .select("id,organization_id,title,starts_at,location,created_at")
+      .select("id,organization_id,group_id,title,event_type,starts_at,ends_at,location,created_by,created_at")
       .eq("organization_id", organizationId)
       .order("starts_at", { ascending: true });
     if (error) throw error;
@@ -1031,21 +1090,40 @@ export async function listOrganizationEvents(userId: string | null | undefined, 
   }
 }
 
-export async function createOrganizationEvent(userId: string | null | undefined, organizationId: string, title: string, startsAt: string, location: string): Promise<{ event: OrganizationLocalEvent; cloudAvailable: boolean }> {
-  const cleanTitle = String(title || "").trim().slice(0,96);
-  const parsed = new Date(startsAt);
-  if (cleanTitle.length < 2) throw new Error("Titre d’événement trop court.");
-  if (!Number.isFinite(parsed.getTime())) throw new Error("Date d’événement invalide.");
-  const cleanLocation = String(location || "").trim().slice(0,120);
+function normalizeOrganizationEventInput(input: OrganizationEventInput): OrganizationEventInput {
+  const title = String(input?.title || "").trim().slice(0,96);
+  const start = new Date(input?.startsAt || "");
+  const end = input?.endsAt ? new Date(input.endsAt) : null;
+  const rawType = String(input?.eventType || "event").trim().toLowerCase();
+  const eventType = (["event","training","match","tournament","meeting","other"] as OrganizationEventType[]).includes(rawType as OrganizationEventType) ? rawType as OrganizationEventType : "event";
+  if (title.length < 2) throw new Error("Titre d’événement trop court.");
+  if (!Number.isFinite(start.getTime())) throw new Error("Date d’événement invalide.");
+  if (end && (!Number.isFinite(end.getTime()) || end.getTime() < start.getTime())) throw new Error("La fin doit être postérieure au début.");
+  return {
+    groupId: String(input?.groupId || "").trim() || null,
+    title,
+    eventType,
+    startsAt: start.toISOString(),
+    endsAt: end ? end.toISOString() : null,
+    location: String(input?.location || "").trim().slice(0,160),
+  };
+}
+
+export async function createOrganizationEvent(userId: string | null | undefined, organizationId: string, input: OrganizationEventInput): Promise<{ event: OrganizationLocalEvent; cloudAvailable: boolean }> {
+  const clean = normalizeOrganizationEventInput(input);
   if (userId) {
     try {
-      const { data, error } = await supabase
-        .from("ms_organization_events")
-        .insert({ organization_id: organizationId, title: cleanTitle, event_type: "event", starts_at: parsed.toISOString(), location: cleanLocation || null, created_by: userId })
-        .select("id,organization_id,title,starts_at,location,created_at")
-        .single();
+      const { data, error } = await supabase.rpc("ms_org_create_event", {
+        p_org_id: organizationId,
+        p_group_id: clean.groupId || null,
+        p_title: clean.title,
+        p_event_type: clean.eventType || "event",
+        p_starts_at: clean.startsAt,
+        p_ends_at: clean.endsAt || null,
+        p_location: clean.location || null,
+      });
       if (error) throw error;
-      const event = parseEventRow(data);
+      const event = parseEventRow(Array.isArray(data) ? data[0] : data);
       const current = listLocalOrganizationEvents(userId, organizationId).filter((item) => item.id !== event.id);
       cacheOrganizationEvents(userId, organizationId, [...current, event].sort((a,b) => a.startsAt.localeCompare(b.startsAt)));
       return { event, cloudAvailable: true };
@@ -1053,32 +1131,93 @@ export async function createOrganizationEvent(userId: string | null | undefined,
       console.warn("[organizations] cloud event create unavailable, using local fallback", error);
     }
   }
-  return { event: addLocalOrganizationEvent(userId, organizationId, cleanTitle, parsed.toISOString(), cleanLocation), cloudAvailable: false };
+  return { event: addLocalOrganizationEvent(userId, organizationId, clean), cloudAvailable: false };
 }
 
-export function addLocalOrganizationEvent(userId: string | null | undefined, organizationId: string, title: string, startsAt: string, location: string): OrganizationLocalEvent {
-  const cleanTitle = String(title || "").trim().slice(0, 96);
-  if (cleanTitle.length < 2) throw new Error("Titre d’événement trop court.");
-  const parsed = new Date(startsAt);
-  if (!Number.isFinite(parsed.getTime())) throw new Error("Date d’événement invalide.");
-  const state = loadOrganizationLocalState(userId);
+export async function updateOrganizationEvent(userId: string | null | undefined, eventId: string, organizationId: string, input: OrganizationEventInput): Promise<{ event: OrganizationLocalEvent; cloudAvailable: boolean }> {
+  const clean = normalizeOrganizationEventInput(input);
+  if (userId) {
+    try {
+      const { data, error } = await supabase.rpc("ms_org_update_event", {
+        p_event_id: eventId,
+        p_group_id: clean.groupId || null,
+        p_title: clean.title,
+        p_event_type: clean.eventType || "event",
+        p_starts_at: clean.startsAt,
+        p_ends_at: clean.endsAt || null,
+        p_location: clean.location || null,
+      });
+      if (error) throw error;
+      const event = parseEventRow(Array.isArray(data) ? data[0] : data);
+      const current = listLocalOrganizationEvents(userId, organizationId).filter((item) => item.id !== event.id);
+      cacheOrganizationEvents(userId, organizationId, [...current, event].sort((a,b) => a.startsAt.localeCompare(b.startsAt)));
+      return { event, cloudAvailable: true };
+    } catch (error) {
+      console.warn("[organizations] cloud event update unavailable, using local fallback", error);
+    }
+  }
+  const event = updateLocalOrganizationEvent(userId, organizationId, eventId, clean);
+  return { event, cloudAvailable: false };
+}
+
+export async function deleteOrganizationEvent(userId: string | null | undefined, organizationId: string, eventId: string): Promise<{ cloudAvailable: boolean }> {
+  if (userId) {
+    try {
+      const { error } = await supabase.rpc("ms_org_delete_event", { p_event_id: eventId });
+      if (error) throw error;
+      deleteLocalOrganizationEvent(userId, organizationId, eventId);
+      return { cloudAvailable: true };
+    } catch (error) {
+      console.warn("[organizations] cloud event delete unavailable, using local fallback", error);
+    }
+  }
+  deleteLocalOrganizationEvent(userId, organizationId, eventId);
+  return { cloudAvailable: false };
+}
+
+export function addLocalOrganizationEvent(userId: string | null | undefined, organizationId: string, input: OrganizationEventInput): OrganizationLocalEvent {
+  const clean = normalizeOrganizationEventInput(input);
   const event: OrganizationLocalEvent = {
     id: localId("evt"),
     organizationId,
-    title: cleanTitle,
-    startsAt: parsed.toISOString(),
-    location: String(location || "").trim().slice(0, 120),
+    groupId: String(clean.groupId || ""),
+    title: String(clean.title),
+    eventType: clean.eventType || "event",
+    startsAt: String(clean.startsAt),
+    endsAt: String(clean.endsAt || ""),
+    location: String(clean.location || ""),
+    createdBy: String(userId || ""),
     createdAt: nowIso(),
   };
+  const state = loadOrganizationLocalState(userId);
   const events = [event, ...state.events];
   const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, eventCount: events.filter((item) => item.organizationId === organizationId).length, updatedAt: nowIso() } : org);
   saveOrganizationLocalState(userId, { ...state, events, organizations });
   return event;
 }
 
+function updateLocalOrganizationEvent(userId: string | null | undefined, organizationId: string, eventId: string, input: OrganizationEventInput): OrganizationLocalEvent {
+  const clean = normalizeOrganizationEventInput(input);
+  const state = loadOrganizationLocalState(userId);
+  const current = state.events.find((item) => item.organizationId === organizationId && item.id === eventId);
+  if (!current) throw new Error("Événement introuvable.");
+  const event: OrganizationLocalEvent = { ...current, groupId: String(clean.groupId || ""), title: String(clean.title), eventType: clean.eventType || "event", startsAt: String(clean.startsAt), endsAt: String(clean.endsAt || ""), location: String(clean.location || "") };
+  const events = state.events.map((item) => item.id === eventId ? event : item);
+  saveOrganizationLocalState(userId, { ...state, events });
+  return event;
+}
+
+function deleteLocalOrganizationEvent(userId: string | null | undefined, organizationId: string, eventId: string) {
+  const state = loadOrganizationLocalState(userId);
+  const events = state.events.filter((item) => item.id !== eventId);
+  const organizations = state.organizations.map((org) => org.id === organizationId ? { ...org, eventCount: events.filter((item) => item.organizationId === organizationId).length, updatedAt: nowIso() } : org);
+  saveOrganizationLocalState(userId, { ...state, events, organizations });
+}
+
 export function listLocalOrganizationEvents(userId: string | null | undefined, organizationId: string): OrganizationLocalEvent[] {
   return loadOrganizationLocalState(userId).events
     .filter((item) => item.organizationId === organizationId)
+    .map((item) => parseEventRow(item))
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 

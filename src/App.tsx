@@ -5733,7 +5733,8 @@ case "babyfoot_team_edit":
         break;
 
       case "gros_6_play": {
-        const cfg = routeParams?.config;
+        const cfg = routeParams?.config || routeParams?.rec?.resume?.config || routeParams?.rec?.payload?.config || routeParams?.rec?.decoded?.config;
+        const initialSnapshot = routeParams?.snapshot || routeParams?.initialSnapshot || routeParams?.rec?.resume?.state || routeParams?.rec?.payload?.state || routeParams?.rec?.payload?.snapshot || routeParams?.rec?.decoded?.state || null;
         if (!cfg) {
           page = (
             <div style={{ padding: 16 }}>
@@ -5743,7 +5744,7 @@ case "babyfoot_team_edit":
           );
           break;
         }
-        page = <Gros6Play store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "gros_6", routeParams))} />;
+        page = <Gros6Play store={store} go={go} config={cfg} initialSnapshot={initialSnapshot} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "gros_6", routeParams))} />;
         break;
       }
 

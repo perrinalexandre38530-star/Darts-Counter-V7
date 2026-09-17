@@ -16,7 +16,7 @@ type KeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
   /** L’icône remplit toute la surface de la touche (ex: visuel ZONES du Gros 6). */
@@ -27,7 +27,7 @@ type KeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -37,7 +37,7 @@ type KeypadSecondaryAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -46,7 +46,7 @@ type KeypadFooterAction = {
   label: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -360,6 +360,12 @@ export default function Keypad({
       gold: active
         ? { background: 'linear-gradient(180deg, rgba(255,227,120,.35), rgba(122,87,12,.42))', color: '#fff5cc', border: '1px solid rgba(255,230,156,.92)' }
         : { background: 'linear-gradient(180deg, rgba(255,227,120,.16), rgba(122,87,12,.24))', color: '#fff0bf', border: '1px solid rgba(255,230,156,.38)' },
+      orange: active
+        ? { background: 'linear-gradient(180deg, #ffae45, #e66f00)', color: '#fff4df', border: '1px solid #ffd4a1' }
+        : { background: 'linear-gradient(180deg, #f58a1f, #b94f00)', color: '#ffefd7', border: '1px solid rgba(255,190,112,.72)' },
+      yellow: active
+        ? { background: 'linear-gradient(180deg, #fff0a8, #f5cc58)', color: '#5b3510', border: '1px solid #fff5c9' }
+        : { background: 'linear-gradient(180deg, #ffe795, #dcb442)', color: '#654019', border: '1px solid rgba(255,240,170,.82)' },
       dark: active
         ? { background: 'linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.08))', color: '#fff', border: '1px solid rgba(255,255,255,.88)' }
         : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
