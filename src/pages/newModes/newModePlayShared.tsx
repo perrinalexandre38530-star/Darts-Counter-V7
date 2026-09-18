@@ -99,3 +99,36 @@ export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onCo
 }
 
 export function lastEvents(visits:any[]){const row=Array.isArray(visits)&&visits.length?visits[visits.length-1]:null;return Array.isArray(row?.events)?row.events:[];}
+
+export function VisitTimeline({ visits, profiles, accent = "#ffc04c", title = "DERNIÈRES ACTIONS", limit = 4 }: any) {
+  const rows = (Array.isArray(visits) ? visits : []).slice(-Math.max(1, Number(limit) || 4)).reverse();
+  const byId = new Map((Array.isArray(profiles) ? profiles : []).map((p: any) => [String(p?.id || ""), p]));
+  if (!rows.length) return null;
+  return <div style={{ ...panelStyle("rgba(255,255,255,.08)"), padding: 9 }}>
+    <div style={{ color: accent, fontSize: 9.5, fontWeight: 1100, letterSpacing: .8 }}>{title}</div>
+    <div style={{ marginTop: 7, display: "grid", gap: 5 }}>
+      {rows.map((row: any, idx: number) => {
+        const prof = byId.get(String(row?.playerId || ""));
+        const events = Array.isArray(row?.events) ? row.events.filter(Boolean) : [];
+        const text = events.length ? events.join(" · ") : row?.kind ? String(row.kind).toUpperCase() : "Action";
+        return <div key={row?.id || `${row?.playerId || "row"}-${idx}`} style={{ display: "grid", gridTemplateColumns: "6px minmax(0,1fr)", gap: 8, alignItems: "start", padding: "5px 0", borderTop: idx ? "1px solid rgba(255,255,255,.055)" : "none" }}>
+          <span style={{ width: 6, height: 6, borderRadius: 99, background: idx === 0 ? accent : "rgba(255,255,255,.22)", boxShadow: idx === 0 ? `0 0 10px ${accent}88` : "none", marginTop: 5 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: idx === 0 ? "#fff" : "#c8cfdd", fontSize: 9.5, lineHeight: 1.4, fontWeight: idx === 0 ? 900 : 700 }}>{text}</div>
+            <div style={{ marginTop: 2, color: "#7f8798", fontSize: 8.3 }}>{prof ? playerName(prof) : "Partie"}{row?.leg ? ` · manche ${row.leg}` : ""}{row?.turn ? ` · action ${row.turn}` : ""}</div>
+          </div>
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+export function Meter({ value, max, accent = "#ffc04c", dangerAt = 1, height = 6 }: any) {
+  const safeMax = Math.max(1, Number(max) || 1);
+  const v = Math.max(0, Math.min(safeMax, Number(value) || 0));
+  const ratio = v / safeMax;
+  const color = ratio >= Number(dangerAt || 1) ? "#ff6b67" : accent;
+  return <div aria-label={`${v} sur ${safeMax}`} style={{ height, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}>
+    <div style={{ width: `${ratio * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg,${accent},${color})`, boxShadow: ratio > .65 ? `0 0 12px ${color}55` : "none" }} />
+  </div>;
+}

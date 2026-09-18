@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createPenduState, playPenduVisit, setPenduChallenge } from "../src/lib/gameEngines/penduEngine.ts";
-import { callMenteur, createMenteurState, playMenteurVisit, raiseMenteurBid } from "../src/lib/gameEngines/menteurEngine.ts";
+import { createPenduState, isPenduChallengeSatisfied, playPenduVisit, scorePenduVisit, setPenduChallenge } from "../src/lib/gameEngines/penduEngine.ts";
+import { callMenteur, createMenteurState, isMenteurContractSatisfied, playMenteurVisit, raiseMenteurBid, raiseMenteurBidTo, scoreMenteurVisit } from "../src/lib/gameEngines/menteurEngine.ts";
 import { createCradosState, playCradosVisit } from "../src/lib/gameEngines/cradosEngine.ts";
 import { decodeCompactMatch, encodeCompactMatch } from "../src/lib/matchCompactCodec.ts";
 
@@ -29,6 +29,17 @@ assert.equal(crados.sectors[20].ownerId,"a");
 for(let i=0;i<10 && crados.phase!=="finished";i++) crados=playCradosVisit(crados,[{bed:"T",number:20}]);
 assert.equal(crados.phase,"finished");
 assert.equal(crados.winnerId,"a");
+
+// Helpers UI : aperçu avant validation
+assert.equal(scorePenduVisit([{bed:"T",number:20},{bed:"D",number:20}] as any),100);
+assert.equal(isPenduChallengeSatisfied({kind:"segment",number:20,bed:"D"},[{bed:"T",number:20}] as any,{...pendu.config,rules:{...pendu.config.rules,executionMode:"flex"}} as any),true);
+let bidPreview=createMenteurState(players,{mode:"menteur",seriesWins:1,rules:{lives:3,contractDeck:"advanced",raiseStep:5,bullAllowed:true}});
+bidPreview=raiseMenteurBidTo(bidPreview,75);
+assert.equal(bidPreview.bid,75);
+assert.equal(scoreMenteurVisit([{bed:"T",number:20},{bed:"S",number:15}] as any),75);
+bidPreview=callMenteur(bidPreview);
+bidPreview.condition="none" as any;
+assert.equal(isMenteurContractSatisfied(bidPreview,[{bed:"T",number:20},{bed:"S",number:15}] as any),true);
 
 // Compact codec : les nouveaux modes doivent garder leur identité ET le snapshot
 // complet nécessaire à la reprise depuis l'historique / cloud.
