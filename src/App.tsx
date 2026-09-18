@@ -6517,21 +6517,51 @@ case "babyfoot_team_edit":
         page = <PenduConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "pendu_play":
-        page = <PenduPlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <PenduPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "pendu", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "menteur_config":
         page = <MenteurConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "menteur_play":
-        page = <MenteurPlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <MenteurPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "menteur", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "crados_config":
         page = <CradosConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "crados_play":
-        page = <CradosPlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <CradosPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "crados", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "fifty_one_by_five_config":

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createPenduState, playPenduVisit, setPenduChallenge } from "../src/lib/gameEngines/penduEngine.ts";
 import { callMenteur, createMenteurState, playMenteurVisit, raiseMenteurBid } from "../src/lib/gameEngines/menteurEngine.ts";
 import { createCradosState, playCradosVisit } from "../src/lib/gameEngines/cradosEngine.ts";
+import { decodeCompactMatch, encodeCompactMatch } from "../src/lib/matchCompactCodec.ts";
 
 const players=[{id:"a",name:"A"},{id:"b",name:"B"}];
 
@@ -28,5 +29,31 @@ assert.equal(crados.sectors[20].ownerId,"a");
 for(let i=0;i<10 && crados.phase!=="finished";i++) crados=playCradosVisit(crados,[{bed:"T",number:20}]);
 assert.equal(crados.phase,"finished");
 assert.equal(crados.winnerId,"a");
+
+// Compact codec : les nouveaux modes doivent garder leur identité ET le snapshot
+// complet nécessaire à la reprise depuis l'historique / cloud.
+for (const [mode, state] of [["pendu", pendu], ["menteur", menteur], ["crados", crados]] as const) {
+  const rec = {
+    id: `codec-${mode}`,
+    kind: mode,
+    mode,
+    sport: "darts",
+    status: state.phase === "finished" ? "finished" : "in_progress",
+    players,
+    winnerId: state.winnerId,
+    payload: {
+      kind: mode, mode, sport: "darts", config: state.config, stateSnapshot: state,
+      visits: state.visits, visitHistory: state.visits, stats: { mode, players: state.statsByPlayer },
+      summary: { mode, winnerId: state.winnerId, perPlayer: state.statsByPlayer, config: state.config },
+    },
+  };
+  const compact = encodeCompactMatch(rec);
+  assert.ok(compact, `${mode}: compact absent`);
+  assert.equal(compact?.m, mode, `${mode}: mode compact incorrect`);
+  const decoded = decodeCompactMatch(compact);
+  assert.equal(decoded?.mode, mode, `${mode}: mode décodé incorrect`);
+  assert.equal(decoded?.stateSnapshot?.mode, mode, `${mode}: snapshot perdu`);
+  assert.deepEqual(decoded?.config?.rules, state.config.rules, `${mode}: config/règles perdues`);
+}
 
 console.log("✅ PENDU / MENTEUR / CRADOS regression OK");

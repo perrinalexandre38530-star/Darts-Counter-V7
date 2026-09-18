@@ -46,8 +46,9 @@ export function gameToUiDart(d:GameDart):UIDart{
 }
 export function dartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.bed==="IB")return"DBULL";if(d.bed==="OB")return"BULL";return`${d.bed}${d.number||""}`;}
 
-export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c" }:any){
-  const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=3?prev:[...prev,d]);
+export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3 }:any){
+  const cap=Math.max(1,Math.min(3,Number(maxDarts)||3));
+  const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=cap?prev:[...prev,d]);
   return <div style={{...panelStyle(accent+"35"),padding:8}}>
     <ScoreInputHub
       currentThrow={currentThrow}
@@ -61,7 +62,7 @@ export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMul
       onBull={()=>append({v:25,mult:multiplier===2?2:1})}
       onMiss={()=>append({v:0,mult:1})}
       onDirectDart={append}
-      onSetVisitDarts={(darts:UIDart[])=>setCurrentThrow((darts||[]).slice(0,3))}
+      onSetVisitDarts={(darts:UIDart[])=>setCurrentThrow((darts||[]).slice(0,cap))}
       onValidate={onValidate}
       validateLabel={validateLabel}
       validateDisabled={!currentThrow.length||disabled}
@@ -83,7 +84,7 @@ export function PlayerCard({profile,active,accent,value,subValue,badge,wins=0,mu
   </div>;
 }
 
-export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onConfig,onGames,extra}:any){
+export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onConfig,onGames,onStats,onHistory,extra}:any){
   const w=profiles.find((p:any)=>String(p.id)===String(winner))||profiles[0];
   return <div style={{...panelStyle(accent+"66"),padding:16,textAlign:"center",boxShadow:`0 0 30px ${accent}20,0 18px 46px rgba(0,0,0,.48)`}}>
     <div style={{color:accent,fontWeight:1100,fontSize:11,letterSpacing:1.3}}>PARTIE TERMINÉE</div>
@@ -91,7 +92,8 @@ export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onCo
     <div style={{marginTop:8,color:"#fff",fontSize:24,fontWeight:1100}}>{playerName(w)}</div>
     <div style={{marginTop:3,color:SOFT,fontSize:11}}>remporte {title} · {Number(legWins?.[winner]||0)} manche{Number(legWins?.[winner]||0)>1?"s":""}</div>
     {extra?<div style={{marginTop:12}}>{extra}</div>:null}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:14}}><button type="button" onClick={onReplay} style={actionStyle(accent)}>↻ REJOUER</button><button type="button" onClick={onConfig} style={actionStyle("#9ea7bb")}>CONFIGURATION</button></div>
+    {(onStats || onHistory) ? <div style={{display:"grid",gridTemplateColumns:onStats&&onHistory?"1fr 1fr":"1fr",gap:8,marginTop:14}}>{onStats?<button type="button" onClick={onStats} style={actionStyle(accent)}>📊 STATS</button>:null}{onHistory?<button type="button" onClick={onHistory} style={actionStyle("#7dc8ff")}>🕘 HISTORIQUE</button>:null}</div>:null}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:(onStats||onHistory)?8:14}}><button type="button" onClick={onReplay} style={actionStyle(accent)}>↻ REJOUER</button><button type="button" onClick={onConfig} style={actionStyle("#9ea7bb")}>CONFIGURATION</button></div>
     <button type="button" onClick={onGames} style={{...actionStyle("#fff"),width:"100%",marginTop:8}}>RETOUR AUX JEUX</button>
   </div>;
 }

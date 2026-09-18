@@ -46,6 +46,10 @@ const history = read('src/pages/HistoryPage.tsx');
 for (const key of ['castle','gotcha','hare_hounds']) mustContain(history, key, 'history integration');
 for (const route of ['castle_play','gotcha_play','hare_hounds_play']) mustContain(history, route, 'history resume routes');
 
+const summaryPage = read('src/pages/DartsModeSummaryPage.tsx');
+for (const key of ['\"castle\"','\"gotcha\"','\"hare_hounds\"']) mustContain(summaryPage, key.replaceAll('\\"','\"'), 'dedicated history summary mode');
+for (const component of ['CastleSummaryTables','GotchaSummaryTables','HareHoundsSummaryTables']) mustContain(summaryPage, component, 'dedicated history summary component');
+
 const sharedConfig = read('src/pages/newModes/NewDartsModeConfig.tsx');
 for (const playRoute of ['castle_play','gotcha_play','hare_hounds_play']) {
   const configName = playRoute.replace('_play', '');
@@ -55,6 +59,10 @@ for (const playRoute of ['castle_play','gotcha_play','hare_hounds_play']) {
 }
 mustContain(sharedConfig, 'recordProfileUsageForMode', 'profile usage integration');
 mustContain(sharedConfig, 'scoreInputMethod', 'score input integration');
+const sharedPlay = read('src/pages/newModes/newModePlayShared.tsx');
+mustContain(sharedPlay, 'maxDarts=3', 'shared input variable dart cap');
+const castlePlay = read('src/pages/CastlePlay.tsx');
+mustContain(castlePlay, 'maxDarts={state.phase === "assignment" ? 1 : 3}', 'castle assignment one-dart cap');
 
 for (const page of ['CastlePlay.tsx','GotchaPlay.tsx','HareHoundsPlay.tsx']) {
   const text = read(`src/pages/${page}`);

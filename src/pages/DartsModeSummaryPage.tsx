@@ -24,6 +24,12 @@ type ModeKind =
   | "territories"
   | "darts_firefighter"
   | "darts_poker"
+  | "pendu"
+  | "menteur"
+  | "crados"
+  | "castle"
+  | "gotcha"
+  | "hare_hounds"
   | "cricket_cut_throat"
   | "enculette_vache"
   | "unknown";
@@ -149,6 +155,54 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     secondary: "Extinctions",
     tertiary: "Score",
   },
+  pendu: {
+    title: "PENDU",
+    accent: "#ffb33f",
+    subtitle: "Défis, reproductions, erreurs et éliminations jusqu'au dernier joueur encore debout.",
+    primary: "Défis réussis",
+    secondary: "Erreurs",
+    tertiary: "Éliminations",
+  },
+  menteur: {
+    title: "MENTEUR",
+    accent: "#ffbf37",
+    subtitle: "Enchères, appels MENTEUR, contrats prouvés et vies perdues dans les duels de bluff.",
+    primary: "Contrats prouvés",
+    secondary: "MENTEUR !",
+    tertiary: "Vies perdues",
+  },
+  crados: {
+    title: "CRADOS",
+    accent: "#b7f247",
+    subtitle: "Contamination de la cible, secteurs possédés, crasse reçue et nettoyage au Bull.",
+    primary: "Secteurs",
+    secondary: "Crasse reçue",
+    tertiary: "Crasse lavée",
+  },
+  castle: {
+    title: "CASTLE",
+    accent: "#ffb33f",
+    subtitle: "Construction, attaques, briques et châteaux : le détail complet de la bataille.",
+    primary: "Briques",
+    secondary: "Dégâts",
+    tertiary: "Précision",
+  },
+  gotcha: {
+    title: "GOTCHA",
+    accent: "#ff9b31",
+    subtitle: "Course au score exact : GOTCHA infligés, busts, meilleure volée et progression.",
+    primary: "GOTCHA",
+    secondary: "Best volée",
+    tertiary: "Busts",
+  },
+  hare_hounds: {
+    title: "HARE & HOUNDS",
+    accent: "#f6b63b",
+    subtitle: "Poursuite sur le cadran : étapes parcourues, captures, évasions et précision.",
+    primary: "Étapes",
+    secondary: "Captures",
+    tertiary: "Précision",
+  },
   cricket_cut_throat: {
     title: "Cricket Cut-Throat",
     accent: "#7ee081",
@@ -191,6 +245,12 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["territories", ["territories", "territoires", "departements", "departement"]],
   ["darts_firefighter", ["darts_firefighter", "dartsfirefighter", "darts firefighter", "firefighter"]],
   ["darts_poker", ["darts_poker", "dartspoker", "darts poker"]],
+  ["pendu", ["pendu", "hangman"]],
+  ["menteur", ["menteur", "liar", "bluff"]],
+  ["crados", ["crados", "crado", "dirty", "slime"]],
+  ["castle", ["castle"]],
+  ["gotcha", ["gotcha"]],
+  ["hare_hounds", ["hare_hounds", "harehounds", "hare & hounds", "hare-hounds"]],
   ["cricket_cut_throat", ["cricket_cut_throat", "cut_throat", "cutthroat", "cut-throat"]],
   ["enculette_vache", ["enculette", "vache", "enculette_vache"]],
 ];
@@ -405,10 +465,44 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     const accuracy = num(row.accuracy, darts > 0 ? (hits / darts) * 100 : 0);
     return `${Math.round(accuracy * 10) / 10}%`;
   }
+  if (mode === "castle") {
+    if (key === "primary") return num(pick(row.builds, row.bricks), 0);
+    if (key === "secondary") return num(row.damage, 0);
+    const darts = num(pick(row.darts, row.dartsThrown), 0);
+    const useful = num(pick(row.usefulHits, row.hits), 0);
+    return `${Math.round((darts > 0 ? (useful / darts) * 100 : 0) * 10) / 10}%`;
+  }
+  if (mode === "gotcha") {
+    if (key === "primary") return num(row.gotchas, 0);
+    if (key === "secondary") return num(row.bestVisit, 0);
+    return num(row.busts, 0);
+  }
+  if (mode === "hare_hounds") {
+    if (key === "primary") return num(row.steps, 0);
+    if (key === "secondary") return num(row.catches, 0);
+    const darts = num(pick(row.darts, row.dartsThrown), 0);
+    const hits = num(pick(row.validHits, row.hits), 0);
+    return `${Math.round((darts > 0 ? (hits / darts) * 100 : 0) * 10) / 10}%`;
+  }
   if (mode === "darts_firefighter") {
     if (key === "primary") return num(pick(row.fireReduced, row.totalFireReduced), 0);
     if (key === "secondary") return num(pick(row.firesExtinguished, row.extinguished), 0);
     return num(pick(row.score, row.points), 0);
+  }
+  if (mode === "pendu") {
+    if (key === "primary") return num(pick(row.challengesPassed, row.successes), 0);
+    if (key === "secondary") return num(pick(row.errorsTaken, row.errors), 0);
+    return num(pick(row.eliminations), 0);
+  }
+  if (mode === "menteur") {
+    if (key === "primary") return num(pick(row.contractsProven, row.proofs), 0);
+    if (key === "secondary") return num(pick(row.liarCalls, row.calls), 0);
+    return num(pick(row.livesLost), 0);
+  }
+  if (mode === "crados") {
+    if (key === "primary") return num(pick(row.sectorsClaimed, row.sectors), 0);
+    if (key === "secondary") return num(pick(row.dirtTaken, row.dirt), 0);
+    return num(pick(row.dirtWashed, row.cleaned), 0);
   }
   if (mode === "cricket_cut_throat" || mode === "enculette_vache") {
     if (key === "primary") return num(pick(row.marks, row.totalMarks, row.hits), 0);
@@ -522,10 +616,22 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           ? num(attrapeMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(pick(r.raw?.captureCredits, r.raw?.captures), 0), 0))
         : mode === "prisoner"
           ? num(prisonerMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(r.raw?.captures, 0), 0))
+          : mode === "castle"
+            ? rows.reduce((sum, r) => sum + num(r.raw?.builds, 0) + num(r.raw?.damage, 0), 0)
+          : mode === "gotcha"
+            ? rows.reduce((sum, r) => sum + num(r.raw?.gotchas, 0), 0)
+          : mode === "hare_hounds"
+            ? rows.reduce((sum, r) => sum + num(r.raw?.steps, 0), 0)
           : mode === "darts_firefighter"
             ? num(firefighterMatchStats?.totalFireReduced, rows.reduce((sum, r) => sum + num(r.raw?.fireReduced, 0), 0))
             : mode === "darts_poker"
               ? num(pokerMatchStats?.totalHandsWon, rows.reduce((sum, r) => sum + num(r.raw?.handsWon, 0), 0))
+            : mode === "pendu"
+              ? rows.reduce((sum, r) => sum + num(r.raw?.challengesPassed, 0), 0)
+            : mode === "menteur"
+              ? rows.reduce((sum, r) => sum + num(r.raw?.liarCalls, 0), 0)
+            : mode === "crados"
+              ? rows.reduce((sum, r) => sum + num(r.raw?.sectorsClaimed, 0), 0)
             : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
 
   if (mode === "attrape_moi") {
@@ -562,7 +668,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -603,6 +709,14 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         <DartsFirefighterSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "darts_poker" ? (
         <DartsPokerSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "pendu" || mode === "menteur" || mode === "crados" ? (
+        <OriginalPartyModeSummaryTables mode={mode} rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "castle" ? (
+        <CastleSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "gotcha" ? (
+        <GotchaSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "hare_hounds" ? (
+        <HareHoundsSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : (
         <section style={card(meta.accent)}>
           <div style={sectionTitle(meta.accent)}>Stats détaillées</div>
@@ -618,6 +732,207 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   );
 }
 
+
+function OriginalPartyModeSummaryTables({ mode, rec, rows, accent }: { mode: "pendu" | "menteur" | "crados"; rec: any; rows: any[]; accent: string }) {
+  const sum = (key: string) => rows.reduce((total, row) => total + num(row?.raw?.[key]), 0);
+  const cfg = pick(rec?.summary?.config, rec?.payload?.config, rec?.game, {}) || {};
+  const rules = cfg?.rules || {};
+  const modeStats = mode === "pendu"
+    ? [
+        ["Défis posés", sum("challengesSet")],
+        ["Défis réussis", sum("challengesPassed")],
+        ["Défis ratés", sum("challengesFailed")],
+        ["Erreurs prises", sum("errorsTaken")],
+        ["Éliminations", sum("eliminations")],
+        ["Best volée", Math.max(0, ...rows.map((r) => num(r?.raw?.bestVisit)))],
+      ]
+    : mode === "menteur"
+      ? [
+          ["Enchères", sum("raises")],
+          ["Appels MENTEUR", sum("liarCalls")],
+          ["Contrats prouvés", sum("contractsProven")],
+          ["Mensonges démasqués", sum("liesCaught")],
+          ["Vies perdues", sum("livesLost")],
+          ["Best volée", Math.max(0, ...rows.map((r) => num(r?.raw?.bestVisit)))],
+        ]
+      : [
+          ["Couches posées", sum("layersPlaced")],
+          ["Secteurs contaminés", sum("sectorsClaimed")],
+          ["Secteurs volés", sum("sectorsStolen")],
+          ["Crasse reçue", sum("dirtTaken")],
+          ["Crasse lavée", sum("dirtWashed")],
+          ["Volées", sum("visits")],
+        ];
+  const ruleText = mode === "pendu"
+    ? `${num(rules?.partsToLose, 6)} erreurs · ${String(rules?.challengeMode || "caller")} · ${String(rules?.executionMode || "strict")}`
+    : mode === "menteur"
+      ? `${num(rules?.lives, 5)} vies · pas ${num(rules?.raiseStep, 5)} · ${String(rules?.contractDeck || "score")}`
+      : `${num(rules?.dirtLimit, 10)} crasses · ${num(rules?.layersToOwn, 3)} couches · ${String(rules?.stealMode || "block")}`;
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Statistiques de la partie</div>
+      <div style={{ color: "#aeb2c3", fontSize: 11, marginBottom: 10 }}>{ruleText}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
+        {modeStats.map(([label, value]) => <Kpi key={String(label)} label={String(label)} value={value as any} accent={accent} />)}
+      </div>
+    </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Détail par joueur</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Flèches</th><th style={th}>{MODE_META[mode].primary}</th><th style={th}>{MODE_META[mode].secondary}</th><th style={th}>{MODE_META[mode].tertiary}</th></tr></thead>
+          <tbody>{rows.map((r) => <tr key={`party-mode-${r.id}`}><td style={td}>{r.name}</td><td style={td}>{num(pick(r.raw?.darts, r.raw?.dartsThrown), 0)}</td><td style={td}>{r.primary}</td><td style={td}>{r.secondary}</td><td style={td}>{r.tertiary}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+  </>;
+}
+
+
+function simpleDartLabel(d: any): string {
+  if (!d || d?.bed === "MISS") return "MISS";
+  if (d?.bed === "IB") return "DBULL";
+  if (d?.bed === "OB") return "BULL";
+  return `${String(d?.bed || "")}${num(d?.number, 0) || ""}`;
+}
+
+function CastleSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const config = pick(summary?.config, rec?.payload?.config, {}) || {};
+  const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory));
+  const totalDarts = rows.reduce((sum, row) => sum + num(row?.raw?.darts), 0);
+  const totalUseful = rows.reduce((sum, row) => sum + num(row?.raw?.usefulHits), 0);
+  const totalBuilds = rows.reduce((sum, row) => sum + num(row?.raw?.builds), 0);
+  const totalDamage = rows.reduce((sum, row) => sum + num(row?.raw?.damage), 0);
+  const accuracy = totalDarts > 0 ? (totalUseful / totalDarts) * 100 : 0;
+  const targetBricks = num(pick(summary?.targetBricks, config?.rules?.targetBricks), 15);
+  const attacks = pick(config?.rules?.attacksEnabled, true) !== false;
+  const assignment = String(pick(config?.rules?.numberAssignment, "random")) === "offhand" ? "Main opposée" : "Aléatoire";
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Bilan des châteaux</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
+        <Kpi label="Objectif" value={`${targetBricks} briques`} accent={accent} />
+        <Kpi label="Briques construites" value={totalBuilds} accent="#ffd166" />
+        <Kpi label="Dégâts infligés" value={totalDamage} accent="#ff6b55" />
+        <Kpi label="Touches utiles" value={`${totalUseful}/${totalDarts}`} accent="#5ce6a8" />
+        <Kpi label="Précision utile" value={`${Math.round(accuracy * 10) / 10}%`} accent="#5ce6a8" />
+        <Kpi label="Attaques" value={attacks ? "ACTIVES" : "OFF"} accent={attacks ? "#ff6b55" : "#aeb2c3"} />
+        <Kpi label="Attribution" value={assignment} accent="#55c7ff" />
+        <Kpi label="Manches à gagner" value={num(config?.seriesWins, 1)} accent="#f5f7fb" />
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Bâtisseurs & assaillants</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 820, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Secteur</th><th style={th}>Manches</th><th style={th}>Briques</th><th style={th}>Dégâts</th><th style={th}>Touches utiles</th><th style={th}>MISS</th><th style={th}>BULL</th><th style={th}>Flèches</th><th style={th}>Préc.</th></tr></thead>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const useful = num(p.usefulHits); const pct = darts > 0 ? useful / darts * 100 : 0; return <tr key={`castle-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.target) || "—"}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.builds)}</td><td style={td}>{num(p.damage)}</td><td style={td}>{useful}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bulls)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td></tr>; })}</tbody>
+      </table></div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Journal des volées</div>
+      <div style={{ display: "grid", gap: 7 }}>{visits.length ? [...visits].reverse().slice(0, 80).map((visit: any, index: number) => {
+        const row = rows.find((r: any) => String(r.id) === String(visit?.playerId));
+        const deltas = Object.keys(visit?.after || {}).map((id) => num(visit?.after?.[id]) - num(visit?.before?.[id])).filter((v) => v !== 0);
+        return <div key={String(visit?.id || index)} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{row?.name || "Joueur"} · M{num(visit?.leg, 1)} · T{num(visit?.turn, 1)}</strong><strong style={{ color: accent }}>{asArray(visit?.darts).map(simpleDartLabel).join(" · ") || "—"}</strong></div><div style={{ color: "#9fa5b2", fontSize: 10, marginTop: 3 }}>{asArray(visit?.events).join(" · ") || (deltas.length ? "Château modifié" : "Aucun effet")}</div></div>;
+      }) : <div style={{ color: "#c9c9d4" }}>Aucune volée enregistrée.</div>}</div>
+    </section>
+  </>;
+}
+
+function GotchaSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const config = pick(summary?.config, rec?.payload?.config, {}) || {};
+  const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory));
+  const targetScore = num(pick(summary?.targetScore, config?.rules?.targetScore), 301);
+  const totalDarts = rows.reduce((sum, row) => sum + num(row?.raw?.darts), 0);
+  const gotchas = rows.reduce((sum, row) => sum + num(row?.raw?.gotchas), 0);
+  const victims = rows.reduce((sum, row) => sum + num(row?.raw?.victims), 0);
+  const busts = rows.reduce((sum, row) => sum + num(row?.raw?.busts), 0);
+  const bestVisit = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestVisit)), 0);
+  const outMode = ({ straight: "STRAIGHT OUT", double: "DOUBLE OUT", master: "MASTER OUT" } as any)[String(config?.rules?.outMode)] || "STRAIGHT OUT";
+  const bustRule = String(config?.rules?.bustRule || "turn") === "zero" ? "Retour à 0" : "Volée annulée";
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Bilan GOTCHA</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
+        <Kpi label="Cible" value={targetScore} accent={accent} />
+        <Kpi label="GOTCHA" value={gotchas} accent="#ff9b31" />
+        <Kpi label="Victimes remises à 0" value={victims} accent="#ff5b55" />
+        <Kpi label="BUST" value={busts} accent="#ff5b55" />
+        <Kpi label="Best volée" value={bestVisit} accent="#5ce6a8" />
+        <Kpi label="Total flèches" value={totalDarts} accent="#55c7ff" />
+        <Kpi label="Sortie" value={outMode} accent="#ffd166" />
+        <Kpi label="Règle BUST" value={bustRule} accent="#f5f7fb" />
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Statistiques joueurs</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Score final</th><th style={th}>Manches</th><th style={th}>GOTCHA</th><th style={th}>Victimes</th><th style={th}>BUST</th><th style={th}>Points</th><th style={th}>Best</th><th style={th}>D/T/Bull</th><th style={th}>MISS</th><th style={th}>Flèches</th></tr></thead>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; return <tr key={`gotcha-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.score)}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.gotchas)}</td><td style={td}>{num(p.victims)}</td><td style={td}>{num(p.busts)}</td><td style={td}>{num(p.points)}</td><td style={td}>{num(p.bestVisit)}</td><td style={td}>{num(p.doubles)}/{num(p.triples)}/{num(p.bulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.darts)}</td></tr>; })}</tbody>
+      </table></div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Journal des volées</div>
+      <div style={{ display: "grid", gap: 7 }}>{visits.length ? [...visits].reverse().slice(0, 100).map((visit: any, index: number) => {
+        const row = rows.find((r: any) => String(r.id) === String(visit?.playerId));
+        const victimsCount = asArray(visit?.gotchaVictimIds).length;
+        return <div key={String(visit?.id || index)} style={{ padding: 9, borderRadius: 13, background: visit?.bust ? "rgba(255,80,80,.055)" : victimsCount ? `${accent}14` : "rgba(255,255,255,.035)", border: `1px solid ${visit?.bust ? "#ff5b5555" : victimsCount ? accent + "55" : "rgba(255,255,255,.08)"}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{row?.name || "Joueur"} · M{num(visit?.leg, 1)} · R{num(visit?.round, 1)}</strong><strong style={{ color: visit?.bust ? "#ff5b55" : victimsCount ? accent : "#5ce6a8" }}>{num(visit?.startScore)} → {num(visit?.endScore)}</strong></div><div style={{ marginTop: 3, color: "#d7dbe5", fontSize: 10 }}>{asArray(visit?.darts).map(simpleDartLabel).join(" · ") || "—"} · volée {num(visit?.visitScore)}{visit?.bust ? " · BUST" : victimsCount ? ` · GOTCHA ×${victimsCount}` : ""}</div><div style={{ color: "#9fa5b2", fontSize: 10, marginTop: 2 }}>{asArray(visit?.events).join(" · ") || "Aucun effet spécial"}</div></div>;
+      }) : <div style={{ color: "#c9c9d4" }}>Aucune volée enregistrée.</div>}</div>
+    </section>
+  </>;
+}
+
+function HareHoundsSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const config = pick(summary?.config, rec?.payload?.config, {}) || {};
+  const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory));
+  const totalDarts = rows.reduce((sum, row) => sum + num(row?.raw?.darts), 0);
+  const validHits = rows.reduce((sum, row) => sum + num(row?.raw?.validHits), 0);
+  const steps = rows.reduce((sum, row) => sum + num(row?.raw?.steps), 0);
+  const catches = rows.reduce((sum, row) => sum + num(row?.raw?.catches), 0);
+  const escapes = rows.reduce((sum, row) => sum + num(row?.raw?.escapes), 0);
+  const accuracy = totalDarts > 0 ? validHits / totalDarts * 100 : 0;
+  const direction = String(config?.rules?.direction || "clockwise") === "counter" ? "ANTI-HORAIRE" : "HORAIRE";
+  const zone = String(config?.rules?.targetZone || "any") === "double" ? "DOUBLES" : String(config?.rules?.targetZone || "any") === "triple" ? "TRIPLES" : "S / D / T";
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Bilan de la poursuite</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
+        <Kpi label="Départ Lièvre" value={num(config?.rules?.hareStart, 20)} accent="#ffd166" />
+        <Kpi label="Départ Limier" value={num(config?.rules?.houndStart, 5)} accent="#55c7ff" />
+        <Kpi label="Étapes" value={steps} accent={accent} />
+        <Kpi label="Captures" value={catches} accent="#55c7ff" />
+        <Kpi label="Évasions" value={escapes} accent="#ffd166" />
+        <Kpi label="Précision" value={`${Math.round(accuracy * 10) / 10}%`} accent="#5ce6a8" />
+        <Kpi label="Sens" value={direction} accent="#f5f7fb" />
+        <Kpi label="Zone valide" value={zone} accent="#f5f7fb" />
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Lièvres & limiers</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 820, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Manches</th><th style={th}>Étapes</th><th style={th}>Captures</th><th style={th}>Évasions</th><th style={th}>Touches</th><th style={th}>MISS</th><th style={th}>Flèches</th><th style={th}>Préc.</th><th style={th}>Secteur final</th></tr></thead>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const hits = num(p.validHits); const pct = darts > 0 ? hits / darts * 100 : 0; return <tr key={`hare-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.steps)}</td><td style={td}>{num(p.catches)}</td><td style={td}>{num(p.escapes)}</td><td style={td}>{hits}</td><td style={td}>{num(p.misses)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td><td style={td}>{num(p.currentSegment) || "—"}</td></tr>; })}</tbody>
+      </table></div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Journal de la poursuite</div>
+      <div style={{ display: "grid", gap: 7 }}>{visits.length ? [...visits].reverse().slice(0, 100).map((visit: any, index: number) => {
+        const row = rows.find((r: any) => String(r.id) === String(visit?.playerId));
+        const role = String(visit?.role) === "hare" ? "🐇 LIÈVRE" : "🐕 LIMIER";
+        return <div key={String(visit?.id || index)} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{row?.name || "Joueur"} · {role} · M{num(visit?.leg, 1)}</strong><strong style={{ color: num(visit?.steps) > 0 ? accent : "#aeb2c3" }}>{num(visit?.startSegment)} → {num(visit?.endSegment)} · +{num(visit?.steps)}</strong></div><div style={{ color: "#d7dbe5", fontSize: 10, marginTop: 3 }}>{asArray(visit?.darts).map(simpleDartLabel).join(" · ") || "—"}</div><div style={{ color: "#9fa5b2", fontSize: 10, marginTop: 2 }}>{asArray(visit?.events).join(" · ") || "Aucune progression"}</div></div>;
+      }) : <div style={{ color: "#c9c9d4" }}>Aucune volée enregistrée.</div>}</div>
+    </section>
+  </>;
+}
 
 function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
   const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};

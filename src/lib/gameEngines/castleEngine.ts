@@ -159,7 +159,11 @@ export function assignCastleNumber(input: CastleState, dart: GameDart): CastleSt
   const idx = Math.max(0, Math.min(state.players.length - 1, state.assignmentIndex));
   const player = state.players[idx];
   const raw = numberOf(dart);
-  state.targets[player.id] = firstFreeTarget(state, raw || ((idx * 7 + state.legIndex * 3) % 20) + 1);
+  // L'attribution "main opposée" exige un vrai secteur numéroté.
+  // MISS / BULL ne doivent pas attribuer silencieusement un numéro arbitraire :
+  // le joueur relance, ce qui évite une attribution incompréhensible à l'écran.
+  if (!raw) return state;
+  state.targets[player.id] = firstFreeTarget(state, raw);
   state.assignmentIndex += 1;
   if (state.assignmentIndex >= state.players.length) {
     state.assignmentIndex = 0;

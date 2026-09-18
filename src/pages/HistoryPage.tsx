@@ -367,6 +367,9 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "castle", label: "CASTLE", aliases: ["castle", "chateau", "château"] },
     { key: "gotcha", label: "GOTCHA", aliases: ["gotcha"] },
     { key: "hare_hounds", label: "HARE & HOUNDS", aliases: ["hare_hounds", "hare & hounds", "harehounds", "hare and hounds"] },
+    { key: "pendu", label: "PENDU", aliases: ["pendu", "hangman"] },
+    { key: "menteur", label: "MENTEUR", aliases: ["menteur", "liar", "bluff"] },
+    { key: "crados", label: "CRADOS", aliases: ["crados", "crado", "dirty", "slime"] },
     { key: "ocean_control", label: "OCEAN CONTROL", aliases: ["ocean_control", "ocean control", "oceancontrol"] },
     { key: "football", label: "DARTS FOOTBALL", aliases: ["football", "darts football", "football_darts"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
@@ -479,7 +482,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|castle|gotcha|hare_hounds|harehounds|pendu|menteur|crados|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -526,6 +529,9 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "gotcha",
     "harehounds",
     "hare_hounds",
+    "pendu",
+    "menteur",
+    "crados",
     "ocean_control",
     "oceancontrol",
     "football",
@@ -653,6 +659,9 @@ function modeLabel(e: SavedEntry) {
   if (m === "castle") return "CASTLE";
   if (m === "gotcha") return "GOTCHA";
   if (m === "hare_hounds" || m === "harehounds") return "HARE & HOUNDS";
+  if (m === "pendu") return "PENDU";
+  if (m === "menteur") return "MENTEUR";
+  if (m === "crados") return "CRADOS";
   if (m === "ocean_control" || m === "oceancontrol") return "OCEAN CONTROL";
   if (m === "football" || m === "football_darts" || m === "footballdarts") return "DARTS FOOTBALL";
   if (m === "x01") {
@@ -843,6 +852,10 @@ const modeColor: Record<string, string> = {
   firefighter: "#ff6b27",
   darts_poker: "#f6c256",
   cargo: "#ff9b42",
+  castle: "#ffb33f",
+  gotcha: "#ff9b31",
+  hare_hounds: "#f6b63b",
+  harehounds: "#f6b63b",
   ocean_control: "#31c7e8",
   oceancontrol: "#31c7e8",
   football: "#65e5aa",
@@ -4469,15 +4482,27 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
-    // CASTLE / GOTCHA / HARE & HOUNDS : reprise exacte du snapshot de partie.
+    // MODES DARTS RÉCENTS : reprise exacte du snapshot de partie.
+    // Le mapping explicite évite tout fallback X01 et garantit que PENDU /
+    // MENTEUR / CRADOS reviennent sur leur moteur dédié après fermeture/crash.
     {
       const rawMode = normalizeToken(inferredMode || baseMode(e));
-      const newModeRoute = rawMode === "castle" ? "castle_play" : rawMode === "gotcha" ? "gotcha_play" : (rawMode === "harehounds" || rawMode === "hare_hounds") ? "hare_hounds_play" : null;
+      const routeByMode: Record<string, string> = {
+        castle: "castle_play",
+        gotcha: "gotcha_play",
+        harehounds: "hare_hounds_play",
+        hare_hounds: "hare_hounds_play",
+        pendu: "pendu_play",
+        menteur: "menteur_play",
+        crados: "crados_play",
+      };
+      const canonicalByMode: Record<string, string> = { harehounds: "hare_hounds" };
+      const newModeRoute = routeByMode[rawMode] || null;
       if (newModeRoute && statusOf(e) === "in_progress") {
         const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null) || {};
         const config = (e as any)?.resume?.config || payload?.config || (e as any)?.summary?.config || null;
         const snapshot = (e as any)?.resume?.state || payload?.stateSnapshot || payload?.state || null;
-        const mode = rawMode === "harehounds" ? "hare_hounds" : rawMode;
+        const mode = canonicalByMode[rawMode] || rawMode;
         const ok = safeGo([newModeRoute], { rec: e, resumeId, config, snapshot, mode, from: preview ? "history_preview" : "history", preview: !!preview });
         if (!ok) go(newModeRoute, { rec: e, resumeId, config, snapshot, mode, from: preview ? "history_preview" : "history", preview: !!preview });
         return;

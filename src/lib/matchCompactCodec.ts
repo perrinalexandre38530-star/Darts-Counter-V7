@@ -47,6 +47,9 @@ export type CompactMatchMode =
   | "darts_poker"
   | "cargo"
   | "ocean_control"
+  | "pendu"
+  | "menteur"
+  | "crados"
   | "scram"
   | "batard"
   | "babyfoot"
@@ -271,6 +274,9 @@ function inferMode(rec: any, payload: any): CompactMatchMode {
   if (raw.includes("battle_royale") || raw.includes("battle royale")) return "battle_royale";
   if (raw.includes("darts_racer") || raw.includes("darts racer")) return "darts_racer";
   if (raw.includes("darts_poker") || raw.includes("darts poker") || raw.includes("dartspoker")) return "darts_poker";
+  if (raw.includes("pendu") || raw.includes("hangman")) return "pendu";
+  if (raw.includes("menteur") || raw.includes(" liar ") || raw.includes("bluff")) return "menteur";
+  if (raw.includes("crados") || raw.includes("crado")) return "crados";
   if (raw.includes("ocean_control") || raw.includes("ocean control") || raw.includes("oceancontrol")) return "ocean_control";
   if (raw.includes("cargo")) return "cargo";
   if (raw.includes("bowling")) return "bowling";
@@ -523,6 +529,24 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
   const state = payload.finalState ?? payload.state ?? payload.result ?? payload.summary;
   const cleanState = stripHeavy(state);
   if (cleanState && Object.keys(cleanState || {}).length) out.s = cleanState;
+
+  // PENDU / MENTEUR / CRADOS : ces moteurs reposent sur un snapshot complet
+  // pour la reprise exacte (phase, joueur actif, vies/crasse/erreurs, BO, etc.).
+  // Le compact générique ne lisait pas payload.stateSnapshot : on le conserve
+  // explicitement ici afin que sauvegarde cloud / export / restauration gardent
+  // exactement la même partie qu'en IndexedDB locale.
+  if (mode === "pendu" || mode === "menteur" || mode === "crados") {
+    const snapshot = payload?.stateSnapshot ?? payload?.resume?.state ?? payload?.state ?? null;
+    const visitsExact = payload?.visitHistory ?? payload?.visits ?? snapshot?.visits ?? [];
+    out.pm = {
+      mode,
+      config: stripHeavyPreserveKeys(payload?.config ?? snapshot?.config ?? {}),
+      stateSnapshot: snapshot ? stripHeavyPreserveKeys(snapshot) : undefined,
+      summary: stripHeavyPreserveKeys(payload?.summary ?? {}),
+      visits: Array.isArray(visitsExact) ? stripHeavyPreserveKeys(visitsExact) : [],
+      stats: stripHeavyPreserveKeys(payload?.stats ?? {}),
+    };
+  }
   if (mode === "x01") {
     const legs = payload.legs ?? payload.sets ?? payload.legResults;
     if (legs) out.l = stripHeavy(legs);
@@ -1256,6 +1280,7 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
     const cargo = compact.m === "cargo" && compact.d?.cg && typeof compact.d.cg === "object" ? compact.d.cg : null;
     const ocean = compact.m === "ocean_control" && compact.d?.oc && typeof compact.d.oc === "object" ? compact.d.oc : null;
     const football = compact.m === "football_darts" && compact.d?.fb && typeof compact.d.fb === "object" ? compact.d.fb : null;
+    const originalParty = (compact.m === "pendu" || compact.m === "menteur" || compact.m === "crados") && compact.d?.pm && typeof compact.d.pm === "object" ? compact.d.pm : null;
     const summary = {
       players: playersMap,
       perPlayer: players,
@@ -1281,6 +1306,8 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       ...(football?.summary || {}),
       ...(football?.matchStats ? { matchStats: football.matchStats } : {}),
       ...(Array.isArray(football?.visits) ? { visits: football.visits } : {}),
+      ...(originalParty?.summary || {}),
+      ...(Array.isArray(originalParty?.visits) ? { visits: originalParty.visits } : {}),
     };
     return {
       id: String(compact.id || ""),
@@ -1325,6 +1352,14 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         stateSnapshot: football.stateSnapshot,
         visits: Array.isArray(football.visits) ? football.visits : [],
         stats: { sport: "darts", mode: "football", players, match: football.matchStats || {}, global: football.matchStats || {} },
+      } : {}),
+      ...(originalParty ? {
+        config: originalParty.config || compact.o || {},
+        stateSnapshot: originalParty.stateSnapshot,
+        visits: Array.isArray(originalParty.visits) ? originalParty.visits : [],
+        stats: originalParty.stats && typeof originalParty.stats === "object"
+          ? originalParty.stats
+          : { sport: "darts", mode: compact.m, players },
       } : {}),
       compact,
     };

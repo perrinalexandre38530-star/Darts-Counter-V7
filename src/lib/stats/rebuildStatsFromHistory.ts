@@ -21,6 +21,9 @@ export type GameKey =
   | "shanghai"
   | "territories"
   | "darts_firefighter"
+  | "pendu"
+  | "menteur"
+  | "crados"
   | "battle_royale"
   | "warfare"
   | "five_lives"
@@ -258,6 +261,9 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       shanghai: { mode: "shanghai", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       territories: { mode: "territories", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       darts_firefighter: { mode: "darts_firefighter", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      pendu: { mode: "pendu", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      menteur: { mode: "menteur", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      crados: { mode: "crados", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       battle_royale: { mode: "battle_royale", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       warfare: { mode: "warfare", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       five_lives: { mode: "five_lives", matches: 0, finished: 0, inProgress: 0, saved: 0 },
@@ -276,6 +282,9 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       shanghai: [],
       territories: [],
       darts_firefighter: [],
+      pendu: [],
+      menteur: [],
+      crados: [],
       battle_royale: [],
       warfare: [],
       five_lives: [],
@@ -420,6 +429,9 @@ function normalizeGameKey(rec: any, payload: any): GameKey {
   if (g.includes("golf")) return "golf";
   if (g.includes("shanghai")) return "shanghai";
   if (g.includes("darts_firefighter") || g.includes("darts firefighter") || g.includes("firefighter")) return "darts_firefighter";
+  if (g.includes("pendu") || g.includes("hangman")) return "pendu";
+  if (g.includes("menteur") || g.includes("bluff")) return "menteur";
+  if (g.includes("crados") || g.includes("crado")) return "crados";
   if (g.includes("territ")) return "territories";
   if (g.includes("battle") || g.includes("royale")) return "battle_royale";
   if (g.includes("warfare")) return "warfare";
@@ -1047,6 +1059,9 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
 
   territories: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   darts_firefighter: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  pendu: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  menteur: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  crados: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
 
   battle_royale: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   warfare: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),

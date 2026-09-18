@@ -19,6 +19,9 @@ const players = [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name
   assert(s.phase === "finished" && s.winnerId === "a", "CASTLE must finish when target bricks are reached");
 
   let manual = createCastleState(players.slice(0, 2), { mode: "castle", seriesWins: 1, rules: { targetBricks: 15, numberAssignment: "offhand", attacksEnabled: true, reassignEachLeg: true } });
+  const assignmentIndexBeforeInvalid = manual.assignmentIndex;
+  manual = assignCastleNumber(manual, { bed: "IB" });
+  assert(manual.assignmentIndex === assignmentIndexBeforeInvalid && !manual.targets.a, "CASTLE offhand BULL/MISS must require a numbered-sector rethrow");
   manual = assignCastleNumber(manual, { bed: "S", number: 7 });
   manual = assignCastleNumber(manual, { bed: "D", number: 7 });
   assert(manual.targets.a === 7 && manual.targets.b !== 7 && manual.phase === "playing", "CASTLE offhand numbers must be unique");
@@ -38,6 +41,11 @@ const players = [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name
   d = playGotchaVisit(d, [{ bed: "MISS" }]);
   d = playGotchaVisit(d, [{ bed: "D", number: 10 }]);
   assert(d.phase === "finished" && d.winnerId === "a", "GOTCHA valid Double Out must win");
+
+  let hardcore = createGotchaState(players.slice(0, 2), { mode: "gotcha", seriesWins: 1, rules: { targetScore: 201, outMode: "straight", maxRounds: 0, bustRule: "zero" } });
+  hardcore.scores.a = 190;
+  hardcore = playGotchaVisit(hardcore, [{ bed: "T", number: 20 }]);
+  assert(hardcore.scores.a === 0 && hardcore.statsByPlayer.a.busts === 1, "GOTCHA hardcore bust must reset the active player to zero");
 }
 
 // HARE & HOUNDS — ordre de cible, zone et capture.
