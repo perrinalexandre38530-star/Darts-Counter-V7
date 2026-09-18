@@ -278,6 +278,8 @@ export type OnlineMatchRow = {
   created_at?: string;
   finished_at?: string | null;
   owner_user?: string | null;
+  revision?: number | null;
+  updated_by?: string | null;
 };
 
 // --------------------------------------------
@@ -545,6 +547,18 @@ function safeUpper(code: string) {
   return String(code || "").trim().toUpperCase();
 }
 
+function isMissingOnlineRpc(error: any): boolean {
+  const code = String(error?.code || "").toUpperCase();
+  const message = String(error?.message || error || "").toLowerCase();
+  return code === "PGRST202" || code === "42883" || message.includes("could not find the function") || message.includes("does not exist");
+}
+
+function mapRpcLobby(payload: any): OnlineLobby | null {
+  if (!payload || typeof payload !== "object") return null;
+  const players = Array.isArray(payload.players) ? payload.players : [];
+  return mapLobbyRow(payload as SupabaseLobbyRow, players);
+}
+
 // ✅ Redirects stables (Cloudflare Pages + HashRouter)
 function getSiteUrl(): string {
   const fromEnv =
@@ -654,7 +668,25 @@ type SupabaseLobbyRow = {
   id: string; code: string; mode: string; max_players: number; host_user_id: string; host_nickname: string; settings: any; status: string; created_at: string; updated_at?: string | null;
 };
 function mapSupabaseLobbyPlayer(row: any) {
-  return { id: String(row?.id || ""), userId: String(row?.user_id || ""), nickname: row?.nickname || row?.display_name || "Joueur", displayName: row?.display_name || row?.nickname || "Joueur", avatarUrl: row?.avatar_url || null, role: row?.role || "player", status: row?.status || "online", ready: String(row?.status || "").toLowerCase() === "ready", readyAt: row?.ready_at || null, joinedAt: row?.joined_at || null, updatedAt: row?.updated_at || null };
+  const lastSeenAt = row?.last_seen_at || row?.updated_at || null;
+  const parsedLastSeen = lastSeenAt ? Date.parse(String(lastSeenAt)) : NaN;
+  const stale = Number.isFinite(parsedLastSeen) && Date.now() - parsedLastSeen > 2 * 60 * 1000;
+  const presenceStatus = stale ? "offline" : String(row?.presence_status || "online").toLowerCase();
+  return {
+    id: String(row?.id || ""),
+    userId: String(row?.user_id || ""),
+    nickname: row?.nickname || row?.display_name || "Joueur",
+    displayName: row?.display_name || row?.nickname || "Joueur",
+    avatarUrl: row?.avatar_url || null,
+    role: row?.role || "player",
+    status: row?.status || "online",
+    presenceStatus,
+    lastSeenAt,
+    ready: String(row?.status || "").toLowerCase() === "ready",
+    readyAt: row?.ready_at || null,
+    joinedAt: row?.joined_at || null,
+    updatedAt: row?.updated_at || null,
+  };
 }
 function mapLobbyRow(row: SupabaseLobbyRow, players: any[] = []): OnlineLobby {
   const mappedPlayers = (players || []).map(mapSupabaseLobbyPlayer).filter((p) => p.userId);
@@ -2135,27 +2167,16 @@ async function pushStoreSnapshot(payload: any, version = 8, opts?: { force?: boo
 export type PingResult = { ok: true; authRequired?: boolean; provider?: "nas" | "supabase"; dbReady?: boolean };
 
 async function ping(): Promise<PingResult> {
-  // En mode NAS ou hybride, les associations profils, snapshots et stats liées
-  // passent par le backend NAS. Le statut affiché dans ONLINE doit donc tester
-  // /health du NAS, pas seulement Supabase. Sinon l’écran peut dire "hors ligne"
-  // alors que l’API utilisée par les associations est un autre serveur.
-  if (useNasOnlineBackend()) {
-    const health = await apiGet("/health");
-    if (health?.ok === false) {
-      throw new Error(health?.error || "Backend NAS joignable mais base de données indisponible.");
-    }
-    return { ok: true, provider: "nas", dbReady: health?.dbReady !== false };
-  }
-
+  // Le ONLINE public est toujours validé contre Supabase. Le NAS peut rester
+  // disponible pour les sauvegardes privées, mais il n'est jamais le healthcheck
+  // des salons publics.
   const { error } = await supabase.from("online_lobbies").select("id").limit(1);
-
   if (error) {
     const msg = String((error as any).message || error).toLowerCase();
     if (msg.includes("permission")) return { ok: true, authRequired: true, provider: "supabase" };
     throw error;
   }
-
-  return { ok: true, provider: "supabase" };
+  return { ok: true, provider: "supabase", dbReady: true };
 }
 
 // ============================================================
@@ -2169,67 +2190,62 @@ function generateLobbyCode(): string {
 }
 
 async function createLobby(args: { mode: string; maxPlayers: number; settings: OnlineLobbySettings }): Promise<OnlineLobby> {
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiPost("/online/lobbies/create-safe", {
-      mode: args.mode,
-      maxPlayers: args.maxPlayers,
-      settings: args.settings,
-    });
-    return (res?.lobby || res) as OnlineLobby;
+  await ensureAuthedUser();
+
+  const rpc = await supabase.rpc("ms_online_create_lobby", {
+    p_mode: args.mode || "x01",
+    p_max_players: Math.max(2, Math.min(64, Number(args.maxPlayers || 2))),
+    p_settings: args.settings || {},
+  });
+  if (!rpc.error && rpc.data) {
+    const mapped = mapRpcLobby(rpc.data);
+    if (mapped) return mapped;
   }
+  if (rpc.error && !isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Impossible de créer un salon online.");
 
+  // Compatibilité avant application de la migration V2.
   const { user } = await ensureAuthedUser();
-
   const meta = (user.user_metadata || {}) as any;
   const nickname = meta.nickname || meta.displayName || user.email || "Hôte";
-
   let lastError: any = null;
-
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateLobbyCode();
-
-    const { data, error } = await supabase
-      .from("online_lobbies")
-      .insert({
-        code,
-        mode: args.mode,
-        max_players: args.maxPlayers,
-        host_user_id: user.id,
-        host_nickname: nickname,
-        settings: args.settings,
-        status: "waiting",
-      })
-      .select("*")
-      .single();
-
+    const { data, error } = await supabase.from("online_lobbies").insert({
+      code, mode: args.mode, max_players: args.maxPlayers, host_user_id: user.id,
+      host_nickname: nickname, settings: args.settings, status: "waiting",
+    }).select("*").single();
     if (!error && data) {
       const avatarUrl = meta.avatar_url || meta.avatarUrl || null;
-      const { error: playerError } = await supabase.from("online_lobby_players").upsert({ lobby_id: (data as any).id, lobby_code: code, user_id: user.id, nickname, display_name: nickname, avatar_url: avatarUrl, role: "player", status: "online", updated_at: new Date().toISOString() }, { onConflict: "lobby_id,user_id" });
+      const { error: playerError } = await supabase.from("online_lobby_players").upsert({
+        lobby_id: (data as any).id, lobby_code: code, user_id: user.id, nickname,
+        display_name: nickname, avatar_url: avatarUrl, role: "player", status: "ready",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "lobby_id,user_id" });
       if (playerError) throw new Error(playerError.message || "Salon créé, mais inscription de l'hôte impossible.");
       return (await loadSupabaseLobbyWithPlayers(code)) || mapLobbyRow(data as any);
     }
-
     lastError = error;
     if (error && (error as any).code === "23505") continue;
     break;
   }
-
   throw new Error(lastError?.message || "Impossible de créer un salon online pour le moment.");
 }
 
 async function joinLobby(args: { code: string; [k: string]: any }): Promise<OnlineLobby> {
   const codeUpper = safeUpper(args.code);
+  if (!codeUpper) throw new Error("Code salon manquant.");
+  await ensureAuthedUser();
 
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/join-safe`, {
-      code: codeUpper,
-      nickname: args.nickname,
-      role: args.role || "player",
-    });
-    return (res?.lobby || res) as OnlineLobby;
+  const rpc = await supabase.rpc("ms_online_join_lobby", {
+    p_code: codeUpper,
+    p_nickname: args.nickname || null,
+    p_role: args.role || "player",
+  });
+  if (!rpc.error && rpc.data) {
+    const mapped = mapRpcLobby(rpc.data);
+    if (mapped) return mapped;
   }
+  if (rpc.error && !isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Impossible de rejoindre ce salon.");
 
   const { user } = await ensureAuthedUser();
   const lobby = await loadSupabaseLobbyWithPlayers(codeUpper);
@@ -2238,8 +2254,13 @@ async function joinLobby(args: { code: string; [k: string]: any }): Promise<Onli
   const role = String(args.role || "player").trim().toLowerCase() === "spectator" ? "spectator" : "player";
   const alreadyJoined = (lobby.players || []).some((p: any) => String(p?.userId || p?.user_id || "") === user.id);
   if (!alreadyJoined && role !== "spectator" && lobby.isFull) throw new Error("Ce salon est complet.");
-  const meta = (user.user_metadata || {}) as any; const nickname = String(args.nickname || meta.nickname || meta.displayName || user.email || "Joueur").trim();
-  const { error: joinError } = await supabase.from("online_lobby_players").upsert({ lobby_id: lobby.id, lobby_code: codeUpper, user_id: user.id, nickname, display_name: nickname, avatar_url: meta.avatar_url || meta.avatarUrl || null, role, status: "online", updated_at: new Date().toISOString() }, { onConflict: "lobby_id,user_id" });
+  const meta = (user.user_metadata || {}) as any;
+  const nickname = String(args.nickname || meta.nickname || meta.displayName || user.email || "Joueur").trim();
+  const { error: joinError } = await supabase.from("online_lobby_players").upsert({
+    lobby_id: lobby.id, lobby_code: codeUpper, user_id: user.id, nickname, display_name: nickname,
+    avatar_url: meta.avatar_url || meta.avatarUrl || null, role, status: "online",
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "lobby_id,user_id" });
   if (joinError) throw new Error(joinError.message || "Impossible de rejoindre ce salon pour le moment.");
   return (await loadSupabaseLobbyWithPlayers(codeUpper)) || lobby;
 }
@@ -2247,46 +2268,77 @@ async function joinLobby(args: { code: string; [k: string]: any }): Promise<Onli
 async function setLobbyReady(args: { code: string; ready: boolean; nickname?: string; role?: string }): Promise<OnlineLobby> {
   const codeUpper = safeUpper(args.code);
   if (!codeUpper) throw new Error("Code salon manquant.");
+  await ensureAuthedUser();
 
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/ready-safe`, {
-      ready: !!args.ready,
-      nickname: args.nickname,
-      role: args.role || "player",
-    });
-    return (res?.lobby || res) as OnlineLobby;
+  const rpc = await supabase.rpc("ms_online_set_ready", {
+    p_code: codeUpper,
+    p_ready: !!args.ready,
+    p_nickname: args.nickname || null,
+  });
+  if (!rpc.error && rpc.data) {
+    const mapped = mapRpcLobby(rpc.data);
+    if (mapped) return mapped;
   }
+  if (rpc.error && !isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Impossible de modifier l'état du joueur.");
 
   const { user } = await ensureAuthedUser();
   const status = args.ready ? "ready" : "online";
-
-  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper); if (!lobby) throw new Error("Salon introuvable.");
-  const meta = (user.user_metadata || {}) as any; const nickname = String(args.nickname || meta.nickname || meta.displayName || user.email || "Joueur").trim();
-  const { error: readyError } = await supabase.from("online_lobby_players").upsert({ lobby_id: lobby.id, lobby_code: codeUpper, user_id: user.id, nickname, display_name: nickname, avatar_url: meta.avatar_url || meta.avatarUrl || null, role: String(args.role || "player").trim().toLowerCase() === "spectator" ? "spectator" : "player", status, ready_at: args.ready ? new Date().toISOString() : null, updated_at: new Date().toISOString() }, { onConflict: "lobby_id,user_id" });
+  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper);
+  if (!lobby) throw new Error("Salon introuvable.");
+  const meta = (user.user_metadata || {}) as any;
+  const nickname = String(args.nickname || meta.nickname || meta.displayName || user.email || "Joueur").trim();
+  const { error: readyError } = await supabase.from("online_lobby_players").upsert({
+    lobby_id: lobby.id, lobby_code: codeUpper, user_id: user.id, nickname, display_name: nickname,
+    avatar_url: meta.avatar_url || meta.avatarUrl || null,
+    role: String(args.role || "player").trim().toLowerCase() === "spectator" ? "spectator" : "player",
+    status, ready_at: args.ready ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "lobby_id,user_id" });
   if (readyError) throw new Error(readyError.message || "Impossible de modifier l'état du joueur.");
   return (await loadSupabaseLobbyWithPlayers(codeUpper)) || lobby;
 }
 
+async function touchLobby(code: string, presence: "online" | "away" | "offline" = "online"): Promise<void> {
+  const codeUpper = safeUpper(code);
+  if (!codeUpper) return;
+  const { error } = await supabase.rpc("ms_online_touch_lobby", { p_code: codeUpper, p_presence: presence });
+  if (error && !isMissingOnlineRpc(error)) throw new Error(error.message || "Heartbeat salon impossible.");
+}
+
+async function leaveLobby(code: string): Promise<OnlineLobby | null> {
+  const codeUpper = safeUpper(code);
+  if (!codeUpper) return null;
+  await ensureAuthedUser();
+  const rpc = await supabase.rpc("ms_online_leave_lobby", { p_code: codeUpper });
+  if (!rpc.error) return mapRpcLobby(rpc.data);
+  if (!isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Impossible de quitter le salon.");
+
+  const { user } = await ensureAuthedUser();
+  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper);
+  if (!lobby) return null;
+  const { error } = await supabase.from("online_lobby_players").delete().eq("lobby_id", lobby.id).eq("user_id", user.id);
+  if (error) throw new Error(error.message || "Impossible de quitter le salon.");
+  return await loadSupabaseLobbyWithPlayers(codeUpper);
+}
+
 async function getLobby(code: string): Promise<OnlineLobby> {
   const codeUpper = safeUpper(code);
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiGet(`/online/lobbies/${encodeURIComponent(codeUpper)}`);
-    return (res?.lobby || res) as OnlineLobby;
+  if (!codeUpper) throw new Error("Code salon manquant.");
+  await ensureAuthedUser();
+  const rpc = await supabase.rpc("ms_online_lobby_snapshot", { p_code: codeUpper });
+  if (!rpc.error && rpc.data) {
+    const mapped = mapRpcLobby(rpc.data);
+    if (mapped) return mapped;
   }
-
-  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper); if (!lobby) throw new Error("Salon introuvable."); return lobby;
+  if (rpc.error && !isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Salon introuvable.");
+  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper);
+  if (!lobby) throw new Error("Salon introuvable.");
+  return lobby;
 }
 
 // ✅ A) Lobbies actifs pour page “ONLINE / Spectateur”
 async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiGet(`/online/lobbies?limit=${encodeURIComponent(String(limit))}`);
-    return Array.isArray(res?.lobbies) ? res.lobbies : [];
-  }
-
+  await ensureAuthedUser();
   const { data, error } = await supabase
     .from("online_lobbies")
     .select("*")
@@ -2295,10 +2347,19 @@ async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
     .limit(limit);
 
   if (error) throw new Error(error.message);
-  const lobbies = (data || []) as any[]; const codes = lobbies.map((r: any) => safeUpper(r?.code)).filter(Boolean); if (!codes.length) return [];
+  const lobbies = (data || []) as any[];
+  const codes = lobbies.map((r: any) => safeUpper(r?.code)).filter(Boolean);
+  if (!codes.length) return [];
   const { data: players, error: playersError } = await supabase.from("online_lobby_players").select("*").in("lobby_code", codes).order("joined_at", { ascending: true });
   if (playersError) throw new Error(playersError.message || "Impossible de lire les joueurs des salons.");
-  const byCode = new Map<string, any[]>(); for (const player of players || []) { const key=safeUpper((player as any)?.lobby_code); if (!key) continue; const bucket=byCode.get(key)||[]; bucket.push(player); byCode.set(key,bucket); }
+  const byCode = new Map<string, any[]>();
+  for (const player of players || []) {
+    const key = safeUpper((player as any)?.lobby_code);
+    if (!key) continue;
+    const bucket = byCode.get(key) || [];
+    bucket.push(player);
+    byCode.set(key, bucket);
+  }
   return lobbies.map((r: any) => mapLobbyRow(r, byCode.get(safeUpper(r?.code)) || []));
 }
 
@@ -2307,114 +2368,57 @@ async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
 // ============================================================
 async function startMatch(args: { lobbyCode: string; initialState?: any }): Promise<OnlineMatchRow> {
   const code = safeUpper(args.lobbyCode);
+  if (!code) throw new Error("Code salon manquant.");
+  await ensureAuthedUser();
 
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiPost("/online/matches/start-safe", {
-      lobbyCode: code,
-      initialState: args.initialState ?? {},
-    });
-    return (res?.match || res) as OnlineMatchRow;
-  }
+  const rpc = await supabase.rpc("ms_online_start_match", { p_code: code, p_initial_state: args.initialState ?? {} });
+  if (!rpc.error && rpc.data) return rpc.data as OnlineMatchRow;
+  if (rpc.error && !isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Impossible de démarrer le match.");
 
   const { user } = await ensureAuthedUser();
-
-  const row = {
-    lobby_code: code,
-    status: "started",
-    state_json: args.initialState ?? {},
-    owner_user: user.id,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabase
-    .from("online_matches")
-    .upsert(row as any, { onConflict: "lobby_code" })
-    .select("*")
-    .single();
-
-  if (!error && data) { await supabase.from("online_lobbies").update({ status: "started", updated_at: new Date().toISOString() }).eq("code", code); return data as any; }
-
-  const { data: upd, error: updErr } = await supabase
-    .from("online_matches")
-    .update({ status: "started", state_json: row.state_json })
-    .eq("lobby_code", code)
-    .select("*")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (updErr) throw new Error(updErr.message || error?.message || "Impossible de démarrer le match.");
-  if (!upd) throw new Error("Impossible de démarrer le match (row introuvable).");
-  await supabase.from("online_lobbies").update({ status: "started", updated_at: new Date().toISOString() }).eq("code", code);
-  return upd as any;
+  const row = { lobby_code: code, status: "started", state_json: args.initialState ?? {}, owner_user: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  const { data, error } = await supabase.from("online_matches").upsert(row as any, { onConflict: "lobby_code" }).select("*").single();
+  if (error || !data) throw new Error(error?.message || "Impossible de démarrer le match.");
+  const { error: lobbyError } = await supabase.from("online_lobbies").update({ status: "started", updated_at: new Date().toISOString() }).eq("code", code);
+  if (lobbyError) throw new Error(lobbyError.message || "Match créé mais salon non démarré.");
+  return data as any;
 }
 
 async function updateMatchState(args: { lobbyCode: string; state: any; status?: OnlineMatchStatus }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
+  if (!code) return;
+  const rpc = await supabase.rpc("ms_online_update_match_state", {
+    p_code: code,
+    p_state: args.state ?? {},
+    p_status: args.status || null,
+  });
+  if (!rpc.error) return;
+  if (!isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Impossible de mettre à jour le match.");
 
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    await apiPost("/online/matches/state-safe", {
-      lobbyCode: code,
-      state: args.state ?? {},
-      status: args.status,
-    });
-    return;
-  }
-
-  const patch: any = {
-    state_json: args.state ?? {},
-    updated_at: new Date().toISOString(),
-  };
+  const patch: any = { state_json: args.state ?? {}, updated_at: new Date().toISOString() };
   if (args.status) patch.status = args.status;
-
   const { error } = await supabase.from("online_matches").update(patch).eq("lobby_code", code);
   if (error) throw new Error(error.message || "Impossible de mettre à jour le match.");
 }
 
 async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
+  if (!code) return;
+  const rpc = await supabase.rpc("ms_online_end_match", { p_code: code, p_final_state: args.finalState ?? null });
+  if (!rpc.error) return;
+  if (!isMissingOnlineRpc(rpc.error)) throw new Error(rpc.error.message || "Impossible de terminer le match.");
 
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    await apiPost("/online/matches/end-safe", {
-      lobbyCode: code,
-      finalState: args.finalState ?? {},
-    });
-    return;
-  }
-
-  const patch: any = {
-    status: "ended",
-    finished_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  const patch: any = { status: "ended", finished_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   if (args.finalState !== undefined) patch.state_json = args.finalState;
-
   const { error } = await supabase.from("online_matches").update(patch).eq("lobby_code", code);
   if (error) throw new Error(error.message || "Impossible de terminer le match.");
-  await supabase.from("online_lobbies").update({ status: "closed", updated_at: new Date().toISOString() }).eq("code", code);
+  await supabase.from("online_lobbies").update({ status: "ended", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("code", code);
 }
 
 async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | null> {
   const code = safeUpper(lobbyCode);
   if (!code) return null;
-
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiGet(`/online/matches/by-code-safe/${encodeURIComponent(code)}`);
-    return (res?.match || null) as OnlineMatchRow | null;
-  }
-
-  const { data, error } = await supabase
-    .from("online_matches")
-    .select("*")
-    .eq("lobby_code", code)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-
+  const { data, error } = await supabase.from("online_matches").select("*").eq("lobby_code", code).order("updated_at", { ascending: false }).limit(1);
   if (error) throw new Error(error.message);
   return ((data || [])[0] as any) || null;
 }
@@ -2432,107 +2436,52 @@ function subscribeOnlineStream(lobbyCode: string, handlers: OnlineStreamHandlers
   const code = safeUpper(lobbyCode);
   if (!code || typeof window === "undefined") return () => {};
 
-  // ONLINE public : Supabase Realtime. Aucun SSE / NAS.
-  // Le choix suit la session ACTIVE : une bascule NAS -> public doit couper
-  // immédiatement le SSE NAS même si un ancien JWT NAS reste conservé.
-  if (!shouldUseNasForCurrentSession()) {
-    let stopped = false;
-    const emitLobby = async () => {
-      if (stopped) return;
-      try {
-        const lobby = await loadSupabaseLobbyWithPlayers(code);
-        if (lobby && !stopped) handlers.onLobby?.(lobby as any);
-      } catch (error) {
-        if (!stopped) handlers.onError?.(error);
-      }
-    };
-    const channel = supabase
-      .channel(`ms-online:${code}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "online_matches", filter: `lobby_code=eq.${code}` }, (payload: any) => {
-        const row = payload?.new || payload?.old || null;
-        if (row) handlers.onMatch?.(row as OnlineMatchRow);
-        handlers.onEvent?.({ type: "match:update", code, match: row, realtime: true } as any);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "online_lobbies", filter: `code=eq.${code}` }, (payload: any) => {
-        handlers.onEvent?.({ type: "lobby:update", code, lobby: payload?.new || payload?.old || null, realtime: true } as any);
-        void emitLobby();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "online_lobby_players", filter: `lobby_code=eq.${code}` }, (payload: any) => {
-        handlers.onEvent?.({ type: "lobby:players", code, player: payload?.new || payload?.old || null, realtime: true } as any);
-        void emitLobby();
-      })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "online_messages", filter: `lobby_code=eq.${code}` }, (payload: any) => {
-        const message = payload?.new || null;
-        if (message) handlers.onMessage?.(message);
-        handlers.onEvent?.({ type: "lobby:message", code, message, realtime: true } as any);
-      })
-      .subscribe((status: any) => {
-        if (status === "SUBSCRIBED") {
-          handlers.onOpen?.();
-          void emitLobby();
-          void fetchMatchByCode(code).then((match) => {
-            if (match && !stopped) handlers.onMatch?.(match);
-          }).catch((error) => { if (!stopped) handlers.onError?.(error); });
-        }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") handlers.onError?.(new Error(`Supabase Realtime: ${status}`));
-      });
-
-    return () => {
-      stopped = true;
-      try { void supabase.removeChannel(channel); } catch {}
-    };
-  }
-
-  if (typeof EventSource === "undefined") return () => {};
-  const token = readNasAccessToken();
-  const url = buildApiUrl(`/online/stream/${encodeURIComponent(code)}`, token ? { token } : undefined);
-  let closed = false;
-  const es = new EventSource(url);
-
-  const parse = (event: MessageEvent) => {
+  let stopped = false;
+  const emitLobby = async () => {
+    if (stopped) return;
     try {
-      return event?.data ? JSON.parse(String(event.data)) : null;
-    } catch {
-      return null;
+      const lobby = await loadSupabaseLobbyWithPlayers(code);
+      if (lobby && !stopped) handlers.onLobby?.(lobby as any);
+    } catch (error) {
+      if (!stopped) handlers.onError?.(error);
     }
   };
-
-  const handlePayload = (event: MessageEvent) => {
-    const payload = parse(event);
-    if (!payload) return;
-    handlers.onEvent?.(payload, event);
-    const match = payload?.match || payload?.data?.match || null;
-    if (match) handlers.onMatch?.(match as OnlineMatchRow, event);
-    const lobby = payload?.lobby || payload?.data?.lobby || null;
-    if (lobby) handlers.onLobby?.(lobby, event);
-    const message = payload?.message || payload?.data?.message || null;
-    if (message) handlers.onMessage?.(message, event);
-  };
-
-  es.onopen = () => handlers.onOpen?.();
-  es.onerror = (error) => {
-    if (!closed) handlers.onError?.(error);
-  };
-
-  [
-    "connected",
-    "match:snapshot",
-    "match:start",
-    "match:update",
-    "match:end",
-    "lobby:snapshot",
-    "lobby:create",
-    "lobby:join",
-    "lobby:ready",
-    "lobby:update",
-    "lobby:message",
-    "ping",
-  ].forEach((name) => es.addEventListener(name, handlePayload as EventListener));
-  es.onmessage = handlePayload;
+  const channel = supabase
+    .channel(`ms-online:${code}:${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "online_matches", filter: `lobby_code=eq.${code}` }, (payload: any) => {
+      const row = payload?.new || payload?.old || null;
+      if (row) handlers.onMatch?.(row as OnlineMatchRow);
+      handlers.onEvent?.({ type: "match:update", code, match: row, realtime: true } as any);
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "online_lobbies", filter: `code=eq.${code}` }, (payload: any) => {
+      handlers.onEvent?.({ type: "lobby:update", code, lobby: payload?.new || payload?.old || null, realtime: true } as any);
+      void emitLobby();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "online_lobby_players", filter: `lobby_code=eq.${code}` }, (payload: any) => {
+      handlers.onEvent?.({ type: "lobby:players", code, player: payload?.new || payload?.old || null, realtime: true } as any);
+      void emitLobby();
+    })
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "online_messages", filter: `lobby_code=eq.${code}` }, (payload: any) => {
+      const message = payload?.new || null;
+      if (message) handlers.onMessage?.(message);
+      handlers.onEvent?.({ type: "lobby:message", code, message, realtime: true } as any);
+    })
+    .subscribe((status: any) => {
+      if (status === "SUBSCRIBED") {
+        handlers.onOpen?.();
+        void emitLobby();
+        void fetchMatchByCode(code).then((match) => {
+          if (match && !stopped) handlers.onMatch?.(match);
+        }).catch((error) => { if (!stopped) handlers.onError?.(error); });
+      }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        handlers.onError?.(new Error(`Supabase Realtime: ${status}`));
+      }
+    });
 
   return () => {
-    closed = true;
-    try { es.close(); } catch {}
+    stopped = true;
+    try { void supabase.removeChannel(channel); } catch {}
   };
 }
 
@@ -2600,19 +2549,11 @@ async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
 }
 
 async function listMatches(limit = 50): Promise<OnlineMatch[]> {
-  if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    const res = await apiGet(`/online/matches?limit=${encodeURIComponent(String(limit))}`);
-    const rows = Array.isArray(res?.matches) ? res.matches : [];
-    return rows.map((r: any) => mapOnlineMatchFromRow(r as any));
-  }
-
   const { data, error } = await supabase
     .from("online_matches")
     .select("*")
     .order("updated_at", { ascending: false })
     .limit(limit);
-
   if (error) throw new Error(error.message);
   return (data || []).map((r: any) => mapOnlineMatchFromRow(r as any));
 }
@@ -2686,6 +2627,8 @@ export const onlineApi = {
   createLobby,
   joinLobby,
   setLobbyReady,
+  touchLobby,
+  leaveLobby,
   getLobby,
   listActiveLobbies,
 

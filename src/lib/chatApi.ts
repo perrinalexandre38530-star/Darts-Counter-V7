@@ -1,22 +1,28 @@
 import { supabase } from "./supabaseClient";
-import { apiGet, apiPost, canUseNasOnlineApi } from "./apiClient";
+
+function normalizeLobbyCode(lobbyCode: string) {
+  return String(lobbyCode || "").trim().toUpperCase();
+}
 
 export async function postMessage(lobbyCode: string, message: any) {
-  const code = String(lobbyCode || "").trim().toUpperCase();
+  const code = normalizeLobbyCode(lobbyCode);
   if (!code) throw new Error("Lobby code manquant");
 
-  if (canUseNasOnlineApi()) {
-    const res = await apiPost(`/online/lobbies/${encodeURIComponent(code)}/messages`, {
-      message,
-    });
-    return res?.message || res;
-  }
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  const user = authData.user;
+  if (!user) throw new Error("Connexion requise pour écrire dans le chat.");
 
-  const u = (await supabase.auth.getUser()).data.user;
-  if (!u) throw new Error("Not signed in");
+  const meta = (user.user_metadata || {}) as any;
+  const nickname = String(message?.name || meta.nickname || meta.displayName || user.email || "Joueur").trim();
   const { data, error } = await supabase
     .from("online_messages")
-    .insert({ lobby_code: code, user_id: u.id, message })
+    .insert({
+      lobby_code: code,
+      user_id: user.id,
+      nickname,
+      message: { ...(message && typeof message === "object" ? message : { text: String(message || "") }), name: nickname },
+    })
     .select("*")
     .single();
   if (error) throw error;
@@ -24,65 +30,32 @@ export async function postMessage(lobbyCode: string, message: any) {
 }
 
 export async function fetchMessages(lobbyCode: string, limit = 50) {
-  const code = String(lobbyCode || "").trim().toUpperCase();
+  const code = normalizeLobbyCode(lobbyCode);
   if (!code) return [];
-
-  if (canUseNasOnlineApi()) {
-    const res = await apiGet(`/online/lobbies/${encodeURIComponent(code)}/messages?limit=${encodeURIComponent(String(limit))}`);
-    return Array.isArray(res?.messages) ? res.messages : [];
-  }
-
+  const safeLimit = Math.max(1, Math.min(200, Number(limit || 50)));
   const { data, error } = await supabase
     .from("online_messages")
     .select("*")
     .eq("lobby_code", code)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(safeLimit);
   if (error) throw error;
   return (data || []).reverse();
 }
 
 export function subscribeMessages(lobbyCode: string, onInsert: (row: any) => void) {
-  const code = String(lobbyCode || "").trim().toUpperCase();
-
-  // NAS: pas de websocket ici -> polling léger et déduplication locale.
-  // Cela rend le chat salon utilisable sur téléphone/PC sans Supabase realtime.
-  if (canUseNasOnlineApi()) {
-    const seen = new Set<string>();
-    let stopped = false;
-    let timer: number | null = null;
-
-    const tick = async () => {
-      if (stopped || !code) return;
-      try {
-        const rows = await fetchMessages(code, 80);
-        for (const row of rows || []) {
-          const id = String(row?.id || `${row?.createdAt || ""}:${row?.userId || ""}:${row?.text || row?.message?.text || ""}`);
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          onInsert(row);
-        }
-      } catch {
-        // silence: le composant affiche déjà les erreurs de fetch initial/envoyer
-      }
-    };
-
-    tick().catch(() => {});
-    timer = window.setInterval(() => tick().catch(() => {}), 1200);
-    return async () => {
-      stopped = true;
-      if (timer) window.clearInterval(timer);
-    };
-  }
+  const code = normalizeLobbyCode(lobbyCode);
+  if (!code || typeof window === "undefined") return async () => {};
 
   const chan = supabase
-    .channel(`chat:${lobbyCode}`)
+    .channel(`chat:${code}:${Math.random().toString(36).slice(2)}`)
     .on(
       "postgres_changes",
-      { event: "INSERT", schema: "public", table: "online_messages", filter: `lobby_code=eq.${lobbyCode}` },
+      { event: "INSERT", schema: "public", table: "online_messages", filter: `lobby_code=eq.${code}` },
       (payload: any) => onInsert(payload.new)
     )
     .subscribe();
+
   return async () => {
     await supabase.removeChannel(chan);
   };

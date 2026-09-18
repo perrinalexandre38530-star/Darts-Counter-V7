@@ -2924,7 +2924,7 @@ const doLogout = React.useCallback(async () => {
 
     // IMPORTANT : ce bouton ouvre la salle d’attente, il ne démarre plus la partie.
     // Le lancement réel est réservé à l’hôte depuis la salle d’attente / config,
-    // après validation NAS que tous les invités sont au statut “Prêt”.
+    // après validation serveur que tous les invités sont au statut “Prêt”.
     setJoinError(null);
     setJoinInfo(`Ouverture du salon ${spec.label}…`);
 
@@ -2956,33 +2956,53 @@ const doLogout = React.useCallback(async () => {
     if (!code) return null;
     return String(code).toUpperCase();
   }, [lobby]);
+  const lobbyUsesJoinedState = !!joinedLobby;
 
   React.useEffect(() => {
+    if (!lobbyKey) return;
     let cancelled = false;
-    let timer: number | null = null;
-
-    async function refreshLobby() {
-      if (!lobbyKey) return;
-      try {
-        const fresh = await onlineApi.getLobby(lobbyKey);
-        if (cancelled || !fresh) return;
-        if (joinedLobby) setJoinedLobby(fresh);
-        else setLastCreatedLobby(fresh);
-      } catch {
-        // Le salon peut expirer ou être indisponible : on évite de faire clignoter l'UI.
-      }
-    }
+    let streamOpened = false;
+    const updateLobby = (fresh: any) => {
+      if (cancelled || !fresh) return;
+      if (lobbyUsesJoinedState) setJoinedLobby(fresh);
+      else setLastCreatedLobby(fresh);
+    };
+    const refreshLobby = async () => {
+      try { updateLobby(await onlineApi.getLobby(lobbyKey)); }
+      catch { /* fallback silencieux : le dernier snapshot reste affiché */ }
+    };
 
     refreshLobby().catch(() => {});
-    if (lobbyKey) {
-      timer = window.setInterval(() => refreshLobby().catch(() => {}), 3000);
-    }
+    const unsubscribe = (onlineApi as any).subscribeOnlineStream?.(lobbyKey, {
+      onOpen: () => { streamOpened = true; },
+      onError: () => { streamOpened = false; },
+      onLobby: updateLobby,
+    });
+    const timer = window.setInterval(() => {
+      if (!streamOpened) refreshLobby().catch(() => {});
+    }, 10000);
 
     return () => {
       cancelled = true;
-      if (timer) window.clearInterval(timer);
+      window.clearInterval(timer);
+      if (typeof unsubscribe === "function") unsubscribe();
     };
-  }, [lobbyKey, joinedLobby]);
+  }, [lobbyKey, lobbyUsesJoinedState]);
+
+  React.useEffect(() => {
+    if (!lobbyKey || !isSignedIn) return;
+    const touch = () => {
+      const presence = typeof document !== "undefined" && document.hidden ? "away" : "online";
+      Promise.resolve((onlineApi as any).touchLobby?.(lobbyKey, presence)).catch(() => {});
+    };
+    touch();
+    const timer = window.setInterval(touch, 30000);
+    document.addEventListener("visibilitychange", touch);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", touch);
+    };
+  }, [lobbyKey, isSignedIn]);
 
   const [chatLoading, setChatLoading] = React.useState(false);
   const [chatError, setChatError] = React.useState<string | null>(null);

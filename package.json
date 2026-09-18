@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy:online": "wrangler deploy --config wrangler.online.toml",
+    "test:online-v2": "node ./tools/test-online-public-stabilization-v2.mjs",
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node ./tools/run-ts-regressions.mjs --only tools/test-x01v3-regression.ts",
     "test:sync": "node ./tools/test-cloud-sync.mjs",

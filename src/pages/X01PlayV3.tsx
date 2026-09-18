@@ -1673,6 +1673,24 @@ React.useEffect(() => {
     window.clearInterval(id);
   };
 }, [effectiveOnline, readOnlineSessionUserId]);
+
+// Présence du joueur pendant toute la partie online. Le heartbeat est indépendant
+// du replay X01 : une perte de visibilité ne débloque jamais le tour de l'autre appareil.
+React.useEffect(() => {
+  if (!effectiveOnline || !effectiveLobbyCode) return;
+  const touch = () => {
+    const presence = typeof document !== "undefined" && document.hidden ? "away" : "online";
+    Promise.resolve((onlineApi as any).touchLobby?.(effectiveLobbyCode, presence)).catch(() => {});
+  };
+  touch();
+  const id = window.setInterval(touch, 30000);
+  document.addEventListener("visibilitychange", touch);
+  return () => {
+    window.clearInterval(id);
+    document.removeEventListener("visibilitychange", touch);
+  };
+}, [effectiveOnline, effectiveLobbyCode]);
+
 // ONLINE STRICT: priorité absolue à la session locale réelle. Les ids transportés dans
 // config/route peuvent être l'id de l'hôte ou du joueur actif, donc ils ne doivent jamais
 // déverrouiller le keypad d'un autre appareil.
@@ -2000,7 +2018,7 @@ React.useEffect(() => {
 
 
 // ============================================================
-// ONLINE X01 V3 — synchronisation NAS par replayDarts
+// ONLINE X01 V3 — synchronisation Supabase Realtime par replayDarts
 // - Le joueur qui valide une volée publie le replay complet dans online_matches.
 // - Les autres clients pollent le match et appliquent uniquement les nouvelles fléchettes.
 // - On garde cette couche additive: elle ne remplace pas le moteur X01 V3 local.

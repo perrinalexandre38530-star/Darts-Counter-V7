@@ -1,21 +1,11 @@
 // =============================================================
 // src/pages/X01OnlineSetup.tsx
-// Pré-salle X01 Online (FULLWEB)
-// - Appelé depuis App.tsx comme :
-//     <X01OnlineSetup store={store} go={go} params={routeParams} />
-// - Lit le lobbyCode dans params.lobbyCode
-// - Calcule les defaults à partir de store.settings
-// - Se connecte au Worker Cloudflare via useOnlineRoom
-// - Affiche le code, l'état de connexion et la liste des joueurs
-// - Bouton "Démarrer X01" :
-//     • envoie startX01Match au Worker (ordre des joueurs)
-//     • fait go("x01", { online: true, lobbyCode, fresh: ... })
-// - Bouton debug pour afficher l'état brut RoomState (JSON)
+// Pré-salle X01 Online — source de vérité unique : Supabase.
+// Joueurs, présence, READY, chat et démarrage de match utilisent le même salon public.
 // =============================================================
 
 import React from "react";
 import type { Store } from "../lib/types";
-import { useOnlineRoom } from "../online/client/useOnlineRoom";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { onlineApi } from "../lib/onlineApi";
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
@@ -67,60 +57,13 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       : (prefs?.favDoubleOut as boolean | undefined)) ??
     (store.settings?.doubleOut ?? true);
 
-  // Hook WebSocket temps réel
-  const {
-    roomState,
-    wsStatus,
-    lastError,
-    reconnect,
-    close,
-    sendPing,
-    joinRoom,
-    leaveRoom,
-    startX01Match,
-    sendVisit,
-    undoLast,
-  } = useOnlineRoom({
-    roomCode: rawCode || "default",
-    playerId: (activeProfile?.id as any) || "local",
-    playerName: activeProfile?.name || "Joueur",
-    autoJoin: true,
-  });
-
-  // --------------------------------------------
-  // Helpers d'affichage
-  // --------------------------------------------
-
-  const statusLabel =
-    wsStatus === "idle"
-      ? "En attente"
-      : wsStatus === "connecting"
-      ? "Connexion en cours…"
-      : wsStatus === "connected"
-      ? "Connecté"
-      : "Déconnecté";
-
-  const statusColor =
-    wsStatus === "connected"
-      ? "#7fe2a9"
-      : wsStatus === "connecting"
-      ? "#ffd56a"
-      : "#ff8a8a";
-
-  const clients = roomState?.clients || [];
-  const match: any = roomState?.match || null; // gardé pour le debug futur
-
-  const [showDebug, setShowDebug] = React.useState(false);
 
   // ---------------------------------------------------------------------------
-  // NAS lobby + chat salon
-  // Le salon ONLINE V7/V8/V9 est maintenant porté par le backend NAS.
-  // Le Worker Cloudflare historique reste disponible uniquement en debug, mais
-  // l'écran d'attente utilise en priorité les joueurs/messages persistants NAS.
+  // Salon public + chat : Supabase est la source de vérité unique.
   // ---------------------------------------------------------------------------
-  const [nasLobby, setNasLobby] = React.useState<any>(null);
-  const [nasLobbyLoading, setNasLobbyLoading] = React.useState(false);
-  const [nasLobbyError, setNasLobbyError] = React.useState<string | null>(null);
+  const [cloudLobby, setCloudLobby] = React.useState<any>(null);
+  const [lobbyLoading, setLobbyLoading] = React.useState(false);
+  const [lobbyError, setLobbyError] = React.useState<string | null>(null);
   const [chatMessages, setChatMessages] = React.useState<any[]>([]);
   const [chatText, setChatText] = React.useState("");
   const [chatError, setChatError] = React.useState<string | null>(null);
@@ -147,29 +90,27 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     };
   }, []);
 
-  const refreshNasLobby = React.useCallback(async () => {
+  const refreshLobby = React.useCallback(async () => {
     if (!rawCode) return;
-    setNasLobbyLoading(true);
+    setLobbyLoading(true);
     try {
       const next = await (onlineApi as any).getLobby(rawCode);
-      setNasLobby(next || null);
-      setNasLobbyError(null);
+      setCloudLobby(next || null);
+      setLobbyError(null);
     } catch (error: any) {
-      setNasLobbyError(error?.message || "Impossible de lire le salon NAS.");
+      setLobbyError(error?.message || "Impossible de lire le salon online.");
     } finally {
-      setNasLobbyLoading(false);
+      setLobbyLoading(false);
     }
   }, [rawCode]);
 
   React.useEffect(() => {
     if (!rawCode) return;
-    refreshNasLobby().catch(() => {});
-    const timer = window.setInterval(() => refreshNasLobby().catch(() => {}), 10000);
-    return () => window.clearInterval(timer);
-  }, [rawCode, refreshNasLobby]);
+    refreshLobby().catch(() => {});
+  }, [rawCode, refreshLobby]);
 
   // Tout joueur connecté qui ouvre un code salon doit être inscrit dans la salle
-  // d’attente NAS. Sinon il peut voir une page partielle mais ne sera pas reconnu
+  // d’attente online. Sinon il peut voir une page partielle mais ne sera pas reconnu
   // pour le chat, le statut prêt et le lancement synchronisé.
   React.useEffect(() => {
     if (!rawCode) return;
@@ -186,14 +127,14 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
           role: "player",
         });
         if (!cancelled && joined) {
-          setNasLobby(joined);
-          setNasLobbyError(null);
+          setCloudLobby(joined);
+          setLobbyError(null);
         }
       } catch (error: any) {
         if (!cancelled) {
           // On garde la lecture simple du salon si l’inscription échoue momentanément.
-          setNasLobbyError(error?.message || "Impossible d’entrer dans le salon NAS.");
-          refreshNasLobby().catch(() => {});
+          setLobbyError(error?.message || "Impossible d’entrer dans le salon online.");
+          refreshLobby().catch(() => {});
         }
       }
     })();
@@ -201,7 +142,27 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [rawCode, sessionUserId, activeUserId, activeProfile?.name, activeProfile?.displayName, activeProfile?.nickname, refreshNasLobby]);
+  }, [rawCode, sessionUserId, activeUserId, activeProfile?.name, activeProfile?.displayName, activeProfile?.nickname, refreshLobby]);
+
+  // Présence légère : permet de distinguer un joueur actif d’une ancienne entrée de salon.
+  React.useEffect(() => {
+    if (!rawCode) return;
+    let stopped = false;
+    const touch = () => {
+      if (stopped) return;
+      const presence = typeof document !== "undefined" && document.hidden ? "away" : "online";
+      Promise.resolve((onlineApi as any).touchLobby?.(rawCode, presence)).catch(() => {});
+    };
+    touch();
+    const timer = window.setInterval(touch, 30000);
+    const onVisibility = () => touch();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [rawCode]);
 
   React.useEffect(() => {
     if (!rawCode) return;
@@ -269,13 +230,13 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       online: true,
       onlineMode: "x01",
       lobbyCode: rawCode || state?.lobbyCode || null,
-      lobbyId: nasLobby?.id || params?.lobbyId || state?.lobbyId || null,
+      lobbyId: cloudLobby?.id || params?.lobbyId || state?.lobbyId || null,
       players: Array.isArray(state?.players) ? state.players : Array.isArray(state?.playerProfiles) ? state.playerProfiles : connectedPlayers,
       config: cfg,
       x01ConfigV3: cfg,
       from: "x01_online_lobby_autostart",
     });
-  }, [rawCode, go, nasLobby?.id, params?.lobbyId]);
+  }, [rawCode, go, cloudLobby?.id, params?.lobbyId]);
 
   React.useEffect(() => {
     if (!rawCode) return;
@@ -296,8 +257,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       onError: () => { streamOpened = false; },
       onLobby: (lobby: any) => {
         if (!cancelled && lobby) {
-          setNasLobby(lobby);
-          setNasLobbyError(null);
+          setCloudLobby(lobby);
+          setLobbyError(null);
         }
       },
       onMessage: (message: any) => {
@@ -327,21 +288,21 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
 
   React.useEffect(() => {
     if (!rawCode) return;
-    if (String(nasLobby?.status || "").toLowerCase() !== "started") return;
+    if (String(cloudLobby?.status || "").toLowerCase() !== "started") return;
     (async () => {
       try {
         const matchRow = await (onlineApi as any).fetchMatchByCode(rawCode);
         openStartedOnlineMatch(matchRow);
       } catch {}
     })();
-  }, [rawCode, nasLobby?.status, nasLobby?.updatedAt, nasLobby?.updated_at, openStartedOnlineMatch]);
+  }, [rawCode, cloudLobby?.status, cloudLobby?.updatedAt, cloudLobby?.updated_at, openStartedOnlineMatch]);
 
-    const lobbyPlayersRaw: any[] = Array.isArray(nasLobby?.players) ? nasLobby.players : [];
-  const lobbyHostUserId = String(nasLobby?.hostUserId || nasLobby?.host_user_id || "").trim();
+    const lobbyPlayersRaw: any[] = Array.isArray(cloudLobby?.players) ? cloudLobby.players : [];
+  const lobbyHostUserId = String(cloudLobby?.hostUserId || cloudLobby?.host_user_id || "").trim();
   const effectiveUserId = String(sessionUserId || activeUserId || activeProfileId || "").trim();
 
   const connectedPlayers = React.useMemo(() => {
-    const fromNas = lobbyPlayersRaw
+    const fromCloud = lobbyPlayersRaw
       .map((p: any) => {
         const id = String(p?.userId || p?.user_id || p?.id || "").trim();
         const status = String(p?.status || "online").trim().toLowerCase();
@@ -353,43 +314,29 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
           avatarUrl: p?.avatarUrl || p?.avatar_url || null,
           role: p?.role || "player",
           status,
+          presenceStatus: p?.presenceStatus || p?.presence_status || "online",
           ready: isHostPlayer || status === "ready" || !!p?.ready,
           isHost: isHostPlayer || !!p?.isHost,
         };
       })
       .filter((p: any) => p.id || p.name);
 
-    if (fromNas.length) return fromNas;
+    if (fromCloud.length) return fromCloud;
 
-    const fromWorker = clients.map((c: any) => {
-      const id = String(c?.id || "").trim();
-      return {
-        id,
-        userId: id,
-        name: String(c?.name || "Joueur").trim(),
-        avatarUrl: null,
-        role: "player",
-        status: wsStatus === "connected" ? "online" : "offline",
-        ready: false,
-        isHost: false,
-      };
-    });
-
-    if (fromWorker.length) return fromWorker;
-
-    return [
-      {
-        id: String((activeProfile?.id as any) || "local"),
-        userId: String((activeProfile?.id as any) || "local"),
-        name: activeProfile?.name || "Joueur",
-        avatarUrl: (activeProfile as any)?.avatarDataUrl || (activeProfile as any)?.avatarUrl || (activeProfile as any)?.avatar || null,
-        role: "player",
-        status: "online",
-        ready: false,
-        isHost: false,
-      },
-    ];
-  }, [lobbyPlayersRaw, clients, wsStatus, activeProfile, lobbyHostUserId]);
+    return activeProfile
+      ? [{
+          id: String((activeProfile?.id as any) || "local"),
+          userId: String((activeProfile?.id as any) || "local"),
+          name: activeProfile?.name || "Joueur",
+          avatarUrl: (activeProfile as any)?.avatarDataUrl || (activeProfile as any)?.avatarUrl || (activeProfile as any)?.avatar || null,
+          role: "player",
+          status: "online",
+          presenceStatus: "online",
+          ready: false,
+          isHost: false,
+        }]
+      : [];
+  }, [lobbyPlayersRaw, activeProfile, lobbyHostUserId]);
 
   const currentLobbyPlayer = connectedPlayers.find((p: any) => {
     const pid = String(p?.userId || p?.id || "").trim();
@@ -398,11 +345,11 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
   const isHost = !!effectiveUserId && !!lobbyHostUserId && effectiveUserId === lobbyHostUserId;
   const nonHostPlayers = connectedPlayers.filter((p: any) => p?.role !== "spectator" && !p?.isHost);
   const notReadyPlayers = nonHostPlayers.filter((p: any) => !p?.ready);
-  const allPlayersReady = nonHostPlayers.length === 0 || notReadyPlayers.length === 0;
+  const allPlayersReady = nonHostPlayers.length > 0 && notReadyPlayers.length === 0;
   const readyCount = nonHostPlayers.length - notReadyPlayers.length;
   const isCurrentPlayerReady = !!currentLobbyPlayer?.ready;
-  const lobbyAlreadyStarted = String(nasLobby?.status || "waiting").toLowerCase() === "started";
-  const canHostConfigure = isHost && !lobbyAlreadyStarted;
+  const lobbyAlreadyStarted = String(cloudLobby?.status || "waiting").toLowerCase() === "started";
+  const canHostConfigure = isHost && !lobbyAlreadyStarted && nonHostPlayers.length > 0;
 
   const defaultOrder = connectedPlayers.map((p: any) => ({ id: p.id || p.name, name: p.name || "Joueur" }));
 
@@ -415,16 +362,16 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     }
 
     // L’hôte peut préparer/modifier la configuration à tout moment.
-    // Le démarrage réel reste bloqué côté NAS tant que tous les invités ne sont pas prêts.
+    // Le démarrage réel reste bloqué côté serveur tant que tous les invités ne sont pas prêts.
 
     go("x01setup", {
       online: true,
       onlineMode: "x01",
       lobbyCode: rawCode || null,
-      lobbyId: nasLobby?.id || params?.lobbyId || null,
+      lobbyId: cloudLobby?.id || params?.lobbyId || null,
       onlineHostUserId: lobbyHostUserId,
       settings: {
-        ...(nasLobby?.settings || {}),
+        ...(cloudLobby?.settings || {}),
         start: startScore,
         doubleOut: defaultDoubleOut,
       },
@@ -445,7 +392,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         nickname: activeProfile?.name || "Joueur",
         role: "player",
       });
-      if (nextLobby) setNasLobby(nextLobby);
+      if (nextLobby) setCloudLobby(nextLobby);
     } catch (error: any) {
       setLobbyActionError(error?.message || "Impossible de changer le statut prêt.");
     } finally {
@@ -473,15 +420,6 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     } finally {
       setChatSending(false);
     }
-  }
-
-  function handleSendDemoVisit() {
-    // Simple démo : visite T20, 20, miss
-    sendVisit([
-      { value: 20, mult: 3 },
-      { value: 20, mult: 1 },
-      { value: 0, mult: 1 },
-    ]);
   }
 
   // --------------------------------------------
@@ -529,126 +467,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         {effectiveCode}
       </div>
 
-      {/* Statut WebSocket - conservé en debug, masqué dans l'UI salon */}
-      <div
-        style={{
-          display: showDebug ? "flex" : "none",
-          marginBottom: 12,
-          padding: 10,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,.12)",
-          background:
-            "linear-gradient(180deg, rgba(32,32,40,.95), rgba(10,10,14,.98))",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          fontSize: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontWeight: 700,
-              marginBottom: 4,
-            }}
-          >
-            Connexion temps réel Worker (debug)
-          </div>
-          <div style={{ opacity: 0.9 }}>
-            Statut :{" "}
-            <span
-              style={{
-                fontWeight: 700,
-                color: statusColor,
-              }}
-            >
-              {statusLabel}
-            </span>
-          </div>
-          {lastError && (
-            <div
-              style={{
-                marginTop: 4,
-                color: "#ff8a8a",
-              }}
-            >
-              Erreur WebSocket : {lastError}
-            </div>
-          )}
-        </div>
+      {/* Liste des joueurs du salon public */}
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          <button
-            type="button"
-            onClick={reconnect}
-            style={{
-              borderRadius: 999,
-              padding: "6px 10px",
-              border: "none",
-              fontSize: 11,
-              fontWeight: 700,
-              background: "linear-gradient(180deg,#4fb4ff,#1c78d5)",
-              color: "#04101f",
-              cursor: "pointer",
-            }}
-          >
-            Reconnecter
-          </button>
-          <button
-            type="button"
-            onClick={close}
-            style={{
-              borderRadius: 999,
-              padding: "6px 10px",
-              border: "none",
-              fontSize: 11,
-              fontWeight: 700,
-              background: "linear-gradient(180deg,#ff5a5a,#e01f1f)",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Fermer
-          </button>
-        </div>
-      </div>
-
-      {/* Infos joueur local - masqué dans l'UI principale */}
-      {showDebug && activeProfile && (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,.10)",
-            background:
-              "linear-gradient(180deg, rgba(24,24,30,.96), rgba(10,10,12,.98))",
-            fontSize: 12,
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 700,
-              marginBottom: 4,
-            }}
-          >
-            Joueur local
-          </div>
-          <div style={{ opacity: 0.9 }}>
-            Tu es connecté en tant que{" "}
-            <b>{activeProfile.name || "Joueur"}</b> (
-            <code style={{ fontSize: 11 }}>{activeProfile.id}</code>).
-          </div>
-        </div>
-      )}
-
-      {/* Liste des clients dans la room */}
       <div
         style={{
           marginBottom: 14,
@@ -665,8 +485,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
           <div style={{ opacity: .72, fontSize: 11 }}>{allPlayersReady ? "Tout le monde est prêt" : "En attente"}</div>
         </div>
 
-        {nasLobbyLoading && !nasLobby ? (
-          <div style={{ opacity: 0.85 }}>Chargement du salon NAS…</div>
+        {lobbyLoading && !cloudLobby ? (
+          <div style={{ opacity: 0.85 }}>Chargement du salon online…</div>
         ) : connectedPlayers.length === 0 ? (
           <div style={{ opacity: 0.85 }}>
             Aucun joueur pour le moment. Demande à ton ami de rejoindre le même code de salon.
@@ -713,7 +533,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
             })}
           </div>
         )}
-        {nasLobbyError ? <div style={{ color: "#ff8a8a", marginTop: 7 }}>{nasLobbyError}</div> : null}
+        {lobbyError ? <div style={{ color: "#ff8a8a", marginTop: 7 }}>{lobbyError}</div> : null}
       </div>
 
       {/* Forum / chat du salon */}
@@ -732,7 +552,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
           <div>
             <div style={{ fontWeight: 950, color: "#7fe2a9", marginBottom: 2 }}>Chat du salon</div>
-            <div style={{ opacity: 0.78, fontSize: 11 }}>Code {effectiveCode} • messages NAS</div>
+            <div style={{ opacity: 0.78, fontSize: 11 }}>Code {effectiveCode} • Supabase Realtime</div>
           </div>
           <button
             type="button"
@@ -957,158 +777,16 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         ) : null}
       </div>
 
-      {/* Bouton debug DO */}
-      <button
-        type="button"
-        onClick={() => setShowDebug((v) => !v)}
-        style={{
-          marginBottom: 10,
-          width: "100%",
-          borderRadius: 999,
-          padding: "8px 12px",
-          border: "none",
-          fontWeight: 700,
-          fontSize: 12,
-          background: "linear-gradient(180deg,#4fb4ff,#1c78d5)",
-          color: "#04101f",
-          cursor: "pointer",
-        }}
-      >
-        {showDebug ? "Masquer le mode debug (DO)" : "Afficher le mode debug (DO)"}
-      </button>
-
-      {/* Affichage brut de l'état Room / Match (debug) */}
-      {showDebug && (
-        <div
-          style={{
-            fontSize: 11,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,.10)",
-            background: "rgba(0,0,0,0.8)",
-            maxHeight: 260,
-            overflow: "auto",
-            marginBottom: 10,
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 700,
-              marginBottom: 4,
-            }}
-          >
-            État RoomState (debug)
-          </div>
-          <pre
-            style={{
-              margin: 0,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
-          >
-            {JSON.stringify(roomState, null, 2)}
-          </pre>
-
-          <div
-            style={{
-              marginTop: 6,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 6,
-            }}
-          >
-            <button
-              type="button"
-              onClick={sendPing}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                border: "none",
-                fontSize: 10,
-                fontWeight: 700,
-                background: "linear-gradient(180deg,#666,#444)",
-                color: "#f5f5f7",
-                cursor: "pointer",
-              }}
-            >
-              Ping
-            </button>
-
-            <button
-              type="button"
-              onClick={joinRoom}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                border: "none",
-                fontSize: 10,
-                fontWeight: 700,
-                background: "linear-gradient(180deg,#35c86d,#23a958)",
-                color: "#03140a",
-                cursor: "pointer",
-              }}
-            >
-              join_room
-            </button>
-
-            <button
-              type="button"
-              onClick={leaveRoom}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                border: "none",
-                fontSize: 10,
-                fontWeight: 700,
-                background: "linear-gradient(180deg,#ff8a5a,#e0491f)",
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              leave_room
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSendDemoVisit}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                border: "none",
-                fontSize: 10,
-                fontWeight: 700,
-                background: "linear-gradient(180deg,#4fb4ff,#1c78d5)",
-                color: "#04101f",
-                cursor: "pointer",
-              }}
-            >
-              Visite T20-20-miss
-            </button>
-
-            <button
-              type="button"
-              onClick={undoLast}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                border: "none",
-                fontSize: 10,
-                fontWeight: 700,
-                background: "linear-gradient(180deg,#888,#555)",
-                color: "#f5f5f7",
-                cursor: "pointer",
-              }}
-            >
-              Undo last
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Retour Friends / Home */}
       <button
         type="button"
-        onClick={() => go("friends")}
+        onClick={() => {
+          if (rawCode && !lobbyAlreadyStarted) {
+            Promise.resolve((onlineApi as any).leaveLobby?.(rawCode)).catch(() => {}).finally(() => go("friends"));
+          } else {
+            go("friends");
+          }
+        }}
         style={{
           marginTop: 4,
           width: "100%",
@@ -1122,7 +800,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
           cursor: "pointer",
         }}
       >
-        ⬅️ Retour Mode Online & Amis
+        ⬅️ Quitter le salon
       </button>
     </div>
   );
