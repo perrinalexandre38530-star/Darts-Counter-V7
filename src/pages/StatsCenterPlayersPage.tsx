@@ -336,7 +336,7 @@ export default function StatsCenterPlayersPage({ go }: Props) {
                   <ProfileStarRing
                     anchorSize={64}
                     starSize={10}
-                    gapPx={2}
+                    gapPx={-1}
                     stepDeg={10}
                     avg3d={resolveProfileStarScore(selected, [stats?.avgScore, stats?.bestScore])}
                     animateGlow={false}
