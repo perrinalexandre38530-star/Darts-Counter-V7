@@ -3029,13 +3029,11 @@ export default function MessagesPage({ store, update, go }: Props) {
           className="msc-landscape-primary msc-messages-primary msc-messages-primary--vertical"
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr",
-            gridTemplateRows: "repeat(6, minmax(0, 1fr))",
+            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
             gap: 8,
-            paddingTop: 6,
-            paddingBottom: 0,
+            paddingTop: 14,
+            paddingBottom: 2,
             width: "100%",
-            height: "100%",
           }}
         >
           {tabs.map((t) => (

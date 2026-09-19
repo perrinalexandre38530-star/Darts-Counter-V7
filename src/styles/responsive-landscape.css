@@ -2950,10 +2950,40 @@ html[data-msc-short-landscape="1"] .msc-game-select-hero {
 html[data-msc-orientation="landscape"] .msc-games-hub-favorite-landscape {
   display: block !important;
   width: 100% !important;
-  margin-top: auto !important;
+  margin-top: 10px !important;
   min-height: 0 !important;
 }
 
 html[data-msc-orientation="landscape"] .msc-games-hub-favorite-portrait {
   display: none !important;
+}
+
+
+/* V45 follow-up — portrait GameSelect keeps only the cyan hero navigation and
+   docks the global Awena medallion in the top-right corner. */
+html:not([data-msc-orientation="landscape"]) .dc-themed-route[data-msc-route="gameSelect"] ~ [data-mss-floating-control="awena-launcher"] {
+  top: max(12px, calc(env(safe-area-inset-top) + 10px)) !important;
+  right: max(12px, calc(env(safe-area-inset-right) + 10px)) !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: scale(.92) !important;
+  transform-origin: top right !important;
+}
+
+/* Messages: the vertical icon rail is landscape-only. Portrait returns to the
+   original horizontal strip. */
+html:not([data-msc-orientation="landscape"]) .msc-messages-primary.msc-messages-primary--vertical {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  grid-template-rows: none !important;
+  gap: 8px !important;
+  padding-top: 14px !important;
+  padding-bottom: 2px !important;
+  width: 100% !important;
+  height: auto !important;
+}
+
+html:not([data-msc-orientation="landscape"]) .msc-messages-primary.msc-messages-primary--vertical > button {
+  min-height: 72px !important;
+  height: auto !important;
 }

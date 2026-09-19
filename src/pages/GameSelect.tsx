@@ -825,18 +825,6 @@ export default function GameSelect({ go }: Props) {
           ))}
         </div>
 
-        {/* Contrôles desktop visibles (si souris / trackpad) */}
-        {isDesktop && (
-          <>
-            <button className="msc-game-select-legacy-nav" aria-label="Précédent" onClick={goPrev} style={navBtn(theme, "left")}>
-              ‹
-            </button>
-            <button className="msc-game-select-legacy-nav" aria-label="Suivant" onClick={goNext} style={navBtn(theme, "right")}>
-              ›
-            </button>
-          </>
-        )}
-
         {/* Zones tactiles discrètes (utile tablette) */}
         <button className="msc-game-select-edge-tap" aria-label="Précédent" onClick={goPrev} style={edgeTap("left")} />
         <button className="msc-game-select-edge-tap" aria-label="Suivant" onClick={goNext} style={edgeTap("right")} />
