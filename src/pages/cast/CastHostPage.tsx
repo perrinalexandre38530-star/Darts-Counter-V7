@@ -529,9 +529,9 @@ export default function CastHostPage({ go, initialTab }: Props) {
   );
 
   return (
-    <div style={{ minHeight: "100dvh", background: pageBg, color: theme.text }}>
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "12px 10px 92px" }}>
-        <header style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", alignItems: "center", gap: 8, marginBottom: 10 }}>
+    <div className="msc-screens-page" style={{ minHeight: "100dvh", background: pageBg, color: theme.text }}>
+      <div className="msc-landscape-page-shell msc-screens-layout" style={{ maxWidth: 560, margin: "0 auto", padding: "12px 10px 92px" }}>
+        <header className="msc-landscape-header msc-screens-header" style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <BackDot onClick={handleBack} size={40} color={theme.primary} glow={`${theme.primary}55`} title={L("Retour", "Back", "Volver")} />
           <div style={{ textAlign: "center", minWidth: 0 }}>
             <div style={{ color: theme.primary, fontSize: "clamp(22px,6.5vw,34px)", fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}44` }}>{L("ÉCRANS", "SCREENS", "PANTALLAS")}</div>
@@ -540,6 +540,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
           <div style={{ display: "flex", justifyContent: "flex-end" }}><ScreensAwenaDot activeTab={activeTab} theme={theme} /></div>
         </header>
 
+        <section className="msc-landscape-primary msc-screens-primary">
         <PageAdBanner placement="screens" slotKey="page-screens-under-header" />
 
         <nav style={{ ...themedCard, padding: 5, marginBottom: 12, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
@@ -554,7 +555,9 @@ export default function CastHostPage({ go, initialTab }: Props) {
             );
           })}
         </nav>
+        </section>
 
+        <aside className="msc-landscape-secondary msc-screens-secondary">
         {activeTab === "cast" ? (
           <div style={{ display: "grid", gap: 12 }}>
             <section style={themedCard}>
@@ -653,6 +656,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
             <section style={themedCard}><details><summary style={{ color: theme.primary, fontWeight: 950, fontSize: 11, cursor: "pointer" }}>{L("Comment l’utiliser ?", "How to use it?", "¿Cómo usarlo?")}</summary><div style={{ marginTop: 8, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.5 }}>1. {L("Dans VIEWER, crée une session sur le téléphone.", "In VIEWER, create a session on the phone.", "En VIEWER, crea una sesión en el teléfono.")}<br/>2. {L("Sur la Samsung TV, saisis le code à 6 caractères affiché.", "On the Samsung TV, enter the displayed 6-character code.", "En la Samsung TV, introduce el código de 6 caracteres mostrado.")}<br/>3. {L("Lance ensuite la partie sur le téléphone : les scores sont publiés automatiquement.", "Then start the game on the phone: scores are published automatically.", "Después inicia la partida en el teléfono: los marcadores se publican automáticamente.")}</div></details></section>
           </div>
         ) : null}
+        </aside>
       </div>
 
       <style>{`@media(max-width:620px){.screens-viewer-grid{grid-template-columns:1fr!important}.screens-viewer-grid>div:last-child{justify-self:center!important}}`}</style>

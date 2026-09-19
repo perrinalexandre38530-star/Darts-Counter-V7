@@ -2978,9 +2978,10 @@ export default function MessagesPage({ store, update, go }: Props) {
   }
 
   return (
-    <div className="container" style={{ padding: 16, paddingBottom: 104, color: "#f5f5f7" }}>
+    <div className="container msc-landscape-page-shell msc-messages-layout" style={{ padding: 16, paddingBottom: 104, color: "#f5f5f7" }}>
       {renderIncomingCallOverlay()}
       <div
+        className="msc-messages-header-card"
         style={{
           ...cardStyle({
             padding: 16,
@@ -2990,7 +2991,7 @@ export default function MessagesPage({ store, update, go }: Props) {
           }),
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <div className="msc-landscape-header msc-messages-header" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
           <div>
             <div style={{ fontSize: 30, fontWeight: 1000, color: GOLD, lineHeight: 1, textShadow: "0 0 18px rgba(255,213,106,.24)" }}>
               MESSAGERIE
@@ -3025,6 +3026,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         </div>
 
         <div
+          className="msc-landscape-primary msc-messages-primary"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
@@ -3049,7 +3051,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         </div>
       </div>
 
-      <PageAdBanner placement="messages" slotKey="page-messages-under-header" />
+      <div className="msc-messages-ad"><PageAdBanner placement="messages" slotKey="page-messages-under-header" /></div>
 
       {actionsOpen ? (
         <div
@@ -3117,6 +3119,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         </div>
       ) : null}
 
+      <aside className="msc-landscape-secondary msc-messages-secondary">
       {loading && !hasVisibleMessageData ? <div style={cardStyle({ marginBottom: 10 })}>Chargement de la messagerie…</div> : null}
       {error ? <div style={cardStyle({ marginBottom: 10, borderColor: "rgba(255,100,100,.45)", color: RED })}>Erreur : {error}</div> : null}
       {info ? <div style={cardStyle({ marginBottom: 10, borderColor: "rgba(125,255,178,.35)", color: GREEN })}>{info}</div> : null}
@@ -3693,6 +3696,7 @@ export default function MessagesPage({ store, update, go }: Props) {
           )}
         </>
       ) : null}
+      </aside>
 
     </div>
   );

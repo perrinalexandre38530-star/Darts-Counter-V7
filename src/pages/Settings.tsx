@@ -5765,7 +5765,7 @@ export function Settings({ go, params }: Props) {
 
   return (
     <div
-      className="container"
+      className="container msc-landscape-page-shell msc-settings-layout"
       style={{
         minHeight: "100vh",
         paddingTop: tab === "theme" ? 7 : 16,
@@ -5774,7 +5774,7 @@ export function Settings({ go, params }: Props) {
         color: theme.text,
       }}
     >
-      <div style={{ width: "100%", maxWidth: 520, marginInline: "auto" }}>
+      <div className="msc-landscape-header msc-settings-header" style={{ width: "100%", maxWidth: 520, marginInline: "auto" }}>
         <SettingsPageHeader
           title={headerTitle}
           subtitle={headerSubtitle}
@@ -5787,10 +5787,11 @@ export function Settings({ go, params }: Props) {
         />
       </div>
 
-      <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: tab === "theme" ? 8 : 12 }}>
+      <div className="msc-settings-body" style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: tab === "theme" ? 8 : 12 }}>
+        <section className="msc-landscape-primary msc-settings-primary">
         <PageAdBanner placement="settings" slotKey={`page-settings-${tab}-under-header`} />
         {tab === "menu" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="msc-settings-menu-primary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
               title="Awena"
               titleNode={
@@ -5824,6 +5825,13 @@ export function Settings({ go, params }: Props) {
               rightHint={L("CLUB / PRO / BUSINESS", "CLUB / PRO / BUSINESS", "CLUB / PRO / BUSINESS")}
               onClick={() => go?.("organizations")}
             />
+          </div>
+        )}
+        </section>
+
+        <aside className="msc-landscape-secondary msc-settings-secondary">
+        {tab === "menu" && (
+          <div className="msc-settings-menu-secondary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
               title={t("settings.menu.lang", L("Langues", "Languages", "Idiomas"))}
               subtitle={t("settings.menu.lang.sub", L("Choisis la langue de l’interface et explore la carte linguistique.", "Choose the interface language and explore the language map.", "Elige el idioma de la interfaz y explora el mapa lingüístico."))}
@@ -5929,6 +5937,7 @@ export function Settings({ go, params }: Props) {
         {tab === "castViewer" && <CastViewerSettingsSection go={go} />}
         {tab === "developer" && <DeveloperSection />}
         {tab === "general" && <NasBackupSection />}
+        </aside>
       </div>
     </div>
   );

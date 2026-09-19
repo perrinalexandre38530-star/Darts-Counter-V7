@@ -416,12 +416,15 @@ function Pill({
 function NeonCard({
   children,
   style,
+  className,
 }: {
   children: React.ReactNode;
   style?: React.CSSProperties;
+  className?: string;
 }) {
   return (
     <div
+      className={className}
       style={{
         borderRadius: 18,
         padding: 14,
@@ -3611,7 +3614,7 @@ const doLogout = React.useCallback(async () => {
 
   if (!ready) {
     return (
-      <div className="container" style={{ padding: 16, paddingBottom: 156, color: "#f5f5f7" }}>
+      <div className="container msc-landscape-page-shell msc-online-layout" style={{ padding: 16, paddingBottom: 156, color: "#f5f5f7" }}>
         Connexion en cours…
       </div>
     );
@@ -3636,6 +3639,7 @@ const doLogout = React.useCallback(async () => {
     >
       {/* ================= HEADER (CAPTURE 1 EXACTE) ================= */}
       <NeonCard
+        className="msc-online-header-card"
         style={{
           background:
             "radial-gradient(1200px 240px at 20% 0%, rgba(var(--online-accent-rgb),.18), transparent 55%), radial-gradient(900px 220px at 90% 0%, rgba(79,180,255,.14), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
@@ -3644,7 +3648,7 @@ const doLogout = React.useCallback(async () => {
       >
         {/* ===== HEADER TITRE CENTRÉ : BackDot / ONLINE / InfoDot ===== */}
         <div
-          className="online-header"
+          className="online-header msc-landscape-header msc-online-header"
           style={{
             position: "relative",
             display: "grid",
@@ -3701,6 +3705,7 @@ const doLogout = React.useCallback(async () => {
 
         {showInfo ? (
           <div
+            className="msc-online-info-panel"
             style={{
               marginTop: 12,
               borderRadius: 14,
@@ -3726,7 +3731,7 @@ const doLogout = React.useCallback(async () => {
 
         {/* ===== HEADER PROFIL — layout demandé */}
         <div
-          className="online-profile online-profile-v2"
+          className="online-profile online-profile-v2 msc-landscape-primary msc-online-primary"
           style={{
             marginTop: 14,
             borderRadius: 20,
@@ -3934,6 +3939,7 @@ const doLogout = React.useCallback(async () => {
         </div>
       </NeonCard>
 
+      <aside className="msc-landscape-secondary msc-online-secondary">
       <PageAdBanner placement="online" slotKey={`page-online-${activeOnlineTab}-under-header`} style={{ marginBottom: 14 }} />
 
       {/* ================= TICKER ================= */}
@@ -4988,6 +4994,7 @@ const doLogout = React.useCallback(async () => {
       ) : null}
 
       <div style={{ height: 10 }} />
+      </aside>
     </div>
   );
 }

@@ -55,7 +55,7 @@ function readStoredSport(): QuickSportId {
   }
 }
 
-export default function SportQuickSwitch({ onAfterSwitch, collisionKey }: { onAfterSwitch?: () => void; collisionKey?: string | number | null }) {
+export default function SportQuickSwitch({ onAfterSwitch, collisionKey, landscapeHeaderDocked = false }: { onAfterSwitch?: () => void; collisionKey?: string | number | null; landscapeHeaderDocked?: boolean }) {
   const sportApi = useSport() as any;
   const availableSports = React.useMemo(() => filterSportsForCurrentRuntime(SPORTS), []);
   const currentSport = normalizeSport(sportApi?.sport ?? readStoredSport());
@@ -94,6 +94,7 @@ export default function SportQuickSwitch({ onAfterSwitch, collisionKey }: { onAf
     <button
       ref={floating.ref as any}
       data-mss-floating-control="sport-switch"
+      data-mss-header-docked={landscapeHeaderDocked ? "1" : undefined}
       type="button"
       onClick={switchSport}
       aria-label={`Sport actif : ${current.label}. Cliquer pour passer à ${next.label}.`}

@@ -214,7 +214,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       : `${formatDate(range.start, locale, { day: "numeric", month: "short" })} — ${formatDate(range.end - DAY, locale, { day: "numeric", month: "short" })}`;
 
   return (
-    <div className="container" style={{ maxWidth: 700, paddingBottom: 100 }}>
+    <div className="container msc-agenda-page" style={{ maxWidth: 700, paddingBottom: 100 }}>
       <style>{`
         .msa-top{border:1px solid rgba(255,255,255,.09);border-radius:24px;padding:14px;background:radial-gradient(circle at 15% 0%,${accent}18,transparent 38%),linear-gradient(180deg,rgba(11,15,23,.985),rgba(5,8,14,.99));box-shadow:0 18px 45px rgba(0,0,0,.4)}
         .msa-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:12px;padding:4px;border-radius:15px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.06)}
@@ -231,7 +231,8 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         @media(max-width:390px){.msa-event{grid-template-columns:38px minmax(0,1fr)}.msa-event-time{grid-column:2}.msa-tab{font-size:6.8px}.msa-month-cell{min-height:58px;padding:4px}.msa-sport-icon-btn{width:39px;height:39px}.msa-sport-select{min-height:44px;padding:4px 7px;gap:7px}.msa-sport-select-preview{flex-basis:104px;width:104px}.msa-sport-select-label{font-size:13px}.msa-banner-choice{height:44px}.msa-sport-picker-panel{max-height:180px;padding:5px;gap:4px}}
       `}</style>
 
-      <div style={{ width: "100%", maxWidth: "none", marginBottom: 10 }}>
+      <div className="msc-landscape-page-shell msc-agenda-layout">
+      <div className="msc-landscape-header msc-agenda-header" style={{ width: "100%", maxWidth: "none", marginBottom: 10 }}>
         <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
           <img
             src={agendaHeaderTicker}
@@ -245,6 +246,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         </div>
       </div>
 
+      <section className="msc-landscape-primary msc-agenda-primary">
       <div className="msa-top">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div className="msa-muted" style={{ fontSize: 9.5, lineHeight: 1.35, minWidth: 0 }}>
@@ -281,6 +283,9 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         </div>
       </> : null}
 
+      </section>
+
+      <aside className="msc-landscape-secondary msc-agenda-secondary">
       {view === "today" ? <div style={{ marginTop: 8 }}>{visible.length ? visible.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />) : <EmptyState text={t("Rien de prévu aujourd'hui. Ajoute une activité ou active un programme.", "Nothing scheduled today. Add an activity or activate a program.", "Nada previsto hoy. Añade una actividad o activa un programa.")} />}</div> : null}
 
       {view === "week" ? <div className="msa-week" style={{ marginTop: 8 }}>{Array.from({ length: 7 }, (_, i) => range.start + i * DAY).map((day) => ({ day, rows: visible.filter((event) => sameLocalDay(event.startAt, day)).sort((a,b) => a.startAt - b.startAt) })).filter((group) => group.rows.length > 0).map(({ day, rows }) => { const dominant = multisportSportMeta(rows[0].sport); const isPast = day < localDayStart(Date.now()); return <section key={day} className={`msa-day${sameLocalDay(day, Date.now()) ? " today" : ""}${isPast ? " past" : ""}`} style={{ borderColor: `${dominant.accent}38`, background: `linear-gradient(135deg,${dominant.accent}0b,rgba(255,255,255,.018))` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7 }}><div style={{ display: "flex", alignItems: "center", gap: 7 }}><TintedSportLogo sport={rows[0].sport} color={dominant.accent} size={22}/><strong style={{ fontSize: 10.5, textTransform: "uppercase", color: sameLocalDay(day, Date.now()) ? accent : "#fff" }}>{formatDate(day, locale)}</strong></div><span className="msa-muted" style={{ fontSize: 8 }}>{rows.some((event) => conflictIds.has(event.id)) ? <b style={{ color: "#ff8b8b" }}>⚠ {t("Conflit", "Conflict", "Conflicto")}</b> : `${rows.length} ${t("créneau(x)", "slot(s)", "franja(s)")}`}</span></div>{rows.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />)}</section>; })}{visible.length === 0 ? <EmptyState text={t("Aucun créneau planifié cette semaine.", "No scheduled slots this week.", "No hay franjas planificadas esta semana.")} /> : null}</div> : null}
@@ -288,6 +293,9 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       {view === "month" ? <MonthGrid cursor={cursor} events={filteredEvents} locale={locale} onSelectDay={(day) => { setCursor(day); setView("today"); }} /> : null}
 
       {view === "invitations" ? <div style={{ marginTop: 10 }}>{pending.length ? pending.map((event) => <div key={event.id} style={{ borderRadius: 18, border: `1px solid ${(event.accent || accent)}55`, background: `linear-gradient(145deg,${event.accent || accent}10,rgba(5,8,14,.98))`, padding: 12, marginBottom: 8 }}><EventCard event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}><button type="button" className="msa-action" onClick={() => { respondToAgendaInvitation(event.id, "confirmed"); refresh(); }}>{t("ACCEPTER", "ACCEPT", "ACEPTAR")}</button><button type="button" onClick={() => { respondToAgendaInvitation(event.id, "declined"); refresh(); }} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.72)", fontWeight: 1000 }}>{t("REFUSER", "DECLINE", "RECHAZAR")}</button></div></div>) : <EmptyState text={t("Aucune invitation en attente.", "No pending invitations.", "No hay invitaciones pendientes.")} />}</div> : null}
+
+      </aside>
+      </div>
 
       {selectedEvent ? <EventDetailDialog event={selectedEvent} locale={locale} lang={String(lang || "fr")} conflict={conflictIds.has(selectedEvent.id)} onClose={() => setSelectedEvent(null)} onOpenModule={() => { const event = selectedEvent; setSelectedEvent(null); openEvent(event); }} onChanged={() => { refresh(); const fresh = collectMultisportAgendaEvents().find((item) => item.id === selectedEvent.id) || null; setSelectedEvent(fresh); }} /> : null}
       {createOpen ? <CreateEventDialog accent={accent} lang={String(lang || "fr")} initialDraft={(params?.agendaDraft || null) as AgendaCreateDraft | null} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); refresh(); }} /> : null}

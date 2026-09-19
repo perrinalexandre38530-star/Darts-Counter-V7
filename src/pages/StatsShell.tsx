@@ -61,7 +61,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
 
   return (
     <div
-      className="stats-shell-page container"
+      className="stats-shell-page container msc-landscape-page-shell msc-stats-layout"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -188,8 +188,8 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
       `}</style>
 
       {/* ===== HEADER ===== */}
-      <div style={{ width: "100%", maxWidth: "none", paddingInline: 0, marginBottom: 16 }}>
-        <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
+      <div className="msc-landscape-header msc-stats-header" style={{ width: "100%", maxWidth: "none", paddingInline: 0, marginBottom: 16 }}>
+        <div className="msc-stats-ticker" style={{ position: "relative", width: "100%", minWidth: 0 }}>
           <img
             src={statsCenterTicker}
             alt="Statistics Center"
@@ -206,8 +206,11 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
             <BackDot onClick={() => go("games" as any)} />
           </div>
         </div>
+      </div>
+
+      <section className="msc-landscape-primary msc-stats-primary">
         <PageAdBanner placement="stats" slotKey="page-stats-under-header" style={{ marginTop: 10, marginBottom: 10, paddingInline: 8 }} />
-        <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingInline: 8 }}>
+        <div className="msc-stats-summary" style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingInline: 8 }}>
           <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>
             {isMolkkySport
                 ? L("Centre de statistiques Mölkky : joueur actif, profils locaux, classements et historique.", "Mölkky statistics center: active player, local profiles, rankings and history.", "Centro de estadísticas Mölkky: jugador activo, perfiles locales, clasificaciones e historial.")
@@ -239,11 +242,50 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
             {t("statsShell.syncButton", "Sync & partage")}
           </button>
         </div>
-      </div>
+
+        <div className="stats-shell-list msc-stats-primary-list" style={{ width: "100%", display: "flex", flexDirection: "column", gap: "var(--menu-gap)", paddingInline: 12 }}>
+          <StatsShellPlayerCard
+            profile={active}
+            label={playerLabel}
+            theme={theme}
+            onClick={() => {
+              if (!active) return;
+              go("statsHub", {
+                tab: "stats",
+                mode: "active",
+                initialPlayerId: active.id,
+                playerId: active.id,
+                initialStatsSubTab: "dashboard",
+              });
+            }}
+            onInfo={() => setInfoMode("active")}
+          />
+
+          <StatsShellCard
+            title={isFitSport ? L("PROFILS FIT PERF", "FIT PERF PROFILES", "PERFILES FIT PERF") : t("statsShell.locals.title", "PROFILS LOCAUX")}
+            subtitle={isFitSport
+              ? L("Retrouve les profils existants et leurs performances FIT PERF individuelles.", "Open existing profiles and their individual FIT PERF performance.", "Consulta los perfiles existentes y su rendimiento FIT PERF individual.")
+              : t("statsShell.locals.subtitle", "Accède aux mêmes vues de stats pour tous les profils locaux.")}
+            theme={theme}
+            onClick={() => {
+              if (isFitSport) {
+                go("profiles", { view: "locals", sport: "fit" });
+                return;
+              }
+              go("statsHub", {
+                tab: "stats",
+                mode: "locals",
+                initialPlayerId: null,
+              });
+            }}
+            onInfo={() => setInfoMode("locals")}
+          />
+        </div>
+      </section>
 
       {/* ===== LISTE CARTES ===== */}
       <div
-        className="stats-shell-list"
+        className="stats-shell-list msc-landscape-secondary msc-stats-secondary"
         style={{
           width: "100%",
           maxWidth: "none",
@@ -253,43 +295,6 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
           paddingInline: 12,
         }}
       >
-        <StatsShellPlayerCard
-          profile={active}
-          label={playerLabel}
-          theme={theme}
-          onClick={() => {
-            if (!active) return;
-            go("statsHub", {
-              tab: "stats",
-              mode: "active",
-              initialPlayerId: active.id,
-              playerId: active.id,
-              initialStatsSubTab: "dashboard",
-            });
-          }}
-          onInfo={() => setInfoMode("active")}
-        />
-
-        <StatsShellCard
-          title={isFitSport ? L("PROFILS FIT PERF", "FIT PERF PROFILES", "PERFILES FIT PERF") : t("statsShell.locals.title", "PROFILS LOCAUX")}
-          subtitle={isFitSport
-            ? L("Retrouve les profils existants et leurs performances FIT PERF individuelles.", "Open existing profiles and their individual FIT PERF performance.", "Consulta los perfiles existentes y su rendimiento FIT PERF individual.")
-            : t("statsShell.locals.subtitle", "Accède aux mêmes vues de stats pour tous les profils locaux.")}
-          theme={theme}
-          onClick={() => {
-            if (isFitSport) {
-              go("profiles", { view: "locals", sport: "fit" });
-              return;
-            }
-            go("statsHub", {
-              tab: "stats",
-              mode: "locals",
-              initialPlayerId: null,
-            });
-          }}
-          onInfo={() => setInfoMode("locals")}
-        />
-
         <StatsShellCard
           title={isFitSport ? L("PROGRESSION & RECORDS", "PROGRESS & RECORDS", "PROGRESO Y RÉCORDS") : L("CLASSEMENTS", "RANKINGS", "CLASIFICACIONES")}
           subtitle={isFitSport
@@ -371,7 +376,6 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         />
       </div>
 
-      <div style={{ height: 80 }} />
 
       {infoMode && (
         <InfoOverlay

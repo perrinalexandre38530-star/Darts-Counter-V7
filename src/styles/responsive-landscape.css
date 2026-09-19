@@ -742,3 +742,606 @@ html[data-msc-orientation="landscape"] [data-mss-workspace-menu="1"] {
   max-height: calc(var(--msc-app-height, 100dvh) - var(--msc-landscape-header-height) - var(--msc-landscape-shell-pad) * 3) !important;
 }
 
+
+/* ========================================================================== 
+   LANDSCAPE SHELL V3 — TOP-LEVEL NAVIGATION PAGES
+   --------------------------------------------------------------------------
+   HOME validated the contract. The same geometry is now applied to Agenda,
+   Messages, Profiles (menu), Games, Competitions, Online, Stats, Settings and
+   Screens. PRIMARY never scrolls; SECONDARY is the only content scroller.
+   ========================================================================== */
+
+/* Migrated routes own the complete viewport and therefore must not fall back
+   to document/body scrolling. Profiles is handled only while its menu is open
+   because its deep subviews have not all been migrated yet. */
+html[data-msc-orientation="landscape"] :is(
+  .dc-themed-route[data-msc-route="agenda"],
+  .dc-themed-route[data-msc-route="messages"],
+  .dc-themed-route[data-msc-route="games"],
+  .dc-themed-route[data-msc-route="tournaments"],
+  .dc-themed-route[data-msc-route="online"],
+  .dc-themed-route[data-msc-route="stats"],
+  .dc-themed-route[data-msc-route="settings"],
+  .dc-themed-route[data-msc-route="cast_host"]
+) {
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-agenda-page,
+  .msc-messages-layout,
+  .msc-games-layout,
+  .msc-competitions-page,
+  .msc-online-layout,
+  .msc-stats-layout,
+  .msc-settings-layout
+) {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-agenda-layout,
+  .msc-competitions-layout,
+  .msc-screens-layout
+) {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+/* Every migrated pane uses the same internal spacing. */
+html[data-msc-orientation="landscape"] :is(
+  .msc-agenda-primary,
+  .msc-agenda-secondary,
+  .msc-messages-primary,
+  .msc-messages-secondary,
+  .msc-profiles-menu-primary,
+  .msc-profiles-menu-secondary,
+  .msc-games-primary,
+  .msc-games-secondary,
+  .msc-competitions-primary,
+  .msc-competitions-secondary,
+  .msc-online-primary,
+  .msc-online-secondary,
+  .msc-stats-primary,
+  .msc-stats-secondary,
+  .msc-settings-primary,
+  .msc-settings-secondary,
+  .msc-screens-primary,
+  .msc-screens-secondary
+) {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+/* ========================================================================== 
+   AGENDA
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-agenda-page {
+  padding-bottom: max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom)) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-header {
+  height: 100% !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border-radius: clamp(15px, 1.5vw, 22px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-header > div,
+html[data-msc-orientation="landscape"] .msc-agenda-header img {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-header img {
+  object-fit: contain !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-primary {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(5px, .8vh, 9px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-primary .msa-top {
+  padding: clamp(8px, 1.2vh, 12px) !important;
+  border-radius: 16px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-primary .msa-tabs {
+  margin-top: 7px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-primary .msa-tab {
+  height: clamp(32px, 6.2vh, 40px) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-agenda-primary .msa-sport-icon-btn {
+  width: 35px !important;
+  height: 35px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-secondary {
+  height: 100% !important;
+  padding: 0 3px 8px 0 !important;
+}
+
+/* ========================================================================== 
+   MESSAGES
+   The decorative portrait card becomes display:contents in landscape so its
+   title row can occupy HEADER while its six category buttons occupy PRIMARY.
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-messages-header-card {
+  display: contents !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-header {
+  height: 100% !important;
+  box-sizing: border-box !important;
+  padding: clamp(10px, 1.4vh, 16px) clamp(14px, 1.6vw, 24px) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  border-radius: clamp(16px, 1.5vw, 22px) !important;
+  background:
+    radial-gradient(900px 220px at 0% 0%, rgba(255,213,106,.18), transparent 55%),
+    radial-gradient(820px 220px at 100% 0%, rgba(90,180,255,.16), transparent 55%),
+    linear-gradient(180deg, rgba(22,22,30,.96), rgba(8,8,13,.98)) !important;
+  box-shadow: 0 12px 26px rgba(0,0,0,.44) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-header > div:first-child > div:first-child {
+  min-width: 0 !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-messages-header > div:first-child > div:first-child {
+  font-size: 23px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-primary {
+  width: 100% !important;
+  height: 100% !important;
+  padding: clamp(7px, 1vh, 11px) !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-template-rows: repeat(2, minmax(0, 1fr)) !important;
+  gap: clamp(6px, .8vw, 10px) !important;
+  border-radius: clamp(16px, 1.5vw, 22px) !important;
+  border: 1px solid rgba(255,255,255,.09) !important;
+  background: linear-gradient(180deg, rgba(16,19,28,.90), rgba(5,8,14,.94)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-primary > button {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-ad {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-secondary {
+  height: 100% !important;
+  padding: 2px 3px 8px 0 !important;
+}
+
+/* ========================================================================== 
+   PROFILES — MENU
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-profiles-page--menu {
+  width: 100% !important;
+  max-width: none !important;
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-menu-layout {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-menu-header {
+  height: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 18px !important;
+  border-radius: clamp(16px, 1.5vw, 22px) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  background: linear-gradient(180deg, rgba(17,22,31,.86), rgba(5,8,14,.78)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-menu-header > div:first-child {
+  font-size: clamp(23px, 3.4vw, 42px) !important;
+  line-height: 1 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-menu-primary {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(6px, .9vh, 10px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-menu-primary > * {
+  flex: 0 0 auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-menu-primary .dc-postapoc-menu-card,
+html[data-msc-orientation="landscape"] .msc-profiles-menu-secondary .dc-postapoc-menu-card {
+  margin-bottom: 0 !important;
+  padding: clamp(9px, 1.2vh, 13px) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-profiles-menu-primary .dc-postapoc-menu-card {
+  padding: 8px 10px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-menu-secondary {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(6px, .9vh, 10px) !important;
+  padding-right: 3px !important;
+}
+
+/* ========================================================================== 
+   GAMES
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-games-header {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: clamp(16px, 1.6vw, 24px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-header img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-primary {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(7px, 1vh, 11px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-primary > * {
+  flex: 0 0 auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-primary-quick {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-secondary {
+  height: 100% !important;
+  padding: 1px 3px 8px 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-secondary > div:first-child {
+  margin-top: 0 !important;
+}
+
+/* ========================================================================== 
+   COMPETITIONS
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-competitions-header {
+  height: 100% !important;
+  overflow: hidden !important;
+  border-radius: clamp(16px, 1.6vw, 24px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competitions-header img {
+  max-height: 100% !important;
+  object-fit: contain !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competitions-primary {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(7px, 1vh, 11px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competitions-secondary {
+  height: 100% !important;
+  padding-right: 3px !important;
+}
+
+/* ========================================================================== 
+   ONLINE
+   The original NeonCard wrapper becomes transparent to the grid only in
+   landscape. Header and profile remain real, independent shell regions.
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-online-header-card {
+  display: contents !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-header {
+  height: 100% !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
+  padding: clamp(8px, 1.2vh, 14px) clamp(12px, 1.4vw, 20px) !important;
+  border: 1px solid rgba(var(--online-accent-rgb),.24) !important;
+  border-radius: clamp(16px, 1.6vw, 24px) !important;
+  background:
+    radial-gradient(900px 220px at 50% 0%, rgba(var(--online-accent-rgb),.18), transparent 62%),
+    linear-gradient(180deg, rgba(7,13,27,.92), rgba(3,7,16,.96)) !important;
+  box-shadow: 0 12px 26px rgba(0,0,0,.45) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-header .online-title h1 {
+  font-size: clamp(23px, 3.3vw, 40px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-info-panel {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-primary {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: clamp(8px, 1.1vh, 12px) !important;
+  overflow: hidden !important;
+  align-content: center !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-online-primary > div {
+  transform: scale(.90);
+  transform-origin: center center;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-secondary {
+  height: 100% !important;
+  padding: 0 3px 8px 0 !important;
+}
+
+/* ========================================================================== 
+   STATISTICS
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-stats-header {
+  height: 100% !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border-radius: clamp(16px, 1.6vw, 24px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-ticker,
+html[data-msc-orientation="landscape"] .msc-stats-ticker img {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-ticker img {
+  object-fit: contain !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-primary {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(5px, .8vh, 9px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-primary .stats-shell-list {
+  min-height: 0 !important;
+  gap: clamp(5px, .8vh, 9px) !important;
+  padding-inline: 2px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-summary {
+  margin-top: 0 !important;
+  padding-inline: 2px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-secondary {
+  height: 100% !important;
+  padding: 0 3px 8px 0 !important;
+}
+
+/* ========================================================================== 
+   SETTINGS
+   The portrait width limiter becomes display:contents so the two panes can
+   occupy the shell tracks directly.
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-settings-body {
+  display: contents !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-settings-header {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-settings-primary {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(6px, .8vh, 9px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-settings-menu-primary,
+html[data-msc-orientation="landscape"] .msc-settings-menu-secondary {
+  gap: clamp(5px, .8vh, 9px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-settings-menu-primary > *,
+html[data-msc-orientation="landscape"] .msc-settings-menu-secondary > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-settings-menu-primary > button,
+html[data-msc-short-landscape="1"] .msc-settings-menu-primary > .card {
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-settings-secondary {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  padding: 0 3px 8px 0 !important;
+}
+
+/* ========================================================================== 
+   SCREENS / CAST / VIEWER
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-screens-layout {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-header {
+  height: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  padding: 8px 12px !important;
+  border-radius: clamp(16px, 1.6vw, 24px) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  background: linear-gradient(180deg, rgba(10,17,25,.88), rgba(4,8,14,.86)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-header > div:nth-child(2) > div:first-child {
+  font-size: clamp(23px, 3.3vw, 40px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-primary {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(7px, 1vh, 11px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-primary nav {
+  margin-bottom: 0 !important;
+  grid-template-columns: 1fr !important;
+  gap: 5px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-primary nav > button {
+  min-height: clamp(48px, 8vh, 62px) !important;
+  grid-template-columns: 30px minmax(0,1fr) !important;
+  grid-template-rows: auto auto !important;
+  justify-items: start !important;
+  align-content: center !important;
+  column-gap: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-primary nav > button > :first-child {
+  grid-row: 1 / span 2 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-secondary {
+  height: 100% !important;
+  padding: 0 3px 8px 0 !important;
+}
+
+/* Shared scroll affordance for every migrated RIGHT pane. */
+html[data-msc-orientation="landscape"] :is(
+  .msc-agenda-secondary,
+  .msc-messages-secondary,
+  .msc-profiles-menu-secondary,
+  .msc-games-secondary,
+  .msc-competitions-secondary,
+  .msc-online-secondary,
+  .msc-stats-secondary,
+  .msc-settings-secondary,
+  .msc-screens-secondary
+)::-webkit-scrollbar {
+  width: 5px;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-agenda-secondary,
+  .msc-messages-secondary,
+  .msc-profiles-menu-secondary,
+  .msc-games-secondary,
+  .msc-competitions-secondary,
+  .msc-online-secondary,
+  .msc-stats-secondary,
+  .msc-settings-secondary,
+  .msc-screens-secondary
+)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255,255,255,.24);
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-agenda-secondary,
+  .msc-messages-secondary,
+  .msc-profiles-menu-secondary,
+  .msc-games-secondary,
+  .msc-competitions-secondary,
+  .msc-online-secondary,
+  .msc-stats-secondary,
+  .msc-settings-secondary,
+  .msc-screens-secondary
+)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html[data-msc-orientation="landscape"] .msc-screens-page {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}

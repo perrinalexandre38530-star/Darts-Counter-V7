@@ -1476,6 +1476,7 @@ export default function Games({ setTab, params }: Props) {
 
   return (
     <div
+      className="msc-landscape-page-shell msc-games-layout"
       style={{
         minHeight: "100vh",
         padding: 16,
@@ -1486,6 +1487,7 @@ export default function Games({ setTab, params }: Props) {
     >
       {/* Header : ticker JEUX/GAMES sur le hub, titres texte dans les sous-menus */}
       <div
+        className="msc-landscape-header msc-games-header"
         style={{
           position: "relative",
           display: "flex",
@@ -1561,6 +1563,7 @@ export default function Games({ setTab, params }: Props) {
         )}
       </div>
 
+      <section className="msc-landscape-primary msc-games-primary">
       {pageSubtitle ? (
         <div
           style={{
@@ -1580,19 +1583,25 @@ export default function Games({ setTab, params }: Props) {
         style={{ marginBottom: 14 }}
       />
 
+      {(gamesView === "hub" || gamesView === "favorites") ? (
+        <NewModesTicker
+          items={newModes}
+          intervalMs={3000}
+          leftLogoSrc={newGameBadge}
+          playLogoSrc={playBadge}
+          onNavigate={(path) => navSmart(String(path || ""))}
+        />
+      ) : null}
+
+      {gamesView === "all" ? <div className="msc-games-primary-quick">{renderQuickLaunchTicker()}</div> : null}
+      </section>
+
+      <aside className="msc-landscape-secondary msc-games-secondary">
       {/* ============================================================
           HUB JEUX : NEW GAME + 3 cartes + lancement rapide défilant
          ============================================================ */}
       {gamesView === "hub" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <NewModesTicker
-            items={newModes}
-            intervalMs={3000}
-            leftLogoSrc={newGameBadge}
-            playLogoSrc={playBadge}
-            onNavigate={(path) => navSmart(String(path || ""))}
-          />
-
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {renderHubCard({
               title: HUB_COPY.favorites.title,
@@ -1632,14 +1641,6 @@ export default function Games({ setTab, params }: Props) {
          ============================================================ */}
       {gamesView === "favorites" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <NewModesTicker
-            items={newModes}
-            intervalMs={3000}
-            leftLogoSrc={newGameBadge}
-            playLogoSrc={playBadge}
-            onNavigate={(path) => navSmart(String(path || ""))}
-          />
-
           {renderFavoriteCard({
             title: t("games.fav.classic.title", "FAVORI — CLASSIQUES"),
             tint: TINT_CLASSIC,
@@ -1691,10 +1692,6 @@ export default function Games({ setTab, params }: Props) {
          ============================================================ */}
       {gamesView === "all" && (
         <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
-            {renderQuickLaunchTicker()}
-          </div>
-
           {/* Onglets catégories - couleurs liées aux favoris (sans TRAINING) */}
           <div
             style={{
@@ -1885,6 +1882,8 @@ export default function Games({ setTab, params }: Props) {
           </div>
         </>
       )}
+
+      </aside>
 
       <X01AwenaRulesVideo
         open={x01RulesIntroOpen}

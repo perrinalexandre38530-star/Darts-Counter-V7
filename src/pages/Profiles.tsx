@@ -3591,7 +3591,7 @@ React.useEffect(() => {
 
       <div
         ref={profilesPageRef}
-        className="container"
+        className={`container msc-profiles-page${view === "menu" ? " msc-profiles-page--menu" : ""}`}
         style={{
           width: "100%",
           maxWidth: 760,
@@ -4085,8 +4085,8 @@ function ProfilesMenuView({
   );
 
   return (
-    <div style={{ paddingTop: 8, paddingBottom: 8 }}>
-      <div style={{ marginBottom: 12 }}>
+    <div className="msc-landscape-page-shell msc-profiles-menu-layout" style={{ paddingTop: 8, paddingBottom: 8 }}>
+      <div className="msc-landscape-header msc-profiles-menu-header" style={{ marginBottom: 12 }}>
         <div
           style={{
             fontSize: 30,
@@ -4108,119 +4108,120 @@ function ProfilesMenuView({
         </div>
       </div>
 
-      <PageAdBanner placement="profiles" slotKey="page-profiles-under-header" />
+      <section className="msc-landscape-primary msc-profiles-menu-primary">
+        <PageAdBanner placement="profiles" slotKey="page-profiles-under-header" />
 
-
-      {(isOutdoorPerf || isFitPerf) ? <div style={{ margin: "12px 2px 9px", color: primary, fontSize: 9, fontWeight: 1000, letterSpacing: 1.1 }}>{pickLegacyLocalizedText(lang, "MON SPORT", "MY SPORT", "MI DEPORTE")}</div> : null}
-      {isOutdoorPerf ? <>
         <CardBtn
-          title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")}
-          subtitle={pickLegacyLocalizedText(lang, "Historique, cartes GPS, photos et statistiques du sport actif.", "History, GPS maps, photos and stats for the active sport.", "Historial, mapas GPS, fotos y estadísticas del deporte activo.")}
-          onClick={() => go?.("stats", { runningStatsTab: "history" })}
-        />
-        <CardBtn
-          title={pickLegacyLocalizedText(lang, "MES PARCOURS", "MY ROUTES", "MIS RUTAS")}
-          subtitle={pickLegacyLocalizedText(lang, "Parcours sauvegardés, Explorer et bibliothèque communautaire.", "Saved routes, Explore and community library.", "Rutas guardadas, Explorar y biblioteca comunitaria.")}
-          onClick={() => go?.("games", { runningOpenRoutes: true })}
-        />
-        <CardBtn
-          title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")}
-          subtitle={pickLegacyLocalizedText(lang, "Liste d'amis et partenaires de sortie à proximité.", "Friends list and nearby activity partners.", "Lista de amigos y compañeros de salida cercanos.")}
-          onClick={() => go?.("online", { tab: "nearby" })}
-        />
-      </> : null}
-
-      {isFitPerf ? <>
-        <CardBtn
-          title={pickLegacyLocalizedText(lang, "MES SÉANCES FIT PERF", "MY FIT PERF WORKOUTS", "MIS SESIONES FIT PERF")}
-          subtitle={pickLegacyLocalizedText(lang, "Séries, répétitions, charges, records et progression.", "Sets, reps, loads, records and progress.", "Series, repeticiones, cargas, récords y progreso.")}
-          onClick={() => go?.("stats")}
-        />
-        <CardBtn
-          title={pickLegacyLocalizedText(lang, "MON PROGRAMME", "MY PROGRAM", "MI PROGRAMA")}
-          subtitle={pickLegacyLocalizedText(lang, "Retrouve ton plan d'entraînement FIT PERF.", "Open your FIT PERF training plan.", "Abre tu plan de entrenamiento FIT PERF.")}
-          onClick={() => go?.("fit_plan")}
-        />
-      </> : null}
-  
-
-      {(isOutdoorPerf || isFitPerf) ? <div style={{ margin: "16px 2px 9px", color: theme.textSoft, fontSize: 8.5, fontWeight: 1000, letterSpacing: 1.1 }}>{pickLegacyLocalizedText(lang, "COMPTE & SOCIAL", "ACCOUNT & SOCIAL", "CUENTA Y SOCIAL")}</div> : null}
-  
-      <CardBtn
-        title={t("profiles.menu.avatar.title", "CREER AVATAR")}
-        subtitle={t(
-          "profiles.menu.avatar.subtitle",
-          "Personnalise ton médaillon avec le créateur d’avatar."
-        )}
-        onClick={() => go?.("avatar")}
-      />
-
-      <CardBtn
-        title={t("profiles.menu.avatarGallery.title", "GALERIE")}
-        subtitle={t(
-          "profiles.menu.avatarGallery.subtitle",
-          "Tous les avatars et logos enregistrés pour ce compte, classés par source."
-        )}
-        badge={avatarGalleryCount > 0 ? String(avatarGalleryCount) : undefined}
-        onClick={onSelectAvatarGallery}
-      />
-  
-      <CardBtn
-        title={t("profiles.menu.me.title", "MON PROFIL")}
-        subtitle={t(
-          "profiles.menu.me.subtitle",
-          "Profil connecté, statut, mini-stats et informations personnelles."
-        )}
-        onClick={onSelectMe}
-      />
-  
-      {!isBabyFoot && (
-        <CardBtn
-          title={t("profiles.menu.friends.title", "AMIS")}
-          subtitle={t("profiles.menu.friends.subtitle", "Amis en ligne et absents.")}
-          onClick={onSelectFriends}
-        />
-      )}
-  
-      <CardBtn
-        title={t("profiles.menu.locals.title", "PROFILS LOCAUX")}
-        subtitle={t(
-          "profiles.menu.locals.subtitle",
-          "Profils enregistrés sur cet appareil avec leurs statistiques."
-        )}
-        onClick={onSelectLocals}
-      />
-  
-      {isDarts && (
-        <CardBtn
-          title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}
-          subtitle={t("profiles.menu.dartsets.subtitle", "Gère tous les jeux de fléchettes dans une vue dédiée plus fluide.")}
-          onClick={onSelectDartSets}
-        />
-      )}
-
-      {/* ✅ BOTS darts + TEAMS disponible pour TOUS les sports */}
-      {isDarts ? (
-        <CardBtn
-          title={t("profiles.menu.boat.title", "BOTS (CPU)")}
+          title={t("profiles.menu.avatar.title", "CREER AVATAR")}
           subtitle={t(
-            "profiles.menu.boat.subtitle",
-            "Crée et gère tes joueurs virtuels contrôlés par l’IA."
+            "profiles.menu.avatar.subtitle",
+            "Personnalise ton médaillon avec le créateur d’avatar."
           )}
-          badge={t("profiles.menu.boat.badge", "NEW")}
-          onClick={() => go?.("profiles_bots")}
+          onClick={() => go?.("avatar")}
         />
-      ) : null}
 
-      {supportsTeams ? <CardBtn
-        title={t("profiles.menu.teams.title", pickLegacyLocalizedText(lang, `ÉQUIPES (${String(sportResolved || "SPORT").toUpperCase()})`, `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`, `EQUIPOS (${String(sportResolved || "SPORT").toUpperCase()})`))}
-        subtitle={t(
-          "profiles.menu.teams.subtitle",
-          "Crée et gère tes équipes pour le sport actif."
+        <CardBtn
+          title={t("profiles.menu.avatarGallery.title", "GALERIE")}
+          subtitle={t(
+            "profiles.menu.avatarGallery.subtitle",
+            "Tous les avatars et logos enregistrés pour ce compte, classés par source."
+          )}
+          badge={avatarGalleryCount > 0 ? String(avatarGalleryCount) : undefined}
+          onClick={onSelectAvatarGallery}
+        />
+
+        <CardBtn
+          title={t("profiles.menu.me.title", "MON PROFIL")}
+          subtitle={t(
+            "profiles.menu.me.subtitle",
+            "Profil connecté, statut, mini-stats et informations personnelles."
+          )}
+          onClick={onSelectMe}
+        />
+      </section>
+
+      <aside className="msc-landscape-secondary msc-profiles-menu-secondary">
+        {(isOutdoorPerf || isFitPerf) ? <div style={{ margin: "12px 2px 9px", color: primary, fontSize: 9, fontWeight: 1000, letterSpacing: 1.1 }}>{pickLegacyLocalizedText(lang, "MON SPORT", "MY SPORT", "MI DEPORTE")}</div> : null}
+        {isOutdoorPerf ? <>
+          <CardBtn
+            title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")}
+            subtitle={pickLegacyLocalizedText(lang, "Historique, cartes GPS, photos et statistiques du sport actif.", "History, GPS maps, photos and stats for the active sport.", "Historial, mapas GPS, fotos y estadísticas del deporte activo.")}
+            onClick={() => go?.("stats", { runningStatsTab: "history" })}
+          />
+          <CardBtn
+            title={pickLegacyLocalizedText(lang, "MES PARCOURS", "MY ROUTES", "MIS RUTAS")}
+            subtitle={pickLegacyLocalizedText(lang, "Parcours sauvegardés, Explorer et bibliothèque communautaire.", "Saved routes, Explore and community library.", "Rutas guardadas, Explorar y biblioteca comunitaria.")}
+            onClick={() => go?.("games", { runningOpenRoutes: true })}
+          />
+          <CardBtn
+            title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")}
+            subtitle={pickLegacyLocalizedText(lang, "Liste d'amis et partenaires de sortie à proximité.", "Friends list and nearby activity partners.", "Lista de amigos y compañeros de salida cercanos.")}
+            onClick={() => go?.("online", { tab: "nearby" })}
+          />
+        </> : null}
+
+        {isFitPerf ? <>
+          <CardBtn
+            title={pickLegacyLocalizedText(lang, "MES SÉANCES FIT PERF", "MY FIT PERF WORKOUTS", "MIS SESIONES FIT PERF")}
+            subtitle={pickLegacyLocalizedText(lang, "Séries, répétitions, charges, records et progression.", "Sets, reps, loads, records and progress.", "Series, repeticiones, cargas, récords y progreso.")}
+            onClick={() => go?.("stats")}
+          />
+          <CardBtn
+            title={pickLegacyLocalizedText(lang, "MON PROGRAMME", "MY PROGRAM", "MI PROGRAMA")}
+            subtitle={pickLegacyLocalizedText(lang, "Retrouve ton plan d'entraînement FIT PERF.", "Open your FIT PERF training plan.", "Abre tu plan de entrenamiento FIT PERF.")}
+            onClick={() => go?.("fit_plan")}
+          />
+        </> : null}
+
+        {(isOutdoorPerf || isFitPerf) ? <div style={{ margin: "16px 2px 9px", color: theme.textSoft, fontSize: 8.5, fontWeight: 1000, letterSpacing: 1.1 }}>{pickLegacyLocalizedText(lang, "COMPTE & SOCIAL", "ACCOUNT & SOCIAL", "CUENTA Y SOCIAL")}</div> : null}
+
+        {!isBabyFoot && (
+          <CardBtn
+            title={t("profiles.menu.friends.title", "AMIS")}
+            subtitle={t("profiles.menu.friends.subtitle", "Amis en ligne et absents.")}
+            onClick={onSelectFriends}
+          />
         )}
-        badge={t("profiles.menu.teams.badge", "NEW")}
-        onClick={() => go?.("petanque_teams", { sport: sportResolved || "darts", returnTo: "profiles" })}
-      /> : null}
+
+        <CardBtn
+          title={t("profiles.menu.locals.title", "PROFILS LOCAUX")}
+          subtitle={t(
+            "profiles.menu.locals.subtitle",
+            "Profils enregistrés sur cet appareil avec leurs statistiques."
+          )}
+          onClick={onSelectLocals}
+        />
+
+        {isDarts && (
+          <CardBtn
+            title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}
+            subtitle={t("profiles.menu.dartsets.subtitle", "Gère tous les jeux de fléchettes dans une vue dédiée plus fluide.")}
+            onClick={onSelectDartSets}
+          />
+        )}
+
+        {isDarts ? (
+          <CardBtn
+            title={t("profiles.menu.boat.title", "BOTS (CPU)")}
+            subtitle={t(
+              "profiles.menu.boat.subtitle",
+              "Crée et gère tes joueurs virtuels contrôlés par l’IA."
+            )}
+            badge={t("profiles.menu.boat.badge", "NEW")}
+            onClick={() => go?.("profiles_bots")}
+          />
+        ) : null}
+
+        {supportsTeams ? <CardBtn
+          title={t("profiles.menu.teams.title", pickLegacyLocalizedText(lang, `ÉQUIPES (${String(sportResolved || "SPORT").toUpperCase()})`, `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`, `EQUIPOS (${String(sportResolved || "SPORT").toUpperCase()})`))}
+          subtitle={t(
+            "profiles.menu.teams.subtitle",
+            "Crée et gère tes équipes pour le sport actif."
+          )}
+          badge={t("profiles.menu.teams.badge", "NEW")}
+          onClick={() => go?.("petanque_teams", { sport: sportResolved || "darts", returnTo: "profiles" })}
+        /> : null}
+      </aside>
     </div>
   );
 }

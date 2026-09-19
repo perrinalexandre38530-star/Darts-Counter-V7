@@ -337,151 +337,92 @@ export default function TournamentsHome({ store, go, params }: Props) {
   };
 
   return (
-    <div style={{ padding: 18, paddingBottom: 108, color: "white" }}>
-      <CompetitionHeader onBack={back} tickerSrc={competitionTicker} backTitle={L("Retour", "Back", "Volver")} alt={L("Compétitions", "Competitions", "Competiciones")} />
-      <PageAdBanner placement="competitions" slotKey={`page-competitions-${entryMode}-under-header`} />
-
-      {entryMode === "menu" ? (
-        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-          <CompetitionCard
-            tag={L("CRÉER", "CREATE", "CREAR")}
-            title={L("Création d’une Compétition", "Create a Competition", "Crear una competición")}
-            tone="gold"
-            watermark={leagueWatermark2}
-            info={
-              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                <p style={{ margin: 0 }}>
-                  {L("Crée une nouvelle ligue / championnat ou un nouveau tournoi pour le sport actif :", "Create a new league / championship or tournament for the active sport:", "Crea una nueva liga / campeonato o un nuevo torneo para el deporte activo:")} <b>{label}</b>.
-                </p>
-              </div>
-            }
-            onClick={() => setEntryMode("create")}
-          />
-
-          <CompetitionCard
-            tag={L("REPRENDRE", "RESUME", "REANUDAR")}
-            title={L("Reprendre une Compétition en cours", "Resume an Ongoing Competition", "Reanudar una competición en curso")}
-            tone="blue"
-            watermark={resumeWatermark2}
-            info={
-              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                <p style={{ margin: 0 }}>
-                  {L("Retrouve uniquement les ligues et tournois non terminés : brouillons, en cours, ou compétitions à continuer.", "Show only unfinished leagues and tournaments: drafts, ongoing events, or competitions to continue.", "Muestra solo ligas y torneos sin terminar: borradores, en curso o competiciones pendientes.")}
-                </p>
-              </div>
-            }
-            onClick={() => setEntryMode("resume")}
-          />
-
-          <CompetitionCard
-            tag={L("CONSULTER", "VIEW", "CONSULTAR")}
-            title={L("Consulter Historique des compétitions terminées", "View Completed Competitions", "Consultar competiciones terminadas")}
-            tone="green"
-            watermark={consultWatermark2}
-            info={
-              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                <p style={{ margin: 0 }}>
-                  {L("Consulte uniquement les ligues et tournois terminés pour revoir l’historique, les classements et les résultats.", "View completed leagues and tournaments to review history, standings and results.", "Consulta ligas y torneos terminados para revisar el historial, las clasificaciones y los resultados.")}
-                </p>
-              </div>
-            }
-            onClick={() => setEntryMode("consult")}
-          />
+    <div className="msc-competitions-page" style={{ padding: 18, paddingBottom: 108, color: "white" }}>
+      <div className="msc-landscape-page-shell msc-competitions-layout">
+        <div className="msc-landscape-header msc-competitions-header">
+          <CompetitionHeader onBack={back} tickerSrc={competitionTicker} backTitle={L("Retour", "Back", "Volver")} alt={L("Compétitions", "Competitions", "Competiciones")} />
         </div>
-      ) : null}
 
-      {entryMode === "create" ? (
-        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-          <SectionLabel>{L("Créer", "Create", "Crear")}</SectionLabel>
+        <section className="msc-landscape-primary msc-competitions-primary">
+          <PageAdBanner placement="competitions" slotKey={`page-competitions-${entryMode}-under-header`} />
 
-          <CompetitionCard
-            tag={L("LIGUE / CHAMPIONNAT", "LEAGUE / CHAMPIONSHIP", "LIGA / CAMPEONATO")}
-            title={`${L("Créer une ligue", "Create a league", "Crear una liga")} ${label}`}
-            tone="gold"
-            watermark={leagueWatermark2}
-            info={<InfoContent kind="league" sportLabel={label} lang={lang} />}
-            onClick={() => go("tournament_create", createParams("league"))}
-          />
-          <CompetitionCard
-            tag={L("TOURNOI", "TOURNAMENT", "TORNEO")}
-            title={`${L("Créer un tournoi", "Create a tournament", "Crear un torneo")} ${label}`}
-            tone="pink"
-            watermark={tournamentWatermark2}
-            info={<InfoContent kind="tournament" sportLabel={label} lang={lang} />}
-            onClick={() => go("tournament_create", createParams("tournament"))}
-          />
-        </div>
-      ) : null}
+          {entryMode === "menu" ? (
+            <CompetitionCard
+              tag={L("CRÉER", "CREATE", "CREAR")}
+              title={L("Création d’une Compétition", "Create a Competition", "Crear una competición")}
+              tone="gold"
+              watermark={leagueWatermark2}
+              info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Crée une nouvelle ligue / championnat ou un nouveau tournoi pour le sport actif :", "Create a new league / championship or tournament for the active sport:", "Crea una nueva liga / campeonato o un nuevo torneo para el deporte activo:")} <b>{label}</b>.</p></div>}
+              onClick={() => setEntryMode("create")}
+            />
+          ) : null}
 
-      {entryMode === "resume" ? (
-        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-          <SectionLabel>{L("Reprendre", "Resume", "Reanudar")}</SectionLabel>
+          {entryMode === "create" ? <>
+            <SectionLabel>{L("Créer", "Create", "Crear")}</SectionLabel>
+            <CompetitionCard
+              tag={L("LIGUE / CHAMPIONNAT", "LEAGUE / CHAMPIONSHIP", "LIGA / CAMPEONATO")}
+              title={`${L("Créer une ligue", "Create a league", "Crear una liga")} ${label}`}
+              tone="gold"
+              watermark={leagueWatermark2}
+              info={<InfoContent kind="league" sportLabel={label} lang={lang} />}
+              onClick={() => go("tournament_create", createParams("league"))}
+            />
+          </> : null}
 
-          <CompetitionCard
-            tag={L("LIGUES EN COURS", "ONGOING LEAGUES", "LIGAS EN CURSO")}
-            title={`${L("Reprendre une ligue", "Resume a league", "Reanudar una liga")} ${label}`}
-            tone="gold"
-            watermark={leagueWatermark2}
-            info={
-              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                <p style={{ margin: 0 }}>
-                  {L("Affiche les ligues / championnats non terminés pour", "Show unfinished leagues / championships for", "Muestra ligas / campeonatos sin terminar para")} <b>{label}</b>.
-                </p>
-              </div>
-            }
-            onClick={() => go("tournament_list", listParams("league", "active"))}
-          />
-          <CompetitionCard
-            tag={L("TOURNOIS EN COURS", "ONGOING TOURNAMENTS", "TORNEOS EN CURSO")}
-            title={`${L("Reprendre un tournoi", "Resume a tournament", "Reanudar un torneo")} ${label}`}
-            tone="pink"
-            watermark={tournamentWatermark2}
-            info={
-              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                <p style={{ margin: 0 }}>
-                  {L("Affiche les tournois non terminés pour", "Show unfinished tournaments for", "Muestra torneos sin terminar para")} <b>{label}</b>.
-                </p>
-              </div>
-            }
-            onClick={() => go("tournament_list", listParams("tournament", "active"))}
-          />
-        </div>
-      ) : null}
+          {entryMode === "resume" ? <>
+            <SectionLabel>{L("Reprendre", "Resume", "Reanudar")}</SectionLabel>
+            <CompetitionCard
+              tag={L("LIGUES EN COURS", "ONGOING LEAGUES", "LIGAS EN CURSO")}
+              title={`${L("Reprendre une ligue", "Resume a league", "Reanudar una liga")} ${label}`}
+              tone="gold"
+              watermark={leagueWatermark2}
+              info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Affiche les ligues / championnats non terminés pour", "Show unfinished leagues / championships for", "Muestra ligas / campeonatos sin terminar para")} <b>{label}</b>.</p></div>}
+              onClick={() => go("tournament_list", listParams("league", "active"))}
+            />
+          </> : null}
 
-      {entryMode === "consult" ? (
-        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-          <SectionLabel>{L("Consulter", "View", "Consultar")}</SectionLabel>
+          {entryMode === "consult" ? <>
+            <SectionLabel>{L("Consulter", "View", "Consultar")}</SectionLabel>
+            <CompetitionCard
+              tag={L("HISTORIQUE LIGUES", "LEAGUE HISTORY", "HISTORIAL DE LIGAS")}
+              title={`${L("Ligues terminées", "Completed leagues", "Ligas terminadas")} ${label}`}
+              tone="gold"
+              watermark={leagueWatermark2}
+              info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Consulte les ligues / championnats terminés pour", "View completed leagues / championships for", "Consulta ligas / campeonatos terminados para")} <b>{label}</b>.</p></div>}
+              onClick={() => go("tournament_list", listParams("league", "done"))}
+            />
+          </> : null}
+        </section>
 
-          <CompetitionCard
-            tag={L("HISTORIQUE LIGUES", "LEAGUE HISTORY", "HISTORIAL DE LIGAS")}
-            title={`${L("Ligues terminées", "Completed leagues", "Ligas terminadas")} ${label}`}
-            tone="gold"
-            watermark={leagueWatermark2}
-            info={
-              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                <p style={{ margin: 0 }}>
-                  {L("Consulte les ligues / championnats terminés pour", "View completed leagues / championships for", "Consulta ligas / campeonatos terminados para")} <b>{label}</b>.
-                </p>
-              </div>
-            }
-            onClick={() => go("tournament_list", listParams("league", "done"))}
-          />
-          <CompetitionCard
-            tag={L("HISTORIQUE TOURNOIS", "TOURNAMENT HISTORY", "HISTORIAL DE TORNEOS")}
-            title={`${L("Tournois terminés", "Completed tournaments", "Torneos terminados")} ${label}`}
-            tone="pink"
-            watermark={tournamentWatermark2}
-            info={
-              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                <p style={{ margin: 0 }}>
-                  {L("Consulte les tournois terminés pour", "View completed tournaments for", "Consulta torneos terminados para")} <b>{label}</b>.
-                </p>
-              </div>
-            }
-            onClick={() => go("tournament_list", listParams("tournament", "done"))}
-          />
-        </div>
-      ) : null}
+        <aside className="msc-landscape-secondary msc-competitions-secondary">
+          {entryMode === "menu" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              <CompetitionCard
+                tag={L("REPRENDRE", "RESUME", "REANUDAR")}
+                title={L("Reprendre une Compétition en cours", "Resume an Ongoing Competition", "Reanudar una competición en curso")}
+                tone="blue"
+                watermark={resumeWatermark2}
+                info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Retrouve uniquement les ligues et tournois non terminés : brouillons, en cours, ou compétitions à continuer.", "Show only unfinished leagues and tournaments: drafts, ongoing events, or competitions to continue.", "Muestra solo ligas y torneos sin terminar: borradores, en curso o competiciones pendientes.")}</p></div>}
+                onClick={() => setEntryMode("resume")}
+              />
+              <CompetitionCard
+                tag={L("CONSULTER", "VIEW", "CONSULTAR")}
+                title={L("Consulter Historique des compétitions terminées", "View Completed Competitions", "Consultar competiciones terminadas")}
+                tone="green"
+                watermark={consultWatermark2}
+                info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Consulte uniquement les ligues et tournois terminés pour revoir l’historique, les classements et les résultats.", "View completed leagues and tournaments to review history, standings and results.", "Consulta ligas y torneos terminados para revisar el historial, las clasificaciones y los resultados.")}</p></div>}
+                onClick={() => setEntryMode("consult")}
+              />
+            </div>
+          ) : null}
+
+          {entryMode === "create" ? <CompetitionCard tag={L("TOURNOI", "TOURNAMENT", "TORNEO")} title={`${L("Créer un tournoi", "Create a tournament", "Crear un torneo")} ${label}`} tone="pink" watermark={tournamentWatermark2} info={<InfoContent kind="tournament" sportLabel={label} lang={lang} />} onClick={() => go("tournament_create", createParams("tournament"))} /> : null}
+
+          {entryMode === "resume" ? <CompetitionCard tag={L("TOURNOIS EN COURS", "ONGOING TOURNAMENTS", "TORNEOS EN CURSO")} title={`${L("Reprendre un tournoi", "Resume a tournament", "Reanudar un torneo")} ${label}`} tone="pink" watermark={tournamentWatermark2} info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Affiche les tournois non terminés pour", "Show unfinished tournaments for", "Muestra torneos sin terminar para")} <b>{label}</b>.</p></div>} onClick={() => go("tournament_list", listParams("tournament", "active"))} /> : null}
+
+          {entryMode === "consult" ? <CompetitionCard tag={L("HISTORIQUE TOURNOIS", "TOURNAMENT HISTORY", "HISTORIAL DE TORNEOS")} title={`${L("Tournois terminés", "Completed tournaments", "Torneos terminados")} ${label}`} tone="pink" watermark={tournamentWatermark2} info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Consulte les tournois terminés pour", "View completed tournaments for", "Consulta torneos terminados para")} <b>{label}</b>.</p></div>} onClick={() => go("tournament_list", listParams("tournament", "done"))} /> : null}
+        </aside>
+      </div>
     </div>
   );
 }
