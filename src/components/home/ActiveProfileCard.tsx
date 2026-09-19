@@ -683,7 +683,7 @@ function ActiveProfileCard({
                   <ProfileStarRing
                     anchorSize={84}
                     avg3d={starRingAvg3D}
-                    gapPx={-2}
+                    gapPx={2}
                     starSize={12}
                     stepDeg={14}
                     animateGlow={false}

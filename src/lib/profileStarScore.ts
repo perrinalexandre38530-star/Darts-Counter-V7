@@ -63,7 +63,10 @@ export function resolveProfileStarScore(profile: any, extraCandidates: any[] = [
   const quick = readQuickStats(profile) || {};
 
   const avgCandidates = [
-    // mêmes sources rapides que les pages HOME / PROFILES : d'abord les stats X01/Darts persistées
+    // Une valeur fournie explicitement par l'écran courant est prioritaire :
+    // elle correspond à l'AVG3D effectivement affichée. Les caches locaux ne
+    // doivent jamais ramener la couronne à un ancien niveau.
+    ...extraCandidates,
     quick?.avg3D,
     quick?.avg3d,
     quick?.avg3,
@@ -83,7 +86,6 @@ export function resolveProfileStarScore(profile: any, extraCandidates: any[] = [
     profile?.stats?.darts?.avg3D,
     profile?.stats?.darts?.avg3d,
     profile?.stats?.darts?.avg3,
-    ...extraCandidates,
   ];
 
   for (const raw of avgCandidates) {

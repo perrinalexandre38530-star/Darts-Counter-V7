@@ -5062,7 +5062,7 @@ function ActiveProfileBlock({
         >
           <ProfileStarRing
             anchorSize={MEDALLION}
-            gapPx={-2}
+            gapPx={2}
             starSize={STAR}
             stepDeg={14}
             avg3d={Number(activeStats?.avg3 ?? activeAvg3D ?? 0) || 0}
@@ -7154,7 +7154,7 @@ function LocalProfileGridCard({
     >
       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible" }}>
         {showStars ? (
-          <ProfileStarRing avg3d={avg3} anchorSize={88} starSize={12} gapPx={-2} stepDeg={14} animateGlow={false} />
+          <ProfileStarRing avg3d={avg3} anchorSize={88} starSize={12} gapPx={2} stepDeg={14} animateGlow={false} />
         ) : null}
         <div
           style={{
@@ -8321,7 +8321,7 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                     <ProfileStarRing
                       anchorSize={MEDALLION}
                       avg3d={avg3}
-                      gapPx={-1}
+                      gapPx={2}
                       starSize={STAR}
                       stepDeg={14}
                       rotationDeg={0}

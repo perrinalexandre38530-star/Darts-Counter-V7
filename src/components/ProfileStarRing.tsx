@@ -1,166 +1,77 @@
 // ============================================
 // src/components/ProfileStarRing.tsx
-// Couronne d’étoiles — dégradé jaune→rouge + violet final
-// - 1★ / 10 pts (1..9 = dégradé jaune→rouge, 10 = violet clair)
-// - ½★ aux seuils : 5/15/25/35/45/55/65/75/85/95
-// - >100 : +1★ violette chaque +20 (120/140/160/180)
-// - Centré à 12h, gapPx pour coller au médaillon
+// ProfileStarring darts — couronne historique autour du médaillon.
+// Règle : AVG3D X01 -> étoiles (10 pts = 1★, paliers de 5 = ½★,
+// puis +1★ à 120/140/160/180).
 // ============================================
 
 import React from "react";
 import { computeProfileStarRating } from "../lib/profileStarRating";
 
-let profileStarRingCssInstalled = false;
-function useProfileStarRingCss(): void {
-  React.useEffect(() => {
-    if (profileStarRingCssInstalled || typeof document === "undefined") return;
-    const existing = document.getElementById("dc-profile-star-ring-css");
-    if (existing) { profileStarRingCssInstalled = true; return; }
-    const style = document.createElement("style");
-    style.id = "dc-profile-star-ring-css";
-    style.textContent = `
-      @keyframes psr-pulse-kf {
-        0% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.08); opacity: .92; }
-        100% { transform: scale(1); opacity: 1; }
-      }
-      .psr-pulse {
-        animation: psr-pulse-kf 2.6s ease-in-out infinite;
-        transform-origin: 50% 50%;
-        will-change: transform, opacity;
-      }
-    `;
-    document.head.appendChild(style);
-    profileStarRingCssInstalled = true;
-  }, []);
-}
-
-
 function profileStarRingParseBotLevelValue(input: any, fallback = 1): number {
   if (typeof input === "number" && Number.isFinite(input)) {
     return Math.max(1, Math.min(5, Math.round(input * 2) / 2));
   }
-
-  const raw = String(input ?? "").trim();
-  const value = raw.toLowerCase();
+  const value = String(input ?? "").trim().toLowerCase();
   if (!value) return fallback;
-
   const fraction = value.match(/(\d+(?:[.,]\d+)?)\s*\/\s*5/);
   if (fraction) {
     const n = Number(String(fraction[1]).replace(",", "."));
     if (Number.isFinite(n)) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
   }
-
   const decimal = value.match(/(?:niveau|level|lvl|botlevel|stars?|étoiles?)?\s*(\d+(?:[.,]\d+)?)/);
   if (decimal) {
     const n = Number(String(decimal[1]).replace(",", "."));
     if (Number.isFinite(n) && n >= 1 && n <= 5) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
   }
-
   if (value.includes("legend") || value.includes("légende") || value.includes("legende")) return 5;
   if (value.includes("prodige")) return 4.5;
   if (value.includes("pro")) return 4;
   if (value.includes("fort") || value.includes("strong") || value.includes("hard") || value.includes("difficile")) return 3;
   if (value.includes("standard") || value.includes("regular") || value.includes("medium") || value.includes("normal") || value.includes("moyen")) return 2;
   if (value.includes("easy") || value.includes("facile") || value.includes("beginner") || value.includes("débutant") || value.includes("debutant") || value.includes("rookie")) return 1;
-
   return fallback;
 }
 
 function profileStarRingBotLevelToAvg3d(input: any, fallback = 1): number {
-  return Math.round(profileStarRingParseBotLevelValue(input, fallback) * 20);
+  return profileStarRingParseBotLevelValue(input, fallback) * 20;
 }
 
 type Props = {
-  anchorSize?: number;    // diamètre du médaillon
-  size?: number;          // alias historique de anchorSize
-  avg3d?: number;         // moyenne 0..180
-  score?: number;         // alias historique
-  profile?: any;          // compat : certains écrans passent directement le profil/BOT
-  botLevel?: any;         // compat directe
-  starSize?: number;      // taille d’une étoile (px)
-  gapPx?: number;         // distance depuis le bord du médaillon (px)
-  stepDeg?: number;       // écart angulaire entre étoiles (°)
-  rotationDeg?: number;   // rotation globale (°)
-  animateGlow?: boolean;  // légère pulsation
-  glow?: boolean;         // alias historique
-  color?: string;         // ignoré volontairement : couleurs internes du ring
-  theme?: any;            // compat anciens appels
-  active?: boolean;       // compat anciens appels
+  anchorSize?: number;
+  size?: number;
+  avg3d?: number;
+  score?: number;
+  profile?: any;
+  botLevel?: any;
+  starSize?: number;
+  gapPx?: number;
+  stepDeg?: number;
+  rotationDeg?: number;
+  animateGlow?: boolean;
+  glow?: boolean;
+  color?: string;
+  theme?: any;
+  active?: boolean;
 };
 
 type StarEntry = { color: string; half?: boolean };
 
-/* --- Dégradé continu jaune → orange → rouge (1..9) + violet clair (10) --- */
 const STAR_COLORS = [
-  "#FFE873", // 1 jaune clair
-  "#FFD95C", // 2 jaune
-  "#FFC945", // 3 doré
-  "#FFB733", // 4 or/ambre
-  "#FFA22E", // 5 orange clair
-  "#FF8A2F", // 6 orange soutenu
-  "#FF6A3B", // 7 rouge-orangé
-  "#FF504A", // 8 rouge
-  "#FF3860", // 9 rouge vif
-  "#D07CFF", // 10 violet clair
+  "#FFE873",
+  "#FFD95C",
+  "#FFC945",
+  "#FFB733",
+  "#FFA22E",
+  "#FF8A2F",
+  "#FF6A3B",
+  "#FF504A",
+  "#FF3860",
+  "#D07CFF",
 ];
 
-/* --- Étoile SVG --- */
-function Star({
-  size,
-  color,
-  half,
-  animate,
-}: {
-  size: number;
-  color: string;
-  half?: boolean;
-  animate?: boolean;
-}) {
-  const cls = animate ? "psr-pulse" : undefined;
-  const path =
-    "M50 5 L61 36 L94 38 L68 57 L77 88 L50 71 L23 88 L32 57 L6 38 L39 36 Z";
+const STAR_PATH = "M50 5 L61 36 L94 38 L68 57 L77 88 L50 71 L23 88 L32 57 L6 38 L39 36 Z";
 
-  // Une demi-étoile a besoin d'un clipPath unique. Les étoiles pleines n'embarquent
-  // plus chacune un filtre SVG GaussianBlur : des dizaines de filtres simultanés
-  // faisaient travailler inutilement le GPU sur les listes de profils.
-  const safeId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const halfClipId = `halfClip-${safeId}`;
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      className={cls}
-      style={{ filter: `drop-shadow(0 0 1.8px ${color})` }}
-    >
-      {half ? (
-        <>
-          <defs>
-            <clipPath id={halfClipId}>
-              <rect x="0" y="0" width="50" height="100" />
-            </clipPath>
-          </defs>
-          <path
-            d={path}
-            fill="rgba(255,255,255,0.13)"
-            stroke={color}
-            strokeOpacity={0.55}
-            strokeWidth={3}
-          />
-          <g clipPath={`url(#${halfClipId})`}>
-            <path d={path} fill={color} />
-          </g>
-        </>
-      ) : (
-        <path d={path} fill={color} />
-      )}
-    </svg>
-  );
-}
-
-/* --- Composant principal --- */
 export default function ProfileStarRing({
   anchorSize,
   size,
@@ -169,127 +80,143 @@ export default function ProfileStarRing({
   profile,
   botLevel,
   starSize = 14,
-  gapPx = -3,     // collé par défaut
-  stepDeg = 14,   // espacement visuel de référence (type MARJO)
+  gapPx = 2,
+  stepDeg = 14,
   rotationDeg = 0,
   animateGlow = false,
   glow,
 }: Props) {
-  useProfileStarRingCss();
-  const resolvedAnchorSize = Number(anchorSize ?? size ?? 64) || 64;
+  const resolvedAnchorSize = Math.max(1, Number(anchorSize ?? size ?? 64) || 64);
   const profileBotLevel = profile?.botLevel ?? profile?.level ?? botLevel;
-  const rawScore = Number.isFinite(Number(avg3d)) && Number(avg3d) > 0
-    ? Number(avg3d)
-    : Number.isFinite(Number(scoreProp)) && Number(scoreProp) > 0
-      ? Number(scoreProp)
+
+  // L'AVG3D explicite est toujours prioritaire. C'est la valeur affichée par
+  // les écrans Home / Profils / Statistics Center et donc la seule qui doit
+  // décider du niveau visuel d'un joueur humain.
+  const explicitAvg = Number(avg3d);
+  const explicitScore = Number(scoreProp);
+  const rawScore = Number.isFinite(explicitAvg) && explicitAvg > 0
+    ? explicitAvg
+    : Number.isFinite(explicitScore) && explicitScore > 0
+      ? explicitScore
       : profileBotLevel != null
         ? profileStarRingBotLevelToAvg3d(profileBotLevel, 1)
         : 0;
-  // Règle canonique centralisée : 38.8 AVG3D => 3 étoiles pleines + 1/2 étoile.
-  // Ne jamais arrondir l'AVG3D avant d'appliquer les seuils.
-  const rating = computeProfileStarRating(rawScore);
-  const score = rating.score;
-  const fullUnder100 = rating.baseFullStars;
-  const hasHalf = rating.hasHalfStar;
-  const extraViolets = rating.extraStars;
 
+  const rating = computeProfileStarRating(rawScore);
   const entries: StarEntry[] = [];
 
-  // Pleines 1..fullUnder100
-  for (let i = 1; i <= fullUnder100; i++) {
+  for (let i = 1; i <= rating.baseFullStars; i += 1) {
     entries.push({ color: STAR_COLORS[i - 1] || STAR_COLORS[STAR_COLORS.length - 1] });
   }
-
-  // Demi (couleur du palier suivant)
-  if (hasHalf) {
-    const pos = fullUnder100 + 1;
+  if (rating.hasHalfStar) {
+    const pos = rating.baseFullStars + 1;
     entries.push({ color: STAR_COLORS[pos - 1] || STAR_COLORS[STAR_COLORS.length - 1], half: true });
   }
-
-  // Si score >100 : compléter les 10 premières pleines avant les extras
-  if (score > 100 && fullUnder100 < 10) {
-    for (let i = fullUnder100 + 1; i <= 10; i++) {
-      entries.push({ color: STAR_COLORS[i - 1] });
-    }
-  }
-
-  // Étoiles violettes supplémentaires
-  for (let i = 0; i < extraViolets; i++) {
+  for (let i = 0; i < rating.extraStars; i += 1) {
     entries.push({ color: STAR_COLORS[9] });
   }
 
   const count = entries.length;
   if (count === 0) return null;
 
-  // Placement MARJO : arc supérieur, centré à 12 h, étoiles réellement côte à côte.
-  // Un step fixe de 10° est trop petit sur les médaillons courants (12–14 px par
-  // étoile) : plusieurs glyphes se superposent et 3.5★ ressemblent alors à 2★.
-  // On garde stepDeg comme minimum souhaité, puis on calcule l'écart géométrique
-  // minimal pour empêcher le chevauchement. Pour 11–14 étoiles, le rayon peut
-  // s'agrandir légèrement afin que toute la couronne reste sur l'arc supérieur.
-  const baseRadius = resolvedAnchorSize / 2 + gapPx + starSize / 2;
-  const minCenterDistance = Math.max(1, starSize + Math.max(1, starSize * 0.08));
-  const maxUpperArcDeg = 164; // -82° .. +82° autour de 12 h
+  // IMPORTANT : la couronne possède maintenant son propre repère SVG fixe.
+  // Elle ne dépend plus de la largeur/hauteur des wrappers des pages, ce qui
+  // supprimait le décentrage et les étoiles masquées sur certains layouts.
+  const requestedStep = Math.max(1, Number(stepDeg) || 14);
+  const minCenterDistance = Math.max(4, starSize * 0.94);
+  const baseRadius = resolvedAnchorSize / 2 + Number(gapPx || 0) + starSize * 0.52;
 
   const minStepForRadius = (radius: number) => {
-    const ratio = Math.min(1, minCenterDistance / Math.max(2, 2 * radius));
+    const ratio = Math.min(0.999, minCenterDistance / Math.max(2, 2 * radius));
     return (2 * Math.asin(ratio) * 180) / Math.PI;
   };
 
-  let effectiveStepDeg = Math.max(Number(stepDeg) || 0, minStepForRadius(baseRadius));
-  let r = baseRadius;
-
-  if (count > 1 && (count - 1) * effectiveStepDeg > maxUpperArcDeg) {
-    effectiveStepDeg = maxUpperArcDeg / (count - 1);
-    const halfStepRad = (effectiveStepDeg * Math.PI) / 360;
-    const neededRadius = minCenterDistance / Math.max(0.001, 2 * Math.sin(halfStepRad));
-    r = Math.max(baseRadius, neededRadius);
+  let radius = baseRadius;
+  let effectiveStep = Math.max(requestedStep, minStepForRadius(radius));
+  const maxArc = count <= 10 ? 138 : 166;
+  if (count > 1 && (count - 1) * effectiveStep > maxArc) {
+    effectiveStep = maxArc / (count - 1);
+    const halfStep = (effectiveStep * Math.PI) / 360;
+    const requiredRadius = minCenterDistance / Math.max(0.001, 2 * Math.sin(halfStep));
+    radius = Math.max(radius, requiredRadius);
   }
 
-  const halfSpread = (count - 1) * (effectiveStepDeg / 2);
-
-  function pol2cart(angleDeg: number) {
-    const a = ((angleDeg + rotationDeg) * Math.PI) / 180;
-    return { x: Math.sin(a) * r, y: -Math.cos(a) * r };
-  }
+  const halfSpread = ((count - 1) * effectiveStep) / 2;
+  const pad = Math.max(starSize * 1.8, 12);
+  const boxSize = Math.ceil(Math.max(resolvedAnchorSize + pad * 2, radius * 2 + starSize * 1.7));
+  const center = boxSize / 2;
+  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const animate = animateGlow || !!glow;
 
   return (
     <div
-      data-profile-star-score={score}
+      data-profile-star-score={rating.score}
+      data-profile-star-full={rating.baseFullStars + rating.extraStars}
+      data-profile-star-half={rating.hasHalfStar ? "1" : "0"}
       data-profile-star-glyphs={count}
-      style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none", zIndex: 30 }}
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        width: boxSize,
+        height: boxSize,
+        transform: "translate(-50%, -50%)",
+        overflow: "visible",
+        pointerEvents: "none",
+        zIndex: 999,
+      }}
     >
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-        }}
+      <svg
+        width={boxSize}
+        height={boxSize}
+        viewBox={`0 0 ${boxSize} ${boxSize}`}
+        aria-hidden="true"
+        style={{ display: "block", width: boxSize, height: boxSize, maxWidth: "none", overflow: "visible" }}
       >
-        {entries.map((e, i) => {
-          const ang = -halfSpread + i * effectiveStepDeg; // centré à 12 h, sans superposition
-          const { x, y } = pol2cart(ang);
+        {entries.map((entry, index) => {
+          const angleDeg = -halfSpread + index * effectiveStep + rotationDeg;
+          const angle = (angleDeg * Math.PI) / 180;
+          const cx = center + Math.sin(angle) * radius;
+          const cy = center - Math.cos(angle) * radius;
+          const x = cx - starSize / 2;
+          const y = cy - starSize / 2;
+          const clipId = `psr-half-${uid}-${index}`;
           return (
-            <div
-              key={i}
+            <svg
+              key={`${index}-${entry.half ? "h" : "f"}`}
+              x={x}
+              y={y}
+              width={starSize}
+              height={starSize}
+              viewBox="0 0 100 100"
+              overflow="visible"
               style={{
-                position: "absolute",
-                left: x - starSize / 2,
-                top: y - starSize / 2,
+                filter: `drop-shadow(0 0 ${Math.max(1.5, starSize * 0.16)}px ${entry.color})`,
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                animation: animate ? "psr-star-pulse 2.6s ease-in-out infinite" : undefined,
               }}
             >
-              <Star
-                size={starSize}
-                color={e.color}
-                half={e.half}
-                animate={animateGlow || !!glow}
-              />
-            </div>
+              {entry.half ? (
+                <>
+                  <defs>
+                    <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+                      <rect x="0" y="0" width="50" height="100" />
+                    </clipPath>
+                  </defs>
+                  <path d={STAR_PATH} fill="rgba(255,255,255,.12)" stroke={entry.color} strokeOpacity=".72" strokeWidth="4" />
+                  <path d={STAR_PATH} fill={entry.color} clipPath={`url(#${clipId})`} />
+                </>
+              ) : (
+                <path d={STAR_PATH} fill={entry.color} />
+              )}
+            </svg>
           );
         })}
-      </div>
-
+      </svg>
+      {animate ? (
+        <style>{`@keyframes psr-star-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.06);opacity:.94}}`}</style>
+      ) : null}
     </div>
   );
 }

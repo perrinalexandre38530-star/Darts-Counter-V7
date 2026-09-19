@@ -8714,7 +8714,7 @@ return (
                                 <ProfileStarRing
                                   anchorSize={MEDALLION}
                                   avg3d={avg3dForRing}
-                                  gapPx={-1}
+                                  gapPx={2}
                                   starSize={STAR}
                                   stepDeg={14}
                                   rotationDeg={0}
