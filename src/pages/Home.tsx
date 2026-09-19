@@ -2599,14 +2599,6 @@ export default function Home({ store, go, activeSport }: Props) {
       setHomeFeedItems(Array.isArray(feed?.items) ? feed!.items! : []);
       setChangelogEntries(Array.isArray(ch?.entries) ? ch!.entries! : []);
 
-      try {
-        console.log(
-          "[HomeContent] feed=",
-          Array.isArray(feed?.items) ? feed!.items!.length : 0,
-          "changelog=",
-          Array.isArray(ch?.entries) ? ch!.entries!.length : 0
-        );
-      } catch {}
     })();
 
     return () => {
@@ -2699,16 +2691,6 @@ export default function Home({ store, go, activeSport }: Props) {
     return tickerItems.map((x) => x.id).join(" | ");
   }, [tickerItems]);
 
-  // ✅ DEBUG: log UNIQUEMENT quand la liste change (plus de spam)
-  const lastTickerSigRef = React.useRef<string>("");
-  useEffect(() => {
-    try {
-      if (tickerSignature && tickerSignature !== lastTickerSigRef.current) {
-        lastTickerSigRef.current = tickerSignature;
-        console.log("[Home][Ticker] items:", tickerSignature);
-      }
-    } catch {}
-  }, [tickerSignature]);
 
   // ✅ Quand le profil actif change -> on revient au 1er slide (Killer)
   useEffect(() => {

@@ -30,6 +30,20 @@ for(let i=0;i<10 && crados.phase!=="finished";i++) crados=playCradosVisit(crados
 assert.equal(crados.phase,"finished");
 assert.equal(crados.winnerId,"a");
 
+// CRADOS mode VOL : le vol reste risqué (+1 crasse par contact adverse),
+// sinon cette variante pouvait tourner indéfiniment sans jamais éliminer personne.
+let cradosFlip=createCradosState(players,{mode:"crados",seriesWins:1,rules:{dirtLimit:10,layersToOwn:2,bullWash:true,stealMode:"flip"}});
+cradosFlip=playCradosVisit(cradosFlip,[{bed:"D",number:20}]); // A possède 20
+cradosFlip=playCradosVisit(cradosFlip,[{bed:"S",number:20}]); // B attaque, +1 crasse
+assert.equal(cradosFlip.dirt.b,1);
+cradosFlip=playCradosVisit(cradosFlip,[{bed:"S",number:20}]); // A sur son secteur
+cradosFlip=playCradosVisit(cradosFlip,[{bed:"S",number:20}]); // B vole, +1 crasse
+assert.equal(cradosFlip.sectors[20].ownerId,"b");
+assert.equal(cradosFlip.dirt.b,2);
+for(let i=0;i<30 && cradosFlip.phase!=="finished";i++) cradosFlip=playCradosVisit(cradosFlip,[{bed:"S",number:20}]);
+assert.equal(cradosFlip.phase,"finished");
+assert.ok(cradosFlip.winnerId === "a" || cradosFlip.winnerId === "b");
+
 // Helpers UI : aperçu avant validation
 assert.equal(scorePenduVisit([{bed:"T",number:20},{bed:"D",number:20}] as any),100);
 assert.equal(isPenduChallengeSatisfied({kind:"segment",number:20,bed:"D"},[{bed:"T",number:20}] as any,{...pendu.config,rules:{...pendu.config.rules,executionMode:"flex"}} as any),true);

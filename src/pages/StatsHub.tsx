@@ -898,6 +898,9 @@ type Props = {
     | "darts_firefighter"
     | "gros_6"
     | "darts_poker"
+    | "pendu"
+    | "menteur"
+    | "crados"
     | "cargo"
     | "ocean_control"
     | "football"
@@ -1251,7 +1254,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const mode = classifyRecordMode(r);
@@ -1559,6 +1562,9 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("bowling")) return "bowling";
   if (tag.includes("halve_it") || tag.includes("halve-it") || tag.includes("halve it") || tag.includes("half-it")) return "halve_it";
   if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
+  if (tag.includes("pendu") || tag.includes("hangman")) return "pendu";
+  if (tag.includes("menteur") || tag.includes("liar") || tag.includes("bluff")) return "menteur";
+  if (tag.includes("crados") || tag.includes("crado") || tag.includes("slime")) return "crados";
   if (tag.includes("ocean_control") || tag.includes("ocean control")) return "ocean_control";
   if (tag.includes("football") && !tag.includes("babyfoot") && !tag.includes("baby-foot")) return "football";
   if (tag.includes("cargo")) return "cargo";
@@ -5236,6 +5242,9 @@ const modeDefs = React.useMemo(
               { key: "shooter", label: "SHOOTER" },
               { key: "darts_racer", label: "DARTS RACER" },
               { key: "darts_poker", label: "DARTS POKER" },
+              { key: "pendu", label: "PENDU" },
+              { key: "menteur", label: "MENTEUR" },
+              { key: "crados", label: "CRADOS" },
               { key: "cargo", label: "CARGO" },
               { key: "ocean_control", label: "OCEAN CONTROL" },
               { key: "football", label: "DARTS FOOTBALL" },
@@ -6766,6 +6775,20 @@ type ModeDashboardCard = {
   clockBestTimeMs?: number;
   clockBestDarts?: number;
   clockBestStreak?: number;
+  challengesSet?: number;
+  challengesPassed?: number;
+  challengesFailed?: number;
+  errorsTaken?: number;
+  eliminations?: number;
+  raises?: number;
+  liarCalls?: number;
+  contractsProven?: number;
+  liesCaught?: number;
+  layersPlaced?: number;
+  sectorsClaimed?: number;
+  sectorsStolen?: number;
+  dirtTaken?: number;
+  dirtWashed?: number;
   ticker: ModeTickerStat[];
 };
 
@@ -6800,6 +6823,9 @@ const modeThemeColor: Record<string, string> = {
   shooter: "#42d6ff",
   darts_racer: "#42d6ff",
   darts_poker: "#f6c256",
+  pendu: "#ffb33f",
+  menteur: "#ffbf37",
+  crados: "#b7f247",
   cargo: "#ff9b42",
   ocean_control: "#30b9ff",
   football: "#65e5aa",
@@ -6848,6 +6874,9 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     shooter: "SHOOTER",
     darts_racer: "DARTS RACER",
     darts_poker: "DARTS POKER",
+    pendu: "PENDU",
+    menteur: "MENTEUR",
+    crados: "CRADOS",
     cargo: "CARGO",
     ocean_control: "OCEAN CONTROL",
     football: "DARTS FOOTBALL",
@@ -6859,7 +6888,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -7351,6 +7380,20 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       clockBestTimeMs: 0,
       clockBestDarts: 0,
       clockBestStreak: 0,
+      challengesSet: 0,
+      challengesPassed: 0,
+      challengesFailed: 0,
+      errorsTaken: 0,
+      eliminations: 0,
+      raises: 0,
+      liarCalls: 0,
+      contractsProven: 0,
+      liesCaught: 0,
+      layersPlaced: 0,
+      sectorsClaimed: 0,
+      sectorsStolen: 0,
+      dirtTaken: 0,
+      dirtWashed: 0,
       ticker: [],
       samples: [],
       favMap: {},
@@ -7890,6 +7933,49 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     if (mode !== "cricket") {
       a.extra += n(stats?.marksTotal) || n(stats?.marks) || n(stats?.advances) || n(stats?.lostLives) || n(stats?.damageTaken);
     }
+    if (mode === "pendu") {
+      const set = n(stats?.challengesSet);
+      const passed = n(stats?.challengesPassed);
+      const failed = n(stats?.challengesFailed);
+      const errors = n(stats?.errorsTaken) || n(stats?.errors);
+      const eliminations = n(stats?.eliminations);
+      a.challengesSet = Number(a.challengesSet || 0) + set;
+      a.challengesPassed = Number(a.challengesPassed || 0) + passed;
+      a.challengesFailed = Number(a.challengesFailed || 0) + failed;
+      a.errorsTaken = Number(a.errorsTaken || 0) + errors;
+      a.eliminations = Number(a.eliminations || 0) + eliminations;
+      a.hits += passed;
+      a.miss += failed;
+    }
+    if (mode === "menteur") {
+      const raises = n(stats?.raises);
+      const calls = n(stats?.liarCalls) || n(stats?.calls);
+      const proven = n(stats?.contractsProven) || n(stats?.proofs);
+      const caught = n(stats?.liesCaught);
+      const lost = n(stats?.livesLost) || n(stats?.lostLives);
+      a.raises = Number(a.raises || 0) + raises;
+      a.liarCalls = Number(a.liarCalls || 0) + calls;
+      a.contractsProven = Number(a.contractsProven || 0) + proven;
+      a.liesCaught = Number(a.liesCaught || 0) + caught;
+      a.livesLost = Number(a.livesLost || 0) + lost;
+      a.hits += proven;
+      a.captures += calls;
+      a.extra += caught;
+    }
+    if (mode === "crados") {
+      const layers = n(stats?.layersPlaced);
+      const claimed = n(stats?.sectorsClaimed) || n(stats?.sectors);
+      const stolen = n(stats?.sectorsStolen) || n(stats?.steals);
+      const dirt = n(stats?.dirtTaken) || n(stats?.dirt);
+      const washed = n(stats?.dirtWashed) || n(stats?.cleaned);
+      a.layersPlaced = Number(a.layersPlaced || 0) + layers;
+      a.sectorsClaimed = Number(a.sectorsClaimed || 0) + claimed;
+      a.sectorsStolen = Number(a.sectorsStolen || 0) + stolen;
+      a.dirtTaken = Number(a.dirtTaken || 0) + dirt;
+      a.dirtWashed = Number(a.dirtWashed || 0) + washed;
+      a.captures += claimed;
+      a.extra += dirt;
+    }
     const favMap = stats?.favNumberHits || stats?.numberHits || stats?.hitsByNumber || stats?.byNumber || null;
     if (favMap && typeof favMap === "object") {
       Object.entries(favMap).forEach(([k, v]) => {
@@ -8150,6 +8236,33 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
             { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
           ];
         })()
+      : a.key === "pendu"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Défis réussis", value: fmtStatValue(a.challengesPassed || 0), tone: "green" },
+          { label: "Erreurs", value: fmtStatValue(a.errorsTaken || 0), tone: "red" },
+          { label: "Éliminations", value: fmtStatValue(a.eliminations || 0), tone: "red" },
+          { label: "Best volée", value: fmtStatValue(a.best), tone: "blue" },
+        ]
+      : a.key === "menteur"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Enchères", value: fmtStatValue(a.raises || 0), tone: "gold" },
+          { label: "MENTEUR !", value: fmtStatValue(a.liarCalls || 0), tone: "red" },
+          { label: "Contrats prouvés", value: fmtStatValue(a.contractsProven || 0), tone: "green" },
+          { label: "Vies perdues", value: fmtStatValue(a.livesLost || 0), tone: "red" },
+        ]
+      : a.key === "crados"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Secteurs", value: fmtStatValue(a.sectorsClaimed || 0), tone: "green" },
+          { label: "Vols", value: fmtStatValue(a.sectorsStolen || 0), tone: "blue" },
+          { label: "Crasse reçue", value: fmtStatValue(a.dirtTaken || 0), tone: "red" },
+          { label: "Crasse lavée", value: fmtStatValue(a.dirtWashed || 0), tone: "green" },
+        ]
       : a.key === "golf"
       ? [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
@@ -9803,7 +9916,7 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "baseball", "president"].includes(String(currentMode)) && (
+            {["battle_royale", "warfare", "baseball", "president", "pendu", "menteur", "crados"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
@@ -9827,6 +9940,9 @@ return (
                       shooter: ["shooter"],
                       darts_racer: ["darts_racer", "darts racer", "dartsracer", "mario_kart"],
                       darts_poker: ["darts_poker", "darts poker", "dartspoker"],
+                      pendu: ["pendu", "hangman"],
+                      menteur: ["menteur", "liar", "bluff"],
+                      crados: ["crados", "crado", "slime"],
                       ocean_control: ["ocean_control", "ocean control"],
                       football: ["football", "darts football", "football_darts"],
                       prisoner: ["prisoner"],
@@ -9841,13 +9957,22 @@ return (
                       const blob = [r?.kind, r?.mode, r?.game, r?.variantId, r?.summary?.mode, r?.payload?.kind, r?.payload?.mode, r?.payload?.originalMode, r?.payload?.variantId, r?.payload?.summary?.mode]
                         .filter(Boolean).map((x: any) => lc(x)).join(" ");
                       if (!modeAliases.some((a) => blob.includes(a))) return false;
-                      const pools = [r?.players, r?.summary?.players, r?.summary?.perPlayer, r?.payload?.players, r?.payload?.stats?.players, r?.payload?.summary?.players, r?.payload?.summary?.perPlayer];
-                      return pools.some((arr: any) => Array.isArray(arr) && arr.some((pl: any) => String(pl?.id || pl?.playerId || pl?.profileId || "") === pid));
+                      const pools = [
+                        r?.players, r?.summary?.players, r?.summary?.perPlayer,
+                        r?.payload?.players, r?.payload?.stats?.players, r?.payload?.summary?.players, r?.payload?.summary?.perPlayer,
+                        r?.payload?.stateSnapshot?.players, r?.payload?.stateSnapshot?.statsByPlayer,
+                        r?.resume?.state?.players, r?.resume?.state?.statsByPlayer,
+                      ];
+                      return pools.some((src: any) => toArrLoc<any>(src).some((pl: any) => String(pl?.id || pl?.playerId || pl?.profileId || "") === pid));
                     });
                     const playerRows = rows.map((r: any) => {
-                      const pools = [r?.payload?.stats?.players, r?.payload?.players, r?.summary?.players, r?.summary?.perPlayer, r?.players];
-                      for (const arr of pools) {
-                        if (!Array.isArray(arr)) continue;
+                      const pools = [
+                        r?.payload?.stats?.players, r?.summary?.perPlayer, r?.payload?.summary?.perPlayer,
+                        r?.payload?.stateSnapshot?.statsByPlayer, r?.resume?.state?.statsByPlayer,
+                        r?.payload?.players, r?.summary?.players, r?.players,
+                      ];
+                      for (const src of pools) {
+                        const arr = toArrLoc<any>(src);
                         const hit = arr.find((pl: any) => String(pl?.id || pl?.playerId || pl?.profileId || "") === pid);
                         if (hit) return { rec: r, pl: hit };
                       }
@@ -9856,7 +9981,7 @@ return (
                     const games = rows.length;
                     const wins = playerRows.filter(({ rec, pl }: any) =>
                       pl?.win === true || pl?.winner === true ||
-                      String(rec?.winnerId || rec?.summary?.winnerId || rec?.payload?.winnerId || "") === pid
+                      String(rec?.winnerId || rec?.summary?.winnerId || rec?.payload?.winnerId || rec?.payload?.stateSnapshot?.winnerId || rec?.resume?.state?.winnerId || "") === pid
                     ).length;
                     const sum = (key: string) => playerRows.reduce((a: number, x: any) => a + (Number(x.pl?.[key] ?? 0) || 0), 0);
                     const darts = sum("dartsThrown") || sum("darts") || sum("totalThrows");
@@ -9925,10 +10050,77 @@ return (
                     const avgRankPresident = playerRows.length ? playerRows.reduce((a: number, x: any) => a + (Number(x.pl?.avgRank ?? 0) || 0), 0) / playerRows.length : 0;
                     const averageVisit = visits ? points / visits : 0;
                     const objectiveRate = targetsFaced ? Math.round((successfulVisits / targetsFaced) * 1000) / 10 : 0;
+                    const challengesSet = sum("challengesSet");
+                    const challengesPassed = sum("challengesPassed");
+                    const challengesFailed = sum("challengesFailed");
+                    const errorsTaken = sum("errorsTaken") || sum("errors");
+                    const eliminationsParty = sum("eliminations");
+                    const raisesParty = sum("raises");
+                    const liarCalls = sum("liarCalls") || sum("calls");
+                    const contractsProven = sum("contractsProven") || sum("proofs");
+                    const liesCaught = sum("liesCaught");
+                    const livesLostParty = sum("livesLost") || sum("lostLives");
+                    const layersPlaced = sum("layersPlaced");
+                    const sectorsClaimed = sum("sectorsClaimed") || sum("sectors");
+                    const sectorsStolen = sum("sectorsStolen") || sum("steals");
+                    const dirtTaken = sum("dirtTaken") || sum("dirt");
+                    const dirtWashed = sum("dirtWashed") || sum("cleaned");
+                    const partyLegsWon = sum("legsWon");
+                    const penduSuccessRate = challengesSet ? Math.round((challengesPassed / challengesSet) * 1000) / 10 : 0;
+                    const proofAttempts = visits;
+                    const menteurProofRate = proofAttempts ? Math.round((contractsProven / proofAttempts) * 1000) / 10 : 0;
                     const statBox = { ...softCard, padding: 14 } as React.CSSProperties;
                     const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
                     const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
-                    return currentMode === "president" ? (
+                    return currentMode === "pendu" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Défis posés</div><div style={{ ...value, color: "#ffb33f" }}>{challengesSet}</div></div>
+                          <div style={statBox}><div style={label}>Défis réussis</div><div style={{ ...value, color: "#72efb1" }}>{challengesPassed}</div><div style={{ opacity: .75, fontSize: 11 }}>{challengesSet ? `${penduSuccessRate}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Défis ratés</div><div style={{ ...value, color: "#ff8a72" }}>{challengesFailed}</div></div>
+                          <div style={statBox}><div style={label}>Erreurs prises</div><div style={{ ...value, color: "#ff6b57" }}>{errorsTaken}</div></div>
+                          <div style={statBox}><div style={label}>Éliminations</div><div style={value}>{eliminationsParty}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{partyLegsWon}</div></div>
+                          <div style={statBox}><div style={label}>Meilleure volée</div><div style={value}>{bestVisit || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Statistiques cumulées PENDU : défis créés/reproduits, réussite, erreurs et éliminations.</div>
+                      </>
+                    ) : currentMode === "menteur" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Enchères</div><div style={{ ...value, color: "#ffbf37" }}>{raisesParty}</div></div>
+                          <div style={statBox}><div style={label}>Appels MENTEUR !</div><div style={{ ...value, color: "#ff6b57" }}>{liarCalls}</div></div>
+                          <div style={statBox}><div style={label}>Contrats prouvés</div><div style={{ ...value, color: "#72efb1" }}>{contractsProven}</div><div style={{ opacity: .75, fontSize: 11 }}>{proofAttempts ? `${menteurProofRate}% des preuves` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Mensonges démasqués</div><div style={value}>{liesCaught}</div></div>
+                          <div style={statBox}><div style={label}>Vies perdues</div><div style={{ ...value, color: "#ff6b57" }}>{livesLostParty}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{partyLegsWon}</div></div>
+                          <div style={statBox}><div style={label}>Meilleure preuve</div><div style={value}>{bestVisit || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes de preuve</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Statistiques cumulées MENTEUR : pression aux enchères, appels, preuves réussies et mensonges démasqués.</div>
+                      </>
+                    ) : currentMode === "crados" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Couches posées</div><div style={{ ...value, color: "#b7f247" }}>{layersPlaced}</div></div>
+                          <div style={statBox}><div style={label}>Secteurs contaminés</div><div style={{ ...value, color: "#b7f247" }}>{sectorsClaimed}</div></div>
+                          <div style={statBox}><div style={label}>Secteurs volés</div><div style={value}>{sectorsStolen}</div></div>
+                          <div style={statBox}><div style={label}>Crasse reçue</div><div style={{ ...value, color: "#c99558" }}>{dirtTaken}</div></div>
+                          <div style={statBox}><div style={label}>Crasse lavée</div><div style={{ ...value, color: "#72efb1" }}>{dirtWashed}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{partyLegsWon}</div></div>
+                          <div style={statBox}><div style={label}>Volées</div><div style={value}>{visits}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Statistiques cumulées CRADOS : contamination, vols de secteurs, crasse subie et nettoyage au Bull.</div>
+                      </>
+                    ) : currentMode === "president" ? (
                       <>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>

@@ -592,18 +592,28 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
     payload?.summary?.players,
     payload?.players,
     payload?.state?.players,
+    payload?.state?.statsByPlayer,
+    payload?.stateSnapshot?.players,
+    payload?.stateSnapshot?.statsByPlayer,
+    payload?.resume?.state?.players,
+    payload?.resume?.state?.statsByPlayer,
   ];
   const byId = new Map<string, any>();
-  for (const pool of pools) {
-    if (!Array.isArray(pool)) continue;
-    for (const row of pool) {
+  const mergePool = (pool: any) => {
+    const rows = Array.isArray(pool)
+      ? pool
+      : pool && typeof pool === "object"
+        ? Object.entries(pool).map(([key, value]: any) => value && typeof value === "object" ? { id: key, playerId: key, ...value } : { id: key, playerId: key, value })
+        : [];
+    for (const row of rows) {
       const pid = String(row?.id || row?.playerId || row?.profileId || row?.uid || "");
       if (!pid) continue;
       byId.set(pid, { ...(byId.get(pid) || {}), ...(row || {}), id: pid, playerId: pid });
     }
-  }
+  };
+  for (const pool of pools) mergePool(pool);
 
-  const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
+  const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.stateSnapshot?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
   for (const pl of byId.values()) {
     const pid = String(pl?.id || pl?.playerId || pl?.profileId || pl?.uid || "");
     if (!pid) continue;
@@ -632,6 +642,9 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
       singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, scoringHits: 0,
       blockedDarts: 0, wastedDarts: 0, stopperVisits: 0, scorerVisits: 0, stopperDarts: 0, scorerDarts: 0,
       bestScoringVisit: 0, bestMarksVisit: 0, segmentStats: {},
+      challengesSet: 0, challengesPassed: 0, challengesFailed: 0, errorsTaken: 0, eliminations: 0,
+      raises: 0, liarCalls: 0, contractsProven: 0, liesCaught: 0, livesLost: 0,
+      layersPlaced: 0, sectorsClaimed: 0, sectorsStolen: 0, dirtTaken: 0, dirtWashed: 0, legsWon: 0,
     };
     cur.points += points;
     cur.darts += dartsThrown;
@@ -667,6 +680,22 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
     cur.scorerDarts += Number(pl?.scorerDarts ?? 0) || 0;
     cur.bestScoringVisit = Math.max(Number(cur.bestScoringVisit || 0), Number(pl?.bestScoringVisit ?? pl?.bestVisit ?? 0) || 0);
     cur.bestMarksVisit = Math.max(Number(cur.bestMarksVisit || 0), Number(pl?.bestMarksVisit ?? 0) || 0);
+    cur.challengesSet += Number(pl?.challengesSet ?? 0) || 0;
+    cur.challengesPassed += Number(pl?.challengesPassed ?? 0) || 0;
+    cur.challengesFailed += Number(pl?.challengesFailed ?? 0) || 0;
+    cur.errorsTaken += Number(pl?.errorsTaken ?? pl?.errors ?? 0) || 0;
+    cur.eliminations += Number(pl?.eliminations ?? 0) || 0;
+    cur.raises += Number(pl?.raises ?? 0) || 0;
+    cur.liarCalls += Number(pl?.liarCalls ?? pl?.calls ?? 0) || 0;
+    cur.contractsProven += Number(pl?.contractsProven ?? pl?.proofs ?? 0) || 0;
+    cur.liesCaught += Number(pl?.liesCaught ?? 0) || 0;
+    cur.livesLost += Number(pl?.livesLost ?? pl?.lostLives ?? 0) || 0;
+    cur.layersPlaced += Number(pl?.layersPlaced ?? 0) || 0;
+    cur.sectorsClaimed += Number(pl?.sectorsClaimed ?? pl?.sectors ?? 0) || 0;
+    cur.sectorsStolen += Number(pl?.sectorsStolen ?? pl?.steals ?? 0) || 0;
+    cur.dirtTaken += Number(pl?.dirtTaken ?? pl?.dirt ?? 0) || 0;
+    cur.dirtWashed += Number(pl?.dirtWashed ?? pl?.cleaned ?? 0) || 0;
+    cur.legsWon += Number(pl?.legsWon ?? 0) || 0;
     if (pl?.segmentStats && typeof pl.segmentStats === "object") {
       for (const [target, values] of Object.entries(pl.segmentStats as any)) {
         const dst: any = cur.segmentStats[target] || { darts: 0, marks: 0, closes: 0, scoringHits: 0, points: 0, blockedDarts: 0 };

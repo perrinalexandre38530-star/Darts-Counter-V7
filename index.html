@@ -2,11 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<!-- Google AdSense - PWA/Web -->
-<script async
-  src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5323277022978157"
-  crossorigin="anonymous"></script>
-
+<!-- Web/PWA: pas de chargement global AdSense.
+     Les promotions web restent internes et Android utilise AdMob natif.
+     Cela évite les erreurs ERR_BLOCKED_BY_CLIENT quand un bloqueur est actif. -->
 <meta http-equiv="Content-Security-Policy" content="default-src * 'self' data: blob: 'unsafe-inline' 'unsafe-eval';">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
 <meta http-equiv="Pragma" content="no-cache" />
