@@ -5958,6 +5958,7 @@ if (isLandscapeTablet) {
     >
       {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
       <GameplayLayout
+        modeId="x01"
         title=""
         onBack={handleQuit}
         showInfo={false}
@@ -6130,6 +6131,7 @@ if (isLandscapeTablet) {
           </div>
         }
         playersRowLabel="JOUEURS"
+        playersPanelMode="modal"
         // ⚠️ Identité visuelle : le ticker X01 doit rester en fond du bandeau JOUEURS.
         playersBannerImage={tickerX01}
         playersPanelTitle={<span style={{ color: themePrimary, textShadow: `0 0 10px ${themePrimary}AA, 0 0 22px ${themePrimary}77`, letterSpacing: 0.4, fontWeight: 950 }}>Joueurs</span>}

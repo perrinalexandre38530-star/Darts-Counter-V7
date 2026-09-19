@@ -183,6 +183,7 @@ export default function GameplayLayout({
 
   const playersInSidebar = isTablet && canOpenPlayers && playersPanelMode === "sidebar-auto";
   const showPlayersRowAsButton = canOpenPlayers && !playersInSidebar;
+  const x01LandscapeTicker = isTablet && modeId === "x01" && !!headerFullBleedImage;
 
   // Fallback garanti: si on oublie de passer playersBannerImage, certains modes ont un ticker "obligatoire".
   // (Objectif: éviter que le ticker X01 "disparaisse" au gré des patchs.)
@@ -306,7 +307,7 @@ export default function GameplayLayout({
   };
 
   return (
-    <div className="msc-gameplay-layout" style={outerStyle}>
+    <div className={`msc-gameplay-layout${modeId ? ` msc-gameplay-layout--${modeId}` : ""}`} style={outerStyle}>
       <div className="msc-gameplay-shell" style={containerStyle}>
         {/* 1) HEADER SCOREBOARD + MENU & INFOS */}
         <div
@@ -318,19 +319,71 @@ export default function GameplayLayout({
           }}
         >
           {headerFullBleedImage ? (
-            <img
-              src={headerFullBleedImage}
-              alt={headerFullBleedAlt}
-              draggable={false}
-              style={{
-                width: "100%",
-                height: "auto",
-                minHeight: 64,
-                display: "block",
-                userSelect: "none",
-                pointerEvents: "none",
-              }}
-            />
+            x01LandscapeTicker ? (
+              <div
+                aria-hidden
+                className="msc-x01-landscape-ticker"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  pointerEvents: "none",
+                }}
+              >
+                <img
+                  src={headerFullBleedImage}
+                  alt={headerFullBleedAlt}
+                  draggable={false}
+                  style={{
+                    display: "block",
+                    width: "auto",
+                    height: "100%",
+                    maxWidth: "100%",
+                    objectFit: "contain",
+                    objectPosition: "center",
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                />
+                <span
+                  className="msc-x01-landscape-ticker-fade msc-x01-landscape-ticker-fade--left"
+                  style={{
+                    position: "absolute",
+                    inset: "0 auto 0 0",
+                    width: "24%",
+                    background: "linear-gradient(90deg, rgba(3,7,12,.96) 0%, rgba(3,7,12,.78) 28%, rgba(3,7,12,.24) 68%, rgba(3,7,12,0) 100%)",
+                    backdropFilter: "blur(2px)",
+                  }}
+                />
+                <span
+                  className="msc-x01-landscape-ticker-fade msc-x01-landscape-ticker-fade--right"
+                  style={{
+                    position: "absolute",
+                    inset: "0 0 0 auto",
+                    width: "24%",
+                    background: "linear-gradient(270deg, rgba(3,7,12,.96) 0%, rgba(3,7,12,.78) 28%, rgba(3,7,12,.24) 68%, rgba(3,7,12,0) 100%)",
+                    backdropFilter: "blur(2px)",
+                  }}
+                />
+              </div>
+            ) : (
+              <img
+                src={headerFullBleedImage}
+                alt={headerFullBleedAlt}
+                draggable={false}
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  minHeight: 64,
+                  display: "block",
+                  userSelect: "none",
+                  pointerEvents: "none",
+                }}
+              />
+            )
           ) : null}
 
           <div
