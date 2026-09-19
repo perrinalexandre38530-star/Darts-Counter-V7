@@ -5064,8 +5064,8 @@ function ActiveProfileBlock({
             anchorSize={MEDALLION}
             gapPx={-2}
             starSize={STAR}
-            stepDeg={10}
-            avg3d={activeAvg3D ?? 0}
+            stepDeg={14}
+            avg3d={Number(activeStats?.avg3 ?? activeAvg3D ?? 0) || 0}
           />
         </div>
 
@@ -7154,7 +7154,7 @@ function LocalProfileGridCard({
     >
       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible" }}>
         {showStars ? (
-          <ProfileStarRing avg3d={avg3} anchorSize={88} starSize={12} gapPx={-2} animateGlow={false} />
+          <ProfileStarRing avg3d={avg3} anchorSize={88} starSize={12} gapPx={-2} stepDeg={14} animateGlow={false} />
         ) : null}
         <div
           style={{
@@ -8323,7 +8323,7 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                       avg3d={avg3}
                       gapPx={-1}
                       starSize={STAR}
-                      stepDeg={10}
+                      stepDeg={14}
                       rotationDeg={0}
                       animateGlow={false}
                     />
@@ -9494,6 +9494,7 @@ const MemoActiveProfileBlock = React.memo(ActiveProfileBlock, (prev, next) => {
     firstStringChunk((prev.active as any)?.avatarDataUrl, 80) === firstStringChunk((next.active as any)?.avatarDataUrl, 80) &&
     prev.selfStatus === next.selfStatus &&
     prev.activeAvg3D === next.activeAvg3D &&
+    Number((prev.activeStats as any)?.avg3 ?? 0) === Number((next.activeStats as any)?.avg3 ?? 0) &&
     Number((prev.activeStats as any)?.bestVisit ?? 0) === Number((next.activeStats as any)?.bestVisit ?? 0) &&
     Number((prev.activeStats as any)?.bestCheckout ?? 0) === Number((next.activeStats as any)?.bestCheckout ?? 0) &&
     Number((prev.activeStats as any)?.winRate ?? 0) === Number((next.activeStats as any)?.winRate ?? 0) &&

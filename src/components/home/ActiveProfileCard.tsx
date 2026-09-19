@@ -618,9 +618,16 @@ function ActiveProfileCard({
     }
   };
 
-  const starRingAvg3D = Number.isFinite(Number(starAvg3D))
-    ? Number(starAvg3D)
-    : Number(stats?.avg3DGlobal ?? 0) || 0;
+  // Le StarRing DOIT utiliser exactement la même AVG3D que la valeur affichée
+  // dans la carte. On évite ainsi qu'un ancien starAvg3D/cache partiel (ex: 20)
+  // masque une AVG3D globale déjà recalculée (ex: 38.8).
+  const visibleAvg3D = Number(stats?.avg3DGlobal ?? 0);
+  const fallbackStarAvg3D = Number(starAvg3D ?? 0);
+  const starRingAvg3D = Number.isFinite(visibleAvg3D) && visibleAvg3D > 0
+    ? visibleAvg3D
+    : Number.isFinite(fallbackStarAvg3D) && fallbackStarAvg3D > 0
+      ? fallbackStarAvg3D
+      : 0;
 
   // IMPORTANT: ne jamais retourner avant les hooks ci-dessus. Lors d'un
   // changement de sport/profil, profile peut être null pendant une frame.
@@ -678,7 +685,7 @@ function ActiveProfileCard({
                     avg3d={starRingAvg3D}
                     gapPx={-2}
                     starSize={12}
-                    stepDeg={10}
+                    stepDeg={14}
                     animateGlow={false}
                   />
                 </div>

@@ -170,7 +170,7 @@ export default function ProfileStarRing({
   botLevel,
   starSize = 14,
   gapPx = -3,     // collé par défaut
-  stepDeg = 10,   // resserré
+  stepDeg = 14,   // espacement visuel de référence (type MARJO)
   rotationDeg = 0,
   animateGlow = false,
   glow,
@@ -254,7 +254,11 @@ export default function ProfileStarRing({
   }
 
   return (
-    <div style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }}>
+    <div
+      data-profile-star-score={score}
+      data-profile-star-glyphs={count}
+      style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none", zIndex: 30 }}
+    >
       <div
         style={{
           position: "absolute",

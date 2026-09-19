@@ -8650,17 +8650,17 @@ return (
 
                         // ✅ Source "HOME-like" : on préfère la moyenne déjà calculée
                         // par le dashboard global (même logique que la Home via statsBridge).
-                        const dashAvg3 = Number((dashboardToShow as any)?.avg3Overall);
+                        const dashAvg3 = Number((dashboardToShowWithModes as any)?.avg3Overall);
 
-                        const pick = (...vals: any[]) => {
+                        const pickPositive = (...vals: any[]) => {
                           for (const v of vals) {
                             const n = Number(v);
-                            if (Number.isFinite(n) && n >= 0) return n;
+                            if (Number.isFinite(n) && n > 0) return n;
                           }
                           return 0;
                         };
 
-                        const avg3d = pick(
+                        const avg3d = pickPositive(
                           dashAvg3,
                           q?.byId?.[pid]?.avg3d,
                           q?.byId?.[pid]?.avg3,
@@ -8716,7 +8716,7 @@ return (
                                   avg3d={avg3dForRing}
                                   gapPx={-1}
                                   starSize={STAR}
-                                  stepDeg={10}
+                                  stepDeg={14}
                                   rotationDeg={0}
                                   animateGlow={false}
                                 />
