@@ -8713,7 +8713,7 @@ return (
                                   starSize={STAR}
                                   stepDeg={10}
                                   rotationDeg={0}
-                                  animateGlow={true}
+                                  animateGlow={false}
                                 />
                               </div>
 

@@ -3026,7 +3026,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         </div>
 
         <div
-          className="msc-landscape-primary msc-messages-primary"
+          className="msc-landscape-primary msc-messages-primary msc-messages-primary--vertical"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(6, minmax(0, 1fr))",

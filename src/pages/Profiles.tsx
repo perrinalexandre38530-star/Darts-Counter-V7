@@ -1368,6 +1368,16 @@ export default function Profiles({
       : "menu"
   );
 
+  const [localsSectionLandscape, setLocalsSectionLandscape] = React.useState<LocalProfilesSection>(
+    params?.view === "locals" ? "list" : "list"
+  );
+
+  React.useEffect(() => {
+    if (view === "locals") {
+      setLocalsSectionLandscape((current) => current || "list");
+    }
+  }, [view]);
+
   const stableProfilesBase = useStableProfiles(profiles as any);
   const [linkedProfileProjection, setLinkedProfileProjection] = React.useState<any>(() => ({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] }));
 
@@ -2154,6 +2164,7 @@ export default function Profiles({
     // Le changement visuel passe avant toute instrumentation. Même si le mode
     // diagnostic est activé, il ne doit jamais retarder l'ouverture d'un menu.
     const fromView = view;
+    if (next === "locals") setLocalsSectionLandscape("list");
     setView(next);
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
@@ -3755,6 +3766,34 @@ React.useEffect(() => {
               slotKey="page-profiles-under-header"
             />
 
+            {view === "locals" && (
+              <Card compact>
+                <div className="msc-profiles-locals-side-tabs" style={{ display: "grid", gap: 10 }}>
+                  <LocalSectionTab
+                    active={localsSectionLandscape === "create"}
+                    label="Créer"
+                    accent={primary}
+                    onClick={() => setLocalsSectionLandscape("create")}
+                  />
+                  <LocalSectionTab
+                    active={localsSectionLandscape === "list"}
+                    label="Liste"
+                    accent={primary}
+                    onClick={() => setLocalsSectionLandscape("list")}
+                  />
+                  <LocalSectionTab
+                    active={localsSectionLandscape === "associate"}
+                    label="Associer"
+                    accent={primary}
+                    onClick={() => {
+                      setLocalsSectionLandscape("associate");
+                      void openLocalAssociations();
+                    }}
+                  />
+                </div>
+              </Card>
+            )}
+
             {view === "me" && (
               <>
                 <Card>
@@ -3898,6 +3937,9 @@ React.useEffect(() => {
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
                   deferHeavy={!localsHeavyReady || restoreBusy}
+                  section={localsSectionLandscape}
+                  onSectionChange={setLocalsSectionLandscape}
+                  hideSectionTabs
                 />
               </Card>
             )}
@@ -7470,6 +7512,9 @@ function LocalProfilesRefonte({
   onboardingMode = false,
   autoFocusCreate = false,
   deferHeavy = false,
+  section,
+  onSectionChange,
+  hideSectionTabs = false,
 }: {
   profiles: Profile[];
   activeProfileId: string | null;
@@ -7496,6 +7541,9 @@ function LocalProfilesRefonte({
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
   deferHeavy?: boolean;
+  section?: LocalProfilesSection;
+  onSectionChange?: (section: LocalProfilesSection) => void;
+  hideSectionTabs?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -7506,7 +7554,12 @@ function LocalProfilesRefonte({
   const isFit = isFitSportKey(sportResolved);
   const { t, lang } = useLang();
   const primary = theme.primary;
-  const [localSection, setLocalSection] = React.useState<LocalProfilesSection>(onboardingMode ? "create" : "list");
+  const [localSectionState, setLocalSectionState] = React.useState<LocalProfilesSection>(onboardingMode ? "create" : "list");
+  const localSection = section ?? localSectionState;
+  const setLocalSection = React.useCallback((next: LocalProfilesSection) => {
+    setLocalSectionState(next);
+    onSectionChange?.(next);
+  }, [onSectionChange]);
   const [listDetailOpen, setListDetailOpen] = React.useState(false);
   const [gridPage, setGridPage] = React.useState(0);
   const [pendingCreatedProfileId, setPendingCreatedProfileId] = React.useState<string | null>(null);
@@ -7958,7 +8011,7 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
         }}
       />
 
-      {!onboardingMode ? (
+      {!onboardingMode && !hideSectionTabs ? (
         <div
           style={{
             display: "grid",

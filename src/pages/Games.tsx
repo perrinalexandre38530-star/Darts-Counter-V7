@@ -1548,18 +1548,47 @@ export default function Games({ setTab, params }: Props) {
               {pageTitle}
             </h1>
           )
-        ) : (
-          <h1
+        ) : gamesView === "all" && menuTicker("all_games") ? (
+          <img
+            src={menuTicker("all_games") as string}
+            alt={pageTitle}
+            draggable={false}
             style={{
-              margin: 0,
-              fontSize: 24,
-              color: theme.primary,
-              textAlign: "center",
-              textShadow: `0 0 12px ${theme.primary}66`,
+              width: "min(100%, 760px)",
+              height: "100%",
+              objectFit: "contain",
+              display: "block",
+              filter: `drop-shadow(0 0 12px ${theme.primary}55)`,
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "min(100%, 760px)",
+              minHeight: 48,
+              borderRadius: 18,
+              border: `1px solid ${theme.primary}88`,
+              background: "linear-gradient(90deg, rgba(4,6,14,.96), rgba(18,22,36,.92), rgba(4,6,14,.96))",
+              boxShadow: `0 0 18px ${theme.primary}44, inset 0 0 18px rgba(255,255,255,.035)`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 18px",
+              overflow: "hidden",
             }}
           >
-            {pageTitle}
-          </h1>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 24,
+                color: theme.primary,
+                textAlign: "center",
+                textShadow: `0 0 12px ${theme.primary}66`,
+              }}
+            >
+              {pageTitle}
+            </h1>
+          </div>
         )}
       </div>
 
@@ -1582,6 +1611,38 @@ export default function Games({ setTab, params }: Props) {
         slotKey={`page-games-darts-${gamesView}-under-header`}
         style={{ marginBottom: 14 }}
       />
+
+      {gamesView === "all" ? (
+        <div className="msc-games-all-categories" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, width: "100%" }}>
+          {visibleCategories.map((c) => {
+            const on = c.id === activeCat;
+            const tint = tintForCategory(c.id);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setActiveCat(c.id)}
+                style={{
+                  minHeight: 74,
+                  borderRadius: 18,
+                  border: `1px solid ${on ? tint.border : theme.borderSoft}`,
+                  background: on ? tint.bg : `linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.18))`,
+                  color: on ? tint.title : theme.text,
+                  fontWeight: 1000,
+                  fontSize: 13,
+                  padding: "12px 10px",
+                  cursor: "pointer",
+                  boxShadow: on ? `0 0 18px ${tint.glow}` : "none",
+                  textTransform: "uppercase",
+                  letterSpacing: ".03em",
+                }}
+              >
+                {localizedCategoryLabel(String(c.id), String(c.label), lang)}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {(gamesView === "hub" || gamesView === "favorites") ? (
         <NewModesTicker
@@ -1692,42 +1753,6 @@ export default function Games({ setTab, params }: Props) {
          ============================================================ */}
       {gamesView === "all" && (
         <>
-          {/* Onglets catégories - couleurs liées aux favoris (sans TRAINING) */}
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-              justifyContent: "center",
-              marginBottom: 12,
-            }}
-          >
-            {visibleCategories.map((c) => {
-              const on = c.id === activeCat;
-              const tint = tintForCategory(c.id);
-
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => setActiveCat(c.id)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    border: `1px solid ${on ? tint.border : theme.borderSoft}`,
-                    background: on ? tint.bg : theme.card,
-                    color: on ? tint.title : theme.text,
-                    fontWeight: 900,
-                    fontSize: 12,
-                    cursor: "pointer",
-                    boxShadow: on ? `0 0 18px ${tint.glow}` : "none",
-                  }}
-                >
-                  {localizedCategoryLabel(String(c.id), String(c.label), lang)}
-                </button>
-              );
-            })}
-          </div>
-
           {/* Cartes de jeux (liste) */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {(() => {

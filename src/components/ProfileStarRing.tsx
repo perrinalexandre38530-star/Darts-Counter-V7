@@ -2,7 +2,7 @@
 // src/components/ProfileStarRing.tsx
 // Couronne d’étoiles — dégradé jaune→rouge + violet final
 // - 1★ / 10 pts (1..9 = dégradé jaune→rouge, 10 = violet clair)
-// - ½★ aux seuils : 15/25/35/45/55/65/75/85/95
+// - ½★ aux seuils : 5/15/25/35/45/55/65/75/85/95
 // - >100 : +1★ violette chaque +20 (120/140/160/180)
 // - Centré à 12h, gapPx pour coller au médaillon
 // ============================================
@@ -178,7 +178,7 @@ export default function ProfileStarRing({
       : profileBotLevel != null
         ? profileStarRingBotLevelToAvg3d(profileBotLevel, 1)
         : 0;
-  const score = Math.max(0, Math.min(180, Math.round(rawScore)));
+  const score = Math.max(0, Math.min(180, rawScore));
 
   // 1★ / 10 pts
   const fullUnder100 = Math.min(10, Math.floor(Math.min(score, 100) / 10));
@@ -215,31 +215,12 @@ export default function ProfileStarRing({
   const count = entries.length;
   if (count === 0) return null;
 
-  // Placement lisible sur le contour supérieur du médaillon.
-  // Le step historique pouvait devenir trop faible (ex. 10° pour des étoiles de 14 px),
-  // ce qui superposait les étoiles et donnait un faux effet de profondeur.
-  // On conserve le step demandé comme préférence, mais on impose un espacement
-  // géométrique minimal et on garde toute la couronne dans l'arc supérieur.
-  const baseRadius = resolvedAnchorSize / 2 + gapPx + starSize / 2;
-  const minCenterDistance = Math.max(1, starSize + 1);
-  const maxUpperArcDeg = 164; // ±82° : reste visuellement sur le haut du médaillon
-
-  const minStepForRadius = (radius: number) => {
-    const ratio = Math.min(1, minCenterDistance / Math.max(2, 2 * radius));
-    return (2 * Math.asin(ratio) * 180) / Math.PI;
-  };
-
-  let effectiveStepDeg = Math.max(Number(stepDeg) || 0, minStepForRadius(baseRadius));
-  let r = baseRadius;
-
-  if (count > 1 && (count - 1) * effectiveStepDeg > maxUpperArcDeg) {
-    effectiveStepDeg = maxUpperArcDeg / (count - 1);
-    const halfStepRad = (effectiveStepDeg * Math.PI) / 360;
-    const neededRadius = minCenterDistance / Math.max(0.001, 2 * Math.sin(halfStepRad));
-    r = Math.max(baseRadius, neededRadius);
-  }
-
-  const halfSpread = (count - 1) * (effectiveStepDeg / 2);
+  // Placement historique : les étoiles suivent directement le contour haut
+  // du médaillon, côte à côte, centrées à 12 h. Le rayon reste lié au
+  // médaillon et l'écart angulaire demandé n'est pas réécrit dynamiquement.
+  // C'est le rendu de référence de la page Profils (ex. médaillon MARJO).
+  const r = resolvedAnchorSize / 2 + gapPx + starSize / 2;
+  const halfSpread = (count - 1) * (stepDeg / 2);
 
   function pol2cart(angleDeg: number) {
     const a = ((angleDeg + rotationDeg) * Math.PI) / 180;
@@ -257,7 +238,7 @@ export default function ProfileStarRing({
         }}
       >
         {entries.map((e, i) => {
-          const ang = -halfSpread + i * effectiveStepDeg; // centré à 12h, sans chevauchement
+          const ang = -halfSpread + i * stepDeg; // centré à 12 h, rendu historique
           const { x, y } = pol2cart(ang);
           return (
             <div

@@ -2662,3 +2662,172 @@ html[data-msc-orientation="landscape"] .msc-competitions-header .msc-competition
   width: auto !important;
   height: calc(100% - 2px) !important;
 }
+
+/* ========================================================================== 
+   LANDSCAPE V29.1 — targeted adjustments (GameSelect / Competitions /
+   Messages / Local Profiles / All Games)
+   ========================================================================== */
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] .msc-game-select-page {
+  position: relative !important;
+  padding-top: max(58px, calc(var(--msc-safe-top) + 52px)) !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] .msc-game-select-topbar {
+  position: absolute !important;
+  top: max(10px, calc(var(--msc-safe-top) + 8px)) !important;
+  left: max(12px, calc(var(--msc-safe-left) + 10px)) !important;
+  right: max(78px, calc(var(--msc-safe-right) + 72px)) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  z-index: 6 !important;
+  pointer-events: none !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] .msc-game-select-topbar > * {
+  pointer-events: auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-lang-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(76, 226, 255, .72);
+  background: linear-gradient(180deg, rgba(10,24,34,.94), rgba(3,10,18,.96));
+  color: #eafcff;
+  box-shadow: 0 0 16px rgba(45,214,255,.22), inset 0 0 12px rgba(64,222,255,.08);
+  cursor: pointer;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-lang-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(260px, 72vw);
+  max-height: min(56vh, 380px);
+  overflow: auto;
+  padding: 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(76, 226, 255, .28);
+  background: linear-gradient(180deg, rgba(8,12,20,.98), rgba(6,10,16,.98));
+  box-shadow: 0 14px 34px rgba(0,0,0,.56);
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-lang-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #f4fbff;
+  cursor: pointer;
+  text-align: left;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-lang-option[aria-pressed="true"] {
+  background: rgba(76, 226, 255, .10);
+  box-shadow: inset 0 0 0 1px rgba(76, 226, 255, .26);
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-panel {
+  gap: clamp(7px, 1.2vh, 12px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-logo {
+  width: min(38vh, 280px, 46vw) !important;
+  height: min(38vh, 280px) !important;
+  max-height: min(38vh, 280px) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-logo {
+  width: min(34vh, 220px, 42vw) !important;
+  height: min(34vh, 220px) !important;
+  max-height: min(34vh, 220px) !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] ~ [data-mss-floating-control="awena-launcher"],
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="messages"] ~ [data-mss-floating-control="awena-launcher"],
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="profiles"] ~ [data-mss-floating-control="awena-launcher"],
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="games"] ~ [data-mss-floating-control="awena-launcher"],
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="tournaments"] ~ [data-mss-floating-control="awena-launcher"] {
+  top: max(10px, calc(var(--msc-safe-top) + 10px)) !important;
+  right: max(12px, calc(var(--msc-safe-right) + 12px)) !important;
+  bottom: auto !important;
+  transform: scale(.90) !important;
+  transform-origin: top right !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="tournaments"] {
+  --msc-landscape-header-height: clamp(118px, 22vh, 170px);
+}
+
+html[data-msc-orientation="landscape"] .msc-competitions-header {
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competitions-header img {
+  width: auto !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="messages"] {
+  --msc-landscape-header-height: clamp(76px, 13vh, 94px);
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-header {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-primary.msc-messages-primary--vertical {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: none !important;
+  padding: clamp(8px, 1vh, 12px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-primary.msc-messages-primary--vertical > button {
+  height: clamp(56px, 9vh, 78px) !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="profiles"] {
+  --msc-landscape-header-height: clamp(92px, 15vh, 116px);
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-header {
+  align-items: center !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-locals-side-tabs {
+  width: 100%;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-locals-side-tabs > * {
+  width: 100%;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="games"] {
+  --msc-landscape-header-height: clamp(92px, 15vh, 120px);
+}
+
+html[data-msc-orientation="landscape"] .msc-games-all-categories {
+  flex: 1 1 auto !important;
+  align-content: stretch !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-all-categories > button {
+  width: 100%;
+}
