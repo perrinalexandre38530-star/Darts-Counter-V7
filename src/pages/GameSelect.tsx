@@ -11,10 +11,12 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
+import { useLang, type Lang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
 import { appSportMeta, isAppSportEnabled } from "../config/sportCatalog";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.webp";
@@ -265,10 +267,73 @@ function sportShowcaseCell(accent: string, active: boolean): React.CSSProperties
   };
 }
 
+const GAME_SELECT_LANG_OPTIONS: ReadonlyArray<{ code: Lang; label: string }> = [
+  { code: "fr", label: "FR" },
+  { code: "en", label: "EN" },
+  { code: "es", label: "ES" },
+  { code: "de", label: "DE" },
+  { code: "it", label: "IT" },
+  { code: "pt", label: "PT" },
+  { code: "nl", label: "NL" },
+  { code: "ru", label: "RU" },
+  { code: "ja", label: "JA" },
+  { code: "ar", label: "AR" },
+];
+
+function localizedSportLabel(id: GameId, lang: Lang): string {
+  const code = String(lang || "fr").toLowerCase().split("-")[0] as Lang;
+  const byLang: Record<GameId, { fr: string; en: string; es: string }> = {
+    archery: { fr: "Tir à l'arc", en: "Archery", es: "Tiro con arco" },
+    babyfoot: { fr: "Baby-Foot", en: "Foosball", es: "Futbolín" },
+    badminton: { fr: "Badminton", en: "Badminton", es: "Bádminton" },
+    basket: { fr: "Basket", en: "Basketball", es: "Baloncesto" },
+    billard: { fr: "Billard", en: "Billiards", es: "Billar" },
+    chess: { fr: "Échecs", en: "Chess", es: "Ajedrez" },
+    cornhole: { fr: "Cornhole", en: "Cornhole", es: "Cornhole" },
+    darts: { fr: "Darts Scoring", en: "Darts Scoring", es: "Darts Scoring" },
+    dicegame: { fr: "Dice Game", en: "Dice Game", es: "Juego de Dados" },
+    esports: { fr: "E-SPORTS HUB", en: "E-SPORTS HUB", es: "E-SPORTS HUB" },
+    fit: { fr: "FIT PERF", en: "FIT PERF", es: "FIT PERF" },
+    foot: { fr: "Foot", en: "Football", es: "Fútbol" },
+    frisbee: { fr: "Frisbee", en: "Frisbee", es: "Frisbee" },
+    molkky: { fr: "Mölkky", en: "Mölkky", es: "Mölkky" },
+    padel: { fr: "Padel", en: "Padel", es: "Pádel" },
+    petanque: { fr: "Pétanque Scoring", en: "Petanque Scoring", es: "Petanca Scoring" },
+    pickleball: { fr: "Pickleball", en: "Pickleball", es: "Pickleball" },
+    pingpong: { fr: "Ping-Pong Scoring", en: "Table Tennis Scoring", es: "Ping-Pong Scoring" },
+    rugby: { fr: "Rugby", en: "Rugby", es: "Rugby" },
+    running: { fr: "RUNNING PERF", en: "RUNNING PERF", es: "RUNNING PERF" },
+    tennis: { fr: "Tennis", en: "Tennis", es: "Tenis" },
+    volley: { fr: "Volley", en: "Volleyball", es: "Voleibol" },
+  };
+  const entry = byLang[id];
+  if (!entry) return id;
+  if (code === "en") return entry.en;
+  if (code === "es") return entry.es;
+  return entry.fr;
+}
+
+function localizedChoiceTitle(lang: Lang): string {
+  if (lang === "en") return "Choose your sport";
+  if (lang === "es") return "Elige tu deporte";
+  return "Choisis ton sport";
+}
+
+function localizedChoiceSubtitle(lang: Lang): string {
+  if (lang === "en") return "Swipe or tap an icon";
+  if (lang === "es") return "Desliza o toca un icono";
+  return "Fais défiler ou touche une icône";
+}
+
+
 export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
   const { setSport } = useSport();
+  const { lang, setLang } = useLang() as any;
+  const awena = useAwenaOptional();
   const dev = useDevMode() as any;
+  const [showLangMenu, setShowLangMenu] = React.useState(false);
+  const langDockRef = React.useRef<HTMLDivElement | null>(null);
 
   // Desktop détecté (souris / trackpad) => on ajoute des contrôles visibles
   const isDesktop = React.useMemo(() => {
@@ -277,6 +342,20 @@ export default function GameSelect({ go }: Props) {
     const mq2 = window.matchMedia?.("(pointer: fine)");
     return Boolean(mq1?.matches && mq2?.matches);
   }, []);
+
+  React.useEffect(() => {
+    if (!showLangMenu) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (target && langDockRef.current && !langDockRef.current.contains(target)) setShowLangMenu(false);
+    };
+    window.addEventListener("mousedown", onPointerDown as EventListener);
+    window.addEventListener("touchstart", onPointerDown as EventListener, { passive: true });
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown as EventListener);
+      window.removeEventListener("touchstart", onPointerDown as EventListener);
+    };
+  }, [showLangMenu]);
 
   // ✅ routes d'entrée (BottomNav)
   // - Darts: on garde le dashboard "Home"
@@ -486,11 +565,14 @@ export default function GameSelect({ go }: Props) {
   // 2) sports grisés ensuite
   // 3) ordre alphabétique FR dans chaque groupe
   const sortedItems = React.useMemo(() => {
-    const copy = filterSportsForCurrentRuntime(items);
-    copy.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+    const copy = filterSportsForCurrentRuntime(items).map((item) => ({
+      ...item,
+      label: localizedSportLabel(item.id as GameId, lang),
+    }));
+    copy.sort((a, b) => a.label.localeCompare(b.label, String(lang || "fr")));
     copy.sort((a, b) => Number(b.enabled) - Number(a.enabled));
     return copy;
-  }, [items]);
+  }, [items, lang]);
 
   // ------------------------------------------
   // Swipe (mobile / tablette)
@@ -585,16 +667,65 @@ export default function GameSelect({ go }: Props) {
       >
         <SportShowcaseBand sports={SPORT_SHOWCASE_TOP} activeId={it.id} theme={theme} />
 
-        <div
-          className="msc-game-select-landscape-nav"
-          onMouseDown={(e) => e.stopPropagation()}
-          onMouseUp={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
+        <div className="msc-game-select-topbar">
+          <div ref={langDockRef} className="msc-game-select-lang-dock">
+            <button
+              type="button"
+              className="msc-game-select-topbar-btn msc-game-select-lang-btn"
+              aria-label="Choisir la langue"
+              title="Choisir la langue"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowLangMenu((prev) => !prev);
+              }}
+            >
+              <span aria-hidden="true">🌐</span>
+              <span>{String(lang || "fr").toUpperCase()}</span>
+            </button>
+
+            {showLangMenu ? (
+              <div className="msc-game-select-lang-menu" onClick={(e) => e.stopPropagation()}>
+                {GAME_SELECT_LANG_OPTIONS.map((option) => (
+                  <button
+                    key={option.code}
+                    type="button"
+                    className={`msc-game-select-lang-option${option.code === lang ? " is-active" : ""}`}
+                    onClick={() => {
+                      setLang(option.code);
+                      setShowLangMenu(false);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           <button
             type="button"
-            className="msc-game-select-landscape-arrow"
+            className="msc-game-select-topbar-btn msc-game-select-awena-btn"
+            aria-label="Ouvrir Awena"
+            title="Awena · Assistante"
+            onClick={(e) => {
+              e.stopPropagation();
+              awena?.togglePanel?.();
+            }}
+          >
+            <span className="msc-game-select-awena-avatar">
+              <img src="/awena/awena-avatar.webp" alt="Awena" draggable={false} />
+            </span>
+            <span className="msc-game-select-awena-mic">◉</span>
+          </button>
+        </div>
+
+        <div className="msc-game-select-title" style={title(theme)}>{localizedChoiceTitle(lang)}</div>
+        <div className="msc-game-select-subtitle" style={subtitle(theme)}>{localizedChoiceSubtitle(lang)}</div>
+
+        <div className="msc-game-select-hero">
+          <button
+            type="button"
+            className="msc-game-select-hero-arrow"
             aria-label="Sport précédent"
             onClick={(e) => {
               e.stopPropagation();
@@ -604,6 +735,39 @@ export default function GameSelect({ go }: Props) {
             <span aria-hidden="true">◀</span>
           </button>
 
+          <button
+            key={it.id}
+            className="msc-game-select-tile"
+            onClick={clickable ? it.onClick : undefined}
+            style={sportTile(theme, !visuallyDisabled)}
+            aria-disabled={!clickable}
+            title={clickable ? "Ouvrir" : "Bientôt"}
+          >
+            <img className="msc-game-select-logo" src={it.logo} alt={it.label} style={sportImg(theme, !visuallyDisabled)} draggable={false} />
+            <div className="msc-game-select-label" style={sportLabel(theme, !visuallyDisabled)}>{it.label}</div>
+            {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
+          </button>
+
+          <button
+            type="button"
+            className="msc-game-select-hero-arrow"
+            aria-label="Sport suivant"
+            onClick={(e) => {
+              e.stopPropagation();
+              goNext();
+            }}
+          >
+            <span aria-hidden="true">▶</span>
+          </button>
+        </div>
+
+        <div
+          className="msc-game-select-landscape-nav"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
           <div
             className="msc-game-select-landscape-icons"
             style={{ gridTemplateColumns: `repeat(${Math.max(1, sortedItems.length)}, minmax(0, 1fr))` }}
@@ -633,35 +797,7 @@ export default function GameSelect({ go }: Props) {
               );
             })}
           </div>
-
-          <button
-            type="button"
-            className="msc-game-select-landscape-arrow"
-            aria-label="Sport suivant"
-            onClick={(e) => {
-              e.stopPropagation();
-              goNext();
-            }}
-          >
-            <span aria-hidden="true">▶</span>
-          </button>
         </div>
-
-        <div className="msc-game-select-title" style={title(theme)}>Choisis ton sport</div>
-        <div className="msc-game-select-subtitle" style={subtitle(theme)}>Fais défiler pour choisir</div>
-
-        <button
-          key={it.id}
-          className="msc-game-select-tile"
-          onClick={clickable ? it.onClick : undefined}
-          style={sportTile(theme, !visuallyDisabled)}
-          aria-disabled={!clickable}
-          title={clickable ? "Ouvrir" : "Bientôt"}
-        >
-          <img className="msc-game-select-logo" src={it.logo} alt={it.label} style={sportImg(theme, !visuallyDisabled)} draggable={false} />
-          <div className="msc-game-select-label" style={sportLabel(theme, !visuallyDisabled)}>{it.label}</div>
-          {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
-        </button>
 
         <SportShowcaseBand sports={SPORT_SHOWCASE_BOTTOM} activeId={it.id} theme={theme} />
 

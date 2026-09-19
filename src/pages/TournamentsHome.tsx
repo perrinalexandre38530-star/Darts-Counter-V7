@@ -78,14 +78,8 @@ function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions, backTitle, 
         draggable={false}
         style={{
           display: "block",
-          width: "100%",
-          maxWidth: "100%",
-          height: "auto",
-          maxHeight: 118,
-          objectFit: "contain",
-          borderRadius: 16,
-          boxShadow: "0 14px 42px rgba(0,0,0,.62), 0 0 26px rgba(183,255,0,.16)",
           userSelect: "none",
+          boxShadow: "0 14px 42px rgba(0,0,0,.62), 0 0 26px rgba(183,255,0,.16)",
         }}
       />
 

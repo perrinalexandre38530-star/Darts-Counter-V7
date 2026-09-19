@@ -441,9 +441,17 @@ export default function RunningHome({ store, go }: Props) {
     const currentTicker = tickers.length ? tickers[Math.min(Math.max(tickerIndex, 0), tickers.length - 1)] : null;
     return <div className="running-page running-home-v2" style={{ minHeight: "100dvh", background: (theme as any).pageBackground || (theme as any).bg || "#05060C", color: "#FFFFFF", display: "flex", justifyContent: "center", padding: "10px 8px max(82px,calc(70px + env(safe-area-inset-bottom)))", boxSizing: "border-box", overflowX: "hidden" }}>
       <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, minWidth: 0 }}>
-        <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}}`}</style>
+        <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}}
+.running-home-layout{display:flex;flex-direction:column;gap:12px}.running-home-primary,.running-home-secondary{display:flex;flex-direction:column;gap:12px;min-width:0}
+html[data-msc-orientation="landscape"] .running-home-layout{display:grid;grid-template-columns:minmax(320px,.92fr) minmax(360px,1.08fr);gap:14px;align-items:start}
+html[data-msc-orientation="landscape"] .running-home-primary{position:sticky;top:0;align-self:start}
+html[data-msc-orientation="landscape"] .running-home-secondary{min-height:0}
+html[data-msc-orientation="landscape"] .running-home-selector-wrap{display:flex;justify-content:center;margin-bottom:0!important}
+html[data-msc-orientation="landscape"] .running-home-top-ad,html[data-msc-orientation="landscape"] .running-home-secondary-ad{margin:0!important}
+html[data-msc-short-landscape="1"] .running-home-layout{gap:10px}`}</style>
 
         <div
+          className="running-home-header"
           style={{
             borderRadius: 24,
             padding: 18,
@@ -505,65 +513,77 @@ export default function RunningHome({ store, go }: Props) {
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-          <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent} />
-        </div>
+        <div className="running-home-layout">
+          <div className="running-home-primary">
+            <div className="running-home-selector-wrap" style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+              <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent} />
+            </div>
 
-        <InlineAdBanner placement="home" slotKey="home-top" offset={0} compact style={{ marginBottom: 12 }} />
+            <div className="running-home-top-ad">
+              <InlineAdBanner placement="home" slotKey="home-top" offset={0} compact style={{ marginBottom: 12 }} />
+            </div>
 
-        {activeProfile && (
-          <ActiveProfileCard
-            profile={activeProfile as any}
-            stats={runningProfileStats}
-            globalTitle={copy.overview}
-            globalKpis={runningGlobalKpis}
-            customSlides={runningSlides}
-            suppressDefaultStatsSlides
-          />
-        )}
+            {activeProfile && (
+              <div className="running-home-profile-card">
+                <ActiveProfileCard
+                  profile={activeProfile as any}
+                  stats={runningProfileStats}
+                  globalTitle={copy.overview}
+                  globalKpis={runningGlobalKpis}
+                  customSlides={runningSlides}
+                  suppressDefaultStatsSlides
+                />
+              </div>
+            )}
 
-        {!activeProfile && (
-          <div style={{ padding: 16, borderRadius: 22, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))", marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 900, color: accent }}>{pickLegacyLocalizedText(lang, "JOUEUR ACTIF", "ACTIVE PROFILE", "JUGADOR ACTIVO")}</div>
-            <div style={{ marginTop: 6, color: textSoft, fontSize: 11 }}>{pickLegacyLocalizedText(lang, "Aucun profil actif pour le moment.", "No active profile yet.", "Aún no hay perfil activo.")}</div>
+            {!activeProfile && (
+              <div style={{ padding: 16, borderRadius: 22, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))", marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: accent }}>{pickLegacyLocalizedText(lang, "JOUEUR ACTIF", "ACTIVE PROFILE", "JUGADOR ACTIVO")}</div>
+                <div style={{ marginTop: 6, color: textSoft, fontSize: 11 }}>{pickLegacyLocalizedText(lang, "Aucun profil actif pour le moment.", "No active profile yet.", "Aún no hay perfil activo.")}</div>
+              </div>
+            )}
           </div>
-        )}
 
-        <InlineAdBanner placement="home_secondary" slotKey="home-player" offset={2} compact style={{ marginTop: 12, marginBottom: 14 }} />
+          <div className="running-home-secondary">
+            <div className="running-home-secondary-ad">
+              <InlineAdBanner placement="home_secondary" slotKey="home-player" offset={2} compact style={{ marginTop: 12, marginBottom: 14 }} />
+            </div>
 
-        <ArcadeTicker items={tickers} activeIndex={tickerIndex} intervalMs={7000} onIndexChange={setTickerIndex} onActiveIndexChange={setTickerIndex} />
+            <ArcadeTicker items={tickers} activeIndex={tickerIndex} intervalMs={7000} onIndexChange={setTickerIndex} onActiveIndexChange={setTickerIndex} />
 
-        {currentTicker ? <div style={{ marginTop: 10, marginBottom: 12, borderRadius: 22, border: `1px solid ${(theme as any).borderSoft ?? "rgba(255,255,255,0.12)"}`, boxShadow: "0 18px 40px rgba(0,0,0,0.85)", padding: 8, background: "radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(3,4,10,1))" }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 0, borderRadius: 18, overflow: "hidden", position: "relative", minHeight: 112, backgroundColor: "#05060C", backgroundImage: currentTicker.backgroundImage ? `url("${currentTicker.backgroundImage}")` : undefined, backgroundSize: "cover", backgroundPosition: "center" }}>
-              <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(130deg, rgba(0,0,0,0.85), rgba(0,0,0,0.45))", pointerEvents: "none" }} />
-              <div style={{ position: "relative", padding: "9px 10px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: currentTicker.accentColor || accent }}>{currentTicker.title}</div>
-                <div style={{ fontSize: 11, lineHeight: 1.35, color: (theme as any).textSoft ?? "rgba(255,255,255,0.9)" }}>{currentTicker.text}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
-                  <PulseKpi label={copy.weekGoal} value={weekLabel} accent={accent} />
-                  <PulseKpi label={copy.streak} value={`${stats.activeWeekStreak} ${copy.weeks}`} accent={accent} />
+            {currentTicker ? <div style={{ marginTop: 10, marginBottom: 12, borderRadius: 22, border: `1px solid ${(theme as any).borderSoft ?? "rgba(255,255,255,0.12)"}`, boxShadow: "0 18px 40px rgba(0,0,0,0.85)", padding: 8, background: "radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(3,4,10,1))" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 0, borderRadius: 18, overflow: "hidden", position: "relative", minHeight: 112, backgroundColor: "#05060C", backgroundImage: currentTicker.backgroundImage ? `url("${currentTicker.backgroundImage}")` : undefined, backgroundSize: "cover", backgroundPosition: "center" }}>
+                  <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(130deg, rgba(0,0,0,0.85), rgba(0,0,0,0.45))", pointerEvents: "none" }} />
+                  <div style={{ position: "relative", padding: "9px 10px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: currentTicker.accentColor || accent }}>{currentTicker.title}</div>
+                    <div style={{ fontSize: 11, lineHeight: 1.35, color: (theme as any).textSoft ?? "rgba(255,255,255,0.9)" }}>{currentTicker.text}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+                      <PulseKpi label={copy.weekGoal} value={weekLabel} accent={accent} />
+                      <PulseKpi label={copy.streak} value={`${stats.activeWeekStreak} ${copy.weeks}`} accent={accent} />
+                    </div>
+                  </div>
+                </div>
+                <div style={{ flex: 1, minWidth: 0, borderRadius: 18, overflow: "hidden", position: "relative", minHeight: 112, background: "linear-gradient(160deg, rgba(12,18,30,0.98), rgba(4,7,15,0.98))", border: `1px solid ${accent}1f` }}>
+                  <div style={{ position: "relative", padding: "9px 10px 10px", display: "flex", flexDirection: "column", gap: 7, height: "100%" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: accent }}>{pickLegacyLocalizedText(lang, "ACCÈS RAPIDES", "QUICK ACCESS", "ACCESOS RÁPIDOS")}</div>
+                    <div style={{ fontSize: 11, lineHeight: 1.35, color: textSoft }}>{mainActionSub}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: "auto" }}>
+                      <button className="btn" onClick={mainAction} style={{ minHeight: 34, fontSize: 7.6, color: accent, borderColor: `${accent}45` }}>{mainActionTitle}</button>
+                      <button className="btn" onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} style={{ minHeight: 34, fontSize: 7.6 }}>{pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")}</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div style={{ flex: 1, minWidth: 0, borderRadius: 18, overflow: "hidden", position: "relative", minHeight: 112, background: "linear-gradient(160deg, rgba(12,18,30,0.98), rgba(4,7,15,0.98))", border: `1px solid ${accent}1f` }}>
-              <div style={{ position: "relative", padding: "9px 10px 10px", display: "flex", flexDirection: "column", gap: 7, height: "100%" }}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: accent }}>{pickLegacyLocalizedText(lang, "ACCÈS RAPIDES", "QUICK ACCESS", "ACCESOS RÁPIDOS")}</div>
-                <div style={{ fontSize: 11, lineHeight: 1.35, color: textSoft }}>{mainActionSub}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: "auto" }}>
-                  <button className="btn" onClick={mainAction} style={{ minHeight: 34, fontSize: 7.6, color: accent, borderColor: `${accent}45` }}>{mainActionTitle}</button>
-                  <button className="btn" onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} style={{ minHeight: 34, fontSize: 7.6 }}>{pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")}</button>
-                </div>
-              </div>
+            </div> : null}
+
+            <div className="running-home-command-grid" style={{ marginTop: 6 }}>
+              <RunningActionTile accent={accent} onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} icon={<RunningGlyph name="route-choose" size={20} />} title={pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")} subtitle={pickLegacyLocalizedText(lang, "Explorer visuellement", "Visual discovery", "Explorar visualmente")} />
+              <RunningActionTile accent={accent} onClick={() => go("stats", { runningStatsTab: "history" })} icon={<RunningGlyph name="history" size={20} />} title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")} subtitle={`${activities.length} ${copy.sessions.toLowerCase()}`} />
+              <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20} />} title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")} subtitle={pickLegacyLocalizedText(lang, "Liste d'amis · partenaires de sortie", "Friends list · activity partners", "Lista de amigos · compañeros de salida")} />
+              <RunningActionTile accent={accent} onClick={() => go("running_plan")} icon={<RunningGlyph name="spark" size={20} />} title={pickLegacyLocalizedText(lang, "COACH", "COACH", "COACH")} subtitle={pickLegacyLocalizedText(lang, "Plans & objectifs", "Plans & goals", "Planes y objetivos")} />
             </div>
           </div>
-        </div> : null}
-
-        <div className="running-home-command-grid" style={{ marginTop: 6 }}>
-          <RunningActionTile accent={accent} onClick={() => go("games", { runningActivitySport: activitySport, runningOpenRoutes: true })} icon={<RunningGlyph name="route-choose" size={20} />} title={pickLegacyLocalizedText(lang, "PARCOURS", "ROUTES", "RUTAS")} subtitle={pickLegacyLocalizedText(lang, "Explorer visuellement", "Visual discovery", "Explorar visualmente")} />
-          <RunningActionTile accent={accent} onClick={() => go("stats", { runningStatsTab: "history" })} icon={<RunningGlyph name="history" size={20} />} title={pickLegacyLocalizedText(lang, "MES SORTIES", "MY ACTIVITIES", "MIS SALIDAS")} subtitle={`${activities.length} ${copy.sessions.toLowerCase()}`} />
-          <RunningActionTile accent={accent} onClick={() => go("online", { tab: "nearby" })} icon={<RunningGlyph name="gps" size={20} />} title={pickLegacyLocalizedText(lang, "AMIS", "FRIENDS", "AMIGOS")} subtitle={pickLegacyLocalizedText(lang, "Liste d'amis · partenaires de sortie", "Friends list · activity partners", "Lista de amigos · compañeros de salida")} />
-          <RunningActionTile accent={accent} onClick={() => go("running_plan")} icon={<RunningGlyph name="spark" size={20} />} title={pickLegacyLocalizedText(lang, "COACH", "COACH", "COACH")} subtitle={pickLegacyLocalizedText(lang, "Plans & objectifs", "Plans & goals", "Planes y objetivos")} />
         </div>
       </div>
     </div>;

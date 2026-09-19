@@ -2402,6 +2402,227 @@ html[data-msc-short-landscape="1"] .msc-sport-home-title {
   font-size: clamp(21px, 5vh, 30px) !important;
 }
 
+
+
+/* GameSelect top controls + centered hero arrows */
+.msc-game-select-topbar {
+  width: min(100%, 980px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  position: relative;
+  z-index: 6;
+}
+
+.msc-game-select-lang-dock {
+  position: relative;
+  z-index: 8;
+}
+
+.msc-game-select-topbar-btn {
+  border: 1px solid rgba(76, 226, 255, .52);
+  background: linear-gradient(180deg, rgba(6,16,28,.95), rgba(3,10,18,.94));
+  color: #dff9ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 0 18px rgba(64,222,255,.20), inset 0 0 10px rgba(64,222,255,.08);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.msc-game-select-lang-btn {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .8px;
+}
+
+.msc-game-select-lang-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  min-width: 168px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(76, 226, 255, .32);
+  background: rgba(4, 10, 18, .96);
+  box-shadow: 0 16px 38px rgba(0,0,0,.58);
+}
+
+.msc-game-select-lang-option {
+  min-height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+  color: rgba(255,255,255,.92);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.msc-game-select-lang-option.is-active {
+  border-color: rgba(76, 226, 255, .62);
+  color: #7beaff;
+  background: rgba(76, 226, 255, .12);
+}
+
+.msc-game-select-awena-btn {
+  width: 58px;
+  height: 58px;
+  min-height: 58px;
+  min-width: 58px;
+  padding: 3px;
+  border-radius: 999px;
+  position: relative;
+}
+
+.msc-game-select-awena-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  display: block;
+  background: #050713;
+}
+
+.msc-game-select-awena-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.msc-game-select-awena-mic {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  width: 25px;
+  height: 25px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(5,10,24,.95);
+  border: 1px solid rgba(255,255,255,.16);
+  color: #dff9ff;
+  font-size: 11px;
+  box-shadow: 0 8px 18px rgba(0,0,0,.38);
+}
+
+.msc-game-select-hero {
+  width: min(100%, 980px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2vw, 24px);
+}
+
+.msc-game-select-hero-arrow {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  border: 1px solid rgba(76, 226, 255, .72);
+  background: radial-gradient(circle at 50% 20%, rgba(76,226,255,.16), transparent 62%), linear-gradient(180deg, rgba(10,24,34,.94), rgba(3,10,18,.96));
+  color: #7beaff;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 0 16px rgba(45,214,255,.25), inset 0 0 12px rgba(64,222,255,.08);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.msc-game-select-hero-arrow:active {
+  transform: scale(.95);
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-panel {
+  gap: clamp(4px, .9vh, 9px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-topbar {
+  order: 0;
+  width: min(100%, 990px);
+  margin-bottom: clamp(1px, .4vh, 4px);
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-title {
+  order: 1;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-subtitle {
+  order: 2;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-hero {
+  order: 3;
+  width: min(100%, 990px);
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-nav {
+  order: 4;
+  width: min(100%, 990px);
+  display: block !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-icons {
+  display: grid !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-hero-arrow {
+  flex: 0 0 auto;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-tile {
+  order: initial !important;
+  width: min(520px, 58vw) !important;
+  max-height: min(58vh, 360px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-logo {
+  width: min(38vh, 240px, 38vw) !important;
+  height: min(38vh, 240px) !important;
+  max-height: min(38vh, 240px) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-topbar-btn {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-awena-btn {
+  width: 50px;
+  height: 50px;
+  min-height: 50px;
+  min-width: 50px;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-hero-arrow {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-tile {
+  width: min(430px, 58vw) !important;
+  max-height: min(52vh, 285px) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-logo {
+  width: min(33vh, 190px, 34vw) !important;
+  height: min(33vh, 190px) !important;
+  max-height: min(33vh, 190px) !important;
+}
+
 /* --------------------------------------------------------------------------
    COMPETITIONS — ticker controlled by available HEIGHT, like Statistics Center
    -------------------------------------------------------------------------- */

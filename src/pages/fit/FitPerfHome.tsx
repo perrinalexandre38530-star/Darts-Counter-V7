@@ -352,6 +352,12 @@ export default function FitPerfHome({ store, go }: Props) {
         .fit-home-record-value{font-size:10px;font-weight:1000;color:${accent};white-space:nowrap}
         .fit-home-ticker-wrap{flex:0 0 auto;min-height:0}
         .fit-home-ticker-wrap>div:first-child{margin-top:0!important}
+        .fit-home-layout{display:flex;flex-direction:column;gap:8px;min-height:0}.fit-home-primary,.fit-home-secondary{display:flex;flex-direction:column;gap:8px;min-width:0}
+        html[data-msc-orientation="landscape"] .fit-home-shell{max-width:none;padding:12px 12px 8px}
+        html[data-msc-orientation="landscape"] .fit-home-layout{display:grid;grid-template-columns:minmax(320px,.94fr) minmax(360px,1.06fr);gap:14px;align-items:start}
+        html[data-msc-orientation="landscape"] .fit-home-primary{position:sticky;top:0;align-self:start}
+        html[data-msc-orientation="landscape"] .fit-home-secondary{min-height:0}
+        html[data-msc-orientation="landscape"] .fit-home-secondary .fit-home-ticker-wrap{margin-top:0}
         @media(max-height:720px){
           .fit-home-shell{padding-top:7px;gap:5px}.fit-home-header{padding:8px 12px;border-radius:21px}.fit-home-panel{flex-basis:205px;padding:7px 8px}.fit-home-snapshot{margin-top:5px;min-height:39px;grid-template-columns:34px minmax(0,1fr) auto;padding:4px 6px}.fit-home-snapshot-name{font-size:9px}.fit-home-snapshot-score strong{font-size:13px}.fit-home-panel-body{margin-top:5px}.fit-home-tabs{gap:3px;padding:3px}.fit-home-tab{height:39px;flex-basis:36px;width:36px;min-width:36px}.fit-home-tab.is-active{min-width:82px;padding:0 7px}.fit-home-tab span{font-size:6px}.fit-home-kpi{padding:4px 5px 6px}.fit-home-kpi-value{font-size:15px}.fit-home-mini-row{margin-top:5px}.fit-home-mini-stat{padding:5px}.fit-home-cta{margin-top:5px;min-height:30px}
         }
@@ -393,29 +399,31 @@ export default function FitPerfHome({ store, go }: Props) {
           </div>
         </div>
 
-        {/* PUB 1 — même placement que la HOME DARTS SCORING. */}
-        <InlineAdBanner
-          placement="home"
-          slotKey="fit-home-top"
-          offset={0}
-          compact
-          style={{ margin: 0 }}
-        />
+        <div className="fit-home-layout">
+          <div className="fit-home-primary">
+            {/* PUB 1 — même placement que la HOME DARTS SCORING. */}
+            <InlineAdBanner
+              placement="home"
+              slotKey="fit-home-top"
+              offset={0}
+              compact
+              style={{ margin: 0 }}
+            />
 
-        {/* Bloc central volontairement plus bas : le contenu change avec l'onglet. */}
-        <section className="fit-home-panel" aria-live="polite">
-          <div className="fit-home-panel-title">FIT PERF · {panelTitle}</div>
-          <div className="fit-home-snapshot">
-            <div style={{ width: 40, height: 40, display: "grid", placeItems: "center" }}>
-              {profile ? <ProfileAvatar size={38} profile={profile as any} ringColor={accent} showStars={false} /> : <FitIcon name="profile" size={24} />}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div className="fit-home-snapshot-name">{profileName}</div>
-              <div className="fit-home-snapshot-sub">{summary.weekSessions}/{weeklyGoal} {t("séances cette semaine", "workouts this week", "sesiones esta semana")} · {formatVolume(summary.weekVolumeKg)}</div>
-            </div>
-            <div className="fit-home-snapshot-score"><strong>{summary.score}/99</strong><span>FIT SCORE</span></div>
-          </div>
-          <div className="fit-home-panel-body">
+            {/* Bloc central volontairement plus bas : le contenu change avec l'onglet. */}
+            <section className="fit-home-panel" aria-live="polite">
+              <div className="fit-home-panel-title">FIT PERF · {panelTitle}</div>
+              <div className="fit-home-snapshot">
+                <div style={{ width: 40, height: 40, display: "grid", placeItems: "center" }}>
+                  {profile ? <ProfileAvatar size={38} profile={profile as any} ringColor={accent} showStars={false} /> : <FitIcon name="profile" size={24} />}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="fit-home-snapshot-name">{profileName}</div>
+                  <div className="fit-home-snapshot-sub">{summary.weekSessions}/{weeklyGoal} {t("séances cette semaine", "workouts this week", "sesiones esta semana")} · {formatVolume(summary.weekVolumeKg)}</div>
+                </div>
+                <div className="fit-home-snapshot-score"><strong>{summary.score}/99</strong><span>FIT SCORE</span></div>
+              </div>
+              <div className="fit-home-panel-body">
             {tab === "today" && (
               <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
                 {nextSportEvent ? (() => {
@@ -560,45 +568,49 @@ export default function FitPerfHome({ store, go }: Props) {
                 </div>
               )
             )}
+              </div>
+            </section>
+
+            <nav className="fit-home-tabs" aria-label={t("Navigation accueil FIT PERF", "FIT PERF home navigation", "Navegación de inicio FIT PERF")}>
+              {tabs.map((item) => {
+                const selected = item.id === tab;
+                return (
+                  <button
+                    key={item.id}
+                    className={`fit-home-tab${selected ? " is-active" : ""}`}
+                    type="button"
+                    aria-current={selected ? "page" : undefined}
+                    onClick={() => setTab(item.id)}
+                  >
+                    <FitIcon name={item.icon} size={19} />
+                    {selected ? <span>{item.label}</span> : null}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
-        </section>
 
-        <nav className="fit-home-tabs" aria-label={t("Navigation accueil FIT PERF", "FIT PERF home navigation", "Navegación de inicio FIT PERF")}>
-          {tabs.map((item) => {
-            const selected = item.id === tab;
-            return (
-              <button
-                key={item.id}
-                className={`fit-home-tab${selected ? " is-active" : ""}`}
-                type="button"
-                aria-current={selected ? "page" : undefined}
-                onClick={() => setTab(item.id)}
-              >
-                <FitIcon name={item.icon} size={19} />
-                {selected ? <span>{item.label}</span> : null}
-              </button>
-            );
-          })}
-        </nav>
+          <div className="fit-home-secondary">
+            {/* PUB 2 — sous les onglets, comme le second bandeau de DARTS SCORING. */}
+            <InlineAdBanner
+              placement="home_secondary"
+              slotKey="fit-home-player"
+              offset={2}
+              compact
+              style={{ margin: 0 }}
+            />
 
-        {/* PUB 2 — sous les onglets, comme le second bandeau de DARTS SCORING. */}
-        <InlineAdBanner
-          placement="home_secondary"
-          slotKey="fit-home-player"
-          offset={2}
-          compact
-          style={{ margin: 0 }}
-        />
-
-        {/* Ticker FIT PERF : rotation automatique + swipe, même mécanique que HOME DARTS SCORING. */}
-        <div className="fit-home-ticker-wrap">
-          <ArcadeTicker
-            items={tickerItems}
-            activeIndex={tickerIndex}
-            intervalMs={7000}
-            onIndexChange={(index) => setTickerIndex(index)}
-            onActiveIndexChange={(index) => setTickerIndex(index)}
-          />
+            {/* Ticker FIT PERF : rotation automatique + swipe, même mécanique que HOME DARTS SCORING. */}
+            <div className="fit-home-ticker-wrap">
+              <ArcadeTicker
+                items={tickerItems}
+                activeIndex={tickerIndex}
+                intervalMs={7000}
+                onIndexChange={(index) => setTickerIndex(index)}
+                onActiveIndexChange={(index) => setTickerIndex(index)}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
