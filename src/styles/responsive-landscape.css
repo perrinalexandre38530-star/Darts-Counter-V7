@@ -760,6 +760,8 @@ html[data-msc-orientation="landscape"] :is(
   .dc-themed-route[data-msc-route="games"],
   .dc-themed-route[data-msc-route="tournaments"],
   .dc-themed-route[data-msc-route="online"],
+  .dc-themed-route[data-msc-route="online_clubs"],
+  .dc-themed-route[data-msc-route="friends"],
   .dc-themed-route[data-msc-route="stats"],
   .dc-themed-route[data-msc-route="settings"],
   .dc-themed-route[data-msc-route="cast_host"]
@@ -1344,4 +1346,697 @@ html[data-msc-orientation="landscape"] .msc-screens-page {
   height: 100% !important;
   min-height: 0 !important;
   overflow: hidden !important;
+}
+
+/* ========================================================================== 
+   LANDSCAPE SHELL V4 — balance, header controls, sport selector & first-level
+   submenus. This section intentionally overrides V3 without changing portrait.
+   ========================================================================== */
+
+/* The validated landscape shell is now a true 50 / 50 split on every device.
+   Individual pages can still override this later if a concrete UX need appears. */
+html[data-msc-orientation="landscape"] {
+  --msc-landscape-primary-track: 1fr;
+  --msc-landscape-secondary-track: 1fr;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="phone"],
+html[data-msc-short-landscape="1"],
+html[data-msc-orientation="landscape"][data-msc-device="tablet"],
+html[data-msc-orientation="landscape"][data-msc-device="tv"] {
+  --msc-landscape-primary-track: 1fr;
+  --msc-landscape-secondary-track: 1fr;
+}
+
+/* All main navigation pages now dock Awena in the fixed header band. The active
+   sport medallion, when present, stays at the extreme right; Awena sits just
+   to its left and therefore never floats over the scrollable right pane. */
+html[data-msc-orientation="landscape"] [data-mss-header-docked="1"][data-mss-floating-control="awena-launcher"] {
+  top: max(5px, calc(var(--msc-landscape-shell-pad) + var(--msc-safe-top) - 3px)) !important;
+  right: calc(var(--msc-landscape-shell-pad) + var(--msc-safe-right) + 66px) !important;
+  bottom: auto !important;
+  width: 68px !important;
+  height: 68px !important;
+}
+
+html[data-msc-short-landscape="1"] [data-mss-header-docked="1"][data-mss-floating-control="awena-launcher"] {
+  top: max(3px, calc(var(--msc-landscape-shell-pad) + var(--msc-safe-top) - 4px)) !important;
+  right: calc(var(--msc-landscape-shell-pad) + var(--msc-safe-right) + 60px) !important;
+  transform: scale(.90) !important;
+  transform-origin: top right !important;
+}
+
+/* ONLINE V4: the route itself is the two-column grid. This fixes the V3 case
+   where the profile/header were still rendered as one full-width portrait card. */
+html[data-msc-orientation="landscape"] :is(
+  .dc-themed-route[data-msc-route="online"],
+  .dc-themed-route[data-msc-route="online_clubs"],
+  .dc-themed-route[data-msc-route="friends"]
+) .msc-online-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-rows: var(--msc-landscape-header-height) minmax(0, 1fr) !important;
+  gap: var(--msc-landscape-shell-gap) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-header-card {
+  display: contents !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-primary {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-online-secondary {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
+  margin: 0 !important;
+}
+
+/* Competition ticker: use the entire fixed header height, but soften both
+   horizontal ends into the page background instead of looking like a banner
+   abruptly pasted across the whole viewport. */
+html[data-msc-orientation="landscape"] .msc-competitions-header {
+  display: grid !important;
+  place-items: center !important;
+  background: linear-gradient(90deg, transparent, rgba(4,8,12,.34) 15%, rgba(4,8,12,.34) 85%, transparent) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competitions-header > div {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competitions-header img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  border-radius: 0 !important;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+}
+
+/* ========================================================================== 
+   SPORT / DISCIPLINE SELECTOR — no rail, no page scroll, landscape-specific
+   horizontal composition. The selector is a full-screen transitional page and
+   therefore must not reserve space for BottomNav while BottomNav is hidden.
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] {
+  width: 100% !important;
+  max-width: none !important;
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] .msc-game-select-page {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  padding:
+    max(8px, var(--msc-safe-top))
+    max(14px, var(--msc-safe-right))
+    max(8px, var(--msc-safe-bottom))
+    max(14px, var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-panel {
+  width: min(100%, 1260px) !important;
+  max-width: 1260px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 auto !important;
+  padding: clamp(8px, 1.3vh, 14px) !important;
+  box-sizing: border-box !important;
+  display: grid !important;
+  grid-template-columns: minmax(260px, .82fr) minmax(0, 1.18fr) !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+  column-gap: clamp(14px, 3vw, 44px) !important;
+  row-gap: clamp(5px, 1.1vh, 10px) !important;
+  align-items: center !important;
+  justify-items: stretch !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-showcase {
+  width: 100% !important;
+  max-width: none !important;
+  gap: clamp(2px, .45vw, 6px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-showcase:first-child {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-title {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  font-size: clamp(22px, 4.2vh, 38px) !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-subtitle {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  margin: 0 !important;
+  font-size: clamp(12px, 2.5vh, 18px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-tile {
+  grid-column: 2 !important;
+  grid-row: 1 / 6 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  padding: clamp(8px, 1.4vh, 14px) !important;
+  gap: clamp(4px, 1vh, 10px) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-logo {
+  width: min(42vh, 340px, 78%) !important;
+  height: min(42vh, 340px) !important;
+  max-width: 100% !important;
+  max-height: calc(100% - 46px) !important;
+  object-fit: contain !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-label {
+  font-size: clamp(15px, 3vh, 22px) !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-tile + .msc-game-select-showcase {
+  grid-column: 1 !important;
+  grid-row: 4 !important;
+  align-self: end !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-dots {
+  grid-column: 1 !important;
+  grid-row: 5 !important;
+  margin: 0 !important;
+  align-self: end !important;
+}
+
+/* Keep Awena available on the selector, but no longer over the central sport
+   logo. This route has no shared header shell, so dock it against the top edge. */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] ~ [data-mss-floating-control="awena-launcher"] {
+  top: max(10px, calc(var(--msc-safe-top) + 10px)) !important;
+  right: max(12px, calc(var(--msc-safe-right) + 12px)) !important;
+  bottom: auto !important;
+  transform: scale(.90) !important;
+  transform-origin: top right !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-panel {
+  grid-template-columns: minmax(220px, .78fr) minmax(0, 1.22fr) !important;
+  column-gap: 12px !important;
+  padding: 6px 10px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-title {
+  font-size: clamp(20px, 5.2vh, 30px) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-logo {
+  width: min(46vh, 260px, 74%) !important;
+  height: min(46vh, 260px) !important;
+}
+
+/* First-level submenus that already live inside a migrated page inherit the
+   same 50/50 shell. Keep their right side as the only scrolling surface. */
+html[data-msc-orientation="landscape"] :is(
+  .msc-games-secondary,
+  .msc-competitions-secondary,
+  .msc-online-secondary,
+  .msc-settings-secondary,
+  .msc-screens-secondary,
+  .msc-messages-secondary,
+  .msc-agenda-secondary,
+  .msc-profiles-menu-secondary,
+  .msc-stats-secondary
+) {
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+}
+
+/* ========================================================================== 
+   COMPETITION SUBMENUS — list/resume/history + guided create
+   ========================================================================== */
+html[data-msc-orientation="landscape"] :is(
+  .dc-themed-route[data-msc-route="tournament_list"],
+  .dc-themed-route[data-msc-route="tournament_create"]
+) {
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-competition-list-layout,
+  .msc-competition-create-layout
+) {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-competition-list-header,
+  .msc-competition-create-header
+) {
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-list-header {
+  padding: clamp(8px, 1.2vh, 13px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-list-primary,
+html[data-msc-orientation="landscape"] .msc-competition-create-primary {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(7px, 1vh, 11px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-list-primary > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-list-secondary,
+html[data-msc-orientation="landscape"] .msc-competition-create-secondary {
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 3px 8px 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-create-header > * {
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-create-primary > :first-child {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-create-primary > :last-child {
+  flex: 0 0 auto !important;
+  margin-top: 0 !important;
+  max-height: 46px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-create-secondary > * {
+  margin-top: 0 !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-competition-list-header {
+  padding: 7px 9px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-competition-create-primary > :last-child button {
+  min-width: 74px !important;
+  padding: 6px 9px !important;
+  font-size: 10px !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-competition-list-secondary,
+  .msc-competition-create-secondary
+)::-webkit-scrollbar {
+  width: 5px;
+}
+html[data-msc-orientation="landscape"] :is(
+  .msc-competition-list-secondary,
+  .msc-competition-create-secondary
+)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255,255,255,.24);
+}
+
+/* ========================================================================== 
+   PROFILES SUBVIEWS — Mon profil / profils locaux / galerie / dartsets / amis
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .msc-profiles-page--subview {
+  width: 100% !important;
+  max-width: none !important;
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-rows: var(--msc-landscape-header-height) minmax(0, 1fr) !important;
+  gap: var(--msc-landscape-shell-gap) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-header {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-header > * {
+  max-height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-primary {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(7px, 1vh, 11px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-primary > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-secondary {
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 3px 8px 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-secondary > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin-top: 0 !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-profiles-subview-primary > .card {
+  transform: scale(.94);
+  transform-origin: top center;
+}
+
+html[data-msc-orientation="landscape"] .msc-profiles-subview-secondary::-webkit-scrollbar {
+  width: 5px;
+}
+html[data-msc-orientation="landscape"] .msc-profiles-subview-secondary::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255,255,255,.24);
+}
+
+/* ========================================================================== 
+   STATS SUBMENUS — StatsHub dashboard / training / history
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="statsHub"] {
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-page,
+html[data-msc-orientation="landscape"] :is(.msc-statshub-training-layout, .msc-statshub-history-layout) {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-layout {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-stack,
+html[data-msc-orientation="landscape"] .msc-statshub-main {
+  display: contents !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-header,
+html[data-msc-orientation="landscape"] .msc-statshub-simple-header {
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-header {
+  gap: clamp(4px, .7vh, 8px) !important;
+  margin-bottom: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-header > div:first-child {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-header > div:first-child img {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: calc(var(--msc-landscape-header-height) - 48px) !important;
+  object-fit: contain !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-header > div:last-child {
+  flex: 0 0 auto !important;
+  margin-top: 0 !important;
+  padding: 5px 7px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-primary,
+html[data-msc-orientation="landscape"] .msc-statshub-training-primary,
+html[data-msc-orientation="landscape"] .msc-statshub-history-primary {
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(6px, .8vh, 9px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-primary > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-secondary,
+html[data-msc-orientation="landscape"] .msc-statshub-training-secondary,
+html[data-msc-orientation="landscape"] .msc-statshub-history-secondary {
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 3px 8px 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-simple-header {
+  display: grid !important;
+  grid-template-columns: 46px minmax(0, 1fr) 46px !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 12px !important;
+  border-radius: clamp(16px, 1.6vw, 24px) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  background: linear-gradient(180deg, rgba(10,17,25,.90), rgba(4,8,14,.88)) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-simple-title {
+  min-width: 0 !important;
+  text-align: center !important;
+  font-size: clamp(23px, 3.3vw, 40px) !important;
+  font-weight: 1000 !important;
+  letter-spacing: .8px !important;
+  color: var(--cyan, #49ddff) !important;
+  text-shadow: 0 0 16px rgba(73,221,255,.35) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-statshub-training-primary > div:first-of-type {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-statshub-primary {
+  transform: scale(.96);
+  transform-origin: top center;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .msc-statshub-secondary,
+  .msc-statshub-training-secondary,
+  .msc-statshub-history-secondary
+)::-webkit-scrollbar { width: 5px; }
+html[data-msc-orientation="landscape"] :is(
+  .msc-statshub-secondary,
+  .msc-statshub-training-secondary,
+  .msc-statshub-history-secondary
+)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255,255,255,.24);
+}
+
+/* ========================================================================== 
+   STATS SUBMENU — global leaderboards
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="stats_leaderboards"] {
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-layout {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  align-items: stretch !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-header {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-header > * {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-primary {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(7px, 1vh, 11px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-primary > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-secondary {
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 3px 8px 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-secondary > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin-top: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-secondary::-webkit-scrollbar { width: 5px; }
+html[data-msc-orientation="landscape"] .msc-stats-leaderboards-secondary::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255,255,255,.24);
 }

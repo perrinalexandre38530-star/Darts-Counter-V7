@@ -6713,10 +6713,32 @@ case "babyfoot_team_edit":
     "auth_v7_signup",
   ] as any);
 
+  const LANDSCAPE_HEADER_DOCK_TABS = new Set<Tab>([
+    "home",
+    "agenda",
+    "messages",
+    "profiles",
+    "games",
+    "tournaments",
+    "online",
+    "online_clubs",
+    "friends",
+    "stats",
+    "settings",
+    "cast_host",
+    // Sous-menus déjà convertis au shell paysage
+    "tournament_list",
+    "tournament_create",
+    "statsHub",
+    "statsDetail",
+    "stats_leaderboards",
+  ] as any);
+
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
   const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera";
   const appChromeAllowed = online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
+  const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab);
 
 
   return (
@@ -6727,7 +6749,7 @@ case "babyfoot_team_edit":
         {showSportQuickSwitch && (
           <SportQuickSwitch
             collisionKey={String(tab)}
-            landscapeHeaderDocked={tab === "home"}
+            landscapeHeaderDocked={landscapeHeaderDocked}
             onAfterSwitch={() => {
               if (tab === "home" || tab === "games" || tab === "stats" || tab === "statsHub" || tab === "tournaments") return;
               go("home");
@@ -6770,7 +6792,7 @@ case "babyfoot_team_edit":
             route={String(tab)}
             sport={String(activeSport || "")}
             go={go}
-            landscapeHeaderDocked={tab === "home"}
+            landscapeHeaderDocked={landscapeHeaderDocked}
             inGame={HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
           />
         )}

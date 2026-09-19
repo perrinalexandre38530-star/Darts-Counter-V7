@@ -137,7 +137,7 @@ function SportShowcaseBand({
   theme: any;
 }) {
   return (
-    <div style={sportShowcaseBandStyle} aria-hidden="true">
+    <div className="msc-game-select-showcase" style={sportShowcaseBandStyle} aria-hidden="true">
       {sports.map((sport) => {
         const active = sport.id === activeId;
         const accent = appSportMeta(sport.id as any)?.accent || theme?.accent || theme?.primary || "#ffffff";
@@ -573,8 +573,9 @@ export default function GameSelect({ go }: Props) {
   const clickable = devClickable(!!it.enabled, !!dev?.enabled);
 
   return (
-    <div style={wrap(theme)}>
+    <div className="msc-game-select-page" style={wrap(theme)}>
       <div
+        className="msc-game-select-panel"
         style={panel(theme)}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
@@ -584,24 +585,25 @@ export default function GameSelect({ go }: Props) {
       >
         <SportShowcaseBand sports={SPORT_SHOWCASE_TOP} activeId={it.id} theme={theme} />
 
-        <div style={title(theme)}>Choisis ton sport</div>
-        <div style={subtitle(theme)}>Fais défiler pour choisir</div>
+        <div className="msc-game-select-title" style={title(theme)}>Choisis ton sport</div>
+        <div className="msc-game-select-subtitle" style={subtitle(theme)}>Fais défiler pour choisir</div>
 
         <button
           key={it.id}
+          className="msc-game-select-tile"
           onClick={clickable ? it.onClick : undefined}
           style={sportTile(theme, !visuallyDisabled)}
           aria-disabled={!clickable}
           title={clickable ? "Ouvrir" : "Bientôt"}
         >
-          <img src={it.logo} alt={it.label} style={sportImg(theme, !visuallyDisabled)} draggable={false} />
-          <div style={sportLabel(theme, !visuallyDisabled)}>{it.label}</div>
+          <img className="msc-game-select-logo" src={it.logo} alt={it.label} style={sportImg(theme, !visuallyDisabled)} draggable={false} />
+          <div className="msc-game-select-label" style={sportLabel(theme, !visuallyDisabled)}>{it.label}</div>
           {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
         </button>
 
         <SportShowcaseBand sports={SPORT_SHOWCASE_BOTTOM} activeId={it.id} theme={theme} />
 
-        <div style={dotsWrap}>
+        <div className="msc-game-select-dots" style={dotsWrap}>
           {sortedItems.map((_, i) => (
             <span key={i} style={dot(theme, i === index)} />
           ))}

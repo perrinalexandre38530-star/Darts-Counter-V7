@@ -2143,7 +2143,7 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
 
   return (
     <div
-      className="stats-leaderboards-page"
+      className="stats-leaderboards-page msc-landscape-page-shell msc-stats-leaderboards-layout"
       style={{
         width: "100%",
         minHeight: "100vh",
@@ -2156,7 +2156,7 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
         color: theme.text,
       }}
     >
-      <div style={{ width: "100%", maxWidth: 520, marginBottom: 10 }}>
+      <div className="msc-landscape-header msc-stats-leaderboards-header" style={{ width: "100%", maxWidth: 520, marginBottom: 10 }}>
         <RankingsTickerHeader
           onBack={() => go?.("stats")}
           infoContent={
@@ -2170,6 +2170,7 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
         />
       </div>
 
+      <section className="msc-landscape-primary msc-stats-leaderboards-primary">
       {/* CARD : SCOPE + MODE */}
       <div
         style={{
@@ -2451,7 +2452,9 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
           </button>
         </div>
       </div>
+      </section>
 
+      <aside className="msc-landscape-secondary msc-stats-leaderboards-secondary">
       {/* LISTE */}
       <div
         style={{
@@ -2669,7 +2672,8 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
         )}
       </div>
 
-      <div style={{ height: 80 }} />
+      <div style={{ height: 24 }} />
+      </aside>
     </div>
   );
 }

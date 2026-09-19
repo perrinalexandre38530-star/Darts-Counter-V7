@@ -3591,7 +3591,7 @@ React.useEffect(() => {
 
       <div
         ref={profilesPageRef}
-        className={`container msc-profiles-page${view === "menu" ? " msc-profiles-page--menu" : ""}`}
+        className={`container msc-profiles-page${view === "menu" ? " msc-profiles-page--menu" : " msc-profiles-page--subview msc-landscape-page-shell msc-profiles-subview-layout"}`}
         style={{
           width: "100%",
           maxWidth: 760,
@@ -3618,6 +3618,7 @@ React.useEffect(() => {
           <>
             {view === "friends" || view === "me" || view === "avatarGallery" ? (
               <div
+                className="msc-landscape-header msc-profiles-subview-header"
                 style={{
                   width: "calc(100% + 32px)",
                   maxWidth: "calc(100% + 32px)",
@@ -3673,6 +3674,7 @@ React.useEffect(() => {
               </div>
             ) : (
               <div
+                className="msc-landscape-header msc-profiles-subview-header"
                 style={{
                   width: "100%",
                   maxWidth: "100%",
@@ -3744,6 +3746,7 @@ React.useEffect(() => {
               </div>
             )}
 
+            <section className="msc-landscape-primary msc-profiles-subview-primary">
             <PageAdBanner
               placement="profiles"
               // Même surface native pour tous les sous-menus Profils : changer
@@ -3817,7 +3820,12 @@ React.useEffect(() => {
     />
   )}
 </Card>
+              </>
+            )}
+            </section>
 
+            <aside className="msc-landscape-secondary msc-profiles-subview-secondary">
+            {view === "me" && (
                 <Card
                   title={t(
                     "profiles.private.title",
@@ -3846,7 +3854,6 @@ React.useEffect(() => {
                   )}
 
                 </Card>
-              </>
             )}
 
             {view === "locals" && (
@@ -3937,6 +3944,7 @@ React.useEffect(() => {
                 <FriendsMergedBlock friends={friends} loading={onlineProfileFriendsLoading} error={onlineProfileFriendsError} onRefresh={refreshProfileOnlineFriends} />
               </Card>
             )}
+            </aside>
           </>
         )}
       </div>

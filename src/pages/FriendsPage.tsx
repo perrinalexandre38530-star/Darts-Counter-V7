@@ -3622,7 +3622,7 @@ const doLogout = React.useCallback(async () => {
 
   return (
     <div
-      className="container"
+      className="container msc-landscape-page-shell msc-online-layout"
       style={{
         padding: 16,
         paddingBottom: 156,

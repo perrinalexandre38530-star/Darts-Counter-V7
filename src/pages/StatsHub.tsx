@@ -8273,7 +8273,14 @@ if (tab === "training") {
   });
 
   return (
-    <div style={{ padding: 16, paddingBottom: 80, display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="msc-landscape-page-shell msc-statshub-training-layout" style={{ padding: 16, paddingBottom: 80, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="msc-landscape-header msc-statshub-simple-header">
+        <BackDot onClick={() => go("stats" as any)} />
+        <div className="msc-statshub-simple-title">TRAINING</div>
+        <div aria-hidden style={{ width: 42, height: 42 }} />
+      </div>
+
+      <section className="msc-landscape-primary msc-statshub-training-primary">
       <TrainingProfileCard />
 
       <div
@@ -8296,7 +8303,9 @@ if (tab === "training") {
           Classements
         </button>
       </div>
+      </section>
 
+      <aside className="msc-landscape-secondary msc-statshub-training-secondary">
       {trainingSubView === "leaderboards" ? (
         <StatsTrainingLeaderboards modeOptions={trainingModeOptions} defaultModeId={"training_time_attack"} />
       ) : (
@@ -8305,14 +8314,23 @@ if (tab === "training") {
           <StatsTrainingModesLocal />
         </>
       )}
+      </aside>
     </div>
   );
 }
 
 if (tab === "history") {
   return (
-    <div style={{ padding: 16, paddingBottom: 80 }}>
-      <PageAdBanner placement="history" slotKey="page-history-stats-hub-under-header" style={{ marginBottom: 12 }} />
+    <div className="msc-landscape-page-shell msc-statshub-history-layout" style={{ padding: 16, paddingBottom: 80 }}>
+      <div className="msc-landscape-header msc-statshub-simple-header">
+        <BackDot onClick={() => go("stats" as any)} />
+        <div className="msc-statshub-simple-title">HISTORIQUE</div>
+        <div aria-hidden style={{ width: 42, height: 42 }} />
+      </div>
+      <section className="msc-landscape-primary msc-statshub-history-primary">
+        <PageAdBanner placement="history" slotKey="page-history-stats-hub-under-header" style={{ marginBottom: 12 }} />
+      </section>
+      <aside className="msc-landscape-secondary msc-statshub-history-secondary">
       <div style={card}>
         {isMolkkySport ? (
           <MolkkyStatsHistoryPage store={store as any} go={go} />
@@ -8320,6 +8338,7 @@ if (tab === "history") {
           <HistoryPage store={store as any} go={go} />
         )}
       </div>
+      </aside>
     </div>
   );
 }
@@ -8328,11 +8347,12 @@ if (tab === "history") {
 //  VUE PAR DÉFAUT : "STATS"
 // ============================================================
 return (
-  <div style={{ padding: 16, paddingBottom: 80 }}>
-    <div style={statsPageWrap}>
-      <div style={statsStack}>
+  <div className="msc-statshub-page" style={{ padding: 16, paddingBottom: 80 }}>
+    <div className="msc-landscape-page-shell msc-statshub-layout" style={statsPageWrap}>
+      <div className="msc-statshub-stack" style={statsStack}>
         {/* HEADER : titre centré + carrousel modes */}
         <div
+          className="msc-landscape-header msc-statshub-header"
           style={{
             display: "flex",
             flexDirection: "column",
@@ -8453,7 +8473,8 @@ return (
         </div>
 
         {/* CONTENU PRINCIPAL */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="msc-statshub-main" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <section className="msc-landscape-primary msc-statshub-primary">
           {/* --------- CARROUSEL PROFIL --------- */}
           <div style={card}>
             {filteredPlayers.length ? (
@@ -8728,7 +8749,9 @@ return (
               </span>
             )}
           </div>
+          </section>
 
+          <aside className="msc-landscape-secondary msc-statshub-secondary">
           {/* ========= CONTENU PILOTÉ PAR LE CARROUSEL DE MODES ========= */}
 <React.Suspense fallback={<LazyFallback label="Chargement…" />}>
             {/* ✅ MÖLKKY: on garde EXACTEMENT la structure StatsHub, seul le contenu change */}
@@ -10083,6 +10106,7 @@ return (
               </div>
             )}
           </React.Suspense>
+          </aside>
         </div>
       </div>
     </div>

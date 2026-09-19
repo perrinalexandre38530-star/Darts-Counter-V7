@@ -910,7 +910,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
   return (
     <div
-      className="container"
+      className="container msc-landscape-page-shell msc-competition-list-layout"
       style={{
         padding: 16,
         paddingBottom: 104,
@@ -922,6 +922,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
       }}
     >
       <div
+        className="msc-landscape-header msc-competition-list-header"
         style={{
           borderRadius: 24,
           padding: 14,
@@ -980,6 +981,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
         </div>
       </div>
 
+      <section className="msc-landscape-primary msc-competition-list-primary">
       <PageAdBanner placement="competitions" slotKey={`page-competitions-list-${listContext}-under-header`} style={{ marginTop: 12, marginBottom: 2 }} />
 
       <div
@@ -1029,7 +1031,9 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           {activeFilterCaption}
         </div>
       </div>
+      </section>
 
+      <aside className="msc-landscape-secondary msc-competition-list-secondary">
       <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
         {!hasAny ? (
           <div
@@ -1179,6 +1183,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           ONLINE actif : les compétitions NAS sont réhydratées en local à l’ouverture pour conserver la vue/bracket.
         </div>
       ) : null}
+      </aside>
     </div>
   );
 

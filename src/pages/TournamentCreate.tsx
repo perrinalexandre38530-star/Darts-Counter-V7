@@ -4474,7 +4474,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
 
     return (
       <div
-        className="container"
+        className="container msc-landscape-page-shell msc-competition-create-layout"
         style={{
           padding: 16,
           paddingBottom: 96,
@@ -4483,11 +4483,14 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           minHeight: "100vh",
         }}
       >
-        <GuidedVisualHeader
-          accent={primary}
-          onBack={() => go("tournaments", { forceMode, source, entry: "create" })}
-        />
+        <div className="msc-landscape-header msc-competition-create-header">
+          <GuidedVisualHeader
+            accent={primary}
+            onBack={() => go("tournaments", { forceMode, source, entry: "create" })}
+          />
+        </div>
 
+        <section className="msc-landscape-primary msc-competition-create-primary">
         <GuidedHeroCard
           titleLine2={titleLine2}
           sportLabel={sportLabel.toUpperCase()}
@@ -4529,7 +4532,9 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             </button>
           ))}
         </div>
+        </section>
 
+        <aside className="msc-landscape-secondary msc-competition-create-secondary">
         {currentGuidedKey === "type" ? (
           <Section title={guidedStepTitle("type", "Type de compétition")} subtitle={isLeague ? "Choisir un nom de ligue" : "Choisir un nom de tournoi"} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 14 }}>
@@ -5068,6 +5073,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             <GuidedFooter final />
           </Section>
         ) : null}
+
+        </aside>
 
         <Sheet open={sheetMode && !isPetanque} title="Choisir un mode" onClose={() => setSheetMode(false)} primary={primary}>
           <div style={{ display: "grid", gap: 10 }}>
