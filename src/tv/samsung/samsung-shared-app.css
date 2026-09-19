@@ -67,3 +67,63 @@ html[data-mss-samsung-tv-shared-app="1"] [tabindex]:focus {
   font-weight: 850;
   backdrop-filter: blur(12px);
 }
+
+
+/* ==========================================================
+   TV SHARED PHONE UI V7 — vraie page mobile réutilisée en 16:9
+   ========================================================== */
+html[data-mss-samsung-tv-shared-app="1"] {
+  --msc-app-height: 100vh;
+  --msc-viewport-width: 100vw;
+  --msc-viewport-height: 100vh;
+  --msc-content-max: 100vw;
+  --msc-page-pad-x: clamp(16px, 1.8vw, 34px);
+  --msc-page-pad-y: clamp(8px, 1.2vh, 18px);
+  --msc-bottom-nav-space: 0px;
+}
+
+html[data-mss-samsung-tv-shared-app="1"],
+html[data-mss-samsung-tv-shared-app="1"] body,
+html[data-mss-samsung-tv-shared-app="1"] #root,
+html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-host {
+  width: 100vw !important;
+  height: 100vh !important;
+  min-width: 100vw !important;
+  min-height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] body {
+  overflow: hidden !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-host {
+  overflow: hidden !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .x01play-container {
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .container {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100vh !important;
+  padding-bottom: 0 !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .bottom-nav,
+html[data-mss-samsung-tv-shared-app="1"] [data-bottom-nav],
+html[data-mss-samsung-tv-shared-app="1"] nav.bottom-nav {
+  display: none !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-hint {
+  opacity: .18;
+  font-size: 10px;
+}

@@ -55,11 +55,11 @@ else {
   if (bundleText.includes("dc-online-v3.perrin-alexandre38530.workers.dev")) pass("Viewer TV routé vers le Worker ONLINE DC_SYNC");
   else fail("Viewer TV non routé vers le Worker ONLINE (risque session absente)");
 
-  if (bundleText.includes("MSS_TV_SHARED_APP_BUILD_20260919_06")) pass("Interface Samsung TV SHARED APP V6 intégrée au bundle");
+  if (bundleText.includes("MSS_TV_SHARED_PHONE_UI_BUILD_20260919_07")) pass("Interface Samsung TV SHARED PHONE UI V7 intégrée au bundle");
   else fail("ANCIEN BUNDLE TV détecté : l'interface SHARED APP V6 n'est pas dans les assets générés");
 
-  if (bundleText.includes("TV SHARED APP V6") && bundleText.includes("LANCER UNE PARTIE") && bundleText.includes("SPORTS")) pass("Navigation TV SHARED APP V6 présente");
-  else fail("Navigation TV SHARED APP V6 absente du bundle");
+  if (bundleText.includes("TV SHARED PHONE UI V7") && bundleText.includes("LANCER UNE PARTIE") && bundleText.includes("SPORTS")) pass("Navigation TV SHARED PHONE UI V7 présente");
+  else fail("Navigation TV SHARED PHONE UI V7 absente du bundle");
 
   if (bundleText.includes("MATCH SIMPLE") && bundleText.includes("DICE DUEL") && bundleText.includes("MATCH 1V1")) pass("Lanceurs de sports TV intégrés");
   else fail("Lanceurs de sports TV incomplets");

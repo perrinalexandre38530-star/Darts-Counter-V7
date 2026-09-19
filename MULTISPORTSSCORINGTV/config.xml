@@ -2,7 +2,7 @@
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="https://multisports-scoring.com/tv/MULTISPORTSSCORINGTV"
-        version="1.0.6"
+        version="1.0.7"
         viewmodes="maximized">
     <name>MULTISPORTS SCORING</name>
     <icon src="icon.png"/>

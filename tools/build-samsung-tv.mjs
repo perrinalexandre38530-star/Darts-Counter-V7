@@ -52,11 +52,11 @@ const builtJs = fs.existsSync(builtAssetsDir)
 const builtBundle = builtJs
   .map((file) => fs.readFileSync(path.join(builtAssetsDir, file), "utf8"))
   .join("\n");
-if (!builtBundle.includes("MSS_TV_SHARED_APP_BUILD_20260919_06")) {
-  console.error("❌ Le bundle Samsung généré ne contient pas TV SHARED APP V6. Build refusé.");
+if (!builtBundle.includes("MSS_TV_SHARED_PHONE_UI_BUILD_20260919_07")) {
+  console.error("❌ Le bundle Samsung généré ne contient pas TV SHARED PHONE UI V7. Build refusé.");
   process.exit(1);
 }
-console.log("✅ Bundle Samsung TV SHARED APP V6 généré");
+console.log("✅ Bundle Samsung TV SHARED PHONE UI V7 généré");
 
 const check = spawnSync(process.execPath, [path.join(root, "tools", "check-samsung-tv.mjs")], {
   cwd: root,

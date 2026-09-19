@@ -26,7 +26,7 @@ const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_SHARED_APP_BUILD_20260919_06";
+const TV_BUILD_MARKER = "MSS_TV_SHARED_PHONE_UI_BUILD_20260919_07";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -380,6 +380,65 @@ function screenForPhoneTab(tab: string): TvScreen | null {
   return null;
 }
 
+function sharedRouteForSnapshot(snapshot: ViewerLiveSnapshot | null) {
+  const game = String(snapshot?.game || "").toLowerCase();
+  const screen = String(snapshot?.screen || "").toLowerCase();
+  if (screen && isViewerGameplayRoute(screen)) return screen;
+  const map: Record<string, string> = {
+    x01: "x01_play_v3",
+    cricket: "cricket",
+    killer: "killer_play",
+    killer_progressive: "killer_play",
+    shanghai: "shanghai_play",
+    petanque: "petanque_play",
+    babyfoot: "babyfoot_play",
+    pingpong: "pingpong_play",
+    golf: "golf_play",
+    darts_racer: "darts_racer_play",
+    five_lives: "five_lives_play",
+    warfare: "warfare_play",
+    battle_royale: "battle_royale_play",
+    training_x01: "training_x01_play",
+    molkky: "molkky_play",
+  };
+  return map[game] || (game ? `${game}_play` : "");
+}
+
+function sharedGameConfigForSnapshot(snapshot: ViewerLiveSnapshot | null, nav: PhoneNavigation | null, state: TvState) {
+  const direct = nav?.gameConfig || (snapshot as any)?.gameConfig || (snapshot as any)?.meta?.tvConfig || (snapshot as any)?.meta?.gameConfig;
+  if (direct && typeof direct === "object") return direct;
+  if (String(snapshot?.game || "").toLowerCase() !== "x01") return null;
+
+  const players = Array.isArray(snapshot?.players) ? snapshot!.players : [];
+  const scores = players.map((player: any) => Number(player?.score)).filter((value) => Number.isFinite(value) && value > 0);
+  const inferredStart = Number((snapshot as any)?.meta?.startScore || (snapshot as any)?.meta?.x01StartScore || Math.max(0, ...scores) || state.settings.defaultX01 || 501);
+  const outMode = ["single", "double", "master"].includes(String((snapshot as any)?.meta?.outMode || ""))
+    ? String((snapshot as any)?.meta?.outMode)
+    : (state.settings.doubleOut ? "double" : "single");
+  const inMode = ["single", "double", "master"].includes(String((snapshot as any)?.meta?.inMode || ""))
+    ? String((snapshot as any)?.meta?.inMode)
+    : "single";
+
+  return {
+    startScore: inferredStart,
+    x01StartScore: inferredStart,
+    inMode,
+    outMode,
+    gameMode: players.length <= 1 ? "solo" : "multi",
+    players: players.map((player: any, index: number) => ({
+      id: String(player?.id || `tv-player-${index + 1}`),
+      name: String(player?.name || `Joueur ${index + 1}`),
+      avatar: player?.avatarUrl || player?.avatarDataUrl || undefined,
+    })),
+    teams: null,
+    legsPerSet: Math.max(1, Number((snapshot as any)?.meta?.legsPerSet || 1)),
+    setsToWin: Math.max(1, Number((snapshot as any)?.meta?.setsToWin || 1)),
+    serveMode: "alternate",
+    scoringSource: "manual",
+    createdAt: Date.now(),
+  };
+}
+
 function TvWatermark({ src, strong = false }: { src?: string; strong?: boolean }) {
   if (!src) return null;
   return (
@@ -521,7 +580,7 @@ function TvHub({
         <div>
           <div className="mss-tv-hub-title">MULTISPORTS SCORING</div>
           <div className="mss-tv-hub-subtitle">TV COMPLÈTE · SESSION {sessionId}</div>
-          <div className="mss-tv-build-marker">TV SHARED APP V6 · 2026.09.19-06</div>
+          <div className="mss-tv-build-marker">TV SHARED PHONE UI V7 · 2026.09.19-07</div>
         </div>
         <div className={`mss-tv-link-state is-${connectionStatus}`}>
           <span className="mss-tv-link-dot" />
@@ -1539,6 +1598,8 @@ export default function SamsungTvApp() {
   const screenRef = React.useRef<TvScreen>("hub");
   const tvStateRef = React.useRef<TvState>(EMPTY_TV_STATE);
   const selectedSportRef = React.useRef<TvSportId>("darts");
+  const phoneNavigationRef = React.useRef<PhoneNavigation | null>(null);
+  const snapshotRef = React.useRef<ViewerLiveSnapshot | null>(null);
 
   React.useEffect(() => {
     autoFollowGameRef.current = autoFollowGame;
@@ -1569,6 +1630,7 @@ export default function SamsungTvApp() {
     setSessionId(clean);
     setSnapshot(null);
     setPhoneNavigation(null);
+    phoneNavigationRef.current = null;
     setScreen("hub");
     setFocusIndex(1);
     setAutoFollowGame(true);
@@ -1606,9 +1668,35 @@ export default function SamsungTvApp() {
 
     const applySnapshot = (next: ViewerLiveSnapshot | null) => {
       if (!alive || !next) return;
+      snapshotRef.current = next;
       setSnapshot(next);
       const hasGame = Array.isArray(next.players) && next.players.length > 0 && next.phase !== "lobby";
       if (hasGame && autoFollowGameRef.current) {
+        const currentState = tvStateRef.current;
+        const currentNav = phoneNavigationRef.current;
+        const route = currentNav?.gameplay ? currentNav.tab : sharedRouteForSnapshot(next);
+        if (route) {
+          const gameConfig = sharedGameConfigForSnapshot(next, currentNav, currentState);
+          setSharedAppBoot({
+            version: 1,
+            tab: route,
+            params: {
+              ...(currentNav?.params || {}),
+              ...(gameConfig ? { config: gameConfig, x01ConfigV3: gameConfig } : {}),
+              source: "samsung-tv-live-mirror",
+              tvNative: true,
+            },
+            gameConfig,
+            sportId: String(next.sport || currentState.activeSport || selectedSportRef.current || "darts"),
+            sessionId,
+            activeProfileId: currentState.activeProfileId,
+            profiles: currentState.profiles,
+            settings: currentState.settings,
+            theme: currentState.theme,
+            launchedAt: Date.now(),
+          });
+          return;
+        }
         screenRef.current = "scoreboard";
         setScreen("scoreboard");
         setFocusIndex(0);
@@ -1668,6 +1756,7 @@ export default function SamsungTvApp() {
           gameConfig: data.gameConfig || undefined,
           at: Number(data.at || Date.now()),
         };
+        phoneNavigationRef.current = nav;
         setPhoneNavigation(nav);
 
         const nextScreen = screenForPhoneTab(nav.tab);
@@ -1675,11 +1764,12 @@ export default function SamsungTvApp() {
           autoFollowGameRef.current = true;
           setAutoFollowGame(true);
           const currentTvState = tvStateRef.current;
+          const mirroredConfig = sharedGameConfigForSnapshot(snapshotRef.current, nav, currentTvState);
           setSharedAppBoot({
             version: 1,
             tab: nav.tab,
-            params: { ...(nav.params || {}), ...(nav.gameConfig ? { config: nav.gameConfig } : {}), source: "samsung-tv-phone-follow" },
-            gameConfig: nav.gameConfig || null,
+            params: { ...(nav.params || {}), ...(mirroredConfig ? { config: mirroredConfig, x01ConfigV3: mirroredConfig } : {}), source: "samsung-tv-phone-follow", tvNative: true },
+            gameConfig: mirroredConfig,
             sportId: currentTvState.activeSport || selectedSportRef.current || "darts",
             sessionId,
             activeProfileId: currentTvState.activeProfileId,
@@ -2272,6 +2362,7 @@ export default function SamsungTvApp() {
       <React.Suspense fallback={<div className="mss-tv-shared-app-loading">Chargement de l’interface MULTISPORTS SCORING…</div>}>
         <SamsungTvSharedAppHost
           boot={sharedAppBoot}
+          snapshot={snapshot}
           onExit={() => {
             setSharedAppBoot(null);
             setSelectedAction(null);

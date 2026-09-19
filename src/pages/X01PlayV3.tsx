@@ -4695,6 +4695,20 @@ React.useEffect(() => {
           set: castSetNo,
           leg: castLegNo,
           outMode,
+          inMode: (config as any)?.inMode || "single",
+          startScore: Number(config.startScore || 501),
+          legsPerSet: Number((config as any)?.legsPerSet || 1),
+          setsToWin: Number((config as any)?.setsToWin || 1),
+          tvRoute: "x01_play_v3",
+          tvConfig: {
+            ...(config as any),
+            players: (Array.isArray(players) ? players : []).map((player: any) => ({
+              id: String(player?.id || ""),
+              name: String(player?.name || "Joueur"),
+              avatar: resolveAvatar(player) || player?.avatar || undefined,
+              dartSetId: player?.dartSetId ?? null,
+            })),
+          },
         },
         updatedAt: Date.now(),
       };
