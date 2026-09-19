@@ -142,6 +142,7 @@ export default function DiceHome({ store, update, go }: Props) {
 
   return (
     <div
+      className="msc-home-page msc-sport-home-page dice-home"
       style={{
         minHeight: "100vh",
         paddingTop: 18,
@@ -154,51 +155,59 @@ export default function DiceHome({ store, update, go }: Props) {
         gap: 14,
       }}
     >
-      <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
-        <SportHomeWelcomeHeader
-          sport="dicegame"
-          title="DICE SCORING"
-          welcome={t?.("home.welcome", "Bienvenue")}
-          accent={theme.primary ?? "#8b5cf6"}
-          borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
-        />
-      </div>
+      <div className="msc-landscape-page-shell msc-home-layout msc-sport-home-layout">
+        <div className="msc-landscape-header msc-sport-home-header">
+          <div className="msc-sport-home-header-inner" style={{ ...sectionWrap, boxSizing: "border-box" }}>
+            <SportHomeWelcomeHeader
+              sport="dicegame"
+              title="DICE SCORING"
+              welcome={t?.("home.welcome", "Bienvenue")}
+              accent={theme.primary ?? "#8b5cf6"}
+              borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+            />
+          </div>
+        </div>
 
-      <div style={{ ...sectionWrap, marginBottom: 0 }}>
-        <PageAdBanner placement="home" slotKey="page-home-dice-under-header" />
-      </div>
+        <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
+          <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
+            <PageAdBanner placement="home" slotKey="page-home-dice-under-header" />
+          </div>
 
-      <div style={sectionWrap}>
-        <ActiveProfileCard
-          theme={theme}
-          profile={activeProfile}
-          onEdit={() => go("profiles", { view: "me" })}
-          onPick={() => go("profiles", { view: "locals" })}
-        />
-      </div>
+          <div className="msc-home-profile-slot msc-sport-home-profile" style={sectionWrap}>
+            <ActiveProfileCard
+              theme={theme}
+              profile={activeProfile}
+              onEdit={() => go("profiles", { view: "me" })}
+              onPick={() => go("profiles", { view: "locals" })}
+            />
+          </div>
+        </section>
 
-      <div style={sectionWrap}>
-        <ArcadeTicker items={items} theme={theme} />
-      </div>
+        <aside className="msc-landscape-secondary msc-home-secondary msc-sport-home-secondary">
+          <div className="msc-sport-home-right-card" style={sectionWrap}>
+            <ArcadeTicker items={items} theme={theme} />
+          </div>
 
-      <div style={sectionWrap}>
-        <button
-          onClick={() => go("games")}
-          style={{
-            width: "100%",
-            borderRadius: 16,
-            padding: "14px 14px",
-            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.18)"}`,
-            background: "rgba(255,255,255,0.08)",
-            color: theme.text,
-            fontWeight: 1000,
-            letterSpacing: 0.8,
-            textTransform: "uppercase",
-            cursor: "pointer",
-          }}
-        >
-          Aller aux jeux
-        </button>
+          <div className="msc-sport-home-actions" style={sectionWrap}>
+            <button
+              onClick={() => go("games")}
+              style={{
+                width: "100%",
+                borderRadius: 16,
+                padding: "14px 14px",
+                border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.18)"}`,
+                background: "rgba(255,255,255,0.08)",
+                color: theme.text,
+                fontWeight: 1000,
+                letterSpacing: 0.8,
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              Aller aux jeux
+            </button>
+          </div>
+        </aside>
       </div>
     </div>
   );

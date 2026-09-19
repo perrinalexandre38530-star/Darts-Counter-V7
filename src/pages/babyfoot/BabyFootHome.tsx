@@ -760,7 +760,7 @@ export default function BabyFootHome({ store, go }: Props) {
 
   return (
     <div
-      className="babyfoot-home container"
+      className="msc-home-page msc-sport-home-page babyfoot-home container"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -778,82 +778,87 @@ export default function BabyFootHome({ store, go }: Props) {
         @keyframes bfMarquee { 0% { transform: translateX(0%); } 100% { transform: translateX(-50%); } }
       `}</style>
 
-      {/* ===== HEADER — référence DARTS SCORING ===== */}
-      <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
-        <SportHomeWelcomeHeader
-          sport="babyfoot"
-          title="BABYFOOT SCORING"
-          welcome={t("home.welcome", "Bienvenue")}
-          accent={primary}
-          borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
-        />
-      </div>
-
-      <div style={{ ...sectionWrap, marginBottom: 0 }}>
-        <PageAdBanner placement="home" slotKey="page-home-babyfoot-under-header" />
-      </div>
-
-      {/* ✅ Carte joueur actif */}
-      {activeProfile && (
-        <div style={sectionWrap}>
-          <ActiveProfileCard
-            hideStatus={true}
-            profile={activeProfile as any}
-            stats={
-              {
-                ratingGlobal: babyfootGlobalStats.rating,
-                winrateGlobal: babyfootGlobalStats.winRate,
-                avg3DGlobal: starAvg3D,
-                sessionsGlobal: babyfootGlobalStats.sessions,
-                favoriteNumberLabel: "—",
-              } as any
-            }
-            starAvg3D={starAvg3D}
-            suppressDefaultStatsSlides={true}
-            customSlides={homeRecordSlides}
-            globalTitle={t("babyfoot.home.global.title", "Vue globale")}
-            globalKpis={[
-              { label: t("babyfoot.kpi.rating", "rating"), value: babyfootGlobalStats.rating },
-              { label: t("babyfoot.kpi.win", "win%"), value: `${Math.round(babyfootGlobalStats.winRate * 100)}%` },
-              { label: t("babyfoot.kpi.bpMatch", "BP/match"), value: Number(babyfootGlobalStats.avgGF).toFixed(1) },
-              { label: t("babyfoot.kpi.bcMatch", "BC/match"), value: Number(babyfootGlobalStats.avgGA).toFixed(1) },
-              { label: t("babyfoot.kpi.serie", "série"), value: babyfootGlobalStats.currentWinStreak },
-              { label: t("babyfoot.kpi.clean", "clean"), value: babyfootGlobalStats.cleanSheets },
-            ]}
-          />
+      <div className="msc-landscape-page-shell msc-home-layout msc-sport-home-layout">
+        {/* ===== HEADER — référence DARTS SCORING ===== */}
+        <div className="msc-landscape-header msc-sport-home-header">
+          <div className="msc-sport-home-header-inner" style={{ ...sectionWrap, boxSizing: "border-box" }}>
+            <SportHomeWelcomeHeader
+              sport="babyfoot"
+              title="BABYFOOT SCORING"
+              welcome={t("home.welcome", "Bienvenue")}
+              accent={primary}
+              borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+            />
+          </div>
         </div>
-      )}
 
-      {/* ✅ HOME = 3 tickers Babyfoot (stack) — auto-défilement via ArcadeTicker (comme Darts/Pétanque) */}
-      <div style={{ ...sectionWrap, marginTop: 10, marginBottom: 10 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <ArcadeTicker items={resultsTickerItems} intervalMs={4200} />
-          <ArcadeTicker items={leagueTickerItems} intervalMs={5200} />
-          <ArcadeTicker items={newsTickerItems} intervalMs={4200} />
-        </div>
-      </div>
+        <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
+          <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
+            <PageAdBanner placement="home" slotKey="page-home-babyfoot-under-header" />
+          </div>
 
-      {false && (
-        <>
-          {/* CTA supprimés (désactivés) */}
-          <div style={{ ...sectionWrap, marginTop: 8, marginBottom: 14 }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button style={{ flex: "1 1 180px" }} onClick={() => go("babyfoot_config", { mode: "match_1v1" })}>
-                {t("babyfoot.home.cta.new", "Nouvelle partie")}
-              </button>
-              <button style={{ flex: "1 1 180px" }} onClick={() => go("games")}>
-                {t("babyfoot.home.cta.menu", "Menu Local")}
-              </button>
-              <button style={{ flex: "1 1 180px" }} onClick={() => go("tournaments", { forceMode: "babyfoot" })}>
-                {t("babyfoot.home.cta.tournaments", "Tournois")}
-              </button>
-              <button style={{ flex: "1 1 180px" }} onClick={() => go("stats")}>
-                {t("babyfoot.home.cta.stats", "Stats")}
-              </button>
+          {activeProfile && (
+            <div className="msc-home-profile-slot msc-sport-home-profile" style={{ ...sectionWrap }}>
+              <ActiveProfileCard
+                hideStatus={true}
+                profile={activeProfile as any}
+                stats={
+                  {
+                    ratingGlobal: babyfootGlobalStats.rating,
+                    winrateGlobal: babyfootGlobalStats.winRate,
+                    avg3DGlobal: starAvg3D,
+                    sessionsGlobal: babyfootGlobalStats.sessions,
+                    favoriteNumberLabel: "—",
+                  } as any
+                }
+                starAvg3D={starAvg3D}
+                suppressDefaultStatsSlides={true}
+                customSlides={homeRecordSlides}
+                globalTitle={t("babyfoot.home.global.title", "Vue globale")}
+                globalKpis={[
+                  { label: t("babyfoot.kpi.rating", "rating"), value: babyfootGlobalStats.rating },
+                  { label: t("babyfoot.kpi.win", "win%"), value: `${Math.round(babyfootGlobalStats.winRate * 100)}%` },
+                  { label: t("babyfoot.kpi.bpMatch", "BP/match"), value: Number(babyfootGlobalStats.avgGF).toFixed(1) },
+                  { label: t("babyfoot.kpi.bcMatch", "BC/match"), value: Number(babyfootGlobalStats.avgGA).toFixed(1) },
+                  { label: t("babyfoot.kpi.serie", "série"), value: babyfootGlobalStats.currentWinStreak },
+                  { label: t("babyfoot.kpi.clean", "clean"), value: babyfootGlobalStats.cleanSheets },
+                ]}
+              />
+            </div>
+          )}
+        </section>
+
+        <aside className="msc-landscape-secondary msc-home-secondary msc-sport-home-secondary">
+          <div className="msc-sport-home-right-stack" style={{ ...sectionWrap, marginTop: 10, marginBottom: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <ArcadeTicker items={resultsTickerItems} intervalMs={4200} />
+              <ArcadeTicker items={leagueTickerItems} intervalMs={5200} />
+              <ArcadeTicker items={newsTickerItems} intervalMs={4200} />
             </div>
           </div>
-        </>
-      )}
+
+          {false && (
+            <>
+              <div className="msc-sport-home-actions" style={{ ...sectionWrap, marginTop: 8, marginBottom: 14 }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button style={{ flex: "1 1 180px" }} onClick={() => go("babyfoot_config", { mode: "match_1v1" })}>
+                    {t("babyfoot.home.cta.new", "Nouvelle partie")}
+                  </button>
+                  <button style={{ flex: "1 1 180px" }} onClick={() => go("games")}>
+                    {t("babyfoot.home.cta.menu", "Menu Local")}
+                  </button>
+                  <button style={{ flex: "1 1 180px" }} onClick={() => go("tournaments", { forceMode: "babyfoot" })}>
+                    {t("babyfoot.home.cta.tournaments", "Tournois")}
+                  </button>
+                  <button style={{ flex: "1 1 180px" }} onClick={() => go("stats")}>
+                    {t("babyfoot.home.cta.stats", "Stats")}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

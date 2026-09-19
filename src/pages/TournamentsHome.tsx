@@ -64,6 +64,7 @@ function smartBack(go: Props["go"], fallbackTab: any = "home", fallbackParams?: 
 function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions, backTitle, alt }: { onBack: () => void; tickerSrc?: string; backTitle: string; alt: string }) {
   return (
     <div
+      className="msc-competition-ticker-frame"
       style={{
         position: "relative",
         margin: "0 0 22px",
@@ -71,6 +72,7 @@ function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions, backTitle, 
       }}
     >
       <img
+        className="msc-competition-ticker-image"
         src={tickerSrc}
         alt={alt}
         draggable={false}

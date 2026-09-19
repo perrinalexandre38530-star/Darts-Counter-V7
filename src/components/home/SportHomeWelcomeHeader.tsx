@@ -51,6 +51,7 @@ export default function SportHomeWelcomeHeader({
         @keyframes dcTitleShimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }
       `}</style>
       <div
+      className="msc-sport-home-welcome-card"
       style={{
         width: "100%",
         boxSizing: "border-box",
@@ -71,6 +72,7 @@ export default function SportHomeWelcomeHeader({
       <SportWelcomeWatermark sport={sport} opacity={0.12} size={205} />
 
       <div
+        className="msc-sport-home-welcome-pill"
         style={{
           position: "relative",
           zIndex: 2,
@@ -95,8 +97,9 @@ export default function SportHomeWelcomeHeader({
         </span>
       </div>
 
-      <div ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}>
+      <div className="msc-sport-home-title-wrap" ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}>
         <div
+          className="msc-sport-home-title"
           ref={textRef}
           style={{
             width: "fit-content",

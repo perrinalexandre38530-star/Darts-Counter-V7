@@ -818,7 +818,7 @@ const secondaryTicker = tickerItems.length
 
   return (
     <div
-      className="petanque-home container"
+      className="msc-home-page msc-sport-home-page petanque-home container"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -835,8 +835,10 @@ const secondaryTicker = tickerItems.length
         @keyframes dcTitleShimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }
       `}</style>
 
+      <div className="msc-landscape-page-shell msc-home-layout msc-sport-home-layout">
       {/* ===== HEADER — référence DARTS SCORING ===== */}
-      <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
+      <div className="msc-landscape-header msc-sport-home-header">
+        <div className="msc-sport-home-header-inner" style={{ ...sectionWrap, boxSizing: "border-box" }}>
         <SportHomeWelcomeHeader
           sport="petanque"
           title="PETANQUE SCORING"
@@ -844,15 +846,17 @@ const secondaryTicker = tickerItems.length
           accent={primary}
           borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
         />
+        </div>
       </div>
 
-      <div style={{ ...sectionWrap, marginBottom: 0 }}>
+      <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
+      <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
         <PageAdBanner placement="home" slotKey="page-home-petanque-under-header" />
       </div>
 
       {/* ✅ Carte joueur actif (mêmes extérieurs) */}
       {activeProfile && (
-        <div style={sectionWrap}>
+        <div className="msc-home-profile-slot msc-sport-home-profile" style={sectionWrap}>
           <ActiveProfileCard
             hideStatus={true}
             profile={activeProfile as any}
@@ -885,9 +889,11 @@ const secondaryTicker = tickerItems.length
           />
         </div>
       )}
+      </section>
 
+      <aside className="msc-landscape-secondary msc-home-secondary msc-sport-home-secondary">
       {/* ✅ Ticker arcade — mêmes extérieurs */}
-      <div style={sectionWrap}>
+      <div className="msc-sport-home-right-card" style={sectionWrap}>
         <ArcadeTicker
           items={tickerItems}
           activeIndex={tickerIndex}
@@ -907,7 +913,7 @@ const secondaryTicker = tickerItems.length
 
       {/* ✅ Détails ticker — WRAP dans sectionWrap pour aligner les extérieurs */}
       {currentTicker && (
-        <div style={{ ...sectionWrap, marginTop: 10, marginBottom: 10 }}>
+        <div className="msc-sport-home-right-card" style={{ ...sectionWrap, marginTop: 10, marginBottom: 10 }}>
           <div
             style={{
               width: "100%",
@@ -1052,6 +1058,8 @@ const secondaryTicker = tickerItems.length
       )}
 
       <div style={{ height: 26 }} />
+      </aside>
+      </div>
     </div>
   );
 }

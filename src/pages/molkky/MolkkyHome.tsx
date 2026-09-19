@@ -246,77 +246,86 @@ export default function MolkkyHome({ store, go }: Props) {
   }, [tickerItems.length]);
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      {/* ===== HEADER — référence DARTS SCORING ===== */}
-      <div style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: 16 }}>
-        <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
-          <SportHomeWelcomeHeader
-            sport="molkky"
-            title={t("molkky.title", "Mölkky")}
-            welcome={t("home.welcome", "Bienvenue")}
-            accent={theme.primary ?? "#F6C256"}
-            borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
-          />
-        </div>
-      </div>
-
-      <div style={{ ...sectionWrap, marginBottom: 0 }}>
-        <PageAdBanner placement="home" slotKey="page-home-molkky-under-header" />
-      </div>
-
-      {/* ===== BODY ===== */}
-      <div style={{ ...sectionWrap }}>
-        <div style={{ marginBottom: 10 }}>
-          <ActiveProfileCard
-            hideStatus={true}
-            profile={activeProfile as any}
-            stats={{} as any}
-            globalTitle={t("molkky.home.global.title", "Vue globale")}
-            globalKpis={[
-              { label: t("molkky.home.global.played", "Parties"), value: loading ? "…" : global.played },
-              { label: t("molkky.home.global.wl", "V / D"), value: loading ? "…" : `${global.wins} / ${global.losses}` },
-              { label: t("molkky.home.global.winrate", "Winrate"), value: loading ? "…" : `${Math.round(global.winrate * 100)}%` },
-              { label: t("molkky.home.global.last", "Dernier vainqueur"), value: loading ? "…" : (global.lastWinner || "—") },
-            ]}
-          />
+    <div
+      className="msc-home-page msc-sport-home-page molkky-home"
+      style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center" }}
+    >
+      <div className="msc-landscape-page-shell msc-home-layout msc-sport-home-layout">
+        {/* ===== HEADER — référence DARTS SCORING ===== */}
+        <div className="msc-landscape-header msc-sport-home-header">
+          <div className="msc-sport-home-header-inner" style={{ ...sectionWrap, boxSizing: "border-box" }}>
+            <SportHomeWelcomeHeader
+              sport="molkky"
+              title={t("molkky.title", "Mölkky")}
+              welcome={t("home.welcome", "Bienvenue")}
+              accent={theme.primary ?? "#F6C256"}
+              borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+            />
+          </div>
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <ArcadeTicker items={tickerItems} activeIndex={tickerIndex} onChangeIndex={setTickerIndex} />
-        </div>
+        <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
+          <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
+            <PageAdBanner placement="home" slotKey="page-home-molkky-under-header" />
+          </div>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 6, marginBottom: 16 }}>
-          <button
-            onClick={() => go("molkky_config")}
-            style={{
-              borderRadius: 999,
-              padding: "10px 14px",
-              border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
-              background: "rgba(255,255,255,0.08)",
-              color: theme.text,
-              fontWeight: 950,
-              cursor: "pointer",
-              boxShadow: "0 12px 28px rgba(0,0,0,0.28)",
-            }}
+          <div className="msc-home-profile-slot msc-sport-home-profile" style={{ ...sectionWrap }}>
+            <ActiveProfileCard
+              hideStatus={true}
+              profile={activeProfile as any}
+              stats={{} as any}
+              globalTitle={t("molkky.home.global.title", "Vue globale")}
+              globalKpis={[
+                { label: t("molkky.home.global.played", "Parties"), value: loading ? "…" : global.played },
+                { label: t("molkky.home.global.wl", "V / D"), value: loading ? "…" : `${global.wins} / ${global.losses}` },
+                { label: t("molkky.home.global.winrate", "Winrate"), value: loading ? "…" : `${Math.round(global.winrate * 100)}%` },
+                { label: t("molkky.home.global.last", "Dernier vainqueur"), value: loading ? "…" : (global.lastWinner || "—") },
+              ]}
+            />
+          </div>
+        </section>
+
+        <aside className="msc-landscape-secondary msc-home-secondary msc-sport-home-secondary">
+          <div className="msc-sport-home-right-card" style={{ ...sectionWrap, marginBottom: 12 }}>
+            <ArcadeTicker items={tickerItems} activeIndex={tickerIndex} onChangeIndex={setTickerIndex} />
+          </div>
+
+          <div
+            className="msc-sport-home-actions"
+            style={{ ...sectionWrap, display: "flex", justifyContent: "center", gap: 10, marginTop: 6, marginBottom: 16 }}
           >
-            {t("molkky.cta.new", "Nouvelle partie")}
-          </button>
-          <button
-            onClick={() => go("molkky_menu")}
-            style={{
-              borderRadius: 999,
-              padding: "10px 14px",
-              border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
-              background: "rgba(255,255,255,0.04)",
-              color: theme.text,
-              fontWeight: 900,
-              cursor: "pointer",
-              opacity: 0.96,
-            }}
-          >
-            {t("molkky.cta.menu", "Menu Mölkky")}
-          </button>
-        </div>
+            <button
+              onClick={() => go("molkky_config")}
+              style={{
+                borderRadius: 999,
+                padding: "10px 14px",
+                border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
+                background: "rgba(255,255,255,0.08)",
+                color: theme.text,
+                fontWeight: 950,
+                cursor: "pointer",
+                boxShadow: "0 12px 28px rgba(0,0,0,0.28)",
+              }}
+            >
+              {t("molkky.cta.new", "Nouvelle partie")}
+            </button>
+            <button
+              onClick={() => go("molkky_menu")}
+              style={{
+                borderRadius: 999,
+                padding: "10px 14px",
+                border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
+                background: "rgba(255,255,255,0.04)",
+                color: theme.text,
+                fontWeight: 900,
+                cursor: "pointer",
+                opacity: 0.96,
+              }}
+            >
+              {t("molkky.cta.menu", "Menu Mölkky")}
+            </button>
+          </div>
+        </aside>
       </div>
     </div>
   );

@@ -278,8 +278,6 @@ function ActiveProfileCard({
 
   useInjectStatsNameCss();
 
-  if (!profile) return null;
-
   const primary = theme.primary ?? "#F6C256";
 
   const shimmerCss = `
@@ -528,7 +526,7 @@ function ActiveProfileCard({
 
   const status: "online" | "away" | "offline" =
     statusProp ??
-    (((profile as any).status as "online" | "away" | "offline" | undefined) ?? "online");
+    (((profile as any)?.status as "online" | "away" | "offline" | undefined) ?? "online");
 
   const statusColor =
     status === "online" ? "#18FF6D" : status === "away" ? "#FFD95E" : "#888888";
@@ -624,6 +622,12 @@ function ActiveProfileCard({
     ? Number(starAvg3D)
     : Number(stats?.avg3DGlobal ?? 0) || 0;
 
+  // IMPORTANT: ne jamais retourner avant les hooks ci-dessus. Lors d'un
+  // changement de sport/profil, profile peut être null pendant une frame.
+  // Un early-return avant useMemo/useEffect provoquait React invariant #300
+  // (nombre de hooks différent entre deux rendus).
+  if (!profile) return null;
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shimmerCss }} />
@@ -674,8 +678,8 @@ function ActiveProfileCard({
                     avg3d={starRingAvg3D}
                     gapPx={-2}
                     starSize={14}
-                    stepDeg={10}
-                    animateGlow={true}
+                    stepDeg={17}
+                    animateGlow={false}
                   />
                 </div>
               )}

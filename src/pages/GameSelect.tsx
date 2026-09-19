@@ -585,6 +585,68 @@ export default function GameSelect({ go }: Props) {
       >
         <SportShowcaseBand sports={SPORT_SHOWCASE_TOP} activeId={it.id} theme={theme} />
 
+        <div
+          className="msc-game-select-landscape-nav"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="msc-game-select-landscape-arrow"
+            aria-label="Sport précédent"
+            onClick={(e) => {
+              e.stopPropagation();
+              goPrev();
+            }}
+          >
+            <span aria-hidden="true">◀</span>
+          </button>
+
+          <div
+            className="msc-game-select-landscape-icons"
+            style={{ gridTemplateColumns: `repeat(${Math.max(1, sortedItems.length)}, minmax(0, 1fr))` }}
+          >
+            {sortedItems.map((sport, sportIndex) => {
+              const active = sportIndex === index;
+              const accent = appSportMeta(sport.id as any)?.accent || theme?.accent || theme?.primary || "#ffffff";
+              return (
+                <button
+                  key={sport.id}
+                  type="button"
+                  className="msc-game-select-landscape-icon"
+                  aria-label={sport.label}
+                  aria-current={active ? "true" : undefined}
+                  title={sport.label}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIndex(sportIndex);
+                  }}
+                  style={{
+                    color: active ? accent : "rgba(220,230,238,0.40)",
+                    filter: active ? `drop-shadow(0 0 6px ${accent})` : "none",
+                  }}
+                >
+                  <SportShowcaseIcon id={sport.id as ShowcaseSportId} />
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            className="msc-game-select-landscape-arrow"
+            aria-label="Sport suivant"
+            onClick={(e) => {
+              e.stopPropagation();
+              goNext();
+            }}
+          >
+            <span aria-hidden="true">▶</span>
+          </button>
+        </div>
+
         <div className="msc-game-select-title" style={title(theme)}>Choisis ton sport</div>
         <div className="msc-game-select-subtitle" style={subtitle(theme)}>Fais défiler pour choisir</div>
 
@@ -612,18 +674,18 @@ export default function GameSelect({ go }: Props) {
         {/* Contrôles desktop visibles (si souris / trackpad) */}
         {isDesktop && (
           <>
-            <button aria-label="Précédent" onClick={goPrev} style={navBtn(theme, "left")}>
+            <button className="msc-game-select-legacy-nav" aria-label="Précédent" onClick={goPrev} style={navBtn(theme, "left")}>
               ‹
             </button>
-            <button aria-label="Suivant" onClick={goNext} style={navBtn(theme, "right")}>
+            <button className="msc-game-select-legacy-nav" aria-label="Suivant" onClick={goNext} style={navBtn(theme, "right")}>
               ›
             </button>
           </>
         )}
 
         {/* Zones tactiles discrètes (utile tablette) */}
-        <button aria-label="Précédent" onClick={goPrev} style={edgeTap("left")} />
-        <button aria-label="Suivant" onClick={goNext} style={edgeTap("right")} />
+        <button className="msc-game-select-edge-tap" aria-label="Précédent" onClick={goPrev} style={edgeTap("left")} />
+        <button className="msc-game-select-edge-tap" aria-label="Suivant" onClick={goNext} style={edgeTap("right")} />
       </div>
     </div>
   );

@@ -2040,3 +2040,404 @@ html[data-msc-orientation="landscape"] .msc-stats-leaderboards-secondary::-webki
   border-radius: 999px;
   background: rgba(255,255,255,.24);
 }
+
+
+/* ==========================================================================
+   LANDSCAPE V5 — selector mono-zone, homes multi-sports, competition ticker
+   --------------------------------------------------------------------------
+   Requested behavior:
+   - GameSelect is one compact centered zone, never vertically scrollable.
+   - All mini sport icons live on ONE row in landscape, with explicit triangle
+     controls on each side.
+   - Dedicated sport homes reuse the exact HOME shell (header + fixed left
+     primary + independently scrollable right secondary).
+   - Competition ticker is sized by AVAILABLE HEIGHT, not forced page width.
+   ========================================================================== */
+
+/* Hidden outside landscape: portrait keeps the established two-band selector. */
+.msc-game-select-landscape-nav {
+  display: none;
+}
+
+/* Portrait fallback for the new shared wrappers: visually neutral. */
+.msc-sport-home-layout,
+.msc-sport-home-primary,
+.msc-sport-home-secondary {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.msc-sport-home-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.msc-sport-home-primary,
+.msc-sport-home-secondary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   GAME SELECT — ONE SINGLE LANDSCAPE ZONE
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] .msc-game-select-panel {
+  width: min(100%, 1080px) !important;
+  max-width: 1080px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 auto !important;
+  padding: clamp(7px, 1.1vh, 12px) clamp(10px, 1.5vw, 18px) !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: clamp(5px, 1.1vh, 10px) !important;
+  overflow: hidden !important;
+}
+
+/* The former two icon bands remain for portrait only. */
+html[data-msc-orientation="landscape"] .msc-game-select-showcase {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-subtitle,
+html[data-msc-orientation="landscape"] .msc-game-select-dots,
+html[data-msc-orientation="landscape"] .msc-game-select-legacy-nav {
+  display: none !important;
+}
+
+/* Invisible edge tap areas are unnecessary now that visible arrows exist.
+   Swipe on the central zone still works. */
+html[data-msc-orientation="landscape"] .msc-game-select-edge-tap {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-nav {
+  order: 1;
+  width: min(100%, 980px);
+  min-width: 0;
+  display: grid !important;
+  grid-template-columns: clamp(34px, 4.4vw, 46px) minmax(0, 1fr) clamp(34px, 4.4vw, 46px);
+  align-items: center;
+  gap: clamp(5px, .9vw, 10px);
+  padding: 2px 0;
+  box-sizing: border-box;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-arrow {
+  width: clamp(34px, 4.4vw, 46px);
+  height: clamp(34px, 4.4vw, 46px);
+  border: 1px solid rgba(76, 226, 255, .72);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(76,226,255,.16), transparent 62%),
+    linear-gradient(180deg, rgba(10,24,34,.94), rgba(3,10,18,.96));
+  color: #7beaff;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: clamp(13px, 2vw, 18px);
+  line-height: 1;
+  cursor: pointer;
+  box-shadow:
+    0 0 16px rgba(45,214,255,.25),
+    inset 0 0 12px rgba(64,222,255,.08);
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-arrow:active {
+  transform: scale(.95);
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-icons {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  align-items: center;
+  gap: clamp(0px, .22vw, 3px);
+  overflow: hidden;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-icon {
+  min-width: 0;
+  width: 100%;
+  height: clamp(23px, 4.3vh, 31px);
+  border: 0;
+  background: transparent;
+  padding: clamp(2px, .35vw, 4px);
+  display: grid;
+  place-items: center;
+  opacity: .82;
+  cursor: pointer;
+  border-radius: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-icon[aria-current="true"] {
+  opacity: 1;
+  transform: scale(1.14);
+  background: rgba(255,255,255,.035);
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-icon > :first-child,
+html[data-msc-orientation="landscape"] .msc-game-select-landscape-icon svg {
+  width: clamp(13px, 2.3vw, 23px) !important;
+  height: clamp(13px, 2.3vw, 23px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-title {
+  order: 2;
+  grid-column: auto !important;
+  grid-row: auto !important;
+  margin: 0 !important;
+  padding: 0 4px !important;
+  font-size: clamp(20px, 4.4vh, 31px) !important;
+  line-height: 1 !important;
+  flex: 0 0 auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-tile {
+  order: 3;
+  grid-column: auto !important;
+  grid-row: auto !important;
+  width: min(390px, 62vw) !important;
+  height: auto !important;
+  max-height: min(49vh, 310px) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: clamp(6px, 1vh, 10px) clamp(10px, 1.5vw, 16px) !important;
+  gap: clamp(3px, .8vh, 7px) !important;
+  flex: 0 1 auto !important;
+  border-radius: clamp(18px, 2vw, 25px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-logo {
+  width: min(31vh, 205px, 34vw) !important;
+  height: min(31vh, 205px) !important;
+  max-width: 100% !important;
+  max-height: min(31vh, 205px) !important;
+  object-fit: contain !important;
+  flex: 0 1 auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-label {
+  font-size: clamp(14px, 2.7vh, 20px) !important;
+  line-height: 1.05 !important;
+  padding: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+/* SOON stays readable but must not consume vertical layout space. */
+html[data-msc-orientation="landscape"] .msc-game-select-tile > div[style*="position: absolute"] {
+  top: 6px !important;
+  right: 6px !important;
+  padding: 4px 7px !important;
+  font-size: 9px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-panel {
+  width: min(100%, 920px) !important;
+  padding: 5px 8px !important;
+  gap: 5px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-landscape-nav {
+  width: min(100%, 880px) !important;
+  grid-template-columns: 34px minmax(0, 1fr) 34px !important;
+  gap: 4px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-landscape-arrow {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 11px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-landscape-icon {
+  height: 25px !important;
+  padding: 2px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-landscape-icon > :first-child,
+html[data-msc-short-landscape="1"] .msc-game-select-landscape-icon svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-title {
+  font-size: clamp(18px, 4.6vh, 25px) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-tile {
+  width: min(330px, 58vw) !important;
+  max-height: min(48vh, 245px) !important;
+  padding: 5px 9px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-logo {
+  width: min(29vh, 170px, 31vw) !important;
+  height: min(29vh, 170px) !important;
+  max-height: min(29vh, 170px) !important;
+}
+
+/* --------------------------------------------------------------------------
+   DEDICATED SPORT HOMES — same shell as Darts/Foot HOME
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] .msc-sport-home-layout {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  align-items: stretch !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-header {
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-header-inner {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-welcome-card {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  padding: clamp(8px, 1.25vh, 14px) clamp(82px, 10vw, 154px) !important;
+  border-radius: clamp(17px, 1.8vw, 26px) !important;
+  display: flex !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-welcome-pill {
+  margin-bottom: clamp(4px, .7vh, 7px) !important;
+  padding: 4px 15px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-welcome-pill span {
+  font-size: clamp(10px, 1.3vw, 13px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-title {
+  font-size: clamp(23px, 3.3vw, 42px) !important;
+  line-height: 1 !important;
+  letter-spacing: clamp(1.3px, .27vw, 3px) !important;
+  white-space: nowrap !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-primary {
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-secondary {
+  height: 100% !important;
+  min-height: 0 !important;
+  align-items: stretch !important;
+  gap: clamp(7px, 1vh, 11px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 0 3px 6px 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-primary > *,
+html[data-msc-orientation="landscape"] .msc-sport-home-secondary > * {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-profile {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-right-card,
+html[data-msc-orientation="landscape"] .msc-sport-home-right-stack,
+html[data-msc-orientation="landscape"] .msc-sport-home-actions {
+  flex: 0 0 auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-secondary::-webkit-scrollbar {
+  width: 5px;
+}
+
+html[data-msc-orientation="landscape"] .msc-sport-home-secondary::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255,255,255,.24);
+}
+
+html[data-msc-short-landscape="1"] .msc-sport-home-welcome-card {
+  padding: 6px 72px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-sport-home-title {
+  font-size: clamp(21px, 5vh, 30px) !important;
+}
+
+/* --------------------------------------------------------------------------
+   COMPETITIONS — ticker controlled by available HEIGHT, like Statistics Center
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] .msc-competition-ticker-frame {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(4,8,12,.16) 8%,
+      rgba(4,8,12,.28) 22%,
+      rgba(4,8,12,.28) 78%,
+      rgba(4,8,12,.16) 92%,
+      transparent 100%) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-competition-ticker-image {
+  display: block !important;
+  width: auto !important;
+  height: calc(100% - 2px) !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center center !important;
+  border-radius: clamp(12px, 1.2vw, 16px) !important;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 7%, #000 93%, transparent 100%) !important;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 7%, #000 93%, transparent 100%) !important;
+}
+
+/* Override V4's width:100 rule for the same image. */
+html[data-msc-orientation="landscape"] .msc-competitions-header .msc-competition-ticker-image {
+  width: auto !important;
+  height: calc(100% - 2px) !important;
+}

@@ -215,9 +215,31 @@ export default function ProfileStarRing({
   const count = entries.length;
   if (count === 0) return null;
 
-  // Rayon centre→étoile
-  const r = resolvedAnchorSize / 2 + gapPx + starSize / 2;
-  const halfSpread = (count - 1) * (stepDeg / 2);
+  // Placement lisible sur le contour supérieur du médaillon.
+  // Le step historique pouvait devenir trop faible (ex. 10° pour des étoiles de 14 px),
+  // ce qui superposait les étoiles et donnait un faux effet de profondeur.
+  // On conserve le step demandé comme préférence, mais on impose un espacement
+  // géométrique minimal et on garde toute la couronne dans l'arc supérieur.
+  const baseRadius = resolvedAnchorSize / 2 + gapPx + starSize / 2;
+  const minCenterDistance = Math.max(1, starSize + 1);
+  const maxUpperArcDeg = 164; // ±82° : reste visuellement sur le haut du médaillon
+
+  const minStepForRadius = (radius: number) => {
+    const ratio = Math.min(1, minCenterDistance / Math.max(2, 2 * radius));
+    return (2 * Math.asin(ratio) * 180) / Math.PI;
+  };
+
+  let effectiveStepDeg = Math.max(Number(stepDeg) || 0, minStepForRadius(baseRadius));
+  let r = baseRadius;
+
+  if (count > 1 && (count - 1) * effectiveStepDeg > maxUpperArcDeg) {
+    effectiveStepDeg = maxUpperArcDeg / (count - 1);
+    const halfStepRad = (effectiveStepDeg * Math.PI) / 360;
+    const neededRadius = minCenterDistance / Math.max(0.001, 2 * Math.sin(halfStepRad));
+    r = Math.max(baseRadius, neededRadius);
+  }
+
+  const halfSpread = (count - 1) * (effectiveStepDeg / 2);
 
   function pol2cart(angleDeg: number) {
     const a = ((angleDeg + rotationDeg) * Math.PI) / 180;
@@ -235,7 +257,7 @@ export default function ProfileStarRing({
         }}
       >
         {entries.map((e, i) => {
-          const ang = -halfSpread + i * stepDeg; // centré à 12h
+          const ang = -halfSpread + i * effectiveStepDeg; // centré à 12h, sans chevauchement
           const { x, y } = pol2cart(ang);
           return (
             <div

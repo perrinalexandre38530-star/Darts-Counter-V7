@@ -499,7 +499,7 @@ export default function PingPongHome({ store, go }: Props) {
 
   return (
     <div
-      className="pingpong-home container"
+      className="msc-home-page msc-sport-home-page pingpong-home container"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -516,99 +516,104 @@ export default function PingPongHome({ store, go }: Props) {
         @keyframes dcTitleShimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }
       `}</style>
 
-      {/* ===== HEADER — référence DARTS SCORING ===== */}
-      <div style={{ ...sectionWrap, boxSizing: "border-box" }}>
-        <SportHomeWelcomeHeader
-          sport="pingpong"
-          title={t("pingpong.title", "Ping-Pong")}
-          welcome={t("home.welcome", "Bienvenue")}
-          accent={theme.primary ?? "#F6C256"}
-          borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
-        />
-      </div>
-
-      <div style={{ ...sectionWrap, marginBottom: 0 }}>
-        <PageAdBanner placement="home" slotKey="page-home-pingpong-under-header" />
-      </div>
-
-      {/* ===== BODY ===== */}
-      <div style={{ ...sectionWrap }}>
-        <div style={{ marginBottom: 10 }}>
-          <ActiveProfileCard
-            hideStatus={true}
-            profile={activeProfile as any}
-            stats={
-              {
-                // ✅ mapping simple (utilisé si jamais, mais on override via globalKpis)
-                ratingGlobal: ppGlobalStats.diff,
-                winrateGlobal: ppGlobalStats.winRate,
-                avg3DGlobal: ppGlobalStats.avgPts,
-                sessionsGlobal: ppGlobalStats.played,
-                favoriteNumberLabel: "—",
-              } as any
-            }
-            globalTitle={t("pingpong.home.global.title", "Vue globale")}
-            globalKpis={[
-              { label: t("pingpong.home.global.played", "Matchs"), value: ppGlobalStats.played },
-              { label: t("pingpong.home.global.wl", "V / D"), value: `${ppGlobalStats.wins} / ${ppGlobalStats.losses}` },
-              { label: t("pingpong.home.global.winrate", "Winrate"), value: `${Math.round(ppGlobalStats.winRate * 100)}%` },
-              { label: t("pingpong.home.global.points", "Pts (pour/contre)"), value: `${ppGlobalStats.pointsFor} / ${ppGlobalStats.pointsAgainst}` },
-              { label: t("pingpong.home.global.diff", "Diff."), value: ppGlobalStats.diff >= 0 ? `+${ppGlobalStats.diff}` : `${ppGlobalStats.diff}` },
-            ]}
-          />
-        </div>
-
-        <div style={{ marginBottom: 12 }}>
-          <ArcadeTicker items={tickerItems} activeIndex={tickerIndex} onChangeIndex={setTickerIndex} />
-        </div>
-
-        {/* ✅ Remplacement de l'ancien bloc avec boutons : ticker d'infos Ping-Pong */}
-        <div style={{ marginBottom: 12 }}>
-          <ArcadeTicker items={infoItems} activeIndex={infoIndex} onChangeIndex={setInfoIndex} />
-        </div>
-
-        {/* CTA minimal (sans boutons dans le "ticker") */}
-        {canResume && (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
-            <button
-              onClick={() => go("pingpong_play")}
-              style={{
-                borderRadius: 999,
-                padding: "10px 14px",
-                border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
-                background: "rgba(255,255,255,0.08)",
-                color: theme.text,
-                fontWeight: 950,
-                cursor: "pointer",
-                boxShadow: "0 12px 28px rgba(0,0,0,0.28)",
-              }}
-            >
-              {t("pingpong.cta.resume", "Reprendre le match")}
-            </button>
-            <button
-              onClick={() => {
-                try {
-                  savePingPongState(newPingPongState());
-                } catch {}
-                setResume(loadPingPongState());
-                go("pingpong_play");
-              }}
-              style={{
-                marginLeft: 10,
-                borderRadius: 999,
-                padding: "10px 14px",
-                border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
-                background: "rgba(255,255,255,0.04)",
-                color: theme.text,
-                fontWeight: 900,
-                cursor: "pointer",
-                opacity: 0.96,
-              }}
-            >
-              {t("pingpong.cta.new", "Nouvelle partie")}
-            </button>
+      <div className="msc-landscape-page-shell msc-home-layout msc-sport-home-layout">
+        {/* ===== HEADER — référence DARTS SCORING ===== */}
+        <div className="msc-landscape-header msc-sport-home-header">
+          <div className="msc-sport-home-header-inner" style={{ ...sectionWrap, boxSizing: "border-box" }}>
+            <SportHomeWelcomeHeader
+              sport="pingpong"
+              title={t("pingpong.title", "Ping-Pong")}
+              welcome={t("home.welcome", "Bienvenue")}
+              accent={theme.primary ?? "#F6C256"}
+              borderSoft={theme.borderSoft ?? "rgba(255,255,255,0.10)"}
+            />
           </div>
-        )}
+        </div>
+
+        <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
+          <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
+            <PageAdBanner placement="home" slotKey="page-home-pingpong-under-header" />
+          </div>
+
+          <div className="msc-home-profile-slot msc-sport-home-profile" style={{ ...sectionWrap }}>
+            <ActiveProfileCard
+              hideStatus={true}
+              profile={activeProfile as any}
+              stats={
+                {
+                  ratingGlobal: ppGlobalStats.diff,
+                  winrateGlobal: ppGlobalStats.winRate,
+                  avg3DGlobal: ppGlobalStats.avgPts,
+                  sessionsGlobal: ppGlobalStats.played,
+                  favoriteNumberLabel: "—",
+                } as any
+              }
+              globalTitle={t("pingpong.home.global.title", "Vue globale")}
+              globalKpis={[
+                { label: t("pingpong.home.global.played", "Matchs"), value: ppGlobalStats.played },
+                { label: t("pingpong.home.global.wl", "V / D"), value: `${ppGlobalStats.wins} / ${ppGlobalStats.losses}` },
+                { label: t("pingpong.home.global.winrate", "Winrate"), value: `${Math.round(ppGlobalStats.winRate * 100)}%` },
+                { label: t("pingpong.home.global.points", "Pts (pour/contre)"), value: `${ppGlobalStats.pointsFor} / ${ppGlobalStats.pointsAgainst}` },
+                { label: t("pingpong.home.global.diff", "Diff."), value: ppGlobalStats.diff >= 0 ? `+${ppGlobalStats.diff}` : `${ppGlobalStats.diff}` },
+              ]}
+            />
+          </div>
+        </section>
+
+        <aside className="msc-landscape-secondary msc-home-secondary msc-sport-home-secondary">
+          <div className="msc-sport-home-right-card" style={{ ...sectionWrap, marginBottom: 12 }}>
+            <ArcadeTicker items={tickerItems} activeIndex={tickerIndex} onChangeIndex={setTickerIndex} />
+          </div>
+
+          <div className="msc-sport-home-right-card" style={{ ...sectionWrap, marginBottom: 12 }}>
+            <ArcadeTicker items={infoItems} activeIndex={infoIndex} onChangeIndex={setInfoIndex} />
+          </div>
+
+          {canResume && (
+            <div
+              className="msc-sport-home-actions"
+              style={{ ...sectionWrap, display: "flex", justifyContent: "center", marginTop: 6 }}
+            >
+              <button
+                onClick={() => go("pingpong_play")}
+                style={{
+                  borderRadius: 999,
+                  padding: "10px 14px",
+                  border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
+                  background: "rgba(255,255,255,0.08)",
+                  color: theme.text,
+                  fontWeight: 950,
+                  cursor: "pointer",
+                  boxShadow: "0 12px 28px rgba(0,0,0,0.28)",
+                }}
+              >
+                {t("pingpong.cta.resume", "Reprendre le match")}
+              </button>
+              <button
+                onClick={() => {
+                  try {
+                    savePingPongState(newPingPongState());
+                  } catch {}
+                  setResume(loadPingPongState());
+                  go("pingpong_play");
+                }}
+                style={{
+                  marginLeft: 10,
+                  borderRadius: 999,
+                  padding: "10px 14px",
+                  border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
+                  background: "rgba(255,255,255,0.04)",
+                  color: theme.text,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  opacity: 0.96,
+                }}
+              >
+                {t("pingpong.cta.new", "Nouvelle partie")}
+              </button>
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   );
