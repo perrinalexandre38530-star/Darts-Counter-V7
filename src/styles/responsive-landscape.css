@@ -2849,3 +2849,111 @@ html[data-msc-orientation="landscape"] .msc-messages-layout .msc-messages-primar
 html[data-msc-orientation="landscape"] .msc-messages-layout .msc-messages-secondary {
   min-width: 0 !important;
 }
+
+/* ========================================================================== 
+   V43 GAME SELECT — title rail + true corner language selector
+   Portrait keeps its established sizing. Landscape only gets the larger logo.
+   ========================================================================== */
+.msc-game-select-page {
+  position: relative !important;
+}
+
+.msc-game-select-page-title {
+  display: none;
+}
+
+html:not([data-msc-orientation="landscape"]) .msc-game-select-topbar {
+  position: absolute !important;
+  top: max(12px, env(safe-area-inset-top)) !important;
+  left: max(12px, env(safe-area-inset-left)) !important;
+  right: auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  z-index: 30 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+}
+
+html:not([data-msc-orientation="landscape"]) .msc-game-select-lang-dock {
+  position: relative !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="gameSelect"] .msc-game-select-topbar {
+  position: absolute !important;
+  top: max(12px, calc(var(--msc-safe-top) + 10px)) !important;
+  left: max(14px, calc(var(--msc-safe-left) + 12px)) !important;
+  right: auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  z-index: 30 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  pointer-events: auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-page-title {
+  display: block !important;
+  position: absolute !important;
+  top: max(16px, calc(var(--msc-safe-top) + 13px)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: min(58vw, 520px) !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  z-index: 20 !important;
+  text-align: center !important;
+  font-size: clamp(22px, 3vw, 32px) !important;
+  line-height: 1.1 !important;
+  pointer-events: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-title-inline {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-hero {
+  width: min(100%, 680px) !important;
+  display: grid !important;
+  grid-template-columns: 58px minmax(0, 520px) 58px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-tile {
+  justify-self: center !important;
+  align-self: center !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-select-hero-arrow {
+  justify-self: center !important;
+  align-self: center !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-select-hero {
+  width: min(100%, 590px) !important;
+  grid-template-columns: 46px minmax(0, 470px) 46px !important;
+  gap: 8px !important;
+}
+
+/* V43 GAMES HUB — FAVORIS occupies the lower part of the left rail in landscape. */
+.msc-games-hub-favorite-landscape {
+  display: none;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-hub-favorite-landscape {
+  display: block !important;
+  width: 100% !important;
+  margin-top: auto !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-hub-favorite-portrait {
+  display: none !important;
+}

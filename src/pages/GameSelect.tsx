@@ -325,6 +325,34 @@ function localizedChoiceSubtitle(lang: Lang): string {
 }
 
 
+function LanguageFlag({ code }: { code: Lang }) {
+  const normalized = String(code || "fr").toLowerCase().split("-")[0];
+  const base: React.CSSProperties = {
+    width: 24,
+    height: 16,
+    borderRadius: 3,
+    overflow: "hidden",
+    display: "inline-block",
+    flex: "0 0 auto",
+    boxShadow: "0 0 0 1px rgba(255,255,255,.26), 0 2px 7px rgba(0,0,0,.35)",
+    position: "relative",
+  };
+  const backgrounds: Record<string, string> = {
+    fr: "linear-gradient(90deg,#153d8a 0 33.33%,#fff 33.33% 66.66%,#e43b3b 66.66%)",
+    es: "linear-gradient(180deg,#b7192f 0 25%,#f6c93f 25% 75%,#b7192f 75%)",
+    de: "linear-gradient(180deg,#111 0 33.33%,#d22f3d 33.33% 66.66%,#f5ca45 66.66%)",
+    it: "linear-gradient(90deg,#17864b 0 33.33%,#fff 33.33% 66.66%,#d73a45 66.66%)",
+    pt: "linear-gradient(90deg,#147a45 0 40%,#d92f3b 40%)",
+    nl: "linear-gradient(180deg,#b42c3d 0 33.33%,#fff 33.33% 66.66%,#214a8a 66.66%)",
+    ru: "linear-gradient(180deg,#fff 0 33.33%,#2d57a5 33.33% 66.66%,#c83b45 66.66%)",
+    ja: "radial-gradient(circle at 50% 50%,#cf2f3b 0 30%,transparent 31%),#fff",
+    ar: "linear-gradient(180deg,#147a45,#147a45)",
+    en: "linear-gradient(135deg,#193a7a 0 42%,#fff 42% 47%,#c92e3a 47% 53%,#fff 53% 58%,#193a7a 58%)",
+  };
+  return <span aria-hidden="true" style={{ ...base, background: backgrounds[normalized] || backgrounds.fr }} />;
+}
+
+
 export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
   const { setSport } = useSport();
@@ -658,21 +686,44 @@ export default function GameSelect({ go }: Props) {
 
   return (
     <div className="msc-game-select-page" style={wrap(theme)}>
-      <style>{`
-        .msc-game-select-topbar{width:100%;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;min-height:44px}
-        .msc-game-select-lang-dock{position:relative;z-index:3}
-        .msc-game-select-topbar-btn{min-height:42px;border-radius:18px;border:1px solid rgba(88,220,255,.38);background:linear-gradient(180deg,rgba(6,18,32,.88),rgba(3,10,20,.92));color:#fff;padding:0 14px;display:flex;align-items:center;gap:8px;font-weight:1000;box-shadow:0 0 16px rgba(88,220,255,.14);cursor:pointer}
-        .msc-game-select-lang-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:118px;padding:8px;border-radius:16px;border:1px solid rgba(88,220,255,.20);background:rgba(5,10,18,.94);display:grid;gap:6px;box-shadow:0 20px 40px rgba(0,0,0,.45)}
-        .msc-game-select-lang-option{min-height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#fff;display:flex;align-items:center;gap:10px;padding:0 10px;font-weight:900;cursor:pointer}
-        .msc-game-select-lang-option.is-active{border-color:rgba(88,220,255,.52);background:rgba(88,220,255,.10);color:#63e6ff}
-        .msc-game-select-hero{width:100%;display:grid;grid-template-columns:68px minmax(0,1fr) 68px;gap:8px;align-items:center}
-        .msc-game-select-hero-arrow{width:60px;height:60px;border-radius:18px;border:1px solid rgba(90,220,255,.35);background:rgba(4,18,28,0.78);color:#63e6ff;font-size:26px;font-weight:1000;display:grid;place-items:center;justify-self:center;box-shadow:0 0 18px rgba(80,220,255,.18);cursor:pointer}
-        .msc-game-select-landscape-nav{width:100%;max-width:1100px}
-        .msc-game-select-landscape-icons{display:grid;gap:6px;align-items:center}
-        .msc-game-select-landscape-icon{min-width:0;height:26px;border:none;background:transparent;padding:0;display:grid;place-items:center;cursor:pointer}
-        .msc-game-select-landscape-icon span, .msc-game-select-landscape-icon svg{width:22px;height:22px}
-        @media (max-width: 720px){.msc-game-select-hero{grid-template-columns:54px minmax(0,1fr) 54px}.msc-game-select-hero-arrow{width:52px;height:52px}}
-      `}</style>
+      <div className="msc-game-select-page-title" style={title(theme)}>{localizedChoiceTitle(lang)}</div>
+      <div className="msc-game-select-topbar">
+        <div ref={langDockRef} className="msc-game-select-lang-dock">
+          <button
+            type="button"
+            className="msc-game-select-topbar-btn msc-game-select-lang-btn"
+            aria-label="Choisir la langue"
+            title="Choisir la langue"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowLangMenu((prev) => !prev);
+            }}
+          >
+            <LanguageFlag code={currentLangOption.code} />
+            <span>{currentLangOption.label}</span>
+          </button>
+
+          {showLangMenu ? (
+            <div className="msc-game-select-lang-menu" onClick={(e) => e.stopPropagation()}>
+              {GAME_SELECT_LANG_OPTIONS.map((option) => (
+                <button
+                  key={option.code}
+                  type="button"
+                  className={`msc-game-select-lang-option${option.code === lang ? " is-active" : ""}`}
+                  onClick={() => {
+                    setLang(option.code);
+                    setShowLangMenu(false);
+                  }}
+                >
+                  <LanguageFlag code={option.code} />
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       <div
         className="msc-game-select-panel"
         style={panel(theme)}
@@ -684,45 +735,9 @@ export default function GameSelect({ go }: Props) {
       >
         <SportShowcaseBand sports={showcaseTop} activeId={it.id} theme={theme} />
 
-        <div className="msc-game-select-topbar">
-          <div ref={langDockRef} className="msc-game-select-lang-dock">
-            <button
-              type="button"
-              className="msc-game-select-topbar-btn msc-game-select-lang-btn"
-              aria-label="Choisir la langue"
-              title="Choisir la langue"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowLangMenu((prev) => !prev);
-              }}
-            >
-              <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>{currentLangOption.flag}</span>
-              <span>{currentLangOption.label}</span>
-            </button>
 
-            {showLangMenu ? (
-              <div className="msc-game-select-lang-menu" onClick={(e) => e.stopPropagation()}>
-                {GAME_SELECT_LANG_OPTIONS.map((option) => (
-                  <button
-                    key={option.code}
-                    type="button"
-                    className={`msc-game-select-lang-option${option.code === lang ? " is-active" : ""}`}
-                    onClick={() => {
-                      setLang(option.code);
-                      setShowLangMenu(false);
-                    }}
-                  >
-                    <span style={{ fontSize: 18, lineHeight: 1 }}>{option.flag}</span>
-                    <span>{option.label}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <div style={{ flex: 1 }} />
-        </div>
 
-        <div className="msc-game-select-title" style={title(theme)}>{localizedChoiceTitle(lang)}</div>
+        <div className="msc-game-select-title msc-game-select-title-inline" style={title(theme)}>{localizedChoiceTitle(lang)}</div>
         <div className="msc-game-select-subtitle" style={subtitle(theme)}>{localizedChoiceSubtitle(lang)}</div>
 
         <div className="msc-game-select-hero">
@@ -850,14 +865,14 @@ function wrap(theme: any): React.CSSProperties {
 function panel(theme: any): React.CSSProperties {
   return {
     width: "100%",
-    maxWidth: 720,
+    maxWidth: 680,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 18,
     position: "relative",
-    padding: "10px 12px 8px",
+    padding: "18px 12px 10px",
     userSelect: "none",
     WebkitUserSelect: "none",
     touchAction: "pan-y",
@@ -888,34 +903,34 @@ function title(theme: any): React.CSSProperties {
 
 function subtitle(theme: any): React.CSSProperties {
   return {
-    marginTop: -10,
-    fontSize: 13,
+    marginTop: -6,
+    fontSize: 14,
     fontWeight: 600,
     letterSpacing: 0.15,
-    color: "rgba(255,255,255,0.84)",
+    color: "rgba(255,255,255,0.88)",
     textAlign: "center",
   };
 }
 
 function sportTile(theme: any, enabled: boolean): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
-  const border = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
-  const bg = "transparent";
-  const glow = enabled ? (isDark ? "0 18px 60px rgba(0,0,0,0.45)" : "0 18px 60px rgba(0,0,0,0.18)") : "none";
+  const border = isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)";
+  const bg = isDark ? "rgba(255,255,255,0.045)" : "rgba(0,0,0,0.03)";
+  const glow = enabled ? (isDark ? "0 18px 60px rgba(0,0,0,0.65)" : "0 18px 60px rgba(0,0,0,0.22)") : "none";
 
   return {
     position: "relative",
     borderRadius: 28,
-    border: "1px solid " + border,
+    border: `1px solid ${border}`,
     background: bg,
     boxShadow: glow,
-    width: "min(580px, 94vw)",
-    padding: "8px 10px 8px",
+    width: "min(520px, 92vw)",
+    padding: "18px 14px 16px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 14,
     cursor: enabled ? "pointer" : "default",
     opacity: enabled ? 1 : 0.55,
     transform: enabled ? "translateZ(0)" : "none",
@@ -923,14 +938,14 @@ function sportTile(theme: any, enabled: boolean): React.CSSProperties {
 }
 
 function sportImg(theme: any, enabled: boolean): React.CSSProperties {
-  const size = "min(390px, 78vw)";
+  const size = "min(320px, 72vw)";
   const glow = enabled ? theme?.accentGlow ?? "0 0 0 rgba(0,0,0,0)" : "none";
 
   return {
     width: size,
     height: size,
     objectFit: "contain",
-    filter: enabled ? "drop-shadow(0 14px 34px rgba(0,0,0,0.58))" : "grayscale(1)",
+    filter: enabled ? "drop-shadow(0 10px 28px rgba(0,0,0,0.55))" : "grayscale(1)",
     boxShadow: glow,
     pointerEvents: "none",
   };
@@ -962,25 +977,25 @@ function sportLabel(theme: any, enabled: boolean): React.CSSProperties {
 function navBtn(theme: any, side: "left" | "right"): React.CSSProperties {
   const base: React.CSSProperties = {
     position: "absolute",
-    top: "56%",
+    top: "50%",
     transform: "translateY(-50%)",
-    width: 60,
-    height: 60,
-    borderRadius: 18,
-    border: "1px solid rgba(90,220,255,0.35)",
-    background: "rgba(4,18,28,0.78)",
-    color: "#63e6ff",
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    border: `1px solid rgba(255,255,255,0.16)`,
+    background: "rgba(0,0,0,0.35)",
+    color: "rgba(255,255,255,0.92)",
     fontSize: 34,
     fontWeight: 900,
-    lineHeight: "54px",
+    lineHeight: "48px",
     textAlign: "center",
     cursor: "pointer",
     userSelect: "none",
     WebkitUserSelect: "none",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.55), 0 0 18px rgba(80,220,255,.18)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
     backdropFilter: "blur(6px)",
   };
-  return side === "left" ? { ...base, left: 14 } : { ...base, right: 14 };
+  return side === "left" ? { ...base, left: 10 } : { ...base, right: 10 };
 }
 
 const dotsWrap: React.CSSProperties = {
@@ -1028,7 +1043,7 @@ function edgeTap(side: "left" | "right"): React.CSSProperties {
     position: "absolute",
     top: 0,
     bottom: 0,
-    width: "10%",
+    width: "14%",
     background: "transparent",
     border: "none",
     outline: "none",

@@ -1654,6 +1654,19 @@ export default function Games({ setTab, params }: Props) {
         />
       ) : null}
 
+      {gamesView === "hub" ? (
+        <div className="msc-games-hub-favorite-landscape">
+          {renderHubCard({
+            title: HUB_COPY.favorites.title,
+            infoTitle: HUB_COPY.favorites.infoTitle,
+            infoBody: HUB_COPY.favorites.infoBody,
+            tickerId: "favorites",
+            tint: TINT_CLASSIC,
+            onClick: () => openGamesView("favorites"),
+          })}
+        </div>
+      ) : null}
+
       {gamesView === "all" ? <div className="msc-games-primary-quick">{renderQuickLaunchTicker()}</div> : null}
       </section>
 
@@ -1664,14 +1677,16 @@ export default function Games({ setTab, params }: Props) {
       {gamesView === "hub" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {renderHubCard({
-              title: HUB_COPY.favorites.title,
-              infoTitle: HUB_COPY.favorites.infoTitle,
-              infoBody: HUB_COPY.favorites.infoBody,
-              tickerId: "favorites",
-              tint: TINT_CLASSIC,
-              onClick: () => openGamesView("favorites"),
-            })}
+            <div className="msc-games-hub-favorite-portrait">
+              {renderHubCard({
+                title: HUB_COPY.favorites.title,
+                infoTitle: HUB_COPY.favorites.infoTitle,
+                infoBody: HUB_COPY.favorites.infoBody,
+                tickerId: "favorites",
+                tint: TINT_CLASSIC,
+                onClick: () => openGamesView("favorites"),
+              })}
+            </div>
 
             {renderHubCard({
               title: HUB_COPY.all.title,
