@@ -20,6 +20,7 @@ export const ANDROID_STORE_V1_DARTS_GAME_IDS = [
   "training_x01",
   "tour_horloge",
   "five_lives",
+  "gros_6",
   "golf",
   "departements",
   "capital",
