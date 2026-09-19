@@ -316,3 +316,429 @@ html[data-msc-device="tv"] :where(button, a, [role="button"], input, select, tex
     scroll-behavior: auto !important;
   }
 }
+
+/* ========================================================================== 
+   MULTISPORTS SCORING — LANDSCAPE SHELL V2
+   --------------------------------------------------------------------------
+   Contract used by every screen we adapt progressively:
+   - fixed vertical navigation rail on the left;
+   - fixed header band across the content area;
+   - PRIMARY zone: never scrolls, must fit its allocated height;
+   - SECONDARY zone: owns the vertical scroll when content is longer;
+   - unadapted routes keep their normal document scroll until migrated.
+   ========================================================================== */
+
+html[data-msc-orientation="landscape"] {
+  --msc-landscape-rail-width: 82px;
+  --msc-landscape-header-height: clamp(86px, 19vh, 132px);
+  --msc-landscape-shell-gap: clamp(8px, 1vw, 14px);
+  --msc-landscape-shell-pad: clamp(8px, 1.1vw, 16px);
+  --msc-landscape-primary-track: 1.08fr;
+  --msc-landscape-secondary-track: 0.92fr;
+  --msc-landscape-control-size: 54px;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="phone"],
+html[data-msc-short-landscape="1"] {
+  --msc-landscape-rail-width: 72px;
+  --msc-landscape-header-height: clamp(78px, 22vh, 94px);
+  --msc-landscape-shell-gap: 8px;
+  --msc-landscape-shell-pad: 7px;
+  --msc-landscape-primary-track: 1.12fr;
+  --msc-landscape-secondary-track: 0.88fr;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] {
+  --msc-landscape-rail-width: 96px;
+  --msc-landscape-header-height: clamp(96px, 18vh, 126px);
+  --msc-landscape-shell-gap: 12px;
+  --msc-landscape-shell-pad: 12px;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tv"] {
+  --msc-landscape-rail-width: 128px;
+  --msc-landscape-header-height: clamp(124px, 16vh, 166px);
+  --msc-landscape-shell-gap: clamp(16px, 1.2vw, 24px);
+  --msc-landscape-shell-pad: clamp(18px, 1.6vw, 30px);
+  --msc-landscape-control-size: 64px;
+}
+
+/* --------------------------------------------------------------------------
+   GLOBAL LANDSCAPE NAVIGATION RAIL
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] .bottom-nav {
+  position: fixed !important;
+  inset: 0 auto 0 0 !important;
+  width: var(--msc-landscape-rail-width) !important;
+  height: var(--msc-app-height, 100dvh) !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  padding:
+    max(8px, var(--msc-safe-top))
+    6px
+    max(8px, var(--msc-safe-bottom)) !important;
+  border-top: 0 !important;
+  border-right: 1px solid var(--stroke, rgba(255,255,255,.12)) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scroll-snap-type: y proximity !important;
+  scrollbar-width: none !important;
+}
+
+html[data-msc-orientation="landscape"] .bottom-nav::-webkit-scrollbar {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .bottom-nav::after {
+  content: "";
+  display: block;
+  width: 1px;
+  flex: 0 0 max(4px, var(--msc-safe-bottom));
+}
+
+html[data-msc-orientation="landscape"] .bottom-nav .bn-safe {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .bottom-nav .tab.pill {
+  width: 100% !important;
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+  scroll-snap-align: center !important;
+}
+
+html[data-msc-orientation="landscape"] .bottom-nav .pill .pill-inner {
+  width: 100% !important;
+  min-height: 54px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  padding: 7px 4px !important;
+  border-radius: 13px !important;
+}
+
+html[data-msc-orientation="landscape"] .bottom-nav .pill .tab-icon svg {
+  width: 21px !important;
+  height: 21px !important;
+}
+
+html[data-msc-orientation="landscape"] .bottom-nav .pill .tab-label {
+  width: 100%;
+  font-size: 9px !important;
+  line-height: 1.05 !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] .bottom-nav .pill .pill-inner {
+  min-height: 60px !important;
+  padding: 8px 5px !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] .bottom-nav .pill .tab-label {
+  font-size: 10px !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tv"] .bottom-nav {
+  gap: 9px !important;
+  padding-inline: 10px !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tv"] .bottom-nav .pill .pill-inner {
+  min-height: 72px !important;
+  padding: 10px 7px !important;
+  border-radius: 16px !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tv"] .bottom-nav .pill .tab-icon svg {
+  width: 28px !important;
+  height: 28px !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tv"] .bottom-nav .pill .tab-label {
+  font-size: 12px !important;
+}
+
+/* Every route moves beside the rail. Unmigrated pages retain document scroll. */
+html[data-msc-orientation="landscape"] .dc-themed-route {
+  width: calc(100% - var(--msc-landscape-rail-width)) !important;
+  max-width: none !important;
+  margin-left: var(--msc-landscape-rail-width) !important;
+  margin-right: 0 !important;
+  box-sizing: border-box !important;
+  min-height: var(--msc-app-height, 100dvh) !important;
+  padding-left: max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  padding-right: max(var(--msc-landscape-shell-pad), var(--msc-safe-right)) !important;
+  padding-bottom: max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom)) !important;
+}
+
+/* Background backup/restore toast must not hide behind the rail. */
+html[data-msc-orientation="landscape"] .msc-background-job-toast {
+  left: calc(var(--msc-landscape-rail-width) + 12px) !important;
+  right: 12px !important;
+  bottom: max(10px, var(--msc-safe-bottom)) !important;
+}
+
+/* --------------------------------------------------------------------------
+   REUSABLE 3-ZONE CONTRACT
+   Any page can opt in later with exactly these four classes.
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] .msc-landscape-page-shell {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, var(--msc-landscape-primary-track))
+    minmax(0, var(--msc-landscape-secondary-track)) !important;
+  grid-template-rows:
+    var(--msc-landscape-header-height)
+    minmax(0, 1fr) !important;
+  gap: var(--msc-landscape-shell-gap) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-landscape-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-landscape-primary {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-landscape-secondary {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   HOME — first page migrated to the shared landscape shell.
+   Header and left column never scroll. Right column is the only content scroll.
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="home"] {
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="home"] .msc-home-page {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  padding:
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-top))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-right))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-bottom))
+    max(var(--msc-landscape-shell-pad), var(--msc-safe-left)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-layout {
+  height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-header {
+  height: 100% !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  border-radius: clamp(17px, 1.8vw, 26px) !important;
+  padding: clamp(9px, 1.4vh, 16px) clamp(82px, 11vw, 170px) !important;
+  justify-content: center !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-welcome-pill {
+  margin-bottom: clamp(4px, .8vh, 8px) !important;
+  padding: 4px 16px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-welcome-pill > span {
+  font-size: clamp(10px, 1.35vw, 13px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-sport-title {
+  font-size: clamp(23px, 3.3vw, 42px) !important;
+  line-height: 1 !important;
+  letter-spacing: clamp(1.4px, .28vw, 3px) !important;
+  white-space: nowrap !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-primary {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  align-items: stretch !important;
+  gap: clamp(5px, .8vh, 9px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-ad {
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-ad > * {
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-profile-slot {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-profile-slot > .active-profile-card {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: clamp(7px, 1vh, 11px) !important;
+  gap: clamp(7px, .8vw, 11px) !important;
+  border-radius: clamp(15px, 1.5vw, 22px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-profile-slot .active-profile-card__identity {
+  width: clamp(104px, 12vw, 132px) !important;
+  min-width: clamp(104px, 12vw, 132px) !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-profile-slot .active-profile-card__identity > div {
+  padding: clamp(6px, .8vh, 10px) !important;
+  gap: clamp(4px, .7vh, 8px) !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-profile-slot .active-profile-card__stats {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: clamp(6px, .8vh, 10px) !important;
+  border-radius: 15px !important;
+  overflow: hidden !important;
+}
+
+/* 6 global KPIs become 3 columns x 2 rows: same information, much less height. */
+html[data-msc-orientation="landscape"] .msc-home-profile-slot .active-profile-card__kpi-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: clamp(4px, .55vw, 7px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-profile-slot .active-profile-card__kpi {
+  min-height: 0 !important;
+  padding: 4px 5px 5px !important;
+  border-radius: 10px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-secondary {
+  height: 100% !important;
+  box-sizing: border-box !important;
+  padding-bottom: 4px !important;
+}
+
+/* A subtle, visible scroll affordance only on the scrollable right pane. */
+html[data-msc-orientation="landscape"] .msc-home-secondary::-webkit-scrollbar {
+  width: 5px;
+}
+
+html[data-msc-orientation="landscape"] .msc-home-secondary::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255,255,255,.22);
+}
+
+html[data-msc-orientation="landscape"] .msc-home-secondary::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Phone landscape has the hardest height budget. Keep one monetized banner in
+   the fixed left column and suppress the duplicate secondary banner there only. */
+html[data-msc-short-landscape="1"] .msc-home-ad--secondary {
+  display: none !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-home-primary {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-home-profile-slot .active-profile-card__identity {
+  width: 96px !important;
+  min-width: 96px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-home-profile-slot .active-profile-card__stats {
+  padding: 5px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-home-profile-slot .active-profile-card__kpi-grid {
+  gap: 4px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-home-profile-slot .active-profile-card__kpi {
+  padding: 3px 4px 4px !important;
+}
+
+/* --------------------------------------------------------------------------
+   HEADER MEDALLIONS — HOME landscape
+   Organisation left; Awena + active sport right. They remain real controls,
+   merely docked into the fixed header band instead of floating over content.
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] [data-mss-header-docked="1"][data-mss-floating-control="workspace-switch"] {
+  top: max(12px, calc(var(--msc-landscape-shell-pad) + var(--msc-safe-top))) !important;
+  left: calc(var(--msc-landscape-rail-width) + var(--msc-landscape-shell-pad) + var(--msc-safe-left)) !important;
+}
+
+html[data-msc-orientation="landscape"] [data-mss-header-docked="1"][data-mss-floating-control="sport-switch"] {
+  top: max(12px, calc(var(--msc-landscape-shell-pad) + var(--msc-safe-top))) !important;
+  right: calc(var(--msc-landscape-shell-pad) + var(--msc-safe-right)) !important;
+}
+
+html[data-msc-orientation="landscape"] [data-mss-header-docked="1"][data-mss-floating-control="awena-launcher"] {
+  top: max(5px, calc(var(--msc-landscape-shell-pad) + var(--msc-safe-top) - 3px)) !important;
+  right: calc(var(--msc-landscape-shell-pad) + var(--msc-safe-right) + 64px) !important;
+  bottom: auto !important;
+}
+
+html[data-msc-orientation="landscape"] [data-awena-overlay="1"][data-mss-header-docked="1"] {
+  top: calc(var(--msc-landscape-header-height) + var(--msc-landscape-shell-pad) * 2) !important;
+  right: calc(var(--msc-landscape-shell-pad) + var(--msc-safe-right)) !important;
+  bottom: auto !important;
+  max-height: calc(var(--msc-app-height, 100dvh) - var(--msc-landscape-header-height) - var(--msc-landscape-shell-pad) * 3) !important;
+}
+
+html[data-msc-orientation="landscape"] [data-mss-workspace-menu="1"] {
+  top: calc(var(--msc-landscape-header-height) + var(--msc-landscape-shell-pad) * 2) !important;
+  left: calc(var(--msc-landscape-rail-width) + var(--msc-landscape-shell-pad) + var(--msc-safe-left)) !important;
+  max-height: calc(var(--msc-app-height, 100dvh) - var(--msc-landscape-header-height) - var(--msc-landscape-shell-pad) * 3) !important;
+}
+

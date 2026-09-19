@@ -2870,6 +2870,7 @@ React.useEffect(() => {
 
   return (
     <div
+      className="msc-home-page"
       style={{
         minHeight: "100%",
         background: theme.pageBackground || theme.bg || "#05060C",
@@ -2880,11 +2881,12 @@ React.useEffect(() => {
         boxSizing: "border-box",
       }}
     >
-      <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH }}>
+      <div className="msc-landscape-page-shell msc-home-layout" style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH }}>
         <style dangerouslySetInnerHTML={{ __html: homeHeaderCss }} />
   
         {/* Haut de page */}
         <div
+          className="msc-landscape-header msc-home-header"
           style={{
             borderRadius: 28,
             padding: 18,
@@ -2903,6 +2905,7 @@ React.useEffect(() => {
         >
           <SportWelcomeWatermark sport={String(sport)} opacity={0.12} size={205} />
           <div
+            className="msc-home-welcome-pill"
             style={{
               position: "relative", zIndex: 2,
               display: "inline-flex",
@@ -2928,6 +2931,7 @@ React.useEffect(() => {
           </div>
   
           <div
+            className="msc-home-sport-title"
             style={{
               position: "relative",
               zIndex: 2,
@@ -2948,39 +2952,48 @@ React.useEffect(() => {
           </div>
         </div>
 
-        {/* PUB intégrée 1 : juste sous le bloc BIENVENUE / titre du sport */}
-        <InlineAdBanner
-          placement="home"
-          slotKey="home-top"
-          offset={0}
-          compact
-          style={{ marginBottom: 16 }}
-        />
+        <section className="msc-landscape-primary msc-home-primary">
+          {/* PUB intégrée 1 : juste sous le bloc BIENVENUE / titre du sport */}
+          <div className="msc-home-ad msc-home-ad--top">
+            <InlineAdBanner
+              placement="home"
+              slotKey="home-top"
+              offset={0}
+              compact
+              style={{ marginBottom: 16 }}
+            />
+          </div>
   
         {/* Carte joueur actif */}
-        {activeProfile && (
-          <ActiveProfileCard
-            profile={activeProfile}
-            stats={isFootSport ? emptyActiveProfileStats() : stats}
-            status={onlineStatusForUi}
-            globalTitle={isFootSport ? "Vue globale FOOT" : undefined}
-            globalKpis={isFootSport ? footGlobalKpis : undefined}
-            hideStarRing={isFootSport}
-          />
-        )}
+          {activeProfile && (
+            <div className="msc-home-profile-slot">
+              <ActiveProfileCard
+                profile={activeProfile}
+                stats={isFootSport ? emptyActiveProfileStats() : stats}
+                status={onlineStatusForUi}
+                globalTitle={isFootSport ? "Vue globale FOOT" : undefined}
+                globalKpis={isFootSport ? footGlobalKpis : undefined}
+                hideStarRing={isFootSport}
+              />
+            </div>
+          )}
 
         {/* PUB intégrée 2 : sous le bloc JOUEUR ACTIF / stats principales */}
-        {activeProfile && (
-          <InlineAdBanner
-            placement="home_secondary"
-            slotKey="home-player"
-            offset={2}
-            compact
-            style={{ marginTop: 12, marginBottom: 14 }}
-          />
-        )}
-  
-        {/* Petit bandeau arcade : stats + pages PUB dans une seule rotation */}
+          {activeProfile && (
+            <div className="msc-home-ad msc-home-ad--secondary">
+              <InlineAdBanner
+                placement="home_secondary"
+                slotKey="home-player"
+                offset={2}
+                compact
+                style={{ marginTop: 12, marginBottom: 14 }}
+              />
+            </div>
+          )}
+        </section>
+
+        <aside className="msc-landscape-secondary msc-home-secondary">
+          {/* Petit bandeau arcade : stats + pages PUB dans une seule rotation */}
         <ArcadeTicker
           items={tickerItems} // ✅ IMPORTANT
           activeIndex={tickerIndex}
@@ -3196,7 +3209,7 @@ React.useEffect(() => {
             </div>
           </div>
         )}
-  
+        </aside>
       </div>
     </div>
   );    

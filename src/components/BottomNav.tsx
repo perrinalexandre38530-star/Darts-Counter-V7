@@ -507,6 +507,7 @@ export default function BottomNav({
         const errorTitle = isRestore ? "⚠️ Restauration interrompue" : "⚠️ Sauvegarde interrompue";
         return (
         <div
+          className="msc-background-job-toast"
           role="status"
           aria-live="polite"
           onClick={dismiss}

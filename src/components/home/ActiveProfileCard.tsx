@@ -628,6 +628,7 @@ function ActiveProfileCard({
     <>
       <style dangerouslySetInnerHTML={{ __html: shimmerCss }} />
       <div
+        className="active-profile-card"
         style={{
           borderRadius: 24,
           padding: 16,
@@ -642,7 +643,7 @@ function ActiveProfileCard({
         }}
       >
         {/* Colonne gauche */}
-        <div style={{ width: 130, minWidth: 130, display: "flex", alignItems: "stretch" }}>
+        <div className="active-profile-card__identity" style={{ width: 130, minWidth: 130, display: "flex", alignItems: "stretch" }}>
           <div
             style={{
               borderRadius: 22,
@@ -756,6 +757,7 @@ function ActiveProfileCard({
           onPointerMove={onSlidePointerMove}
           onPointerUp={onSlidePointerUp}
           onPointerCancel={() => { swipeStartRef.current = null; }}
+          className="active-profile-card__stats"
           style={{
             flex: 1,
             borderRadius: 18,
@@ -800,7 +802,7 @@ function ActiveProfileCard({
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
+              <div className="active-profile-card__kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
                 {slide.rows.map((row) => (
                   <KpiCell
                     key={row.label}
@@ -907,9 +909,9 @@ function KpiCell({ label, value, primary, theme, onClick, backgroundImage, tileI
     color: "inherit",
   };
   if (interactive) {
-    return <button type="button" className={illustrationMode ? "dc-postapoc-menu-card running-home-image-action" : undefined} aria-label={ariaLabel || `${label}: ${value}`} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onClick?.(); }} style={{ ...baseStyle, width: "100%", cursor: "pointer", font: "inherit" }}>{content}</button>;
+    return <button type="button" className={`active-profile-card__kpi${illustrationMode ? " dc-postapoc-menu-card running-home-image-action" : ""}`} aria-label={ariaLabel || `${label}: ${value}`} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onClick?.(); }} style={{ ...baseStyle, width: "100%", cursor: "pointer", font: "inherit" }}>{content}</button>;
   }
-  return <div style={baseStyle}>{content}</div>;
+  return <div className="active-profile-card__kpi" style={baseStyle}>{content}</div>;
 }
 
 export default ActiveProfileCard;

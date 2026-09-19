@@ -122,6 +122,7 @@ export default function OrganizationWorkspaceSwitcher({
       <button
         ref={floating.ref as any}
         data-mss-floating-control="workspace-switch"
+        data-mss-header-docked="1"
         type="button"
         aria-label={`${L("Changer d’espace", "Switch workspace", "Cambiar espacio")} · ${activeLabel}`}
         title={`${activeLabel} · ${L("Changer d’espace", "Switch workspace", "Cambiar espacio")}`}
@@ -184,6 +185,7 @@ export default function OrganizationWorkspaceSwitcher({
       {open ? <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 93, background: "rgba(0,0,0,.38)", backdropFilter: "blur(2px)" }} /> : null}
       {open ? (
         <div
+          data-mss-workspace-menu="1"
           style={{
             position: "fixed",
             top: `calc(env(safe-area-inset-top, 0px) + ${floating.top + 62}px)`,

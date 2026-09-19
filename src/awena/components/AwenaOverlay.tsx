@@ -24,6 +24,7 @@ type Props = {
   sport?: string;
   go?: (route: any, params?: any) => void;
   inGame?: boolean;
+  landscapeHeaderDocked?: boolean;
 };
 
 type AwenaContextValue = NonNullable<ReturnType<typeof useAwenaOptional>>;
@@ -218,7 +219,7 @@ export default function AwenaOverlay(props: Props) {
   return <AwenaOverlayInner {...props} awena={awena} />;
 }
 
-function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & { awena: AwenaContextValue }) {
+function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDocked = false, awena }: Props & { awena: AwenaContextValue }) {
   const { theme } = useTheme() as any;
   const { lang } = useLang();
   const ui = awenaUi(lang);
@@ -397,6 +398,8 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
     <>
       {!inGame && (
         <div
+          data-mss-floating-control="awena-launcher"
+          data-mss-header-docked={landscapeHeaderDocked ? "1" : undefined}
           style={{
             position: "fixed",
             right: 16,
@@ -492,7 +495,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
       )}
 
       {open && (
-        <div data-awena-overlay="1" style={{
+        <div data-awena-overlay="1" data-mss-header-docked={landscapeHeaderDocked ? "1" : undefined} style={{
           position: "fixed", right: 12, ...(inGame ? { top: 78, bottom: "auto" } : { bottom: awenaPanelBottom }), zIndex: 1199,
           width: "min(390px, calc(100vw - 24px))", maxHeight: inGame ? "min(620px, calc(100vh - 96px))" : "min(620px, calc(100vh - 210px))",
           display: "flex", flexDirection: "column", overflow: "hidden",

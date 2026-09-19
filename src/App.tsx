@@ -6727,6 +6727,7 @@ case "babyfoot_team_edit":
         {showSportQuickSwitch && (
           <SportQuickSwitch
             collisionKey={String(tab)}
+            landscapeHeaderDocked={tab === "home"}
             onAfterSwitch={() => {
               if (tab === "home" || tab === "games" || tab === "stats" || tab === "statsHub" || tab === "tournaments") return;
               go("home");
@@ -6736,6 +6737,7 @@ case "babyfoot_team_edit":
 
         <div
           className={`container dc-themed-route dc-themed-route--${themePageScope}`}
+          data-msc-route={String(tab)}
           style={{
             paddingBottom: 88,
             // Les sélecteurs Compte/Organisation et Sport sont désormais des médaillons
@@ -6768,6 +6770,7 @@ case "babyfoot_team_edit":
             route={String(tab)}
             sport={String(activeSport || "")}
             go={go}
+            landscapeHeaderDocked={tab === "home"}
             inGame={HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
           />
         )}

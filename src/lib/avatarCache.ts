@@ -1,5 +1,5 @@
 import { sanitizeAvatarDataUrl } from "./avatarSafe";
-import { safeLocalStorageSetJson, unpackJsonFromStorage } from "./imageStorageCodec";
+import { unpackJsonFromStorage } from "./imageStorageCodec";
 
 const KEY = "dc_avatar_cache_v1";
 const FAST_KEY_PREFIX = "dc_avatar_fast_v2:";
@@ -9,7 +9,7 @@ const FAST_KEY_PREFIX = "dc_avatar_fast_v2:";
 const FAST_THUMB_MAX_CHARS = 64_000;
 const FAST_STORAGE_MAX_CHARS = 800_000;
 const FAST_STORAGE_MAX_ENTRIES = 40;
-const GLOBAL_CACHE_MAX_ENTRIES = 220; // métadonnées seulement
+const GLOBAL_CACHE_MAX_ENTRIES = 220; // mémoire uniquement, jamais sérialisée en bloc global
 const LEGACY_GLOBAL_RAW_MAX_CHARS = 160_000;
 const SESSION_THUMB_MAX_CHARS = 140_000;
 const SESSION_THUMB_BUDGET_CHARS = 2_000_000;
@@ -232,26 +232,35 @@ function loadAllFromStorage(): Record<string, AvatarCacheEntry> {
     const packed = localStorage.getItem(KEY);
     if (!packed) return {};
 
-    // Une ancienne version pouvait sérialiser 4 variantes base64 par profil.
-    // Au-delà de ce seuil on ne décompresse pas ce bloc potentiellement énorme :
-    // les fast thumbs + IndexedDB/R2 sont désormais les sources de secours.
+    // Migration one-shot de l'ancien cache global. Les versions récentes gardent
+    // seulement une entrée légère par profil (dc_avatar_fast_v2:*). Cela évite
+    // de réécrire un gros objet global à chaque avatar et surtout d'épuiser le
+    // quota localStorage alors que les médias complets vivent déjà en IndexedDB/R2.
     if (packed.length > LEGACY_GLOBAL_RAW_MAX_CHARS) {
       localStorage.removeItem(KEY);
       return {};
     }
 
     const raw = unpackJsonFromStorage<Record<string, AvatarCacheEntry>>(packed, {});
-    if (!raw || typeof raw !== "object") return {};
     const out: Record<string, AvatarCacheEntry> = {};
-    for (const [profileId, entry] of Object.entries(raw)) {
-      const normalized = { ...(entry as AvatarCacheEntry), profileId: String((entry as any)?.profileId || profileId) };
-      const thumb = pickThumb(normalized, FAST_THUMB_MAX_CHARS);
-      if (thumb) writeFastEntry({ ...normalized, avatarThumbDataUrl: thumb });
-      const meta = metadataOnly(normalized);
-      if (meta) out[meta.profileId] = meta;
+    if (raw && typeof raw === "object") {
+      for (const [profileId, entry] of Object.entries(raw)) {
+        const normalized = { ...(entry as AvatarCacheEntry), profileId: String((entry as any)?.profileId || profileId) };
+        const thumb = pickThumb(normalized, FAST_THUMB_MAX_CHARS);
+        // writeFastEntry est quota-safe : en cas de saturation il abandonne
+        // silencieusement et les sources IndexedDB/R2 restent disponibles.
+        writeFastEntry({ ...normalized, avatarThumbDataUrl: thumb });
+        const meta = metadataOnly(normalized);
+        if (meta) out[meta.profileId] = meta;
+      }
     }
+
+    // IMPORTANT : l'ancien bloc global ne doit jamais rester après migration.
+    // C'était précisément dc_avatar_cache_v1 qui déclenchait QuotaExceededError.
+    try { localStorage.removeItem(KEY); } catch {}
     return out;
   } catch {
+    try { localStorage.removeItem(KEY); } catch {}
     return {};
   }
 }
@@ -274,14 +283,16 @@ function flushAvatarCacheSoon() {
         .map(metadataOnly)
         .filter(Boolean) as AvatarCacheEntry[];
       trimmed.sort((a, b) => Number(b.avatarUpdatedAt || 0) - Number(a.avatarUpdatedAt || 0));
-      const next = Object.fromEntries(trimmed.slice(0, GLOBAL_CACHE_MAX_ENTRIES).map((item) => [item.profileId, item]));
-      memoryCache = next;
+      memoryCache = Object.fromEntries(
+        trimmed.slice(0, GLOBAL_CACHE_MAX_ENTRIES).map((item) => [item.profileId, item])
+      );
 
-      if (!safeLocalStorageSetJson(KEY, next, { sanitizeImages: false, compressAboveChars: 50_000 })) {
-        // Remplacement atomique impossible parce que l'ancien quota est plein.
-        try { localStorage.removeItem(KEY); } catch {}
-        safeLocalStorageSetJson(KEY, next, { sanitizeImages: false, compressAboveChars: 50_000 });
-      }
+      // Ne plus sérialiser dc_avatar_cache_v1. Les métadonnées + miniatures
+      // légères sont déjà conservées par profil via dc_avatar_fast_v2:* et les
+      // pixels complets par userMediaFallback (IndexedDB/R2).
+      // Supprimer ici une éventuelle relique empêche aussi une ancienne version
+      // du cache de continuer à consommer le quota.
+      try { localStorage.removeItem(KEY); } catch {}
       pruneFastStorage();
     } catch {}
   }, 700);
