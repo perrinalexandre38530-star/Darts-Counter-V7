@@ -6,6 +6,24 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(root, "MULTISPORTSSCORINGTV");
 const configPath = path.join(out, "config.xml");
+const samsungTvSourcePath = path.join(root, "src", "tv", "samsung", "SamsungTvApp.tsx");
+
+function readCurrentTvBuildIdentity() {
+  if (!fs.existsSync(samsungTvSourcePath)) {
+    console.error("❌ src/tv/samsung/SamsungTvApp.tsx introuvable.");
+    process.exit(1);
+  }
+  const source = fs.readFileSync(samsungTvSourcePath, "utf8");
+  const marker = source.match(/const\s+TV_BUILD_MARKER\s*=\s*["'`]([^"'`]+)["'`]/)?.[1] || "";
+  const label = source.match(/className=["']mss-tv-build-marker["'][^>]*>([^<]+)</)?.[1]?.trim() || marker;
+  if (!marker) {
+    console.error("❌ TV_BUILD_MARKER introuvable dans SamsungTvApp.tsx.");
+    process.exit(1);
+  }
+  return { marker, label };
+}
+
+const currentTvBuild = readCurrentTvBuildIdentity();
 
 if (!fs.existsSync(configPath)) {
   console.error("❌ MULTISPORTSSCORINGTV/config.xml introuvable. Crée d'abord le projet Web TV Tizen 10.0.");
@@ -44,7 +62,9 @@ const result = spawnSync(process.execPath, [viteBin, "build", "--config", path.j
 
 if (result.status !== 0) process.exit(result.status || 1);
 
-// Refuse de continuer si Vite a généré l'ancien Viewer passif.
+// Refuse de continuer si Vite a généré un ancien bundle. Le marqueur attendu
+// est lu directement dans SamsungTvApp.tsx afin d'éviter qu'un patch futur
+// mette à jour l'interface TV sans mettre à jour ce script de build.
 const builtAssetsDir = path.join(out, "assets");
 const builtJs = fs.existsSync(builtAssetsDir)
   ? fs.readdirSync(builtAssetsDir).filter((file) => file.endsWith(".js"))
@@ -52,11 +72,11 @@ const builtJs = fs.existsSync(builtAssetsDir)
 const builtBundle = builtJs
   .map((file) => fs.readFileSync(path.join(builtAssetsDir, file), "utf8"))
   .join("\n");
-if (!builtBundle.includes("MSS_TV_SHARED_PHONE_UI_BUILD_20260919_07")) {
-  console.error("❌ Le bundle Samsung généré ne contient pas TV SHARED PHONE UI V7. Build refusé.");
+if (!builtBundle.includes(currentTvBuild.marker)) {
+  console.error(`❌ Le bundle Samsung généré ne contient pas le build TV courant (${currentTvBuild.label}). Build refusé.`);
   process.exit(1);
 }
-console.log("✅ Bundle Samsung TV SHARED PHONE UI V7 généré");
+console.log(`✅ Bundle Samsung TV courant généré : ${currentTvBuild.label}`);
 
 const check = spawnSync(process.execPath, [path.join(root, "tools", "check-samsung-tv.mjs")], {
   cwd: root,

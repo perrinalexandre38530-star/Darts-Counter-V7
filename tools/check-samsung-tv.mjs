@@ -5,6 +5,17 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(root, "MULTISPORTSSCORINGTV");
 const required = ["config.xml", "icon.png", "index.html"];
+const samsungTvSourcePath = path.join(root, "src", "tv", "samsung", "SamsungTvApp.tsx");
+
+function currentTvBuildIdentity() {
+  if (!fs.existsSync(samsungTvSourcePath)) return { marker: "", label: "interface TV courante" };
+  const source = fs.readFileSync(samsungTvSourcePath, "utf8");
+  const marker = source.match(/const\s+TV_BUILD_MARKER\s*=\s*["'`]([^"'`]+)["'`]/)?.[1] || "";
+  const label = source.match(/className=["']mss-tv-build-marker["'][^>]*>([^<]+)</)?.[1]?.trim() || marker || "interface TV courante";
+  return { marker, label };
+}
+
+const expectedTvBuild = currentTvBuildIdentity();
 let ok = true;
 
 function fail(message) {
@@ -55,11 +66,12 @@ else {
   if (bundleText.includes("dc-online-v3.perrin-alexandre38530.workers.dev")) pass("Viewer TV routé vers le Worker ONLINE DC_SYNC");
   else fail("Viewer TV non routé vers le Worker ONLINE (risque session absente)");
 
-  if (bundleText.includes("MSS_TV_FULL_APP_BUILD_20260914_04")) pass("Interface Samsung TV FULL PREMIUM V4 intégrée au bundle");
-  else fail("ANCIEN BUNDLE TV détecté : l'interface FULL PREMIUM V4 n'est pas dans les assets générés");
+  if (expectedTvBuild.marker && bundleText.includes(expectedTvBuild.marker)) pass(`Interface Samsung TV courante intégrée au bundle : ${expectedTvBuild.label}`);
+  else if (!expectedTvBuild.marker) fail("TV_BUILD_MARKER introuvable dans SamsungTvApp.tsx");
+  else fail(`ANCIEN BUNDLE TV détecté : ${expectedTvBuild.label} n'est pas dans les assets générés`);
 
-  if (bundleText.includes("TV FULL PREMIUM V4") && bundleText.includes("LANCER UNE PARTIE") && bundleText.includes("SPORTS")) pass("Navigation TV FULL PREMIUM V4 présente");
-  else fail("Navigation TV FULL PREMIUM V4 absente du bundle");
+  if (bundleText.includes("LANCER UNE PARTIE") && bundleText.includes("SPORTS") && bundleText.includes("mss-tv-shared-app-host")) pass("Navigation TV + interface téléphone partagée présentes");
+  else fail("Navigation TV / interface téléphone partagée absente du bundle");
 
   if (bundleText.includes("MATCH SIMPLE") && bundleText.includes("DICE DUEL") && bundleText.includes("MATCH 1V1")) pass("Lanceurs de sports TV intégrés");
   else fail("Lanceurs de sports TV incomplets");
