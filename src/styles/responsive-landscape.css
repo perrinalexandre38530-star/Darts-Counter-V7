@@ -1,0 +1,318 @@
+/* ========================================================================== 
+   MULTISPORTS SCORING — responsive landscape / tablet / TV layer
+   --------------------------------------------------------------------------
+   Loaded LAST from main.tsx so existing page styles stay authoritative until
+   the viewport actually requires a global adaptation.
+   ========================================================================== */
+
+:root {
+  --msc-app-height: 100dvh;
+  --msc-viewport-width: 100vw;
+  --msc-viewport-height: 100dvh;
+  --msc-content-max: 1180px;
+  --msc-page-pad-x: 16px;
+  --msc-page-pad-y: 14px;
+  --msc-gap: 12px;
+  --msc-bottom-nav-space: calc(92px + env(safe-area-inset-bottom, 0px));
+  --msc-safe-left: env(safe-area-inset-left, 0px);
+  --msc-safe-right: env(safe-area-inset-right, 0px);
+  --msc-safe-top: env(safe-area-inset-top, 0px);
+  --msc-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html,
+body,
+#root {
+  min-width: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: var(--msc-app-height, 100dvh);
+}
+
+/* Replace legacy full-viewport inline roots without editing every page. */
+[style*="min-height: 100vh"],
+[style*="min-height:100vh"] {
+  min-height: var(--msc-app-height, 100dvh) !important;
+}
+
+[style^="height: 100vh"],
+[style*="; height: 100vh"],
+[style^="height:100vh"],
+[style*=";height:100vh"] {
+  height: var(--msc-app-height, 100dvh) !important;
+}
+
+/* Media must never create accidental horizontal overflow. Canvas is excluded:
+   several scoring/game screens intentionally manage canvas dimensions. */
+img,
+video,
+svg {
+  max-inline-size: 100%;
+}
+
+/* Dialogs remain usable when the device rotates while one is open. */
+:where(dialog, [role="dialog"], [aria-modal="true"]) {
+  max-width: min(96vw, 1180px);
+  max-height: calc(var(--msc-app-height, 100dvh) - 16px);
+}
+
+/* --------------------------------------------------------------------------
+   ALL LANDSCAPE DEVICES
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"] {
+  --msc-content-max: 1440px;
+  --msc-page-pad-x: clamp(12px, 2vw, 30px);
+  --msc-page-pad-y: clamp(8px, 1.4vh, 18px);
+  --msc-gap: clamp(8px, 1.2vw, 18px);
+}
+
+html[data-msc-orientation="landscape"] body {
+  overflow-x: hidden;
+}
+
+html[data-msc-orientation="landscape"] #root {
+  min-height: var(--msc-app-height, 100dvh);
+  min-width: 0;
+}
+
+/* Existing generic containers gain width on tablets/TV without touching pages. */
+html[data-msc-orientation="landscape"] .container {
+  width: min(100%, var(--msc-content-max));
+  max-width: var(--msc-content-max) !important;
+  margin-inline: auto;
+  padding-left: max(var(--msc-page-pad-x), var(--msc-safe-left));
+  padding-right: max(var(--msc-page-pad-x), var(--msc-safe-right));
+}
+
+html[data-msc-orientation="landscape"] .grid2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--msc-gap);
+}
+
+html[data-msc-orientation="landscape"] :where(.row, .row-between) {
+  gap: var(--msc-gap);
+}
+
+html[data-msc-orientation="landscape"] :where(.card, .dc-card, .dc-tile) {
+  max-width: 100%;
+}
+
+/* Bottom navigation is globally available, therefore it is the safest place
+   to recover vertical space on every route in landscape mode. */
+html[data-msc-orientation="landscape"] .bottom-nav {
+  gap: clamp(5px, 0.8vw, 12px);
+  padding-left: max(10px, var(--msc-safe-left));
+  padding-right: max(10px, var(--msc-safe-right));
+}
+
+html[data-msc-orientation="landscape"] .tab.pill {
+  min-width: 68px;
+}
+
+/* --------------------------------------------------------------------------
+   PHONE — LANDSCAPE / SHORT VIEWPORT
+   Most important case: lots of width, very little vertical room.
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"][data-msc-device="phone"],
+html[data-msc-short-landscape="1"] {
+  --msc-content-max: 100vw;
+  --msc-page-pad-x: 10px;
+  --msc-page-pad-y: 6px;
+  --msc-gap: 8px;
+  --msc-bottom-nav-space: calc(54px + var(--msc-safe-bottom));
+}
+
+html[data-msc-short-landscape="1"] .container {
+  padding-top: 8px;
+  padding-bottom: var(--msc-bottom-nav-space) !important;
+}
+
+html[data-msc-short-landscape="1"] h1.title-xl {
+  font-size: clamp(20px, 5.2vh, 28px);
+  margin-bottom: 0.3rem;
+}
+
+html[data-msc-short-landscape="1"] :where(h1, h2, h3) {
+  margin-bottom: 0.35rem;
+}
+
+html[data-msc-short-landscape="1"] :where(.card, .dc-card, .dc-tile) {
+  border-radius: 14px;
+}
+
+html[data-msc-short-landscape="1"] .card,
+html[data-msc-short-landscape="1"] .dc-tile {
+  padding: 10px;
+}
+
+html[data-msc-short-landscape="1"] :where(.list) {
+  gap: 7px;
+}
+
+html[data-msc-short-landscape="1"] :where(.item) {
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+html[data-msc-short-landscape="1"] :where(.btn, .input, select) {
+  min-height: 36px;
+}
+
+html[data-msc-short-landscape="1"] .bottom-nav {
+  gap: 5px;
+  padding-top: 4px;
+  padding-bottom: max(4px, var(--msc-safe-bottom));
+  justify-content: flex-start;
+}
+
+html[data-msc-short-landscape="1"] .tab.pill {
+  flex: 0 0 auto;
+  min-width: 62px;
+}
+
+html[data-msc-short-landscape="1"] .pill .pill-inner {
+  min-height: 38px;
+  flex-direction: row;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 12px;
+}
+
+html[data-msc-short-landscape="1"] .pill .tab-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+html[data-msc-short-landscape="1"] .pill .tab-label {
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* Shared darts keypad: preserve all keys while reducing wasted height. */
+html[data-msc-short-landscape="1"] .kbd {
+  padding: 7px;
+  border-radius: 12px;
+}
+
+html[data-msc-short-landscape="1"] .kbd-top {
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+html[data-msc-short-landscape="1"] .kbd-keys {
+  gap: 5px;
+}
+
+html[data-msc-short-landscape="1"] .k {
+  padding: 7px 5px;
+  border-radius: 9px;
+}
+
+/* --------------------------------------------------------------------------
+   TABLET — LANDSCAPE
+   -------------------------------------------------------------------------- */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] {
+  --msc-content-max: 1240px;
+  --msc-page-pad-x: clamp(18px, 2.5vw, 34px);
+  --msc-page-pad-y: 14px;
+  --msc-gap: 14px;
+  --msc-bottom-nav-space: calc(82px + var(--msc-safe-bottom));
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] .container {
+  padding-bottom: var(--msc-bottom-nav-space) !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] .bottom-nav {
+  justify-content: center;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] .tab.pill {
+  min-width: 78px;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"] .pill .pill-inner {
+  padding: 8px 10px;
+}
+
+/* --------------------------------------------------------------------------
+   LARGE DESKTOP / TV WIDTH
+   TV-specific data-device rules are added below; this block also makes browser
+   testing at 1280/1920px representative of the final big-screen layout.
+   -------------------------------------------------------------------------- */
+@media (orientation: landscape) and (min-width: 1280px) {
+  :root {
+    --msc-content-max: 1720px;
+    --msc-page-pad-x: clamp(28px, 3vw, 64px);
+    --msc-page-pad-y: clamp(18px, 2.2vh, 36px);
+    --msc-gap: clamp(14px, 1.2vw, 24px);
+  }
+
+  .container {
+    width: min(100%, var(--msc-content-max));
+    max-width: var(--msc-content-max) !important;
+    margin-inline: auto;
+  }
+
+  .bottom-nav {
+    justify-content: center;
+  }
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tv"] {
+  --msc-content-max: 1760px;
+  --msc-page-pad-x: clamp(44px, 4vw, 88px);
+  --msc-page-pad-y: clamp(24px, 3vh, 52px);
+  --msc-gap: clamp(18px, 1.4vw, 28px);
+  --msc-bottom-nav-space: calc(94px + var(--msc-safe-bottom));
+}
+
+html[data-msc-device="tv"] .container {
+  padding-bottom: var(--msc-bottom-nav-space) !important;
+}
+
+html[data-msc-device="tv"] :where(.btn, .input, select) {
+  min-height: 50px;
+  font-size: 1rem;
+}
+
+html[data-msc-device="tv"] .bottom-nav {
+  padding-top: 10px;
+  padding-bottom: max(10px, var(--msc-safe-bottom));
+}
+
+html[data-msc-device="tv"] .tab.pill {
+  flex-basis: 104px;
+  min-width: 104px;
+}
+
+html[data-msc-device="tv"] .pill .pill-inner {
+  min-height: 62px;
+  padding: 9px 13px;
+}
+
+html[data-msc-device="tv"] .pill .tab-icon svg {
+  width: 27px;
+  height: 27px;
+}
+
+html[data-msc-device="tv"] .pill .tab-label {
+  font-size: 13px;
+}
+
+/* Focus must be obvious at television viewing distance / remote control use. */
+html[data-msc-device="tv"] :where(button, a, [role="button"], input, select, textarea):focus-visible {
+  outline: 3px solid var(--gold, #f0b12a);
+  outline-offset: 3px;
+}
+
+/* Accessibility: layout changes must not force animations on users who disable them. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-msc-orientation="landscape"] *,
+  html[data-msc-orientation="landscape"] *::before,
+  html[data-msc-orientation="landscape"] *::after {
+    scroll-behavior: auto !important;
+  }
+}

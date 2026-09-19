@@ -9,6 +9,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import "./styles/responsive-landscape.css";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AsyncGuard from "./components/AsyncGuard";
 import BootGuard from "./components/BootGuard";
@@ -19,12 +20,18 @@ import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
 import { initKeepAwakeRuntime } from "./lib/keepAwake";
+import { installResponsiveLayout } from "./lib/responsiveLayout";
 
 // Publie la plateforme avant le premier rendu afin que les garde-fous CSS
 // Android soient actifs dès la première frame.
 try {
   document.documentElement.dataset.mscRuntimePlatform = getRuntimePlatform();
 } catch {}
+
+// Responsive global: une seule source de vérité pour portrait/paysage,
+// téléphone/tablette/TV. Les pages existantes héritent des règles CSS sans
+// câblage route par route.
+installResponsiveLayout();
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
