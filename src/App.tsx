@@ -68,6 +68,7 @@
 
 import * as React from "react";
 import { useViewerInteractiveBridge } from "./lib/viewer/useViewerInteractiveBridge";
+import { isSamsungTvNativeAppMode, readSamsungTvNativeAppBoot } from "./tv/samsung/tvNativeAppBridge";
 const { useEffect, useMemo, useState, useRef, useCallback } = React;
 import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
@@ -2097,6 +2098,8 @@ function SWUpdateBanner() {
                 APP
 -------------------------------------------- */
 function App() {
+  const samsungTvNativeBoot = React.useMemo(() => readSamsungTvNativeAppBoot(), []);
+  const isSamsungTvNativeApp = !!samsungTvNativeBoot;
   const themePreviewConfig = React.useMemo(() => readThemePreviewConfig(), []);
   const isThemePreviewFrame = themePreviewConfig.enabled;
   const themePreviewTabRef = React.useRef<Tab>(themePreviewConfig.tab);
@@ -2239,7 +2242,26 @@ useEffect(() => {
     }
   }, []);
 
-  const [store, setStore] = React.useState<Store>(initialStore);
+  const [store, setStore] = React.useState<Store>(() => {
+    if (!samsungTvNativeBoot) return initialStore;
+    const tvProfiles = Array.isArray(samsungTvNativeBoot.profiles)
+      ? samsungTvNativeBoot.profiles.map((profile: any) => ({
+          id: String(profile?.id || ""),
+          name: String(profile?.name || "Joueur"),
+          avatarDataUrl: typeof profile?.avatar === "string" && profile.avatar.startsWith("data:") ? profile.avatar : null,
+          avatarUrl: typeof profile?.avatar === "string" && !profile.avatar.startsWith("data:") ? profile.avatar : undefined,
+          countryCode: String(profile?.countryCode || ""),
+          stats: profile?.stats && typeof profile.stats === "object" ? profile.stats : undefined,
+          source: "samsung-tv",
+        }))
+      : [];
+    return {
+      ...initialStore,
+      profiles: tvProfiles,
+      activeProfileId: samsungTvNativeBoot.activeProfileId || tvProfiles[0]?.id || null,
+      settings: { ...(initialStore.settings as any), ...(samsungTvNativeBoot.settings || {}) } as any,
+    } as Store;
+  });
 
   // 🛡️ Garde-fou UI anti-disparition profils locaux.
   // Si un flux asynchrone injecte provisoirement profiles: [], on restaure
@@ -2281,7 +2303,11 @@ useEffect(() => {
 
   // ✅ DEFAULT TAB = gameSelect (si boot OK). Les flows auth/hash peuvent override.
   // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
-  const [tab, setTab] = React.useState<Tab>(() => isThemePreviewFrame ? themePreviewConfig.tab : "gameSelect");
+  const [tab, setTab] = React.useState<Tab>(() => {
+    if (isThemePreviewFrame) return themePreviewConfig.tab;
+    if (samsungTvNativeBoot?.tab) return String(samsungTvNativeBoot.tab) as Tab;
+    return "gameSelect";
+  });
   const themePageScope = getThemePageScope(tab);
   const themedPageBackground = theme.pageBackground || theme.bg;
   const routedPageBackground = themePageScope === "off"
@@ -2318,7 +2344,7 @@ useEffect(() => {
   }, []);
 
 
-  const [routeParams, setRouteParams] = React.useState<any>(null);
+  const [routeParams, setRouteParams] = React.useState<any>(() => samsungTvNativeBoot?.params ?? null);
   const [loading, setLoading] = React.useState(true);
   const appDiagPrevRef = React.useRef<any>(null);
   React.useEffect(() => {
@@ -2570,6 +2596,7 @@ useEffect(() => {
 
   // ✅ Runtime sport (sans reload / sans relancer intro)
   const [activeSport, setActiveSport] = React.useState<StartGameId>(() => {
+    if (samsungTvNativeBoot?.sportId) return samsungTvNativeBoot.sportId as StartGameId;
     try {
       const v = localStorage.getItem(START_GAME_KEY) as StartGameId | null;
       return v ?? (sportFromCtx || "darts");
@@ -2622,6 +2649,7 @@ useEffect(() => {
 
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
+    if (isSamsungTvNativeApp) return false;
     if (isThemePreviewFrame) return false;
     const h = String(window.location.hash || "");
     const isAuthFlow =
@@ -2882,7 +2910,7 @@ useEffect(() => {
   const [x01Config, setX01Config] = React.useState<any>(null);
 
   /* X01 v3 config */
-  const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(null);
+  const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(() => (samsungTvNativeBoot?.gameConfig as X01ConfigV3Type | null) || null);
 
   /* Navigation */
   function go(next: Tab, params?: any) {
@@ -3033,6 +3061,7 @@ useEffect(() => {
   useViewerInteractiveBridge({
     tab: String(tab || ""),
     routeParams,
+    gameConfig: tab === "x01_play_v3" ? x01ConfigV3 : (routeParams?.config ?? routeParams?.cfg ?? null),
     go: (next, params) => go(next as Tab, params),
     store,
     setActiveProfile: (profileId) => {
@@ -3151,6 +3180,7 @@ useEffect(() => {
   React.useEffect(() => {
     let cancelled = false;
 
+    if (isSamsungTvNativeApp) return;
     if (loading) return;
     if (!online?.ready) return;
 
@@ -3268,6 +3298,40 @@ useEffect(() => {
     let mounted = true;
     bootStoreLoadedRef.current = false;
     loadedStoreScopeRef.current = getStorageUser();
+
+    if (isSamsungTvNativeApp && samsungTvNativeBoot) {
+      const tvProfiles = Array.isArray(samsungTvNativeBoot.profiles)
+        ? samsungTvNativeBoot.profiles.map((profile: any) => ({
+            id: String(profile?.id || ""),
+            name: String(profile?.name || "Joueur"),
+            avatarDataUrl: typeof profile?.avatar === "string" && profile.avatar.startsWith("data:") ? profile.avatar : null,
+            avatarUrl: typeof profile?.avatar === "string" && !profile.avatar.startsWith("data:") ? profile.avatar : undefined,
+            countryCode: String(profile?.countryCode || ""),
+            stats: profile?.stats && typeof profile.stats === "object" ? profile.stats : undefined,
+            source: "samsung-tv",
+          }))
+        : [];
+      const seeded = {
+        ...initialStore,
+        profiles: tvProfiles,
+        activeProfileId: samsungTvNativeBoot.activeProfileId || tvProfiles[0]?.id || null,
+        settings: { ...(initialStore.settings as any), ...(samsungTvNativeBoot.settings || {}) } as any,
+      } as Store;
+      setStore(seeded);
+      setRouteParams(samsungTvNativeBoot.params ?? null);
+      setTab(String(samsungTvNativeBoot.tab || "gameSelect") as Tab);
+      if (samsungTvNativeBoot.sportId) {
+        const nextSport = samsungTvNativeBoot.sportId as StartGameId;
+        setActiveSport(nextSport);
+        try { setSportCtx?.(nextSport); } catch {}
+      }
+      bootStoreLoadedRef.current = true;
+      setCloudHydrated(true);
+      setCloudCanSync(false);
+      setLoading(false);
+      return () => { mounted = false; };
+    }
+
     (async () => {
       try {
         const saved = await loadStore<Store>();
@@ -6736,7 +6800,7 @@ case "babyfoot_team_edit":
 
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
   const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera";
-  const appChromeAllowed = online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
+  const appChromeAllowed = !isSamsungTvNativeApp && online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
   const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab);
 
@@ -6823,6 +6887,7 @@ case "babyfoot_team_edit":
 -------------------------------------------- */
 function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
   const { status, ready } = useAuthOnline();
+  const samsungTvNativeApp = isSamsungTvNativeAppMode();
 
   // Les seuls écrans accessibles sans compte sont le tunnel d'authentification
   // et la caméra compagnon X01 ouverte directement depuis un QR code. Cette
@@ -6840,11 +6905,12 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
   const needsSession = !isAuthFlow && !isStandaloneCompanion;
 
   React.useEffect(() => {
+    if (samsungTvNativeApp) return;
     if (!ready || !needsSession || status === "signed_in") return;
     go("account_start");
-  }, [ready, needsSession, status, go]);
+  }, [ready, needsSession, status, go, samsungTvNativeApp]);
 
-  if (isAuthFlow || isStandaloneCompanion) {
+  if (samsungTvNativeApp || isAuthFlow || isStandaloneCompanion) {
     return <>{children}</>;
   }
 

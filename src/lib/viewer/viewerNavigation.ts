@@ -135,6 +135,20 @@ export function sanitizeViewerRouteParams(params: any) {
     "organizationId",
     "sessionId",
     "roomId",
+    "gameId",
+    "variantId",
+    "baseGame",
+    "preset",
+    "format",
+    "presetCategory",
+    "presetVariantId",
+    "presetMode",
+    "presetTarget",
+    "forceMode",
+    "onlineMode",
+    "lobbyCode",
+    "lobbyId",
+    "fresh",
   ];
   const out: Record<string, string | number | boolean | null> = {};
   for (const key of allowedKeys) {

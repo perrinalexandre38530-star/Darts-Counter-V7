@@ -18,6 +18,7 @@ import {
 type Props = {
   tab: string;
   routeParams?: any;
+  gameConfig?: any;
   go: (tab: any, params?: any) => void;
   store?: any;
   setActiveProfile?: (profileId: string) => void;
@@ -159,9 +160,25 @@ function buildTvState(store: any, sport: string) {
   };
 }
 
+function sanitizeViewerGameConfig(config: any) {
+  if (!config || typeof config !== "object") return null;
+  try {
+    const json = JSON.stringify(config, (_key, value) => {
+      if (typeof value === "function") return undefined;
+      if (typeof value === "string" && value.startsWith("data:image/") && value.length > 90_000) return undefined;
+      return value;
+    });
+    if (!json || json.length > 220_000) return null;
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 export function useViewerInteractiveBridge({
   tab,
   routeParams,
+  gameConfig,
   go,
   store,
   setActiveProfile,
@@ -177,6 +194,7 @@ export function useViewerInteractiveBridge({
   const latestRef = React.useRef({
     tab: String(tab || ""),
     routeParams,
+    gameConfig,
     go,
     store,
     sport,
@@ -190,6 +208,7 @@ export function useViewerInteractiveBridge({
   latestRef.current = {
     tab: String(tab || ""),
     routeParams,
+    gameConfig,
     go,
     store,
     sport,
@@ -210,6 +229,7 @@ export function useViewerInteractiveBridge({
       type: "navigation_state",
       tab: current.tab,
       params: sanitizeViewerRouteParams(current.routeParams),
+      gameConfig: sanitizeViewerGameConfig(current.gameConfig),
       label: viewerRouteLabel(current.tab),
       gameplay: isViewerGameplayRoute(current.tab),
       at: Date.now(),

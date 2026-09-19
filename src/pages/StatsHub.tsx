@@ -8716,7 +8716,7 @@ return (
                                   avg3d={avg3dForRing}
                                   gapPx={2}
                                   starSize={STAR}
-                                  stepDeg={14}
+                                  stepDeg={10}
                                   rotationDeg={0}
                                   animateGlow={false}
                                 />

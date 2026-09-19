@@ -228,10 +228,15 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         .msa-sport-select{width:100%;min-height:48px;border-radius:12px;padding:5px 8px;display:flex;align-items:center;gap:9px;cursor:pointer;background:rgba(0,0,0,.34);overflow:hidden;text-align:left}.msa-sport-select-preview{flex:0 0 118px;width:118px;max-width:38%;aspect-ratio:10/3;object-fit:contain;display:block;border-radius:7px;background:#030509}.msa-sport-select-label{min-width:0;flex:1;color:#fff;font-size:14px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.msa-sport-select-chevron{flex:0 0 auto;color:rgba(255,255,255,.76);font-size:14px;font-weight:1000}
         .msa-banner-choice{position:relative;width:100%;height:52px;border-radius:9px;overflow:hidden;padding:3px;cursor:pointer;background:#030509;display:grid;place-items:center}.msa-banner-choice img{width:100%;height:100%;object-fit:contain;display:block}.msa-banner-choice.on:after{content:"✓";position:absolute;right:5px;top:5px;width:19px;height:19px;border-radius:999px;display:grid;place-items:center;background:rgba(0,0,0,.82);font-size:10px;font-weight:1000}.msa-sport-picker-panel{max-height:210px;overflow-y:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding:6px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.30);scrollbar-width:thin}
         .msa-darts-mode{aspect-ratio:6/1;min-height:0;border-radius:10px;overflow:hidden;position:relative;background:rgba(255,255,255,.025);cursor:pointer;text-align:left}.msa-darts-mode img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.76}.msa-darts-mode:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,5,9,.84),rgba(3,5,9,.10),rgba(3,5,9,.65))}
+        .msa-side-rail{height:100%;display:flex;flex-direction:column;gap:8px;padding:8px;border-radius:22px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(14,18,26,.96),rgba(6,9,14,.98));box-shadow:0 18px 45px rgba(0,0,0,.32)}
+        .msa-side-rail-sep{height:1px;background:rgba(255,255,255,.08);margin:2px 4px}
+        .msa-rail-btn{position:relative;min-height:54px;border-radius:18px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);color:#fff;display:grid;place-items:center;cursor:pointer;font-weight:1000;padding:4px;gap:2px;text-align:center}
+        .msa-rail-btn.on{border-color:${accent}66;background:${accent}16;color:${accent};box-shadow:0 0 16px ${accent}22}.msa-rail-btn .ico{font-size:18px;line-height:1}.msa-rail-btn .txt{font-size:8px;line-height:1.05;text-transform:uppercase}.msa-rail-btn .badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:${accent};color:#081018;font-size:10px;font-weight:1000;display:grid;place-items:center}
+        .msa-board-shell{height:100%;display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:10px;overflow:hidden}.msa-board-main{height:100%;display:flex;flex-direction:column;gap:10px;min-height:0}.msa-board-topline{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center}.msa-board-nav{min-height:42px;border-radius:13px;border:1px solid ${accent}55;background:${accent}15;color:${accent};font-weight:1000;cursor:pointer}.msa-board-title{min-height:42px;border-radius:14px;border:1px solid rgba(255,255,255,.09);background:rgba(60,66,74,.62);backdrop-filter:blur(10px);display:grid;place-items:center;color:#fff;font-weight:1000;text-transform:capitalize;padding:0 10px;text-align:center}.msa-board-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.msa-board-surface{flex:1;min-height:0;border-radius:22px;border:1px solid rgba(255,255,255,.09);background:linear-gradient(180deg,rgba(72,78,86,.74),rgba(34,38,45,.82));backdrop-filter:blur(8px);padding:10px;overflow:hidden}.msa-sport-rail{height:100%;display:flex;flex-direction:column;gap:8px;padding:8px;border-radius:22px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(12,16,24,.94),rgba(6,9,14,.98));overflow:hidden}.msa-calendar-day{height:100%;display:grid;grid-template-rows:repeat(8,minmax(0,1fr));gap:6px;overflow:hidden}.msa-hour-row{display:grid;grid-template-columns:62px minmax(0,1fr);gap:8px;align-items:stretch;min-height:0}.msa-hour-label{border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.06);display:grid;place-items:center;color:rgba(255,255,255,.78);font-size:10px;font-weight:900}.msa-hour-slot{border-radius:14px;border:1px solid rgba(255,255,255,.06);background:rgba(10,12,18,.26);padding:4px;display:flex;gap:5px;align-items:center;overflow:hidden}.msa-week-board{height:100%;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;overflow:hidden}.msa-week-col{min-width:0;display:flex;flex-direction:column;gap:6px;padding:6px;border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(10,12,18,.22);overflow:hidden}.msa-week-col.today{border-color:${accent}88;box-shadow:0 0 0 1px ${accent}22 inset}.msa-week-col.past{opacity:.6}.msa-week-col-head{padding:6px;border-radius:12px;background:rgba(255,255,255,.06);text-align:center;color:#fff;font-size:9px;font-weight:1000;text-transform:uppercase}.msa-week-col-body{display:flex;flex-direction:column;gap:5px;min-height:0;overflow:hidden}.msa-event-chip{width:100%;text-align:left;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(5,8,14,.46));padding:6px;display:grid;grid-template-columns:24px minmax(0,1fr);gap:6px;align-items:center;min-width:0;cursor:pointer;color:#fff}.msa-event-chip .time{font-size:8px;font-weight:1000;color:rgba(255,255,255,.72)}.msa-event-chip .title{font-size:9px;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.msa-month{height:100%}.msa-month-cell.today{border-color:${accent}88 !important;box-shadow:0 0 0 1px ${accent}25 inset}.msa-month-cell.past{opacity:.62}
         @media(max-width:390px){.msa-event{grid-template-columns:38px minmax(0,1fr)}.msa-event-time{grid-column:2}.msa-tab{font-size:6.8px}.msa-month-cell{min-height:58px;padding:4px}.msa-sport-icon-btn{width:39px;height:39px}.msa-sport-select{min-height:44px;padding:4px 7px;gap:7px}.msa-sport-select-preview{flex-basis:104px;width:104px}.msa-sport-select-label{font-size:13px}.msa-banner-choice{height:44px}.msa-sport-picker-panel{max-height:180px;padding:5px;gap:4px}}
       `}</style>
 
-      <div className="msc-landscape-page-shell msc-agenda-layout">
+      <div className="msc-landscape-page-shell msc-agenda-layout" style={{ ["--msc-landscape-primary-track" as any]: "76px", ["--msc-landscape-secondary-track" as any]: "1fr" }}>
       <div className="msc-landscape-header msc-agenda-header" style={{ width: "100%", maxWidth: "none", marginBottom: 10 }}>
         <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
           <img
@@ -246,54 +251,50 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         </div>
       </div>
 
-      <section className="msc-landscape-primary msc-agenda-primary">
-      <div className="msa-top">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div className="msa-muted" style={{ fontSize: 9.5, lineHeight: 1.35, minWidth: 0 }}>
-            {t("Toute ta semaine sportive au même endroit", "Your whole sports week in one place", "Toda tu semana deportiva en un solo lugar")}
-          </div>
-          <div style={{ display: "flex", gap: 8, flex: "0 0 auto", alignItems: "center" }}>
-            <AgendaShareButton accent={accent} title={t("Exporter vers Google / Apple / Outlook (.ics)", "Export to Google / Apple / Outlook (.ics)", "Exportar a Google / Apple / Outlook (.ics)")} onClick={() => { downloadMultisportAgendaIcs(events); }} />
-            <PlusDot onClick={() => setCreateOpen(true)} color={accent} title={t("Ajouter une activité", "Add an activity", "Añadir una actividad")} size={42} />
-          </div>
+            <section className="msc-landscape-primary msc-agenda-primary" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div className="msa-side-rail">
+          <AgendaRailButton icon="＋" label={t("Ajouter", "Add", "Añadir")} onClick={() => setCreateOpen(true)} />
+          <AgendaRailButton icon="⇩" label={t("Exporter", "Export", "Exportar")} onClick={() => downloadMultisportAgendaIcs(events)} />
+          <div className="msa-side-rail-sep" />
+          <AgendaRailButton icon="J" label={t("Jour", "Day", "Día")} active={view === "today"} onClick={() => setView("today")} />
+          <AgendaRailButton icon="S" label={t("Semaine", "Week", "Semana")} active={view === "week"} onClick={() => setView("week")} />
+          <AgendaRailButton icon="M" label={t("Mois", "Month", "Mes")} active={view === "month"} onClick={() => setView("month")} />
+          <AgendaRailButton icon="✉" label={t("Invit.", "Invites", "Invit.")} active={view === "invitations"} badge={pending.length || undefined} onClick={() => setView("invitations")} />
         </div>
-        <div className="msa-tabs">
-          {(["today", "week", "month", "invitations"] as View[]).map((id) => (
-            <button key={id} type="button" className={`msa-tab${view === id ? " on" : ""}`} onClick={() => setView(id)}>
-              {id === "today" ? t("Aujourd'hui", "Today", "Hoy") : id === "week" ? t("Semaine", "Week", "Semana") : id === "month" ? t("Mois", "Month", "Mes") : `${t("Invitations", "Invites", "Invitaciones")}${pending.length ? ` · ${pending.length}` : ""}`}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {view !== "invitations" ? <>
-        <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0,1fr) 40px", gap: 8, alignItems: "center", marginTop: 10 }}>
-          <button type="button" className="msa-action" onClick={() => shift(-1)}>‹</button>
-          <button type="button" onClick={() => setCursor(Date.now())} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: "#fff", fontWeight: 1000, textTransform: "capitalize" }}>{title}</button>
-          <button type="button" className="msa-action" onClick={() => shift(1)}>›</button>
-        </div>
-        <div className="msa-sport-filter">
-          <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 8 }}>{t("TOUS", "ALL", "TODOS")}</button>
-          {availableSports.map((entry) => <button key={entry.id} type="button" className="msa-sport-icon-btn" onClick={() => setSportFilter(entry.id)} aria-label={entry.label} title={entry.label} style={{ border: `1px solid ${sportFilter === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, background: sportFilter === entry.id ? `${entry.accent}18` : "rgba(255,255,255,.022)", boxShadow: sportFilter === entry.id ? `0 0 14px ${entry.accent}28` : "none" }}><TintedSportLogo sport={entry.id} color={entry.accent} size={29}/></button>)}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 5 }}>
-          <AgendaMetric label={t("ACTIVITÉS", "ACTIVITIES", "ACTIVIDADES")} value={String(visible.length)} accent={accent} />
-          <AgendaMetric label={t("SPORTS", "SPORTS", "DEPORTES")} value={String(visibleSports)} accent="#72def4" />
-          <AgendaMetric label={t("TEMPS", "TIME", "TIEMPO")} value={formatAgendaMinutes(visibleMinutes)} accent="#75ed9a" />
-        </div>
-      </> : null}
-
       </section>
 
       <aside className="msc-landscape-secondary msc-agenda-secondary">
-      {view === "today" ? <div style={{ marginTop: 8 }}>{visible.length ? visible.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />) : <EmptyState text={t("Rien de prévu aujourd'hui. Ajoute une activité ou active un programme.", "Nothing scheduled today. Add an activity or activate a program.", "Nada previsto hoy. Añade una actividad o activa un programa.")} />}</div> : null}
-
-      {view === "week" ? <div className="msa-week" style={{ marginTop: 8 }}>{Array.from({ length: 7 }, (_, i) => range.start + i * DAY).map((day) => ({ day, rows: visible.filter((event) => sameLocalDay(event.startAt, day)).sort((a,b) => a.startAt - b.startAt) })).filter((group) => group.rows.length > 0).map(({ day, rows }) => { const dominant = multisportSportMeta(rows[0].sport); const isPast = day < localDayStart(Date.now()); return <section key={day} className={`msa-day${sameLocalDay(day, Date.now()) ? " today" : ""}${isPast ? " past" : ""}`} style={{ borderColor: `${dominant.accent}38`, background: `linear-gradient(135deg,${dominant.accent}0b,rgba(255,255,255,.018))` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7 }}><div style={{ display: "flex", alignItems: "center", gap: 7 }}><TintedSportLogo sport={rows[0].sport} color={dominant.accent} size={22}/><strong style={{ fontSize: 10.5, textTransform: "uppercase", color: sameLocalDay(day, Date.now()) ? accent : "#fff" }}>{formatDate(day, locale)}</strong></div><span className="msa-muted" style={{ fontSize: 8 }}>{rows.some((event) => conflictIds.has(event.id)) ? <b style={{ color: "#ff8b8b" }}>⚠ {t("Conflit", "Conflict", "Conflicto")}</b> : `${rows.length} ${t("créneau(x)", "slot(s)", "franja(s)")}`}</span></div>{rows.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />)}</section>; })}{visible.length === 0 ? <EmptyState text={t("Aucun créneau planifié cette semaine.", "No scheduled slots this week.", "No hay franjas planificadas esta semana.")} /> : null}</div> : null}
-
-      {view === "month" ? <MonthGrid cursor={cursor} events={filteredEvents} locale={locale} onSelectDay={(day) => { setCursor(day); setView("today"); }} /> : null}
-
-      {view === "invitations" ? <div style={{ marginTop: 10 }}>{pending.length ? pending.map((event) => <div key={event.id} style={{ borderRadius: 18, border: `1px solid ${(event.accent || accent)}55`, background: `linear-gradient(145deg,${event.accent || accent}10,rgba(5,8,14,.98))`, padding: 12, marginBottom: 8 }}><EventCard event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}><button type="button" className="msa-action" onClick={() => { respondToAgendaInvitation(event.id, "confirmed"); refresh(); }}>{t("ACCEPTER", "ACCEPT", "ACEPTAR")}</button><button type="button" onClick={() => { respondToAgendaInvitation(event.id, "declined"); refresh(); }} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.72)", fontWeight: 1000 }}>{t("REFUSER", "DECLINE", "RECHAZAR")}</button></div></div>) : <EmptyState text={t("Aucune invitation en attente.", "No pending invitations.", "No hay invitaciones pendientes.")} />}</div> : null}
-
+        <div className="msa-board-shell">
+          <div className="msa-board-main">
+            <div className="msa-board-topline">
+              <button type="button" className="msa-board-nav" onClick={() => shift(-1)}>‹</button>
+              <div className="msa-board-title">{title}</div>
+              <button type="button" className="msa-board-nav" onClick={() => shift(1)}>›</button>
+            </div>
+            <div className="msa-board-meta">
+              <AgendaMetric label={t("ACTIVITÉS", "ACTIVITIES", "ACTIVIDADES")} value={String(view === "invitations" ? pending.length : visible.length)} accent={accent} />
+              <AgendaMetric label={t("SPORTS", "SPORTS", "DEPORTES")} value={String(view === "invitations" ? new Set(pending.map((event) => event.sport)).size : visibleSports)} accent="#72def4" />
+              <AgendaMetric label={t("TEMPS", "TIME", "TIEMPO")} value={formatAgendaMinutes(view === "invitations" ? pending.reduce((sum, event) => sum + Math.max(0, event.durationMin || 0), 0) : visibleMinutes)} accent="#75ed9a" />
+            </div>
+            <div className="msa-board-surface">
+              {view === "today" ? (
+                <DayTimelineBoard day={range.start} events={visible.sort((a, b) => a.startAt - b.startAt)} locale={locale} accent={accent} conflictIds={conflictIds} onOpen={(event) => setSelectedEvent(event)} />
+              ) : view === "week" ? (
+                <WeekPlannerBoard start={range.start} events={visible.sort((a, b) => a.startAt - b.startAt)} locale={locale} accent={accent} conflictIds={conflictIds} onOpen={(event) => setSelectedEvent(event)} />
+              ) : view === "month" ? (
+                <MonthGrid cursor={cursor} events={filteredEvents} locale={locale} onSelectDay={(day) => { setCursor(day); setView("today"); }} />
+              ) : (
+                <div style={{ height: "100%", overflowY: "auto", paddingRight: 4 }}>
+                  {pending.length ? pending.map((event) => <div key={event.id} style={{ borderRadius: 18, border: `1px solid ${(event.accent || accent)}55`, background: `linear-gradient(145deg,${event.accent || accent}10,rgba(5,8,14,.98))`, padding: 12, marginBottom: 8 }}><EventCard event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}><button type="button" className="msa-action" onClick={() => { respondToAgendaInvitation(event.id, "confirmed"); refresh(); }}>{t("ACCEPTER", "ACCEPT", "ACEPTAR")}</button><button type="button" onClick={() => { respondToAgendaInvitation(event.id, "declined"); refresh(); }} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.72)", fontWeight: 1000 }}>{t("REFUSER", "DECLINE", "RECHAZAR")}</button></div></div>) : <EmptyState text={t("Aucune invitation en attente.", "No pending invitations.", "No hay invitaciones pendientes.")} />}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="msa-sport-rail">
+            <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ width: "100%", minHeight: 48, border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 8 }}>{t("TOUS", "ALL", "TODOS")}</button>
+            {availableSports.map((entry) => <button key={entry.id} type="button" className="msa-sport-icon-btn" onClick={() => setSportFilter(entry.id)} aria-label={entry.label} title={entry.label} style={{ width: "100%", minHeight: 46, border: `1px solid ${sportFilter === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, background: sportFilter === entry.id ? `${entry.accent}18` : "rgba(255,255,255,.022)", boxShadow: sportFilter === entry.id ? `0 0 14px ${entry.accent}28` : "none" }}><TintedSportLogo sport={entry.id} color={entry.accent} size={28}/></button>)}
+          </div>
+        </div>
       </aside>
       </div>
 
@@ -301,6 +302,26 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       {createOpen ? <CreateEventDialog accent={accent} lang={String(lang || "fr")} initialDraft={(params?.agendaDraft || null) as AgendaCreateDraft | null} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); refresh(); }} /> : null}
     </div>
   );
+}
+
+function AgendaRailButton({ icon, label, active = false, badge, onClick }: { icon: string; label: string; active?: boolean; badge?: number; onClick: () => void }) {
+  return <button type="button" className={`msa-rail-btn${active ? " on" : ""}`} onClick={onClick}><span className="ico">{icon}</span><span className="txt">{label}</span>{badge ? <span className="badge">{badge > 99 ? "99+" : badge}</span> : null}</button>;
+}
+
+function AgendaEventChip({ event, locale, conflict = false, onOpen }: { event: MultisportAgendaEvent; locale: string; conflict?: boolean; onOpen: () => void }) {
+  const meta = multisportSportMeta(event.sport);
+  const hot = event.accent || meta.accent;
+  return <button type="button" className="msa-event-chip" onClick={onOpen} style={{ borderColor: conflict ? "rgba(255,117,117,.48)" : `${hot}55`, background: `linear-gradient(145deg,${hot}14,rgba(5,8,14,.46))` }}><TintedSportLogo sport={event.sport} color={hot} size={18}/><div style={{ minWidth: 0 }}><div className="time">{formatTime(event.startAt, locale)}</div><div className="title">{event.title}</div></div></button>;
+}
+
+function DayTimelineBoard({ day, events, locale, accent, conflictIds, onOpen }: { day: number; events: MultisportAgendaEvent[]; locale: string; accent: string; conflictIds: Set<string>; onOpen: (event: MultisportAgendaEvent) => void }) {
+  const slots = Array.from({ length: 8 }, (_, index) => 8 + index * 2);
+  return <div className="msa-calendar-day">{slots.map((hour) => { const rows = events.filter((event) => { const h = new Date(event.startAt).getHours(); return h >= hour && h < hour + 2; }); return <div key={hour} className="msa-hour-row"><div className="msa-hour-label">{String(hour).padStart(2, "0")}:00</div><div className="msa-hour-slot">{rows.length ? rows.map((event) => <AgendaEventChip key={event.id} event={event} locale={locale} conflict={conflictIds.has(event.id)} onOpen={() => onOpen(event)} />) : <span style={{ color: "rgba(255,255,255,.35)", fontSize: 9, fontWeight: 800 }}>{"—"}</span>}</div></div>; })}</div>;
+}
+
+function WeekPlannerBoard({ start, events, locale, accent, conflictIds, onOpen }: { start: number; events: MultisportAgendaEvent[]; locale: string; accent: string; conflictIds: Set<string>; onOpen: (event: MultisportAgendaEvent) => void }) {
+  const days = Array.from({ length: 7 }, (_, index) => start + index * DAY);
+  return <div className="msa-week-board">{days.map((day) => { const rows = events.filter((event) => sameLocalDay(event.startAt, day)).sort((a, b) => a.startAt - b.startAt); const isToday = sameLocalDay(day, Date.now()); const isPast = day < localDayStart(Date.now()); return <div key={day} className={`msa-week-col${isToday ? " today" : ""}${isPast ? " past" : ""}`}><div className="msa-week-col-head">{formatDate(day, locale, { weekday: "short", day: "numeric", month: "short" })}</div><div className="msa-week-col-body">{rows.length ? rows.slice(0, 5).map((event) => <AgendaEventChip key={event.id} event={event} locale={locale} conflict={conflictIds.has(event.id)} onOpen={() => onOpen(event)} />) : <div style={{ color: "rgba(255,255,255,.34)", fontSize: 9, fontWeight: 800, padding: "6px 4px" }}>—</div>}{rows.length > 5 ? <div style={{ color: accent, fontSize: 9, fontWeight: 900, padding: "2px 4px" }}>+{rows.length - 5}</div> : null}</div></div>; })}</div>;
 }
 
 function TintedSportLogo({ sport, color, size = 30 }: { sport: MultisportEventSport; color: string; size?: number }) {

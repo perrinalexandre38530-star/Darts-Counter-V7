@@ -685,7 +685,7 @@ function ActiveProfileCard({
                     avg3d={starRingAvg3D}
                     gapPx={2}
                     starSize={12}
-                    stepDeg={14}
+                    stepDeg={10}
                     animateGlow={false}
                   />
                 </div>

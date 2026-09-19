@@ -2978,7 +2978,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   }
 
   return (
-    <div className="container msc-landscape-page-shell msc-messages-layout" style={{ padding: 16, paddingBottom: 104, color: "#f5f5f7" }}>
+    <div className="container msc-landscape-page-shell msc-messages-layout" style={{ padding: 16, paddingBottom: 104, color: "#f5f5f7", ["--msc-landscape-primary-track" as any]: "76px", ["--msc-landscape-secondary-track" as any]: "1fr" }}>
       {renderIncomingCallOverlay()}
       <div
         className="msc-messages-header-card"
@@ -2991,7 +2991,7 @@ export default function MessagesPage({ store, update, go }: Props) {
           }),
         }}
       >
-        <div className="msc-landscape-header msc-messages-header" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <div className="msc-landscape-header msc-messages-header" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", paddingRight: 76 }}>
           <div>
             <div style={{ fontSize: 30, fontWeight: 1000, color: GOLD, lineHeight: 1, textShadow: "0 0 18px rgba(255,213,106,.24)" }}>
               MESSAGERIE
@@ -3029,11 +3029,13 @@ export default function MessagesPage({ store, update, go }: Props) {
           className="msc-landscape-primary msc-messages-primary msc-messages-primary--vertical"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+            gridTemplateColumns: "1fr",
+            gridTemplateRows: "repeat(6, minmax(0, 1fr))",
             gap: 8,
-            paddingTop: 14,
-            paddingBottom: 2,
+            paddingTop: 6,
+            paddingBottom: 0,
             width: "100%",
+            height: "100%",
           }}
         >
           {tabs.map((t) => (

@@ -18,12 +18,15 @@ import {
 } from "./tvCatalog";
 import tickerGolfOfficial from "../../assets/tickers/ticker_golf.png";
 import tickerDartsRacerOfficial from "../../assets/tickers/ticker_darts_racer.png";
+import type { SamsungTvNativeAppBoot } from "./tvNativeAppBridge";
+
+const SamsungTvSharedAppHost = React.lazy(() => import("./SamsungTvSharedAppHost"));
 
 const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_FULL_APP_BUILD_20260914_05";
+const TV_BUILD_MARKER = "MSS_TV_SHARED_APP_BUILD_20260919_06";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -215,7 +218,7 @@ function TvJoin({ onJoin }: { onJoin: (code: string) => void }) {
   const renderKey = (label: string, index: number, kind: "char" | "delete" | "clear" | "connect" = "char") => {
     const active = focusIndex === index;
     return (
-      <button key={`${label}-${index}`} type="button" tabIndex={-1} className={`mss-tv-key mss-tv-key--${kind}${active ? " is-focused" : ""}`} onMouseEnter={() => setFocusIndex(index)} onClick={() => onActivate(index)}>
+      <button key={`${label}-${index}`} type="button" tabIndex={-1} className={`mss-tv-key mss-tv-key--${kind}${active ? " is-focused" : ""}`} onMouseEnter={() => setFocusIndex(index)} onClick={() => activate(index)}>
         {label}
       </button>
     );
@@ -252,6 +255,8 @@ type PhoneNavigation = {
   tab: string;
   label: string;
   gameplay: boolean;
+  params?: any;
+  gameConfig?: any;
   at: number;
 };
 
@@ -516,7 +521,7 @@ function TvHub({
         <div>
           <div className="mss-tv-hub-title">MULTISPORTS SCORING</div>
           <div className="mss-tv-hub-subtitle">TV COMPLÈTE · SESSION {sessionId}</div>
-          <div className="mss-tv-build-marker">TV FULL PREMIUM V5 · 2026.09.14-05</div>
+          <div className="mss-tv-build-marker">TV SHARED APP V6 · 2026.09.19-06</div>
         </div>
         <div className={`mss-tv-link-state is-${connectionStatus}`}>
           <span className="mss-tv-link-dot" />
@@ -1528,6 +1533,7 @@ export default function SamsungTvApp() {
   const [profileEditor, setProfileEditor] = React.useState<ProfileEditorState | null>(null);
   const [profileDeleteArmed, setProfileDeleteArmed] = React.useState(false);
   const [scoreBuffer, setScoreBuffer] = React.useState("");
+  const [sharedAppBoot, setSharedAppBoot] = React.useState<SamsungTvNativeAppBoot | null>(null);
   const realtimeRef = React.useRef<ViewerRealtimeConnection | null>(null);
   const autoFollowGameRef = React.useRef(true);
   const screenRef = React.useRef<TvScreen>("hub");
@@ -1574,6 +1580,7 @@ export default function SamsungTvApp() {
     setSelectedProfileId(null);
     setProfileEditor(null);
     setProfileDeleteArmed(false);
+    setSharedAppBoot(null);
     setHash(clean);
   }, []);
 
@@ -1657,6 +1664,8 @@ export default function SamsungTvApp() {
           tab: String(data.tab || ""),
           label: String(data.label || viewerRouteLabel(String(data.tab || ""))),
           gameplay: !!data.gameplay || isViewerGameplayRoute(String(data.tab || "")),
+          params: data.params || undefined,
+          gameConfig: data.gameConfig || undefined,
           at: Number(data.at || Date.now()),
         };
         setPhoneNavigation(nav);
@@ -1665,9 +1674,20 @@ export default function SamsungTvApp() {
         if (nav.gameplay) {
           autoFollowGameRef.current = true;
           setAutoFollowGame(true);
-          screenRef.current = "scoreboard";
-          setScreen("scoreboard");
-          setFocusIndex(0);
+          const currentTvState = tvStateRef.current;
+          setSharedAppBoot({
+            version: 1,
+            tab: nav.tab,
+            params: { ...(nav.params || {}), ...(nav.gameConfig ? { config: nav.gameConfig } : {}), source: "samsung-tv-phone-follow" },
+            gameConfig: nav.gameConfig || null,
+            sportId: currentTvState.activeSport || selectedSportRef.current || "darts",
+            sessionId,
+            activeProfileId: currentTvState.activeProfileId,
+            profiles: currentTvState.profiles,
+            settings: currentTvState.settings,
+            theme: currentTvState.theme,
+            launchedAt: Date.now(),
+          });
           return;
         }
 
@@ -1762,15 +1782,26 @@ export default function SamsungTvApp() {
   }, [openScreen]);
 
   const launchAction = React.useCallback((action: TvLaunchAction) => {
-    if (action.direct || ["running", "fit", "esports"].includes(selectedSport)) {
-      sendNavigate(action.tab, action.params);
-      return;
-    }
+    const current = tvStateRef.current;
     setSelectedAction(action);
-    setGuidedSetup(createGuidedSetup(selectedSport, action, tvStateRef.current));
+    setGuidedSetup(null);
     setSetupPickerRowId(null);
-    openScreen("setup", 0);
-  }, [openScreen, selectedSport, sendNavigate]);
+    setSharedAppBoot({
+      version: 1,
+      tab: action.tab,
+      params: { ...(action.params || {}), source: "samsung-tv-native", tvNative: true },
+      gameConfig: null,
+      sportId: selectedSport,
+      sessionId,
+      activeProfileId: current.activeProfileId,
+      profiles: current.profiles,
+      settings: current.settings,
+      theme: current.theme,
+      launchedAt: Date.now(),
+    });
+    // Le téléphone suit l'ouverture de la même configuration quand la route est autorisée.
+    sendNavigate(action.tab, { ...(action.params || {}), source: "samsung-tv" });
+  }, [selectedSport, sendNavigate, sessionId]);
 
   const selectProfile = React.useCallback((profileId: string) => {
     realtimeRef.current?.sendCommand({
@@ -2109,6 +2140,7 @@ export default function SamsungTvApp() {
   React.useEffect(() => {
     if (!sessionId) return;
     const onKey = (event: KeyboardEvent) => {
+      if (sharedAppBoot) return;
       const key = String(event.key || "");
       const keyCode = Number((event as any).keyCode || (event as any).which || 0);
       const isBack = keyCode === 10009 || key === "BrowserBack" || key === "GoBack";
@@ -2219,6 +2251,7 @@ export default function SamsungTvApp() {
     selectedSport,
     setupPickerReturnFocus,
     sessionId,
+    sharedAppBoot,
     sportActions,
     tvState.profiles,
   ]);
@@ -2233,6 +2266,24 @@ export default function SamsungTvApp() {
   }, [countForScreen, focusIndex, screen]);
 
   if (!sessionId) return <TvJoin onJoin={join} />;
+
+  if (sharedAppBoot) {
+    return (
+      <React.Suspense fallback={<div className="mss-tv-shared-app-loading">Chargement de l’interface MULTISPORTS SCORING…</div>}>
+        <SamsungTvSharedAppHost
+          boot={sharedAppBoot}
+          onExit={() => {
+            setSharedAppBoot(null);
+            setSelectedAction(null);
+            setGuidedSetup(null);
+            autoFollowGameRef.current = false;
+            setAutoFollowGame(false);
+            openScreen("sport", Math.max(0, sportActions.findIndex((action) => action.id === selectedAction?.id)));
+          }}
+        />
+      </React.Suspense>
+    );
+  }
 
   if (screen === "scoreboard" && hasLiveGame && snapshot) {
     return (

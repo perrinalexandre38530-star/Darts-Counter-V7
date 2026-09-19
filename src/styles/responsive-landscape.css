@@ -2831,3 +2831,21 @@ html[data-msc-orientation="landscape"] .msc-games-all-categories {
 html[data-msc-orientation="landscape"] .msc-games-all-categories > button {
   width: 100%;
 }
+
+/* --- PATCH V39(2) home / agenda / messages adjustments --- */
+html[data-msc-orientation="landscape"] .msc-agenda-layout .msc-agenda-secondary {
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-layout .msc-agenda-primary {
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-layout .msc-messages-primary {
+  align-content: stretch !important;
+  justify-items: stretch !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-messages-layout .msc-messages-secondary {
+  min-width: 0 !important;
+}

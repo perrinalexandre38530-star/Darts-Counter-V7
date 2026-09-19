@@ -16,7 +16,6 @@ import { useDevMode } from "../contexts/DevModeContext";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
 import { appSportMeta, isAppSportEnabled } from "../config/sportCatalog";
-import { useAwenaOptional } from "../awena/AwenaProvider";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.webp";
@@ -267,17 +266,17 @@ function sportShowcaseCell(accent: string, active: boolean): React.CSSProperties
   };
 }
 
-const GAME_SELECT_LANG_OPTIONS: ReadonlyArray<{ code: Lang; label: string }> = [
-  { code: "fr", label: "FR" },
-  { code: "en", label: "EN" },
-  { code: "es", label: "ES" },
-  { code: "de", label: "DE" },
-  { code: "it", label: "IT" },
-  { code: "pt", label: "PT" },
-  { code: "nl", label: "NL" },
-  { code: "ru", label: "RU" },
-  { code: "ja", label: "JA" },
-  { code: "ar", label: "AR" },
+const GAME_SELECT_LANG_OPTIONS: ReadonlyArray<{ code: Lang; label: string; flag: string }> = [
+  { code: "fr", label: "FR", flag: "🇫🇷" },
+  { code: "en", label: "EN", flag: "🇬🇧" },
+  { code: "es", label: "ES", flag: "🇪🇸" },
+  { code: "de", label: "DE", flag: "🇩🇪" },
+  { code: "it", label: "IT", flag: "🇮🇹" },
+  { code: "pt", label: "PT", flag: "🇵🇹" },
+  { code: "nl", label: "NL", flag: "🇳🇱" },
+  { code: "ru", label: "RU", flag: "🇷🇺" },
+  { code: "ja", label: "JA", flag: "🇯🇵" },
+  { code: "ar", label: "AR", flag: "🇸🇦" },
 ];
 
 function localizedSportLabel(id: GameId, lang: Lang): string {
@@ -330,7 +329,6 @@ export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
   const { setSport } = useSport();
   const { lang, setLang } = useLang() as any;
-  const awena = useAwenaOptional();
   const dev = useDevMode() as any;
   const [showLangMenu, setShowLangMenu] = React.useState(false);
   const langDockRef = React.useRef<HTMLDivElement | null>(null);
@@ -570,9 +568,13 @@ export default function GameSelect({ go }: Props) {
       label: localizedSportLabel(item.id as GameId, lang),
     }));
     copy.sort((a, b) => a.label.localeCompare(b.label, String(lang || "fr")));
-    copy.sort((a, b) => Number(b.enabled) - Number(a.enabled));
     return copy;
   }, [items, lang]);
+
+  const showcaseSports = React.useMemo(() => sortedItems.map((item) => ({ id: item.id as ShowcaseSportId, label: item.label })), [sortedItems]);
+  const showcaseTop = React.useMemo(() => showcaseSports.slice(0, 11), [showcaseSports]);
+  const showcaseBottom = React.useMemo(() => showcaseSports.slice(11, 22), [showcaseSports]);
+  const currentLangOption = React.useMemo(() => GAME_SELECT_LANG_OPTIONS.find((option) => option.code === lang) || GAME_SELECT_LANG_OPTIONS[0], [lang]);
 
   // ------------------------------------------
   // Swipe (mobile / tablette)
@@ -656,6 +658,21 @@ export default function GameSelect({ go }: Props) {
 
   return (
     <div className="msc-game-select-page" style={wrap(theme)}>
+      <style>{`
+        .msc-game-select-topbar{width:100%;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;min-height:44px}
+        .msc-game-select-lang-dock{position:relative;z-index:3}
+        .msc-game-select-topbar-btn{min-height:42px;border-radius:18px;border:1px solid rgba(88,220,255,.38);background:linear-gradient(180deg,rgba(6,18,32,.88),rgba(3,10,20,.92));color:#fff;padding:0 14px;display:flex;align-items:center;gap:8px;font-weight:1000;box-shadow:0 0 16px rgba(88,220,255,.14);cursor:pointer}
+        .msc-game-select-lang-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:118px;padding:8px;border-radius:16px;border:1px solid rgba(88,220,255,.20);background:rgba(5,10,18,.94);display:grid;gap:6px;box-shadow:0 20px 40px rgba(0,0,0,.45)}
+        .msc-game-select-lang-option{min-height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#fff;display:flex;align-items:center;gap:10px;padding:0 10px;font-weight:900;cursor:pointer}
+        .msc-game-select-lang-option.is-active{border-color:rgba(88,220,255,.52);background:rgba(88,220,255,.10);color:#63e6ff}
+        .msc-game-select-hero{width:100%;display:grid;grid-template-columns:68px minmax(0,1fr) 68px;gap:8px;align-items:center}
+        .msc-game-select-hero-arrow{width:60px;height:60px;border-radius:18px;border:1px solid rgba(90,220,255,.35);background:rgba(4,18,28,0.78);color:#63e6ff;font-size:26px;font-weight:1000;display:grid;place-items:center;justify-self:center;box-shadow:0 0 18px rgba(80,220,255,.18);cursor:pointer}
+        .msc-game-select-landscape-nav{width:100%;max-width:1100px}
+        .msc-game-select-landscape-icons{display:grid;gap:6px;align-items:center}
+        .msc-game-select-landscape-icon{min-width:0;height:26px;border:none;background:transparent;padding:0;display:grid;place-items:center;cursor:pointer}
+        .msc-game-select-landscape-icon span, .msc-game-select-landscape-icon svg{width:22px;height:22px}
+        @media (max-width: 720px){.msc-game-select-hero{grid-template-columns:54px minmax(0,1fr) 54px}.msc-game-select-hero-arrow{width:52px;height:52px}}
+      `}</style>
       <div
         className="msc-game-select-panel"
         style={panel(theme)}
@@ -665,7 +682,7 @@ export default function GameSelect({ go }: Props) {
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
       >
-        <SportShowcaseBand sports={SPORT_SHOWCASE_TOP} activeId={it.id} theme={theme} />
+        <SportShowcaseBand sports={showcaseTop} activeId={it.id} theme={theme} />
 
         <div className="msc-game-select-topbar">
           <div ref={langDockRef} className="msc-game-select-lang-dock">
@@ -679,8 +696,8 @@ export default function GameSelect({ go }: Props) {
                 setShowLangMenu((prev) => !prev);
               }}
             >
-              <span aria-hidden="true">🌐</span>
-              <span>{String(lang || "fr").toUpperCase()}</span>
+              <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>{currentLangOption.flag}</span>
+              <span>{currentLangOption.label}</span>
             </button>
 
             {showLangMenu ? (
@@ -695,28 +712,14 @@ export default function GameSelect({ go }: Props) {
                       setShowLangMenu(false);
                     }}
                   >
-                    {option.label}
+                    <span style={{ fontSize: 18, lineHeight: 1 }}>{option.flag}</span>
+                    <span>{option.label}</span>
                   </button>
                 ))}
               </div>
             ) : null}
           </div>
-
-          <button
-            type="button"
-            className="msc-game-select-topbar-btn msc-game-select-awena-btn"
-            aria-label="Ouvrir Awena"
-            title="Awena · Assistante"
-            onClick={(e) => {
-              e.stopPropagation();
-              awena?.togglePanel?.();
-            }}
-          >
-            <span className="msc-game-select-awena-avatar">
-              <img src="/awena/awena-avatar.webp" alt="Awena" draggable={false} />
-            </span>
-            <span className="msc-game-select-awena-mic">◉</span>
-          </button>
+          <div style={{ flex: 1 }} />
         </div>
 
         <div className="msc-game-select-title" style={title(theme)}>{localizedChoiceTitle(lang)}</div>
@@ -799,7 +802,7 @@ export default function GameSelect({ go }: Props) {
           </div>
         </div>
 
-        <SportShowcaseBand sports={SPORT_SHOWCASE_BOTTOM} activeId={it.id} theme={theme} />
+        <SportShowcaseBand sports={showcaseBottom} activeId={it.id} theme={theme} />
 
         <div className="msc-game-select-dots" style={dotsWrap}>
           {sortedItems.map((_, i) => (
@@ -847,17 +850,17 @@ function wrap(theme: any): React.CSSProperties {
 function panel(theme: any): React.CSSProperties {
   return {
     width: "100%",
-    maxWidth: 680,
+    maxWidth: 720,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 18,
+    gap: 12,
     position: "relative",
-    padding: "18px 12px 10px",
+    padding: "10px 12px 8px",
     userSelect: "none",
     WebkitUserSelect: "none",
-    touchAction: "pan-y", // autorise le swipe horizontal sans bloquer le scroll vertical global (mais ici pas de scroll)
+    touchAction: "pan-y",
   };
 }
 
@@ -885,34 +888,34 @@ function title(theme: any): React.CSSProperties {
 
 function subtitle(theme: any): React.CSSProperties {
   return {
-    marginTop: -6,
-    fontSize: 14,
+    marginTop: -10,
+    fontSize: 13,
     fontWeight: 600,
     letterSpacing: 0.15,
-    color: "rgba(255,255,255,0.88)",
+    color: "rgba(255,255,255,0.84)",
     textAlign: "center",
   };
 }
 
 function sportTile(theme: any, enabled: boolean): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
-  const border = isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)";
-  const bg = isDark ? "rgba(255,255,255,0.045)" : "rgba(0,0,0,0.03)";
-  const glow = enabled ? (isDark ? "0 18px 60px rgba(0,0,0,0.65)" : "0 18px 60px rgba(0,0,0,0.22)") : "none";
+  const border = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
+  const bg = "transparent";
+  const glow = enabled ? (isDark ? "0 18px 60px rgba(0,0,0,0.45)" : "0 18px 60px rgba(0,0,0,0.18)") : "none";
 
   return {
     position: "relative",
     borderRadius: 28,
-    border: `1px solid ${border}`,
+    border: "1px solid " + border,
     background: bg,
     boxShadow: glow,
-    width: "min(520px, 92vw)",
-    padding: "18px 14px 16px",
+    width: "min(580px, 94vw)",
+    padding: "8px 10px 8px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 14,
+    gap: 8,
     cursor: enabled ? "pointer" : "default",
     opacity: enabled ? 1 : 0.55,
     transform: enabled ? "translateZ(0)" : "none",
@@ -920,14 +923,14 @@ function sportTile(theme: any, enabled: boolean): React.CSSProperties {
 }
 
 function sportImg(theme: any, enabled: boolean): React.CSSProperties {
-  const size = "min(320px, 72vw)"; // gros logo (1 sport à la fois)
+  const size = "min(390px, 78vw)";
   const glow = enabled ? theme?.accentGlow ?? "0 0 0 rgba(0,0,0,0)" : "none";
 
   return {
     width: size,
     height: size,
     objectFit: "contain",
-    filter: enabled ? "drop-shadow(0 10px 28px rgba(0,0,0,0.55))" : "grayscale(1)",
+    filter: enabled ? "drop-shadow(0 14px 34px rgba(0,0,0,0.58))" : "grayscale(1)",
     boxShadow: glow,
     pointerEvents: "none",
   };
@@ -959,25 +962,25 @@ function sportLabel(theme: any, enabled: boolean): React.CSSProperties {
 function navBtn(theme: any, side: "left" | "right"): React.CSSProperties {
   const base: React.CSSProperties = {
     position: "absolute",
-    top: "50%",
+    top: "56%",
     transform: "translateY(-50%)",
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    border: `1px solid rgba(255,255,255,0.16)`,
-    background: "rgba(0,0,0,0.35)",
-    color: "rgba(255,255,255,0.92)",
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    border: "1px solid rgba(90,220,255,0.35)",
+    background: "rgba(4,18,28,0.78)",
+    color: "#63e6ff",
     fontSize: 34,
     fontWeight: 900,
-    lineHeight: "48px",
+    lineHeight: "54px",
     textAlign: "center",
     cursor: "pointer",
     userSelect: "none",
     WebkitUserSelect: "none",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.55), 0 0 18px rgba(80,220,255,.18)",
     backdropFilter: "blur(6px)",
   };
-  return side === "left" ? { ...base, left: 10 } : { ...base, right: 10 };
+  return side === "left" ? { ...base, left: 14 } : { ...base, right: 14 };
 }
 
 const dotsWrap: React.CSSProperties = {
@@ -1021,12 +1024,11 @@ function soonPill(theme: any): React.CSSProperties {
 }
 
 function edgeTap(side: "left" | "right"): React.CSSProperties {
-  // zones invisibles pour faciliter le swipe sur tablette
   const common: React.CSSProperties = {
     position: "absolute",
     top: 0,
     bottom: 0,
-    width: "14%",
+    width: "10%",
     background: "transparent",
     border: "none",
     outline: "none",

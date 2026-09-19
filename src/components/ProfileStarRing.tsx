@@ -81,7 +81,7 @@ export default function ProfileStarRing({
   botLevel,
   starSize = 14,
   gapPx = 2,
-  stepDeg = 14,
+  stepDeg = 10,
   rotationDeg = 0,
   animateGlow = false,
   glow,
@@ -122,9 +122,9 @@ export default function ProfileStarRing({
   // IMPORTANT : la couronne possède maintenant son propre repère SVG fixe.
   // Elle ne dépend plus de la largeur/hauteur des wrappers des pages, ce qui
   // supprimait le décentrage et les étoiles masquées sur certains layouts.
-  const requestedStep = Math.max(1, Number(stepDeg) || 14);
-  const minCenterDistance = Math.max(4, starSize * 0.94);
-  const baseRadius = resolvedAnchorSize / 2 + Number(gapPx || 0) + starSize * 0.52;
+  const requestedStep = Math.max(1, Number(stepDeg) || 10);
+  const minCenterDistance = Math.max(4, starSize * 0.62);
+  const baseRadius = resolvedAnchorSize / 2 + Number(gapPx || 0) + starSize * 0.46;
 
   const minStepForRadius = (radius: number) => {
     const ratio = Math.min(0.999, minCenterDistance / Math.max(2, 2 * radius));
@@ -133,7 +133,7 @@ export default function ProfileStarRing({
 
   let radius = baseRadius;
   let effectiveStep = Math.max(requestedStep, minStepForRadius(radius));
-  const maxArc = count <= 10 ? 138 : 166;
+  const maxArc = count <= 10 ? 126 : 132;
   if (count > 1 && (count - 1) * effectiveStep > maxArc) {
     effectiveStep = maxArc / (count - 1);
     const halfStep = (effectiveStep * Math.PI) / 360;
@@ -204,7 +204,6 @@ export default function ProfileStarRing({
                       <rect x="0" y="0" width="50" height="100" />
                     </clipPath>
                   </defs>
-                  <path d={STAR_PATH} fill="rgba(255,255,255,.12)" stroke={entry.color} strokeOpacity=".72" strokeWidth="4" />
                   <path d={STAR_PATH} fill={entry.color} clipPath={`url(#${clipId})`} />
                 </>
               ) : (
