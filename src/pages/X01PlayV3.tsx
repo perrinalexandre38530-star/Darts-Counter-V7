@@ -5493,7 +5493,11 @@ try {
 // - OVERLAYS inclus DANS le return (sinon JSX cassé)
 // =====================================================
 
-if (isLandscapeTablet) {
+// Landscape tablet now uses the unified GameplayLayout below.
+// IMPORTANT: keep the portrait/phone rendering unchanged; only bypass the legacy
+// dedicated landscape branch, which was still forcing objectFit: cover on the
+// X01 ticker and rendering the player list inline.
+if (false && isLandscapeTablet) {
   return (
     <div
       className={`x01play-container theme-${theme.id}`}
