@@ -5903,24 +5903,29 @@ const { cachedDashboard, cachedIdentity } = useFastDashboardCache(effectiveProfi
 const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
   const live: any = selectedPlayer;
   const cached: any = cachedIdentity;
-  if (!live && !cached?.id) return null;
+  const current: any = String((profile as any)?.id || "") === String(effectiveProfileId || "")
+    ? profile
+    : null;
+  if (!live && !cached?.id && !current?.id) return null;
   return {
     ...(cached || {}),
+    ...(current || {}),
     ...(live || {}),
-    id: String(live?.id || cached?.id || effectiveProfileId),
-    name: live?.name || cached?.name || cached?.displayName || "Joueur",
+    id: String(live?.id || current?.id || cached?.id || effectiveProfileId),
+    name: live?.name || current?.name || cached?.name || cached?.displayName || "Joueur",
     avatarDataUrl:
       pickPlayerAvatar(live) ||
+      pickPlayerAvatar(current) ||
       cached?.avatarThumbDataUrl ||
       cached?.avatarDataUrl ||
       cached?.photoDataUrl ||
       cached?.avatarUrl ||
       cached?.photoUrl ||
       null,
-    avatarUrl: live?.avatarUrl || cached?.avatarUrl || cached?.photoUrl || null,
-    avatar: live?.avatar || cached?.avatar || null,
+    avatarUrl: live?.avatarUrl || current?.avatarUrl || cached?.avatarUrl || cached?.photoUrl || null,
+    avatar: live?.avatar || current?.avatar || cached?.avatar || null,
   } as PlayerLite;
-}, [selectedPlayer, cachedIdentity, effectiveProfileId]);
+}, [selectedPlayer, cachedIdentity, effectiveProfileId, profile]);
 
 // ============================================================
 // 🧪 RUNTIME DEBUG (visible sur téléphone)

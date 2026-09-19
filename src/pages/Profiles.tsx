@@ -8325,7 +8325,7 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                       starSize={STAR}
                       stepDeg={10}
                       rotationDeg={0}
-                      animateGlow={!localNavBusy}
+                      animateGlow={false}
                     />
                   </div>
 

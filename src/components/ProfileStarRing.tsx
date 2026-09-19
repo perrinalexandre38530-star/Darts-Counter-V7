@@ -8,6 +8,7 @@
 // ============================================
 
 import React from "react";
+import { computeProfileStarRating } from "../lib/profileStarRating";
 
 let profileStarRingCssInstalled = false;
 function useProfileStarRingCss(): void {
@@ -141,7 +142,13 @@ function Star({
               <rect x="0" y="0" width="50" height="100" />
             </clipPath>
           </defs>
-          <path d={path} fill="rgba(255,255,255,0.15)" />
+          <path
+            d={path}
+            fill="rgba(255,255,255,0.13)"
+            stroke={color}
+            strokeOpacity={0.55}
+            strokeWidth={3}
+          />
           <g clipPath={`url(#${halfClipId})`}>
             <path d={path} fill={color} />
           </g>
@@ -178,14 +185,13 @@ export default function ProfileStarRing({
       : profileBotLevel != null
         ? profileStarRingBotLevelToAvg3d(profileBotLevel, 1)
         : 0;
-  const score = Math.max(0, Math.min(180, rawScore));
-
-  // 1★ / 10 pts
-  const fullUnder100 = Math.min(10, Math.floor(Math.min(score, 100) / 10));
-  const hasHalf = score < 100 && score >= 5 && score % 10 >= 5;
-
-  // +1★ violette toutes les 20 au-dessus de 100
-  const extraViolets = score > 100 ? Math.floor((Math.min(score, 180) - 100) / 20) : 0;
+  // Règle canonique centralisée : 38.8 AVG3D => 3 étoiles pleines + 1/2 étoile.
+  // Ne jamais arrondir l'AVG3D avant d'appliquer les seuils.
+  const rating = computeProfileStarRating(rawScore);
+  const score = rating.score;
+  const fullUnder100 = rating.baseFullStars;
+  const hasHalf = rating.hasHalfStar;
+  const extraViolets = rating.extraStars;
 
   const entries: StarEntry[] = [];
 
@@ -215,12 +221,32 @@ export default function ProfileStarRing({
   const count = entries.length;
   if (count === 0) return null;
 
-  // Placement historique : les étoiles suivent directement le contour haut
-  // du médaillon, côte à côte, centrées à 12 h. Le rayon reste lié au
-  // médaillon et l'écart angulaire demandé n'est pas réécrit dynamiquement.
-  // C'est le rendu de référence de la page Profils (ex. médaillon MARJO).
-  const r = resolvedAnchorSize / 2 + gapPx + starSize / 2;
-  const halfSpread = (count - 1) * (stepDeg / 2);
+  // Placement MARJO : arc supérieur, centré à 12 h, étoiles réellement côte à côte.
+  // Un step fixe de 10° est trop petit sur les médaillons courants (12–14 px par
+  // étoile) : plusieurs glyphes se superposent et 3.5★ ressemblent alors à 2★.
+  // On garde stepDeg comme minimum souhaité, puis on calcule l'écart géométrique
+  // minimal pour empêcher le chevauchement. Pour 11–14 étoiles, le rayon peut
+  // s'agrandir légèrement afin que toute la couronne reste sur l'arc supérieur.
+  const baseRadius = resolvedAnchorSize / 2 + gapPx + starSize / 2;
+  const minCenterDistance = Math.max(1, starSize + Math.max(1, starSize * 0.08));
+  const maxUpperArcDeg = 164; // -82° .. +82° autour de 12 h
+
+  const minStepForRadius = (radius: number) => {
+    const ratio = Math.min(1, minCenterDistance / Math.max(2, 2 * radius));
+    return (2 * Math.asin(ratio) * 180) / Math.PI;
+  };
+
+  let effectiveStepDeg = Math.max(Number(stepDeg) || 0, minStepForRadius(baseRadius));
+  let r = baseRadius;
+
+  if (count > 1 && (count - 1) * effectiveStepDeg > maxUpperArcDeg) {
+    effectiveStepDeg = maxUpperArcDeg / (count - 1);
+    const halfStepRad = (effectiveStepDeg * Math.PI) / 360;
+    const neededRadius = minCenterDistance / Math.max(0.001, 2 * Math.sin(halfStepRad));
+    r = Math.max(baseRadius, neededRadius);
+  }
+
+  const halfSpread = (count - 1) * (effectiveStepDeg / 2);
 
   function pol2cart(angleDeg: number) {
     const a = ((angleDeg + rotationDeg) * Math.PI) / 180;
@@ -238,7 +264,7 @@ export default function ProfileStarRing({
         }}
       >
         {entries.map((e, i) => {
-          const ang = -halfSpread + i * stepDeg; // centré à 12 h, rendu historique
+          const ang = -halfSpread + i * effectiveStepDeg; // centré à 12 h, sans superposition
           const { x, y } = pol2cart(ang);
           return (
             <div

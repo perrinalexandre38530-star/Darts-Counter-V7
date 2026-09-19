@@ -672,7 +672,7 @@ function ActiveProfileCard({
                 showStars={false}
               />
               {!hideStarRing && (
-                <div style={{ position: "absolute", inset: 0, transform: "translateX(2px) translateY(-1px)", pointerEvents: "none" }}>
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                   <ProfileStarRing
                     anchorSize={84}
                     avg3d={starRingAvg3D}
