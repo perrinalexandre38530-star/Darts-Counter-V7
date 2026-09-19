@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import ticker from "../assets/tickers/ticker_steeplechase.png";
+import ticker from "../assets/tickers/ticker_steeplechase.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#7dffbd" }}>COURSE</b><br/>Pars du 20 puis avance autour de la cible dans l'ordre physique des secteurs jusqu'au 5, avant l'arrivée au Bull.</div>

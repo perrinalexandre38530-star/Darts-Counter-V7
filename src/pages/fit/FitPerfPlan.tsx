@@ -1,5 +1,5 @@
 import React from "react";
-import LOGO from "../../assets/LOGO.png";
+import LOGO from "../../assets/LOGO.webp";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";

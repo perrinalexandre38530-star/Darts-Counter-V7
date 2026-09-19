@@ -8,7 +8,7 @@ import { __SUPABASE_ENV__ } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
 import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "../lib/remoteSnapshotRestore";
 import { useLang, type Lang } from "../contexts/LangContext";
-import authBrandLogo from "../assets/auth-logo-ms-gold.png";
+import authBrandLogo from "../assets/auth-logo-ms-gold.webp";
 
 type Props = { go: (t: any, p?: any) => void };
 type AccessMode = "public" | "invite";

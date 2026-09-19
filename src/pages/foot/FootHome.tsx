@@ -1,6 +1,6 @@
 import React from "react";
 import BackDot from "../../components/BackDot";
-import logoFoot from "../../assets/games/logo-foot.png";
+import logoFoot from "../../assets/games/logo-foot.webp";
 import { FOOT_TICKERS } from "./footTickers";
 
 type Props = { go: (route: any, params?: any) => void; store?: any; update?: any };

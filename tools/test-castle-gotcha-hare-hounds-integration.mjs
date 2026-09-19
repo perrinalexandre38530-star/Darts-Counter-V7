@@ -22,9 +22,9 @@ const requiredFiles = [
   'src/lib/gameEngines/castleEngine.ts',
   'src/lib/gameEngines/gotchaEngine.ts',
   'src/lib/gameEngines/hareHoundsEngine.ts',
-  'src/assets/tickers/ticker_castle.png',
-  'src/assets/tickers/ticker_gotcha.png',
-  'src/assets/tickers/ticker_hare_hounds.png',
+  'src/assets/tickers/ticker_castle.webp',
+  'src/assets/tickers/ticker_gotcha.webp',
+  'src/assets/tickers/ticker_hare_hounds.webp',
 ];
 requiredFiles.forEach(mustExist);
 

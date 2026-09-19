@@ -7,9 +7,9 @@ import logoDarts from "../assets/games/logo-darts.webp";
 import logoPetanque from "../assets/games/logo-petanque.webp";
 import logoPingPong from "../assets/games/logo-pingpong.webp";
 import logoBabyFoot from "../assets/games/logo-babyfoot.webp";
-import logoMolkky from "../assets/games/logo-molkky.png";
+import logoMolkky from "../assets/games/logo-molkky.webp";
 import logoDiceGame from "../assets/games/logo-dicegame.webp";
-import logoFoot from "../assets/games/logo-foot.png";
+import logoFoot from "../assets/games/logo-foot.webp";
 import logoRunning from "../assets/games/logo-running-performance.webp";
 import logoFitPerf from "../assets/games/logo-fit-performance.webp";
 
@@ -55,7 +55,7 @@ function readStoredSport(): QuickSportId {
   }
 }
 
-export default function SportQuickSwitch({ onAfterSwitch, collisionKey, landscapeHeaderDocked = false }: { onAfterSwitch?: () => void; collisionKey?: string | number | null; landscapeHeaderDocked?: boolean }) {
+export default function SportQuickSwitch({ onAfterSwitch, collisionKey }: { onAfterSwitch?: () => void; collisionKey?: string | number | null }) {
   const sportApi = useSport() as any;
   const availableSports = React.useMemo(() => filterSportsForCurrentRuntime(SPORTS), []);
   const currentSport = normalizeSport(sportApi?.sport ?? readStoredSport());
@@ -94,7 +94,6 @@ export default function SportQuickSwitch({ onAfterSwitch, collisionKey, landscap
     <button
       ref={floating.ref as any}
       data-mss-floating-control="sport-switch"
-      data-mss-header-docked={landscapeHeaderDocked ? "1" : undefined}
       type="button"
       onClick={switchSport}
       aria-label={`Sport actif : ${current.label}. Cliquer pour passer à ${next.label}.`}

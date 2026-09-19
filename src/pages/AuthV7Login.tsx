@@ -7,7 +7,7 @@
 import React from "react";
 import { onlineApi } from "../lib/onlineApi";
 import { useLang, type Lang } from "../contexts/LangContext";
-import authBrandLogo from "../assets/auth-logo-ms-gold.png";
+import authBrandLogo from "../assets/auth-logo-ms-gold.webp";
 
 type Props = {
   go: (t: any, p?: any) => void;

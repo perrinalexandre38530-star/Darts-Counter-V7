@@ -26,21 +26,21 @@ import logoFitPerf from "../assets/games/logo-fit-performance.webp";
 import logoEsports from "../assets/games/logo-esports.webp";
 
 // ✅ Sports à venir (affichés en SOON dans le GameSelect)
-import logoArchery from "../assets/games/logo-archery.png";
-import logoMolkky from "../assets/games/logo-molkky.png";
-import logoPadel from "../assets/games/logo-padel.png";
-import logoPickleball from "../assets/games/logo-pickleball.png";
-import logoFrisbee from "../assets/games/logo-frisbee.png";
-import logoBillard from "../assets/games/logo-billard.png";
-import logoBadminton from "../assets/games/logo-badminton.png";
-import logoBasket from "../assets/games/logo-basket.png";
-import logoCornhole from "../assets/games/logo-cornhole.png";
+import logoArchery from "../assets/games/logo-archery.webp";
+import logoMolkky from "../assets/games/logo-molkky.webp";
+import logoPadel from "../assets/games/logo-padel.webp";
+import logoPickleball from "../assets/games/logo-pickleball.webp";
+import logoFrisbee from "../assets/games/logo-frisbee.webp";
+import logoBillard from "../assets/games/logo-billard.webp";
+import logoBadminton from "../assets/games/logo-badminton.webp";
+import logoBasket from "../assets/games/logo-basket.webp";
+import logoCornhole from "../assets/games/logo-cornhole.webp";
 import logoDiceGame from "../assets/games/logo-dicegame.webp";
-import logoFoot from "../assets/games/logo-foot.png";
-import logoRugby from "../assets/games/logo-rugby.png";
-import logoVolley from "../assets/games/logo-volley.png";
-import logoTennis from "../assets/games/logo-tennis.png";
-import logoChess from "../assets/games/logo-chess.png";
+import logoFoot from "../assets/games/logo-foot.webp";
+import logoRugby from "../assets/games/logo-rugby.webp";
+import logoVolley from "../assets/games/logo-volley.webp";
+import logoTennis from "../assets/games/logo-tennis.webp";
+import logoChess from "../assets/games/logo-chess.webp";
 
 // Icônes monochromes dédiées aux bandes du GameSelect.
 // Elles sont utilisées comme masques CSS : la couleur vient donc du thème/currentColor.

@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import ticker from "../assets/tickers/ticker_call_three.png";
+import ticker from "../assets/tickers/ticker_call_three.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#ffb13b" }}>3 CIBLES</b><br/>Avant la volée, trois cibles sont appelées. Le joueur doit viser la première avec sa première fléchette, la deuxième avec sa deuxième, puis la troisième.</div>

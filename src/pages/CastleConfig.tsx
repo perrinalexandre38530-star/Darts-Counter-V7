@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import tickerCastle from "../assets/tickers/ticker_castle.png";
+import tickerCastle from "../assets/tickers/ticker_castle.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#ffc34f" }}>OBJECTIF</b><br/>Construis ton château avant les autres. La règle classique utilise 15 briques.</div>

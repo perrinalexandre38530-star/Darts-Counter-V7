@@ -7,9 +7,9 @@ import logoBabyFoot from "../../assets/games/logo-babyfoot.webp";
 import logoRunning from "../../assets/games/logo-running-performance.webp";
 import logoFitPerf from "../../assets/games/logo-fit-performance.webp";
 import logoEsports from "../../assets/games/logo-esports.webp";
-import logoMolkky from "../../assets/games/logo-molkky.png";
+import logoMolkky from "../../assets/games/logo-molkky.webp";
 import logoDiceGame from "../../assets/games/logo-dicegame.webp";
-import logoFoot from "../../assets/games/logo-foot.png";
+import logoFoot from "../../assets/games/logo-foot.webp";
 
 import artDarts from "../../assets/agenda/agenda-darts.webp";
 import artPetanque from "../../assets/agenda/agenda-petanque.webp";

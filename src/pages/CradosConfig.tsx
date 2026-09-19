@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import tickerCrados from "../assets/tickers/ticker_crados.png";
+import tickerCrados from "../assets/tickers/ticker_crados.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#d4ff44" }}>CONTAMINATION</b><br/>Simple = 1 couche, Double = 2, Triple = 3. Quand un secteur atteint le nombre de couches demandé, il devient « crado » et appartient au joueur.</div>

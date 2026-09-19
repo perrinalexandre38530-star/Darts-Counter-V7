@@ -18,12 +18,12 @@ import { OUTDOOR_SPORT_PROFILES, canonicalOutdoorPerformanceSport, loadOutdoorPe
 import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
 import { InlineAdBanner } from "../../monetization/AdSlot";
 import { listRecoverableRunningSessionDrafts } from "../../activity/runningSessionDrafts";
-import runningDisciplineAwenaImg from "../../assets/running/home_actions/running_discipline_awena.png";
-import runningSessionTimerImg from "../../assets/running/home_actions/running_session_timer.png";
-import runningRecommendationBadgeImg from "../../assets/running/home_actions/running_recommendation_badge.png";
-import runningGoalTargetImg from "../../assets/running/home_actions/running_goal_target.png";
-import runningRoutesMapImg from "../../assets/running/home_actions/running_routes_map.png";
-import runningCoachTrainingImg from "../../assets/running/home_actions/running_coach_training.png";
+import runningDisciplineAwenaImg from "../../assets/running/home_actions/running_discipline_awena.webp";
+import runningSessionTimerImg from "../../assets/running/home_actions/running_session_timer.webp";
+import runningRecommendationBadgeImg from "../../assets/running/home_actions/running_recommendation_badge.webp";
+import runningGoalTargetImg from "../../assets/running/home_actions/running_goal_target.webp";
+import runningRoutesMapImg from "../../assets/running/home_actions/running_routes_map.webp";
+import runningCoachTrainingImg from "../../assets/running/home_actions/running_coach_training.webp";
 const PAGE_MAX_WIDTH = 620;
 const sectionWrap: React.CSSProperties = { width: "100%", boxSizing: "border-box" };
 const GOAL_KEY = "mss-running-weekly-goal-km-v1";

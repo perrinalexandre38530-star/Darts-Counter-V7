@@ -4,7 +4,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
-import tickerCastle from "../assets/tickers/ticker_castle.png";
+import tickerCastle from "../assets/tickers/ticker_castle.webp";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";

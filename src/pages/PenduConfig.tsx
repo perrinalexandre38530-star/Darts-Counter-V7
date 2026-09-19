@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import tickerPendu from "../assets/tickers/ticker_pendu.png";
+import tickerPendu from "../assets/tickers/ticker_pendu.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#ffc34f" }}>OBJECTIF</b><br/>Évite de compléter ton pendu. Chaque échec ajoute une partie du corps ; au total autorisé, le joueur est éliminé.</div>

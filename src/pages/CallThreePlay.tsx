@@ -3,7 +3,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerCallThree from "../assets/tickers/ticker_call_three.png";
+import tickerCallThree from "../assets/tickers/ticker_call_three.webp";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";

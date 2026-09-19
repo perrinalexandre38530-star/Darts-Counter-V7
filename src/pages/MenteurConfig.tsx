@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import tickerMenteur from "../assets/tickers/ticker_menteur.png";
+import tickerMenteur from "../assets/tickers/ticker_menteur.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#ffc34f" }}>ENCHÈRES</b><br/>Chaque joueur annonce le contrat qu'il pense pouvoir réaliser : score, zone ou combinaison selon le deck choisi.</div>

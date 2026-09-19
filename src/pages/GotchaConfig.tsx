@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import tickerGotcha from "../assets/tickers/ticker_gotcha.png";
+import tickerGotcha from "../assets/tickers/ticker_gotcha.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#ffc34f" }}>OBJECTIF</b><br/>Pars de 0 et atteins exactement le score cible, classiquement 301.</div>

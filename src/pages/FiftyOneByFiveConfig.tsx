@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import ticker from "../assets/tickers/ticker_51_by_5.png";
+import ticker from "../assets/tickers/ticker_51_by_5.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#ffd34d" }}>OBJECTIF</b><br/>Atteins exactement 51 points de jeu. Chaque volée commence par le total réel des trois fléchettes.</div>

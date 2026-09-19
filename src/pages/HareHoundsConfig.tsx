@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import tickerHareHounds from "../assets/tickers/ticker_hare_hounds.png";
+import tickerHareHounds from "../assets/tickers/ticker_hare_hounds.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#ffc34f" }}>POURSUITE</b><br/>Le Lièvre démarre sur 20. Le ou les Limiers partent derrière lui, généralement sur 5 ou 12.</div>

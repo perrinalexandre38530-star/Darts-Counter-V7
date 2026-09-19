@@ -1,6 +1,6 @@
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
-import ticker from "../assets/tickers/ticker_looper.png";
+import ticker from "../assets/tickers/ticker_looper.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
   <div><b style={{ color: "#8ff7ff" }}>FOLLOW THE LEADER</b><br/>Une cible exacte est posée. Les joueurs suivants ont jusqu'à trois fléchettes pour la toucher ; un échec coûte une vie.</div>

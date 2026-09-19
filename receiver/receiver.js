@@ -32,7 +32,7 @@ function render() {
 function renderHome() {
   root.innerHTML = `
     <div class="home">
-      <img src="/assets/LOGO.png" class="logo" />
+      <img src="/assets/LOGO.webp" class="logo" />
       <div class="tagline">Sélectionne ton mode de jeu et lance ta partie</div>
     </div>
   `;

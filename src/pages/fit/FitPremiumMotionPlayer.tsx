@@ -1,6 +1,6 @@
 import React from "react";
 import type { AwenaPremiumMotionSlot } from "../../fit/awenaPremiumMotions";
-import LOGO from "../../assets/LOGO.png";
+import LOGO from "../../assets/LOGO.webp";
 
 export default function FitPremiumMotionPlayer({
   slot,

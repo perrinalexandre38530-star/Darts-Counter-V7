@@ -26,8 +26,8 @@ import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { generateShuffledTeams, rememberGeneratedTeams } from "../lib/teamAutoShuffle";
 import { readProfileUsageCounts, recordProfileUsageForMode } from "../lib/profileUsage";
 import { makeGros6Segment, randomGros6StartTarget } from "../lib/gros6Engine";
-import tickerGros6 from "../assets/tickers/ticker_gros_6.png";
-import tickerBig6 from "../assets/tickers/ticker_gros_6_en.png";
+import tickerGros6 from "../assets/tickers/ticker_gros_6.webp";
+import tickerBig6 from "../assets/tickers/ticker_gros_6_en.webp";
 import gros6RulesBoard from "../assets/gros6/gros6_rules_board.webp";
 
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";

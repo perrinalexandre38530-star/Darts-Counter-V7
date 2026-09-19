@@ -10,7 +10,7 @@ import { FIT_MUSCLE_COLORS, FIT_MUSCLE_LABELS, inferGoalTags, inferMovementPatte
 import FitBodyMap from "./FitBodyMap";
 import FitExerciseMotion from "./FitExerciseMotion";
 import { FitGlassCard, FitIcon, FitIconTabs, FitPill } from "./FitPerfUi";
-import LOGO from "../../assets/LOGO.png";
+import LOGO from "../../assets/LOGO.webp";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 
 type DetailTab = "zone" | "details" | "photos" | "goal" | "type" | "records";
