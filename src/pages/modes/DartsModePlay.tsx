@@ -212,7 +212,7 @@ export default function DartsModePlay({ go, gameId, config }) {
   };
 
   return (
-    <div style={{
+    <div className="msc-mode-play darts-mode-play-screen" style={{
       minHeight: "100dvh",
       overflowY: "auto",
       background: "radial-gradient(1100px 700px at 50% -10%, rgba(243,199,106,0.18), rgba(0,0,0,0) 60%), linear-gradient(180deg,#05060a,#070811 55%,#05060a)",
@@ -223,7 +223,7 @@ export default function DartsModePlay({ go, gameId, config }) {
       gap: 10,
     }}>
       {/* Header historique conservé */}
-      <div style={{
+      <div className="msc-mode-play-header" style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -254,7 +254,7 @@ export default function DartsModePlay({ go, gameId, config }) {
       </div>
 
       {/* Scoreboard historique conservé */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="msc-mode-play-primary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         {players.map((player: any, index: number) => {
           const isActive = index === active && !finished;
           return (
@@ -289,7 +289,7 @@ export default function DartsModePlay({ go, gameId, config }) {
 
       {/* Saisie exacte : aucune volée agrégée ambiguë */}
       {!finished && (
-        <div style={{
+        <div className="msc-mode-play-secondary" style={{
           marginTop: "auto",
           background: T.card,
           border: `1px solid ${T.border}`,

@@ -177,7 +177,7 @@ export default function GameplayLayout({
   const [openPlayers, setOpenPlayers] = React.useState(false);
 
   const canOpenPlayers = !!playersPanel;
-  const isTabletByMedia = useMediaQuery("(min-width: 900px) and (orientation: landscape)");
+  const isTabletByMedia = useMediaQuery("(min-width: 640px) and (orientation: landscape)");
   const isTablet =
     forceLayout === "tablet" ? true : forceLayout === "phone" ? false : isTabletByMedia;
 
@@ -306,11 +306,11 @@ export default function GameplayLayout({
   };
 
   return (
-    <div style={outerStyle}>
-      <div style={containerStyle}>
+    <div className="msc-gameplay-layout" style={outerStyle}>
+      <div className="msc-gameplay-shell" style={containerStyle}>
         {/* 1) HEADER SCOREBOARD + MENU & INFOS */}
         <div
-          className="card"
+          className="card msc-gameplay-header"
           style={{
             padding: headerFullBleedImage ? 0 : "10px 12px",
             position: "relative",
@@ -458,6 +458,7 @@ export default function GameplayLayout({
         ) : (
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
             <div
+              className="msc-gameplay-grid"
               style={{
                 display: "grid",
                 // minmax(0,1fr) = empêche le débordement horizontal des enfants (shadows, min-width, etc.)
@@ -469,6 +470,7 @@ export default function GameplayLayout({
             >
               {/* LEFT: profil + joueurs */}
               <div
+                className="msc-gameplay-primary"
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -525,6 +527,7 @@ export default function GameplayLayout({
 
               {/* RIGHT: volée + modes */}
               <div
+                className="msc-gameplay-secondary"
                 style={{
                   display: "flex",
                   flexDirection: "column",

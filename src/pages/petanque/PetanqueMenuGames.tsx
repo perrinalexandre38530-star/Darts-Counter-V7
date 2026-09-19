@@ -427,6 +427,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
 
   return (
     <div
+      className="msc-game-menu-screen"
       style={{
         minHeight: "100vh",
         padding: 16,
@@ -436,6 +437,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
       }}
     >
       <div
+        className="msc-game-menu-header"
         style={{
           position: "relative",
           display: "flex",
@@ -474,9 +476,9 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
         </div>
       </div>
 
-      <PageAdBanner placement="games" slotKey="page-games-petanque-under-header" />
+      <div className="msc-game-menu-primary"><PageAdBanner placement="games" slotKey="page-games-petanque-under-header" /></div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="msc-game-menu-secondary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
           const title = t(m.titleKey, m.titleDefault);
           const disabled = !m.enabled;

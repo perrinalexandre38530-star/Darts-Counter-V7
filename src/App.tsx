@@ -6798,6 +6798,39 @@ case "babyfoot_team_edit":
     "stats_leaderboards",
   ] as any);
 
+  const gameRouteName = String(tab || "");
+  const isGameMenuRoute =
+    gameRouteName.endsWith("_menu") ||
+    gameRouteName === "petanque.menu";
+  const isGameConfigRoute =
+    gameRouteName === "x01setup" ||
+    gameRouteName === "x01_config_v3" ||
+    gameRouteName === "x01_online_setup" ||
+    gameRouteName.endsWith("_config") ||
+    gameRouteName === "darts_mode_config";
+  const isGamePlayRoute =
+    gameRouteName === "x01" ||
+    gameRouteName === "x01_play_v3" ||
+    gameRouteName.endsWith("_play") ||
+    gameRouteName === "darts_mode_play";
+  const isGuidedGameConfigRoute = new Set([
+    "x01_config_v3",
+    "gros_6_config",
+    "darts_firefighter_config",
+    "cargo_config",
+    "ocean_control_config",
+    "castle_config",
+    "gotcha_config",
+    "hare_hounds_config",
+  ]).has(gameRouteName);
+  const gameLandscapeKind = isGameMenuRoute
+    ? "menu"
+    : isGameConfigRoute
+      ? (isGuidedGameConfigRoute ? "config-guided" : "config-split")
+      : isGamePlayRoute
+        ? "play"
+        : undefined;
+
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
   const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera";
   const appChromeAllowed = !isSamsungTvNativeApp && online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
@@ -6824,6 +6857,8 @@ case "babyfoot_team_edit":
         <div
           className={`container dc-themed-route dc-themed-route--${themePageScope}`}
           data-msc-route={String(tab)}
+          data-msc-game-screen={isGameMenuRoute ? "menu" : isGameConfigRoute ? "config" : isGamePlayRoute ? "play" : undefined}
+          data-msc-game-layout={gameLandscapeKind}
           style={{
             paddingBottom: 88,
             // Les sélecteurs Compte/Organisation et Sport sont désormais des médaillons

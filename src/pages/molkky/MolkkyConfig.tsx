@@ -135,7 +135,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
 
   return (
     <div
-      className="screen molkky-config-screen"
+      className="screen molkky-config-screen msc-mode-config msc-mode-config--split"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -146,7 +146,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
       }}
     >
       {/* HEADER (calque X01) */}
-      <header style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
+      <header className="msc-mode-config-header" style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
         {(() => {
           const DOT_SIZE = 36;
           const DOT_GLOW = `${primary}88`;
@@ -207,7 +207,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
       </header>
 
       {/* SECTION: Joueurs */}
-      <div style={card(theme)}>
+      <div className="msc-mode-config-primary" style={card(theme)}>
         <div style={cardTitleRow}>
           <div style={cardTitle(primary)}>{t?.("common.players", "Joueurs") ?? "JOUEURS"}</div>
           <div style={{ color: textSoft, fontWeight: 800, fontSize: 12 }}>
@@ -240,7 +240,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
       </div>
 
       {/* SECTION: Objectif */}
-      <div style={card(theme)}>
+      <div className="msc-mode-config-secondary" style={card(theme)}>
         <div style={cardTitleRow}>
           <div style={cardTitle(primary)}>{t?.("molkky.config.goal", "Objectif") ?? "OBJECTIF"}</div>
         </div>
@@ -276,7 +276,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
       </div>
 
       {/* SECTION: Options */}
-      <div style={card(theme)}>
+      <div className="msc-mode-config-secondary-extra" style={card(theme)}>
         <div style={cardTitleRow}>
           <div style={cardTitle(primary)}>{t?.("common.options", "Options") ?? "OPTIONS"}</div>
         </div>
@@ -299,6 +299,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
 
       {/* CTA sticky bottom (calque X01) */}
       <div
+        className="msc-mode-config-actions"
         style={{
           position: "fixed",
           left: 0,

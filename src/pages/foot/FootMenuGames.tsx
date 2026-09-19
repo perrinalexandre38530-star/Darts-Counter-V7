@@ -196,8 +196,9 @@ export default function FootMenuGames({ go }: Props) {
         background: pageBg,
       }}
     >
-      <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      <div className="msc-game-menu-screen" style={{ maxWidth: 760, margin: "0 auto" }}>
         <div
+          className="msc-game-menu-header"
           aria-label="FOOT"
           style={{
             position: "relative",
@@ -246,9 +247,9 @@ export default function FootMenuGames({ go }: Props) {
           </div>
         </div>
 
-        <PageAdBanner placement="games" slotKey="page-games-foot-under-header" />
+        <div className="msc-game-menu-primary"><PageAdBanner placement="games" slotKey="page-games-foot-under-header" /></div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="msc-game-menu-secondary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {FOOT_FORMATS.map((f, index) => {
             const isDuel = f.kind === "duel";
             const subtitle = isDuel ? "DUEL" : "ÉQUIPES";

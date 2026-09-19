@@ -110,14 +110,14 @@ export default function DartsModeConfig({ store, go, gameId }) {
   };
 
   return (
-    <div style={{
+    <div className="msc-mode-config msc-mode-config--split darts-mode-config-screen" style={{
       minHeight:"100vh",
       background:"radial-gradient(circle at top, #1c2540 0, #050712 55%, #000 100%)",
       color:T.text,
       padding:"16px 12px 92px",
       boxSizing:"border-box",
     }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+      <div className="msc-mode-config-header" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
         <div>
           <div style={{ fontSize:24, fontWeight:900, letterSpacing:0.3, color:T.accent }}>
             {mode?.label ?? "Mode"}
@@ -139,7 +139,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
         </div>
       </div>
 
-      <div style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12, marginBottom:12 }}>
+      <div className="msc-mode-config-primary" style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12, marginBottom:12 }}>
         <div style={{ fontWeight:900, marginBottom:10 }}>Joueurs</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           {allPlayers.map(p => {
@@ -194,7 +194,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
 
       {/* TERRITORIES — Map */}
       {isTerritories && (
-        <div style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12, marginBottom:12 }}>
+        <div className="msc-mode-config-secondary-extra" style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12, marginBottom:12 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
             <div style={{ fontWeight:900 }}>Carte (pays)</div>
             <InfoDot
@@ -226,7 +226,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
       )}
 
       {/* Options */}
-      <div style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12 }}>
+      <div className="msc-mode-config-secondary" style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12 }}>
         <div style={{ fontWeight:900, marginBottom:10 }}>Options</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           <div style={{ background:"rgba(0,0,0,0.22)", border:"1px solid "+T.border, borderRadius:14, padding:10 }}>
@@ -261,7 +261,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
       </div>
 
       {/* CTA */}
-      <div style={{
+      <div className="msc-mode-config-actions" style={{
         position:"fixed",
         left:0, right:0, bottom:0,
         padding:"10px 12px 14px",

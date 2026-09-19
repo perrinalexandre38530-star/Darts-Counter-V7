@@ -79,6 +79,7 @@ export default function MolkkyMenuGames({ go }: Props) {
 
   return (
     <div
+      className="msc-game-menu-screen"
       style={{
         minHeight: "100vh",
         padding: 16,
@@ -88,7 +89,7 @@ export default function MolkkyMenuGames({ go }: Props) {
       }}
     >
       {/* HEADER: ticker derrière les icônes (comme BabyFootGamesHub) */}
-      <div style={{ position: "relative", width: "100%", marginBottom: 12 }}>
+      <div className="msc-game-menu-header" style={{ position: "relative", width: "100%", marginBottom: 12 }}>
         <img
           src={headerTicker || getTicker("games") || getTicker("petanque_games") || ""}
           alt="Mölkky — Games"
@@ -146,10 +147,10 @@ export default function MolkkyMenuGames({ go }: Props) {
         </div>
       </div>
 
-      <PageAdBanner placement="games" slotKey="page-games-molkky-under-header" />
+      <div className="msc-game-menu-primary"><PageAdBanner placement="games" slotKey="page-games-molkky-under-header" /></div>
 
       {/* CARDS: mêmes proportions (h=86) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="msc-game-menu-secondary" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {CARDS.map((c) => {
           const src = getTicker(c.tickerId) || headerTicker || "";
           return (

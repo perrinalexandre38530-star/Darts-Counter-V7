@@ -935,7 +935,7 @@ export default function KillerConfigPage(props: Props) {
 
   return (
     <div
-      className="screen killer-config-v3"
+      className="screen killer-config-v3 msc-mode-config msc-mode-config--split"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -997,7 +997,7 @@ export default function KillerConfigPage(props: Props) {
 </div>
 
       {/* CONTENT */}
-      <div ref={contentRef as any} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+      <div ref={contentRef as any} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         {!isProgressive && (
           <section
             style={{

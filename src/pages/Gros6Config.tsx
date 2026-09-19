@@ -782,8 +782,8 @@ export default function Gros6Config({ store, go }: any) {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: theme.pageBg || theme.bg || "#070912", color: theme.text || "#fff", display: "flex", flexDirection: "column", padding: 12 }}>
-      <header style={{ position: "sticky", top: 0, zIndex: 60, margin: "-12px -12px 12px", background: theme.pageBg || theme.bg || "#070912", paddingTop: "env(safe-area-inset-top)" }}>
+    <div className={`msc-mode-config gros6-config-screen ${configViewMode === "guided" ? "msc-mode-config--guided" : "msc-mode-config--split"}`} style={{ minHeight: "100vh", background: theme.pageBg || theme.bg || "#070912", color: theme.text || "#fff", display: "flex", flexDirection: "column", padding: 12 }}>
+      <header className="msc-mode-config-header" style={{ position: "sticky", top: 0, zIndex: 60, margin: "-12px -12px 12px", background: theme.pageBg || theme.bg || "#070912", paddingTop: "env(safe-area-inset-top)" }}>
         <div style={{ position: "relative", height: 92, overflow: "hidden", boxShadow: "0 12px 30px rgba(0,0,0,.42)" }}>
           <img src={(lang === "fr" ? tickerGros6 : tickerBig6) as any} alt={lang === "fr" ? "Gros 6" : "Big 6"} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", pointerEvents: "none" }}>
@@ -793,7 +793,7 @@ export default function Gros6Config({ store, go }: any) {
         </div>
       </header>
 
-      <div style={{ width: "100%", maxWidth: 1180, margin: "0 auto" }}>
+      <div className="msc-mode-config-body gros6-config-content" style={{ width: "100%", maxWidth: 1180, margin: "0 auto" }}>
         <section style={{ background: "rgba(10,12,24,.94)", borderRadius: 18, padding: 12, marginBottom: 14, boxShadow: "0 16px 40px rgba(0,0,0,.55)", border: `1px solid ${primary}33` }}>
           <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>Configuration GROS 6</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>

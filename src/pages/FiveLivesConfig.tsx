@@ -477,7 +477,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 
   return (
     <div
-      className="screen five-lives-config"
+      className="screen five-lives-config msc-mode-config msc-mode-config--split"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -533,7 +533,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 </div>
 
       {/* CONTENT */}
-      <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+      <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         {/* JOUEURS */}
         <section
           style={{

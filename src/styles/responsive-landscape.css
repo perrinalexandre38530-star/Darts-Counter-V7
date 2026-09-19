@@ -2987,3 +2987,479 @@ html:not([data-msc-orientation="landscape"]) .msc-messages-primary.msc-messages-
   min-height: 72px !important;
   height: auto !important;
 }
+
+/* ========================================================================== */
+/* GAME MODES — CONFIG + PLAY, LANDSCAPE ONLY                                */
+/* Portrait is intentionally untouched.                                       */
+/* ========================================================================== */
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen] {
+  width: calc(100% - var(--msc-landscape-rail-width)) !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  margin-left: var(--msc-landscape-rail-width) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Fullscreen play routes already hide BottomNav; reclaim the entire width. */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"].dc-themed-route--full {
+  width: 100% !important;
+  margin-left: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen] > :first-child,
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen] .screen,
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen] .page {
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+/* ---------- Shared CONFIG frame ---------- */
+html[data-msc-orientation="landscape"] .msc-mode-config {
+  width: 100% !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  padding: clamp(6px, .9vw, 10px) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-mode-config-header {
+  flex: 0 0 clamp(72px, 15vh, 112px) !important;
+  min-height: 0 !important;
+  margin: 0 0 8px !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-mode-config-header > div,
+html[data-msc-orientation="landscape"] .msc-mode-config-header img {
+  max-height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-mode-config-header img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+/* Guided configs: one large workspace, full width. If a step is truly taller,
+   only the step/workspace scrolls — never the whole app route. */
+html[data-msc-orientation="landscape"] .msc-mode-config--guided .msc-mode-config-body,
+html[data-msc-orientation="landscape"] .msc-mode-config--guided.gros6-config-screen .gros6-config-content {
+  width: 100% !important;
+  max-width: 1280px !important;
+  margin: 0 auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding: 2px 4px 8px !important;
+}
+
+/* Complete / dense configs: two balanced work zones. */
+html[data-msc-orientation="landscape"] .msc-mode-config--split .msc-mode-config-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 10px !important;
+  align-content: start !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 2px 4px 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-mode-config--split .msc-mode-config-body > * {
+  min-width: 0 !important;
+  margin-bottom: 0 !important;
+  break-inside: avoid !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-mode-config--split .msc-mode-config-body > :first-child {
+  grid-column: 1 / -1 !important;
+}
+
+/* Dense legacy configs that now participate in the same landscape system. */
+html[data-msc-orientation="landscape"] :is(
+  .killer-config-v3,
+  .five-lives-config,
+  .petanque-config-screen
+) .msc-mode-config-body {
+  grid-auto-flow: row !important;
+}
+
+/* Generic / simple config components expose explicit semantic zones. */
+html[data-msc-orientation="landscape"] :is(
+  .darts-mode-config-screen,
+  .molkky-config-screen,
+  .pingpong-config-screen
+).msc-mode-config--split {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-rows: clamp(72px, 15vh, 112px) minmax(0, 1fr) auto !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .darts-mode-config-screen,
+  .molkky-config-screen,
+  .pingpong-config-screen
+).msc-mode-config--split > .msc-mode-config-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .darts-mode-config-screen,
+  .molkky-config-screen,
+  .pingpong-config-screen
+).msc-mode-config--split > .msc-mode-config-primary {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .darts-mode-config-screen,
+  .molkky-config-screen,
+  .pingpong-config-screen
+).msc-mode-config--split > :is(.msc-mode-config-secondary, .msc-mode-config-secondary-extra) {
+  grid-column: 2 !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-mode-config-screen > .msc-mode-config-secondary {
+  grid-row: 2 !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-mode-config-screen > .msc-mode-config-secondary-extra + .msc-mode-config-secondary {
+  margin-top: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .molkky-config-screen > .msc-mode-config-secondary,
+html[data-msc-orientation="landscape"] .pingpong-config-screen > .msc-mode-config-secondary {
+  grid-row: 2 !important;
+}
+
+html[data-msc-orientation="landscape"] .molkky-config-screen > .msc-mode-config-secondary-extra {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  align-self: end !important;
+  max-height: 42% !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .darts-mode-config-screen,
+  .molkky-config-screen,
+  .pingpong-config-screen
+) > .msc-mode-config-actions {
+  grid-column: 1 / -1 !important;
+  grid-row: 3 !important;
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  z-index: 2 !important;
+}
+
+html[data-msc-orientation="landscape"] .molkky-config-screen > .msc-mode-config-actions > div {
+  padding: 6px !important;
+}
+
+/* X01 complete mode: intro stays across both columns, the remaining cards use
+   the 50/50 workspace. Guided X01 remains full width. */
+html[data-msc-orientation="landscape"] .x01-config-v3-screen.msc-mode-config--split .msc-mode-config-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen.msc-mode-config--split .msc-mode-config-body > section:first-of-type {
+  grid-column: 1 / -1 !important;
+}
+
+/* Gros 6: guided = one large step. Complete = two columns. */
+html[data-msc-orientation="landscape"] .gros6-config-screen.msc-mode-config--split {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+html[data-msc-orientation="landscape"] .gros6-config-screen.msc-mode-config--split .gros6-config-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 10px !important;
+  align-content: start !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 2px 4px 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .gros6-config-screen.msc-mode-config--split .gros6-config-content > * {
+  min-width: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .gros6-config-screen.msc-mode-config--split .gros6-config-content > :first-child {
+  grid-column: 1 / -1 !important;
+}
+
+/* Guided specialty configs keep a large central workspace instead of being
+   forced into a two-column form. */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-layout="config-guided"] :is(
+  .dff-config-root,
+  .cargo-config-root,
+  .ocean-control-config-root,
+  .castle-config-root,
+  .gotcha-config-root,
+  .hare-hounds-config-root
+) {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* ---------- Shared PLAY frame (header + left + right = 3 zones) ---------- */
+html[data-msc-orientation="landscape"] .msc-gameplay-layout {
+  width: 100% !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-shell {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: max(6px, var(--msc-safe-top)) max(8px, var(--msc-safe-right)) max(6px, var(--msc-safe-bottom)) max(8px, var(--msc-safe-left)) !important;
+  gap: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-header {
+  flex: 0 0 clamp(70px, 14vh, 108px) !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-header > img {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-grid {
+  grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+  gap: 10px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-primary {
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-secondary {
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-primary > .card,
+html[data-msc-orientation="landscape"] .msc-gameplay-secondary > .card {
+  min-height: 0 !important;
+}
+
+/* Generic DartsModePlay — same 3-zone principle without touching portrait. */
+html[data-msc-orientation="landscape"] .darts-mode-play-screen {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 10px !important;
+  padding: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-mode-play-screen > .msc-mode-play-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-mode-play-screen > .msc-mode-play-primary {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  align-content: start !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-mode-play-screen > .msc-mode-play-secondary {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Safety fallback for every other config/play route: viewport remains fixed;
+   mode-specific internal scroll survives, portrait stays exactly as before. */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="config"] :is(.screen, .page) {
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] :is(.screen, .page) {
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-mode-config-header,
+html[data-msc-short-landscape="1"] .msc-gameplay-header {
+  flex-basis: 68px !important;
+  max-height: 68px !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-gameplay-grid,
+html[data-msc-short-landscape="1"] .darts-mode-play-screen {
+  gap: 7px !important;
+}
+
+/* Five Lives PLAY — header + fixed information rail + large input workspace. */
+html[data-msc-orientation="landscape"] .five-lives-play-screen {
+  display: grid !important;
+  grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+  grid-template-rows: clamp(70px, 14vh, 106px) auto minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  padding: 8px !important;
+  align-items: stretch !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-mode-play-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-mode-play-header img {
+  object-fit: contain !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-overview {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-active {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-players {
+  grid-column: 1 !important;
+  grid-row: 4 !important;
+  height: 74px !important;
+  margin: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-spacer {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-input {
+  grid-column: 2 !important;
+  grid-row: 2 / 5 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 8px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255,255,255,.09) !important;
+  background: linear-gradient(180deg, rgba(18,20,28,.92), rgba(5,7,12,.98)) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-input > div {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+}
+
+/* ---------- SPORT GAME MENUS: header + left fixed panel + right scroll list ---------- */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="menu"] {
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-menu-screen {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  padding: 8px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-rows: clamp(72px, 15vh, 112px) minmax(0, 1fr) !important;
+  gap: 10px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-menu-screen > .msc-game-menu-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-menu-screen > .msc-game-menu-header img {
+  height: 100% !important;
+  width: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-menu-screen > .msc-game-menu-primary {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-menu-screen > .msc-game-menu-secondary {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 4px !important;
+  align-content: start !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-game-menu-secondary > button {
+  flex: 0 0 auto !important;
+}
+
+html[data-msc-short-landscape="1"] .msc-game-menu-screen {
+  grid-template-rows: 68px minmax(0, 1fr) !important;
+  gap: 7px !important;
+  padding: 6px !important;
+}

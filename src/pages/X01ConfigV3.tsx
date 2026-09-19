@@ -3787,7 +3787,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // ---- Render ----
   return (
     <div
-      className="screen x01-config-v3-screen"
+      className={`screen x01-config-v3-screen msc-mode-config ${configViewMode === "guided" ? "msc-mode-config--guided" : "msc-mode-config--split"}`}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -3798,7 +3798,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       }}
     >
       {/* HEADER */}
-      <header style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
+      <header className="msc-mode-config-header" style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
         {(() => {
           const DOT_SIZE = 36;
           const DOT_GLOW = `${primary}88`;
@@ -3854,7 +3854,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       </header>
 
       {/* CONTENU SCROLLABLE */}
-      <div ref={contentRef} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+      <div ref={contentRef} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         <section
           style={{
             background: "rgba(10,12,24,0.94)",

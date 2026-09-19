@@ -226,6 +226,7 @@ export default function PingPongMenuGames({ go }: Props) {
 
   return (
     <div
+      className="msc-game-menu-screen"
       style={{
         minHeight: "100vh",
         padding: 16,
@@ -237,6 +238,7 @@ export default function PingPongMenuGames({ go }: Props) {
       {/* HEADER ticker_pingpong_games */}
       {headerSrc && (
         <div
+          className="msc-game-menu-header"
           style={{
             position: "relative",
             // Pleine largeur écran (pas dans un bloc)
@@ -291,9 +293,9 @@ export default function PingPongMenuGames({ go }: Props) {
         </div>
       )}
 
-      <PageAdBanner placement="games" slotKey="page-games-pingpong-under-header" />
+      <div className="msc-game-menu-primary"><PageAdBanner placement="games" slotKey="page-games-pingpong-under-header" /></div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="msc-game-menu-secondary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
           const disabled = !m.enabled;
           const titleColor = getModeColor(m.id);

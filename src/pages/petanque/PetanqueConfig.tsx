@@ -931,7 +931,7 @@ function handleStart() {
 
   return (
     <div
-      className="screen petanque-config-screen"
+      className="screen petanque-config-screen msc-mode-config msc-mode-config--split"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -1033,7 +1033,7 @@ function handleStart() {
         </div>
       </header>
 
-      <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+      <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         {/* ✅ NEW: TOURNOI (bloc dédié) */}
         {isTournament && (
           <section

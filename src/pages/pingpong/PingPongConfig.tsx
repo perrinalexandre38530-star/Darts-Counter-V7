@@ -291,7 +291,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
 
   return (
     <div
-      className="screen pingpong-config-screen"
+      className="screen pingpong-config-screen msc-mode-config msc-mode-config--split"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -302,7 +302,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
       }}
     >
       {/* HEADER ticker */}
-      <header style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
+      <header className="msc-mode-config-header" style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
         <div
           style={{
             position: "relative",
@@ -380,6 +380,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
         <>
           {/* JOUEURS */}
           <div
+            className="msc-mode-config-primary"
             style={{
               background: cardBg,
               borderRadius: 18,
@@ -463,6 +464,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
 
           {/* RÈGLES / OPTIONS */}
           <div
+            className="msc-mode-config-secondary"
             style={{
               background: cardBg,
               borderRadius: 18,
@@ -598,7 +600,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
           </div>
 
           {/* CTA */}
-          <button style={cta(theme, canStart)} onClick={onStart} disabled={!canStart}>
+          <button className="msc-mode-config-actions" style={cta(theme, canStart)} onClick={onStart} disabled={!canStart}>
             Lancer la partie
           </button>
         </>

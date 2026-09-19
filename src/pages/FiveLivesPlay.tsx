@@ -1259,6 +1259,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
 
   return (
     <div
+      className="msc-mode-play five-lives-play-screen"
       style={{
         position: "fixed",
         inset: 0,
@@ -1276,6 +1277,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       }}
     >
       <header
+        className="msc-mode-play-header"
         style={{
           position: "relative",
           height: "clamp(78px,11vh,104px)",
@@ -1329,6 +1331,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       </header>
 
       <div
+        className="msc-five-lives-overview"
         style={{
           ...cardStyle,
           flex: "0 0 auto",
@@ -1344,6 +1347,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
 
       {activePlayer ? (
         <section
+          className="msc-five-lives-active"
           style={{
             ...cardStyle,
             flex: "0 0 auto",
@@ -1533,6 +1537,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       ) : null}
 
       <button
+        className="msc-five-lives-players"
         type="button"
         onClick={() => setPlayersOpen(true)}
         style={{
@@ -1618,11 +1623,12 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
         </div>
       </button>
 
-      <div style={{ flex: "1 1 auto", minHeight: 0 }} />
+      <div className="msc-five-lives-spacer" style={{ flex: "1 1 auto", minHeight: 0 }} />
 
       {!winnerId && !endOpen ? (
         <div
           ref={inputRef}
+          className="msc-mode-play-secondary msc-five-lives-input"
           style={{
             flex: "0 0 auto",
             zIndex: 60,
