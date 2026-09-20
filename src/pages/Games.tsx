@@ -1151,7 +1151,7 @@ export default function Games({ setTab, params }: Props) {
     return () => window.clearInterval(it);
   }, [allTickerPool.length]);
 
-  function renderQuickLaunchTicker() {
+  function renderQuickLaunchTicker(className = "") {
     const current = allTickerPool.length
       ? allTickerPool[allTickerIdx % allTickerPool.length]
       : null;
@@ -1159,9 +1159,10 @@ export default function Games({ setTab, params }: Props) {
     if (!current) return null;
 
     return (
-      <div style={{ display: "flex", justifyContent: "center" }}>
+      <div className={["msc-games-quick-launch", className].filter(Boolean).join(" ")} style={{ display: "flex", justifyContent: "center" }}>
         <button
           type="button"
+          className="msc-games-quick-launch-card"
           onClick={() => {
             if (String(current.id) === "x01") {
               void openX01WithFirstRules(() => navSmart(current.configPath));
@@ -1621,6 +1622,9 @@ export default function Games({ setTab, params }: Props) {
               <button
                 key={c.id}
                 type="button"
+                className="msc-games-category-kpi"
+                data-cat={String(c.id)}
+                data-active={on ? "1" : "0"}
                 onClick={() => setActiveCat(c.id)}
                 style={{
                   minHeight: 74,
@@ -1667,7 +1671,8 @@ export default function Games({ setTab, params }: Props) {
         </div>
       ) : null}
 
-      {gamesView === "all" ? <div className="msc-games-primary-quick">{renderQuickLaunchTicker()}</div> : null}
+      {gamesView === "hub" ? <div className="msc-games-hub-quick-landscape">{renderQuickLaunchTicker("msc-games-hub-quick-card")}</div> : null}
+      {gamesView === "all" ? <div className="msc-games-primary-quick">{renderQuickLaunchTicker("msc-games-primary-quick-card")}</div> : null}
       </section>
 
       <aside className="msc-landscape-secondary msc-games-secondary">
@@ -1707,8 +1712,10 @@ export default function Games({ setTab, params }: Props) {
             })}
           </div>
 
-          {separatorBar}
-          {renderQuickLaunchTicker()}
+          <div className="msc-games-hub-secondary-quick">
+            {separatorBar}
+            {renderQuickLaunchTicker("msc-games-hub-secondary-quick-card")}
+          </div>
         </div>
       )}
 
@@ -1757,8 +1764,10 @@ export default function Games({ setTab, params }: Props) {
             kind: "fun",
           })}
 
-          {separatorBar}
-          {renderQuickLaunchTicker()}
+          <div className="msc-games-favorites-secondary-quick">
+            {separatorBar}
+            {renderQuickLaunchTicker("msc-games-hub-secondary-quick-card")}
+          </div>
         </div>
       )}
 

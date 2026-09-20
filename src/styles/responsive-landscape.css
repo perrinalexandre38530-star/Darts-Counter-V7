@@ -2832,13 +2832,60 @@ html[data-msc-orientation="landscape"] .msc-games-all-categories > button {
   width: 100%;
 }
 
+html[data-msc-orientation="landscape"] .msc-games-all-categories {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: clamp(6px, 0.8vw, 10px) !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-all-categories > .msc-games-category-kpi {
+  min-height: clamp(54px, 9vh, 66px) !important;
+  padding: 8px 6px !important;
+  border-radius: 16px !important;
+  font-size: clamp(10px, 1vw, 12px) !important;
+  line-height: 1.05 !important;
+  letter-spacing: .01em !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-category-kpi[data-cat="classic"] {
+  background: linear-gradient(180deg, rgba(255,214,102,.24), rgba(0,0,0,.22)) !important;
+  border-color: rgba(255,214,102,.68) !important;
+  color: #ffe3a1 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-category-kpi[data-cat="variant"] {
+  background: linear-gradient(180deg, rgba(110,186,255,.22), rgba(0,0,0,.22)) !important;
+  border-color: rgba(110,186,255,.62) !important;
+  color: #d2ecff !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-category-kpi[data-cat="challenge"] {
+  background: linear-gradient(180deg, rgba(120,255,182,.22), rgba(0,0,0,.22)) !important;
+  border-color: rgba(120,255,182,.60) !important;
+  color: #d8ffe8 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-category-kpi[data-cat="fun"] {
+  background: linear-gradient(180deg, rgba(255,128,206,.22), rgba(0,0,0,.22)) !important;
+  border-color: rgba(255,128,206,.60) !important;
+  color: #ffe0f4 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-category-kpi[data-active="1"] {
+  box-shadow: 0 0 18px rgba(111, 219, 255, 0.24) !important;
+  transform: translateY(-1px);
+}
+
 /* --- PATCH V39(2) home / agenda / messages adjustments --- */
 html[data-msc-orientation="landscape"] .msc-agenda-layout .msc-agenda-secondary {
   overflow: hidden !important;
 }
 
 html[data-msc-orientation="landscape"] .msc-agenda-layout .msc-agenda-primary {
-  overflow: hidden !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin !important;
 }
 
 html[data-msc-orientation="landscape"] .msc-messages-layout .msc-messages-primary {
@@ -2948,14 +2995,34 @@ html[data-msc-short-landscape="1"] .msc-game-select-hero {
 }
 
 html[data-msc-orientation="landscape"] .msc-games-hub-favorite-landscape {
-  display: block !important;
-  width: 100% !important;
-  margin-top: 10px !important;
-  min-height: 0 !important;
+  display: none !important;
 }
 
 html[data-msc-orientation="landscape"] .msc-games-hub-favorite-portrait {
+  display: block !important;
+  width: 100% !important;
+  min-height: 0 !important;
+}
+
+.msc-games-hub-quick-landscape {
+  display: none;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-hub-quick-landscape {
+  display: block !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  margin-top: auto !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-hub-secondary-quick {
   display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-primary-quick .msc-games-quick-launch-card,
+html[data-msc-orientation="landscape"] .msc-games-hub-quick-landscape .msc-games-quick-launch-card {
+  aspect-ratio: 800 / 180 !important;
+  max-width: none !important;
 }
 
 
