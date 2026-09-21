@@ -308,7 +308,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       </div>
 
       <div className="msa-agenda-landscape">
-      <div className="msc-landscape-page-shell msc-agenda-layout" style={{ ["--msc-landscape-primary-track" as any]: "76px", ["--msc-landscape-secondary-track" as any]: "1fr" }}>
+      <div className="msc-landscape-page-shell msc-agenda-layout" style={{ ["--msc-landscape-primary-track" as any]: "62px", ["--msc-landscape-secondary-track" as any]: "1fr", ["--msc-landscape-header-height" as any]: "clamp(64px, 12vh, 82px)" }}>
       <div className="msc-landscape-header msc-agenda-header" style={{ width: "100%", maxWidth: "none", marginBottom: 10 }}>
         <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
           <img
@@ -354,7 +354,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
               ) : view === "week" ? (
                 <WeekPlannerBoard start={range.start} events={visible.sort((a, b) => a.startAt - b.startAt)} locale={locale} accent={accent} conflictIds={conflictIds} onOpen={(event) => setSelectedEvent(event)} />
               ) : view === "month" ? (
-                <MonthGrid cursor={cursor} events={filteredEvents} locale={locale} onSelectDay={(day) => { setCursor(day); setView("today"); }} />
+                <LandscapeMonthGrid cursor={cursor} events={filteredEvents} locale={locale} onSelectDay={(day) => { setCursor(day); setView("today"); }} />
               ) : (
                 <div style={{ height: "100%", overflowY: "auto", paddingRight: 4 }}>
                   {pending.length ? pending.map((event) => <div key={event.id} style={{ borderRadius: 18, border: `1px solid ${(event.accent || accent)}55`, background: `linear-gradient(145deg,${event.accent || accent}10,rgba(5,8,14,.98))`, padding: 12, marginBottom: 8 }}><EventCard event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}><button type="button" className="msa-action" onClick={() => { respondToAgendaInvitation(event.id, "confirmed"); refresh(); }}>{t("ACCEPTER", "ACCEPT", "ACEPTAR")}</button><button type="button" onClick={() => { respondToAgendaInvitation(event.id, "declined"); refresh(); }} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.72)", fontWeight: 1000 }}>{t("REFUSER", "DECLINE", "RECHAZAR")}</button></div></div>) : <EmptyState text={t("Aucune invitation en attente.", "No pending invitations.", "No hay invitaciones pendientes.")} />}
@@ -363,8 +363,8 @@ export default function MultisportAgendaPage({ go, params }: Props) {
             </div>
           </div>
           <div className="msa-sport-rail">
-            <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ width: "100%", minHeight: 48, border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 8 }}>{t("TOUS", "ALL", "TODOS")}</button>
-            {availableSports.map((entry) => <button key={entry.id} type="button" className="msa-sport-icon-btn" onClick={() => setSportFilter(entry.id)} aria-label={entry.label} title={entry.label} style={{ width: "100%", minHeight: 46, border: `1px solid ${sportFilter === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, background: sportFilter === entry.id ? `${entry.accent}18` : "rgba(255,255,255,.022)", boxShadow: sportFilter === entry.id ? `0 0 14px ${entry.accent}28` : "none" }}><TintedSportLogo sport={entry.id} color={entry.accent} size={28}/></button>)}
+            <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ width: "100%", minHeight: 40, border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 7 }}>{t("TOUS", "ALL", "TODOS")}</button>
+            {availableSports.map((entry) => <button key={entry.id} type="button" className="msa-sport-icon-btn" onClick={() => setSportFilter(entry.id)} aria-label={entry.label} title={entry.label} style={{ width: "100%", minHeight: 38, border: `1px solid ${sportFilter === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, background: sportFilter === entry.id ? `${entry.accent}18` : "rgba(255,255,255,.022)", boxShadow: sportFilter === entry.id ? `0 0 12px ${entry.accent}28` : "none" }}><TintedSportLogo sport={entry.id} color={entry.accent} size={22}/></button>)}
           </div>
         </div>
       </aside>
@@ -388,13 +388,57 @@ function AgendaEventChip({ event, locale, conflict = false, onOpen }: { event: M
 }
 
 function DayTimelineBoard({ day, events, locale, accent, conflictIds, onOpen }: { day: number; events: MultisportAgendaEvent[]; locale: string; accent: string; conflictIds: Set<string>; onOpen: (event: MultisportAgendaEvent) => void }) {
-  const slots = Array.from({ length: 8 }, (_, index) => 8 + index * 2);
-  return <div className="msa-calendar-day">{slots.map((hour) => { const rows = events.filter((event) => { const h = new Date(event.startAt).getHours(); return h >= hour && h < hour + 2; }); return <div key={hour} className="msa-hour-row"><div className="msa-hour-label">{String(hour).padStart(2, "0")}:00</div><div className="msa-hour-slot">{rows.length ? rows.map((event) => <AgendaEventChip key={event.id} event={event} locale={locale} conflict={conflictIds.has(event.id)} onOpen={() => onOpen(event)} />) : <span style={{ color: "rgba(255,255,255,.35)", fontSize: 9, fontWeight: 800 }}>{"—"}</span>}</div></div>; })}</div>;
+  // Landscape planner: one-hour rows from 06:00 to 23:00.
+  // The central board owns the scroll, so the full day always remains reachable.
+  const slots = Array.from({ length: 18 }, (_, index) => 6 + index);
+  return <div className="msa-calendar-day">{slots.map((hour) => {
+    const rows = events.filter((event) => new Date(event.startAt).getHours() === hour);
+    return <div key={hour} className="msa-hour-row">
+      <div className="msa-hour-label">{String(hour).padStart(2, "0")}:00</div>
+      <div className="msa-hour-slot">{rows.length ? rows.map((event) => <AgendaEventChip key={event.id} event={event} locale={locale} conflict={conflictIds.has(event.id)} onOpen={() => onOpen(event)} />) : <span className="msa-hour-empty">—</span>}</div>
+    </div>;
+  })}</div>;
 }
 
 function WeekPlannerBoard({ start, events, locale, accent, conflictIds, onOpen }: { start: number; events: MultisportAgendaEvent[]; locale: string; accent: string; conflictIds: Set<string>; onOpen: (event: MultisportAgendaEvent) => void }) {
   const days = Array.from({ length: 7 }, (_, index) => start + index * DAY);
-  return <div className="msa-week-board">{days.map((day) => { const rows = events.filter((event) => sameLocalDay(event.startAt, day)).sort((a, b) => a.startAt - b.startAt); const isToday = sameLocalDay(day, Date.now()); const isPast = day < localDayStart(Date.now()); return <div key={day} className={`msa-week-col${isToday ? " today" : ""}${isPast ? " past" : ""}`}><div className="msa-week-col-head">{formatDate(day, locale, { weekday: "short", day: "numeric", month: "short" })}</div><div className="msa-week-col-body">{rows.length ? rows.slice(0, 5).map((event) => <AgendaEventChip key={event.id} event={event} locale={locale} conflict={conflictIds.has(event.id)} onOpen={() => onOpen(event)} />) : <div style={{ color: "rgba(255,255,255,.34)", fontSize: 9, fontWeight: 800, padding: "6px 4px" }}>—</div>}{rows.length > 5 ? <div style={{ color: accent, fontSize: 9, fontWeight: 900, padding: "2px 4px" }}>+{rows.length - 5}</div> : null}</div></div>; })}</div>;
+  return <div className="msa-week-board">{days.map((day) => {
+    const rows = events.filter((event) => sameLocalDay(event.startAt, day)).sort((a, b) => a.startAt - b.startAt);
+    const isToday = sameLocalDay(day, Date.now());
+    const isPast = day < localDayStart(Date.now());
+    return <div key={day} className={`msa-week-col${isToday ? " today" : ""}${isPast ? " past" : ""}`}>
+      <div className="msa-week-col-head">{formatDate(day, locale, { weekday: "short", day: "numeric", month: "short" })}</div>
+      <div className="msa-week-col-body">{rows.length ? rows.map((event) => <AgendaEventChip key={event.id} event={event} locale={locale} conflict={conflictIds.has(event.id)} onOpen={() => onOpen(event)} />) : <div className="msa-week-empty">—</div>}</div>
+    </div>;
+  })}</div>;
+}
+
+function LandscapeMonthGrid({ cursor, events, locale, onSelectDay }: { cursor: number; events: MultisportAgendaEvent[]; locale: string; onSelectDay: (day: number) => void }) {
+  const monthStart = localMonthStart(cursor);
+  const first = new Date(monthStart);
+  const mondayIndex = (first.getDay() + 6) % 7;
+  const gridStart = monthStart - mondayIndex * DAY;
+  const weekdays = Array.from({ length: 7 }, (_, i) => formatDate(gridStart + i * DAY, locale, { weekday: "short" }));
+  const todayStart = localDayStart(Date.now());
+
+  return <div className="msa-landscape-month-board">
+    <div className="msa-landscape-month-weekdays">{weekdays.map((d, i) => <div key={i}>{d}</div>)}</div>
+    <div className="msa-landscape-month-days">{Array.from({ length: 42 }, (_, i) => {
+      const day = gridStart + i * DAY;
+      const d = new Date(day);
+      const currentMonth = d.getMonth() === first.getMonth();
+      const rows = events.filter((event) => sameLocalDay(event.startAt, day));
+      const isToday = sameLocalDay(day, Date.now());
+      const isPast = day < todayStart;
+      return <button type="button" key={day} className={`msa-landscape-month-cell${currentMonth ? "" : " off"}${isToday ? " today" : ""}${isPast ? " past" : ""}`} onClick={() => onSelectDay(day)}>
+        <strong>{d.getDate()}</strong>
+        <div className="msa-landscape-month-events">{rows.slice(0, 3).map((event) => {
+          const color = event.accent || multisportSportMeta(event.sport).accent;
+          return <span key={event.id} title={event.title} style={{ borderColor: `${color}66`, background: `${color}1b`, color }}><TintedSportLogo sport={event.sport} color={color} size={10}/><b>{formatTime(event.startAt, locale)}</b></span>;
+        })}{rows.length > 3 ? <em>+{rows.length - 3}</em> : null}</div>
+      </button>;
+    })}</div>
+  </div>;
 }
 
 function TintedSportLogo({ sport, color, size = 30 }: { sport: MultisportEventSport; color: string; size?: number }) {

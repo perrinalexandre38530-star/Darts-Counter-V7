@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "tv:samsung:build": "node ./tools/build-samsung-tv.mjs",
     "tv:samsung:check": "node ./tools/check-samsung-tv.mjs",
