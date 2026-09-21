@@ -1614,7 +1614,15 @@ export default function Games({ setTab, params }: Props) {
       />
 
       {gamesView === "all" ? (
-        <div className="msc-games-all-categories" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, width: "100%" }}>
+        <div
+          className="msc-games-all-categories"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            gap: 6,
+            width: "100%",
+          }}
+        >
           {visibleCategories.map((c) => {
             const on = c.id === activeCat;
             const tint = tintForCategory(c.id);
@@ -1627,18 +1635,22 @@ export default function Games({ setTab, params }: Props) {
                 data-active={on ? "1" : "0"}
                 onClick={() => setActiveCat(c.id)}
                 style={{
-                  minHeight: 74,
-                  borderRadius: 18,
-                  border: `1px solid ${on ? tint.border : theme.borderSoft}`,
-                  background: on ? tint.bg : `linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.18))`,
-                  color: on ? tint.title : theme.text,
+                  minHeight: 52,
+                  borderRadius: 14,
+                  border: `1px solid ${tint.border}`,
+                  background: tint.bg,
+                  color: tint.title,
                   fontWeight: 1000,
-                  fontSize: 13,
-                  padding: "12px 10px",
+                  fontSize: 10,
+                  lineHeight: 1.05,
+                  padding: "7px 4px",
                   cursor: "pointer",
-                  boxShadow: on ? `0 0 18px ${tint.glow}` : "none",
+                  boxShadow: on ? `0 0 18px ${tint.glow}` : `inset 0 0 14px ${tint.glow}`,
+                  opacity: on ? 1 : 0.78,
                   textTransform: "uppercase",
-                  letterSpacing: ".03em",
+                  letterSpacing: ".01em",
+                  whiteSpace: "normal",
+                  textAlign: "center",
                 }}
               >
                 {localizedCategoryLabel(String(c.id), String(c.label), lang)}

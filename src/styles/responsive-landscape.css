@@ -3530,3 +3530,113 @@ html[data-msc-short-landscape="1"] .msc-game-menu-screen {
   gap: 7px !important;
   padding: 6px !important;
 }
+
+
+/* ========================================================================== 
+   V53 AGENDA — LANDSCAPE SCROLL FIX
+   The agenda is the exception to the standard fixed landscape shell:
+   - the whole agenda page may scroll vertically on short landscape screens;
+   - left action rail and right sport rail remain independently scrollable;
+   - calendar surface can scroll on both axes when its content needs it.
+   Portrait is intentionally untouched.
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="agenda"] {
+  height: var(--msc-app-height, 100dvh) !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior-y: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-agenda-page {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape {
+  display: block !important;
+  width: 100% !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape > .msc-agenda-layout {
+  height: auto !important;
+  min-height: 100% !important;
+  grid-template-rows:
+    var(--msc-landscape-header-height)
+    minmax(620px, auto) !important;
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msc-agenda-primary,
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msc-agenda-secondary {
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-side-rail,
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-sport-rail {
+  height: auto !important;
+  max-height: calc(var(--msc-app-height, 100dvh) - var(--msc-landscape-header-height) - 34px) !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin !important;
+  scrollbar-gutter: stable !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-board-shell {
+  height: auto !important;
+  min-height: 620px !important;
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-board-main {
+  height: auto !important;
+  min-height: 600px !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-board-surface {
+  flex: 1 1 auto !important;
+  min-height: 460px !important;
+  max-height: none !important;
+  overflow: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin !important;
+  scrollbar-gutter: stable !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-calendar-day {
+  min-height: 680px !important;
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-week-board {
+  min-width: 760px !important;
+  min-height: 520px !important;
+  overflow: visible !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape .msa-month {
+  min-width: 720px !important;
+  min-height: 520px !important;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape :is(.msa-side-rail,.msa-sport-rail,.msa-board-surface)::-webkit-scrollbar,
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="agenda"]::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+html[data-msc-orientation="landscape"] .msa-agenda-landscape :is(.msa-side-rail,.msa-sport-rail,.msa-board-surface)::-webkit-scrollbar-thumb,
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="agenda"]::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(80, 224, 255, .72);
+}
