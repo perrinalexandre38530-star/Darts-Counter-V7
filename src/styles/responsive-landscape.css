@@ -4052,3 +4052,172 @@ html[data-msc-orientation="landscape"] .msa-agenda-landscape :is(.msa-side-rail,
   border-radius: 999px !important;
   background: rgba(80,224,255,.78) !important;
 }
+
+/* =============================================================
+   V57 — CONFIGS paysage tablette : colonne réglages + rail Awena
+   IMPORTANT : ces règles sont strictement limitées au paysage.
+   ============================================================= */
+html[data-msc-orientation="landscape"] .x01-config-v3-screen.msc-mode-config {
+  --x01-awena-rail: clamp(176px, 17vw, 220px);
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen > .msc-mode-config-header {
+  flex-basis: clamp(62px, 10.5vh, 84px) !important;
+  margin-bottom: 6px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen > .msc-mode-config-header img {
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .msc-mode-config-body {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  padding: 2px calc(var(--x01-awena-rail) + 14px) 84px 4px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-overview {
+  position: static !important;
+  padding: 10px 12px !important;
+  margin-bottom: 8px !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-overview-inner {
+  display: block !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-mode-panel {
+  gap: 7px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-awena-wide-banner {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-awena-sidecard {
+  position: absolute !important;
+  z-index: 5 !important;
+  top: 2px !important;
+  right: 4px !important;
+  width: var(--x01-awena-rail) !important;
+  min-width: var(--x01-awena-rail) !important;
+  max-width: var(--x01-awena-rail) !important;
+  min-height: clamp(330px, 59vh, 520px) !important;
+  max-height: calc(100dvh - clamp(82px, 13vh, 112px)) !important;
+  align-self: auto !important;
+  box-sizing: border-box !important;
+  padding: 7px !important;
+  gap: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-awena-sidecard > div:first-child {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 9 / 16 !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-progress-card {
+  padding: 9px 11px !important;
+  margin-bottom: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-progress-card > div:first-child {
+  margin-bottom: 6px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen.msc-mode-config--guided .msc-mode-config-body > section:not(.x01-config-overview):not(.x01-config-progress-card) {
+  padding: 10px 12px !important;
+  margin-bottom: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-guided-nav {
+  margin: 0 0 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-guided-nav > button {
+  height: 38px !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-start-dock {
+  right: calc(var(--x01-awena-rail) + 18px) !important;
+  padding-top: 4px !important;
+  padding-bottom: 5px !important;
+}
+
+/* Mode complet : la colonne de réglages peut défiler, le rail Awena reste libre. */
+html[data-msc-orientation="landscape"] .x01-config-v3-screen.msc-mode-config--split .msc-mode-config-body > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-bottom: 8px !important;
+}
+
+/* Même principe sur Killer, seul autre écran de config possédant actuellement
+   une vraie carte vidéo "Awena vous explique". */
+html[data-msc-orientation="landscape"] .killer-config-v3 {
+  --killer-awena-rail: clamp(170px, 16.5vw, 214px);
+}
+
+html[data-msc-orientation="landscape"] .killer-config-v3 .msc-mode-config-body {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding-right: calc(var(--killer-awena-rail) + 14px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-config-v3 .killer-config-overview {
+  position: static !important;
+  padding: 10px 12px !important;
+  margin-bottom: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-config-v3 .killer-config-overview-inner {
+  display: block !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-config-v3 .killer-config-awena-wide-banner {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-config-v3 .killer-config-awena-sidecard {
+  position: absolute !important;
+  z-index: 5 !important;
+  top: 2px !important;
+  right: 4px !important;
+  width: var(--killer-awena-rail) !important;
+  min-width: var(--killer-awena-rail) !important;
+  max-width: var(--killer-awena-rail) !important;
+  min-height: clamp(320px, 56vh, 500px) !important;
+  max-height: calc(100dvh - 118px) !important;
+  padding: 7px !important;
+  gap: 8px !important;
+  box-sizing: border-box !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-config-v3 .killer-config-awena-sidecard > div:first-child {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 9 / 16 !important;
+}
+
+/* X01Play : le médaillon est intégré au header dans les deux orientations.
+   En paysage, on le compacte légèrement si la hauteur devient courte. */
+html[data-msc-orientation="landscape"] .x01-play-awena-medallion {
+  width: clamp(40px, 6.5vh, 48px) !important;
+  height: clamp(40px, 6.5vh, 48px) !important;
+  flex-basis: clamp(40px, 6.5vh, 48px) !important;
+}

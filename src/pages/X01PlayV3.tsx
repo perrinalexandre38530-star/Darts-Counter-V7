@@ -36,6 +36,7 @@ import { StatsBridge } from "../lib/statsBridge";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 import { sanitizeScoreInputMethod } from "../lib/scoreInput/types";
 import { publishAwenaContext } from "../awena/AwenaContextBridge";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 import { awenaVoice } from "../awena/AwenaVoice";
 import { loadAwenaSettings } from "../awena/AwenaSettings";
 
@@ -1337,6 +1338,7 @@ export default function X01PlayV3({
   useFullscreenPlay();
   const { isLandscapeTablet } = useViewport();
   const { theme } = useTheme();
+  const awena = useAwenaOptional();
   
   const isTabletUi = useMediaQueryLocal("(min-width: 900px) and (orientation: landscape)");
 const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
@@ -5968,8 +5970,10 @@ if (false && isLandscapeTablet) {
         showInfo={false}
         headerFullBleedImage={showFullX01TickerHeader ? tickerX01 : undefined}
         headerFullBleedAlt={showFullX01TickerHeader ? "X01" : ""}
-        topRightExtra={isTabletUi && useSetsUi && !showFullX01TickerHeader ? (
-          <SetLegChip
+        topRightExtra={(
+          <div className="x01-play-header-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {isTabletUi && useSetsUi && !showFullX01TickerHeader ? (
+              <SetLegChip
                 currentSet={(state as any).currentSet ?? 1}
                 currentLegInSet={(state as any).currentLeg ?? 1}
                 setsTarget={setsTarget}
@@ -5977,7 +5981,52 @@ if (false && isLandscapeTablet) {
                 useSets={useSetsUi}
                 unit={matchFormatUnitForUi as any}
               />
-        ) : null}
+            ) : null}
+            <button
+              type="button"
+              className="x01-play-awena-medallion"
+              aria-label="Ouvrir Awena"
+              title="Awena"
+              onClick={() => awena?.openPanel?.()}
+              style={{
+                position: "relative",
+                width: 48,
+                height: 48,
+                flex: "0 0 48px",
+                borderRadius: "50%",
+                padding: 3,
+                border: "none",
+                background: "conic-gradient(#3dff96, #33d8ff, #ff4cc8, #3dff96)",
+                boxShadow: "0 0 16px rgba(51,216,255,.34), 0 8px 22px rgba(0,0,0,.42)",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#060815" }}>
+                <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </span>
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  right: -2,
+                  bottom: -2,
+                  width: 19,
+                  height: 19,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  background: "#11172a",
+                  border: "1px solid rgba(255,255,255,.18)",
+                  color: "#fff",
+                  fontSize: 10,
+                  boxShadow: "0 4px 10px rgba(0,0,0,.45)",
+                }}
+              >
+                🎙
+              </span>
+            </button>
+          </div>
+        )}
         headerCenter={!isTabletUi && !showFullX01TickerHeader ? (
           <div ref={headerWrapRef} style={{ width: "100%" }}>
             <div

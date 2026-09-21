@@ -3856,6 +3856,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       {/* CONTENU SCROLLABLE */}
       <div ref={contentRef} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         <section
+          className="x01-config-overview"
           style={{
             background: "rgba(10,12,24,0.94)",
             borderRadius: 18,
@@ -3865,8 +3866,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             border: `1px solid ${primary}33`,
           }}
         >
-          <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="x01-config-overview-inner" style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
+            <div className="x01-config-mode-panel" style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>
                 Configuration X01
               </div>
@@ -3892,7 +3893,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 La configuration guidée va à l’essentiel. La configuration complète reste disponible avec tous les réglages avancés.
               </div>
 
-              <div style={{ marginTop: "auto", width: "100%" }}>
+              <div className="x01-config-awena-wide-banner" style={{ marginTop: "auto", width: "100%" }}>
                 <div
                   style={{
                     position: "relative",
@@ -3939,6 +3940,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
             <button
               type="button"
+              className="x01-config-awena-sidecard"
               onClick={() => setRulesVideoOpen(true)}
               aria-label="Voir la vidéo Awena des règles du X01"
               title="Awena · Voir l’explication vidéo"
@@ -4042,6 +4044,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         {configViewMode === "guided" ? (
           <>
             <section
+              className="x01-config-progress-card"
               style={{
                 background: cardBg,
                 borderRadius: 18,
@@ -4411,7 +4414,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, margin: "0 0 18px" }}>
+            <div className="x01-config-guided-nav" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, margin: "0 0 18px" }}>
               <button type="button" onClick={guidedPrev} disabled={guidedStep <= 0} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: guidedStep <= 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)", color: guidedStep <= 0 ? "#565b76" : "#fff", fontWeight: 950, cursor: guidedStep <= 0 ? "default" : "pointer" }}>
                 ← Précédent
               </button>
@@ -5616,7 +5619,7 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
       {/* CTA collée au-dessus de la barre de nav.
           En mode guidé, elle n'apparaît qu'à l'étape récapitulative finale. */}
       {(configViewMode === "complete" || guidedStep >= guidedMaxStep) && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
+        <div className="x01-config-start-dock" style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto" }}>
             <button
               type="button"

@@ -1000,6 +1000,7 @@ export default function KillerConfigPage(props: Props) {
       <div ref={contentRef as any} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         {!isProgressive && (
           <section
+            className="killer-config-overview"
             style={{
               background: "rgba(10,12,24,0.94)",
               borderRadius: 18,
@@ -1009,8 +1010,8 @@ export default function KillerConfigPage(props: Props) {
               border: `1px solid ${primary}33`,
             }}
           >
-            <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="killer-config-overview-inner" style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
+              <div className="killer-config-mode-panel" style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>
                   Configuration Killer
                 </div>
@@ -1019,7 +1020,7 @@ export default function KillerConfigPage(props: Props) {
                   Configure les joueurs, l’attribution des numéros, les vies et les variantes du Killer. Awena peut aussi te présenter les règles en vidéo.
                 </div>
 
-                <div style={{ marginTop: "auto", width: "100%" }}>
+                <div className="killer-config-awena-wide-banner" style={{ marginTop: "auto", width: "100%" }}>
                   <div
                     style={{
                       position: "relative",
@@ -1065,6 +1066,7 @@ export default function KillerConfigPage(props: Props) {
 
               <button
                 type="button"
+                className="killer-config-awena-sidecard"
                 onClick={() => setRulesVideoOpen(true)}
                 aria-label={killerRulesVideoIsFrench ? "Voir la vidéo Awena des règles du Killer" : "Watch Awena's Killer rules video"}
                 title={killerRulesVideoIsFrench ? "Awena · Voir l’explication vidéo" : "Awena · Watch rules video"}
