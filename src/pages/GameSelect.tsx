@@ -14,7 +14,6 @@ import { useSport } from "../contexts/SportContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
-import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
 import { appSportMeta, isAppSportEnabled } from "../config/sportCatalog";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
@@ -591,11 +590,24 @@ export default function GameSelect({ go }: Props) {
   // 2) sports grisés ensuite
   // 3) ordre alphabétique FR dans chaque groupe
   const sortedItems = React.useMemo(() => {
-    const copy = filterSportsForCurrentRuntime(items).map((item) => ({
+    // IMPORTANT : le GameSelect doit toujours conserver le catalogue complet.
+    // On ne filtre donc plus les sports selon le runtime ici : les sports non
+    // disponibles restent visibles (grisés / SOON), comme dans le GameSelect
+    // historique. On trie seulement l'ordre d'affichage :
+    //   1) sports actuellement débloqués / disponibles ;
+    //   2) sports non disponibles ;
+    //   3) ordre alphabétique localisé dans chacun des deux groupes.
+    const copy = items.map((item) => ({
       ...item,
       label: localizedSportLabel(item.id as GameId, lang),
     }));
-    copy.sort((a, b) => a.label.localeCompare(b.label, String(lang || "fr")));
+
+    copy.sort((a, b) => {
+      const availabilityDelta = Number(Boolean(b.enabled)) - Number(Boolean(a.enabled));
+      if (availabilityDelta !== 0) return availabilityDelta;
+      return a.label.localeCompare(b.label, String(lang || "fr"), { sensitivity: "base" });
+    });
+
     return copy;
   }, [items, lang]);
 
