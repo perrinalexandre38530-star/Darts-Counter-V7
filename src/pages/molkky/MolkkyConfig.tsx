@@ -152,6 +152,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
           const DOT_GLOW = `${primary}88`;
           return (
             <div
+              className="msc-config-ticker-frame"
               style={{
                 position: "relative",
                 width: "100%",
@@ -160,6 +161,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
             >
               {headerTicker ? (
                 <img
+                  className="msc-config-ticker-image"
                   src={headerTicker}
                   alt="Mölkky"
                   style={{

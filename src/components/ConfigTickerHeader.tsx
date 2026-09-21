@@ -37,6 +37,7 @@ export default function ConfigTickerHeader({
   return (
     <div
       className={[
+        "msc-config-ticker-header",
         sticky ? "sticky top-0 z-40" : "",
         "w-full",
         "bg-transparent",
@@ -45,11 +46,12 @@ export default function ConfigTickerHeader({
         paddingTop: "env(safe-area-inset-top)",
       }}
     >
-      <div className="relative w-full" style={{ marginLeft: -12, marginRight: -12, width: "calc(100% + 24px)" }}>
+      <div className="msc-config-ticker-frame relative w-full" style={{ marginLeft: -12, marginRight: -12, width: "calc(100% + 24px)" }}>
         <img
           src={src}
           alt={alt}
           className={[
+            "msc-config-ticker-image",
             "block w-full object-cover",
             rounded ? "rounded-2xl" : "",
           ].join(" ")}

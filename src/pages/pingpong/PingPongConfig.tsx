@@ -304,6 +304,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
       {/* HEADER ticker */}
       <header className="msc-mode-config-header" style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
         <div
+          className="msc-config-ticker-frame"
           style={{
             position: "relative",
             width: "100%",
@@ -312,6 +313,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
         >
           {headerTicker ? (
             <img
+              className="msc-config-ticker-image"
               src={headerTicker}
               alt="Ping-Pong"
               style={{ width: "100%", height: "auto", display: "block", userSelect: "none", pointerEvents: "none", WebkitMaskImage: "linear-gradient(to right, transparent 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, transparent 100%)", maskImage: "linear-gradient(to right, transparent 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, transparent 100%)" }}

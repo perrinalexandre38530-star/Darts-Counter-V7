@@ -973,7 +973,7 @@ function X01CountryFlagBadge({ profile, accent, size = 30, style = {} }: { profi
       }}
     >
       {src ? (
-        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
       ) : (
         <span style={{ lineHeight: 1 }}>{fallback}</span>
       )}
@@ -3804,6 +3804,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           const DOT_GLOW = `${primary}88`;
           return (
             <div
+              className="msc-config-ticker-frame"
               style={{
                 position: "relative",
                 width: "100%",
@@ -3811,6 +3812,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               }}
             >
               <img
+                className="msc-config-ticker-image"
                 src={tickerX01}
                 alt="X01"
                 style={{
@@ -3970,7 +3972,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)",
                 }}
               >
-                <img src={x01AwenaRulesPoster} alt="Awena vous explique les règles du X01" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                <img src={x01AwenaRulesPoster} alt="Awena vous explique les règles du X01" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
                 <div
                   style={{
                     position: "absolute",

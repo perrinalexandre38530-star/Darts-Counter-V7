@@ -4221,3 +4221,108 @@ html[data-msc-orientation="landscape"] .x01-play-awena-medallion {
   height: clamp(40px, 6.5vh, 48px) !important;
   flex-basis: clamp(40px, 6.5vh, 48px) !important;
 }
+
+
+/* =============================================================
+   V58 — TICKERS CONFIG paysage : proportions préservées partout
+   + vidéos Awena verticales jamais rognées.
+   IMPORTANT : aucune de ces règles ne s'applique au portrait.
+   ============================================================= */
+
+/* Les headers CONFIG qui embarquent directement un ticker utilisent la
+   hauteur disponible comme référence. L'image reste centrée à sa taille
+   naturelle (ratio conservé) au lieu d'être étirée sur toute la largeur. */
+html[data-msc-orientation="landscape"] .msc-mode-config-header:has(> img),
+html[data-msc-orientation="landscape"] .msc-mode-config-header > div:has(> img),
+html[data-msc-orientation="landscape"] .msc-config-ticker-frame {
+  position: relative !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  background: linear-gradient(90deg, rgba(3,7,12,.94), rgba(5,10,18,.36) 22%, rgba(5,10,18,.18) 50%, rgba(5,10,18,.36) 78%, rgba(3,7,12,.94)) !important;
+}
+
+/* Les paddings safe-area intégrés aux anciens wrappers ne doivent plus
+   augmenter artificiellement la hauteur du ticker en paysage. */
+html[data-msc-orientation="landscape"] .msc-mode-config-header > div:has(> img) {
+  padding-top: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-mode-config-header:has(> img) > img,
+html[data-msc-orientation="landscape"] .msc-mode-config-header > div:has(> img) > img,
+html[data-msc-orientation="landscape"] .msc-config-ticker-image {
+  display: block !important;
+  width: auto !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  user-select: none !important;
+  pointer-events: none !important;
+  /* même logique visuelle que X01Play : le ticker se fond dans le décor */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 7%, #000 93%, transparent 100%) !important;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 7%, #000 93%, transparent 100%) !important;
+}
+
+/* Le composant partagé ConfigTickerHeader (Dice et autres configs) suit le
+   même principe sans modifier son rendu portrait. */
+html[data-msc-orientation="landscape"] .msc-config-ticker-header {
+  height: clamp(64px, 11vh, 92px) !important;
+  min-height: 0 !important;
+  max-height: clamp(64px, 11vh, 92px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-config-ticker-frame {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+}
+
+/* X01 : poster Awena complet dans la colonne droite. Le poster est mis à
+   l'échelle dans les DEUX dimensions disponibles et ne peut plus être crop. */
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-awena-sidecard > div:first-child,
+html[data-msc-orientation="landscape"] .killer-config-v3 .killer-config-awena-sidecard > div:first-child {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #050713 !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-awena-sidecard > div:first-child > img,
+html[data-msc-orientation="landscape"] .killer-config-v3 .killer-config-awena-sidecard > div:first-child > img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center center !important;
+  background: #050713 !important;
+}
+
+/* Un peu plus de largeur quand l'écran le permet : la carte reste verticale,
+   mais le poster et ses textes restent réellement lisibles. */
+html[data-msc-orientation="landscape"] .x01-config-v3-screen.msc-mode-config {
+  --x01-awena-rail: clamp(188px, 18vw, 252px);
+}
+
+html[data-msc-orientation="landscape"] .killer-config-v3 {
+  --killer-awena-rail: clamp(184px, 17.5vw, 244px);
+}
+
+/* Les boutons de header restent au-dessus du masque/fondu du ticker. */
+html[data-msc-orientation="landscape"] .msc-mode-config-header > div:has(> img) > :not(img),
+html[data-msc-orientation="landscape"] .msc-config-ticker-frame > :not(img) {
+  z-index: 2 !important;
+}

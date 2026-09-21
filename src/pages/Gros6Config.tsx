@@ -784,8 +784,8 @@ export default function Gros6Config({ store, go }: any) {
   return (
     <div className={`msc-mode-config gros6-config-screen ${configViewMode === "guided" ? "msc-mode-config--guided" : "msc-mode-config--split"}`} style={{ minHeight: "100vh", background: theme.pageBg || theme.bg || "#070912", color: theme.text || "#fff", display: "flex", flexDirection: "column", padding: 12 }}>
       <header className="msc-mode-config-header" style={{ position: "sticky", top: 0, zIndex: 60, margin: "-12px -12px 12px", background: theme.pageBg || theme.bg || "#070912", paddingTop: "env(safe-area-inset-top)" }}>
-        <div style={{ position: "relative", height: 92, overflow: "hidden", boxShadow: "0 12px 30px rgba(0,0,0,.42)" }}>
-          <img src={(lang === "fr" ? tickerGros6 : tickerBig6) as any} alt={lang === "fr" ? "Gros 6" : "Big 6"} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <div className="msc-config-ticker-frame" style={{ position: "relative", height: 92, overflow: "hidden", boxShadow: "0 12px 30px rgba(0,0,0,.42)" }}>
+          <img className="msc-config-ticker-image" src={(lang === "fr" ? tickerGros6 : tickerBig6) as any} alt={lang === "fr" ? "Gros 6" : "Big 6"} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", pointerEvents: "none" }}>
             <div style={{ pointerEvents: "auto" }}><BackDot onClick={() => go?.("games")} size={42} color={primary} glow={`${primary}AA`} /></div>
             <div style={{ pointerEvents: "auto" }}><InfoDot onClick={() => setRulesOpen(true)} title="Règles du Gros 6" size={42} color={primary} glow={`${primary}AA`} /></div>

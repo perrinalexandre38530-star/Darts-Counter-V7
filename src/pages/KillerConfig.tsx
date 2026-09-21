@@ -1096,7 +1096,7 @@ export default function KillerConfigPage(props: Props) {
                     boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)",
                   }}
                 >
-                  <img src={killerAwenaRulesPoster} alt={killerRulesVideoIsFrench ? "Awena vous explique le Killer" : "Awena explains Killer"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <img src={killerAwenaRulesPoster} alt={killerRulesVideoIsFrench ? "Awena vous explique le Killer" : "Awena explains Killer"} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
                   <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.36))" }} />
                   <div
                     style={{
