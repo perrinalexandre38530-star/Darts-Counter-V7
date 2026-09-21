@@ -27,6 +27,10 @@ type ModeKind =
   | "pendu"
   | "menteur"
   | "crados"
+  | "fifty_one_by_five"
+  | "looper"
+  | "call_three"
+  | "steeplechase"
   | "castle"
   | "gotcha"
   | "hare_hounds"
@@ -179,6 +183,38 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     secondary: "Crasse reçue",
     tertiary: "Crasse lavée",
   },
+  fifty_one_by_five: {
+    title: "51 BY 5",
+    accent: "#ffd34d",
+    subtitle: "Volées divisibles par 5, progression exacte vers l'objectif et gestion des busts.",
+    primary: "Score",
+    secondary: "Volées valides",
+    tertiary: "Best brut",
+  },
+  looper: {
+    title: "LOOPER",
+    accent: "#8ff7ff",
+    subtitle: "Survie sur cible imposée : boucles réussies, vies, boucliers et cibles posées.",
+    primary: "Vies",
+    secondary: "Boucles",
+    tertiary: "Cibles posées",
+  },
+  call_three: {
+    title: "CALL THREE",
+    accent: "#ffb13b",
+    subtitle: "Trois cibles appelées par volée, score aux multiplicateurs et Full Calls.",
+    primary: "Points",
+    secondary: "Touches",
+    tertiary: "Full Calls",
+  },
+  steeplechase: {
+    title: "STEEPLECHASE",
+    accent: "#7dffbd",
+    subtitle: "Course autour de la cible : étapes franchies, haies en Triple et arrivée au Bull.",
+    primary: "Étapes",
+    secondary: "Haies",
+    tertiary: "Précision",
+  },
   castle: {
     title: "CASTLE",
     accent: "#ffb33f",
@@ -248,6 +284,10 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["pendu", ["pendu", "hangman"]],
   ["menteur", ["menteur", "liar", "bluff"]],
   ["crados", ["crados", "crado", "dirty", "slime"]],
+  ["fifty_one_by_five", ["fifty_one_by_five", "51 by 5", "51_by_5", "51by5"]],
+  ["looper", ["looper", "loops", "loopy"]],
+  ["call_three", ["call_three", "call three", "callthree"]],
+  ["steeplechase", ["steeplechase", "steeple chase"]],
   ["castle", ["castle"]],
   ["gotcha", ["gotcha"]],
   ["hare_hounds", ["hare_hounds", "harehounds", "hare & hounds", "hare-hounds"]],
@@ -504,6 +544,28 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     if (key === "secondary") return num(pick(row.dirtTaken, row.dirt), 0);
     return num(pick(row.dirtWashed, row.cleaned), 0);
   }
+  if (mode === "fifty_one_by_five") {
+    if (key === "primary") return num(pick(row.score, row.quotientPoints), 0);
+    if (key === "secondary") return num(row.validVisits, 0);
+    return num(row.highestRaw, 0);
+  }
+  if (mode === "looper") {
+    if (key === "primary") return num(pick(row.lives, row.remainingLives), 0);
+    if (key === "secondary") return num(pick(row.loopsSurvived, row.hits), 0);
+    return num(row.targetsSet, 0);
+  }
+  if (mode === "call_three") {
+    if (key === "primary") return num(pick(row.score, row.points), 0);
+    if (key === "secondary") return num(row.hits, 0);
+    return num(row.perfectRounds, 0);
+  }
+  if (mode === "steeplechase") {
+    if (key === "primary") return num(row.steps, 0);
+    if (key === "secondary") return num(row.fencesCleared, 0);
+    const darts = num(pick(row.darts, row.dartsThrown), 0);
+    const hits = num(row.hits, 0);
+    return `${Math.round((darts > 0 ? (hits / darts) * 100 : 0) * 10) / 10}%`;
+  }
   if (mode === "cricket_cut_throat" || mode === "enculette_vache") {
     if (key === "primary") return num(pick(row.marks, row.totalMarks, row.hits), 0);
     if (key === "secondary") return num(pick(row.pointsGiven, row.points, row.score), 0);
@@ -632,6 +694,14 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
               ? rows.reduce((sum, r) => sum + num(r.raw?.liarCalls, 0), 0)
             : mode === "crados"
               ? rows.reduce((sum, r) => sum + num(r.raw?.sectorsClaimed, 0), 0)
+            : mode === "fifty_one_by_five"
+              ? rows.reduce((sum, r) => sum + num(r.raw?.validVisits, 0), 0)
+            : mode === "looper"
+              ? rows.reduce((sum, r) => sum + num(r.raw?.loopsSurvived, 0), 0)
+            : mode === "call_three"
+              ? rows.reduce((sum, r) => sum + num(r.raw?.hits, 0), 0)
+            : mode === "steeplechase"
+              ? rows.reduce((sum, r) => sum + num(r.raw?.steps, 0), 0)
             : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
 
   if (mode === "attrape_moi") {
@@ -668,7 +738,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "fifty_one_by_five" ? "Volées valides" : mode === "looper" ? "Boucles sauvées" : mode === "call_three" ? "Cibles réussies" : mode === "steeplechase" ? "Étapes franchies" : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -709,8 +779,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         <DartsFirefighterSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "darts_poker" ? (
         <DartsPokerSummaryTables rec={rec} rows={rows} accent={meta.accent} />
-      ) : mode === "pendu" || mode === "menteur" || mode === "crados" ? (
-        <OriginalPartyModeSummaryTables mode={mode} rec={rec} rows={rows} accent={meta.accent} />
+      ) : ["pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(mode) ? (
+        <OriginalPartyModeSummaryTables mode={mode as any} rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "castle" ? (
         <CastleSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "gotcha" ? (
@@ -733,7 +803,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
 }
 
 
-function OriginalPartyModeSummaryTables({ mode, rec, rows, accent }: { mode: "pendu" | "menteur" | "crados"; rec: any; rows: any[]; accent: string }) {
+function OriginalPartyModeSummaryTables({ mode, rec, rows, accent }: { mode: "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase"; rec: any; rows: any[]; accent: string }) {
   const sum = (key: string) => rows.reduce((total, row) => total + num(row?.raw?.[key]), 0);
   const cfg = pick(rec?.summary?.config, rec?.payload?.config, rec?.game, {}) || {};
   const rules = cfg?.rules || {};
@@ -755,19 +825,63 @@ function OriginalPartyModeSummaryTables({ mode, rec, rows, accent }: { mode: "pe
           ["Vies perdues", sum("livesLost")],
           ["Best volée", Math.max(0, ...rows.map((r) => num(r?.raw?.bestVisit)))],
         ]
-      : [
-          ["Couches posées", sum("layersPlaced")],
-          ["Secteurs contaminés", sum("sectorsClaimed")],
-          ["Secteurs volés", sum("sectorsStolen")],
-          ["Crasse reçue", sum("dirtTaken")],
-          ["Crasse lavée", sum("dirtWashed")],
-          ["Volées", sum("visits")],
-        ];
+      : mode === "crados"
+        ? [
+            ["Couches posées", sum("layersPlaced")],
+            ["Secteurs contaminés", sum("sectorsClaimed")],
+            ["Secteurs volés", sum("sectorsStolen")],
+            ["Crasse reçue", sum("dirtTaken")],
+            ["Crasse lavée", sum("dirtWashed")],
+            ["Volées", sum("visits")],
+          ]
+        : mode === "fifty_one_by_five"
+          ? [
+              ["Volées valides", sum("validVisits")],
+              ["Volées invalides", sum("invalidVisits")],
+              ["Busts", sum("busts")],
+              ["Points bruts", sum("rawPoints")],
+              ["Points ÷5", sum("quotientPoints")],
+              ["Best brut", Math.max(0, ...rows.map((r) => num(r?.raw?.highestRaw)))],
+            ]
+          : mode === "looper"
+            ? [
+                ["Boucles sauvées", sum("loopsSurvived")],
+                ["Cibles posées", sum("targetsSet")],
+                ["Vies perdues", sum("lifeLosses")],
+                ["Boucliers gagnés", sum("shieldsEarned")],
+                ["Boucliers utilisés", sum("shieldsUsed")],
+                ["Touches", sum("hits")],
+              ]
+            : mode === "call_three"
+              ? [
+                  ["Points", sum("points")],
+                  ["Cibles réussies", sum("hits")],
+                  ["Cibles ratées", sum("misses")],
+                  ["Full Calls", sum("perfectRounds")],
+                  ["Appels donnés", sum("callsMade")],
+                  ["Volées", sum("visits")],
+                ]
+              : [
+                  ["Étapes franchies", sum("steps")],
+                  ["Haies franchies", sum("fencesCleared")],
+                  ["Arrivées Bull", sum("bullFinishes")],
+                  ["Touches", sum("hits")],
+                  ["Ratés", sum("misses")],
+                  ["Volées", sum("visits")],
+                ];
   const ruleText = mode === "pendu"
     ? `${num(rules?.partsToLose, 6)} erreurs · ${String(rules?.challengeMode || "caller")} · ${String(rules?.executionMode || "strict")}`
     : mode === "menteur"
       ? `${num(rules?.lives, 5)} vies · pas ${num(rules?.raiseStep, 5)} · ${String(rules?.contractDeck || "score")}`
-      : `${num(rules?.dirtLimit, 10)} crasses · ${num(rules?.layersToOwn, 3)} couches · ${String(rules?.stealMode || "block")}`;
+      : mode === "crados"
+        ? `${num(rules?.dirtLimit, 10)} crasses · ${num(rules?.layersToOwn, 3)} couches · ${String(rules?.stealMode || "block")}`
+        : mode === "fifty_one_by_five"
+          ? `objectif ${num(rules?.target, 51)} · total divisible par ${num(rules?.divisor, 5)} · bust ${String(rules?.bustRule || "hold")}`
+          : mode === "looper"
+            ? `${num(rules?.lives, 5)} vies · départ ${String(rules?.startTarget || "offhand")} · bouclier ${rules?.setterShield === false ? "OFF" : "ON"}`
+            : mode === "call_three"
+              ? `${num(rules?.rounds, 10)} rounds · ${String(rules?.callerMode || "next")} · ordre ${rules?.orderedTargets === false ? "libre" : "strict"}`
+              : `${String(rules?.direction || "clockwise")} · haies ${rules?.fencesEnabled === false ? "OFF" : "ON"} · arrivée ${String(rules?.finishBull || "any")}`;
   return <>
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Statistiques de la partie</div>

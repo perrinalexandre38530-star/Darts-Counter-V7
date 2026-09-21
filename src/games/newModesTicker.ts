@@ -12,6 +12,10 @@ import type { NewTickerItem } from "../components/NewGameTickerBar";
 
 // ✅ Mets ici la liste des IDs "nouveautés" (c’est LA “liste” demandée)
 export const NEW_MODE_IDS: string[] = [
+  "fifty_one_by_five",
+  "looper",
+  "call_three",
+  "steeplechase",
   "pendu",
   "menteur",
   "crados",
@@ -32,8 +36,10 @@ const tickerImages = import.meta.glob("../assets/tickers/ticker_*.png", {
 }) as Record<string, string>;
 
 function tickerSrcForId(id: string): string | null {
+  // 51 BY 5 conserve son nom d'asset historique ticker_51_by_5.png.
+  const assetId = id === "fifty_one_by_five" ? "51_by_5" : id;
   // On cherche une clé finissant par `ticker_<id>.png`
-  const suffix = `/ticker_${id}.png`;
+  const suffix = `/ticker_${assetId}.png`;
   for (const k of Object.keys(tickerImages)) {
     if (k.endsWith(suffix)) return tickerImages[k];
   }

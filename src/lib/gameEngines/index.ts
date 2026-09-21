@@ -28,3 +28,7 @@ export * from "./presidentEngine";
 
 export * from "./dartsRacerEngine";
 export * from "./bowlingEngine";
+export * from "./fiftyOneByFiveEngine";
+export * from "./looperEngine";
+export * from "./callThreeEngine";
+export * from "./steeplechaseEngine";

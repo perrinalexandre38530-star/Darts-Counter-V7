@@ -50,6 +50,10 @@ export type CompactMatchMode =
   | "pendu"
   | "menteur"
   | "crados"
+  | "fifty_one_by_five"
+  | "looper"
+  | "call_three"
+  | "steeplechase"
   | "scram"
   | "batard"
   | "babyfoot"
@@ -277,6 +281,10 @@ function inferMode(rec: any, payload: any): CompactMatchMode {
   if (raw.includes("pendu") || raw.includes("hangman")) return "pendu";
   if (raw.includes("menteur") || raw.includes(" liar ") || raw.includes("bluff")) return "menteur";
   if (raw.includes("crados") || raw.includes("crado")) return "crados";
+  if (raw.includes("fifty_one_by_five") || raw.includes("51 by 5") || raw.includes("51_by_5") || raw.includes("51by5")) return "fifty_one_by_five";
+  if (raw.includes("looper") || raw.includes("loopy") || raw.includes("loops")) return "looper";
+  if (raw.includes("call_three") || raw.includes("call three") || raw.includes("callthree")) return "call_three";
+  if (raw.includes("steeplechase") || raw.includes("steeple chase")) return "steeplechase";
   if (raw.includes("ocean_control") || raw.includes("ocean control") || raw.includes("oceancontrol")) return "ocean_control";
   if (raw.includes("cargo")) return "cargo";
   if (raw.includes("bowling")) return "bowling";
@@ -530,12 +538,15 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
   const cleanState = stripHeavy(state);
   if (cleanState && Object.keys(cleanState || {}).length) out.s = cleanState;
 
-  // PENDU / MENTEUR / CRADOS : ces moteurs reposent sur un snapshot complet
-  // pour la reprise exacte (phase, joueur actif, vies/crasse/erreurs, BO, etc.).
-  // Le compact générique ne lisait pas payload.stateSnapshot : on le conserve
-  // explicitement ici afin que sauvegarde cloud / export / restauration gardent
-  // exactement la même partie qu'en IndexedDB locale.
-  if (mode === "pendu" || mode === "menteur" || mode === "crados") {
+  // Modes darts à moteur dédié : ces moteurs reposent sur un snapshot complet
+  // pour la reprise exacte (phase, joueur actif, scores/vies/cibles, BO, etc.).
+  // On conserve stateSnapshot/config/visits/stats dans le compact afin que
+  // sauvegarde cloud / export / restauration gardent la même partie qu'en local.
+  if (
+    mode === "pendu" || mode === "menteur" || mode === "crados" ||
+    mode === "fifty_one_by_five" || mode === "looper" ||
+    mode === "call_three" || mode === "steeplechase"
+  ) {
     const snapshot = payload?.stateSnapshot ?? payload?.resume?.state ?? payload?.state ?? null;
     const visitsExact = payload?.visitHistory ?? payload?.visits ?? snapshot?.visits ?? [];
     out.pm = {
@@ -1280,7 +1291,11 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
     const cargo = compact.m === "cargo" && compact.d?.cg && typeof compact.d.cg === "object" ? compact.d.cg : null;
     const ocean = compact.m === "ocean_control" && compact.d?.oc && typeof compact.d.oc === "object" ? compact.d.oc : null;
     const football = compact.m === "football_darts" && compact.d?.fb && typeof compact.d.fb === "object" ? compact.d.fb : null;
-    const originalParty = (compact.m === "pendu" || compact.m === "menteur" || compact.m === "crados") && compact.d?.pm && typeof compact.d.pm === "object" ? compact.d.pm : null;
+    const originalParty = (
+      compact.m === "pendu" || compact.m === "menteur" || compact.m === "crados" ||
+      compact.m === "fifty_one_by_five" || compact.m === "looper" ||
+      compact.m === "call_three" || compact.m === "steeplechase"
+    ) && compact.d?.pm && typeof compact.d.pm === "object" ? compact.d.pm : null;
     const summary = {
       players: playersMap,
       perPlayer: players,

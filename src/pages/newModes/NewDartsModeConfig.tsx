@@ -389,7 +389,7 @@ export default function NewDartsModeConfig(props: Props) {
       <OptionRow label="Ordre des 3 cibles obligatoire"><OptionToggle value={callThreeOrderStrict} onChange={setCallThreeOrderStrict} /></OptionRow>
       <OptionRow label="Bull autorisé"><OptionToggle value={callThreeBull} onChange={setCallThreeBull} /></OptionRow>
     </div>
-    <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Simple = 1 point, Double = 2, Triple = 3. Chaque fléchette correspond à la cible appelée au même rang.</div>
+    <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Simple = 1 point, Double = 2, Triple = 3 · Bull extérieur = 2 · DBULL = 3. Chaque fléchette correspond à la cible appelée au même rang ; égalité finale = round supplémentaire.</div>
   </section>;
 
   const steeplechaseBlock = <section style={selectorCard}>

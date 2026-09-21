@@ -24,6 +24,10 @@ export type GameKey =
   | "pendu"
   | "menteur"
   | "crados"
+  | "fifty_one_by_five"
+  | "looper"
+  | "call_three"
+  | "steeplechase"
   | "battle_royale"
   | "warfare"
   | "five_lives"
@@ -264,6 +268,10 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       pendu: { mode: "pendu", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       menteur: { mode: "menteur", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       crados: { mode: "crados", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      fifty_one_by_five: { mode: "fifty_one_by_five", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      looper: { mode: "looper", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      call_three: { mode: "call_three", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      steeplechase: { mode: "steeplechase", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       battle_royale: { mode: "battle_royale", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       warfare: { mode: "warfare", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       five_lives: { mode: "five_lives", matches: 0, finished: 0, inProgress: 0, saved: 0 },
@@ -285,6 +293,10 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       pendu: [],
       menteur: [],
       crados: [],
+      fifty_one_by_five: [],
+      looper: [],
+      call_three: [],
+      steeplechase: [],
       battle_royale: [],
       warfare: [],
       five_lives: [],
@@ -432,6 +444,10 @@ function normalizeGameKey(rec: any, payload: any): GameKey {
   if (g.includes("pendu") || g.includes("hangman")) return "pendu";
   if (g.includes("menteur") || g.includes("bluff")) return "menteur";
   if (g.includes("crados") || g.includes("crado")) return "crados";
+  if (g.includes("fifty_one_by_five") || g.includes("51 by 5") || g.includes("51_by_5") || g.includes("51by5")) return "fifty_one_by_five";
+  if (g.includes("looper") || g.includes("loopy") || g.includes("loops")) return "looper";
+  if (g.includes("call_three") || g.includes("call three") || g.includes("callthree")) return "call_three";
+  if (g.includes("steeplechase") || g.includes("steeple chase")) return "steeplechase";
   if (g.includes("territ")) return "territories";
   if (g.includes("battle") || g.includes("royale")) return "battle_royale";
   if (g.includes("warfare")) return "warfare";
@@ -645,6 +661,9 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
       challengesSet: 0, challengesPassed: 0, challengesFailed: 0, errorsTaken: 0, eliminations: 0,
       raises: 0, liarCalls: 0, contractsProven: 0, liesCaught: 0, livesLost: 0,
       layersPlaced: 0, sectorsClaimed: 0, sectorsStolen: 0, dirtTaken: 0, dirtWashed: 0, legsWon: 0,
+      validVisits: 0, invalidVisits: 0, busts: 0, rawPoints: 0, quotientPoints: 0, highestRaw: 0,
+      lifeLosses: 0, shieldsUsed: 0, shieldsEarned: 0, targetsSet: 0, loopsSurvived: 0,
+      perfectRounds: 0, callsMade: 0, fencesCleared: 0, bullFinishes: 0, steps: 0,
     };
     cur.points += points;
     cur.darts += dartsThrown;
@@ -696,6 +715,22 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
     cur.dirtTaken += Number(pl?.dirtTaken ?? pl?.dirt ?? 0) || 0;
     cur.dirtWashed += Number(pl?.dirtWashed ?? pl?.cleaned ?? 0) || 0;
     cur.legsWon += Number(pl?.legsWon ?? 0) || 0;
+    cur.validVisits += Number(pl?.validVisits ?? 0) || 0;
+    cur.invalidVisits += Number(pl?.invalidVisits ?? 0) || 0;
+    cur.busts += Number(pl?.busts ?? 0) || 0;
+    cur.rawPoints += Number(pl?.rawPoints ?? 0) || 0;
+    cur.quotientPoints += Number(pl?.quotientPoints ?? 0) || 0;
+    cur.highestRaw = Math.max(Number(cur.highestRaw || 0), Number(pl?.highestRaw ?? 0) || 0);
+    cur.lifeLosses += Number(pl?.lifeLosses ?? 0) || 0;
+    cur.shieldsUsed += Number(pl?.shieldsUsed ?? 0) || 0;
+    cur.shieldsEarned += Number(pl?.shieldsEarned ?? 0) || 0;
+    cur.targetsSet += Number(pl?.targetsSet ?? 0) || 0;
+    cur.loopsSurvived += Number(pl?.loopsSurvived ?? 0) || 0;
+    cur.perfectRounds += Number(pl?.perfectRounds ?? 0) || 0;
+    cur.callsMade += Number(pl?.callsMade ?? 0) || 0;
+    cur.fencesCleared += Number(pl?.fencesCleared ?? 0) || 0;
+    cur.bullFinishes += Number(pl?.bullFinishes ?? 0) || 0;
+    cur.steps += Number(pl?.steps ?? 0) || 0;
     if (pl?.segmentStats && typeof pl.segmentStats === "object") {
       for (const [target, values] of Object.entries(pl.segmentStats as any)) {
         const dst: any = cur.segmentStats[target] || { darts: 0, marks: 0, closes: 0, scoringHits: 0, points: 0, blockedDarts: 0 };
@@ -1091,6 +1126,10 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
   pendu: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   menteur: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   crados: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  fifty_one_by_five: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  looper: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  call_three: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  steeplechase: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
 
   battle_royale: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   warfare: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),

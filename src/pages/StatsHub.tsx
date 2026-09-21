@@ -901,6 +901,10 @@ type Props = {
     | "pendu"
     | "menteur"
     | "crados"
+    | "fifty_one_by_five"
+    | "looper"
+    | "call_three"
+    | "steeplechase"
     | "cargo"
     | "ocean_control"
     | "football"
@@ -1254,7 +1258,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const mode = classifyRecordMode(r);
@@ -1565,6 +1569,10 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("pendu") || tag.includes("hangman")) return "pendu";
   if (tag.includes("menteur") || tag.includes("liar") || tag.includes("bluff")) return "menteur";
   if (tag.includes("crados") || tag.includes("crado") || tag.includes("slime")) return "crados";
+  if (tag.includes("fifty_one_by_five") || tag.includes("51 by 5") || tag.includes("51_by_5") || tag.includes("51by5")) return "fifty_one_by_five";
+  if (tag.includes("looper") || tag.includes("loopy") || tag.includes("loops")) return "looper";
+  if (tag.includes("call_three") || tag.includes("call three") || tag.includes("callthree")) return "call_three";
+  if (tag.includes("steeplechase") || tag.includes("steeple chase")) return "steeplechase";
   if (tag.includes("ocean_control") || tag.includes("ocean control")) return "ocean_control";
   if (tag.includes("football") && !tag.includes("babyfoot") && !tag.includes("baby-foot")) return "football";
   if (tag.includes("cargo")) return "cargo";
@@ -5245,6 +5253,10 @@ const modeDefs = React.useMemo(
               { key: "pendu", label: "PENDU" },
               { key: "menteur", label: "MENTEUR" },
               { key: "crados", label: "CRADOS" },
+              { key: "fifty_one_by_five", label: "51 BY 5" },
+              { key: "looper", label: "LOOPER" },
+              { key: "call_three", label: "CALL THREE" },
+              { key: "steeplechase", label: "STEEPLECHASE" },
               { key: "cargo", label: "CARGO" },
               { key: "ocean_control", label: "OCEAN CONTROL" },
               { key: "football", label: "DARTS FOOTBALL" },
@@ -6794,6 +6806,22 @@ type ModeDashboardCard = {
   sectorsStolen?: number;
   dirtTaken?: number;
   dirtWashed?: number;
+  validVisits51?: number;
+  invalidVisits51?: number;
+  busts51?: number;
+  rawPoints51?: number;
+  quotientPoints51?: number;
+  highestRaw51?: number;
+  lifeLossesLooper?: number;
+  shieldsUsedLooper?: number;
+  shieldsEarnedLooper?: number;
+  targetsSetLooper?: number;
+  loopsSurvivedLooper?: number;
+  perfectRoundsCallThree?: number;
+  callsMadeCallThree?: number;
+  fencesClearedSteeple?: number;
+  bullFinishesSteeple?: number;
+  stepsSteeple?: number;
   ticker: ModeTickerStat[];
 };
 
@@ -6831,6 +6859,10 @@ const modeThemeColor: Record<string, string> = {
   pendu: "#ffb33f",
   menteur: "#ffbf37",
   crados: "#b7f247",
+  fifty_one_by_five: "#ffd34d",
+  looper: "#8ff7ff",
+  call_three: "#ffb13b",
+  steeplechase: "#7dffbd",
   cargo: "#ff9b42",
   ocean_control: "#30b9ff",
   football: "#65e5aa",
@@ -6882,6 +6914,10 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     pendu: "PENDU",
     menteur: "MENTEUR",
     crados: "CRADOS",
+    fifty_one_by_five: "51 BY 5",
+    looper: "LOOPER",
+    call_three: "CALL THREE",
+    steeplechase: "STEEPLECHASE",
     cargo: "CARGO",
     ocean_control: "OCEAN CONTROL",
     football: "DARTS FOOTBALL",
@@ -6893,7 +6929,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -7399,6 +7435,22 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       sectorsStolen: 0,
       dirtTaken: 0,
       dirtWashed: 0,
+      validVisits51: 0,
+      invalidVisits51: 0,
+      busts51: 0,
+      rawPoints51: 0,
+      quotientPoints51: 0,
+      highestRaw51: 0,
+      lifeLossesLooper: 0,
+      shieldsUsedLooper: 0,
+      shieldsEarnedLooper: 0,
+      targetsSetLooper: 0,
+      loopsSurvivedLooper: 0,
+      perfectRoundsCallThree: 0,
+      callsMadeCallThree: 0,
+      fencesClearedSteeple: 0,
+      bullFinishesSteeple: 0,
+      stepsSteeple: 0,
       ticker: [],
       samples: [],
       favMap: {},
@@ -7981,6 +8033,46 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       a.captures += claimed;
       a.extra += dirt;
     }
+    if (mode === "fifty_one_by_five") {
+      const src = modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : stats;
+      const valid = n(src?.validVisits);
+      const invalid = n(src?.invalidVisits);
+      const rawPts = n(src?.rawPoints);
+      const quotient = n(src?.quotientPoints);
+      a.validVisits51 = Number(a.validVisits51 || 0) + valid;
+      a.invalidVisits51 = Number(a.invalidVisits51 || 0) + invalid;
+      a.busts51 = Number(a.busts51 || 0) + n(src?.busts);
+      a.rawPoints51 = Number(a.rawPoints51 || 0) + rawPts;
+      a.quotientPoints51 = Number(a.quotientPoints51 || 0) + quotient;
+      a.highestRaw51 = Math.max(Number(a.highestRaw51 || 0), n(src?.highestRaw));
+      a.visits = Number(a.visits || 0) + n(src?.visits);
+      a.hits += valid;
+      a.miss += invalid;
+      a.points += quotient;
+      a.best = Math.max(Number(a.best || 0), n(src?.highestRaw));
+    }
+    if (mode === "looper") {
+      const src = modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : stats;
+      a.visits = Number(a.visits || 0) + n(src?.visits);
+      a.lifeLossesLooper = Number(a.lifeLossesLooper || 0) + n(src?.lifeLosses);
+      a.shieldsUsedLooper = Number(a.shieldsUsedLooper || 0) + n(src?.shieldsUsed);
+      a.shieldsEarnedLooper = Number(a.shieldsEarnedLooper || 0) + n(src?.shieldsEarned);
+      a.targetsSetLooper = Number(a.targetsSetLooper || 0) + n(src?.targetsSet);
+      a.loopsSurvivedLooper = Number(a.loopsSurvivedLooper || 0) + n(src?.loopsSurvived);
+    }
+    if (mode === "call_three") {
+      const src = modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : stats;
+      a.visits = Number(a.visits || 0) + n(src?.visits);
+      a.perfectRoundsCallThree = Number(a.perfectRoundsCallThree || 0) + n(src?.perfectRounds);
+      a.callsMadeCallThree = Number(a.callsMadeCallThree || 0) + n(src?.callsMade);
+    }
+    if (mode === "steeplechase") {
+      const src = modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : stats;
+      a.visits = Number(a.visits || 0) + n(src?.visits);
+      a.fencesClearedSteeple = Number(a.fencesClearedSteeple || 0) + n(src?.fencesCleared);
+      a.bullFinishesSteeple = Number(a.bullFinishesSteeple || 0) + n(src?.bullFinishes);
+      a.stepsSteeple = Number(a.stepsSteeple || 0) + n(src?.steps);
+    }
     const favMap = stats?.favNumberHits || stats?.numberHits || stats?.hitsByNumber || stats?.byNumber || null;
     if (favMap && typeof favMap === "object") {
       Object.entries(favMap).forEach(([k, v]) => {
@@ -8241,6 +8333,50 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
             { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
           ];
         })()
+      : a.key === "fifty_one_by_five"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Points ÷5", value: fmtStatValue(a.quotientPoints51 || a.points || 0), tone: "gold" },
+          { label: "Volées valides", value: fmtStatValue(a.validVisits51 || 0), tone: "green" },
+          { label: "Volées nulles", value: fmtStatValue(a.invalidVisits51 || 0), tone: "red" },
+          { label: "Busts", value: fmtStatValue(a.busts51 || 0), tone: "red" },
+          { label: "Total brut", value: fmtStatValue(a.rawPoints51 || 0), tone: "blue" },
+          { label: "Meilleure volée", value: fmtStatValue(a.highestRaw51 || a.best || 0), tone: "blue" },
+        ]
+      : a.key === "looper"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Boucles sauvées", value: fmtStatValue(a.loopsSurvivedLooper || 0), tone: "green" },
+          { label: "Cibles posées", value: fmtStatValue(a.targetsSetLooper || 0), tone: "blue" },
+          { label: "Vies perdues", value: fmtStatValue(a.lifeLossesLooper || 0), tone: "red" },
+          { label: "Boucliers gagnés", value: fmtStatValue(a.shieldsEarnedLooper || 0), tone: "green" },
+          { label: "Boucliers utilisés", value: fmtStatValue(a.shieldsUsedLooper || 0), tone: "gold" },
+          { label: "Précision", value: (a.hits + a.miss) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
+        ]
+      : a.key === "call_three"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Points", value: fmtStatValue(a.points || 0), tone: "gold" },
+          { label: "Hits", value: fmtStatValue(a.hits || 0), tone: "green" },
+          { label: "Full calls", value: fmtStatValue(a.perfectRoundsCallThree || 0), tone: "blue" },
+          { label: "Appels donnés", value: fmtStatValue(a.callsMadeCallThree || 0), tone: "gold" },
+          { label: "Précision", value: (a.hits + a.miss) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
+          { label: "Fléchettes", value: fmtStatValue(a.darts || 0), tone: "blue" },
+        ]
+      : a.key === "steeplechase"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Étapes franchies", value: fmtStatValue(a.stepsSteeple || 0), tone: "green" },
+          { label: "Haies franchies", value: fmtStatValue(a.fencesClearedSteeple || 0), tone: "gold" },
+          { label: "Arrivées Bull", value: fmtStatValue(a.bullFinishesSteeple || 0), tone: "blue" },
+          { label: "Touches", value: fmtStatValue(a.hits || 0), tone: "green" },
+          { label: "Précision", value: (a.hits + a.miss) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
+          { label: "Fléchettes", value: fmtStatValue(a.darts || 0), tone: "blue" },
+        ]
       : a.key === "pendu"
       ? [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
@@ -9921,7 +10057,7 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "baseball", "president", "pendu", "menteur", "crados"].includes(String(currentMode)) && (
+            {["battle_royale", "warfare", "baseball", "president", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
@@ -9948,6 +10084,10 @@ return (
                       pendu: ["pendu", "hangman"],
                       menteur: ["menteur", "liar", "bluff"],
                       crados: ["crados", "crado", "slime"],
+                      fifty_one_by_five: ["fifty_one_by_five", "51 by 5", "51_by_5", "51by5"],
+                      looper: ["looper", "loopy", "loops"],
+                      call_three: ["call_three", "call three", "callthree"],
+                      steeplechase: ["steeplechase", "steeple chase"],
                       ocean_control: ["ocean_control", "ocean control"],
                       football: ["football", "darts football", "football_darts"],
                       prisoner: ["prisoner"],
@@ -10070,14 +10210,99 @@ return (
                     const sectorsStolen = sum("sectorsStolen") || sum("steals");
                     const dirtTaken = sum("dirtTaken") || sum("dirt");
                     const dirtWashed = sum("dirtWashed") || sum("cleaned");
+                    const validVisits51 = sum("validVisits");
+                    const invalidVisits51 = sum("invalidVisits");
+                    const busts51 = sum("busts");
+                    const rawPoints51 = sum("rawPoints");
+                    const quotientPoints51 = sum("quotientPoints");
+                    const highestRaw51 = playerRows.reduce((best: number, x: any) => Math.max(best, Number(x.pl?.highestRaw ?? 0) || 0), 0);
+                    const looperLifeLosses = sum("lifeLosses");
+                    const looperShieldsUsed = sum("shieldsUsed");
+                    const looperShieldsEarned = sum("shieldsEarned");
+                    const looperTargetsSet = sum("targetsSet");
+                    const looperSurvived = sum("loopsSurvived");
+                    const callThreePerfect = sum("perfectRounds");
+                    const callThreeCallsMade = sum("callsMade");
+                    const steepleFences = sum("fencesCleared");
+                    const steepleBullFinishes = sum("bullFinishes");
+                    const steepleSteps = sum("steps");
                     const partyLegsWon = sum("legsWon");
                     const penduSuccessRate = challengesSet ? Math.round((challengesPassed / challengesSet) * 1000) / 10 : 0;
                     const proofAttempts = visits;
                     const menteurProofRate = proofAttempts ? Math.round((contractsProven / proofAttempts) * 1000) / 10 : 0;
+                    const fiftyOneVisitTotal = validVisits51 + invalidVisits51;
+                    const fiftyOneValidRate = fiftyOneVisitTotal ? Math.round((validVisits51 / fiftyOneVisitTotal) * 1000) / 10 : 0;
+                    const callThreeAccuracy = darts ? Math.round((hits / darts) * 1000) / 10 : 0;
+                    const steepleAccuracy = darts ? Math.round((hits / darts) * 1000) / 10 : 0;
+                    const looperAccuracy = darts ? Math.round((hits / darts) * 1000) / 10 : 0;
                     const statBox = { ...softCard, padding: 14 } as React.CSSProperties;
                     const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
                     const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
-                    return currentMode === "pendu" ? (
+                    return currentMode === "fifty_one_by_five" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Points ÷5</div><div style={{ ...value, color: "#ffd34d" }}>{quotientPoints51 || points}</div></div>
+                          <div style={statBox}><div style={label}>Volées valides</div><div style={{ ...value, color: "#72efb1" }}>{validVisits51}</div><div style={{ opacity: .75, fontSize: 11 }}>{fiftyOneVisitTotal ? `${fiftyOneValidRate}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Volées nulles</div><div style={{ ...value, color: "#ff8a72" }}>{invalidVisits51}</div></div>
+                          <div style={statBox}><div style={label}>Busts</div><div style={{ ...value, color: "#ff6b57" }}>{busts51}</div></div>
+                          <div style={statBox}><div style={label}>Total brut valide</div><div style={value}>{rawPoints51}</div></div>
+                          <div style={statBox}><div style={label}>Meilleure volée brute</div><div style={value}>{highestRaw51 || bestVisit || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{partyLegsWon}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Statistiques cumulées 51 BY 5 : qualité des volées divisibles par 5, busts, score brut et progression.</div>
+                      </>
+                    ) : currentMode === "looper" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Boucles sauvées</div><div style={{ ...value, color: "#8ff7ff" }}>{looperSurvived}</div></div>
+                          <div style={statBox}><div style={label}>Cibles posées</div><div style={value}>{looperTargetsSet}</div></div>
+                          <div style={statBox}><div style={label}>Vies perdues</div><div style={{ ...value, color: "#ff6b77" }}>{looperLifeLosses}</div></div>
+                          <div style={statBox}><div style={label}>Boucliers gagnés</div><div style={{ ...value, color: "#72efb1" }}>{looperShieldsEarned}</div></div>
+                          <div style={statBox}><div style={label}>Boucliers utilisés</div><div style={value}>{looperShieldsUsed}</div></div>
+                          <div style={statBox}><div style={label}>Précision</div><div style={{ ...value, color: "#72efb1" }}>{darts ? `${looperAccuracy}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{partyLegsWon}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Statistiques cumulées LOOPER : survie, cibles imposées, pertes de vies et efficacité.</div>
+                      </>
+                    ) : currentMode === "call_three" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Points</div><div style={{ ...value, color: "#ffb13b" }}>{points}</div></div>
+                          <div style={statBox}><div style={label}>Cibles réussies</div><div style={{ ...value, color: "#72efb1" }}>{hits}</div></div>
+                          <div style={statBox}><div style={label}>Full calls</div><div style={value}>{callThreePerfect}</div></div>
+                          <div style={statBox}><div style={label}>Appels donnés</div><div style={value}>{callThreeCallsMade}</div></div>
+                          <div style={statBox}><div style={label}>Précision</div><div style={{ ...value, color: "#72efb1" }}>{darts ? `${callThreeAccuracy}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Volées</div><div style={value}>{visits}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{partyLegsWon}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Statistiques cumulées CALL THREE : points, cibles appelées réussies, full calls et précision.</div>
+                      </>
+                    ) : currentMode === "steeplechase" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Étapes franchies</div><div style={{ ...value, color: "#7dffbd" }}>{steepleSteps}</div></div>
+                          <div style={statBox}><div style={label}>Haies franchies</div><div style={{ ...value, color: "#ffb13b" }}>{steepleFences}</div></div>
+                          <div style={statBox}><div style={label}>Arrivées Bull</div><div style={value}>{steepleBullFinishes}</div></div>
+                          <div style={statBox}><div style={label}>Touches</div><div style={{ ...value, color: "#72efb1" }}>{hits}</div></div>
+                          <div style={statBox}><div style={label}>Précision</div><div style={{ ...value, color: "#72efb1" }}>{darts ? `${steepleAccuracy}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Volées</div><div style={value}>{visits}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{partyLegsWon}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Statistiques cumulées STEEPLECHASE : progression sur le parcours, haies, arrivée et précision.</div>
+                      </>
+                    ) : currentMode === "pendu" ? (
                       <>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>

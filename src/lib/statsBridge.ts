@@ -481,6 +481,10 @@ function detectKindMode(rec: any, decoded: any | null) {
   if (blob.includes("pendu") || blob.includes("hangman")) return { kind: "pendu", mode: "pendu" };
   if (blob.includes("menteur") || blob.includes("bluff")) return { kind: "menteur", mode: "menteur" };
   if (blob.includes("crados") || blob.includes("crado")) return { kind: "crados", mode: "crados" };
+  if (blob.includes("fifty_one_by_five") || blob.includes("51 by 5") || blob.includes("51_by_5") || blob.includes("51by5")) return { kind: "fifty_one_by_five", mode: "fifty_one_by_five" };
+  if (blob.includes("looper") || blob.includes("loopy") || blob.includes("loops")) return { kind: "looper", mode: "looper" };
+  if (blob.includes("call_three") || blob.includes("call three") || blob.includes("callthree")) return { kind: "call_three", mode: "call_three" };
+  if (blob.includes("steeplechase") || blob.includes("steeple chase")) return { kind: "steeplechase", mode: "steeplechase" };
   if (blob.includes("territ") || blob.includes("departement")) return { kind: "territories", mode: "territories" };
   if (blob.includes("batard") || blob.includes("bastard")) return { kind: "batard", mode: "batard" };
   if (blob.includes("battle") || blob.includes("royale")) return { kind: "battle_royale", mode: "battle_royale" };

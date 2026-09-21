@@ -370,6 +370,10 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "pendu", label: "PENDU", aliases: ["pendu", "hangman"] },
     { key: "menteur", label: "MENTEUR", aliases: ["menteur", "liar", "bluff"] },
     { key: "crados", label: "CRADOS", aliases: ["crados", "crado", "dirty", "slime"] },
+    { key: "fifty_one_by_five", label: "51 BY 5", aliases: ["fifty_one_by_five", "51 by 5", "51_by_5", "51by5"] },
+    { key: "looper", label: "LOOPER", aliases: ["looper", "loops", "loopy"] },
+    { key: "call_three", label: "CALL THREE", aliases: ["call_three", "call three", "callthree"] },
+    { key: "steeplechase", label: "STEEPLECHASE", aliases: ["steeplechase", "steeple chase"] },
     { key: "ocean_control", label: "OCEAN CONTROL", aliases: ["ocean_control", "ocean control", "oceancontrol"] },
     { key: "football", label: "DARTS FOOTBALL", aliases: ["football", "darts football", "football_darts"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
@@ -482,7 +486,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|castle|gotcha|hare_hounds|harehounds|pendu|menteur|crados|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|castle|gotcha|hare_hounds|harehounds|pendu|menteur|crados|fifty_one_by_five|51_by_5|51by5|looper|call_three|callthree|steeplechase|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -532,6 +536,14 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "pendu",
     "menteur",
     "crados",
+    "fiftyonebyfive",
+    "fifty_one_by_five",
+    "51by5",
+    "51_by_5",
+    "looper",
+    "callthree",
+    "call_three",
+    "steeplechase",
     "ocean_control",
     "oceancontrol",
     "football",
@@ -662,6 +674,10 @@ function modeLabel(e: SavedEntry) {
   if (m === "pendu") return "PENDU";
   if (m === "menteur") return "MENTEUR";
   if (m === "crados") return "CRADOS";
+  if (m === "fifty_one_by_five" || m === "51_by_5" || m === "51by5") return "51 BY 5";
+  if (m === "looper") return "LOOPER";
+  if (m === "call_three" || m === "callthree") return "CALL THREE";
+  if (m === "steeplechase") return "STEEPLECHASE";
   if (m === "ocean_control" || m === "oceancontrol") return "OCEAN CONTROL";
   if (m === "football" || m === "football_darts" || m === "footballdarts") return "DARTS FOOTBALL";
   if (m === "x01") {
@@ -4495,8 +4511,22 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         pendu: "pendu_play",
         menteur: "menteur_play",
         crados: "crados_play",
+        fiftyonebyfive: "fifty_one_by_five_play",
+        fifty_one_by_five: "fifty_one_by_five_play",
+        "51by5": "fifty_one_by_five_play",
+        "51_by_5": "fifty_one_by_five_play",
+        looper: "looper_play",
+        callthree: "call_three_play",
+        call_three: "call_three_play",
+        steeplechase: "steeplechase_play",
       };
-      const canonicalByMode: Record<string, string> = { harehounds: "hare_hounds" };
+      const canonicalByMode: Record<string, string> = {
+        harehounds: "hare_hounds",
+        fiftyonebyfive: "fifty_one_by_five",
+        "51by5": "fifty_one_by_five",
+        "51_by_5": "fifty_one_by_five",
+        callthree: "call_three",
+      };
       const newModeRoute = routeByMode[rawMode] || null;
       if (newModeRoute && statusOf(e) === "in_progress") {
         const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null) || {};

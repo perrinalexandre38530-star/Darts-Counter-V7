@@ -6632,28 +6632,68 @@ case "babyfoot_team_edit":
         page = <FiftyOneByFiveConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "fifty_one_by_five_play":
-        page = <FiftyOneByFivePlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <FiftyOneByFivePlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "fifty_one_by_five", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "looper_config":
         page = <LooperConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "looper_play":
-        page = <LooperPlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <LooperPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "looper", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "call_three_config":
         page = <CallThreeConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "call_three_play":
-        page = <CallThreePlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <CallThreePlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "call_three", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "steeplechase_config":
         page = <SteeplechaseConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "steeplechase_play":
-        page = <SteeplechasePlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = (
+          <SteeplechasePlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "steeplechase", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "enculette_config":
@@ -6738,6 +6778,10 @@ case "babyfoot_team_edit":
     "castle_play",
     "gotcha_play",
     "hare_hounds_play",
+    "fifty_one_by_five_play",
+    "looper_play",
+    "call_three_play",
+    "steeplechase_play",
     "enculette_play",
 
     // Tournois: match en cours (plein écran)
@@ -6822,6 +6866,10 @@ case "babyfoot_team_edit":
     "castle_config",
     "gotcha_config",
     "hare_hounds_config",
+    "fifty_one_by_five_config",
+    "looper_config",
+    "call_three_config",
+    "steeplechase_config",
   ]).has(gameRouteName);
   const gameLandscapeKind = isGameMenuRoute
     ? "menu"

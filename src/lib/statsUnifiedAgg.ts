@@ -163,6 +163,10 @@ function normalizeDashboardMode(mode: any, raw?: any): string {
   if (tag.includes('pendu') || tag.includes('hangman')) return 'pendu';
   if (tag.includes('menteur') || tag.includes('bluff')) return 'menteur';
   if (tag.includes('crados') || tag.includes('crado')) return 'crados';
+  if (tag.includes('fifty_one_by_five') || tag.includes('51 by 5') || tag.includes('51_by_5') || tag.includes('51by5')) return 'fifty_one_by_five';
+  if (tag.includes('looper') || tag.includes('loopy') || tag.includes('loops')) return 'looper';
+  if (tag.includes('call_three') || tag.includes('call three') || tag.includes('callthree')) return 'call_three';
+  if (tag.includes('steeplechase') || tag.includes('steeple chase')) return 'steeplechase';
   if (tag.includes('territ') || tag.includes('departement')) return 'territories';
   if (tag.includes('batard') || tag.includes('bâtard') || tag.includes('bastard')) return 'batard';
   if (tag.includes('scram')) return 'scram';

@@ -19,6 +19,7 @@ const allTests = [
   "tools/test-linked-profile-history.ts",
   "tools/test-home-mode-stats.ts",
   "tools/test-history-integrity-regression.ts",
+  "tools/test-new4-darts-modes-regression.ts",
   "src/tools/test-territories-value-win.ts",
   "src/tools/test-territories-unique-values.ts",
 ];
