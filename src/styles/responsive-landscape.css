@@ -2437,19 +2437,20 @@ html[data-msc-short-landscape="1"] .msc-sport-home-title {
 }
 
 .msc-game-select-lang-btn {
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: .8px;
+  min-width: 50px;
+  padding-inline: 9px;
+  gap: 0;
+  font-size: 0;
 }
 
 .msc-game-select-lang-menu {
   position: absolute;
   left: 0;
   top: calc(100% + 8px);
-  min-width: 168px;
+  width: min(252px, calc(100vw - 28px));
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
   padding: 10px;
   border-radius: 16px;
   border: 1px solid rgba(76, 226, 255, .32);
@@ -2458,13 +2459,15 @@ html[data-msc-short-landscape="1"] .msc-sport-home-title {
 }
 
 .msc-game-select-lang-option {
-  min-height: 34px;
+  min-width: 0;
+  min-height: 43px;
+  padding: 4px;
+  display: grid;
+  place-items: center;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.04);
   color: rgba(255,255,255,.92);
-  font-size: 11px;
-  font-weight: 900;
   cursor: pointer;
 }
 
@@ -2707,9 +2710,13 @@ html[data-msc-orientation="landscape"] .msc-game-select-lang-menu {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  width: min(260px, 72vw);
-  max-height: min(56vh, 380px);
-  overflow: auto;
+  width: min(252px, 72vw);
+  max-height: min(64vh, 310px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
   padding: 8px;
   border-radius: 18px;
   border: 1px solid rgba(76, 226, 255, .28);
@@ -2719,16 +2726,16 @@ html[data-msc-orientation="landscape"] .msc-game-select-lang-menu {
 
 html[data-msc-orientation="landscape"] .msc-game-select-lang-option {
   width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 0;
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,.08);
   border-radius: 12px;
-  background: transparent;
+  background: rgba(255,255,255,.035);
   color: #f4fbff;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
 }
 
 html[data-msc-orientation="landscape"] .msc-game-select-lang-option[aria-pressed="true"] {

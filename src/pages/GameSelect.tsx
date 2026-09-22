@@ -265,17 +265,32 @@ function sportShowcaseCell(accent: string, active: boolean): React.CSSProperties
   };
 }
 
+// Même catalogue que le sélecteur de langue principal de l'application.
+// Le GameSelect doit proposer TOUTES les langues prises en charge, sans code texte
+// visible : uniquement le drapeau, avec le nom conservé pour l'accessibilité.
 const GAME_SELECT_LANG_OPTIONS: ReadonlyArray<{ code: Lang; label: string; flag: string }> = [
-  { code: "fr", label: "FR", flag: "🇫🇷" },
-  { code: "en", label: "EN", flag: "🇬🇧" },
-  { code: "es", label: "ES", flag: "🇪🇸" },
-  { code: "de", label: "DE", flag: "🇩🇪" },
-  { code: "it", label: "IT", flag: "🇮🇹" },
-  { code: "pt", label: "PT", flag: "🇵🇹" },
-  { code: "nl", label: "NL", flag: "🇳🇱" },
-  { code: "ru", label: "RU", flag: "🇷🇺" },
-  { code: "ja", label: "JA", flag: "🇯🇵" },
-  { code: "ar", label: "AR", flag: "🇸🇦" },
+  { code: "fr", label: "Français", flag: "🇫🇷" },
+  { code: "en", label: "English", flag: "🇬🇧" },
+  { code: "es", label: "Español", flag: "🇪🇸" },
+  { code: "de", label: "Deutsch", flag: "🇩🇪" },
+  { code: "it", label: "Italiano", flag: "🇮🇹" },
+  { code: "pt", label: "Português", flag: "🇵🇹" },
+  { code: "nl", label: "Nederlands", flag: "🇳🇱" },
+  { code: "ru", label: "Русский", flag: "🇷🇺" },
+  { code: "zh", label: "中文", flag: "🇨🇳" },
+  { code: "ja", label: "日本語", flag: "🇯🇵" },
+  { code: "ar", label: "العربية", flag: "🇸🇦" },
+  { code: "hi", label: "हिन्दी", flag: "🇮🇳" },
+  { code: "tr", label: "Türkçe", flag: "🇹🇷" },
+  { code: "da", label: "Dansk", flag: "🇩🇰" },
+  { code: "no", label: "Norsk", flag: "🇳🇴" },
+  { code: "sv", label: "Svenska", flag: "🇸🇪" },
+  { code: "is", label: "Íslenska", flag: "🇮🇸" },
+  { code: "pl", label: "Polski", flag: "🇵🇱" },
+  { code: "ro", label: "Română", flag: "🇷🇴" },
+  { code: "sr", label: "Српски", flag: "🇷🇸" },
+  { code: "hr", label: "Hrvatski", flag: "🇭🇷" },
+  { code: "cs", label: "Čeština", flag: "🇨🇿" },
 ];
 
 function localizedSportLabel(id: GameId, lang: Lang): string {
@@ -325,30 +340,27 @@ function localizedChoiceSubtitle(lang: Lang): string {
 
 
 function LanguageFlag({ code }: { code: Lang }) {
-  const normalized = String(code || "fr").toLowerCase().split("-")[0];
-  const base: React.CSSProperties = {
-    width: 24,
-    height: 16,
-    borderRadius: 3,
-    overflow: "hidden",
-    display: "inline-block",
-    flex: "0 0 auto",
-    boxShadow: "0 0 0 1px rgba(255,255,255,.26), 0 2px 7px rgba(0,0,0,.35)",
-    position: "relative",
-  };
-  const backgrounds: Record<string, string> = {
-    fr: "linear-gradient(90deg,#153d8a 0 33.33%,#fff 33.33% 66.66%,#e43b3b 66.66%)",
-    es: "linear-gradient(180deg,#b7192f 0 25%,#f6c93f 25% 75%,#b7192f 75%)",
-    de: "linear-gradient(180deg,#111 0 33.33%,#d22f3d 33.33% 66.66%,#f5ca45 66.66%)",
-    it: "linear-gradient(90deg,#17864b 0 33.33%,#fff 33.33% 66.66%,#d73a45 66.66%)",
-    pt: "linear-gradient(90deg,#147a45 0 40%,#d92f3b 40%)",
-    nl: "linear-gradient(180deg,#b42c3d 0 33.33%,#fff 33.33% 66.66%,#214a8a 66.66%)",
-    ru: "linear-gradient(180deg,#fff 0 33.33%,#2d57a5 33.33% 66.66%,#c83b45 66.66%)",
-    ja: "radial-gradient(circle at 50% 50%,#cf2f3b 0 30%,transparent 31%),#fff",
-    ar: "linear-gradient(180deg,#147a45,#147a45)",
-    en: "linear-gradient(135deg,#193a7a 0 42%,#fff 42% 47%,#c92e3a 47% 53%,#fff 53% 58%,#193a7a 58%)",
-  };
-  return <span aria-hidden="true" style={{ ...base, background: backgrounds[normalized] || backgrounds.fr }} />;
+  const normalized = String(code || "fr").toLowerCase().split("-")[0] as Lang;
+  const option = GAME_SELECT_LANG_OPTIONS.find((entry) => entry.code === normalized) || GAME_SELECT_LANG_OPTIONS[0];
+  return (
+    <span
+      aria-hidden="true"
+      className="msc-game-select-flag"
+      style={{
+        display: "inline-grid",
+        placeItems: "center",
+        width: 30,
+        minWidth: 30,
+        height: 22,
+        lineHeight: 1,
+        fontSize: 24,
+        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+        filter: "drop-shadow(0 2px 4px rgba(0,0,0,.38))",
+      }}
+    >
+      {option.flag}
+    </span>
+  );
 }
 
 
@@ -704,15 +716,14 @@ export default function GameSelect({ go }: Props) {
           <button
             type="button"
             className="msc-game-select-topbar-btn msc-game-select-lang-btn"
-            aria-label="Choisir la langue"
-            title="Choisir la langue"
+            aria-label={`Langue : ${currentLangOption.label}`}
+            title={currentLangOption.label}
             onClick={(e) => {
               e.stopPropagation();
               setShowLangMenu((prev) => !prev);
             }}
           >
             <LanguageFlag code={currentLangOption.code} />
-            <span>{currentLangOption.label}</span>
           </button>
 
           {showLangMenu ? (
@@ -722,13 +733,15 @@ export default function GameSelect({ go }: Props) {
                   key={option.code}
                   type="button"
                   className={`msc-game-select-lang-option${option.code === lang ? " is-active" : ""}`}
+                  aria-label={option.label}
+                  title={option.label}
+                  aria-pressed={option.code === lang}
                   onClick={() => {
                     setLang(option.code);
                     setShowLangMenu(false);
                   }}
                 >
                   <LanguageFlag code={option.code} />
-                  <span>{option.label}</span>
                 </button>
               ))}
             </div>
