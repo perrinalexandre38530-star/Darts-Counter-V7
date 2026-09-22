@@ -4,6 +4,9 @@
 // Objectif: ne plus stocker les images originales énormes en base64.
 // =============================================================
 
+import { packJsonForStorage } from "./imageStorageCodec";
+import { purgeLegacyLocalStorageIfNeeded } from "./storageQuota";
+
 const DATA_URL_RE = /^data:image\//i;
 const MAX_STORED_IMAGE_CHARS = 260_000; // filet de sécurité localStorage (~190KB binaires)
 
@@ -90,19 +93,69 @@ export async function fileToCompressedImageDataUrl(
   return dataUrl;
 }
 
+function packForLocalStorage(value: unknown): string {
+  // Les équipes contiennent beaucoup de champs répétés (URLs, ids, sports, etc.).
+  // Le codec LZ existant réduit fortement dc-teams-v1 sans changer le schéma métier.
+  return packJsonForStorage(value ?? null, {
+    compressAboveChars: 8_000,
+    sanitizeImages: false,
+  });
+}
+
+function tryQuotaSafeWrite(key: string, payload: string): boolean {
+  try {
+    localStorage.setItem(key, payload);
+    return true;
+  } catch (err) {
+    if (!isStorageQuotaError(err)) throw err;
+    return false;
+  }
+}
+
 export function setJsonWithQuotaRecovery<T>(
   key: string,
   value: T,
   compact?: (v: T) => T
 ): void {
-  const first = JSON.stringify(value ?? null);
+  if (typeof localStorage === "undefined") return;
+
+  const first = packForLocalStorage(value);
+  if (tryQuotaSafeWrite(key, first)) return;
+
+  // 1) Retire les médias inline lourds via le compacteur fourni par le store.
+  const compacted = compact ? compact(value) : value;
+  const second = packForLocalStorage(compacted);
+  if (tryQuotaSafeWrite(key, second)) return;
+
+  // 2) Le quota peut être saturé par d'anciennes clés devenues inutiles.
+  // La purge est volontairement ciblée et n'efface pas les données métier actives.
   try {
-    localStorage.setItem(key, first);
-    return;
+    purgeLegacyLocalStorageIfNeeded({ force: true });
+  } catch {}
+  if (tryQuotaSafeWrite(key, second)) return;
+
+  // 3) Dernier recours : certains WebView/Chromium refusent le remplacement
+  // d'une grosse valeur alors qu'une version compacte tiendrait une fois l'ancienne
+  // libérée. On garde l'ancienne valeur et on tente un remplacement atomique manuel.
+  let previous: string | null = null;
+  try { previous = localStorage.getItem(key); } catch {}
+
+  try {
+    if (previous != null) localStorage.removeItem(key);
+    if (tryQuotaSafeWrite(key, second)) return;
   } catch (err) {
-    if (!isStorageQuotaError(err) || !compact) throw err;
+    if (!isStorageQuotaError(err)) throw err;
   }
 
-  const compacted = compact(value);
-  localStorage.setItem(key, JSON.stringify(compacted ?? null));
+  // Si l'écriture compacte échoue encore, restaurer l'ancienne valeur si possible.
+  if (previous != null) {
+    try { localStorage.setItem(key, previous); } catch {}
+  }
+
+  // Surtout ne plus faire remonter QuotaExceededError jusqu'au CrashBoundary.
+  // Les médias d'équipe sont déjà miroirés en R2 par les stores appelants.
+  console.error(`[teamImageStorage] localStorage quota toujours saturé pour "${key}" après compression + purge.`);
+  try {
+    window.dispatchEvent(new CustomEvent("dc-storage-quota", { detail: { key } }));
+  } catch {}
 }

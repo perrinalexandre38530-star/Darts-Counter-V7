@@ -1,6 +1,22 @@
 import { supabase } from "../lib/supabaseClient";
 import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
 
+const ORGANIZATION_MUTATION_RPC = /^(?:ms_org_(?:create|update|delete|set|invite|respond|cancel|rotate|join|generate|remove|upsert|touch))/i;
+
+function queueOrganizationBackup(reason: string) {
+  void import("../lib/cloudEvents")
+    .then(({ emitCloudChange }) => emitCloudChange(`organization:${String(reason || "change")}`))
+    .catch(() => undefined);
+}
+
+async function orgRpc(functionName: string, args?: Record<string, any>): Promise<any> {
+  const result = await supabase.rpc(functionName as any, args as any);
+  if (!result?.error && ORGANIZATION_MUTATION_RPC.test(String(functionName || ""))) {
+    queueOrganizationBackup(functionName);
+  }
+  return result;
+}
+
 export type OrganizationKind =
   | "club"
   | "association"
@@ -624,7 +640,7 @@ export async function listMyOrganizations(userId: string | null | undefined): Pr
   if (!userId) return { organizations: local, cloudAvailable: false, warning: "Compte en ligne requis pour synchroniser une organisation entre plusieurs appareils." };
 
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_mine");
+    const { data, error } = await orgRpc("ms_org_list_mine");
     if (error) throw error;
     const rows = Array.isArray(data) ? data.map((row) => parseOrganizationRow(row, "cloud")) : [];
     return { organizations: mergeCloudIntoLocal(userId, rows), cloudAvailable: true };
@@ -660,7 +676,7 @@ export async function createOrganization(userId: string | null | undefined, inpu
 
   if (userId) {
     try {
-      const { data, error } = await supabase.rpc("ms_org_create", {
+      const { data, error } = await orgRpc("ms_org_create", {
         p_name: clean.name,
         p_kind: clean.kind,
         p_plan: clean.plan,
@@ -725,7 +741,7 @@ export async function updateOrganizationProfile(
       const cloudProfile = { ...profile };
       delete (cloudProfile as any).logoMediaKey;
       delete (cloudProfile as any).coverMediaKey;
-      const { data, error } = await supabase.rpc("ms_org_update_profile", {
+      const { data, error } = await orgRpc("ms_org_update_profile", {
         p_org_id: organizationId,
         p_profile: cloudProfile,
         p_logo_media_key: profile.logoMediaKey || null,
@@ -769,7 +785,7 @@ export async function updateOrganizationIdentity(
   cacheOrganization(userId, localOrganization);
   if (userId && current.source === "cloud") {
     try {
-      const { data, error } = await supabase.rpc("ms_org_update_identity", {
+      const { data, error } = await orgRpc("ms_org_update_identity", {
         p_org_id: organizationId, p_name: name, p_kind: kind, p_city: city || null, p_country_code: countryCode, p_description: description || null,
       });
       if (error) throw error;
@@ -807,7 +823,7 @@ export async function joinOrganization(userId: string | null | undefined, rawCod
 
   if (userId) {
     try {
-      const { data, error } = await supabase.rpc("ms_org_join_by_code", { p_join_code: code });
+      const { data, error } = await orgRpc("ms_org_join_by_code", { p_join_code: code });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       if (row && typeof row === "object") {
@@ -877,7 +893,7 @@ export async function listOrganizationGroups(userId: string | null | undefined, 
   const local = listLocalOrganizationGroups(userId, organizationId);
   if (!userId || !organizationId) return { groups: local, cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_groups", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_groups", { p_org_id: organizationId });
     if (error) throw error;
     const groups = rpcRows(data).filter(Boolean).map(parseGroupRow);
     cacheOrganizationGroups(userId, organizationId, groups);
@@ -920,7 +936,7 @@ export async function createOrganizationGroup(
   };
   if (userId) {
     try {
-      const { data, error } = await supabase.rpc("ms_org_create_group", {
+      const { data, error } = await orgRpc("ms_org_create_group", {
         p_org_id: organizationId,
         p_name: payload.name,
         p_sport_id: payload.sportId,
@@ -974,7 +990,7 @@ export async function updateOrganizationGroup(
     status: patch.status === "archived" ? "archived" : "active",
   };
   if (payload.name.length < 2) throw new Error("Nom de groupe trop court.");
-  const { data, error } = await supabase.rpc("ms_org_update_group", {
+  const { data, error } = await orgRpc("ms_org_update_group", {
     p_group_id: groupId,
     p_name: payload.name,
     p_sport_id: payload.sportId,
@@ -1000,7 +1016,7 @@ export async function deleteOrganizationGroup(userId: string | null | undefined,
   const state = loadOrganizationLocalState(userId);
   const current = state.groups.find((item) => item.id === groupId);
   if (!current) throw new Error("Équipe ou groupe introuvable.");
-  const { error } = await supabase.rpc("ms_org_delete_group", { p_group_id: groupId });
+  const { error } = await orgRpc("ms_org_delete_group", { p_group_id: groupId });
   if (error) throw new Error(rpcMessage(error, "Suppression de l’équipe impossible."));
   cacheOrganizationGroups(userId, current.organizationId, state.groups.filter((item) => item.organizationId === current.organizationId && item.id !== groupId));
 }
@@ -1113,7 +1129,7 @@ export async function createOrganizationEvent(userId: string | null | undefined,
   const clean = normalizeOrganizationEventInput(input);
   if (userId) {
     try {
-      const { data, error } = await supabase.rpc("ms_org_create_event", {
+      const { data, error } = await orgRpc("ms_org_create_event", {
         p_org_id: organizationId,
         p_group_id: clean.groupId || null,
         p_title: clean.title,
@@ -1138,7 +1154,7 @@ export async function updateOrganizationEvent(userId: string | null | undefined,
   const clean = normalizeOrganizationEventInput(input);
   if (userId) {
     try {
-      const { data, error } = await supabase.rpc("ms_org_update_event", {
+      const { data, error } = await orgRpc("ms_org_update_event", {
         p_event_id: eventId,
         p_group_id: clean.groupId || null,
         p_title: clean.title,
@@ -1163,7 +1179,7 @@ export async function updateOrganizationEvent(userId: string | null | undefined,
 export async function deleteOrganizationEvent(userId: string | null | undefined, organizationId: string, eventId: string): Promise<{ cloudAvailable: boolean }> {
   if (userId) {
     try {
-      const { error } = await supabase.rpc("ms_org_delete_event", { p_event_id: eventId });
+      const { error } = await orgRpc("ms_org_delete_event", { p_event_id: eventId });
       if (error) throw error;
       deleteLocalOrganizationEvent(userId, organizationId, eventId);
       return { cloudAvailable: true };
@@ -1425,7 +1441,7 @@ export async function listOrganizationMembers(
 ): Promise<{ members: OrganizationMember[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { members: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_members", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_members", { p_org_id: organizationId });
     if (error) throw error;
     return { members: rpcRows(data).filter(Boolean).map((row) => parseOrganizationMember(row, organizationId)), cloudAvailable: true };
   } catch (error) {
@@ -1441,7 +1457,7 @@ export async function setOrganizationMemberRole(
   role: OrganizationRole,
 ): Promise<OrganizationMember> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_set_member_role", { p_org_id: organizationId, p_user_id: memberUserId, p_role: role });
+  const { data, error } = await orgRpc("ms_org_set_member_role", { p_org_id: organizationId, p_user_id: memberUserId, p_role: role });
   if (error) throw new Error(rpcMessage(error, "Modification du rôle impossible."));
   const row = rpcRows(data)[0];
   if (!row) throw new Error("Membre introuvable.");
@@ -1455,7 +1471,7 @@ export async function setOrganizationMemberStatus(
   status: "active" | "suspended",
 ): Promise<OrganizationMember> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_set_member_status", { p_org_id: organizationId, p_user_id: memberUserId, p_status: status });
+  const { data, error } = await orgRpc("ms_org_set_member_status", { p_org_id: organizationId, p_user_id: memberUserId, p_status: status });
   if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));
   const row = rpcRows(data)[0];
   if (!row) throw new Error("Membre introuvable.");
@@ -1468,7 +1484,7 @@ export async function removeOrganizationMember(
   memberUserId: string,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_remove_member", { p_org_id: organizationId, p_user_id: memberUserId });
+  const { error } = await orgRpc("ms_org_remove_member", { p_org_id: organizationId, p_user_id: memberUserId });
   if (error) throw new Error(rpcMessage(error, "Suppression du membre impossible."));
 }
 
@@ -1479,7 +1495,7 @@ export async function setOrganizationGroupMember(
   assigned: boolean,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_set_group_member", { p_group_id: groupId, p_user_id: memberUserId, p_assigned: assigned });
+  const { error } = await orgRpc("ms_org_set_group_member", { p_group_id: groupId, p_user_id: memberUserId, p_assigned: assigned });
   if (error) throw new Error(rpcMessage(error, "Affectation à l’équipe impossible."));
 }
 
@@ -1490,7 +1506,7 @@ export async function inviteOrganizationUser(
   role: OrganizationRole = "member",
 ): Promise<OrganizationInvitation> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_invite_user", { p_org_id: organizationId, p_user_id: invitedUserId, p_role: role });
+  const { data, error } = await orgRpc("ms_org_invite_user", { p_org_id: organizationId, p_user_id: invitedUserId, p_role: role });
   if (error) throw new Error(rpcMessage(error, "Invitation impossible."));
   const row = rpcRows(data)[0];
   if (!row) throw new Error("Invitation impossible.");
@@ -1503,7 +1519,7 @@ export async function listOrganizationInvitations(
 ): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { invitations: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_invitations", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_invitations", { p_org_id: organizationId });
     if (error) throw error;
     return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };
   } catch (error) {
@@ -1517,7 +1533,7 @@ export async function listMyOrganizationInvitations(
 ): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {
   if (!userId) return { invitations: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_my_invitations");
+    const { data, error } = await orgRpc("ms_org_list_my_invitations");
     if (error) throw error;
     return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };
   } catch (error) {
@@ -1532,7 +1548,7 @@ export async function respondOrganizationInvitation(
   accept: boolean,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_respond_invitation", { p_invitation_id: invitationId, p_accept: accept });
+  const { error } = await orgRpc("ms_org_respond_invitation", { p_invitation_id: invitationId, p_accept: accept });
   if (error) throw new Error(rpcMessage(error, "Réponse à l’invitation impossible."));
 }
 
@@ -1541,7 +1557,7 @@ export async function cancelOrganizationInvitation(
   invitationId: string,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_cancel_invitation", { p_invitation_id: invitationId });
+  const { error } = await orgRpc("ms_org_cancel_invitation", { p_invitation_id: invitationId });
   if (error) throw new Error(rpcMessage(error, "Annulation de l’invitation impossible."));
 }
 
@@ -1550,7 +1566,7 @@ export async function rotateOrganizationJoinCode(
   organizationId: string,
 ): Promise<string> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_rotate_join_code", { p_org_id: organizationId });
+  const { data, error } = await orgRpc("ms_org_rotate_join_code", { p_org_id: organizationId });
   if (error) throw new Error(rpcMessage(error, "Impossible de générer un nouveau code."));
   const row = rpcRows(data)[0];
   const code = String(row?.joinCode || row?.join_code || row || "").trim().toUpperCase();
@@ -1639,7 +1655,7 @@ export async function listOrganizationCompetitions(
 ): Promise<{ competitions: OrganizationCompetition[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { competitions: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_competitions", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_competitions", { p_org_id: organizationId });
     if (error) throw error;
     return { competitions: rpcRows(data).filter(Boolean).map(parseOrganizationCompetition), cloudAvailable: true };
   } catch (error) {
@@ -1657,7 +1673,7 @@ export async function createOrganizationCompetition(
   const entityIds = Array.from(new Set((input.entityIds || []).map((id) => String(id || "").trim()).filter(Boolean)));
   if (String(input.name || "").trim().length < 2) throw new Error("Nom de compétition trop court.");
   if (entityIds.length < 2) throw new Error("Sélectionne au moins deux participants.");
-  const { data, error } = await supabase.rpc("ms_org_create_competition", {
+  const { data, error } = await orgRpc("ms_org_create_competition", {
     p_org_id: organizationId,
     p_name: String(input.name || "").trim(),
     p_sport_id: String(input.sportId || "Multisport").trim(),
@@ -1678,7 +1694,7 @@ export async function getOrganizationCompetitionDetail(
   competitionId: string,
 ): Promise<OrganizationCompetitionDetail> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_get_competition", { p_competition_id: competitionId });
+  const { data, error } = await orgRpc("ms_org_get_competition", { p_competition_id: competitionId });
   if (error) throw new Error(rpcMessage(error, "Chargement de la compétition impossible."));
   const row = rpcRows(data)[0] || data;
   if (!row?.competition) throw new Error("Compétition introuvable.");
@@ -1695,7 +1711,7 @@ export async function updateOrganizationCompetitionStatus(
   status: OrganizationCompetitionStatus,
 ): Promise<OrganizationCompetition> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_set_competition_status", { p_competition_id: competitionId, p_status: status });
+  const { data, error } = await orgRpc("ms_org_set_competition_status", { p_competition_id: competitionId, p_status: status });
   if (error) throw new Error(rpcMessage(error, "Modification de la compétition impossible."));
   const row = rpcRows(data)[0];
   if (!row) throw new Error("Compétition introuvable.");
@@ -1707,7 +1723,7 @@ export async function deleteOrganizationCompetition(
   competitionId: string,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_delete_competition", { p_competition_id: competitionId });
+  const { error } = await orgRpc("ms_org_delete_competition", { p_competition_id: competitionId });
   if (error) throw new Error(rpcMessage(error, "Suppression de la compétition impossible."));
 }
 
@@ -1716,7 +1732,7 @@ export async function generateOrganizationCompetitionFixtures(
   competitionId: string,
 ): Promise<number> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_generate_competition_fixtures", { p_competition_id: competitionId });
+  const { data, error } = await orgRpc("ms_org_generate_competition_fixtures", { p_competition_id: competitionId });
   if (error) throw new Error(rpcMessage(error, "Génération du calendrier impossible."));
   return Math.max(0, Number(data || 0) || 0);
 }
@@ -1729,7 +1745,7 @@ export async function createOrganizationCompetitionFixture(
   scheduledAt?: string,
 ): Promise<OrganizationCompetitionFixture> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_create_competition_fixture", {
+  const { data, error } = await orgRpc("ms_org_create_competition_fixture", {
     p_competition_id: competitionId,
     p_home_participant_id: homeParticipantId,
     p_away_participant_id: awayParticipantId,
@@ -1749,7 +1765,7 @@ export async function setOrganizationCompetitionFixtureResult(
   resultRef = "",
 ): Promise<OrganizationCompetitionFixture> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_set_competition_fixture_result", {
+  const { data, error } = await orgRpc("ms_org_set_competition_fixture_result", {
     p_fixture_id: fixtureId,
     p_winner_participant_id: winnerParticipantId,
     p_score_label: String(scoreLabel || "").trim(),
@@ -1791,7 +1807,7 @@ export async function getOrganizationRankings(
   if (!userId || !organizationId) return [];
   const competitionId = String(filters.competitionId || "").trim();
   const sportId = String(filters.sportId || "").trim();
-  const { data, error } = await supabase.rpc("ms_org_get_rankings", {
+  const { data, error } = await orgRpc("ms_org_get_rankings", {
     p_org_id: organizationId,
     p_competition_id: competitionId || null,
     p_sport_id: sportId || null,
@@ -1826,7 +1842,7 @@ export async function listOrganizationAnnouncements(
 ): Promise<{ announcements: OrganizationAnnouncement[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { announcements: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_announcements", {
+    const { data, error } = await orgRpc("ms_org_list_announcements", {
       p_org_id: organizationId,
       p_group_id: groupId || null,
     });
@@ -1848,7 +1864,7 @@ export async function createOrganizationAnnouncement(
   const body = String(input.body || "").trim();
   if (title.length < 2) throw new Error("Titre requis.");
   if (!body) throw new Error("Message requis.");
-  const { data, error } = await supabase.rpc("ms_org_create_announcement", {
+  const { data, error } = await orgRpc("ms_org_create_announcement", {
     p_org_id: organizationId,
     p_group_id: input.groupId || null,
     p_title: title.slice(0, 100),
@@ -1868,7 +1884,7 @@ export async function updateOrganizationAnnouncement(
   input: Omit<OrganizationAnnouncementInput, "groupId">,
 ): Promise<OrganizationAnnouncement> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_update_announcement", {
+  const { data, error } = await orgRpc("ms_org_update_announcement", {
     p_announcement_id: announcementId,
     p_title: String(input.title || "").trim().slice(0, 100),
     p_body: String(input.body || "").trim().slice(0, 1200),
@@ -1886,7 +1902,7 @@ export async function deleteOrganizationAnnouncement(
   announcementId: string,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_delete_announcement", { p_announcement_id: announcementId });
+  const { error } = await orgRpc("ms_org_delete_announcement", { p_announcement_id: announcementId });
   if (error) throw new Error(rpcMessage(error, "Suppression impossible."));
 }
 
@@ -1950,7 +1966,7 @@ export async function listOrganizationFeeCampaigns(
 ): Promise<{ campaigns: OrganizationFeeCampaign[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { campaigns: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_fee_campaigns", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_fee_campaigns", { p_org_id: organizationId });
     if (error) throw error;
     return { campaigns: rpcRows(data).filter(Boolean).map(parseOrganizationFeeCampaign), cloudAvailable: true };
   } catch (error) {
@@ -1965,7 +1981,7 @@ export async function createOrganizationFeeCampaign(
   input: OrganizationFeeCampaignInput,
 ): Promise<OrganizationFeeCampaign> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_create_fee_campaign", {
+  const { data, error } = await orgRpc("ms_org_create_fee_campaign", {
     p_org_id: organizationId,
     p_group_id: input.groupId || null,
     p_title: String(input.title || "").trim(),
@@ -1988,7 +2004,7 @@ export async function updateOrganizationFeeCampaign(
   input: OrganizationFeeCampaignInput,
 ): Promise<OrganizationFeeCampaign> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_update_fee_campaign", {
+  const { data, error } = await orgRpc("ms_org_update_fee_campaign", {
     p_fee_id: feeId,
     p_group_id: input.groupId || null,
     p_title: String(input.title || "").trim(),
@@ -2011,7 +2027,7 @@ export async function setOrganizationFeeCampaignStatus(
   status: OrganizationFeeCampaignStatus,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_set_fee_campaign_status", { p_fee_id: feeId, p_status: status });
+  const { error } = await orgRpc("ms_org_set_fee_campaign_status", { p_fee_id: feeId, p_status: status });
   if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));
 }
 
@@ -2020,7 +2036,7 @@ export async function listOrganizationFeeMembers(
   feeId: string,
 ): Promise<OrganizationFeeMember[]> {
   if (!userId || !feeId) return [];
-  const { data, error } = await supabase.rpc("ms_org_list_fee_members", { p_fee_id: feeId });
+  const { data, error } = await orgRpc("ms_org_list_fee_members", { p_fee_id: feeId });
   if (error) throw new Error(rpcMessage(error, "Liste des règlements indisponible."));
   return rpcRows(data).filter(Boolean).map(parseOrganizationFeeMember);
 }
@@ -2035,7 +2051,7 @@ export async function setOrganizationFeeMemberStatus(
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
   const normalized = status === "paid" || status === "waived" ? status : "pending";
-  const { error } = await supabase.rpc("ms_org_set_fee_member_status", {
+  const { error } = await orgRpc("ms_org_set_fee_member_status", {
     p_fee_id: feeId,
     p_user_id: memberUserId,
     p_status: normalized,
@@ -2050,7 +2066,7 @@ export async function deleteOrganizationFeeCampaign(
   feeId: string,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_delete_fee_campaign", { p_fee_id: feeId });
+  const { error } = await orgRpc("ms_org_delete_fee_campaign", { p_fee_id: feeId });
   if (error) throw new Error(rpcMessage(error, "Suppression de la cotisation impossible."));
 }
 
@@ -2098,7 +2114,7 @@ export async function listOrganizationPartners(
 ): Promise<{ partners: OrganizationPartner[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { partners: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_partners", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_partners", { p_org_id: organizationId });
     if (error) throw error;
     return { partners: rpcRows(data).filter(Boolean).map(parseOrganizationPartner), cloudAvailable: true };
   } catch (error) {
@@ -2113,7 +2129,7 @@ export async function createOrganizationPartner(
   input: OrganizationPartnerInput,
 ): Promise<OrganizationPartner> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_create_partner", {
+  const { data, error } = await orgRpc("ms_org_create_partner", {
     p_org_id: organizationId,
     p_group_id: input.groupId || null,
     p_partner_kind: input.partnerKind,
@@ -2140,7 +2156,7 @@ export async function updateOrganizationPartner(
   input: OrganizationPartnerInput,
 ): Promise<OrganizationPartner> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_update_partner", {
+  const { data, error } = await orgRpc("ms_org_update_partner", {
     p_partner_id: partnerId,
     p_group_id: input.groupId || null,
     p_partner_kind: input.partnerKind,
@@ -2167,7 +2183,7 @@ export async function setOrganizationPartnerStatus(
   status: OrganizationPartnerStatus,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_set_partner_status", { p_partner_id: partnerId, p_status: status });
+  const { error } = await orgRpc("ms_org_set_partner_status", { p_partner_id: partnerId, p_status: status });
   if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));
 }
 
@@ -2176,7 +2192,7 @@ export async function deleteOrganizationPartner(
   partnerId: string,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_delete_partner", { p_partner_id: partnerId });
+  const { error } = await orgRpc("ms_org_delete_partner", { p_partner_id: partnerId });
   if (error) throw new Error(rpcMessage(error, "Suppression du partenaire impossible."));
 }
 
@@ -2216,7 +2232,7 @@ export async function listOrganizationFederationLinks(
 ): Promise<{ links: OrganizationFederationLink[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { links: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_federation_links", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_federation_links", { p_org_id: organizationId });
     if (error) throw error;
     return { links: rpcRows(data).filter(Boolean).map(parseOrganizationFederationLink), cloudAvailable: true };
   } catch (error) {
@@ -2233,7 +2249,7 @@ export async function saveOrganizationFederationLink(
   if (!userId) throw new Error("Connexion requise.");
   const federationName = String(input.federationName || "").trim();
   if (federationName.length < 2) throw new Error("Nom de fédération requis.");
-  const { data, error } = await supabase.rpc("ms_org_upsert_federation_link", {
+  const { data, error } = await orgRpc("ms_org_upsert_federation_link", {
     p_org_id: organizationId,
     p_link_id: input.id || null,
     p_federation_name: federationName,
@@ -2258,7 +2274,7 @@ export async function deleteOrganizationFederationLink(
   linkId: string,
 ): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_delete_federation_link", { p_link_id: linkId });
+  const { error } = await orgRpc("ms_org_delete_federation_link", { p_link_id: linkId });
   if (error) throw new Error(rpcMessage(error, "Suppression de l’affiliation impossible."));
 }
 
@@ -2299,7 +2315,7 @@ export async function listOrganizationInstallations(
 ): Promise<{ installations: OrganizationInstallation[]; cloudAvailable: boolean }> {
   if (!userId || !organizationId) return { installations: [], cloudAvailable: false };
   try {
-    const { data, error } = await supabase.rpc("ms_org_list_installations", { p_org_id: organizationId });
+    const { data, error } = await orgRpc("ms_org_list_installations", { p_org_id: organizationId });
     if (error) throw error;
     return { installations: rpcRows(data).filter(Boolean).map(parseOrganizationInstallation), cloudAvailable: true };
   } catch (error) {
@@ -2314,7 +2330,7 @@ export async function createOrganizationInstallation(
   input: OrganizationInstallationInput,
 ): Promise<OrganizationInstallation> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_create_installation", {
+  const { data, error } = await orgRpc("ms_org_create_installation", {
     p_org_id: organizationId,
     p_name: String(input.name || "").trim(),
     p_kind: input.kind || "other",
@@ -2333,7 +2349,7 @@ export async function updateOrganizationInstallation(
   input: OrganizationInstallationInput,
 ): Promise<OrganizationInstallation> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_update_installation", {
+  const { data, error } = await orgRpc("ms_org_update_installation", {
     p_installation_id: installationId,
     p_name: String(input.name || "").trim(),
     p_kind: input.kind || "other",
@@ -2349,13 +2365,13 @@ export async function updateOrganizationInstallation(
 
 export async function deleteOrganizationInstallation(userId: string | null | undefined, installationId: string): Promise<void> {
   if (!userId) throw new Error("Connexion requise.");
-  const { error } = await supabase.rpc("ms_org_delete_installation", { p_installation_id: installationId });
+  const { error } = await orgRpc("ms_org_delete_installation", { p_installation_id: installationId });
   if (error) throw new Error(rpcMessage(error, "Suppression de l’installation impossible."));
 }
 
 export async function rotateOrganizationInstallationQr(userId: string | null | undefined, installationId: string): Promise<OrganizationInstallation> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_rotate_installation_qr", { p_installation_id: installationId });
+  const { data, error } = await orgRpc("ms_org_rotate_installation_qr", { p_installation_id: installationId });
   if (error) throw new Error(rpcMessage(error, "Régénération du QR impossible."));
   const row = rpcRows(data)[0] || data;
   if (!row) throw new Error("Installation introuvable.");
@@ -2367,7 +2383,7 @@ export async function resolveOrganizationInstallationQr(
   token: string,
 ): Promise<OrganizationInstallation> {
   if (!userId) throw new Error("Connexion requise.");
-  const { data, error } = await supabase.rpc("ms_org_resolve_installation_qr", { p_token: String(token || "").trim() });
+  const { data, error } = await orgRpc("ms_org_resolve_installation_qr", { p_token: String(token || "").trim() });
   if (error) throw new Error(rpcMessage(error, "QR code invalide."));
   const row = rpcRows(data)[0] || data;
   if (!row) throw new Error("Installation introuvable.");
@@ -2380,7 +2396,7 @@ export async function touchOrganizationInstallation(
 ): Promise<void> {
   if (!userId || !token) return;
   try {
-    const { error } = await supabase.rpc("ms_org_touch_installation", { p_token: String(token).trim() });
+    const { error } = await orgRpc("ms_org_touch_installation", { p_token: String(token).trim() });
     if (error) throw error;
   } catch (error) {
     console.warn("[organizations] venue usage counter unavailable", error);

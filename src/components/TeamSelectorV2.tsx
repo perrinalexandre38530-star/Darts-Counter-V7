@@ -1,6 +1,7 @@
 import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
+import { resolveTeamLogo } from "../lib/petanqueTeamsStore";
 import {
   getTeamPlayerIds,
   teamBaseId,
@@ -64,6 +65,23 @@ function mapValues(map: any): any[] {
 
 function teamLogo(team: any) {
   return team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || team?.avatarUrl || team?.imageUrl || null;
+}
+
+function DurableTeamAvatar({ team, size }: { team: any; size: number }) {
+  const directLogo = teamLogo(team);
+  const [logo, setLogo] = React.useState<string | null>(directLogo);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLogo(directLogo);
+    if (!team?.id || !team?.logoMediaKey) return () => { cancelled = true; };
+    void resolveTeamLogo(team, true).then((resolved) => {
+      if (!cancelled && resolved) setLogo(resolved);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [team?.id, team?.logoMediaKey, directLogo]);
+
+  return <ProfileAvatar name={team?.name || "Équipe"} dataUrl={logo || undefined} size={size} />;
 }
 
 function pickName(p: any) {
@@ -302,11 +320,10 @@ export default function TeamSelectorV2({
           <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollSnapType: "x mandatory" }}>
             {selectedItems.map((item) => {
               const names = (item.chosen || []).map((id: string) => pickName(mapGet(profilesById, id))).filter(Boolean).join(", ");
-              const logo = teamLogo(item.team);
               return (
                 <article key={item.instanceId} style={{ flex: "0 0 min(70vw, 250px)", minHeight: 126, borderRadius: 22, padding: 12, border: `1px solid ${primary}77`, background: `linear-gradient(180deg, ${primarySoft}, rgba(7,10,22,.94))`, color: "#fff", scrollSnapAlign: "start", position: "relative", display: "grid", justifyItems: "center", alignContent: "center", textAlign: "center" }}>
                   <button type="button" onClick={() => onRemove(item.instanceId)} style={{ position: "absolute", top: 8, right: 8, width: 30, height: 30, borderRadius: 999, border: "1px solid rgba(255,255,255,.15)", background: "rgba(0,0,0,.28)", color: "#ff7aa8", fontWeight: 950, cursor: "pointer" }}>×</button>
-                  <ProfileAvatar name={item.team?.name || "Équipe"} dataUrl={logo || undefined} size={58} />
+                  <DurableTeamAvatar team={item.team} size={58} />
                   <div style={{ marginTop: 8, fontWeight: 950, fontSize: 15, maxWidth: "100%", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{item.team?.name || "Équipe"}</div>
                   <div style={{ marginTop: 3, color: "#b9bfd8", fontSize: 11, maxWidth: "100%", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{names || `${item.chosen?.length || 0} joueur`}</div>
                   {item.team?.temporary ? <div style={{ marginTop: 5, color: primary, fontSize: 10, fontWeight: 950, textTransform: "uppercase" }}>Temporaire</div> : null}
@@ -407,14 +424,13 @@ export default function TeamSelectorV2({
               const used = usedByBase[base] || new Set<string>();
               const remaining = all.filter((id) => !used.has(id)).length;
               const disabled = remaining <= 0 || reachedMax;
-              const logo = teamLogo(team);
               const level = Number(team?.botTeamLevel || parseFloat(String(team?.botLevel || "0")) || 0);
               return (
                 <button key={`${base}-${index}`} type="button" disabled={disabled} onClick={() => openPicker(team)} style={{ textAlign: "center", borderRadius: 24, padding: "16px 14px 14px", border: disabled ? "1px solid rgba(255,255,255,.06)" : `1px solid ${primary}66`, background: disabled ? "rgba(255,255,255,.025)" : "rgba(8,10,20,.92)", color: disabled ? "#62687f" : "#f5f7ff", cursor: disabled ? "not-allowed" : "pointer", flex: "0 0 min(72vw, 250px)", minHeight: 190, scrollSnapAlign: "start" }}>
                   <div style={{ display: "grid", justifyItems: "center", gap: 9, minWidth: 0 }}>
                     <div style={{ position: "relative", width: 90, height: 90, display: "grid", placeItems: "center", overflow: "visible" }}>
                       {botMode && level > 0 ? <ProfileStarRing botLevel={level} anchorSize={74} starSize={9} gapPx={-5} /> : null}
-                      <ProfileAvatar name={team?.name || "Équipe"} dataUrl={logo || undefined} size={72} />
+                      <DurableTeamAvatar team={team} size={72} />
                     </div>
                     <div style={{ width: "100%", minWidth: 0 }}>
                       <div style={{ fontWeight: 950, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team?.name || "Équipe"}</div>
@@ -435,7 +451,7 @@ export default function TeamSelectorV2({
         <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.72)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setPickerTeam(null)}>
           <div style={{ width: "min(580px, 96vw)", maxHeight: "82vh", overflow: "auto", borderRadius: 26, background: "rgba(8,10,20,.98)", border: `1px solid ${primary}66`, boxShadow: `0 0 42px ${primary}33`, padding: 16 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-              <ProfileAvatar name={pickerTeam?.name || "Équipe"} dataUrl={teamLogo(pickerTeam) || undefined} size={50} />
+              <DurableTeamAvatar team={pickerTeam} size={50} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8, fontSize: 13 }}>Choisir les joueurs</div>
                 <div style={{ color: "#fff", fontWeight: 950, fontSize: 17, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pickerTeam?.name || "Équipe"}</div>

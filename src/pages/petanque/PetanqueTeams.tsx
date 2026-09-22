@@ -20,6 +20,7 @@ import {
   createTeam,
   upsertTeam,
   deleteTeam,
+  resolveTeamLogo,
   type TeamEntity,
 } from "../../lib/petanqueTeamsStore";
 import { getCountryFlagSrc, getFRRegionLogoSrc } from "../../lib/geoAssets";
@@ -62,6 +63,26 @@ function safeUpper2(code?: string) {
   return String(code || "").toUpperCase().slice(0, 2);
 }
 
+function TeamLogoImage({ team }: { team: TeamEntity }) {
+  const direct = String(team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || "").trim();
+  const [src, setSrc] = React.useState(direct);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setSrc(direct);
+    if (!team.logoMediaKey) return () => { cancelled = true; };
+    void resolveTeamLogo(team, true).then((url) => {
+      if (!cancelled && url) setSrc(url);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [team.id, team.logoMediaKey, direct]);
+
+  if (!src) {
+    return <span style={{ fontWeight: 1000, letterSpacing: 1 }}>{(team.name || "TEAM").slice(0, 2).toUpperCase()}</span>;
+  }
+  return <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />;
+}
+
 export default function PetanqueTeams({ go, params }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
@@ -74,12 +95,19 @@ export default function PetanqueTeams({ go, params }: Props) {
   const [teams, setTeams] = React.useState<TeamEntity[]>(() => loadTeamsBySport(activeSport));
 
   React.useEffect(() => {
-    // si une autre page modifie les teams (edit), on refresh au focus
+    // Refresh au retour de l'éditeur ET dès qu'un logo/une équipe change.
+    const reload = () => setTeams(loadTeamsBySport(activeSport));
     const onVis = () => {
-      if (document.visibilityState === "visible") setTeams(loadTeamsBySport(activeSport));
+      if (document.visibilityState === "visible") reload();
     };
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    window.addEventListener("dc-teams-updated", reload);
+    window.addEventListener("dc:teams-changed", reload);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("dc-teams-updated", reload);
+      window.removeEventListener("dc:teams-changed", reload);
+    };
   }, [activeSport]);
 
   function refresh() {
@@ -192,13 +220,7 @@ export default function PetanqueTeams({ go, params }: Props) {
                 <div style={{ position: "relative", width: 56, height: 56, flex: "0 0 auto" }}>
                   <div style={logoRing(theme)} />
                   <div style={logoBox(theme)}>
-                    {tm.logoDataUrl ? (
-                      <img src={tm.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-                    ) : (
-                      <span style={{ fontWeight: 1000, color: theme.primary, letterSpacing: 1 }}>
-                        {(tm.name || "TEAM").slice(0, 2).toUpperCase()}
-                      </span>
-                    )}
+                    <TeamLogoImage team={tm} />
                   </div>
                 </div>
 

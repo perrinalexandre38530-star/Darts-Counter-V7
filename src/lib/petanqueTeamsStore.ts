@@ -11,8 +11,9 @@
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import { getTeamLogoTemplateBySrc, resolveTeamLogoSrc } from "../assets/teamLogoLibrary";
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
-import { captureUserMediaFallback, teamCoverMediaKey, teamLogoMediaKey } from "./userMediaFallback";
+import { captureUserMediaFallback, resolveUserMediaFallback, teamCoverMediaKey, teamLogoMediaKey } from "./userMediaFallback";
 import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
+import { unpackJsonFromStorage } from "./imageStorageCodec";
 
 export type TeamSport = string;
 
@@ -35,6 +36,8 @@ export type TeamEntity = {
   imageUrl?: string | null;
   imageAssetId?: string | null;
   logoSha256?: string | null;
+  /** Référence durable du logo personnalisé dans le coffre média IndexedDB/R2. */
+  logoMediaKey?: string | null;
 
   // ---------------------------
   // Champs étendus (optionnels)
@@ -93,6 +96,7 @@ export type PetanqueTeam = {
   logoAssetId?: string | null;
   logoLibraryId?: string | null;
   logoLibraryFileName?: string | null;
+  logoMediaKey?: string | null;
   teamKind?: "leisure" | "club";
   clubId?: string | null;
   clubName?: string | null;
@@ -120,7 +124,7 @@ const r2BackfilledSharedTeamIds = new Set<string>();
 function safeParse<T>(raw: string | null): T | null {
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as T;
+    return unpackJsonFromStorage<T | null>(raw, null);
   } catch {
     return null;
   }
@@ -170,6 +174,15 @@ function normalizeTextField(value: any): string | undefined {
   return s || undefined;
 }
 
+function normalizeNonInlineImageRef(...values: any[]): string | undefined {
+  for (const value of values) {
+    const s = typeof value === "string" ? value.trim() : "";
+    if (!s || /^data:image\//i.test(s)) continue;
+    return s;
+  }
+  return undefined;
+}
+
 function normalizeImageRef(...values: any[]): string | null {
   for (const value of values) {
     const dataUrl = sanitizeStoredImage(value);
@@ -200,8 +213,11 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const logoLibraryId = inputLogoLibraryId || libraryFromSrc?.id || null;
   const logoLibraryFileName = inputLogoLibraryFileName || libraryFromSrc?.fileName || null;
   const libraryLogoSrc = resolveTeamLogoSrc(logoLibraryId || logoLibraryFileName || null);
+  const normalizedLogo = normalizeImageRef(t.logoDataUrl, libraryLogoSrc, t.logoUrl, t.avatarUrl, t.imageUrl, t.logo);
   const logoUrl = normalizeTextField(libraryLogoSrc || t.logoUrl || t.avatarUrl || t.imageUrl || t.logo);
   const logoAssetId = normalizeTextField(t.logoAssetId || t.logoMediaAssetId || t.teamLogoAssetId || t.avatarAssetId || t.imageAssetId);
+  const logoMediaKey = normalizeTextField(t.logoMediaKey || t.logo_media_key)
+    || (normalizedLogo && !logoLibraryId ? teamLogoMediaKey(id) : null);
   const regionLogoUrl = normalizeTextField(t.regionLogoUrl);
   const regionLogoAssetId = normalizeTextField(t.regionLogoAssetId);
   const coverUrl = normalizeTextField(t.coverUrl);
@@ -218,10 +234,11 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
     allSports: t.allSports === true,
     sportIds: normalizeSportIds(t.sportIds, t.sport),
     name,
-    logoDataUrl: normalizeImageRef(t.logoDataUrl, libraryLogoSrc, t.logoUrl, t.avatarUrl, t.imageUrl, t.logo),
+    logoDataUrl: normalizedLogo,
     logoUrl: logoUrl ?? null,
     logoLibraryId,
     logoLibraryFileName,
+    logoMediaKey: logoMediaKey ?? null,
     logoAssetId: logoAssetId ?? null,
     logoMediaAssetId: normalizeTextField(t.logoMediaAssetId || logoAssetId) ?? null,
     teamLogoAssetId: normalizeTextField(t.teamLogoAssetId || logoAssetId) ?? null,
@@ -302,6 +319,27 @@ function dedupeById(list: TeamEntity[]) {
 //   }
 // }
 
+/**
+ * Résout le visuel d'une équipe. Pour un logo personnalisé, la clé média est
+ * canonique : le logo reste récupérable même si localStorage a dû supprimer
+ * la dataURL pour éviter un QuotaExceededError.
+ */
+export async function resolveTeamLogo(team: TeamEntity | null | undefined, allowR2 = true): Promise<string> {
+  if (!team?.id) return "";
+  const primary = String(team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || "").trim();
+  const mediaKey = String(team.logoMediaKey || "").trim();
+  if (!mediaKey) return primary;
+  try {
+    const resolved = await resolveUserMediaFallback(mediaKey, primary, { kind: "team_logo", allowR2 }) || primary;
+    // Hydrate aussi l'objet courant : les sélecteurs qui réutilisent cette
+    // instance récupèrent immédiatement le logo durable sans attendre un reload.
+    if (resolved && team.logoDataUrl !== resolved) team.logoDataUrl = resolved;
+    return resolved;
+  } catch {
+    return primary;
+  }
+}
+
 // ---------------------------
 // CRUD (générique, multi-sport)
 // ---------------------------
@@ -337,8 +375,13 @@ export function saveTeams(list: TeamEntity[]) {
     (teams || []).map((t: any) => ({
       ...t,
       logoDataUrl: null,
+      logoUrl: normalizeNonInlineImageRef(t?.logoUrl) ?? null,
+      avatarUrl: normalizeNonInlineImageRef(t?.avatarUrl) ?? null,
+      imageUrl: normalizeNonInlineImageRef(t?.imageUrl) ?? null,
       regionLogoDataUrl: null,
+      regionLogoUrl: normalizeNonInlineImageRef(t?.regionLogoUrl) ?? null,
       coverDataUrl: null,
+      coverUrl: normalizeNonInlineImageRef(t?.coverUrl) ?? null,
     }))
   );
   // Chaque média personnalisé d'équipe a sa copie R2 exacte et indépendante
@@ -347,7 +390,7 @@ export function saveTeams(list: TeamEntity[]) {
   for (const team of clean) {
     const logo = String((team as any).logoDataUrl || (team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl || "").trim();
     const cover = String((team as any).coverDataUrl || (team as any).coverUrl || "").trim();
-    if (logo) void captureUserMediaFallback(teamLogoMediaKey(team.id), logo, { kind: "team_logo", updatedAt: Number(team.updatedAt || Date.now()) })
+    if (logo) void captureUserMediaFallback(team.logoMediaKey || teamLogoMediaKey(team.id), logo, { kind: "team_logo", updatedAt: Number(team.updatedAt || Date.now()) })
       .catch((error) => console.warn("[teams] R2 logo mirror failed", error));
     if (cover) void captureUserMediaFallback(teamCoverMediaKey(team.id), cover, { kind: "team_cover", updatedAt: Number(team.updatedAt || Date.now()) })
       .catch((error) => console.warn("[teams] R2 cover mirror failed", error));
@@ -361,21 +404,26 @@ export function upsertTeam(team: TeamEntity) {
   const idx = list.findIndex((t) => t.id === team.id);
 
   const ts = now();
+  const nextId = String(team.id || makeTeamId(team.sport || "team"));
   const libraryFromSrc = getTeamLogoTemplateBySrc((team as any).logoDataUrl || (team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl || (team as any).logo);
   const logoLibraryId = normalizeTextField((team as any).logoLibraryId || (team as any).logoTemplateId || libraryFromSrc?.id) ?? null;
   const logoLibraryFileName = normalizeTextField((team as any).logoLibraryFileName || (team as any).logoFileName || libraryFromSrc?.fileName) ?? null;
   const libraryLogoSrc = resolveTeamLogoSrc(logoLibraryId || logoLibraryFileName || null);
+  const normalizedLogo = normalizeImageRef(team.logoDataUrl, libraryLogoSrc, (team as any).logoUrl, (team as any).avatarUrl, (team as any).imageUrl);
+  const logoMediaKey = normalizeTextField((team as any).logoMediaKey)
+    || (normalizedLogo && !logoLibraryId ? teamLogoMediaKey(nextId) : null);
 
   const next: TeamEntity = {
     ...team,
-    id: String(team.id || makeTeamId(team.sport || "team")),
+    id: nextId,
     name: (team.name ?? "").trim(),
     updatedAt: ts,
     createdAt: Number(team.createdAt ?? 0) || ts,
-    logoDataUrl: normalizeImageRef(team.logoDataUrl, libraryLogoSrc, (team as any).logoUrl, (team as any).avatarUrl, (team as any).imageUrl),
+    logoDataUrl: normalizedLogo,
     logoUrl: normalizeTextField(libraryLogoSrc || (team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl) ?? null,
     logoLibraryId,
     logoLibraryFileName,
+    logoMediaKey: logoMediaKey ?? null,
     logoAssetId: normalizeTextField((team as any).logoAssetId || (team as any).logoMediaAssetId || (team as any).teamLogoAssetId || (team as any).avatarAssetId || (team as any).imageAssetId) ?? null,
     sport: normalizeSport(team.sport),
     allSports: (team as any).allSports === true,
@@ -425,6 +473,7 @@ export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?
     logoDataUrl: normalizeImageRef(input.logoDataUrl),
     logoLibraryId: getTeamLogoTemplateBySrc(input.logoDataUrl)?.id ?? null,
     logoLibraryFileName: getTeamLogoTemplateBySrc(input.logoDataUrl)?.fileName ?? null,
+    logoMediaKey: null,
     teamKind: input.teamKind === "club" ? "club" : "leisure",
     clubName: normalizeTextField(input.clubName) ?? null,
     clubId: normalizeTextField(input.clubId) ?? null,
@@ -433,8 +482,7 @@ export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?
     updatedAt: ts,
   };
   if (!t.name) t.name = "Team";
-  upsertTeam(t);
-  return t;
+  return upsertTeam(t);
 }
 
 export function updateTeam(
@@ -457,6 +505,7 @@ export function updateTeam(
     logoDataUrl: normalizeImageRef(patch.logoDataUrl ?? prev.logoDataUrl, resolveTeamLogoSrc((patch as any).logoLibraryId || (prev as any).logoLibraryId || null), (patch as any).logoUrl ?? (prev as any).logoUrl),
     logoLibraryId: (patch as any).logoLibraryId ?? (prev as any).logoLibraryId ?? getTeamLogoTemplateBySrc(patch.logoDataUrl ?? prev.logoDataUrl)?.id ?? null,
     logoLibraryFileName: (patch as any).logoLibraryFileName ?? (prev as any).logoLibraryFileName ?? getTeamLogoTemplateBySrc(patch.logoDataUrl ?? prev.logoDataUrl)?.fileName ?? null,
+    logoMediaKey: (patch as any).logoMediaKey ?? (prev as any).logoMediaKey ?? null,
     updatedAt: now(),
   };
 
@@ -517,6 +566,7 @@ export function loadPetanqueTeams(): PetanqueTeam[] {
     logoDataUrl: normalizeImageRef(t.logoDataUrl, t.logoUrl, t.avatarUrl, t.imageUrl),
     logoUrl: t.logoUrl ?? t.avatarUrl ?? t.imageUrl ?? null,
     logoAssetId: t.logoAssetId ?? t.logoMediaAssetId ?? t.teamLogoAssetId ?? t.avatarAssetId ?? t.imageAssetId ?? null,
+    logoMediaKey: t.logoMediaKey ?? null,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   }));
@@ -537,6 +587,7 @@ export function savePetanqueTeams(list: PetanqueTeam[]) {
       logoDataUrl: normalizeImageRef(t.logoDataUrl, (t as any).logoUrl),
       logoUrl: normalizeTextField((t as any).logoUrl) ?? null,
       logoAssetId: normalizeTextField((t as any).logoAssetId) ?? null,
+      logoMediaKey: normalizeTextField((t as any).logoMediaKey) ?? null,
       countryCode: (t.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
       countryName: t.countryName ?? FALLBACK_CN,
       regionCode: t.regionCode ?? "",
@@ -570,6 +621,7 @@ export function createPetanqueTeam(partial?: Partial<PetanqueTeam>): PetanqueTea
     logoDataUrl: normalizeImageRef(partial?.logoDataUrl, (partial as any)?.logoUrl),
     logoUrl: normalizeTextField((partial as any)?.logoUrl) ?? null,
     logoAssetId: normalizeTextField((partial as any)?.logoAssetId) ?? null,
+    logoMediaKey: normalizeTextField((partial as any)?.logoMediaKey) ?? null,
     createdAt: partial?.createdAt ?? ts,
     updatedAt: partial?.updatedAt ?? ts,
   };
@@ -585,6 +637,7 @@ export function upsertPetanqueTeam(team: PetanqueTeam) {
     logoDataUrl: normalizeImageRef(team.logoDataUrl, (team as any).logoUrl),
     logoUrl: normalizeTextField((team as any).logoUrl) ?? null,
     logoAssetId: normalizeTextField((team as any).logoAssetId) ?? null,
+    logoMediaKey: normalizeTextField((team as any).logoMediaKey) ?? null,
     countryCode: (team.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
     countryName: team.countryName ?? FALLBACK_CN,
     regionCode: team.regionCode ?? "",
@@ -614,6 +667,7 @@ export function upsertPetanqueTeam(team: PetanqueTeam) {
     logoDataUrl: next.logoDataUrl ?? next.logoUrl ?? null,
     logoUrl: next.logoUrl ?? null,
     logoAssetId: next.logoAssetId ?? next.logoMediaAssetId ?? next.teamLogoAssetId ?? next.avatarAssetId ?? next.imageAssetId ?? null,
+    logoMediaKey: next.logoMediaKey ?? null,
     createdAt: next.createdAt,
     updatedAt: next.updatedAt,
   };
@@ -642,6 +696,7 @@ export function deletePetanqueTeam(teamId: string) {
       logoDataUrl: normalizeImageRef(t.logoDataUrl, (t as any).logoUrl, (t as any).avatarUrl, (t as any).imageUrl),
       logoUrl: (t as any).logoUrl ?? (t as any).avatarUrl ?? (t as any).imageUrl ?? null,
       logoAssetId: (t as any).logoAssetId ?? (t as any).logoMediaAssetId ?? (t as any).teamLogoAssetId ?? (t as any).avatarAssetId ?? (t as any).imageAssetId ?? null,
+      logoMediaKey: (t as any).logoMediaKey ?? null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })) as PetanqueTeam[];
@@ -668,6 +723,7 @@ export type BabyFootTeam = {
   logoAssetId?: string | null;
   logoLibraryId?: string | null;
   logoLibraryFileName?: string | null;
+  logoMediaKey?: string | null;
   teamKind?: "leisure" | "club";
   clubId?: string | null;
   clubName?: string | null;

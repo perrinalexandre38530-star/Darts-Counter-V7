@@ -7,6 +7,7 @@
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
 import { captureUserMediaFallback, teamLogoMediaKey } from "./userMediaFallback";
 import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
+import { unpackJsonFromStorage } from "./imageStorageCodec";
 
 export type TeamSport = "petanque" | "darts" | string;
 
@@ -25,7 +26,7 @@ const r2BackfilledTeamIds = new Set<string>();
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   try {
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    return unpackJsonFromStorage<T>(raw, fallback);
   } catch {
     return fallback;
   }
@@ -37,6 +38,12 @@ function safeStringify(v: any) {
   } catch {
     return "[]";
   }
+}
+
+function keepNonInlineImageRef(value: unknown): string | undefined {
+  const s = typeof value === "string" ? value.trim() : "";
+  if (!s || /^data:image\//i.test(s)) return undefined;
+  return s;
 }
 
 export function loadTeams(): Team[] {
@@ -67,7 +74,11 @@ export function loadTeams(): Team[] {
 export function saveTeams(next: Team[]) {
   const clean = (next || []).map((t: any) => ({ ...t, logoDataUrl: sanitizeStoredImage(t?.logoDataUrl) || undefined }));
   setJsonWithQuotaRecovery(KEY, clean, (list: any[]) =>
-    (list || []).map((t: any) => ({ ...t, logoDataUrl: undefined }))
+    (list || []).map((t: any) => ({
+      ...t,
+      logoDataUrl: undefined,
+      logoUrl: keepNonInlineImageRef(t?.logoUrl),
+    }))
   );
   // Le logo utilisateur est écrit séparément dans R2 AVANT qu'une future
   // récupération de quota localStorage puisse supprimer son DataURL local.

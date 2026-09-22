@@ -30,8 +30,25 @@ import {
   type MultisportEventSport,
   type MultisportEventType,
 } from "../../planning/multisportAgenda";
+import {
+  createOrganizationEvent,
+  deleteOrganizationEvent,
+  listOrganizationEvents,
+  updateOrganizationEvent,
+  type OrganizationEventType,
+  type OrganizationLocalEvent,
+  type OrganizationLocalGroup,
+} from "../../organizations/organizationService";
 
 type Props = { go: (route: any, params?: any) => void; params?: any };
+type OrganizationAgendaContext = {
+  organizationId: string;
+  organizationName: string;
+  userId: string;
+  sports?: string[];
+  groups?: OrganizationLocalGroup[];
+};
+type AgendaCreateInput = Omit<MultisportAgendaEvent, "id" | "createdAt">;
 type View = "today" | "week" | "month" | "invitations";
 type AgendaPerson = { id: string; name: string; avatar?: string | null; source: "local" | "friend"; profile: any };
 type SportTypeOption = { value: MultisportEventType; fr: string; en: string; es: string };
@@ -137,6 +154,74 @@ function defaultTypeForSport(sport: MultisportEventSport): MultisportEventType {
   return sportTypeOptions(sport)[0]?.value || "other";
 }
 
+function normalizeOrganizationSportId(value: string): MultisportEventSport | null {
+  const raw = String(value || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const aliases: Record<string, MultisportEventSport> = {
+    darts: "darts", flechettes: "darts", "flechettes scoring": "darts",
+    babyfoot: "babyfoot", "baby-foot": "babyfoot",
+    pingpong: "pingpong", "ping-pong": "pingpong",
+    petanque: "petanque", molkky: "molkky", running: "running",
+    fit: "fit", "fit perf": "fit", football: "foot", foot: "foot",
+    badminton: "badminton", basket: "basket", basketball: "basket",
+    padel: "padel", pickleball: "pickleball", rugby: "rugby", tennis: "tennis",
+    volley: "volley", volleyball: "volley", archery: "archery", tiralarc: "archery",
+    esports: "esports", esport: "esports",
+  };
+  const compact = raw.replace(/[^a-z0-9-]/g, "");
+  return aliases[raw] || aliases[compact] || (enabledAppSports().some((entry) => entry.id === raw) ? raw as MultisportEventSport : null);
+}
+
+function organizationEventTypeToAgenda(value: OrganizationEventType): MultisportEventType {
+  if (value === "training") return "training";
+  if (value === "match") return "match";
+  if (value === "tournament") return "tournament";
+  if (value === "meeting") return "club";
+  return "other";
+}
+
+function agendaTypeToOrganization(value: MultisportEventType): OrganizationEventType {
+  if (value === "training" || value === "workout" || value === "recovery" || value === "outing") return "training";
+  if (value === "match" || value === "game" || value === "race") return "match";
+  if (value === "tournament" || value === "league" || value === "challenge") return "tournament";
+  if (value === "club") return "meeting";
+  return "event";
+}
+
+function mapOrganizationAgendaEvent(event: OrganizationLocalEvent, context: OrganizationAgendaContext): MultisportAgendaEvent {
+  const groups = context.groups || [];
+  const group = groups.find((item) => item.id === event.groupId);
+  const orgSports = context.sports || [];
+  const sport = normalizeOrganizationSportId(group?.sportId || "")
+    || orgSports.map(normalizeOrganizationSportId).find(Boolean)
+    || "other";
+  const startAt = new Date(event.startsAt).getTime();
+  const endAt = event.endsAt ? new Date(event.endsAt).getTime() : NaN;
+  const durationMin = Number.isFinite(endAt) && endAt > startAt ? Math.max(15, Math.round((endAt - startAt) / 60000)) : 60;
+  return {
+    id: `organization:${event.id}`,
+    sourceId: event.id,
+    title: event.title,
+    sport: sport as MultisportEventSport,
+    discipline: group?.name || undefined,
+    type: organizationEventTypeToAgenda(event.eventType),
+    source: "club",
+    startAt,
+    durationMin,
+    location: event.location || undefined,
+    organizer: context.organizationName,
+    club: context.organizationName,
+    status: "confirmed",
+    accent: multisportSportMeta(sport as MultisportEventSport).accent,
+    routeParams: {
+      organizationId: context.organizationId,
+      organizationEventId: event.id,
+      organizationGroupId: event.groupId || "",
+      organizationEventType: event.eventType,
+    },
+    createdAt: event.createdAt ? new Date(event.createdAt).getTime() : undefined,
+  };
+}
+
 export default function MultisportAgendaPage({ go, params }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang() as any;
@@ -148,24 +233,50 @@ export default function MultisportAgendaPage({ go, params }: Props) {
   const agendaHeaderAlt = String(lang || "").toLowerCase().startsWith("fr") ? "Agenda" : "Schedule";
   const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
   const textSoft = (theme as any)?.textSoft || "#9ca3af";
-  const [events, setEvents] = React.useState<MultisportAgendaEvent[]>(() => collectMultisportAgendaEvents());
+  const organizationAgenda = (params?.organizationAgenda || null) as OrganizationAgendaContext | null;
+  const isOrganizationAgenda = Boolean(organizationAgenda?.organizationId && organizationAgenda?.userId);
+  const [events, setEvents] = React.useState<MultisportAgendaEvent[]>(() => isOrganizationAgenda ? [] : collectMultisportAgendaEvents());
   const [view, setView] = React.useState<View>(() => (["today", "week", "month", "invitations"].includes(String(params?.agendaView)) ? params.agendaView : "week"));
   const [cursor, setCursor] = React.useState(() => Date.now());
   const [createOpen, setCreateOpen] = React.useState(() => Boolean(params?.agendaCreate));
   const [sportFilter, setSportFilter] = React.useState<MultisportEventSport | "all">("all");
   const [selectedEvent, setSelectedEvent] = React.useState<MultisportAgendaEvent | null>(null);
-  const availableSports = enabledAgendaSports();
+  const availableSports = React.useMemo(() => {
+    const all = enabledAgendaSports();
+    if (!organizationAgenda?.sports?.length || organizationAgenda.sports.some((value) => String(value).toLowerCase() === "multisport")) return all;
+    const allowed = new Set(organizationAgenda.sports.map(normalizeOrganizationSportId).filter(Boolean));
+    const filtered = all.filter((entry) => allowed.has(entry.id));
+    return filtered.length ? filtered : all;
+  }, [organizationAgenda?.sports]);
 
-  const refresh = React.useCallback(() => setEvents(collectMultisportAgendaEvents()), []);
+  const refresh = React.useCallback(() => {
+    if (isOrganizationAgenda && organizationAgenda) {
+      void listOrganizationEvents(organizationAgenda.userId, organizationAgenda.organizationId)
+        .then(({ events: organizationEvents }) => setEvents(organizationEvents.map((event) => mapOrganizationAgendaEvent(event, organizationAgenda))))
+        .catch(() => setEvents([]));
+      return;
+    }
+    setEvents(collectMultisportAgendaEvents());
+  }, [isOrganizationAgenda, organizationAgenda?.organizationId, organizationAgenda?.userId, organizationAgenda?.organizationName, organizationAgenda?.groups, organizationAgenda?.sports]);
   React.useEffect(() => {
     let alive = true;
-    void hydrateMultisportAgendaPersistence().then(() => { if (alive) refresh(); });
-    const onStorage = (event: StorageEvent) => { if (!event.key || event.key.startsWith("mss-multisport-agenda")) refresh(); };
-    window.addEventListener("dc:multisport-agenda-changed", refresh as EventListener);
+    if (isOrganizationAgenda) { refresh(); }
+    else void hydrateMultisportAgendaPersistence().then(() => { if (alive) refresh(); });
+    const onStorage = (event: StorageEvent) => { if (!event.key || event.key.startsWith("mss-multisport-agenda") || event.key.startsWith("msc_organizations_v1")) refresh(); };
+    if (!isOrganizationAgenda) window.addEventListener("dc:multisport-agenda-changed", refresh as EventListener);
     window.addEventListener("focus", refresh);
     window.addEventListener("storage", onStorage);
-    return () => { alive = false; window.removeEventListener("dc:multisport-agenda-changed", refresh as EventListener); window.removeEventListener("focus", refresh); window.removeEventListener("storage", onStorage); };
-  }, [refresh]);
+    return () => { alive = false; if (!isOrganizationAgenda) window.removeEventListener("dc:multisport-agenda-changed", refresh as EventListener); window.removeEventListener("focus", refresh); window.removeEventListener("storage", onStorage); };
+  }, [refresh, isOrganizationAgenda]);
+
+  const removeAgendaEvent = React.useCallback((event: MultisportAgendaEvent) => {
+    if (isOrganizationAgenda && organizationAgenda && event.sourceId) {
+      void deleteOrganizationEvent(organizationAgenda.userId, organizationAgenda.organizationId, event.sourceId).then(refresh);
+      return;
+    }
+    removeMultisportEvent(event.id);
+    refresh();
+  }, [isOrganizationAgenda, organizationAgenda?.organizationId, organizationAgenda?.userId, refresh]);
 
   const filteredEvents = React.useMemo(() => sportFilter === "all" ? events : events.filter((event) => event.sport === sportFilter), [events, sportFilter]);
   const pending = React.useMemo(() => events.filter((event) => event.status === "pending"), [events]);
@@ -295,9 +406,9 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       </section>
 
       <aside className="msc-landscape-secondary msc-agenda-secondary">
-      {view === "today" ? <div style={{ marginTop: 8 }}>{visible.length ? visible.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />) : <EmptyState text={t("Rien de prévu aujourd'hui. Ajoute une activité ou active un programme.", "Nothing scheduled today. Add an activity or activate a program.", "Nada previsto hoy. Añade una actividad o activa un programa.")} />}</div> : null}
+      {view === "today" ? <div style={{ marginTop: 8 }}>{visible.length ? visible.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => removeAgendaEvent(event) : undefined} />) : <EmptyState text={t("Rien de prévu aujourd'hui. Ajoute une activité ou active un programme.", "Nothing scheduled today. Add an activity or activate a program.", "Nada previsto hoy. Añade una actividad o activa un programa.")} />}</div> : null}
 
-      {view === "week" ? <div className="msa-week" style={{ marginTop: 8 }}>{Array.from({ length: 7 }, (_, i) => range.start + i * DAY).map((day) => ({ day, rows: visible.filter((event) => sameLocalDay(event.startAt, day)).sort((a,b) => a.startAt - b.startAt) })).filter((group) => group.rows.length > 0).map(({ day, rows }) => { const dominant = multisportSportMeta(rows[0].sport); const isPast = day < localDayStart(Date.now()); return <section key={day} className={`msa-day${sameLocalDay(day, Date.now()) ? " today" : ""}${isPast ? " past" : ""}`} style={{ borderColor: `${dominant.accent}38`, background: `linear-gradient(135deg,${dominant.accent}0b,rgba(255,255,255,.018))` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7 }}><div style={{ display: "flex", alignItems: "center", gap: 7 }}><TintedSportLogo sport={rows[0].sport} color={dominant.accent} size={22}/><strong style={{ fontSize: 10.5, textTransform: "uppercase", color: sameLocalDay(day, Date.now()) ? accent : "#fff" }}>{formatDate(day, locale)}</strong></div><span className="msa-muted" style={{ fontSize: 8 }}>{rows.some((event) => conflictIds.has(event.id)) ? <b style={{ color: "#ff8b8b" }}>⚠ {t("Conflit", "Conflict", "Conflicto")}</b> : `${rows.length} ${t("créneau(x)", "slot(s)", "franja(s)")}`}</span></div>{rows.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => { removeMultisportEvent(event.id); refresh(); } : undefined} />)}</section>; })}{visible.length === 0 ? <EmptyState text={t("Aucun créneau planifié cette semaine.", "No scheduled slots this week.", "No hay franjas planificadas esta semana.")} /> : null}</div> : null}
+      {view === "week" ? <div className="msa-week" style={{ marginTop: 8 }}>{Array.from({ length: 7 }, (_, i) => range.start + i * DAY).map((day) => ({ day, rows: visible.filter((event) => sameLocalDay(event.startAt, day)).sort((a,b) => a.startAt - b.startAt) })).filter((group) => group.rows.length > 0).map(({ day, rows }) => { const dominant = multisportSportMeta(rows[0].sport); const isPast = day < localDayStart(Date.now()); return <section key={day} className={`msa-day${sameLocalDay(day, Date.now()) ? " today" : ""}${isPast ? " past" : ""}`} style={{ borderColor: `${dominant.accent}38`, background: `linear-gradient(135deg,${dominant.accent}0b,rgba(255,255,255,.018))` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7 }}><div style={{ display: "flex", alignItems: "center", gap: 7 }}><TintedSportLogo sport={rows[0].sport} color={dominant.accent} size={22}/><strong style={{ fontSize: 10.5, textTransform: "uppercase", color: sameLocalDay(day, Date.now()) ? accent : "#fff" }}>{formatDate(day, locale)}</strong></div><span className="msa-muted" style={{ fontSize: 8 }}>{rows.some((event) => conflictIds.has(event.id)) ? <b style={{ color: "#ff8b8b" }}>⚠ {t("Conflit", "Conflict", "Conflicto")}</b> : `${rows.length} ${t("créneau(x)", "slot(s)", "franja(s)")}`}</span></div>{rows.map((event) => <EventCard key={event.id} event={event} locale={locale} onOpen={() => setSelectedEvent(event)} conflict={conflictIds.has(event.id)} onDelete={!event.readonly ? () => removeAgendaEvent(event) : undefined} />)}</section>; })}{visible.length === 0 ? <EmptyState text={t("Aucun créneau planifié cette semaine.", "No scheduled slots this week.", "No hay franjas planificadas esta semana.")} /> : null}</div> : null}
 
       {view === "month" ? <MonthGrid cursor={cursor} events={filteredEvents} locale={locale} onSelectDay={(day) => { setCursor(day); setView("today"); }} /> : null}
 
@@ -371,8 +482,49 @@ export default function MultisportAgendaPage({ go, params }: Props) {
       </div>
       </div>
 
-      {selectedEvent ? <EventDetailDialog event={selectedEvent} locale={locale} lang={String(lang || "fr")} conflict={conflictIds.has(selectedEvent.id)} onClose={() => setSelectedEvent(null)} onOpenModule={() => { const event = selectedEvent; setSelectedEvent(null); openEvent(event); }} onChanged={() => { refresh(); const fresh = collectMultisportAgendaEvents().find((item) => item.id === selectedEvent.id) || null; setSelectedEvent(fresh); }} /> : null}
-      {createOpen ? <CreateEventDialog accent={accent} lang={String(lang || "fr")} initialDraft={(params?.agendaDraft || null) as AgendaCreateDraft | null} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); refresh(); }} /> : null}
+      {selectedEvent ? <EventDetailDialog
+        event={selectedEvent}
+        locale={locale}
+        lang={String(lang || "fr")}
+        conflict={conflictIds.has(selectedEvent.id)}
+        onClose={() => setSelectedEvent(null)}
+        onOpenModule={() => { const event = selectedEvent; setSelectedEvent(null); openEvent(event); }}
+        onReschedule={isOrganizationAgenda && organizationAgenda && selectedEvent.sourceId ? async (patch) => {
+          const startAt = patch.startAt ?? selectedEvent.startAt;
+          const durationMin = patch.durationMin ?? selectedEvent.durationMin ?? 60;
+          await updateOrganizationEvent(organizationAgenda.userId, selectedEvent.sourceId!, organizationAgenda.organizationId, {
+            groupId: String(selectedEvent.routeParams?.organizationGroupId || "") || null,
+            title: selectedEvent.title,
+            eventType: String(selectedEvent.routeParams?.organizationEventType || agendaTypeToOrganization(selectedEvent.type)) as OrganizationEventType,
+            startsAt: new Date(startAt).toISOString(),
+            endsAt: new Date(startAt + Math.max(15, durationMin) * 60000).toISOString(),
+            location: selectedEvent.location || "",
+          });
+          setSelectedEvent(null);
+          refresh();
+        } : undefined}
+        hideComplete={isOrganizationAgenda}
+        onChanged={() => { refresh(); if (isOrganizationAgenda) setSelectedEvent(null); else { const fresh = collectMultisportAgendaEvents().find((item) => item.id === selectedEvent.id) || null; setSelectedEvent(fresh); } }}
+      /> : null}
+      {createOpen ? <CreateEventDialog
+        accent={accent}
+        lang={String(lang || "fr")}
+        initialDraft={(params?.agendaDraft || null) as AgendaCreateDraft | null}
+        sportsOverride={availableSports}
+        onCreate={isOrganizationAgenda && organizationAgenda ? async (input) => {
+          const matchingGroup = (organizationAgenda.groups || []).find((group) => normalizeOrganizationSportId(group.sportId) === input.sport);
+          await createOrganizationEvent(organizationAgenda.userId, organizationAgenda.organizationId, {
+            groupId: matchingGroup?.id || null,
+            title: input.title,
+            eventType: agendaTypeToOrganization(input.type),
+            startsAt: new Date(input.startAt).toISOString(),
+            endsAt: new Date(input.startAt + Math.max(15, input.durationMin || 60) * 60000).toISOString(),
+            location: input.location || "",
+          });
+        } : undefined}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => { setCreateOpen(false); refresh(); }}
+      /> : null}
     </div>
   );
 }
@@ -539,14 +691,14 @@ function MonthGrid({ cursor, events, locale, onSelectDay }: { cursor: number; ev
   return <div style={{ marginTop: 10 }}><div className="msa-month" style={{ marginBottom: 5 }}>{weekdays.map((d, i) => <div key={i} style={{ textAlign: "center", color: "rgba(255,255,255,.42)", fontSize: 8, fontWeight: 1000 }}>{d}</div>)}</div><div className="msa-month">{Array.from({ length: 42 }, (_, i) => { const day = gridStart + i * DAY; const d = new Date(day); const currentMonth = d.getMonth() === first.getMonth(); const rows = events.filter((event) => sameLocalDay(event.startAt, day)); return <button type="button" key={day} className={`msa-month-cell${currentMonth ? "" : " off"}`} onClick={() => onSelectDay(day)} style={{ color: "#fff", textAlign: "left", cursor: "pointer", borderColor: sameLocalDay(day, Date.now()) ? "rgba(255,255,255,.18)" : undefined }}><strong style={{ fontSize: 9 }}>{d.getDate()}</strong><div className="msa-month-icons">{rows.slice(0, 5).map((event) => { const color = event.accent || multisportSportMeta(event.sport).accent; return <span key={event.id} title={event.title} style={{ width: 13, height: 13, borderRadius: 4, display: "grid", placeItems: "center", background: `${color}17`, border: `1px solid ${color}45` }}><TintedSportLogo sport={event.sport} color={color} size={9}/></span>; })}{rows.length > 5 ? <span style={{ fontSize: 7, color: "rgba(255,255,255,.5)" }}>+{rows.length - 5}</span> : null}</div></button>; })}</div></div>;
 }
 
-function EventDetailDialog({ event, locale, lang, conflict, onClose, onOpenModule, onChanged }: { event: MultisportAgendaEvent; locale: string; lang: string; conflict: boolean; onClose: () => void; onOpenModule: () => void; onChanged: () => void }) {
+function EventDetailDialog({ event, locale, lang, conflict, onClose, onOpenModule, onChanged, onReschedule, hideComplete = false }: { event: MultisportAgendaEvent; locale: string; lang: string; conflict: boolean; onClose: () => void; onOpenModule: () => void; onChanged: () => void; onReschedule?: (patch: Partial<MultisportAgendaEvent>) => Promise<void> | void; hideComplete?: boolean }) {
   const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
   const meta = multisportSportMeta(event.sport); const hot = event.accent || meta.accent;
   const [date, setDate] = React.useState(toDateInput(event.startAt));
   const [time, setTime] = React.useState(() => { const d = new Date(event.startAt); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; });
   const [duration, setDuration] = React.useState(String(event.durationMin || 60));
   const editable = !event.readonly;
-  const saveSchedule = () => { if (!editable) return; updateMultisportEvent(event.id, { startAt: inputToTimestamp(date, time), durationMin: Math.max(15, Number(duration) || 60) }); onChanged(); };
+  const saveSchedule = () => { if (!editable) return; const patch = { startAt: inputToTimestamp(date, time), durationMin: Math.max(15, Number(duration) || 60) }; if (onReschedule) { void Promise.resolve(onReschedule(patch)); return; } updateMultisportEvent(event.id, patch); onChanged(); };
   return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 160, background: "rgba(0,0,0,.72)", backdropFilter: "blur(10px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 10 }}>
     <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 560, maxHeight: "88vh", overflowY: "auto", borderRadius: "24px 24px 16px 16px", border: `1px solid ${hot}46`, background: `linear-gradient(180deg,${hot}0e,#0a0e16 26%,#060910)`, padding: 14, boxShadow: "0 -24px 70px rgba(0,0,0,.62)" }}>
       <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 38px", gap: 10, alignItems: "center" }}>
@@ -562,7 +714,7 @@ function EventDetailDialog({ event, locale, lang, conflict, onClose, onOpenModul
       {event.notes ? <div style={{ marginTop: 9, borderRadius: 12, background: "rgba(255,255,255,.025)", padding: 9, color: "rgba(255,255,255,.62)", fontSize: 9, lineHeight: 1.45 }}>{event.notes}</div> : null}
       {editable ? <div style={{ marginTop: 11, borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 10 }}><div style={{ color: "rgba(255,255,255,.42)", fontSize: 7, fontWeight: 1000, letterSpacing: .8 }}>{t("DÉPLACER L'ACTIVITÉ", "RESCHEDULE", "REPROGRAMAR")}</div><div style={{ display: "grid", gridTemplateColumns: "1.2fr .9fr .7fr", gap: 6, marginTop: 7 }}><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={detailInput}/><input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={detailInput}/><input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value)} aria-label="Durée" style={detailInput}/></div><button type="button" onClick={saveSchedule} style={{ width: "100%", minHeight: 40, marginTop: 7, borderRadius: 11, border: `1px solid ${hot}55`, background: `${hot}12`, color: hot, fontWeight: 1000 }}>{t("ENREGISTRER LE CRÉNEAU", "SAVE TIME", "GUARDAR HORARIO")}</button></div> : null}
       <div style={{ display: "grid", gridTemplateColumns: event.route ? "1fr 1.25fr" : "1fr", gap: 7, marginTop: 11 }}>
-        {event.status !== "completed" && editable ? <button type="button" onClick={() => { updateMultisportEvent(event.id, { status: "completed" }); onChanged(); }} style={{ minHeight: 46, borderRadius: 13, border: "1px solid rgba(117,237,154,.35)", background: "rgba(117,237,154,.09)", color: "#75ed9a", fontWeight: 1000 }}>✓ {t("TERMINÉE", "COMPLETED", "TERMINADA")}</button> : <button type="button" onClick={onClose} style={{ minHeight: 46, borderRadius: 13, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: "#fff", fontWeight: 1000 }}>{t("FERMER", "CLOSE", "CERRAR")}</button>}
+        {!hideComplete && event.status !== "completed" && editable ? <button type="button" onClick={() => { updateMultisportEvent(event.id, { status: "completed" }); onChanged(); }} style={{ minHeight: 46, borderRadius: 13, border: "1px solid rgba(117,237,154,.35)", background: "rgba(117,237,154,.09)", color: "#75ed9a", fontWeight: 1000 }}>✓ {t("TERMINÉE", "COMPLETED", "TERMINADA")}</button> : <button type="button" onClick={onClose} style={{ minHeight: 46, borderRadius: 13, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: "#fff", fontWeight: 1000 }}>{t("FERMER", "CLOSE", "CERRAR")}</button>}
         {event.route ? <button type="button" onClick={onOpenModule} style={{ minHeight: 46, borderRadius: 13, border: `1px solid ${hot}`, background: `linear-gradient(135deg,${hot},#fff1bd)`, color: "#080b10", fontWeight: 1000 }}>{t("OUVRIR LE MODULE", "OPEN MODULE", "ABRIR MÓDULO")} →</button> : null}
       </div>
     </div>
@@ -573,10 +725,10 @@ const detailInput: React.CSSProperties = { minWidth: 0, width: "100%", boxSizing
 function AgendaDetail({ label, value }: { label: string; value: string }) { return <div style={{ minWidth: 0, borderRadius: 12, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.022)", padding: 8 }}><div style={{ color: "rgba(255,255,255,.4)", fontSize: 6.6, fontWeight: 1000, letterSpacing: .65 }}>{label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 9.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>; }
 function statusLabel(status: MultisportAgendaEvent["status"]) { if (status === "completed") return "Terminée"; if (status === "pending") return "Invitation"; if (status === "confirmed") return "Confirmée"; if (status === "declined") return "Refusée"; if (status === "cancelled") return "Annulée"; return "Planifiée"; }
 
-function CreateEventDialog({ accent, lang, initialDraft, onClose, onCreated }: { accent: string; lang: string; initialDraft?: AgendaCreateDraft | null; onClose: () => void; onCreated: () => void }) {
+function CreateEventDialog({ accent, lang, initialDraft, onClose, onCreated, onCreate, sportsOverride }: { accent: string; lang: string; initialDraft?: AgendaCreateDraft | null; onClose: () => void; onCreated: () => void; onCreate?: (input: AgendaCreateInput) => Promise<void> | void; sportsOverride?: ReturnType<typeof enabledAgendaSports> }) {
   const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
   const tomorrow = Date.now() + DAY;
-  const sports = enabledAgendaSports();
+  const sports = sportsOverride?.length ? sportsOverride : enabledAgendaSports();
   const requestedSport = initialDraft?.sport;
   const firstSport = ((requestedSport && sports.some((row) => row.id === requestedSport)) ? requestedSport : (sports[0]?.id || "fit")) as MultisportEventSport;
   const [title, setTitle] = React.useState(String(initialDraft?.title || ""));
@@ -706,7 +858,7 @@ function CreateEventDialog({ accent, lang, initialDraft, onClose, onCreated }: {
           : { gameId: selectedDartsMode.id };
       }
 
-      createMultisportEvent({
+      const agendaInput: AgendaCreateInput = {
         title: finalTitle,
         sport,
         discipline,
@@ -723,10 +875,13 @@ function CreateEventDialog({ accent, lang, initialDraft, onClose, onCreated }: {
         accent: multisportSportMeta(sport).accent,
         route,
         routeParams,
-      });
-      // Ne ferme le dialogue qu'après confirmation de l'écriture IndexedDB.
-      // Cela évite l'impression que le bouton ne fonctionne pas et garantit la persistance.
-      await flushMultisportAgendaPersistence();
+      };
+      if (onCreate) await onCreate(agendaInput);
+      else {
+        createMultisportEvent(agendaInput);
+        // Ne ferme le dialogue qu'après confirmation de l'écriture IndexedDB.
+        await flushMultisportAgendaPersistence();
+      }
       onCreated();
     } catch (error: any) {
       setSaveError(String(error?.message || t("Impossible d'enregistrer l'activité", "Unable to save the activity", "No se puede guardar la actividad")));

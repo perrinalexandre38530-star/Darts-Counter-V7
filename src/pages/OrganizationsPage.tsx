@@ -13,7 +13,8 @@ import OrganizationPlansPanel from "../components/OrganizationPlansPanel";
 import OrganizationMembersPanel from "../components/OrganizationMembersPanel";
 import OrganizationTeamsPanel from "../components/OrganizationTeamsPanel";
 import OrganizationVenuePanel from "../components/OrganizationVenuePanel";
-import OrganizationCalendarPanel from "../components/OrganizationCalendarPanel";
+import MultisportAgendaPage from "./agenda/MultisportAgendaPage";
+// OrganizationCalendarPanel: ancien calendrier spécifique remplacé par MultisportAgendaPage pour une parité exacte avec l’agenda individuel.
 import OrganizationProfilePanel from "../components/OrganizationProfilePanel";
 import OrganizationInvitationsInbox from "../components/OrganizationInvitationsInbox";
 import { useTheme } from "../contexts/ThemeContext";
@@ -919,7 +920,22 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "billing") return <OrganizationBillingPanel organization={active} userId={userId} />;
     if (view === "sponsors") return <OrganizationSponsorsPanel organization={active} userId={userId} />;
     if (view === "venue") return <OrganizationVenuePanel organization={active} userId={userId} go={go} />;
-    if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<OrganizationCalendarPanel organization={active} userId={userId} groups={localGroups} initialEvents={localEvents} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} /></div>;
+    if (view === "calendar") return <MultisportAgendaPage
+      go={(route: any, routeParams?: any) => {
+        if (route === "home") { navigateView("home"); return; }
+        go?.(route, routeParams);
+      }}
+      params={{
+        agendaView: params?.agendaView || "week",
+        organizationAgenda: {
+          organizationId: active.id,
+          organizationName: active.name,
+          userId,
+          sports: active.profile?.sports || [],
+          groups: localGroups,
+        },
+      }}
+    />;
     if (view === "admin") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), active.name)}<OrganizationAdminPanel organization={active} userId={userId} go={go} onOpenProfile={() => navigateView("profile")} onChanged={async () => { await load(); }} /></div>;
     if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), active.name)}<OrganizationPlansPanel organization={active} userId={userId} onChanged={async () => { await load(); }} /></div>;
 
@@ -927,9 +943,9 @@ export default function OrganizationsPage({ go, params }: Props) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: pageBg, color: theme.text, padding: "14px 12px 104px" }}>
-      <div style={{ width: "100%", maxWidth: workspaceMode ? 1240 : 760, margin: "0 auto" }}>
-        {!(workspaceMode && view === "home" && entryMode === "none") ? <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 48px", gap: 6, alignItems: "center", marginBottom: workspaceMode ? 8 : 12 }}>
+    <div style={{ minHeight: "100vh", background: pageBg, color: theme.text, padding: workspaceMode && view === "calendar" ? "0 0 104px" : "14px 12px 104px" }}>
+      <div style={{ width: "100%", maxWidth: workspaceMode && view === "calendar" ? "none" : workspaceMode ? 1240 : 760, margin: "0 auto" }}>
+        {!(workspaceMode && (view === "home" || view === "calendar") && entryMode === "none") ? <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 48px", gap: 6, alignItems: "center", marginBottom: workspaceMode ? 8 : 12 }}>
           <div style={{ justifySelf: "start" }}>
             <BackDot size={38} onClick={() => {
               if (entryMode !== "none") { setEntryMode("none"); resetWizard(); return; }

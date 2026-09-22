@@ -30,8 +30,14 @@ import {
   upsertTeam,
   fileToDataUrl as fileToCompressedTeamLogoDataUrl,
   makeTeamId,
+  resolveTeamLogo,
   type TeamEntity,
 } from "../../lib/petanqueTeamsStore";
+import {
+  captureUserMediaFallback,
+  readImageFileAsDataUrl,
+  teamLogoMediaKey,
+} from "../../lib/userMediaFallback";
 
 // ✅ NEW: mêmes flags partout (PNG, pas emojis)
 import { getCountryFlagSrc, getRegionFlagSrc } from "../../lib/geoAssets";
@@ -372,6 +378,19 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
     if (existing) setTeam(existing);
   }, [existing?.id]);
 
+  // Le logo personnalisé est canonique dans le coffre média. localStorage peut
+  // volontairement retirer sa dataURL en cas de quota : on la réhydrate ici.
+  React.useEffect(() => {
+    if (!existing?.id || !existing.logoMediaKey) return;
+    let cancelled = false;
+    void resolveTeamLogo(existing, true).then((url) => {
+      if (!cancelled && url) {
+        setTeam((current) => current.id === existing.id ? { ...current, logoDataUrl: url } : current);
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [existing?.id, existing?.logoMediaKey]);
+
   // profils locaux (depuis store global)
   const allProfiles = React.useMemo(
     () => normalizeProfilesForTeams(store?.profiles ?? []),
@@ -482,6 +501,8 @@ const availableProfiles = React.useMemo(() => {
       logoUrl: logo,
       avatarUrl: logo,
       imageUrl: logo,
+      // Un logo de bibliothèque remplace explicitement un éventuel logo importé.
+      logoMediaKey: null,
       logoLibraryId: (template as any)?.id || getTeamLogoTemplateBySrc(logo)?.id || null,
       logoLibraryFileName: (template as any)?.fileName || getTeamLogoTemplateBySrc(logo)?.fileName || null,
     } as any);
@@ -492,22 +513,78 @@ const availableProfiles = React.useMemo(() => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      // IMPORTANT : même logique que la création de ligue/tournoi.
-      // On ne persiste jamais l'image originale en base64, sinon sanitizeStoredImage
-      // la refuse ou localStorage explose son quota et le logo disparaît après sauvegarde.
-      const dataUrl = await fileToCompressedTeamLogoDataUrl(file);
-      save({ ...team, logoDataUrl: dataUrl });
+      if (!String(file.type || "").startsWith("image/")) {
+        alert(t("teams.logo.invalid", "Le fichier sélectionné n’est pas une image."));
+        return;
+      }
+      if (file.size > 15 * 1024 * 1024) {
+        alert(t("teams.logo.too_large", "Image trop lourde : 15 Mo maximum."));
+        return;
+      }
+
+      // 1) Prépare un logo léger pour l'affichage courant.
+      let dataUrl = "";
+      try {
+        dataUrl = await fileToCompressedTeamLogoDataUrl(file);
+      } catch (err) {
+        console.warn("[TeamEdit] logo compression failed, using durable media capture", err);
+        dataUrl = await readImageFileAsDataUrl(file);
+      }
+      if (!dataUrl) throw new Error("team_logo_read_failed");
+
+      // 2) Sauvegarde AVANT de modifier la fiche. Cette copie IndexedDB/R2 ne
+      // dépend pas de la place restante dans localStorage.
+      const mediaKey = teamLogoMediaKey(team.id);
+      const savedLogo = await captureUserMediaFallback(mediaKey, dataUrl, {
+        kind: "team_logo",
+        updatedAt: Date.now(),
+        // Le clic utilisateur ne doit jamais dépendre du réseau. La copie R2
+        // est tentée ensuite en arrière-plan par saveTeams().
+        mirrorR2: false,
+      });
+      if (!savedLogo) throw new Error("team_logo_capture_failed");
+
+      // 3) Supprime les anciennes références de bibliothèque/URL : sinon, si
+      // localStorage passe en mode anti-quota, l'ancien logo reprenait le dessus.
+      save({
+        ...team,
+        logoDataUrl: savedLogo,
+        logoMediaKey: mediaKey,
+        logoUrl: null,
+        avatarUrl: null,
+        imageUrl: null,
+        logoAssetId: null,
+        logoMediaAssetId: null,
+        teamLogoAssetId: null,
+        avatarAssetId: null,
+        imageAssetId: null,
+        logoLibraryId: null,
+        logoLibraryFileName: null,
+      } as any);
     } catch (err) {
-      console.warn("[TeamEdit] logo compression failed, fallback FileReader", err);
-      const dataUrl = await readFileAsDataUrl(file);
-      save({ ...team, logoDataUrl: dataUrl });
+      console.warn("[TeamEdit] logo save failed", err);
+      alert(t("teams.logo.save_failed", "Le logo n’a pas pu être enregistré. Essaie une image PNG, JPG ou WebP."));
     } finally {
       e.target.value = "";
     }
   }
 
   function removeLogo() {
-    save({ ...team, logoDataUrl: null });
+    save({
+      ...team,
+      logoDataUrl: null,
+      logoMediaKey: null,
+      logoUrl: null,
+      avatarUrl: null,
+      imageUrl: null,
+      logoAssetId: null,
+      logoMediaAssetId: null,
+      teamLogoAssetId: null,
+      avatarAssetId: null,
+      imageAssetId: null,
+      logoLibraryId: null,
+      logoLibraryFileName: null,
+    } as any);
   }
 
   function setCountry(code: string) {

@@ -1181,7 +1181,7 @@ async function migrateLegacyStoreIfNeeded() {
    ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_* ET dc-*)
 ============================================================ */
 // ✅ IMPORTANT : ton app a des clés en dc_ ET en dc- selon les versions
-const LS_PREFIXES = ["dc_", "dc-", "dc:"] as const;
+const LS_PREFIXES = ["dc_", "dc-", "dc:", "msc_organizations_v1", "msc_organization_workspace_v1"] as const;
 const USER_CREATED_APP_KEYS = new Set<string>([
   // Clés historiques sans préfixe dc_* mais contenant des données créées par l'utilisateur.
   "babyfoot_league_store_v1",
@@ -3405,6 +3405,23 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
       clone.portableAccountData = await exportPortableAccountData();
     } catch (portableError) {
       console.warn("[storage] portable account data export skipped", portableError);
+    }
+
+    // ORGANISATIONS / PARTENARIATS : le compte collectif vit en grande partie
+    // dans Supabase et n’était jusque-là pas présent dans les snapshots. On
+    // archive désormais l’organisation, ses équipes, événements, membres,
+    // compétitions, communications, cotisations, partenaires, fédérations et
+    // installations. Le snapshot R2 premium devient donc une vraie copie de
+    // secours du workspace organisation, en plus de la persistance Supabase.
+    try {
+      const ownerId = String(getStorageUser() || "").trim();
+      if (ownerId) {
+        const { exportOrganizationsBackupSnapshot } = await import("../organizations/organizationBackup");
+        const organizationData = await exportOrganizationsBackupSnapshot(ownerId);
+        if (organizationData && organizationData.organizations.length) clone.organizationData = organizationData;
+      }
+    } catch (organizationError) {
+      console.warn("[storage] organization backup export skipped", organizationError);
     }
 
     // MEDIA UTILISATEUR MULTI-SOURCE : le store normal retire volontairement

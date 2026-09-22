@@ -3,6 +3,8 @@
 // Pensé pour être réutilisé par tous les modes qui utilisent le sélecteur d'équipes X01.
 
 import { TEAM_LOGO_LIBRARY, teamLogoMatchesCategory, type TeamLogoCategory, type TeamLogoTemplate } from "../assets/teamLogoLibrary";
+import { unpackJsonFromStorage } from "./imageStorageCodec";
+import { setJsonWithQuotaRecovery } from "./teamImageStorage";
 
 export type TeamShuffleMode = "random" | "balanced";
 
@@ -433,7 +435,7 @@ export function generateShuffledTeams(options: GenerateOptions): GeneratedTeam[]
 function safeParseArray(raw: string | null): any[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = unpackJsonFromStorage<any>(raw, []);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -498,7 +500,20 @@ export function saveGeneratedTeamsToTeamStore(teams: any[], sport = "darts") {
       const id = String(team?.id || "").trim();
       if (id && !byId.has(id)) byId.set(id, team);
     });
-    window.localStorage.setItem(STORED_TEAMS_KEY, JSON.stringify(Array.from(byId.values())));
+    const merged = Array.from(byId.values());
+    setJsonWithQuotaRecovery(STORED_TEAMS_KEY, merged, (list: any[]) =>
+      (list || []).map((team: any) => ({
+        ...team,
+        logoDataUrl: typeof team?.logoDataUrl === "string" && team.logoDataUrl.startsWith("data:image/") ? null : team?.logoDataUrl ?? null,
+        logoUrl: typeof team?.logoUrl === "string" && team.logoUrl.startsWith("data:image/") ? null : team?.logoUrl ?? null,
+        avatarUrl: typeof team?.avatarUrl === "string" && team.avatarUrl.startsWith("data:image/") ? null : team?.avatarUrl ?? null,
+        imageUrl: typeof team?.imageUrl === "string" && team.imageUrl.startsWith("data:image/") ? null : team?.imageUrl ?? null,
+        regionLogoDataUrl: null,
+        regionLogoUrl: typeof team?.regionLogoUrl === "string" && team.regionLogoUrl.startsWith("data:image/") ? null : team?.regionLogoUrl ?? null,
+        coverDataUrl: null,
+        coverUrl: typeof team?.coverUrl === "string" && team.coverUrl.startsWith("data:image/") ? null : team?.coverUrl ?? null,
+      }))
+    );
     try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
     try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
   } catch {}

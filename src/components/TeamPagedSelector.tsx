@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { resolveTeamLogo } from "../lib/petanqueTeamsStore";
 
 function teamLogo(team: any): string | null {
   return team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl || team?.regionLogoDataUrl || team?.regionLogoUrl || team?.avatarDataUrl || team?.coverDataUrl || team?.coverUrl || null;
@@ -144,8 +145,20 @@ export default function TeamPagedSelector({
 }
 
 function TeamMedallion({ team, accent, size = 76, active = false }: any) {
-  const logo = teamLogo(team);
+  const directLogo = teamLogo(team);
+  const [logo, setLogo] = React.useState<string | null>(directLogo);
   const name = nameOf(team);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLogo(directLogo);
+    if (!team?.id || !team?.logoMediaKey) return () => { cancelled = true; };
+    void resolveTeamLogo(team, true).then((resolved) => {
+      if (!cancelled && resolved) setLogo(resolved);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [team?.id, team?.logoMediaKey, directLogo]);
+
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center", flexShrink: 0 }}>
       {logo ? <img src={logo} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ color: "#fff", fontWeight: 1000, fontSize: Math.max(12, Math.round(size * 0.25)), letterSpacing: 1 }}>{initialsOf(name)}</div>}
