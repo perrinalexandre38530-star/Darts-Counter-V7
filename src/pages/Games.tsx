@@ -1475,6 +1475,53 @@ export default function Games({ setTab, params }: Props) {
         ? t("games.subtitle", "Choisis un mode de jeu")
         : "";
 
+  const renderCategoryKpis = (variant: "landscape" | "portrait") => (
+    <div
+      className={`msc-games-all-categories msc-games-all-categories--${variant}`}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        gap: 6,
+        width: "100%",
+      }}
+    >
+      {visibleCategories.map((c) => {
+        const on = c.id === activeCat;
+        const tint = tintForCategory(c.id);
+        return (
+          <button
+            key={`${variant}-${c.id}`}
+            type="button"
+            className="msc-games-category-kpi"
+            data-cat={String(c.id)}
+            data-active={on ? "1" : "0"}
+            onClick={() => setActiveCat(c.id)}
+            style={{
+              minHeight: 52,
+              borderRadius: 14,
+              border: `1px solid ${tint.border}`,
+              background: tint.bg,
+              color: tint.title,
+              fontWeight: 1000,
+              fontSize: 10,
+              lineHeight: 1.05,
+              padding: "7px 4px",
+              cursor: "pointer",
+              boxShadow: on ? `0 0 18px ${tint.glow}` : `inset 0 0 14px ${tint.glow}`,
+              opacity: on ? 1 : 0.78,
+              textTransform: "uppercase",
+              letterSpacing: ".01em",
+              whiteSpace: "normal",
+              textAlign: "center",
+            }}
+          >
+            {localizedCategoryLabel(String(c.id), String(c.label), lang)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div
       className="msc-landscape-page-shell msc-games-layout"
@@ -1613,52 +1660,8 @@ export default function Games({ setTab, params }: Props) {
         style={{ marginBottom: 14 }}
       />
 
-      {gamesView === "all" ? (
-        <div
-          className="msc-games-all-categories"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 6,
-            width: "100%",
-          }}
-        >
-          {visibleCategories.map((c) => {
-            const on = c.id === activeCat;
-            const tint = tintForCategory(c.id);
-            return (
-              <button
-                key={c.id}
-                type="button"
-                className="msc-games-category-kpi"
-                data-cat={String(c.id)}
-                data-active={on ? "1" : "0"}
-                onClick={() => setActiveCat(c.id)}
-                style={{
-                  minHeight: 52,
-                  borderRadius: 14,
-                  border: `1px solid ${tint.border}`,
-                  background: tint.bg,
-                  color: tint.title,
-                  fontWeight: 1000,
-                  fontSize: 10,
-                  lineHeight: 1.05,
-                  padding: "7px 4px",
-                  cursor: "pointer",
-                  boxShadow: on ? `0 0 18px ${tint.glow}` : `inset 0 0 14px ${tint.glow}`,
-                  opacity: on ? 1 : 0.78,
-                  textTransform: "uppercase",
-                  letterSpacing: ".01em",
-                  whiteSpace: "normal",
-                  textAlign: "center",
-                }}
-              >
-                {localizedCategoryLabel(String(c.id), String(c.label), lang)}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      {gamesView === "all" ? renderCategoryKpis("landscape") : null}
+
 
       {(gamesView === "hub" || gamesView === "favorites") ? (
         <NewModesTicker
@@ -1685,6 +1688,7 @@ export default function Games({ setTab, params }: Props) {
 
       {gamesView === "hub" ? <div className="msc-games-hub-quick-landscape">{renderQuickLaunchTicker("msc-games-hub-quick-card")}</div> : null}
       {gamesView === "all" ? <div className="msc-games-primary-quick">{renderQuickLaunchTicker("msc-games-primary-quick-card")}</div> : null}
+      {gamesView === "all" ? renderCategoryKpis("portrait") : null}
       </section>
 
       <aside className="msc-landscape-secondary msc-games-secondary">

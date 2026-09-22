@@ -6883,7 +6883,7 @@ case "babyfoot_team_edit":
   const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera";
   const appChromeAllowed = !isSamsungTvNativeApp && online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
-  const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab);
+  const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab) || isGameConfigRoute;
 
 
   return (

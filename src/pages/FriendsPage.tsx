@@ -2501,16 +2501,19 @@ const doLogout = React.useCallback(async () => {
 }, [auth]);
 
 
-  // auto-try au montage + au focus
+  // Au montage/focus, ne jamais forcer un refresh d'auth si la session est déjà
+  // valide. L'ancien auto-refresh pouvait transformer une session connectée en
+  // signed_out lors d'un incident réseau transitoire, puis AppGate renvoyait
+  // immédiatement vers l'identification. On vérifie seulement le serveur ici.
   React.useEffect(() => {
-    doReconnect().catch(() => {});
-    const onVis = () => {
-      if (document.visibilityState === "visible") doReconnect().catch(() => {});
+    if (!ready) return;
+    const verifyServerOnly = () => {
+      if (document.visibilityState === "visible") void pingServer().catch(() => {});
     };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void pingServer().catch(() => {});
+    document.addEventListener("visibilitychange", verifyServerOnly);
+    return () => document.removeEventListener("visibilitychange", verifyServerOnly);
+  }, [ready, pingServer]);
 
   /* -----------------------------
      Matches online

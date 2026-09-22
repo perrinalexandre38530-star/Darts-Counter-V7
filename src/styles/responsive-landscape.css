@@ -4326,3 +4326,123 @@ html[data-msc-orientation="landscape"] .msc-mode-config-header > div:has(> img) 
 html[data-msc-orientation="landscape"] .msc-config-ticker-frame > :not(img) {
   z-index: 2 !important;
 }
+
+/* ========================================================================== 
+   V60 — HEADER MEDALLIONS + GAMES COMPACT LAYOUT
+   User contract:
+   - top-level landscape pages keep Awena and sport-switch side by side;
+   - no duplicate local Awena medallion on Settings / Screens / X01 config;
+   - X01/config pages dock the global Awena launcher in the header;
+   - Games hub random ticker stays directly under NEW GAME;
+   - All Games category KPIs stay compact on one row in landscape, while
+     portrait keeps the random ticker first and the four KPI buttons below it.
+   ========================================================================== */
+
+/* Two explicit variants are rendered so portrait and landscape can have the
+   requested different order without moving DOM at runtime. */
+.msc-games-all-categories--landscape {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-all-categories--landscape {
+  display: grid !important;
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  align-content: initial !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-all-categories--portrait {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-all-categories--landscape > .msc-games-category-kpi {
+  min-height: 40px !important;
+  height: 40px !important;
+  max-height: 40px !important;
+  padding: 4px 5px !important;
+  border-radius: 12px !important;
+  font-size: clamp(8.5px, .8vw, 10px) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+/* HUB: keep the random-mode ticker immediately under NEW GAME instead of
+   pushing it to the bottom of the fixed left column. */
+html[data-msc-orientation="landscape"] .msc-games-hub-quick-landscape {
+  margin-top: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+/* Portrait All Games: random mode first, then one compact row of categories. */
+html:not([data-msc-orientation="landscape"]) .msc-games-all-categories--landscape {
+  display: none !important;
+}
+
+html:not([data-msc-orientation="landscape"]) .msc-games-all-categories--portrait {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  width: 100% !important;
+  margin-top: 8px !important;
+}
+
+html:not([data-msc-orientation="landscape"]) .msc-games-all-categories--portrait > .msc-games-category-kpi {
+  min-height: 46px !important;
+  height: 46px !important;
+  padding: 5px 3px !important;
+  border-radius: 12px !important;
+  font-size: clamp(8px, 2.3vw, 10px) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+/* Legacy V29 rules placed Awena at the exact same top-right coordinate as the
+   active sport medallion on Games / Profiles / Competitions. Re-establish the
+   HOME contract: sport at the extreme right, Awena immediately to its left. */
+html[data-msc-orientation="landscape"] :is(
+  .dc-themed-route[data-msc-route="games"],
+  .dc-themed-route[data-msc-route="profiles"],
+  .dc-themed-route[data-msc-route="tournaments"],
+  .dc-themed-route[data-msc-route="settings"]
+) ~ [data-mss-floating-control="sport-switch"] {
+  top: max(10px, calc(var(--msc-safe-top) + 10px)) !important;
+  right: max(12px, calc(var(--msc-safe-right) + 12px)) !important;
+  bottom: auto !important;
+}
+
+html[data-msc-orientation="landscape"] :is(
+  .dc-themed-route[data-msc-route="games"],
+  .dc-themed-route[data-msc-route="profiles"],
+  .dc-themed-route[data-msc-route="tournaments"],
+  .dc-themed-route[data-msc-route="settings"]
+) ~ [data-mss-floating-control="awena-launcher"] {
+  top: max(5px, calc(var(--msc-safe-top) + 5px)) !important;
+  right: max(78px, calc(var(--msc-safe-right) + 78px)) !important;
+  bottom: auto !important;
+  transform: none !important;
+}
+
+/* Screens has no sport switch: keep only the global Awena+voice launcher at
+   the right edge. The local ScreensAwenaDot is no longer rendered. */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="cast_host"] ~ [data-mss-floating-control="awena-launcher"] {
+  top: max(5px, calc(var(--msc-safe-top) + 5px)) !important;
+  right: max(12px, calc(var(--msc-safe-right) + 12px)) !important;
+  bottom: auto !important;
+  transform: none !important;
+}
+
+/* Game CONFIGS: use the global Awena launcher (with voice button) in the
+   header. Hide the contextual InfoDot/Awena duplicate in X01 landscape only. */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="config"] ~ [data-mss-floating-control="awena-launcher"] {
+  top: max(5px, calc(var(--msc-safe-top) + 5px)) !important;
+  right: max(12px, calc(var(--msc-safe-right) + 12px)) !important;
+  bottom: auto !important;
+  transform: none !important;
+}
+
+html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-header-info {
+  display: none !important;
+}

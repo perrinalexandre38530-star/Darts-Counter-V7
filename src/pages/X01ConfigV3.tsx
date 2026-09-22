@@ -3841,7 +3841,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 />
               </div>
 
-              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
+              <div className="x01-config-header-info" style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
                 <InfoDot
                   onClick={() => setRulesOpen(true)}
                   title={t("common.rules", "Règles")}

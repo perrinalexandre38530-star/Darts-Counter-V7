@@ -5783,6 +5783,7 @@ export function Settings({ go, params }: Props) {
           backTitle={t("settings.back", "Retour")}
           onTitleClick={tab === "menu" ? handleSettingsTitleSecretTap : undefined}
           showSubtitle={tab !== "theme"}
+          showHelp={false}
           compact={tab === "theme"}
         />
       </div>

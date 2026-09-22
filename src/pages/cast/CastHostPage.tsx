@@ -537,7 +537,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
             <div style={{ color: theme.primary, fontSize: "clamp(22px,6.5vw,34px)", fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}44` }}>{L("ÉCRANS", "SCREENS", "PANTALLAS")}</div>
             <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 11 }}>{L("Cast TV & Viewer Samsung / tablette", "Cast TV & Samsung / tablet Viewer", "Cast TV y Viewer Samsung / tableta")}</div>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}><ScreensAwenaDot activeTab={activeTab} theme={theme} /></div>
+          <div aria-hidden="true" style={{ width: 40, height: 40 }} />
         </header>
 
         <section className="msc-landscape-primary msc-screens-primary">
