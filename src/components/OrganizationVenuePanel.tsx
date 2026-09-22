@@ -51,6 +51,8 @@ export default function OrganizationVenuePanel({ organization, userId, go }: { o
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [editing, setEditing] = React.useState<OrganizationInstallation | null>(null);
+  const [formOpen, setFormOpen] = React.useState(false);
+  const [actionMenuId, setActionMenuId] = React.useState("");
   const [name, setName] = React.useState("");
   const [kind, setKind] = React.useState<OrganizationInstallationKind>("dartboard");
   const [sportId, setSportId] = React.useState("Fléchettes");
@@ -70,7 +72,7 @@ export default function OrganizationVenuePanel({ organization, userId, go }: { o
 
   React.useEffect(() => { void load(); }, [load]);
 
-  function reset() { setEditing(null); setName(""); setKind("dartboard"); setSportId("Fléchettes"); setZoneLabel(""); setStatus("active"); }
+  function reset() { setEditing(null); setName(""); setKind("dartboard"); setSportId("Fléchettes"); setZoneLabel(""); setStatus("active"); setFormOpen(false); }
 
   async function save() {
     if (!canManage || busy) return;
@@ -140,7 +142,9 @@ export default function OrganizationVenuePanel({ organization, userId, go }: { o
     {notice ? <div style={{ ...card, padding: 10, color: theme.primary, fontSize: 9 }}>{notice}</div> : null}
     {error ? <div style={{ ...card, padding: 10, color: "#ff9f9f", fontSize: 9 }}>{error}</div> : null}
 
-    {canManage ? <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
+    {canManage && !formOpen ? <button type="button" style={{ ...button, width: "100%", minHeight: 44, fontSize: 10.2 }} onClick={() => { reset(); setFormOpen(true); }}>+ {L("AJOUTER UNE INSTALLATION", "ADD INSTALLATION", "AÑADIR INSTALACIÓN")}</button> : null}
+
+    {canManage && formOpen ? <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
       <div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{editing ? L("MODIFIER L’INSTALLATION", "EDIT INSTALLATION", "EDITAR INSTALACIÓN") : L("AJOUTER UNE INSTALLATION", "ADD INSTALLATION", "AÑADIR INSTALACIÓN")}</div>
       <input style={input} placeholder={L("Ex. Cible 1 · Table 2 · Terrain A", "e.g. Board 1 · Table 2 · Pitch A", "Ej. Diana 1 · Mesa 2 · Campo A")} value={name} onChange={(e) => setName(e.target.value)} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
@@ -149,7 +153,7 @@ export default function OrganizationVenuePanel({ organization, userId, go }: { o
       </div>
       <div style={{ display: "grid", gridTemplateColumns: editing ? "1.3fr .7fr" : "1fr", gap: 7 }}><input style={input} placeholder={L("Zone / étage / salle (optionnel)", "Zone / floor / room (optional)", "Zona / planta / sala (opcional)")} value={zoneLabel} onChange={(e) => setZoneLabel(e.target.value)} />{editing ? <select style={input} value={status} onChange={(e) => setStatus(e.target.value as any)}><option value="active">ACTIF</option><option value="maintenance">MAINTENANCE</option><option value="archived">ARCHIVÉ</option></select> : null}</div>
       <div style={{ display: "grid", gridTemplateColumns: editing ? "1fr 1.4fr" : "1fr", gap: 7 }}>
-        {editing ? <button style={{ ...button, color: theme.textSoft, borderColor: theme.borderSoft }} onClick={reset}>{L("ANNULER", "CANCEL", "CANCELAR")}</button> : null}
+        <button style={{ ...button, color: theme.textSoft, borderColor: theme.borderSoft }} onClick={reset}>{L("ANNULER", "CANCEL", "CANCELAR")}</button>
         <button disabled={busy} style={{ ...button, opacity: busy ? .55 : 1 }} onClick={() => void save()}>{busy ? "…" : editing ? L("ENREGISTRER", "SAVE", "GUARDAR") : L("CRÉER + GÉNÉRER LE QR", "CREATE + GENERATE QR", "CREAR + GENERAR QR")}</button>
       </div>
     </div> : null}
@@ -163,18 +167,19 @@ export default function OrganizationVenuePanel({ organization, userId, go }: { o
             <span style={{ borderRadius: 999, border: `1px solid ${item.status === "active" ? theme.primary : theme.borderSoft}`, color: item.status === "active" ? theme.primary : theme.textSoft, padding: "3px 7px", fontSize: 7.5, fontWeight: 1000 }}>{item.status.toUpperCase()}</span>
           </div>
           {expandedQr === item.id ? <div style={{ display: "grid", placeItems: "center", gap: 8, padding: 8, borderRadius: 12, background: "rgba(255,255,255,.025)" }}><QrPreview value={url} size={170}/><div style={{ maxWidth: 320, color: theme.textSoft, fontSize: 8, textAlign: "center", wordBreak: "break-all" }}>{url}</div></div> : null}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 6 }}>
             <button style={button} onClick={() => setExpandedQr((id) => id === item.id ? "" : item.id)}>{expandedQr === item.id ? L("MASQUER QR", "HIDE QR", "OCULTAR QR") : L("AFFICHER QR", "SHOW QR", "MOSTRAR QR")}</button>
             <button style={button} onClick={() => activate(item)}>{L("JOUER ICI", "PLAY HERE", "JUGAR AQUÍ")}</button>
+            <button aria-label={L("Plus d'actions", "More actions", "Más acciones")} style={{ ...button, minWidth: 42 }} onClick={() => setActionMenuId((id) => id === item.id ? "" : item.id)}>···</button>
+          </div>
+          {actionMenuId === item.id ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, paddingTop: 2 }}>
             <button style={{ ...button, color: theme.textSoft, borderColor: theme.borderSoft }} onClick={() => void copy(url, L("Lien QR copié.", "QR link copied.", "Enlace QR copiado."))}>{L("COPIER LE LIEN", "COPY LINK", "COPIAR ENLACE")}</button>
             <button style={{ ...button, color: theme.textSoft, borderColor: theme.borderSoft }} onClick={() => go?.("organization_stats", { organizationId: organization.id, workspaceMode: true })}>{L("CLASSEMENT", "LEADERBOARD", "CLASIFICACIÓN")}</button>
             <button style={{ ...button, color: theme.textSoft, borderColor: theme.borderSoft }} onClick={() => downloadQr(item)}>{L("TÉLÉCHARGER QR", "DOWNLOAD QR", "DESCARGAR QR")}</button>
             <button style={{ ...button, color: theme.textSoft, borderColor: theme.borderSoft }} onClick={() => window.open(`${window.location.origin}/#/venue-board/${encodeURIComponent(item.qrToken)}`, "_blank", "noopener,noreferrer")}>{L("ÉCRAN LEADERBOARD", "LEADERBOARD SCREEN", "PANTALLA CLASIFICACIÓN")}</button>
-          </div>
-          {canManage ? <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <button style={{ ...button, minHeight: 31, fontSize: 8 }} onClick={() => { setEditing(item); setName(item.name); setKind(item.kind); setSportId(item.sportId); setZoneLabel(item.zoneLabel); setStatus(item.status); }}>{L("MODIFIER", "EDIT", "EDITAR")}</button>
+            {canManage ? <><button style={{ ...button, minHeight: 31, fontSize: 8 }} onClick={() => { setEditing(item); setName(item.name); setKind(item.kind); setSportId(item.sportId); setZoneLabel(item.zoneLabel); setStatus(item.status); setFormOpen(true); setActionMenuId(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{L("MODIFIER", "EDIT", "EDITAR")}</button>
             <button style={{ ...button, minHeight: 31, fontSize: 8 }} onClick={() => void rotateQr(item)}>{L("NOUVEAU QR", "NEW QR", "NUEVO QR")}</button>
-            <button style={{ ...button, minHeight: 31, fontSize: 8, color: "#ff9f9f", borderColor: "rgba(255,90,90,.45)" }} onClick={() => void remove(item)}>{L("SUPPRIMER", "DELETE", "ELIMINAR")}</button>
+            <button style={{ ...button, minHeight: 31, fontSize: 8, color: "#ff9f9f", borderColor: "rgba(255,90,90,.45)" }} onClick={() => void remove(item)}>{L("SUPPRIMER", "DELETE", "ELIMINAR")}</button></> : null}
           </div> : null}
           <div style={{ color: theme.textSoft, fontSize: 7.8 }}>{L("Activations enregistrées", "Recorded activations", "Activaciones registradas")}: {item.playCount}{item.lastPlayedAt ? ` · ${new Date(item.lastPlayedAt).toLocaleDateString()}` : ""}</div>
         </div>;

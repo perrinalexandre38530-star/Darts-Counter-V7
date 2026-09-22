@@ -44,6 +44,7 @@ export default function OrganizationCommunicationPanel({ organization, userId }:
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [cloudAvailable, setCloudAvailable] = React.useState(true);
+  const [composerOpen, setComposerOpen] = React.useState(false);
 
   const canManageGlobal = ["owner", "admin", "manager"].includes(organization.role);
   const captainGroups = groups.filter((group) => group.status === "active" && group.captainUserId === userId);
@@ -124,7 +125,7 @@ export default function OrganizationCommunicationPanel({ organization, userId }:
         pinned,
         expiresAt: toIso(expiresAt),
       });
-      setTitle(""); setBody(""); setPinned(false); setExpiresAt("");
+      setTitle(""); setBody(""); setPinned(false); setExpiresAt(""); setComposerOpen(false);
       if (!canManageGlobal && captainGroups.length === 1) setTargetGroupId(captainGroups[0].id);
       setNotice(L("Annonce publiée.", "Announcement published.", "Anuncio publicado."));
       await refresh();
@@ -169,8 +170,10 @@ export default function OrganizationCommunicationPanel({ organization, userId }:
       </div>
     </div>
 
-    {canPublish ? <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
-      <div style={{ color: theme.text, fontSize: 10.5, fontWeight: 1000 }}>{L("PUBLIER UNE ANNONCE", "POST AN ANNOUNCEMENT", "PUBLICAR UN ANUNCIO")}</div>
+    {canPublish && !composerOpen ? <button type="button" onClick={() => setComposerOpen(true)} style={{ ...primaryButton, width: "100%", minHeight: 44, fontSize: 10.2 }}>+ {L("PUBLIER UNE ANNONCE", "POST AN ANNOUNCEMENT", "PUBLICAR UN ANUNCIO")}</button> : null}
+
+    {canPublish && composerOpen ? <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ color: theme.text, fontSize: 10.5, fontWeight: 1000 }}>{L("PUBLIER UNE ANNONCE", "POST AN ANNOUNCEMENT", "PUBLICAR UN ANUNCIO")}</div><button type="button" onClick={() => setComposerOpen(false)} style={button}>✕</button></div>
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr .7fr", gap: 8 }}>
         <input style={input} value={title} maxLength={100} onChange={(e) => setTitle(e.target.value)} placeholder={L("Titre", "Title", "Título")} />
         <select style={input} value={targetGroupId} onChange={(e) => setTargetGroupId(e.target.value)}>

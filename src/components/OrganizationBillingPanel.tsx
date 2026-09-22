@@ -53,6 +53,7 @@ export default function OrganizationBillingPanel({ organization, userId }: { org
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [editingId, setEditingId] = React.useState("");
+  const [formOpen, setFormOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [feeKind, setFeeKind] = React.useState<OrganizationFeeKind>("membership");
   const [amount, setAmount] = React.useState("");
@@ -127,10 +128,11 @@ export default function OrganizationBillingPanel({ organization, userId }: { org
 
   const resetForm = () => {
     setEditingId(""); setTitle(""); setFeeKind("membership"); setAmount(""); setCurrency("EUR");
-    setDueAt(""); setGroupId(""); setDescription(""); setPaymentUrl("");
+    setDueAt(""); setGroupId(""); setDescription(""); setPaymentUrl(""); setFormOpen(false);
   };
 
   const editCampaign = (campaign: OrganizationFeeCampaign) => {
+    setFormOpen(true);
     setEditingId(campaign.id);
     setTitle(campaign.title);
     setFeeKind(campaign.feeKind);
@@ -237,10 +239,12 @@ export default function OrganizationBillingPanel({ organization, userId }: { org
       </div>)}
     </div>
 
-    {canManage ? <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
+    {canManage && !formOpen ? <button type="button" onClick={() => { resetForm(); setFormOpen(true); }} style={{ ...primaryButton, width: "100%", minHeight: 44, fontSize: 10.2 }}>+ {L("NOUVELLE COTISATION", "NEW FEE", "NUEVA CUOTA")}</button> : null}
+
+    {canManage && formOpen ? <div style={{ ...card, padding: 12, display: "grid", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
         <div style={{ color: theme.text, fontSize: 10.8, fontWeight: 1000 }}>{editingId ? L("MODIFIER LA COTISATION", "EDIT FEE", "EDITAR CUOTA") : L("CRÉER UNE COTISATION", "CREATE A FEE", "CREAR UNA CUOTA")}</div>
-        {editingId ? <button type="button" onClick={resetForm} style={button}>{L("ANNULER", "CANCEL", "CANCELAR")}</button> : null}
+        <button type="button" onClick={resetForm} style={button}>✕</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.45fr .75fr", gap: 8 }}>
         <input style={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={L("Ex. Cotisation saison 2026/2027", "E.g. 2026/2027 membership fee", "Ej. Cuota temporada 2026/2027")} />
