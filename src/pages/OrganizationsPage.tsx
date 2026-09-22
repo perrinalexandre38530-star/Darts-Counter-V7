@@ -1,6 +1,6 @@
 import React from "react";
 import BackDot from "../components/BackDot";
-import InfoDot from "../components/InfoDot";
+import SportWelcomeWatermark from "../components/home/SportWelcomeWatermark";
 import OrganizationTypeIcon from "../components/OrganizationTypeIcon";
 import OrganizationCompetitionsPanel from "../components/OrganizationCompetitionsPanel";
 import OrganizationStatsPanel from "../components/OrganizationStatsPanel";
@@ -729,43 +729,85 @@ export default function OrganizationsPage({ go, params }: Props) {
     const selectedSportLabel = enabledSports.find((sport) => normalizeSportLabel(sport) !== "multisport" && toSportContextId(sport) === sportCtx?.sport) || enabledSports.find((sport) => normalizeSportLabel(sport) !== "multisport") || enabledSports[0] || "Fléchettes";
     const homeTitle = normalizeSportLabel(selectedSportLabel) === "multisport" && sportCtx?.sport ? sportDisplayTitle(String(sportCtx.sport)) : sportDisplayTitle(selectedSportLabel);
 
-    const switchToPersonal = () => {
-      enterPersonalWorkspace(userId);
-      setActiveOrganization(userId, null);
-      go?.("home", { workspaceKind: "personal" });
-    };
+    const homeHeaderCss = `
+      @keyframes dcTitlePulse {
+        0%,100% { transform: scale(1); text-shadow: 0 0 8px ${theme.primary}55; }
+        50% { transform: scale(1.03); text-shadow: 0 0 18px ${theme.primary}AA; }
+      }
+      @keyframes dcTitleShimmer {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 200% 50%; }
+      }
+    `;
 
-    const chooseSport = (sportLabel: string) => {
-      if (normalizeSportLabel(sportLabel) === "multisport") return;
-      try { sportCtx?.setSport?.(toSportContextId(sportLabel)); } catch {}
-    };
+    const currentSportTitle = sportDisplayTitle(String(sportCtx?.sport || selectedSportLabel || "darts"));
 
-    const homeHero = <div style={{ ...card, padding: 0, overflow: "hidden", position: "relative", minHeight: 156, background: activeCover ? `url(${activeCover}) center/cover no-repeat` : "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))", boxShadow: "0 20px 40px rgba(0,0,0,0.46)" }}>
-      <div style={{ position: "absolute", inset: 0, background: activeCover ? "linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.64))" : "linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.42))" }} />
-      <div style={{ position: "absolute", left: 14, right: 14, top: 12, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, zIndex: 2 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: "78%" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <button type="button" onClick={switchToPersonal} style={{ ...secondaryButton, minHeight: 34, padding: "7px 14px", fontSize: 8.5, fontWeight: 1000 }}>{L("INDIVIDUEL", "PERSONAL", "INDIVIDUAL")}</button>
-            <button type="button" style={{ ...primaryButton, minHeight: 34, padding: "7px 14px", fontSize: 8.5, fontWeight: 1000 }}>{L("ORGANISATION", "ORGANIZATION", "ORGANIZACIÓN")}</button>
-          </div>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-            {enabledSports.map((sport) => {
-              const activeSport = sport === selectedSportLabel;
-              return <button key={sport} type="button" onClick={() => chooseSport(sport)} style={{ minHeight: 30, padding: "5px 10px", borderRadius: 999, border: `1px solid ${activeSport ? theme.primary : theme.borderSoft}`, background: activeSport ? `${theme.primary}18` : "rgba(6,10,18,.55)", color: activeSport ? theme.primary : theme.text, fontSize: 8, fontWeight: 1000, cursor: "pointer" }}>{sport}</button>;
-            })}
-          </div>
+    const homeHero = <>
+      <style dangerouslySetInnerHTML={{ __html: homeHeaderCss }} />
+      <div
+        className="msc-landscape-header msc-home-header"
+        style={{
+          borderRadius: 28,
+          padding: 18,
+          marginBottom: 16,
+          background: "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))",
+          border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.10)"}`,
+          boxShadow: "0 20px 40px rgba(0,0,0,0.7)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          position: "relative",
+          overflow: "hidden",
+          isolation: "isolate",
+        }}
+      >
+        <SportWelcomeWatermark sport={String(sportCtx?.sport || "darts")} opacity={0.12} size={205} />
+        <div
+          className="msc-home-welcome-pill"
+          style={{
+            position: "relative",
+            zIndex: 2,
+            display: "inline-flex",
+            padding: "5px 18px",
+            borderRadius: 999,
+            border: `1px solid ${theme.primary}`,
+            background: "linear-gradient(135deg, rgba(0,0,0,0.9), rgba(255,255,255,0.06))",
+            marginBottom: 10,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: 1.1,
+              textTransform: "uppercase",
+              color: theme.primary,
+            }}
+          >
+            {L("Bienvenue", "Welcome", "Bienvenido")}
+          </span>
         </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 44 }}><InfoDot size={44} active title="Awena" /></div>
-      </div>
-      <div style={{ position: "relative", zIndex: 2, minHeight: 156, display: "grid", placeItems: "center", padding: "34px 18px 18px" }}>
-        <div style={{ display: "grid", justifyItems: "center", gap: 10, textAlign: "center" }}>
-          <div style={{ display: "inline-flex", padding: "5px 18px", borderRadius: 999, border: `1px solid ${theme.primary}`, background: "linear-gradient(135deg, rgba(0,0,0,0.9), rgba(255,255,255,0.06))" }}>
-            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase", color: theme.primary }}>{L("Bienvenue", "Welcome", "Bienvenido")}</span>
-          </div>
-          <div style={{ fontSize: wideWorkspace ? 34 : 28, fontWeight: 1000, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", backgroundImage: `linear-gradient(120deg, ${theme.primary}, #ffffff, ${theme.primary})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent" }}>{homeTitle}</div>
+        <div
+          className="msc-home-sport-title"
+          style={{
+            position: "relative",
+            zIndex: 2,
+            fontSize: 32,
+            fontWeight: 900,
+            letterSpacing: 3,
+            textAlign: "center",
+            textTransform: "uppercase",
+            backgroundImage: `linear-gradient(120deg, ${theme.primary}, #ffffff, ${theme.primary})`,
+            backgroundSize: "200% 100%",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+            animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
+          }}
+        >
+          {currentSportTitle}
         </div>
       </div>
-    </div>;
+    </>;
 
     const summaryCard = <div style={{ ...card, overflow: "hidden", background: cardBg }}>
       <div style={{ padding: 12, display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
@@ -887,7 +929,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   return (
     <div style={{ minHeight: "100vh", background: pageBg, color: theme.text, padding: "14px 12px 104px" }}>
       <div style={{ width: "100%", maxWidth: workspaceMode ? 1240 : 760, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 48px", gap: 6, alignItems: "center", marginBottom: workspaceMode ? 8 : 12 }}>
+        {!(workspaceMode && view === "home" && entryMode === "none") ? <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 48px", gap: 6, alignItems: "center", marginBottom: workspaceMode ? 8 : 12 }}>
           <div style={{ justifySelf: "start" }}>
             <BackDot size={38} onClick={() => {
               if (entryMode !== "none") { setEntryMode("none"); resetWizard(); return; }
@@ -908,7 +950,7 @@ export default function OrganizationsPage({ go, params }: Props) {
           <div style={{ justifySelf: "end" }}>
             {workspaceMode && active ? <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.035)", color: theme.text, fontSize: 16, cursor: "pointer" }}>•••</button> : (!workspaceMode && organizations.length && entryMode !== "create" ? <button type="button" onClick={startCreate} style={{ ...primaryButton, minHeight: 34, padding: "6px 8px", fontSize: 8 }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : <span style={{ display: "block", width: 36 }} />)}
           </div>
-        </div>
+        </div> : null}
 
         {!workspaceMode && organizations.length > 0 && entryMode !== "create" ? <div style={{ ...card, padding: 9, marginBottom: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}><select aria-label={L("Organisation active", "Active organization", "Organización activa")} style={{ ...input, minHeight: 38, padding: "7px 9px", fontWeight: 900 }} value={active?.id || ""} onChange={(e) => selectOrganization(e.target.value)}>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name} · {organizationKindLabel(org.kind)}</option>)}</select><button type="button" style={{ ...secondaryButton, minHeight: 38, padding: "7px 10px", fontSize: 9 }} onClick={() => { setEntryMode("join"); setView("home"); }}>{L("REJOINDRE", "JOIN", "UNIRSE")}</button></div> : null}
 

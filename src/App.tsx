@@ -6805,6 +6805,7 @@ case "babyfoot_team_edit":
   // ni dans les pages Play, Cast, Viewer, Auth, sous-pages Stats/Tournois/Profils, etc.
   const SPORT_QUICK_SWITCH_ALLOWED_TABS = new Set<Tab>([
     "home",        // Accueil
+    "organization_home", // Accueil organisation : mêmes contrôles flottants que Home
     "profiles",    // Profils
     "games",       // Local
     "tournaments", // Tournoi
@@ -6824,6 +6825,7 @@ case "babyfoot_team_edit":
 
   const LANDSCAPE_HEADER_DOCK_TABS = new Set<Tab>([
     "home",
+    "organization_home",
     "agenda",
     "messages",
     "profiles",
@@ -6914,7 +6916,7 @@ case "babyfoot_team_edit":
             collisionKey={String(tab)}
             landscapeHeaderDocked={landscapeHeaderDocked}
             onAfterSwitch={() => {
-              if (tab === "home" || tab === "games" || tab === "stats" || tab === "statsHub" || tab === "tournaments") return;
+              if (tab === "home" || tab === "organization_home" || tab === "games" || tab === "stats" || tab === "statsHub" || tab === "tournaments") return;
               go("home");
             }}
           />
@@ -6948,7 +6950,7 @@ case "babyfoot_team_edit":
 
         {!isThemePreviewFrame && <NavigationBackgroundMusic route={String(tab)} />}
 
-        {appChromeAllowed && tab === "home" && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
+        {appChromeAllowed && (tab === "home" || tab === "organization_home") && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
           <React.Suspense fallback={null}>
             <OrganizationWorkspaceSwitcher go={go} currentTab={String(tab)} />
           </React.Suspense>
