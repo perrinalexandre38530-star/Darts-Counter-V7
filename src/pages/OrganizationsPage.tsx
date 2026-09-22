@@ -696,7 +696,10 @@ export default function OrganizationsPage({ go, params }: Props) {
                 <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.primary}44`, background: `${theme.primary}10`, color: theme.primary, fontSize: 7.8, fontWeight: 900 }}>{organizationRoleLabel(active.role)}</span>
               </div>
             </div>
-            <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.76)", color: theme.text, fontSize: 17, fontWeight: 1000, cursor: "pointer" }}>•••</button>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              {(active.role === "owner" || active.role === "admin") ? <button type="button" onClick={() => navigateView("profile")} aria-label={L("Modifier la page de l’organisation", "Edit organization page", "Editar página de la organización")} title={L("Modifier la page", "Edit page", "Editar página")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: `${theme.primary}12`, color: theme.primary, fontSize: 15, fontWeight: 1000, cursor: "pointer" }}>✎</button> : null}
+              <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.76)", color: theme.text, fontSize: 17, fontWeight: 1000, cursor: "pointer" }}>•••</button>
+            </div>
           </div>
         </div>
         <div style={{ padding: "10px 12px 12px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
@@ -731,7 +734,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     const groups: Array<{ title: string; ids: View[] }> = [
       { title: L("Sport & vie du collectif", "Sport & club life", "Deporte y vida colectiva"), ids: ["members", "competitions", "stats", "communication"] },
       { title: L("Gestion & services", "Management & services", "Gestión y servicios"), ids: ["federations", "billing", "sponsors", "venue"] },
-      { title: L("Organisation", "Organization", "Organización"), ids: ["profile", "admin", "offers"] },
+      { title: L("Ma page & réglages", "My page & settings", "Mi página y ajustes"), ids: ["profile", "admin", "offers"] },
     ];
     return <div style={{ display: "grid", gap: 13 }}>
       {sectionHeader(L("PLUS", "MORE", "MÁS"), active.name)}

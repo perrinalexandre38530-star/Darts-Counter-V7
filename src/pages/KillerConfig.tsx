@@ -1171,6 +1171,8 @@ export default function KillerConfigPage(props: Props) {
 
         {/* JOUEURS LOCAUX */}
         <section
+          data-mss-guide-section="killer-players"
+          data-mss-guide-label="Joueurs"
           style={{
             background: cardBg,
             borderRadius: 18,
@@ -1226,6 +1228,8 @@ export default function KillerConfigPage(props: Props) {
 
       {/* BOTS */}
         <section
+          data-mss-guide-section="killer-bots"
+          data-mss-guide-label="Bots IA"
           style={{
             background: cardBg,
             borderRadius: 18,
@@ -1299,6 +1303,7 @@ export default function KillerConfigPage(props: Props) {
 
         {/* OPTIONS */}
         <section
+          data-mss-guide-container="killer-options"
           style={{
             background: cardBg,
             borderRadius: 18,
@@ -1313,7 +1318,7 @@ export default function KillerConfigPage(props: Props) {
           </div>
 
           {/* ✅ ORDRE DE DÉPART */}
-          <div style={{ marginTop: 2, marginBottom: 14 }}>
+          <div data-mss-guide-section="killer-start-order" data-mss-guide-label="Ordre de départ" style={{ marginTop: 2, marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Ordre de départ</div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
@@ -1381,7 +1386,7 @@ export default function KillerConfigPage(props: Props) {
           ) : (
           <div>
           {/* attribution numéros */}
-          <div style={{ marginBottom: 14 }}>
+          <div data-mss-guide-section="killer-number-assignment" data-mss-guide-label="Attribution des numéros" style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Attribution des numéros</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
@@ -1425,7 +1430,7 @@ export default function KillerConfigPage(props: Props) {
           </div>
 
           {/* vies */}
-          <div style={{ marginBottom: 12 }}>
+          <div data-mss-guide-section="killer-lives" data-mss-guide-label="Vies de départ" style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Vies de départ</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -1444,7 +1449,7 @@ export default function KillerConfigPage(props: Props) {
           </div>
 
           {/* become rule */}
-          <div style={{ marginBottom: 12 }}>
+          <div data-mss-guide-section="killer-become" data-mss-guide-label="Devenir KILLER" style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Règle pour devenir KILLER</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
@@ -1465,7 +1470,7 @@ export default function KillerConfigPage(props: Props) {
           </div>
 
           {/* damage rule */}
-          <div style={{ marginBottom: 14 }}>
+          <div data-mss-guide-section="killer-damage" data-mss-guide-label="Dégâts KILLER" style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Dégâts quand on est KILLER</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
@@ -1487,12 +1492,13 @@ export default function KillerConfigPage(props: Props) {
           </div>
 
           {/* variantes */}
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
+          <div data-mss-guide-container="killer-variants-container" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 900, color: "#9fa4c0", textTransform: "uppercase", letterSpacing: 0.9 }}>
               Variantes
             </div>
 
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div data-mss-guide-section="killer-variants" data-mss-guide-label="Variantes avancées" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <VariantRow
                 title="Auto-pénalité (toucher son numéro quand KILLER)"
                 desc="Si ON, quand tu es KILLER et que tu touches ton numéro, tu perds des vies (pas mort instant)."
@@ -1541,7 +1547,11 @@ export default function KillerConfigPage(props: Props) {
                 }
               />
 
+              </div>
+
               <div
+                data-mss-guide-section="killer-bull"
+                data-mss-guide-label="Fonctions BULL"
                 style={{
                   borderRadius: 14,
                   border: "1px solid rgba(255,255,255,0.06)",
@@ -1628,6 +1638,8 @@ Active uniquement parmi les fonctions cochées ci-dessus.
               </div>
 
               <div
+                data-mss-guide-section="killer-dbull"
+                data-mss-guide-label="Fonctions DBULL"
                 style={{
                   borderRadius: 14,
                   border: "1px solid rgba(255,255,255,0.06)",
@@ -1724,6 +1736,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                 )}
               </div>
 
+              <div data-mss-guide-section="killer-bonus" data-mss-guide-label="Bonus & MISS" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <VariantRow
                 title="Bonus bouclier au choix du numéro"
                 desc="En mode “1er lancer = choisir son numéro” : D = bouclier 2 tours, T = 3 tours, BULL = choix libre + 2 tours, DBULL = choix libre + 3 tours."
@@ -1752,7 +1765,11 @@ Active uniquement parmi les fonctions cochées ci-dessus.
 
 
 
+              </div>
+
               <div
+                data-mss-guide-section="killer-resurrection"
+                data-mss-guide-label="Résurrection"
                 style={{
                   borderRadius: 14,
                   border: "1px solid rgba(255,255,255,0.06)",

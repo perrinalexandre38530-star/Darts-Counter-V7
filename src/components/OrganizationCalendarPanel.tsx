@@ -54,6 +54,7 @@ export default function OrganizationCalendarPanel({ organization, userId, groups
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
+  const [showEditor, setShowEditor] = React.useState(false);
 
   const activeGroups = React.useMemo(() => groups.filter((g) => g.status !== "archived"), [groups]);
   const captainGroups = React.useMemo(() => activeGroups.filter((g) => g.captainUserId === userId), [activeGroups, userId]);
@@ -78,7 +79,11 @@ export default function OrganizationCalendarPanel({ organization, userId, groups
   }, [canManageGlobal, captainGroups, groupId]);
 
   function reset() {
-    setEditing(null); setTitle(""); setEventType("training"); setGroupId(canManageGlobal ? "" : captainGroups[0]?.id || ""); setStartsAt(""); setEndsAt(""); setLocation(""); setError("");
+    setEditing(null); setTitle(""); setEventType("training"); setGroupId(canManageGlobal ? "" : captainGroups[0]?.id || ""); setStartsAt(""); setEndsAt(""); setLocation(""); setError(""); setShowEditor(false);
+  }
+
+  function startCreate() {
+    setEditing(null); setTitle(""); setEventType("training"); setGroupId(canManageGlobal ? "" : captainGroups[0]?.id || ""); setStartsAt(""); setEndsAt(""); setLocation(""); setError(""); setShowEditor(true);
   }
 
   function startEdit(event: OrganizationLocalEvent) {
@@ -90,6 +95,7 @@ export default function OrganizationCalendarPanel({ organization, userId, groups
     setEndsAt(toLocalInput(event.endsAt));
     setLocation(event.location || "");
     setError("");
+    setShowEditor(true);
     window.scrollTo?.({ top: 0, behavior: "smooth" });
   }
 
@@ -134,7 +140,8 @@ export default function OrganizationCalendarPanel({ organization, userId, groups
   }
 
   return <div style={{ display: "grid", gap: 10 }}>
-    {canCreate ? <div style={{ ...card, padding: 14 }}>
+    {canCreate && !showEditor ? <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" style={primaryButton} onClick={startCreate}>+ {L("AJOUTER UN ÉVÉNEMENT", "ADD EVENT", "AÑADIR EVENTO")}</button></div> : null}
+    {canCreate && showEditor ? <div style={{ ...card, padding: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={{ color: theme.primary, fontSize: 11.5, fontWeight: 1000 }}>{editing ? L("MODIFIER L’ÉVÉNEMENT", "EDIT EVENT", "EDITAR EVENTO") : L("PLANIFIER", "SCHEDULE", "PLANIFICAR")}</div><div style={{ color: theme.textSoft, fontSize: 8.5, marginTop: 2 }}>{L("Entraînement, match, tournoi, réunion ou événement.", "Training, match, tournament, meeting or event.", "Entrenamiento, partido, torneo, reunión o evento.")}</div></div>{editing ? <button type="button" style={button} onClick={reset}>{L("ANNULER", "CANCEL", "CANCELAR")}</button> : null}</div>
       <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(120px,.65fr)", gap: 8 }}><input style={input} value={title} onChange={(e)=>setTitle(e.target.value)} placeholder={L("Nom de l’événement", "Event name", "Nombre del evento")} /><select style={input} value={eventType} onChange={(e)=>setEventType(e.target.value as OrganizationEventType)}>{EVENT_TYPES.map(([id,fr,en,es])=><option key={id} value={id}>{L(fr,en,es)}</option>)}</select></div>

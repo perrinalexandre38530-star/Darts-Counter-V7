@@ -155,6 +155,7 @@ export default function DartboardClickable(props: Props) {
   return (
     <div
       ref={ref}
+      data-mss-play-input="1"
       onPointerDown={handlePointer}
       style={{
         ...dimStyle,

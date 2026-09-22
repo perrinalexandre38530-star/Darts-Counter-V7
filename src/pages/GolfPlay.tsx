@@ -2997,7 +2997,7 @@ const throwChips = [0, 1, 2].map((i) => {
 
         {/* SAISIE (en bas) — sans titres "SAISIE" / trou-cible */}
         {!isFinished && (
-          <div style={{ ...cardBase, padding: 12, marginTop: 12 }}>
+          <div data-mss-play-input="1" style={{ ...cardBase, padding: 12, marginTop: 12 }}>
             {/* chips de tour */}
             <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 10 }}>
               {throwChips.map((lab, i) => {

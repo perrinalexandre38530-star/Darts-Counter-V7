@@ -402,6 +402,7 @@ export default function Keypad({
 
   return (
     <div
+      data-mss-keypad="1"
       style={{
         ...wrapCard,
         width: "100%",

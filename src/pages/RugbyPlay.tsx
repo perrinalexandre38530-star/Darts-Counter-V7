@@ -144,7 +144,7 @@ export default function RugbyPlay(props: any) {
               {t("generic.visit", "VOLÉE")} — {t("generic.input", "entre un score 0..180 (MVP)")}
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+            <div data-mss-play-input="1" style={{ marginTop: 10, display: "flex", gap: 10 }}>
               <input
                 value={String(visit)}
                 onChange={(e) => setVisit(clamp(Number(e.target.value))) }

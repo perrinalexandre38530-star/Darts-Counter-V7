@@ -6067,6 +6067,7 @@ if (assignOnlyMode) {
 
 return (
   <div
+    className="killer-play-screen msc-gameplay-layout"
     style={{
       position: "fixed",
       inset: 0,
@@ -6473,9 +6474,10 @@ return (
     {/* =========================
         ✅ TOP FIXED AREA (non scrollable)
        ========================= */}
-    <div style={{ flex: "0 0 auto" }}>
+    <div className="killer-play-top">
 {/* ✅ HEADER (ticker like KillerConfig) */}
 <div
+  className="killer-play-header msc-gameplay-header"
   style={{
     position: "sticky",
     top: 0,
@@ -6554,7 +6556,7 @@ return (
     <TargetsCarousel players={players} activeId={current?.id || null} theme={theme} blindMask={blindKillerOn} />
   </div>
 </div>{/* ✅ ACTIVE PLAYER (FIXED) */}
-      <div style={{
+      <div className="killer-play-active msc-gameplay-primary" style={{
         marginTop: 6,
         ...card,
         padding: 10,
@@ -6711,6 +6713,7 @@ return (
 
       {/* ✅ CARTE "LISTE DES JOUEURS" sous le joueur actif (X01PlayV3-like) */}
       <button
+        className="killer-play-players"
         type="button"
         onClick={() => setPlayersOpen(true)}
         style={{
@@ -6827,7 +6830,7 @@ return (
 
    
 {/* ✅ zone centrale (non scroll) — la liste est dans le bloc flottant */}
-<div style={{ flex: "1 1 auto", minHeight: 0 }} />
+<div className="killer-play-spacer" style={{ flex: "1 1 auto", minHeight: 0 }} />
 
 
 {/* ✅ bloc flottant joueurs (X01PlayV3-like) */}
@@ -7097,6 +7100,7 @@ return (
 
 {!assignActive && !w && !finished && !isBotTurn && !showEnd && (
   <div
+    className="killer-play-input msc-gameplay-secondary"
     style={{
       flex: "0 0 auto",
       position: "sticky",

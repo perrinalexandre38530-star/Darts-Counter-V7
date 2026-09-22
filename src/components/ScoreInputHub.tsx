@@ -472,7 +472,7 @@ export default function ScoreInputHub({
   );
 
   return (
-    <div style={{ position: "relative" }}>
+    <div data-mss-score-input-hub="1" style={{ position: "relative" }}>
       <style>{`@keyframes dcVoiceBlink{0%,100%{opacity:1;filter:brightness(1.1)}50%{opacity:.42;filter:brightness(1.85)}} @keyframes dcVoiceGlow{0%,100%{box-shadow:0 0 12px rgba(255,255,255,.26)}50%{box-shadow:0 0 26px rgba(255,255,255,.82)}}`}</style>
       {showSwitcher ? (
         <div style={{ marginBottom: 8 }}>

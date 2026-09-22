@@ -32,6 +32,13 @@ function findStepNodes(host: HTMLElement): HTMLElement[] {
   const page = (host.querySelector(":scope > .page") || host.firstElementChild) as HTMLElement | null;
   if (!page) return [];
 
+  // Les configs riches (Killer, etc.) peuvent déclarer leurs étapes explicitement.
+  // On privilégie ces marqueurs avant toute heuristique DOM afin que le mode GUIDÉ
+  // ne soit jamais une simple copie de la configuration complète.
+  const explicit = Array.from(page.querySelectorAll("[data-mss-guide-section]"))
+    .filter((node): node is HTMLElement => node instanceof HTMLElement);
+  if (explicit.length >= 2) return explicit;
+
   const direct = Array.from(page.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
   let candidates = direct.filter((el, index) => !isPersistentNode(el, index));
 
@@ -61,6 +68,8 @@ function findStepNodes(host: HTMLElement): HTMLElement[] {
 }
 
 function stepLabel(el: HTMLElement, index: number) {
+  const explicitLabel = String(el.getAttribute("data-mss-guide-label") || "").trim();
+  if (explicitLabel) return cleanLabel(explicitLabel, `Étape ${index + 1}`);
   const heading = el.querySelector("h1,h2,h3,h4,[data-config-title]") as HTMLElement | null;
   if (heading?.textContent) return cleanLabel(heading.textContent, `Étape ${index + 1}`);
   const first = Array.from(el.querySelectorAll("strong,b,label,button,div"))
@@ -104,6 +113,13 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
       setPortalHost(mount);
     }
 
+    const guideContainers = Array.from(page?.querySelectorAll?.("[data-mss-guide-container]") || [])
+      .filter((node): node is HTMLElement => node instanceof HTMLElement);
+
+    guideContainers.forEach((container) => {
+      container.dataset.mssGuidePrevDisplay = container.style.display;
+    });
+
     nodes.forEach((node, index) => {
       const previous = node.style.display;
       node.dataset.mssGuidePrevDisplay = previous;
@@ -112,11 +128,28 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
       node.dataset.mssGuideStep = String(index);
     });
 
+    if (mode === "guided" && nodes.length) {
+      const activeNode = nodes[Math.min(step, nodes.length - 1)] || null;
+      guideContainers.forEach((container) => {
+        container.style.display = activeNode && container.contains(activeNode)
+          ? (container.dataset.mssGuidePrevDisplay || "")
+          : "none";
+      });
+    } else {
+      guideContainers.forEach((container) => {
+        container.style.display = container.dataset.mssGuidePrevDisplay || "";
+      });
+    }
+
     return () => {
       nodes.forEach((node) => {
         node.style.display = node.dataset.mssGuidePrevDisplay || "";
         delete node.dataset.mssGuidePrevDisplay;
         delete node.dataset.mssGuideStep;
+      });
+      guideContainers.forEach((container) => {
+        container.style.display = container.dataset.mssGuidePrevDisplay || "";
+        delete container.dataset.mssGuidePrevDisplay;
       });
     };
   }, [mode, step, route, children]);

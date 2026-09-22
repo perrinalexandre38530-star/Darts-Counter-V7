@@ -404,15 +404,18 @@ function goBack() {
   }
 
   return (
-    <div className="page">
+    <div className="page darts-play-auto-columns simple-rounds-play-screen">
+      <div className="msc-mode-play-header">
       <PageHeader
         title={spec.title}
         tickerSrc={spec.tickerSrc}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title={spec.infoTitle} content={spec.infoText} />}
       />
+      </div>
 
-      <div style={{ padding: 14 }}>
+      <div className="msc-mode-play-content" style={{ padding: 14 }}>
+        <div className="msc-mode-play-primary">
         <div
           style={{
             display: "flex",
@@ -454,9 +457,10 @@ function goBack() {
             );
           })}
         </div>
+        </div>
 
         {!isFinished && !botMask[playerIdx] && (
-          <div style={{ marginTop: 12 }}>
+          <div className="msc-mode-play-secondary" style={{ marginTop: 12 }}>
             <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, letterSpacing: 0.8 }}>
               {t("generic.visit", "VOLÉE")} — {variantId === "super_bull" ? t("generic.input", "BULL (0..150, paliers 25)") : t("generic.input", "entre un score 0..180")}
             </div>

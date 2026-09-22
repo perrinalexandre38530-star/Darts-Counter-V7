@@ -396,7 +396,7 @@ const TrainingClockPlay: React.FC<TrainingClockPlayProps> = ({
           </div>
 
           {/* Keypad + MISS / BULL */}
-          <div className="tc-keypad-card">
+          <div className="tc-keypad-card" data-mss-play-input="1">
             <div className="tc-keypad-top-row">
               <button
                 type="button"

@@ -4501,3 +4501,346 @@ html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="friends"
   bottom: auto !important;
   transform: none !important;
 }
+
+/* ========================================================================== 
+   V64 — DARTS PLAY LANDSCAPE BASELINE + KILLER GUIDED CONFIG
+   --------------------------------------------------------------------------
+   Portrait is intentionally untouched. This layer establishes the common
+   three-zone contract requested for Darts play screens:
+   1) ticker/header across the top,
+   2) active player / score / player summary on the left,
+   3) keypad / dartboard / scoring input on the right.
+   Existing mode-specific landscape rules can override this baseline.
+   ========================================================================== */
+
+/* Universal play header marker (PageHeader). Keep the full ticker readable:
+   size it by the available header HEIGHT, never stretch/crop it to full width. */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-page-header="1"] {
+  position: relative !important;
+  top: auto !important;
+  flex: 0 0 clamp(62px, 12.5vh, 90px) !important;
+  min-height: 0 !important;
+  max-height: clamp(62px, 12.5vh, 90px) !important;
+  margin-top: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+  padding-bottom: 5px !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-page-header="1"] > div:first-child {
+  height: clamp(58px, 11.5vh, 84px) !important;
+  padding-top: 0 !important;
+  background: linear-gradient(90deg, rgba(2,4,10,.96), rgba(2,4,10,.24) 24%, rgba(2,4,10,.24) 76%, rgba(2,4,10,.96)) !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-page-header="1"] > div:first-child > img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+/* Generic auto-split for the many legacy play pages that use Keypad or
+   ScoreInputHub. It activates only when the direct play content actually has
+   multiple siblings, so single-wrapper specialty modes are not scrambled. */
+@supports selector(:has(*)) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding-bottom: 0 !important;
+  }
+
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 6px 8px 8px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+    grid-auto-rows: min-content !important;
+    gap: 7px 9px !important;
+    align-content: start !important;
+    overflow: hidden !important;
+  }
+
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) > :has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
+    grid-column: 2 !important;
+    grid-row: 1 / span 99 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: auto !important;
+    margin-top: 0 !important;
+    align-self: stretch !important;
+  }
+
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) > :not(:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"])) {
+    grid-column: 1 !important;
+    min-width: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-score-input-hub="1"],
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-keypad="1"],
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-play-input="1"] {
+    max-height: 100% !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Explicit shared semantic frame used by SimpleRounds and future modes. */
+html[data-msc-orientation="landscape"] .darts-play-auto-columns {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-play-auto-columns > .msc-mode-play-header {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-play-auto-columns > .msc-mode-play-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+  gap: 9px !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-play-auto-columns .msc-mode-play-primary,
+html[data-msc-orientation="landscape"] .darts-play-auto-columns .msc-mode-play-secondary {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: auto !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-play-auto-columns .msc-mode-play-primary {
+  grid-column: 1 !important;
+}
+
+html[data-msc-orientation="landscape"] .darts-play-auto-columns .msc-mode-play-secondary {
+  grid-column: 2 !important;
+}
+
+/* Killer PLAY — explicit 3-zone landscape layout. The top summary/carousel
+   remains across the full width; player block/list are left; input is right. */
+html[data-msc-orientation="landscape"] .killer-play-screen {
+  display: grid !important;
+  grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+  grid-template-rows: clamp(62px, 12vh, 88px) minmax(0, 1fr) !important;
+  gap: 8px 10px !important;
+  padding: 6px !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen > .killer-play-top {
+  display: contents !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-header > div:first-child {
+  height: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  background: linear-gradient(90deg, rgba(4,5,8,.98), rgba(4,5,8,.18) 23%, rgba(4,5,8,.18) 77%, rgba(4,5,8,.98)) !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-header img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-active {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-active > div:first-child {
+  grid-template-columns: 72px minmax(0, 1fr) 94px !important;
+  gap: 7px !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-players {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: end !important;
+  max-height: 82px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-players > div:last-child {
+  padding: 4px 8px !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-input {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  position: static !important;
+  inset: auto !important;
+  align-self: stretch !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  background: transparent !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-input > .dc-killer-keypad {
+  height: 100% !important;
+  margin: 0 !important;
+  transform: none !important;
+  display: flex !important;
+  align-items: flex-start !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-input [data-mss-score-input-hub="1"] {
+  width: 100% !important;
+  max-height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .killer-play-screen .killer-play-spacer {
+  display: none !important;
+}
+
+/* Killer CONFIG guided mode: keep one explicit step visible at a time and let
+   that step use the full configuration workspace. Complete mode remains fully
+   scrollable. This works in portrait and landscape because the JS guide owns
+   visibility; only landscape density is adjusted here. */
+html[data-msc-orientation="landscape"] .killer-config-v3 [data-mss-guide-section] {
+  min-width: 0 !important;
+}
+
+html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-config-view="guided"] .killer-config-v3 [data-mss-guide-container="killer-options"] {
+  padding: 10px !important;
+}
+
+html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-config-view="guided"] .killer-config-v3 [data-mss-guide-section] {
+  max-height: calc(100dvh - 300px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  scrollbar-width: thin !important;
+}
+
+html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-config-view="guided"] .killer-config-v3 [data-mss-guide-section="killer-players"],
+html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-config-view="guided"] .killer-config-v3 [data-mss-guide-section="killer-bots"] {
+  max-height: calc(100dvh - 250px) !important;
+}
+
+/* --------------------------------------------------------------------------
+   V64B — universal legacy PLAY auto-columns.
+   This is the safety net for older Darts play screens that still render their
+   sections as a vertical stack. It is landscape-only. Shared Keypad,
+   ScoreInputHub and DartboardClickable components expose an input marker, so
+   the scoring surface can be moved to the right without changing game logic.
+   -------------------------------------------------------------------------- */
+@supports selector(:has(*)) {
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"]
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play) {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    box-sizing: border-box !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+    grid-template-rows: clamp(58px, 11vh, 84px) minmax(0, 1fr) !important;
+    gap: 7px 9px !important;
+    padding: 6px 7px !important;
+    overflow: hidden !important;
+    align-content: stretch !important;
+  }
+
+  /* First visual block is treated as the persistent mode header / summary. */
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"]
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :first-of-type {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Any direct section containing an input surface becomes the right pane. */
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"]
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :not(:first-of-type):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    overflow: auto !important;
+    overscroll-behavior: contain !important;
+    align-self: stretch !important;
+  }
+
+  /* Remaining gameplay/status sections stay in the left pane. They share one
+     scroll context so unusually feature-rich modes remain usable instead of
+     forcing the entire page to scroll. */
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"]
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :not(:first-of-type):not(:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"])) {
+    grid-column: 1 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* When there are several left-side siblings, keep them compact. */
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"]
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :not(:first-of-type):not(:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"])) {
+    max-height: calc(100dvh - 104px) !important;
+    overflow: auto !important;
+    scrollbar-width: thin !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"]
+  [data-mss-play-input="1"] {
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+}

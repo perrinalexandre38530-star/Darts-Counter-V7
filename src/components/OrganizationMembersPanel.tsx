@@ -72,6 +72,7 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
   const [inviteRole, setInviteRole] = React.useState<OrganizationRole>("member");
   const [actionKey, setActionKey] = React.useState("");
   const [expandedMember, setExpandedMember] = React.useState("");
+  const [inviteOpen, setInviteOpen] = React.useState(false);
   const canManage = ["owner", "admin", "manager"].includes(organization.role);
   const canAdmin = ["owner", "admin"].includes(organization.role);
   const roleOptions = allowedRoles(organization.role);
@@ -207,9 +208,10 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
             <div style={{ color: theme.primary, fontSize: 13, fontWeight: 1000 }}>{L("MEMBRES & RÔLES", "MEMBERS & ROLES", "MIEMBROS Y ROLES")}</div>
             <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.5 }}>{organization.name}</div>
           </div>
-          <div style={{ display: "flex", gap: 5 }}>
+          <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <span style={{ borderRadius: 999, padding: "4px 7px", background: `${theme.primary}12`, color: theme.primary, fontSize: 8, fontWeight: 1000 }}>{activeCount} {L("ACTIFS", "ACTIVE", "ACTIVOS")}</span>
             {suspendedCount ? <span style={{ borderRadius: 999, padding: "4px 7px", background: "rgba(255,120,80,.1)", color: "#ff9b78", fontSize: 8, fontWeight: 1000 }}>{suspendedCount} {L("SUSP.", "SUSP.", "SUSP.")}</span> : null}
+            {canManage ? <button type="button" onClick={() => setInviteOpen((value) => !value)} style={{ ...button, minHeight: 30, padding: "5px 8px", color: theme.primary, borderColor: `${theme.primary}55` }}>{inviteOpen ? L("FERMER", "CLOSE", "CERRAR") : `+ ${L("INVITER", "INVITE", "INVITAR")}`}</button> : null}
           </div>
         </div>
 
@@ -223,7 +225,7 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
         </div>
       </div>
 
-      {canManage ? <div style={{ ...card, padding: 14 }}>
+      {canManage && inviteOpen ? <div style={{ ...card, padding: 14 }}>
         <div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Inviter un utilisateur MSS", "Invite an MSS user", "Invitar a un usuario MSS")}</div>
         <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9, lineHeight: 1.35 }}>{L("Recherche par pseudo public. Pour quelqu’un qui n’a pas encore de compte, partage simplement le code ci-dessus.", "Search by public nickname. For someone without an account yet, simply share the code above.", "Busca por apodo público. Para alguien que aún no tenga cuenta, comparte el código de arriba.")}</div>
         <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px", gap: 7 }}>
