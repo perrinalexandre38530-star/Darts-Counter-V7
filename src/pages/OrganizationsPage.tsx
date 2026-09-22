@@ -45,6 +45,7 @@ import {
   captureUserMediaFallback,
   organizationCoverMediaKey,
   organizationLogoMediaKey,
+  readImageFileAsDataUrl,
   resolveUserMediaFallback,
 } from "../lib/userMediaFallback";
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
@@ -247,8 +248,6 @@ export default function OrganizationsPage({ go, params }: Props) {
   const secondaryButton: React.CSSProperties = { ...primaryButton, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.035)", color: theme.text };
 
   function resetWizard() {
-    if (logoPreview.startsWith("blob:")) URL.revokeObjectURL(logoPreview);
-    if (coverPreview.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
     setLogoPreview("");
     setCoverPreview("");
     setWizardStep(0);
@@ -309,19 +308,15 @@ export default function OrganizationsPage({ go, params }: Props) {
     });
   }
 
-  function chooseImage(file: File | undefined, kind: "logo" | "cover") {
+  async function chooseImage(file: File | undefined, kind: "logo" | "cover") {
     if (!file) return;
     setError("");
     if (!file.type.startsWith("image/")) { setError(L("Le fichier choisi n’est pas une image.", "The selected file is not an image.", "El archivo seleccionado no es una imagen.")); return; }
     if (file.size > 15 * 1024 * 1024) { setError(L("Image trop lourde : 15 Mo maximum avant compression.", "Image too large: 15 MB maximum before compression.", "Imagen demasiado grande: 15 MB máximo antes de la compresión.")); return; }
-    const url = URL.createObjectURL(file);
-    if (kind === "logo") {
-      if (logoPreview.startsWith("blob:")) URL.revokeObjectURL(logoPreview);
-      setLogoPreview(url);
-    } else {
-      if (coverPreview.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
-      setCoverPreview(url);
-    }
+    const dataUrl = await readImageFileAsDataUrl(file);
+    if (!dataUrl) { setError(L("Impossible de lire cette image. Essaie un fichier PNG, JPG ou WebP.", "Unable to read this image. Try a PNG, JPG or WebP file.", "No se puede leer esta imagen. Prueba con PNG, JPG o WebP.")); return; }
+    if (kind === "logo") setLogoPreview(dataUrl);
+    else setCoverPreview(dataUrl);
   }
 
   function validateStep(step: number): string {
@@ -372,25 +367,20 @@ export default function OrganizationsPage({ go, params }: Props) {
       let organization = { ...created.organization, profile: normalizeOrganizationProfile({ ...created.organization.profile, ...profile }) };
       const prefs = loadStoragePrefs();
       const mirrorR2 = prefs.selectedDestination === "cloud_r2";
-      let mediaWarning = "";
       let logoKey = "";
       let coverKey = "";
 
       if (logoPreview) {
-        logoKey = organizationLogoMediaKey(organization.id);
-        try {
-          await captureUserMediaFallback(logoKey, logoPreview, { kind: "club_logo", mirrorR2, updatedAt: Date.now() });
-        } catch {
-          mediaWarning = L("Le logo est conservé localement mais sa copie R2 n’a pas pu être envoyée.", "The logo is kept locally but its R2 copy could not be uploaded.", "El logo se conserva localmente, pero no se pudo subir su copia a R2.");
-        }
+        const nextLogoKey = organizationLogoMediaKey(organization.id);
+        const savedLogo = await captureUserMediaFallback(nextLogoKey, logoPreview, { kind: "club_logo", mirrorR2, updatedAt: Date.now() });
+        if (!savedLogo) throw new Error(L("Le logo n’a pas pu être enregistré.", "The logo could not be saved.", "No se pudo guardar el logotipo."));
+        logoKey = nextLogoKey;
       }
       if (coverPreview) {
-        coverKey = organizationCoverMediaKey(organization.id);
-        try {
-          await captureUserMediaFallback(coverKey, coverPreview, { kind: "club_cover", mirrorR2, updatedAt: Date.now() });
-        } catch {
-          mediaWarning = mediaWarning || L("La photo est conservée localement mais sa copie R2 n’a pas pu être envoyée.", "The photo is kept locally but its R2 copy could not be uploaded.", "La foto se conserva localmente, pero no se pudo subir su copia a R2.");
-        }
+        const nextCoverKey = organizationCoverMediaKey(organization.id);
+        const savedCover = await captureUserMediaFallback(nextCoverKey, coverPreview, { kind: "club_cover", mirrorR2, updatedAt: Date.now() });
+        if (!savedCover) throw new Error(L("La photo de couverture n’a pas pu être enregistrée.", "The cover photo could not be saved.", "No se pudo guardar la foto de portada."));
+        coverKey = nextCoverKey;
       }
 
       const profileResult = await updateOrganizationProfile(userId, organization.id, {
@@ -408,7 +398,7 @@ export default function OrganizationsPage({ go, params }: Props) {
       setEntryMode("none");
       setView("home");
       const baseNotice = L("Organisation créée : la fiche organisme est prête.", "Organization created: the organization profile is ready.", "Organización creada: la ficha de la organización está lista.");
-      setNotice([baseNotice, profileResult.warning, mediaWarning].filter(Boolean).join(" "));
+      setNotice([baseNotice, profileResult.warning].filter(Boolean).join(" "));
       resetWizard();
       go?.("organization_home", { organizationId: organization.id, workspaceMode: true, view: "home" });
     } catch (e: any) {
@@ -604,10 +594,10 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (wizardStep === 5) return <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "120px minmax(0,1fr)", gap: 12, alignItems: "stretch" }}>
         <div style={{ ...card, padding: 10, minHeight: 132, display: "grid", placeItems: "center", overflow: "hidden" }}>{logoPreview ? <img src={logoPreview} alt="Logo" style={{ width: 96, height: 96, objectFit: "contain", borderRadius: 18 }} /> : <div style={{ textAlign: "center", color: theme.textSoft, fontSize: 9 }}>{L("LOGO\nÉQUIPE / STRUCTURE", "TEAM / ORGANIZATION\nLOGO", "LOGO\nEQUIPO / ESTRUCTURA")}</div>}</div>
-        <div>{fieldLabel(L("Logo de l’organisme", "Organization logo", "Logo de la organización"), true)}<input type="file" accept="image/*" onChange={(e) => chooseImage(e.target.files?.[0], "logo")} style={{ ...input, padding: 8 }} /><div style={{ marginTop: 7, color: theme.textSoft, fontSize: 9, lineHeight: 1.4 }}>{L("Idéal : image carrée, PNG ou WebP. Elle sera automatiquement redimensionnée.", "Ideal: square PNG or WebP. It will be resized automatically.", "Ideal: imagen cuadrada PNG o WebP. Se redimensionará automáticamente.")}</div></div>
+        <div>{fieldLabel(L("Logo de l’organisme", "Organization logo", "Logo de la organización"), true)}<input type="file" accept="image/*" onChange={(e) => { void chooseImage(e.target.files?.[0], "logo"); e.currentTarget.value = ""; }} style={{ ...input, padding: 8 }} /><div style={{ marginTop: 7, color: theme.textSoft, fontSize: 9, lineHeight: 1.4 }}>{L("Idéal : image carrée, PNG ou WebP. Elle sera automatiquement redimensionnée.", "Ideal: square PNG or WebP. It will be resized automatically.", "Ideal: imagen cuadrada PNG o WebP. Se redimensionará automáticamente.")}</div></div>
       </div>
       <div style={{ ...card, minHeight: 158, overflow: "hidden", position: "relative", background: coverPreview ? `url(${coverPreview}) center/cover no-repeat` : "rgba(255,255,255,.025)" }}><div style={{ position: "absolute", inset: 0, background: coverPreview ? "linear-gradient(180deg, transparent 20%, rgba(0,0,0,.72))" : "transparent" }} /><div style={{ position: "relative", minHeight: 158, padding: 13, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}><div style={{ color: theme.text, fontWeight: 1000 }}>{draft.name || L("PHOTO DE L’ORGANISME", "ORGANIZATION PHOTO", "FOTO DE LA ORGANIZACIÓN")}</div><div style={{ color: theme.textSoft, fontSize: 9 }}>{L("Stade · gymnase · devanture · locaux · équipe", "Stadium · gym · storefront · premises · team", "Estadio · gimnasio · fachada · local · equipo")}</div></div></div>
-      <div>{fieldLabel(L("Photo de couverture", "Cover photo", "Foto de portada"), true)}<input type="file" accept="image/*" onChange={(e) => chooseImage(e.target.files?.[0], "cover")} style={{ ...input, padding: 8 }} /></div>
+      <div>{fieldLabel(L("Photo de couverture", "Cover photo", "Foto de portada"), true)}<input type="file" accept="image/*" onChange={(e) => { void chooseImage(e.target.files?.[0], "cover"); e.currentTarget.value = ""; }} style={{ ...input, padding: 8 }} /></div>
       <div style={{ borderRadius: 12, border: `1px solid ${theme.primary}44`, background: `${theme.primary}0d`, padding: 11 }}><div style={{ color: theme.primary, fontSize: 9, fontWeight: 1000 }}>{L("STOCKAGE DES VISUELS", "VISUAL STORAGE", "ALMACENAMIENTO DE IMÁGENES")}</div><div style={{ marginTop: 4, color: theme.text, fontSize: 10.5, fontWeight: 900 }}>{storageDestination.label}</div><div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9, lineHeight: 1.4 }}>{storagePrefs.selectedDestination === "cloud_r2" ? L("Les images seront compressées puis envoyées vers Cloudflare R2. Supabase ne conservera que leur clé de référence.", "Images will be compressed and sent to Cloudflare R2. Supabase will store only their reference key.", "Las imágenes se comprimirán y se enviarán a Cloudflare R2. Supabase solo guardará su clave de referencia.") : L("Les images sont conservées dans le coffre média local et suivront la destination définie dans le Centre de stockage. Aucun fichier image n’est placé dans Supabase.", "Images are kept in the local media vault and follow the destination configured in Storage Center. No image file is stored in Supabase.", "Las imágenes se guardan en el almacén multimedia local y siguen el destino configurado. Ningún archivo se almacena en Supabase.")}</div></div>
     </div>;
 
@@ -775,7 +765,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (!active) return renderEntry();
     if (view === "home") return renderHome();
     if (view === "more") return renderMore();
-    if (view === "profile") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("FICHE ORGANISME", "ORGANIZATION PROFILE", "FICHA DE LA ORGANIZACIÓN"), active.name)}<OrganizationProfilePanel organization={active} userId={userId} logoUrl={activeLogo} coverUrl={activeCover} onChanged={() => void load()} /></div>;
+    if (view === "profile") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("FICHE ORGANISME", "ORGANIZATION PROFILE", "FICHA DE LA ORGANIZACIÓN"), active.name)}<OrganizationProfilePanel organization={active} userId={userId} logoUrl={activeLogo} coverUrl={activeCover} onChanged={async () => { await load(); }} /></div>;
     if (view === "members") return <OrganizationMembersPanel organization={active} groups={localGroups} userId={userId} onChanged={() => void load()} />;
     if (view === "groups") return <OrganizationTeamsPanel organization={active} userId={userId} initialGroups={localGroups} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} />;
     if (view === "competitions") return <OrganizationCompetitionsPanel organization={active} userId={userId} initialGroups={localGroups} />;
@@ -786,8 +776,8 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "sponsors") return <OrganizationSponsorsPanel organization={active} userId={userId} />;
     if (view === "venue") return <OrganizationVenuePanel organization={active} userId={userId} go={go} />;
     if (view === "calendar") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("AGENDA ORGANISATION", "ORGANIZATION CALENDAR", "AGENDA DE LA ORGANIZACIÓN"), active.name)}<OrganizationCalendarPanel organization={active} userId={userId} groups={localGroups} initialEvents={localEvents} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} /></div>;
-    if (view === "admin") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), active.name)}<OrganizationAdminPanel organization={active} userId={userId} go={go} onOpenProfile={() => navigateView("profile")} onChanged={() => void load()} /></div>;
-    if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), active.name)}<OrganizationPlansPanel organization={active} userId={userId} onChanged={() => void load()} /></div>;
+    if (view === "admin") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("ADMINISTRATION", "ADMINISTRATION", "ADMINISTRACIÓN"), active.name)}<OrganizationAdminPanel organization={active} userId={userId} go={go} onOpenProfile={() => navigateView("profile")} onChanged={async () => { await load(); }} /></div>;
+    if (view === "offers") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("OFFRES MULTISPORTS SCORING", "MULTISPORTS SCORING PLANS", "PLANES MULTISPORTS SCORING"), active.name)}<OrganizationPlansPanel organization={active} userId={userId} onChanged={async () => { await load(); }} /></div>;
 
     return renderHome();
   };

@@ -16,6 +16,7 @@ import {
   captureUserMediaFallback,
   organizationCoverMediaKey,
   organizationLogoMediaKey,
+  readImageFileAsDataUrl,
 } from "../lib/userMediaFallback";
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
 
@@ -49,6 +50,8 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
   const [notice, setNotice] = React.useState("");
   const [logoPreview, setLogoPreview] = React.useState("");
   const [coverPreview, setCoverPreview] = React.useState("");
+  const [savedLogoUrl, setSavedLogoUrl] = React.useState(logoUrl);
+  const [savedCoverUrl, setSavedCoverUrl] = React.useState(coverUrl);
   const logoInputRef = React.useRef<HTMLInputElement | null>(null);
   const coverInputRef = React.useRef<HTMLInputElement | null>(null);
   const [form, setForm] = React.useState(() => ({
@@ -97,10 +100,8 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
     if (!editing) resetForm();
   }, [editing, resetForm]);
 
-  React.useEffect(() => () => {
-    if (logoPreview.startsWith("blob:")) URL.revokeObjectURL(logoPreview);
-    if (coverPreview.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
-  }, [logoPreview, coverPreview]);
+  React.useEffect(() => { setSavedLogoUrl(logoUrl); }, [logoUrl]);
+  React.useEffect(() => { setSavedCoverUrl(coverUrl); }, [coverUrl]);
 
   const card: React.CSSProperties = {
     borderRadius: 18,
@@ -160,8 +161,6 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
 
   function cancelEdit() {
     if (busy) return;
-    if (logoPreview.startsWith("blob:")) URL.revokeObjectURL(logoPreview);
-    if (coverPreview.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
     setLogoPreview("");
     setCoverPreview("");
     setError("");
@@ -169,7 +168,7 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
     resetForm();
   }
 
-  function pick(file: File | undefined, kind: "logo" | "cover") {
+  async function pick(file: File | undefined, kind: "logo" | "cover") {
     if (!file) return;
     setError("");
     if (!file.type.startsWith("image/")) {
@@ -180,14 +179,13 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
       setError(L("Image trop lourde : 15 Mo maximum.", "Image too large: 15 MB maximum.", "Imagen demasiado grande: 15 MB máximo."));
       return;
     }
-    const url = URL.createObjectURL(file);
-    if (kind === "logo") {
-      if (logoPreview.startsWith("blob:")) URL.revokeObjectURL(logoPreview);
-      setLogoPreview(url);
-    } else {
-      if (coverPreview.startsWith("blob:")) URL.revokeObjectURL(coverPreview);
-      setCoverPreview(url);
+    const dataUrl = await readImageFileAsDataUrl(file);
+    if (!dataUrl) {
+      setError(L("Impossible de lire cette image. Essaie un fichier PNG, JPG ou WebP.", "Unable to read this image. Try a PNG, JPG or WebP file.", "No se puede leer esta imagen. Prueba con PNG, JPG o WebP."));
+      return;
     }
+    if (kind === "logo") setLogoPreview(dataUrl);
+    else setCoverPreview(dataUrl);
     setEditSection("visuals");
     setEditing(true);
   }
@@ -214,19 +212,15 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
       const mirrorR2 = prefs.selectedDestination === "cloud_r2";
       let logoKey = organization.profile.logoMediaKey;
       let coverKey = organization.profile.coverMediaKey;
-      let mediaWarning = "";
       if (logoPreview) {
         const nextLogoKey = organizationLogoMediaKey(organization.id);
         try {
           const savedLogo = await captureUserMediaFallback(nextLogoKey, logoPreview, { kind: "club_logo", mirrorR2, updatedAt: Date.now() });
           if (!savedLogo) throw new Error("logo_capture_failed");
           logoKey = nextLogoKey;
+          setSavedLogoUrl(savedLogo);
         } catch {
-          // captureUserMediaFallback écrit d'abord le coffre média local puis tente R2.
-          // Si seul le miroir distant échoue, on conserve donc la clé locale au lieu
-          // d'empêcher toute la fiche de s'enregistrer.
-          logoKey = nextLogoKey;
-          mediaWarning = L("Le logo est conservé localement ; sa copie distante devra être resynchronisée.", "The logo is kept locally; its remote copy will need to sync again.", "El logo se conserva localmente; la copia remota deberá volver a sincronizarse.");
+          throw new Error(L("Le logo n’a pas pu être enregistré. Réessaie avec une image PNG, JPG ou WebP.", "The logo could not be saved. Try again with a PNG, JPG or WebP image.", "No se pudo guardar el logotipo. Inténtalo de nuevo con PNG, JPG o WebP."));
         }
       }
       if (coverPreview) {
@@ -235,9 +229,9 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
           const savedCover = await captureUserMediaFallback(nextCoverKey, coverPreview, { kind: "club_cover", mirrorR2, updatedAt: Date.now() });
           if (!savedCover) throw new Error("cover_capture_failed");
           coverKey = nextCoverKey;
+          setSavedCoverUrl(savedCover);
         } catch {
-          coverKey = nextCoverKey;
-          mediaWarning = [mediaWarning, L("La couverture est conservée localement ; sa copie distante devra être resynchronisée.", "The cover is kept locally; its remote copy will need to sync again.", "La portada se conserva localmente; la copia remota deberá volver a sincronizarse.")].filter(Boolean).join(" ");
+          throw new Error(L("La photo de couverture n’a pas pu être enregistrée. Réessaie avec une image PNG, JPG ou WebP.", "The cover photo could not be saved. Try again with a PNG, JPG or WebP image.", "No se pudo guardar la foto de portada. Inténtalo de nuevo con PNG, JPG o WebP."));
         }
       }
       const profile = normalizeOrganizationProfile({
@@ -259,7 +253,7 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
         profileCompleted: true,
       });
       const profileResult = await updateOrganizationProfile(userId, organization.id, profile);
-      setNotice([identity.warning, profileResult.warning, mediaWarning, L("Fiche organisme mise à jour.", "Organization profile updated.", "Ficha de organización actualizada.")].filter(Boolean).join(" "));
+      setNotice([identity.warning, profileResult.warning, L("Fiche organisme mise à jour.", "Organization profile updated.", "Ficha de organización actualizada.")].filter(Boolean).join(" "));
       setEditing(false);
       setLogoPreview("");
       setCoverPreview("");
@@ -272,8 +266,8 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
   }
 
   const p = organization.profile;
-  const currentLogo = logoPreview || logoUrl;
-  const currentCover = coverPreview || coverUrl;
+  const currentLogo = logoPreview || savedLogoUrl || logoUrl;
+  const currentCover = coverPreview || savedCoverUrl || coverUrl;
   const rows: Array<[string, string]> = [
     [L("Type", "Type", "Tipo"), organizationKindLabel(organization.kind)],
     [L("Nom officiel", "Legal name", "Nombre oficial"), p.legalName || organization.name],
@@ -306,8 +300,8 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
         </div>
         {!editing && canManage ? <button type="button" style={primary} onClick={() => startEdit("identity")}>{L("MODIFIER", "EDIT", "EDITAR")}</button> : <span />}
       </div>
-      <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={(event) => { pick(event.target.files?.[0], "logo"); event.currentTarget.value = ""; }} />
-      <input ref={coverInputRef} type="file" accept="image/*" hidden onChange={(event) => { pick(event.target.files?.[0], "cover"); event.currentTarget.value = ""; }} />
+      <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={(event) => { void pick(event.target.files?.[0], "logo"); event.currentTarget.value = ""; }} />
+      <input ref={coverInputRef} type="file" accept="image/*" hidden onChange={(event) => { void pick(event.target.files?.[0], "cover"); event.currentTarget.value = ""; }} />
     </div>
   );
 

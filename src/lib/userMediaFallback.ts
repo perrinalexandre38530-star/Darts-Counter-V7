@@ -400,6 +400,24 @@ async function trimLocalDb(): Promise<void> {
   } catch {}
 }
 
+export async function readImageFileAsDataUrl(file: File): Promise<string> {
+  if (!file || !String(file.type || "").startsWith("image/")) return "";
+  return await new Promise<string>((resolve) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = typeof reader.result === "string" ? reader.result : "";
+        resolve(isImageDataUrl(result) ? result : "");
+      };
+      reader.onerror = () => resolve("");
+      reader.onabort = () => resolve("");
+      reader.readAsDataURL(file);
+    } catch {
+      resolve("");
+    }
+  });
+}
+
 function blobFromDataUrl(dataUrl: string): Blob | null {
   try {
     const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
