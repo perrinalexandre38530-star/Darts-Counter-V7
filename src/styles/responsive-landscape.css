@@ -4446,3 +4446,42 @@ html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="co
 html[data-msc-orientation="landscape"] .x01-config-v3-screen .x01-config-header-info {
   display: none !important;
 }
+
+/* ============================================================
+   V61 — Universal Darts config contract
+   Legacy Darts configs now inherit the same Guided / Complete UX as X01.
+   This is intentionally landscape-first visually, while the functional
+   Guided/Complete switch remains available in portrait too.
+   ============================================================ */
+html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary {
+  min-width: 0;
+  width: 100%;
+}
+html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary > .page {
+  padding-top: 6px !important;
+  padding-bottom: 82px !important;
+  max-width: none !important;
+}
+html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary [data-mss-config-guide-toolbar="1"] {
+  position: relative;
+  z-index: 20;
+  width: 100%;
+}
+html[data-msc-orientation="landscape"] .mss-universal-config-guide {
+  padding: 7px 10px !important;
+  margin: 6px 0 8px !important;
+}
+html[data-msc-orientation="landscape"] .mss-universal-config-guide button {
+  min-height: 30px !important;
+  font-size: 10px !important;
+}
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-layout="config-guided"] .page > div:first-child img,
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-layout="config-guided"] .page > header:first-child img {
+  object-fit: contain !important;
+}
+
+/* Online already has the global Awena launcher. Its InfoDot must stay an InfoDot
+   instead of being auto-replaced by a second Awena medallion. */
+html[data-msc-orientation="landscape"] .msc-online-header [data-mss-protected-control="true"] {
+  flex: 0 0 auto;
+}

@@ -18,6 +18,7 @@
 // ============================================
 
 import React from "react";
+import DartsConfigGuideBoundary from "../components/DartsConfigGuideBoundary";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers, parseBotLevelValue } from "../lib/bots";
 import {
@@ -1862,7 +1863,9 @@ return {
     );
 
     return (
+      <DartsConfigGuideBoundary route="cricket_config">
       <div
+        className="page cricket-config-setup"
         style={{
           minHeight: "100vh",
           background: `radial-gradient(circle at top, #1c2540 0, #050712 55%, #000 100%)`,
@@ -2262,6 +2265,7 @@ return {
 	          </div>
 	        )}
       </div>
+      </DartsConfigGuideBoundary>
     );
   }
 

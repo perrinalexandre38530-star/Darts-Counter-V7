@@ -3693,6 +3693,7 @@ const doLogout = React.useCallback(async () => {
 
           <div style={{ justifySelf: "end" }}>
             <InfoDot
+              disableAwenaTakeover
               title="Infos Online"
               content={(
                 <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>

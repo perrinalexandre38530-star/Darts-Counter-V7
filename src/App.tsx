@@ -84,6 +84,7 @@ import NavigationBackgroundMusic from "./components/NavigationBackgroundMusic";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import RunningActiveSessionDock from "./components/RunningActiveSessionDock";
 import SportQuickSwitch from "./components/SportQuickSwitch";
+import DartsConfigGuideBoundary from "./components/DartsConfigGuideBoundary";
 import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type OrganizationWorkspace } from "./organizations/organizationWorkspace";
 import { applyOrganizationPlayContext } from "./organizations/organizationPlayContext";
 // MONETIZATION_V1
@@ -6846,31 +6847,48 @@ case "babyfoot_team_edit":
   const isGameMenuRoute =
     gameRouteName.endsWith("_menu") ||
     gameRouteName === "petanque.menu";
-  const isGameConfigRoute =
-    gameRouteName === "x01setup" ||
-    gameRouteName === "x01_config_v3" ||
-    gameRouteName === "x01_online_setup" ||
-    gameRouteName.endsWith("_config") ||
-    gameRouteName === "darts_mode_config";
+  const DARTS_CONFIG_TABS = new Set<string>([
+    "x01setup", "x01_config_v3", "x01_online_setup",
+    "killer", "killer_config", "five_lives_config", "gros_6_config", "warfare_config",
+    "halve_it_config", "count_up_config", "prisoner_config", "super_bull_config",
+    "shooter_config", "darts_racer_config", "tic_tac_toe_config", "knockout_config",
+    "bobs_27_config", "bowling_config", "scram_config", "golf_config",
+    "baseball_config", "attrape_moi_config", "president_config", "game_170_config",
+    "football_config", "batard_config", "fun_gages_config", "capital_config",
+    "loterie_config", "happy_mille_config", "rugby_config", "departements_config",
+    "darts_firefighter_config", "darts_poker_config", "cargo_config",
+    "ocean_control_config", "castle_config", "gotcha_config", "hare_hounds_config",
+    "pendu_config", "menteur_config", "crados_config", "fifty_one_by_five_config",
+    "looper_config", "call_three_config", "steeplechase_config", "enculette_config",
+    "darts_mode_config",
+    // Ces routes historiques sont elles aussi des écrans CONFIG.
+    "shanghai", "battle_royale", "training_x01"
+  ]);
+  const isGameConfigRoute = DARTS_CONFIG_TABS.has(gameRouteName) || gameRouteName.endsWith("_config");
   const isGamePlayRoute =
     gameRouteName === "x01" ||
     gameRouteName === "x01_play_v3" ||
     gameRouteName.endsWith("_play") ||
     gameRouteName === "darts_mode_play";
-  const isGuidedGameConfigRoute = new Set([
-    "x01_config_v3",
-    "gros_6_config",
-    "darts_firefighter_config",
-    "cargo_config",
-    "ocean_control_config",
-    "castle_config",
-    "gotcha_config",
-    "hare_hounds_config",
-    "fifty_one_by_five_config",
-    "looper_config",
-    "call_three_config",
-    "steeplechase_config",
-  ]).has(gameRouteName);
+  // Toutes les configs Darts passent désormais par le contrat paysage "config-guided".
+  // Les pages déjà modernes gardent leur propre moteur Guidée/Complète ; les legacy
+  // reçoivent le guide universel ci-dessous.
+  const isGuidedGameConfigRoute = DARTS_CONFIG_TABS.has(gameRouteName);
+
+  const NATIVE_GUIDED_DARTS_CONFIG_TABS = new Set<string>([
+    "x01_config_v3", "gros_6_config", "darts_firefighter_config", "darts_poker_config",
+    "cargo_config", "ocean_control_config", "castle_config", "gotcha_config",
+    "hare_hounds_config", "pendu_config", "menteur_config", "crados_config",
+    "fifty_one_by_five_config", "looper_config", "call_three_config", "steeplechase_config",
+    "halve_it_config", "prisoner_config", "shooter_config", "darts_racer_config",
+    "bobs_27_config", "bowling_config", "baseball_config", "attrape_moi_config",
+    "president_config", "capital_config", "loterie_config", "departements_config",
+    "football_config"
+  ]);
+  const needsUniversalDartsConfigGuide =
+    DARTS_CONFIG_TABS.has(gameRouteName) &&
+    !NATIVE_GUIDED_DARTS_CONFIG_TABS.has(gameRouteName) &&
+    gameRouteName !== "x01_online_setup" && gameRouteName !== "x01setup";
   const gameLandscapeKind = isGameMenuRoute
     ? "menu"
     : isGameConfigRoute
@@ -6921,7 +6939,9 @@ case "babyfoot_team_edit":
         >
           <AppGate go={go} tab={tab}>
             <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
-              {page}
+              {needsUniversalDartsConfigGuide ? (
+                <DartsConfigGuideBoundary route={gameRouteName}>{page}</DartsConfigGuideBoundary>
+              ) : page}
             </React.Suspense>
           </AppGate>
         </div>
