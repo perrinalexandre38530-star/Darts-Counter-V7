@@ -1,5 +1,6 @@
 import React from "react";
 import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 import OrganizationTypeIcon from "../components/OrganizationTypeIcon";
 import OrganizationCompetitionsPanel from "../components/OrganizationCompetitionsPanel";
 import OrganizationStatsPanel from "../components/OrganizationStatsPanel";
@@ -16,6 +17,7 @@ import OrganizationCalendarPanel from "../components/OrganizationCalendarPanel";
 import OrganizationProfilePanel from "../components/OrganizationProfilePanel";
 import OrganizationInvitationsInbox from "../components/OrganizationInvitationsInbox";
 import { useTheme } from "../contexts/ThemeContext";
+import { useSport } from "../contexts/SportContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import { useAuthOnline } from "../hooks/useAuthOnline";
@@ -97,6 +99,46 @@ const PLAN_OPTIONS: Array<{ id: OrganizationPlan; title: string; subtitle: strin
 const SPORTS = ["Multisport", "Fléchettes", "Baby-foot", "Ping-pong", "Pétanque", "Mölkky", "Running", "FIT PERF", "Football", "Autre"];
 const WIZARD_STEPS = 8;
 
+const SPORT_ID_BY_LABEL: Record<string, string> = {
+  "fléchettes": "darts",
+  flechettes: "darts",
+  darts: "darts",
+  "baby-foot": "babyfoot",
+  babyfoot: "babyfoot",
+  "ping-pong": "pingpong",
+  pingpong: "pingpong",
+  pétanque: "petanque",
+  petanque: "petanque",
+  "mölkky": "molkky",
+  molkky: "molkky",
+  running: "running",
+  "fit perf": "fit",
+  fit: "fit",
+  football: "foot",
+  foot: "foot",
+};
+
+function normalizeSportLabel(value: string) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function toSportContextId(value: string) {
+  return SPORT_ID_BY_LABEL[normalizeSportLabel(value)] || "darts";
+}
+
+function sportDisplayTitle(value: string) {
+  const key = toSportContextId(value);
+  if (key === "darts") return "DARTS SCORING";
+  if (key === "babyfoot") return "BABY-FOOT SCORING";
+  if (key === "pingpong") return "PING-PONG SCORING";
+  if (key === "petanque") return "PÉTANQUE SCORING";
+  if (key === "molkky") return "MÖLKKY SCORING";
+  if (key === "running") return "RUNNING PERF";
+  if (key === "fit") return "FIT PERF";
+  if (key === "foot") return "FOOTBALL SCORING";
+  return String(value || "MULTISPORT SCORING").toUpperCase();
+}
+
 function emptyDraft(): WizardDraft {
   return {
     name: "",
@@ -157,6 +199,7 @@ function ModuleIcon({ name, color }: { name: string; color: string }) {
 
 export default function OrganizationsPage({ go, params }: Props) {
   const { theme } = useTheme();
+  const sportCtx = useSport() as any;
   const { lang } = useLang();
   const auth = useAuthOnline() as any;
   const userId = String(auth?.userId || auth?.user?.id || "") || null;
@@ -683,38 +726,64 @@ export default function OrganizationsPage({ go, params }: Props) {
     const quickIds: View[] = ["members", "competitions", "stats", optionalModules.includes("communication") ? "communication" : "profile"];
     const quickModules = quickIds.map((id) => modules.find((module) => module.id === id)).filter(Boolean) as typeof modules;
     const enabledSports = (active.profile?.sports || []).filter(Boolean);
+    const selectedSportLabel = enabledSports.find((sport) => normalizeSportLabel(sport) !== "multisport" && toSportContextId(sport) === sportCtx?.sport) || enabledSports.find((sport) => normalizeSportLabel(sport) !== "multisport") || enabledSports[0] || "Fléchettes";
+    const homeTitle = normalizeSportLabel(selectedSportLabel) === "multisport" && sportCtx?.sport ? sportDisplayTitle(String(sportCtx.sport)) : sportDisplayTitle(selectedSportLabel);
 
-    const workspaceSelector = <div style={{ ...card, padding: 10, display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => { enterPersonalWorkspace(userId); setActiveOrganization(userId, null); go?.("home", { workspaceKind: "personal" }); }} style={{ ...secondaryButton, minHeight: 34, padding: "7px 12px", fontSize: 8.5 }}>{L("INDIVIDUEL", "PERSONAL", "INDIVIDUAL")}</button>
-          <button type="button" style={{ ...primaryButton, minHeight: 34, padding: "7px 12px", fontSize: 8.5 }}>{L("ORGANISATION", "ORGANIZATION", "ORGANIZACIÓN")}</button>
+    const switchToPersonal = () => {
+      enterPersonalWorkspace(userId);
+      setActiveOrganization(userId, null);
+      go?.("home", { workspaceKind: "personal" });
+    };
+
+    const chooseSport = (sportLabel: string) => {
+      if (normalizeSportLabel(sportLabel) === "multisport") return;
+      try { sportCtx?.setSport?.(toSportContextId(sportLabel)); } catch {}
+    };
+
+    const homeHero = <div style={{ ...card, padding: 0, overflow: "hidden", position: "relative", minHeight: 156, background: activeCover ? `url(${activeCover}) center/cover no-repeat` : "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))", boxShadow: "0 20px 40px rgba(0,0,0,0.46)" }}>
+      <div style={{ position: "absolute", inset: 0, background: activeCover ? "linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.64))" : "linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.42))" }} />
+      <div style={{ position: "absolute", left: 14, right: 14, top: 12, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, zIndex: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: "78%" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button type="button" onClick={switchToPersonal} style={{ ...secondaryButton, minHeight: 34, padding: "7px 14px", fontSize: 8.5, fontWeight: 1000 }}>{L("INDIVIDUEL", "PERSONAL", "INDIVIDUAL")}</button>
+            <button type="button" style={{ ...primaryButton, minHeight: 34, padding: "7px 14px", fontSize: 8.5, fontWeight: 1000 }}>{L("ORGANISATION", "ORGANIZATION", "ORGANIZACIÓN")}</button>
+          </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            {enabledSports.map((sport) => {
+              const activeSport = sport === selectedSportLabel;
+              return <button key={sport} type="button" onClick={() => chooseSport(sport)} style={{ minHeight: 30, padding: "5px 10px", borderRadius: 999, border: `1px solid ${activeSport ? theme.primary : theme.borderSoft}`, background: activeSport ? `${theme.primary}18` : "rgba(6,10,18,.55)", color: activeSport ? theme.primary : theme.text, fontSize: 8, fontWeight: 1000, cursor: "pointer" }}>{sport}</button>;
+            })}
+          </div>
         </div>
-        <div style={{ color: theme.textSoft, fontSize: 8.4, fontWeight: 900, letterSpacing: .7, textTransform: "uppercase" }}>{L("Accueil organisation", "Organization home", "Inicio organización")}</div>
+        <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 44 }}><InfoDot size={44} active title="Awena" /></div>
       </div>
-      {enabledSports.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{enabledSports.map((sport) => <span key={sport} style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${theme.primary}33`, background: `${theme.primary}10`, color: theme.primary, fontSize: 8.2, fontWeight: 1000 }}>{sport}</span>)}</div> : null}
+      <div style={{ position: "relative", zIndex: 2, minHeight: 156, display: "grid", placeItems: "center", padding: "34px 18px 18px" }}>
+        <div style={{ display: "grid", justifyItems: "center", gap: 10, textAlign: "center" }}>
+          <div style={{ display: "inline-flex", padding: "5px 18px", borderRadius: 999, border: `1px solid ${theme.primary}`, background: "linear-gradient(135deg, rgba(0,0,0,0.9), rgba(255,255,255,0.06))" }}>
+            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase", color: theme.primary }}>{L("Bienvenue", "Welcome", "Bienvenido")}</span>
+          </div>
+          <div style={{ fontSize: wideWorkspace ? 34 : 28, fontWeight: 1000, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", backgroundImage: `linear-gradient(120deg, ${theme.primary}, #ffffff, ${theme.primary})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent" }}>{homeTitle}</div>
+        </div>
+      </div>
     </div>;
 
-    const heroCard = <div style={{ ...card, overflow: "hidden", background: cardBg }}>
-      <div style={{ minHeight: active.profile.adminSettings.compactDashboard ? 112 : (activeCover ? 160 : 124), position: "relative", background: activeCover ? `url(${activeCover}) center/cover no-repeat` : `linear-gradient(145deg, ${theme.primary}17, rgba(0,0,0,.24))` }}>
-        <div style={{ position: "absolute", inset: 0, background: activeCover ? "linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.82))" : "linear-gradient(180deg, transparent, rgba(0,0,0,.22))" }} />
-        <div style={{ position: "absolute", left: 12, right: 12, bottom: 11, display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 10, alignItems: "end" }}>
-          <div style={{ width: 54, height: 54, borderRadius: 16, border: `1px solid ${theme.primary}77`, background: "rgba(4,8,16,.9)", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 8px 20px rgba(0,0,0,.35)" }}>{activeLogo ? <img src={activeLogo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: theme.primary, fontSize: 16, fontWeight: 1000 }}>{active.profile.acronym || active.name.slice(0, 2).toUpperCase()}</span>}</div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: theme.text, fontSize: 19, fontWeight: 1000, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.name}</div>
-            <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 5 }}>
-              <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.7)", color: theme.textSoft, fontSize: 7.8, fontWeight: 900 }}>{organizationKindLabel(active.kind)}</span>
-              <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.primary}44`, background: `${theme.primary}10`, color: theme.primary, fontSize: 7.8, fontWeight: 900 }}>{organizationRoleLabel(active.role)}</span>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {(active.role === "owner" || active.role === "admin") ? <button type="button" onClick={() => navigateView("profile")} aria-label={L("Modifier la page de l’organisation", "Edit organization page", "Editar página de la organización")} title={L("Modifier la page", "Edit page", "Editar página")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: `${theme.primary}12`, color: theme.primary, fontSize: 15, fontWeight: 1000, cursor: "pointer" }}>✎</button> : null}
-            <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.76)", color: theme.text, fontSize: 17, fontWeight: 1000, cursor: "pointer" }}>•••</button>
+    const summaryCard = <div style={{ ...card, overflow: "hidden", background: cardBg }}>
+      <div style={{ padding: 12, display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+        <div style={{ width: 54, height: 54, borderRadius: 16, border: `1px solid ${theme.primary}77`, background: "rgba(4,8,16,.9)", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 8px 20px rgba(0,0,0,.35)" }}>{activeLogo ? <img src={activeLogo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: theme.primary, fontSize: 16, fontWeight: 1000 }}>{active.profile.acronym || active.name.slice(0, 2).toUpperCase()}</span>}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: theme.text, fontSize: 19, fontWeight: 1000, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.name}</div>
+          <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 5 }}>
+            <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.7)", color: theme.textSoft, fontSize: 7.8, fontWeight: 900 }}>{organizationKindLabel(active.kind)}</span>
+            <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.primary}44`, background: `${theme.primary}10`, color: theme.primary, fontSize: 7.8, fontWeight: 900 }}>{organizationRoleLabel(active.role)}</span>
           </div>
         </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {(active.role === "owner" || active.role === "admin") ? <button type="button" onClick={() => navigateView("profile")} aria-label={L("Modifier la page de l’organisation", "Edit organization page", "Editar página de la organización")} title={L("Modifier la page", "Edit page", "Editar página")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: `${theme.primary}12`, color: theme.primary, fontSize: 15, fontWeight: 1000, cursor: "pointer" }}>✎</button> : null}
+          <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.76)", color: theme.text, fontSize: 17, fontWeight: 1000, cursor: "pointer" }}>•••</button>
+        </div>
       </div>
-      <div style={{ padding: "10px 12px 12px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-        {[[L("Membres", "Members", "Miembros"), memberCount], [L("Équipes", "Teams", "Equipos"), teamCount], [L("Événements", "Events", "Eventos"), eventCount]].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: "rgba(255,255,255,.025)", padding: "7px 6px", textAlign: "center" }}><div style={{ color: theme.text, fontSize: 13, fontWeight: 1000 }}>{value}</div><div style={{ marginTop: 1, color: theme.textSoft, fontSize: 7.4, fontWeight: 850 }}>{label}</div></div>)}
+      <div style={{ padding: "0 12px 12px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+        {[[L("Membres", "Members", "Miembros"), memberCount], [L("Équipes", "Teams", "Equipos"), teamCount], [L("Événements", "Events", "Eventos"), eventCount]].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: "rgba(255,255,255,.025)", padding: "8px 6px", textAlign: "center" }}><div style={{ color: theme.text, fontSize: 13, fontWeight: 1000 }}>{value}</div><div style={{ marginTop: 1, color: theme.textSoft, fontSize: 7.4, fontWeight: 850 }}>{label}</div></div>)}
       </div>
     </div>;
 
@@ -736,10 +805,10 @@ export default function OrganizationsPage({ go, params }: Props) {
     </div>;
 
     return <div style={{ display: "grid", gap: 11 }}>
-      {workspaceSelector}
+      {homeHero}
       <div style={{ display: "grid", gridTemplateColumns: wideWorkspace ? "minmax(0,1.3fr) minmax(340px,1fr)" : "1fr", gap: 11, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 11 }}>
-          {heroCard}
+          {summaryCard}
           {agendaCard}
         </div>
         <div style={{ display: "grid", gap: 11 }}>
