@@ -4,7 +4,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import ResilientUserImage from "./ResilientUserImage";
-import { onlineAvatarMediaKey } from "../lib/userMediaFallback";
+import { onlineAvatarMediaKey, resolveUserMediaFallback } from "../lib/userMediaFallback";
 import OrganizationTypeIcon from "./OrganizationTypeIcon";
 import { clearOrganizationPlayContext, loadOrganizationPlayContext } from "../organizations/organizationPlayContext";
 import { useFloatingCornerAvoidance } from "./useFloatingCornerAvoidance";
@@ -24,6 +24,43 @@ import {
   loadOrganizationWorkspace,
   type OrganizationWorkspace,
 } from "../organizations/organizationWorkspace";
+
+function OrganizationWorkspaceAvatar({
+  organization,
+  theme,
+  size = 38,
+  active = false,
+}: {
+  organization: OrganizationRecord;
+  theme: any;
+  size?: number;
+  active?: boolean;
+}) {
+  const [logoUrl, setLogoUrl] = React.useState("");
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!organization?.profile?.logoMediaKey) {
+      setLogoUrl("");
+      return;
+    }
+    void resolveUserMediaFallback(organization.profile.logoMediaKey, "", { kind: "team_logo", allowR2: true })
+      .then((next) => { if (!cancelled) setLogoUrl(next || ""); })
+      .catch(() => { if (!cancelled) setLogoUrl(""); });
+    return () => { cancelled = true; };
+  }, [organization?.id, organization?.profile?.logoMediaKey]);
+
+  const fallbackLabel = String(organization?.profile?.acronym || organization?.name || "MS").trim().slice(0, 3).toUpperCase();
+
+  return (
+    <span style={{ width: size, height: size, borderRadius: 999, overflow: "hidden", border: `1px solid ${active ? theme.primary : theme.borderSoft}`, background: "rgba(8,14,24,.82)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+      {logoUrl ? (
+        <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : (
+        <strong style={{ color: active ? theme.primary : theme.textSoft, fontSize: Math.max(9, size * 0.28), fontWeight: 1000 }}>{fallbackLabel}</strong>
+      )}
+    </span>
+  );
+}
 
 export default function OrganizationWorkspaceSwitcher({
   go,
@@ -131,7 +168,7 @@ export default function OrganizationWorkspaceSwitcher({
           position: "fixed",
           top: `calc(env(safe-area-inset-top, 0px) + ${floating.top}px)`,
           left: `calc(env(safe-area-inset-left, 0px) + ${floating.inset}px)`,
-          zIndex: 88,
+          zIndex: 2000,
           width: 54,
           height: 54,
           padding: 2,
@@ -145,17 +182,21 @@ export default function OrganizationWorkspaceSwitcher({
           overflow: "visible",
         }}
       >
-        <span style={{ width: 48, height: 48, borderRadius: "50%", overflow: "hidden", display: "block", background: "#050914" }}>
-          <ResilientUserImage
-            mediaKey={onlineAvatarMediaKey(userId || "account")}
-            kind="online_avatar"
-            primarySrc={avatarPrimary}
-            mirrorR2={false}
-            fallbackNode={avatarFallback}
-            alt=""
-            aria-hidden="true"
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-          />
+        <span style={{ width: 48, height: 48, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: "#050914" }}>
+          {active ? (
+            <OrganizationWorkspaceAvatar organization={active} theme={theme} size={48} active />
+          ) : (
+            <ResilientUserImage
+              mediaKey={onlineAvatarMediaKey(userId || "account")}
+              kind="online_avatar"
+              primarySrc={avatarPrimary}
+              mirrorR2={false}
+              fallbackNode={avatarFallback}
+              alt=""
+              aria-hidden="true"
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+          )}
         </span>
         <span
           aria-hidden="true"
@@ -182,7 +223,7 @@ export default function OrganizationWorkspaceSwitcher({
         </span>
       </button>
 
-      {open ? <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 93, background: "rgba(0,0,0,.38)", backdropFilter: "blur(2px)" }} /> : null}
+      {open ? <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 2010, background: "rgba(0,0,0,.38)", backdropFilter: "blur(2px)" }} /> : null}
       {open ? (
         <div
           data-mss-workspace-menu="1"
@@ -190,7 +231,7 @@ export default function OrganizationWorkspaceSwitcher({
             position: "fixed",
             top: `calc(env(safe-area-inset-top, 0px) + ${floating.top + 62}px)`,
             left: "max(8px, env(safe-area-inset-left, 0px))",
-            zIndex: 94,
+            zIndex: 2011,
             width: "min(92vw, 430px)",
             maxHeight: `calc(100dvh - ${floating.top + 82}px - env(safe-area-inset-bottom, 0px))`,
             overflowY: "auto",
@@ -221,7 +262,12 @@ export default function OrganizationWorkspaceSwitcher({
               const selected = workspace.kind === "organization" && workspace.organizationId === org.id;
               return (
                 <button key={org.id} type="button" onClick={() => chooseOrganization(org)} style={{ width: "100%", minHeight: 52, borderRadius: 12, border: `1px solid ${selected ? theme.primary : theme.borderSoft}`, background: selected ? `${theme.primary}12` : "rgba(255,255,255,.025)", color: theme.text, padding: "8px 10px", textAlign: "left", display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 9, alignItems: "center", cursor: "pointer" }}>
-                  <span style={{ width: 38, height: 38, borderRadius: 999, border: `1px solid ${selected ? theme.primary : theme.borderSoft}`, color: selected ? theme.primary : theme.textSoft, background: "rgba(8,14,24,.82)", display: "grid", placeItems: "center" }}><OrganizationTypeIcon kind={org.kind} size={15} color={selected ? theme.primary : theme.textSoft} strokeWidth={2.05} /></span>
+                  <span style={{ width: 38, height: 38, position: "relative", display: "inline-grid", placeItems: "center" }}>
+                    <OrganizationWorkspaceAvatar organization={org} theme={theme} size={38} active={selected} />
+                    <span style={{ position: "absolute", right: -2, bottom: -2, width: 15, height: 15, borderRadius: 999, border: `2px solid rgba(6,10,18,.96)`, background: selected ? theme.primary : "#132033", display: "grid", placeItems: "center", boxShadow: "0 3px 8px rgba(0,0,0,.45)" }}>
+                      <OrganizationTypeIcon kind={org.kind} size={8.5} color={selected ? "#061014" : theme.text} strokeWidth={2.1} />
+                    </span>
+                  </span>
                   <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{org.name}</strong><small style={{ color: theme.textSoft, fontSize: 8.5 }}>{organizationKindLabel(org.kind)} · {organizationRoleLabel(org.role)}</small></span>
                   {selected ? <span style={{ color: theme.primary }}>✓</span> : null}
                 </button>

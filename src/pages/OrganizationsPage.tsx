@@ -182,12 +182,14 @@ export default function OrganizationsPage({ go, params }: Props) {
   const [refreshTick, setRefreshTick] = React.useState(0);
   const [activeLogo, setActiveLogo] = React.useState("");
   const [activeCover, setActiveCover] = React.useState("");
+  const [viewportWidth, setViewportWidth] = React.useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
 
   const active = React.useMemo(() => organizations.find((org) => org.id === activeId) || organizations[0] || null, [organizations, activeId]);
   const localGroups = React.useMemo(() => active ? listLocalOrganizationGroups(userId, active.id) : [], [active, userId, refreshTick]);
   const localEvents = React.useMemo(() => active ? listLocalOrganizationEvents(userId, active.id) : [], [active, userId, refreshTick]);
   const storagePrefs = React.useMemo(() => loadStoragePrefs(), [entryMode, wizardStep]);
   const storageDestination = React.useMemo(() => getStorageDestination(storagePrefs.selectedDestination), [storagePrefs.selectedDestination]);
+  const wideWorkspace = workspaceMode && viewportWidth >= 980;
 
   const load = React.useCallback(async () => {
     const result = await listMyOrganizations(userId);
@@ -205,6 +207,14 @@ export default function OrganizationsPage({ go, params }: Props) {
   }, [userId, requestedOrganizationId]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setViewportWidth(window.innerWidth || 1280);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   React.useEffect(() => {
     if (workspaceMode && validViews.includes(requestedView)) setView(requestedView);
@@ -672,45 +682,68 @@ export default function OrganizationsPage({ go, params }: Props) {
       .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0] || null;
     const quickIds: View[] = ["members", "competitions", "stats", optionalModules.includes("communication") ? "communication" : "profile"];
     const quickModules = quickIds.map((id) => modules.find((module) => module.id === id)).filter(Boolean) as typeof modules;
+    const enabledSports = (active.profile?.sports || []).filter(Boolean);
 
-    return <div style={{ display: "grid", gap: 11 }}>
-      <div style={{ ...card, overflow: "hidden", background: cardBg }}>
-        <div style={{ minHeight: active.profile.adminSettings.compactDashboard ? 112 : (activeCover ? 136 : 112), position: "relative", background: activeCover ? `url(${activeCover}) center/cover no-repeat` : `linear-gradient(145deg, ${theme.primary}17, rgba(0,0,0,.24))` }}>
-          <div style={{ position: "absolute", inset: 0, background: activeCover ? "linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.82))" : "linear-gradient(180deg, transparent, rgba(0,0,0,.22))" }} />
-          <div style={{ position: "absolute", left: 12, right: 12, bottom: 11, display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 10, alignItems: "end" }}>
-            <div style={{ width: 54, height: 54, borderRadius: 16, border: `1px solid ${theme.primary}77`, background: "rgba(4,8,16,.9)", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 8px 20px rgba(0,0,0,.35)" }}>{activeLogo ? <img src={activeLogo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: theme.primary, fontSize: 16, fontWeight: 1000 }}>{active.profile.acronym || active.name.slice(0, 2).toUpperCase()}</span>}</div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: theme.text, fontSize: 19, fontWeight: 1000, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.name}</div>
-              <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 5 }}>
-                <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.7)", color: theme.textSoft, fontSize: 7.8, fontWeight: 900 }}>{organizationKindLabel(active.kind)}</span>
-                <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.primary}44`, background: `${theme.primary}10`, color: theme.primary, fontSize: 7.8, fontWeight: 900 }}>{organizationRoleLabel(active.role)}</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              {(active.role === "owner" || active.role === "admin") ? <button type="button" onClick={() => navigateView("profile")} aria-label={L("Modifier la page de l’organisation", "Edit organization page", "Editar página de la organización")} title={L("Modifier la page", "Edit page", "Editar página")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: `${theme.primary}12`, color: theme.primary, fontSize: 15, fontWeight: 1000, cursor: "pointer" }}>✎</button> : null}
-              <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.76)", color: theme.text, fontSize: 17, fontWeight: 1000, cursor: "pointer" }}>•••</button>
+    const workspaceSelector = <div style={{ ...card, padding: 10, display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => { enterPersonalWorkspace(userId); setActiveOrganization(userId, null); go?.("home", { workspaceKind: "personal" }); }} style={{ ...secondaryButton, minHeight: 34, padding: "7px 12px", fontSize: 8.5 }}>{L("INDIVIDUEL", "PERSONAL", "INDIVIDUAL")}</button>
+          <button type="button" style={{ ...primaryButton, minHeight: 34, padding: "7px 12px", fontSize: 8.5 }}>{L("ORGANISATION", "ORGANIZATION", "ORGANIZACIÓN")}</button>
+        </div>
+        <div style={{ color: theme.textSoft, fontSize: 8.4, fontWeight: 900, letterSpacing: .7, textTransform: "uppercase" }}>{L("Accueil organisation", "Organization home", "Inicio organización")}</div>
+      </div>
+      {enabledSports.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{enabledSports.map((sport) => <span key={sport} style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${theme.primary}33`, background: `${theme.primary}10`, color: theme.primary, fontSize: 8.2, fontWeight: 1000 }}>{sport}</span>)}</div> : null}
+    </div>;
+
+    const heroCard = <div style={{ ...card, overflow: "hidden", background: cardBg }}>
+      <div style={{ minHeight: active.profile.adminSettings.compactDashboard ? 112 : (activeCover ? 160 : 124), position: "relative", background: activeCover ? `url(${activeCover}) center/cover no-repeat` : `linear-gradient(145deg, ${theme.primary}17, rgba(0,0,0,.24))` }}>
+        <div style={{ position: "absolute", inset: 0, background: activeCover ? "linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.82))" : "linear-gradient(180deg, transparent, rgba(0,0,0,.22))" }} />
+        <div style={{ position: "absolute", left: 12, right: 12, bottom: 11, display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 10, alignItems: "end" }}>
+          <div style={{ width: 54, height: 54, borderRadius: 16, border: `1px solid ${theme.primary}77`, background: "rgba(4,8,16,.9)", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 8px 20px rgba(0,0,0,.35)" }}>{activeLogo ? <img src={activeLogo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: theme.primary, fontSize: 16, fontWeight: 1000 }}>{active.profile.acronym || active.name.slice(0, 2).toUpperCase()}</span>}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: theme.text, fontSize: 19, fontWeight: 1000, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.name}</div>
+            <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 5 }}>
+              <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.7)", color: theme.textSoft, fontSize: 7.8, fontWeight: 900 }}>{organizationKindLabel(active.kind)}</span>
+              <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.primary}44`, background: `${theme.primary}10`, color: theme.primary, fontSize: 7.8, fontWeight: 900 }}>{organizationRoleLabel(active.role)}</span>
             </div>
           </div>
-        </div>
-        <div style={{ padding: "10px 12px 12px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-          {[[L("Membres", "Members", "Miembros"), memberCount], [L("Équipes", "Teams", "Equipos"), teamCount], [L("Événements", "Events", "Eventos"), eventCount]].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: "rgba(255,255,255,.025)", padding: "7px 6px", textAlign: "center" }}><div style={{ color: theme.text, fontSize: 13, fontWeight: 1000 }}>{value}</div><div style={{ marginTop: 1, color: theme.textSoft, fontSize: 7.4, fontWeight: 850 }}>{label}</div></div>)}
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {(active.role === "owner" || active.role === "admin") ? <button type="button" onClick={() => navigateView("profile")} aria-label={L("Modifier la page de l’organisation", "Edit organization page", "Editar página de la organización")} title={L("Modifier la page", "Edit page", "Editar página")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: `${theme.primary}12`, color: theme.primary, fontSize: 15, fontWeight: 1000, cursor: "pointer" }}>✎</button> : null}
+            <button type="button" onClick={() => navigateView("more")} aria-label={L("Plus d’outils", "More tools", "Más herramientas")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(4,8,16,.76)", color: theme.text, fontSize: 17, fontWeight: 1000, cursor: "pointer" }}>•••</button>
+          </div>
         </div>
       </div>
+      <div style={{ padding: "10px 12px 12px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+        {[[L("Membres", "Members", "Miembros"), memberCount], [L("Équipes", "Teams", "Equipos"), teamCount], [L("Événements", "Events", "Eventos"), eventCount]].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: "rgba(255,255,255,.025)", padding: "7px 6px", textAlign: "center" }}><div style={{ color: theme.text, fontSize: 13, fontWeight: 1000 }}>{value}</div><div style={{ marginTop: 1, color: theme.textSoft, fontSize: 7.4, fontWeight: 850 }}>{label}</div></div>)}
+      </div>
+    </div>;
 
-      <button type="button" onClick={() => navigateView("calendar")} style={{ ...card, border: `1px solid ${nextEvent ? `${theme.primary}55` : theme.borderSoft}`, padding: 12, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-        <span style={{ width: 40, height: 40, borderRadius: 13, background: `${theme.primary}12`, color: theme.primary, display: "grid", placeItems: "center" }}><ModuleIcon name="calendar" color={theme.primary}/></span>
-        <span style={{ minWidth: 0 }}>
-          <span style={{ display: "block", color: theme.primary, fontSize: 7.8, fontWeight: 1000, letterSpacing: .85 }}>{nextEvent ? L("PROCHAIN RENDEZ-VOUS", "UP NEXT", "PRÓXIMO EVENTO") : L("AGENDA", "CALENDAR", "AGENDA")}</span>
-          <strong style={{ display: "block", marginTop: 3, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextEvent?.title || L("Rien de planifié pour le moment", "Nothing planned yet", "Nada planificado por ahora")}</strong>
-          <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextEvent ? `${compactDate(nextEvent.startsAt)} · ${compactTime(nextEvent.startsAt)}${nextEvent.location ? ` · ${nextEvent.location}` : ""}` : L("Touchez pour organiser un entraînement, match ou événement", "Tap to schedule a training, match or event", "Toca para organizar un entrenamiento, partido o evento")}</span>
-        </span>
-        <span style={{ color: theme.primary, fontSize: 18 }}>›</span>
-      </button>
+    const agendaCard = <button type="button" onClick={() => navigateView("calendar")} style={{ ...card, border: `1px solid ${nextEvent ? `${theme.primary}55` : theme.borderSoft}`, padding: 12, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+      <span style={{ width: 40, height: 40, borderRadius: 13, background: `${theme.primary}12`, color: theme.primary, display: "grid", placeItems: "center" }}><ModuleIcon name="calendar" color={theme.primary}/></span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", color: theme.primary, fontSize: 7.8, fontWeight: 1000, letterSpacing: .85 }}>{nextEvent ? L("PROCHAIN RENDEZ-VOUS", "UP NEXT", "PRÓXIMO EVENTO") : L("AGENDA", "CALENDAR", "AGENDA")}</span>
+        <strong style={{ display: "block", marginTop: 3, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextEvent?.title || L("Rien de planifié pour le moment", "Nothing planned yet", "Nada planificado por ahora")}</strong>
+        <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextEvent ? `${compactDate(nextEvent.startsAt)} · ${compactTime(nextEvent.startsAt)}${nextEvent.location ? ` · ${nextEvent.location}` : ""}` : L("Touchez pour organiser un entraînement, match ou événement", "Tap to schedule a training, match or event", "Toca para organizar un entrenamiento, partido o evento")}</span>
+      </span>
+      <span style={{ color: theme.primary, fontSize: 18 }}>›</span>
+    </button>;
 
-      <div>
-        <div style={{ margin: "1px 2px 7px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: theme.text, fontSize: 11.5 }}>{L("Essentiel", "Essentials", "Esencial")}</strong><button type="button" onClick={() => navigateView("more")} style={{ border: 0, background: "transparent", color: theme.primary, fontSize: 8.5, fontWeight: 900, cursor: "pointer" }}>{L("TOUT VOIR", "SEE ALL", "VER TODO")} ›</button></div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-          {quickModules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: 72, padding: 9, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "32px minmax(0,1fr)", gap: 7, alignItems: "center" }}><span style={{ transform: "scale(.82)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><span style={{ display: "flex", alignItems: "center", gap: 5 }}><strong style={{ color: theme.text, fontSize: 10.2, lineHeight: 1.15 }}>{module.name}</strong>{module.hint ? <span style={{ borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 7, fontWeight: 1000, padding: "2px 5px" }}>{module.hint}</span> : null}</span>{active.profile.adminSettings.compactDashboard ? null : <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.1, lineHeight: 1.25 }}>{module.subtitle}</span>}</span></button>)}
+    const essentialsCard = <div style={{ ...card, padding: 10 }}>
+      <div style={{ margin: "1px 2px 9px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: theme.text, fontSize: 11.5 }}>{L("Essentiel", "Essentials", "Esencial")}</strong><button type="button" onClick={() => navigateView("more")} style={{ border: 0, background: "transparent", color: theme.primary, fontSize: 8.5, fontWeight: 900, cursor: "pointer" }}>{L("TOUT VOIR", "SEE ALL", "VER TODO")} ›</button></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+        {quickModules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: 78, padding: 9, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "32px minmax(0,1fr)", gap: 7, alignItems: "center" }}><span style={{ transform: "scale(.82)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><span style={{ display: "flex", alignItems: "center", gap: 5 }}><strong style={{ color: theme.text, fontSize: 10.2, lineHeight: 1.15 }}>{module.name}</strong>{module.hint ? <span style={{ borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 7, fontWeight: 1000, padding: "2px 5px" }}>{module.hint}</span> : null}</span>{active.profile.adminSettings.compactDashboard ? null : <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.1, lineHeight: 1.25 }}>{module.subtitle}</span>}</span></button>)}
+      </div>
+    </div>;
+
+    return <div style={{ display: "grid", gap: 11 }}>
+      {workspaceSelector}
+      <div style={{ display: "grid", gridTemplateColumns: wideWorkspace ? "minmax(0,1.3fr) minmax(340px,1fr)" : "1fr", gap: 11, alignItems: "start" }}>
+        <div style={{ display: "grid", gap: 11 }}>
+          {heroCard}
+          {agendaCard}
+        </div>
+        <div style={{ display: "grid", gap: 11 }}>
+          {essentialsCard}
         </div>
       </div>
     </div>;
@@ -784,7 +817,7 @@ export default function OrganizationsPage({ go, params }: Props) {
 
   return (
     <div style={{ minHeight: "100vh", background: pageBg, color: theme.text, padding: "14px 12px 104px" }}>
-      <div style={{ width: "100%", maxWidth: 680, margin: "0 auto" }}>
+      <div style={{ width: "100%", maxWidth: workspaceMode ? 1240 : 760, margin: "0 auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 48px", gap: 6, alignItems: "center", marginBottom: workspaceMode ? 8 : 12 }}>
           <div style={{ justifySelf: "start" }}>
             <BackDot size={38} onClick={() => {

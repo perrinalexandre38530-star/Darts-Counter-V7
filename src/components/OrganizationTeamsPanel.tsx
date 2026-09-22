@@ -21,6 +21,7 @@ import {
 } from "../lib/userMediaFallback";
 import { fileToCompressedImageDataUrl } from "../lib/teamImageStorage";
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
+import { loadTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
 
 const SPORTS = ["Multisport", "Fléchettes", "Baby-foot", "Ping-pong", "Pétanque", "Mölkky", "Running", "FIT PERF", "Football", "Autre"];
 const GROUP_KINDS: OrganizationGroupKind[] = ["team", "section", "department", "class", "group"];
@@ -101,6 +102,9 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
   const [actionKey, setActionKey] = React.useState("");
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
+  const [linkOpen, setLinkOpen] = React.useState(false);
+  const [availableTeams, setAvailableTeams] = React.useState<TeamEntity[]>([]);
+  const [viewportWidth, setViewportWidth] = React.useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
 
   const prefs = React.useMemo(() => loadStoragePrefs(), []);
   const destination = React.useMemo(() => getStorageDestination(prefs.selectedDestination), [prefs.selectedDestination]);
@@ -109,6 +113,7 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
   const selected = groups.find((group) => group.id === selectedId) || null;
   const canManageRoster = canManageStructure || (organization.role === "captain" && selected?.captainUserId === userId);
   const activeMembers = members.filter((member) => member.status === "active");
+  const wide = viewportWidth >= 980;
 
   const card: React.CSSProperties = {
     borderRadius: 18,
@@ -159,6 +164,14 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
   }, [organization.id, userId, L]);
 
   React.useEffect(() => { void refresh(); }, [refresh]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setViewportWidth(window.innerWidth || 1280);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   React.useEffect(() => {
     if (!selected || mode !== "edit") return;
@@ -300,6 +313,46 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
 
   const rosterFor = (group: OrganizationLocalGroup) => activeMembers.filter((member) => member.groupIds.includes(group.id));
 
+  const openLinkExisting = () => {
+    const existing = loadTeams().filter((team) => !groups.some((group) => group.name.trim().toLowerCase() === String(team.name || "").trim().toLowerCase()));
+    setAvailableTeams(existing);
+    setLinkOpen(true);
+    setError("");
+  };
+
+  const linkExistingTeam = async (team: TeamEntity) => {
+    if (!canManageStructure) return;
+    const key = `link:${team.id}`;
+    setActionKey(key);
+    setError("");
+    setNotice("");
+    try {
+      const created = await createOrganizationGroup(userId, organization.id, team.name, String(team.sport || team.sportIds?.[0] || "Multisport"), {
+        kind: "team",
+        description: String(team.description || team.slogan || "").slice(0, 280),
+        primaryColor: "#22D3EE",
+        secondaryColor: "#0F172A",
+      });
+      let group = created.group;
+      if (team.logoDataUrl) {
+        const logoMediaKey = teamLogoMediaKey(group.id);
+        await captureUserMediaFallback(logoMediaKey, team.logoDataUrl, { kind: "team_logo", mirrorR2, updatedAt: Date.now() });
+        const linkedTeamKey = teamLogoMediaKey(`org-${organization.id}-${group.id}`);
+        await captureUserMediaFallback(linkedTeamKey, team.logoDataUrl, { kind: "team_logo", mirrorR2, updatedAt: Date.now() }).catch(() => undefined);
+        group = await updateOrganizationGroup(userId, group.id, { logoMediaKey });
+      }
+      setSelectedId(group.id);
+      setMode("list");
+      setLinkOpen(false);
+      setNotice(L("Équipe existante associée à l’organisation.", "Existing team linked to the organization.", "Equipo existente asociado a la organización."));
+      await refresh();
+      await onChanged?.();
+    } catch (e: any) {
+      setError(String(e?.message || L("Association impossible.", "Unable to link this team.", "No se puede asociar este equipo.")));
+    } finally {
+      setActionKey("");
+    }
+  };
 
   const renderEditor = () => {
     const editing = mode === "edit" && selected;
@@ -382,16 +435,26 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
     <div style={{ ...card, padding: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
         <div><div style={{ color: theme.primary, fontSize: 13, fontWeight: 1000 }}>{L("ÉQUIPES & GROUPES", "TEAMS & GROUPS", "EQUIPOS Y GRUPOS")}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.2 }}>{organization.name} · {groups.filter((group) => group.status === "active").length} {L("actif(s)", "active", "activo(s)")}</div></div>
-        {canManageStructure ? <button type="button" style={{ ...button, color: theme.primary, borderColor: `${theme.primary}66` }} onClick={startCreate}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : null}
+        {canManageStructure ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}><button type="button" style={{ ...button }} onClick={openLinkExisting}>{L("ASSOCIER UNE ÉQUIPE", "LINK A TEAM", "VINCULAR UN EQUIPO")}</button><button type="button" style={{ ...button, color: theme.primary, borderColor: `${theme.primary}66` }} onClick={startCreate}>+ {L("CRÉER", "CREATE", "CREAR")}</button></div> : null}
       </div>
     </div>
 
     {error ? <div style={{ ...card, padding: 10, borderColor: "rgba(255,90,90,.45)", color: "#ffb3b3", fontSize: 9.2 }}>{error}</div> : null}
     {notice ? <div style={{ ...card, padding: 10, borderColor: `${theme.primary}55`, color: theme.primary, fontSize: 9.2 }}>{notice}</div> : null}
 
+    {linkOpen ? <div style={{ ...card, padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+        <div><div style={{ color: theme.primary, fontSize: 12.5, fontWeight: 1000 }}>{L("ASSOCIER UNE ÉQUIPE EXISTANTE", "LINK AN EXISTING TEAM", "ASOCIAR UN EQUIPO EXISTENTE")}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 8.8 }}>{L("Récupère une équipe déjà créée dans Profils / Équipes et ajoute-la à cette organisation.", "Bring in a team already created in Profiles / Teams and add it to this organization.", "Recupera un equipo ya creado en Perfiles / Equipos y añádelo a esta organización.")}</div></div>
+        <button type="button" style={button} onClick={() => setLinkOpen(false)}>{L("FERMER", "CLOSE", "CERRAR")}</button>
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: wide ? "repeat(2,minmax(0,1fr))" : "1fr", gap: 8 }}>
+        {availableTeams.length ? availableTeams.map((team) => <button key={team.id} type="button" disabled={!!actionKey} onClick={() => void linkExistingTeam(team)} style={{ ...card, padding: 10, textAlign: "left", color: theme.text, cursor: "pointer", opacity: actionKey === `link:${team.id}` ? .6 : 1 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ fontSize: 10.5 }}>{team.name}</strong><span style={{ color: theme.primary, fontSize: 7.6, fontWeight: 1000 }}>{String(team.sport || team.sportIds?.[0] || "Multisport")}</span></div><div style={{ marginTop: 4, color: theme.textSoft, fontSize: 8.1, lineHeight: 1.35 }}>{String(team.description || team.slogan || L("Équipe existante du mode individuel.", "Existing team from personal mode.", "Equipo existente del modo individual.")).slice(0, 130)}</div></button>) : <div style={{ ...card, padding: 14, textAlign: "center", color: theme.textSoft, fontSize: 9 }}>{L("Aucune équipe supplémentaire disponible à associer.", "No additional teams available to link.", "No hay equipos adicionales disponibles para asociar.")}</div>}
+      </div>
+    </div> : null}
+
     {mode !== "list" ? renderEditor() : null}
 
-    {mode === "list" ? <div style={{ display: "grid", gap: 9 }}>
+    {mode === "list" ? <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(2,minmax(0,1fr))" : "1fr", gap: 9 }}>
       {groups.length ? groups.map((group) => {
         const roster = rosterFor(group);
         const captain = activeMembers.find((member) => member.userId === group.captainUserId);
@@ -404,7 +467,7 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
           </span>
           <span style={{ display: "grid", justifyItems: "end", gap: 5 }}><span style={{ width: 12, height: 12, borderRadius: 999, background: group.primaryColor, boxShadow: `0 0 10px ${group.primaryColor}77` }} /><span style={{ color: group.status === "active" ? theme.primary : theme.textSoft, fontSize: 7.3, fontWeight: 1000 }}>{group.status === "active" ? L("ACTIF", "ACTIVE", "ACTIVO") : L("ARCHIVÉ", "ARCHIVED", "ARCHIVADO")}</span></span>
         </button>;
-      }) : <div style={{ ...card, padding: 20, textAlign: "center" }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Aucune équipe pour le moment", "No teams yet", "Aún no hay equipos")}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9 }}>{L("Crée une première équipe, section ou groupe puis affecte les membres.", "Create a first team, section or group, then assign members.", "Crea un primer equipo, sección o grupo y asigna miembros.")}</div>{canManageStructure ? <button type="button" style={{ ...button, marginTop: 12, color: theme.primary }} onClick={startCreate}>{L("CRÉER LA PREMIÈRE ÉQUIPE", "CREATE FIRST TEAM", "CREAR PRIMER EQUIPO")}</button> : null}</div>}
+      }) : <div style={{ ...card, padding: 20, textAlign: "center" }}><div style={{ color: theme.text, fontSize: 11, fontWeight: 1000 }}>{L("Aucune équipe pour le moment", "No teams yet", "Aún no hay equipos")}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9 }}>{L("Crée une première équipe, section ou groupe puis affecte les membres.", "Create a first team, section or group, then assign members.", "Crea un primer equipo, sección o grupo y asigna miembros.")}</div>{canManageStructure ? <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 12 }}><button type="button" style={{ ...button }} onClick={openLinkExisting}>{L("ASSOCIER UNE ÉQUIPE", "LINK A TEAM", "VINCULAR UN EQUIPO")}</button><button type="button" style={{ ...button, color: theme.primary }} onClick={startCreate}>{L("CRÉER LA PREMIÈRE ÉQUIPE", "CREATE FIRST TEAM", "CREAR PRIMER EQUIPO")}</button></div> : null}</div>}
     </div> : null}
   </div>;
 }
