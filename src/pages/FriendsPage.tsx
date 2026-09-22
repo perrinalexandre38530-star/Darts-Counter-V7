@@ -39,8 +39,8 @@ import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
 import type { OnlineLobby } from "../lib/onlineApi";
 import type { OnlineMatch } from "../lib/onlineTypes";
-import { getCountryFlag } from "../lib/countryNames";
 import InfoDot from "../components/InfoDot";
+import { getCountryFlag } from "../lib/countryNames";
 import BackDot from "../components/BackDot";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { PageAdBanner } from "../monetization/AdSlot";
@@ -3649,7 +3649,7 @@ const doLogout = React.useCallback(async () => {
           marginBottom: 12,
         }}
       >
-        {/* ===== HEADER TITRE CENTRÉ : BackDot / ONLINE / InfoDot ===== */}
+        {/* ===== HEADER TITRE CENTRÉ : BackDot / ONLINE / Awena global ===== */}
         <div
           className="online-header msc-landscape-header msc-online-header"
           style={{
@@ -3691,20 +3691,9 @@ const doLogout = React.useCallback(async () => {
             </span>
           </div>
 
-          <div style={{ justifySelf: "end" }}>
-            <InfoDot
-              disableAwenaTakeover
-              title="Infos Online"
-              content={(
-                <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
-                  <div>Crée un salon, rejoins un ami, retrouve ton historique Online.</div>
-                  <div><strong>Format ligue officielle :</strong> X01 501 Double Out — BO3 sets / 3 legs par set.</div>
-                  {serverState === "down" && serverHint ? <div style={{ color: "#ff8a8a", fontWeight: 900 }}>{serverHint}</div> : null}
-                  {authHint ? <div style={{ color: "var(--online-accent)", fontWeight: 900 }}>{authHint}</div> : null}
-                </div>
-              )}
-            />
-          </div>
+          {/* La page possède déjà le médaillon Awena global : il remplace l'InfoDot.
+              On conserve une colonne vide uniquement pour garder ONLINE parfaitement centré. */}
+          <div aria-hidden="true" />
         </div>
 
         {showInfo ? (

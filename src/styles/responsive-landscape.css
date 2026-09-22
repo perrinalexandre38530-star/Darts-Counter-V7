@@ -4485,3 +4485,19 @@ html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-layout="co
 html[data-msc-orientation="landscape"] .msc-online-header [data-mss-protected-control="true"] {
   flex: 0 0 auto;
 }
+
+/* ========================================================================== 
+   V63 — ONLINE: Awena IS the page info control
+   --------------------------------------------------------------------------
+   The ONLINE header must never show both Awena and an InfoDot. The local
+   InfoDot is removed in FriendsPage; the global Awena launcher occupies the
+   former InfoDot position at the far right of the header.
+   ========================================================================== */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="online"] ~ [data-mss-floating-control="awena-launcher"],
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="online_clubs"] ~ [data-mss-floating-control="awena-launcher"],
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="friends"] ~ [data-mss-floating-control="awena-launcher"] {
+  top: max(5px, calc(var(--msc-landscape-shell-pad) + var(--msc-safe-top) - 3px)) !important;
+  right: max(12px, calc(var(--msc-safe-right) + 12px)) !important;
+  bottom: auto !important;
+  transform: none !important;
+}
