@@ -626,3 +626,51 @@
   box-shadow: none;
   overflow: visible;
 }
+
+
+/* ===== V89 radar/config/layout fixes ===== */
+@media (orientation: landscape) and (min-width: 600px) {
+  .crados-play__stage {
+    grid-template-columns: minmax(470px, .98fr) minmax(0, 1.02fr);
+    align-items: stretch;
+  }
+  .crados-play__left {
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: minmax(0,1fr) auto auto;
+    align-content: stretch;
+  }
+  .crados-active {
+    min-height: 0;
+    height: 100%;
+  }
+  .crados-kpi-strip {
+    min-height: 58px;
+  }
+  .crados-play__quick-row {
+    min-height: 48px;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 650px) {
+  .crados-play__left { gap: 8px; }
+  .crados-active {
+    grid-template-columns: minmax(0,1fr) 142px;
+    padding: 10px 10px 8px;
+  }
+  .crados-active__ghost { width: 152px; height: 146px; }
+  .crados-active__main { padding: 2px 0 18px 54px; }
+  .crados-active__name { font-size: clamp(13px, 1.45vw, 18px); }
+  .crados-active__percent { font-size: clamp(46px, 4.8vw, 60px); }
+  .crados-mini-radar { min-height: 120px; }
+  .crados-mini-radar svg { width: min(100%, 122px); }
+  .crados-kpi-strip { min-height: 64px; }
+  .crados-kpi-strip > span { min-height: 50px; }
+  .crados-play__quick-row { min-height: 50px; }
+}
+
+@media (orientation: landscape) and (min-width: 600px) and (max-height: 560px) {
+  .crados-play__stage { grid-template-columns: minmax(392px, .94fr) minmax(0, 1.06fr); }
+  .crados-play__left { height: 100%; }
+  .crados-active { height: 100%; }
+}

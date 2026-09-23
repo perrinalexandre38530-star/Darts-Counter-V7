@@ -31,8 +31,22 @@ const BROWN = "#d99a57";
 const RED = "#ff6c67";
 const PLAYER_COLORS = ["#67d7ff", "#ff74c8", "#ffc857", "#79ef9d", "#b58cff", "#ff8a65", "#56e0d0", "#f3f56a", "#8fb8ff", "#fa8fb1"];
 const DARTBOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
-const CRADOS_BOARD = { cx: 130, cy: 130, outer: 114, wedgeInner: 18, doubleInner: 100, trebleOuter: 66.5, trebleInner: 55.5, outerSingleMid: 83, innerSingleMid: 39, bullOuter: 17, bullInner: 6.2, label: 108 };
-const CRADOS_BOARD_IMAGE = { x: CRADOS_BOARD.cx - CRADOS_BOARD.outer, y: CRADOS_BOARD.cy - CRADOS_BOARD.outer, size: CRADOS_BOARD.outer * 2 };
+const CRADOS_BOARD = {
+  cx: 130,
+  cy: 130,
+  outer: 114,
+  artOuter: 98,
+  wedgeInner: 15.5,
+  doubleInner: 86,
+  trebleOuter: 58,
+  trebleInner: 49,
+  outerSingleMid: 72,
+  innerSingleMid: 33.5,
+  bullOuter: 14.2,
+  bullInner: 5.1,
+  label: 111,
+};
+const CRADOS_BOARD_IMAGE = { x: CRADOS_BOARD.cx - CRADOS_BOARD.artOuter, y: CRADOS_BOARD.cy - CRADOS_BOARD.artOuter, size: CRADOS_BOARD.artOuter * 2 };
 const TOUCH_COLORS: Record<string, string> = { S: "#67d7ff", D: "#6fd6ff", T: "#d17bff", BULL: "#50e68c", DBULL: "#2bf08b", MISS: "#ffb54d" };
 
 type PlayTab = "map" | "stats";
@@ -167,7 +181,7 @@ function annularWedge(cx: number, cy: number, inner: number, outer: number, star
   return `M ${p1.x} ${p1.y} A ${outer} ${outer} 0 0 1 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${inner} ${inner} 0 0 0 ${p4.x} ${p4.y} Z`;
 }
 function boardSectorPath(start: number, end: number) {
-  return annularWedge(CRADOS_BOARD.cx, CRADOS_BOARD.cy, CRADOS_BOARD.wedgeInner, CRADOS_BOARD.outer, start, end);
+  return annularWedge(CRADOS_BOARD.cx, CRADOS_BOARD.cy, CRADOS_BOARD.wedgeInner, CRADOS_BOARD.artOuter, start, end);
 }
 
 function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileBySideId, activeSideId, config, selectedSector, onSelect, filterSideId = "all" }: any) {
@@ -223,8 +237,8 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
               {Array.from({ length: layersToOwn }, (_, layerIndex) => {
                 const t = layerIndex / layersToOwn;
                 const t2 = (layerIndex + 1) / layersToOwn;
-                const inner = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.outer - CRADOS_BOARD.wedgeInner) * t;
-                const outer = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.outer - CRADOS_BOARD.wedgeInner) * t2 - 1.6;
+                const inner = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.artOuter - CRADOS_BOARD.wedgeInner) * t;
+                const outer = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.artOuter - CRADOS_BOARD.wedgeInner) * t2 - 1.2;
                 const activeLayer = Number(sec.layers || 0) > layerIndex;
                 return <path key={`${n}-${layerIndex}`} d={annularWedge(CRADOS_BOARD.cx, CRADOS_BOARD.cy, inner, outer, start + .45, end - .45)} fill={activeLayer ? `${color}${owned ? "7a" : "38"}` : "rgba(255,255,255,.006)"} stroke={activeLayer ? `${color}8d` : "rgba(255,255,255,.025)"} strokeWidth={activeLayer ? 1.1 : .55} />;
               })}
@@ -236,8 +250,7 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
           <g onClick={() => onSelect("bull")} style={{ cursor: "pointer" }}>
             <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullOuter} fill={String(selectedSector) === "bull" ? "rgba(122,255,86,.22)" : "rgba(20,40,18,.05)"} stroke={String(selectedSector) === "bull" ? `${GREEN}d8` : `${GREEN}66`} strokeWidth={String(selectedSector) === "bull" ? 2.8 : 1.6} filter={String(selectedSector) === "bull" ? "url(#cradosGlow)" : undefined} />
             <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullInner} fill={String(selectedSector) === "bull" ? "rgba(255,82,82,.30)" : "rgba(255,255,255,.04)"} stroke="rgba(255,228,228,.6)" strokeWidth="1" />
-            <text x="130" y="129" textAnchor="middle" fill="#f1ffe7" fontSize="5.8" fontWeight="1000">BULL</text>
-            <text x="130" y="136" textAnchor="middle" fill={GREEN} fontSize="5.2" fontWeight="1000">DOUCHE</text>
+            <text x="130" y="132" textAnchor="middle" fill="#f1ffe7" fontSize="6.2" fontWeight="1000">BULL</text>
           </g>
         </g>
         <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} fill="none" stroke="rgba(183,242,71,.17)" strokeWidth="1.8" />
