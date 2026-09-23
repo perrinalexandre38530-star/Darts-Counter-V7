@@ -54,6 +54,7 @@ const TICKER_KEYS: Record<string, string> = {
   departements: "departements",
   darts_firefighter: "darts_firefighter",
   loterie: "loterie",
+  crados: "crados",
   prisoner: "prisoner",
   tic_tac_toe: "tic_tac_toe",
   bastard: "batard_players",
@@ -107,6 +108,7 @@ const ALIAS_OVERRIDES: Record<string, string[]> = {
   training_repeat_master: ["repeat master"],
   training_super_bull: ["super bull training", "training super bull"],
   ocean_control: ["ocean control", "ocean's control", "bataille navale"],
+  crados: ["crados", "crado", "crasse", "crasses", "contamination", "secteur sale", "zone crado", "zones crado", "douche", "bull douche", "blocage crados", "vol crados"],
 };
 
 const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" | "tip" | "howToPlayInApp">>> = {
@@ -132,6 +134,11 @@ const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" 
   },
   attrape_moi: {
     tip: "Le Fuyard doit protéger son avance ; le Chasseur doit réduire l'écart sans gaspiller de tours. La prise de risque dépend donc du rôle et du nombre de rounds restants.",
+  },
+  crados: {
+    summary: "CRADOS est un jeu de territoire et de survie. Les simples, doubles et triples déposent respectivement 1, 2 ou 3 couches sur un secteur libre. Quand le nombre de couches configuré est atteint, le secteur devient CRADO pour ce joueur ou cette équipe. Toucher une zone adverse peut ajouter de la crasse ou permettre de la voler selon la variante. À la limite de crasse, le camp est éliminé ; le dernier camp encore propre remporte la manche.",
+    tip: "Surveille à la fois ta jauge de crasse et la carte des zones. En Blocage, évite les zones adverses quand ta jauge est haute. En Vol, attaque surtout un secteur adverse si le gain territorial compense le +1 crasse par contact. Si la Douche est active, garde le Bull comme solution de nettoyage lorsque ta jauge devient dangereuse.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > CRADOS. Choisis Joueurs ou Équipes, les profils et bots, l'ordre de départ, la limite de crasse, le nombre de couches nécessaires pour posséder un secteur, la Douche au Bull, la règle Blocage ou Vol, le format de manches et la méthode de saisie. En partie, utilise le mini-radar du joueur actif pour ouvrir la carte tactique complète et filtrer les zones par propriétaire.",
   },
 };
 

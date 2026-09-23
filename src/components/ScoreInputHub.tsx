@@ -145,6 +145,8 @@ type Props = {
   lockContentHeight?: boolean;
   /** Adapter automatiquement le contenu à la hauteur disponible. */
   fitToParent?: boolean;
+  /** Échelle minimale autorisée par l’auto-fit. Les gameplays très bas en paysage peuvent descendre davantage. */
+  fitMinScale?: number;
   /** Afficher le sélecteur en overlay (compat ancienne API). */
   switcherOverlay?: boolean;
 };
@@ -237,6 +239,7 @@ export default function ScoreInputHub({
   onMiss: _onMiss,
   lockContentHeight = false,
   fitToParent = false,
+  fitMinScale = 0.42,
   switcherOverlay: _switcherOverlay = false,
 }: Props) {
   const devEnabled = safeReadDevModeEnabled();
@@ -307,8 +310,9 @@ export default function ScoreInputHub({
       const iw = Math.max(inner.scrollWidth, ib.width);
       if (!oh || !ow || !ih || !iw) return;
 
+      const minScale = Math.max(0.28, Math.min(0.85, Number(fitMinScale) || 0.42));
       const next = Math.max(
-        0.52,
+        minScale,
         Math.min(1, Math.round(Math.min(oh / ih, ow / iw) * 1000) / 1000)
       );
       setFitScale((prev) => (Math.abs(next - prev) > 0.01 ? next : prev));
@@ -337,7 +341,7 @@ export default function ScoreInputHub({
       window.removeEventListener("orientationchange", scheduleCompute);
       ro?.disconnect?.();
     };
-  }, [fitToParent, method]);
+  }, [fitToParent, fitMinScale, method]);
 
   const contentBoxStyle: React.CSSProperties = {
     ...(lockContentHeight ? { minHeight: 0 } : null),
@@ -472,7 +476,7 @@ export default function ScoreInputHub({
   );
 
   return (
-    <div data-mss-score-input-hub="1" style={{ position: "relative" }}>
+    <div data-mss-score-input-hub="1" style={{ position: "relative", ...(fitToParent ? { height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" } : null) }}>
       <style>{`@keyframes dcVoiceBlink{0%,100%{opacity:1;filter:brightness(1.1)}50%{opacity:.42;filter:brightness(1.85)}} @keyframes dcVoiceGlow{0%,100%{box-shadow:0 0 12px rgba(255,255,255,.26)}50%{box-shadow:0 0 26px rgba(255,255,255,.82)}}`}</style>
       {showSwitcher ? (
         <div style={{ marginBottom: 8 }}>

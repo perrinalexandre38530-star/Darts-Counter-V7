@@ -46,17 +46,17 @@ export function gameToUiDart(d:GameDart):UIDart{
 }
 export function dartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.bed==="IB")return"DBULL";if(d.bed==="OB")return"BULL";return`${d.bed}${d.number||""}`;}
 
-export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3 }:any){
+export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, fitMinScale=0.42 }:any){
   const cap=Math.max(1,Math.min(3,Number(maxDarts)||3));
   const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=cap?prev:[...prev,d]);
-  return <div style={{...panelStyle(accent+"35"),padding:8}}>
+  return <div style={{...panelStyle(accent+"35"),padding:8,height:"100%",minHeight:0,overflow:"hidden"}}>
     <ScoreInputHub
       currentThrow={currentThrow}
       multiplier={multiplier}
       onSimple={()=>setMultiplier(1)}
       onDouble={()=>setMultiplier(2)}
       onTriple={()=>setMultiplier(3)}
-      onCancel={()=>{setCurrentThrow([]);setMultiplier(1);}}
+      onCancel={()=>{ if(typeof onCancel === "function") onCancel(); else {setCurrentThrow([]);setMultiplier(1);} }}
       onBackspace={()=>setCurrentThrow((prev:UIDart[])=>prev.slice(0,-1))}
       onNumber={(n:number)=>append({v:n,mult:multiplier})}
       onBull={()=>append({v:25,mult:multiplier===2?2:1})}
@@ -70,6 +70,7 @@ export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMul
       preferredMethod={preferredMethod}
       compact
       fitToParent
+      fitMinScale={fitMinScale}
     />
   </div>;
 }

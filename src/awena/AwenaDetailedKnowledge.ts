@@ -82,6 +82,47 @@ const DEEP: Record<string, ModeDeepDetail> = {
     ],
   },
 
+  crados: {
+    rules: [
+      { title: "OBJECTIF", body: "CRADOS est un jeu de **territoire et de survie**. Tu salis progressivement les secteurs à ta couleur tout en évitant d'accumuler trop de crasse. Dans chaque manche, le **dernier joueur ou la dernière équipe non éliminé** gagne la manche. Le premier camp qui atteint le nombre de manches configuré gagne le match." },
+      { title: "CONTAMINER UN SECTEUR LIBRE", bullets: [
+        "Un **Simple** dépose **1 couche**.",
+        "Un **Double** dépose **2 couches**.",
+        "Un **Triple** dépose **3 couches**.",
+        "Si un autre camp avait commencé à contaminer un secteur encore libre, ta touche remplace sa progression par la tienne.",
+        "À **2, 3 ou 4 couches** selon la configuration, le secteur devient CRADO et appartient à ton camp.",
+      ] },
+      { title: "TA PROPRE ZONE", body: "Toucher un secteur qui t'appartient déjà n'ajoute pas de crasse. La propriété et le niveau de contamination sont visibles sur le radar tactique." },
+      { title: "MODE BLOCAGE", body: "Une zone déjà possédée par un adversaire est piégée. La toucher ajoute de la crasse à ta jauge selon la puissance de la touche : **Simple +1**, **Double +2**, **Triple +3**. La propriété adverse ne change pas." },
+      { title: "MODE VOL", body: "Sur une zone adverse, tes touches retirent **1 / 2 / 3 couches** selon Simple / Double / Triple. Chaque contact adverse ajoute quand même **+1 crasse** à ton camp. Si les couches tombent à zéro ou moins, le secteur bascule à ta couleur et l'excédent de puissance commence immédiatement ta nouvelle contamination." },
+      { title: "BULL DOUCHE", body: "Quand l'option Douche est activée, **BULL retire 1 crasse** et **DBULL retire 3 crasses**, sans descendre sous zéro. Si l'option est désactivée, les Bulls sont neutres pour le nettoyage." },
+      { title: "ÉLIMINATION", body: "Quand la jauge atteint sa limite configurée — **10, 15 ou 20** — le joueur ou l'équipe est éliminé de la manche. Sa jauge est plafonnée à cette limite." },
+      { title: "MANCHES", body: "Quand il ne reste plus qu'un camp non éliminé, ce camp gagne la manche. Une nouvelle manche remet à zéro les jauges, les éliminations et les secteurs. Les victoires de manche restent comptabilisées jusqu'à la victoire du match." },
+      { title: "MODE ÉQUIPES", body: "Les membres d'une équipe alternent leurs volées avec les autres équipes. **Crasse, propriété des secteurs, élimination et manches sont partagées par l'équipe**. Les statistiques de lancer restent aussi suivies par joueur." },
+      { title: "LIRE L'ÉCRAN DE JEU", bullets: [
+        "Le grand nombre dans la carte du joueur actif est le **pourcentage de remplissage de la jauge de crasse**.",
+        "La frise sous ce pourcentage montre graphiquement la progression de crasse : partie colorée = remplie, partie grisée = restante.",
+        "Le **mini-radar** montre les secteurs contrôlés / contaminés par le camp actif. Touche-le pour ouvrir la carte tactique en grand.",
+        "Dans la carte tactique, tu peux filtrer toutes les zones, les zones libres ou un joueur / une équipe pour mieux lire la cible.",
+        "Le bouton graphique ouvre toutes les statistiques CRADOS ; le bandeau joueurs ouvre l'ordre de jeu et les scores comparés.",
+      ] },
+      { title: "ANNULER", body: "Le bouton **ANNULER** du keypad efface d'abord la saisie de la volée en cours. S'il n'y a aucune fléchette en cours de saisie, il restaure la dernière volée validée grâce à l'UNDO." },
+      { title: "CONSEIL DE STRATÉGIE", body: "En Blocage, protège ta jauge quand elle approche de la limite et privilégie les secteurs libres. En Vol, compare le risque fixe de +1 crasse par contact avec la valeur du secteur à récupérer. Si la Douche est active, un Bull peut être plus utile qu'une nouvelle zone lorsque ton pourcentage de crasse devient élevé." },
+    ],
+    configuration: [
+      { title: "MODE DE CONFIGURATION", bullets: ["**Guidée** : réglages par étapes pour limiter le scroll.", "**Complète** : tous les paramètres sur une page lorsqu'on veut tout régler directement."] },
+      { title: "PARTICIPANTS", bullets: ["**Joueurs** : profils locaux et bots, jusqu'à 10 participants.", "**Équipes** : équipes manuelles, enregistrées, brassage automatique et familles de bots CRADOS selon les choix disponibles."] },
+      { title: "ORDRE DE JEU", body: "L'ordre peut rester celui de la sélection ou être rendu aléatoire avant le lancement." },
+      { title: "JAUGE DE CRASSE", bullets: ["10 : partie plus nerveuse.", "15 : intermédiaire.", "20 : plus longue et tolérante."] },
+      { title: "COUCHES POUR POSSÉDER UN SECTEUR", bullets: ["2 couches : rapide.", "3 couches : classique.", "4 couches : endurance."] },
+      { title: "DOUCHE", body: "Active ou désactive le nettoyage au Bull. Quand elle est active : Bull −1 crasse, Double Bull −3." },
+      { title: "SECTEUR ADVERSE", bullets: ["**Blocage** : Simple +1, Double +2, Triple +3 crasses ; le secteur reste adverse.", "**Vol** : retire 1 / 2 / 3 couches et ajoute +1 crasse par contact ; la propriété peut basculer."] },
+      { title: "FORMAT", body: "Choisis le nombre de manches nécessaires pour gagner le match. Une manche se termine lorsqu'un seul camp reste non éliminé." },
+      { title: "SAISIE", body: "Choisis la méthode de saisie proposée par l'application. Sur le keypad, **VALIDER** confirme la volée et **ANNULER** efface la saisie courante ou annule la dernière volée si la saisie est vide." },
+      { title: "RÉSUMÉ", body: "Avant de démarrer, vérifie participants, ordre, limite de crasse, couches, Douche, Blocage / Vol, format et méthode de saisie." },
+    ],
+  },
+
   gros_6: {
     rules: [
       { title: "OBJECTIF", body: "Le **Gros 6 / Big 6** est un jeu d’élimination à vies. La partie commence normalement sur **G6 / B6** (Gros 6 / Big 6). Le dernier joueur — ou la dernière équipe — qui possède encore au moins une vie gagne." },

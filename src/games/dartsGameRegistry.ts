@@ -770,13 +770,13 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     popularityRank: 48.03,
     ready: true,
     isNew: true,
-    maxPlayers: 12,
-    supportsTeams: false,
+    maxPlayers: 10,
+    supportsTeams: true,
     supportsBots: true,
     statsKey: "game:crados",
     infoTitle: "CRADOS",
     infoBody:
-      "Les secteurs de la cible se salissent progressivement à ta couleur. Marcher dans la crasse des autres te contamine, tandis que le Bull peut te nettoyer. Le dernier joueur encore propre, ou le moins sale, remporte la partie.",
+      "Les secteurs de la cible se salissent progressivement à ta couleur. Marcher dans la crasse des autres te contamine, tandis que le Bull peut te nettoyer. Le dernier joueur ou la dernière équipe non éliminé remporte la manche ; le premier camp qui atteint le nombre de manches configuré gagne le match.",
   },
   {
     id: "castle",

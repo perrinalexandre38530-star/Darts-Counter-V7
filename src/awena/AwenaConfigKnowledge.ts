@@ -8,6 +8,22 @@ export type AwenaModeConfigDetail = {
 };
 
 const DETAILS: Record<string, AwenaModeConfigDetail> = {
+  crados: {
+    options: [
+      "mode Joueurs ou Équipes, jusqu'à 10 participants au total",
+      "profils locaux, bots CPU et familles de bots CRADOS",
+      "ordre de jeu fixe ou aléatoire",
+      "jauge de crasse maximale : 10, 15 ou 20",
+      "2, 3 ou 4 couches nécessaires pour salir et posséder un secteur",
+      "Bull douche / nettoyage activé ou désactivé",
+      "action sur secteur adverse : Blocage ou Vol",
+      "format de match en nombre de manches à gagner",
+      "méthode de saisie, notamment keypad ou cible lorsqu'elle est proposée",
+    ],
+    victory: "être le dernier joueur ou la dernière équipe non éliminé dans une manche ; le camp qui atteint le nombre de manches configuré gagne le match",
+    variants: ["Joueurs", "Équipes", "Blocage", "Vol", "2 / 3 / 4 couches", "jauge 10 / 15 / 20", "Bull douche ON / OFF"],
+    notes: ["En équipes, la crasse, les secteurs et les manches sont partagés par l'équipe, tandis que ses membres alternent leurs volées."],
+  },
   x01: {
     options: [
       "participants en joueurs ou équipes, avec bots IA si souhaité",

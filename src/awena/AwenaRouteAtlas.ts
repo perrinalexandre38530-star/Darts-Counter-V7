@@ -1022,6 +1022,20 @@ const ROUTES: RouteEntry[] = [
     aliases: ["capital play", "Capital", "Capital Partie"],
   },
   {
+    id: "crados_config",
+    label: "CRADOS · Configuration",
+    category: "Fléchettes / Jeu",
+    purpose: "Écran de configuration de **CRADOS** : joueurs ou équipes, bots, ordre, jauge de crasse, couches, Douche, Blocage / Vol, format et saisie.",
+    aliases: ["crados config", "crado config", "CRADOS Configuration", "configuration crados", "réglages crados"],
+  },
+  {
+    id: "crados_play",
+    label: "CRADOS · Partie",
+    category: "Fléchettes / Jeu",
+    purpose: "Écran de **partie active CRADOS** : pourcentage de crasse, mini-radar, carte tactique filtrable, joueurs, stats, keypad et undo.",
+    aliases: ["CRADOS Partie", "crados play", "partie crados", "jeu crados", "radar crados", "stats crados"],
+  },
+  {
     id: "loterie_config",
     label: "Loterie · Configuration",
     category: "Fléchettes / Jeu",
