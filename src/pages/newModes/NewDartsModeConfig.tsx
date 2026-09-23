@@ -13,7 +13,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { loadBotPlayers } from "../../lib/bots";
 import { recordProfileUsageForMode } from "../../lib/profileUsage";
 import { loadTeamsBySport } from "../../lib/petanqueTeamsStore";
-import { BotTeamsSection, PillButton, X01_PRO_BOTS, TeamsSection } from "../X01ConfigV3";
+import { BotTeamsSection, PillButton, X01_PRO_BOTS, TeamsSection, SelectedParticipantsCompactBlock } from "../X01ConfigV3";
 import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
 import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
 
@@ -160,6 +160,7 @@ export default function NewDartsModeConfig(props: Props) {
     try { return localStorage.getItem(`dc_${mode}_config_view_mode`) === "complete" ? "complete" : "guided"; } catch { return "guided"; }
   });
   const [guidedStep, setGuidedStep] = React.useState(0);
+  const [viewModeChosen, setViewModeChosen] = React.useState(() => mode !== "crados");
   const configScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, definition.maxPlayers) : []);
   const [botsOpen, setBotsOpen] = React.useState(saved.botsOpen === true);
@@ -521,6 +522,7 @@ export default function NewDartsModeConfig(props: Props) {
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
+    if (mode === "crados") setViewModeChosen(true);
     try { localStorage.setItem(`dc_${mode}_config_view_mode`, value); } catch {}
   }
 
@@ -656,6 +658,7 @@ export default function NewDartsModeConfig(props: Props) {
 
   const playerParticipantsBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "crados" ? "Joueurs" : "Participants"}</div>
+    {mode === "crados" && selectedProfiles.length ? <SelectedParticipantsCompactBlock items={selectedProfiles} accent={accent} onRemove={(id: string) => togglePlayer(id)} allProfiles={[...humanProfiles, ...bots]} /> : null}
     <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
     <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: botsOpen ? 9 : 0 }}>
@@ -719,12 +722,15 @@ export default function NewDartsModeConfig(props: Props) {
   </> : null;
 
   const participantsBlock = mode === "crados" ? (cradosTeamMode ? cradosTeamsBlock : playerParticipantsBlock) : playerParticipantsBlock;
+  const cradosOrderBlock = mode === "crados" ? <section style={{ ...selectorCard, padding: "9px 10px" }}>
+    <OptionRow compact label="Ordre de passage aléatoire" hint="Mélange les participants au lancement"><OptionToggle compact value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+  </section> : null;
 
   const matchBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Format de match</div>
     <div style={panel}>
-      <OptionRow label="Série"><OptionSelect value={seriesWins} options={[{ value: 1, label: "BO1 — 1 victoire" }, { value: 2, label: "BO3 — 2 victoires" }, { value: 3, label: "BO5 — 3 victoires" }]} onChange={(v: any) => setSeriesWins(Number(v) as any)} /></OptionRow>
-      <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+      <OptionRow compact={mode === "crados"} label="Série"><OptionSelect compact={mode === "crados"} value={seriesWins} options={[{ value: 1, label: "BO1 — 1 victoire" }, { value: 2, label: "BO3 — 2 victoires" }, { value: 3, label: "BO5 — 3 victoires" }]} onChange={(v: any) => setSeriesWins(Number(v) as any)} /></OptionRow>
+      {mode !== "crados" ? <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
     </div>
   </section>;
 
@@ -780,13 +786,29 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
-  const cradosBlock = <section style={selectorCard}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles CRADOS</div>
-    <div style={panel}>
-      <OptionRow label="Jauge de crasse"><OptionSelect value={cradosDirtLimit} options={[10,15,20]} onChange={(v: any) => setCradosDirtLimit(Number(v) === 15 ? 15 : Number(v) === 20 ? 20 : 10)} /></OptionRow>
-      <OptionRow label="Couches pour salir un secteur"><OptionSelect value={cradosLayersToOwn} options={[{ value: 2, label: "2 couches — rapide" }, { value: 3, label: "3 couches — classique" }, { value: 4, label: "4 couches — endurance" }]} onChange={(v: any) => setCradosLayersToOwn(Number(v) === 2 ? 2 : Number(v) === 4 ? 4 : 3)} /></OptionRow>
-      <OptionRow label="Bull douche / nettoyage"><OptionToggle value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
-      <OptionRow label="Action sur secteur adverse"><OptionSelect value={cradosStealMode} options={[{ value: "block", label: "Blocage — secteur sale piégé" }, { value: "flip", label: "Vol — la propriété peut changer" }]} onChange={setCradosStealMode} /></OptionRow>
+  const cradosBlock = <section style={{ ...selectorCard, padding: "11px 10px" }}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 11.2, fontWeight: 950, marginBottom: 7 }}>Règles CRADOS</div>
+    <div style={{ ...panel, padding: 7, display: "grid", gap: 5 }}>
+      <OptionRow compact label="Jauge de crasse"><OptionSelect compact value={cradosDirtLimit} options={[10,15,20]} onChange={(v: any) => setCradosDirtLimit(Number(v) === 15 ? 15 : Number(v) === 20 ? 20 : 10)} /></OptionRow>
+      <OptionRow compact label="Couches / secteur"><OptionSelect compact value={cradosLayersToOwn} options={[{ value: 2, label: "2 — rapide" }, { value: 3, label: "3 — classique" }, { value: 4, label: "4 — endurance" }]} onChange={(v: any) => setCradosLayersToOwn(Number(v) === 2 ? 2 : Number(v) === 4 ? 4 : 3)} /></OptionRow>
+      <OptionRow compact label="Bull douche"><OptionToggle compact value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
+      <OptionRow compact label="Secteur adverse"><OptionSelect compact value={cradosStealMode} options={[{ value: "block", label: "Blocage" }, { value: "flip", label: "Vol" }]} onChange={setCradosStealMode} /></OptionRow>
+    </div>
+  </section>;
+
+  const cradosDirtBlock = <section style={{ ...selectorCard, padding: "11px 10px" }}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 11.2, fontWeight: 950, marginBottom: 7 }}>Crasse & nettoyage</div>
+    <div style={{ ...panel, padding: 7, display: "grid", gap: 5 }}>
+      <OptionRow compact label="Jauge de crasse" hint="À 100 %, le joueur ou l’équipe est éliminé."><OptionSelect compact value={cradosDirtLimit} options={[10,15,20]} onChange={(v: any) => setCradosDirtLimit(Number(v) === 15 ? 15 : Number(v) === 20 ? 20 : 10)} /></OptionRow>
+      <OptionRow compact label="Bull douche" hint="BULL −1 · DBULL −3"><OptionToggle compact value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
+    </div>
+  </section>;
+
+  const cradosZonesBlock = <section style={{ ...selectorCard, padding: "11px 10px" }}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 11.2, fontWeight: 950, marginBottom: 7 }}>Zones & contamination</div>
+    <div style={{ ...panel, padding: 7, display: "grid", gap: 5 }}>
+      <OptionRow compact label="Couches / secteur"><OptionSelect compact value={cradosLayersToOwn} options={[{ value: 2, label: "2 — rapide" }, { value: 3, label: "3 — classique" }, { value: 4, label: "4 — endurance" }]} onChange={(v: any) => setCradosLayersToOwn(Number(v) === 2 ? 2 : Number(v) === 4 ? 4 : 3)} /></OptionRow>
+      <OptionRow compact label="Secteur adverse"><OptionSelect compact value={cradosStealMode} options={[{ value: "block", label: "Blocage" }, { value: "flip", label: "Vol" }]} onChange={setCradosStealMode} /></OptionRow>
     </div>
   </section>;
 
@@ -870,7 +892,7 @@ export default function NewDartsModeConfig(props: Props) {
     : mode === "call_three" ? callThreeBlock
     : steeplechaseBlock;
   const steps = mode === "crados"
-    ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Format", "Saisie", "Résumé"]
+    ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Zones", "Format", "Saisie", "Résumé"]
     : definition.guidedSteps;
   const maxStep = steps.length - 1;
   React.useEffect(() => {
@@ -886,6 +908,11 @@ export default function NewDartsModeConfig(props: Props) {
   return <div ref={configScrollRef} className="msc-new-darts-config" style={{ height: "100dvh", minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", overflowY: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehaviorY: "contain", paddingBottom: 92, boxSizing: "border-box" }}>
     <style>{`
       .msc-new-darts-config { scrollbar-gutter: stable; }
+      @media (max-width: 560px) {
+        .msc-crados-guided-head { padding: 11px 10px !important; }
+        .msc-crados-guided-head .msc-crados-step-dots { gap: 3px !important; margin-left: auto; }
+        .msc-crados-guided-head .msc-crados-step-dots button { width: 22px !important; height: 22px !important; font-size: 8.5px !important; }
+      }
       @media (orientation: landscape) and (max-height: 620px) {
         .msc-new-darts-config { height: 100dvh !important; min-height: 0 !important; overflow-y: auto !important; padding-bottom: max(84px, env(safe-area-inset-bottom)) !important; }
         .msc-new-darts-config-content { padding-top: 4px !important; }
@@ -894,24 +921,34 @@ export default function NewDartsModeConfig(props: Props) {
     `}</style>
     <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={<InfoDot title={`Règles ${definition.title}`} color={accent} glow={`${accent}77`} content={definition.rulesContent} />} />
     <div className="msc-new-darts-config-content" style={{ padding: "8px 8px 0", maxWidth: 980, margin: "0 auto", minWidth: 0, boxSizing: "border-box" }}>
-      <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)` }}>
+      {mode === "crados" && !viewModeChosen ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)`, padding: "14px 12px" }}>
+        <div style={{ color: accent, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>Choisis ton affichage</div>
+        <div style={{ marginTop: 5, color: soft, fontSize: 9.8, textAlign: "center" }}>Tu pourras revenir ici en quittant la configuration.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 12 }}>
+          <button type="button" onClick={() => selectView("guided")} style={{ minHeight: 86, borderRadius: 17, border: `1px solid ${accent}`, background: `${accent}16`, color: "#fff", padding: 10, fontWeight: 1000 }}><span style={{ display: "block", color: accent, fontSize: 18 }}>GUIDÉE</span><small style={{ display: "block", marginTop: 5, color: soft, fontSize: 9, fontWeight: 800 }}>Étapes courtes · idéal mobile</small></button>
+          <button type="button" onClick={() => selectView("complete")} style={{ minHeight: 86, borderRadius: 17, border: "1px solid rgba(255,255,255,.13)", background: "rgba(255,255,255,.04)", color: "#fff", padding: 10, fontWeight: 1000 }}><span style={{ display: "block", fontSize: 18 }}>COMPLÈTE</span><small style={{ display: "block", marginTop: 5, color: soft, fontSize: 9, fontWeight: 800 }}>Tous les réglages sur une page</small></button>
+        </div>
+      </section> : null}
+
+      {mode !== "crados" ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)` }}>
         <div style={{ color: accent, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration {definition.title}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Pill active={viewMode === "guided"} onClick={() => selectView("guided")} accent={accent}>Guidée</Pill><Pill active={viewMode === "complete"} onClick={() => selectView("complete")} accent={accent}>Complète</Pill></div>
         <div style={{ marginTop: 8, color: soft, fontSize: 11 }}>Le moteur de jeu est intégré : participants, règles, format, saisie, sauvegarde et reprise sont prêts.</div>
-      </section>
+      </section> : null}
 
-      {viewMode === "guided" ? <>
-        <section style={selectorCard}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}><div><div style={{ color: accent, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div><div style={{ marginTop: 3, color: soft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{steps.length} · {steps[guidedStep]}</div></div><div style={{ display: "flex", gap: 4 }}>{steps.map((label, idx) => <button key={label} type="button" onClick={() => goGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? accent : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? `${accent}20` : "rgba(255,255,255,.03)", color: idx === guidedStep ? accent : "#aeb2d3", fontSize: 9.5, fontWeight: 950 }}>{idx + 1}</button>)}</div></div>
+      {(mode !== "crados" || viewModeChosen) && (viewMode === "guided" ? <>
+        <section className={mode === "crados" ? "msc-crados-guided-head" : undefined} style={selectorCard}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9, minWidth: 0 }}><div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div><div style={{ marginTop: 3, color: soft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{steps.length} · {steps[guidedStep]}</div></div><div className={mode === "crados" ? "msc-crados-step-dots" : undefined} style={{ display: "flex", gap: 4, flexShrink: 0 }}>{steps.map((label, idx) => <button key={label} type="button" onClick={() => goGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? accent : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? `${accent}20` : "rgba(255,255,255,.03)", color: idx === guidedStep ? accent : "#aeb2d3", fontSize: 9.5, fontWeight: 950 }}>{idx + 1}</button>)}</div></div>
           <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / steps.length) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${accent}, ${accent2})` }} /></div>
         </section>
         {mode === "crados" ? <>
           {guidedStep === 0 ? cradosModeChoiceBlock : null}
-          {guidedStep === 1 ? participantsBlock : null}
-          {guidedStep === 2 ? modeBlock : null}
-          {guidedStep === 3 ? matchBlock : null}
-          {guidedStep === 4 ? inputBlock : null}
-          {guidedStep === 5 ? summaryBlock : null}
+          {guidedStep === 1 ? <>{participantsBlock}{cradosOrderBlock}</> : null}
+          {guidedStep === 2 ? cradosDirtBlock : null}
+          {guidedStep === 3 ? cradosZonesBlock : null}
+          {guidedStep === 4 ? matchBlock : null}
+          {guidedStep === 5 ? inputBlock : null}
+          {guidedStep === 6 ? summaryBlock : null}
         </> : <>
           {guidedStep === 0 ? participantsBlock : null}
           {guidedStep === 1 ? modeBlock : null}
@@ -919,10 +956,10 @@ export default function NewDartsModeConfig(props: Props) {
           {guidedStep === 3 ? inputBlock : null}
           {guidedStep === 4 ? summaryBlock : null}
         </>}
-        <div className="msc-new-darts-guided-nav" style={{ display: "flex", gap: 9, marginBottom: 12 }}><button type="button" disabled={guidedStep === 0} onClick={() => goGuidedStep(guidedStep - 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button><button type="button" disabled={guidedStep === maxStep} onClick={() => goGuidedStep(guidedStep + 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: `1px solid ${accent}`, background: `${accent}18`, color: guidedStep === maxStep ? "#565b76" : accent, fontWeight: 950 }}>Suivant →</button></div>
-      </> : <>{mode === "crados" ? cradosCompleteModeChoiceBlock : null}{participantsBlock}{modeBlock}{matchBlock}{inputBlock}{summaryBlock}</>}
+        <div className="msc-new-darts-guided-nav" style={{ display: "flex", gap: 9, marginBottom: 12 }}><button type="button" disabled={guidedStep === 0} onClick={() => goGuidedStep(guidedStep - 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button>{guidedStep < maxStep ? <button type="button" onClick={() => goGuidedStep(guidedStep + 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: `1px solid ${accent}`, background: `${accent}18`, color: accent, fontWeight: 950 }}>Suivant →</button> : null}</div>
+      </> : <>{mode === "crados" ? cradosCompleteModeChoiceBlock : null}{participantsBlock}{mode === "crados" ? cradosOrderBlock : null}{modeBlock}{matchBlock}{inputBlock}{summaryBlock}</>)}
 
-      {(viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>La partie démarre avec le moteur complet, les BOTS, l’UNDO, la sauvegarde en cours et les statistiques de fin.</div></div> : null}
+      {(mode !== "crados" || viewModeChosen) && (viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>La partie démarre avec le moteur complet, les BOTS, l’UNDO, la sauvegarde en cours et les statistiques de fin.</div></div> : null}
     </div>
   </div>;
 }

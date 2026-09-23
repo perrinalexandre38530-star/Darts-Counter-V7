@@ -72,27 +72,6 @@ function dartLabel(d: UIDart | undefined) {
   return `${Number(d.mult) === 3 ? "T" : Number(d.mult) === 2 ? "D" : "S"}${d.v}`;
 }
 
-function useMediaQuery(query: string) {
-  const get = React.useCallback(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-    return window.matchMedia(query).matches;
-  }, [query]);
-  const [matches, setMatches] = React.useState(get);
-  React.useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
-    const media = window.matchMedia(query);
-    const onChange = () => setMatches(media.matches);
-    onChange();
-    if (typeof media.addEventListener === "function") {
-      media.addEventListener("change", onChange);
-      return () => media.removeEventListener("change", onChange);
-    }
-    media.addListener(onChange);
-    return () => media.removeListener(onChange);
-  }, [get, query]);
-  return matches;
-}
-
 function CradosAwenaButton() {
   const awena = useAwenaOptional();
   return <button
@@ -127,7 +106,7 @@ function annularWedge(cx: number, cy: number, inner: number, outer: number, star
   return `M ${p1.x} ${p1.y} A ${outer} ${outer} 0 0 1 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${inner} ${inner} 0 0 0 ${p4.x} ${p4.y} Z`;
 }
 
-function CradosTacticalBoard({ state, sides, sideById, colorBySideId, activeSideId, config, selectedSector, onSelect }: any) {
+function CradosTacticalBoard({ state, sides, sideById, colorBySideId, activeSideId, config, selectedSector, onSelect, filterSideId = "all" }: any) {
   const selected = state.sectors?.[selectedSector] || {};
   const selectedOwner = selected.ownerId ? sideById.get(String(selected.ownerId)) : null;
   const selectedClaimant = !selected.ownerId && selected.claimantId ? sideById.get(String(selected.claimantId)) : null;
@@ -158,6 +137,7 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, activeSide
           const owned = Boolean(ownerId);
           const claiming = Boolean(claimantId);
           const selectedNow = Number(selectedSector) === Number(n);
+          const visibleForFilter = filterSideId === "all" || (filterSideId === "free" ? (!ownerId && !claimantId) : (ownerId === String(filterSideId) || claimantId === String(filterSideId)));
           const labelPos = polar(130, 130, 103, idx * 18);
           const layerPos = polar(130, 130, 60, idx * 18);
           const owner = ownerId ? sideById.get(ownerId) : claimantId ? sideById.get(claimantId) : null;
@@ -168,10 +148,11 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, activeSide
               stroke={selectedNow ? color : owned || claiming ? `${color}82` : "rgba(255,255,255,.08)"}
               strokeWidth={selectedNow ? 2.8 : 1}
               filter={selectedNow ? "url(#cradosGlow)" : undefined}
+              opacity={visibleForFilter ? 1 : .12}
             >
               <title>{`${n} · ${owned ? owner?.name || "CRADO" : claiming ? `contamination ${owner?.name || ""}` : "libre"} · ${Number(sec.layers || 0)}/${config.rules.layersToOwn} couches`}</title>
             </path>
-            <text x={labelPos.x} y={labelPos.y + 3} textAnchor="middle" fill={selectedNow || owned || claiming ? color : "#dce3df"} fontSize="10" fontWeight="900">{n}</text>
+            <text x={labelPos.x} y={labelPos.y + 3} textAnchor="middle" fill={selectedNow || owned || claiming ? color : "#dce3df"} fontSize="10" fontWeight="900" opacity={visibleForFilter ? 1 : .24}>{n}</text>
             {(owned || claiming) ? <text x={layerPos.x} y={layerPos.y + 2.5} textAnchor="middle" fill={color} fontSize="6.3" fontWeight="900">{Number(sec.layers || 0)}/{config.rules.layersToOwn}</text> : null}
           </g>;
         })}
@@ -195,6 +176,51 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, activeSide
       <div className="crados-tactical-board__risk-short">{cost.short}</div>
       <div className="crados-tactical-board__costs">{cost.rows.map((row: string) => <span key={row}>{row}</span>)}</div>
       {config.rules.bullWash ? <div className="crados-tactical-board__wash">BULL −1 · DBULL −3</div> : <div className="crados-tactical-board__wash crados-tactical-board__wash--off">BULL neutre</div>}
+    </div>
+  </div>;
+}
+
+function CradosMiniRadar({ state, activeSideId, color, onOpen }: any) {
+  return <button type="button" className="crados-mini-radar" onClick={onOpen} title="Agrandir la carte des zones" aria-label="Agrandir la carte des zones">
+    <svg viewBox="0 0 260 260" role="img" aria-label="Mini radar des zones possédées">
+      <circle cx="130" cy="130" r="113" fill="rgba(2,5,3,.86)" stroke={`${color}55`} strokeWidth="3" />
+      {DARTBOARD_ORDER.map((n, idx) => {
+        const sec = state.sectors?.[n] || {};
+        const ownerId = sec.ownerId ? String(sec.ownerId) : "";
+        const claimantId = !ownerId && sec.claimantId ? String(sec.claimantId) : "";
+        const mine = ownerId === String(activeSideId) || claimantId === String(activeSideId);
+        return <path key={n} d={annularWedge(130,130,25,92,idx*18-9,idx*18+9)} fill={mine ? `${color}${ownerId ? "88" : "42"}` : "rgba(255,255,255,.018)"} stroke={mine ? `${color}88` : "rgba(255,255,255,.06)"} strokeWidth={mine ? 2 : 1} />;
+      })}
+      {[92,79,58,49].map((r) => <circle key={r} cx="130" cy="130" r={r} fill="none" stroke="rgba(255,255,255,.09)" strokeWidth="1" />)}
+      <circle cx="130" cy="130" r="19" fill="rgba(70,150,55,.36)" stroke="rgba(112,230,94,.55)" strokeWidth="2" />
+      <text x="130" y="135" textAnchor="middle" fill="#dfffd4" fontSize="11" fontWeight="1000">BULL</text>
+    </svg>
+    <span>ZONES</span>
+    <i>⤢</i>
+  </button>;
+}
+
+function TacticalBoardModal({ state, sides, sideById, colorBySideId, activeSideId, config, selectedSector, onSelect, onClose }: any) {
+  const [filterSideId, setFilterSideId] = React.useState("all");
+  return <div className="crados-board-modal" role="dialog" aria-modal="true" aria-label="Carte tactique CRADOS" onClick={onClose}>
+    <div className="crados-board-modal__card" onClick={(event) => event.stopPropagation()}>
+      <header><div><b>CARTE DES ZONES</b><span>Couleurs = propriétaires · toucher un secteur affiche son risque</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
+      <div className="crados-board-modal__filters">
+        <button type="button" className={filterSideId === "all" ? "is-active" : ""} onClick={() => setFilterSideId("all")}>TOUT</button>
+        <button type="button" className={filterSideId === "free" ? "is-active" : ""} onClick={() => setFilterSideId("free")}><i style={{ background: "#889088" }} />LIBRES</button>
+        {sides.map((side: any) => <button key={side.id} type="button" className={filterSideId === String(side.id) ? "is-active" : ""} onClick={() => setFilterSideId(String(side.id))}><i style={{ background: colorBySideId.get(String(side.id)) || ACCENT }} />{side.name}</button>)}
+      </div>
+      <div className="crados-board-modal__body"><CradosTacticalBoard state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={onSelect} filterSideId={filterSideId} /></div>
+      <div className="crados-board-modal__legend"><span><i className="is-free" />Libre</span><span><i className="is-progress" />Contamination en cours</span><span><i className="is-owned" />Zone possédée</span><span>BULL = douche {config.rules.bullWash ? "−1 · DBULL −3" : "désactivée"}</span></div>
+    </div>
+  </div>;
+}
+
+function StatsModal({ state, activePlayer, activeSideId, activeSideStats, color, preview, config, teamMode, onClose }: any) {
+  return <div className="crados-players-modal" role="dialog" aria-modal="true" aria-label="Statistiques CRADOS" onClick={onClose}>
+    <div className="crados-players-modal__card crados-players-modal__card--stats" onClick={(e) => e.stopPropagation()}>
+      <header><div><b>STATS ESSENTIELLES</b><span>{teamMode ? "Équipe active" : "Joueur actif"}</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
+      <div className="crados-stats-modal__body"><StatsPanel state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={activeSideStats} color={color} preview={preview} config={config} teamMode={teamMode} /></div>
     </div>
   </div>;
 }
@@ -230,24 +256,23 @@ function TurnStrip({ state, profiles, profileById, colorByPlayerId, colorBySideI
   </div>;
 }
 
-function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, currentThrow, color, config, undoCount, onUndo, notice, activeSideId, activeSide, teamMode }: any) {
+function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, undoCount, onUndo, notice, activeSideId, activeSide, teamMode, onOpenBoard }: any) {
   const dirt = activeSideId ? Number(state.dirt?.[activeSideId] || 0) : 0;
-  const stats = activePlayer ? state.statsByPlayer?.[activePlayer.id] || {} : {};
+  const dirtPct = Math.max(0, Math.min(100, Math.round((dirt / Math.max(1, Number(config.rules.dirtLimit || 1))) * 100)));
+  const multiLeg = Number(config.seriesWins || 1) > 1;
   return <section className="crados-active" style={{ borderColor: `${color}68`, boxShadow: `0 15px 34px rgba(0,0,0,.34),inset 0 0 44px ${color}0c` }}>
-    <div className="crados-active__avatar"><ProfileAvatar profile={activeProfile || activePlayer} size={70} showStars={false} ringColor={color} /></div>
-    <div className="crados-active__identity">
-      <div className="crados-active__eyebrow" style={{ color }}>{state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? `${activeSide?.name || "ÉQUIPE"} · MANCHE ${state.legIndex + 1}` : `À TOI DE CRADOSSIER · MANCHE ${state.legIndex + 1}`}</div>
+    <div className="crados-active__ghost" aria-hidden><ProfileAvatar profile={activeProfile || activePlayer} size={112} showStars={false} ringColor={color} /></div>
+    <div className="crados-active__main">
+      <div className="crados-active__eyebrow" style={{ color }}>{state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "JOUEUR ACTIF"}</div>
       <div className="crados-active__name">{activePlayer?.name || "—"}</div>
-      <div className="crados-active__meta"><span>{activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "JOUEUR ACTIF"}</span><span>{stats.sectorsClaimed || 0} zones</span><span>{state.legWins?.[activeSideId] || 0} manche(s)</span></div>
-      <div className="crados-active__darts">{[0, 1, 2].map((i) => <span key={i} style={currentThrow[i] ? { borderColor: `${color}66`, color } : undefined}>{dartLabel(currentThrow[i])}</span>)}</div>
-    </div>
-    <div className="crados-active__score">
-      <div className="crados-active__score-label">CRASSE{teamMode ? " ÉQUIPE" : ""}</div>
-      <strong style={{ color: dirt >= config.rules.dirtLimit * .7 ? RED : color }}>{dirt}<small>/{config.rules.dirtLimit}</small></strong>
+      <div className="crados-active__percent" style={{ color: dirtPct >= 70 ? RED : color }}>{dirtPct}<small>%</small></div>
+      <div className="crados-active__score-label">CRASSE · {dirt}/{config.rules.dirtLimit}</div>
       <Meter value={dirt} max={config.rules.dirtLimit} accent={color} dangerAt={.72} height={5} />
+      {multiLeg ? <div className="crados-active__leg">MANCHE {state.legIndex + 1} · {state.legWins?.[activeSideId] || 0}/{config.seriesWins} gagnée(s)</div> : null}
     </div>
+    <div className="crados-active__radar"><CradosMiniRadar state={state} activeSideId={activeSideId} color={color} onOpen={onOpenBoard} /></div>
     <div className="crados-active__actions">
-      <InfoDot disableAwenaTakeover size={32} title="Règles CRADOS" color={color} glow={`${color}55`} content={<Rules config={config} />} />
+      <InfoDot disableAwenaTakeover size={28} title="Règles CRADOS" color={color} glow={`${color}55`} content={<Rules config={config} />} />
       <button type="button" onClick={onUndo} disabled={!undoCount} style={actionStyle(color, !undoCount)} title="Annuler la dernière volée">↶</button>
     </div>
     {notice ? <div className={`crados-active__notice${notice.includes("éliminé") || notice.includes("CRASSE") ? " is-danger" : notice.includes("🏆") ? " is-win" : ""}`}>{notice}</div> : null}
@@ -322,31 +347,6 @@ function PlayersModal({ state, profiles, profileById, colorByPlayerId, colorBySi
   </div>;
 }
 
-
-function QuickDock({ color, teamMode, onPlayers, onStats }: any) {
-  return <div className="crados-quick-dock" aria-label="Raccourcis CRADOS">
-    <button type="button" className="crados-quick-dock__button" onClick={onPlayers} style={{ borderColor: `${color}44`, boxShadow: `0 10px 26px ${color}12` }}>
-      <span>👥</span>
-      <b>{teamMode ? "ÉQUIPES" : "JOUEURS"}</b>
-    </button>
-    <button type="button" className="crados-quick-dock__button" onClick={onStats} style={{ borderColor: `${ACCENT}44`, boxShadow: `0 10px 26px ${ACCENT}12` }}>
-      <span>📊</span>
-      <b>STATS</b>
-    </button>
-  </div>;
-}
-
-function StatsModal({ state, activePlayer, activeSideId, activeSideStats, color, preview, config, teamMode, onClose }: any) {
-  return <div className="crados-players-modal" role="dialog" aria-modal="true" aria-label="Statistiques CRADOS" onClick={onClose}>
-    <div className="crados-players-modal__card crados-players-modal__card--stats" onClick={(e) => e.stopPropagation()}>
-      <header><div><b>STATS ESSENTIELLES</b><span>{teamMode ? "Résumé rapide de l’équipe active" : "Résumé rapide du joueur actif"}</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
-      <div className="crados-stats-modal__body">
-        <StatsPanel state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={activeSideStats} color={color} preview={preview} config={config} teamMode={teamMode} />
-      </div>
-    </div>
-  </div>;
-}
-
 export default function CradosPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
   const go = props?.go ?? props?.setTab;
@@ -363,11 +363,10 @@ export default function CradosPlay(props: any) {
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const [undo, setUndo] = React.useState<CradosState[]>([]);
   const [notice, setNotice] = React.useState("");
-  const [playTab, setPlayTab] = React.useState<PlayTab>("map");
   const [playersOpen, setPlayersOpen] = React.useState(false);
   const [statsOpen, setStatsOpen] = React.useState(false);
+  const [boardOpen, setBoardOpen] = React.useState(false);
   const [selectedSector, setSelectedSector] = React.useState(20);
-  const landscapeWide = useMediaQuery("(orientation: landscape) and (min-width: 700px)");
   const botBusy = React.useRef(false);
   const finishedRef = React.useRef(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `crados-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
@@ -487,7 +486,8 @@ export default function CradosPlay(props: any) {
     setNotice("");
     setCurrentThrow([]);
     setSelectedSector(20);
-    setPlayTab("map");
+    setBoardOpen(false);
+    setStatsOpen(false);
     setState(createCradosState(players, config));
   }
 
@@ -501,11 +501,6 @@ export default function CradosPlay(props: any) {
     } catch { return null; }
   }, [currentThrow, state, activePlayer?.id]);
 
-  React.useEffect(() => {
-    if (!landscapeWide) return;
-    setPlayTab("map");
-  }, [landscapeWide]);
-
   if (state.phase === "finished") {
     return <div className="crados-play crados-play--finished" data-mss-native-play-layout="1">
       <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={4} left={<BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} />} right={<CradosAwenaButton />} />
@@ -517,35 +512,23 @@ export default function CradosPlay(props: any) {
     <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={4} tickerFit="cover" left={<BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} />} right={<CradosAwenaButton />} />
 
     <main className="crados-play__body">
-      {!landscapeWide ? <TurnStrip state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} dirtLimit={config.rules.dirtLimit} teamMode={teamMode} sideById={sideById} /> : null}
-
       <div className="crados-play__stage">
         <div className="crados-play__left">
-          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} currentThrow={currentThrow} color={activeColor} config={config} undoCount={undo.length} onUndo={doUndo} notice={notice} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} />
-
-          <section className="crados-tabs">
-            <div className="crados-tabs__nav">
-              <button type="button" className={playTab === "map" ? "is-active" : ""} onClick={() => setPlayTab("map")} style={playTab === "map" ? { color: activeColor, borderColor: `${activeColor}66`, background: `${activeColor}10` } : undefined}>◎ CIBLE / ZONES</button>
-              {!landscapeWide ? <button type="button" className={playTab === "stats" ? "is-active" : ""} onClick={() => setPlayTab("stats")} style={playTab === "stats" ? { color: activeColor, borderColor: `${activeColor}66`, background: `${activeColor}10` } : undefined}>▥ STATS</button> : null}
-              <span>{teamMode ? "ÉQUIPES · " : ""}{config.rules.stealMode === "flip" ? "VOL" : "BLOCAGE"}</span>
-            </div>
-            <div className="crados-tabs__panel">
-              {playTab === "map" || landscapeWide ? <CradosTacticalBoard state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={setSelectedSector} /> : <StatsPanel state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} color={activeColor} preview={preview} config={config} teamMode={teamMode} />}
-            </div>
-          </section>
-
-          {!landscapeWide ? <PlayersButton state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} onClick={() => setPlayersOpen(true)} teamMode={teamMode} /> : null}
+          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} undoCount={undo.length} onUndo={doUndo} notice={notice} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} />
+          <div className="crados-play__quick-row">
+            <PlayersButton state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} onClick={() => setPlayersOpen(true)} teamMode={teamMode} />
+            <button type="button" className="crados-stats-button" onClick={() => setStatsOpen(true)}>▥<span>STATS</span></button>
+          </div>
         </div>
 
         <div className="crados-play__input">
           {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={activeColor} /> : <div className="crados-play__bot-turn" style={{ borderColor: `${activeColor}55`, boxShadow: `inset 0 0 34px ${activeColor}0d` }}><ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor={activeColor} /><div><b style={{ color: activeColor }}>{teamMode ? `${activeSide?.name || "Équipe"} · ${activePlayer?.name || "BOT"}` : activePlayer?.name}</b><span>répand sa crasse sur la cible…</span></div><i>🤢</i></div>}
         </div>
       </div>
-
-      {landscapeWide ? <QuickDock color={activeColor} teamMode={teamMode} onPlayers={() => setPlayersOpen(true)} onStats={() => setStatsOpen(true)} /> : null}
     </main>
 
     {playersOpen ? <PlayersModal state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} config={config} onClose={() => setPlayersOpen(false)} teamMode={teamMode} sideById={sideById} /> : null}
     {statsOpen ? <StatsModal state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} color={activeColor} preview={preview} config={config} teamMode={teamMode} onClose={() => setStatsOpen(false)} /> : null}
+    {boardOpen ? <TacticalBoardModal state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={setSelectedSector} onClose={() => setBoardOpen(false)} /> : null}
   </div>;
 }

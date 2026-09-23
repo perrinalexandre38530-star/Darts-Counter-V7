@@ -7,8 +7,9 @@ export default function OptionSelect(props: {
   options: any[];
   onChange: (v: any) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
-  const { value, options, onChange, disabled } = props;
+  const { value, options, onChange, disabled, compact = false } = props;
 
   const norm = (opt: any) => {
     if (opt && typeof opt === "object" && "value" in opt) return { value: opt.value, label: opt.label ?? String(opt.value) };
@@ -28,14 +29,15 @@ export default function OptionSelect(props: {
       }}
       disabled={disabled}
       style={{
-        borderRadius: 12,
+        borderRadius: compact ? 10 : 12,
         border: "1px solid rgba(255,255,255,0.12)",
         background: "rgba(0,0,0,0.25)",
         color: "#fff",
-        padding: "10px 12px",
+        padding: compact ? "7px 9px" : "10px 12px",
         fontWeight: 900,
+        fontSize: compact ? 11 : undefined,
         outline: "none",
-        minWidth: 120,
+        minWidth: compact ? 92 : 120,
         width: "100%",
         maxWidth: "100%",
       }}

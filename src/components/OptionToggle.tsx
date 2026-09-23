@@ -15,8 +15,9 @@ export default function OptionToggle(props: {
   value: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
-  const { value, onChange, disabled } = props;
+  const { value, onChange, disabled, compact = false } = props;
   const { theme } = useTheme();
   const primary = theme?.primary || "#78ffc8";
 
@@ -27,8 +28,8 @@ export default function OptionToggle(props: {
       aria-pressed={value}
       disabled={disabled}
       style={{
-        width: 52,
-        height: 30,
+        width: compact ? 44 : 52,
+        height: compact ? 26 : 30,
         borderRadius: 999,
         border: `1px solid ${value ? hexToRgba(primary, 0.62) : "rgba(255,255,255,0.12)"}`,
         background: value ? hexToRgba(primary, 0.22) : "rgba(0,0,0,0.25)",
@@ -42,9 +43,9 @@ export default function OptionToggle(props: {
         style={{
           position: "absolute",
           top: 3,
-          left: value ? 26 : 3,
-          width: 24,
-          height: 24,
+          left: value ? (compact ? 21 : 26) : 3,
+          width: compact ? 20 : 24,
+          height: compact ? 20 : 24,
           borderRadius: 999,
           background: value ? primary : "rgba(255,255,255,0.75)",
           boxShadow: value ? `0 0 12px ${hexToRgba(primary, 0.55)}` : "0 10px 20px rgba(0,0,0,0.35)",

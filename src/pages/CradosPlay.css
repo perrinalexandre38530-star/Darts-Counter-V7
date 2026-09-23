@@ -1,7 +1,10 @@
 .crados-play {
-  --crados-gap: 7px;
+  --crados-gap: 6px;
+  width: 100%;
+  max-width: 100vw;
   height: 100dvh;
-  min-height: 100dvh;
+  height: calc(var(--vh, 1vh) * 100);
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -10,166 +13,91 @@
     radial-gradient(circle at 88% 36%, rgba(217,154,87,.08), transparent 30%),
     linear-gradient(180deg,#070a08,#050706 52%,#020302);
   color: #fff;
+  box-sizing: border-box;
 }
-
-.crados-play > [data-mss-page-header="1"] { flex: 0 0 auto; }
+.crados-play, .crados-play * { box-sizing: border-box; }
+.crados-play > [data-mss-page-header="1"] { flex: 0 0 auto; min-width: 0; }
 
 .crados-play__body {
-  position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   width: min(1180px, 100%);
+  max-width: 100%;
   margin: 0 auto;
-  padding: 4px 8px max(7px, env(safe-area-inset-bottom));
-  box-sizing: border-box;
+  padding: 4px 6px max(5px, env(safe-area-inset-bottom));
+  overflow: hidden;
+}
+.crados-play__stage {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0,1fr);
   gap: var(--crados-gap);
   overflow: hidden;
 }
-
-.crados-turn-strip {
-  min-height: 0;
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  padding: 2px 2px 3px;
-  scroll-snap-type: x proximity;
-}
-.crados-turn-strip::-webkit-scrollbar { display: none; }
-.crados-turn-strip__player {
-  position: relative;
-  flex: 0 0 138px;
-  min-width: 0;
-  height: 57px;
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 14px;
-  padding: 6px 7px 6px 6px;
-  background: linear-gradient(180deg,rgba(21,25,22,.92),rgba(8,11,9,.96));
-  display: grid;
-  grid-template-columns: 17px 36px minmax(0,1fr);
-  align-items: center;
-  gap: 5px;
-  box-sizing: border-box;
-  scroll-snap-align: center;
-  transition: .18s ease;
-}
-.crados-turn-strip__player.is-active { transform: translateY(-1px); background: linear-gradient(180deg,rgba(26,34,23,.96),rgba(8,12,9,.98)); }
-.crados-turn-strip__player.is-out { opacity: .42; filter: grayscale(.45); }
-.crados-turn-strip__rank { font-size: 8px; font-weight: 1000; transform: rotate(-90deg); white-space: nowrap; }
-.crados-turn-strip__body { min-width: 0; display: grid; gap: 3px; }
-.crados-turn-strip__body b { font-size: 10.5px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crados-turn-strip__body > div { color: #97a096; font-size: 7.7px; font-weight: 850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crados-turn-strip__out { position: absolute; right: 5px; top: 4px; border-radius: 999px; padding: 1px 4px; background: rgba(255,62,77,.15); border: 1px solid rgba(255,86,98,.42); color: #ff8d95; font-size: 6.6px; font-weight: 1000; }
-
-.crados-play__stage {
-  min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0,1fr) minmax(225px,1.1fr);
-  gap: var(--crados-gap);
-  overflow: hidden;
-}
 .crados-play__left {
   min-height: 0;
+  min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(0,1fr) auto;
+  grid-template-rows: auto auto;
   gap: var(--crados-gap);
   overflow: hidden;
 }
 
+/* Carte joueur actif : même logique que Baseball/Loterie/Gros6, compacte et centrée. */
 .crados-active {
   position: relative;
-  min-height: 99px;
+  min-width: 0;
+  min-height: 116px;
   border: 1px solid rgba(183,242,71,.35);
   border-radius: 18px;
-  padding: 8px 8px 8px 9px;
+  padding: 8px 72px 9px 9px;
   background: linear-gradient(135deg,rgba(18,25,17,.97),rgba(7,10,8,.98) 68%,rgba(21,12,8,.94));
-  display: grid;
-  grid-template-columns: 70px minmax(0,1fr) 70px 38px;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
   overflow: hidden;
+  isolation: isolate;
 }
-.crados-active::before { content:""; position:absolute; inset:0; pointer-events:none; background: linear-gradient(100deg,transparent 0 55%,rgba(183,242,71,.025) 56% 72%,transparent 73%); }
-.crados-active__avatar { display: grid; place-items: center; z-index: 1; }
-.crados-active__identity { min-width: 0; z-index: 1; }
-.crados-active__eyebrow { font-size: 7.4px; font-weight: 1000; letter-spacing: .65px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crados-active__name { margin-top: 2px; font-size: clamp(16px,4.5vw,22px); font-weight: 1100; line-height: 1.03; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crados-active__meta { margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; }
-.crados-active__meta span { border-radius: 999px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.035); padding: 2px 5px; color: #a9b2aa; font-size: 6.8px; font-weight: 900; }
-.crados-active__darts { margin-top: 5px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; max-width: 168px; }
-.crados-active__darts span { min-width: 0; height: 20px; border: 1px dashed rgba(255,255,255,.12); border-radius: 7px; display: grid; place-items: center; color: #626c64; font-size: 8px; font-weight: 1000; background: rgba(0,0,0,.18); }
-.crados-active__score { z-index: 1; text-align: center; min-width: 0; }
-.crados-active__score-label { color: #879088; font-size: 7px; font-weight: 1000; letter-spacing: .65px; }
-.crados-active__score strong { display: block; margin: 3px 0 7px; font-size: 29px; line-height: .88; font-weight: 1100; }
-.crados-active__score strong small { font-size: 10px; color: #8b938c; }
-.crados-active__actions { z-index: 2; display: grid; justify-items: center; gap: 6px; }
-.crados-active__actions > button { min-height: 32px !important; width: 32px; padding: 0 !important; }
-.crados-active__notice { position: absolute; left: 86px; right: 115px; bottom: 5px; color: #dfffaa; font-size: 7px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-.crados-active__notice.is-danger { color: #ffaaa2; }
-.crados-active__notice.is-win { color: #bfffb0; }
+.crados-active::before { content:""; position:absolute; inset:0; z-index:-3; pointer-events:none; background:linear-gradient(90deg,rgba(0,0,0,.18),rgba(0,0,0,.04) 62%,rgba(0,0,0,.26)); }
+.crados-active__ghost { position:absolute; z-index:-2; left:-19px; top:-4px; width:128px; height:128px; overflow:hidden; opacity:.13; filter:saturate(.82); pointer-events:none; }
+.crados-active__ghost > * { transform:scale(1.08); transform-origin:left top; }
+.crados-active__main { position:relative; z-index:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding-left:38px; padding-right:50px; }
+.crados-active__eyebrow { max-width:100%; font-size:7px; font-weight:1000; letter-spacing:.75px; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.crados-active__name { width:100%; margin-top:1px; font-size:clamp(15px,5.2vw,22px); line-height:1.02; font-weight:1100; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.crados-active__percent { margin-top:2px; font-size:clamp(30px,10vw,48px); line-height:.9; font-weight:1100; text-shadow:0 4px 18px rgba(0,0,0,.28); }
+.crados-active__percent small { font-size:.42em; margin-left:1px; }
+.crados-active__score-label { margin-top:3px; color:#a7afa8; font-size:7.4px; font-weight:950; letter-spacing:.45px; }
+.crados-active__main > div[aria-label] { width:min(156px,70%); margin-top:4px; }
+.crados-active__leg { margin-top:4px; color:#d9e1da; font-size:6.8px; font-weight:950; letter-spacing:.35px; }
+.crados-active__radar { position:absolute; right:7px; top:50%; transform:translateY(-50%); width:64px; height:78px; z-index:3; }
+.crados-mini-radar { position:relative; width:64px; height:78px; border-radius:14px; border:1px solid rgba(255,255,255,.10); background:rgba(2,5,3,.66); padding:3px 3px 13px; color:#fff; cursor:pointer; overflow:hidden; box-shadow:inset 0 0 18px rgba(255,255,255,.02); }
+.crados-mini-radar svg { width:56px; height:56px; display:block; margin:auto; }
+.crados-mini-radar span { position:absolute; left:4px; right:4px; bottom:3px; color:#aab4ac; font-size:5.6px; font-weight:1000; letter-spacing:.5px; text-align:center; }
+.crados-mini-radar i { position:absolute; right:4px; top:3px; color:#dfffa7; font-size:8px; font-style:normal; }
+.crados-active__actions { position:absolute; top:6px; right:76px; z-index:4; display:flex; gap:4px; }
+.crados-active__actions > button { width:28px !important; min-width:28px !important; min-height:28px !important; height:28px !important; padding:0 !important; border-radius:999px !important; }
+.crados-active__notice { position:absolute; z-index:4; left:8px; right:78px; bottom:3px; color:#dfffaa; font-size:6.2px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.crados-active__notice.is-danger { color:#ffaaa2; }
+.crados-active__notice.is-win { color:#bfffb0; }
 
-.crados-tabs {
-  min-height: 0;
-  border: 1px solid rgba(255,255,255,.085);
-  border-radius: 17px;
-  overflow: hidden;
-  background: linear-gradient(180deg,rgba(13,17,14,.94),rgba(6,8,7,.97));
-  display: grid;
-  grid-template-rows: 34px minmax(0,1fr);
-}
-.crados-tabs__nav { padding: 4px 5px; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,.75fr) auto; align-items: center; gap: 5px; border-bottom: 1px solid rgba(255,255,255,.06); background: rgba(0,0,0,.22); }
-.crados-tabs__nav button { height: 26px; border-radius: 9px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.025); color: #929b94; font-size: 8px; font-weight: 1000; cursor: pointer; }
-.crados-tabs__nav > span { border-radius: 999px; padding: 4px 6px; border: 1px solid rgba(217,154,87,.24); color: #d99a57; font-size: 6.5px; font-weight: 1000; }
-.crados-tabs__panel { min-height: 0; overflow: hidden; padding: 5px 6px 6px; }
-
-.crados-tactical-board { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(160px,1fr) minmax(128px,.74fr); gap: 6px; align-items: stretch; }
-.crados-tactical-board__visual { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0,1fr); justify-items: center; }
-.crados-tactical-board__caption { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 0 2px 2px; box-sizing: border-box; }
-.crados-tactical-board__caption b { color: #dfffa6; font-size: 7.2px; font-weight: 1000; letter-spacing: .55px; }
-.crados-tactical-board__caption span { color: #717a73; font-size: 6.4px; font-weight: 800; }
-.crados-tactical-board__svg { display:block; width:auto; height:100%; max-width:100%; max-height:100%; aspect-ratio:1; overflow: visible; }
-.crados-tactical-board__detail { min-width: 0; border: 1px solid rgba(255,255,255,.08); border-radius: 13px; background: rgba(0,0,0,.26); padding: 7px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
-.crados-tactical-board__sector { font-size: clamp(18px,5vw,26px); line-height: .95; font-weight: 1100; }
-.crados-tactical-board__owner { margin-top: 3px; color: #e9eeea; font-size: 7px; line-height: 1.2; font-weight: 1000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crados-tactical-board__layers { display:flex; gap:3px; margin-top:6px; }
-.crados-tactical-board__layers span { width: 12px; height: 4px; border-radius: 99px; }
-.crados-tactical-board__risk { margin-top: 7px; font-size: 7.2px; font-weight: 1100; line-height: 1.15; }
-.crados-tactical-board__risk-short { margin-top: 2px; color: #fff; font-size: 8.4px; line-height: 1.15; font-weight: 1000; }
-.crados-tactical-board__costs { margin-top: 5px; display: grid; gap: 2px; }
-.crados-tactical-board__costs span { color: #9aa39b; font-size: 6.3px; font-weight: 850; }
-.crados-tactical-board__wash { margin-top: 6px; border-radius: 7px; border: 1px solid rgba(112,230,94,.22); background: rgba(112,230,94,.07); color: #84ee72; padding: 4px 5px; text-align:center; font-size: 6.4px; font-weight: 1000; }
-.crados-tactical-board__wash--off { color:#7d867e; border-color:rgba(255,255,255,.08); background:rgba(255,255,255,.02); }
-
-.crados-stats-panel { height: 100%; min-height:0; display:grid; grid-template-columns: minmax(0,.9fr) minmax(0,1.15fr); gap:6px; overflow:hidden; }
-.crados-stats-panel__grid { min-width:0; display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:4px; align-content:center; }
-.crados-stats-panel__grid > div { min-width:0; border-radius:9px; border:1px solid rgba(255,255,255,.07); background:rgba(255,255,255,.025); padding:5px 3px; text-align:center; }
-.crados-stats-panel__grid span { display:block; color:#788179; font-size:5.8px; font-weight:1000; }
-.crados-stats-panel__grid b { display:block; margin-top:2px; font-size:14px; line-height:1; font-weight:1100; }
-.crados-stats-panel__feed { min-height:0; overflow:hidden; display:flex; flex-direction:column; justify-content:center; gap:4px; }
-.crados-stats-panel__preview,.crados-stats-panel__visit,.crados-stats-panel__empty { border-radius:9px; border:1px solid rgba(255,255,255,.07); background:rgba(0,0,0,.20); padding:5px 6px; min-width:0; }
-.crados-stats-panel__preview { border-color:rgba(183,242,71,.28); background:rgba(183,242,71,.05); }
-.crados-stats-panel__preview.is-danger { border-color:rgba(255,108,103,.36); background:rgba(255,108,103,.06); }
-.crados-stats-panel__preview b,.crados-stats-panel__visit b { display:block; color:#b7f247; font-size:6px; font-weight:1100; }
-.crados-stats-panel__preview.is-danger b { color:#ff756f; }
-.crados-stats-panel__preview span,.crados-stats-panel__visit span,.crados-stats-panel__empty { display:block; margin-top:2px; color:#a8b0a9; font-size:6.6px; line-height:1.3; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-.crados-players-button { min-height: 49px; width:100%; border-radius:14px; border:1px solid rgba(183,242,71,.16); background-size:cover; background-position:center; padding:5px 8px; color:#fff; display:grid; grid-template-columns: 70px minmax(0,1fr) auto; align-items:center; gap:7px; cursor:pointer; overflow:hidden; box-shadow:0 8px 20px rgba(0,0,0,.25); }
-.crados-players-button__label { display:flex; align-items:center; gap:6px; }
-.crados-players-button__label span { color:#dfffa7; font-size:8px; font-weight:1100; letter-spacing:.65px; }
-.crados-players-button__label b { width:22px; height:22px; border-radius:999px; display:grid; place-items:center; border:1px solid rgba(183,242,71,.48); color:#b7f247; font-size:8px; background:rgba(0,0,0,.35); }
+.crados-play__quick-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) 66px; gap:5px; }
+.crados-players-button { min-width:0; height:44px; width:100%; border-radius:13px; border:1px solid rgba(183,242,71,.16); background-size:cover; background-position:center; padding:4px 6px; color:#fff; display:grid; grid-template-columns:58px minmax(0,1fr) 28px; align-items:center; gap:4px; cursor:pointer; overflow:hidden; box-shadow:0 6px 16px rgba(0,0,0,.23); }
+.crados-players-button__label { min-width:0; display:flex; align-items:center; gap:4px; }
+.crados-players-button__label span { color:#dfffa7; font-size:6.7px; font-weight:1100; letter-spacing:.45px; }
+.crados-players-button__label b { width:18px; height:18px; flex:0 0 18px; border-radius:999px; display:grid; place-items:center; border:1px solid rgba(183,242,71,.48); color:#b7f247; font-size:6.5px; background:rgba(0,0,0,.35); }
 .crados-players-button__avatars { min-width:0; display:flex; align-items:center; overflow:hidden; padding-left:3px; }
-.crados-players-button__avatars > div { flex:0 0 auto; width:34px; height:34px; margin-left:-5px; border-radius:999px; border:1px solid transparent; display:grid; place-items:center; background:#070a08; transition:.15s ease; }
+.crados-players-button__avatars > div { flex:0 0 auto; width:28px; height:28px; margin-left:-8px; border-radius:999px; border:1px solid transparent; display:grid; place-items:center; background:#070a08; transition:.15s ease; }
 .crados-players-button__avatars > div:first-child { margin-left:0; }
-.crados-players-button__avatars > div.is-active { transform:translateY(-1px) scale(1.05); z-index:2; }
-.crados-players-button__open { color:#d4ddd6; font-size:6.8px; font-weight:1000; white-space:nowrap; }
+.crados-players-button__avatars > div.is-active { transform:translateY(-1px) scale(1.06); z-index:2; }
+.crados-players-button__avatars :is(.profile-avatar,.profile-avatar-wrap) { transform:scale(.86); }
+.crados-players-button__open { color:#d4ddd6; font-size:10px; font-weight:1000; text-align:center; }
+.crados-stats-button { width:66px; height:44px; border-radius:13px; border:1px solid rgba(183,242,71,.20); background:linear-gradient(180deg,rgba(22,27,22,.95),rgba(7,9,8,.98)); color:#dfffa7; display:grid; place-items:center; grid-template-rows:1fr auto; padding:5px 4px; cursor:pointer; font-weight:1100; }
+.crados-stats-button > span { font-size:5.8px; letter-spacing:.5px; color:#aeb7af; }
 
-.crados-play__input { min-height:0; overflow:hidden; }
-.crados-play__input > div { height:100%; min-height:0; box-sizing:border-box; }
-.crados-play__bot-turn { height:100%; min-height:135px; border:1px solid rgba(183,242,71,.22); border-radius:18px; background:linear-gradient(180deg,rgba(16,22,15,.96),rgba(5,8,6,.98)); display:flex; align-items:center; justify-content:center; gap:14px; padding:12px; box-sizing:border-box; }
+.crados-play__input { min-height:0; min-width:0; overflow:hidden; }
+.crados-play__input > div { height:100%; min-height:0; min-width:0; max-width:100%; box-sizing:border-box; overflow:hidden; }
+.crados-play__input [data-mss-score-input-hub="1"] { min-width:0; max-width:100%; overflow:hidden; }
+.crados-play__bot-turn { height:100%; min-height:135px; border:1px solid rgba(183,242,71,.22); border-radius:18px; background:linear-gradient(180deg,rgba(16,22,15,.96),rgba(5,8,6,.98)); display:flex; align-items:center; justify-content:center; gap:14px; padding:12px; }
 .crados-play__bot-turn div { min-width:0; display:grid; gap:3px; }
 .crados-play__bot-turn b { font-size:16px; font-weight:1100; }
 .crados-play__bot-turn span { color:#8d978f; font-size:9px; font-weight:850; }
@@ -180,108 +108,128 @@
 .crados-play__awena img { width:100%; height:100%; object-fit:cover; display:block; }
 .crados-play__awena > i { position:absolute; right:-2px; bottom:-2px; width:17px; height:17px; border-radius:50%; display:grid; place-items:center; background:#11172a; border:1px solid rgba(255,255,255,.18); color:#fff; font-size:8px; font-style:normal; box-shadow:0 4px 10px rgba(0,0,0,.45); }
 
-.crados-players-modal { position:fixed; inset:0; z-index:10050; background:rgba(0,0,0,.68); backdrop-filter:blur(7px); display:grid; place-items:center; padding:12px; }
-.crados-players-modal__card { width:min(660px,100%); max-height:min(82dvh,720px); border-radius:20px; border:1px solid rgba(183,242,71,.22); background:linear-gradient(180deg,rgba(17,23,16,.98),rgba(5,8,6,.995)); box-shadow:0 28px 90px rgba(0,0,0,.76); overflow:hidden; display:grid; grid-template-rows:auto minmax(0,1fr); }
-.crados-players-modal__card > header { min-height:54px; padding:9px 11px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.08); background:linear-gradient(90deg,rgba(183,242,71,.08),transparent 42%); }
-.crados-players-modal__card > header div { display:grid; gap:2px; }
-.crados-players-modal__card > header b { color:#dfffa7; font-size:13px; font-weight:1100; letter-spacing:.75px; }
-.crados-players-modal__card > header span { color:#838d85; font-size:8px; font-weight:800; }
+/* Carte tactique complète : uniquement dans le panneau flottant. */
+.crados-board-modal { position:fixed; inset:0; z-index:10070; background:rgba(0,0,0,.78); backdrop-filter:blur(8px); display:grid; place-items:center; padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom)); }
+.crados-board-modal__card { width:min(920px,100%); height:min(92dvh,760px); min-height:0; border-radius:20px; border:1px solid rgba(183,242,71,.25); background:linear-gradient(180deg,rgba(15,20,15,.99),rgba(4,7,5,.995)); box-shadow:0 28px 90px rgba(0,0,0,.78); overflow:hidden; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; }
+.crados-board-modal__card > header { min-height:50px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.07); }
+.crados-board-modal__card > header div { min-width:0; display:grid; gap:2px; }
+.crados-board-modal__card > header b { color:#dfffa7; font-size:12px; font-weight:1100; letter-spacing:.75px; }
+.crados-board-modal__card > header span { color:#89938b; font-size:7px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.crados-board-modal__card > header button { width:34px; height:34px; flex:0 0 34px; border-radius:999px; border:1px solid rgba(255,255,255,.13); background:rgba(0,0,0,.28); color:#fff; font-size:20px; cursor:pointer; }
+.crados-board-modal__filters { display:flex; flex-wrap:wrap; gap:5px; overflow:hidden; padding:7px 8px; border-bottom:1px solid rgba(255,255,255,.06); }
+.crados-board-modal__filters button { flex:0 0 auto; height:30px; border-radius:999px; border:1px solid rgba(255,255,255,.09); background:rgba(255,255,255,.025); color:#aab2ac; padding:0 9px; font-size:7px; font-weight:1000; display:flex; align-items:center; gap:5px; cursor:pointer; }
+.crados-board-modal__filters button.is-active { border-color:rgba(183,242,71,.5); color:#e7ffc0; background:rgba(183,242,71,.09); }
+.crados-board-modal__filters i { width:8px; height:8px; border-radius:999px; box-shadow:0 0 8px rgba(255,255,255,.2); }
+.crados-board-modal__body { min-height:0; overflow:hidden; padding:7px; }
+.crados-board-modal__legend { display:flex; gap:8px 12px; flex-wrap:wrap; align-items:center; padding:7px 9px; border-top:1px solid rgba(255,255,255,.06); color:#8f9991; font-size:6.8px; font-weight:850; }
+.crados-board-modal__legend span { display:flex; align-items:center; gap:4px; }
+.crados-board-modal__legend i { width:9px; height:9px; border-radius:3px; border:1px solid rgba(255,255,255,.13); }
+.crados-board-modal__legend .is-free { background:rgba(255,255,255,.04); }
+.crados-board-modal__legend .is-progress { background:rgba(183,242,71,.22); }
+.crados-board-modal__legend .is-owned { background:rgba(183,242,71,.58); }
+
+.crados-tactical-board { height:100%; min-height:0; min-width:0; display:grid; grid-template-columns:minmax(240px,1fr) minmax(150px,.46fr); gap:8px; }
+.crados-tactical-board__visual { min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); justify-items:center; }
+.crados-tactical-board__caption { width:100%; display:flex; align-items:baseline; justify-content:space-between; gap:6px; padding:0 2px 3px; }
+.crados-tactical-board__caption b { color:#dfffa6; font-size:8px; font-weight:1000; letter-spacing:.55px; }
+.crados-tactical-board__caption span { color:#717a73; font-size:7px; font-weight:800; }
+.crados-tactical-board__svg { display:block; width:auto; height:100%; max-width:100%; max-height:100%; aspect-ratio:1; overflow:visible; }
+.crados-tactical-board__detail { min-width:0; border:1px solid rgba(255,255,255,.08); border-radius:13px; background:rgba(0,0,0,.26); padding:9px; display:flex; flex-direction:column; justify-content:center; overflow:hidden; }
+.crados-tactical-board__sector { font-size:clamp(22px,5vw,34px); line-height:.95; font-weight:1100; }
+.crados-tactical-board__owner { margin-top:4px; color:#e9eeea; font-size:8px; line-height:1.2; font-weight:1000; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.crados-tactical-board__layers { display:flex; gap:3px; margin-top:8px; }
+.crados-tactical-board__layers span { width:14px; height:5px; border-radius:99px; }
+.crados-tactical-board__risk { margin-top:9px; font-size:8px; font-weight:1100; line-height:1.15; }
+.crados-tactical-board__risk-short { margin-top:3px; color:#fff; font-size:9px; line-height:1.15; font-weight:1000; }
+.crados-tactical-board__costs { margin-top:7px; display:grid; gap:3px; }
+.crados-tactical-board__costs span { color:#9aa39b; font-size:7px; font-weight:850; }
+.crados-tactical-board__wash { margin-top:8px; border-radius:7px; border:1px solid rgba(112,230,94,.22); background:rgba(112,230,94,.07); color:#84ee72; padding:5px; text-align:center; font-size:7px; font-weight:1000; }
+.crados-tactical-board__wash--off { color:#7d867e; border-color:rgba(255,255,255,.08); background:rgba(255,255,255,.02); }
+
+.crados-stats-panel { height:100%; min-height:0; display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.15fr); gap:7px; overflow:hidden; }
+.crados-stats-panel__grid { min-width:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; align-content:center; }
+.crados-stats-panel__grid > div { min-width:0; border-radius:9px; border:1px solid rgba(255,255,255,.07); background:rgba(255,255,255,.025); padding:7px 4px; text-align:center; }
+.crados-stats-panel__grid span { display:block; color:#788179; font-size:7px; font-weight:1000; }
+.crados-stats-panel__grid b { display:block; margin-top:3px; font-size:17px; line-height:1; font-weight:1100; }
+.crados-stats-panel__feed { min-height:0; overflow:auto; display:flex; flex-direction:column; justify-content:center; gap:5px; }
+.crados-stats-panel__preview,.crados-stats-panel__visit,.crados-stats-panel__empty { border-radius:9px; border:1px solid rgba(255,255,255,.07); background:rgba(0,0,0,.20); padding:7px; min-width:0; }
+.crados-stats-panel__preview { border-color:rgba(183,242,71,.28); background:rgba(183,242,71,.05); }
+.crados-stats-panel__preview.is-danger { border-color:rgba(255,108,103,.36); background:rgba(255,108,103,.06); }
+.crados-stats-panel__preview b,.crados-stats-panel__visit b { display:block; color:#b7f247; font-size:7px; font-weight:1100; }
+.crados-stats-panel__preview.is-danger b { color:#ff756f; }
+.crados-stats-panel__preview span,.crados-stats-panel__visit span,.crados-stats-panel__empty { display:block; margin-top:2px; color:#a8b0a9; font-size:8px; line-height:1.35; font-weight:800; }
+
+.crados-players-modal { position:fixed; inset:0; z-index:10050; background:rgba(0,0,0,.72); backdrop-filter:blur(7px); display:grid; place-items:center; padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom)); }
+.crados-players-modal__card { width:min(660px,100%); max-height:min(88dvh,720px); border-radius:20px; border:1px solid rgba(183,242,71,.22); background:linear-gradient(180deg,rgba(17,23,16,.98),rgba(5,8,6,.995)); box-shadow:0 28px 90px rgba(0,0,0,.76); overflow:hidden; display:grid; grid-template-rows:auto minmax(0,1fr); }
+.crados-players-modal__card--stats { width:min(760px,100%); }
+.crados-players-modal__card > header { min-height:50px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.08); background:linear-gradient(90deg,rgba(183,242,71,.08),transparent 42%); }
+.crados-players-modal__card > header div { min-width:0; display:grid; gap:2px; }
+.crados-players-modal__card > header b { color:#dfffa7; font-size:12px; font-weight:1100; letter-spacing:.75px; }
+.crados-players-modal__card > header span { color:#838d85; font-size:7px; font-weight:800; }
 .crados-players-modal__card > header button { width:34px; height:34px; border-radius:999px; border:1px solid rgba(255,255,255,.13); background:rgba(0,0,0,.28); color:#fff; font-size:20px; cursor:pointer; }
-.crados-players-modal__list { min-height:0; overflow-y:auto; padding:8px; display:grid; gap:6px; }
-.crados-players-modal__row { min-width:0; min-height:62px; border:1px solid rgba(255,255,255,.09); border-radius:14px; background:rgba(255,255,255,.025); padding:6px 7px; display:grid; grid-template-columns:30px 43px minmax(90px,1fr) minmax(150px,.9fr); align-items:center; gap:7px; }
+.crados-players-modal__list { min-height:0; overflow-y:auto; padding:7px; display:grid; gap:5px; }
+.crados-players-modal__row { min-width:0; min-height:58px; border:1px solid rgba(255,255,255,.09); border-radius:13px; background:rgba(255,255,255,.025); padding:5px 6px; display:grid; grid-template-columns:26px 40px minmax(80px,1fr) minmax(140px,.9fr); align-items:center; gap:6px; }
 .crados-players-modal__row.is-active { background:linear-gradient(90deg,rgba(183,242,71,.06),rgba(255,255,255,.02)); }
 .crados-players-modal__row.is-out { opacity:.48; filter:grayscale(.5); }
-.crados-players-modal__order { font-size:11px; font-weight:1100; text-align:center; }
+.crados-players-modal__order { font-size:10px; font-weight:1100; text-align:center; }
 .crados-players-modal__identity { min-width:0; display:grid; gap:3px; }
-.crados-players-modal__identity b { font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.crados-players-modal__identity > span { color:#808981; font-size:6.7px; font-weight:900; }
-.crados-players-modal__numbers { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; }
+.crados-players-modal__identity b { font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.crados-players-modal__identity > span { color:#808981; font-size:6.3px; font-weight:900; }
+.crados-players-modal__numbers { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:3px; }
 .crados-players-modal__numbers > div { min-width:0; border-radius:8px; border:1px solid rgba(255,255,255,.06); background:rgba(0,0,0,.20); padding:4px 2px; text-align:center; }
-.crados-players-modal__numbers span { display:block; color:#737d75; font-size:5.6px; font-weight:1000; }
-.crados-players-modal__numbers b { display:block; margin-top:2px; font-size:10px; font-weight:1100; }
-
-
-.crados-quick-dock { display:none; }
-.crados-quick-dock__button { min-width:0; height:42px; border-radius:14px; border:1px solid rgba(255,255,255,.10); background:linear-gradient(180deg,rgba(19,24,20,.96),rgba(8,10,9,.98)); color:#fff; display:flex; align-items:center; gap:7px; padding:0 12px; font-size:10px; font-weight:1000; cursor:pointer; }
-.crados-quick-dock__button span { font-size:15px; line-height:1; }
-.crados-quick-dock__button b { font-size:9px; letter-spacing:.8px; }
-.crados-players-modal__card--stats { width:min(760px,100%); }
-.crados-stats-modal__body { min-height:0; overflow:auto; padding:10px; }
-.crados-stats-modal__body .crados-stats-panel { min-height: 300px; height:auto; }
-.crados-stats-modal__body .crados-stats-panel__grid span { font-size:8px; }
-.crados-stats-modal__body .crados-stats-panel__grid b { font-size:20px; }
-.crados-stats-modal__body .crados-stats-panel__preview b,.crados-stats-modal__body .crados-stats-panel__visit b { font-size:8px; }
-.crados-stats-modal__body .crados-stats-panel__preview span,.crados-stats-modal__body .crados-stats-panel__visit span,.crados-stats-modal__body .crados-stats-panel__empty { font-size:9px; white-space:normal; }
+.crados-players-modal__numbers span { display:block; color:#737d75; font-size:5.3px; font-weight:1000; }
+.crados-players-modal__numbers b { display:block; margin-top:2px; font-size:9px; font-weight:1100; }
+.crados-stats-modal__body { min-height:0; overflow:auto; padding:9px; }
+.crados-stats-modal__body .crados-stats-panel { min-height:280px; height:auto; }
 
 .crados-play--finished { overflow:auto; }
-.crados-play__finished-wrap { width:min(920px,100%); margin:0 auto; padding:8px 10px 18px; box-sizing:border-box; }
+.crados-play__finished-wrap { width:min(920px,100%); margin:0 auto; padding:8px 10px 18px; }
+
+/* Téléphones très étroits : aucune largeur ne peut dépasser le viewport. */
+@media (max-width: 430px) {
+  .crados-play__body { padding-left:4px; padding-right:4px; }
+  .crados-active { min-height:108px; padding-left:6px; padding-right:65px; }
+  .crados-active__ghost { left:-25px; opacity:.11; }
+  .crados-active__main { padding-left:34px; padding-right:43px; }
+  .crados-active__radar { right:5px; width:59px; }
+  .crados-mini-radar { width:59px; }
+  .crados-mini-radar svg { width:51px; height:51px; }
+  .crados-active__actions { right:68px; }
+  .crados-players-button { grid-template-columns:54px minmax(0,1fr) 22px; }
+  .crados-players-button__avatars > div { width:26px; height:26px; margin-left:-9px; }
+  .crados-stats-button { width:62px; }
+  .crados-play__quick-row { grid-template-columns:minmax(0,1fr) 62px; }
+  .crados-players-modal__row { grid-template-columns:22px 36px minmax(70px,1fr); }
+  .crados-players-modal__numbers { grid-column:1 / -1; }
+  .crados-tactical-board { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; }
+  .crados-tactical-board__detail { display:grid; grid-template-columns:auto 1fr; gap:3px 8px; align-items:center; padding:6px 8px; }
+  .crados-tactical-board__sector { grid-row:1 / 4; font-size:20px; }
+  .crados-tactical-board__layers,.crados-tactical-board__costs,.crados-tactical-board__wash { display:none; }
+  .crados-tactical-board__risk,.crados-tactical-board__risk-short,.crados-tactical-board__owner { margin:0; }
+}
 
 @media (orientation: landscape) and (min-width: 700px) {
-  .crados-play { --crados-gap: 9px; }
-  .crados-play__body { padding-left:10px; padding-right:10px; grid-template-rows:minmax(0,1fr); }
-  .crados-play__stage { grid-template-columns: minmax(318px,.76fr) minmax(520px,1.24fr); grid-template-rows:minmax(0,1fr); gap:10px; }
-  .crados-play__left { grid-template-rows:auto minmax(0,1fr); }
-  .crados-active { min-height:92px; grid-template-columns:62px minmax(0,1fr) 66px 38px; padding:7px 8px; }
-  .crados-active__avatar :is(.profile-avatar,.profile-avatar-wrap) { transform:scale(.88); }
-  .crados-active__eyebrow { font-size:6.8px; }
-  .crados-active__name { font-size:20px; }
-  .crados-active__meta { margin-top:4px; gap:4px; }
-  .crados-active__meta span { font-size:6.2px; padding:2px 4px; }
-  .crados-active__meta span:nth-child(3) { display:none; }
-  .crados-active__darts { margin-top:4px; max-width:150px; }
-  .crados-active__darts span { height:18px; font-size:7px; }
-  .crados-active__score strong { font-size:26px; margin:2px 0 5px; }
-  .crados-active__notice { display:none; }
-  .crados-tabs { border-radius:18px; }
-  .crados-tabs__nav { grid-template-columns:minmax(0,1fr) auto; }
-  .crados-tabs__nav button { max-width:190px; }
-  .crados-tabs__panel { padding:6px 7px 7px; }
-  .crados-tactical-board { grid-template-columns:minmax(200px,1fr) minmax(122px,.52fr); gap:8px; }
-  .crados-tactical-board__detail { padding:6px; justify-content:flex-start; }
-  .crados-tactical-board__sector { font-size:22px; }
-  .crados-tactical-board__owner { font-size:6.4px; }
-  .crados-tactical-board__risk { margin-top:6px; font-size:6.7px; }
-  .crados-tactical-board__risk-short { font-size:7.5px; }
-  .crados-tactical-board__costs { display:none; }
-  .crados-tactical-board__wash { margin-top:8px; font-size:6px; }
+  .crados-play { --crados-gap:8px; }
+  .crados-play__body { padding:5px 8px max(5px,env(safe-area-inset-bottom)); }
+  .crados-play__stage { grid-template-columns:minmax(320px,.72fr) minmax(520px,1.28fr); grid-template-rows:minmax(0,1fr); gap:9px; }
+  .crados-play__left { align-content:start; }
+  .crados-active { min-height:122px; }
+  .crados-active__main { padding-left:52px; padding-right:54px; }
+  .crados-active__percent { font-size:44px; }
+  .crados-play__quick-row { grid-template-columns:minmax(0,1fr) 72px; }
+  .crados-stats-button { width:72px; }
   .crados-play__input { height:100%; }
-  .crados-play__input > div { height:100%; }
-  .crados-turn-strip, .crados-players-button { display:none; }
-  .crados-quick-dock { position:absolute; left:10px; bottom:10px; z-index:7; display:flex; gap:8px; }
 }
-
 
 @media (max-height: 720px) and (orientation: portrait) {
-  .crados-play__body { --crados-gap:5px; padding-top:2px; }
-  .crados-turn-strip__player { height:52px; flex-basis:132px; padding-top:4px; padding-bottom:4px; }
-  .crados-turn-strip__player :is(.profile-avatar,.profile-avatar-wrap) { transform:scale(.92); }
-  .crados-play__stage { grid-template-rows:minmax(0,1fr) minmax(205px,.94fr); }
-  .crados-active { min-height:88px; grid-template-columns:58px minmax(0,1fr) 62px 34px; padding:5px 6px; }
-  .crados-active__avatar { transform:scale(.80); }
+  .crados-play { --crados-gap:4px; }
+  .crados-play__body { padding-top:2px; padding-bottom:3px; }
+  .crados-active { min-height:98px; padding-top:5px; padding-bottom:6px; }
+  .crados-active__ghost { top:-10px; }
   .crados-active__name { font-size:16px; }
-  .crados-active__meta { margin-top:3px; }
-  .crados-active__meta span { font-size:5.8px; padding:1px 4px; }
-  .crados-active__darts { margin-top:3px; }
-  .crados-active__darts span { height:16px; font-size:6.8px; }
-  .crados-active__score strong { font-size:24px; margin:2px 0 5px; }
+  .crados-active__percent { font-size:31px; }
+  .crados-active__leg { font-size:5.8px; }
   .crados-active__notice { display:none; }
-  .crados-tabs { grid-template-rows:30px minmax(0,1fr); }
-  .crados-tabs__nav { padding:2px 4px; }
-  .crados-tabs__nav button { height:24px; }
-  .crados-players-button { min-height:43px; }
-}
-
-@media (max-width: 420px) {
-  .crados-active { grid-template-columns:60px minmax(0,1fr) 60px 34px; gap:5px; }
-  .crados-active__avatar { transform:scale(.86); }
-  .crados-active__meta span:nth-child(3) { display:none; }
-  .crados-active__notice { left:72px; right:102px; }
-  .crados-tactical-board { grid-template-columns:minmax(150px,1fr) 126px; gap:4px; }
-  .crados-tactical-board__detail { padding:5px; }
-  .crados-tactical-board__caption span { display:none; }
-  .crados-players-button { grid-template-columns:60px minmax(0,1fr) auto; }
-  .crados-players-button__open { font-size:5.8px; }
-  .crados-players-modal__row { grid-template-columns:24px 38px minmax(74px,1fr); }
-  .crados-players-modal__row > :nth-child(2) { transform:scale(.88); }
-  .crados-players-modal__numbers { grid-column:1 / -1; grid-template-columns:repeat(4,1fr); }
+  .crados-play__quick-row,.crados-players-button,.crados-stats-button { height:39px; }
+  .crados-players-button { min-height:39px; }
 }
