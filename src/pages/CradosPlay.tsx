@@ -5,6 +5,7 @@ import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import tickerCrados from "../assets/tickers/ticker_crados.webp";
 import cradosDirtBar from "../assets/crados/crados_dirt_progress.png";
+import cradosRadarBoard from "../assets/crados/crados_radar_board.png";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
@@ -30,6 +31,8 @@ const BROWN = "#d99a57";
 const RED = "#ff6c67";
 const PLAYER_COLORS = ["#67d7ff", "#ff74c8", "#ffc857", "#79ef9d", "#b58cff", "#ff8a65", "#56e0d0", "#f3f56a", "#8fb8ff", "#fa8fb1"];
 const DARTBOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+const CRADOS_BOARD = { cx: 130, cy: 130, outer: 114, wedgeInner: 18, doubleInner: 100, trebleOuter: 66.5, trebleInner: 55.5, outerSingleMid: 83, innerSingleMid: 39, bullOuter: 17, bullInner: 6.2, label: 108 };
+const CRADOS_BOARD_IMAGE = { x: CRADOS_BOARD.cx - CRADOS_BOARD.outer, y: CRADOS_BOARD.cy - CRADOS_BOARD.outer, size: CRADOS_BOARD.outer * 2 };
 const TOUCH_COLORS: Record<string, string> = { S: "#67d7ff", D: "#6fd6ff", T: "#d17bff", BULL: "#50e68c", DBULL: "#2bf08b", MISS: "#ffb54d" };
 
 type PlayTab = "map" | "stats";
@@ -163,6 +166,9 @@ function annularWedge(cx: number, cy: number, inner: number, outer: number, star
   const p4 = polar(cx, cy, inner, start);
   return `M ${p1.x} ${p1.y} A ${outer} ${outer} 0 0 1 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${inner} ${inner} 0 0 0 ${p4.x} ${p4.y} Z`;
 }
+function boardSectorPath(start: number, end: number) {
+  return annularWedge(CRADOS_BOARD.cx, CRADOS_BOARD.cy, CRADOS_BOARD.wedgeInner, CRADOS_BOARD.outer, start, end);
+}
 
 function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileBySideId, activeSideId, config, selectedSector, onSelect, filterSideId = "all" }: any) {
   const sectorKey = String(selectedSector) === "bull" ? "bull" : Number(selectedSector || 20);
@@ -187,48 +193,54 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
       <div className="crados-tactical-board__caption"><b>CARTE TACTIQUE</b><span>Touche un secteur pour lire son risque</span></div>
       <svg viewBox="0 0 260 260" className="crados-tactical-board__svg" role="img" aria-label="Carte tactique de la cible CRADOS">
         <defs>
-          <radialGradient id="cradosBoardBg" cx="50%" cy="48%">
-            <stop offset="0%" stopColor="#172112" />
-            <stop offset="70%" stopColor="#090d09" />
-            <stop offset="100%" stopColor="#020403" />
+          <clipPath id="cradosBoardClip"><circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} /></clipPath>
+          <radialGradient id="cradosBoardShade" cx="50%" cy="48%">
+            <stop offset="0%" stopColor="rgba(255,255,255,.06)" />
+            <stop offset="72%" stopColor="rgba(8,11,8,.10)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,.36)" />
           </radialGradient>
           <filter id="cradosGlow"><feGaussianBlur stdDeviation="2.2" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
-        <circle cx="130" cy="130" r="114" fill="url(#cradosBoardBg)" stroke="rgba(183,242,71,.20)" strokeWidth="2" />
-        {DARTBOARD_ORDER.map((n, idx) => {
-          const start = idx * 18 - 9;
-          const end = idx * 18 + 9;
-          const sec = state.sectors?.[n] || {};
-          const ownerId = sec.ownerId ? String(sec.ownerId) : "";
-          const claimantId = !ownerId && sec.claimantId ? String(sec.claimantId) : "";
-          const color = ownerId ? colorBySideId.get(ownerId) : claimantId ? colorBySideId.get(claimantId) : "#ffffff";
-          const owned = Boolean(ownerId);
-          const claiming = Boolean(claimantId);
-          const selectedNow = Number(selectedSector) === Number(n);
-          const visibleForFilter = filterSideId === "all" || (filterSideId === "free" ? (!ownerId && !claimantId) : (ownerId === String(filterSideId) || claimantId === String(filterSideId)));
-          const labelPos = polar(130, 130, 103, idx * 18);
-          const layerPos = polar(130, 130, 58, idx * 18);
-          const owner = ownerId ? sideById.get(ownerId) : claimantId ? sideById.get(claimantId) : null;
-          return <g key={n} onClick={() => onSelect(n)} style={{ cursor: "pointer" }}>
-            <path d={annularWedge(130, 130, 22, 92, start, end)} fill="rgba(255,255,255,.018)" stroke={selectedNow ? color : owned || claiming ? `${color}82` : "rgba(255,255,255,.08)"} strokeWidth={selectedNow ? 2.8 : 1} filter={selectedNow ? "url(#cradosGlow)" : undefined} opacity={visibleForFilter ? 1 : .12} />
-            {Array.from({ length: layersToOwn }, (_, layerIndex) => {
-              const inner = 24 + ((92 - 24) / layersToOwn) * layerIndex;
-              const outer = 24 + ((92 - 24) / layersToOwn) * (layerIndex + 1) - 1.5;
-              const activeLayer = Number(sec.layers || 0) > layerIndex;
-              return <path key={`${n}-${layerIndex}`} d={annularWedge(130, 130, inner, outer, start + .4, end - .4)} fill={activeLayer ? `${color}${owned ? "78" : "32"}` : "rgba(255,255,255,.012)"} stroke={activeLayer ? `${color}8d` : "rgba(255,255,255,.03)"} strokeWidth={activeLayer ? 1.2 : .7} opacity={visibleForFilter ? 1 : .12} />;
-            })}
-            <text x={labelPos.x} y={labelPos.y + 3} textAnchor="middle" fill={selectedNow || owned || claiming ? color : "#dce3df"} fontSize="10" fontWeight="900" opacity={visibleForFilter ? 1 : .24}>{n}</text>
-            {(owned || claiming) ? <text x={layerPos.x} y={layerPos.y + 2.5} textAnchor="middle" fill={color} fontSize="6.3" fontWeight="900">{Number(sec.layers || 0)}/{config.rules.layersToOwn}</text> : null}
-            <title>{`${n} · ${owned ? owner?.name || "CRADO" : claiming ? `contamination ${owner?.name || ""}` : "libre"} · ${Number(sec.layers || 0)}/${config.rules.layersToOwn} couches`}</title>
-          </g>;
-        })}
-        {[92, 79, 58, 49].map((r, i) => <circle key={r} cx="130" cy="130" r={r} fill="none" stroke={i === 1 || i === 3 ? "rgba(183,242,71,.19)" : "rgba(255,255,255,.11)"} strokeWidth={i === 1 || i === 3 ? 2 : 1} pointerEvents="none" />)}
-        <g onClick={() => onSelect("bull")} style={{ cursor: "pointer" }}>
-          <circle cx="130" cy="130" r="20" fill={String(selectedSector) === "bull" ? "rgba(70,150,55,.72)" : "rgba(42,105,32,.58)"} stroke={`${GREEN}77`} strokeWidth={String(selectedSector) === "bull" ? 3 : 2} filter={String(selectedSector) === "bull" ? "url(#cradosGlow)" : undefined} />
-          <circle cx="130" cy="130" r="8" fill="#4a9a35" stroke="#b9ff9d" strokeWidth="1.5" />
-          <text x="130" y="128" textAnchor="middle" fill="#ddffd0" fontSize="5.8" fontWeight="1000">BULL</text>
-          <text x="130" y="136" textAnchor="middle" fill={GREEN} fontSize="5.4" fontWeight="900">DOUCHE</text>
+        <g clipPath="url(#cradosBoardClip)">
+          <image href={cradosRadarBoard} x={CRADOS_BOARD_IMAGE.x} y={CRADOS_BOARD_IMAGE.y} width={CRADOS_BOARD_IMAGE.size} height={CRADOS_BOARD_IMAGE.size} preserveAspectRatio="xMidYMid meet" />
+          <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} fill="url(#cradosBoardShade)" />
+          {DARTBOARD_ORDER.map((n, idx) => {
+            const start = idx * 18 - 9;
+            const end = idx * 18 + 9;
+            const sec = state.sectors?.[n] || {};
+            const ownerId = sec.ownerId ? String(sec.ownerId) : "";
+            const claimantId = !ownerId && sec.claimantId ? String(sec.claimantId) : "";
+            const color = ownerId ? colorBySideId.get(ownerId) : claimantId ? colorBySideId.get(claimantId) : "#ffffff";
+            const owned = Boolean(ownerId);
+            const claiming = Boolean(claimantId);
+            const selectedNow = Number(selectedSector) === Number(n);
+            const visibleForFilter = filterSideId === "all" || (filterSideId === "free" ? (!ownerId && !claimantId) : (ownerId === String(filterSideId) || claimantId === String(filterSideId)));
+            const labelPos = polar(CRADOS_BOARD.cx, CRADOS_BOARD.cy, CRADOS_BOARD.label, idx * 18);
+            const layerPos = polar(CRADOS_BOARD.cx, CRADOS_BOARD.cy, CRADOS_BOARD.outerSingleMid, idx * 18);
+            const owner = ownerId ? sideById.get(ownerId) : claimantId ? sideById.get(claimantId) : null;
+            return <g key={n} onClick={() => onSelect(n)} style={{ cursor: "pointer" }} opacity={visibleForFilter ? 1 : .12}>
+              <path d={boardSectorPath(start, end)} fill={selectedNow ? `${color}24` : owned ? `${color}20` : claiming ? `${color}14` : "rgba(255,255,255,.02)"} stroke={selectedNow ? color : owned || claiming ? `${color}9a` : "rgba(255,255,255,.03)"} strokeWidth={selectedNow ? 2.6 : owned || claiming ? 1.1 : .65} filter={selectedNow ? "url(#cradosGlow)" : undefined} />
+              {Array.from({ length: layersToOwn }, (_, layerIndex) => {
+                const t = layerIndex / layersToOwn;
+                const t2 = (layerIndex + 1) / layersToOwn;
+                const inner = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.outer - CRADOS_BOARD.wedgeInner) * t;
+                const outer = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.outer - CRADOS_BOARD.wedgeInner) * t2 - 1.6;
+                const activeLayer = Number(sec.layers || 0) > layerIndex;
+                return <path key={`${n}-${layerIndex}`} d={annularWedge(CRADOS_BOARD.cx, CRADOS_BOARD.cy, inner, outer, start + .45, end - .45)} fill={activeLayer ? `${color}${owned ? "7a" : "38"}` : "rgba(255,255,255,.006)"} stroke={activeLayer ? `${color}8d` : "rgba(255,255,255,.025)"} strokeWidth={activeLayer ? 1.1 : .55} />;
+              })}
+              <text x={labelPos.x} y={labelPos.y + 3} textAnchor="middle" fill={selectedNow || owned || claiming ? color : "#f4efe5"} fontSize="10" fontWeight="1000">{n}</text>
+              {(owned || claiming) ? <text x={layerPos.x} y={layerPos.y + 2.5} textAnchor="middle" fill={color} fontSize="6.4" fontWeight="1000">{Number(sec.layers || 0)}/{config.rules.layersToOwn}</text> : null}
+              <title>{`${n} · ${owned ? owner?.name || "CRADO" : claiming ? `contamination ${owner?.name || ""}` : "libre"} · ${Number(sec.layers || 0)}/${config.rules.layersToOwn} couches`}</title>
+            </g>;
+          })}
+          <g onClick={() => onSelect("bull")} style={{ cursor: "pointer" }}>
+            <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullOuter} fill={String(selectedSector) === "bull" ? "rgba(122,255,86,.22)" : "rgba(20,40,18,.05)"} stroke={String(selectedSector) === "bull" ? `${GREEN}d8` : `${GREEN}66`} strokeWidth={String(selectedSector) === "bull" ? 2.8 : 1.6} filter={String(selectedSector) === "bull" ? "url(#cradosGlow)" : undefined} />
+            <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullInner} fill={String(selectedSector) === "bull" ? "rgba(255,82,82,.30)" : "rgba(255,255,255,.04)"} stroke="rgba(255,228,228,.6)" strokeWidth="1" />
+            <text x="130" y="129" textAnchor="middle" fill="#f1ffe7" fontSize="5.8" fontWeight="1000">BULL</text>
+            <text x="130" y="136" textAnchor="middle" fill={GREEN} fontSize="5.2" fontWeight="1000">DOUCHE</text>
+          </g>
         </g>
+        <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} fill="none" stroke="rgba(183,242,71,.17)" strokeWidth="1.8" />
       </svg>
     </div>
 
@@ -258,17 +270,23 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
 function CradosMiniRadar({ state, activeSideId, color, onOpen }: any) {
   return <button type="button" className="crados-mini-radar" onClick={onOpen} title="Ouvrir la carte tactique" aria-label="Ouvrir la carte tactique des zones">
     <svg viewBox="0 0 260 260" role="img" aria-label="Mini radar des zones possédées">
-      <circle cx="130" cy="130" r="113" fill="rgba(2,5,3,.86)" stroke={`${color}55`} strokeWidth="3" />
-      {DARTBOARD_ORDER.map((n, idx) => {
-        const sec = state.sectors?.[n] || {};
-        const ownerId = sec.ownerId ? String(sec.ownerId) : "";
-        const claimantId = !ownerId && sec.claimantId ? String(sec.claimantId) : "";
-        const mine = ownerId === String(activeSideId) || claimantId === String(activeSideId);
-        return <path key={n} d={annularWedge(130,130,25,92,idx*18-9,idx*18+9)} fill={mine ? `${color}${ownerId ? "88" : "42"}` : "rgba(255,255,255,.018)"} stroke={mine ? `${color}88` : "rgba(255,255,255,.06)"} strokeWidth={mine ? 2 : 1} />;
-      })}
-      {[92,79,58,49].map((r) => <circle key={r} cx="130" cy="130" r={r} fill="none" stroke="rgba(255,255,255,.09)" strokeWidth="1" />)}
-      <circle cx="130" cy="130" r="19" fill="rgba(70,150,55,.36)" stroke="rgba(112,230,94,.55)" strokeWidth="2" />
-      <text x="130" y="135" textAnchor="middle" fill="#dfffd4" fontSize="11" fontWeight="1000">BULL</text>
+      <defs>
+        <clipPath id="cradosMiniClip"><circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} /></clipPath>
+      </defs>
+      <g clipPath="url(#cradosMiniClip)">
+        <image href={cradosRadarBoard} x={CRADOS_BOARD_IMAGE.x} y={CRADOS_BOARD_IMAGE.y} width={CRADOS_BOARD_IMAGE.size} height={CRADOS_BOARD_IMAGE.size} preserveAspectRatio="xMidYMid meet" />
+        <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} fill="rgba(0,0,0,.42)" />
+        {DARTBOARD_ORDER.map((n, idx) => {
+          const sec = state.sectors?.[n] || {};
+          const ownerId = sec.ownerId ? String(sec.ownerId) : "";
+          const claimantId = !ownerId && sec.claimantId ? String(sec.claimantId) : "";
+          const mine = ownerId === String(activeSideId) || claimantId === String(activeSideId);
+          return <path key={n} d={boardSectorPath(idx * 18 - 9, idx * 18 + 9)} fill={mine ? `${color}${ownerId ? "70" : "3a"}` : "rgba(255,255,255,.018)"} stroke={mine ? `${color}aa` : "rgba(255,255,255,.03)"} strokeWidth={mine ? 1.8 : .6} />;
+        })}
+        <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullOuter} fill="rgba(70,150,55,.18)" stroke="rgba(112,230,94,.45)" strokeWidth="1.2" />
+        <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullInner} fill="rgba(192,255,177,.35)" stroke="rgba(240,255,236,.6)" strokeWidth=".85" />
+      </g>
+      <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} fill="none" stroke={`${color}66`} strokeWidth="3" />
     </svg>
   </button>;
 }
