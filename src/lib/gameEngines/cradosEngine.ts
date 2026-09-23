@@ -39,9 +39,11 @@ export type CradosConfigPayload = {
     layersToOwn: 2 | 3 | 4;
     bullWash: boolean;
     stealMode: "block" | "flip";
+    sectorRaceMode: "claim" | "race";
+    cleanBullSplash: boolean;
   };
 };
-export type CradosSector = { ownerId: string | null; claimantId: string | null; layers: number };
+export type CradosSector = { ownerId: string | null; claimantId: string | null; layers: number; pressureBySide?: Record<string, number> };
 export type CradosPlayerStats = { darts: number; visits: number; layersPlaced: number; sectorsClaimed: number; sectorsStolen: number; dirtTaken: number; dirtWashed: number; legsWon: number };
 export type CradosVisit = { id: string; playerId: string; sideId?: string; teamId?: string | null; leg: number; turn: number; darts: GameDart[]; events: string[]; dirtBefore: number; dirtAfter: number };
 export type CradosState = {
@@ -71,7 +73,13 @@ function blankStats(): CradosPlayerStats { return { darts: 0, visits: 0, layersP
 function power(d: GameDart) { return d?.bed === "T" ? 3 : d?.bed === "D" ? 2 : 1; }
 function numberOf(d: GameDart) { return d?.bed === "S" || d?.bed === "D" || d?.bed === "T" ? Number(d.number || 0) : 0; }
 function unique(values: any[]) { return Array.from(new Set((values || []).map((v) => String(v || "").trim()).filter(Boolean))); }
-function blankSectors() { const o: any = {}; for (let n = 1; n <= 20; n += 1) o[n] = { ownerId: null, claimantId: null, layers: 0 }; return o; }
+function blankSectors() { const o: any = {}; for (let n = 1; n <= 20; n += 1) o[n] = { ownerId: null, claimantId: null, layers: 0, pressureBySide: {} }; return o; }
+function leadingPressureSide(sec: any) {
+  const entries = Object.entries(sec?.pressureBySide || {}).map(([sideId, raw]) => [String(sideId), Number(raw || 0)] as const).filter(([, value]) => value > 0);
+  if (!entries.length) return { sideId: null, value: 0 };
+  entries.sort((a, b) => b[1] - a[1]);
+  return { sideId: entries[0][0], value: entries[0][1] };
+}
 
 function normalizeTeams(raw: any): CradosTeamConfig[] {
   if (!Array.isArray(raw)) return [];
@@ -112,6 +120,8 @@ export function normalizeCradosConfig(raw: any): CradosConfigPayload {
       layersToOwn: r?.layersToOwn === 2 || r?.layersToOwn === 4 ? r.layersToOwn : 3,
       bullWash: r?.bullWash !== false,
       stealMode: r?.stealMode === "flip" ? "flip" : "block",
+      sectorRaceMode: r?.sectorRaceMode === "race" ? "race" : "claim",
+      cleanBullSplash: r?.cleanBullSplash === true,
     },
   };
 }
@@ -281,12 +291,40 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
   const events: string[] = [];
   st.visits += 1;
 
+  const markElimination = (targetSideIdRaw: any, messages: string[] = events) => {
+    const targetSideId = String(targetSideIdRaw || "");
+    if (!targetSideId) return;
+    const limit = Number(s.config.rules.dirtLimit || 10);
+    if (Number(s.dirt[targetSideId] || 0) < limit || s.eliminated[targetSideId]) return;
+    s.dirt[targetSideId] = limit;
+    s.eliminated[targetSideId] = true;
+    const targetName = cradosSideName(s, targetSideId);
+    messages.push(`${targetName} est trop CRADO : ${isCradosTeamMode(s) ? "équipe éliminée" : "éliminé"}`);
+  };
+
+  const addDirt = (targetSideIdRaw: any, amountRaw: any, messages: string[] = events, reason = "") => {
+    const targetSideId = String(targetSideIdRaw || "");
+    const amount = Math.max(0, Number(amountRaw || 0));
+    if (!targetSideId || amount <= 0 || s.eliminated[targetSideId]) return 0;
+    const limit = Number(s.config.rules.dirtLimit || 10);
+    const prev = Number(s.dirt[targetSideId] || 0);
+    const next = Math.min(limit, prev + amount);
+    const delta = next - prev;
+    s.dirt[targetSideId] = next;
+    if (delta > 0 && targetSideId === sideId) st.dirtTaken += delta;
+    if (delta > 0 && reason) messages.push(reason.replace(/__VALUE__/g, String(delta)));
+    markElimination(targetSideId, messages);
+    return delta;
+  };
+
   for (const d of ds) {
     st.darts += 1;
     if (!d || d.bed === "MISS") continue;
+
     if (d.bed === "OB" || d.bed === "IB") {
+      const wash = d.bed === "IB" ? 3 : 1;
+      const shooterWasClean = Number(s.dirt[sideId] || 0) <= 0;
       if (s.config.rules.bullWash) {
-        const wash = d.bed === "IB" ? 3 : 1;
         const old = Number(s.dirt[sideId] || 0);
         const next = Math.max(0, old - wash);
         const done = old - next;
@@ -294,15 +332,52 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
         st.dirtWashed += done;
         events.push(`${d.bed === "IB" ? "DBULL" : "BULL"} DOUCHE : −${done} crasse${isCradosTeamMode(s) ? ` pour ${sideName}` : ""}`);
       }
+      if (s.config.rules.cleanBullSplash && shooterWasClean) {
+        const touched: string[] = [];
+        for (const enemySideId of cradosSideIds(s)) {
+          if (String(enemySideId) === sideId || s.eliminated[enemySideId]) continue;
+          const delta = addDirt(enemySideId, wash);
+          if (delta > 0) touched.push(`${cradosSideName(s, enemySideId)} +${delta}`);
+        }
+        if (touched.length) events.push(`${d.bed === "IB" ? "DBULL" : "BULL"} PROPAGATION : ${touched.join(" · ")}`);
+      }
       continue;
     }
 
     const n = numberOf(d);
     if (!n) continue;
     const pow = power(d);
-    const sec = s.sectors[n] || (s.sectors[n] = { ownerId: null, claimantId: null, layers: 0 });
+    const sec = s.sectors[n] || (s.sectors[n] = { ownerId: null, claimantId: null, layers: 0, pressureBySide: {} });
+    sec.pressureBySide = sec.pressureBySide || {};
 
     if (!sec.ownerId) {
+      if (s.config.rules.sectorRaceMode === "race") {
+        sec.pressureBySide[sideId] = Number(sec.pressureBySide[sideId] || 0) + pow;
+        st.layersPlaced += pow;
+        const mine = Number(sec.pressureBySide[sideId] || 0);
+        const leader = leadingPressureSide(sec);
+        sec.claimantId = String(leader.sideId || sideId);
+        sec.layers = Math.min(s.config.rules.layersToOwn, Number(leader.value || mine || 0));
+        if (mine >= s.config.rules.layersToOwn) {
+          sec.ownerId = sideId;
+          sec.claimantId = sideId;
+          sec.layers = s.config.rules.layersToOwn;
+          st.sectorsClaimed += 1;
+          const scraps: string[] = [];
+          for (const [otherSideId, rawValue] of Object.entries(sec.pressureBySide || {})) {
+            const value = Number(rawValue || 0);
+            if (!value || String(otherSideId) === sideId) continue;
+            const delta = addDirt(otherSideId, value);
+            if (delta > 0) scraps.push(`${cradosSideName(s, otherSideId)} +${delta}`);
+          }
+          events.push(`N°${n} remporté par ${sideName}`);
+          if (scraps.length) events.push(`Touches adverses changées en crasse : ${scraps.join(" · ")}`);
+        } else {
+          events.push(`N°${n} : ${mine}/${s.config.rules.layersToOwn} touches pour ${sideName}`);
+        }
+        continue;
+      }
+
       if (sec.claimantId === sideId) sec.layers += pow;
       else { sec.claimantId = sideId; sec.layers = pow; }
       st.layersPlaced += pow;
@@ -332,21 +407,12 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
         st.sectorsStolen += 1;
         events.push(`N°${n} VOLÉ à ${cradosSideName(s, oldOwner)}`);
       } else events.push(`N°${n} attaqué : ${sec.layers} couche${sec.layers > 1 ? "s" : ""}`);
-      s.dirt[sideId] = Number(s.dirt[sideId] || 0) + 1;
-      st.dirtTaken += 1;
-      events.push(`Contact avec la crasse adverse : +1 CRASSE${isCradosTeamMode(s) ? ` à ${sideName}` : ""}`);
+      addDirt(sideId, 1, events, `Contact avec la crasse adverse : +__VALUE__ CRASSE${isCradosTeamMode(s) ? ` à ${sideName}` : ""}`);
     } else {
-      s.dirt[sideId] = Number(s.dirt[sideId] || 0) + pow;
-      st.dirtTaken += pow;
-      events.push(`N°${n} adverse : +${pow} CRASSE${isCradosTeamMode(s) ? ` à ${sideName}` : ""}`);
+      addDirt(sideId, pow, events, `N°${n} adverse : +__VALUE__ CRASSE${isCradosTeamMode(s) ? ` à ${sideName}` : ""}`);
     }
 
-    if (Number(s.dirt[sideId] || 0) >= s.config.rules.dirtLimit) {
-      s.dirt[sideId] = s.config.rules.dirtLimit;
-      s.eliminated[sideId] = true;
-      events.push(`${sideName} est trop CRADO : ${isCradosTeamMode(s) ? "équipe éliminée" : "éliminé"}`);
-      break;
-    }
+    if (s.eliminated[sideId]) break;
   }
 
   s.visits.push({

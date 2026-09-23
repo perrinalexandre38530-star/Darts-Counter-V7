@@ -30,9 +30,25 @@ const BROWN = "#d99a57";
 const RED = "#ff6c67";
 const PLAYER_COLORS = ["#67d7ff", "#ff74c8", "#ffc857", "#79ef9d", "#b58cff", "#ff8a65", "#56e0d0", "#f3f56a", "#8fb8ff", "#fa8fb1"];
 const DARTBOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+const TOUCH_COLORS: Record<string, string> = { S: "#67d7ff", D: "#6fd6ff", T: "#d17bff", BULL: "#50e68c", DBULL: "#2bf08b", MISS: "#ffb54d" };
 
 type PlayTab = "map" | "stats";
 
+function visitDartLabel(d: any) {
+  if (!d || d.bed === "MISS" || Number(d.v) === 0) return "MISS";
+  if (d.bed === "OB" || (Number(d.v) === 25 && Number(d.mult) !== 2)) return "BULL";
+  if (d.bed === "IB" || (Number(d.v) === 25 && Number(d.mult) === 2)) return "DBULL";
+  const mult = d.bed === "T" || Number(d.mult) === 3 ? "T" : d.bed === "D" || Number(d.mult) === 2 ? "D" : "S";
+  const value = Number(d.number || d.v || 0);
+  return `${mult}${value}`;
+}
+function visitDartTone(d: any) {
+  const label = visitDartLabel(d);
+  if (label === "MISS") return TOUCH_COLORS.MISS;
+  if (label === "BULL") return TOUCH_COLORS.BULL;
+  if (label === "DBULL") return TOUCH_COLORS.DBULL;
+  return TOUCH_COLORS[label[0]] || "#d7dfd7";
+}
 
 function seededPalette(seedValue: string, count: number) {
   let seed = 2166136261;
@@ -70,14 +86,15 @@ function scoreSectorDartsForVisit(visit: any, sectorKey: any) {
   const darts = Array.isArray(visit?.darts) ? visit.darts : [];
   let total = 0;
   for (const d of darts) {
-    if (!d || d.bed === "MISS") continue;
+    if (!d || d.bed === "MISS" || Number(d.v) === 0) continue;
     if (sectorKey === "bull") {
-      if (d.bed === "OB") total += 1;
-      else if (d.bed === "IB") total += 3;
+      if (d.bed === "OB" || (Number(d.v) === 25 && Number(d.mult) !== 2)) total += 1;
+      else if (d.bed === "IB" || (Number(d.v) === 25 && Number(d.mult) === 2)) total += 3;
       continue;
     }
-    const value = Number(d.v || d.n || 0);
-    if (value === Number(sectorKey)) total += Number(d.mult || 1);
+    const value = Number(d.number || d.v || d.n || 0);
+    const mult = d.bed === "T" ? 3 : d.bed === "D" ? 2 : d.bed === "S" ? 1 : Number(d.mult || 1);
+    if (value === Number(sectorKey)) total += mult;
   }
   return total;
 }
@@ -228,8 +245,9 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
       <div className="crados-tactical-board__costs">{cost.rows.map((row: string) => <span key={row}>{row}</span>)}</div>
       {config.rules.bullWash ? <div className="crados-tactical-board__wash">BULL −1 · DBULL −3</div> : <div className="crados-tactical-board__wash crados-tactical-board__wash--off">BULL neutre</div>}
       <div className="crados-sector-table">
-        {detailSides.map(({ side, color, profile, touches }: any) => <div key={side.id} className="crados-sector-table__cell">
+        {detailSides.map(({ side, color, profile, touches }: any) => <div key={side.id} className="crados-sector-table__cell" style={{ borderColor: `${color}44`, boxShadow: `inset 0 0 18px ${color}12` }}>
           <div className="crados-sector-table__avatar" style={{ borderColor: color }}><ProfileAvatar profile={profile || side} size={30} showStars={false} ringColor={color} /></div>
+          <small style={{ color }}>{side?.name || "—"}</small>
           <b style={{ color }}>{touches}</b>
         </div>)}
       </div>
@@ -283,12 +301,49 @@ function StatsModal({ state, activePlayer, activeSideId, activeSideStats, color,
   </div>;
 }
 
-function LogModal({ state, onClose }: any) {
+function LogModal({ state, onClose, profileById, profileBySideId, colorByPlayerId, colorBySideId, teamMode, sideById }: any) {
   const rows = [...(state?.visits || [])].slice(-18).reverse();
   return <div className="crados-players-modal" role="dialog" aria-modal="true" aria-label="Journal CRADOS" onClick={onClose}>
     <div className="crados-players-modal__card crados-players-modal__card--stats" onClick={(e) => e.stopPropagation()}>
       <header><div><b>JOURNAL DE PARTIE</b><span>Dernières actions enregistrées</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
-      <div className="crados-log-modal__body">{rows.length ? rows.map((visit: any) => <div key={visit.id} className="crados-log-modal__row"><b>{visit.playerId}</b><span>{Array.isArray(visit.events) && visit.events.length ? visit.events.join(" · ") : "Aucune action notable"}</span></div>) : <div className="crados-log-modal__empty">Aucune action pour le moment.</div>}</div>
+      <div className="crados-log-modal__body">
+        {rows.length ? rows.map((visit: any) => {
+          const playerId = String(visit?.playerId || "");
+          const sideId = String(visit?.sideId || playerId);
+          const profile = profileById?.get?.(playerId) || { id: playerId, name: playerId };
+          const sideProfile = profileBySideId?.get?.(sideId) || profile;
+          const accent = teamMode ? colorBySideId?.get?.(sideId) || ACCENT : colorByPlayerId?.get?.(playerId) || ACCENT;
+          const delta = Number(visit?.dirtAfter || 0) - Number(visit?.dirtBefore || 0);
+          const dirtLabel = delta > 0 ? `+${delta} crasse` : delta < 0 ? `${delta} crasse` : 'stable';
+          const owner = sideById?.get?.(sideId);
+          const darts = Array.isArray(visit?.darts) ? visit.darts : [];
+          return <div key={visit.id} className="crados-log-modal__row" style={{ borderColor: `${accent}4a`, boxShadow: `inset 0 0 20px ${accent}12` }}>
+            <div className="crados-log-modal__head">
+              <div className="crados-log-modal__identity">
+                <div className="crados-log-modal__avatar" style={{ borderColor: accent }}><ProfileAvatar profile={teamMode ? sideProfile : profile} size={36} showStars={false} ringColor={accent} /></div>
+                <div className="crados-log-modal__who">
+                  <b style={{ color: accent }}>{playerName(profile)}</b>
+                  <span>{teamMode ? `${owner?.name || 'Équipe'} · tour ${visit?.turn || '—'}` : `Tour ${visit?.turn || '—'} · manche ${visit?.leg || '—'}`}</span>
+                </div>
+              </div>
+              <div className="crados-log-modal__delta" style={{ color: delta > 0 ? '#ff9f8c' : delta < 0 ? '#8ff0b4' : '#a9b4ac' }}>{dirtLabel}</div>
+            </div>
+            <div className="crados-log-modal__darts">
+              {darts.length ? darts.map((dart: any, idx: number) => {
+                const label = visitDartLabel(dart);
+                const tone = visitDartTone(dart);
+                return <span key={`${visit.id}-${idx}`} className="crados-log-modal__dart" style={{ borderColor: `${tone}66`, color: tone, boxShadow: `inset 0 0 12px ${tone}1f` }}>{label}</span>;
+              }) : <span className="crados-log-modal__dart is-empty">Aucune fléchette</span>}
+            </div>
+            <div className="crados-log-modal__legend-strip">
+              {['S', 'D', 'T', 'BULL', 'DBULL', 'MISS'].map((label) => <span key={label} style={{ color: TOUCH_COLORS[label], borderColor: `${TOUCH_COLORS[label]}40` }}>{label}</span>)}
+            </div>
+            <div className="crados-log-modal__events">
+              {Array.isArray(visit.events) && visit.events.length ? visit.events.map((event: string, idx: number) => <span key={`${visit.id}-ev-${idx}`}>{event}</span>) : <span>Aucune action notable</span>}
+            </div>
+          </div>;
+        }) : <div className="crados-log-modal__empty">Aucune action pour le moment.</div>}
+      </div>
     </div>
   </div>;
 }
@@ -327,16 +382,16 @@ function TurnStrip({ state, profiles, profileById, colorByPlayerId, colorBySideI
 function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, activeSideId, activeSide, teamMode, onOpenBoard }: any) {
   const dirt = activeSideId ? Number(state.dirt?.[activeSideId] || 0) : 0;
   const dirtPct = Math.max(0, Math.min(100, Math.round((dirt / Math.max(1, Number(config.rules.dirtLimit || 1))) * 100)));
-  const multiLeg = Number(config.seriesWins || 1) > 1;
   const avatarSrc = profileImageSrc(activeProfile || activePlayer);
+  const headerLabel = state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "";
   return <section className="crados-active" style={{ borderColor: `${color}68`, boxShadow: `0 15px 34px rgba(0,0,0,.34),inset 0 0 44px ${color}0c` }}>
     <div className="crados-active__ghost" aria-hidden>{avatarSrc ? <img src={avatarSrc} alt="" /> : <ProfileAvatar profile={activeProfile || activePlayer} size={112} showStars={false} ringColor={color} />}</div>
     <div className="crados-active__main">
-      <div className="crados-active__eyebrow" style={{ color }}>{state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "JOUEUR ACTIF"}</div>
+      {headerLabel ? <div className="crados-active__eyebrow" style={{ color }}>{headerLabel}</div> : null}
       <div className="crados-active__name" style={{ color }}>{activePlayer?.name || "—"}</div>
       <div className="crados-active__percent" style={{ color: dirtPct >= 70 ? RED : color }}>{dirtPct}<small>%</small></div>
       <CradosDirtMeter value={dirt} max={config.rules.dirtLimit} color={color} />
-      {multiLeg ? <div className="crados-active__leg">MANCHE {state.legIndex + 1} · {state.legWins?.[activeSideId] || 0}/{config.seriesWins} gagnée(s)</div> : null}
+      <div className="crados-active__leg" style={{ color }}>{`MANCHE ${Number(state.legIndex || 0) + 1} - ${state.legWins?.[activeSideId] || 0}/${config.seriesWins} remportée${Number(config.seriesWins || 1) > 1 ? 's' : ''}`}</div>
     </div>
     <div className="crados-active__radar"><CradosMiniRadar state={state} activeSideId={activeSideId} color={color} onOpen={onOpenBoard} /></div>
   </section>;
@@ -635,14 +690,14 @@ export default function CradosPlay(props: any) {
         </div>
 
         <div className="crados-play__input">
-          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleKeypadCancel} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER" accent={activeColor} fitMinScale={0.22} /> : <div className="crados-play__bot-turn" style={{ borderColor: `${activeColor}55`, boxShadow: `inset 0 0 34px ${activeColor}0d` }}><ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor={activeColor} /><div><b style={{ color: activeColor }}>{teamMode ? `${activeSide?.name || "Équipe"} · ${activePlayer?.name || "BOT"}` : activePlayer?.name}</b><span>répand sa crasse sur la cible…</span></div><i>🤢</i></div>}
+          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleKeypadCancel} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER" accent={activeColor} fitMinScale={0.16} /> : <div className="crados-play__bot-turn" style={{ borderColor: `${activeColor}55`, boxShadow: `inset 0 0 34px ${activeColor}0d` }}><ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor={activeColor} /><div><b style={{ color: activeColor }}>{teamMode ? `${activeSide?.name || "Équipe"} · ${activePlayer?.name || "BOT"}` : activePlayer?.name}</b><span>répand sa crasse sur la cible…</span></div><i>🤢</i></div>}
         </div>
       </div>
     </main>
 
     {playersOpen ? <PlayersModal state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} config={config} onClose={() => setPlayersOpen(false)} teamMode={teamMode} sideById={sideById} /> : null}
     {statsOpen ? <StatsModal state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} color={activeColor} config={config} teamMode={teamMode} onClose={() => setStatsOpen(false)} /> : null}
-    {logOpen ? <LogModal state={state} onClose={() => setLogOpen(false)} /> : null}
+    {logOpen ? <LogModal state={state} onClose={() => setLogOpen(false)} profileById={profileById} profileBySideId={profileBySideId} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} teamMode={teamMode} sideById={sideById} /> : null}
     {boardOpen ? <TacticalBoardModal state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} profileBySideId={profileBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={setSelectedSector} onClose={() => setBoardOpen(false)} /> : null}
   </div>;
 }
