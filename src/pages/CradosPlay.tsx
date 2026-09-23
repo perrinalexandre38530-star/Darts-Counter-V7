@@ -8,6 +8,7 @@ import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { cloneCradosState, createCradosState, normalizeCradosConfig, pickCradosBotDarts, playCradosVisit, type CradosState } from "../lib/gameEngines/cradosEngine";
+import { cradosBotLevelForProfile } from "../lib/dartsCradosBots";
 import {
   Meter,
   ModeEndPanel,
@@ -92,6 +93,7 @@ export default function CradosPlay(props: any) {
   const activePlayer = state.players[state.activePlayerIndex];
   const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
+  const activeBotLevel = activeIsBot ? cradosBotLevelForProfile(activeProfile, config.botLevel) : 0;
 
   const buildRecord = React.useCallback((s: CradosState, status: "in_progress" | "finished") => {
     const rows = profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null }));
@@ -149,11 +151,11 @@ export default function CradosPlay(props: any) {
     if (!activeIsBot || state.phase === "finished" || botBusy.current) return;
     botBusy.current = true;
     const t = window.setTimeout(() => {
-      try { commit(playCradosVisit(state, pickCradosBotDarts(state, config.botLevel))); }
+      try { commit(playCradosVisit(state, pickCradosBotDarts(state, activeBotLevel || config.botLevel))); }
       finally { botBusy.current = false; }
     }, 680);
     return () => window.clearTimeout(t);
-  }, [state, activeIsBot, activePlayer?.id]);
+  }, [state, activeIsBot, activePlayer?.id, activeBotLevel]);
 
   function replay() {
     matchIdRef.current = `crados-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

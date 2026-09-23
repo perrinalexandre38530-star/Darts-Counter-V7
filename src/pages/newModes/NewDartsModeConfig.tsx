@@ -13,6 +13,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { loadBotPlayers } from "../../lib/bots";
 import { recordProfileUsageForMode } from "../../lib/profileUsage";
 import { X01_PRO_BOTS } from "../X01ConfigV3";
+import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
 
 export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase";
 type BotLevel = "easy" | "normal" | "hard";
@@ -182,13 +183,16 @@ export default function NewDartsModeConfig(props: Props) {
     return raw.filter((p: any) => !isBotLike(p)).map((p: any) => normalizeProfile(p, false));
   }, [store?.profiles]);
 
-  const [bots, setBots] = React.useState<any[]>([]);
-  React.useEffect(() => {
+  const buildBotPool = React.useCallback(() => {
     const map = new Map<string, any>();
-    (X01_PRO_BOTS || []).forEach((b: any) => map.set(String(b.id), normalizeProfile(b, true)));
-    try { loadBotPlayers().forEach((b: any) => map.set(String(b.id), normalizeProfile(b, true))); } catch {}
-    setBots([...map.values()]);
-  }, []);
+    const officialBots = mode === "crados" ? CRADOS_BOTS : (X01_PRO_BOTS || []);
+    officialBots.forEach((b: any) => map.set(String(b.id), normalizeProfile(b, true)));
+    // Les BOTS CPU personnels restent disponibles dans CRADOS et dans les autres modes.
+    try { loadBotPlayers().forEach((b: any) => map.set(String(b.id), normalizeProfile({ ...b, isUserBot: true, source: b?.source || "cpu", groupLabel: b?.groupLabel || "CPU Home" }, true))); } catch {}
+    return [...map.values()];
+  }, [mode]);
+  const [bots, setBots] = React.useState<any[]>(() => buildBotPool());
+  React.useEffect(() => { setBots(buildBotPool()); }, [buildBotPool]);
 
   const profileById = React.useMemo(() => {
     const map = new Map<string, any>();
@@ -198,8 +202,16 @@ export default function NewDartsModeConfig(props: Props) {
 
   const selectedProfiles = selectedIds.map((id) => profileById.get(String(id))).filter(Boolean);
   const botCount = selectedProfiles.filter(isBotLike).length;
-  const validSelection = selectedIds.length >= definition.minPlayers && selectedIds.length <= definition.maxPlayers;
-  const maxReached = selectedIds.length >= definition.maxPlayers;
+  const cradosCpuBotCount = mode === "crados" ? selectedProfiles.filter((p: any) => isBotLike(p) && p?.source !== "crados_official").length : botCount;
+  const validSelection = selectedProfiles.length >= definition.minPlayers && selectedProfiles.length <= definition.maxPlayers;
+  const maxReached = selectedProfiles.length >= definition.maxPlayers;
+
+  // Migration douce : les anciens BOTS Pro X01 mémorisés dans la config CRADOS
+  // ne doivent pas survivre au remplacement par les 24 personnages CRADOS.
+  React.useEffect(() => {
+    if (mode !== "crados") return;
+    setSelectedIds((prev) => prev.filter((id) => profileById.has(String(id))));
+  }, [mode, profileById]);
 
   function togglePlayer(idRaw: any) {
     const id = String(idRaw || "");
@@ -208,6 +220,18 @@ export default function NewDartsModeConfig(props: Props) {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= definition.maxPlayers) return prev;
       return [...prev, id];
+    });
+  }
+
+  function toggleCradosFamilyTeam(team: any) {
+    if (mode !== "crados" || !team?.memberIds?.length) return;
+    setSelectedIds((prev) => {
+      const members = team.memberIds.map(String);
+      const allSelected = members.every((id: string) => prev.includes(id));
+      if (allSelected) return prev.filter((id) => !members.includes(id));
+      const missing = members.filter((id: string) => !prev.includes(id));
+      if (prev.length + missing.length > definition.maxPlayers) return prev;
+      return [...prev, ...missing];
     });
   }
 
@@ -254,7 +278,8 @@ export default function NewDartsModeConfig(props: Props) {
 
   function start() {
     if (!validSelection || typeof go !== "function") return;
-    const orderedIds = randomOrder ? [...selectedIds].sort(() => Math.random() - 0.5) : [...selectedIds];
+    const resolvedIds = selectedProfiles.map((p: any) => String(p.id));
+    const orderedIds = randomOrder ? [...resolvedIds].sort(() => Math.random() - 0.5) : [...resolvedIds];
     const playersList = orderedIds.map((id) => profileById.get(String(id))).filter(Boolean).map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur" }));
     const payload = {
       mode,
@@ -268,6 +293,7 @@ export default function NewDartsModeConfig(props: Props) {
       scoreInputMethod,
       seriesWins,
       rules: modeRulesPayload(),
+      ...(mode === "crados" ? { familyTeamIds: CRADOS_BOT_TEAMS.filter((team) => team.memberIds.every((id) => orderedIds.includes(id))).map((team) => team.id) } : {}),
       menuVersion: 2,
     };
     try { recordProfileUsageForMode(mode, orderedIds); } catch {}
@@ -282,12 +308,30 @@ export default function NewDartsModeConfig(props: Props) {
       <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Participants</div>
       <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary />
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? `${selectedIds.length} participant${selectedIds.length > 1 ? "s" : ""} sélectionné${selectedIds.length > 1 ? "s" : ""}` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`}</div>
+        <div style={{ color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} sélectionné${selectedProfiles.length > 1 ? "s" : ""}` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`}</div>
         <button type="button" onClick={() => setBotsOpen((v) => !v)} style={{ minHeight: 34, borderRadius: 999, border: `1px solid ${accent}77`, background: botsOpen ? `${accent}1d` : "rgba(255,255,255,.04)", color: accent, fontWeight: 900, padding: "6px 11px" }}>{botsOpen ? "☑ BOTS IA" : "☐ BOTS IA"}</button>
       </div>
       {maxReached ? <div style={{ marginTop: 8, color: soft, fontSize: 10.5 }}>Maximum atteint : {definition.maxPlayers} participants.</div> : null}
     </section>
-    {botsOpen ? <section style={selectorCard}><BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} />{botCount > 0 ? <div style={{ marginTop: 10 }}><OptionRow label="Difficulté IA"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}</section> : null}
+    {botsOpen ? <section style={selectorCard}>
+      {mode === "crados" ? <div style={{ marginBottom: 12 }}>
+        <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 10.5, fontWeight: 1000, marginBottom: 8 }}>Équipes / familles CRADOS</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 7 }}>
+          {CRADOS_BOT_TEAMS.map((team) => {
+            const active = team.memberIds.every((id) => selectedIds.includes(id));
+            const missing = team.memberIds.filter((id) => !selectedIds.includes(id)).length;
+            const disabled = !active && selectedIds.length + missing > definition.maxPlayers;
+            return <button key={team.id} type="button" disabled={disabled} onClick={() => toggleCradosFamilyTeam(team)} style={{ minHeight: 60, borderRadius: 13, padding: "8px 9px", textAlign: "left", border: `1px solid ${active ? team.accent : team.accent + "55"}`, background: active ? `${team.accent}1f` : "rgba(255,255,255,.035)", color: disabled ? "#62697b" : "#fff", opacity: disabled ? .55 : 1, cursor: disabled ? "not-allowed" : "pointer", boxShadow: active ? `0 0 16px ${team.accent}33` : "none" }}>
+              <span style={{ display: "block", color: disabled ? "#767d8d" : team.accent, fontSize: 10.5, fontWeight: 1000 }}>{active ? "☑" : "☐"} {team.familyLabel}</span>
+              <span style={{ display: "block", marginTop: 4, color: "#aeb5c8", fontSize: 8.6, lineHeight: 1.25 }}>4 BOTS · niveau moyen {team.botTeamLevel}/5</span>
+            </button>;
+          })}
+        </div>
+        <div style={{ marginTop: 7, color: soft, fontSize: 9.5 }}>Un clic ajoute les 4 membres de la famille. Les médaillons d’équipe pourront être branchés plus tard sans changer les IDs.</div>
+      </div> : null}
+      <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "crados" ? "BOTS CRADOS + CPU" : "BOTS IA"} modalTitle={mode === "crados" ? "Choisir les BOTS CRADOS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} />
+      {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow>{mode === "crados" ? <div style={{ marginTop: 5, color: soft, fontSize: 9.5 }}>Les 24 personnages CRADOS conservent leur niveau propre. Ce réglage ne sert que de secours aux BOTS CPU personnels sans niveau exploitable.</div> : null}</div> : null}
+    </section> : null}
   </>;
 
   const matchBlock = <section style={selectorCard}>
