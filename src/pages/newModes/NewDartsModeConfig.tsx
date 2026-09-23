@@ -7,14 +7,14 @@ import OptionRow from "../../components/OptionRow";
 import OptionSelect from "../../components/OptionSelect";
 import OptionToggle from "../../components/OptionToggle";
 import PageHeader from "../../components/PageHeader";
-import ProfileAvatar from "../../components/ProfileAvatar";
 import PlayerPagedSelector from "../../components/PlayerPagedSelector";
 import Section from "../../components/Section";
 import { useTheme } from "../../contexts/ThemeContext";
 import { loadBotPlayers } from "../../lib/bots";
 import { recordProfileUsageForMode } from "../../lib/profileUsage";
 import { loadTeamsBySport } from "../../lib/petanqueTeamsStore";
-import { X01_PRO_BOTS } from "../X01ConfigV3";
+import { BotTeamsSection, PillButton, X01_PRO_BOTS, TeamsSection } from "../X01ConfigV3";
+import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
 import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
 
 export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase";
@@ -46,11 +46,25 @@ type Props = {
 const LS_PREFIX = "dc_modecfg_new_darts_v1_";
 
 const CRADOS_TEAM_SLOTS = [
-  { id: "crados_team_gold", name: "Team Gold", color: "#f7c85c" },
-  { id: "crados_team_pink", name: "Team Pink", color: "#ff4fa2" },
-  { id: "crados_team_blue", name: "Team Blue", color: "#4fc3ff" },
-  { id: "crados_team_green", name: "Team Green", color: "#6dff7c" },
+  { id: "gold", name: "Team Gold", color: "#f7c85c" },
+  { id: "pink", name: "Team Pink", color: "#ff4fa2" },
+  { id: "blue", name: "Team Blue", color: "#4fc3ff" },
+  { id: "green", name: "Team Green", color: "#6dff7c" },
 ];
+
+function cradosNormalizeTeamId(value: any): string {
+  const raw = String(value || "");
+  return raw.replace(/^crados_team_/, "");
+}
+
+function cradosTeamBaseId(value: any): string {
+  return String(value?.baseTeamId || value?.sourceTeamId || value?.id || value || "").split("__slot_")[0];
+}
+
+function cradosTeamSuffix(index: number): string {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return index < letters.length ? letters[index] : `#${index + 1}`;
+}
 
 function uniqueStrings(values: any[]) {
   return Array.from(new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean)));
@@ -65,14 +79,6 @@ function shuffleCopy<T>(items: T[]): T[] {
   return out;
 }
 
-function cradosProfilePower(profile: any): number {
-  const direct = Number(profile?.cradosAiLevel ?? profile?.profileStarring ?? profile?.stars ?? profile?.level);
-  if (Number.isFinite(direct) && direct > 0) return Math.max(1, Math.min(5, direct > 5 ? direct / 20 : direct));
-  const raw = String(profile?.botLevel || "").replace(",", ".");
-  const parsed = Number((raw.match(/\d+(?:\.5)?/) || [""])[0]);
-  if (Number.isFinite(parsed) && parsed > 0) return Math.max(1, Math.min(5, parsed));
-  return 3;
-}
 
 function interleaveCradosTeamIds(teams: any[], randomOrder: boolean): string[] {
   const source = randomOrder ? shuffleCopy(teams || []) : [...(teams || [])];
@@ -154,6 +160,7 @@ export default function NewDartsModeConfig(props: Props) {
     try { return localStorage.getItem(`dc_${mode}_config_view_mode`) === "complete" ? "complete" : "guided"; } catch { return "guided"; }
   });
   const [guidedStep, setGuidedStep] = React.useState(0);
+  const configScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, definition.maxPlayers) : []);
   const [botsOpen, setBotsOpen] = React.useState(saved.botsOpen === true);
   const [botLevel, setBotLevel] = React.useState<BotLevel>(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
@@ -198,11 +205,15 @@ export default function NewDartsModeConfig(props: Props) {
   const [cradosStealMode, setCradosStealMode] = React.useState<"block" | "flip">(saved.cradosStealMode === "flip" ? "flip" : "block");
   const [cradosParticipantMode, setCradosParticipantMode] = React.useState<"players" | "teams">(saved.cradosParticipantMode === "teams" ? "teams" : "players");
   const [cradosTeamsSourceMode, setCradosTeamsSourceMode] = React.useState<"manual" | "saved" | "auto">(saved.cradosTeamsSourceMode === "saved" || saved.cradosTeamsSourceMode === "auto" ? saved.cradosTeamsSourceMode : "manual");
-  const [cradosTeamAssignments, setCradosTeamAssignments] = React.useState<Record<string, string>>(saved.cradosTeamAssignments && typeof saved.cradosTeamAssignments === "object" ? saved.cradosTeamAssignments : {});
-  const [cradosSelectedTeamIds, setCradosSelectedTeamIds] = React.useState<string[]>(Array.isArray(saved.cradosSelectedTeamIds) ? saved.cradosSelectedTeamIds.map(String) : []);
-  const [cradosAutoTeamCount, setCradosAutoTeamCount] = React.useState<2 | 3 | 4>(saved.cradosAutoTeamCount === 3 || saved.cradosAutoTeamCount === 4 ? saved.cradosAutoTeamCount : 2);
-  const [cradosAutoMode, setCradosAutoMode] = React.useState<"random" | "balanced">(saved.cradosAutoMode === "random" ? "random" : "balanced");
-  const [cradosAutoTeams, setCradosAutoTeams] = React.useState<any[]>(Array.isArray(saved.cradosAutoTeams) ? saved.cradosAutoTeams : []);
+  const [cradosTeamAssignments, setCradosTeamAssignments] = React.useState<Record<string, string>>(() => {
+    const raw = saved.cradosTeamAssignments && typeof saved.cradosTeamAssignments === "object" ? saved.cradosTeamAssignments : {};
+    return Object.fromEntries(Object.entries(raw).map(([playerId, teamId]) => [String(playerId), cradosNormalizeTeamId(teamId)]));
+  });
+  const legacyCradosSelectedTeamIds = Array.isArray(saved.cradosSelectedTeamIds) ? saved.cradosSelectedTeamIds.map(String) : [];
+  const [cradosSelectedTeamIds, setCradosSelectedTeamIds] = React.useState<string[]>(() => legacyCradosSelectedTeamIds.filter((id) => !cradosTeamBaseId(id).startsWith("bot_team_crados_")));
+  const [cradosSelectedBotTeamIds, setCradosSelectedBotTeamIds] = React.useState<string[]>(() => Array.isArray(saved.cradosSelectedBotTeamIds) ? saved.cradosSelectedBotTeamIds.map(String) : legacyCradosSelectedTeamIds.filter((id) => cradosTeamBaseId(id).startsWith("bot_team_crados_")));
+  const [cradosSavedTeamMemberSelections, setCradosSavedTeamMemberSelections] = React.useState<Record<string, string[]>>(() => saved.cradosSavedTeamMemberSelections && typeof saved.cradosSavedTeamMemberSelections === "object" ? saved.cradosSavedTeamMemberSelections : {});
+  const [cradosBotTeamsPanelEnabled, setCradosBotTeamsPanelEnabled] = React.useState(saved.cradosBotTeamsPanelEnabled === true);
   const [cradosTeamError, setCradosTeamError] = React.useState("");
 
   // 51 BY 5
@@ -262,9 +273,10 @@ export default function NewDartsModeConfig(props: Props) {
     } catch { return []; }
   }, [mode, store?.profiles]);
 
-  const cradosSavedTeamOptions = React.useMemo(() => {
+  const cradosStoredTeamOptions = React.useMemo(() => {
     if (mode !== "crados") return [];
-    const savedTeams = storedDartsTeams.map((team: any, index: number) => ({
+    return storedDartsTeams.map((team: any, index: number) => ({
+      ...team,
       id: String(team.id),
       name: String(team.name || `Équipe ${index + 1}`),
       color: team?.color || CRADOS_TEAM_SLOTS[index % CRADOS_TEAM_SLOTS.length].color,
@@ -273,65 +285,201 @@ export default function NewDartsModeConfig(props: Props) {
       isBotTeam: false,
       isCradosFamily: false,
     })).filter((team: any) => team.playerIds.length > 0);
-    const botFamilies = CRADOS_BOT_TEAMS.map((team: any, index: number) => ({
+  }, [mode, storedDartsTeams, profileById]);
+
+  const cradosBotTeamOptions = React.useMemo(() => {
+    if (mode !== "crados") return [];
+    return CRADOS_BOT_TEAMS.map((team: any, index: number) => ({
+      ...team,
       id: String(team.id),
       name: `Famille ${team.familyLabel}`,
       color: team.accent || CRADOS_TEAM_SLOTS[index % CRADOS_TEAM_SLOTS.length].color,
       logoDataUrl: team.avatarDataUrl || null,
+      logoUrl: team.avatarDataUrl || null,
       playerIds: uniqueStrings(team.memberIds || []).filter((id) => profileById.has(id)),
       isBotTeam: true,
       isCradosFamily: true,
       botTeamLevel: team.botTeamLevel,
     })).filter((team: any) => team.playerIds.length > 0);
-    return [...savedTeams, ...botFamilies];
-  }, [mode, storedDartsTeams, profileById]);
+  }, [mode, profileById]);
 
-  const cradosSelectedSavedTeams = React.useMemo(() => {
-    const selected = new Set(cradosSelectedTeamIds.map(String));
-    return cradosSavedTeamOptions.filter((team: any) => selected.has(String(team.id)));
-  }, [cradosSelectedTeamIds, cradosSavedTeamOptions]);
+  const cradosSelectedStoredTeams = React.useMemo(() => {
+    return (cradosSelectedTeamIds || []).map((rawId: string, index: number) => {
+      const baseId = cradosTeamBaseId(rawId);
+      const occurrence = (cradosSelectedTeamIds || []).slice(0, index).filter((id) => cradosTeamBaseId(id) === baseId).length;
+      const source = cradosStoredTeamOptions.find((team: any) => String(team.id) === baseId) || findRememberedGeneratedTeam(baseId);
+      if (!source) return null;
+      const suffix = cradosTeamSuffix(occurrence);
+      return {
+        ...source,
+        id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId,
+        baseTeamId: baseId,
+        sourceTeamId: baseId,
+        teamSlotLabel: suffix,
+        name: source.name,
+      };
+    }).filter(Boolean);
+  }, [cradosSelectedTeamIds, cradosStoredTeamOptions]);
+
+  const cradosSelectedBotTeams = React.useMemo(() => {
+    if (!cradosBotTeamsPanelEnabled) return [];
+    return (cradosSelectedBotTeamIds || []).map((rawId: string, index: number) => {
+      const baseId = cradosTeamBaseId(rawId);
+      const occurrence = (cradosSelectedBotTeamIds || []).slice(0, index).filter((id) => cradosTeamBaseId(id) === baseId).length;
+      const source = cradosBotTeamOptions.find((team: any) => String(team.id) === baseId);
+      if (!source) return null;
+      const suffix = cradosTeamSuffix(occurrence);
+      return {
+        ...source,
+        id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId,
+        baseTeamId: baseId,
+        sourceTeamId: baseId,
+        teamSlotLabel: suffix,
+        name: source.name,
+      };
+    }).filter(Boolean);
+  }, [cradosSelectedBotTeamIds, cradosBotTeamOptions, cradosBotTeamsPanelEnabled]);
 
   const cradosManualTeams = React.useMemo(() => {
     if (mode !== "crados") return [];
     return CRADOS_TEAM_SLOTS.map((slot) => ({
       ...slot,
       logoDataUrl: null,
-      playerIds: selectedIds.filter((id) => cradosTeamAssignments[String(id)] === slot.id),
+      playerIds: selectedIds.filter((id) => cradosNormalizeTeamId(cradosTeamAssignments[String(id)]) === slot.id),
       isBotTeam: false,
+      isCradosFamily: false,
     })).filter((team) => team.playerIds.length > 0);
   }, [mode, selectedIds, cradosTeamAssignments]);
 
-  const activeCradosTeams = cradosTeamsSourceMode === "saved" ? cradosSelectedSavedTeams : cradosTeamsSourceMode === "auto" ? cradosAutoTeams : cradosManualTeams;
+  const cradosExternalTeams = React.useMemo(() => {
+    const selected = [...cradosSelectedStoredTeams, ...cradosSelectedBotTeams];
+    return selected.map((team: any, index: number) => {
+      const tid = String(team.id || `crados_saved_${index + 1}`);
+      const allIds = uniqueStrings(team.playerIds || []).filter((id) => profileById.has(id));
+      const chosen = Array.isArray(cradosSavedTeamMemberSelections[tid])
+        ? uniqueStrings(cradosSavedTeamMemberSelections[tid]).filter((id) => allIds.includes(id))
+        : allIds;
+      return { ...team, id: tid, playerIds: chosen };
+    }).filter((team: any) => team.playerIds.length > 0);
+  }, [cradosSelectedStoredTeams, cradosSelectedBotTeams, cradosSavedTeamMemberSelections, profileById]);
+
+  // Même logique que X01 : en manuel, les équipes BOTS activées s'ajoutent aux
+  // équipes Gold/Pink/Blue/Green ; en enregistré/auto, elles rejoignent les équipes externes.
+  const activeCradosTeams = cradosTeamsSourceMode === "manual"
+    ? [...cradosManualTeams, ...cradosSelectedBotTeams.map((team: any, index: number) => {
+        const tid = String(team.id || `crados_bot_${index + 1}`);
+        const allIds = uniqueStrings(team.playerIds || []).filter((id) => profileById.has(id));
+        const chosen = Array.isArray(cradosSavedTeamMemberSelections[tid])
+          ? uniqueStrings(cradosSavedTeamMemberSelections[tid]).filter((id) => allIds.includes(id))
+          : allIds;
+        return { ...team, id: tid, playerIds: chosen };
+      }).filter((team: any) => team.playerIds.length > 0)]
+    : cradosExternalTeams;
   const cradosTeamMemberIds = uniqueStrings((activeCradosTeams || []).flatMap((team: any) => team?.playerIds || []));
   const cradosTeamMemberTotal = (activeCradosTeams || []).reduce((sum: number, team: any) => sum + uniqueStrings(team?.playerIds || []).length, 0);
-  const cradosTeamSizes = (activeCradosTeams || []).map((team: any) => uniqueStrings(team?.playerIds || []).length).filter(Boolean);
-  const cradosSavedTeamsMode = cradosTeamsSourceMode === "saved";
   const cradosTeamsHaveNoOverlap = cradosTeamMemberTotal === cradosTeamMemberIds.length;
-  // Comme X01 : les équipes enregistrées peuvent avoir des effectifs différents
-  // et peuvent même être des équipes à un seul joueur. En MANUEL/AUTO, on garde
-  // la règle d'équipes équilibrées (même taille, 2 joueurs minimum par équipe).
   const cradosTeamsValid = mode === "crados" && cradosParticipantMode === "teams"
     ? activeCradosTeams.length >= 2
-      && cradosTeamMemberIds.length >= (cradosSavedTeamsMode ? 2 : 4)
+      && cradosTeamMemberIds.length >= (cradosTeamsSourceMode === "manual" && cradosSelectedBotTeams.length === 0 ? 4 : 2)
       && cradosTeamMemberIds.length <= definition.maxPlayers
       && cradosTeamsHaveNoOverlap
-      && cradosTeamSizes.every((size) => size >= (cradosSavedTeamsMode ? 1 : 2))
-      && (cradosSavedTeamsMode || new Set(cradosTeamSizes).size === 1)
     : false;
-  const cradosTeamsValidationMessage = cradosSavedTeamsMode
-    ? (!activeCradosTeams.length ? "Choisis au moins 2 équipes."
-      : activeCradosTeams.length < 2 ? "Choisis au moins 2 équipes."
-      : !cradosTeamsHaveNoOverlap ? "Un même joueur ne peut pas appartenir à deux équipes dans le même match."
-      : cradosTeamMemberIds.length > definition.maxPlayers ? `Maximum ${definition.maxPlayers} participants.`
-      : "Chaque équipe sélectionnée doit contenir au moins 1 joueur.")
-    : (!activeCradosTeams.length ? "Crée au moins 2 équipes."
-      : activeCradosTeams.length < 2 ? "Crée au moins 2 équipes."
-      : cradosTeamSizes.some((size) => size < 2) ? "Chaque équipe doit contenir au moins 2 joueurs."
-      : new Set(cradosTeamSizes).size !== 1 ? "Les équipes manuelles/automatiques doivent avoir la même taille."
-      : !cradosTeamsHaveNoOverlap ? "Un même joueur ne peut pas appartenir à deux équipes."
-      : `Maximum ${definition.maxPlayers} participants.`);
+  const cradosTeamsValidationMessage = !activeCradosTeams.length
+    ? "Choisis au moins 2 équipes."
+    : activeCradosTeams.length < 2
+      ? "Choisis au moins 2 équipes."
+      : !cradosTeamsHaveNoOverlap
+        ? "Un même joueur ne peut pas appartenir à deux équipes dans le même match."
+        : cradosTeamMemberIds.length > definition.maxPlayers
+          ? `Maximum ${definition.maxPlayers} participants.`
+          : cradosTeamsSourceMode === "manual" && cradosSelectedBotTeams.length === 0 && cradosTeamMemberIds.length < 4
+            ? "Sélectionne au moins 4 joueurs pour les équipes manuelles."
+            : "Chaque équipe doit contenir au moins un joueur.";
   const baseValidSelection = selectedProfiles.length >= definition.minPlayers && selectedProfiles.length <= definition.maxPlayers;
   const validSelection = mode === "crados" && cradosParticipantMode === "teams" ? cradosTeamsValid : baseValidSelection;
+
+  function ensureCradosTeamMembersInitialized(instanceId: string, teamList: any[]) {
+    const tid = String(instanceId || "");
+    const baseId = cradosTeamBaseId(tid);
+    setCradosSavedTeamMemberSelections((prev) => {
+      if (Array.isArray(prev[tid])) return prev;
+      const team = (teamList || []).find((row: any) => String(row?.id || row?.baseTeamId || "") === baseId) || findRememberedGeneratedTeam(baseId);
+      const allIds = uniqueStrings(team?.playerIds || []).filter((id) => profileById.has(id));
+      return { ...prev, [tid]: allIds };
+    });
+  }
+
+  function addCradosStoredTeamSelection(teamId: string, playerIds: string[]) {
+    const baseId = String(teamId || "");
+    const picked = uniqueStrings(playerIds || []).filter((id) => profileById.has(id));
+    if (!baseId || !picked.length) return;
+    setCradosSelectedTeamIds((prev) => {
+      const same = prev.filter((id) => cradosTeamBaseId(id) === baseId);
+      const nextId = same.length ? `${baseId}__slot_${cradosTeamSuffix(same.length)}` : baseId;
+      setCradosSavedTeamMemberSelections((old) => ({ ...old, [nextId]: picked }));
+      return [...prev, nextId];
+    });
+  }
+
+  function removeCradosStoredTeamSelection(instanceId: string) {
+    const tid = String(instanceId || "");
+    setCradosSelectedTeamIds((prev) => prev.filter((id) => String(id) !== tid));
+    setCradosSavedTeamMemberSelections((prev) => { const next = { ...prev }; delete next[tid]; return next; });
+  }
+
+  function toggleCradosStoredTeam(teamId: string) {
+    const baseId = String(teamId || "");
+    const team = cradosStoredTeamOptions.find((row: any) => String(row.id) === baseId);
+    setCradosSelectedTeamIds((prev) => {
+      const same = prev.filter((id) => cradosTeamBaseId(id) === baseId);
+      const allIds = uniqueStrings(team?.playerIds || []);
+      const used = new Set<string>();
+      same.forEach((instanceId) => (cradosSavedTeamMemberSelections[String(instanceId)] || []).forEach((id) => used.add(String(id))));
+      if (same.length && allIds.filter((id) => !used.has(id)).length < 1) return prev;
+      const nextId = same.length ? `${baseId}__slot_${cradosTeamSuffix(same.length)}` : baseId;
+      return [...prev, nextId];
+    });
+    ensureCradosTeamMembersInitialized(baseId, cradosStoredTeamOptions);
+  }
+
+  function addCradosBotTeamSelection(teamId: string, playerIds: string[]) {
+    const baseId = String(teamId || "");
+    const picked = uniqueStrings(playerIds || []).filter((id) => profileById.has(id));
+    if (!baseId || !picked.length) return;
+    setCradosSelectedBotTeamIds((prev) => {
+      const same = prev.filter((id) => cradosTeamBaseId(id) === baseId);
+      const nextId = same.length ? `${baseId}__slot_${cradosTeamSuffix(same.length)}` : baseId;
+      setCradosSavedTeamMemberSelections((old) => ({ ...old, [nextId]: picked }));
+      return [...prev, nextId];
+    });
+  }
+
+  function removeCradosBotTeamSelection(instanceId: string) {
+    const tid = String(instanceId || "");
+    setCradosSelectedBotTeamIds((prev) => prev.filter((id) => String(id) !== tid));
+    setCradosSavedTeamMemberSelections((prev) => { const next = { ...prev }; delete next[tid]; return next; });
+  }
+
+  function toggleCradosBotTeam(teamId: string) {
+    const team = cradosBotTeamOptions.find((row: any) => String(row.id) === String(teamId));
+    const first = uniqueStrings(team?.playerIds || [])[0];
+    if (first) addCradosBotTeamSelection(String(teamId), [first]);
+  }
+
+  function toggleCradosSavedTeamMember(teamId: string, playerId: string) {
+    const tid = String(teamId || "");
+    const baseId = cradosTeamBaseId(tid);
+    const team = cradosStoredTeamOptions.find((row: any) => String(row.id) === baseId)
+      || cradosBotTeamOptions.find((row: any) => String(row.id) === baseId)
+      || findRememberedGeneratedTeam(baseId);
+    const allIds = uniqueStrings(team?.playerIds || []).filter((id) => profileById.has(id));
+    setCradosSavedTeamMemberSelections((prev) => {
+      const current = Array.isArray(prev[tid]) ? prev[tid] : allIds;
+      const pid = String(playerId || "");
+      const next = current.includes(pid) ? current.filter((id) => id !== pid) : [...current, pid];
+      return { ...prev, [tid]: next };
+    });
+  }
 
   // Migration douce : les anciens BOTS Pro X01 mémorisés dans la config CRADOS
   // ne doivent pas survivre au remplacement par les 24 personnages CRADOS.
@@ -346,64 +494,11 @@ export default function NewDartsModeConfig(props: Props) {
     setSelectedIds((prev) => {
       if (prev.includes(id)) {
         setCradosTeamAssignments((map) => { const next = { ...map }; delete next[id]; return next; });
-        setCradosAutoTeams([]);
         return prev.filter((x) => x !== id);
       }
       if (prev.length >= definition.maxPlayers) return prev;
-      setCradosAutoTeams([]);
       return [...prev, id];
     });
-  }
-
-  function setCradosPlayerTeam(playerId: string, teamId: string) {
-    setCradosTeamAssignments((prev) => ({ ...prev, [String(playerId)]: String(teamId) }));
-  }
-
-  function toggleCradosSavedTeam(team: any) {
-    const id = String(team?.id || "");
-    if (!id) return;
-    setCradosTeamError("");
-    setCradosSelectedTeamIds((prev) => {
-      if (prev.includes(id)) return prev.filter((value) => value !== id);
-      const nextIds = [...prev, id];
-      const nextTeams = cradosSavedTeamOptions.filter((option: any) => nextIds.includes(String(option.id)));
-      const total = uniqueStrings(nextTeams.flatMap((option: any) => option.playerIds || [])).length;
-      if (total > definition.maxPlayers) {
-        setCradosTeamError(`Maximum ${definition.maxPlayers} joueurs pour CRADOS.`);
-        return prev;
-      }
-      return nextIds;
-    });
-  }
-
-  function generateCradosAutoTeams() {
-    setCradosTeamError("");
-    const teamCount = Number(cradosAutoTeamCount || 2);
-    const rows = selectedProfiles.filter(Boolean);
-    if (rows.length < 4) { setCradosTeamError("Sélectionne au moins 4 joueurs/BOTS pour créer des équipes."); return; }
-    if (rows.length % teamCount !== 0) { setCradosTeamError(`Pour ${teamCount} équipes, le nombre de participants doit être divisible par ${teamCount}.`); return; }
-    const teamSize = rows.length / teamCount;
-    if (teamSize < 2) { setCradosTeamError("Chaque équipe doit contenir au moins 2 joueurs."); return; }
-    let ordered = cradosAutoMode === "random" ? shuffleCopy(rows) : [...rows].sort((a, b) => cradosProfilePower(b) - cradosProfilePower(a));
-    const buckets = Array.from({ length: teamCount }, (_, index) => ({
-      id: `crados_auto_${index + 1}`,
-      name: `Équipe ${index + 1}`,
-      color: CRADOS_TEAM_SLOTS[index % CRADOS_TEAM_SLOTS.length].color,
-      logoDataUrl: null,
-      playerIds: [] as string[],
-      isBotTeam: false,
-    }));
-    if (cradosAutoMode === "balanced") {
-      ordered.forEach((profile: any, index: number) => {
-        const round = Math.floor(index / teamCount);
-        const slot = index % teamCount;
-        const teamIndex = round % 2 === 0 ? slot : teamCount - 1 - slot;
-        buckets[teamIndex].playerIds.push(String(profile.id));
-      });
-    } else {
-      ordered.forEach((profile: any, index: number) => buckets[index % teamCount].playerIds.push(String(profile.id)));
-    }
-    setCradosAutoTeams(buckets);
   }
 
   React.useEffect(() => {
@@ -415,14 +510,14 @@ export default function NewDartsModeConfig(props: Props) {
       penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution,
       menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed,
       cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode,
-      cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosAutoTeamCount, cradosAutoMode, cradosAutoTeams,
+      cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled,
       fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust,
       looperLives, looperStartTarget, looperNumberLoops, looperSetterShield,
       callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull,
       steepleDirection, steepleFences, steepleFinishBull, steepleZone,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosAutoTeamCount, cradosAutoMode, cradosAutoTeams, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -504,65 +599,126 @@ export default function NewDartsModeConfig(props: Props) {
   const panel: React.CSSProperties = { borderRadius: 16, padding: 11, background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.24))", border: "1px solid rgba(255,255,255,.09)" };
 
   const cradosTeamMode = mode === "crados" && cradosParticipantMode === "teams";
-  const selectedTeamProfiles = selectedProfiles;
-  const participantsBlock = <>
-    <section style={selectorCard}>
-      <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Participants</div>
-      {mode === "crados" ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => { setCradosParticipantMode("players"); setCradosTeamError(""); }} style={{ minHeight: 44, borderRadius: 14, border: `1px solid ${!cradosTeamMode ? accent : "rgba(255,255,255,.11)"}`, background: !cradosTeamMode ? `${accent}20` : "rgba(255,255,255,.035)", color: !cradosTeamMode ? accent : "#c4c9d9", fontWeight: 1000 }}>👤 JOUEURS</button>
-        <button type="button" onClick={() => { setCradosParticipantMode("teams"); setCradosTeamError(""); }} style={{ minHeight: 44, borderRadius: 14, border: `1px solid ${cradosTeamMode ? accent : "rgba(255,255,255,.11)"}`, background: cradosTeamMode ? `${accent}20` : "rgba(255,255,255,.035)", color: cradosTeamMode ? accent : "#c4c9d9", fontWeight: 1000 }}>👥 ÉQUIPES</button>
-      </div> : null}
+  const cradosSelectableTeamProfiles = React.useMemo(() => {
+    const map = new Map<string, any>();
+    [...humanProfiles, ...bots].forEach((profile: any) => map.set(String(profile.id), profile));
+    return [...map.values()];
+  }, [humanProfiles, bots]);
 
-      {!cradosTeamMode ? <>
-        <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary />
-        <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} sélectionné${selectedProfiles.length > 1 ? "s" : ""}` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`}</div>
-          <button type="button" onClick={() => setBotsOpen((v) => !v)} style={{ minHeight: 34, borderRadius: 999, border: `1px solid ${accent}77`, background: botsOpen ? `${accent}1d` : "rgba(255,255,255,.04)", color: accent, fontWeight: 900, padding: "6px 11px" }}>{botsOpen ? "☑ BOTS IA" : "☐ BOTS IA"}</button>
-        </div>
-        {maxReached ? <div style={{ marginTop: 8, color: soft, fontSize: 10.5 }}>Maximum atteint : {definition.maxPlayers} participants.</div> : null}
-      </> : <>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 12 }}>
-          {([['manual','MANUEL'],['saved','ÉQUIPES CRÉÉES'],['auto','AUTOMATIQUE']] as any[]).map(([value,label]) => <button key={value} type="button" onClick={() => { setCradosTeamsSourceMode(value); setCradosTeamError(""); }} style={{ minHeight: 42, borderRadius: 13, padding: "6px 5px", border: `1px solid ${cradosTeamsSourceMode === value ? accent : "rgba(255,255,255,.10)"}`, background: cradosTeamsSourceMode === value ? `${accent}18` : "rgba(255,255,255,.03)", color: cradosTeamsSourceMode === value ? accent : "#aeb5c8", fontWeight: 950, fontSize: 9.8 }}>{label}</button>)}
-        </div>
+  function setCradosPlayerTeam(playerId: string, teamId: string) {
+    const pid = String(playerId || "");
+    const tid = cradosNormalizeTeamId(teamId);
+    if (!pid || !tid) return;
+    setCradosTeamAssignments((prev) => ({ ...prev, [pid]: cradosNormalizeTeamId(prev[pid]) === tid ? "" : tid }));
+  }
 
-        {cradosTeamsSourceMode === "saved" ? <div style={{ display: "grid", gap: 9 }}>
-          <div style={{ color: soft, fontSize: 10.8, lineHeight: 1.4 }}>Choisis au moins 2 équipes déjà créées. Les 6 familles BOTS IA CRADOS sont intégrées ici comme de vraies équipes.</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
-            {cradosSavedTeamOptions.map((team: any) => {
-              const active = cradosSelectedTeamIds.includes(String(team.id));
-              const members = (team.playerIds || []).map((id: string) => profileById.get(String(id))).filter(Boolean);
-              return <button key={team.id} type="button" onClick={() => toggleCradosSavedTeam(team)} style={{ minHeight: 94, borderRadius: 16, border: `1px solid ${active ? team.color || accent : "rgba(255,255,255,.09)"}`, background: active ? `${team.color || accent}16` : "rgba(255,255,255,.035)", padding: 10, textAlign: "left", color: "#fff", boxShadow: active ? `0 0 18px ${team.color || accent}25` : "none" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 9, alignItems: "center" }}><ProfileAvatar name={team.name} dataUrl={team.logoDataUrl || undefined} size={42} /><div style={{ minWidth: 0 }}><div style={{ color: active ? team.color || accent : "#fff", fontWeight: 1000, fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{active ? "☑ " : "☐ "}{team.name}</div><div style={{ marginTop: 3, color: "#939bb0", fontSize: 9 }}>{members.length} membres{team.isCradosFamily ? ` · BOTS IA · ${Number(team.botTeamLevel || 0).toFixed(1)}/5` : ""}</div></div></div>
-                <div style={{ display: "flex", gap: 4, marginTop: 8, overflow: "hidden" }}>{members.slice(0, 5).map((member: any) => <ProfileAvatar key={member.id} profile={member} size={26} showStars={false} />)}</div>
-              </button>;
-            })}
-          </div>
-          {!cradosSavedTeamOptions.length ? <div style={{ color: "#ff9baa", fontSize: 11 }}>Aucune équipe fléchettes enregistrée.</div> : null}
-        </div> : <>
-          <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle={cradosTeamsSourceMode === "auto" ? "Choisir les joueurs à brasser" : "Choisir les joueurs des équipes"} showSelectedSummary />
-          <div style={{ marginTop: 9, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span style={{ color: soft, fontSize: 10.5 }}>{selectedProfiles.length} joueur{selectedProfiles.length > 1 ? "s" : ""}/BOT{selectedProfiles.length > 1 ? "S" : ""}</span><button type="button" onClick={() => setBotsOpen((v) => !v)} style={{ minHeight: 32, borderRadius: 999, border: `1px solid ${accent}66`, background: botsOpen ? `${accent}18` : "rgba(255,255,255,.035)", color: accent, fontWeight: 900, padding: "5px 10px" }}>{botsOpen ? "☑ BOTS" : "☐ BOTS"}</button></div>
-          {botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS CRADOS + CPU" modalTitle="Choisir les BOTS" showCheckbox={false} showSelectedSummary={false} /></div> : null}
+  const cradosModeChoiceBlock = mode === "crados" ? <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 8 }}>Type de partie</div>
+    <div style={{ color: soft, fontSize: 11.5, lineHeight: 1.4, marginBottom: 12 }}>Comme dans X01, choisis d'abord si la partie se joue avec des profils individuels ou avec des équipes.</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginBottom: 14 }}>
+      <button type="button" onClick={() => { setCradosParticipantMode("players"); setCradosTeamError(""); }} style={{ borderRadius: 18, border: `1px solid ${!cradosTeamMode ? accent : "rgba(255,255,255,.10)"}`, background: !cradosTeamMode ? `${accent}20` : "rgba(255,255,255,.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
+        <div style={{ color: accent, fontWeight: 950, fontSize: 18 }}>Joueurs</div>
+        <div style={{ color: soft, fontSize: 12, marginTop: 4 }}>2 à {definition.maxPlayers} profils, humains ou BOTS.</div>
+      </button>
+      <button type="button" onClick={() => { setCradosParticipantMode("teams"); setCradosTeamError(""); }} style={{ borderRadius: 18, border: `1px solid ${cradosTeamMode ? accent : "rgba(255,255,255,.10)"}`, background: cradosTeamMode ? `${accent}20` : "rgba(255,255,255,.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
+        <div style={{ color: accent, fontWeight: 950, fontSize: 18 }}>Équipes</div>
+        <div style={{ color: soft, fontSize: 12, marginTop: 4 }}>Manuel, équipes enregistrées ou brassage automatique.</div>
+      </button>
+    </div>
+    {cradosTeamMode ? <div>
+      <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Source des équipes</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <PillButton label="Manuel" active={cradosTeamsSourceMode === "manual"} onClick={() => setCradosTeamsSourceMode("manual")} primary={accent} primarySoft={`${accent}18`} />
+        <PillButton label="Équipes enregistrées" active={cradosTeamsSourceMode === "saved"} onClick={() => setCradosTeamsSourceMode("saved")} primary={accent} primarySoft={`${accent}18`} />
+        <PillButton label="Brassage auto" active={cradosTeamsSourceMode === "auto"} onClick={() => setCradosTeamsSourceMode("auto")} primary={accent} primarySoft={`${accent}18`} />
+      </div>
+      <div style={{ marginTop: 10, fontSize: 11, color: "#8f94b5" }}>Même logique que X01 : Gold/Pink/Blue/Green en manuel, équipes sauvegardées, ou génération automatique.</div>
+    </div> : null}
+  </section> : null;
 
-          {cradosTeamsSourceMode === "manual" ? <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <div style={{ color: soft, fontSize: 10.7, lineHeight: 1.4 }}>Comme dans X01 : sélectionne au moins 4 participants puis assigne chacun à une équipe. Les équipes doivent avoir la même taille.</div>
-            {selectedTeamProfiles.map((profile: any) => <div key={profile.id} style={{ display: "grid", gridTemplateColumns: "minmax(110px,1fr) auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}><ProfileAvatar profile={profile} size={30} showStars={false} /><span style={{ color: "#fff", fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile.name}</span></div><div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>{CRADOS_TEAM_SLOTS.map((slot) => <button key={slot.id} type="button" onClick={() => setCradosPlayerTeam(String(profile.id), slot.id)} style={{ minWidth: 29, height: 29, borderRadius: 999, border: `1px solid ${cradosTeamAssignments[String(profile.id)] === slot.id ? slot.color : slot.color + "55"}`, background: cradosTeamAssignments[String(profile.id)] === slot.id ? `${slot.color}28` : "rgba(255,255,255,.025)", color: slot.color, fontWeight: 1000, fontSize: 9 }}>{slot.name.replace("Team ","")}</button>)}</div></div>)}
-          </div> : <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-            <div style={{ ...panel, display: "grid", gap: 8 }}><OptionRow label="Nombre d'équipes"><OptionSelect value={cradosAutoTeamCount} options={[{value:2,label:"2 équipes"},{value:3,label:"3 équipes"},{value:4,label:"4 équipes"}]} onChange={(v:any) => { setCradosAutoTeamCount(Number(v) as any); setCradosAutoTeams([]); }} /></OptionRow><OptionRow label="Brassage"><OptionSelect value={cradosAutoMode} options={[{value:"balanced",label:"Équilibré par niveau"},{value:"random",label:"Aléatoire"}]} onChange={(v:any) => { setCradosAutoMode(v); setCradosAutoTeams([]); }} /></OptionRow></div>
-            <button type="button" onClick={generateCradosAutoTeams} style={{ minHeight: 42, borderRadius: 14, border: `1px solid ${accent}`, background: `${accent}18`, color: accent, fontWeight: 1000 }}>⚙ GÉNÉRER LES ÉQUIPES</button>
-            {cradosAutoTeams.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 8 }}>{cradosAutoTeams.map((team: any) => <div key={team.id} style={{ borderRadius: 14, padding: 9, border: `1px solid ${team.color}66`, background: `${team.color}0d` }}><div style={{ color: team.color, fontWeight: 1000, fontSize: 11 }}>{team.name}</div><div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>{(team.playerIds || []).map((id: string) => { const prof = profileById.get(String(id)); return prof ? <ProfileAvatar key={id} profile={prof} size={28} showStars={false} /> : null; })}</div></div>)}</div> : null}
-          </div>}
-        </>}
+  // Vue complète : même présentation que X01 (onglets Joueurs / Équipes, puis source).
+  // La vue guidée conserve les deux grandes cartes de l'étape 1, également calées sur X01.
+  const cradosCompleteModeChoiceBlock = mode === "crados" ? <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Participants</div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: cradosTeamMode ? 14 : 0 }}>
+      <PillButton label="Joueurs" active={!cradosTeamMode} onClick={() => { setCradosParticipantMode("players"); setCradosTeamError(""); }} primary={accent} primarySoft={`${accent}18`} />
+      <PillButton label="Équipes" active={cradosTeamMode} onClick={() => { setCradosParticipantMode("teams"); setCradosTeamError(""); }} primary={accent} primarySoft={`${accent}18`} />
+    </div>
+    {cradosTeamMode ? <div>
+      <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Source des équipes</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <PillButton label="Manuel" active={cradosTeamsSourceMode === "manual"} onClick={() => setCradosTeamsSourceMode("manual")} primary={accent} primarySoft={`${accent}18`} />
+        <PillButton label="Équipes enregistrées" active={cradosTeamsSourceMode === "saved"} onClick={() => setCradosTeamsSourceMode("saved")} primary={accent} primarySoft={`${accent}18`} />
+        <PillButton label="Brassage auto" active={cradosTeamsSourceMode === "auto"} onClick={() => setCradosTeamsSourceMode("auto")} primary={accent} primarySoft={`${accent}18`} />
+      </div>
+    </div> : null}
+  </section> : null;
 
-        {cradosTeamError ? <div style={{ marginTop: 10, color: "#ff9baa", fontSize: 10.8, fontWeight: 900 }}>{cradosTeamError}</div> : null}
-        <div style={{ marginTop: 10, color: cradosTeamsValid ? accent : "#ff9baa", fontSize: 10.8, fontWeight: 900 }}>{cradosTeamsValid ? `${activeCradosTeams.length} équipes · ${cradosTeamMemberIds.length} participants · prêt à jouer` : cradosTeamsValidationMessage}</div>
-      </>}
+  const playerParticipantsBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "crados" ? "Joueurs" : "Participants"}</div>
+    <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
+    <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.06)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: botsOpen ? 9 : 0 }}>
+        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: accent }}>Bots IA</div>
+        <Pill active={botsOpen} onClick={() => setBotsOpen((v) => !v)} accent={accent}>{botsOpen ? "ON" : "OFF"}</Pill>
+      </div>
+      {botsOpen ? <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "crados" ? "BOTS CRADOS + CPU" : "BOTS IA"} modalTitle={mode === "crados" ? "Choisir les BOTS CRADOS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} /> : null}
+      {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) && botsOpen ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
+    </div>
+    <div style={{ marginTop: 10, color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} sélectionné${selectedProfiles.length > 1 ? "s" : ""}` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`}</div>
+    {maxReached ? <div style={{ marginTop: 6, color: soft, fontSize: 10.5 }}>Maximum atteint : {definition.maxPlayers} participants.</div> : null}
+  </section>;
+
+  const cradosTeamsBlock = mode === "crados" ? <>
+    <TeamsSection
+      profiles={cradosSelectableTeamProfiles as any}
+      selectableProfiles={humanProfiles as any}
+      selectedIds={selectedIds}
+      teamAssignments={cradosTeamAssignments as any}
+      setPlayerTeam={setCradosPlayerTeam as any}
+      togglePlayer={togglePlayer}
+      allProfiles={cradosSelectableTeamProfiles as any}
+      sourceMode={cradosTeamsSourceMode as any}
+      setSourceMode={(value: any) => { setCradosTeamsSourceMode(value); setCradosTeamError(""); }}
+      storedTeams={cradosStoredTeamOptions as any}
+      selectedStoredTeamIds={cradosSelectedTeamIds}
+      toggleStoredTeam={toggleCradosStoredTeam}
+      addStoredTeamSelection={addCradosStoredTeamSelection}
+      removeStoredTeamSelection={removeCradosStoredTeamSelection}
+      botTeams={cradosBotTeamOptions}
+      botTeamsPanelEnabled={cradosBotTeamsPanelEnabled}
+      setBotTeamsPanelEnabled={setCradosBotTeamsPanelEnabled}
+      selectedBotTeamIds={cradosSelectedBotTeamIds}
+      toggleBotTeam={toggleCradosBotTeam}
+      addBotTeamSelection={addCradosBotTeamSelection}
+      removeBotTeamSelection={removeCradosBotTeamSelection}
+      savedTeamMemberSelections={cradosSavedTeamMemberSelections}
+      toggleSavedTeamMember={toggleCradosSavedTeamMember}
+      allowSaveGeneratedTeams={true}
+      primary={accent}
+      primarySoft={`${accent}18`}
+    />
+    {cradosTeamsSourceMode !== "auto" ? <BotTeamsSection
+      botTeams={cradosBotTeamOptions}
+      selectedBotTeamIds={cradosSelectedBotTeamIds}
+      toggleBotTeam={toggleCradosBotTeam}
+      addBotTeamSelection={addCradosBotTeamSelection}
+      removeBotTeamSelection={removeCradosBotTeamSelection}
+      botTeamsPanelEnabled={cradosBotTeamsPanelEnabled}
+      setBotTeamsPanelEnabled={setCradosBotTeamsPanelEnabled}
+      profiles={cradosSelectableTeamProfiles}
+      savedTeamMemberSelections={cradosSavedTeamMemberSelections}
+      toggleSavedTeamMember={toggleCradosSavedTeamMember}
+      primary={accent}
+      primarySoft={`${accent}18`}
+    /> : null}
+    <section style={{ ...selectorCard, paddingTop: 10, paddingBottom: 10 }}>
+      {cradosTeamError ? <div style={{ color: "#ff9baa", fontSize: 10.8, fontWeight: 900, marginBottom: 5 }}>{cradosTeamError}</div> : null}
+      <div style={{ color: cradosTeamsValid ? accent : "#ff9baa", fontSize: 10.8, fontWeight: 900 }}>{cradosTeamsValid ? `${activeCradosTeams.length} équipes · ${cradosTeamMemberIds.length} participants · prêt à jouer` : cradosTeamsValidationMessage}</div>
     </section>
+  </> : null;
 
-    {!cradosTeamMode && botsOpen ? <section style={selectorCard}>
-      <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "crados" ? "BOTS CRADOS + CPU" : "BOTS IA"} modalTitle={mode === "crados" ? "Choisir les BOTS CRADOS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} />
-      {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow>{mode === "crados" ? <div style={{ marginTop: 5, color: soft, fontSize: 9.5 }}>Les 24 personnages CRADOS conservent leur niveau propre. Ce réglage ne sert que de secours aux BOTS CPU personnels sans niveau exploitable.</div> : null}</div> : null}
-    </section> : null}
-  </>;
+  const participantsBlock = mode === "crados" ? (cradosTeamMode ? cradosTeamsBlock : playerParticipantsBlock) : playerParticipantsBlock;
 
   const matchBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Format de match</div>
@@ -713,10 +869,21 @@ export default function NewDartsModeConfig(props: Props) {
     : mode === "looper" ? looperBlock
     : mode === "call_three" ? callThreeBlock
     : steeplechaseBlock;
-  const steps = definition.guidedSteps;
+  const steps = mode === "crados"
+    ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Format", "Saisie", "Résumé"]
+    : definition.guidedSteps;
   const maxStep = steps.length - 1;
+  React.useEffect(() => {
+    setGuidedStep((step) => Math.max(0, Math.min(step, maxStep)));
+  }, [maxStep]);
+  const goGuidedStep = React.useCallback((step: number) => {
+    setGuidedStep(Math.max(0, Math.min(step, maxStep)));
+    window.requestAnimationFrame(() => {
+      try { configScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" }); } catch {}
+    });
+  }, [maxStep]);
 
-  return <div className="msc-new-darts-config" style={{ height: "100dvh", minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", overflowY: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehaviorY: "contain", paddingBottom: 92, boxSizing: "border-box" }}>
+  return <div ref={configScrollRef} className="msc-new-darts-config" style={{ height: "100dvh", minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", overflowY: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehaviorY: "contain", paddingBottom: 92, boxSizing: "border-box" }}>
     <style>{`
       .msc-new-darts-config { scrollbar-gutter: stable; }
       @media (orientation: landscape) and (max-height: 620px) {
@@ -735,16 +902,25 @@ export default function NewDartsModeConfig(props: Props) {
 
       {viewMode === "guided" ? <>
         <section style={selectorCard}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}><div><div style={{ color: accent, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div><div style={{ marginTop: 3, color: soft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{steps.length} · {steps[guidedStep]}</div></div><div style={{ display: "flex", gap: 4 }}>{steps.map((label, idx) => <button key={label} type="button" onClick={() => setGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? accent : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? `${accent}20` : "rgba(255,255,255,.03)", color: idx === guidedStep ? accent : "#aeb2d3", fontSize: 9.5, fontWeight: 950 }}>{idx + 1}</button>)}</div></div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}><div><div style={{ color: accent, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div><div style={{ marginTop: 3, color: soft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{steps.length} · {steps[guidedStep]}</div></div><div style={{ display: "flex", gap: 4 }}>{steps.map((label, idx) => <button key={label} type="button" onClick={() => goGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? accent : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? `${accent}20` : "rgba(255,255,255,.03)", color: idx === guidedStep ? accent : "#aeb2d3", fontSize: 9.5, fontWeight: 950 }}>{idx + 1}</button>)}</div></div>
           <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / steps.length) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${accent}, ${accent2})` }} /></div>
         </section>
-        {guidedStep === 0 ? participantsBlock : null}
-        {guidedStep === 1 ? modeBlock : null}
-        {guidedStep === 2 ? matchBlock : null}
-        {guidedStep === 3 ? inputBlock : null}
-        {guidedStep === 4 ? summaryBlock : null}
-        <div className="msc-new-darts-guided-nav" style={{ display: "flex", gap: 9, marginBottom: 12 }}><button type="button" disabled={guidedStep === 0} onClick={() => setGuidedStep((s) => Math.max(0, s - 1))} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button><button type="button" disabled={guidedStep === maxStep} onClick={() => setGuidedStep((s) => Math.min(maxStep, s + 1))} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: `1px solid ${accent}`, background: `${accent}18`, color: guidedStep === maxStep ? "#565b76" : accent, fontWeight: 950 }}>Suivant →</button></div>
-      </> : <>{participantsBlock}{modeBlock}{matchBlock}{inputBlock}{summaryBlock}</>}
+        {mode === "crados" ? <>
+          {guidedStep === 0 ? cradosModeChoiceBlock : null}
+          {guidedStep === 1 ? participantsBlock : null}
+          {guidedStep === 2 ? modeBlock : null}
+          {guidedStep === 3 ? matchBlock : null}
+          {guidedStep === 4 ? inputBlock : null}
+          {guidedStep === 5 ? summaryBlock : null}
+        </> : <>
+          {guidedStep === 0 ? participantsBlock : null}
+          {guidedStep === 1 ? modeBlock : null}
+          {guidedStep === 2 ? matchBlock : null}
+          {guidedStep === 3 ? inputBlock : null}
+          {guidedStep === 4 ? summaryBlock : null}
+        </>}
+        <div className="msc-new-darts-guided-nav" style={{ display: "flex", gap: 9, marginBottom: 12 }}><button type="button" disabled={guidedStep === 0} onClick={() => goGuidedStep(guidedStep - 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button><button type="button" disabled={guidedStep === maxStep} onClick={() => goGuidedStep(guidedStep + 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: `1px solid ${accent}`, background: `${accent}18`, color: guidedStep === maxStep ? "#565b76" : accent, fontWeight: 950 }}>Suivant →</button></div>
+      </> : <>{mode === "crados" ? cradosCompleteModeChoiceBlock : null}{participantsBlock}{modeBlock}{matchBlock}{inputBlock}{summaryBlock}</>}
 
       {(viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>La partie démarre avec le moteur complet, les BOTS, l’UNDO, la sauvegarde en cours et les statistiques de fin.</div></div> : null}
     </div>

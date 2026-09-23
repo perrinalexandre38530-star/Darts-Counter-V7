@@ -11,5 +11,5 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
 </div>;
 
 export default function CradosConfig(props: any) {
-  return <NewDartsModeConfig {...props} mode="crados" definition={{ id: "crados", title: "CRADOS", ticker: tickerCrados, accent: "#b7f247", accent2: "#4dc536", minPlayers: 2, maxPlayers: 12, playTab: "crados_play", guidedSteps: ["Participants", "Crasse", "Format", "Saisie", "Résumé"], rulesContent: rules }} />;
+  return <NewDartsModeConfig {...props} mode="crados" definition={{ id: "crados", title: "CRADOS", ticker: tickerCrados, accent: "#b7f247", accent2: "#4dc536", minPlayers: 2, maxPlayers: 10, playTab: "crados_play", guidedSteps: ["Mode", "Participants", "Crasse", "Format", "Saisie", "Résumé"], rulesContent: rules }} />;
 }

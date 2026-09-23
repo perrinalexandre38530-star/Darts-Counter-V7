@@ -4553,7 +4553,7 @@ html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="pl
    ScoreInputHub. It activates only when the direct play content actually has
    multiple siblings, so single-wrapper specialty modes are not scrambled. */
 @supports selector(:has(*)) {
-  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child:not(.crados-play):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
     height: 100dvh !important;
     min-height: 0 !important;
     max-height: 100dvh !important;
@@ -4563,7 +4563,7 @@ html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="pl
     padding-bottom: 0 !important;
   }
 
-  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child:not(.crados-play) > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
     flex: 1 1 auto !important;
     min-height: 0 !important;
     width: 100% !important;
@@ -4578,7 +4578,7 @@ html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="pl
     overflow: hidden !important;
   }
 
-  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) > :has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child:not(.crados-play) > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) > :has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
     grid-column: 2 !important;
     grid-row: 1 / span 99 !important;
     min-width: 0 !important;
@@ -4589,7 +4589,7 @@ html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="pl
     align-self: stretch !important;
   }
 
-  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) > :not(:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"])) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > :first-child:not(.crados-play) > :not([data-mss-page-header="1"]):has(> :nth-child(2)):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) > :not(:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"])) {
     grid-column: 1 !important;
     min-width: 0 !important;
     margin-top: 0 !important;
@@ -4777,7 +4777,7 @@ html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-con
 @supports selector(:has(*)) {
   html[data-msc-orientation="landscape"]
   .dc-themed-route[data-msc-game-screen="play"]
-  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play) {
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.crados-play):not([data-mss-native-play-layout="1"]):not(.darts-play-auto-columns):not(.msc-mode-play) {
     height: 100dvh !important;
     min-height: 0 !important;
     max-height: 100dvh !important;
@@ -4794,7 +4794,7 @@ html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-con
   /* First visual block is treated as the persistent mode header / summary. */
   html[data-msc-orientation="landscape"]
   .dc-themed-route[data-msc-game-screen="play"]
-  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.crados-play):not([data-mss-native-play-layout="1"]):not(.darts-play-auto-columns):not(.msc-mode-play)
   > :first-of-type {
     grid-column: 1 / -1 !important;
     grid-row: 1 !important;
@@ -4807,7 +4807,7 @@ html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-con
   /* Any direct section containing an input surface becomes the right pane. */
   html[data-msc-orientation="landscape"]
   .dc-themed-route[data-msc-game-screen="play"]
-  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.crados-play):not([data-mss-native-play-layout="1"]):not(.darts-play-auto-columns):not(.msc-mode-play)
   > :not(:first-of-type):has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]) {
     grid-column: 2 !important;
     grid-row: 2 !important;
@@ -4826,7 +4826,7 @@ html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-con
      forcing the entire page to scroll. */
   html[data-msc-orientation="landscape"]
   .dc-themed-route[data-msc-game-screen="play"]
-  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.crados-play):not([data-mss-native-play-layout="1"]):not(.darts-play-auto-columns):not(.msc-mode-play)
   > :not(:first-of-type):not(:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"])) {
     grid-column: 1 !important;
     min-width: 0 !important;
@@ -4837,7 +4837,7 @@ html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-con
   /* When there are several left-side siblings, keep them compact. */
   html[data-msc-orientation="landscape"]
   .dc-themed-route[data-msc-game-screen="play"]
-  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.darts-play-auto-columns):not(.msc-mode-play)
+  > :first-child:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"]):not(.killer-play-screen):not(.crados-play):not([data-mss-native-play-layout="1"]):not(.darts-play-auto-columns):not(.msc-mode-play)
   > :not(:first-of-type):not(:has([data-mss-keypad="1"], [data-mss-score-input-hub="1"], [data-mss-play-input="1"])) {
     max-height: calc(100dvh - 104px) !important;
     overflow: auto !important;

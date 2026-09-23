@@ -454,13 +454,13 @@ export default function CradosPlay(props: any) {
   }, [currentThrow, state, activePlayer?.id]);
 
   if (state.phase === "finished") {
-    return <div className="crados-play crados-play--finished">
+    return <div className="crados-play crados-play--finished" data-mss-native-play-layout="1">
       <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={4} left={<BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} />} right={<CradosAwenaButton />} />
       <div className="crados-play__finished-wrap"><ModeEndPanel title={teamMode ? "CRADOS — ÉQUIPES" : "CRADOS"} winner={state.winnerId} profiles={teamMode ? sideProfiles : profiles} legWins={state.legWins} accent={ACCENT} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: "crados", from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: "crados", focusMatchId: matchIdRef.current })} onConfig={() => go?.("crados_config")} onGames={() => go?.("games", { gamesView: "all" })} extra={<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>{teamMode ? sides.map((side: any) => { const st = sideStats[String(side.id)] || {}; return <div key={side.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: `1px solid ${(side.color || ACCENT)}44`, fontSize: 9.5, color: SOFT }}><b style={{ color: side.color || "#fff" }}>{side.name}</b><br />{st.sectorsClaimed || 0} secteurs · {st.sectorsStolen || 0} vols · {st.dirtTaken || 0} crasses · {st.dirtWashed || 0} lavées</div>; }) : profiles.map((p: any) => { const st = state.statsByPlayer[p.id] || {}; return <div key={p.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 9.5, color: SOFT }}><b style={{ color: "#fff" }}>{playerName(p)}</b><br />{st.sectorsClaimed || 0} secteurs · {st.sectorsStolen || 0} vols · {st.dirtTaken || 0} crasses · {st.dirtWashed || 0} lavées</div>; })}</div>} /></div>
     </div>;
   }
 
-  return <div className="crados-play">
+  return <div className="crados-play" data-mss-native-play-layout="1">
     <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={4} tickerFit="cover" left={<BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} />} right={<CradosAwenaButton />} />
 
     <main className="crados-play__body">
