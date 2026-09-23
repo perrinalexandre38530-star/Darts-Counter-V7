@@ -7,6 +7,7 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
   <div><b style={{ color: "#9eea3a" }}>PIÈGES</b><br/>Toucher un secteur sale adverse reste dangereux. En BLOCAGE, tu prends la puissance complète de la touche en crasse. En VOL, tu attaques les couches pour tenter de retourner le secteur, mais chaque contact adverse ajoute quand même +1 CRASSE.</div>
   <div><b style={{ color: "#74d92d" }}>DOUCHE</b><br/>Le Bull peut nettoyer : SBULL retire un peu de crasse, DBULL lave beaucoup plus si l'option est activée.</div>
   <div><b style={{ color: "#d4ff44" }}>VICTOIRE</b><br/>Le dernier joueur encore sous la limite de crasse remporte la manche.</div>
+  <div><b style={{ color: "#67d7ff" }}>MODE ÉQUIPES</b><br/>Les membres jouent à tour de rôle. Les secteurs contaminés, la jauge de crasse et les manches gagnées sont partagés par toute l’équipe ; si la jauge atteint la limite, toute l’équipe est éliminée.</div>
 </div>;
 
 export default function CradosConfig(props: any) {
