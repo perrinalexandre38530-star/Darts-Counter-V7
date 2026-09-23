@@ -27,6 +27,12 @@ import theoVomito from "../assets/avatars/crados-bots/gerbos_theo_vomito.webp";
 import yvetteGalette from "../assets/avatars/crados-bots/gerbos_yvette_galette.webp";
 import bebertBegere from "../assets/avatars/crados-bots/gerbos_bebert_begere.webp";
 import remiVomi from "../assets/avatars/crados-bots/gerbos_remi_vomi.webp";
+import morvellosTeamBadge from "../assets/avatars/crados-teams/morvellos_team_badge.webp";
+import cradoTeamBadge from "../assets/avatars/crados-teams/crado_team_badge.webp";
+import deglingosTeamBadge from "../assets/avatars/crados-teams/deglingos_team_badge.webp";
+import gastrosTeamBadge from "../assets/avatars/crados-teams/gastros_team_badge.webp";
+import decompositosTeamBadge from "../assets/avatars/crados-teams/decompositos_team_badge.webp";
+import gerbosTeamBadge from "../assets/avatars/crados-teams/gerbos_team_badge.webp";
 
 export type CradosFamilyKey = "morvellos" | "crado" | "deglingos" | "gastros" | "decompositos" | "gerbos";
 export type CradosOfficialBot = {
@@ -64,16 +70,16 @@ export type CradosBotTeam = {
   accent: string;
   memberIds: string[];
   botTeamLevel: number;
-  avatarDataUrl: null;
+  avatarDataUrl: string | null;
 };
 
-const FAMILY_META: Record<CradosFamilyKey, { label: string; accent: string }> = {
-  morvellos: { label: "MORVELLOS", accent: "#9ad93a" },
-  crado: { label: "CRADO", accent: "#d6a12e" },
-  deglingos: { label: "DÉGLINGOS", accent: "#8f6cff" },
-  gastros: { label: "GASTROS", accent: "#ff6b35" },
-  decompositos: { label: "DÉCOMPOSITOS", accent: "#20c9bd" },
-  gerbos: { label: "GERBOS", accent: "#d3d43a" },
+const FAMILY_META: Record<CradosFamilyKey, { label: string; accent: string; teamBadge: string }> = {
+  morvellos: { label: "MORVELLOS", accent: "#9ad93a", teamBadge: morvellosTeamBadge },
+  crado: { label: "CRADO", accent: "#d6a12e", teamBadge: cradoTeamBadge },
+  deglingos: { label: "DÉGLINGOS", accent: "#8f6cff", teamBadge: deglingosTeamBadge },
+  gastros: { label: "GASTROS", accent: "#ff6b35", teamBadge: gastrosTeamBadge },
+  decompositos: { label: "DÉCOMPOSITOS", accent: "#20c9bd", teamBadge: decompositosTeamBadge },
+  gerbos: { label: "GERBOS", accent: "#d3d43a", teamBadge: gerbosTeamBadge },
 };
 
 function difficultyFor(level: number): "easy" | "normal" | "hard" {
@@ -165,7 +171,7 @@ export const CRADOS_BOT_TEAMS: CradosBotTeam[] = (Object.keys(FAMILY_META) as Cr
     accent: FAMILY_META[key].accent,
     memberIds: members.map((item) => item.id),
     botTeamLevel: Math.round((members.reduce((sum, item) => sum + item.cradosAiLevel, 0) / Math.max(1, members.length)) * 10) / 10,
-    avatarDataUrl: null,
+    avatarDataUrl: FAMILY_META[key].teamBadge,
   };
 });
 

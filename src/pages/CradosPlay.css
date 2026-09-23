@@ -15,6 +15,7 @@
 .crados-play > [data-mss-page-header="1"] { flex: 0 0 auto; }
 
 .crados-play__body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   width: min(1180px, 100%);
@@ -199,18 +200,56 @@
 .crados-players-modal__numbers span { display:block; color:#737d75; font-size:5.6px; font-weight:1000; }
 .crados-players-modal__numbers b { display:block; margin-top:2px; font-size:10px; font-weight:1100; }
 
+
+.crados-quick-dock { display:none; }
+.crados-quick-dock__button { min-width:0; height:42px; border-radius:14px; border:1px solid rgba(255,255,255,.10); background:linear-gradient(180deg,rgba(19,24,20,.96),rgba(8,10,9,.98)); color:#fff; display:flex; align-items:center; gap:7px; padding:0 12px; font-size:10px; font-weight:1000; cursor:pointer; }
+.crados-quick-dock__button span { font-size:15px; line-height:1; }
+.crados-quick-dock__button b { font-size:9px; letter-spacing:.8px; }
+.crados-players-modal__card--stats { width:min(760px,100%); }
+.crados-stats-modal__body { min-height:0; overflow:auto; padding:10px; }
+.crados-stats-modal__body .crados-stats-panel { min-height: 300px; height:auto; }
+.crados-stats-modal__body .crados-stats-panel__grid span { font-size:8px; }
+.crados-stats-modal__body .crados-stats-panel__grid b { font-size:20px; }
+.crados-stats-modal__body .crados-stats-panel__preview b,.crados-stats-modal__body .crados-stats-panel__visit b { font-size:8px; }
+.crados-stats-modal__body .crados-stats-panel__preview span,.crados-stats-modal__body .crados-stats-panel__visit span,.crados-stats-modal__body .crados-stats-panel__empty { font-size:9px; white-space:normal; }
+
 .crados-play--finished { overflow:auto; }
 .crados-play__finished-wrap { width:min(920px,100%); margin:0 auto; padding:8px 10px 18px; box-sizing:border-box; }
 
 @media (orientation: landscape) and (min-width: 700px) {
-  .crados-play { --crados-gap: 8px; }
-  .crados-play__body { padding-left:10px; padding-right:10px; }
-  .crados-play__stage { grid-template-columns: minmax(335px,.92fr) minmax(390px,1.08fr); grid-template-rows:minmax(0,1fr); }
-  .crados-active { min-height:105px; }
-  .crados-tabs__panel { padding:5px 7px 6px; }
-  .crados-tactical-board { grid-template-columns:minmax(180px,1fr) minmax(138px,.72fr); }
+  .crados-play { --crados-gap: 9px; }
+  .crados-play__body { padding-left:10px; padding-right:10px; grid-template-rows:minmax(0,1fr); }
+  .crados-play__stage { grid-template-columns: minmax(318px,.76fr) minmax(520px,1.24fr); grid-template-rows:minmax(0,1fr); gap:10px; }
+  .crados-play__left { grid-template-rows:auto minmax(0,1fr); }
+  .crados-active { min-height:92px; grid-template-columns:62px minmax(0,1fr) 66px 38px; padding:7px 8px; }
+  .crados-active__avatar :is(.profile-avatar,.profile-avatar-wrap) { transform:scale(.88); }
+  .crados-active__eyebrow { font-size:6.8px; }
+  .crados-active__name { font-size:20px; }
+  .crados-active__meta { margin-top:4px; gap:4px; }
+  .crados-active__meta span { font-size:6.2px; padding:2px 4px; }
+  .crados-active__meta span:nth-child(3) { display:none; }
+  .crados-active__darts { margin-top:4px; max-width:150px; }
+  .crados-active__darts span { height:18px; font-size:7px; }
+  .crados-active__score strong { font-size:26px; margin:2px 0 5px; }
+  .crados-active__notice { display:none; }
+  .crados-tabs { border-radius:18px; }
+  .crados-tabs__nav { grid-template-columns:minmax(0,1fr) auto; }
+  .crados-tabs__nav button { max-width:190px; }
+  .crados-tabs__panel { padding:6px 7px 7px; }
+  .crados-tactical-board { grid-template-columns:minmax(200px,1fr) minmax(122px,.52fr); gap:8px; }
+  .crados-tactical-board__detail { padding:6px; justify-content:flex-start; }
+  .crados-tactical-board__sector { font-size:22px; }
+  .crados-tactical-board__owner { font-size:6.4px; }
+  .crados-tactical-board__risk { margin-top:6px; font-size:6.7px; }
+  .crados-tactical-board__risk-short { font-size:7.5px; }
+  .crados-tactical-board__costs { display:none; }
+  .crados-tactical-board__wash { margin-top:8px; font-size:6px; }
   .crados-play__input { height:100%; }
+  .crados-play__input > div { height:100%; }
+  .crados-turn-strip, .crados-players-button { display:none; }
+  .crados-quick-dock { position:absolute; left:10px; bottom:10px; z-index:7; display:flex; gap:8px; }
 }
+
 
 @media (max-height: 720px) and (orientation: portrait) {
   .crados-play__body { --crados-gap:5px; padding-top:2px; }
