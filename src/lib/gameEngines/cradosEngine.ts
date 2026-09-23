@@ -369,28 +369,116 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
   return s;
 }
 
-function strengthValue(level: CradosBotStrength) {
-  if (typeof level === "number" && Number.isFinite(level)) return Math.max(1, Math.min(5, level));
-  return level === "hard" ? 4 : level === "easy" ? 2 : 3;
+function strengthRating(level: CradosBotStrength): number {
+  if (typeof level === "number" && Number.isFinite(level)) {
+    // Compatibilité descendante : les anciens appels passaient encore une note /5.
+    if (level <= 5) return Math.max(1, Math.min(100, 20 + (Math.max(1, level) - 1) * 19));
+    return Math.max(1, Math.min(100, level));
+  }
+  return level === "hard" ? 80 : level === "easy" ? 30 : 58;
 }
-function chance(level: CradosBotStrength) { const v = strengthValue(level); return Math.max(.42, Math.min(.88, .34 + v * .105)); }
-function bedForStrength(level: CradosBotStrength) { const v = strengthValue(level), r = Math.random(); const triple = .025 + v * .055, double = .07 + v * .045; return r < triple ? "T" : r < triple + double ? "D" : "S"; }
+
+function aimChance(level: CradosBotStrength): number {
+  const rating = strengthRating(level);
+  return Math.max(.38, Math.min(.95, .32 + rating * .0065));
+}
+
+function strategyChance(level: CradosBotStrength): number {
+  const rating = strengthRating(level);
+  return Math.max(.28, Math.min(.96, .23 + rating * .0075));
+}
+
+function rawMissChance(level: CradosBotStrength): number {
+  const rating = strengthRating(level);
+  return Math.max(.045, Math.min(.22, .24 - rating * .0019));
+}
+
+function bedForStrength(level: CradosBotStrength): "S" | "D" | "T" {
+  const rating = strengthRating(level);
+  const r = Math.random();
+  const triple = Math.max(.05, Math.min(.30, .03 + rating * .0026));
+  const double = Math.max(.10, Math.min(.25, .09 + rating * .0015));
+  return r < triple ? "T" : r < triple + double ? "D" : "S";
+}
+
+function randomBoardNumber(): number {
+  return 1 + Math.floor(Math.random() * 20);
+}
+
+function pickFrom(pool: number[]): number {
+  return pool[Math.floor(Math.random() * Math.max(1, pool.length))] || randomBoardNumber();
+}
 
 export function pickCradosBotDarts(s: CradosState, level: CradosBotStrength = "normal"): GameDart[] {
   const p = s.players[s.activePlayerIndex];
   if (!p) return [];
+
   const sideId = cradosSideIdForPlayer(s, p.id);
-  const skill = chance(level);
-  if (s.config.rules.bullWash && Number(s.dirt[sideId] || 0) >= s.config.rules.dirtLimit * .6 && Math.random() < skill * .45) {
-    return [{ bed: Math.random() < skill * .35 ? "IB" : "OB" }, { bed: "S", number: 1 + Math.floor(Math.random() * 20) }, { bed: "S", number: 1 + Math.floor(Math.random() * 20) }];
-  }
+  const rating = strengthRating(level);
+  const aim = aimChance(level);
+  const strategy = strategyChance(level);
+  const dirt = Number(s.dirt[sideId] || 0);
+  const dirtRatio = dirt / Math.max(1, Number(s.config.rules.dirtLimit || 1));
+
   const sectors = Object.entries(s.sectors);
   const enemy = sectors.filter(([, x]: any) => x.ownerId && x.ownerId !== sideId).map(([n]) => Number(n));
   const free = sectors.filter(([, x]: any) => !x.ownerId).map(([n]) => Number(n));
   const own = sectors.filter(([, x]: any) => x.ownerId === sideId).map(([n]) => Number(n));
-  const pool = s.config.rules.stealMode === "flip" && enemy.length ? enemy : free.length ? free : own.length ? own : Array.from({ length: 20 }, (_, i) => i + 1);
-  return Array.from({ length: 3 }, () => {
-    if (Math.random() > skill) return { bed: Math.random() < Math.max(.035, .17 - strengthValue(level) * .025) ? "MISS" : "S", number: 1 + Math.floor(Math.random() * 20) } as GameDart;
-    return { bed: bedForStrength(level), number: pool[Math.floor(Math.random() * pool.length)] || 20 } as GameDart;
-  });
+
+  // Un bon BOT comprend mieux la situation :
+  // - en mode VOL, il attaque les secteurs adverses ;
+  // - sinon il privilégie les secteurs libres ;
+  // - un mauvais BOT s'écarte plus souvent de ce plan et touche des zones risquées.
+  const tacticalPool =
+    s.config.rules.stealMode === "flip" && enemy.length
+      ? enemy
+      : free.length
+        ? free
+        : own.length
+          ? own
+          : Array.from({ length: 20 }, (_, i) => i + 1);
+
+  const allNumbers = Array.from({ length: 20 }, (_, i) => i + 1);
+  const darts: GameDart[] = [];
+
+  for (let dartIndex = 0; dartIndex < 3; dartIndex += 1) {
+    // Plus le BOT est fort et plus il pense à se laver au Bull quand sa jauge monte.
+    // Les plus faibles oublient souvent cette option ou ratent leur tentative.
+    const bullIntent =
+      s.config.rules.bullWash &&
+      dirtRatio >= .48 &&
+      Math.random() < Math.max(.08, Math.min(.82, (.10 + rating * .0065) * (0.72 + dirtRatio * .45)));
+
+    if (bullIntent) {
+      if (Math.random() <= aim) {
+        const innerBullChance = Math.max(.08, Math.min(.58, .03 + rating * .0053));
+        darts.push({ bed: Math.random() < innerBullChance ? "IB" : "OB" } as GameDart);
+      } else if (Math.random() < rawMissChance(level)) {
+        darts.push({ bed: "MISS" } as GameDart);
+      } else {
+        darts.push({ bed: "S", number: randomBoardNumber() } as GameDart);
+      }
+      continue;
+    }
+
+    const usesPlan = Math.random() < strategy;
+    const targetPool = usesPlan ? tacticalPool : allNumbers;
+    const target = pickFrom(targetPool);
+
+    // La précision brute varie fortement de Bébert (20) à Gégé (96).
+    if (Math.random() > aim) {
+      if (Math.random() < rawMissChance(level)) {
+        darts.push({ bed: "MISS" } as GameDart);
+      } else {
+        // Erreur latérale : le BOT touche un autre numéro, potentiellement adverse,
+        // ce qui augmente naturellement son risque de CRASSE.
+        darts.push({ bed: "S", number: randomBoardNumber() } as GameDart);
+      }
+      continue;
+    }
+
+    darts.push({ bed: bedForStrength(level), number: target } as GameDart);
+  }
+
+  return darts;
 }

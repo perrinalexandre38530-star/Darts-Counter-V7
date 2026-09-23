@@ -10,7 +10,7 @@ import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { cloneCradosState, createCradosState, normalizeCradosConfig, pickCradosBotDarts, playCradosVisit, cradosSideIdForPlayer, cradosSideName, isCradosTeamMode, type CradosState } from "../lib/gameEngines/cradosEngine";
-import { cradosBotLevelForProfile } from "../lib/dartsCradosBots";
+import { cradosBotLevelForProfile, cradosBotRatingForProfile } from "../lib/dartsCradosBots";
 import {
   Meter,
   ModeEndPanel,
@@ -256,14 +256,14 @@ function TurnStrip({ state, profiles, profileById, colorByPlayerId, colorBySideI
   </div>;
 }
 
-function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, undoCount, onUndo, notice, activeSideId, activeSide, teamMode, onOpenBoard }: any) {
+function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, activeBotRating, color, config, undoCount, onUndo, notice, activeSideId, activeSide, teamMode, onOpenBoard }: any) {
   const dirt = activeSideId ? Number(state.dirt?.[activeSideId] || 0) : 0;
   const dirtPct = Math.max(0, Math.min(100, Math.round((dirt / Math.max(1, Number(config.rules.dirtLimit || 1))) * 100)));
   const multiLeg = Number(config.seriesWins || 1) > 1;
   return <section className="crados-active" style={{ borderColor: `${color}68`, boxShadow: `0 15px 34px rgba(0,0,0,.34),inset 0 0 44px ${color}0c` }}>
     <div className="crados-active__ghost" aria-hidden><ProfileAvatar profile={activeProfile || activePlayer} size={112} showStars={false} ringColor={color} /></div>
     <div className="crados-active__main">
-      <div className="crados-active__eyebrow" style={{ color }}>{state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "JOUEUR ACTIF"}</div>
+      <div className="crados-active__eyebrow" style={{ color }}>{state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · ${activeBotLevel || "—"}/5★ · IA ${Math.round(Number(activeBotRating || 0))}/100` : "JOUEUR ACTIF"}</div>
       <div className="crados-active__name">{activePlayer?.name || "—"}</div>
       <div className="crados-active__percent" style={{ color: dirtPct >= 70 ? RED : color }}>{dirtPct}<small>%</small></div>
       <div className="crados-active__score-label">CRASSE · {dirt}/{config.rules.dirtLimit}</div>
@@ -387,6 +387,7 @@ export default function CradosPlay(props: any) {
   const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
   const activeBotLevel = activeIsBot ? cradosBotLevelForProfile(activeProfile, config.botLevel) : 0;
+  const activeBotRating = activeIsBot ? cradosBotRatingForProfile(activeProfile, config.botLevel) : 0;
   const activeSideId = activePlayer ? cradosSideIdForPlayer(state, activePlayer.id) : "";
   const activeSide = sideById.get(String(activeSideId));
   const activeColor = teamMode ? colorBySideId.get(String(activeSideId)) || ACCENT : activePlayer ? colorByPlayerId.get(String(activePlayer.id)) || ACCENT : ACCENT;
@@ -473,11 +474,11 @@ export default function CradosPlay(props: any) {
     if (!activeIsBot || state.phase === "finished" || botBusy.current) return;
     botBusy.current = true;
     const t = window.setTimeout(() => {
-      try { commit(playCradosVisit(state, pickCradosBotDarts(state, activeBotLevel || config.botLevel))); }
+      try { commit(playCradosVisit(state, pickCradosBotDarts(state, activeBotRating || config.botLevel))); }
       finally { botBusy.current = false; }
     }, 680);
     return () => window.clearTimeout(t);
-  }, [state, activeIsBot, activePlayer?.id, activeBotLevel]);
+  }, [state, activeIsBot, activePlayer?.id, activeBotRating]);
 
   function replay() {
     matchIdRef.current = `crados-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -514,7 +515,7 @@ export default function CradosPlay(props: any) {
     <main className="crados-play__body">
       <div className="crados-play__stage">
         <div className="crados-play__left">
-          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} undoCount={undo.length} onUndo={doUndo} notice={notice} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} />
+          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} activeBotRating={activeBotRating} color={activeColor} config={config} undoCount={undo.length} onUndo={doUndo} notice={notice} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} />
           <div className="crados-play__quick-row">
             <PlayersButton state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} onClick={() => setPlayersOpen(true)} teamMode={teamMode} />
             <button type="button" className="crados-stats-button" onClick={() => setStatsOpen(true)}>▥<span>STATS</span></button>

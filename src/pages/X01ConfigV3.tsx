@@ -5947,6 +5947,7 @@ export function BotTeamsSection({
               const name = String(team?.name || "Équipe BOT IA");
               const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
               const level = Number(team?.botTeamLevel || parseFloat(String(team?.botLevel || "0")) || 0);
+              const aiRating = Number(team?.botTeamRating || team?.cradosAiRating || 0);
               const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid].map(String) : [];
               const members = ids.map((id: string) => profileById.get(id)).filter(Boolean);
 
@@ -5982,7 +5983,7 @@ export function BotTeamsSection({
                         {name}
                       </div>
                       <div style={{ color: "#9da3c0", fontSize: 11, marginTop: 2 }}>
-                        {members.length || ids.length} joueur{(members.length || ids.length) > 1 ? "s" : ""}{level ? ` • Niveau ${level}/5` : ""}
+                        {members.length || ids.length} joueur{(members.length || ids.length) > 1 ? "s" : ""}{level ? ` • Niveau ${level}/5` : ""}{aiRating ? ` • IA ${aiRating}/100` : ""}
                       </div>
                       <span
                         style={{
