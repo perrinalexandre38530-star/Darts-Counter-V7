@@ -42,9 +42,9 @@ const CRADOS_BOARD = {
   trebleInner: 49,
   outerSingleMid: 72,
   innerSingleMid: 33.5,
-  bullOuter: 14.2,
-  bullInner: 5.1,
-  label: 111,
+  bullOuter: 12.9,
+  bullInner: 4.4,
+  label: 108.2,
 };
 const CRADOS_BOARD_IMAGE = { x: CRADOS_BOARD.cx - CRADOS_BOARD.artOuter, y: CRADOS_BOARD.cy - CRADOS_BOARD.artOuter, size: CRADOS_BOARD.artOuter * 2 };
 const TOUCH_COLORS: Record<string, string> = { S: "#67d7ff", D: "#6fd6ff", T: "#d17bff", BULL: "#50e68c", DBULL: "#2bf08b", MISS: "#ffb54d" };

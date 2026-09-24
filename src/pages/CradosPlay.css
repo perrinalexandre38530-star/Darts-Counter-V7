@@ -674,3 +674,145 @@
   .crados-play__left { height: 100%; }
   .crados-active { height: 100%; }
 }
+
+
+/* ===== V90 final landscape fit + radar spacing fixes ===== */
+@media (orientation: landscape) and (min-width: 600px) {
+  .crados-play__body {
+    padding: 4px 6px max(4px, env(safe-area-inset-bottom));
+  }
+  .crados-play__stage {
+    grid-template-columns: minmax(420px, .88fr) minmax(0, 1.12fr);
+    align-items: start;
+    gap: 8px;
+  }
+  .crados-play__left {
+    height: auto;
+    min-height: 0;
+    align-self: start;
+    overflow: hidden;
+    grid-template-rows: auto auto auto;
+    align-content: start;
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+  .crados-active {
+    height: auto;
+    min-height: 138px;
+    max-height: none;
+    grid-template-columns: minmax(0,1fr) 132px;
+    padding: 8px 9px 10px;
+  }
+  .crados-active__ghost {
+    width: 138px;
+    height: 132px;
+  }
+  .crados-active__main {
+    padding: 4px 0 20px 48px;
+  }
+  .crados-mini-radar {
+    min-height: 110px;
+  }
+  .crados-mini-radar svg {
+    width: min(100%, 112px);
+  }
+  .crados-kpi-strip {
+    min-height: 66px;
+    padding: 6px;
+  }
+  .crados-kpi-strip > span {
+    min-height: 52px;
+  }
+  .crados-play__quick-row {
+    min-height: 54px;
+    grid-template-columns: minmax(0,1fr) 54px;
+    gap: 6px;
+  }
+  .crados-players-button,
+  .crados-stats-button {
+    height: 54px;
+  }
+  .crados-stats-button {
+    width: 54px;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 900px) {
+  .crados-play__stage {
+    grid-template-columns: minmax(440px, .90fr) minmax(0, 1.10fr);
+  }
+  .crados-active {
+    min-height: 146px;
+    grid-template-columns: minmax(0,1fr) 136px;
+  }
+  .crados-kpi-strip {
+    min-height: 68px;
+  }
+  .crados-kpi-strip > span {
+    min-height: 54px;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 600px) and (max-height: 560px) {
+  .crados-play__body {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+  .crados-play__stage {
+    grid-template-columns: minmax(360px, .82fr) minmax(0, 1.18fr);
+    gap: 6px;
+  }
+  .crados-play__left {
+    gap: 5px;
+  }
+  .crados-active {
+    height: auto;
+    min-height: 114px;
+    grid-template-columns: minmax(0,1fr) 108px;
+    padding: 6px 7px 8px;
+  }
+  .crados-active__ghost {
+    width: 106px;
+    height: 100px;
+  }
+  .crados-active__main {
+    padding: 2px 0 16px 36px;
+  }
+  .crados-active__name {
+    font-size: 10px;
+  }
+  .crados-active__percent {
+    font-size: 28px;
+  }
+  .crados-mini-radar {
+    min-height: 90px;
+  }
+  .crados-mini-radar svg {
+    width: 86px;
+  }
+  .crados-kpi-strip {
+    min-height: 54px;
+    padding: 4px;
+  }
+  .crados-kpi-strip > span {
+    min-height: 42px;
+  }
+  .crados-kpi-strip small {
+    font-size: 4.8px;
+  }
+  .crados-kpi-strip b {
+    font-size: 11px;
+  }
+  .crados-play__quick-row {
+    min-height: 46px;
+    grid-template-columns: minmax(0,1fr) 46px;
+    gap: 4px;
+  }
+  .crados-players-button,
+  .crados-stats-button {
+    height: 46px;
+  }
+  .crados-stats-button {
+    width: 46px;
+  }
+}
