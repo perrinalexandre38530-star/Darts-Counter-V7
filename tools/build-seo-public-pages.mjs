@@ -9,6 +9,13 @@ const SITEMAP_PATH = path.join(PUBLIC, 'sitemap.xml');
 const BASE = 'https://multisports-scoring.pages.dev';
 const PLAY = 'https://play.google.com/store/apps/details?id=com.multisportsscoring.app';
 const TODAY = new Date().toISOString().slice(0, 10);
+const ADSENSE_CLIENT = 'ca-pub-5323277022978157';
+// AdSense review strategy: only manually curated French editorial pages are
+// indexable and allowed to load the web advertising library. The interactive
+// PWA shell and template translations never load Google web ads.
+const INDEXABLE_LANGS = new Set(['fr']);
+const ADSENSE_LOADER = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}" crossorigin="anonymous"></script>`;
+const TEXT_SITEMAP_PATH = path.join(PUBLIC, 'sitemap-google.txt');
 
 const locale = {
   fr:{name:'Français',dir:'ltr',home:'Accueil',play:'Voir sur Google Play',web:'Ouvrir l’application Web',features:'Fonctions principales',availability:'Disponibilité',others:'Autres disciplines',languages:'Langues',faq:'Questions fréquentes',faqQ:'À quoi sert cette page ?',faqA:'Cette page publique permet aux utilisateurs et aux moteurs de recherche de découvrir ce module avant d’ouvrir l’application.',android:'Disponible dans la version Android publique et sur le Web/PWA.',webOnly:'Disponible dans le catalogue Web/PWA. La disponibilité dans la version Android publique peut différer.',homeTitle:'MULTISPORTS SCORING – scores, statistiques et performances sportives',homeH1:'Le scoring et la performance de plusieurs disciplines dans une seule application.',homeLead:'MULTISPORTS SCORING réunit scores, statistiques, profils et suivi des performances dans un même univers Android et Web/PWA.',available:'Disciplines disponibles',about:'Un univers multi-sports',aboutText:'Chaque discipline dispose de son propre espace avec ses outils de score, de suivi ou de performance.',scoreTitle:'Compteur de score {sport}',scoreLead:'Suivez les scores, les joueurs et les matchs de {sport} avec MULTISPORTS SCORING.',perfTitle:'Suivi de performance {sport}',perfLead:'Enregistrez et analysez vos activités de {sport} dans MULTISPORTS SCORING.',hubTitle:'Hub {sport}',hubLead:'Retrouvez les sessions, la progression et les fonctions compétitives de {sport} dans MULTISPORTS SCORING.'},
@@ -75,6 +82,135 @@ const features = {
 };
 
 const guides = ['x01','cricket','killer','shanghai'];
+
+const frHomeEditorial = [
+  ['Une application pensée pour les parties réelles',
+   'MULTISPORTS SCORING est d’abord un outil de terrain : on ouvre une discipline, on prépare les joueurs ou les équipes, puis on enregistre le score ou la performance au fil de la partie. Le projet réunit dans la même interface des sports de précision, des jeux de score et des modules de suivi physique. L’objectif est d’éviter de multiplier les applications et les feuilles de score tout en conservant un historique exploitable.'],
+  ['Des statistiques reliées aux profils',
+   'Les profils servent à conserver les résultats au-delà d’une seule partie. Selon la discipline, l’application peut suivre les victoires, les moyennes, les séries, les records personnels, les historiques de matchs ou les données de performance. Cette continuité permet de comparer les séances dans le temps et de retrouver les résultats d’un joueur sans ressaisie.'],
+  ['Android et Web/PWA',
+   'La version Android est destinée à une utilisation mobile sur le terrain ou autour d’une cible. La version Web/PWA permet d’ouvrir l’univers MULTISPORTS SCORING depuis un navigateur compatible. Certaines fonctions peuvent arriver à des rythmes différents selon la plateforme : chaque page de discipline indique donc clairement ce qui est disponible plutôt que de présenter comme terminé ce qui est encore en développement.'],
+  ['Une base commune, des règles propres à chaque discipline',
+   'Le socle de l’application reste cohérent — profils, historiques, statistiques, navigation et sauvegarde — mais chaque discipline conserve ses règles. Un X01 aux fléchettes ne se traite pas comme une mène de pétanque, un set de tennis de table ou une séance de running. Les écrans de score et les indicateurs sont adaptés au contexte sportif afin que l’outil reste lisible pendant l’action.'],
+];
+
+const frSportEditorial = {
+  darts: [
+    ['Suivre une partie sans calcul mental inutile',
+     'Le module Fléchettes centralise le score et l’ordre de jeu afin que les joueurs puissent se concentrer sur la cible. X01, Cricket, Killer et Shanghai font partie des modes historiques du projet, auxquels s’ajoutent progressivement d’autres variantes. Les écrans distinguent le score courant, les tours et les informations utiles au mode choisi.'],
+    ['X01, sorties et historique',
+     'En X01, une partie peut démarrer en 301, 501, 701 ou 901. Les options d’entrée et de sortie permettent d’adapter la partie aux habitudes des joueurs. L’application conserve les résultats et les statistiques associées aux profils afin de retrouver les moyennes et les performances après la partie.'],
+    ['Pourquoi utiliser un compteur dédié',
+     'Un compteur numérique évite les erreurs de soustraction, accélère les changements de joueur et facilite la consultation de l’historique. Il devient surtout utile lorsqu’on joue régulièrement : les données accumulées donnent une vision plus fiable de la progression qu’une impression basée sur quelques volées réussies.']
+  ],
+  running: [
+    ['Enregistrer une sortie comme une activité complète',
+     'RUNNING PERF est conçu pour conserver une sortie avec sa distance, sa durée, son allure, son tracé et les informations utiles à l’analyse. L’objectif n’est pas seulement d’afficher un chronomètre pendant l’effort, mais de pouvoir rouvrir l’activité ensuite et comparer les séances.'],
+    ['Carte, allure et dénivelé',
+     'Le suivi GPS sert de base au parcours. Les données de vitesse et d’allure doivent rester cohérentes avec le sport pratiqué, qu’il s’agisse de course ou de marche. Le travail du module porte aussi sur le relief, le dénivelé positif et négatif, l’altitude et la lecture du parcours sur une carte.'],
+    ['Historique et continuité',
+     'Une activité utile doit rester disponible après la fermeture de l’application. Les sorties sont donc pensées comme des objets persistants : on doit pouvoir les retrouver, consulter leur carte et leurs statistiques, puis les supprimer volontairement si nécessaire.']
+  ],
+  fit: [
+    ['Suivre réellement une séance de musculation',
+     'FIT PERF enregistre les exercices, séries, répétitions et charges au fil de la séance. Cette granularité est importante : elle permet de calculer le volume de travail et de repérer les progressions au lieu de conserver uniquement un résumé approximatif.'],
+    ['Repos, records et estimation du 1RM',
+     'Le module inclut un chronomètre de repos et des indicateurs de progression. À partir des séries enregistrées, l’application peut faire ressortir des records personnels et proposer des estimations utiles comme le 1RM, tout en conservant les performances précédentes pour comparaison.'],
+    ['Bibliothèque et programmes',
+     'La bibliothèque d’exercices sert de base à la création des séances. L’ambition est de garder une interface exploitable pendant l’entraînement : choisir un exercice, saisir rapidement une série, reprendre après le repos et retrouver ensuite l’historique complet.']
+  ],
+  foot: [
+    ['Un tableau de score pour les matchs',
+     'Le module Football est destiné au suivi simple d’un match ou d’une rencontre organisée dans l’écosystème MULTISPORTS SCORING. Les équipes, le score et l’historique doivent rester lisibles sans transformer l’écran de jeu en feuille de statistiques complexe.'],
+    ['Relier le match à une organisation',
+     'Dans les usages club, association ou entreprise, un résultat peut alimenter un calendrier, une compétition ou un classement. Le projet prévoit que les matchs restent liés à leur contexte plutôt que d’exister comme des scores isolés.'],
+    ['Historique exploitable',
+     'Conserver les rencontres permet de retrouver les scores passés et de construire progressivement des statistiques d’équipe. La disponibilité de ces fonctions peut différer entre la Web/PWA et la version Android publique.']
+  ],
+  babyfoot: [
+    ['Compter vite pendant une partie',
+     'Le baby-foot demande une interface très rapide : le score doit pouvoir évoluer sans détourner longtemps l’attention de la table. Le module privilégie donc des actions simples, un affichage clair des équipes et un historique de rencontre.'],
+    ['Équipes et séries de matchs',
+     'L’intérêt dépasse le score instantané lorsque plusieurs joueurs se retrouvent régulièrement. Les résultats peuvent être associés aux profils ou aux équipes afin de suivre les confrontations et de comparer les performances sur plusieurs parties.'],
+    ['Un outil adapté aux lieux et aux clubs',
+     'Le baby-foot fait partie des disciplines qui peuvent être utilisées dans un bar, une association ou une entreprise. Cette logique rejoint le module Organisations, destiné à regrouper calendrier, membres, équipes et résultats dans un même espace.']
+  ],
+  pingpong: [
+    ['Points, sets et service',
+     'Le tennis de table demande de distinguer le score du set et le score global du match. Le module est pensé pour afficher clairement les points, les joueurs et la progression de la rencontre, avec un historique consultable après la partie.'],
+    ['Éviter les erreurs de suivi',
+     'Quand les échanges s’enchaînent, une saisie rapide réduit les erreurs et évite de reconstruire le score de mémoire. L’application centralise le déroulement du match et peut ensuite rattacher le résultat aux statistiques des profils.'],
+    ['Disponibilité selon la plateforme',
+     'Le catalogue Web/PWA peut contenir des fonctions qui ne sont pas encore dans la version Android publique. Cette page indique donc la disponibilité actuelle sans présenter une fonction en développement comme déjà publiée.']
+  ],
+  petanque: [
+    ['Suivre les points mène par mène',
+     'La pétanque se prête bien à un suivi numérique parce que le score évolue par mènes. L’application enregistre les points attribués à chaque équipe et maintient le total jusqu’à la fin de la partie.'],
+    ['Équipes et historique',
+     'Le résultat d’une rencontre peut être conservé avec les joueurs ou les équipes concernés. Cela permet de retrouver les parties précédentes et de constituer progressivement des statistiques sans conserver des feuilles papier.'],
+    ['Usage loisir ou club',
+     'Le même principe peut servir à une partie amicale comme à une rencontre organisée. Dans un contexte club, les résultats peuvent ensuite rejoindre les outils d’organisation, de calendrier et de classement prévus dans l’application.']
+  ],
+  molkky: [
+    ['Le score particulier du Mölkky',
+     'Le Mölkky ne se résume pas à additionner des points : le nombre de quilles renversées et la valeur d’une quille unique modifient le calcul. Un compteur dédié évite les erreurs et garde l’objectif des 50 points visible pour tous les joueurs.'],
+    ['Tours et joueurs',
+     'Le suivi numérique conserve l’ordre de passage et le score de chaque participant. Cela devient utile dès que plusieurs joueurs participent ou lorsque l’on souhaite garder une trace des résultats sur plusieurs parties.'],
+    ['Une discipline encore en évolution dans le catalogue',
+     'Le module fait partie du catalogue Web/PWA et son niveau d’intégration Android peut évoluer. Les fonctions annoncées sur cette page restent limitées à ce qui est réellement présent ou planifié dans le projet.']
+  ],
+  dicegame: [
+    ['Un moteur de score générique pour les jeux de dés',
+     'Dice Game sert de base aux parties où plusieurs joueurs enchaînent des manches et accumulent des points. L’interface doit permettre de suivre rapidement le tour courant sans perdre le total précédent.'],
+    ['Historique des manches',
+     'Conserver les manches rend la partie plus lisible et permet de vérifier comment le score final a été construit. Cette logique est particulièrement utile dans les variantes où un mauvais lancer peut modifier fortement le classement.'],
+    ['Évolution du module',
+     'Le module existe dans le catalogue Web/PWA et peut évoluer avec de nouvelles règles ou variantes. La disponibilité Android publique peut donc différer de celle du Web.']
+  ],
+  esports: [
+    ['Un espace compétitif distinct des sports physiques',
+     'Le hub E-sport regroupe les fonctions compétitives qui peuvent être utilisées entièrement en ligne. Il est séparé des sports qui nécessitent une présence physique réelle, afin de ne pas simuler artificiellement des adversaires là où cela n’aurait pas de sens.'],
+    ['Sessions classées et progression',
+     'Le projet prévoit des sessions ranked, une progression et un réseau compétitif. Les résultats doivent être liés aux profils afin que le classement reflète des parties réellement enregistrées dans l’écosystème.'],
+    ['Communauté et disponibilité',
+     'Le hub est en évolution et certaines fonctions peuvent être disponibles d’abord sur le Web/PWA. Les pages publiques sont maintenues pour expliquer le fonctionnement réel du module et son état de disponibilité.']
+  ]
+};
+
+const frGuideEditorial = {
+  x01: [
+    ['Principe du X01',
+     'Chaque joueur commence avec un total défini — le plus souvent 301 ou 501 — puis soustrait la valeur de ses fléchettes. Le but est d’atteindre exactement zéro. Une volée qui ferait passer le score sous zéro est un bust : le score revient alors à sa valeur du début de tour selon les règles retenues.'],
+    ['Entrée et sortie',
+     'Les variantes Single In, Double In ou Master In déterminent la manière de commencer réellement le décompte. De la même façon, Single Out, Double Out ou Master Out changent la condition de victoire. Le Double Out reste une configuration classique : le joueur doit terminer exactement sur un double.'],
+    ['Ce que suit MULTISPORTS SCORING',
+     'Le compteur gère le score restant, l’ordre des joueurs, les legs et, en duel, les sets lorsque cette option est utilisée. Les statistiques de partie peuvent ensuite alimenter le profil et l’historique, notamment les moyennes et les sorties réussies.']
+  ],
+  cricket: [
+    ['Cibles utilisées',
+     'Le Cricket classique se joue sur les nombres 15, 16, 17, 18, 19, 20 et le Bull. Une cible doit recevoir trois marques pour être fermée. Un simple compte pour une marque, un double pour deux et un triple pour trois.'],
+    ['Marquer des points',
+     'Lorsqu’un joueur a fermé une cible que son adversaire n’a pas encore fermée, les touches supplémentaires sur cette cible peuvent rapporter des points selon la variante. La partie oppose donc fermeture des zones et gestion du score.'],
+    ['Suivi dans l’application',
+     'Le tableau de Cricket doit montrer immédiatement quelles zones sont ouvertes, fermées ou encore vulnérables. Le suivi numérique évite de compter mentalement les marques et conserve le résultat final dans l’historique.']
+  ],
+  killer: [
+    ['Objectif',
+     'Dans Killer, chaque joueur reçoit ou choisit généralement un numéro. Il doit d’abord remplir la condition prévue pour devenir « killer », puis peut attaquer les vies des autres joueurs en touchant leurs zones. La dernière personne encore en vie gagne.'],
+    ['Vies et éliminations',
+     'Le cœur du mode est la gestion des vies. L’interface doit donc rendre visibles le numéro associé à chaque joueur, son état et les éliminations, sans obliger à reconstruire la situation à partir des volées précédentes.'],
+    ['Variantes et bots',
+     'Le projet MULTISPORTS SCORING utilise aussi Killer comme terrain de jeu pour des adversaires IA dédiés. Les variantes exactes peuvent dépendre de la configuration choisie avant la partie.']
+  ],
+  shanghai: [
+    ['Progression par nombres',
+     'Shanghai se joue habituellement sur une suite de nombres. À chaque tour, les joueurs visent le nombre imposé et marquent selon qu’ils touchent le simple, le double ou le triple de cette cible.'],
+    ['Le Shanghai',
+     'La combinaison emblématique consiste à toucher, pendant le même tour, un simple, un double et un triple du nombre demandé. Selon la règle choisie, cette combinaison peut donner une victoire immédiate ou un avantage particulier.'],
+    ['Lecture du tour',
+     'Un bon écran de Shanghai doit rappeler le nombre en cours, le score du joueur et la progression des manches. MULTISPORTS SCORING conserve cette structure pour limiter les erreurs pendant une partie rapide.']
+  ]
+};
 const guideNames = { x01:'X01', cricket:'Cricket', killer:'Killer', shanghai:'Shanghai' };
 
 const escapeHtml = (value='') => String(value).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -83,12 +219,12 @@ const urlPath = (full) => new URL(full).pathname;
 const localFileFromUrl = (full) => path.join(PUBLIC, urlPath(full).replace(/^\//,''), 'index.html');
 
 function alternates(catalog, sportId=null) {
-  const langs = Object.keys(locale);
+  const langs = Object.keys(locale).filter((code) => INDEXABLE_LANGS.has(code));
   const links = langs.map((code) => {
     const href = sportId ? catalog.sports.find((s)=>s.id===sportId).routes[code] : `${BASE}/${code}/`;
     return `<link rel="alternate" hreflang="${code}" href="${escapeHtml(href)}">`;
   });
-  const def = sportId ? catalog.sports.find((s)=>s.id===sportId).routes.en : `${BASE}/`;
+  const def = sportId ? catalog.sports.find((s)=>s.id===sportId).routes.fr : `${BASE}/fr/`;
   links.push(`<link rel="alternate" hreflang="x-default" href="${escapeHtml(def)}">`);
   return links.join('');
 }
@@ -106,7 +242,12 @@ function jsonLd({lang,url,title,description,breadcrumb}) {
 }
 
 function head({catalog,lang,url,title,description,sportId=null}) {
-  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><link rel="canonical" href="${escapeHtml(url)}">${alternates(catalog,sportId)}<meta property="og:type" content="website"><meta property="og:site_name" content="MULTISPORTS SCORING"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(url)}"><meta property="og:image" content="${BASE}/app-512.png"><link rel="stylesheet" href="/seo/seo.css">`;
+  const indexable = INDEXABLE_LANGS.has(lang);
+  const robots = indexable
+    ? 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
+    : 'noindex,follow';
+  const ads = indexable ? ADSENSE_LOADER : '';
+  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="${robots}"><link rel="canonical" href="${escapeHtml(url)}">${alternates(catalog,sportId)}<meta property="og:type" content="website"><meta property="og:site_name" content="MULTISPORTS SCORING"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(url)}"><meta property="og:image" content="${BASE}/app-512.png"><link rel="stylesheet" href="/seo/seo.css">${ads}`;
 }
 
 function languageLinks(catalog, sportId=null) {
@@ -114,6 +255,10 @@ function languageLinks(catalog, sportId=null) {
     const href = sportId ? urlPath(catalog.sports.find((s)=>s.id===sportId).routes[code]) : `/${code}/`;
     return `<a hreflang="${code}" href="${href}">${escapeHtml(locale[code].name)}</a>`;
   }).join(' · ');
+}
+
+function editorialSections(items = []) {
+  return items.map(([title, body]) => `<section class="editorial"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(body)}</p></section>`).join('');
 }
 
 function sportLinks(catalog, lang, current) {
@@ -125,7 +270,8 @@ function homePage(catalog, lang) {
   const url = `${BASE}/${lang}/`;
   const cards = catalog.sports.map((s)=>`<article class="card"><h2><a href="${urlPath(s.routes[lang])}">${escapeHtml(sportNames[lang][s.id])}</a></h2><p>${escapeHtml(s.androidPublicV1 ? t.android : t.webOnly)}</p></article>`).join('');
   const ld = jsonLd({lang,url,title:t.homeTitle,description:t.homeLead,breadcrumb:[{name:t.home,url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title:t.homeTitle,description:t.homeLead})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING</div><h1>${escapeHtml(t.homeH1)}</h1><p class="lead">${escapeHtml(t.homeLead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a></header><section><h2>${escapeHtml(t.available)}</h2><div class="grid">${cards}</div></section><section><h2>${escapeHtml(t.about)}</h2><p>${escapeHtml(t.aboutText)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  const editorial = lang === 'fr' ? editorialSections(frHomeEditorial) : '';
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title:t.homeTitle,description:t.homeLead})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING</div><h1>${escapeHtml(t.homeH1)}</h1><p class="lead">${escapeHtml(t.homeLead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a></header>${editorial}<section><h2>${escapeHtml(t.available)}</h2><div class="grid">${cards}</div></section><section><h2>${escapeHtml(t.about)}</h2><p>${escapeHtml(t.aboutText)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
 }
 
 function sportPage(catalog, lang, sport) {
@@ -139,8 +285,9 @@ function sportPage(catalog, lang, sport) {
   const featureItems = features[sport.id].map((x)=>`<li>${escapeHtml(x)}</li>`).join('');
   const dartsGuides = sport.id==='darts' && ['fr','en','es'].includes(lang)
     ? `<section><h2>${lang==='fr'?'Guides fléchettes':lang==='es'?'Guías de dardos':'Darts guides'}</h2><p>${guides.map((g)=>`<a href="${urlPath(url)}${g}/">${guideNames[g]}</a>`).join(' · ')}</p></section>` : '';
+  const editorial = lang === 'fr' ? editorialSections(frSportEditorial[sport.id] || []) : '';
   const ld = jsonLd({lang,url,title,description,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name,url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title,description,sportId:sport.id})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(name)}</div><h1>${escapeHtml(titleBase)}</h1><p class="lead">${escapeHtml(description)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a></nav></header><section><h2>${escapeHtml(t.features)}</h2><ul>${featureItems}</ul></section><section><h2>${escapeHtml(t.availability)}</h2><p>${escapeHtml(sport.androidPublicV1 ? t.android : t.webOnly)}</p></section>${dartsGuides}<section><h2>${escapeHtml(t.faq)}</h2><ul><li><strong>${escapeHtml(t.faqQ)}</strong><br>${escapeHtml(t.faqA)}</li></ul></section><section><h2>${escapeHtml(t.others)}</h2><p>${sportLinks(catalog,lang,sport.id)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog,sport.id)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title,description,sportId:sport.id})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(name)}</div><h1>${escapeHtml(titleBase)}</h1><p class="lead">${escapeHtml(description)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a></nav></header>${editorial}<section><h2>${escapeHtml(t.features)}</h2><ul>${featureItems}</ul></section><section><h2>${escapeHtml(t.availability)}</h2><p>${escapeHtml(sport.androidPublicV1 ? t.android : t.webOnly)}</p></section>${dartsGuides}<section><h2>${escapeHtml(t.faq)}</h2><ul><li><strong>${escapeHtml(t.faqQ)}</strong><br>${escapeHtml(t.faqA)}</li></ul></section><section><h2>${escapeHtml(t.others)}</h2><p>${sportLinks(catalog,lang,sport.id)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog,sport.id)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
 }
 
 function guidePage(catalog, lang, guide) {
@@ -162,8 +309,9 @@ function guidePage(catalog, lang, guide) {
     shanghai:['Rounds 1 to 20','Singles, doubles and triples','Shanghai scoring'],
   };
   const desc = descriptions[lang];
+  const editorial = lang === 'fr' ? editorialSections(frGuideEditorial[guide] || []) : '';
   const ld = jsonLd({lang,url,title,description:desc,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name:sportName,url:sportUrl},{name:guideNames[guide],url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title,description:desc,sportId:'darts'})}<link rel="canonical" href="${url}"><script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(sportName)} · ${guideNames[guide]}</div><h1>${guideNames[guide]}</h1><p class="lead">${escapeHtml(desc)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a><a href="${urlPath(sportUrl)}">${escapeHtml(sportName)}</a></nav></header><section><h2>${escapeHtml(t.features)}</h2><ul>${descriptionsByGuide[guide].map((x)=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></section><section><h2>${escapeHtml(t.languages)}</h2><p>${['fr','en','es'].map((code)=>`<a href="${urlPath(catalog.sports.find((s)=>s.id==='darts').routes[code])}${guide}/">${locale[code].name}</a>`).join(' · ')}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title,description:desc,sportId:'darts'})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(sportName)} · ${guideNames[guide]}</div><h1>${guideNames[guide]}</h1><p class="lead">${escapeHtml(desc)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a><a href="${urlPath(sportUrl)}">${escapeHtml(sportName)}</a></nav></header>${editorial}<section><h2>${escapeHtml(t.features)}</h2><ul>${descriptionsByGuide[guide].map((x)=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></section><section><h2>${escapeHtml(t.languages)}</h2><p>${['fr','en','es'].map((code)=>`<a href="${urlPath(catalog.sports.find((s)=>s.id==='darts').routes[code])}${guide}/">${locale[code].name}</a>`).join(' · ')}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
 }
 
 async function writeFile(file, content) {
@@ -198,19 +346,33 @@ async function main() {
     for (const [lang,href] of Object.entries(alternatesMap)) sitemap.push(`    <xhtml:link rel="alternate" hreflang="${lang}" href="${href}" />`);
     sitemap.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${alternatesMap.en || BASE+'/'}" />`,'  </url>');
   };
-  const homeMap = Object.fromEntries(Object.keys(locale).map((lang)=>[lang,`${BASE}/${lang}/`]));
-  for (const lang of Object.keys(locale)) add(`${BASE}/${lang}/`,'0.9',homeMap);
+  const indexableLangs = Object.keys(locale).filter((lang) => INDEXABLE_LANGS.has(lang));
+  const homeMap = Object.fromEntries(indexableLangs.map((lang)=>[lang,`${BASE}/${lang}/`]));
+  const textUrls = [];
+  for (const lang of indexableLangs) {
+    const pageUrl = `${BASE}/${lang}/`;
+    add(pageUrl,'0.9',homeMap);
+    textUrls.push(pageUrl);
+  }
   for (const sport of catalog.sports) {
-    for (const lang of Object.keys(locale)) add(sport.routes[lang],['darts','running','fit'].includes(sport.id)?'0.9':'0.8',sport.routes);
+    const map = Object.fromEntries(indexableLangs.map((lang)=>[lang,sport.routes[lang]]));
+    for (const lang of indexableLangs) {
+      add(sport.routes[lang],['darts','running','fit'].includes(sport.id)?'0.9':'0.8',map);
+      textUrls.push(sport.routes[lang]);
+    }
   }
   const darts = catalog.sports.find((s)=>s.id==='darts');
   for (const guide of guides) {
-    const map = Object.fromEntries(['fr','en','es'].map((lang)=>[lang,`${darts.routes[lang]}${guide}/`]));
-    for (const lang of ['fr','en','es']) add(map[lang],'0.8',map);
+    const map = Object.fromEntries(indexableLangs.map((lang)=>[lang,`${darts.routes[lang]}${guide}/`]));
+    for (const lang of indexableLangs) {
+      add(map[lang],'0.8',map);
+      textUrls.push(map[lang]);
+    }
   }
   sitemap.push('</urlset>');
   await writeFile(SITEMAP_PATH,sitemap.join('\n'));
-  console.log(`SEO pages generated: ${Object.keys(locale).length} languages, ${catalog.sports.length} sports, ${guides.length} Darts guides.`);
+  await writeFile(TEXT_SITEMAP_PATH,textUrls.join('\n'));
+  console.log(`SEO pages generated: ${Object.keys(locale).length} languages served, ${indexableLangs.length} curated language(s) indexed, ${catalog.sports.length} sports, ${guides.length} Darts guides.`);
 }
 
 main().catch((error)=>{console.error(error);process.exit(1);});
