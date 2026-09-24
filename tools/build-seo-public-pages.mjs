@@ -344,7 +344,7 @@ async function main() {
   const add = (url, priority, alternatesMap) => {
     sitemap.push('  <url>',`    <loc>${url}</loc>`,`    <lastmod>${TODAY}</lastmod>`,'    <changefreq>weekly</changefreq>',`    <priority>${priority}</priority>`);
     for (const [lang,href] of Object.entries(alternatesMap)) sitemap.push(`    <xhtml:link rel="alternate" hreflang="${lang}" href="${href}" />`);
-    sitemap.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${alternatesMap.en || BASE+'/'}" />`,'  </url>');
+    sitemap.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${alternatesMap.fr || alternatesMap.en || BASE+'/fr/'}" />`,'  </url>');
   };
   const indexableLangs = Object.keys(locale).filter((lang) => INDEXABLE_LANGS.has(lang));
   const homeMap = Object.fromEntries(indexableLangs.map((lang)=>[lang,`${BASE}/${lang}/`]));
