@@ -8,6 +8,8 @@ const LLMS = path.join(PUBLIC_DIR, 'llms.txt');
 const SEO_CSS = path.join(PUBLIC_DIR, 'seo', 'seo.css');
 const SITEMAP_XSL = path.join(PUBLIC_DIR, 'sitemap.xsl');
 const BASE = 'https://multisports-scoring.pages.dev';
+const ADSENSE_CLIENT = 'ca-pub-5323277022978157';
+const ROOT_INDEX = path.join(ROOT, 'index.html');
 
 function localPathForUrl(url) {
   const normalized = url.replace(BASE, '');
@@ -24,6 +26,11 @@ async function main() {
   const errors = [];
   const warnings = [];
 
+  const rootIndex = await fs.readFile(ROOT_INDEX, 'utf8');
+  if (rootIndex.includes('pagead2.googlesyndication.com/pagead/js/adsbygoogle.js')) {
+    errors.push('Interactive PWA shell must not load the AdSense web library.');
+  }
+
   for (const file of [SITEMAP, LLMS, SEO_CSS, SITEMAP_XSL]) {
     if (!await exists(file)) errors.push(`Missing required SEO file: ${path.relative(ROOT, file)}`);
   }
@@ -31,6 +38,9 @@ async function main() {
   const xml = await fs.readFile(SITEMAP, 'utf8');
   if (!xml.includes('xml-stylesheet')) warnings.push('Sitemap is missing the XML stylesheet instruction.');
   const urls = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1].trim());
+  if (urls.some((url) => !new URL(url).pathname.startsWith('/fr/'))) {
+    errors.push('AdSense review sitemap must only expose curated /fr/ publisher pages.');
+  }
   if (!urls.length) errors.push('No <loc> URLs were found in public/sitemap.xml.');
 
   let localChecked = 0;
@@ -55,9 +65,23 @@ async function main() {
   await walk(PUBLIC_DIR);
 
   let cssLinkedCount = 0;
+  let indexedWithAds = 0;
+  let noindexWithoutAds = 0;
   for (const file of htmlFiles) {
     const source = await fs.readFile(file, 'utf8');
     if (source.includes('/seo/seo.css')) cssLinkedCount += 1;
+    const relative = '/' + path.relative(PUBLIC_DIR, file).replace(/\\/g, '/').replace(/index\.html$/, '');
+    const isFrenchPublisherPage = relative.startsWith('/fr/');
+    if (isFrenchPublisherPage) {
+      if (!source.includes('name="robots" content="index,follow')) errors.push(`French publisher page must be indexable: ${relative}`);
+      if (!source.includes(ADSENSE_CLIENT)) errors.push(`French publisher page must carry the scoped AdSense loader: ${relative}`);
+      if ((source.match(/<p/g) || []).length < 3) errors.push(`French publisher page is too thin: ${relative}`);
+      indexedWithAds += 1;
+    } else if (source.includes('/seo/seo.css')) {
+      if (!source.includes('name="robots" content="noindex,follow')) errors.push(`Template translation must be noindex: ${relative}`);
+      if (source.includes(ADSENSE_CLIENT)) errors.push(`Noindex template page must not load AdSense: ${relative}`);
+      noindexWithoutAds += 1;
+    }
   }
 
   console.log('SEO public pages audit');
@@ -66,6 +90,8 @@ async function main() {
   console.log(`Local sitemap pages ok  : ${localChecked}`);
   console.log(`Public index.html pages : ${htmlFiles.length}`);
   console.log(`Pages using seo.css     : ${cssLinkedCount}`);
+  console.log(`Curated FR + AdSense    : ${indexedWithAds}`);
+  console.log(`Noindex template pages  : ${noindexWithoutAds}`);
   console.log(`llms.txt present        : ${await exists(LLMS) ? 'yes' : 'no'}`);
   console.log(`sitemap.xsl present     : ${await exists(SITEMAP_XSL) ? 'yes' : 'no'}`);
 
