@@ -127,7 +127,22 @@ function CradosAwenaButton() {
     className="crados-play__awena"
     aria-label="Demander de l’aide à Awena sur CRADOS"
     title="Awena · aide CRADOS"
-    onClick={() => awena?.openPanel?.()}
+    onClick={() => {
+      awena?.setRuntime?.({
+        route: "crados_play",
+        sport: "darts",
+        mode: "crados",
+        phase: "play",
+        inGame: true,
+        screenLabel: "CRADOS · Partie",
+        extra: {
+          awenaRememberedMode: "crados",
+          awenaModeTopic: "rules",
+          cradosPageHint: "active-play",
+        },
+      });
+      awena?.openPanel?.();
+    }}
   >
     <span><img src="/awena/awena-avatar.webp" alt="Awena" /></span>
     <i aria-hidden>🎙</i>
@@ -292,12 +307,12 @@ function TacticalBoardModal({ state, sides, sideById, colorBySideId, profileBySi
     <div className="crados-board-modal__card" onClick={(event) => event.stopPropagation()}>
       <header><div><b>CARTE DES ZONES</b></div><div className="crados-board-modal__actions"><CradosAwenaButton /><button type="button" onClick={onClose} aria-label="Fermer">×</button></div></header>
       <div className="crados-board-modal__filters">
-        <button type="button" className={filterSideId === "all" ? "is-active" : ""} onClick={() => setFilterSideId("all")}>TOUT</button>
-        <button type="button" className={filterSideId === "free" ? "is-active" : ""} onClick={() => setFilterSideId("free")}><i style={{ background: "#889088" }} />LIBRES</button>
+        <button type="button" className={`crados-board-modal__filter-chip${filterSideId === "all" ? " is-active" : ""}`} style={{ ["--filter-color" as any]: ACCENT }} onClick={() => setFilterSideId("all")}>TOUT</button>
+        <button type="button" className={`crados-board-modal__filter-chip${filterSideId === "free" ? " is-active" : ""}`} style={{ ["--filter-color" as any]: "#8e9891" }} onClick={() => setFilterSideId("free")}><i style={{ background: "#889088" }} />LIBRES</button>
         {sides.map((side: any) => {
           const color = colorBySideId.get(String(side.id)) || ACCENT;
           const prof = profileBySideId?.get?.(String(side.id)) || side;
-          return <button key={side.id} type="button" className={`crados-board-modal__avatar-filter ${filterSideId === String(side.id) ? "is-active" : ""}`} onClick={() => setFilterSideId(String(side.id))} aria-label={`Filtrer ${side.name}`} title={side.name}><span style={{ borderColor: color }}><ProfileAvatar profile={prof} size={26} showStars={false} ringColor={color} /></span></button>;
+          return <button key={side.id} type="button" className={`crados-board-modal__avatar-filter${filterSideId === String(side.id) ? " is-active" : ""}`} style={{ ["--filter-color" as any]: color }} onClick={() => setFilterSideId(String(side.id))} aria-label={`Filtrer ${side.name}`} title={side.name}><span style={{ borderColor: color }}><ProfileAvatar profile={prof} size={26} showStars={false} ringColor={color} /></span></button>;
         })}
       </div>
       <div className="crados-board-modal__body"><CradosTacticalBoard state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} profileBySideId={profileBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={onSelect} filterSideId={filterSideId} /></div>
@@ -678,19 +693,21 @@ export default function CradosPlay(props: any) {
         sectorsClaimed: Number(stats.sectorsClaimed || 0),
         sectorsStolen: Number(stats.sectorsStolen || 0),
         dirtWashed: Number(stats.dirtWashed || 0),
+        awenaRememberedMode: "crados",
+        cradosPageHint: "active-play",
       },
     });
   }, [awena, state.phase, state.legIndex, state.dirt, state.statsByPlayer, activePlayer?.id, activePlayer?.name, activeSideId, activeSide?.name, teamMode, config]);
 
   if (state.phase === "finished") {
     return <div className="crados-play crados-play--finished" data-mss-native-play-layout="1">
-      <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={4} left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
+      <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={8} left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
       <div className="crados-play__finished-wrap"><ModeEndPanel title={teamMode ? "CRADOS — ÉQUIPES" : "CRADOS"} winner={state.winnerId} profiles={teamMode ? sideProfiles : profiles} legWins={state.legWins} accent={ACCENT} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: "crados", from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: "crados", focusMatchId: matchIdRef.current })} onConfig={() => go?.("crados_config")} onGames={() => go?.("games", { gamesView: "all" })} extra={<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>{teamMode ? sides.map((side: any) => { const st = sideStats[String(side.id)] || {}; return <div key={side.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: `1px solid ${(side.color || ACCENT)}44`, fontSize: 9.5, color: SOFT }}><b style={{ color: side.color || "#fff" }}>{side.name}</b><br />{st.sectorsClaimed || 0} secteurs · {st.sectorsStolen || 0} vols · {st.dirtTaken || 0} crasses · {st.dirtWashed || 0} lavées</div>; }) : profiles.map((p: any) => { const st = state.statsByPlayer[p.id] || {}; return <div key={p.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 9.5, color: SOFT }}><b style={{ color: "#fff" }}>{playerName(p)}</b><br />{st.sectorsClaimed || 0} secteurs · {st.sectorsStolen || 0} vols · {st.dirtTaken || 0} crasses · {st.dirtWashed || 0} lavées</div>; })}</div>} /></div>
     </div>;
   }
 
   return <div className="crados-play" data-mss-native-play-layout="1">
-    <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={4} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
+    <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
 
     <main className="crados-play__body">
       <div className="crados-play__stage">
