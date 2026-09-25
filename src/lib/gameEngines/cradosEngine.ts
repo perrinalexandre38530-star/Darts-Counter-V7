@@ -44,7 +44,33 @@ export type CradosConfigPayload = {
   };
 };
 export type CradosSector = { ownerId: string | null; claimantId: string | null; layers: number; pressureBySide?: Record<string, number> };
-export type CradosPlayerStats = { darts: number; visits: number; layersPlaced: number; sectorsClaimed: number; sectorsStolen: number; dirtTaken: number; dirtWashed: number; legsWon: number };
+export type CradosPlayerStats = {
+  darts: number;
+  visits: number;
+  singles: number;
+  doubles: number;
+  triples: number;
+  bulls: number;
+  dbulls: number;
+  misses: number;
+  hits: number;
+  layersPlaced: number;
+  sectorsClaimed: number;
+  sectorsStolen: number;
+  dirtTaken: number;
+  dirtWashed: number;
+  dirtInflicted: number;
+  bullSplashInflicted: number;
+  freeSectorHits: number;
+  ownSectorHits: number;
+  opponentSectorHits: number;
+  cleanVisits: number;
+  dirtyVisits: number;
+  maxDirt: number;
+  bestVisitImpact: number;
+  eliminationsCaused: number;
+  legsWon: number;
+};
 export type CradosVisit = { id: string; playerId: string; sideId?: string; teamId?: string | null; leg: number; turn: number; darts: GameDart[]; events: string[]; dirtBefore: number; dirtAfter: number };
 export type CradosState = {
   sport: "darts";
@@ -69,7 +95,35 @@ export type CradosState = {
 
 function clone<T>(v: T): T { return JSON.parse(JSON.stringify(v)); }
 function id(p = "crados") { return `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; }
-function blankStats(): CradosPlayerStats { return { darts: 0, visits: 0, layersPlaced: 0, sectorsClaimed: 0, sectorsStolen: 0, dirtTaken: 0, dirtWashed: 0, legsWon: 0 }; }
+function blankStats(): CradosPlayerStats {
+  return {
+    darts: 0,
+    visits: 0,
+    singles: 0,
+    doubles: 0,
+    triples: 0,
+    bulls: 0,
+    dbulls: 0,
+    misses: 0,
+    hits: 0,
+    layersPlaced: 0,
+    sectorsClaimed: 0,
+    sectorsStolen: 0,
+    dirtTaken: 0,
+    dirtWashed: 0,
+    dirtInflicted: 0,
+    bullSplashInflicted: 0,
+    freeSectorHits: 0,
+    ownSectorHits: 0,
+    opponentSectorHits: 0,
+    cleanVisits: 0,
+    dirtyVisits: 0,
+    maxDirt: 0,
+    bestVisitImpact: 0,
+    eliminationsCaused: 0,
+    legsWon: 0,
+  };
+}
 function power(d: GameDart) { return d?.bed === "T" ? 3 : d?.bed === "D" ? 2 : 1; }
 function numberOf(d: GameDart) { return d?.bed === "S" || d?.bed === "D" || d?.bed === "T" ? Number(d.number || 0) : 0; }
 function unique(values: any[]) { return Array.from(new Set((values || []).map((v) => String(v || "").trim()).filter(Boolean))); }
@@ -231,10 +285,10 @@ function winLeg(s: CradosState, winnerSideId: string) {
   if (isCradosTeamMode(s)) {
     const team = (s.config.teams || []).find((row: any) => String(row.id) === String(winnerSideId));
     for (const playerId of team?.playerIds || []) {
-      if (s.statsByPlayer[playerId]) s.statsByPlayer[playerId].legsWon += 1;
+      if (s.statsByPlayer[playerId]) s.statsByPlayer[playerId].legsWon = Number(s.statsByPlayer[playerId].legsWon || 0) + 1;
     }
   } else if (s.statsByPlayer[winnerSideId]) {
-    s.statsByPlayer[winnerSideId].legsWon += 1;
+    s.statsByPlayer[winnerSideId].legsWon = Number(s.statsByPlayer[winnerSideId].legsWon || 0) + 1;
   }
   if (s.legWins[winnerSideId] >= s.config.seriesWins) {
     s.phase = "finished";
@@ -286,9 +340,10 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
   const sideName = cradosSideName(s, sideId);
   const team = cradosTeamForPlayer(s, playerId);
   const ds = (dartsRaw || []).slice(0, 3);
-  const st = s.statsByPlayer[playerId] || (s.statsByPlayer[playerId] = blankStats());
+  const st = s.statsByPlayer[playerId] = { ...blankStats(), ...(s.statsByPlayer[playerId] || {}) };
   const before = Number(s.dirt[sideId] || 0);
   const events: string[] = [];
+  let visitImpact = 0;
   st.visits += 1;
 
   const markElimination = (targetSideIdRaw: any, messages: string[] = events) => {
@@ -310,18 +365,28 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     const prev = Number(s.dirt[targetSideId] || 0);
     const next = Math.min(limit, prev + amount);
     const delta = next - prev;
+    const wasEliminated = Boolean(s.eliminated[targetSideId]);
     s.dirt[targetSideId] = next;
     if (delta > 0 && targetSideId === sideId) st.dirtTaken += delta;
+    if (delta > 0 && targetSideId !== sideId) st.dirtInflicted += delta;
     if (delta > 0 && reason) messages.push(reason.replace(/__VALUE__/g, String(delta)));
     markElimination(targetSideId, messages);
+    if (!wasEliminated && s.eliminated[targetSideId] && targetSideId !== sideId) st.eliminationsCaused += 1;
     return delta;
   };
 
   for (const d of ds) {
     st.darts += 1;
-    if (!d || d.bed === "MISS") continue;
+    if (!d || d.bed === "MISS") {
+      st.misses += 1;
+      continue;
+    }
 
+    st.hits += 1;
     if (d.bed === "OB" || d.bed === "IB") {
+      if (d.bed === "IB") st.dbulls += 1;
+      else st.bulls += 1;
+      visitImpact += d.bed === "IB" ? 3 : 1;
       const wash = d.bed === "IB" ? 3 : 1;
       const shooterWasClean = Number(s.dirt[sideId] || 0) <= 0;
       if (s.config.rules.bullWash) {
@@ -334,11 +399,14 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
       }
       if (s.config.rules.cleanBullSplash && shooterWasClean) {
         const touched: string[] = [];
+        let splashTotal = 0;
         for (const enemySideId of cradosSideIds(s)) {
           if (String(enemySideId) === sideId || s.eliminated[enemySideId]) continue;
           const delta = addDirt(enemySideId, wash);
+          splashTotal += delta;
           if (delta > 0) touched.push(`${cradosSideName(s, enemySideId)} +${delta}`);
         }
+        st.bullSplashInflicted += splashTotal;
         if (touched.length) events.push(`${d.bed === "IB" ? "DBULL" : "BULL"} PROPAGATION : ${touched.join(" · ")}`);
       }
       continue;
@@ -347,10 +415,15 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     const n = numberOf(d);
     if (!n) continue;
     const pow = power(d);
+    visitImpact += pow;
+    if (d.bed === "T") st.triples += 1;
+    else if (d.bed === "D") st.doubles += 1;
+    else st.singles += 1;
     const sec = s.sectors[n] || (s.sectors[n] = { ownerId: null, claimantId: null, layers: 0, pressureBySide: {} });
     sec.pressureBySide = sec.pressureBySide || {};
 
     if (!sec.ownerId) {
+      st.freeSectorHits += 1;
       if (s.config.rules.sectorRaceMode === "race") {
         sec.pressureBySide[sideId] = Number(sec.pressureBySide[sideId] || 0) + pow;
         st.layersPlaced += pow;
@@ -392,10 +465,12 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     }
 
     if (sec.ownerId === sideId) {
+      st.ownSectorHits += 1;
       events.push(`N°${n} est déjà à ${sideName}`);
       continue;
     }
 
+    st.opponentSectorHits += 1;
     if (s.config.rules.stealMode === "flip") {
       const oldOwner = sec.ownerId;
       sec.layers -= pow;
@@ -415,6 +490,12 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     if (s.eliminated[sideId]) break;
   }
 
+  const after = Number(s.dirt[sideId] || 0);
+  st.bestVisitImpact = Math.max(Number(st.bestVisitImpact || 0), visitImpact);
+  st.maxDirt = Math.max(Number(st.maxDirt || 0), after);
+  if (after < before) st.cleanVisits += 1;
+  if (after > before) st.dirtyVisits += 1;
+
   s.visits.push({
     id: id("crados-visit"),
     playerId,
@@ -425,7 +506,7 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     darts: ds,
     events,
     dirtBefore: before,
-    dirtAfter: Number(s.dirt[sideId] || 0),
+    dirtAfter: after,
   });
   s.turnIndex += 1;
 

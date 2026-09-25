@@ -1434,3 +1434,30 @@ html[data-dc-theme-page-scope="off"] body{
   transition-duration: 0s !important;
 }
 
+
+/* ===== GLOBAL PLAY VIEWPORT GUARD =====
+   Tous les écrans PLAY qui utilisent useFullscreenPlay héritent du même cadre
+   viewport-safe en téléphone/tablette, portrait comme paysage. */
+html.dc-fullscreen-play,
+html.dc-fullscreen-play body,
+body.dc-fullscreen-play,
+html.dc-fullscreen-play #root,
+body.dc-fullscreen-play #root {
+  width: 100%;
+  max-width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+html.dc-fullscreen-play body,
+body.dc-fullscreen-play {
+  margin: 0 !important;
+}
+@media (orientation: landscape) {
+  html.dc-fullscreen-play #root,
+  body.dc-fullscreen-play #root {
+    min-width: 0;
+    min-height: 0;
+  }
+}

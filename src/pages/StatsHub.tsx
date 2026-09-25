@@ -19,6 +19,7 @@ import { loadStatsIndex, scheduleStatsIndexRefresh } from "../lib/stats/rebuildS
 import StatsCricketDashboard from "../components/StatsCricketDashboard";
 import StatsDartSetsSection from "../components/StatsDartSetsSection";
 import AttrapeMoiStatsTabFull from "../components/stats/AttrapeMoiStatsTabFull";
+import CradosStatsTabFull from "../components/stats/CradosStatsTabFull";
 import HistoryPage from "./HistoryPage";
 import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 
@@ -10023,6 +10024,22 @@ return (
               </div>
             )}
 
+{currentMode === "crados" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <CradosStatsTabFull
+                    records={records as any[]}
+                    playerId={selectedPlayer.id}
+                    playerName={selectedPlayer.name}
+                  />
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques CRADOS détaillées.
+                  </div>
+                )}
+              </div>
+            )}
+
 {currentMode === "scram" && (
               <div style={card}>
                 {selectedPlayer ? (
@@ -10057,7 +10074,7 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "baseball", "president", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(String(currentMode)) && (
+            {["battle_royale", "warfare", "baseball", "president", "pendu", "menteur", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>

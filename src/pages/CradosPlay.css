@@ -2020,3 +2020,182 @@
     min-height: 34px;
   }
 }
+
+/* =========================================================
+   V96 — CRADOS FINAL PLAY POLISH
+   ========================================================= */
+
+/* Score principal : même métrique visuelle que le SCORE CENTRAL X01. */
+.crados-active__percent {
+  font-size: clamp(40px, 15.5vw, 64px) !important;
+  font-weight: 900 !important;
+  line-height: 1.02 !important;
+  letter-spacing: 0 !important;
+  text-shadow: 0 4px 18px rgba(255,195,26,.25) !important;
+}
+
+/* Le radar retrouve sa grande taille : aucun mini-classement ne lui vole sa hauteur. */
+.crados-active {
+  grid-template-columns: minmax(0,1fr) minmax(132px,148px) !important;
+}
+.crados-active__radar {
+  width: 100% !important;
+  min-width: 132px !important;
+  min-height: 0 !important;
+  align-self: stretch !important;
+}
+.crados-mini-radar {
+  min-height: 126px !important;
+  padding: 5px !important;
+}
+.crados-mini-radar svg {
+  width: min(100%, 132px) !important;
+}
+
+/* Classement à gauche + liste au centre + journal à droite. */
+.crados-play__quick-row {
+  grid-template-columns: 56px minmax(0,1fr) 56px !important;
+  gap: 7px !important;
+}
+.crados-ranking-button,
+.crados-stats-button {
+  width: 56px !important;
+  min-width: 56px !important;
+}
+
+/* Médaillons LISTE DES JOUEURS : l'image doit réellement remplir le cercle. */
+.crados-players-button {
+  min-width: 0 !important;
+  padding-inline: 8px !important;
+}
+.crados-players-button__avatars {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+}
+.crados-players-button__avatars > div {
+  width: clamp(34px, 7vw, 48px) !important;
+  height: clamp(34px, 7vw, 48px) !important;
+  flex: 0 1 clamp(34px, 7vw, 48px) !important;
+  min-width: 30px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+}
+.crados-players-button__avatars > div > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  overflow: hidden !important;
+  border-radius: 50% !important;
+  transform: none !important;
+}
+.crados-players-button__avatars > div > div > div {
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  border-radius: 50% !important;
+}
+.crados-players-button__avatars > div img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  transform: scale(1.28) !important;
+  transform-origin: center !important;
+}
+
+/* Avatar fantôme un peu plus lisible sans gêner le score. */
+.crados-active__ghost {
+  opacity: .23 !important;
+}
+
+/* Écran de fin CRADOS */
+.crados-end {
+  width: min(920px,100%);
+  display: grid;
+  gap: 10px;
+  color: #fff;
+}
+.crados-end__hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(183,242,71,.28);
+  background:
+    radial-gradient(circle at 50% -10%,rgba(183,242,71,.24),transparent 42%),
+    linear-gradient(145deg,rgba(23,31,17,.98),rgba(4,7,5,.99) 70%);
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 22px 70px rgba(0,0,0,.45), inset 0 0 45px rgba(183,242,71,.05);
+}
+.crados-end__slime { color:#dfff88; font-size:12px; font-weight:1100; letter-spacing:1.5px; }
+.crados-end__winner { width:92px; height:92px; border-radius:50%; margin:10px auto 0; overflow:hidden; box-shadow:0 0 28px rgba(183,242,71,.25); }
+.crados-end__winner > div { width:100% !important; height:100% !important; }
+.crados-end__winner img { transform:scale(1.15); }
+.crados-end__title { margin-top:8px; font-size:26px; font-weight:1100; letter-spacing:.6px; }
+.crados-end__subtitle { margin-top:4px; color:#aeb8af; font-size:10px; }
+.crados-end__kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.crados-end__kpis > div { min-width:0; border-radius:14px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.035); padding:10px 6px; text-align:center; }
+.crados-end__kpis span { display:block; color:#869188; font-size:7px; font-weight:1000; letter-spacing:.4px; }
+.crados-end__kpis b { display:block; margin-top:4px; color:#dfff88; font-size:20px; line-height:1; font-weight:1100; }
+.crados-end__ranking { border-radius:18px; border:1px solid rgba(183,242,71,.18); background:rgba(7,11,8,.94); overflow:hidden; }
+.crados-end__ranking > header { padding:9px 11px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.06); }
+.crados-end__ranking > header b { color:#dfff88; font-size:10px; letter-spacing:.8px; }
+.crados-end__ranking > header span { color:#7e8981; font-size:7px; }
+.crados-end__ranking > div { display:grid; gap:5px; padding:7px; max-height:310px; overflow:auto; }
+.crados-end__rankrow { display:grid; grid-template-columns:32px 44px minmax(0,1fr) auto; gap:8px; align-items:center; min-height:55px; border:1px solid rgba(255,255,255,.07); border-radius:13px; padding:5px 8px; background:rgba(255,255,255,.025); }
+.crados-end__rankrow strong { font-size:13px; }
+.crados-end__rankavatar { width:40px; height:40px; border:2px solid; border-radius:50%; overflow:hidden; display:grid; place-items:center; }
+.crados-end__rankavatar > div { width:100% !important; height:100% !important; }
+.crados-end__rankrow > b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
+.crados-end__rankrow em { font-style:normal; font-size:18px; font-weight:1100; }
+.crados-end__rankrow small { grid-column:3 / -1; color:#7f8981; font-size:7px; margin-top:-5px; }
+.crados-end__actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+.crados-end__actions button { min-height:42px; border-radius:13px; border:1px solid rgba(183,242,71,.28); background:linear-gradient(180deg,rgba(183,242,71,.15),rgba(26,34,20,.96)); color:#e9ffc3; font-size:9px; font-weight:1000; cursor:pointer; }
+.crados-end__actions .is-wide { grid-column:1 / -1; color:#fff; border-color:rgba(255,255,255,.14); background:rgba(255,255,255,.045); }
+
+@media (orientation: portrait) {
+  .crados-active { grid-template-columns:minmax(0,1fr) 132px !important; }
+  .crados-active__radar { min-width:126px !important; }
+  .crados-mini-radar { min-height:122px !important; }
+  .crados-mini-radar svg { width:122px !important; }
+  .crados-play__quick-row { grid-template-columns:54px minmax(0,1fr) 54px !important; gap:5px !important; }
+  .crados-ranking-button,.crados-stats-button { width:54px !important; min-width:54px !important; }
+  .crados-players-button__avatars > div { width:42px !important; height:42px !important; flex-basis:42px !important; min-width:34px !important; }
+  .crados-end__kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+@media (orientation: landscape) and (min-width:900px) {
+  .crados-active { grid-template-columns:minmax(0,1fr) 154px !important; }
+  .crados-active__radar { min-width:154px !important; }
+  .crados-mini-radar { min-height:148px !important; }
+  .crados-mini-radar svg { width:min(100%,146px) !important; }
+  .crados-play__quick-row { grid-template-columns:62px minmax(0,1fr) 62px !important; }
+  .crados-ranking-button,.crados-stats-button { width:62px !important; min-width:62px !important; }
+}
+
+@media (orientation: landscape) and (min-width:600px) and (max-height:620px) {
+  .crados-active { grid-template-columns:minmax(0,1fr) 118px !important; }
+  .crados-active__radar { min-width:118px !important; }
+  .crados-mini-radar { min-height:108px !important; }
+  .crados-mini-radar svg { width:106px !important; }
+  .crados-play__quick-row { grid-template-columns:48px minmax(0,1fr) 48px !important; }
+  .crados-ranking-button,.crados-stats-button { width:48px !important; min-width:48px !important; }
+  .crados-players-button__avatars > div { width:40px !important; height:40px !important; flex-basis:40px !important; min-width:30px !important; }
+}
+.crados-end__details { border-radius:18px; border:1px solid rgba(183,242,71,.18); background:rgba(7,11,8,.94); overflow:hidden; }
+.crados-end__details > header { padding:9px 11px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.06); }
+.crados-end__details > header b { color:#dfff88; font-size:10px; letter-spacing:.7px; }
+.crados-end__details > header span { color:#7e8981; font-size:7px; }
+.crados-end__details > div { overflow-x:auto; }
+.crados-end__details table { width:100%; min-width:880px; border-collapse:collapse; font-size:8px; }
+.crados-end__details th { color:#7f8a81; text-align:right; padding:7px 6px; border-bottom:1px solid rgba(255,255,255,.06); }
+.crados-end__details th:first-child,.crados-end__details td:first-child { text-align:left; }
+.crados-end__details td { color:#e5ebe6; text-align:right; padding:7px 6px; border-bottom:1px solid rgba(255,255,255,.035); font-weight:850; }
+.crados-end__details td:first-child span { font-weight:1000; white-space:nowrap; }

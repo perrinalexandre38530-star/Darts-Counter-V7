@@ -17,7 +17,7 @@ import * as React from "react";
 // ============================================
 
 export type FullscreenPlayOptions = {
-  /** Active/désactive le helper. Par défaut: false (opt-in) */
+  /** Active/désactive le helper. Par défaut: true pour tous les écrans PLAY qui utilisent ce hook. */
   enabled?: boolean;
   /** Ajoute une classe sur <html>. Par défaut: "dc-fullscreen-play" */
   className?: string;
@@ -29,22 +29,21 @@ export type FullscreenPlayOptions = {
 
 export function useFullscreenPlay(options: FullscreenPlayOptions = {}) {
   const {
-    enabled = false,
+    enabled = true,
     className = "dc-fullscreen-play",
     setVhVar = true,
     lockBodyScroll = true,
   } = options;
 
   React.useEffect(() => {
-    // ✅ IMPORTANT (stabilité V7): ce hook a des effets globaux (html/body).
-    // On le laisse en opt-in pour éviter de "casser" les layouts desktop/preview.
+    // Les écrans PLAY qui appellent ce hook doivent être viewport-safe par défaut.
     if (!enabled) return;
 
     const html = document.documentElement;
     const body = document.body;
 
     // 1) Classe HTML
-    if (className) html.classList.add(className);
+    if (className) { html.classList.add(className); body.classList.add(className); }
 
     // 2) Lock scroll body (on garde les styles d'origine pour restore)
     const prevBodyOverflow = body.style.overflow;
@@ -74,7 +73,7 @@ export function useFullscreenPlay(options: FullscreenPlayOptions = {}) {
       window.removeEventListener("resize", setVh as any);
       window.removeEventListener("orientationchange", setVh as any);
 
-      if (className) html.classList.remove(className);
+      if (className) { html.classList.remove(className); body.classList.remove(className); }
 
       if (lockBodyScroll) {
         body.style.overflow = prevBodyOverflow;
