@@ -4851,3 +4851,57 @@ html[data-msc-orientation="landscape"] .mss-darts-config-guide-boundary[data-con
     max-height: 100% !important;
   }
 }
+
+/* ========================================================================
+   V95 — Landscape PLAY safety net
+   Goal: no blank gameplay area, no overflow, shared sizing on tablets.
+   ======================================================================== */
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"] > * {
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .x01play-container {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"] .x01play-container > .msc-gameplay-layout {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-layout .msc-gameplay-shell {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-gameplay-layout .msc-gameplay-grid,
+html[data-msc-orientation="landscape"] .msc-gameplay-layout .msc-gameplay-primary,
+html[data-msc-orientation="landscape"] .msc-gameplay-layout .msc-gameplay-secondary {
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+html[data-msc-orientation="landscape"] [data-mss-score-input-hub="1"],
+html[data-msc-orientation="landscape"] [data-mss-keypad="1"],
+html[data-msc-orientation="landscape"] [data-mss-play-input="1"] {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+}

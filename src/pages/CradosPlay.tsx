@@ -30,7 +30,18 @@ const ACCENT = "#b7f247";
 const GREEN = "#70e65e";
 const BROWN = "#d99a57";
 const RED = "#ff6c67";
-const PLAYER_COLORS = ["#67d7ff", "#ff74c8", "#ffc857", "#79ef9d", "#b58cff", "#ff8a65", "#56e0d0", "#f3f56a", "#8fb8ff", "#fa8fb1"];
+const PLAYER_COLORS = [
+  "#168CFF", // BLEU OCÉAN
+  "#FFD21A", // JAUNE OR
+  "#39D36F", // VERT NATURE
+  "#D92C3A", // ROUGE SANG
+  "#C83DFF", // VIOLET MAGENTA
+  "#FF7A1A", // ORANGE
+  "#FF3FA7", // ROSE FLUO
+  "#F7F8FA", // BLANC
+  "#19E6FF", // CYAN
+  "#9A603A", // MARRON
+];
 const DARTBOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const CRADOS_BOARD = {
   cx: 130,
@@ -48,7 +59,14 @@ const CRADOS_BOARD = {
   label: 107.8,
 };
 const CRADOS_BOARD_IMAGE = { x: CRADOS_BOARD.cx - CRADOS_BOARD.artOuter, y: CRADOS_BOARD.cy - CRADOS_BOARD.artOuter, size: CRADOS_BOARD.artOuter * 2 };
-const TOUCH_COLORS: Record<string, string> = { S: "#67d7ff", D: "#6fd6ff", T: "#d17bff", BULL: "#50e68c", DBULL: "#2bf08b", MISS: "#ffb54d" };
+const TOUCH_COLORS: Record<string, string> = {
+  S: "#FFFFFF",
+  D: "#BFEAFF",
+  T: "#FFCCFF",
+  BULL: "#8BE0B8",
+  DBULL: "#50E68C",
+  MISS: "#FFC63A",
+};
 
 type PlayTab = "map" | "stats";
 
@@ -354,6 +372,9 @@ function LogModal({ state, onClose, profileById, profileBySideId, colorByPlayerI
   return <div className="crados-players-modal" role="dialog" aria-modal="true" aria-label="Journal CRADOS" onClick={onClose}>
     <div className="crados-players-modal__card crados-players-modal__card--stats" onClick={(e) => e.stopPropagation()}>
       <header><div><b>JOURNAL DE PARTIE</b><span>Dernières actions enregistrées</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
+      <div className="crados-log-modal__legend-fixed">
+        {['S', 'D', 'T', 'BULL', 'DBULL', 'MISS'].map((label) => <span key={label} style={{ color: TOUCH_COLORS[label], borderColor: `${TOUCH_COLORS[label]}66` }}>{label}</span>)}
+      </div>
       <div className="crados-log-modal__body">
         {rows.length ? rows.map((visit: any) => {
           const playerId = String(visit?.playerId || "");
@@ -382,9 +403,6 @@ function LogModal({ state, onClose, profileById, profileBySideId, colorByPlayerI
                 const tone = visitDartTone(dart);
                 return <span key={`${visit.id}-${idx}`} className="crados-log-modal__dart" style={{ borderColor: `${tone}66`, color: tone, boxShadow: `inset 0 0 12px ${tone}1f` }}>{label}</span>;
               }) : <span className="crados-log-modal__dart is-empty">Aucune fléchette</span>}
-            </div>
-            <div className="crados-log-modal__legend-strip">
-              {['S', 'D', 'T', 'BULL', 'DBULL', 'MISS'].map((label) => <span key={label} style={{ color: TOUCH_COLORS[label], borderColor: `${TOUCH_COLORS[label]}40` }}>{label}</span>)}
             </div>
             <div className="crados-log-modal__events">
               {Array.isArray(visit.events) && visit.events.length ? visit.events.map((event: string, idx: number) => <span key={`${visit.id}-ev-${idx}`}>{event}</span>) : <span>Aucune action notable</span>}
@@ -427,7 +445,61 @@ function TurnStrip({ state, profiles, profileById, colorByPlayerId, colorBySideI
   </div>;
 }
 
-function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, activeSideId, activeSide, teamMode, onOpenBoard }: any) {
+function CradosSummaryStrip({ state, profiles, profileById, colorByPlayerId, colorBySideId, config, teamMode }: any) {
+  return <div className="crados-summary-strip" aria-label="Résumé des joueurs CRADOS">
+    {state.players.slice(0, 10).map((p: any, i: number) => {
+      const prof = profileById.get(String(p.id)) || profiles[i] || p;
+      const sideId = cradosSideIdForPlayer(state, p.id);
+      const color = teamMode ? colorBySideId.get(String(sideId)) || ACCENT : colorByPlayerId.get(String(p.id)) || ACCENT;
+      const dirt = Number(state.dirt?.[sideId] || 0);
+      const active = state.phase !== "finished" && state.activePlayerIndex === i;
+      return <div key={p.id} className={`crados-summary-strip__item${active ? " is-active" : ""}`} style={{ borderColor: `${color}${active ? "dd" : "66"}`, boxShadow: active ? `0 0 16px ${color}44` : "none" }}>
+        <div className="crados-summary-strip__avatar" style={{ borderColor: color }}><ProfileAvatar profile={prof} size={34} showStars={false} ringColor={color} noFrame /></div>
+        <div className="crados-summary-strip__score" style={{ color }}>{dirt}<small>/{config.rules.dirtLimit}</small></div>
+      </div>;
+    })}
+  </div>;
+}
+
+function buildCradosRanking({ state, profiles, profileById, colorByPlayerId, colorBySideId, teamMode }: any) {
+  const rows = state.players.map((p: any, i: number) => {
+    const prof = profileById.get(String(p.id)) || profiles[i] || p;
+    const sideId = cradosSideIdForPlayer(state, p.id);
+    const color = teamMode ? colorBySideId.get(String(sideId)) || ACCENT : colorByPlayerId.get(String(p.id)) || ACCENT;
+    const st = state.statsByPlayer?.[p.id] || {};
+    return {
+      id: String(p.id),
+      name: playerName(prof),
+      profile: prof,
+      sideId,
+      color,
+      dirt: Number(state.dirt?.[sideId] || 0),
+      zones: Number(st.sectorsClaimed || 0),
+      legs: Number(state.legWins?.[sideId] || 0),
+      eliminated: !!state.eliminated?.[sideId],
+      order: i,
+    };
+  });
+  return rows.sort((a: any, b: any) => Number(a.eliminated) - Number(b.eliminated) || a.dirt - b.dirt || b.zones - a.zones || b.legs - a.legs || a.order - b.order);
+}
+
+function RankingModal({ rows, dirtLimit, onClose }: any) {
+  return <div className="crados-players-modal" role="dialog" aria-modal="true" aria-label="Classement CRADOS" onClick={onClose}>
+    <div className="crados-players-modal__card crados-ranking-modal" onClick={(e) => e.stopPropagation()}>
+      <header><div><b>CLASSEMENT</b><span>Moins de crasse = meilleure position</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
+      <div className="crados-ranking-modal__list">
+        {rows.map((row: any, index: number) => <div key={row.id} className="crados-ranking-modal__row" style={{ borderColor: `${row.color}55` }}>
+          <div className="crados-ranking-modal__rank" style={{ color: row.color }}>#{index + 1}</div>
+          <div className="crados-ranking-modal__avatar" style={{ borderColor: row.color }}><ProfileAvatar profile={row.profile} size={42} showStars={false} ringColor={row.color} noFrame /></div>
+          <div className="crados-ranking-modal__name"><b style={{ color: row.color }}>{String(row.name || "—").toUpperCase()}</b><span>{row.eliminated ? "ÉLIMINÉ" : `${row.zones} zone${row.zones > 1 ? "s" : ""}`}</span></div>
+          <div className="crados-ranking-modal__score" style={{ color: row.color }}>{row.dirt}<small>/{dirtLimit}</small></div>
+        </div>)}
+      </div>
+    </div>
+  </div>;
+}
+
+function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, activeSideId, activeSide, teamMode, onOpenBoard, rankingRows, onOpenRanking }: any) {
   const dirt = activeSideId ? Number(state.dirt?.[activeSideId] || 0) : 0;
   const dirtPct = Math.max(0, Math.min(100, Math.round((dirt / Math.max(1, Number(config.rules.dirtLimit || 1))) * 100)));
   const avatarSrc = profileImageSrc(activeProfile || activePlayer);
@@ -442,7 +514,15 @@ function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, act
       <CradosDirtMeter value={dirt} max={config.rules.dirtLimit} color={color} />
       <div className="crados-active__leg" style={{ color }}>{`MANCHE ${Number(state.legIndex || 0) + 1} - ${state.legWins?.[activeSideId] || 0}/${config.seriesWins} remportée${Number(config.seriesWins || 1) > 1 ? 's' : ''}`}</div>
     </div>
-    <div className="crados-active__radar"><CradosMiniRadar state={state} activeSideId={activeSideId} color={color} onOpen={onOpenBoard} /></div>
+    <div className="crados-active__side-stack">
+      <div className="crados-active__radar"><CradosMiniRadar state={state} activeSideId={activeSideId} color={color} onOpen={onOpenBoard} /></div>
+      <button type="button" className="crados-active__ranking-mini" onClick={onOpenRanking} aria-label="Ouvrir le classement" title="Classement">
+        <span className="crados-active__ranking-icon">🏆</span>
+        <span className="crados-active__ranking-rows">
+          {(rankingRows || []).slice(0, 3).map((row: any, index: number) => <i key={row.id}><b style={{ color: row.color }}>{index + 1}. {row.name}</b><em style={{ color: row.color }}>{row.dirt}</em></i>)}
+        </span>
+      </button>
+    </div>
   </section>;
 }
 
@@ -489,7 +569,7 @@ function PlayersButton({ state, profiles, profileById, colorByPlayerId, colorByS
         const prof = profileById.get(String(p.id)) || profiles[i] || p;
         const sideId = cradosSideIdForPlayer(state, p.id);
         const color = teamMode ? colorBySideId.get(String(sideId)) || ACCENT : colorByPlayerId.get(String(p.id)) || ACCENT;
-        return <div key={p.id} className={state.activePlayerIndex === i ? "is-active" : ""} style={{ borderColor: color, opacity: state.eliminated[sideId] ? .38 : 1 }}><ProfileAvatar profile={prof} size={31} showStars={false} ringColor={color} noFrame /></div>;
+        return <div key={p.id} className={state.activePlayerIndex === i ? "is-active" : ""} style={{ borderColor: color, opacity: state.eliminated[sideId] ? .38 : 1 }}><ProfileAvatar profile={prof} size={48} showStars={false} ringColor={color} noFrame /></div>;
       })}
     </div>
     <div className="crados-players-button__label"><b>{state.players.length}</b></div>
@@ -548,6 +628,7 @@ export default function CradosPlay(props: any) {
   const [statsOpen, setStatsOpen] = React.useState(false);
   const [boardOpen, setBoardOpen] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
+  const [rankingOpen, setRankingOpen] = React.useState(false);
   const [selectedSector, setSelectedSector] = React.useState(20);
   const botBusy = React.useRef(false);
   const finishedRef = React.useRef(false);
@@ -576,6 +657,7 @@ export default function CradosPlay(props: any) {
   const activeSideId = activePlayer ? cradosSideIdForPlayer(state, activePlayer.id) : "";
   const activeSide = sideById.get(String(activeSideId));
   const activeColor = teamMode ? colorBySideId.get(String(activeSideId)) || ACCENT : activePlayer ? colorByPlayerId.get(String(activePlayer.id)) || ACCENT : ACCENT;
+  const rankingRows = React.useMemo(() => buildCradosRanking({ state, profiles, profileById, colorByPlayerId, colorBySideId, teamMode }), [state.players, state.dirt, state.eliminated, state.statsByPlayer, state.legWins, profiles, profileById, colorByPlayerId, colorBySideId, teamMode]);
 
   const sideStats = React.useMemo(() => Object.fromEntries(sides.map((side: any) => {
     const ids = Array.isArray(side?.playerIds) ? side.playerIds.map(String) : [String(side.id)];
@@ -684,6 +766,7 @@ export default function CradosPlay(props: any) {
     setBoardOpen(false);
     setStatsOpen(false);
     setLogOpen(false);
+    setRankingOpen(false);
     setState(createCradosState(players, config));
   }
 
@@ -733,7 +816,8 @@ export default function CradosPlay(props: any) {
     <main className="crados-play__body">
       <div className="crados-play__stage">
         <div className="crados-play__left">
-          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} />
+          <CradosSummaryStrip state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} config={config} teamMode={teamMode} />
+          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} rankingRows={rankingRows} onOpenRanking={() => setRankingOpen(true)} />
           <KpiStatsStrip state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} config={config} teamMode={teamMode} color={activeColor} onClick={() => setStatsOpen(true)} />
           <div className="crados-play__quick-row">
             <PlayersButton state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} onClick={() => setPlayersOpen(true)} teamMode={teamMode} />
@@ -751,6 +835,7 @@ export default function CradosPlay(props: any) {
     {playersOpen ? <PlayersModal state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} config={config} onClose={() => setPlayersOpen(false)} teamMode={teamMode} sideById={sideById} /> : null}
     {statsOpen ? <StatsModal state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} color={activeColor} config={config} teamMode={teamMode} onClose={() => setStatsOpen(false)} /> : null}
     {logOpen ? <LogModal state={state} onClose={() => setLogOpen(false)} profileById={profileById} profileBySideId={profileBySideId} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} teamMode={teamMode} sideById={sideById} /> : null}
+    {rankingOpen ? <RankingModal rows={rankingRows} dirtLimit={config.rules.dirtLimit} onClose={() => setRankingOpen(false)} /> : null}
     {boardOpen ? <TacticalBoardModal state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} profileBySideId={profileBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={setSelectedSector} onClose={() => setBoardOpen(false)} /> : null}
   </div>;
 }
