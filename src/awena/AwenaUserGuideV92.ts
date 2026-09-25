@@ -138,6 +138,20 @@ export function answerAwenaUserGuideV92(question:string, context:AwenaRuntimeCon
   if(follow && rememberedTopic.startsWith("v92:")){
     const id=rememberedTopic.slice(4); const e=E.find(x=>x.id===id); if(e) return {text:format(e,intent(q)),knowledgeTopic:`v92:${e.id}`};
   }
+
+  const route = String(context?.route || "").trim();
+  const asksForContextualGuide = /(guide moi|guide-moi|peux tu me guider|peux-tu me guider|ou suis je|ou suis-je|comment ca marche ici|comment ca fonctionne ici|comment fonctionne cette page|a quoi sert cette page|que puis je faire ici|que puis-je faire ici|ou se trouve|où se trouve)/.test(q);
+  if (route && asksForContextualGuide) {
+    const routeEntries = E.filter((entry) => String(entry.route || "") === route);
+    if (routeEntries.length) {
+      const byQuestion = [...routeEntries].sort((a, b) => score(b, question) - score(a, question));
+      const picked = byQuestion[0] && score(byQuestion[0], question) >= 18
+        ? byQuestion[0]
+        : routeEntries.find((entry) => entry.steps?.length) || routeEntries[0];
+      if (picked) return { text: format(picked, "steps"), knowledgeTopic: `v92:${picked.id}` };
+    }
+  }
+
   let best:UserGuideEntry|null=null,bestScore=0;
   for(const e of E){const s=score(e,question); if(s>bestScore){best=e;bestScore=s;}}
   if(!best || bestScore<34) return null;

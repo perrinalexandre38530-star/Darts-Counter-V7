@@ -219,14 +219,21 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
   return <div className={`crados-tactical-board${rightSides.length ? "" : " is-left-only"}${portraitTouchedSides.length ? " has-portrait-touches" : " no-portrait-touches"}`}>
     <div className="crados-tactical-board__side crados-tactical-board__side--left">
       {leftSides.map(({ side, color, profile, touches }: any) => <div key={`left-${side.id}`} className="crados-tactical-board__side-item">
-        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} /></div>
+        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} noFrame /></div>
+        <div className="crados-tactical-board__side-count" style={{ borderColor: `${color}88`, color }}>{touches}</div>
+      </div>)}
+    </div>
+
+    <div className="crados-tactical-board__top-strip" aria-label="Touches par joueur sur la zone sélectionnée">
+      {portraitTouchedSides.map(({ side, color, profile, touches }: any) => <div key={`portrait-top-${side.id}`} className="crados-tactical-board__top-item">
+        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} noFrame /></div>
         <div className="crados-tactical-board__side-count" style={{ borderColor: `${color}88`, color }}>{touches}</div>
       </div>)}
     </div>
 
     <div className="crados-tactical-board__side crados-tactical-board__side--portrait">
       {portraitTouchedSides.map(({ side, color, profile, touches }: any) => <div key={`portrait-${side.id}`} className="crados-tactical-board__side-item">
-        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} /></div>
+        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} noFrame /></div>
         <div className="crados-tactical-board__side-count" style={{ borderColor: `${color}88`, color }}>{touches}</div>
       </div>)}
     </div>
@@ -324,7 +331,7 @@ function TacticalBoardModal({ state, sides, sideById, colorBySideId, profileBySi
           const prof = profileBySideId?.get?.(String(side.id)) || side;
           const active = filterSideId === String(side.id);
           const allVisible = filterSideId === "all";
-          return <button key={side.id} type="button" className={`crados-board-modal__avatar-filter${active ? " is-active" : ""}${allVisible ? " is-all-visible" : ""}`} style={{ ["--filter-color" as any]: color }} onClick={() => setFilterSideId(String(side.id))} aria-label={`Filtrer ${side.name}`} title={side.name}><span style={{ borderColor: color }}><ProfileAvatar profile={prof} size={26} showStars={false} ringColor={color} /></span></button>;
+          return <button key={side.id} type="button" className={`crados-board-modal__avatar-filter${active ? " is-active" : ""}${allVisible ? " is-all-visible" : ""}`} style={{ ["--filter-color" as any]: color }} onClick={() => setFilterSideId(String(side.id))} aria-label={`Filtrer ${side.name}`} title={side.name}><span style={{ borderColor: color }}><ProfileAvatar profile={prof} size={26} showStars={false} ringColor={color} noFrame /></span></button>;
         })}
       </div>
       <div className="crados-board-modal__body"><CradosTacticalBoard state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} profileBySideId={profileBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={onSelect} filterSideId={filterSideId} /></div>
@@ -425,12 +432,13 @@ function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, act
   const dirtPct = Math.max(0, Math.min(100, Math.round((dirt / Math.max(1, Number(config.rules.dirtLimit || 1))) * 100)));
   const avatarSrc = profileImageSrc(activeProfile || activePlayer);
   const headerLabel = state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "";
+  const scoreValue = dirt;
   return <section className="crados-active" style={{ borderColor: `${color}68`, boxShadow: `0 15px 34px rgba(0,0,0,.34),inset 0 0 44px ${color}0c` }}>
     <div className="crados-active__ghost" aria-hidden>{avatarSrc ? <img src={avatarSrc} alt="" /> : <ProfileAvatar profile={activeProfile || activePlayer} size={112} showStars={false} ringColor={color} />}</div>
     <div className="crados-active__main">
       {headerLabel ? <div className="crados-active__eyebrow" style={{ color }}>{headerLabel}</div> : null}
       <div className="crados-active__name" style={{ color }}>{String(activePlayer?.name || "—").toUpperCase()}</div>
-      <div className="crados-active__percent" style={{ color: dirtPct >= 70 ? RED : color }}>{dirtPct}</div>
+      <div className="crados-active__percent" style={{ color: dirtPct >= 70 ? RED : color }}>{scoreValue}</div>
       <CradosDirtMeter value={dirt} max={config.rules.dirtLimit} color={color} />
       <div className="crados-active__leg" style={{ color }}>{`MANCHE ${Number(state.legIndex || 0) + 1} - ${state.legWins?.[activeSideId] || 0}/${config.seriesWins} remportée${Number(config.seriesWins || 1) > 1 ? 's' : ''}`}</div>
     </div>
@@ -481,7 +489,7 @@ function PlayersButton({ state, profiles, profileById, colorByPlayerId, colorByS
         const prof = profileById.get(String(p.id)) || profiles[i] || p;
         const sideId = cradosSideIdForPlayer(state, p.id);
         const color = teamMode ? colorBySideId.get(String(sideId)) || ACCENT : colorByPlayerId.get(String(p.id)) || ACCENT;
-        return <div key={p.id} className={state.activePlayerIndex === i ? "is-active" : ""} style={{ borderColor: color, opacity: state.eliminated[sideId] ? .38 : 1 }}><ProfileAvatar profile={prof} size={31} showStars={false} ringColor={color} /></div>;
+        return <div key={p.id} className={state.activePlayerIndex === i ? "is-active" : ""} style={{ borderColor: color, opacity: state.eliminated[sideId] ? .38 : 1 }}><ProfileAvatar profile={prof} size={31} showStars={false} ringColor={color} noFrame /></div>;
       })}
     </div>
     <div className="crados-players-button__label"><b>{state.players.length}</b></div>

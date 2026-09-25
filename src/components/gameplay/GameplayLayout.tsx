@@ -287,12 +287,16 @@ export default function GameplayLayout({
   // On préfère 100dvh (dynamic viewport height) pour que la zone INPUT puisse aller jusqu'en bas.
   const outerStyle: React.CSSProperties = {
     height: "100dvh",
+    minHeight: "100dvh",
     width: "100%",
     overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
   };
 
   const containerStyle: React.CSSProperties = {
     height: "100%",
+    flex: 1,
     width: "100%",
     maxWidth: isTablet ? 1180 : 920,
     margin: "0 auto",

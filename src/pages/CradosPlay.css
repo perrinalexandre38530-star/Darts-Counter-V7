@@ -1517,3 +1517,100 @@
     display: none !important;
   }
 }
+
+/* =========================================================
+   V94+ FINAL UI TUNING — CRADOS
+   - score actif au rendu X01
+   - médaillons du bandeau JOUEURS remplis sans halo gris
+   - avatar fantôme un peu plus visible
+   - radar portrait: bandeau horizontal des joueurs au-dessus de la cible
+   ========================================================= */
+
+.crados-active__ghost {
+  opacity: .22 !important;
+}
+
+.crados-active__ghost img {
+  filter: saturate(.88) brightness(.92) !important;
+}
+
+.crados-active__percent {
+  font-size: clamp(54px, 7.8vw, 88px) !important;
+  line-height: .88 !important;
+  font-weight: 1100 !important;
+  letter-spacing: -.03em !important;
+  text-shadow: 0 8px 22px rgba(0,0,0,.42), 0 0 16px rgba(255,255,255,.04) !important;
+}
+
+.crados-players-button__avatars {
+  gap: 0 !important;
+}
+
+.crados-players-button__avatars > div {
+  overflow: hidden !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.crados-players-button__avatars :is(.profile-avatar,.profile-avatar-wrap) {
+  transform: none !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.crados-board-modal__avatar-filter > span {
+  overflow: hidden;
+}
+
+.crados-tactical-board__side-avatar {
+  overflow: hidden;
+}
+
+.crados-tactical-board__side-avatar :is(.profile-avatar,.profile-avatar-wrap) {
+  width: 100% !important;
+  height: 100% !important;
+  transform: none !important;
+}
+
+.crados-tactical-board__top-strip {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .crados-tactical-board {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .crados-tactical-board__side--portrait {
+    display: none !important;
+  }
+
+  .crados-tactical-board__top-strip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 0 2px 6px;
+    margin: 0 auto 6px;
+    max-width: 100%;
+    scrollbar-width: thin;
+  }
+
+  .crados-tactical-board__top-item {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .crados-tactical-board__top-item .crados-tactical-board__side-count {
+    min-width: 40px;
+  }
+
+  .crados-tactical-board__visual {
+    justify-self: center;
+    width: min(100%, 420px);
+  }
+}
