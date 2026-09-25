@@ -42,9 +42,9 @@ const CRADOS_BOARD = {
   trebleInner: 49,
   outerSingleMid: 72,
   innerSingleMid: 33.5,
-  bullOuter: 12.9,
-  bullInner: 4.4,
-  label: 108.2,
+  bullOuter: 11.8,
+  bullInner: 4.0,
+  label: 107.8,
 };
 const CRADOS_BOARD_IMAGE = { x: CRADOS_BOARD.cx - CRADOS_BOARD.artOuter, y: CRADOS_BOARD.cy - CRADOS_BOARD.artOuter, size: CRADOS_BOARD.artOuter * 2 };
 const TOUCH_COLORS: Record<string, string> = { S: "#67d7ff", D: "#6fd6ff", T: "#d17bff", BULL: "#50e68c", DBULL: "#2bf08b", MISS: "#ffb54d" };
@@ -187,13 +187,6 @@ function boardSectorPath(start: number, end: number) {
 function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileBySideId, activeSideId, config, selectedSector, onSelect, filterSideId = "all" }: any) {
   const sectorKey = String(selectedSector) === "bull" ? "bull" : Number(selectedSector || 20);
   const selected = sectorKey === "bull" ? null : state.sectors?.[sectorKey] || {};
-  const selectedOwner = selected?.ownerId ? sideById.get(String(selected.ownerId)) : null;
-  const selectedClaimant = !selected?.ownerId && selected?.claimantId ? sideById.get(String(selected.claimantId)) : null;
-  const cost = sectorKey === "bull"
-    ? { tone: GREEN, title: "BULL / DOUCHE", short: config.rules.bullWash ? "BULL −1 · DBULL −3 crasse" : "Bull neutre", rows: [config.rules.bullWash ? "BULL simple = −1 crasse" : "BULL simple = aucun effet", config.rules.bullWash ? "DOUBLE BULL = −3 crasses" : "DOUBLE BULL = aucun effet"] }
-    : sectorCost(selected, String(activeSideId || ""), config.rules.stealMode);
-  const selectedColor = sectorKey === "bull" ? GREEN : selected?.ownerId ? colorBySideId.get(String(selected.ownerId)) : selected?.claimantId ? colorBySideId.get(String(selected.claimantId)) : ACCENT;
-  const layerCount = Number(selected?.layers || 0);
   const layersToOwn = Math.max(1, Number(config.rules.layersToOwn || 3));
   const detailSides = (sides || []).map((side: any) => ({
     side,
@@ -201,17 +194,26 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
     profile: profileBySideId?.get?.(String(side.id)),
     touches: sectorTouchesBySide(state, String(side.id), sectorKey),
   }));
+  const leftCount = detailSides.length <= 5 ? detailSides.length : Math.ceil(detailSides.length / 2);
+  const leftSides = detailSides.slice(0, leftCount);
+  const rightSides = detailSides.slice(leftCount);
 
-  return <div className="crados-tactical-board">
+  return <div className={`crados-tactical-board${rightSides.length ? "" : " is-left-only"}`}>
+    <div className="crados-tactical-board__side crados-tactical-board__side--left">
+      {leftSides.map(({ side, color, profile, touches }: any) => <div key={`left-${side.id}`} className="crados-tactical-board__side-item">
+        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} /></div>
+        <div className="crados-tactical-board__side-count" style={{ borderColor: `${color}88`, color }}>{touches}</div>
+      </div>)}
+    </div>
+
     <div className="crados-tactical-board__visual">
-      <div className="crados-tactical-board__caption"><b>CARTE TACTIQUE</b><span>Touche un secteur pour lire son risque</span></div>
       <svg viewBox="0 0 260 260" className="crados-tactical-board__svg" role="img" aria-label="Carte tactique de la cible CRADOS">
         <defs>
           <clipPath id="cradosBoardClip"><circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} /></clipPath>
           <radialGradient id="cradosBoardShade" cx="50%" cy="48%">
-            <stop offset="0%" stopColor="rgba(255,255,255,.06)" />
+            <stop offset="0%" stopColor="rgba(255,255,255,.05)" />
             <stop offset="72%" stopColor="rgba(8,11,8,.10)" />
-            <stop offset="100%" stopColor="rgba(0,0,0,.36)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,.34)" />
           </radialGradient>
           <filter id="cradosGlow"><feGaussianBlur stdDeviation="2.2" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
@@ -230,52 +232,33 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
             const selectedNow = Number(selectedSector) === Number(n);
             const visibleForFilter = filterSideId === "all" || (filterSideId === "free" ? (!ownerId && !claimantId) : (ownerId === String(filterSideId) || claimantId === String(filterSideId)));
             const labelPos = polar(CRADOS_BOARD.cx, CRADOS_BOARD.cy, CRADOS_BOARD.label, idx * 18);
-            const layerPos = polar(CRADOS_BOARD.cx, CRADOS_BOARD.cy, CRADOS_BOARD.outerSingleMid, idx * 18);
-            const owner = ownerId ? sideById.get(ownerId) : claimantId ? sideById.get(claimantId) : null;
             return <g key={n} onClick={() => onSelect(n)} style={{ cursor: "pointer" }} opacity={visibleForFilter ? 1 : .12}>
-              <path d={boardSectorPath(start, end)} fill={selectedNow ? `${color}24` : owned ? `${color}20` : claiming ? `${color}14` : "rgba(255,255,255,.02)"} stroke={selectedNow ? color : owned || claiming ? `${color}9a` : "rgba(255,255,255,.03)"} strokeWidth={selectedNow ? 2.6 : owned || claiming ? 1.1 : .65} filter={selectedNow ? "url(#cradosGlow)" : undefined} />
+              <path d={boardSectorPath(start, end)} fill={selectedNow ? `${color}24` : owned ? `${color}20` : claiming ? `${color}14` : "rgba(255,255,255,.015)"} stroke={selectedNow ? color : owned || claiming ? `${color}9a` : "rgba(255,255,255,.03)"} strokeWidth={selectedNow ? 2.6 : owned || claiming ? 1.1 : .65} filter={selectedNow ? "url(#cradosGlow)" : undefined} />
               {Array.from({ length: layersToOwn }, (_, layerIndex) => {
                 const t = layerIndex / layersToOwn;
                 const t2 = (layerIndex + 1) / layersToOwn;
                 const inner = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.artOuter - CRADOS_BOARD.wedgeInner) * t;
-                const outer = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.artOuter - CRADOS_BOARD.wedgeInner) * t2 - 1.2;
+                const outer = CRADOS_BOARD.wedgeInner + (CRADOS_BOARD.artOuter - CRADOS_BOARD.wedgeInner) * t2 - 1.1;
                 const activeLayer = Number(sec.layers || 0) > layerIndex;
-                return <path key={`${n}-${layerIndex}`} d={annularWedge(CRADOS_BOARD.cx, CRADOS_BOARD.cy, inner, outer, start + .45, end - .45)} fill={activeLayer ? `${color}${owned ? "7a" : "38"}` : "rgba(255,255,255,.006)"} stroke={activeLayer ? `${color}8d` : "rgba(255,255,255,.025)"} strokeWidth={activeLayer ? 1.1 : .55} />;
+                return <path key={`${n}-${layerIndex}`} d={annularWedge(CRADOS_BOARD.cx, CRADOS_BOARD.cy, inner, outer, start + .42, end - .42)} fill={activeLayer ? `${color}${owned ? "74" : "34"}` : "rgba(255,255,255,.005)"} stroke={activeLayer ? `${color}8d` : "rgba(255,255,255,.02)"} strokeWidth={activeLayer ? 1.05 : .45} />;
               })}
               <text x={labelPos.x} y={labelPos.y + 3} textAnchor="middle" fill={selectedNow || owned || claiming ? color : "#f4efe5"} fontSize="10" fontWeight="1000">{n}</text>
-              {(owned || claiming) ? <text x={layerPos.x} y={layerPos.y + 2.5} textAnchor="middle" fill={color} fontSize="6.4" fontWeight="1000">{Number(sec.layers || 0)}/{config.rules.layersToOwn}</text> : null}
-              <title>{`${n} · ${owned ? owner?.name || "CRADO" : claiming ? `contamination ${owner?.name || ""}` : "libre"} · ${Number(sec.layers || 0)}/${config.rules.layersToOwn} couches`}</title>
             </g>;
           })}
           <g onClick={() => onSelect("bull")} style={{ cursor: "pointer" }}>
-            <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullOuter} fill={String(selectedSector) === "bull" ? "rgba(122,255,86,.22)" : "rgba(20,40,18,.05)"} stroke={String(selectedSector) === "bull" ? `${GREEN}d8` : `${GREEN}66`} strokeWidth={String(selectedSector) === "bull" ? 2.8 : 1.6} filter={String(selectedSector) === "bull" ? "url(#cradosGlow)" : undefined} />
-            <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullInner} fill={String(selectedSector) === "bull" ? "rgba(255,82,82,.30)" : "rgba(255,255,255,.04)"} stroke="rgba(255,228,228,.6)" strokeWidth="1" />
-            <text x="130" y="132" textAnchor="middle" fill="#f1ffe7" fontSize="6.2" fontWeight="1000">BULL</text>
+            <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullOuter} fill={String(selectedSector) === "bull" ? "rgba(122,255,86,.18)" : "rgba(20,40,18,.03)"} stroke={String(selectedSector) === "bull" ? `${GREEN}d8` : `${GREEN}66`} strokeWidth={String(selectedSector) === "bull" ? 2.6 : 1.2} filter={String(selectedSector) === "bull" ? "url(#cradosGlow)" : undefined} />
+            <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.bullInner} fill={String(selectedSector) === "bull" ? "rgba(255,82,82,.28)" : "rgba(255,255,255,.02)"} stroke="rgba(255,228,228,.58)" strokeWidth=".85" />
           </g>
         </g>
         <circle cx={CRADOS_BOARD.cx} cy={CRADOS_BOARD.cy} r={CRADOS_BOARD.outer} fill="none" stroke="rgba(183,242,71,.17)" strokeWidth="1.8" />
       </svg>
     </div>
 
-    <div className="crados-tactical-board__detail" style={{ borderColor: `${selectedColor}66`, boxShadow: `inset 0 0 28px ${selectedColor}10` }}>
-      <div className="crados-tactical-board__sector" style={{ color: selectedColor }}>{sectorKey === "bull" ? "BULL" : `N° ${selectedSector}`}</div>
-      <div className="crados-tactical-board__owner">
-        {sectorKey === "bull" ? "ZONE DOUCHE" : selectedOwner ? `CRADO · ${selectedOwner.name}` : selectedClaimant ? `EN COURS · ${selectedClaimant.name}` : "SECTEUR LIBRE"}
-      </div>
-      {sectorKey === "bull" ? null : <div className="crados-tactical-board__layers">
-        {Array.from({ length: layersToOwn }, (_, i) => <span key={i} style={{ background: i < layerCount ? selectedColor : "rgba(255,255,255,.10)", boxShadow: i < layerCount ? `0 0 7px ${selectedColor}66` : "none" }} />)}
-      </div>}
-      <div className="crados-tactical-board__risk" style={{ color: cost.tone }}>{cost.title}</div>
-      <div className="crados-tactical-board__risk-short">{cost.short}</div>
-      <div className="crados-tactical-board__costs">{cost.rows.map((row: string) => <span key={row}>{row}</span>)}</div>
-      {config.rules.bullWash ? <div className="crados-tactical-board__wash">BULL −1 · DBULL −3</div> : <div className="crados-tactical-board__wash crados-tactical-board__wash--off">BULL neutre</div>}
-      <div className="crados-sector-table">
-        {detailSides.map(({ side, color, profile, touches }: any) => <div key={side.id} className="crados-sector-table__cell" style={{ borderColor: `${color}44`, boxShadow: `inset 0 0 18px ${color}12` }}>
-          <div className="crados-sector-table__avatar" style={{ borderColor: color }}><ProfileAvatar profile={profile || side} size={30} showStars={false} ringColor={color} /></div>
-          <small style={{ color }}>{side?.name || "—"}</small>
-          <b style={{ color }}>{touches}</b>
-        </div>)}
-      </div>
+    <div className="crados-tactical-board__side crados-tactical-board__side--right">
+      {rightSides.map(({ side, color, profile, touches }: any) => <div key={`right-${side.id}`} className="crados-tactical-board__side-item crados-tactical-board__side-item--right">
+        <div className="crados-tactical-board__side-count" style={{ borderColor: `${color}88`, color }}>{touches}</div>
+        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} /></div>
+      </div>)}
     </div>
   </div>;
 }
@@ -307,7 +290,7 @@ function TacticalBoardModal({ state, sides, sideById, colorBySideId, profileBySi
   const [filterSideId, setFilterSideId] = React.useState("all");
   return <div className="crados-board-modal" role="dialog" aria-modal="true" aria-label="Carte tactique CRADOS" onClick={onClose}>
     <div className="crados-board-modal__card" onClick={(event) => event.stopPropagation()}>
-      <header><div><b>CARTE DES ZONES</b><span>Couleurs = propriétaires · toucher un secteur affiche son risque</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
+      <header><div><b>CARTE DES ZONES</b></div><div className="crados-board-modal__actions"><CradosAwenaButton /><button type="button" onClick={onClose} aria-label="Fermer">×</button></div></header>
       <div className="crados-board-modal__filters">
         <button type="button" className={filterSideId === "all" ? "is-active" : ""} onClick={() => setFilterSideId("all")}>TOUT</button>
         <button type="button" className={filterSideId === "free" ? "is-active" : ""} onClick={() => setFilterSideId("free")}><i style={{ background: "#889088" }} />LIBRES</button>
@@ -419,8 +402,8 @@ function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, act
     <div className="crados-active__ghost" aria-hidden>{avatarSrc ? <img src={avatarSrc} alt="" /> : <ProfileAvatar profile={activeProfile || activePlayer} size={112} showStars={false} ringColor={color} />}</div>
     <div className="crados-active__main">
       {headerLabel ? <div className="crados-active__eyebrow" style={{ color }}>{headerLabel}</div> : null}
-      <div className="crados-active__name" style={{ color }}>{activePlayer?.name || "—"}</div>
-      <div className="crados-active__percent" style={{ color: dirtPct >= 70 ? RED : color }}>{dirtPct}<small>%</small></div>
+      <div className="crados-active__name" style={{ color }}>{String(activePlayer?.name || "—").toUpperCase()}</div>
+      <div className="crados-active__percent" style={{ color: dirtPct >= 70 ? RED : color }}>{dirtPct}</div>
       <CradosDirtMeter value={dirt} max={config.rules.dirtLimit} color={color} />
       <div className="crados-active__leg" style={{ color }}>{`MANCHE ${Number(state.legIndex || 0) + 1} - ${state.legWins?.[activeSideId] || 0}/${config.seriesWins} remportée${Number(config.seriesWins || 1) > 1 ? 's' : ''}`}</div>
     </div>
@@ -453,14 +436,14 @@ function StatsPanel({ state, activePlayer, activeSideId, activeSideStats, color,
   </div>;
 }
 
-function KpiStatsStrip({ state, activePlayer, activeSideId, activeSideStats, config, teamMode, color, onClick }: any) {
+function KpiStatsStrip({ state, activePlayer, activeSideId, activeSideStats, config, teamMode, color, onClick, items, className = "crados-kpi-strip" }: any) {
   const st = activePlayer ? state.statsByPlayer?.[activePlayer.id] || {} : {};
   const source = teamMode ? activeSideStats || {} : st;
   const dirt = activeSideId ? Number(state.dirt?.[activeSideId] || 0) : 0;
   const pct = Math.max(0, Math.min(100, Math.round((dirt / Math.max(1, Number(config.rules.dirtLimit || 1))) * 100)));
-  const items = [["CRASSE", `${pct}%`], ["ZONES", source.sectorsClaimed || 0], ["VOLS", source.sectorsStolen || 0], ["DARTS", st.darts || 0]];
-  return <button type="button" className="crados-kpi-strip" onClick={onClick} aria-label="Ouvrir toutes les statistiques">
-    {items.map(([label, value]) => <span key={String(label)}><small>{label}</small><b style={{ color }}>{value}</b></span>)}
+  const resolvedItems = items || [["CRASSE", `${pct}%`], ["ZONES", source.sectorsClaimed || 0], ["VOLS", source.sectorsStolen || 0], ["DARTS", st.darts || 0]];
+  return <button type="button" className={className} onClick={onClick} aria-label="Ouvrir toutes les statistiques">
+    {resolvedItems.map(([label, value]: any) => <span key={String(label)}><small>{label}</small><b style={{ color }}>{value}</b></span>)}
   </button>;
 }
 
@@ -718,6 +701,7 @@ export default function CradosPlay(props: any) {
             <PlayersButton state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} onClick={() => setPlayersOpen(true)} teamMode={teamMode} />
             <button type="button" className="crados-stats-button" onClick={() => setLogOpen(true)} aria-label="Ouvrir le journal"><LogIcon size={23} /></button>
           </div>
+          <KpiStatsStrip className="crados-landscape-stats" state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} config={config} teamMode={teamMode} color={activeColor} onClick={() => setStatsOpen(true)} items={[["COUCHES", (state.statsByPlayer?.[activePlayer?.id || ""] || {}).layersPlaced || 0], ["LAVÉES", ((teamMode ? sideStats[String(activeSideId)] : state.statsByPlayer?.[activePlayer?.id || ""]) || {}).dirtWashed || 0], ["TOURS", (state.statsByPlayer?.[activePlayer?.id || ""] || {}).visits || 0], ["MANCHES", state.legWins?.[activeSideId] || 0]]} />
         </div>
 
         <div className="crados-play__input">
