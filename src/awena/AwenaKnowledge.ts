@@ -108,7 +108,7 @@ const ALIAS_OVERRIDES: Record<string, string[]> = {
   training_repeat_master: ["repeat master"],
   training_super_bull: ["super bull training", "training super bull"],
   ocean_control: ["ocean control", "ocean's control", "bataille navale"],
-  crados: ["crados", "crado", "crasse", "crasses", "contamination", "secteur sale", "zone crado", "zones crado", "douche", "bull douche", "blocage crados", "vol crados"],
+  crados: ["crados", "crado", "crasse", "crasses", "contamination", "secteur sale", "zone crado", "zones crado", "douche", "bull douche", "blocage crados", "vol crados", "course au secteur", "course crados", "prise en main", "bull propre contagieux", "carte des zones", "radar crados", "journal crados", "filtres crados", "liste joueurs crados"],
 };
 
 const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" | "tip" | "howToPlayInApp">>> = {
@@ -136,9 +136,9 @@ const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" 
     tip: "Le Fuyard doit protéger son avance ; le Chasseur doit réduire l'écart sans gaspiller de tours. La prise de risque dépend donc du rôle et du nombre de rounds restants.",
   },
   crados: {
-    summary: "CRADOS est un jeu de territoire et de survie. Les simples, doubles et triples déposent respectivement 1, 2 ou 3 couches sur un secteur libre. Quand le nombre de couches configuré est atteint, le secteur devient CRADO pour ce joueur ou cette équipe. Toucher une zone adverse peut ajouter de la crasse ou permettre de la voler selon la variante. À la limite de crasse, le camp est éliminé ; le dernier camp encore propre remporte la manche.",
-    tip: "Surveille à la fois ta jauge de crasse et la carte des zones. En Blocage, évite les zones adverses quand ta jauge est haute. En Vol, attaque surtout un secteur adverse si le gain territorial compense le +1 crasse par contact. Si la Douche est active, garde le Bull comme solution de nettoyage lorsque ta jauge devient dangereuse.",
-    howToPlayInApp: "Ouvre Jeux > Fléchettes > CRADOS. Choisis Joueurs ou Équipes, les profils et bots, l'ordre de départ, la limite de crasse, le nombre de couches nécessaires pour posséder un secteur, la Douche au Bull, la règle Blocage ou Vol, le format de manches et la méthode de saisie. En partie, utilise le mini-radar du joueur actif pour ouvrir la carte tactique complète et filtrer les zones par propriétaire.",
+    summary: "CRADOS est un jeu de territoire et de survie. Les simples, doubles et triples déposent respectivement 1, 2 ou 3 couches. Une zone devient possédée quand le seuil configuré est atteint. Pour un secteur encore libre, la variante Prise en main fait repartir la progression au dernier camp qui touche, tandis que la variante Course conserve les touches de chaque camp : le premier au seuil remporte le secteur et les touches adverses déjà accumulées sont converties en crasse. Toucher une zone possédée par un adversaire applique la règle Blocage ou Vol. À la limite de crasse, le camp est éliminé ; le dernier camp encore propre remporte la manche.",
+    tip: "Surveille à la fois ta jauge de crasse, les zones proches du seuil et l'ordre de jeu. En Blocage, protège ta jauge. En Vol, attaque lorsque le gain territorial compense le +1 crasse par contact. En Course, un secteur à 2/3 pour un adversaire devient urgent. Avec Bull propre contagieux, un Bull ou DBull joué à 0 crasse peut répandre respectivement 1 ou 3 crasses sur tous les autres camps.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > CRADOS. Choisis Joueurs ou Équipes, profils/bots, ordre, limite de crasse, couches pour posséder une zone, Prise en main ou Course sur secteur vierge, Blocage ou Vol sur secteur adverse, Douche au Bull, Bull propre contagieux, format et méthode de saisie. En partie : le bloc joueur actif montre le score de crasse et sa jauge, le mini-radar ouvre la CARTE DES ZONES, les deux lignes de KPI résument la partie, le bandeau joueurs ouvre l'ordre complet et le bouton journal affiche les dernières actions. Dans la carte, TOUT affiche tous les propriétaires, LIBRES isole les zones vierges et chaque médaillon filtre le joueur correspondant.",
   },
 };
 

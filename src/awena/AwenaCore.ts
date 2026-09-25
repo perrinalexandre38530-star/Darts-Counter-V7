@@ -175,6 +175,15 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
   const liveScreenReply = answerAwenaLiveScreenQuestion(question, context);
   if (liveScreenReply) return liveScreenReply;
 
+  // Navigation globale : si l'utilisateur demande où se trouve une fonction,
+  // cherche dans l'Atlas complet avant de basculer vers une réponse générique.
+  // Cela permet à Awena de guider depuis n'importe quelle page de l'application.
+  const navigationIntent = /ou est|ou sont|ou se trouve|ou trouver|dans quel menu|comment acceder|comment accéder|comment ouvrir|comment aller|je cherche|trouve moi|emmene moi|amene moi|ouvre moi|ouvre le|ouvre la/.test(q);
+  if (navigationIntent) {
+    const routeAtlasReply = answerAwenaRouteAtlas(question);
+    if (routeAtlasReply) return routeAtlasReply;
+  }
+
   // V8.7 Procedural Academy : tutoriels contextuels des fonctions complexes
   // (Cast, Viewer, sauvegarde/restauration, Sync, NAS/R2, caméra, bridge,
   // périphériques externes, compétitions, profils, réglages, Online, etc.).

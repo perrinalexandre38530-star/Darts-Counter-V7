@@ -406,7 +406,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDo
             bottom: awenaLauncherBottom,
             width: 74,
             height: 74,
-            zIndex: 1200,
+            zIndex: 30040,
             pointerEvents: "none",
           }}
         >
@@ -496,7 +496,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDo
 
       {open && (
         <div data-awena-overlay="1" data-mss-header-docked={landscapeHeaderDocked ? "1" : undefined} style={{
-          position: "fixed", right: 12, ...(inGame ? { top: 78, bottom: "auto" } : { bottom: awenaPanelBottom }), zIndex: 1199,
+          position: "fixed", right: 12, ...(inGame ? { top: 78, bottom: "auto" } : { bottom: awenaPanelBottom }), zIndex: 30050,
           width: "min(390px, calc(100vw - 24px))", maxHeight: inGame ? "min(620px, calc(100vh - 96px))" : "min(620px, calc(100vh - 210px))",
           display: "flex", flexDirection: "column", overflow: "hidden",
           borderRadius: 22, border: `1px solid ${primary}88`,
@@ -535,9 +535,9 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDo
                 ]
               : currentMode && live
                 ? [
+                    [ui.thisScreen, "Guide-moi sur cette page et explique les blocs visibles."],
                     [ui.rules, `Explique-moi les règles de ${currentMode.label}.`],
                     [currentMode.id === "x01" ? ui.whatToAim : ui.advice, currentMode.id === "x01" ? "Que me conseilles-tu de viser ?" : `Donne-moi un conseil pour ${currentMode.label}.`],
-                    [ui.records, `Donne-moi les records de ${currentMode.label}.`],
                   ]
                 : [
                     [ui.thisScreen, "Que puis-je faire sur cet écran ?"],

@@ -4099,6 +4099,40 @@ const ENTRIES: SourceEntry[] = [
       "Barème (v1)",
     ],
   },
+  {
+    route: "crados_config", component: "NewDartsModeConfig", sport: "darts", source: "src/pages/newModes/NewDartsModeConfig.tsx",
+    facts: [
+      "Configuration CRADOS guidée ou complète",
+      "Type de partie Joueurs ou Équipes",
+      "Profils locaux, Bots IA et Bots CPU",
+      "Ordre de jeu aléatoire optionnel",
+      "Jauge de crasse 10, 15 ou 20",
+      "2, 3 ou 4 couches pour posséder un secteur",
+      "Secteur vierge : Prise en main ou Course au secteur",
+      "Bull douche : BULL -1 crasse, DBULL -3 crasses",
+      "Bull propre contagieux : à 0 crasse, BULL +1 et DBULL +3 aux autres camps",
+      "Secteur adverse : Blocage ou Vol",
+      "Format de match et nombre de manches à remporter",
+      "Méthode de saisie puis résumé avant Démarrer CRADOS",
+    ],
+  },
+  {
+    route: "crados_play", component: "CradosPlay", sport: "darts", source: "src/pages/CradosPlay.tsx",
+    facts: [
+      "Bloc joueur actif avec nom, score de crasse, frise de progression et mini-radar",
+      "Première ligne de stats : Crasse, Zones, Vols, Darts",
+      "Bandeau Liste de joueurs avec les médaillons dans l'ordre de jeu",
+      "Bouton Journal des dernières actions à côté du bandeau joueurs",
+      "Seconde ligne de stats : Couches, Lavées, Tours, Manches",
+      "Keypad : Simple, Double, Triple, Bull, Annuler et Valider",
+      "Mini-radar cliquable pour ouvrir la Carte des zones",
+      "Filtres Carte des zones : TOUT, LIBRES et un médaillon par joueur ou équipe",
+      "Cliquer un secteur affiche les touches accumulées par joueur sur ce secteur",
+      "Le Bull est sélectionnable dans la carte des zones",
+      "Awena peut guider directement depuis l'écran de partie et depuis la carte des zones",
+    ],
+  },
+
 ];
 
 function scoreEntry(entry: SourceEntry, q: string, context: AwenaRuntimeContext) {

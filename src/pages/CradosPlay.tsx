@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { createPortal } from "react-dom";
 import BackDot from "../components/BackDot";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
@@ -136,8 +137,9 @@ function CradosAwenaButton() {
         inGame: true,
         screenLabel: "CRADOS · Partie",
         extra: {
+          ...(awena?.runtime?.extra || {}),
           awenaRememberedMode: "crados",
-          awenaModeTopic: "rules",
+          awenaKnowledgeTopic: "screen:crados_play",
           cradosPageHint: "active-play",
         },
       });
@@ -212,10 +214,18 @@ function CradosTacticalBoard({ state, sides, sideById, colorBySideId, profileByS
   const leftCount = detailSides.length <= 5 ? detailSides.length : Math.ceil(detailSides.length / 2);
   const leftSides = detailSides.slice(0, leftCount);
   const rightSides = detailSides.slice(leftCount);
+  const portraitTouchedSides = detailSides.filter((entry: any) => Number(entry.touches || 0) > 0);
 
-  return <div className={`crados-tactical-board${rightSides.length ? "" : " is-left-only"}`}>
+  return <div className={`crados-tactical-board${rightSides.length ? "" : " is-left-only"}${portraitTouchedSides.length ? " has-portrait-touches" : " no-portrait-touches"}`}>
     <div className="crados-tactical-board__side crados-tactical-board__side--left">
       {leftSides.map(({ side, color, profile, touches }: any) => <div key={`left-${side.id}`} className="crados-tactical-board__side-item">
+        <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} /></div>
+        <div className="crados-tactical-board__side-count" style={{ borderColor: `${color}88`, color }}>{touches}</div>
+      </div>)}
+    </div>
+
+    <div className="crados-tactical-board__side crados-tactical-board__side--portrait">
+      {portraitTouchedSides.map(({ side, color, profile, touches }: any) => <div key={`portrait-${side.id}`} className="crados-tactical-board__side-item">
         <div className="crados-tactical-board__side-avatar" style={{ background: color, boxShadow: `inset 0 0 18px ${color}55, 0 0 14px ${color}1f` }}><ProfileAvatar profile={profile || side} size={36} showStars={false} ringColor={color} /></div>
         <div className="crados-tactical-board__side-count" style={{ borderColor: `${color}88`, color }}>{touches}</div>
       </div>)}
@@ -303,7 +313,7 @@ function CradosMiniRadar({ state, activeSideId, color, onOpen }: any) {
 }
 function TacticalBoardModal({ state, sides, sideById, colorBySideId, profileBySideId, activeSideId, config, selectedSector, onSelect, onClose }: any) {
   const [filterSideId, setFilterSideId] = React.useState("all");
-  return <div className="crados-board-modal" role="dialog" aria-modal="true" aria-label="Carte tactique CRADOS" onClick={onClose}>
+  const modal = <div className="crados-board-modal" role="dialog" aria-modal="true" aria-label="Carte tactique CRADOS" onClick={onClose}>
     <div className="crados-board-modal__card" onClick={(event) => event.stopPropagation()}>
       <header><div><b>CARTE DES ZONES</b></div><div className="crados-board-modal__actions"><CradosAwenaButton /><button type="button" onClick={onClose} aria-label="Fermer">×</button></div></header>
       <div className="crados-board-modal__filters">
@@ -312,15 +322,17 @@ function TacticalBoardModal({ state, sides, sideById, colorBySideId, profileBySi
         {sides.map((side: any) => {
           const color = colorBySideId.get(String(side.id)) || ACCENT;
           const prof = profileBySideId?.get?.(String(side.id)) || side;
-          return <button key={side.id} type="button" className={`crados-board-modal__avatar-filter${filterSideId === String(side.id) ? " is-active" : ""}`} style={{ ["--filter-color" as any]: color }} onClick={() => setFilterSideId(String(side.id))} aria-label={`Filtrer ${side.name}`} title={side.name}><span style={{ borderColor: color }}><ProfileAvatar profile={prof} size={26} showStars={false} ringColor={color} /></span></button>;
+          const active = filterSideId === String(side.id);
+          const allVisible = filterSideId === "all";
+          return <button key={side.id} type="button" className={`crados-board-modal__avatar-filter${active ? " is-active" : ""}${allVisible ? " is-all-visible" : ""}`} style={{ ["--filter-color" as any]: color }} onClick={() => setFilterSideId(String(side.id))} aria-label={`Filtrer ${side.name}`} title={side.name}><span style={{ borderColor: color }}><ProfileAvatar profile={prof} size={26} showStars={false} ringColor={color} /></span></button>;
         })}
       </div>
       <div className="crados-board-modal__body"><CradosTacticalBoard state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} profileBySideId={profileBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={onSelect} filterSideId={filterSideId} /></div>
       <div className="crados-board-modal__legend"><span><i className="is-free" />Libre</span><span><i className="is-progress" />Contamination en cours</span><span><i className="is-owned" />Zone possédée</span><span>BULL = douche {config.rules.bullWash ? "−1 · DBULL −3" : "désactivée"}</span></div>
     </div>
   </div>;
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 }
-
 function StatsModal({ state, activePlayer, activeSideId, activeSideStats, color, config, teamMode, onClose }: any) {
   return <div className="crados-players-modal" role="dialog" aria-modal="true" aria-label="Statistiques CRADOS" onClick={onClose}>
     <div className="crados-players-modal__card crados-players-modal__card--stats" onClick={(e) => e.stopPropagation()}>
@@ -694,6 +706,7 @@ export default function CradosPlay(props: any) {
         sectorsStolen: Number(stats.sectorsStolen || 0),
         dirtWashed: Number(stats.dirtWashed || 0),
         awenaRememberedMode: "crados",
+        awenaKnowledgeTopic: "screen:crados_play",
         cradosPageHint: "active-play",
       },
     });
@@ -701,13 +714,13 @@ export default function CradosPlay(props: any) {
 
   if (state.phase === "finished") {
     return <div className="crados-play crados-play--finished" data-mss-native-play-layout="1">
-      <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={8} left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
+      <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={10} left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
       <div className="crados-play__finished-wrap"><ModeEndPanel title={teamMode ? "CRADOS — ÉQUIPES" : "CRADOS"} winner={state.winnerId} profiles={teamMode ? sideProfiles : profiles} legWins={state.legWins} accent={ACCENT} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: "crados", from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: "crados", focusMatchId: matchIdRef.current })} onConfig={() => go?.("crados_config")} onGames={() => go?.("games", { gamesView: "all" })} extra={<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>{teamMode ? sides.map((side: any) => { const st = sideStats[String(side.id)] || {}; return <div key={side.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: `1px solid ${(side.color || ACCENT)}44`, fontSize: 9.5, color: SOFT }}><b style={{ color: side.color || "#fff" }}>{side.name}</b><br />{st.sectorsClaimed || 0} secteurs · {st.sectorsStolen || 0} vols · {st.dirtTaken || 0} crasses · {st.dirtWashed || 0} lavées</div>; }) : profiles.map((p: any) => { const st = state.statsByPlayer[p.id] || {}; return <div key={p.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 9.5, color: SOFT }}><b style={{ color: "#fff" }}>{playerName(p)}</b><br />{st.sectorsClaimed || 0} secteurs · {st.sectorsStolen || 0} vols · {st.dirtTaken || 0} crasses · {st.dirtWashed || 0} lavées</div>; })}</div>} /></div>
     </div>;
   }
 
   return <div className="crados-play" data-mss-native-play-layout="1">
-    <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
+    <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={10} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
 
     <main className="crados-play__body">
       <div className="crados-play__stage">
@@ -718,7 +731,7 @@ export default function CradosPlay(props: any) {
             <PlayersButton state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} onClick={() => setPlayersOpen(true)} teamMode={teamMode} />
             <button type="button" className="crados-stats-button" onClick={() => setLogOpen(true)} aria-label="Ouvrir le journal"><LogIcon size={23} /></button>
           </div>
-          <KpiStatsStrip className="crados-landscape-stats" state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} config={config} teamMode={teamMode} color={activeColor} onClick={() => setStatsOpen(true)} items={[["COUCHES", (state.statsByPlayer?.[activePlayer?.id || ""] || {}).layersPlaced || 0], ["LAVÉES", ((teamMode ? sideStats[String(activeSideId)] : state.statsByPlayer?.[activePlayer?.id || ""]) || {}).dirtWashed || 0], ["TOURS", (state.statsByPlayer?.[activePlayer?.id || ""] || {}).visits || 0], ["MANCHES", state.legWins?.[activeSideId] || 0]]} />
+          <KpiStatsStrip className="crados-kpi-strip crados-landscape-stats" state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} config={config} teamMode={teamMode} color={activeColor} onClick={() => setStatsOpen(true)} items={[["COUCHES", (state.statsByPlayer?.[activePlayer?.id || ""] || {}).layersPlaced || 0], ["LAVÉES", ((teamMode ? sideStats[String(activeSideId)] : state.statsByPlayer?.[activePlayer?.id || ""]) || {}).dirtWashed || 0], ["TOURS", (state.statsByPlayer?.[activePlayer?.id || ""] || {}).visits || 0], ["MANCHES", state.legWins?.[activeSideId] || 0]]} />
         </div>
 
         <div className="crados-play__input">

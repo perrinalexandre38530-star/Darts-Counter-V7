@@ -1155,3 +1155,365 @@
     width: 62px;
   }
 }
+
+/* ===== CRADOS V93 — final deterministic responsive layer ===== */
+.crados-play__body {
+  padding-top: 12px;
+}
+
+/* Les 2 bandeaux KPI utilisent strictement le même design. */
+.crados-kpi-strip,
+.crados-landscape-stats {
+  width: 100%;
+  min-width: 0;
+  min-height: 60px;
+  border-radius: 13px;
+  border: 1px solid rgba(183,242,71,.16) !important;
+  background: linear-gradient(180deg,rgba(17,22,17,.96),rgba(6,9,7,.98)) !important;
+  color: #fff;
+  padding: 6px;
+  display: grid !important;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 5px;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+.crados-kpi-strip > span,
+.crados-landscape-stats > span {
+  min-width: 0;
+  min-height: 48px;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,.055);
+  background: rgba(255,255,255,.025);
+  display: grid;
+  place-items: center;
+  align-content: center;
+}
+.crados-kpi-strip small,
+.crados-landscape-stats small {
+  color: #7f8981;
+  font-size: 5.8px;
+  font-weight: 1000;
+}
+.crados-kpi-strip b,
+.crados-landscape-stats b {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 1100;
+}
+
+/* Bandeau joueurs : assez haut pour ne jamais couper les médaillons. */
+.crados-play__quick-row {
+  min-height: 72px;
+  grid-template-columns: minmax(0,1fr) 64px;
+  gap: 7px;
+}
+.crados-players-button,
+.crados-stats-button {
+  height: 72px !important;
+  min-height: 72px !important;
+  border-radius: 17px;
+}
+.crados-players-button {
+  padding: 10px 12px !important;
+}
+.crados-players-button__avatars {
+  min-height: 50px;
+  padding: 5px 2px !important;
+  overflow: visible !important;
+}
+.crados-players-button__avatars > div {
+  width: 44px !important;
+  height: 44px !important;
+  margin-left: -3px !important;
+  overflow: visible;
+}
+.crados-players-button__avatars > div:first-child {
+  margin-left: 0 !important;
+}
+.crados-players-button__avatars :is(.profile-avatar,.profile-avatar-wrap) {
+  transform: scale(.96) !important;
+}
+.crados-players-button__label b {
+  width: 26px !important;
+  height: 26px !important;
+  flex-basis: 26px !important;
+  font-size: 9px !important;
+}
+.crados-stats-button {
+  width: 64px !important;
+}
+
+/* Filtres radar : jamais de pastille ovale verte derrière les avatars. */
+.crados-board-modal__filter-chip {
+  --filter-color: #b7f247;
+  height: 34px !important;
+  padding: 0 12px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  background: rgba(255,255,255,.018) !important;
+  color: #7c8580 !important;
+  box-shadow: none !important;
+  transition: color .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .16s ease;
+}
+.crados-board-modal__filter-chip i {
+  opacity: .55;
+}
+.crados-board-modal__filter-chip.is-active {
+  color: var(--filter-color) !important;
+  border-color: var(--filter-color) !important;
+  background: rgba(0,0,0,.22) !important;
+  box-shadow: 0 0 14px color-mix(in srgb,var(--filter-color) 40%,transparent), inset 0 0 0 1px color-mix(in srgb,var(--filter-color) 35%,transparent) !important;
+}
+.crados-board-modal__avatar-filter {
+  --filter-color: #b7f247;
+  width: 46px !important;
+  height: 46px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: var(--filter-color) !important;
+  box-shadow: none !important;
+  display: grid !important;
+  place-items: center;
+}
+.crados-board-modal__avatar-filter > span {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 999px;
+  border: 2px solid #69706c !important;
+  background: rgba(0,0,0,.25) !important;
+  filter: grayscale(1) saturate(.15) brightness(.56);
+  opacity: .62;
+  box-shadow: none !important;
+  transition: filter .16s ease,opacity .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+/* TOUT : tous les joueurs retrouvent leur vraie couleur, sans halo de sélection individuel. */
+.crados-board-modal__avatar-filter.is-all-visible > span {
+  filter: none;
+  opacity: 1;
+  border-color: var(--filter-color) !important;
+  box-shadow: 0 0 8px color-mix(in srgb,var(--filter-color) 32%,transparent) !important;
+}
+/* Filtre joueur : seul le joueur sélectionné prend une aura forte. */
+.crados-board-modal__avatar-filter.is-active > span {
+  filter: none;
+  opacity: 1;
+  border-color: var(--filter-color) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 0 18px var(--filter-color), inset 0 0 12px color-mix(in srgb,var(--filter-color) 38%,transparent) !important;
+}
+
+/* Le modal est rendu dans document.body : centrage réel sur le viewport. */
+.crados-board-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  z-index: 10070;
+  display: grid !important;
+  place-items: center !important;
+  padding: max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)) !important;
+}
+.crados-board-modal__card {
+  margin: auto !important;
+}
+
+/* Bandeau joueurs spécial portrait : uniquement ceux ayant déjà touché le secteur. */
+.crados-tactical-board__side--portrait {
+  display: none;
+}
+
+@media (orientation: portrait), (max-width: 899px) {
+  .crados-play__body {
+    padding-top: 16px !important;
+  }
+  .crados-play__left {
+    grid-template-rows: auto auto auto auto !important;
+    gap: 7px !important;
+    overflow-y: auto;
+    align-content: start;
+  }
+  .crados-active {
+    min-height: 132px !important;
+    max-height: none !important;
+    margin-top: 4px !important;
+  }
+  .crados-kpi-strip,
+  .crados-landscape-stats {
+    min-height: 56px !important;
+  }
+  .crados-kpi-strip > span,
+  .crados-landscape-stats > span {
+    min-height: 44px !important;
+  }
+  .crados-play__quick-row {
+    min-height: 68px !important;
+    grid-template-columns: minmax(0,1fr) 58px !important;
+  }
+  .crados-players-button,
+  .crados-stats-button {
+    height: 68px !important;
+    min-height: 68px !important;
+  }
+  .crados-players-button {
+    padding: 9px 10px !important;
+  }
+  .crados-players-button__avatars {
+    min-height: 48px;
+    padding: 5px 2px !important;
+  }
+  .crados-players-button__avatars > div {
+    width: 42px !important;
+    height: 42px !important;
+  }
+  .crados-stats-button {
+    width: 58px !important;
+  }
+
+  .crados-tactical-board {
+    grid-template-columns: minmax(0,1fr) !important;
+    grid-template-rows: minmax(0,1fr) !important;
+    gap: 8px !important;
+  }
+  .crados-tactical-board.has-portrait-touches {
+    grid-template-columns: minmax(70px,86px) minmax(0,1fr) !important;
+  }
+  .crados-tactical-board__side--left,
+  .crados-tactical-board__side--right {
+    display: none !important;
+  }
+  .crados-tactical-board__side--portrait {
+    display: flex !important;
+    min-width: 0;
+    max-height: min(62dvh,520px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-self: center;
+    gap: 8px;
+    padding: 4px 2px;
+    scrollbar-width: thin;
+  }
+  .crados-tactical-board.no-portrait-touches .crados-tactical-board__side--portrait {
+    display: none !important;
+  }
+  .crados-tactical-board__side--portrait .crados-tactical-board__side-item {
+    grid-template-columns: minmax(42px,1fr) 40px !important;
+    gap: 6px !important;
+  }
+  .crados-tactical-board__side--portrait .crados-tactical-board__side-avatar {
+    height: 48px !important;
+    border-radius: 13px !important;
+  }
+  .crados-tactical-board__side--portrait .crados-tactical-board__side-count {
+    width: 40px !important;
+    height: 48px !important;
+    border-radius: 12px !important;
+    font-size: 17px !important;
+  }
+  .crados-tactical-board__visual {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+  }
+  .crados-tactical-board__svg {
+    width: min(100%,560px) !important;
+    height: auto !important;
+  }
+}
+
+/* Tablette / grand paysage : dimensions stables, pas de carte joueur géante. */
+@media (orientation: landscape) and (min-width: 900px) {
+  .crados-play__body {
+    padding: 8px 10px max(8px,env(safe-area-inset-bottom)) !important;
+  }
+  .crados-play__stage {
+    grid-template-columns: minmax(470px,.88fr) minmax(0,1.12fr) !important;
+    gap: 10px !important;
+    align-items: stretch;
+  }
+  .crados-play__left {
+    height: 100%;
+    grid-template-rows: 160px 68px 88px 68px !important;
+    gap: 9px !important;
+    align-content: start !important;
+    overflow: hidden !important;
+  }
+  .crados-active {
+    min-height: 160px !important;
+    max-height: 160px !important;
+    height: 160px !important;
+    grid-template-columns: minmax(0,1fr) 128px !important;
+    padding: 9px 11px !important;
+  }
+  .crados-active__ghost {
+    width: 128px !important;
+    height: 126px !important;
+  }
+  .crados-active__main {
+    padding-left: 40px !important;
+  }
+  .crados-active__name {
+    font-size: 14px !important;
+  }
+  .crados-active__percent {
+    font-size: 40px !important;
+  }
+  .crados-mini-radar {
+    min-height: 112px !important;
+  }
+  .crados-mini-radar svg {
+    width: min(100%,108px) !important;
+  }
+  .crados-kpi-strip,
+  .crados-landscape-stats {
+    min-height: 68px !important;
+    height: 68px !important;
+    padding: 6px !important;
+  }
+  .crados-kpi-strip > span,
+  .crados-landscape-stats > span {
+    min-height: 54px !important;
+  }
+  .crados-play__quick-row {
+    min-height: 88px !important;
+    height: 88px !important;
+    grid-template-columns: minmax(0,1fr) 70px !important;
+    gap: 8px !important;
+  }
+  .crados-players-button,
+  .crados-stats-button {
+    min-height: 88px !important;
+    height: 88px !important;
+    border-radius: 18px !important;
+  }
+  .crados-players-button {
+    padding: 13px 14px !important;
+  }
+  .crados-players-button__avatars {
+    min-height: 58px !important;
+    padding: 6px 2px !important;
+  }
+  .crados-players-button__avatars > div {
+    width: 50px !important;
+    height: 50px !important;
+    margin-left: -2px !important;
+  }
+  .crados-players-button__label b {
+    width: 28px !important;
+    height: 28px !important;
+    flex-basis: 28px !important;
+    font-size: 10px !important;
+  }
+  .crados-stats-button {
+    width: 70px !important;
+  }
+  .crados-tactical-board__side--portrait {
+    display: none !important;
+  }
+}

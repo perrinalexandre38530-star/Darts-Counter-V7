@@ -1,5 +1,6 @@
 import type { AwenaAction, AwenaReply, AwenaRuntimeContext } from "./awena.types";
 import { findAwenaModeById } from "./AwenaKnowledge";
+import { getAwenaSourceScreensForRoute } from "./AwenaSourceAtlas";
 
 type ScreenCard = {
   id: string;
@@ -233,40 +234,118 @@ function currentCard(route?: string) {
   return SCREENS.find((card) => card.match(r)) || null;
 }
 
+function routeTitle(route?: string) {
+  const value = String(route || "").replace(/[_-]+/g, " ").trim();
+  return value ? value.replace(/\b\w/g, (m) => m.toUpperCase()) : "Écran actuel";
+}
+
+function sourceFacts(context: AwenaRuntimeContext, limit = 10) {
+  const seen = new Set<string>();
+  const facts: string[] = [];
+  for (const entry of getAwenaSourceScreensForRoute(context.route, context.sport)) {
+    for (const raw of entry.facts || []) {
+      const fact = String(raw || "").replace(/\s+/g, " ").trim();
+      const key = norm(fact);
+      if (!fact || fact.length < 3 || fact.length > 180 || seen.has(key)) continue;
+      seen.add(key);
+      facts.push(fact);
+      if (facts.length >= limit) return facts;
+    }
+  }
+  return facts;
+}
+
+function snapshotControls(context: AwenaRuntimeContext) {
+  const raw = context.extra?.awenaScreenSnapshot as any;
+  return Array.isArray(raw?.controls) ? raw.controls : [];
+}
+
+function questionTokens(value: string) {
+  return norm(value).split(" ").filter((token) => token.length >= 3 && !["comment","trouver","trouve","page","ecran","écran","ici","bouton","menu","option","reglage","réglage","est","sont","dans","quel","quelle"].includes(token));
+}
+
+function visibleMatches(question: string, context: AwenaRuntimeContext) {
+  const tokens = questionTokens(question);
+  if (!tokens.length) return [] as any[];
+  return snapshotControls(context)
+    .map((item: any) => {
+      const hay = norm(`${item?.label || ""} ${item?.value || ""}`);
+      const score = tokens.reduce((sum, token) => sum + (hay.includes(token) ? 1 : 0), 0);
+      return { item, score };
+    })
+    .filter((row: any) => row.score > 0)
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, 6)
+    .map((row: any) => row.item);
+}
+
+function factsBlock(facts: string[]) {
+  return facts.length ? `\n\n## CE QUI EST PRÉSENT SUR CET ÉCRAN\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "";
+}
+
 export function answerAwenaScreenQuestion(question: string, context: AwenaRuntimeContext): AwenaReply | null {
   const q = norm(question);
-  const screenQuestion = /ou suis je|quel ecran|cet ecran|cette page|que puis je faire ici|qu est ce que je fais ici|a quoi sert cet ecran|a quoi sert cette page|que dois je faire maintenant|quoi faire maintenant|et maintenant|comment utiliser cet ecran|comment utiliser cette page/.test(q);
+  const locateQuestion = /ou est|ou sont|ou se trouve|ou trouver|je cherche|trouve moi|trouver le|trouver la|quel bouton|quelle touche|dans quel menu|comment acceder|comment accéder|comment ouvrir/.test(q);
+  const genericGuide = /^(guide moi|guide-moi|guide moi ici|guide-moi ici|aide moi ici|aide-moi ici|montre moi quoi faire|je fais quoi ici)$/i.test(q);
+  const screenQuestion = genericGuide || /ou suis je|quel ecran|cet ecran|cette page|que puis je faire ici|qu est ce que je fais ici|a quoi sert cet ecran|a quoi sert cette page|que dois je faire maintenant|quoi faire maintenant|et maintenant|comment utiliser cet ecran|comment utiliser cette page|comment ca marche ici|comment fonctionne ici|comment fonctionne cette page|explique cette page|explique cet ecran/.test(q);
+
+  if (locateQuestion) {
+    const hits = visibleMatches(question, context);
+    if (hits.length) {
+      return {
+        modeId: context.mode || null,
+        knowledgeTopic: `screen:${context.route || "current"}:locate`,
+        text: `## JE L'AI REPÉRÉ SUR CET ÉCRAN\n${hits.map((item: any) => `- **${item.label || "Élément"}**${item.value ? ` — valeur actuelle : **${item.value}**` : ""}${item.disabled ? " — indisponible actuellement" : ""}`).join("\n")}\n\n> Je m'appuie sur les contrôles réellement visibles. Si ce n'est pas l'élément que tu cherches, donne-moi son nom exact et je chercherai dans les autres pages de l'application.`,
+      };
+    }
+    // L'élément n'est pas visible ici : laisse l'Atlas de navigation chercher
+    // dans toute l'application au lieu d'inventer un emplacement local.
+    return null;
+  }
+
   if (!screenQuestion) return null;
 
   const mode = findAwenaModeById(context.mode);
   const phase = norm(context.phase || "");
+  const facts = sourceFacts(context);
 
   if (mode && (phase === "config" || String(context.route || "").includes("config"))) {
     return {
       modeId: mode.id,
-      text: `## CONFIGURATION — ${mode.label.toUpperCase()}\nTu es sur l’écran de **configuration** de ${mode.label}.\n\n## CE QUE TU DOIS FAIRE\n- choisir les **participants** ;\n- régler les **options / variantes** proposées ;\n- vérifier la **condition de victoire** et le format ;\n- choisir les options de saisie ou aides disponibles ;\n- lancer la partie lorsque tout est prêt.\n\n> Appuie sur **Configuration** dans mon panneau pour que je détaille chaque option connue de ce mode.`,
-      actions: [{ id: `screen-config-${mode.id}`, label: "Détailler la configuration", kind: "ask", prompt: `Détaille précisément toutes les options de configuration de ${mode.label}.` }],
+      knowledgeTopic: `screen:${context.route || mode.id}:guide`,
+      text: `## CONFIGURATION — ${mode.label.toUpperCase()}\nTu es sur l'écran de **configuration** de ${mode.label}.\n\n## COMMENT T'Y REPÉRER\n- commence par le **type de partie** et les participants ;\n- règle ensuite les variantes / options du mode ;\n- vérifie le format, l'ordre de jeu et la méthode de saisie ;\n- termine par le résumé avant de lancer.\n\nJe peux aussi répondre à **« où est telle option ? »** : si elle est visible, je te donne son libellé exact ; sinon je cherche l'écran correspondant dans l'application.${factsBlock(facts)}\n\n> Demande-moi **« guide-moi étape par étape »**, **« où est … ? »** ou **« explique cette option »** et je reste sur cette page.`,
+      actions: [
+        { id: `screen-config-${mode.id}`, label: "Détailler la configuration", kind: "ask", prompt: `Détaille précisément toutes les options de configuration de ${mode.label}.` },
+        { id: `screen-guide-${mode.id}`, label: "Me guider ici", kind: "ask", prompt: "Guide-moi étape par étape sur cette page." },
+      ],
     };
   }
 
   if (mode && (phase === "play" || context.inGame)) {
+    const cradosSpecific = mode.id === "crados" ? `\n\n## SUR CRADOS EN PARTICULIER\n- le **nom** et le **gros score** indiquent le camp actif et son niveau de crasse ;\n- la **jauge CRADOS** montre la progression vers la limite d'élimination ;\n- le **mini-radar** ouvre la carte des zones ;\n- la première ligne de KPI résume crasse / zones / vols / darts ;\n- le **bandeau joueurs** ouvre l'ordre complet ;\n- la seconde ligne de KPI résume couches / lavées / tours / manches ;\n- le bouton journal ouvre les dernières actions ;\n- le keypad sert à saisir Simple / Double / Triple / Bull puis **VALIDER**.` : "";
     return {
       modeId: mode.id,
-      text: `## PARTIE EN COURS — ${mode.label.toUpperCase()}\nTu es dans l’écran de **jeu actif**.\n\n## ICI\n- suis le joueur / camp actif ;\n- enregistre les actions ou impacts avec le système de saisie du mode ;\n- utilise **Annuler** si le mode autorise la correction ;\n- consulte-moi pour une règle, un conseil ou l’état de la partie lorsque le contexte est disponible.\n\n> Je ne dois jamais masquer les commandes de jeu : mon bouton reste dans la zone prévue à la place de l’InfoDot.`,
-      actions: [{ id: `screen-rules-${mode.id}`, label: "Règles", kind: "ask", prompt: `Explique-moi les règles de ${mode.label}.` }],
+      knowledgeTopic: `screen:${context.route || mode.id}:guide`,
+      text: `## PARTIE EN COURS — ${mode.label.toUpperCase()}\nTu es dans l'écran de **jeu actif**.\n\n## COMMENT LIRE LA PAGE\n- repère d'abord le joueur / camp actif ;\n- lis les indicateurs de score ou d'état propres au mode ;\n- saisis l'action avec les commandes de jeu ;\n- utilise Annuler / Undo seulement pour corriger une vraie erreur ;\n- ouvre les blocs secondaires pour les statistiques, le journal ou la carte lorsque le mode en possède.${cradosSpecific}${factsBlock(facts)}\n\n> Tu peux me demander **« où est … ? »**, **« comment fonctionne ce bloc ? »** ou **« guide-moi sur cette page »**.`,
+      actions: [
+        { id: `screen-guide-${mode.id}`, label: "Me guider ici", kind: "ask", prompt: "Guide-moi sur cette page et explique les blocs visibles." },
+        { id: `screen-rules-${mode.id}`, label: "Règles", kind: "ask", prompt: `Explique-moi les règles de ${mode.label}.` },
+      ],
     };
   }
 
   const card = currentCard(context.route);
   if (!card) {
+    const title = routeTitle(context.screenLabel || context.route);
     return {
-      text: `## ÉCRAN ACTUEL\nJe vois la route **${context.route || "non identifiée"}**, mais je n’ai pas encore une fiche dédiée pour cette page.\n\n> Dis-moi ce que tu cherches à faire et je tenterai de te guider avec les fonctions connues de l’application.`,
+      knowledgeTopic: `screen:${context.route || "current"}:guide`,
+      text: `## ${title.toUpperCase()}\nJe n'ai pas besoin d'une fiche manuelle dédiée pour te guider ici : j'utilise la **route active**, les **contrôles réellement visibles** et les libellés extraits de cette version de l'application.${factsBlock(facts)}\n\n## COMMENT JE PEUX T'AIDER ICI\n- **« guide-moi »** : je te donne l'ordre logique des actions ;\n- **« où est … ? »** : je cherche d'abord sur cet écran puis dans l'Atlas complet ;\n- **« comment fonctionne … ? »** : je croise l'élément visible avec ma base de connaissances ;\n- **« ça ne marche pas »** : je reste sur cette page pour le diagnostic.`,
     };
   }
 
   return {
     knowledgeTopic: `screen:${card.id}`,
-    text: `## ${card.title.toUpperCase()}\n${card.purpose}\n\n## CE QUE TU PEUX FAIRE ICI\n${card.steps.map((step) => `- ${step}`).join("\n")}`,
+    text: `## ${card.title.toUpperCase()}\n${card.purpose}\n\n## CE QUE TU PEUX FAIRE ICI\n${card.steps.map((step) => `- ${step}`).join("\n")}${factsBlock(facts)}\n\n> Demande-moi **« guide-moi »**, **« où se trouve … ? »** ou **« comment fonctionne … ? »** : je garde le contexte de cette page.`,
     actions: action(card),
   };
 }
