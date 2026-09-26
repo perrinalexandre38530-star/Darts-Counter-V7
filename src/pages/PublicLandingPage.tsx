@@ -25,11 +25,11 @@ import rugby from "../assets/games/logo-rugby.webp";
 import badminton from "../assets/games/logo-badminton.webp";
 import padel from "../assets/games/logo-padel.webp";
 import kael from "../assets/avatars/firefighter-bots/kael.webp";
-import aero from "../assets/avatars/firefighter-bots/aero.webp";
-import braze from "../assets/avatars/firefighter-bots/braze.webp";
-import lyna from "../assets/avatars/firefighter-bots/lyna.webp";
 import zeno from "../assets/avatars/killer-bots/zeno.webp";
-import malysia from "../assets/avatars/firefighter-bots/malysia.webp";
+import gegeDeglingue from "../assets/avatars/crados-bots/deglingos_gege_deglingue.webp";
+import eliaz from "../assets/avatars/attrape-moi/eliaz.png";
+import greenMachine from "../assets/avatars/bots-pro/green-machine.png";
+import lucky from "../assets/avatars/loterie-bots/lucky.webp";
 import screenSports from "../assets/public-landing/screen-sports.webp";
 import screenX01 from "../assets/public-landing/screen-x01.webp";
 import screenStats from "../assets/public-landing/screen-stats.webp";
@@ -72,10 +72,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <div className="mssOrbit mssOrbitOuter">{sports.slice(0,12).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n}/></div>)}</div>
         <div className="mssOrbit mssOrbitInner">{sports.slice(12,22).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n}/></div>)}</div>
         <div className="mssHeroCore"><img src={logo} alt="MULTISPORTS SCORING"/><strong>22</strong><span>DISCIPLINES</span></div>
-        <img className="mssAwena" src={awena} alt="Awena, assistante MULTISPORTS SCORING"/>
-        <div className="mssFloat mssFloatA"><b>ONLINE</b><span>Affrontez vos amis et la communauté</span></div>
-        <div className="mssFloat mssFloatB"><b>BOTS IA</b><span>Jouez et personnalisez vos adversaires</span></div>
-        <div className="mssFloat mssFloatC"><b>STATS AVANCÉES</b><span>Mesurez réellement votre progression</span></div>
+        <div className="mssHeroFeatureRail" aria-label="Fonctionnalités principales"><span><b>ONLINE</b><small>Communauté</small></span><span><b>BOTS IA</b><small>Adversaires</small></span><span><b>STATS</b><small>Progression</small></span></div>
       </div>
     </section>
 
@@ -103,7 +100,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
 
     <section className="mssOnlineShowcase" id="online">
       <div className="mssOnlineCopy"><div className="mssEyebrow">ONLINE • BOTS • ADVERSAIRES IA</div><h2>Il y a toujours quelqu’un à affronter.</h2><p>Retrouvez vos amis et la communauté en ligne, ou lancez immédiatement une partie contre les adversaires IA disponibles dans les modes compatibles. Chaque personnage possède son identité et son niveau.</p><div className="mssOnlineFacts"><span><b>LOCAL + ONLINE</b><small>Jouez selon vos envies</small></span><span><b>NIVEAUX VARIÉS</b><small>Des adversaires pour progresser</small></span><span><b>UNIVERS UNIQUES</b><small>Des personnages propres aux modes</small></span></div></div>
-      <div className="mssBotStage" aria-label="Exemples d’adversaires IA MULTISPORTS SCORING"><div className="mssBotHalo"/><article className="mssBotCard mssBotCard1"><img src={kael} alt="Kaël"/><strong>KAËL</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard2"><img src={zeno} alt="Zeno"/><strong>ZENO</strong><span>KILLER</span><i>IA</i></article><article className="mssBotCard mssBotCard3"><img src={aero} alt="Aero"/><strong>AERO</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard4"><img src={malysia} alt="Malysia"/><strong>MALYSIA</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard5"><img src={braze} alt="Braze"/><strong>BRAZE</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard6"><img src={lyna} alt="Lyna"/><strong>LYNA</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><div className="mssOnlineCenter"><b>ONLINE</b><strong>+</strong><b>BOTS IA</b><span>Jouez sans attendre</span></div></div>
+      <div className="mssBotStage" aria-label="Exemples d’adversaires IA MULTISPORTS SCORING"><div className="mssBotHalo"/><article className="mssBotCard mssBotCard1"><img src={kael} alt="Kaël"/><strong>KAËL</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard2"><img src={greenMachine} alt="Green Machine"/><strong>GREEN MACHINE</strong><span>BOT IA PRO</span><i>PRO</i></article><article className="mssBotCard mssBotCard3"><img src={gegeDeglingue} alt="Gégé Déglingué"/><strong>GÉGÉ DÉGLINGUÉ</strong><span>CRADOS</span><i>IA</i></article><article className="mssBotCard mssBotCard4"><img src={eliaz} alt="Eliaz"/><strong>ELIAZ</strong><span>ARRÊTE-MOI SI TU PEUX</span><i>IA</i></article><article className="mssBotCard mssBotCard5"><img src={zeno} alt="Zeno"/><strong>ZENO</strong><span>KILLER</span><i>IA</i></article><article className="mssBotCard mssBotCard6"><img src={lucky} alt="Lucky"/><strong>LUCKY</strong><span>LOTERIE</span><i>IA</i></article><div className="mssOnlineCenter"><b>ONLINE</b><strong>+</strong><b>BOTS IA</b><span>Plusieurs univers</span></div></div>
     </section>
 
     <section className="mssAwenaSection" id="awena"><img src={awena} alt="Awena"/><div><div className="mssEyebrow">L’ASSISTANTE INTÉGRÉE À VOTRE EXPÉRIENCE</div><h2>AWENA est là quand vous en avez besoin.</h2><p>Règles, configuration, conseils et guidage : Awena accompagne vos parties et vos entraînements sans vous faire sortir de MULTISPORTS SCORING.</p><div className="mssAwenaSkills"><span>💬 Explique les règles</span><span>🎯 Guide votre partie</span><span>⚙️ Aide à configurer</span><span>📈 Accompagne l’entraînement</span></div><button onClick={onOpenApp}>DÉCOUVRIR MULTISPORTS SCORING</button></div></section>
