@@ -41,6 +41,7 @@ export type CradosConfigPayload = {
     stealMode: "block" | "flip";
     sectorRaceMode: "claim" | "race";
     cleanBullSplash: boolean;
+    endOnFirstMaxDirt: boolean;
   };
 };
 export type CradosSector = { ownerId: string | null; claimantId: string | null; layers: number; pressureBySide?: Record<string, number> };
@@ -176,6 +177,7 @@ export function normalizeCradosConfig(raw: any): CradosConfigPayload {
       stealMode: r?.stealMode === "flip" ? "flip" : "block",
       sectorRaceMode: r?.sectorRaceMode === "race" ? "race" : "claim",
       cleanBullSplash: r?.cleanBullSplash === true,
+      endOnFirstMaxDirt: r?.endOnFirstMaxDirt !== false,
     },
   };
 }
@@ -330,6 +332,27 @@ export function createCradosState(players: Player[], rawConfig: any): CradosStat
 
 export function cloneCradosState(s: CradosState): CradosState { return clone(s); }
 
+function ownedSectorCountForSide(s: CradosState, sideIdRaw: any): number {
+  const sideId = String(sideIdRaw || "");
+  return Object.values(s.sectors || {}).reduce((total: number, sec: any) => total + (String(sec?.ownerId || "") === sideId ? 1 : 0), 0);
+}
+
+function pickCleanestSide(s: CradosState, excludedSideIds: string[] = []): string | null {
+  const excluded = new Set((excludedSideIds || []).map(String));
+  const candidates = cradosSideIds(s).filter((id) => !excluded.has(String(id)) && !s.eliminated[String(id)]);
+  const pool = candidates.length ? candidates : cradosSideIds(s).filter((id) => !excluded.has(String(id)));
+  if (!pool.length) return null;
+  return [...pool].sort((a, b) => {
+    const dirtDiff = Number(s.dirt[a] || 0) - Number(s.dirt[b] || 0);
+    if (dirtDiff) return dirtDiff;
+    const zonesDiff = ownedSectorCountForSide(s, b) - ownedSectorCountForSide(s, a);
+    if (zonesDiff) return zonesDiff;
+    const winsDiff = Number(s.legWins[b] || 0) - Number(s.legWins[a] || 0);
+    if (winsDiff) return winsDiff;
+    return String(a).localeCompare(String(b));
+  })[0] || null;
+}
+
 export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): CradosState {
   const s = cloneCradosState(input);
   if (s.phase !== "playing") return s;
@@ -343,6 +366,7 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
   const st = s.statsByPlayer[playerId] = { ...blankStats(), ...(s.statsByPlayer[playerId] || {}) };
   const before = Number(s.dirt[sideId] || 0);
   const events: string[] = [];
+  const eliminatedBefore = new Set(Object.entries(s.eliminated || {}).filter(([, value]) => Boolean(value)).map(([key]) => String(key)));
   let visitImpact = 0;
   st.visits += 1;
 
@@ -509,6 +533,19 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     dirtAfter: after,
   });
   s.turnIndex += 1;
+
+  const newlyEliminated = cradosSideIds(s).filter((candidate) => Boolean(s.eliminated[candidate]) && !eliminatedBefore.has(String(candidate)));
+  if (s.config.rules.endOnFirstMaxDirt && newlyEliminated.length) {
+    const winnerSideId = pickCleanestSide(s, newlyEliminated);
+    if (winnerSideId) {
+      const loserNames = newlyEliminated.map((candidate) => cradosSideName(s, candidate)).join(" · ");
+      const finishMessage = `${loserNames} atteint la jauge maximale : fin de manche · ${cradosSideName(s, winnerSideId)} est le plus propre`;
+      events.push(finishMessage);
+      const lastVisit = s.visits[s.visits.length - 1];
+      if (lastVisit && Array.isArray(lastVisit.events) && !lastVisit.events.includes(finishMessage)) lastVisit.events.push(finishMessage);
+      return winLeg(s, winnerSideId);
+    }
+  }
 
   const alive = aliveSideIds(s);
   if (alive.length === 1) return winLeg(s, alive[0]);

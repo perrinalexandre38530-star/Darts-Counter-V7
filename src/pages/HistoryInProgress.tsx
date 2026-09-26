@@ -71,7 +71,9 @@ export default function HistoryInProgress({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 8 }}>
       {items.map((rec) => {
-        const start = (rec as any)?.payload?.state?.rules?.start ?? (rec as any)?.rules?.start ?? "X01";
+        const mode = String((rec as any)?.kind || (rec as any)?.game?.mode || (rec as any)?.resume?.mode || (rec as any)?.summary?.mode || "x01");
+        const modeLabel = mode.toLowerCase() === "crados" ? "CRADOS" : mode.toUpperCase();
+        const start = (rec as any)?.payload?.state?.rules?.start ?? (rec as any)?.rules?.start ?? "";
         const created = rec.createdAt ? new Date(rec.createdAt) : null;
         const dateTxt = created
           ? created.toLocaleDateString() + " " + created.toLocaleTimeString()
@@ -95,7 +97,7 @@ export default function HistoryInProgress({
           >
             <div>
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>
-                X01 · {start} — <span style={{ opacity: .8 }}>{dateTxt}</span>
+                {modeLabel}{start ? ` · ${start}` : ""} — <span style={{ opacity: .8 }}>{dateTxt}</span>
               </div>
               <div style={{ fontSize: 12, opacity: .8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>
                 {players || "Joueurs inconnus"}

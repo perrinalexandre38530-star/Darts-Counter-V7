@@ -634,9 +634,12 @@ function getKnownPlayers(store: Store, entries: SavedEntry[]): { id: string; lab
 }
 
 function statusOf(e: SavedEntry): "finished" | "in_progress" {
-  // 1️⃣ Status explicite
+  // 1️⃣ Status explicite : un checkpoint de reprise doit rester prioritaire.
+  // Certains modes (dont CRADOS) transportent déjà un bloc stats pendant la
+  // partie ; ce bloc ne doit jamais suffire à reclasser la ligne en « terminée ».
   const raw = String(e.status || "").toLowerCase();
   if (raw === "finished") return "finished";
+  if (raw === "inprogress" || raw === "in_progress" || raw === "playing" || raw === "live") return "in_progress";
 
   // 2️⃣ Summary direct
   const s: any = e.summary || {};
@@ -653,8 +656,6 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
   if (d.summary || d.result || d.stats) return "finished";
 
   // 5️⃣ Fallback legacy
-  if (raw === "inprogress" || raw === "in_progress") return "in_progress";
-
   return "in_progress";
 }
 
@@ -4374,7 +4375,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     return tokens.some((token) => ["gros6", "big6"].includes(normalizeToken(token)));
   }
 
-  function goResume(e: SavedEntry, preview?: boolean) {
+  async function goResume(e: SavedEntry, preview?: boolean) {
     const resumeId = e.resumeId || matchLink(e) || e.id;
 
     // GOLF
@@ -4529,12 +4530,24 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       };
       const newModeRoute = routeByMode[rawMode] || null;
       if (newModeRoute && statusOf(e) === "in_progress") {
-        const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null) || {};
-        const config = (e as any)?.resume?.config || payload?.config || (e as any)?.summary?.config || null;
-        const snapshot = (e as any)?.resume?.state || payload?.stateSnapshot || payload?.state || null;
+        // Pour CRADOS et les nouveaux moteurs, recharge la ligne IndexedDB complète
+        // au clic avant la navigation. Cela évite de reprendre une carte UI légère
+        // dont le snapshot aurait été retardé ou absent du cache Historique.
+        let recForResume: any = e;
+        try {
+          const full = await History.get(String(resumeId || (e as any)?.id || (e as any)?.matchId || ""));
+          if (full) recForResume = { ...(e as any), ...(full as any), resume: (full as any)?.resume || (e as any)?.resume };
+        } catch (error) {
+          console.warn("[HistoryPage] full resume hydration failed", error);
+        }
+        const payload: any = (recForResume as any)?.decoded || ((recForResume as any)?.payload && typeof (recForResume as any).payload === "object" ? (recForResume as any).payload : null) || {};
+        const livePayload: any = (recForResume as any)?.resume?.livePayload || {};
+        const config = (recForResume as any)?.resume?.config || payload?.config || livePayload?.config || (recForResume as any)?.summary?.config || null;
+        const snapshot = (recForResume as any)?.resume?.state || livePayload?.stateSnapshot || livePayload?.state || payload?.stateSnapshot || payload?.state || null;
         const mode = canonicalByMode[rawMode] || rawMode;
-        const ok = safeGo([newModeRoute], { rec: e, resumeId, config, snapshot, mode, from: preview ? "history_preview" : "history", preview: !!preview });
-        if (!ok) go(newModeRoute, { rec: e, resumeId, config, snapshot, mode, from: preview ? "history_preview" : "history", preview: !!preview });
+        const params = { rec: recForResume, resumeId, config, snapshot, mode, from: preview ? "history_preview" : "history", preview: !!preview };
+        const ok = safeGo([newModeRoute], params);
+        if (!ok) go(newModeRoute, params);
         return;
       }
     }

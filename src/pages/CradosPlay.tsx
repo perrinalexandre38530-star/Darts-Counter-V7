@@ -517,7 +517,7 @@ function RankingModal({ rows, dirtLimit, onClose }: any) {
   </div>;
 }
 
-function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, activeSideId, activeSide, teamMode, onOpenBoard }: any) {
+function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, activeSideId, activeSide, teamMode, onOpenBoard, coachHint }: any) {
   const dirt = activeSideId ? Number(state.dirt?.[activeSideId] || 0) : 0;
   const avatarSrc = profileImageSrc(activeProfile || activePlayer);
   const headerLabel = state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "";
@@ -526,9 +526,11 @@ function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, act
     <div className="crados-active__main">
       {headerLabel ? <div className="crados-active__eyebrow" style={{ color }}>{headerLabel}</div> : null}
       <div className="crados-active__name" style={{ color }}>{String(activePlayer?.name || "—").toUpperCase()}</div>
+      <div className="crados-active__turn" style={{ borderColor: `${color}66`, color }}>TOUR {currentCradosRound(state)} · VOLÉE {Number(state.turnIndex || 0) + 1}</div>
       <div className="crados-active__percent" style={{ color }}>{dirt}</div>
+      {!activeIsBot && coachHint?.visual ? <div className="crados-active__coach" style={{ color }}>🎯 {coachHint.visual}</div> : null}
       <CradosDirtMeter value={dirt} max={config.rules.dirtLimit} color={color} />
-      <div className="crados-active__leg" style={{ color }}>{`MANCHE ${Number(state.legIndex || 0) + 1} - ${state.legWins?.[activeSideId] || 0}/${config.seriesWins} remportée${Number(config.seriesWins || 1) > 1 ? 's' : ''}`}</div>
+      <div className="crados-active__leg" style={{ color }}>{`MANCHE ${Number(state.legIndex || 0) + 1} · TOUR ${currentCradosRound(state)} · VOLÉE ${Number(state.turnIndex || 0) + 1} · ${state.legWins?.[activeSideId] || 0}/${config.seriesWins}`}</div>
     </div>
     <div className="crados-active__radar"><CradosMiniRadar state={state} activeSideId={activeSideId} color={color} onOpen={onOpenBoard} /></div>
   </section>;
@@ -651,6 +653,134 @@ function CradosEndPanel({ state, profiles, sideProfiles, rankingRows, teamMode, 
   </div>;
 }
 
+function compactResumeProfile(profile: any) {
+  if (!profile || typeof profile !== "object") return profile;
+  const avatar = profile.avatarDataUrl ?? profile.avatarUrl ?? profile.avatar ?? profile.photoURL ?? profile.photoUrl ?? null;
+  const safeAvatar = typeof avatar === "string" && !avatar.startsWith("data:") && !avatar.startsWith("blob:") && avatar.length < 2048 ? avatar : null;
+  return {
+    id: String(profile.id ?? profile.profileId ?? ""),
+    name: playerName(profile),
+    displayName: profile.displayName ?? profile.display_name ?? undefined,
+    isBot: Boolean(profile.isBot || profile.bot || profile.kind === "bot" || profile.botLevel),
+    bot: Boolean(profile.bot),
+    kind: profile.kind,
+    botLevel: profile.botLevel,
+    country: profile.country,
+    avatarUrl: safeAvatar || undefined,
+  };
+}
+
+function compactCradosResumeConfig(raw: any) {
+  const cfg: any = normalizeCradosConfig(raw || {});
+  return {
+    ...cfg,
+    playersList: Array.isArray(cfg.playersList) ? cfg.playersList.map(compactResumeProfile) : [],
+    teams: Array.isArray(cfg.teams) ? cfg.teams.map((team: any) => ({
+      id: String(team?.id || ""),
+      name: String(team?.name || "Équipe"),
+      color: team?.color ?? null,
+      playerIds: Array.isArray(team?.playerIds) ? team.playerIds.map(String) : [],
+      isBotTeam: Boolean(team?.isBotTeam),
+      isCradosFamily: Boolean(team?.isCradosFamily),
+      logoDataUrl: typeof team?.logoDataUrl === "string" && !team.logoDataUrl.startsWith("data:") && !team.logoDataUrl.startsWith("blob:") && team.logoDataUrl.length < 2048 ? team.logoDataUrl : null,
+    })) : [],
+  };
+}
+
+function compactCradosResumeState(state: CradosState) {
+  const snap: any = cloneCradosState(state);
+  snap.config = compactCradosResumeConfig(snap.config);
+  return snap;
+}
+
+function extractCradosResumeState(record: any, params: any) {
+  const candidates = [
+    params?.snapshot,
+    record?.resume?.state,
+    record?.resume?.livePayload?.stateSnapshot,
+    record?.resume?.livePayload?.state,
+    record?.payload?.stateSnapshot,
+    record?.payload?.state,
+    record?.payload?.resume?.state,
+  ];
+  return candidates.find((candidate: any) => candidate && candidate.mode === "crados") || null;
+}
+
+function currentCradosRound(state: any) {
+  const participantCount = Math.max(1, Number(state?.players?.length || 1));
+  return Math.floor(Number(state?.turnIndex || 0) / participantCount) + 1;
+}
+
+function buildCradosCoachHint(state: any, activeSideIdRaw: any, activeNameRaw: any) {
+  if (!state || state.phase !== "playing") return { visual: "", speech: "" };
+  const sideId = String(activeSideIdRaw || "");
+  const activeName = String(activeNameRaw || "Joueur");
+  const rules = state?.config?.rules || {};
+  const limit = Math.max(1, Number(rules.dirtLimit || 10));
+  const dirt = Number(state?.dirt?.[sideId] || 0);
+  const layersToOwn = Math.max(1, Number(rules.layersToOwn || 3));
+  const round = currentCradosRound(state);
+
+  if (rules.bullWash !== false && dirt >= Math.max(2, Math.ceil(limit * .55))) {
+    return {
+      visual: `AWENA · BULL POUR TE NETTOYER`,
+      speech: `${activeName}, tour ${round}. Tu as beaucoup de crasse. Vise le Bull.`,
+    };
+  }
+
+  const sectors = DARTBOARD_ORDER.map((n) => ({ n, sec: state?.sectors?.[n] || {} }));
+  const progressing = sectors
+    .map(({ n, sec }) => {
+      const progress = rules.sectorRaceMode === "race"
+        ? Number(sec?.pressureBySide?.[sideId] || 0)
+        : String(sec?.claimantId || "") === sideId ? Number(sec?.layers || 0) : 0;
+      return { n, sec, progress };
+    })
+    .filter((row) => !row.sec?.ownerId && row.progress > 0)
+    .sort((a, b) => b.progress - a.progress || DARTBOARD_ORDER.indexOf(a.n) - DARTBOARD_ORDER.indexOf(b.n));
+  if (progressing.length) {
+    const best = progressing[0];
+    const remaining = Math.max(1, layersToOwn - best.progress);
+    return {
+      visual: `AWENA · VISE N°${best.n} · ${best.progress}/${layersToOwn}`,
+      speech: `${activeName}, tour ${round}. Vise le ${best.n}. Encore ${remaining} touche${remaining > 1 ? "s" : ""}.`,
+    };
+  }
+
+  if (rules.stealMode === "flip") {
+    const enemy = sectors
+      .filter(({ sec }) => sec?.ownerId && String(sec.ownerId) !== sideId)
+      .sort((a, b) => Number(a.sec?.layers || layersToOwn) - Number(b.sec?.layers || layersToOwn));
+    if (enemy.length) {
+      return {
+        visual: `AWENA · ATTAQUE N°${enemy[0].n}`,
+        speech: `${activeName}, tour ${round}. Attaque le ${enemy[0].n}, zone adverse fragile.`,
+      };
+    }
+  }
+
+  const free = sectors.filter(({ sec }) => !sec?.ownerId && !sec?.claimantId);
+  if (free.length) {
+    const target = free[Number(state?.turnIndex || 0) % free.length]?.n || free[0].n;
+    return {
+      visual: `AWENA · VISE N°${target} · LIBRE`,
+      speech: `${activeName}, tour ${round}. Vise le ${target}, secteur libre.`,
+    };
+  }
+
+  if (rules.bullWash !== false && dirt > 0) {
+    return {
+      visual: `AWENA · BULL POUR TE NETTOYER`,
+      speech: `${activeName}, tour ${round}. Tente le Bull pour te nettoyer.`,
+    };
+  }
+
+  return {
+    visual: `AWENA · JOUE PRUDENT`,
+    speech: `${activeName}, tour ${round}. Évite les zones adverses et joue prudent.`,
+  };
+}
+
 export default function CradosPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
   const awena = useAwenaOptional();
@@ -658,14 +788,21 @@ export default function CradosPlay(props: any) {
   const store = props?.store;
   const onFinish = props?.onFinish;
   const resumeRecord = props?.params?.rec || props?.params?.record || props?.params?.match || null;
-  const config = React.useMemo(() => normalizeCradosConfig(props?.params?.config || resumeRecord?.resume?.config || resumeRecord?.payload?.config || {}), []);
+  const initialResumeState = extractCradosResumeState(resumeRecord, props?.params);
+  const config = React.useMemo(() => normalizeCradosConfig(props?.params?.config || resumeRecord?.resume?.config || initialResumeState?.config || resumeRecord?.payload?.config || {}), []);
   const profiles = React.useMemo(() => resolveModeProfiles(config, store).slice(0, 10), [config, store]);
   const players = React.useMemo(() => profiles.map((p: any, i: number) => ({ id: String(p.id || `p${i + 1}`), name: playerName(p, i) })), [profiles]);
   const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
-  const restored = resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot || resumeRecord?.payload?.state || null;
+  const restored = initialResumeState;
   const [state, setState] = React.useState<CradosState>(() => restored?.mode === "crados" ? cloneCradosState(restored) : createCradosState(players, config));
-  const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(resumeRecord?.resume?.currentThrow) ? resumeRecord.resume.currentThrow.slice(0, 3) : []);
-  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => resumeRecord?.resume?.multiplier === 2 || resumeRecord?.resume?.multiplier === 3 ? resumeRecord.resume.multiplier : 1);
+  const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => {
+    const draft = resumeRecord?.resume?.currentThrow ?? resumeRecord?.resume?.livePayload?.currentThrow;
+    return Array.isArray(draft) ? draft.slice(0, 3) : [];
+  });
+  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => {
+    const raw = resumeRecord?.resume?.multiplier ?? resumeRecord?.resume?.livePayload?.multiplier;
+    return raw === 2 || raw === 3 ? raw : 1;
+  });
   const [undo, setUndo] = React.useState<CradosState[]>([]);
   const [notice, setNotice] = React.useState("");
   const [playersOpen, setPlayersOpen] = React.useState(false);
@@ -677,6 +814,8 @@ export default function CradosPlay(props: any) {
   const botBusy = React.useRef(false);
   const finishedRef = React.useRef(false);
   const initialCheckpointRef = React.useRef(false);
+  const historyHydratedRef = React.useRef(Boolean(restored));
+  const coachSpokenKeyRef = React.useRef("");
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `crados-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
   const teamMode = isCradosTeamMode(config);
@@ -742,6 +881,8 @@ export default function CradosPlay(props: any) {
         maxDirt: max("maxDirt"), bestVisitImpact: max("bestVisitImpact"),
       }];
     })) : undefined;
+    const compactConfig = compactCradosResumeConfig(s.config);
+    const resumeState = compactCradosResumeState(s);
     return {
       id: matchIdRef.current, matchId: matchIdRef.current, resumeId: matchIdRef.current,
       kind: "crados", mode: "crados", sport: "darts", status, createdAt: s.startedAt, updatedAt: Date.now(),
@@ -759,14 +900,24 @@ export default function CradosPlay(props: any) {
         totalDirtWashed: Object.values(s.statsByPlayer || {}).reduce((sum: number, row: any) => sum + Number(row?.dirtWashed || 0), 0),
         ranking: buildCradosRanking({ state: s, profiles, profileById: new Map(profiles.map((p: any) => [String(p.id), p])), colorByPlayerId, colorBySideId, teamMode: isTeams }),
       },
-      resume: { mode: "crados", config: s.config, state: cloneCradosState(s), currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, updatedAt: Date.now() },
+      resume: { mode: "crados", config: compactConfig, state: resumeState, currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, updatedAt: Date.now() },
       payload: {
-        kind: "crados", mode: "crados", sport: "darts", config: s.config, teams: isTeams ? s.config.teams : undefined,
-        stateSnapshot: cloneCradosState(s), visits: s.visits, visitHistory: s.visits,
+        kind: "crados", mode: "crados", sport: "darts", config: status === "finished" ? s.config : compactConfig, teams: isTeams ? compactConfig.teams : undefined,
+        stateSnapshot: status === "finished" ? cloneCradosState(s) : resumeState, currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, visits: s.visits, visitHistory: s.visits,
         stats: { mode: "crados", teamMode: isTeams, players: perPlayer, teams: perTeam, legWins: s.legWins, sectors: s.sectors },
       },
     };
   }, [profiles, currentThrow, multiplier, colorByPlayerId, colorBySideId]);
+
+  const saveInProgress = React.useCallback(async (s: CradosState, draft: UIDart[] = currentThrow, draftMultiplier: 1 | 2 | 3 = multiplier, announce = false) => {
+    if (s.phase !== "playing") return;
+    try {
+      await History.upsertInProgressCheckpoint(buildRecord(s, "in_progress", draft, draftMultiplier));
+      if (announce && typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated"));
+    } catch (error) {
+      console.warn("[CRADOS] checkpoint save failed", error);
+    }
+  }, [buildRecord, currentThrow, multiplier]);
 
   const persist = React.useCallback((s: CradosState) => {
     if (s.phase === "finished") {
@@ -774,23 +925,71 @@ export default function CradosPlay(props: any) {
       finishedRef.current = true;
       const rec = buildRecord(s, "finished", [], 1);
       if (typeof onFinish === "function") onFinish(rec, { navigate: false });
-      else void History.upsert(rec);
-    } else void History.upsert(buildRecord(s, "in_progress", [], 1)).catch(() => {});
-  }, [buildRecord, onFinish]);
+      else void History.upsert(rec).catch((error) => console.warn("[CRADOS] final history save failed", error));
+    } else void saveInProgress(s, [], 1, true);
+  }, [buildRecord, onFinish, saveInProgress]);
 
   React.useEffect(() => {
     if (initialCheckpointRef.current) return;
     initialCheckpointRef.current = true;
-    if (state.phase === "playing") void History.upsert(buildRecord(state, "in_progress")).catch(() => {});
-  }, [buildRecord, state]);
+    if (state.phase === "playing") void saveInProgress(state, currentThrow, multiplier, true);
+  }, [saveInProgress, state, currentThrow, multiplier]);
 
   React.useEffect(() => {
     if (state.phase !== "playing") return;
     const timer = window.setTimeout(() => {
-      void History.upsert(buildRecord(state, "in_progress")).catch(() => {});
+      void saveInProgress(state, currentThrow, multiplier, false);
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [currentThrow, multiplier, buildRecord]);
+  }, [currentThrow, multiplier, state, saveInProgress]);
+
+  React.useEffect(() => {
+    if (historyHydratedRef.current) return;
+    const resumeId = String(props?.params?.resumeId || resumeRecord?.id || resumeRecord?.matchId || "").trim();
+    if (!resumeId) return;
+    let cancelled = false;
+    void History.get(resumeId).then((full: any) => {
+      if (cancelled || !full) return;
+      const recovered = extractCradosResumeState(full, { snapshot: props?.params?.snapshot });
+      if (!recovered || recovered.mode !== "crados") return;
+      historyHydratedRef.current = true;
+      matchIdRef.current = String(full?.id || full?.matchId || resumeId);
+      setState(cloneCradosState(recovered));
+      const recoveredThrow = full?.resume?.currentThrow ?? full?.resume?.livePayload?.currentThrow ?? full?.payload?.currentThrow;
+      setCurrentThrow(Array.isArray(recoveredThrow) ? recoveredThrow.slice(0, 3) : []);
+      const recoveredMultiplier = full?.resume?.multiplier ?? full?.resume?.livePayload?.multiplier ?? full?.payload?.multiplier;
+      setMultiplier(recoveredMultiplier === 2 || recoveredMultiplier === 3 ? recoveredMultiplier : 1);
+      setUndo([]);
+      setNotice("Partie CRADOS reprise depuis l’historique");
+      initialCheckpointRef.current = true;
+    }).catch((error) => console.warn("[CRADOS] history resume failed", error));
+    return () => { cancelled = true; };
+  }, [props?.params?.resumeId, props?.params?.snapshot, resumeRecord]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const flush = () => {
+      if (state.phase === "playing") void saveInProgress(state, currentThrow, multiplier, false);
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [state, currentThrow, multiplier, saveInProgress]);
+
+  const coachHint = React.useMemo(() => buildCradosCoachHint(state, activeSideId, activePlayer?.name), [state.turnIndex, state.legIndex, state.sectors, state.dirt, state.phase, activeSideId, activePlayer?.name, config]);
+
+  React.useEffect(() => {
+    if (!awena || !activePlayer || activeIsBot || state.phase !== "playing") return;
+    const key = `${state.legIndex}:${state.turnIndex}:${activePlayer.id}`;
+    if (coachSpokenKeyRef.current === key || !coachHint.speech) return;
+    coachSpokenKeyRef.current = key;
+    const timer = window.setTimeout(() => { void awena.say?.(coachHint.speech); }, 320);
+    return () => window.clearTimeout(timer);
+  }, [awena, state.legIndex, state.turnIndex, state.phase, activePlayer?.id, activeIsBot, coachHint.speech]);
 
   const commit = React.useCallback((next: CradosState, previous = state) => {
     setUndo((u) => [...u.slice(-39), cloneCradosState(previous)]);
@@ -854,7 +1053,7 @@ export default function CradosPlay(props: any) {
     const next = createCradosState(players, config);
     setState(next);
     initialCheckpointRef.current = true;
-    void History.upsert(buildRecord(next, "in_progress", [], 1)).catch(() => {});
+    void saveInProgress(next, [], 1, true);
   }
 
   React.useEffect(() => {
@@ -879,6 +1078,9 @@ export default function CradosPlay(props: any) {
         stealMode: config.rules?.stealMode || "block",
         bullWash: config.rules?.bullWash !== false,
         leg: Number(state.legIndex || 0) + 1,
+        round: currentCradosRound(state),
+        visitNumber: Number(state.turnIndex || 0) + 1,
+        coachTarget: coachHint.visual,
         seriesWins: Number(config.seriesWins || 1),
         sectorsClaimed: Number(stats.sectorsClaimed || 0),
         sectorsStolen: Number(stats.sectorsStolen || 0),
@@ -888,7 +1090,7 @@ export default function CradosPlay(props: any) {
         cradosPageHint: "active-play",
       },
     });
-  }, [awena, state.phase, state.legIndex, state.dirt, state.statsByPlayer, activePlayer?.id, activePlayer?.name, activeSideId, activeSide?.name, teamMode, config]);
+  }, [awena, state.phase, state.legIndex, state.turnIndex, state.dirt, state.statsByPlayer, activePlayer?.id, activePlayer?.name, activeSideId, activeSide?.name, teamMode, config, coachHint.visual]);
 
   if (state.phase === "finished") {
     return <div className="crados-play crados-play--finished" data-mss-native-play-layout="1">
@@ -904,7 +1106,7 @@ export default function CradosPlay(props: any) {
       <div className="crados-play__stage">
         <div className="crados-play__left">
           <CradosSummaryStrip state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} config={config} teamMode={teamMode} />
-          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} />
+          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} coachHint={coachHint} />
           <KpiStatsStrip state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} config={config} teamMode={teamMode} color={activeColor} onClick={() => setStatsOpen(true)} />
           <div className="crados-play__quick-row">
             <button type="button" className="crados-stats-button crados-ranking-button" onClick={() => setRankingOpen(true)} aria-label="Ouvrir le classement"><RankingIcon size={23} /></button>

@@ -5840,6 +5840,20 @@ export function Settings({ go, params }: Props) {
               onClick={() => setTab("lang")}
             />
             <SettingsMenuCard
+              title={L("PAGE PUBLIQUE", "PUBLIC PAGE", "PÁGINA PÚBLICA")}
+              subtitle={L("Ouvrir la vitrine publique MULTISPORTS SCORING telle qu’elle est présentée aux visiteurs.", "Open the public MULTISPORTS SCORING showcase as visitors see it.", "Abrir la página pública de MULTISPORTS SCORING tal como la ven los visitantes.")}
+              theme={theme}
+              rightHint={L("APERÇU", "PREVIEW", "VISTA PREVIA")}
+              onClick={() => {
+                try {
+                  window.location.hash = "#/welcome";
+                  window.dispatchEvent(new HashChangeEvent("hashchange"));
+                } catch {
+                  window.location.href = `${window.location.origin}${window.location.pathname}#/welcome`;
+                }
+              }}
+            />
+            <SettingsMenuCard
               title={L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")}
               subtitle={L("Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page.", "NAS backup, synchronization, restore and valid-block scan on one page.", "Copia NAS, sincronización, restauración y escaneo de bloques válidos en una sola página.")}
               theme={theme}

@@ -3380,6 +3380,7 @@ useEffect(() => {
 
           const h = String(window.location.hash || "");
           const isAuthFlow =
+           h.startsWith("#/welcome") ||
            h.startsWith("#/auth/callback") ||
            h.startsWith("#/auth/reset") ||
            h.startsWith("#/auth/forgot") ||

@@ -2199,3 +2199,42 @@
 .crados-end__details th:first-child,.crados-end__details td:first-child { text-align:left; }
 .crados-end__details td { color:#e5ebe6; text-align:right; padding:7px 6px; border-bottom:1px solid rgba(255,255,255,.035); font-weight:850; }
 .crados-end__details td:first-child span { font-weight:1000; white-space:nowrap; }
+
+/* ===== V97 CRADOS gameplay fixes: turn + Awena coach + resume ===== */
+.crados-active__coach {
+  margin-top: 4px;
+  max-width: min(290px, 92%);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(0,0,0,.24);
+  font-size: 6.4px;
+  line-height: 1.15;
+  font-weight: 1000;
+  letter-spacing: .28px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: .92;
+}
+
+@media (orientation: portrait) {
+  .crados-active__coach {
+    font-size: 6px;
+    max-width: min(220px, 92%);
+  }
+  .crados-active__leg {
+    font-size: 5.6px;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 600px) {
+  .crados-active__coach {
+    font-size: 5.8px;
+    max-width: min(250px, 90%);
+  }
+}
+
+.crados-active__turn { margin-top:3px; padding:2px 7px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(0,0,0,.22); font-size:6px; font-weight:1100; letter-spacing:.35px; line-height:1.2; }
+@media (orientation: portrait) { .crados-active__turn { font-size:5.6px; } }
