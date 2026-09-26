@@ -4109,7 +4109,7 @@ const ENTRIES: SourceEntry[] = [
       "Jauge de crasse 10, 15 ou 20",
       "2, 3 ou 4 couches pour posséder un secteur",
       "Secteur vierge : Prise en main ou Course au secteur",
-      "Bull douche : BULL -1 crasse, DBULL -3 crasses",
+      "Douche : DOUBLE -2 crasses, BULL -1 crasse, DBULL -3 crasses ; MISS +2 crasses",
       "Bull propre contagieux : à 0 crasse, BULL +1 et DBULL +3 aux autres camps",
       "Secteur adverse : Blocage ou Vol",
       "Format de match et nombre de manches à remporter",

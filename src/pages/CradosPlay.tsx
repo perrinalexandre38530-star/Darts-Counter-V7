@@ -140,6 +140,73 @@ function sectorTouchesBySide(state: any, sideId: string, sectorKey: any) {
   return (state?.visits || []).reduce((sum: number, visit: any) => String(visit?.sideId || "") === String(sideId) ? sum + scoreSectorDartsForVisit(visit, sectorKey) : sum, 0);
 }
 
+function playCradosStateTransitionSfx(previous: CradosState, next: CradosState) {
+  try {
+    const sideIds = Array.from(new Set([
+      ...Object.keys(previous?.dirt || {}),
+      ...Object.keys(next?.dirt || {}),
+      ...Object.keys(previous?.eliminated || {}),
+      ...Object.keys(next?.eliminated || {}),
+    ]));
+    const newlyEliminated = sideIds.filter((sideId) => !previous?.eliminated?.[sideId] && Boolean(next?.eliminated?.[sideId]));
+    const wonLeg = Object.keys(next?.legWins || {}).some((sideId) => Number(next?.legWins?.[sideId] || 0) > Number(previous?.legWins?.[sideId] || 0));
+
+    // Les sons de fin sont prioritaires pour éviter un empilement sonore illisible.
+    if (newlyEliminated.length) {
+      playCradosSfx("eliminated");
+      if (next.phase === "finished" && previous.phase !== "finished") {
+        window.setTimeout(() => { try { playCradosSfx("victory"); } catch {} }, 4100);
+      } else if (wonLeg) {
+        window.setTimeout(() => { try { playCradosSfx("legWin"); } catch {} }, 4100);
+      }
+      return;
+    }
+    if (next.phase === "finished" && previous.phase !== "finished") {
+      playCradosSfx("victory");
+      return;
+    }
+    if (wonLeg) {
+      playCradosSfx("legWin");
+      return;
+    }
+
+    const previousPlayer = previous?.players?.[previous?.activePlayerIndex];
+    const activeSideId = previousPlayer ? cradosSideIdForPlayer(previous, previousPlayer.id) : "";
+    const beforeDirt = Number(previous?.dirt?.[activeSideId] || 0);
+    const afterDirt = Number(next?.dirt?.[activeSideId] || 0);
+    const limit = Math.max(1, Number(next?.config?.rules?.dirtLimit || 10));
+    const warningAt = Math.max(1, Math.ceil(limit * 0.75));
+    const crossedWarning = afterDirt > beforeDirt && beforeDirt < warningAt && afterDirt >= warningAt && afterDirt < limit;
+
+    let zoneStolen = false;
+    let zoneClaimed = false;
+    for (let n = 1; n <= 20; n += 1) {
+      const previousOwner = String(previous?.sectors?.[n]?.ownerId || "");
+      const nextOwner = String(next?.sectors?.[n]?.ownerId || "");
+      if (previousOwner && nextOwner && previousOwner !== nextOwner) zoneStolen = true;
+      else if (!previousOwner && nextOwner) zoneClaimed = true;
+    }
+    if (zoneStolen) {
+      playCradosSfx("zoneStolen");
+      if (crossedWarning) window.setTimeout(() => { try { playCradosSfx("warning"); } catch {} }, 850);
+      return;
+    }
+    if (zoneClaimed) {
+      playCradosSfx("zoneClaimed");
+      if (crossedWarning) window.setTimeout(() => { try { playCradosSfx("warning"); } catch {} }, 2200);
+      return;
+    }
+
+    if (afterDirt > beforeDirt) {
+      if (crossedWarning) playCradosSfx("warning");
+      else playCradosSfx("dirtyPenalty");
+      return;
+    }
+
+    if (next.phase === "playing" && Number(next.turnIndex) !== Number(previous.turnIndex)) playCradosSfx("turn");
+  } catch {}
+}
+
 function CradosAwenaButton() {
   const awena = useAwenaOptional();
   return <button
@@ -361,7 +428,7 @@ function TacticalBoardModal({ state, sides, sideById, colorBySideId, profileBySi
         })}
       </div>
       <div className="crados-board-modal__body"><CradosTacticalBoard state={state} sides={sides} sideById={sideById} colorBySideId={colorBySideId} profileBySideId={profileBySideId} activeSideId={activeSideId} config={config} selectedSector={selectedSector} onSelect={onSelect} filterSideId={filterSideId} /></div>
-      <div className="crados-board-modal__legend"><span><i className="is-free" />Libre</span><span><i className="is-progress" />Contamination en cours</span><span><i className="is-owned" />Zone possédée</span><span>BULL = douche {config.rules.bullWash ? "−1 · DBULL −3" : "désactivée"}</span></div>
+      <div className="crados-board-modal__legend"><span><i className="is-free" />Libre</span><span><i className="is-progress" />Contamination en cours</span><span><i className="is-owned" />Zone possédée</span><span>DOUCHE = {config.rules.bullWash ? "DOUBLE −2 · BULL −1 · DBULL −3" : "désactivée"} · MISS +2 crasses</span></div>
     </div>
   </div>;
   return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
@@ -1051,11 +1118,7 @@ export default function CradosPlay(props: any) {
     if (next.phase === "finished" && next.winnerId) message = `🏆 ${cradosSideName(next, next.winnerId) || "Victoire"} est ${isCradosTeamMode(next) ? "la dernière équipe encore propre" : "le dernier encore propre"}`;
     else if (next.legIndex > previous.legIndex && next.lastLegWinnerId) message = `🎯 ${cradosSideName(next, next.lastLegWinnerId) || "Un joueur"} remporte la manche`;
 
-    if (next.phase === "finished" && previous.phase !== "finished") {
-      try { playCradosSfx("victory"); } catch {}
-    } else if (next.phase === "playing" && Number(next.turnIndex) !== Number(previous.turnIndex)) {
-      try { playCradosSfx("turn"); } catch {}
-    }
+    playCradosStateTransitionSfx(previous, next);
     setNotice(message);
     persist(next);
   }, [state, persist]);

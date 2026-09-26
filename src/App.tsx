@@ -2309,6 +2309,16 @@ useEffect(() => {
   const [tab, setTab] = React.useState<Tab>(() => {
     if (isThemePreviewFrame) return themePreviewConfig.tab;
     if (samsungTvNativeBoot?.tab) return String(samsungTvNativeBoot.tab) as Tab;
+
+    // SITE WEB PUBLIC : /landing est la landing officielle.
+    // La racine / reste l'entrée normale de l'application.
+    // Les routes hash (#/gameSelect, auth, online, etc.) continuent d'ouvrir l'application.
+    // On exclut les builds natifs Capacitor afin de conserver le démarrage direct de l'app Android.
+    const h = String(window.location.hash || "");
+    const path = String(window.location.pathname || "/").replace(/\/+$/, "") || "/";
+    const isNativeCapacitor = Boolean((window as any)?.Capacitor?.isNativePlatform?.());
+    if (!isNativeCapacitor && path === "/landing" && !h) return "public_landing";
+
     return "gameSelect";
   });
   const themePageScope = getThemePageScope(tab);
@@ -2655,7 +2665,10 @@ useEffect(() => {
     if (isSamsungTvNativeApp) return false;
     if (isThemePreviewFrame) return false;
     const h = String(window.location.hash || "");
+    const isNativeCapacitor = Boolean((window as any)?.Capacitor?.isNativePlatform?.());
+    const isPublicWebRoot = !isNativeCapacitor && !h;
     const isAuthFlow =
+    isPublicWebRoot ||
     h.startsWith("#/welcome") ||
     h.startsWith("#/auth/callback") ||
     h.startsWith("#/auth/reset") ||

@@ -794,7 +794,7 @@ export default function NewDartsModeConfig(props: Props) {
     <div style={{ ...panel, padding: 7, display: "grid", gap: 5 }}>
       <OptionRow compact label="Jauge de crasse"><OptionSelect compact value={cradosDirtLimit} options={[10,15,20]} onChange={(v: any) => setCradosDirtLimit(Number(v) === 15 ? 15 : Number(v) === 20 ? 20 : 10)} /></OptionRow>
       <OptionRow compact label="Couches / secteur"><OptionSelect compact value={cradosLayersToOwn} options={[{ value: 2, label: "2 — rapide" }, { value: 3, label: "3 — classique" }, { value: 4, label: "4 — endurance" }]} onChange={(v: any) => setCradosLayersToOwn(Number(v) === 2 ? 2 : Number(v) === 4 ? 4 : 3)} /></OptionRow>
-      <OptionRow compact label="Bull douche"><OptionToggle compact value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
+      <OptionRow compact label="Douche"><OptionToggle compact value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
       <OptionRow compact label="Bull propre contagieux"><OptionToggle compact value={cradosCleanBullSplash} onChange={setCradosCleanBullSplash} /></OptionRow>
       <OptionRow compact label="Jauge pleine = fin de manche"><OptionToggle compact value={cradosEndOnFirstMaxDirt} onChange={setCradosEndOnFirstMaxDirt} /></OptionRow>
       <OptionRow compact label="Secteur vierge"><OptionSelect compact value={cradosSectorRaceMode} options={[{ value: "claim", label: "Prise en main — le dernier efface l’autre" }, { value: "race", label: "Course — toutes les touches comptent" }]} onChange={setCradosSectorRaceMode} /></OptionRow>
@@ -807,7 +807,7 @@ export default function NewDartsModeConfig(props: Props) {
     <div style={{ ...panel, padding: 7, display: "grid", gap: 5 }}>
       <OptionRow compact label="Jauge de crasse" hint={cradosEndOnFirstMaxDirt ? "À 100 %, la manche s’arrête et le joueur / camp le plus propre la remporte." : "À 100 %, le joueur ou l’équipe est éliminé."}><OptionSelect compact value={cradosDirtLimit} options={[10,15,20]} onChange={(v: any) => setCradosDirtLimit(Number(v) === 15 ? 15 : Number(v) === 20 ? 20 : 10)} /></OptionRow>
       <OptionRow compact label="Jauge pleine = fin de manche" hint="ON conseillé : dès qu’une jauge atteint 100 %, la manche se termine."><OptionToggle compact value={cradosEndOnFirstMaxDirt} onChange={setCradosEndOnFirstMaxDirt} /></OptionRow>
-      <OptionRow compact label="Bull douche" hint="BULL −1 · DBULL −3"><OptionToggle compact value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
+      <OptionRow compact label="Douche" hint="DOUBLE −2 · BULL −1 · DBULL −3 · MISS +2"><OptionToggle compact value={cradosBullWash} onChange={setCradosBullWash} /></OptionRow>
       <OptionRow compact label="Bull propre contagieux" hint="Si tu es totalement propre, un BULL / DBULL salit tous les autres."><OptionToggle compact value={cradosCleanBullSplash} onChange={setCradosCleanBullSplash} /></OptionRow>
     </div>
   </section>;

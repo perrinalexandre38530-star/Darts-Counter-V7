@@ -403,6 +403,8 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     st.darts += 1;
     if (!d || d.bed === "MISS") {
       st.misses += 1;
+      addDirt(sideId, 2, events, `MISS : +__VALUE__ CRASSE${isCradosTeamMode(s) ? ` à ${sideName}` : ""}`);
+      if (s.eliminated[sideId]) break;
       continue;
     }
 
@@ -441,8 +443,19 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     const pow = power(d);
     visitImpact += pow;
     if (d.bed === "T") st.triples += 1;
-    else if (d.bed === "D") st.doubles += 1;
-    else st.singles += 1;
+    else if (d.bed === "D") {
+      st.doubles += 1;
+      // CRADOS : toucher la couronne DOUBLE agit aussi comme une douche −2
+      // quand l'option Douche est active. L'effet normal du secteur est conservé.
+      if (s.config.rules.bullWash) {
+        const old = Number(s.dirt[sideId] || 0);
+        const next = Math.max(0, old - 2);
+        const done = old - next;
+        s.dirt[sideId] = next;
+        st.dirtWashed += done;
+        events.push(`DOUBLE DOUCHE : −${done} crasse${isCradosTeamMode(s) ? ` pour ${sideName}` : ""}`);
+      }
+    } else st.singles += 1;
     const sec = s.sectors[n] || (s.sectors[n] = { ownerId: null, claimantId: null, layers: 0, pressureBySide: {} });
     sec.pressureBySide = sec.pressureBySide || {};
 

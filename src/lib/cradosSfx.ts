@@ -1,13 +1,28 @@
 // ============================================
 // CRADOS — identité sonore dédiée
 // - réutilise dart-hit du X01 (aucune duplication d'asset)
-// - BULL / DBULL / MISS / changement de joueur / intro / victoire dédiés
+// - sons dédiés pour les mécaniques CRADOS
 // - respecte les préférences audio globales via le gestionnaire SFX commun
 // ============================================
 
 import { playSfx, unlockAudio } from "./sfx";
 
-export type CradosSfxKey = "start" | "hit" | "bull" | "dbull" | "miss" | "turn" | "victory";
+export type CradosSfxKey =
+  | "start"
+  | "hit"
+  | "bull"
+  | "dbull"
+  | "double"
+  | "triple"
+  | "miss"
+  | "turn"
+  | "victory"
+  | "eliminated"
+  | "warning"
+  | "legWin"
+  | "zoneClaimed"
+  | "zoneStolen"
+  | "dirtyPenalty";
 
 const CRADOS_SFX_URL: Record<CradosSfxKey, string> = {
   start: "/sounds/crados/crados-start.mp3",
@@ -16,9 +31,17 @@ const CRADOS_SFX_URL: Record<CradosSfxKey, string> = {
   bull: "/sounds/crados/crados-bull.mp3",
   // splendide.mp3 compressé/renommé pour CRADOS : réservé au DOUBLE BULL.
   dbull: "/sounds/crados/crados-dbull.mp3",
+  double: "/sounds/crados/crados-double.mp3",
+  triple: "/sounds/crados/crados-triple.mp3",
   miss: "/sounds/crados/crados-miss.mp3",
   turn: "/sounds/crados/crados-turn.mp3",
   victory: "/sounds/crados/crados-victory.mp3",
+  eliminated: "/sounds/crados/crados-eliminated.mp3",
+  warning: "/sounds/crados/crados-warning.mp3",
+  legWin: "/sounds/crados/crados-leg-win.mp3",
+  zoneClaimed: "/sounds/crados/crados-zone-claimed.mp3",
+  zoneStolen: "/sounds/crados/crados-zone-stolen.mp3",
+  dirtyPenalty: "/sounds/crados/crados-dirty-penalty.mp3",
 };
 
 const DEFAULT_VOLUME: Record<CradosSfxKey, number> = {
@@ -26,9 +49,17 @@ const DEFAULT_VOLUME: Record<CradosSfxKey, number> = {
   hit: 0.70,
   bull: 0.82,
   dbull: 0.88,
+  double: 0.78,
+  triple: 0.82,
   miss: 0.78,
   turn: 0.56,
   victory: 0.62,
+  eliminated: 0.78,
+  warning: 0.72,
+  legWin: 0.70,
+  zoneClaimed: 0.72,
+  zoneStolen: 0.76,
+  dirtyPenalty: 0.72,
 };
 
 export function unlockCradosAudio() {
@@ -50,6 +81,8 @@ export function cradosSfxKeyForDart(dart: any): CradosSfxKey {
   if (bed === "MISS" || rawValue === 0) return "miss";
   if (bed === "IB" || bed === "DBULL" || rawValue === 50 || (rawValue === 25 && rawMult === 2)) return "dbull";
   if (bed === "OB" || bed === "BULL" || rawValue === 25) return "bull";
+  if (bed === "T" || rawMult === 3) return "triple";
+  if (bed === "D" || rawMult === 2) return "double";
   return "hit";
 }
 

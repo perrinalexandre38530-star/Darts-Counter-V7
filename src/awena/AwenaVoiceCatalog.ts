@@ -87,7 +87,7 @@ export const AWENA_VOICE_CATALOG = {
     ownZone: "Cette zone t'appartient déjà. Tu peux viser ailleurs sans prendre de crasse ici.",
     blockedZone: "En Blocage, une zone adverse te donne une, deux ou trois crasses selon Simple, Double ou Triple.",
     stealZone: "En Vol, chaque contact adverse ajoute une crasse, mais retire une, deux ou trois couches et peut retourner le secteur.",
-    wash: "Si la Douche est active, Bull retire une crasse et Double Bull en retire trois.",
+    wash: "Si la Douche est active, Double retire deux crasses, Bull en retire une et Double Bull en retire trois. Un Miss ajoute deux crasses.",
     danger: "Ta jauge de crasse devient dangereuse. Évite les zones adverses ou cherche un Bull si la Douche est active.",
     radar: "Touche le mini-radar pour ouvrir la carte tactique, puis filtre les zones libres ou celles d'un joueur ou d'une équipe.",
     percent: "Le pourcentage indique le remplissage de ta jauge par rapport à la limite configurée.",
