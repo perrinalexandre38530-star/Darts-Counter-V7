@@ -10168,6 +10168,10 @@ return (
                     const bulls = sum("bulls");
                     const dbulls = sum("dbulls");
                     const misses = sum("misses");
+                    // StatsHub mode detail: `hits` was referenced below (CALL THREE / STEEPLECHASE / LOOPER)
+                    // without ever being declared in this render scope. Build a resilient aggregate from the
+                    // per-mode counters already normalised above, with a fallback to S/D/T/Bull/DBull.
+                    const hits = validHits || sum("hits") || sum("hitCount") || (singles + doubles + triples + bulls + dbulls);
                     const marks = sum("marks") || sum("totalMarks") || sum("marksTotal");
                     const closes = sum("closed") || sum("closes") || sum("closedNumbers");
                     const scoringHits = sum("scoringHits");
