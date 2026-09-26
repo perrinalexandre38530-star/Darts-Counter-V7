@@ -45,19 +45,20 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   return <main className="mssLanding">
     <header className="mssNav">
       <button className="mssBrand" onClick={() => window.scrollTo({top:0,behavior:"smooth"})} aria-label="MULTISPORTS SCORING accueil"><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
-      <nav><a href="#disciplines">22 disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#community">Communauté</a></nav>
+      <nav><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#community">Communauté</a></nav>
       <button className="mssOpen" onClick={onOpenApp}>OUVRIR L’APPLICATION</button>
     </header>
 
     <section className="mssHero">
       <div className="mssHeroCopy">
-        <div className="mssPill">✦ GRATUIT • 22 DISCIPLINES • UN SEUL COMPTE</div>
-        <h1>VOTRE SPORT.<br/><em>VOS SCORES.</em><br/>VOS PERFORMANCES.</h1>
-        <p className="mssLead">MULTISPORTS SCORING centralise vos parties, entraînements, équipes et statistiques dans une seule application. Du jeu entre amis au suivi de performance, gardez tout votre univers sportif au même endroit.</p>
+        <div className="mssPill">✦ APPLICATION GRATUITE • MULTISPORTS</div>
+        <h1>UNE APPLICATION.<br/><em>TOUS VOS SPORTS.</em></h1>
+        <p className="mssLead">Jouez, scorez, entraînez-vous et suivez vos performances dans un seul univers. MULTISPORTS SCORING réunit le jeu local et online, les statistiques, les équipes, les bots et les outils pour clubs.</p>
         <div className="mssCtas"><button onClick={onOpenApp}>COMMENCER GRATUITEMENT</button><a href="https://play.google.com/store/apps/details?id=com.multisportsscoring.app" target="_blank" rel="noreferrer">GOOGLE PLAY</a></div>
-        <div className="mssStoreLine"><span>✓ Application gratuite</span><span>✓ Android</span><span>✓ Web</span><span>✓ Microsoft Store</span></div>
+        <div className="mssStoreLine"><span>✓ Gratuit</span><span>✓ Google Play</span><span>✓ Microsoft Store</span></div>
       </div>
       <div className="mssHeroVisual" aria-label="Les disciplines MULTISPORTS SCORING">
+        <div className="mssVisualKicker">UN ÉCOSYSTÈME • 22 DISCIPLINES</div>
         <div className="mssGlow"/>
         <div className="mssOrbit mssOrbitOuter">{sports.slice(0,12).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n}/></div>)}</div>
         <div className="mssOrbit mssOrbitInner">{sports.slice(12,22).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n}/></div>)}</div>
