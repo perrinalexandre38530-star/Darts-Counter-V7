@@ -13,6 +13,7 @@ import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { cloneCradosState, createCradosState, normalizeCradosConfig, pickCradosBotDarts, playCradosVisit, cradosSideIdForPlayer, cradosSideName, isCradosTeamMode, type CradosState } from "../lib/gameEngines/cradosEngine";
 import { cradosBotLevelForProfile } from "../lib/dartsCradosBots";
+import { playCradosDartSequence, playCradosDartSfx, playCradosSfx, unlockCradosAudio } from "../lib/cradosSfx";
 import {
   Meter,
   ModeEndPanel,
@@ -816,6 +817,7 @@ export default function CradosPlay(props: any) {
   const initialCheckpointRef = React.useRef(false);
   const historyHydratedRef = React.useRef(Boolean(restored));
   const coachSpokenKeyRef = React.useRef("");
+  const introPlayedRef = React.useRef(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `crados-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
   const teamMode = isCradosTeamMode(config);
@@ -980,6 +982,54 @@ export default function CradosPlay(props: any) {
     };
   }, [state, currentThrow, multiplier, saveInProgress]);
 
+  const setCurrentThrowWithSfx = React.useCallback((update: any) => {
+    setCurrentThrow((previous: UIDart[]) => {
+      const resolved = typeof update === "function" ? update(previous) : update;
+      const next = Array.isArray(resolved) ? resolved.slice(0, 3) : previous;
+      if (next.length > previous.length) {
+        const added = next.slice(previous.length);
+        added.forEach((dart: UIDart, index: number) => {
+          if (index === 0) playCradosDartSfx(dart);
+          else window.setTimeout(() => playCradosDartSfx(dart), index * 140);
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  // Même principe que Killer : le jingle démarre dès que l'autoplay est autorisé.
+  // Une reprise depuis l'historique ne relance pas le jingle de début.
+  React.useEffect(() => {
+    if (restored?.mode === "crados" || resumeRecord) return;
+
+    const startIntro = () => {
+      try { void unlockCradosAudio(); } catch {}
+      if (introPlayedRef.current) return;
+      introPlayedRef.current = true;
+      try { playCradosSfx("start"); } catch {}
+    };
+
+    try {
+      const activation: any = (navigator as any)?.userActivation;
+      if (activation?.hasBeenActive) {
+        startIntro();
+        return;
+      }
+    } catch {}
+
+    const onFirstGesture = () => startIntro();
+    window.addEventListener("pointerdown", onFirstGesture, { once: true, capture: true } as any);
+    window.addEventListener("touchstart", onFirstGesture, { once: true, capture: true } as any);
+    window.addEventListener("mousedown", onFirstGesture, { once: true, capture: true } as any);
+    window.addEventListener("keydown", onFirstGesture, { once: true, capture: true } as any);
+    return () => {
+      window.removeEventListener("pointerdown", onFirstGesture, true);
+      window.removeEventListener("touchstart", onFirstGesture, true);
+      window.removeEventListener("mousedown", onFirstGesture, true);
+      window.removeEventListener("keydown", onFirstGesture, true);
+    };
+  }, []);
+
   const coachHint = React.useMemo(() => buildCradosCoachHint(state, activeSideId, activePlayer?.name), [state.turnIndex, state.legIndex, state.sectors, state.dirt, state.phase, activeSideId, activePlayer?.name, config]);
 
   React.useEffect(() => {
@@ -1000,6 +1050,12 @@ export default function CradosPlay(props: any) {
     let message = ev.length ? ev.join(" · ") : "";
     if (next.phase === "finished" && next.winnerId) message = `🏆 ${cradosSideName(next, next.winnerId) || "Victoire"} est ${isCradosTeamMode(next) ? "la dernière équipe encore propre" : "le dernier encore propre"}`;
     else if (next.legIndex > previous.legIndex && next.lastLegWinnerId) message = `🎯 ${cradosSideName(next, next.lastLegWinnerId) || "Un joueur"} remporte la manche`;
+
+    if (next.phase === "finished" && previous.phase !== "finished") {
+      try { playCradosSfx("victory"); } catch {}
+    } else if (next.phase === "playing" && Number(next.turnIndex) !== Number(previous.turnIndex)) {
+      try { playCradosSfx("turn"); } catch {}
+    }
     setNotice(message);
     persist(next);
   }, [state, persist]);
@@ -1033,8 +1089,16 @@ export default function CradosPlay(props: any) {
     if (!activeIsBot || state.phase === "finished" || botBusy.current) return;
     botBusy.current = true;
     const t = window.setTimeout(() => {
-      try { commit(playCradosVisit(state, pickCradosBotDarts(state, activeBotLevel || config.botLevel))); }
-      finally { botBusy.current = false; }
+      try {
+        const darts = pickCradosBotDarts(state, activeBotLevel || config.botLevel);
+        const audioSpan = playCradosDartSequence(darts);
+        window.setTimeout(() => {
+          try { commit(playCradosVisit(state, darts)); }
+          finally { botBusy.current = false; }
+        }, audioSpan + 120);
+      } catch {
+        botBusy.current = false;
+      }
     }, 680);
     return () => window.clearTimeout(t);
   }, [state, activeIsBot, activePlayer?.id, activeBotLevel]);
@@ -1050,6 +1114,8 @@ export default function CradosPlay(props: any) {
     setStatsOpen(false);
     setLogOpen(false);
     setRankingOpen(false);
+    introPlayedRef.current = true;
+    try { void unlockCradosAudio(); playCradosSfx("start"); } catch {}
     const next = createCradosState(players, config);
     setState(next);
     initialCheckpointRef.current = true;
@@ -1117,7 +1183,7 @@ export default function CradosPlay(props: any) {
         </div>
 
         <div className="crados-play__input">
-          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleKeypadCancel} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER" accent={activeColor} fitMinScale={0.16} /> : <div className="crados-play__bot-turn" style={{ borderColor: `${activeColor}55`, boxShadow: `inset 0 0 34px ${activeColor}0d` }}><ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor={activeColor} /><div><b style={{ color: activeColor }}>{teamMode ? `${activeSide?.name || "Équipe"} · ${activePlayer?.name || "BOT"}` : activePlayer?.name}</b><span>répand sa crasse sur la cible…</span></div><i>🤢</i></div>}
+          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleKeypadCancel} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER" accent={activeColor} fitMinScale={0.16} /> : <div className="crados-play__bot-turn" style={{ borderColor: `${activeColor}55`, boxShadow: `inset 0 0 34px ${activeColor}0d` }}><ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor={activeColor} /><div><b style={{ color: activeColor }}>{teamMode ? `${activeSide?.name || "Équipe"} · ${activePlayer?.name || "BOT"}` : activePlayer?.name}</b><span>répand sa crasse sur la cible…</span></div><i>🤢</i></div>}
         </div>
       </div>
     </main>

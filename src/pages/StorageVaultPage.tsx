@@ -1791,6 +1791,22 @@ function VaultGlyph({ name, size = 24 }: { name: VaultGlyphName; size?: number }
   }
 }
 
+
+function PersonalCloudBrandLogo({ id, size = 27 }: { id: StorageDestinationId; size?: number }) {
+  if (id === "google_drive") return <svg width={size} height={size} viewBox="0 0 48 48" aria-label="Google Drive" role="img"><path fill="#0F9D58" d="M17.2 5.5h13.5l13.2 22.9H30.4z"/><path fill="#F4B400" d="M17.2 5.5 4 28.4l6.8 11.8L24 17.3z"/><path fill="#4285F4" d="M10.8 40.2h26.4L44 28.4H17.6z"/></svg>;
+  if (id === "onedrive") return <svg width={size} height={size} viewBox="0 0 48 48" aria-label="OneDrive" role="img"><path fill="#0364B8" d="M19.2 15.1a12 12 0 0 1 20.2 7.1 8.8 8.8 0 0 1 1.4 17.5H13.1A10.1 10.1 0 0 1 11.8 19.6a12 12 0 0 1 7.4-4.5z"/><path fill="#28A8EA" d="M7.3 39.7A8.3 8.3 0 0 1 9.4 23.4a11.7 11.7 0 0 1 21.3 5.3 7.5 7.5 0 0 1 6.5 11z"/></svg>;
+  if (id === "dropbox") return <svg width={size} height={size} viewBox="0 0 48 48" aria-label="Dropbox" role="img"><g fill="#0061FF"><path d="m14.2 7.5 9.8 6.1-9.8 6.2-9.8-6.2zM33.8 7.5l9.8 6.1-9.8 6.2-9.8-6.2zM14.2 22.2l9.8 6.2-9.8 6.1-9.8-6.1zM33.8 22.2l9.8 6.2-9.8 6.1-9.8-6.1zM24 30.8l9.8 6.1L24 43l-9.8-6.1z"/></g></svg>;
+  return <VaultGlyph name={id === "cloud_r2" ? "cloud" : id === "founder_nas" ? "nas" : "cloud"} size={size}/>;
+}
+
+function StorageDestinationVisual({ id, size = 27 }: { id: StorageDestinationId; size?: number }) {
+  return isPersonalCloudProvider(id)
+    ? <PersonalCloudBrandLogo id={id} size={size}/>
+    : <VaultGlyph name={destinationIconNameGlobal(id)} size={size}/>;
+}
+
+const destinationIconNameGlobal = (id: StorageDestinationId): VaultGlyphName => id === "app_local" ? "local" : id === "device_file" ? "file" : id === "external_sd_manual" ? "sd" : id === "personal_cloud_manual" ? "folder" : (id === "cloud_r2" || isPersonalCloudProvider(id)) ? "cloud" : "nas";
+
 const STORAGE_AWENA_AVATAR = "/awena/awena-avatar.webp";
 
 function StorageAwenaDot({ title, size = 36 }: { title: string; size?: number }) {
@@ -3808,7 +3824,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     </div>
   );
 
-  const destinationIconName = (id: StorageDestinationId): VaultGlyphName => id === "app_local" ? "local" : id === "device_file" ? "file" : id === "external_sd_manual" ? "sd" : id === "personal_cloud_manual" ? "folder" : (id === "cloud_r2" || isPersonalCloudProvider(id)) ? "cloud" : "nas";
+  const destinationIconName = destinationIconNameGlobal;
 
   return (
     <div style={{ ...pageStyle, paddingTop: 8, ...themeVars }}>
@@ -3925,7 +3941,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   return (
                     <div key={destination.id} style={{ position: "relative", minWidth: 0 }}>
                       <button type="button" disabled={disabled} onClick={() => void selectStorageDestination(destination.id)} style={{ width: "100%", minHeight: 66, padding: "8px 36px 7px 8px", borderRadius: 16, border: active ? `1px solid ${gold}` : "1px solid rgba(148,163,184,.24)", background: active ? accentSoftBg : "rgba(15,23,42,.72)", color: active ? gold : "#e5e7eb", boxShadow: active ? `0 0 17px ${accentGlow}` : "none", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .48 : 1, display: "grid", gridTemplateColumns: "29px minmax(0,1fr)", alignItems: "center", gap: 8, textAlign: "left" }}>
-                        <span style={{ color: active ? gold : neon, lineHeight: 0 }}><VaultGlyph name={destinationIconName(destination.id)} size={24}/></span>
+                        <span style={{ color: active ? gold : neon, lineHeight: 0 }}><StorageDestinationVisual id={destination.id} size={26}/></span>
                         <span><b style={{ display: "block", fontSize: 11.5, lineHeight: 1.15 }}>{destination.shortLabel}</b><small style={{ display: "block", color: active ? green : muted, fontSize: 9.5, marginTop: 4 }}>{active ? "ACTIF" : accountRequired && !hasConnectedAccount ? "CONNEXION" : "SÉLECTIONNER"}</small></span>
                       </button>
                       <div style={{ position: "absolute", top: 8, right: 7 }}><MiniInfoButton title={destination.shortLabel} color={active ? gold : neon} content={destinationHelp(destination)}/></div>
@@ -3937,7 +3953,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
             <div style={{ ...panel, padding: 12, borderColor: accentSoftBorder }}>
               <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, border: `1px solid ${gold}`, color: gold, display: "grid", placeItems: "center", background: accentSoftBg }}><VaultGlyph name={destinationIconName(selectedDestination)} size={27}/></div>
+                <div style={{ width: 44, height: 44, borderRadius: 14, border: `1px solid ${gold}`, color: gold, display: "grid", placeItems: "center", background: accentSoftBg }}><StorageDestinationVisual id={selectedDestination} size={29}/></div>
                 <div style={{ minWidth: 0 }}><div style={{ color: muted, fontSize: 9.5, fontWeight: 900 }}>DESTINATION ACTIVE</div><strong style={{ color: "#fff", fontSize: 13.5, ...wrapText }}>{activeDestination.label}</strong></div>
                 <MiniInfoButton title={activeDestination.shortLabel} color={green} content={<div style={{ display: "grid", gap: 9 }}><div>La sauvegarde inclut les parties, l’Historique, les profils, les statistiques, les compétitions et les références médias. Les blocs incomplets sont refusés par le garde-fou.</div>{destinationHelp(activeDestination)}</div>}/>
               </div>
