@@ -24,6 +24,12 @@ import football from "../assets/games/logo-foot.webp";
 import rugby from "../assets/games/logo-rugby.webp";
 import badminton from "../assets/games/logo-badminton.webp";
 import padel from "../assets/games/logo-padel.webp";
+import kael from "../assets/avatars/firefighter-bots/kael.webp";
+import aero from "../assets/avatars/firefighter-bots/aero.webp";
+import braze from "../assets/avatars/firefighter-bots/braze.webp";
+import lyna from "../assets/avatars/firefighter-bots/lyna.webp";
+import zeno from "../assets/avatars/killer-bots/zeno.webp";
+import viperine from "../assets/avatars/killer-bots/viperine.webp";
 
 const sports = [
   [darts,"Fléchettes"],[petanque,"Pétanque"],[babyfoot,"Baby-foot"],[pingpong,"Ping-pong"],
@@ -91,6 +97,11 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     </section>
 
     <section className="mssOrg"><div className="mssOrgPanel"><div className="mssEyebrow">CLUBS • ÉQUIPES • ASSOCIATIONS • ENTREPRISES</div><h2>Votre organisation sportive, directement dans l’application.</h2><p>Gérez membres, équipes, calendrier, compétitions et classements dans un espace collectif connecté aux résultats de vos joueurs.</p><div className="mssOrgGrid"><span>👥 <b>Membres</b></span><span>▦ <b>Calendrier</b></span><span>🏆 <b>Compétitions</b></span><span>↗ <b>Classements</b></span></div></div><div className="mssOrgMock"><header><b>MULTISPORTS CLUB</b><span>SAISON 2026</span></header><div className="mssOrgScore"><small>PROCHAIN ÉVÉNEMENT</small><strong>Tournoi interclubs</strong><span>12 OCT. • 18:30</span></div><div className="mssOrgRows"><span><i>01</i> Équipe Alpha <b>42 pts</b></span><span><i>02</i> Les Challengers <b>38 pts</b></span><span><i>03</i> Team Horizon <b>31 pts</b></span></div></div></section>
+
+    <section className="mssOnlineShowcase" id="online">
+      <div className="mssOnlineCopy"><div className="mssEyebrow">ONLINE • BOTS • ADVERSAIRES IA</div><h2>Il y a toujours quelqu’un à affronter.</h2><p>Retrouvez vos amis et la communauté en ligne, ou lancez immédiatement une partie contre les adversaires IA disponibles dans les modes compatibles. Chaque personnage possède son identité et son niveau.</p><div className="mssOnlineFacts"><span><b>LOCAL + ONLINE</b><small>Jouez selon vos envies</small></span><span><b>NIVEAUX VARIÉS</b><small>Des adversaires pour progresser</small></span><span><b>UNIVERS UNIQUES</b><small>Des personnages propres aux modes</small></span></div></div>
+      <div className="mssBotStage" aria-label="Exemples d’adversaires IA MULTISPORTS SCORING"><div className="mssBotHalo"/><article className="mssBotCard mssBotCard1"><img src={kael} alt="Kaël"/><strong>KAËL</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard2"><img src={zeno} alt="Zeno"/><strong>ZENO</strong><span>KILLER</span><i>IA</i></article><article className="mssBotCard mssBotCard3"><img src={aero} alt="Aero"/><strong>AERO</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard4"><img src={viperine} alt="Vipérine"/><strong>VIPÉRINE</strong><span>KILLER</span><i>IA</i></article><article className="mssBotCard mssBotCard5"><img src={braze} alt="Braze"/><strong>BRAZE</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard6"><img src={lyna} alt="Lyna"/><strong>LYNA</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><div className="mssOnlineCenter"><b>ONLINE</b><strong>+</strong><b>BOTS IA</b><span>Jouez sans attendre</span></div></div>
+    </section>
 
     <section className="mssAwenaSection" id="awena"><img src={awena} alt="Awena"/><div><div className="mssEyebrow">L’ASSISTANTE INTÉGRÉE À VOTRE EXPÉRIENCE</div><h2>AWENA est là quand vous en avez besoin.</h2><p>Règles, configuration, conseils et guidage : Awena accompagne vos parties et vos entraînements sans vous faire sortir de MULTISPORTS SCORING.</p><div className="mssAwenaSkills"><span>💬 Explique les règles</span><span>🎯 Guide votre partie</span><span>⚙️ Aide à configurer</span><span>📈 Accompagne l’entraînement</span></div><button onClick={onOpenApp}>DÉCOUVRIR MULTISPORTS SCORING</button></div></section>
 
