@@ -54,7 +54,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   return <main className="mssLanding">
     <header className="mssNav">
       <button className="mssBrand" onClick={() => window.scrollTo({top:0,behavior:"smooth"})} aria-label="MULTISPORTS SCORING accueil"><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
-      <nav><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#community">Communauté</a></nav>
+      <nav><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#download">Télécharger</a></nav>
       <button className="mssOpen" onClick={onOpenApp}>OUVRIR L’APPLICATION</button>
     </header>
 
@@ -103,9 +103,17 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
       <div className="mssBotStage" aria-label="Exemples d’adversaires IA MULTISPORTS SCORING"><div className="mssBotHalo"/><article className="mssBotCard mssBotCard1"><img src={kael} alt="Kaël"/><strong>KAËL</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard2"><img src={greenMachine} alt="Green Machine"/><strong>GREEN MACHINE</strong><span>BOT IA PRO</span><i>PRO</i></article><article className="mssBotCard mssBotCard3"><img src={gegeDeglingue} alt="Gégé Déglingué"/><strong>GÉGÉ DÉGLINGUÉ</strong><span>CRADOS</span><i>IA</i></article><article className="mssBotCard mssBotCard4"><img src={eliaz} alt="Eliaz"/><strong>ELIAZ</strong><span>ARRÊTE-MOI SI TU PEUX</span><i>IA</i></article><article className="mssBotCard mssBotCard5"><img src={zeno} alt="Zeno"/><strong>ZENO</strong><span>KILLER</span><i>IA</i></article><article className="mssBotCard mssBotCard6"><img src={lucky} alt="Lucky"/><strong>LUCKY</strong><span>LOTERIE</span><i>IA</i></article><div className="mssOnlineCenter"><b>ONLINE</b><strong>+</strong><b>BOTS IA</b><span>Plusieurs univers</span></div></div>
     </section>
 
-    <section className="mssAwenaSection" id="awena"><img src={awena} alt="Awena"/><div><div className="mssEyebrow">L’ASSISTANTE INTÉGRÉE À VOTRE EXPÉRIENCE</div><h2>AWENA est là quand vous en avez besoin.</h2><p>Règles, configuration, conseils et guidage : Awena accompagne vos parties et vos entraînements sans vous faire sortir de MULTISPORTS SCORING.</p><div className="mssAwenaSkills"><span>💬 Explique les règles</span><span>🎯 Guide votre partie</span><span>⚙️ Aide à configurer</span><span>📈 Accompagne l’entraînement</span></div><button onClick={onOpenApp}>DÉCOUVRIR MULTISPORTS SCORING</button></div></section>
+    <section className="mssAwenaSection" id="awena">
+      <div className="mssAwenaVisual"><div className="mssAwenaGlow"/><img src={awena} alt="Awena, assistante MULTISPORTS SCORING"/><span className="mssAwenaBubble mssAwenaBubbleA">« Je vous explique la règle. »</span><span className="mssAwenaBubble mssAwenaBubbleB">« À vous de jouer ! »</span></div>
+      <div><div className="mssEyebrow">L’ASSISTANTE INTÉGRÉE À VOTRE EXPÉRIENCE</div><h2>AWENA vous accompagne, sans interrompre le jeu.</h2><p>Règles, configuration, conseils et guidage : Awena intervient directement dans MULTISPORTS SCORING lorsque vous en avez besoin.</p><div className="mssAwenaSkills"><span><b>01</b> Explique les règles</span><span><b>02</b> Guide votre partie</span><span><b>03</b> Aide à configurer</span><span><b>04</b> Accompagne l’entraînement</span></div><button onClick={onOpenApp}>DÉCOUVRIR AWENA DANS L’APPLICATION</button></div>
+    </section>
 
-    <section className="mssCommunity" id="community"><div><div className="mssEyebrow">JOUEZ • PARTAGEZ • PROGRESSEZ</div><h2>Votre univers sportif vous suit partout.</h2><p>Un même profil pour retrouver vos disciplines, vos équipes, vos parties, vos entraînements et vos performances.</p></div><div className="mssCommunityBtns"><button onClick={onOpenApp}>OUVRIR L’APPLICATION</button><span>Google Play • Microsoft Store • Web</span></div></section>
+    <section className="mssDownload" id="download">
+      <div className="mssDownloadCopy"><div className="mssEyebrow">PRÊT À JOUER ?</div><h2>Votre univers sportif commence ici.</h2><p>Accédez à MULTISPORTS SCORING depuis le Web ou installez l’application Android. Vos disciplines, vos profils et vos performances restent réunis dans la même expérience.</p><div className="mssDownloadActions"><a className="mssPlayCta" href="https://play.google.com/store/apps/details?id=com.multisportsscoring.app" target="_blank" rel="noreferrer"><small>DISPONIBLE SUR</small><strong>Google Play</strong></a><button className="mssWebCta" onClick={onOpenApp}><small>UTILISER MAINTENANT</small><strong>Ouvrir l’application</strong></button></div><div className="mssDownloadMeta"><span>✓ Application gratuite</span><span>✓ 22 disciplines</span><span>✓ Local + Online</span><span>✓ Statistiques</span></div></div>
+      <div className="mssDownloadMark"><div className="mssDownloadRing"><img src={logo} alt="MULTISPORTS SCORING"/><strong>MULTISPORTS</strong><b>SCORING</b><span>JOUEZ • SCOREZ • PROGRESSEZ</span></div></div>
+    </section>
+
+    <section className="mssCommunity" id="community"><div><div className="mssEyebrow">UN SEUL PROFIL • TOUT VOTRE SPORT</div><h2>Vos performances vous suivent partout.</h2><p>Retrouvez vos disciplines, vos équipes, vos parties, vos entraînements et votre progression dans le même écosystème.</p></div><div className="mssCommunityBtns"><button onClick={onOpenApp}>COMMENCER GRATUITEMENT</button><span>Web • Android • MULTISPORTS SCORING</span></div></section>
 
     <footer><img src={logo} alt=""/><span>© 2026 MULTISPORTS SCORING</span><span>22 disciplines • Une seule application</span></footer>
   </main>;
