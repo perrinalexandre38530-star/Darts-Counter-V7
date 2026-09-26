@@ -59,3 +59,17 @@
 .mssBotCard span{min-height:18px;line-height:1.15}
 @media(max-width:1000px){.mssHeroVisual{padding-bottom:72px}.mssHeroFeatureRail{bottom:2px}}
 @media(max-width:620px){.mssHeroVisual{height:560px;padding-bottom:92px}.mssHeroFeatureRail{width:100%;gap:6px}.mssHeroFeatureRail span{padding:8px 5px;min-height:54px}.mssHeroFeatureRail b{font-size:9px}.mssHeroFeatureRail small{font-size:8px}}
+
+/* Landing V9 — fonctions dans les angles du hero, orbite totalement dégagée */
+@media(min-width:1001px){
+  .mssHeroVisual{height:650px;padding-bottom:0}
+  .mssHeroVisual .mssOrbitOuter{width:510px;height:510px}
+  .mssHeroVisual .mssOrbitInner{width:350px;height:350px}
+  .mssHeroVisual .mssOrbitOuter .mssOrbitSport{transform:rotate(calc(360deg / var(--count) * var(--i))) translateX(255px) rotate(calc(-360deg / var(--count) * var(--i)))}
+  .mssHeroVisual .mssOrbitInner .mssOrbitSport{transform:rotate(calc(360deg / var(--count) * var(--i))) translateX(175px) rotate(calc(-360deg / var(--count) * var(--i)))}
+  .mssHeroFeatureRail{inset:0;transform:none;width:auto;display:block;pointer-events:none}
+  .mssHeroFeatureRail span{position:absolute;width:126px;min-height:52px;padding:8px 10px;box-shadow:0 10px 24px #0009;pointer-events:auto}
+  .mssHeroFeatureRail span:nth-child(1){left:0;top:18px}
+  .mssHeroFeatureRail span:nth-child(2){right:0;top:18px}
+  .mssHeroFeatureRail span:nth-child(3){right:0;bottom:18px}
+}
