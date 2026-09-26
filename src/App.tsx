@@ -97,6 +97,7 @@ import AuthCallback from "./pages/AuthCallback"; // si présent dans ton projet
 import AuthReset from "./pages/AuthReset";
 
 import SplashScreen from "./components/SplashScreen";
+import PublicLandingPage from "./pages/PublicLandingPage";
 import { getStartupIntroEnabled } from "./lib/startupAudioPrefs";
 
 // ✅ NEW: AUDIO SPLASH global (persistant)
@@ -988,6 +989,7 @@ function mergeStoreIntoCloudSnapshot(snapshot: any, seedOverride?: any) {
 }
 
 type Tab =
+  | "public_landing"
   | "account_start"
   | "auth_start"
   | "auth_forgot"
@@ -2654,6 +2656,7 @@ useEffect(() => {
     if (isThemePreviewFrame) return false;
     const h = String(window.location.hash || "");
     const isAuthFlow =
+    h.startsWith("#/welcome") ||
     h.startsWith("#/auth/callback") ||
     h.startsWith("#/auth/reset") ||
     h.startsWith("#/auth/forgot") ||
@@ -2745,6 +2748,12 @@ useEffect(() => {
       trackRoute(h || "#/");
       crashGuardTrackRoute(h || "#/");
 
+      if (h === "#/welcome" || h.startsWith("#/welcome?")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("public_landing");
+        return;
+      }
       if (h.startsWith("#/auth/callback")) {
         setShowSplash(false);
         setRouteParams(null);
@@ -4726,6 +4735,10 @@ const unifiedStats = (() => {
     );
   } else {
     switch (tab) {
+      case "public_landing":
+        page = <PublicLandingPage onOpenApp={() => { try { window.location.hash = "#/gameSelect"; } catch {} setTab("gameSelect"); }} />;
+        break;
+
       case "auth_callback":
         page = <AuthCallbackRoute go={go} />;
         break;
@@ -6901,7 +6914,7 @@ case "babyfoot_team_edit":
         : undefined;
 
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
-  const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera";
+  const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera" || tab === "public_landing";
   const appChromeAllowed = !isSamsungTvNativeApp && online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
   const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab) || isGameConfigRoute;
@@ -6994,6 +7007,7 @@ case "babyfoot_team_edit":
 function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
   const { status, ready } = useAuthOnline();
   const samsungTvNativeApp = isSamsungTvNativeAppMode();
+  if (tab === "public_landing") return <>{children}</>;
 
   // Les seuls écrans accessibles sans compte sont le tunnel d'authentification
   // et la caméra compagnon X01 ouverte directement depuis un QR code. Cette
