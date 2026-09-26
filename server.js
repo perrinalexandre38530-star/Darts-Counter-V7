@@ -5426,9 +5426,9 @@ app.put("/stats/:profileId/:sport", async (req, res) => {
 // -----------------------------------------------------------------------------
 // Legacy backup endpoints compatibilité front actuel
 // -----------------------------------------------------------------------------
-app.post("/backup/full", async (req, res) => {
+app.post("/backup/full", authRequired, async (req, res) => {
   try {
-    const ownerId = await resolveBackupOwnerId(req);
+    const ownerId = String(req.user.id);
     if (!ownerId) {
       return res.status(400).json({ error: "ownerId manquant pour le backup NAS" });
     }
@@ -5456,9 +5456,9 @@ app.post("/backup/full", async (req, res) => {
   }
 });
 
-app.get("/backup/full/latest", async (req, res) => {
+app.get("/backup/full/latest", authRequired, async (req, res) => {
   try {
-    const ownerId = await resolveBackupOwnerId(req);
+    const ownerId = String(req.user.id);
     if (!ownerId) {
       return res.status(400).json({ error: "ownerId manquant pour restore backup NAS" });
     }
@@ -5483,9 +5483,9 @@ app.get("/backup/full/latest", async (req, res) => {
   }
 });
 
-app.get("/backup/list", async (req, res) => {
+app.get("/backup/list", authRequired, async (req, res) => {
   try {
-    const ownerId = await resolveBackupOwnerId(req);
+    const ownerId = String(req.user.id);
     if (!ownerId) return res.json([]);
 
     const row = await loadUserStoreSnapshot(ownerId);
@@ -5506,9 +5506,9 @@ app.get("/backup/list", async (req, res) => {
   }
 });
 
-app.post("/backup/deleteAll", async (req, res) => {
+app.post("/backup/deleteAll", authRequired, async (req, res) => {
   try {
-    const ownerId = await resolveBackupOwnerId(req);
+    const ownerId = String(req.user.id);
     if (!ownerId) {
       return res.status(400).json({ error: "ownerId manquant pour suppression backup NAS" });
     }

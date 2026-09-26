@@ -240,6 +240,18 @@ export type StoragePrefs = {
 
 export const STORAGE_PREFS_KEY = "dc_storage_prefs_v1";
 
+function storagePrefsUserId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return String(window.localStorage.getItem("dc_storage_user_id_v1") || window.localStorage.getItem("dc_user_id") || "").trim();
+  } catch { return ""; }
+}
+
+function storagePrefsKey(): string {
+  const uid = storagePrefsUserId();
+  return uid ? `${STORAGE_PREFS_KEY}:${uid}` : STORAGE_PREFS_KEY;
+}
+
 export const DEFAULT_STORAGE_PREFS: StoragePrefs = {
   version: 2,
   selectedDestination: "app_local",
@@ -299,9 +311,28 @@ export function getPublicStorageDestinations(): StorageDestination[] {
 export function loadStoragePrefs(): StoragePrefs {
   try {
     if (typeof window === "undefined") return DEFAULT_STORAGE_PREFS;
-    const raw = window.localStorage.getItem(STORAGE_PREFS_KEY);
+    const uid = storagePrefsUserId();
+    const scopedKey = storagePrefsKey();
+    let raw = window.localStorage.getItem(scopedKey);
+    // Migration V62 : l'ancienne préférence globale est adoptée une seule fois
+    // par le compte actif, puis chaque compte possède son propre choix.
+    if (!raw && uid) {
+      const legacy = window.localStorage.getItem(STORAGE_PREFS_KEY);
+      if (legacy) {
+        try {
+          const parsedLegacy = JSON.parse(legacy) || {};
+          const legacyOwner = String(parsedLegacy.ownerUserId || "").trim();
+          if (!legacyOwner || legacyOwner === uid) {
+            raw = JSON.stringify({ ...parsedLegacy, ownerUserId: uid });
+            window.localStorage.setItem(scopedKey, raw);
+            window.localStorage.setItem(STORAGE_PREFS_KEY, raw);
+          }
+        } catch {}
+      }
+    }
     if (!raw) return DEFAULT_STORAGE_PREFS;
     const parsed = JSON.parse(raw) || {};
+    if (uid && parsed.ownerUserId && String(parsed.ownerUserId) !== uid) return DEFAULT_STORAGE_PREFS;
     return {
       version: 2,
       selectedDestination: normalizeDestinationId(parsed.selectedDestination),
@@ -328,7 +359,12 @@ export function saveStoragePrefs(next: Partial<StoragePrefs>): StoragePrefs {
   };
   try {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_PREFS_KEY, JSON.stringify(merged));
+      const uid = storagePrefsUserId();
+      const persisted = { ...merged, ownerUserId: uid || null };
+      window.localStorage.setItem(storagePrefsKey(), JSON.stringify(persisted));
+      // Le miroir legacy reste uniquement pour compatibilité d'anciens écrans ;
+      // ownerUserId empêche désormais qu'un autre compte l'adopte silencieusement.
+      window.localStorage.setItem(STORAGE_PREFS_KEY, JSON.stringify(persisted));
       window.dispatchEvent(new CustomEvent("dc-storage-prefs-changed", { detail: merged }));
     }
   } catch {}

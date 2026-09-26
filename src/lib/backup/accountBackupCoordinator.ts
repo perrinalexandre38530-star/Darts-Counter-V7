@@ -468,8 +468,32 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
   return { candidates, errors };
 }
 
+function candidateMatchCount(candidate: AccountBackupCandidate): number {
+  const summary = candidate.summary || {};
+  return Math.max(0, Number(summary.matches || 0), Number(summary.historyRows || 0), Number(summary.statsMatches || 0));
+}
+
+function candidateProfileCount(candidate: AccountBackupCandidate): number {
+  return Math.max(0, Number(candidate.summary?.profiles || 0));
+}
+
 export function pickLatestBackupCandidate(candidates: AccountBackupCandidate[]): AccountBackupCandidate | null {
-  const sorted = [...(candidates || [])].sort((a, b) => {
+  // V62 ACCOUNT SAVE — anti-perte façon console. Un snapshot récent mais tronqué
+  // ne doit jamais battre automatiquement une copie du MEME compte qui contient
+  // davantage de parties. On privilégie d'abord la continuité de l'historique,
+  // puis la date/révision. Les suppressions volontaires restent possibles via
+  // une restauration manuelle explicite depuis le Centre de sauvegarde.
+  const valid = [...(candidates || [])].filter((c) => meaningfulSummary(c.summary));
+  const richestMatches = valid.reduce((m, c) => Math.max(m, candidateMatchCount(c)), 0);
+  const richestProfiles = valid.reduce((m, c) => Math.max(m, candidateProfileCount(c)), 0);
+  const protectedSet = valid.filter((c) => {
+    const matches = candidateMatchCount(c);
+    const profiles = candidateProfileCount(c);
+    if (richestMatches > 0 && matches > 0 && matches < richestMatches) return false;
+    if (richestMatches === 0 && richestProfiles > 0 && profiles > 0 && profiles < richestProfiles) return false;
+    return true;
+  });
+  const sorted = (protectedSet.length ? protectedSet : valid).sort((a, b) => {
     const dt = b.updatedAtMs - a.updatedAtMs;
     if (Math.abs(dt) > 1_500) return dt;
     const rev = b.revision - a.revision;
@@ -607,6 +631,17 @@ export async function restoreLatestBackupForSignedInUser(
           saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current", candidate: { ...latest, load: undefined }, scanErrors: scan.errors });
           return false;
         }
+      }
+
+      // Dernière barrière anti-régression : si l'appareil possède déjà plus de
+      // parties que le snapshot distant retenu, on ne l'écrase jamais en AUTO.
+      // Cela protège notamment une partie tout juste terminée pendant une panne réseau.
+      const localBefore = await summarizeCurrentLocal().catch(() => null);
+      const remoteMatches = candidateMatchCount(latest);
+      const localMatches = localBefore ? Math.max(Number(localBefore.matches || 0), Number(localBefore.historyRows || 0), Number(localBefore.statsMatches || 0)) : 0;
+      if (localMatches > 0 && remoteMatches > 0 && localMatches > remoteMatches) {
+        saveDiagnostic(uid, { ok: true, restored: false, reason: "local-newer-richer", localMatches, remoteMatches, candidate: { source: latest.source, id: latest.id } });
+        return false;
       }
 
       await restoreCandidate(uid, latest);
