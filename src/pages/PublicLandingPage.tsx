@@ -51,7 +51,7 @@ const features = [
 ] as const;
 
 export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void }) {
-  return <main className="mssLanding">
+  return <main className="mssLanding" id="top">
     <header className="mssNav">
       <button className="mssBrand" onClick={() => window.scrollTo({top:0,behavior:"smooth"})} aria-label="MULTISPORTS SCORING accueil"><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
       <nav><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#download">Télécharger</a></nav>
@@ -64,7 +64,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <h1>UNE APPLICATION.<br/><em>TOUS VOS SPORTS.</em></h1>
         <p className="mssLead">Jouez, scorez, entraînez-vous et suivez vos performances dans un seul univers. MULTISPORTS SCORING réunit le jeu local et online, les statistiques, les équipes, les bots et les outils pour clubs.</p>
         <div className="mssCtas"><button onClick={onOpenApp}>COMMENCER GRATUITEMENT</button><a href="https://play.google.com/store/apps/details?id=com.multisportsscoring.app" target="_blank" rel="noreferrer">GOOGLE PLAY</a></div>
-        <div className="mssStoreLine"><span>✓ Gratuit</span><span>✓ Google Play</span><span>✓ Microsoft Store</span></div>
+        <div className="mssStoreLine"><span>✓ Gratuit</span><span>✓ Google Play</span><span>✓ Version Web</span></div>
       </div>
       <div className="mssHeroVisual" aria-label="Les disciplines MULTISPORTS SCORING">
         <div className="mssVisualKicker">UN ÉCOSYSTÈME • 22 DISCIPLINES</div>
@@ -115,6 +115,10 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
 
     <section className="mssCommunity" id="community"><div><div className="mssEyebrow">UN SEUL PROFIL • TOUT VOTRE SPORT</div><h2>Vos performances vous suivent partout.</h2><p>Retrouvez vos disciplines, vos équipes, vos parties, vos entraînements et votre progression dans le même écosystème.</p></div><div className="mssCommunityBtns"><button onClick={onOpenApp}>COMMENCER GRATUITEMENT</button><span>Web • Android • MULTISPORTS SCORING</span></div></section>
 
-    <footer><img src={logo} alt=""/><span>© 2026 MULTISPORTS SCORING</span><span>22 disciplines • Une seule application</span></footer>
+    <footer className="mssFooter">
+      <div className="mssFooterBrand"><img src={logo} alt=""/><div><strong>MULTISPORTS <b>SCORING</b></strong><span>22 disciplines • Une seule application</span></div></div>
+      <div className="mssFooterLinks"><a href="https://multisports-scoring.pages.dev/privacy-policy" target="_blank" rel="noreferrer">Politique de confidentialité</a><a href="#disciplines">Disciplines</a><a href="#awena">Awena</a><a href="#top">Retour en haut ↑</a></div>
+      <span className="mssCopyright">© 2026 MULTISPORTS SCORING</span>
+    </footer>
   </main>;
 }
