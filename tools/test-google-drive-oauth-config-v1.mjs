@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const api = fs.readFileSync(new URL('../src/lib/personalCloudApi.ts', import.meta.url), 'utf8');
+assert.match(server, /GOOGLE_DRIVE_CLIENT_ID/);
+assert.match(server, /GOOGLE_DRIVE_CLIENT_SECRET/);
+assert.match(server, /PERSONAL_CLOUD_CALLBACK_BASE/);
+assert.match(server, /https:\/\/www\.googleapis\.com\/auth\/drive\.appdata/);
+assert.match(server, /account\/personal-cloud\/:provider\/callback/);
+assert.match(server, /personalCloudConfigured\(provider\)/);
+assert.match(server, /ownerUserId:req\.user\.id/);
+assert.match(server, /Sauvegarde d'un autre compte refusée/);
+assert.match(api, /account\/personal-cloud\/\$\{provider\}\/connect-url/);
+assert.match(api, /gzip-base64/);
+console.log('Google Drive OAuth personnel: contrat configuration + isolation compte OK');
