@@ -2997,10 +2997,15 @@ async function restoreGalleryMetadata(portable: any): Promise<number> {
         const mediaKey = String(raw?.mediaKey || (legacyAi ? avatarAiGalleryMediaKey(id) : galleryItemMediaKey(id)));
         src = await resolveUserMediaFallback(mediaKey, "", { kind: legacyAi ? "avatar_ai_gallery" : "gallery_item" }).catch(() => "");
       }
-      if (!src) continue;
-      const next = { ...(raw || {}), id, src };
+      // Ne jamais perdre la métadonnée d’une entrée de galerie uniquement parce
+      // que son média n’est pas encore disponible localement. Les snapshots NAS/R2
+      // peuvent contenir la référence durable (mediaKey) sans le blob/image au
+      // moment exact de la restauration. Conserver la ligne permet au fallback
+      // média de la réhydrater plus tard et garantit que la galerie ne fait pas
+      // échouer la restauration des blocs critiques (profils/stats/parties).
+      const next = { ...(raw || {}), id, src: src || "" };
       if (legacyAi) {
-        next.dataUrl = src;
+        next.dataUrl = src || "";
       }
       delete next.mediaKey;
       out.push(next);

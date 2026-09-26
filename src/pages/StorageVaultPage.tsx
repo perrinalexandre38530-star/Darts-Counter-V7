@@ -2560,9 +2560,23 @@ export default function StorageVaultPage({ go }: Props) {
       let restoredStore: any = null;
 
       if (importReport?.portable && importReport.portable.ok === false) {
-        throw new Error(
-          `Restauration locale incomplète : ${String(importReport.portable.errors?.join(" ; ") || "contrôle portable échoué")}`
-        );
+        const portableErrors = Array.isArray(importReport.portable.errors)
+          ? importReport.portable.errors.map((message: any) => String(message || "")).filter(Boolean)
+          : [];
+        // Une image de galerie absente/corrompue ne doit jamais annuler une
+        // restauration complète : parties, statistiques et profils sont des blocs
+        // indépendants et prioritaires. On conserve l’avertissement en console,
+        // mais seules les incohérences des blocs structurants restent bloquantes.
+        const galleryWarnings = portableErrors.filter((message: string) => /^galleryItems:\s*/i.test(message));
+        const blockingErrors = portableErrors.filter((message: string) => !/^galleryItems:\s*/i.test(message));
+        if (galleryWarnings.length) {
+          console.warn("[StorageVault] galerie restaurée partiellement (non bloquant)", galleryWarnings);
+        }
+        if (blockingErrors.length) {
+          throw new Error(
+            `Restauration locale incomplète : ${blockingErrors.join(" ; ") || "contrôle portable échoué"}`
+          );
+        }
       }
 
       // importCloudSnapshot a déjà relu et injecté le store vivant. Le refaire ici
