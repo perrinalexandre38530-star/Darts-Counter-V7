@@ -93,6 +93,7 @@ import {
   writeExternalBackupNow,
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
+import { connectPersonalCloud, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
 import {
   isBackgroundBackupRunning,
   startBackgroundBackupJob,
@@ -3229,7 +3230,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           }
         }
 
-        const preparedKind: PreparedBackupKind = destination === "cloud_r2" ? "cloud-fast" : "full";
+        const preparedKind: PreparedBackupKind = (destination === "cloud_r2" || isPersonalCloudProvider(destination)) ? "cloud-fast" : "full";
         report(12, "Assemblage du snapshot local…");
         const prepared = await prepareCurrentBackupOnce(preparedKind);
         const quality = assessSaveForProvider(prepared.summary, destination === "cloud_r2" ? "cloud" : destination === "founder_nas" ? "nas" : "local");
@@ -3251,6 +3252,28 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           return {
             message: `Sauvegarde locale créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s) · ${formatStorageBytes(compressed.byteLength)} compressés.`,
           };
+        }
+
+        if (isPersonalCloudProvider(destination)) {
+          const status = await getPersonalCloudStatus(destination);
+          if (!status.configured) throw new Error(`${personalCloudProviderLabel(destination)} n'est pas encore configuré côté serveur.`);
+          if (!status.connected) {
+            // OAuth exige une navigation utilisateur : on prépare l'URL puis la
+            // connexion reprendra depuis le Centre de sauvegarde.
+            await connectPersonalCloud(destination);
+            return { message: `Connexion ${personalCloudProviderLabel(destination)} ouverte.` };
+          }
+          if (storagePrefs.keepLocalSafetyCopy) {
+            void getPreparedGzip(prepared).then((compressed) => createLocalMemorySlotFromSnapshot(
+              prepared.snapshot, `Sécurité locale — ${localLabel}`, "manual", prepared.summary, prepared.snapshotJson, compressed
+            )).then((slot) => setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10))).catch(() => null);
+          }
+          report(42, `Envoi vers ${personalCloudProviderLabel(destination)}…`);
+          await uploadPersonalCloudSnapshot(destination, prepared.snapshotJson, {
+            summary: prepared.summary, exportedAt: new Date().toISOString(), rawSizeBytes: prepared.bytes, engine: "personal-cloud-v1",
+          });
+          report(92, "Vérification du cloud personnel…");
+          return { message: `Sauvegarde ${personalCloudProviderLabel(destination)} terminée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s).` };
         }
 
         if (destination === "cloud_r2") {
@@ -3694,11 +3717,13 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         ? (externalBackupStatus.configured ? "Sauvegarder sur le support externe" : "Choisir le support externe")
         : selectedDestination === "personal_cloud_manual"
           ? (externalBackupStatus.configured ? "Sauvegarder dans le cloud personnel" : "Choisir le dossier cloud")
+          : isPersonalCloudProvider(selectedDestination)
+            ? `Sauvegarder ${personalCloudProviderLabel(selectedDestination)}`
           : selectedDestination === "cloud_r2"
           ? "Créer sauvegarde Cloud R2"
           : "Créer sauvegarde NAS";
 
-  const remoteDestinationNeedsAccount = selectedDestination === "cloud_r2" || selectedDestination === "founder_nas";
+  const remoteDestinationNeedsAccount = selectedDestination === "cloud_r2" || selectedDestination === "founder_nas" || isPersonalCloudProvider(selectedDestination);
   const cloudR2WriteLocked = selectedDestination === "cloud_r2" && directR2Usage !== null && !isDirectR2PremiumWriteAllowed(directR2Usage);
   const backgroundBackupRunning = backgroundBackup.status === "running";
   const primaryBackupDisabled = busy || backgroundBackupRunning || externalBackupBusy !== null || cloudR2WriteLocked || (remoteDestinationNeedsAccount && !hasConnectedAccount);
@@ -3783,7 +3808,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     </div>
   );
 
-  const destinationIconName = (id: StorageDestinationId): VaultGlyphName => id === "app_local" ? "local" : id === "device_file" ? "file" : id === "external_sd_manual" ? "sd" : id === "personal_cloud_manual" ? "folder" : id === "cloud_r2" ? "cloud" : "nas";
+  const destinationIconName = (id: StorageDestinationId): VaultGlyphName => id === "app_local" ? "local" : id === "device_file" ? "file" : id === "external_sd_manual" ? "sd" : id === "personal_cloud_manual" ? "folder" : (id === "cloud_r2" || isPersonalCloudProvider(id)) ? "cloud" : "nas";
 
   return (
     <div style={{ ...pageStyle, paddingTop: 8, ...themeVars }}>
@@ -3895,7 +3920,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
                 {[...getPublicStorageDestinations(), getStorageDestination("founder_nas")].map((destination) => {
                   const active = selectedDestination === destination.id;
-                  const accountRequired = destination.id === "cloud_r2" || destination.id === "founder_nas";
+                  const accountRequired = destination.id === "cloud_r2" || destination.id === "founder_nas" || isPersonalCloudProvider(destination.id);
                   const disabled = busy || (accountRequired && !hasConnectedAccount);
                   return (
                     <div key={destination.id} style={{ position: "relative", minWidth: 0 }}>

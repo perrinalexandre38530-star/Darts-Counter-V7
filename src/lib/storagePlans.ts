@@ -161,6 +161,9 @@ export type StorageDestinationId =
   | "device_file"
   | "external_sd_manual"
   | "personal_cloud_manual"
+  | "google_drive"
+  | "onedrive"
+  | "dropbox"
   | "cloud_r2"
   | "founder_nas";
 
@@ -208,6 +211,27 @@ export const STORAGE_DESTINATIONS: StorageDestination[] = [
     public: true,
     description: "Écrit dans un fichier choisi via le sélecteur système : Google Drive, OneDrive, Dropbox, Nextcloud, Synology, QNAP ou partage NAS déjà monté sur l'appareil.",
     warning: "Le NAS ou le cloud doit être visible dans le gestionnaire de fichiers de l'appareil. Aucun identifiant distant n'est envoyé à MULTISPORTS SCORING.",
+  },
+  {
+    id: "google_drive",
+    label: "Google Drive — cloud personnel",
+    shortLabel: "Google Drive",
+    cloud: true, public: true,
+    description: "Sauvegarde automatique dans l’espace applicatif privé du Google Drive de l’utilisateur. Le stockage est fourni par son compte Google, pas par MULTISPORTS SCORING.",
+  },
+  {
+    id: "onedrive",
+    label: "OneDrive — cloud personnel",
+    shortLabel: "OneDrive",
+    cloud: true, public: true,
+    description: "Sauvegarde automatique dans le dossier applicatif OneDrive de l’utilisateur. Le stockage est décompté de son propre compte Microsoft.",
+  },
+  {
+    id: "dropbox",
+    label: "Dropbox — cloud personnel",
+    shortLabel: "Dropbox",
+    cloud: true, public: true,
+    description: "Sauvegarde automatique dans l’espace applicatif Dropbox de l’utilisateur. Le stockage reste à la charge de son compte Dropbox.",
   },
   {
     id: "cloud_r2",

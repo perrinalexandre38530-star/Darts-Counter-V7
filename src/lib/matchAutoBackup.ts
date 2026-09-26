@@ -3,6 +3,7 @@ import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
 import { queueExternalBackup } from "./externalBackupTarget";
+import { uploadPersonalCloudSnapshot, isPersonalCloudProvider } from "./personalCloudApi";
 import { getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
@@ -134,6 +135,7 @@ async function getActiveStorageProviderCached(): Promise<string> {
   if (localPrefs.updatedAt > 0) {
     if (localPrefs.selectedDestination === "cloud_r2") return "cloud_r2";
     if (localPrefs.selectedDestination === "founder_nas") return "nas_founder";
+    if (isPersonalCloudProvider(localPrefs.selectedDestination)) return localPrefs.selectedDestination;
     if (localPrefs.selectedDestination === "device_file" || localPrefs.selectedDestination === "external_sd_manual") return "external_file";
     return "local_device";
   }
@@ -734,6 +736,18 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
     return;
   }
   if (provider === "local_device") return;
+
+  if (isPersonalCloudProvider(provider)) {
+    // Mode console : après une partie, la copie locale est immédiate puis le
+    // snapshot complet du compte est remplacé dans SON cloud personnel.
+    void exportCloudSnapshot({ mediaMirror: "skip", includeEmbeddedMedia: false })
+      .then((snapshot) => uploadPersonalCloudSnapshot(provider, JSON.stringify(snapshot), {
+        reason: "history-upsert", exportedAt: new Date().toISOString(),
+        matchId: item.matchId, sport: item.sport, ownerId: currentOwnerId(),
+      }))
+      .catch((error) => { try { localStorage.setItem("dc_personal_cloud_last_error_v1", JSON.stringify({ at: nowIso(), provider, message: error?.message || String(error) })); } catch {} });
+    return;
+  }
 
   if (provider === "cloud_r2") {
     await pushMatchBackupToCloud(item).catch((error) => {

@@ -68,6 +68,7 @@ export function storageDestinationToProvider(destination: StorageDestinationId |
   const raw = String(destination || "").trim();
   if (raw === "device_file" || raw === "external_sd_manual" || raw === "personal_cloud_manual") return "external_manual";
   if (raw === "cloud_r2") return "cloud_r2";
+  if (raw === "google_drive" || raw === "onedrive" || raw === "dropbox") return raw;
   if (raw === "founder_nas") return "nas_founder";
   return "local_device";
 }

@@ -24,8 +24,10 @@ import {
   setStorageUser,
 } from "../storage";
 import { getAutoBackups, type AutoBackupItem } from "./autoBackupService";
+import { downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, isPersonalCloudProvider, personalCloudProviderLabel, type PersonalCloudProvider } from "../personalCloudApi";
+import { loadStoragePrefs } from "../storagePlans";
 
-export type AccountBackupSource = "local" | "nas" | "r2" | "external" | "legacy-auto";
+export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
 
 export type AccountBackupCandidate = {
   source: AccountBackupSource;
@@ -87,7 +89,8 @@ function sourcePriority(source: AccountBackupSource): number {
   // restauration plus rapide et aucune dépendance réseau.
   if (source === "local") return 5;
   if (source === "nas") return 4;
-  if (source === "r2") return 3;
+  if (source === "r2") return 4;
+  if (source === "google_drive" || source === "onedrive" || source === "dropbox") return 4;
   if (source === "external") return 2;
   return 1;
 }
@@ -427,6 +430,21 @@ async function scanR2(): Promise<AccountBackupCandidate[]> {
   return rows.map(r2Candidate).filter(Boolean) as AccountBackupCandidate[];
 }
 
+async function scanPersonalCloud(userId: string): Promise<AccountBackupCandidate[]> {
+  const selected = loadStoragePrefs().selectedDestination;
+  if (!isPersonalCloudProvider(selected)) return [];
+  const provider = selected as PersonalCloudProvider;
+  const meta = await getPersonalCloudBackupMeta(provider);
+  if (!meta) return [];
+  const summary = meta?.metadata?.summary || {};
+  const ms = candidateTime(meta.updatedAt, meta?.metadata?.exportedAt);
+  return [{
+    source: provider, id: `personal_${provider}_latest`, label: `Sauvegarde ${personalCloudProviderLabel(provider)}`,
+    updatedAt: String(meta.updatedAt || isoFromMs(ms)), updatedAtMs: ms, revision: 0, summary, accountScoped: true,
+    load: () => downloadPersonalCloudSnapshot(provider),
+  }];
+}
+
 async function scanExternal(userId: string): Promise<AccountBackupCandidate[]> {
   const payload = await readExternalBackupSnapshotIfPermitted();
   if (!payload || !payloadHasExplicitOwner(payload) || !payloadOwnerCompatible(payload, userId, false)) return [];
@@ -446,6 +464,7 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
     { source: "local", run: () => scanLocal(uid) },
     { source: "nas", run: () => scanNas(uid) },
     { source: "r2", run: scanR2 },
+    { source: "google_drive", run: () => scanPersonalCloud(uid) },
     { source: "external", run: () => scanExternal(uid) },
   ];
 

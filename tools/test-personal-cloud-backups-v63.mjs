@@ -1,0 +1,10 @@
+import fs from 'node:fs'; import assert from 'node:assert/strict';
+const read=(p)=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
+const plans=read('src/lib/storagePlans.ts'), api=read('src/lib/personalCloudApi.ts'), coord=read('src/lib/backup/accountBackupCoordinator.ts'), match=read('src/lib/matchAutoBackup.ts'), server=read('server.js');
+for (const p of ['google_drive','onedrive','dropbox']) assert.match(plans,new RegExp(`id: "${p}"`));
+assert.match(api,/gzip-base64/); assert.match(api,/personal-cloud\/\$\{provider\}\/backup/);
+assert.match(coord,/scanPersonalCloud/); assert.match(coord,/accountScoped: true/);
+assert.match(match,/uploadPersonalCloudSnapshot/); assert.match(match,/history-upsert/);
+assert.match(server,/drive\.appdata/); assert.match(server,/Files\.ReadWrite\.AppFolder/); assert.match(server,/api\.dropboxapi\.com/);
+assert.match(server,/ownerUserId:req\.user\.id/); assert.match(server,/Sauvegarde d'un autre compte refusée/);
+console.log('Personal cloud V63: Google Drive / OneDrive / Dropbox + isolation compte + auto restore: OK');
