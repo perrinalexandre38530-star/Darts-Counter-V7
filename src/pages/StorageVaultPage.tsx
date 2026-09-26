@@ -2500,6 +2500,7 @@ export default function StorageVaultPage({ go }: Props) {
       background?: boolean;
       provider?: BackupProvider;
       report?: BackgroundRestoreReporter;
+      skipAccountSync?: boolean;
     },
   ): Promise<{ summary: VaultSummary }> => {
     const report = options?.report || (() => {});
@@ -2608,11 +2609,19 @@ export default function StorageVaultPage({ go }: Props) {
     await afterRestoreHousekeeping(reason);
 
     if (!Capacitor.isNativePlatform()) {
-      report(94, `Synchronisation de l’état restauré vers ${targetLabel}…`, "finalize");
-      if (provider === "cloud") {
-        await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
+      // Une restauration provenant déjà du NAS ne doit pas renvoyer immédiatement
+      // le snapshot complet vers /sync/push. Sur le Web ce POST peut dépasser la
+      // limite HTTP (413) alors que l’archive NAS est déjà stockée côté serveur.
+      // L’archive est promue via /sync/slots/:id/restore avec un corps minuscule.
+      if (!options?.skipAccountSync) {
+        report(94, `Synchronisation de l’état restauré vers ${targetLabel}…`, "finalize");
+        if (provider === "cloud") {
+          await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
+        } else {
+          await pushSnapshotToAccount(snapshot, reason);
+        }
       } else {
-        await pushSnapshotToAccount(snapshot, reason);
+        report(94, "Archive NAS déjà présente : aucun renvoi volumineux vers /sync/push.", "finalize");
       }
       setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
       report(100, "Restauration terminée. Rechargement…", "finalize");
@@ -3453,7 +3462,17 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         `Le NAS peut avoir besoin de quelques secondes pour préparer le fichier.`
       );
       const pulled = await pullNasMemorySlot(id);
-      await restoreSnapshotIntoBrowserAndAccount(pulled.payload, `restore-nas:${id}`, entry.title, { provider: "nas" });
+      // Si l’utilisateur restaure une archive versionnée, la promouvoir directement
+      // côté NAS. Cela évite de ré-uploader les ~18 Mo via /sync/push après l’import.
+      if (id !== "latest") {
+        await apiPost(`/sync/slots/${encodeURIComponent(id)}/restore`, {});
+      }
+      await restoreSnapshotIntoBrowserAndAccount(
+        pulled.payload,
+        `restore-nas:${id}`,
+        entry.title,
+        { provider: "nas", skipAccountSync: true },
+      );
     } catch (error: any) {
       setMessage(`Restauration NAS impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
