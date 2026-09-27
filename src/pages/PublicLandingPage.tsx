@@ -184,6 +184,8 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     : categoryDartsGames;
   const auditedReadyGames = readyDartsGames.filter((game) => (DARTS_PUBLIC_RULE_AUDIT[game.id]?.sources?.length || 0) > 0);
   const auditPercent = readyDartsGames.length ? Math.round((auditedReadyGames.length / readyDartsGames.length) * 100) : 0;
+  const remainingAuditCount = Math.max(0, readyDartsGames.length - auditedReadyGames.length);
+  const recentlyDocumentedIds = ["double_down","nine_dart_century","shove_a_penny","green_vs_red","hi_score","un_deux_trois_soleil","enculette","cricket_cut_throat","training_x01","tour_horloge"];
 
   const catalogueCards = [
     ["classic","GRANDS CLASSIQUES","Les incontournables des fléchettes : X01, Cricket, Killer, Shanghai et autres références."],
@@ -245,10 +247,15 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         })}
       </div>
       <div className="mssDartsAuditBar"><div><span>DOCUMENTATION DES RÈGLES</span><strong>{auditPercent}%</strong></div><div className="mssDartsAuditTrack"><i style={{width:`${auditPercent}%`}}/></div><small>Audit en cours directement depuis les écrans Config, Play et moteurs MSS. Les modes non encore vérifiés restent clairement identifiables.</small></div>
+      <div className="mssDartsAuditKpis">
+        <div><strong>{readyDartsGames.length}</strong><span>MODES DISPONIBLES</span></div>
+        <div><strong>{auditedReadyGames.length}</strong><span>FICHES AUDITÉES</span></div>
+        <div><strong>{remainingAuditCount}</strong><span>À DOCUMENTER</span></div>
+      </div>
       <div className="mssDartsSpotlight">
-        <div className="mssDartsSpotlightHead"><div><span>NOUVELLES FICHES DOCUMENTÉES</span><h3>6 modes à découvrir en détail</h3></div><small>Règles vérifiées dans les moteurs MSS • accès direct aux fiches</small></div>
+        <div className="mssDartsSpotlightHead"><div><span>FICHES RÉCEMMENT DOCUMENTÉES</span><h3>Les règles MSS vérifiées, mode par mode</h3></div><small>Config • Play • moteur • accès direct aux fiches</small></div>
         <div className="mssDartsSpotlightGrid">
-          {["double_down","nine_dart_century","shove_a_penny","green_vs_red","hi_score","un_deux_trois_soleil"].map((id) => {
+          {recentlyDocumentedIds.map((id) => {
             const game = allDartsGames.find((item) => item.id === id);
             if (!game) return null;
             const art = landingTickerFor(id);

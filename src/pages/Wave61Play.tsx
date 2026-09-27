@@ -299,7 +299,8 @@ export default function Wave61Play(props: any) {
   const go = props?.go ?? props?.setTab;
   const store = props?.store;
   const resumeRecord = props?.params?.rec || props?.params?.record || props?.params?.match || null;
-  const modeId = String(props?.params?.gameId || props?.gameId || resumeRecord?.modeId || resumeRecord?.game?.modeId || "");
+  const rawModeId = String(props?.params?.gameId || props?.gameId || resumeRecord?.modeId || resumeRecord?.game?.modeId || "");
+  const modeId = rawModeId === "galaxyes" ? "galaxies" : rawModeId;
   const spec = DARTS_WAVE_61.find((m) => m.id === modeId) || DARTS_WAVE_61[0];
   const preset = getWave61Preset(spec.id);
   const rawConfig = props?.params?.config || resumeRecord?.resume?.config || resumeRecord?.payload?.config || {};

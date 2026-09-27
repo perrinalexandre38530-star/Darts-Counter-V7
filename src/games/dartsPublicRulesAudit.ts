@@ -472,13 +472,31 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "enculette": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/pages/EnculetteConfig.tsx", "src/pages/EnculettePlay.tsx", "src/pages/SimpleRoundsConfig.tsx", "src/pages/SimpleRoundsPlay.tsx", "src/lib/simpleRounds/variants.ts"],
+    "options": [
+      "PRINCIPE : chaque volée ajoute son total au score cumulé",
+      "PÉNALITÉ : une volée exactement égale à 0 applique -50 points",
+      "ROUNDS DISPONIBLES : 5 / 8 / 10 / 12 / 15",
+      "OBJECTIF : aucun / 100 / 200 / 300 / 500 / 1000",
+      "OBJECTIF ACTIF : victoire immédiate dès que le score atteint ou dépasse l'objectif",
+      "SANS OBJECTIF : le meilleur score après le dernier round gagne",
+      "CONFIGURATION PAR DÉFAUT : 10 rounds, aucun objectif",
+      "BOTS : activables dans le socle SimpleRounds",
+      "NIVEAU BOT : Facile / Normal / Difficile"
+    ]
   },
   "cricket_cut_throat": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/pages/CricketConfig.tsx", "src/pages/CricketPlay.tsx", "src/lib/cricketEngine.ts"],
+    "options": [
+      "CIBLES : 15 / 16 / 17 / 18 / 19 / 20 + BULL",
+      "MARQUES : Simple = 1, Double = 2, Triple = 3 ; Bull = 1 et DBULL = 2",
+      "FERMETURE : 3 marques ferment le secteur",
+      "MODE CUT-THROAT : les points excédentaires ne gonflent pas le score du tireur ; ils sont infligés aux adversaires qui n'ont pas encore fermé le secteur",
+      "Le moteur enregistre séparément les points infligés aux adversaires",
+      "OBJECTIF : fermer toutes ses cibles avec le total de points le plus faible selon la logique Cut-Throat du moteur",
+      "PARTICIPANTS, équipes et bots : gérés par la configuration Cricket"
+    ]
   },
   "killer_progressive": {
     "status": 'available',
@@ -1299,13 +1317,26 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "training_x01": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/pages/TrainingX01Config.tsx", "src/pages/TrainingX01Play.tsx", "src/lib/TrainingX01Store.ts", "src/stats/trainingX01Stats.ts"],
+    "options": [
+      "SCORE DE DÉPART : 301 / 501 / 701 / 901",
+      "SORTIE : SIMPLE OUT / DOUBLE OUT / MASTER OUT",
+      "SAISIE VOCALE DU SCORE : ON / OFF",
+      "PARTICIPANTS : Training solo / multi-joueurs / équipes",
+      "La même configuration de score et de sortie est utilisée pour les participants de la session",
+      "MODE : entraînement X01 dédié, distinct d'un match X01 classique",
+      "STATISTIQUES : sauvegarde dédiée Training X01 et exploitation dans les statistiques d'entraînement"
+    ]
   },
   "tour_horloge": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/pages/TourDeLHorlogeConfig.tsx", "src/pages/TourDeLHorlogePlay.tsx"],
+    "options": [
+      "CONFIGURATION ACTUELLE : l'écran dédié utilise la configuration par défaut du RoundTargetEngine",
+      "Aucun choix de paramètre supplémentaire n'est actuellement exposé dans TourDeLHorlogeConfig",
+      "Le déroulement jouable est pris en charge par TourDeLHorlogePlay / RoundTargetEngine",
+      "La fiche publique n'ajoute volontairement aucun réglage absent du moteur actuel"
+    ]
   },
   "training_doubleio": {
     "status": 'available',

@@ -59,8 +59,16 @@ import NewModesTicker, { type NewModeTickerItem } from "../components/NewModesTi
 import newGameBadge from "../assets/new_game.png";
 import playBadge from "../assets/play.png";
 
-// ✅ Tickers images (Vite): /src/assets/tickers/ticker_<gameId>.png
-const TICKERS = import.meta.glob("../assets/tickers/*.png", {
+// ✅ Tickers images (Vite): /src/assets/tickers/ticker_<gameId>.(png|webp|jpg|jpeg)
+// Les Wave61 récents ont majoritairement été exportés en WEBP. On charge donc
+// plusieurs extensions afin que les cartes Games affichent immédiatement les
+// tickers déjà créés, sans devoir les réexporter en PNG.
+const TICKERS = import.meta.glob([
+  "../assets/tickers/*.png",
+  "../assets/tickers/*.webp",
+  "../assets/tickers/*.jpg",
+  "../assets/tickers/*.jpeg",
+], {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -221,6 +229,9 @@ const HISTORY_GAME_ALIASES: Record<string, string> = {
   "170": "v170",
   game_170: "v170",
   mode_170: "v170",
+
+  // Renommage Wave61
+  galaxyes: "galaxies",
 
   // Défis / fun / training avec noms historiques différents du registry
   territories: "departements",

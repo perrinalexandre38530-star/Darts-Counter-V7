@@ -98,7 +98,7 @@ const MODE_FAMILY: Record<string, Wave61Family> = {
   petit_bac: "mission",
   luciole: "precision",
   sabaudia_dauphine: "conquest",
-  galaxyes: "conquest",
+  galaxies: "conquest",
   apocalypse: "survival",
 };
 

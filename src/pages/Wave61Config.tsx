@@ -30,7 +30,8 @@ function shuffle<T>(items: T[]) { const out = [...items]; for (let i = out.lengt
 export default function Wave61Config(props: any) {
   const go = props?.go ?? props?.setTab;
   const store = props?.store ?? props?.params?.store ?? null;
-  const modeId = String(props?.params?.gameId || props?.gameId || "");
+  const rawModeId = String(props?.params?.gameId || props?.gameId || "");
+  const modeId = rawModeId === "galaxyes" ? "galaxies" : rawModeId;
   const spec = DARTS_WAVE_61.find((m) => m.id === modeId) || DARTS_WAVE_61[0];
   const preset = getWave61Preset(spec.id);
   const { theme } = useTheme();
