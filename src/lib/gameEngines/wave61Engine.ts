@@ -2,7 +2,7 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-export const WAVE61_ENGINE_VERSION = 7;
+export const WAVE61_ENGINE_VERSION = 8;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -231,6 +231,49 @@ const MICRO_SAMPLES = ["CELLULE", "BACTÉRIE", "POLLEN", "SPORE", "CRISTAL", "AD
 const CIRCUIT_NAMES = ["ALIM", "MOTEUR", "ÉCLAIRAGE", "CAPTEUR", "RELAIS", "SORTIE"] as const;
 const BAC_CATEGORIES = ["PRÉNOM", "VILLE", "ANIMAL", "OBJET", "SPORT", "MÉTIER"] as const;
 const BAC_LETTERS = ["A","B","C","D","E","F","G","H","I","J","L","M","N","O","P","R","S","T","V","Z"] as const;
+
+const MONT_BLANC_STAGES = [
+  { name: "DÉPART", altitude: 0 },
+  { name: "REFUGE", altitude: 1400 },
+  { name: "GLACIER", altitude: 2600 },
+  { name: "ARÊTE", altitude: 3800 },
+  { name: "SOMMET", altitude: 4809 },
+] as const;
+const EVEREST_STAGES = [
+  { name: "BASE CAMP", altitude: 0 },
+  { name: "CAMP I", altitude: 5900 },
+  { name: "CAMP II", altitude: 6500 },
+  { name: "CAMP III", altitude: 7300 },
+  { name: "CAMP IV", altitude: 7950 },
+  { name: "BALCONY", altitude: 8400 },
+  { name: "SOMMET", altitude: 8849 },
+] as const;
+const SUMMIT_14_PEAKS = [
+  "SHISHAPANGMA", "GASHERBRUM II", "BROAD PEAK", "GASHERBRUM I",
+  "ANNAPURNA I", "NANGA PARBAT", "MANASLU", "DHAULAGIRI I",
+  "CHO OYU", "MAKALU", "LHOTSE", "KANGCHENJUNGA", "K2", "EVEREST",
+] as const;
+
+function ascentStages(modeId: string) {
+  return modeId === "everest" ? EVEREST_STAGES : MONT_BLANC_STAGES;
+}
+function ascentSummitAltitude(modeId: string): number {
+  return modeId === "everest" ? 8849 : 4809;
+}
+function ascentStageForAltitude(modeId: string, altitude: number): number {
+  const stages = ascentStages(modeId);
+  let idx = 0;
+  for (let i = 0; i < stages.length; i++) if (altitude >= stages[i].altitude) idx = i;
+  return idx;
+}
+function ascentWeather(state: Wave61State): { label: string; penalty: number; fatigue: number } {
+  const cycle = Array.isArray(state.special?.ascentWeatherCycle) ? state.special.ascentWeatherCycle : [];
+  const raw = Number(cycle[(state.turnIndex + state.roundIndex) % Math.max(1, cycle.length)] || 10);
+  if (raw >= 18) return { label: "TEMPÊTE", penalty: 0.48, fatigue: 18 };
+  if (raw >= 14) return { label: "VENT FORT", penalty: 0.28, fatigue: 10 };
+  if (raw >= 9) return { label: "NUAGEUX", penalty: 0.12, fatigue: 5 };
+  return { label: "FENÊTRE CLAIRE", penalty: 0, fatigue: 0 };
+}
 
 const CONQUEST_PROFILES: Record<string, { icon: string; label: string; nodes: string[]; threshold: number; win: number; resource: string; ability: string; fort: number }> = {
   vikings: { icon: "🛡️", label: "VIKINGS", nodes: ["FJORD", "PORT", "VILLAGE", "FORT", "TEMPLE", "JARL"], threshold: 5, win: 4, resource: "FUREUR", ability: "RAID DU JARL", fort: 1 },
@@ -516,6 +559,17 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       bacValidatedByPlayer: modeId === "petit_bac" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       bacHistory: [],
 
+      ascentTargets: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? seededSequence(`ascent:${modeId}:${seedText}`, 24, 20) : [],
+      ascentWeatherCycle: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? seededSequence(`weather:${modeId}:${seedText}`, 64, 20) : [],
+      ascentAltitudeByPlayer: ["mont_blanc", "everest"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      ascentStageByPlayer: ["mont_blanc", "everest"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      ascentFatigueByPlayer: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      ascentOxygenByPlayer: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, modeId === "mont_blanc" ? 100 : 90])) : {},
+      ascentAcclimationByPlayer: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      summit14PeakByPlayer: modeId === "summit_14" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      summit14MarksByPlayer: modeId === "summit_14" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      ascentHistory: [],
+
       conquestTargets: conquest ? seededNumbers(`conquest:${modeId}:${seedText}`, conquest.nodes.length, 20) : [],
       conquestOwnerByNode: conquest ? Array(conquest.nodes.length).fill(null) : [],
       conquestPressureByNode: conquest ? Array.from({ length: conquest.nodes.length }, () => ({ actor: null, value: 0 })) : [],
@@ -740,6 +794,22 @@ export function getWave61Target(state: Wave61State): Wave61Target {
     const n = missionStageTarget(state.special?.bacSequence || [], step);
     const letter = BAC_LETTERS[(n - 1) % BAC_LETTERS.length];
     return { kind: "number", value: n, label: `📝 ${BAC_CATEGORIES[Math.min(step, BAC_CATEGORIES.length - 1)]} en ${letter} · secteur ${n} · BULL = joker` };
+  }
+  if (["mont_blanc", "everest", "summit_14"].includes(state.modeId)) {
+    const player = state.players[state.activePlayerIndex];
+    const targetSeq = state.special?.ascentTargets || [];
+    if (state.modeId === "summit_14") {
+      const peak = clamp(Number(state.special?.summit14PeakByPlayer?.[player?.id] || 0), 0, SUMMIT_14_PEAKS.length - 1);
+      const n = raceTargetFromSequence(targetSeq, peak);
+      const weather = ascentWeather(state);
+      return { kind: "number", value: n, label: `🏔️ ${SUMMIT_14_PEAKS[peak]} ${Math.min(peak + 1, 14)}/14 · secteur ${n} · ${weather.label}` };
+    }
+    const altitude = Number(state.special?.ascentAltitudeByPlayer?.[player?.id] || 0);
+    const stage = ascentStageForAltitude(state.modeId, altitude);
+    const stages = ascentStages(state.modeId);
+    const n = raceTargetFromSequence(targetSeq, stage);
+    const weather = ascentWeather(state);
+    return { kind: "number", value: n, label: `⛰️ ${stages[Math.min(stage, stages.length - 1)].name} · secteur ${n} · ${Math.round(altitude)} m · ${weather.label}` };
   }
   if (CONQUEST_PROFILES[state.modeId]) {
     const player = state.players[state.activePlayerIndex];
@@ -2129,6 +2199,100 @@ function processPetitBac(state: Wave61State, playerId: string, darts: GameDart[]
   return { delta: hits, hits };
 }
 
+function processAscentMode(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  const matching = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)) : [];
+  const bulls = bullCount(darts);
+  const hits = matching.length + bulls;
+  const wrong = nonBullWrongCount(darts, target, state.config.difficulty) + darts.filter((d) => d?.bed === "MISS").length;
+  const weather = ascentWeather(state);
+  let fatigue = Number(state.special?.ascentFatigueByPlayer?.[playerId] || 0);
+  let oxygen = Number(state.special?.ascentOxygenByPlayer?.[playerId] ?? (state.modeId === "mont_blanc" ? 100 : 90));
+  let acclimation = Number(state.special?.ascentAcclimationByPlayer?.[playerId] || 0);
+
+  if (state.modeId === "summit_14") {
+    let peak = Number(state.special?.summit14PeakByPlayer?.[playerId] || 0);
+    let marks = Number(state.special?.summit14MarksByPlayer?.[playerId] || 0);
+    const threshold = state.config.difficulty === "hard" ? 7 : state.config.difficulty === "easy" ? 4 : 5;
+    const power = matching.reduce((sum, d) => sum + bedPower(d, 1, 2, 3), 0) + bulls * 2;
+    const adjusted = Math.max(0, Math.round(power * (1 - weather.penalty)));
+    marks += adjusted;
+    fatigue = clamp(fatigue + wrong * 9 + weather.fatigue - bulls * 12, 0, 100);
+    oxygen = clamp(oxygen - 3 - wrong * 3 - (weather.penalty > .25 ? 4 : 0) + bulls * 12, 0, 100);
+    acclimation = clamp(acclimation + matching.length * 4 + bulls * 6, 0, 100);
+    if (fatigue >= 100 || oxygen <= 0) {
+      marks = Math.max(0, marks - 2);
+      fatigue = 58;
+      oxygen = Math.max(35, oxygen);
+      events.push("⛺ Repli au camp · récupération obligatoire");
+    }
+    if (marks >= threshold && peak < SUMMIT_14_PEAKS.length) {
+      events.push(`🏔️ ${SUMMIT_14_PEAKS[peak]} VALIDÉ !`);
+      peak += 1;
+      marks = 0;
+      fatigue = clamp(fatigue - 24, 0, 100);
+      oxygen = clamp(oxygen + 18, 0, 100);
+      state.scores[playerId] = Number(state.scores[playerId] || 0) + 800 + peak * 100;
+    } else if (adjusted > 0) events.push(`🧗 Progression sommet +${adjusted}/${threshold}`);
+    else events.push(`🌨️ ${weather.label} · aucune progression`);
+    state.special.summit14PeakByPlayer[playerId] = peak;
+    state.special.summit14MarksByPlayer[playerId] = marks;
+    state.special.ascentFatigueByPlayer[playerId] = fatigue;
+    state.special.ascentOxygenByPlayer[playerId] = oxygen;
+    state.special.ascentAcclimationByPlayer[playerId] = acclimation;
+    state.progress[playerId] = Math.min(100, Math.round((peak / SUMMIT_14_PEAKS.length) * 100));
+    state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((sum, d) => sum + wave61DartScore(d), 0);
+    state.special.ascentHistory = [...(state.special?.ascentHistory || []), { playerId, modeId: state.modeId, peak, marks, fatigue, oxygen, weather: weather.label }].slice(-60);
+    if (peak >= SUMMIT_14_PEAKS.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+    return { delta: adjusted, hits };
+  }
+
+  let altitude = Number(state.special?.ascentAltitudeByPlayer?.[playerId] || 0);
+  const summit = ascentSummitAltitude(state.modeId);
+  const beforeStage = ascentStageForAltitude(state.modeId, altitude);
+  let climb = matching.reduce((sum, d) => sum + bedPower(d, 220, 340, 520), 0) + bulls * (state.modeId === "everest" ? 90 : 140);
+  climb = Math.max(0, Math.round(climb * (1 - weather.penalty) * Math.max(.35, 1 - fatigue / 150)));
+  fatigue = clamp(fatigue + wrong * (state.modeId === "everest" ? 12 : 9) + weather.fatigue + matching.filter((d) => d?.bed === "T").length * 4 - bulls * 16, 0, 100);
+  acclimation = clamp(acclimation + matching.length * 4 + bulls * 8, 0, 100);
+
+  if (state.modeId === "everest") {
+    const altitudeDrain = altitude >= 7900 ? 10 : altitude >= 7000 ? 7 : altitude >= 6000 ? 5 : 2;
+    oxygen = clamp(oxygen - altitudeDrain - wrong * 3 - (weather.penalty > .25 ? 5 : 0) + bulls * 14, 0, 100);
+    const nextStage = Math.min(beforeStage + 1, EVEREST_STAGES.length - 1);
+    const requiredAcclimation = Math.max(0, nextStage - 1) * 10;
+    if (acclimation < requiredAcclimation && nextStage >= 3) {
+      climb = Math.round(climb * .45);
+      events.push(`🫁 Acclimatation ${Math.round(acclimation)}% / ${requiredAcclimation}% recommandée`);
+    }
+  } else {
+    oxygen = clamp(oxygen - wrong * 2 - weather.fatigue / 3 + bulls * 10, 0, 100);
+  }
+
+  altitude = clamp(altitude + climb, 0, summit);
+  if (fatigue >= 100 || oxygen <= 0) {
+    const drop = state.modeId === "everest" ? 650 : 350;
+    altitude = Math.max(0, altitude - drop);
+    fatigue = 58;
+    oxygen = Math.max(32, oxygen);
+    events.push(`⛺ Repli de ${drop} m pour récupérer`);
+  }
+  const stage = ascentStageForAltitude(state.modeId, altitude);
+  if (stage > beforeStage) events.push(`🏕️ ${ascentStages(state.modeId)[stage].name} atteint`);
+  if (climb > 0) events.push(`🧗 +${climb} m · ${weather.label}`);
+  else events.push(`🌨️ ${weather.label} · progression bloquée`);
+  if (bulls) events.push(state.modeId === "everest" ? "🫁 Oxygène / acclimatation restaurés" : "☀️ Fenêtre météo exploitée");
+
+  state.special.ascentAltitudeByPlayer[playerId] = altitude;
+  state.special.ascentStageByPlayer[playerId] = stage;
+  state.special.ascentFatigueByPlayer[playerId] = fatigue;
+  state.special.ascentOxygenByPlayer[playerId] = oxygen;
+  state.special.ascentAcclimationByPlayer[playerId] = acclimation;
+  state.progress[playerId] = Math.min(100, Math.round((altitude / summit) * 100));
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((sum, d) => sum + wave61DartScore(d), 0) + Math.round(climb / 10);
+  state.special.ascentHistory = [...(state.special?.ascentHistory || []), { playerId, modeId: state.modeId, altitude, stage, fatigue, oxygen, acclimation, weather: weather.label }].slice(-60);
+  if (altitude >= summit) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: climb, hits };
+}
+
 function conquestActor(state: Wave61State, playerId: string): string {
   return state.config.participantMode === "teams" ? String(state.config.teamByPlayer?.[playerId] || "A") : playerId;
 }
@@ -2804,6 +2968,8 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const result = processDisjoncte(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "petit_bac") {
     const result = processPetitBac(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (["mont_blanc", "everest", "summit_14"].includes(state.modeId)) {
+    const result = processAscentMode(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (CONQUEST_PROFILES[state.modeId]) {
     const result = processConquestMode(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "cheval_de_troie") {
@@ -3082,6 +3248,16 @@ export function wave61PrimaryMetric(state: Wave61State, playerId: string): { val
   if (state.modeId === "microscopia") return { value: Number(state.special?.microSamplesByPlayer?.[playerId] || 0), label: "ÉCHANT.", sub: `qualité ${state.special?.microQualityByPlayer?.[playerId] || 0} · contamination ${state.special?.microContaminationByPlayer?.[playerId] || 0}%` };
   if (state.modeId === "disjoncte") return { value: Number(state.special?.circuitStepByPlayer?.[playerId] || 0), label: "CIRCUITS", sub: `${state.special?.circuitStepByPlayer?.[playerId] || 0}/${CIRCUIT_NAMES.length} · surcharge ${state.special?.circuitOverloadByPlayer?.[playerId] || 0}%` };
   if (state.modeId === "petit_bac") return { value: Number(state.special?.bacValidatedByPlayer?.[playerId] || 0), label: "CATÉG.", sub: `${state.special?.bacStepByPlayer?.[playerId] || 0}/${BAC_CATEGORIES.length} validées` };
+  if (state.modeId === "mont_blanc" || state.modeId === "everest") {
+    const altitude = Math.round(Number(state.special?.ascentAltitudeByPlayer?.[playerId] || 0));
+    const summit = ascentSummitAltitude(state.modeId);
+    return { value: altitude, label: "ALTITUDE", sub: `${altitude}/${summit} m · fatigue ${Math.round(Number(state.special?.ascentFatigueByPlayer?.[playerId] || 0))}% · oxy ${Math.round(Number(state.special?.ascentOxygenByPlayer?.[playerId] || 0))}%` };
+  }
+  if (state.modeId === "summit_14") {
+    const peak = Number(state.special?.summit14PeakByPlayer?.[playerId] || 0);
+    const marks = Number(state.special?.summit14MarksByPlayer?.[playerId] || 0);
+    return { value: peak, label: "SOMMETS", sub: `${peak}/14 · progression ${marks} · fatigue ${Math.round(Number(state.special?.ascentFatigueByPlayer?.[playerId] || 0))}%` };
+  }
   if (CONQUEST_PROFILES[state.modeId]) {
     const profile = CONQUEST_PROFILES[state.modeId];
     const actor = conquestActor(state, playerId);

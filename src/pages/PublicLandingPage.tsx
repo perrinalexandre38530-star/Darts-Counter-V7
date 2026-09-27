@@ -71,6 +71,13 @@ function publicDartsUrl(id: string) {
   return `#/welcome/darts/${encodeURIComponent(id)}`;
 }
 
+function isPublicDartsDevelopment(game: DartsGameDef) {
+  const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
+  if (audit?.status === "available") return false;
+  if (audit?.status === "development") return true;
+  return !game.ready || game.tab === "mode_not_ready";
+}
+
 function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack: () => void; onOpenApp: () => void }) {
   const ticker = landingTickerFor(game.id);
   const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
@@ -185,7 +192,6 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   const auditedReadyGames = readyDartsGames.filter((game) => (DARTS_PUBLIC_RULE_AUDIT[game.id]?.sources?.length || 0) > 0);
   const auditPercent = readyDartsGames.length ? Math.round((auditedReadyGames.length / readyDartsGames.length) * 100) : 0;
   const remainingAuditCount = Math.max(0, readyDartsGames.length - auditedReadyGames.length);
-  const recentlyDocumentedIds = ["double_down","nine_dart_century","shove_a_penny","green_vs_red","hi_score","un_deux_trois_soleil","enculette","cricket_cut_throat","training_x01","tour_horloge"];
 
   const catalogueCards = [
     ["classic","GRANDS CLASSIQUES","Les incontournables des fléchettes : X01, Cricket, Killer, Shanghai et autres références."],

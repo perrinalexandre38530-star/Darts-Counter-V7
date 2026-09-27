@@ -420,28 +420,21 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "golf": {
     "status": 'available',
-    "sources": [
-      "src/pages/GolfConfig.tsx"
-    ],
+    "sources": ["src/pages/GolfConfig.tsx", "src/pages/GolfPlay.tsx", "src/pages/StatsGolfMatch.tsx"],
     "options": [
-      "Assignation",
-      "../lib/botCountries",
-      "../lib/bots",
-      "../components/BotPagedSelector",
-      "../assets/tickers/ticker_golf.png",
-      "../ui_assets/teams/team_gold.png",
-      "../ui_assets/teams/team_pink.png",
-      "../ui_assets/teams/team_blue.png",
-      "../ui_assets/teams/team_green.png",
-      "../assets/avatars/bots-pro/green-machine.png",
-      "../assets/avatars/bots-pro/jackpot.png",
-      "../assets/avatars/bots-pro/crafty-cockney.png",
-      "../assets/avatars/bots-pro/barney.png",
-      "../assets/avatars/bots-pro/the-menace.png",
-      "../assets/avatars/bots-pro/darth-maple.png",
-      "../assets/avatars/bots-pro/the-giant.png",
-      "../assets/avatars/bots-pro/the-hammer.png",
-      "../assets/avatars/bots-pro/voltage.png"
+      "FORMAT : parcours de 9 ou 18 trous",
+      "CIBLE DU TROU : un numéro est imposé à chaque trou",
+      "ORDRE DES TROUS : Chronologique ou Aléatoire ; l'ordre aléatoire reste stable pendant toute la partie",
+      "VOLÉE : jusqu'à 3 fléchettes par joueur et par trou ; le joueur peut s'arrêter avant",
+      "SCORE DU TROU : seule la DERNIÈRE fléchette lancée pendant le tour détermine le score du trou",
+      "BARÈME GOLF : le moteur convertit la dernière touche en score de trou ; l'objectif global est de terminer avec le total le plus bas",
+      "PARTICIPANTS : au moins 2 joueurs pour lancer une partie",
+      "ÉQUIPES : activables avec 2 / 3 / 4 équipes et assignation des joueurs",
+      "BOTS IA : activables ; bots intégrés et bots personnalisés pris en charge",
+      "NIVEAU BOT : Facile / Normal / Difficile",
+      "ORDRE DE DÉPART : configurable pour les joueurs ou les équipes",
+      "SAUVEGARDE / REPRISE : l'ordre exact des trous, les scores, le trou courant et l'état de fin sont restaurés",
+      "FIN : après le dernier trou, classement au score total ; le score le plus bas gagne"
     ]
   },
   "scram": {

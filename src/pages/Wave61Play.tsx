@@ -87,6 +87,11 @@ import {
   SabaudiaDauphinePanel,
   VikingsPanel,
 } from "./wave61/Wave61ConquestPanels";
+import {
+  EverestPanel,
+  MontBlancPanel,
+  Summit14Panel,
+} from "./wave61/Wave61AscentPanels";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -135,6 +140,9 @@ function familyRules(spec: any, preset: any) {
     cheval_de_troie: "Construis le cheval, mène le siège, infiltre la cité puis prends la citadelle. Les erreurs font monter l'alerte ; BULL améliore la discrétion.",
     sabaudia_dauphine: "Conquête territoriale alpine entre Sabaudia et Dauphiné. Les positions peuvent être fortifiées et une Influence pleine renforce les territoires déjà contrôlés.",
     galaxies: "Colonise des systèmes stellaires. Doubles/triples accélèrent l'expansion, l'Énergie alimente l'Hyperdrive et les systèmes fortifiés résistent aux invasions.",
+    mont_blanc: "Monte jusqu'à 4 809 m en franchissant refuge, glacier et arête. La météo réduit la progression, les erreurs augmentent la fatigue et les BULL ouvrent une fenêtre de récupération.",
+    everest: "Expédition haute altitude jusqu'à 8 849 m avec camps successifs, oxygène, acclimatation, fatigue et météo. Un manque d'oxygène ou une fatigue extrême force le repli.",
+    summit_14: "Enchaîne les quatorze sommets de plus de 8 000 m. Chaque sommet demande plusieurs marques, tandis que fatigue, oxygène et météo persistent sur toute la campagne.",
     tug_rush: "Deux camps tirent une corde virtuelle. Le secteur demandé donne de la traction, doubles/triples renforcent le tir et les BULL déclenchent les plus gros coups.",
     un_deux_trois_soleil: "Phase verte : touche le secteur demandé pour avancer. Phase SOLEIL : reste immobile avec MISS ou sécurise au BULL ; tout autre impact fait reculer.",
     chat_souris: "Le chat part en chasse tandis que les souris disposent d'avance. Le chat capture en rattrapant leur position ; une souris gagne si elle atteint le refuge.",
@@ -149,7 +157,7 @@ function familyRules(spec: any, preset: any) {
   return <div style={{ display: "grid", gap: 9, fontSize: 12.5, lineHeight: 1.5 }}>
     <div><b style={{ color: preset.accent }}>CONCEPT</b><br />{spec.infoBody}</div>
     <div><b style={{ color: preset.accent }}>MOTEUR V{WAVE61_ENGINE_VERSION}</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
-    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V7 conserve les moteurs précédents et spécialise Conquête / Histoire / Territoire : cartes de zones, pression, propriétaires, fortifications, ressources et pouvoirs de faction.</div>
+    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V8 conserve les moteurs précédents et spécialise Ascension / Montagne : altitude, camps, météo, fatigue, oxygène, acclimatation et campagne des 14 sommets.</div>
   </div>;
 }
 
@@ -523,6 +531,9 @@ export default function Wave61Play(props: any) {
       {spec.id === "cheval_de_troie" ? <ChevalTroiePanel state={state} accent={accent} /> : null}
       {spec.id === "sabaudia_dauphine" ? <SabaudiaDauphinePanel state={state} accent={accent} /> : null}
       {spec.id === "galaxies" ? <GalaxiesPanel state={state} accent={accent} /> : null}
+      {spec.id === "mont_blanc" ? <MontBlancPanel state={state} accent={accent} /> : null}
+      {spec.id === "everest" ? <EverestPanel state={state} accent={accent} /> : null}
+      {spec.id === "summit_14" ? <Summit14Panel state={state} accent={accent} /> : null}
 
       {state.phase !== "finished" ? <>
         <div style={{ ...panelStyle(accent + "3d"), padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
