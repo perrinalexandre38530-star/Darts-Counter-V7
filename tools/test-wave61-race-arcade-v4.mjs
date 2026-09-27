@@ -4,9 +4,9 @@ function read(file) { return fs.readFileSync(file, 'utf8'); }
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
 const engine = read('src/lib/gameEngines/wave61Engine.ts');
-const play = read('src/pages/Wave61SharedPlay.tsx');
+const play = read('src/pages/wave61/Wave61SharedPlay.tsx');
 const panels = read('src/pages/wave61/Wave61RacePanels.tsx');
-const config = read('src/pages/Wave61SharedConfig.tsx');
+const config = read('src/pages/wave61/Wave61SharedConfig.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 
 assert(/WAVE61_ENGINE_VERSION = (?:[4-9]|[1-9][0-9]+)/.test(engine), 'Wave61 doit être au moins V4');

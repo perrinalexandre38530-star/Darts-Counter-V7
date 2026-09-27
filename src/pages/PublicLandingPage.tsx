@@ -98,7 +98,7 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
     </header>
     <section className="mssRuleHero">
       <div className="mssRuleHeroArt">
-        {ticker ? <img src={ticker} alt={`Visuel réel ${game.label} dans MULTISPORTS SCORING`}/> :
+        {ticker ? <img src={ticker} alt={`Visuel réel ${game.label} dans MULTISPORTS SCORING`} decoding="async" fetchPriority="high"/> :
           <div className="mssRuleFallback"><img src={darts} alt=""/><span>MULTISPORTS SCORING</span><strong>{game.label}</strong></div>}
       </div>
       <div className="mssRuleHeroCopy">
@@ -113,21 +113,26 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
         </div>
       </div>
     </section>
+    <nav className="mssRuleQuickNav" aria-label="Navigation dans la règle">
+      <a href="#regles">RÈGLES</a>
+      <a href="#configuration">CONFIGURATION</a>
+      <a href="#autres-modes">AUTRES MODES</a>
+    </nav>
     <section className="mssRuleSummary">
       <div><span>OBJECTIF</span><strong>{objective}</strong></div>
       <div><span>CATÉGORIE</span><strong>{exclusive ? "Exclusivité MSS" : DARTS_CATEGORY_LABEL[game.category] || "Fléchettes"}</strong></div>
       <div><span>OPTIONS</span><strong>{[game.supportsTeams ? "Équipes" : "", game.supportsBots ? "Bots IA" : ""].filter(Boolean).join(" • ") || "Selon le mode"}</strong></div>
     </section>
-    <section className="mssRuleContent">
+    <section className="mssRuleContent" id="regles">
       <article><b>01</b><h2>OBJECTIF</h2><p>{objective}</p></article>
       <article><b>02</b><h2>PRINCIPE & RÈGLES</h2><p>{game.infoBody}</p></article>
       <article><b>03</b><h2>FORMAT DE PARTIE</h2><p>Le format est déterminé par la configuration propre à ce mode dans MULTISPORTS SCORING.{game.supportsTeams ? " Les équipes sont prises en charge lorsque cette option est proposée." : ""}{game.supportsBots ? " Les bots IA peuvent être utilisés lorsque la configuration du mode les active." : ""}</p></article>
-      <article className="mssRuleConfig"><b>04</b><h2>RÈGLES & PARAMÈTRES</h2>{development ? <p>EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.</p> : auditedOptions.length ? <><p>Configuration et règles disponibles dans ce mode :</p><ul>{auditedOptions.map((option) => <li key={option}>{option}</li>)}</ul></> : <p>Les paramètres détaillés de ce mode seront complétés au fur et à mesure de son développement.</p>}</article>
+      <article className="mssRuleConfig" id="configuration"><b>04</b><h2>RÈGLES & PARAMÈTRES</h2>{development ? <p>EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.</p> : auditedOptions.length ? <><p>Configuration et règles disponibles dans ce mode :</p><ol>{auditedOptions.map((option, index) => <li key={`${index}-${option}`}><b>{String(index + 1).padStart(2, "0")}</b><span>{option}</span></li>)}</ol></> : <p>Les paramètres détaillés de ce mode seront complétés au fur et à mesure de son développement.</p>}</article>
       <article><b>05</b><h2>STATUT DANS MSS</h2><p>{development ? "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée." : "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur."}</p></article>
       {!development && <article><b>06</b><h2>DÉROULEMENT</h2><p>Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.</p></article>}
-      {!development && <article><b>07</b><h2>FIN DE PARTIE</h2><p>La partie se termine lorsque la condition de victoire propre au mode est atteinte. Les résultats sont alors exploitables par l’historique et les statistiques compatibles avec ce moteur.</p></article>}
+      {!development && <article><b>07</b><h2>FIN DE PARTIE</h2><p>La condition de fin et le classement appliqués sont ceux du moteur de ce mode. Les particularités confirmées figurent dans la section « Règles & paramètres » ci-dessus.</p></article>}
     </section>
-    {sameCategoryGames.length > 0 && <section className="mssRuleRelated"><div className="mssRuleRelatedHead"><span>À DÉCOUVRIR AUSSI</span><h2>D’autres modes de la même famille</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id); return <a key={related.id} href={publicDartsUrl(related.id)}>{art ? <img src={art} alt=""/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{related.label}</span></a>; })}</div></section>}
+    {sameCategoryGames.length > 0 && <section className="mssRuleRelated" id="autres-modes"><div className="mssRuleRelatedHead"><span>À DÉCOUVRIR AUSSI</span><h2>D’autres modes de la même famille</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id); return <a key={related.id} href={publicDartsUrl(related.id)}>{art ? <img src={art} alt="" loading="lazy" decoding="async"/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{related.label}</span></a>; })}</div></section>}
     <nav className="mssRulePager">
       {previousGame ? <a href={publicDartsUrl(previousGame.id)}><small>← MODE PRÉCÉDENT</small><strong>{previousGame.label}</strong></a> : <span/>}
       <button onClick={onBack}>TOUS LES MODES</button>
@@ -273,7 +278,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
           const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
           const development = isPublicDartsDevelopment(game);
           return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id}>
-            <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`}/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? "EN DÉVELOPPEMENT" : exclusive ? "EXCLUSIF MSS" : DARTS_CATEGORY_LABEL[game.category]}</span>{exclusive && development && <i className="mssExclusiveCorner">EXCLUSIF MSS</i>}</div>
+            <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`} loading="lazy" decoding="async"/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? "EN DÉVELOPPEMENT" : exclusive ? "EXCLUSIF MSS" : DARTS_CATEGORY_LABEL[game.category]}</span>{exclusive && development && <i className="mssExclusiveCorner">EXCLUSIF MSS</i>}</div>
             <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{game.label}</strong></div><p>{development ? "Mode référencé dans le catalogue MSS. Développement du moteur en cours." : game.infoBody}</p><small>{development ? "DÉCOUVRIR LE CONCEPT →" : "VOIR LA FICHE COMPLÈTE →"}</small></div>
           </a>;
         })}

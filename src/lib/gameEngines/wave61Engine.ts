@@ -2,8 +2,8 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-// Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10.
-export const WAVE61_ENGINE_VERSION = 11;
+// Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11.
+export const WAVE61_ENGINE_VERSION = 12;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -2107,7 +2107,7 @@ function processMaya(state: Wave61State, playerId: string, darts: GameDart[], ta
   const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
   marks += power;
   doom = clamp(doom + wrong * (state.config.difficulty === "hard" ? 14 : 10) - bulls * 20, 0, 100);
-  if (marks >= modeOptionNumber(state.config, "chamberNeed", missionThreshold(state.config.difficulty, 2, 3, 4), 2, 6)) {
+  if (marks >= missionThreshold(state.config.difficulty, 2, 3, 4)) {
     seal += 1;
     marks = 0;
     events.push(`☀️ Sceau ${MAYA_CYCLES[Math.min(seal - 1, MAYA_CYCLES.length - 1)]} activé`);
@@ -2166,14 +2166,17 @@ function processDracoSpheres(state: Wave61State, playerId: string, darts: GameDa
   const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
   const hits = matching.length;
   const bulls = bullCount(darts);
-  energy = clamp(energy + bulls * 22 + matching.filter((d) => d?.bed === "T").length * 12, 0, 100);
+  const energyThreshold = modeOptionNumber(state.config, "energyThreshold", 100, 60, 150);
+  const bullEnergy = modeOptionNumber(state.config, "bullEnergy", 22, 5, 50);
+  const tripleEnergy = modeOptionNumber(state.config, "tripleEnergy", 12, 4, 30);
+  energy = clamp(energy + bulls * bullEnergy + matching.filter((d) => d?.bed === "T").length * tripleEnergy, 0, Math.max(150, energyThreshold));
   if (hits > 0 && spheres < 7) {
     spheres += 1;
     events.push(`🔮 Orbe ${spheres}/7 récupéré`);
   }
-  if (energy >= 100 && spheres < 7) {
+  if (energy >= energyThreshold && spheres < 7) {
     spheres += 1;
-    energy = 0;
+    energy = Math.max(0, energy - energyThreshold);
     events.push("🐉 Énergie maximale · un orbe bonus est invoqué");
   }
   state.special.dracoSpheresByPlayer[playerId] = spheres;
@@ -2194,13 +2197,16 @@ function processMythologie(state: Wave61State, playerId: string, darts: GameDart
   const power = matching.reduce((s, d) => s + bedPower(d), 0);
   const bulls = bullCount(darts);
   marks += power;
-  favor = clamp(favor + bulls * 18 + hits * 4, 0, 100);
-  if (favor >= 60 && marks < missionThreshold(state.config.difficulty, 2, 3, 4)) {
+  const favorThreshold = modeOptionNumber(state.config, "favorThreshold", 60, 30, 90);
+  const bullFavor = modeOptionNumber(state.config, "bullFavor", 18, 5, 40);
+  const trialNeed = modeOptionNumber(state.config, "trialNeed", missionThreshold(state.config.difficulty, 2, 3, 4), 2, 6);
+  favor = clamp(favor + bulls * bullFavor + hits * 4, 0, 100);
+  if (favor >= favorThreshold && marks < trialNeed) {
     marks += 1;
-    favor = Math.max(0, favor - 40);
+    favor = Math.max(0, favor - Math.max(20, Math.round(favorThreshold * 0.67)));
     events.push("✨ Faveur divine · +1 marque");
   }
-  if (marks >= modeOptionNumber(state.config, "chamberNeed", missionThreshold(state.config.difficulty, 2, 3, 4), 2, 6)) {
+  if (marks >= trialNeed) {
     trial += 1;
     marks = 0;
     events.push(`🏛️ Épreuve de ${MYTH_GODS[Math.min(trial - 1, MYTH_GODS.length - 1)]} accomplie`);
@@ -2749,9 +2755,12 @@ function processChevalTroie(state: Wave61State, playerId: string, darts: GameDar
   const wrong = nonBullWrongCount(darts, target, state.config.difficulty) + darts.filter((d) => d?.bed === "MISS").length;
   marks += power;
   if (phase <= 1) wood += power * 12;
-  alert = clamp(alert + wrong * (state.config.difficulty === "hard" ? 14 : 9) - bulls * 18, 0, 100);
+  const alertGain = modeOptionNumber(state.config, "alertGain", state.config.difficulty === "hard" ? 14 : 9, 3, 20);
+  const bullStealth = modeOptionNumber(state.config, "bullStealth", 18, 5, 35);
+  alert = clamp(alert + wrong * alertGain - bulls * bullStealth, 0, 100);
   const baseNeed = [5, 5, 4, 4, 5][Math.min(phase, 4)] || 5;
-  const need = baseNeed + (state.config.difficulty === "hard" ? 1 : state.config.difficulty === "easy" ? -1 : 0);
+  const phaseNeedBonus = modeOptionNumber(state.config, "phaseNeedBonus", 0, -1, 2);
+  const need = baseNeed + (state.config.difficulty === "hard" ? 1 : state.config.difficulty === "easy" ? -1 : 0) + phaseNeedBonus;
   if (marks >= Math.max(3, need)) {
     events.push(`🐴 ${TROJAN_PHASES[Math.min(phase, TROJAN_PHASES.length - 1)]} réussi`);
     phase += 1; marks = 0;
@@ -2760,7 +2769,7 @@ function processChevalTroie(state: Wave61State, playerId: string, darts: GameDar
     phase = Math.max(1, phase - 1); marks = 0; alert = 55;
     events.push("🚨 Infiltration découverte · recul d'une phase");
   }
-  if (bulls) events.push(`🤫 Discrétion -${bulls * 18}% alerte`);
+  if (bulls) events.push(`🤫 Discrétion -${bulls * bullStealth}% alerte`);
   state.special.trojanPhaseByPlayer[playerId] = phase;
   state.special.trojanMarksByPlayer[playerId] = marks;
   state.special.trojanAlertByPlayer[playerId] = alert;
@@ -2998,7 +3007,8 @@ function processJurassic(state: Wave61State, playerId: string, darts: GameDart[]
   let hits = 0, delta = 0;
   for (const d of darts) {
     if (d?.bed === "OB" || d?.bed === "IB") {
-      const calm = d.bed === "IB" ? 35 : 22;
+      const tranq = modeOptionNumber(state.config, "tranquilizerPower", 22, 8, 40);
+      const calm = d.bed === "IB" ? Math.round(tranq * 1.6) : tranq;
       threat = Math.max(0, threat - calm); security = Math.min(100, security + Math.floor(calm / 3)); hits += 1;
       events.push(`💉 Tranquillisant · menace -${calm}`);
     } else if (target && dartMatchesTarget(d, target, state.config.difficulty)) {
@@ -3006,8 +3016,9 @@ function processJurassic(state: Wave61State, playerId: string, darts: GameDart[]
       progress = Math.min(100, progress + move); delta += move; hits += 1; threat = Math.max(0, threat - 4);
     } else threat = clamp(threat + (d?.bed === "MISS" ? 18 : 10), 0, 120);
   }
-  if (threat >= 100) {
-    const damage = state.config.difficulty === "hard" ? 65 : state.config.difficulty === "easy" ? 40 : 52;
+  const attackThreshold = modeOptionNumber(state.config, "attackThreshold", 100, 70, 120);
+  if (threat >= attackThreshold) {
+    const damage = modeOptionNumber(state.config, "securityDamage", state.config.difficulty === "hard" ? 65 : state.config.difficulty === "easy" ? 40 : 52, 25, 90);
     security = Math.max(0, security - damage); threat = 35; events.push(`🦖 ATTAQUE ! Sécurité -${damage}`);
     if (security <= 0) { applySurvivalDamage(state, playerId, 120, events); security = state.eliminated[playerId] ? 0 : 100; }
   }
@@ -3125,10 +3136,13 @@ function processSpartacus(state: Wave61State, playerId: string, darts: GameDart[
 function processCosmoKnights(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
   const matches = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)) : [];
   const hits = matches.length;
+  const burstThreshold = modeOptionNumber(state.config, "burstThreshold", 100, 60, 150);
+  const burstDamage = modeOptionNumber(state.config, "burstDamage", 55, 30, 90);
+  const shieldCap = modeOptionNumber(state.config, "shieldCap", 50, 20, 90);
   let charge = Number(state.special?.cosmoChargeByPlayer?.[playerId] || 0);
   let shield = Number(state.special?.cosmoShieldByPlayer?.[playerId] || 0);
   for (const d of darts) {
-    if (d?.bed === "IB" || d?.bed === "OB") { charge += d.bed === "IB" ? 45 : 28; shield = clamp(shield + (d.bed === "IB" ? 22 : 12), 0, 50); }
+    if (d?.bed === "IB" || d?.bed === "OB") { charge += d.bed === "IB" ? 45 : 28; shield = clamp(shield + (d.bed === "IB" ? 22 : 12), 0, shieldCap); }
     else if (target && dartMatchesTarget(d, target, state.config.difficulty)) charge += bedPower(d, 12, 20, 30);
   }
   const victim = nextEnemy(state, playerId);
@@ -3137,14 +3151,14 @@ function processCosmoKnights(state: Wave61State, playerId: string, darts: GameDa
     const base = matches.reduce((sum, d) => sum + bedPower(d, 10, 16, 24), 0);
     dealt += damageWithLayer(state, victim.id, base, "cosmoShieldByPlayer", events, `✨ Bouclier ${victim.name}`);
   }
-  if (victim && charge >= 100) {
-    const burst = 55 + (state.config.difficulty === "hard" ? 10 : 0);
+  if (victim && charge >= burstThreshold) {
+    const burst = burstDamage + (state.config.difficulty === "hard" ? 10 : 0);
     dealt += damageWithLayer(state, victim.id, burst, "cosmoShieldByPlayer", events, `✨ Bouclier ${victim.name}`);
-    charge -= 100;
+    charge -= burstThreshold;
     state.special.cosmoBurstsByPlayer[playerId] = Number(state.special?.cosmoBurstsByPlayer?.[playerId] || 0) + 1;
     events.push(`🌌 COSMO BURST · ${burst} puissance`);
   }
-  state.special.cosmoChargeByPlayer[playerId] = clamp(charge, 0, 150);
+  state.special.cosmoChargeByPlayer[playerId] = clamp(charge, 0, Math.max(150, burstThreshold + 50));
   state.special.cosmoShieldByPlayer[playerId] = shield;
   state.statsByPlayer[playerId].damage += Math.max(0, dealt);
   state.scores[playerId] += dealt + hits * 15; state.progress[playerId] = state.special.cosmoChargeByPlayer[playerId];

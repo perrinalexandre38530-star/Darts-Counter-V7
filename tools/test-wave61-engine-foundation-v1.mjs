@@ -7,8 +7,8 @@ const catalog = read('src/games/dartsWave61.ts');
 const families = read('src/games/dartsWave61Families.ts');
 const registry = read('src/games/dartsGameRegistry.ts');
 const app = read('src/App.tsx');
-const config = read('src/pages/Wave61SharedConfig.tsx');
-const play = read('src/pages/Wave61SharedPlay.tsx');
+const config = read('src/pages/wave61/Wave61SharedConfig.tsx');
+const play = read('src/pages/wave61/Wave61SharedPlay.tsx');
 const engine = read('src/lib/gameEngines/wave61Engine.ts');
 const gamesPage = read('src/pages/Games.tsx');
 

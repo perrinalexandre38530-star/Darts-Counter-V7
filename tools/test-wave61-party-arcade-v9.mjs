@@ -2,7 +2,7 @@ import fs from 'node:fs';
 function read(file) { return fs.readFileSync(file, 'utf8'); }
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const engine = read('src/lib/gameEngines/wave61Engine.ts');
-const play = read('src/pages/Wave61SharedPlay.tsx');
+const play = read('src/pages/wave61/Wave61SharedPlay.tsx');
 const panels = read('src/pages/wave61/Wave61PartyArcadePanels.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 assert(engine.includes('WAVE61_ENGINE_VERSION = 9'), 'Wave61 V9 absent');
