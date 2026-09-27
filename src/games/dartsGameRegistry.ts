@@ -1523,8 +1523,50 @@ const READY_IDS = new Set<string>([
   "capital",
 ]);
 
+// Taxonomie DÉFIS volontairement compacte : aucun onglet ne doit exister pour
+// un seul jeu. Les modes historiques et la vague 61 sont regroupés par logique
+// de jeu afin que les filtres restent utiles et lisibles.
+const CHALLENGE_SUBCATEGORY_BY_ID: Record<string, string> = {
+  // SCORING — maximiser / construire un total
+  challenge: "scoring",
+  count_up: "scoring",
+  halve_it: "scoring",
+  baseball: "scoring",
+
+  // PRÉCISION — viser des zones/cibles imposées
+  bobs_27: "precision",
+  shooter: "precision",
+  departements: "precision",
+  replicat: "precision",
+  golden_dart: "precision",
+  sniper: "precision",
+  luciole: "precision",
+
+  // PERFORMANCE — épreuve / rendement / progression sportive
+  football: "performance",
+  rugby: "performance",
+  darts_firefighter: "performance",
+  saut_a_la_corde: "performance",
+  athletisme: "performance",
+
+  // DUEL — confrontation directe, poursuite ou élimination
+  knockout: "duel",
+  attrape_moi: "duel",
+  tug_rush: "duel",
+  knockback: "duel",
+
+  // STRATÉGIE — gestion, choix et contrôle
+  cargo: "strategie",
+  capital: "strategie",
+  ocean_control: "strategie",
+};
+
 export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry.map((g) => ({
   ...g,
+  subCategory:
+    g.category === "challenge"
+      ? (CHALLENGE_SUBCATEGORY_BY_ID[g.id] || g.subCategory || "scoring")
+      : g.subCategory,
   ready: READY_IDS.has(g.id),
 }));
 
@@ -1557,8 +1599,7 @@ export const GAME_SUBCATEGORIES: Record<GameCategory, { id: string; label: strin
     { id: 'precision', label: 'Précision' },
     { id: 'performance', label: 'Performance' },
     { id: 'duel', label: 'Duel' },
-    { id: 'elimination', label: 'Élimination' },
-    { id: 'other', label: 'Autres défis' },
+    { id: 'strategie', label: 'Stratégie' },
   ],
   fun: [
     { id: 'arcade', label: 'Arcade' },

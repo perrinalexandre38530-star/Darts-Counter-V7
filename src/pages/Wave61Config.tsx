@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import tickerTugRush from "../assets/tickers/ticker_tug_rush.webp";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
@@ -118,6 +119,7 @@ export default function Wave61Config(props: any) {
 
   return <div className="page" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
     <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />La passe V2 branche le mode sur le moteur mutualisé <b>{preset.label}</b>. Les familles Plateau & Déduction disposent maintenant de règles signature ; les autres familles seront spécialisées dans les passes suivantes.</div>} />} />
+    {spec.id === "tug_rush" ? <div style={{ padding: "6px 10px 2px", maxWidth: 980, margin: "0 auto" }}><img src={tickerTugRush} alt="TUG RUSH" style={{ width: "100%", aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 16, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 12px 34px rgba(0,0,0,.38)` }} /></div> : null}
     <div style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
