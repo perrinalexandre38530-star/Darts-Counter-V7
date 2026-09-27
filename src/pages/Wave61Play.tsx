@@ -21,6 +21,7 @@ import {
   wave61PrimaryMetric,
   wave61LucioleTarget,
   wave61GoldenTarget,
+  WAVE61_ENGINE_VERSION,
   type Wave61State,
 } from "../lib/gameEngines/wave61Engine";
 import {
@@ -37,6 +38,18 @@ import {
   resolveModeProfiles,
   uiToGameDart,
 } from "./newModes/newModePlayShared";
+import {
+  AthleticsPanel,
+  ChatSourisPanel,
+  ChienChatPanel,
+  FreefallPanel,
+  JumpRopePanel,
+  MazeChasePanel,
+  RollerCoasterPanel,
+  SoleilPanel,
+  TugRushPanel,
+  TyrolienPanel,
+} from "./wave61/Wave61RacePanels";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -54,11 +67,21 @@ function familyRules(spec: any, preset: any) {
     sniper: "Une série de contrats de précision s'enchaîne. Plus la difficulté monte, plus le lit exact S/D/T/BULL devient obligatoire.",
     luciole: "La cible s'illumine brièvement au début du tour puis disparaît. Mémorise le secteur et touche-le avant que la luciole suivante apparaisse.",
     golden_dart: "Une cible dorée secrète se cache parmi les 20 secteurs. Chaque erreur révèle un indice ; trouve-la pour gagner une marque d'or et passer à la suivante.",
+    tug_rush: "Deux camps tirent une corde virtuelle. Le secteur demandé donne de la traction, doubles/triples renforcent le tir et les BULL déclenchent les plus gros coups.",
+    un_deux_trois_soleil: "Phase verte : touche le secteur demandé pour avancer. Phase SOLEIL : reste immobile avec MISS ou sécurise au BULL ; tout autre impact fait reculer.",
+    chat_souris: "Le chat part en chasse tandis que les souris disposent d'avance. Le chat capture en rattrapant leur position ; une souris gagne si elle atteint le refuge.",
+    maze_chase: "Suis le chemin du labyrinthe, collecte les couloirs dans l'ordre et utilise BULL comme power mode pour repousser le poursuivant.",
+    chien_chat: "Deux pistes parallèles : chiens et chats progressent chacun vers l'arrivée avec leurs propres bonus. Secteur 5 = os, secteur 17 = poisson, BULL = raccourci.",
+    roller_coaster: "Gère vitesse et progression sur cinq sections. Les bons secteurs accélèrent ; trop de vitesse dans un looping ou virage provoque une pénalité.",
+    athletisme: "Meeting en six épreuves : Sprint, Haies, Longueur, Hauteur, Javelot et Relais. Chaque discipline transforme les darts en points spécifiques.",
+    chute_libre: "Descends depuis 4000 m et ouvre le parachute au bon moment avec BULL/DBULL. Trop tôt ne sert à rien ; trop tard entraîne le crash.",
+    tyrolien: "Franchis cinq sections de câble en maintenant ta vitesse. Les secteurs de checkpoint font progresser, BULL booste la glisse et le vent peut faire reculer.",
+    saut_a_la_corde: "Enchaîne les secteurs dans le rythme. S/D/T valent 1/2/3 sauts, BULL donne un gros bonus et une erreur casse le combo.",
   };
   return <div style={{ display: "grid", gap: 9, fontSize: 12.5, lineHeight: 1.5 }}>
     <div><b style={{ color: preset.accent }}>CONCEPT</b><br />{spec.infoBody}</div>
-    <div><b style={{ color: preset.accent }}>MOTEUR V3</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
-    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V3 conserve Plateau & Déduction et spécialise maintenant Score & Précision : contrats, parcours, mémoire flash et objectifs secrets.</div>
+    <div><b style={{ color: preset.accent }}>MOTEUR V{WAVE61_ENGINE_VERSION}</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
+    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V4 conserve les moteurs précédents et spécialise Course / Arcade / Performance : poursuites, vitesse, altitude, rythme et disciplines.</div>
   </div>;
 }
 
@@ -268,7 +291,7 @@ export default function Wave61Play(props: any) {
     finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined,
     winnerId: s.winnerId,
     players: profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null })),
-    game: { mode: spec.id, modeId: spec.id, engineFamily: s.family, engineVersion: 3 },
+    game: { mode: spec.id, modeId: spec.id, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION },
     summary: { mode: spec.id, modeId: spec.id, family: s.family, winnerId: s.winnerId, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, statsByPlayer: s.statsByPlayer, config: s.config },
     resume: { mode: "wave61", modeId: spec.id, config: s.config, state: cloneWave61State(s), updatedAt: Date.now() },
     payload: { kind: spec.id, mode: spec.id, modeId: spec.id, sport: "darts", config: s.config, stateSnapshot: cloneWave61State(s), visits: s.visits, stats: { players: s.statsByPlayer } },
@@ -355,7 +378,7 @@ export default function Wave61Play(props: any) {
   const teamMode = config.participantMode === "teams";
 
   return <div style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
-    <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V3`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
+    <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
     {spec.id === "tug_rush" ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={tickerTugRush} alt="TUG RUSH" style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
     <div style={{ padding: "7px 8px 18px", maxWidth: 1040, margin: "0 auto", display: "grid", gap: 8 }}>
       <div style={{ ...panelStyle(accent + "45"), padding: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
@@ -390,11 +413,21 @@ export default function Wave61Play(props: any) {
       {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
       {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
       {spec.id === "golden_dart" ? <GoldenDartPanel state={state} accent={accent} /> : null}
+      {spec.id === "tug_rush" ? <TugRushPanel state={state} accent={accent} /> : null}
+      {spec.id === "un_deux_trois_soleil" ? <SoleilPanel state={state} accent={accent} /> : null}
+      {spec.id === "chat_souris" ? <ChatSourisPanel state={state} accent={accent} /> : null}
+      {spec.id === "maze_chase" ? <MazeChasePanel state={state} accent={accent} /> : null}
+      {spec.id === "chien_chat" ? <ChienChatPanel state={state} accent={accent} /> : null}
+      {spec.id === "roller_coaster" ? <RollerCoasterPanel state={state} accent={accent} /> : null}
+      {spec.id === "athletisme" ? <AthleticsPanel state={state} accent={accent} /> : null}
+      {spec.id === "chute_libre" ? <FreefallPanel state={state} accent={accent} /> : null}
+      {spec.id === "tyrolien" ? <TyrolienPanel state={state} accent={accent} /> : null}
+      {spec.id === "saut_a_la_corde" ? <JumpRopePanel state={state} accent={accent} /> : null}
 
       {state.phase !== "finished" ? <>
         <div style={{ ...panelStyle(accent + "3d"), padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
           <div><div style={{ color: accent, fontSize: 9.5, fontWeight: 1100, letterSpacing: .8 }}>{target ? "OBJECTIF ACTIF" : "OBJECTIF LIBRE"}</div><div style={{ marginTop: 4, color: "#fff", fontSize: 18, fontWeight: 1100 }}>{spec.id === "golden_dart" ? "Trouve le secteur doré grâce aux indices" : spec.id === "luciole" ? "Mémorise la luciole avant qu'elle s'éteigne" : target?.label || (state.family === "score" ? "Marque le maximum" : spec.id === "align_4" ? "Choisis ta colonne avec le secteur" : "Fais progresser ta mission")}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9.8, lineHeight: 1.4 }}>{spec.infoBody}</div></div>
-          <div style={{ minWidth: 76, minHeight: 76, borderRadius: 18, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: 11 }}>{state.family === "survival" || state.family === "combat" ? "⚔️\nSURVIE" : state.family === "ascent" ? "⛰️\nASCENSION" : state.family === "conquest" ? "🗺️\nCONQUÊTE" : state.family === "deduction" ? "🧩\nINDICES" : state.family === "rhythm" ? "⚡\nCOMBO" : "🎯\nACTION"}</div>
+          <div style={{ minWidth: 76, minHeight: 76, borderRadius: 18, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: 11 }}>{state.family === "survival" || state.family === "combat" ? "⚔️\nSURVIE" : state.family === "ascent" ? "⛰️\nASCENSION" : state.family === "conquest" ? "🗺️\nCONQUÊTE" : state.family === "deduction" ? "🧩\nINDICES" : state.family === "rhythm" ? "⚡\nCOMBO" : state.family === "race" ? "🏁\nCOURSE" : "🎯\nACTION"}</div>
         </div>
 
         {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}

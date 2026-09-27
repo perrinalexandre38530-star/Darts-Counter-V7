@@ -2,6 +2,8 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
+export const WAVE61_ENGINE_VERSION = 4;
+
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
 export type Wave61Config = {
@@ -117,7 +119,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
   const selectedIds = Array.isArray(raw?.selectedIds) ? raw.selectedIds.map(String) : [];
   const difficulty: Wave61Difficulty = raw?.difficulty === "easy" || raw?.difficulty === "hard" ? raw.difficulty : "normal";
   const botLevel: Wave61Difficulty = raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : difficulty;
-  const forcedRounds = modeId === "nine_dart_century" ? 3 : modeId === "double_down" ? 9 : null;
+  const forcedRounds = modeId === "nine_dart_century" ? 3 : modeId === "double_down" ? 9 : modeId === "athletisme" ? 6 : null;
   const forcedGoal = modeId === "nine_dart_century" ? 100 : modeId === "shove_a_penny" ? 21 : modeId === "green_vs_red" ? 10 : null;
   return {
     modeId,
@@ -202,6 +204,69 @@ function exactTargetLabel(contract: { number?: number; bed: string }): string {
   return `${contract.bed}${contract.number || ""}`;
 }
 
+const ATHLETICS_DISCIPLINES = ["SPRINT", "HAIES", "LONGUEUR", "HAUTEUR", "JAVELOT", "RELAIS"] as const;
+const ROLLER_SECTIONS = [
+  { name: "MONTÉE", target: 20, danger: false },
+  { name: "DROP", target: 5, danger: false },
+  { name: "LOOPING", target: 12, danger: true },
+  { name: "VIRAGE", target: 18, danger: true },
+  { name: "SPRINT FINAL", target: 7, danger: false },
+] as const;
+const TYROLIEN_STAGES = [
+  { name: "DÉPART", target: 20 },
+  { name: "FORÊT", target: 18 },
+  { name: "RAVIN", target: 13 },
+  { name: "VENT", target: 6 },
+  { name: "ARRIVÉE", target: 15 },
+] as const;
+
+function bedPower(d: GameDart, single = 1, double = 2, triple = 3, outerBull = 2, innerBull = 4): number {
+  if (!d || d.bed === "MISS") return 0;
+  if (d.bed === "IB") return innerBull;
+  if (d.bed === "OB") return outerBull;
+  if (d.bed === "T") return triple;
+  if (d.bed === "D") return double;
+  return single;
+}
+
+function sideByPlayer(ids: string[], teamByPlayer: Record<string, string>, participantMode: Wave61ParticipantMode): Record<string, "A" | "B"> {
+  return Object.fromEntries(ids.map((id, index) => [id, participantMode === "teams" ? (String(teamByPlayer[id] || "A") === "B" ? "B" : "A") : (index % 2 === 0 ? "A" : "B")]));
+}
+
+function soleilPhase(state: Wave61State): "GO" | "STOP" {
+  return ((Number(state.turnIndex || 0) + hashText(String(state.special?.seedText || state.modeId))) % 4) === 3 ? "STOP" : "GO";
+}
+export function wave61SoleilPhase(state: Wave61State): "GO" | "STOP" { return soleilPhase(state); }
+
+function freefallWindow(difficulty: Wave61Difficulty) {
+  if (difficulty === "easy") return { high: 1700, low: 250, fallFactor: 6 };
+  if (difficulty === "hard") return { high: 1000, low: 450, fallFactor: 10 };
+  return { high: 1300, low: 350, fallFactor: 8 };
+}
+
+function raceTargetFromSequence(sequence: any[], index: number): number {
+  if (!Array.isArray(sequence) || !sequence.length) return 20;
+  return Number(sequence[((Math.max(0, index) % sequence.length) + sequence.length) % sequence.length] || 20);
+}
+
+function currentRollerSection(state: Wave61State, playerId: string) {
+  const pos = Number(state.special?.rollerPosByPlayer?.[playerId] || 0);
+  const goal = Math.max(1, Number(state.config.goal || 100));
+  const index = clamp(Math.floor((pos / goal) * ROLLER_SECTIONS.length), 0, ROLLER_SECTIONS.length - 1);
+  return { ...ROLLER_SECTIONS[index], index };
+}
+
+function currentTyrolienStage(state: Wave61State, playerId: string) {
+  const pos = Number(state.special?.tyrolienPosByPlayer?.[playerId] || 0);
+  const goal = Math.max(1, Number(state.config.goal || 100));
+  const index = clamp(Math.floor((pos / goal) * TYROLIEN_STAGES.length), 0, TYROLIEN_STAGES.length - 1);
+  return { ...TYROLIEN_STAGES[index], index };
+}
+
+function currentAthleticsDiscipline(state: Wave61State): string {
+  return String(ATHLETICS_DISCIPLINES[clamp(Number(state.roundIndex || 0), 0, ATHLETICS_DISCIPLINES.length - 1)] || "SPRINT");
+}
+
 export function createWave61State(playersRaw: Player[], modeId: string, rawConfig: any): Wave61State {
   const config = normalizeWave61Config(modeId, rawConfig);
   const preset = getWave61Preset(modeId);
@@ -235,7 +300,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
     statsByPlayer: Object.fromEntries(ids.map((id) => [id, blankStats()])),
     visits: [],
     special: {
-      version: 3,
+      version: WAVE61_ENGINE_VERSION,
       seedText,
       mines: modeId === "demineur" ? mineMap(seedText) : [],
       revealed: [],
@@ -270,6 +335,44 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       goldenIndex: 0,
       goldenClues: [],
       goldenHistory: [],
+      tugTargetSequence: modeId === "tug_rush" ? seededSequence(`tug:${seedText}`, 80, 20) : [],
+      tugSideByPlayer: modeId === "tug_rush" ? sideByPlayer(ids, teamByPlayer, config.participantMode) : {},
+      tugPosition: 0,
+      tugContributionByPlayer: modeId === "tug_rush" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      tugHistory: [],
+      soleilSequence: modeId === "un_deux_trois_soleil" ? seededSequence(`soleil:${seedText}`, 100, 20) : [],
+      soleilFallsByPlayer: modeId === "un_deux_trois_soleil" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      soleilHistory: [],
+      chatSourisRoleByPlayer: modeId === "chat_souris" ? Object.fromEntries(ids.map((id, i) => [id, config.participantMode === "teams" ? (teamByPlayer[id] === "B" ? "MOUSE" : "CAT") : (i === 0 ? "CAT" : "MOUSE")])) : {},
+      chatSourisPosByPlayer: modeId === "chat_souris" ? Object.fromEntries(ids.map((id, i) => [id, (config.participantMode === "teams" ? (teamByPlayer[id] === "B") : i > 0) ? 25 : 0])) : {},
+      chatSourisCaughtByPlayer: {},
+      chatSourisRoute: modeId === "chat_souris" ? seededSequence(`catmouse:${seedText}`, 120, 20) : [],
+      mazeRoute: modeId === "maze_chase" ? seededSequence(`maze:${seedText}`, 60, 20) : [],
+      mazePosByPlayer: modeId === "maze_chase" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mazeGhostByPlayer: modeId === "maze_chase" ? Object.fromEntries(ids.map((id) => [id, -6])) : {},
+      mazePowerByPlayer: modeId === "maze_chase" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mazeHistory: [],
+      chienChatRoleByPlayer: modeId === "chien_chat" ? Object.fromEntries(ids.map((id, i) => [id, config.participantMode === "teams" ? (teamByPlayer[id] === "B" ? "CAT" : "DOG") : (i % 2 === 0 ? "DOG" : "CAT")])) : {},
+      chienChatPosByPlayer: modeId === "chien_chat" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      chienChatRoute: modeId === "chien_chat" ? seededSequence(`dogcat:${seedText}`, 100, 20) : [],
+      chienChatHistory: [],
+      rollerSpeedByPlayer: modeId === "roller_coaster" ? Object.fromEntries(ids.map((id) => [id, 20])) : {},
+      rollerPosByPlayer: modeId === "roller_coaster" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      rollerHistory: [],
+      athleticsResultsByPlayer: modeId === "athletisme" ? Object.fromEntries(ids.map((id) => [id, {}])) : {},
+      athleticsHistory: [],
+      freefallAltitudeByPlayer: modeId === "chute_libre" ? Object.fromEntries(ids.map((id) => [id, 4000])) : {},
+      freefallChuteByPlayer: modeId === "chute_libre" ? Object.fromEntries(ids.map((id) => [id, false])) : {},
+      freefallCrashedByPlayer: modeId === "chute_libre" ? Object.fromEntries(ids.map((id) => [id, false])) : {},
+      freefallHistory: [],
+      tyrolienSpeedByPlayer: modeId === "tyrolien" ? Object.fromEntries(ids.map((id) => [id, 20])) : {},
+      tyrolienPosByPlayer: modeId === "tyrolien" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      tyrolienHistory: [],
+      ropeSequence: modeId === "saut_a_la_corde" ? seededSequence(`rope:${seedText}`, 160, 20) : [],
+      ropeStepByPlayer: modeId === "saut_a_la_corde" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      ropeComboByPlayer: modeId === "saut_a_la_corde" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      ropePaceByPlayer: modeId === "saut_a_la_corde" ? Object.fromEntries(ids.map((id) => [id, 1])) : {},
+      ropeHistory: [],
     },
     startedAt,
   };
@@ -288,6 +391,63 @@ export function getWave61Target(state: Wave61State): Wave61Target {
     const step = Number(state.special?.colinStepByPlayer?.[player?.id] || 0);
     const n = Number(seq[Math.min(step, Math.max(0, seq.length - 1))] || 0);
     return n ? { kind: "number", value: n, label: `Cible mémorisée ${Math.min(step + 1, seq.length)}/${seq.length}` } : null;
+  }
+  if (state.modeId === "tug_rush") {
+    const n = raceTargetFromSequence(state.special?.tugTargetSequence || [], state.turnIndex);
+    return { kind: "number", value: n, label: `⚓ Corde sur secteur ${n}` };
+  }
+  if (state.modeId === "un_deux_trois_soleil") {
+    if (soleilPhase(state) === "STOP") return { kind: "bull", label: "🔴 SOLEIL ! BULL pour rester figé" };
+    const n = raceTargetFromSequence(state.special?.soleilSequence || [], state.turnIndex);
+    return { kind: "number", value: n, label: `🟢 AVANCE · secteur ${n}` };
+  }
+  if (state.modeId === "chat_souris") {
+    const player = state.players[state.activePlayerIndex];
+    const pos = Number(state.special?.chatSourisPosByPlayer?.[player?.id] || 0);
+    const n = raceTargetFromSequence(state.special?.chatSourisRoute || [], Math.floor(pos / 5));
+    return { kind: "number", value: n, label: `${state.special?.chatSourisRoleByPlayer?.[player?.id] === "CAT" ? "🐱 CHASSE" : "🐭 FUITE"} · secteur ${n}` };
+  }
+  if (state.modeId === "maze_chase") {
+    const player = state.players[state.activePlayerIndex];
+    const pos = Number(state.special?.mazePosByPlayer?.[player?.id] || 0);
+    const n = raceTargetFromSequence(state.special?.mazeRoute || [], pos);
+    return { kind: "number", value: n, label: `🧩 Couloir ${Math.min(pos + 1, state.config.goal || 20)} · secteur ${n}` };
+  }
+  if (state.modeId === "chien_chat") {
+    const player = state.players[state.activePlayerIndex];
+    const pos = Number(state.special?.chienChatPosByPlayer?.[player?.id] || 0);
+    const n = raceTargetFromSequence(state.special?.chienChatRoute || [], Math.floor(pos / 6));
+    return { kind: "number", value: n, label: `${state.special?.chienChatRoleByPlayer?.[player?.id] === "DOG" ? "🐶" : "🐱"} piste · secteur ${n}` };
+  }
+  if (state.modeId === "roller_coaster") {
+    const player = state.players[state.activePlayerIndex];
+    const section = currentRollerSection(state, player?.id);
+    return { kind: "number", value: Number(section.target), label: `🎢 ${section.name} · secteur ${section.target}` };
+  }
+  if (state.modeId === "athletisme") {
+    const discipline = currentAthleticsDiscipline(state);
+    if (discipline === "HAIES") return { kind: "number", value: 20, label: "🏃 HAIES · franchis le 20" };
+    if (discipline === "RELAIS") return { kind: "number", value: 20, label: "🏁 RELAIS · 20 → 19 → 18" };
+    return null;
+  }
+  if (state.modeId === "chute_libre") {
+    const player = state.players[state.activePlayerIndex];
+    const altitude = Number(state.special?.freefallAltitudeByPlayer?.[player?.id] || 0);
+    const opened = !!state.special?.freefallChuteByPlayer?.[player?.id];
+    const window = freefallWindow(state.config.difficulty);
+    if (!opened && altitude <= window.high && altitude >= window.low) return { kind: "bull", label: "🪂 FENÊTRE PARACHUTE · BULL / DBULL" };
+    return null;
+  }
+  if (state.modeId === "tyrolien") {
+    const player = state.players[state.activePlayerIndex];
+    const stage = currentTyrolienStage(state, player?.id);
+    return { kind: "number", value: Number(stage.target), label: `🪢 ${stage.name} · secteur ${stage.target}` };
+  }
+  if (state.modeId === "saut_a_la_corde") {
+    const player = state.players[state.activePlayerIndex];
+    const step = Number(state.special?.ropeStepByPlayer?.[player?.id] || 0);
+    const n = raceTargetFromSequence(state.special?.ropeSequence || [], step);
+    return { kind: "number", value: n, label: `🪢 Rythme · secteur ${n}` };
   }
   if (state.modeId === "replicat" && Array.isArray(state.special?.lastVisitDarts) && state.special.lastVisitDarts.length) {
     return { kind: "replicate", darts: state.special.lastVisitDarts.slice(0, 3), label: `Copier ${state.special.lastVisitDarts.slice(0, 3).map(wave61DartLabel).join(" · ")}` };
@@ -896,6 +1056,363 @@ function processColinMaillard(state: Wave61State, playerId: string, darts: GameD
   return { delta, hits };
 }
 
+
+function processTugRush(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  const target = getWave61Target(state);
+  const side = String(state.special?.tugSideByPlayer?.[playerId] || "A") === "B" ? "B" : "A";
+  const sign = side === "A" ? 1 : -1;
+  let pull = 0, hits = 0;
+  for (const dart of darts) {
+    if (dart?.bed === "IB") { pull += 14; hits += 1; continue; }
+    if (dart?.bed === "OB") { pull += 8; hits += 1; continue; }
+    if (target?.kind === "number" && Number(dart?.number || 0) === target.value && dart?.bed !== "MISS") {
+      pull += dart.bed === "T" ? 10 : dart.bed === "D" ? 7 : 4;
+      hits += 1;
+    }
+  }
+  if (!pull) {
+    const slip = state.config.difficulty === "hard" ? 4 : state.config.difficulty === "easy" ? 1 : 2;
+    state.special.tugPosition = clamp(Number(state.special?.tugPosition || 0) - sign * slip, -state.config.goal, state.config.goal);
+    events.push(`🧤 Corde glissante · recul ${slip}`);
+  } else {
+    state.special.tugPosition = clamp(Number(state.special?.tugPosition || 0) + sign * pull, -state.config.goal, state.config.goal);
+    state.special.tugContributionByPlayer[playerId] = Number(state.special?.tugContributionByPlayer?.[playerId] || 0) + pull;
+    state.progress[playerId] = Number(state.special.tugContributionByPlayer[playerId] || 0);
+    state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((s,d)=>s+wave61DartScore(d),0);
+    events.push(`💪 Camp ${side} tire de ${pull}`);
+  }
+  state.special.tugHistory = [...(state.special?.tugHistory || []), { playerId, side, pull, position: state.special.tugPosition }].slice(-30);
+  if (Math.abs(Number(state.special.tugPosition || 0)) >= Math.max(1, state.config.goal)) finishWith(state, playerId, side);
+  return { delta: pull, hits };
+}
+
+function processSoleil(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  const phase = soleilPhase(state);
+  const target = getWave61Target(state);
+  let delta = 0, hits = 0;
+  if (phase === "STOP") {
+    let moved = 0, frozen = 0;
+    for (const dart of darts) {
+      if (!dart || dart.bed === "MISS") { frozen += 1; continue; }
+      if (dart.bed === "OB" || dart.bed === "IB") { frozen += 1; hits += 1; continue; }
+      moved += 1;
+    }
+    if (moved) {
+      const penaltyUnit = state.config.difficulty === "hard" ? 12 : state.config.difficulty === "easy" ? 5 : 8;
+      const penalty = moved * penaltyUnit;
+      state.progress[playerId] = Math.max(0, Number(state.progress[playerId] || 0) - penalty);
+      state.special.soleilFallsByPlayer[playerId] = Number(state.special?.soleilFallsByPlayer?.[playerId] || 0) + 1;
+      events.push(`🔴 BOUGÉ ! recul de ${penalty}`);
+    } else {
+      delta = frozen > 0 ? 3 : 0;
+      state.progress[playerId] = Math.min(state.config.goal, Number(state.progress[playerId] || 0) + delta);
+      events.push("🧊 Parfaitement immobile");
+    }
+  } else {
+    for (const dart of darts) {
+      if (target?.kind === "number" && Number(dart?.number || 0) === target.value && dart?.bed !== "MISS") {
+        const step = bedPower(dart, 4, 8, 12, 6, 10);
+        delta += step;
+        hits += 1;
+      }
+    }
+    state.progress[playerId] = Math.min(state.config.goal, Number(state.progress[playerId] || 0) + delta);
+    state.scores[playerId] = Number(state.scores[playerId] || 0) + delta * 10;
+    events.push(delta ? `🟢 Avance de ${delta}` : "🟢 Aucun pas validé");
+  }
+  state.special.soleilHistory = [...(state.special?.soleilHistory || []), { playerId, phase, delta, progress: state.progress[playerId] }].slice(-30);
+  if (Number(state.progress[playerId] || 0) >= state.config.goal) finishWith(state, playerId);
+  return { delta, hits };
+}
+
+function processChatSouris(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  const role = String(state.special?.chatSourisRoleByPlayer?.[playerId] || "MOUSE");
+  const target = getWave61Target(state);
+  let pos = Number(state.special?.chatSourisPosByPlayer?.[playerId] || 0);
+  let delta = 0, hits = 0;
+  for (const dart of darts) {
+    let step = 0;
+    if (dart?.bed === "IB") step = 14;
+    else if (dart?.bed === "OB") step = 9;
+    else if (target?.kind === "number" && Number(dart?.number || 0) === target.value && dart?.bed !== "MISS") step = dart.bed === "T" ? 12 : dart.bed === "D" ? 8 : 5;
+    if (step) { delta += step; hits += 1; pos += step; }
+  }
+  pos = Math.min(state.config.goal, pos);
+  state.special.chatSourisPosByPlayer[playerId] = pos;
+  state.progress[playerId] = pos;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((s,d)=>s+wave61DartScore(d),0);
+  if (role === "CAT") {
+    const mice = state.players.filter((p) => state.special?.chatSourisRoleByPlayer?.[p.id] === "MOUSE" && !state.special?.chatSourisCaughtByPlayer?.[p.id]);
+    for (const mouse of mice) {
+      const mousePos = Number(state.special?.chatSourisPosByPlayer?.[mouse.id] || 0);
+      if (pos >= mousePos) {
+        state.special.chatSourisCaughtByPlayer[mouse.id] = true;
+        state.eliminated[mouse.id] = true;
+        events.push(`🐱 ${mouse.name} capturé(e)`);
+      }
+    }
+    const remaining = state.players.filter((p) => state.special?.chatSourisRoleByPlayer?.[p.id] === "MOUSE" && !state.special?.chatSourisCaughtByPlayer?.[p.id]);
+    if (!remaining.length) finishWith(state, playerId, state.config.participantMode === "teams" ? "A" : null);
+  } else if (pos >= state.config.goal) {
+    events.push("🐭 La souris atteint le refuge !");
+    finishWith(state, playerId, state.config.participantMode === "teams" ? "B" : null);
+  }
+  state.special.chatSourisHistory = [...(state.special?.chatSourisHistory || []), { playerId, role, delta, pos }].slice(-30);
+  if (!delta) events.push(role === "CAT" ? "🐱 La souris garde ses distances" : "🐭 Pas d'avance");
+  return { delta, hits };
+}
+
+function processMazeChase(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  let pos = Number(state.special?.mazePosByPlayer?.[playerId] || 0);
+  let ghost = Number(state.special?.mazeGhostByPlayer?.[playerId] ?? -6);
+  let power = Number(state.special?.mazePowerByPlayer?.[playerId] || 0);
+  let delta = 0, hits = 0;
+  const route = state.special?.mazeRoute || [];
+  for (const dart of darts) {
+    if (dart?.bed === "OB" || dart?.bed === "IB") {
+      const move = dart.bed === "IB" ? 4 : 3;
+      pos += move; delta += move; hits += 1; power += 1;
+      events.push(`⚡ Power mode +${move}`);
+      continue;
+    }
+    const expected = raceTargetFromSequence(route, pos);
+    if (Number(dart?.number || 0) === expected && dart?.bed !== "MISS") {
+      const move = bedPower(dart, 1, 2, 3, 2, 4);
+      pos += move; delta += move; hits += 1;
+    } else {
+      ghost += state.config.difficulty === "hard" ? 2 : 1;
+    }
+  }
+  ghost += state.config.difficulty === "easy" ? 0 : 1;
+  if (ghost >= pos) {
+    if (power > 0) {
+      power -= 1;
+      ghost = pos - 6;
+      events.push("⚡ Power utilisé · poursuivant repoussé");
+    } else {
+      pos = Math.max(0, pos - 3);
+      ghost = pos - 6;
+      events.push("👻 Rattrapé · recul de 3 cases");
+    }
+  }
+  pos = Math.min(Math.max(1, state.config.goal), pos);
+  state.special.mazePosByPlayer[playerId] = pos;
+  state.special.mazeGhostByPlayer[playerId] = ghost;
+  state.special.mazePowerByPlayer[playerId] = power;
+  state.progress[playerId] = pos;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + delta * 25;
+  state.special.mazeHistory = [...(state.special?.mazeHistory || []), { playerId, pos, ghost, power, delta }].slice(-30);
+  if (pos >= state.config.goal) finishWith(state, playerId);
+  return { delta, hits };
+}
+
+function processChienChat(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  const role = String(state.special?.chienChatRoleByPlayer?.[playerId] || "DOG");
+  const bonusSector = role === "DOG" ? 5 : 17;
+  let pos = Number(state.special?.chienChatPosByPlayer?.[playerId] || 0);
+  let delta = 0, hits = 0;
+  const route = state.special?.chienChatRoute || [];
+  for (const dart of darts) {
+    if (dart?.bed === "IB" || dart?.bed === "OB") {
+      const move = dart.bed === "IB" ? 18 : 12;
+      pos += move; delta += move; hits += 1; events.push("⚡ Raccourci BULL");
+      continue;
+    }
+    const expected = raceTargetFromSequence(route, Math.floor(pos / 6));
+    const n = Number(dart?.number || 0);
+    if (n === bonusSector && dart?.bed !== "MISS") {
+      const move = 10 + (dart.bed === "T" ? 4 : dart.bed === "D" ? 2 : 0);
+      pos += move; delta += move; hits += 1; events.push(role === "DOG" ? "🦴 Os bonus !" : "🐟 Poisson bonus !");
+    } else if (n === expected && dart?.bed !== "MISS") {
+      const move = dart.bed === "T" ? 11 : dart.bed === "D" ? 7 : 4;
+      pos += move; delta += move; hits += 1;
+    }
+  }
+  pos = Math.min(state.config.goal, pos);
+  state.special.chienChatPosByPlayer[playerId] = pos;
+  state.progress[playerId] = pos;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((s,d)=>s+wave61DartScore(d),0);
+  state.special.chienChatHistory = [...(state.special?.chienChatHistory || []), { playerId, role, pos, delta }].slice(-30);
+  if (pos >= state.config.goal) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta, hits };
+}
+
+function processRollerCoaster(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  let pos = Number(state.special?.rollerPosByPlayer?.[playerId] || 0);
+  let speed = Number(state.special?.rollerSpeedByPlayer?.[playerId] || 20);
+  let delta = 0, hits = 0;
+  for (const dart of darts) {
+    const section = currentRollerSection(state, playerId);
+    if (dart?.bed === "IB" || dart?.bed === "OB") {
+      speed = clamp(speed + (dart.bed === "IB" ? 24 : 16), 0, 100);
+      const move = dart.bed === "IB" ? 14 : 10;
+      pos += move; delta += move; hits += 1;
+    } else if (Number(dart?.number || 0) === Number(section.target) && dart?.bed !== "MISS") {
+      speed = clamp(speed + bedPower(dart, 6, 12, 18), 0, 100);
+      const move = Math.max(3, Math.round(speed / 10));
+      pos += move; delta += move; hits += 1;
+    } else {
+      speed = clamp(speed - (dart?.bed === "MISS" ? 10 : 5), 0, 100);
+    }
+  }
+  const section = currentRollerSection({ ...state, special: { ...state.special, rollerPosByPlayer: { ...state.special.rollerPosByPlayer, [playerId]: pos } } } as any, playerId);
+  const dangerLimit = state.config.difficulty === "hard" ? 60 : state.config.difficulty === "easy" ? 85 : 72;
+  if (section.danger && speed > dangerLimit) {
+    pos = Math.max(0, pos - 12);
+    speed = 35;
+    events.push(`🎢 ${section.name} trop rapide · -12`);
+  } else events.push(`🎢 ${section.name} · vitesse ${Math.round(speed)}%`);
+  pos = Math.min(state.config.goal, pos);
+  state.special.rollerPosByPlayer[playerId] = pos;
+  state.special.rollerSpeedByPlayer[playerId] = speed;
+  state.progress[playerId] = pos;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((s,d)=>s+wave61DartScore(d),0);
+  state.special.rollerHistory = [...(state.special?.rollerHistory || []), { playerId, pos, speed, section: section.name }].slice(-30);
+  if (pos >= state.config.goal) finishWith(state, playerId);
+  return { delta, hits };
+}
+
+function processAthletisme(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  const discipline = currentAthleticsDiscipline(state);
+  const scores = darts.map(wave61DartScore);
+  const visitScore = scores.reduce((a,b)=>a+b,0);
+  let points = 0, hits = darts.filter((d)=>wave61DartScore(d)>0).length;
+  if (discipline === "SPRINT") points = Math.round(visitScore / 2) + darts.filter((d)=>d?.bed==="T").length * 5;
+  else if (discipline === "HAIES") {
+    hits = darts.filter((d)=>Number(d?.number||0)===20 && d?.bed!=="MISS").length;
+    points = darts.reduce((sum,d)=>sum+(Number(d?.number||0)===20 ? bedPower(d,12,20,28) : 0),0);
+  } else if (discipline === "LONGUEUR") points = Math.round(Math.max(0,...scores) * 1.5);
+  else if (discipline === "HAUTEUR") points = darts.reduce((sum,d)=>sum+(d?.bed==="T"?30:d?.bed==="D"?20:d?.bed==="IB"?40:d?.bed==="OB"?25:0),0);
+  else if (discipline === "JAVELOT") points = Math.round(Math.max(0,...scores) + visitScore / 6);
+  else if (discipline === "RELAIS") {
+    const relay = [20,19,18];
+    hits = 0;
+    for (let i=0;i<Math.min(3,darts.length);i++) if (Number(darts[i]?.number||0)===relay[i] && darts[i]?.bed!=="MISS") hits += 1; else break;
+    points = hits * 30 + (hits === 3 ? 30 : 0);
+  }
+  points = Math.max(0, Math.round(points));
+  const results = state.special.athleticsResultsByPlayer[playerId] || (state.special.athleticsResultsByPlayer[playerId] = {});
+  results[discipline] = Math.max(Number(results[discipline] || 0), points);
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + points;
+  state.progress[playerId] = state.scores[playerId];
+  state.special.athleticsHistory = [...(state.special?.athleticsHistory || []), { playerId, discipline, points }].slice(-40);
+  events.push(`🏟️ ${discipline} · ${points} pts`);
+  return { delta: points, hits };
+}
+
+function processChuteLibre(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  let altitude = Number(state.special?.freefallAltitudeByPlayer?.[playerId] ?? 4000);
+  let chute = !!state.special?.freefallChuteByPlayer?.[playerId];
+  const window = freefallWindow(state.config.difficulty);
+  let hits = 0, descent = 0;
+  for (const dart of darts) {
+    if (!chute && (dart?.bed === "OB" || dart?.bed === "IB")) {
+      if (altitude <= window.high && altitude >= window.low) {
+        chute = true; events.push(`🪂 Parachute ouvert à ${Math.round(altitude)} m`);
+      } else if (altitude > window.high) events.push("🪂 Trop tôt pour ouvrir");
+      else events.push("⚠️ Trop bas pour ouvrir");
+    }
+    const score = wave61DartScore(dart);
+    if (score > 0) hits += 1;
+    const factor = chute ? 2 : window.fallFactor;
+    const step = score * factor;
+    altitude -= step;
+    descent += step;
+    if (altitude <= 0) break;
+  }
+  altitude = Math.max(0, altitude);
+  state.special.freefallAltitudeByPlayer[playerId] = altitude;
+  state.special.freefallChuteByPlayer[playerId] = chute;
+  state.progress[playerId] = clamp(Math.round((4000 - altitude) / 40), 0, 100);
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((s,d)=>s+wave61DartScore(d),0);
+  if (altitude <= 0) {
+    if (chute) {
+      const bonus = 500 + Math.max(0, 300 - Math.round(descent / 10));
+      state.scores[playerId] += bonus;
+      events.push(`✅ Atterrissage contrôlé · +${bonus}`);
+      finishWith(state, playerId);
+    } else {
+      state.special.freefallCrashedByPlayer[playerId] = true;
+      state.eliminated[playerId] = true;
+      events.push("💥 CRASH · parachute non ouvert");
+      const alive = state.players.filter((p)=>!state.eliminated[p.id]);
+      if (alive.length === 1 && state.players.length > 1) finishWith(state, alive[0].id);
+      else if (!alive.length) {
+        const winner = [...state.players].sort((a,b)=>Number(state.progress[b.id]||0)-Number(state.progress[a.id]||0))[0]?.id || playerId;
+        finishWith(state, winner);
+      }
+    }
+  } else events.push(`🪂 Altitude ${Math.round(altitude)} m${chute ? " · voile ouverte" : ""}`);
+  state.special.freefallHistory = [...(state.special?.freefallHistory || []), { playerId, altitude, chute, descent }].slice(-30);
+  return { delta: descent, hits };
+}
+
+function processTyrolien(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  let pos = Number(state.special?.tyrolienPosByPlayer?.[playerId] || 0);
+  let speed = Number(state.special?.tyrolienSpeedByPlayer?.[playerId] || 20);
+  let delta = 0, hits = 0;
+  for (const dart of darts) {
+    const stage = currentTyrolienStage(state, playerId);
+    if (dart?.bed === "IB" || dart?.bed === "OB") {
+      speed = clamp(speed + (dart.bed === "IB" ? 18 : 12), 0, 100);
+      const move = dart.bed === "IB" ? 16 : 11;
+      pos += move; delta += move; hits += 1;
+    } else if (Number(dart?.number || 0) === Number(stage.target) && dart?.bed !== "MISS") {
+      const move = dart.bed === "T" ? 15 : dart.bed === "D" ? 10 : 6;
+      speed = clamp(speed + bedPower(dart, 4, 7, 11), 0, 100);
+      pos += move + Math.floor(speed / 25);
+      delta += move + Math.floor(speed / 25);
+      hits += 1;
+    } else speed = clamp(speed - 7, 0, 100);
+  }
+  const stage = currentTyrolienStage({ ...state, special: { ...state.special, tyrolienPosByPlayer: { ...state.special.tyrolienPosByPlayer, [playerId]: pos } } } as any, playerId);
+  if ((stage.index === 2 || stage.index === 3) && hits === 0) {
+    pos = Math.max(0, pos - 4);
+    events.push(`🌬️ ${stage.name} · recul de 4`);
+  }
+  pos = Math.min(state.config.goal, pos);
+  state.special.tyrolienPosByPlayer[playerId] = pos;
+  state.special.tyrolienSpeedByPlayer[playerId] = speed;
+  state.progress[playerId] = pos;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((s,d)=>s+wave61DartScore(d),0);
+  state.special.tyrolienHistory = [...(state.special?.tyrolienHistory || []), { playerId, pos, speed, stage: stage.name }].slice(-30);
+  events.push(`🪢 ${stage.name} · ${Math.round(pos)}/${state.config.goal}`);
+  if (pos >= state.config.goal) finishWith(state, playerId);
+  return { delta, hits };
+}
+
+function processSautCorde(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  let jumps = Number(state.progress[playerId] || 0);
+  let combo = Number(state.special?.ropeComboByPlayer?.[playerId] || 0);
+  let step = Number(state.special?.ropeStepByPlayer?.[playerId] || 0);
+  let delta = 0, hits = 0;
+  const sequence = state.special?.ropeSequence || [];
+  for (const dart of darts) {
+    const expected = raceTargetFromSequence(sequence, step);
+    if (dart?.bed === "IB" || dart?.bed === "OB") {
+      const add = dart.bed === "IB" ? 6 : 4;
+      jumps += add; delta += add; combo += 2; hits += 1; step += 1;
+    } else if (Number(dart?.number || 0) === expected && dart?.bed !== "MISS") {
+      const add = bedPower(dart, 1, 2, 3);
+      jumps += add; delta += add; combo += add; hits += 1; step += 1;
+    } else {
+      if (state.config.difficulty === "hard") jumps = Math.max(0, jumps - 2);
+      combo = 0;
+      events.push("💢 Corde touchée · combo cassé");
+    }
+  }
+  const pace = 1 + Math.min(5, Math.floor(combo / 10));
+  state.progress[playerId] = Math.min(state.config.goal, jumps);
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + delta * (10 + pace * 2);
+  state.special.ropeComboByPlayer[playerId] = combo;
+  state.special.ropeStepByPlayer[playerId] = step;
+  state.special.ropePaceByPlayer[playerId] = pace;
+  state.special.ropeHistory = [...(state.special?.ropeHistory || []), { playerId, jumps: state.progress[playerId], combo, pace }].slice(-30);
+  events.push(`🪢 ${state.progress[playerId]} sauts · combo ${combo} · rythme ${pace}`);
+  if (Number(state.progress[playerId] || 0) >= state.config.goal) finishWith(state, playerId);
+  return { delta, hits };
+}
+
 export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave61State {
   const state = cloneWave61State(input);
   if (state.phase !== "playing" || !state.players.length) return state;
@@ -987,6 +1504,26 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const result = processLuciole(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "golden_dart") {
     const result = processGoldenDart(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "tug_rush") {
+    const result = processTugRush(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "un_deux_trois_soleil") {
+    const result = processSoleil(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "chat_souris") {
+    const result = processChatSouris(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "maze_chase") {
+    const result = processMazeChase(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "chien_chat") {
+    const result = processChienChat(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "roller_coaster") {
+    const result = processRollerCoaster(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "athletisme") {
+    const result = processAthletisme(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "chute_libre") {
+    const result = processChuteLibre(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "tyrolien") {
+    const result = processTyrolien(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "saut_a_la_corde") {
+    const result = processSautCorde(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "codebreaker") {
     const result = processCodebreaker(state, player.id, darts, events);
     delta = result.delta;
@@ -1189,6 +1726,16 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
 
 export function wave61PrimaryMetric(state: Wave61State, playerId: string): { value: number; label: string; sub: string } {
   const stats = state.statsByPlayer[playerId] || blankStats();
+  if (state.modeId === "tug_rush") return { value: Number(state.special?.tugContributionByPlayer?.[playerId] || 0), label: "TRACTION", sub: `Camp ${state.special?.tugSideByPlayer?.[playerId] || "A"} · corde ${Math.round(Number(state.special?.tugPosition || 0))}` };
+  if (state.modeId === "un_deux_trois_soleil") return { value: Math.round(Number(state.progress[playerId] || 0)), label: "PAS", sub: `${state.special?.soleilFallsByPlayer?.[playerId] || 0} faute(s)` };
+  if (state.modeId === "chat_souris") return { value: Math.round(Number(state.special?.chatSourisPosByPlayer?.[playerId] || 0)), label: state.special?.chatSourisRoleByPlayer?.[playerId] === "CAT" ? "CHAT" : "SOURIS", sub: state.special?.chatSourisCaughtByPlayer?.[playerId] ? "CAPTURÉE" : `${Math.round(Number(state.special?.chatSourisPosByPlayer?.[playerId] || 0))}/${state.config.goal}` };
+  if (state.modeId === "maze_chase") return { value: Math.round(Number(state.special?.mazePosByPlayer?.[playerId] || 0)), label: "LABY", sub: `power ${state.special?.mazePowerByPlayer?.[playerId] || 0} · ghost ${Math.round(Number(state.special?.mazeGhostByPlayer?.[playerId] ?? -6))}` };
+  if (state.modeId === "chien_chat") return { value: Math.round(Number(state.special?.chienChatPosByPlayer?.[playerId] || 0)), label: state.special?.chienChatRoleByPlayer?.[playerId] === "CAT" ? "CHAT" : "CHIEN", sub: `${Math.round(Number(state.special?.chienChatPosByPlayer?.[playerId] || 0))}/${state.config.goal}` };
+  if (state.modeId === "roller_coaster") return { value: Math.round(Number(state.special?.rollerPosByPlayer?.[playerId] || 0)), label: "PISTE", sub: `vitesse ${Math.round(Number(state.special?.rollerSpeedByPlayer?.[playerId] || 0))}%` };
+  if (state.modeId === "athletisme") return { value: Math.round(Number(state.scores[playerId] || 0)), label: "MEETING", sub: `${currentAthleticsDiscipline(state)} · ${Object.keys(state.special?.athleticsResultsByPlayer?.[playerId] || {}).length}/6` };
+  if (state.modeId === "chute_libre") return { value: Math.round(Number(state.special?.freefallAltitudeByPlayer?.[playerId] || 0)), label: "ALTITUDE", sub: state.special?.freefallCrashedByPlayer?.[playerId] ? "CRASH" : state.special?.freefallChuteByPlayer?.[playerId] ? "PARACHUTE OUVERT" : "CHUTE LIBRE" };
+  if (state.modeId === "tyrolien") return { value: Math.round(Number(state.special?.tyrolienPosByPlayer?.[playerId] || 0)), label: "CÂBLE", sub: `vitesse ${Math.round(Number(state.special?.tyrolienSpeedByPlayer?.[playerId] || 0))}%` };
+  if (state.modeId === "saut_a_la_corde") return { value: Math.round(Number(state.progress[playerId] || 0)), label: "SAUTS", sub: `combo ${state.special?.ropeComboByPlayer?.[playerId] || 0} · rythme ${state.special?.ropePaceByPlayer?.[playerId] || 1}` };
   if (state.modeId === "replicat") return { value: Number(state.progress[playerId] || 0), label: "COPIES", sub: `${state.scores[playerId] || 0} pts · ${stats.hits || 0} exacts` };
   if (state.modeId === "shove_a_penny") return { value: Number(state.progress[playerId] || 0), label: "MARQUES", sub: `${state.progress[playerId] || 0}/21 · ${state.scores[playerId] || 0} pts` };
   if (state.modeId === "green_vs_red") return { value: Number(state.progress[playerId] || 0), label: "ÉTAPES", sub: `${state.special?.greenRedColorByPlayer?.[playerId] || "RED"} · /10` };

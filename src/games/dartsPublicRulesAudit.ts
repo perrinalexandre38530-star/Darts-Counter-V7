@@ -1,6 +1,28 @@
 export type PublicRuleAudit = { status: 'available'|'development'; sources: string[]; options: string[] };
 
 export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
+  "replicat": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "BUT : reproduire la volée de référence précédente, fléchette par fléchette et dans le même ordre",
+      "PREMIÈRE VOLÉE : elle crée la séquence de référence ; elle n'accorde aucun point de copie",
+      "FACILE : le même numéro suffit ; Simple / Double / Triple ne doivent pas forcément être identiques",
+      "NORMAL : chaque segment doit être identique à la référence",
+      "DIFFICILE : toute la séquence doit être parfaite ; une copie partielle ne valide aucune progression",
+      "BULL : Bull 25 et DBULL 50 sont considérés comme le même numéro en difficulté Facile",
+      "PROGRESSION : +1 par fléchette correctement reproduite en Facile/Normal ; en Difficile la progression n'est accordée que si toute la séquence est correcte",
+      "SCORE : 100 points par validation de progression + bonus de 50 points lorsque toute la séquence est reproduite",
+      "OBJECTIF PAR DÉFAUT : 9 copies validées",
+      "NOMBRE DE ROUNDS PAR DÉFAUT : 12",
+      "DIFFICULTÉ : Facile / Normal / Difficile",
+      "BOTS IA : compatibles ; ils tentent de reproduire la séquence selon leur niveau",
+      "SAISIE : Keypad / Cible interactive",
+      "ORDRE ALÉATOIRE : activable",
+      "FIN : victoire immédiate lorsqu'un joueur atteint l'objectif de progression configuré"
+    ]
+  },
+
   "heist_180": {
     "status": 'available',
     "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],

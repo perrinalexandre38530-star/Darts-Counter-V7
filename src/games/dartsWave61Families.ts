@@ -103,7 +103,7 @@ const MODE_FAMILY: Record<string, Wave61Family> = {
 };
 
 const MODE_OVERRIDES: Record<string, Partial<Wave61FamilyPreset>> = {
-  tug_rush: { defaultGoal: 60, defaultRounds: 15 },
+  tug_rush: { minPlayers: 2, defaultGoal: 60, defaultRounds: 15 },
   demineur: { defaultGoal: 15, defaultRounds: 16 },
   hot_potato: { defaultLives: 5, defaultRounds: 20 },
   zombie_siege: { defaultLives: 4, defaultRounds: 18 },
@@ -115,9 +115,17 @@ const MODE_OVERRIDES: Record<string, Partial<Wave61FamilyPreset>> = {
   green_vs_red: { minPlayers: 2, defaultRounds: 14, defaultGoal: 10 },
   hi_score: { defaultRounds: 10 },
   final_buzzer: { defaultRounds: 8, defaultGoal: 80 },
+  un_deux_trois_soleil: { defaultGoal: 100, defaultRounds: 16 },
+  chat_souris: { minPlayers: 2, defaultGoal: 100, defaultRounds: 18 },
+  maze_chase: { defaultGoal: 20, defaultRounds: 18 },
+  chien_chat: { minPlayers: 2, defaultGoal: 100, defaultRounds: 16 },
+  roller_coaster: { defaultGoal: 100, defaultRounds: 14 },
+  saut_a_la_corde: { defaultGoal: 100, defaultRounds: 16 },
+  athletisme: { defaultGoal: 0, defaultRounds: 6 },
   objectif_lune: { defaultGoal: 100, defaultRounds: 12 },
   golden_dart: { defaultGoal: 7, defaultRounds: 12 },
-  chute_libre: { defaultGoal: 100, defaultRounds: 10 },
+  chute_libre: { defaultGoal: 0, defaultRounds: 12 },
+  tyrolien: { defaultGoal: 100, defaultRounds: 14 },
   mont_blanc: { defaultGoal: 100, defaultRounds: 12 },
   everest: { defaultGoal: 100, defaultRounds: 16 },
   summit_14: { defaultGoal: 140, defaultRounds: 22 },

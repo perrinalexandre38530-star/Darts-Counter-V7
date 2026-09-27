@@ -8,7 +8,7 @@ const play = read('src/pages/Wave61Play.tsx');
 const config = read('src/pages/Wave61Config.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 
-assert(engine.includes('version: 3'), 'State Wave61 V3 absent');
+assert(engine.includes('WAVE61_ENGINE_VERSION = 4'), 'Constante Wave61 V4 absente');
 assert(engine.includes('sameReplicatNumber'), 'REPLICAT difficulté absente');
 assert(engine.includes('progressDelta'), 'REPLICAT progression corrigée absente');
 assert(engine.includes('doubleDownContractMatches'), 'DOUBLE DOWN contrats V3 absents');
@@ -35,10 +35,10 @@ assert(play.includes('SniperPanel'), 'UI SNIPER absente');
 assert(play.includes('LuciolePanel'), 'UI LUCIOLE absente');
 assert(play.includes('GoldenDartPanel'), 'UI GOLDEN DART absente');
 assert(play.includes('1600'), 'Flash 1,6 s LUCIOLE absent');
-assert(play.includes('moteur V3'), 'Play n’annonce pas moteur V3');
-assert(config.includes('moteur mutualisé V3'), 'Config n’annonce pas moteur V3');
-assert(config.includes('engineVersion: 3'), 'Config engineVersion != 3');
-assert(play.includes('engineVersion: 3'), 'History engineVersion != 3');
+assert(play.includes('moteur V${WAVE61_ENGINE_VERSION}'), 'Play n’annonce pas le moteur courant');
+assert(config.includes('moteur mutualisé V${WAVE61_ENGINE_VERSION}'), 'Config n’annonce pas le moteur courant');
+assert(config.includes('engineVersion: WAVE61_ENGINE_VERSION'), 'Config engineVersion non centralisée');
+assert(play.includes('engineVersion: WAVE61_ENGINE_VERSION'), 'History engineVersion non centralisée');
 
 assert(/shove_a_penny:\s*\{[^}]*defaultRounds:\s*15,\s*defaultGoal:\s*21/.test(families), 'SHOVE A PENNY doit viser 21 marques');
 assert(/green_vs_red:\s*\{[^}]*defaultRounds:\s*14,\s*defaultGoal:\s*10/.test(families), 'GREEN VS RED doit viser 10 étapes');
