@@ -687,9 +687,24 @@ function PlayersModal({ state, profiles, profileById, colorByPlayerId, colorBySi
   </div>;
 }
 
+function pickCradosAward(rows: any[], key: string, fallbackIndex = 0) {
+  const sorted = [...(rows || [])].sort((a: any, b: any) => Number(b?.[key] || 0) - Number(a?.[key] || 0) || a.order - b.order);
+  return sorted[0] || rows?.[fallbackIndex] || null;
+}
+
+function formatCradosDuration(ms: number) {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min} min ${String(sec).padStart(2, "0")} s`;
+}
+
 function CradosEndPanel({ state, profiles, sideProfiles, rankingRows, teamMode, colorByPlayerId, colorBySideId, config, onReplay, onStats, onHistory, onConfig, onGames }: any) {
   const winnerId = String(state.winnerId || "");
   const winnerProfile = (teamMode ? sideProfiles : profiles).find((p: any) => String(p.id) === winnerId) || (teamMode ? sideProfiles : profiles)[0];
+  const safeRows = Array.isArray(rankingRows) ? rankingRows : [];
+  const podiumRows = safeRows.slice(0, 3);
+  const winnerRow = safeRows.find((row: any) => String(row.sideId || row.id) === winnerId || String(row.id) === winnerId) || safeRows[0] || null;
   const totalDarts = Object.values(state.statsByPlayer || {}).reduce((a: number, st: any) => a + Number(st?.darts || 0), 0);
   const totalZones = Object.values(state.statsByPlayer || {}).reduce((a: number, st: any) => a + Number(st?.sectorsClaimed || 0), 0);
   const totalSteals = Object.values(state.statsByPlayer || {}).reduce((a: number, st: any) => a + Number(st?.sectorsStolen || 0), 0);
@@ -699,26 +714,108 @@ function CradosEndPanel({ state, profiles, sideProfiles, rankingRows, teamMode, 
   const accuracy = totalDarts ? Math.round((totalHits / totalDarts) * 100) : 0;
   const durationMs = Math.max(0, Number(state.finishedAt || Date.now()) - Number(state.startedAt || Date.now()));
   const durationMin = Math.max(1, Math.round(durationMs / 60000));
+  const totalLegsPlayed = Math.max(1, Number(state.legIndex || 0) + 1);
+  const awards = [
+    { title: "ROI DU VOL", subtitle: "zones dérobées", key: "steals", suffix: "vols", accent: "#ffd866", icon: "⚡" },
+    { title: "AS DE LA DOUCHE", subtitle: "crasse nettoyée", key: "dirtWashed", suffix: "lavée", accent: "#73e5c1", icon: "🚿" },
+    { title: "TERREUR TOXIQUE", subtitle: "crasse infligée", key: "dirtInflicted", suffix: "infligée", accent: "#ff8f80", icon: "☣" },
+    { title: "IMPACT MAX", subtitle: "meilleure volée", key: "bestVisitImpact", suffix: "sur une volée", accent: "#8fc8ff", icon: "🎯" },
+  ].map((award, index) => ({ ...award, row: pickCradosAward(safeRows, award.key, index) }));
+  const quickFacts = [
+    { label: "MODE", value: teamMode ? "ÉQUIPES" : "SOLO" },
+    { label: "DURÉE", value: formatCradosDuration(durationMs) },
+    { label: "LIMITE", value: `${config.rules?.dirtLimit || 0} crasses` },
+    { label: "MANCHES", value: `${Number(state.legWins?.[winnerId] || 0)} gagnée${Number(state.legWins?.[winnerId] || 0) > 1 ? "s" : ""} / ${totalLegsPlayed}` },
+  ];
   return <div className="crados-end">
     <section className="crados-end__hero">
-      <div className="crados-end__slime">CRADOS TERMINÉ !</div>
-      <div className="crados-end__winner"><ProfileAvatar profile={winnerProfile} size={92} showStars={false} ringColor={rankingRows?.[0]?.color || ACCENT} noFrame /></div>
-      <div className="crados-end__title" style={{ color: rankingRows?.[0]?.color || ACCENT }}>{String(winnerProfile?.name || "VICTOIRE").toUpperCase()}</div>
-      <div className="crados-end__subtitle">reste le plus propre après {durationMin} min · {totalDarts} fléchettes</div>
+      <div className="crados-end__hero-orb is-left" aria-hidden />
+      <div className="crados-end__hero-orb is-right" aria-hidden />
+      <div className="crados-end__hero-grid">
+        <div className="crados-end__winner-panel">
+          <div className="crados-end__slime">CRADOS TERMINÉ !</div>
+          <div className="crados-end__winner"><ProfileAvatar profile={winnerProfile} size={96} showStars={false} ringColor={winnerRow?.color || rankingRows?.[0]?.color || ACCENT} noFrame /></div>
+          <div className="crados-end__title" style={{ color: winnerRow?.color || rankingRows?.[0]?.color || ACCENT }}>{String(winnerProfile?.name || "VICTOIRE").toUpperCase()}</div>
+          <div className="crados-end__subtitle">reste le plus propre après {durationMin} min · {totalDarts} fléchettes · {teamMode ? "victoire d'équipe" : "victoire individuelle"}</div>
+          <div className="crados-end__winner-chips">
+            <span>CRASSE {winnerRow ? `${winnerRow.dirt}/${config.rules.dirtLimit}` : `0/${config.rules.dirtLimit}`}</span>
+            <span>{winnerRow?.zones || 0} ZONES</span>
+            <span>{winnerRow?.steals || 0} VOLS</span>
+            <span>{winnerRow?.legs || 0} MANCHES</span>
+          </div>
+          <div className="crados-end__facts">
+            {quickFacts.map((fact) => <div key={fact.label}><span>{fact.label}</span><b>{fact.value}</b></div>)}
+          </div>
+        </div>
+        <div className="crados-end__podium-panel">
+          <header><b>PODIUM FINAL</b><span>moins de crasse = meilleure position</span></header>
+          <div className="crados-end__podium">
+            {podiumRows.map((row: any, index: number) => <div key={row.id} className={`crados-end__podium-card is-rank-${index + 1}`} style={{ borderColor: `${row.color}66`, boxShadow: `0 16px 40px ${row.color}18` }}>
+              <div className="crados-end__podium-badge" style={{ color: row.color }}>#{index + 1}</div>
+              <div className="crados-end__podium-avatar" style={{ borderColor: row.color }}><ProfileAvatar profile={row.profile} size={index === 0 ? 68 : 54} showStars={false} ringColor={row.color} noFrame /></div>
+              <b style={{ color: row.color }}>{String(row.name || "—").toUpperCase()}</b>
+              <div className="crados-end__podium-dirt">{row.dirt}<small>/{config.rules.dirtLimit}</small></div>
+              <small>{row.zones} zones · {row.steals} vols · {row.legs} manches</small>
+            </div>)}
+          </div>
+        </div>
+      </div>
     </section>
+
     <section className="crados-end__kpis">
-      {[['ZONES', totalZones], ['VOLS', totalSteals], ['CRASSE INFLIGÉE', totalInflicted], ['CRASSE LAVÉE', totalWashed], ['PRÉCISION', `${accuracy}%`], ['MANCHES', Number(state.legWins?.[winnerId] || 0)]].map(([label,value]) => <div key={String(label)}><span>{label}</span><b>{value}</b></div>)}
+      {[
+        ['ZONES CONQUISES', totalZones],
+        ['VOLS RÉUSSIS', totalSteals],
+        ['CRASSE INFLIGÉE', totalInflicted],
+        ['CRASSE LAVÉE', totalWashed],
+        ['PRÉCISION GLOBALE', `${accuracy}%`],
+        ['MANCHES GAGNÉES', Number(state.legWins?.[winnerId] || 0)],
+      ].map(([label, value]) => <div key={String(label)}><span>{label}</span><b>{value}</b></div>)}
     </section>
+
+    <section className="crados-end__awards">
+      <header><b>FAITS MARQUANTS</b><span>les performances qui ont pesé dans la partie</span></header>
+      <div className="crados-end__awards-grid">
+        {awards.map((award) => <article key={award.title} className="crados-end__award" style={{ borderColor: `${award.accent}44` }}>
+          <div className="crados-end__award-icon" style={{ color: award.accent }}>{award.icon}</div>
+          <div className="crados-end__award-copy">
+            <span>{award.title}</span>
+            <b style={{ color: award.accent }}>{award.row ? String(award.row.name || "—").toUpperCase() : "—"}</b>
+            <small>{award.subtitle}</small>
+          </div>
+          <div className="crados-end__award-value" style={{ color: award.accent }}>{award.row ? award.row[award.key] : 0}<small>{award.suffix}</small></div>
+        </article>)}
+      </div>
+    </section>
+
     <section className="crados-end__ranking">
-      <header><b>CLASSEMENT FINAL</b><span>moins de crasse = mieux classé</span></header>
-      <div>{(rankingRows || []).map((row: any, index: number) => <div key={row.id} className="crados-end__rankrow" style={{ borderColor: `${row.color}55` }}><strong style={{ color: row.color }}>#{index+1}</strong><span className="crados-end__rankavatar" style={{ borderColor: row.color }}><ProfileAvatar profile={row.profile} size={42} showStars={false} ringColor={row.color} noFrame /></span><b style={{ color: row.color }}>{String(row.name || '').toUpperCase()}</b><em style={{ color: row.color }}>{row.dirt}/{config.rules.dirtLimit}</em><small>{row.zones} zones · {row.legs} manches</small></div>)}</div>
+      <header><b>CLASSEMENT FINAL</b><span>propre, lisible et complet jusqu'au dernier joueur</span></header>
+      <div>{safeRows.map((row: any, index: number) => {
+        const dirtPct = Math.max(0, Math.min(100, Math.round((Number(row.dirt || 0) / Math.max(1, Number(config.rules?.dirtLimit || 1))) * 100)));
+        return <div key={row.id} className="crados-end__rankrow" style={{ borderColor: `${row.color}55` }}>
+          <strong style={{ color: row.color }}>#{index + 1}</strong>
+          <span className="crados-end__rankavatar" style={{ borderColor: row.color }}><ProfileAvatar profile={row.profile} size={42} showStars={false} ringColor={row.color} noFrame /></span>
+          <div className="crados-end__rankidentity">
+            <b style={{ color: row.color }}>{String(row.name || '').toUpperCase()}</b>
+            <small>{row.eliminated ? "ÉLIMINÉ" : `${row.zones} zones · ${row.steals} vols · ${row.legs} manches`}</small>
+            <div className="crados-end__rankmeter"><i style={{ width: `${dirtPct}%`, background: row.color }} /></div>
+          </div>
+          <em style={{ color: row.color }}>{row.dirt}<small>/{config.rules.dirtLimit}</small></em>
+        </div>;
+      })}</div>
     </section>
+
     <section className="crados-end__details">
       <header><b>STATS COMPLÈTES DE LA PARTIE</b><span>tous les compteurs enregistrés</span></header>
-      <div><table><thead><tr>{["Joueur","Darts","Tours","Couches","Zones","Vols","Infligée","Reçue","Lavée","Bull","DBull","Miss","Best","Manches"].map((h) => <th key={h}>{h}</th>)}</tr></thead><tbody>{(rankingRows || []).map((row: any) => <tr key={row.id}><td><span style={{ color: row.color }}>{String(row.name || "").toUpperCase()}</span></td><td>{row.darts}</td><td>{row.visits}</td><td>{row.layers}</td><td>{row.zones}</td><td>{row.steals}</td><td>{row.dirtInflicted}</td><td>{row.dirtTaken}</td><td>{row.dirtWashed}</td><td>{row.bulls}</td><td>{row.dbulls}</td><td>{row.misses}</td><td>{row.bestVisitImpact}</td><td>{row.legs}</td></tr>)}</tbody></table></div>
+      <div><table><thead><tr>{["Joueur", "Darts", "Tours", "Couches", "Zones", "Vols", "Infligée", "Reçue", "Lavée", "Bull", "DBull", "Miss", "Best", "Manches"].map((h) => <th key={h}>{h}</th>)}</tr></thead><tbody>{safeRows.map((row: any) => <tr key={row.id}><td><span style={{ color: row.color }}>{String(row.name || "").toUpperCase()}</span></td><td>{row.darts}</td><td>{row.visits}</td><td>{row.layers}</td><td>{row.zones}</td><td>{row.steals}</td><td>{row.dirtInflicted}</td><td>{row.dirtTaken}</td><td>{row.dirtWashed}</td><td>{row.bulls}</td><td>{row.dbulls}</td><td>{row.misses}</td><td>{row.bestVisitImpact}</td><td>{row.legs}</td></tr>)}</tbody></table></div>
     </section>
+
     <section className="crados-end__actions">
-      <button type="button" onClick={onStats}>📊 STATS DÉTAILLÉES</button><button type="button" onClick={onHistory}>🕘 HISTORIQUE</button><button type="button" onClick={onReplay}>↻ REJOUER</button><button type="button" onClick={onConfig}>⚙ CONFIGURATION</button><button type="button" className="is-wide" onClick={onGames}>RETOUR AUX JEUX</button>
+      <button type="button" onClick={onStats}>📊 STATS DÉTAILLÉES</button>
+      <button type="button" onClick={onHistory}>🕘 HISTORIQUE</button>
+      <button type="button" onClick={onReplay}>↻ REJOUER</button>
+      <button type="button" onClick={onConfig}>⚙ CONFIGURATION</button>
+      <button type="button" className="is-wide" onClick={onGames}>RETOUR AUX JEUX</button>
     </section>
   </div>;
 }

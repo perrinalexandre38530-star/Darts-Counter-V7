@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import "./PublicLandingPage.css";
 import logo from "../assets/LOGO.webp";
 import awena from "../assets/running/home_actions/running_discipline_awena.webp";
@@ -148,13 +148,13 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     const id = decodeURIComponent(ruleMatch[1]);
     const game = allDartsGames.find((g) => g.id === id);
     if (game) return <DartsRulePage game={game} onOpenApp={onOpenApp} onBack={() => {
-      window.history.pushState(null, "", `${window.location.pathname}${window.location.search}#/welcome`);
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/welcome`);
       setRouteHash("#/welcome");
-      requestAnimationFrame(() => document.getElementById("darts-modes")?.scrollIntoView({ block: "start" }));
+      window.setTimeout(() => document.getElementById("darts-modes")?.scrollIntoView({ block: "start", behavior: "auto" }), 0);
     }} />;
   }
 
-  const catalogueGroups = useMemo(() => {
+  const catalogueGroups = (() => {
     const groups = {
       classic: [] as DartsGameDef[],
       exclusive: [] as DartsGameDef[],
@@ -174,7 +174,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
       else groups.variant.push(game);
     }
     return groups;
-  }, [allDartsGames]);
+  })();
 
   const filteredDartsGames = catalogueGroups[dartsFilter];
 
