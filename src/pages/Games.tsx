@@ -172,6 +172,7 @@ const SUBCATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
   "fun:survie": { en: "Survival", es: "Supervivencia" },
   "fun:coop": { en: "Co-op", es: "Cooperativo" },
   "fun:experimental": { en: "Experimental", es: "Experimental" },
+  "fun:wave61": { en: "Wave 61 · In development", es: "Ola 61 · En desarrollo" },
   "fun:other": { en: "Other", es: "Otros" },
   "training:precision": { en: "Precision", es: "Precisión" },
   "training:performance": { en: "Performance", es: "Rendimiento" },
@@ -1847,7 +1848,13 @@ export default function Games({ setTab, params }: Props) {
                       <button
                         key={g.id}
                         onClick={() => {
-                          if (!clickable) return navigate("mode_not_ready");
+                          if (!clickable) {
+                            return navigate("mode_not_ready", {
+                              gameId: g.id,
+                              title: localizedGameLabel(g, lang),
+                              body: g.infoBody,
+                            });
+                          }
                           const gameParams = g.variantId
                             ? { gameId: g.id, baseGame: g.baseGame, variantId: g.variantId }
                             : undefined;

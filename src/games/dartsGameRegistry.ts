@@ -8,6 +8,8 @@
 // - Tous les boutons "i" doivent afficher des regles (infoTitle/infoBody)
 // =============================================================
 
+import { DARTS_WAVE_61 } from "./dartsWave61";
+
 export type GameCategory = "classic" | "variant" | "training" | "challenge" | "fun";
 
 export type DartsGameTab =
@@ -1213,6 +1215,26 @@ const rawDartsGameRegistry: DartsGameDef[] = [
       "Un boss a des points de vie et des phases. Certaines zones sont vulnerables selon le round. Les joueurs cooperent pour le battre avant la fin du timer/du nombre de tours. A implementer.",
   },
 
+
+  // ===========================================================
+  // VAGUE 61 — catalogue validé, moteurs à développer
+  // Les médias lourds restent externalisés : aucune ressource de
+  // cette vague n'est embarquée dans l'AAB tant que le mode n'est
+  // pas développé et validé.
+  // ===========================================================
+  ...DARTS_WAVE_61.map((g, index): DartsGameDef => ({
+    ...g,
+    category: "fun",
+    subCategory: "wave61",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 200 + index / 100,
+    ready: false,
+    isNew: true,
+    statsKey: `game:${g.id}`,
+    infoTitle: g.label,
+  })),
+
   // ===========================================================
   // TRAINING (nouveaux drills a developper)
   // ===========================================================
@@ -1523,6 +1545,7 @@ export const GAME_SUBCATEGORIES: Record<GameCategory, { id: string; label: strin
     { id: 'survie', label: 'Survie' },
     { id: 'coop', label: 'Co-op' },
     { id: 'experimental', label: 'Experimental' },
+    { id: 'wave61', label: 'Vague 61 · À développer' },
     { id: 'other', label: 'Autres' },
   ],
   training: [
