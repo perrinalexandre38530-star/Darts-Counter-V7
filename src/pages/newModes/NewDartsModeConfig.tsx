@@ -835,7 +835,7 @@ export default function NewDartsModeConfig(props: Props) {
       <OptionRow compact label="Awena" hint="Active ou coupe les commentaires vocaux automatiques d’Awena pendant CRADOS."><OptionToggle compact value={cradosAwenaEnabled} onChange={setCradosAwenaEnabled} /></OptionRow>
       <OptionRow compact label="Conseil de cible" hint="Affiche à chaque tour un bloc flottant avec la cible recommandée et la raison."><OptionToggle compact value={cradosCoachEnabled} onChange={setCradosCoachEnabled} /></OptionRow>
     </div>
-  </section>;
+  </section> : null;
 
   const fiftyOneBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles 51 BY 5</div>
