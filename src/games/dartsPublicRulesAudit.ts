@@ -1,6 +1,43 @@
 export type PublicRuleAudit = { status: 'available'|'development'; sources: string[]; options: string[] };
 
 export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
+  "heist_180": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "MOTEUR : famille Mission du socle Wave61",
+      "DIFFICULTÉ : Facile / Normal / Difficile",
+      "NOMBRE DE ROUNDS : réglable de 1 à 60",
+      "JOUEURS ou 2 ÉQUIPES AUTO",
+      "BOTS IA : ajout possible + niveau Facile / Normal / Difficile",
+      "ORDRE ALÉATOIRE : activable",
+      "SAISIE : Keypad / Cible interactive",
+      "Concept actuel : préparer le casse, ouvrir le coffre, accumuler le butin puis réussir l’évasion avant que l’alarme ne devienne incontrôlable",
+      "Sauvegarde/reprise, Undo, scoring par dart et écran de fin via le socle Wave61"
+    ]
+  },
+
+  "demineur": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts"],
+    "options": [
+      "GRILLE : secteurs 1 à 20 organisés en grille 5 × 4",
+      "DIFFICULTÉ : Facile / Normal / Difficile",
+      "NOMBRE DE ROUNDS : valeur par défaut 16, réglable de 1 à 60",
+      "OBJECTIF MOTEUR : valeur par défaut 15",
+      "Vies et élimination gérées par le moteur DÉMINEUR",
+      "BULL : scanne une case sûre",
+      "DBULL : scanne deux cases sûres",
+      "Les cases sûres donnent des indices sur les mines voisines",
+      "Victoire lorsque toutes les cases sûres sont révélées ; classement selon les cases sûres révélées",
+      "JOUEURS ou 2 ÉQUIPES AUTO lorsque le mode équipes est sélectionné",
+      "BOTS IA : ajout possible + niveau Facile / Normal / Difficile",
+      "ORDRE ALÉATOIRE : activable",
+      "SAISIE : Keypad / Cible interactive",
+      "Sauvegarde/reprise, Undo et écran de fin via le socle Wave61"
+    ]
+  },
+
   "challenge": {
     "status": 'available',
     "sources": ["src/pages/ChallengeConfig.tsx", "src/pages/ChallengePlay.tsx"],
