@@ -118,6 +118,22 @@ const rawDartsGameRegistry: DartsGameDef[] = [
       "But: descendre a 0. Chaque flechette marque (S/D/T) sur son segment. Regles selon config: double-in (option), double-out (souvent), bust si tu depasses 0 ou finis sans respecter le double-out. Le vainqueur est celui qui finit en premier.",
   },
   {
+    id: "challenge",
+    label: "CHALLENGE",
+    category: "challenge",
+    subCategory: "scoring",
+    entry: "games",
+    tab: "challenge_config",
+    popularityRank: 2,
+    ready: true,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "game:challenge",
+    infoTitle: "CHALLENGE",
+    infoBody:
+      "Choisis une cible de 1 à 20 ou le BULL, puis un nombre de volées. Sur une cible numérique, Simple = 1 point, Double = 2 et Triple = 3. Sur le BULL, 25 = 1 point et DBULL 50 = 2. Toute touche hors objectif vaut 0. La partie s'arrête après le nombre de volées configuré et conserve le score, le taux de touches et le détail S/D/T/25/50/MISS.",
+  },
+  {
     id: "cricket",
     label: "Cricket",
     category: "classic",

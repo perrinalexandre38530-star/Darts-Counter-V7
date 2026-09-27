@@ -71,6 +71,24 @@ export function playCradosSfx(key: CradosSfxKey, volume = DEFAULT_VOLUME[key], e
   playSfx(CRADOS_SFX_URL[key], { volume });
 }
 
+export type CradosVictoryMood = "blowout" | "tight" | "comeback" | "solid";
+
+/** Petite signature de victoire contextuelle sans nouvel asset lourd. */
+export function playCradosVictorySignature(mood: CradosVictoryMood = "solid", enabled = true) {
+  if (!enabled) return;
+  playCradosSfx("victory", undefined, true);
+  if (typeof window === "undefined") return;
+  if (mood === "blowout") {
+    window.setTimeout(() => playCradosSfx("dbull", 0.50, true), 520);
+    window.setTimeout(() => playCradosSfx("triple", 0.42, true), 980);
+  } else if (mood === "tight") {
+    window.setTimeout(() => playCradosSfx("bull", 0.46, true), 720);
+  } else if (mood === "comeback") {
+    window.setTimeout(() => playCradosSfx("zoneStolen", 0.42, true), 560);
+    window.setTimeout(() => playCradosSfx("bull", 0.42, true), 1040);
+  }
+}
+
 /** Accepte aussi bien la forme UI ({v,mult}) que moteur ({bed,number}). */
 export function cradosSfxKeyForDart(dart: any): CradosSfxKey {
   if (!dart) return "hit";

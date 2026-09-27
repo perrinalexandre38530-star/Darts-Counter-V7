@@ -140,7 +140,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     return () => window.removeEventListener("hashchange", syncHash);
   }, []);
 
-  const allDartsGames = DARTS_GAMES.filter((g) => g.entry === "games");
+  const allDartsGames = DARTS_GAMES.filter((g) => g.entry === "games" || g.entry === "training");
   const readyDartsGames = allDartsGames.filter((g) => g.ready);
   const developmentDartsGames = allDartsGames.filter((g) => !g.ready);
   const ruleMatch = routeHash.match(/^#\/welcome\/darts\/([^?]+)/);
@@ -182,9 +182,9 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     ["classic","GRANDS CLASSIQUES","Les incontournables des fléchettes : X01, Cricket, Killer, Shanghai et autres références."],
     ["exclusive","EXCLUSIVITÉS MSS","Les créations propres à MULTISPORTS SCORING : Firefighter, CRADOS, Loterie, Menteur, Président, Le Pendu, Cargo…"],
     ["fun","FUN","Des parties pensées pour l’ambiance, les soirées et les règles décalées."],
-    ["challenge","DÉFIS","Objectifs, contraintes et formats où chaque volée devient un challenge."],
+    ["challenge","DÉFIS","CHALLENGE et les autres modes à objectifs : scoring, précision, performance, duel et élimination."],
     ["variant","VARIANTES","Des façons différentes de jouer et de revisiter la cible."],
-    ["training","TRAINING","Des modes orientés entraînement, précision, régularité et progression."],
+    ["training","TRAINING","Training X01, Tour de l’horloge, Double In / Double Out, Challenges, Super Bull, Ghost Mode, Precision Gauntlet, Repeat Master et Time Attack."],
     ["development","EN DÉVELOPPEMENT","Les prochains modes déjà référencés dans MSS, clairement séparés des jeux actuellement jouables."],
   ] as const;
 

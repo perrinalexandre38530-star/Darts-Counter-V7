@@ -1,6 +1,19 @@
 export type PublicRuleAudit = { status: 'available'|'development'; sources: string[]; options: string[] };
 
 export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
+  "challenge": {
+    "status": 'available',
+    "sources": ["src/pages/ChallengeConfig.tsx", "src/pages/ChallengePlay.tsx"],
+    "options": [
+      "CIBLE : 1 à 20 ou BULL",
+      "NOMBRE DE VOLÉES : 5, 10, 15, 20, 30, 50 ou 100",
+      "OBJECTIF : TOUS LES HITS / SEULEMENT SIMPLE / SEULEMENT DOUBLE / SEULEMENT TRIPLE / SEULEMENT BULL 25 / SEULEMENT BULL 50",
+      "3 fléchettes par volée",
+      "S = 1 point, D = 2 points, T = 3 points ; BULL 25 = 1 point, DBULL 50 = 2 points",
+      "Toute touche hors objectif = MISS / 0 point"
+    ]
+  },
+
   "x01": {
     "status": 'available',
     "sources": [
@@ -1027,23 +1040,46 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "training_precision_gauntlet": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/training/modes/precision/PrecisionConfig.tsx", "src/training/modes/precision/PrecisionGauntletPlay.tsx"],
+    "options": [
+      "PARCOURS STANDARD : S20 • S19 • S18 • S17 • S16 • BULL",
+      "PARCOURS PRO : T20 • T19 • D18 • T17 • D16 • DBULL",
+      "PARCOURS FINISH : D20 • D16 • D10 • D8 • D4 • DBULL",
+      "TOLÉRANCE : HARDCORE / STANDARD — 3 erreurs / RELAX — 6 erreurs",
+      "Sélection de participants : solo, multi ou équipes"
+    ]
   },
   "training_time_attack": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/training/modes/timeattack/TimeAttackConfig.tsx", "src/training/modes/timeattack/TimeAttackPlay.tsx"],
+    "options": [
+      "DURÉE : 30 / 60 / 120 secondes",
+      "Même durée pour tous les participants",
+      "Classement individuel puis moyenne d’équipe",
+      "Sélection de participants : solo, multi ou équipes"
+    ]
   },
   "training_repeat_master": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/training/modes/repeat/RepeatMasterConfig.tsx", "src/training/modes/repeat/RepeatMasterPlay.tsx"],
+    "options": [
+      "CIBLE : S20 / T20 / D20 / D16 / BULL / DBULL",
+      "OBJECTIF : 5 / 10 / 15 / 20 touches consécutives",
+      "MODE SOFT : erreur = série remise à zéro",
+      "MODE HARDCORE : première erreur = fin de session",
+      "LIMITE : 30 / 60 / 90 fléchettes",
+      "Sélection de participants : solo, multi ou équipes"
+    ]
   },
   "training_ghost": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/training/modes/ghost/GhostConfig.tsx", "src/training/modes/ghost/GhostModePlay.tsx"],
+    "options": [
+      "MOYENNE GHOST /3 : 45 / 60 / 75 / 90",
+      "VOLUME : 10 / 20 / 30 volées",
+      "Tous les participants affrontent le même Ghost",
+      "Sélection de participants : solo, multi ou équipes"
+    ]
   },
   "rpg_darts": {
     "status": 'development',
@@ -1072,17 +1108,34 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "training_doubleio": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/training/modes/double/DoubleIOConfig.tsx", "src/training/modes/double/DoubleInOutPlay.tsx"],
+    "options": [
+      "MODE : DOUBLE IN / DOUBLE OUT / DOUBLE IN + DOUBLE OUT",
+      "VOLUME : 10 / 20 / 40 rounds",
+      "Même volume pour tous les participants",
+      "Sélection de participants : solo, multi ou équipes"
+    ]
   },
   "training_challenges": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/training/modes/challenges/ChallengesConfig.tsx", "src/training/modes/challenges/ChallengesPlay.tsx"],
+    "options": [
+      "DÉFI : 3 DOUBLES / 9 FLÉCHETTES",
+      "DÉFI : BULL → T20 → D20 en 12 fléchettes maximum",
+      "DÉFI : CHECKOUT 40 / 3 FLÉCHETTES avec finition obligatoire sur un double",
+      "Même défi pour tous les participants",
+      "Sélection de participants : solo, multi ou équipes"
+    ]
   },
   "training_super_bull": {
     "status": 'available',
-    "sources": [],
-    "options": []
+    "sources": ["src/training/modes/superbull/SuperBullConfig.tsx", "src/training/modes/superbull/SuperBullPlay.tsx"],
+    "options": [
+      "OBJECTIF : 50 / 100 / 150 points",
+      "LIMITE : 15 / 30 / 60 fléchettes",
+      "BULL = 25 points ; DBULL = 50 points",
+      "Même objectif et même limite pour tous les participants",
+      "Sélection de participants : solo, multi ou équipes"
+    ]
   }
 } as any;
