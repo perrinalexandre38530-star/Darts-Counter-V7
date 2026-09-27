@@ -2,7 +2,7 @@
 // src/games/dartsWave61.ts
 // Backlog officiel — VAGUE 61
 //
-// Ces 61 modes sont branchés sur les moteurs mutualisés Wave61 V1.
+// Ces 61 modes sont branchés sur les moteurs mutualisés Wave61 V3.
 // Ils sont jouables en prototype fonctionnel (config, scoring par dart, bots,
 // undo, sauvegarde/reprise, fin de partie) puis seront finalisés au cas par cas.
 // Les médias lourds restent externalisés pour préserver le budget Android.

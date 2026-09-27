@@ -8,7 +8,7 @@ const play = read('src/pages/Wave61Play.tsx');
 const config = read('src/pages/Wave61Config.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 
-assert(engine.includes('version: 2'), 'State Wave61 V2 absent');
+assert(engine.includes('version: 3'), 'State Wave61 V3 absent');
 assert(engine.includes('wave61MineNeighborCount'), 'Indices voisins DÉMINEUR absents');
 assert(engine.includes('Scanner BULL'), 'Scanner BULL DÉMINEUR absent');
 assert(engine.includes('processCodebreaker'), 'CODEBREAKER V2 absent');
@@ -24,10 +24,10 @@ assert(play.includes('FaceMysterePanel'), 'UI FACE MYSTÈRE absente');
 assert(play.includes('ColinBoard'), 'UI COLIN-MAILLARD absente');
 assert(play.includes('APERÇU 2s'), 'Aperçu mémoire 2s absent');
 assert(play.includes('GRILLE 5 × 4'), 'UI DÉMINEUR 5x4 absente');
-assert(play.includes('moteur V2'), 'Play n’annonce pas moteur V2');
-assert(config.includes('moteur mutualisé V2'), 'Config n’annonce pas moteur V2');
-assert(config.includes('engineVersion: 2'), 'Config engineVersion != 2');
-assert(play.includes('engineVersion: 2'), 'History engineVersion != 2');
+assert(play.includes('moteur V3'), 'Play n’annonce pas moteur V3');
+assert(config.includes('moteur mutualisé V3'), 'Config n’annonce pas moteur V3');
+assert(config.includes('engineVersion: 3'), 'Config engineVersion != 3');
+assert(play.includes('engineVersion: 3'), 'History engineVersion != 3');
 
 assert(/codebreaker:\s*\{\s*defaultGoal:\s*3/.test(families), 'CODEBREAKER doit viser 3 valeurs exactes');
 assert(/colin_maillard:\s*\{\s*defaultGoal:\s*6/.test(families), 'COLIN-MAILLARD doit avoir 6 étapes');

@@ -48,13 +48,15 @@ export default function Wave61Config(props: any) {
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles], [humanProfiles, botProfiles]);
   const profileById = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
 
+  const lockedRounds = spec.id === "nine_dart_century" ? 3 : spec.id === "double_down" ? 9 : null;
+  const lockedGoal = spec.id === "nine_dart_century" ? 100 : spec.id === "shove_a_penny" ? 21 : spec.id === "green_vs_red" ? 10 : null;
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, spec.maxPlayers) : []);
   const [botsOpen, setBotsOpen] = React.useState(saved.botsOpen === true);
   const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(saved.participantMode === "teams" && spec.supportsTeams ? "teams" : "players");
   const [difficulty, setDifficulty] = React.useState<"easy" | "normal" | "hard">(saved.difficulty === "easy" || saved.difficulty === "hard" ? saved.difficulty : "normal");
   const [botLevel, setBotLevel] = React.useState<"easy" | "normal" | "hard">(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
-  const [rounds, setRounds] = React.useState(Number(saved.rounds || preset.defaultRounds));
-  const [goal, setGoal] = React.useState(Number(saved.goal ?? preset.defaultGoal));
+  const [rounds, setRounds] = React.useState(Number(lockedRounds ?? saved.rounds ?? preset.defaultRounds));
+  const [goal, setGoal] = React.useState(Number(lockedGoal ?? saved.goal ?? preset.defaultGoal));
   const [lives, setLives] = React.useState(Number(saved.lives ?? preset.defaultLives));
   const [randomOrder, setRandomOrder] = React.useState(saved.randomOrder !== false);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
@@ -82,7 +84,7 @@ export default function Wave61Config(props: any) {
   const minPlayers = Math.min(spec.maxPlayers, preset.minPlayers);
   const valid = selectedProfiles.length >= minPlayers;
   const botCount = selectedProfiles.filter(isBotLike).length;
-  const familyText = `${preset.label} · moteur mutualisé V2`;
+  const familyText = `${preset.label} · moteur mutualisé V3`;
 
   function start() {
     if (!valid || typeof go !== "function") return;
@@ -102,13 +104,13 @@ export default function Wave61Config(props: any) {
       teamByPlayer,
       difficulty,
       botLevel,
-      rounds: Math.max(1, Math.min(60, Number(rounds) || preset.defaultRounds)),
-      goal: Math.max(0, Number(goal) || 0),
+      rounds: Number(lockedRounds ?? Math.max(1, Math.min(60, Number(rounds) || preset.defaultRounds))),
+      goal: Number(lockedGoal ?? Math.max(0, Number(goal) || 0)),
       lives: Math.max(0, Math.min(9, Number(lives) || 0)),
       randomOrder,
       scoreInputMethod,
       engineFamily: preset.family,
-      engineVersion: 2,
+      engineVersion: 3,
     };
     try { recordProfileUsageForMode(spec.id, orderedIds); } catch {}
     go("wave61_play", { gameId: spec.id, config: payload });
@@ -118,7 +120,7 @@ export default function Wave61Config(props: any) {
   const pill = (active: boolean): React.CSSProperties => ({ minHeight: 36, padding: "7px 12px", borderRadius: 999, border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`, background: active ? `${accent}1c` : "rgba(255,255,255,.035)", color: active ? "#fff" : "#aeb5c8", fontWeight: 950 });
 
   return <div className="page" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
-    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />La passe V2 branche le mode sur le moteur mutualisé <b>{preset.label}</b>. Les familles Plateau & Déduction disposent maintenant de règles signature ; les autres familles seront spécialisées dans les passes suivantes.</div>} />} />
+    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />La passe V3 branche le mode sur le moteur mutualisé <b>{preset.label}</b>. Plateau & Déduction sont conservés et Score & Précision disposent maintenant de leurs règles signature.</div>} />} />
     {spec.id === "tug_rush" ? <div style={{ padding: "6px 10px 2px", maxWidth: 980, margin: "0 auto" }}><img src={tickerTugRush} alt="TUG RUSH" style={{ width: "100%", aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 16, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 12px 34px rgba(0,0,0,.38)` }} /></div> : null}
     <div style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section style={card}>
@@ -130,15 +132,15 @@ export default function Wave61Config(props: any) {
           {botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /></div> : null}
         </div> : null}
         <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
-        {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition V2 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
+        {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition V3 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
       </section>
 
       <section style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Moteur · {preset.label}</div>
         <OptionRow label="Difficulté"><OptionSelect value={difficulty} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setDifficulty} /></OptionRow>
         {botCount ? <OptionRow label="Niveau BOT"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow> : null}
-        <OptionRow label="Nombre de rounds"><input type="number" min={1} max={60} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.28)", color: "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow>
-        {preset.defaultGoal > 0 ? <OptionRow label="Objectif moteur"><input type="number" min={1} max={9999} value={goal} onChange={(e) => setGoal(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.28)", color: "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
+        <OptionRow label={`Nombre de rounds${lockedRounds ? " · verrouillé" : ""}`}><input type="number" min={1} max={60} value={lockedRounds ?? rounds} disabled={lockedRounds != null} onChange={(e) => setRounds(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedRounds != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedRounds != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow>
+        {preset.defaultGoal > 0 ? <OptionRow label={`Objectif moteur${lockedGoal ? " · verrouillé" : ""}`}><input type="number" min={1} max={9999} value={lockedGoal ?? goal} disabled={lockedGoal != null} onChange={(e) => setGoal(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedGoal != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedGoal != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
         {preset.defaultLives > 0 ? <OptionRow label="Vies"><OptionSelect value={lives} options={[3,4,5,6,7]} onChange={(v: any) => setLives(Number(v))} /></OptionRow> : null}
         <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
