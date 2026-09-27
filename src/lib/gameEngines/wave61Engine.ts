@@ -2,7 +2,8 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-export const WAVE61_ENGINE_VERSION = 10;
+// Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10.
+export const WAVE61_ENGINE_VERSION = 11;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -283,10 +284,21 @@ function ascentStageForAltitude(modeId: string, altitude: number): number {
 function ascentWeather(state: Wave61State): { label: string; penalty: number; fatigue: number } {
   const cycle = Array.isArray(state.special?.ascentWeatherCycle) ? state.special.ascentWeatherCycle : [];
   const raw = Number(cycle[(state.turnIndex + state.roundIndex) % Math.max(1, cycle.length)] || 10);
-  if (raw >= 18) return { label: "TEMPÊTE", penalty: 0.48, fatigue: 18 };
-  if (raw >= 14) return { label: "VENT FORT", penalty: 0.28, fatigue: 10 };
-  if (raw >= 9) return { label: "NUAGEUX", penalty: 0.12, fatigue: 5 };
-  return { label: "FENÊTRE CLAIRE", penalty: 0, fatigue: 0 };
+  const intensity = modeOptionNumber(state?.config, "weatherSeverity", 100, 70, 150) / 100;
+  const scaled = (label: string, penalty: number, fatigue: number) => ({ label, penalty: Math.min(0.75, penalty * intensity), fatigue: Math.round(fatigue * intensity) });
+  if (raw >= 18) return scaled("TEMPÊTE", 0.48, 18);
+  if (raw >= 14) return scaled("VENT FORT", 0.28, 10);
+  if (raw >= 9) return scaled("NUAGEUX", 0.12, 5);
+  return scaled("FENÊTRE CLAIRE", 0, 0);
+}
+
+function ascentStartingOxygen(modeId: string, config: Wave61Config): number {
+  const fallback = modeId === "mont_blanc" ? 100 : 90;
+  return modeOptionNumber(config, "oxygenReserve", fallback, 60, 130);
+}
+
+function ascentClimbFactor(state: Wave61State): number {
+  return modeOptionNumber(state.config, "climbPower", 100, 70, 130) / 100;
 }
 
 const CONQUEST_PROFILES: Record<string, { icon: string; label: string; nodes: string[]; threshold: number; win: number; resource: string; ability: string; fort: number }> = {
@@ -594,7 +606,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       pyramidSequence: modeId === "pyramides" ? seededSequence(`pyramid:${seedText}`, PYRAMID_CHAMBERS.length, 20) : [],
       pyramidChamberByPlayer: modeId === "pyramides" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       pyramidMarksByPlayer: modeId === "pyramides" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
-      pyramidTorchByPlayer: modeId === "pyramides" ? Object.fromEntries(ids.map((id) => [id, 70])) : {},
+      pyramidTorchByPlayer: modeId === "pyramides" ? Object.fromEntries(ids.map((id) => [id, modeOptionNumber(config, "torchStart", 70, 40, 100)])) : {},
       pyramidHistory: [],
 
       dracoSequence: modeId === "draco_spheres" ? seededNumbers(`draco:${seedText}`, 7, 20) : [],
@@ -656,7 +668,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       ascentAltitudeByPlayer: ["mont_blanc", "everest"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       ascentStageByPlayer: ["mont_blanc", "everest"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       ascentFatigueByPlayer: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
-      ascentOxygenByPlayer: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, modeId === "mont_blanc" ? 100 : 90])) : {},
+      ascentOxygenByPlayer: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, ascentStartingOxygen(modeId, config)])) : {},
       ascentAcclimationByPlayer: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       summit14PeakByPlayer: modeId === "summit_14" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       summit14MarksByPlayer: modeId === "summit_14" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -2095,7 +2107,7 @@ function processMaya(state: Wave61State, playerId: string, darts: GameDart[], ta
   const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
   marks += power;
   doom = clamp(doom + wrong * (state.config.difficulty === "hard" ? 14 : 10) - bulls * 20, 0, 100);
-  if (marks >= missionThreshold(state.config.difficulty, 2, 3, 4)) {
+  if (marks >= modeOptionNumber(state.config, "chamberNeed", missionThreshold(state.config.difficulty, 2, 3, 4), 2, 6)) {
     seal += 1;
     marks = 0;
     events.push(`☀️ Sceau ${MAYA_CYCLES[Math.min(seal - 1, MAYA_CYCLES.length - 1)]} activé`);
@@ -2119,15 +2131,15 @@ function processMaya(state: Wave61State, playerId: string, darts: GameDart[], ta
 function processPyramides(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
   let chamber = Number(state.special?.pyramidChamberByPlayer?.[playerId] || 0);
   let marks = Number(state.special?.pyramidMarksByPlayer?.[playerId] || 0);
-  let torch = Number(state.special?.pyramidTorchByPlayer?.[playerId] || 70);
+  let torch = Number(state.special?.pyramidTorchByPlayer?.[playerId] || modeOptionNumber(state.config, "torchStart", 70, 40, 100));
   const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
   const hits = matching.length;
   const power = matching.reduce((s, d) => s + bedPower(d), 0);
   const bulls = bullCount(darts);
   const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
   marks += power;
-  torch = clamp(torch + bulls * 18 - wrong * 9, 0, 100);
-  if (marks >= missionThreshold(state.config.difficulty, 2, 3, 4)) {
+  torch = clamp(torch + bulls * 18 - wrong * modeOptionNumber(state.config, "torchDrain", 9, 3, 20), 0, 100);
+  if (marks >= modeOptionNumber(state.config, "chamberNeed", missionThreshold(state.config.difficulty, 2, 3, 4), 2, 6)) {
     chamber += 1;
     marks = 0;
     events.push(`🗝️ ${PYRAMID_CHAMBERS[Math.min(chamber - 1, PYRAMID_CHAMBERS.length - 1)]} franchie`);
@@ -2188,7 +2200,7 @@ function processMythologie(state: Wave61State, playerId: string, darts: GameDart
     favor = Math.max(0, favor - 40);
     events.push("✨ Faveur divine · +1 marque");
   }
-  if (marks >= missionThreshold(state.config.difficulty, 2, 3, 4)) {
+  if (marks >= modeOptionNumber(state.config, "chamberNeed", missionThreshold(state.config.difficulty, 2, 3, 4), 2, 6)) {
     trial += 1;
     marks = 0;
     events.push(`🏛️ Épreuve de ${MYTH_GODS[Math.min(trial - 1, MYTH_GODS.length - 1)]} accomplie`);
@@ -2423,10 +2435,11 @@ function processMafia(state: Wave61State, playerId: string, darts: GameDart[], t
       const victim = nextEnemy(state, playerId, (p) => state.special?.mafiaRoleByPlayer?.[p.id] !== "MAFIA");
       if (victim && (hits || bulls)) {
         if (Number(state.special?.mafiaShieldByPlayer?.[victim.id] || 0) > 0) {
-          state.special.mafiaShieldByPlayer[victim.id] = 0;
+          state.special.mafiaShieldByPlayer[victim.id] = Math.max(0, Number(state.special?.mafiaShieldByPlayer?.[victim.id] || 0) - 1);
           events.push("🛡️ Une protection nocturne bloque l'attaque");
         } else {
-          const damage = hits * 45 + bulls * 25;
+          const damagePerHit = modeOptionNumber(state.config, "nightDamage", 45, 20, 90);
+          const damage = hits * damagePerHit + bulls * Math.round(damagePerHit * 0.55);
           state.special.mafiaDamageByPlayer[victim.id] = Number(state.special?.mafiaDamageByPlayer?.[victim.id] || 0) + damage;
           state.health[victim.id] = Math.max(0, 100 - Number(state.special.mafiaDamageByPlayer[victim.id] || 0));
           events.push(`🌙 Attaque secrète · ${damage} dégâts`);
@@ -2446,7 +2459,7 @@ function processMafia(state: Wave61State, playerId: string, darts: GameDart[], t
     } else if (role === "MEDIC") {
       if (hits || bulls) {
         const candidate = state.players.find((p) => !state.eliminated[p.id] && state.special?.mafiaRoleByPlayer?.[p.id] !== "MAFIA") || state.players.find((p) => !state.eliminated[p.id]);
-        if (candidate) { state.special.mafiaShieldByPlayer[candidate.id] = 1; events.push("🩺 Protection nocturne activée"); }
+        if (candidate) { state.special.mafiaShieldByPlayer[candidate.id] = modeOptionNumber(state.config, "medicShield", 1, 1, 3); events.push("🩺 Protection nocturne activée"); }
       }
     } else {
       delta = hits * 8 + bulls * 5;
@@ -2458,7 +2471,7 @@ function processMafia(state: Wave61State, playerId: string, darts: GameDart[], t
     for (const d of darts) {
       const suspect = mafiaVoteTarget(state, d, playerId);
       if (!suspect) continue;
-      const weight = bedPower(d, 1, 2, 3, 2, 4);
+      const weight = bedPower(d, 1, 2, 3, 2, 4) * modeOptionNumber(state.config, "dayVoteMultiplier", 1, 1, 3);
       state.special.mafiaVotesByPlayer[suspect.id] = Number(state.special?.mafiaVotesByPlayer?.[suspect.id] || 0) + weight;
       hits += 1;
       delta += weight * 5;
@@ -2497,9 +2510,9 @@ function processAscentMode(state: Wave61State, playerId: string, darts: GameDart
   if (state.modeId === "summit_14") {
     let peak = Number(state.special?.summit14PeakByPlayer?.[playerId] || 0);
     let marks = Number(state.special?.summit14MarksByPlayer?.[playerId] || 0);
-    const threshold = state.config.difficulty === "hard" ? 7 : state.config.difficulty === "easy" ? 4 : 5;
+    const threshold = modeOptionNumber(state.config, "peakThreshold", state.config.difficulty === "hard" ? 7 : state.config.difficulty === "easy" ? 4 : 5, 3, 8);
     const power = matching.reduce((sum, d) => sum + bedPower(d, 1, 2, 3), 0) + bulls * 2;
-    const adjusted = Math.max(0, Math.round(power * (1 - weather.penalty)));
+    const adjusted = Math.max(0, Math.round(power * ascentClimbFactor(state) * (1 - weather.penalty)));
     marks += adjusted;
     fatigue = clamp(fatigue + wrong * 9 + weather.fatigue - bulls * 12, 0, 100);
     oxygen = clamp(oxygen - 3 - wrong * 3 - (weather.penalty > .25 ? 4 : 0) + bulls * 12, 0, 100);
@@ -2535,7 +2548,7 @@ function processAscentMode(state: Wave61State, playerId: string, darts: GameDart
   const summit = ascentSummitAltitude(state.modeId);
   const beforeStage = ascentStageForAltitude(state.modeId, altitude);
   let climb = matching.reduce((sum, d) => sum + bedPower(d, 220, 340, 520), 0) + bulls * (state.modeId === "everest" ? 90 : 140);
-  climb = Math.max(0, Math.round(climb * (1 - weather.penalty) * Math.max(.35, 1 - fatigue / 150)));
+  climb = Math.max(0, Math.round(climb * ascentClimbFactor(state) * (1 - weather.penalty) * Math.max(.35, 1 - fatigue / 150)));
   fatigue = clamp(fatigue + wrong * (state.modeId === "everest" ? 12 : 9) + weather.fatigue + matching.filter((d) => d?.bed === "T").length * 4 - bulls * 16, 0, 100);
   acclimation = clamp(acclimation + matching.length * 4 + bulls * 8, 0, 100);
 
@@ -2586,6 +2599,25 @@ function conquestControlledCount(state: Wave61State, actor: string): number {
   return (state.special?.conquestOwnerByNode || []).filter((owner: any) => String(owner || "") === actor).length;
 }
 
+function conquestVictoryGoal(state: Wave61State): number {
+  const profile = CONQUEST_PROFILES[state.modeId];
+  return profile ? modeOptionNumber(state.config, "territoryGoal", profile.win, 1, profile.nodes.length) : 0;
+}
+
+function conquestCaptureThreshold(state: Wave61State): number {
+  const profile = CONQUEST_PROFILES[state.modeId];
+  return profile ? modeOptionNumber(state.config, "captureThreshold", profile.threshold, 3, 9) : 0;
+}
+
+function conquestResourceFactor(state: Wave61State): number {
+  return modeOptionNumber(state.config, "resourceBoost", 100, 50, 180) / 100;
+}
+
+function conquestBaseFort(state: Wave61State): number {
+  const profile = CONQUEST_PROFILES[state.modeId];
+  return profile ? modeOptionNumber(state.config, "baseFort", profile.fort, 0, 4) : 0;
+}
+
 function conquestFocusIndex(state: Wave61State, playerId: string): number {
   const profile = CONQUEST_PROFILES[state.modeId];
   if (!profile) return 0;
@@ -2605,7 +2637,7 @@ function syncConquestProgress(state: Wave61State) {
   for (const p of state.players) {
     const actor = conquestActor(state, p.id);
     const controlled = conquestControlledCount(state, actor);
-    state.progress[p.id] = Math.min(100, Math.round((controlled / profile.win) * 100));
+    state.progress[p.id] = Math.min(100, Math.round((controlled / Math.max(1, conquestVictoryGoal(state))) * 100));
   }
 }
 
@@ -2620,8 +2652,12 @@ function processConquestMode(state: Wave61State, playerId: string, darts: GameDa
   const triples = matching.filter((d) => d?.bed === "T").length;
   const hits = matching.length + bulls;
   let power = matching.reduce((sum, d) => sum + bedPower(d, 1, 2, 3), 0) + bulls;
+  const threshold = conquestCaptureThreshold(state);
+  const victoryGoal = conquestVictoryGoal(state);
+  const fortBase = conquestBaseFort(state);
+  const resourceFactor = conquestResourceFactor(state);
   let resource = Number(state.special?.conquestResourceByPlayer?.[playerId] || 0);
-  resource += matching.reduce((sum, d) => sum + bedPower(d, 6, 10, 15), 0) + bulls * 20;
+  resource += Math.round((matching.reduce((sum, d) => sum + bedPower(d, 6, 10, 15), 0) + bulls * 20) * resourceFactor);
 
   if (state.modeId === "black_flag") {
     const treasure = bulls * 40 + triples * 20;
@@ -2677,19 +2713,19 @@ function processConquestMode(state: Wave61State, playerId: string, darts: GameDa
       if (!pressure.actor || pressure.actor === actor) pressure = { actor, value: Number(pressure.value || 0) + power };
       else pressure = { actor, value: power };
     }
-    if (Number(pressure.value || 0) >= profile.threshold) {
+    if (Number(pressure.value || 0) >= threshold) {
       owner = actor;
       state.special.conquestOwnerByNode[focus] = actor;
-      state.special.conquestFortByNode[focus] = profile.fort + Math.min(2, bulls);
+      state.special.conquestFortByNode[focus] = fortBase + Math.min(2, bulls);
       state.special.conquestPressureByNode[focus] = { actor: null, value: 0 };
       state.special.conquestCapturesByPlayer[playerId] = Number(state.special?.conquestCapturesByPlayer?.[playerId] || 0) + 1;
-      state.scores[playerId] = Number(state.scores[playerId] || 0) + 100 + profile.threshold * 10;
+      state.scores[playerId] = Number(state.scores[playerId] || 0) + 100 + threshold * 10;
       events.push(`${profile.icon} ${profile.nodes[focus]} conquise !`);
       focus = conquestFocusIndex(state, playerId);
       state.special.conquestFocusByPlayer[playerId] = focus;
     } else {
       state.special.conquestPressureByNode[focus] = pressure;
-      events.push(`${profile.icon} Pression ${Math.round(Number(pressure.value || 0))}/${profile.threshold}`);
+      events.push(`${profile.icon} Pression ${Math.round(Number(pressure.value || 0))}/${threshold}`);
     }
   } else events.push(`${profile.icon} Assaut repoussé`);
 
@@ -2697,7 +2733,7 @@ function processConquestMode(state: Wave61State, playerId: string, darts: GameDa
   syncConquestProgress(state);
   const controlled = conquestControlledCount(state, actor);
   state.special.conquestHistory = [...(state.special?.conquestHistory || []), { playerId, actor, focus, controlled, resource: state.special.conquestResourceByPlayer[playerId] }].slice(-50);
-  if (controlled >= profile.win) finishWith(state, playerId, state.config.participantMode === "teams" ? actor : null);
+  if (controlled >= victoryGoal) finishWith(state, playerId, state.config.participantMode === "teams" ? actor : null);
   return { delta: hits, hits };
 }
 
@@ -3583,7 +3619,7 @@ export function wave61PrimaryMetric(state: Wave61State, playerId: string): { val
     const profile = CONQUEST_PROFILES[state.modeId];
     const actor = conquestActor(state, playerId);
     const controlled = conquestControlledCount(state, actor);
-    return { value: controlled, label: "TERRITOIRES", sub: `${controlled}/${profile.win} · ${profile.resource.toLowerCase()} ${Math.round(Number(state.special?.conquestResourceByPlayer?.[playerId] || 0))}%` };
+    return { value: controlled, label: "TERRITOIRES", sub: `${controlled}/${conquestVictoryGoal(state)} · ${profile.resource.toLowerCase()} ${Math.round(Number(state.special?.conquestResourceByPlayer?.[playerId] || 0))}%` };
   }
   if (state.modeId === "cheval_de_troie") return { value: Number(state.special?.trojanPhaseByPlayer?.[playerId] || 0), label: "PHASES", sub: `${state.special?.trojanPhaseByPlayer?.[playerId] || 0}/${TROJAN_PHASES.length} · alerte ${state.special?.trojanAlertByPlayer?.[playerId] || 0}%` };
   if (state.modeId === "hot_potato") return { value: Number(state.lives[playerId] || 0), label: "VIES", sub: `${state.special?.hotPotatoPassesByPlayer?.[playerId] || 0} passe(s) · ${state.special?.hotPotatoExplosionsByPlayer?.[playerId] || 0} explosion(s)` };

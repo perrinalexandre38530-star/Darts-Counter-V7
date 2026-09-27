@@ -6,9 +6,10 @@ export const WAVE61_MODE_ID = "codebreaker" as const;
 const DEDICATED_OPTIONS: Wave61DedicatedOption[] = [
   { key: "codeLength", label: "Longueur du code", type: "select", defaultValue: 3, options: [{ value: 2, label: "2 valeurs" },{ value: 3, label: "3 valeurs" }] },
   { key: "allowRepeats", label: "Répétitions autorisées", type: "toggle", defaultValue: false },
+  { key: "cluesPerMiss", label: "Indices donnés par erreur", type: "select", defaultValue: 1, options: [{ value: 1, label: "1 indice" },{ value: 2, label: "2 indices" }] },
 ];
 
-const DEDICATED_INTRO = "Choisis la longueur du code et si une même valeur peut apparaître plusieurs fois dans la combinaison secrète.";
+const DEDICATED_INTRO = "Choisis la longueur du code, si une valeur peut se répéter et combien d’indices sont révélés à chaque tentative ratée.";
 
 /** Configuration dédiée à CODEBREAKER. */
 export default function DedicatedWave61Config(props: any) {

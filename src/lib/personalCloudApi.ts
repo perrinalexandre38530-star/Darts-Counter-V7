@@ -49,15 +49,45 @@ async function decodePayload(payload: any): Promise<any> {
 
 export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvider, snapshotJson: string, metadata: Record<string, any> = {}) {
   const packed = await gzipBase64(snapshotJson);
+  // Google Drive: contrat historique réellement déployé sur le NAS (/backups).
+  // On envoie le snapshot compressé dans une petite enveloppe JSON afin de ne
+  // plus pousser 30-40 Mo de JSON brut à travers Express/Cloudflare.
+  if (provider === "google_drive") {
+    const wrapper = JSON.stringify({ __mssCompressedBackup: 1, ...packed, metadata });
+    return apiPost(`/account/personal-cloud/google_drive/backups`, {
+      title: "Sauvegarde MULTISPORTS SCORING",
+      snapshotJson: wrapper,
+      summary: metadata?.summary || {},
+      metadata,
+    }) as any;
+  }
   return apiPost(`/account/personal-cloud/${provider}/backup`, { ...packed, metadata }) as any;
 }
 
+async function latestGoogleDriveBackup(): Promise<any | null> {
+  const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=20`).catch(() => null);
+  const items = Array.isArray(res?.backups) ? res.backups : Array.isArray(res?.files) ? res.files : [];
+  if (!items.length) return null;
+  return [...items].sort((a: any, b: any) => Date.parse(String(b?.updatedAt || b?.createdAt || 0)) - Date.parse(String(a?.updatedAt || a?.createdAt || 0)))[0] || null;
+}
+
 export async function getPersonalCloudBackupMeta(provider: PersonalCloudProvider): Promise<any | null> {
+  if (provider === "google_drive") return latestGoogleDriveBackup();
   const res: any = await apiGet(`/account/personal-cloud/${provider}/backup/meta`).catch(() => null);
   return res?.backup || null;
 }
 
 export async function downloadPersonalCloudSnapshot(provider: PersonalCloudProvider): Promise<any> {
+  if (provider === "google_drive") {
+    const latest = await latestGoogleDriveBackup();
+    if (!latest?.id) throw new Error("Aucune sauvegarde Google Drive disponible.");
+    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(String(latest.id))}`);
+    const raw = String(res?.snapshotJson || "");
+    if (!raw) throw new Error("Sauvegarde Google Drive vide.");
+    const parsed = JSON.parse(raw);
+    if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed);
+    return parsed;
+  }
   const res: any = await apiGet(`/account/personal-cloud/${provider}/backup`);
   return decodePayload(res);
 }

@@ -85,6 +85,11 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
   const development = isPublicDartsDevelopment(game);
   const objective = game.infoBody.split(".")[0] + ".";
   const auditedOptions = audit?.options || [];
+  const catalogueGames = DARTS_GAMES.filter((item) => item.id !== game.id);
+  const sameCategoryGames = catalogueGames.filter((item) => item.category === game.category && isPublicDartsDevelopment(item) === development).slice(0, 4);
+  const currentIndex = DARTS_GAMES.findIndex((item) => item.id === game.id);
+  const previousGame = currentIndex > 0 ? DARTS_GAMES[currentIndex - 1] : null;
+  const nextGame = currentIndex >= 0 && currentIndex < DARTS_GAMES.length - 1 ? DARTS_GAMES[currentIndex + 1] : null;
   return <main className="mssLanding mssRulesPage">
     <header className="mssNav">
       <button className="mssBrand" onClick={onBack}><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
@@ -108,15 +113,26 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
         </div>
       </div>
     </section>
+    <section className="mssRuleSummary">
+      <div><span>OBJECTIF</span><strong>{objective}</strong></div>
+      <div><span>CATÉGORIE</span><strong>{exclusive ? "Exclusivité MSS" : DARTS_CATEGORY_LABEL[game.category] || "Fléchettes"}</strong></div>
+      <div><span>OPTIONS</span><strong>{[game.supportsTeams ? "Équipes" : "", game.supportsBots ? "Bots IA" : ""].filter(Boolean).join(" • ") || "Selon le mode"}</strong></div>
+    </section>
     <section className="mssRuleContent">
       <article><b>01</b><h2>OBJECTIF</h2><p>{objective}</p></article>
       <article><b>02</b><h2>PRINCIPE & RÈGLES</h2><p>{game.infoBody}</p></article>
-      <article><b>03</b><h2>FORMAT DE PARTIE</h2><p>Le nombre de joueurs n’est volontairement pas présenté comme une limite fixe sur cette fiche. La configuration réelle du mode dans MSS fait foi.{game.supportsTeams ? " La gestion des équipes est déclarée compatible pour ce moteur." : ""}{game.supportsBots ? " Les bots IA sont déclarés compatibles lorsque la configuration du mode les propose." : ""}</p></article>
+      <article><b>03</b><h2>FORMAT DE PARTIE</h2><p>Le format est déterminé par la configuration propre à ce mode dans MULTISPORTS SCORING.{game.supportsTeams ? " Les équipes sont prises en charge lorsque cette option est proposée." : ""}{game.supportsBots ? " Les bots IA peuvent être utilisés lorsque la configuration du mode les active." : ""}</p></article>
       <article className="mssRuleConfig"><b>04</b><h2>RÈGLES & PARAMÈTRES</h2>{development ? <p>EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.</p> : auditedOptions.length ? <><p>Configuration et règles disponibles dans ce mode :</p><ul>{auditedOptions.map((option) => <li key={option}>{option}</li>)}</ul></> : <p>Les paramètres détaillés de ce mode seront complétés au fur et à mesure de son développement.</p>}</article>
       <article><b>05</b><h2>STATUT DANS MSS</h2><p>{development ? "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée." : "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur."}</p></article>
       {!development && <article><b>06</b><h2>DÉROULEMENT</h2><p>Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.</p></article>}
       {!development && <article><b>07</b><h2>FIN DE PARTIE</h2><p>La partie se termine lorsque la condition de victoire propre au mode est atteinte. Les résultats sont alors exploitables par l’historique et les statistiques compatibles avec ce moteur.</p></article>}
     </section>
+    {sameCategoryGames.length > 0 && <section className="mssRuleRelated"><div className="mssRuleRelatedHead"><span>À DÉCOUVRIR AUSSI</span><h2>D’autres modes de la même famille</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id); return <a key={related.id} href={publicDartsUrl(related.id)}>{art ? <img src={art} alt=""/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{related.label}</span></a>; })}</div></section>}
+    <nav className="mssRulePager">
+      {previousGame ? <a href={publicDartsUrl(previousGame.id)}><small>← MODE PRÉCÉDENT</small><strong>{previousGame.label}</strong></a> : <span/>}
+      <button onClick={onBack}>TOUS LES MODES</button>
+      {nextGame ? <a href={publicDartsUrl(nextGame.id)} className="isNext"><small>MODE SUIVANT →</small><strong>{nextGame.label}</strong></a> : <span/>}
+    </nav>
     <section className="mssRuleCta"><div><span>{development ? "BIENTÔT DANS MSS" : "PRÊT À ESSAYER ?"}</span><h2>{development ? `${game.label} est actuellement en développement.` : `${game.label} est disponible dans MULTISPORTS SCORING.`}</h2></div>{!development && <button onClick={onOpenApp}>JOUER DANS L’APPLICATION</button>}</section>
   </main>;
 }

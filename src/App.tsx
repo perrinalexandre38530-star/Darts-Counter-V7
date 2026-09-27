@@ -5787,7 +5787,7 @@ case "babyfoot_team_edit":
       }
 
       case "challenge_config":
-        page = <ChallengeConfig go={go} />;
+        page = <ChallengeConfig go={go} profiles={store.profiles} activeProfileId={store.activeProfileId ?? null} />;
         break;
       case "challenge_play":
         page = <ChallengePlay go={go} params={routeParams} />;
