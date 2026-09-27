@@ -259,20 +259,6 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <div><strong>{remainingAuditCount}</strong><span>À DOCUMENTER</span></div>
       </div>
       <div className="mssDartsStatusNote"><strong>CATALOGUE VÉRIFIÉ</strong><span>Un mode n'est affiché comme disponible que si son état public est réellement jouable. Les concepts encore reliés à <code>mode_not_ready</code> sont automatiquement rangés dans « En développement ».</span></div>
-      <div className="mssDartsSpotlight">
-        <div className="mssDartsSpotlightHead"><div><span>FICHES RÉCEMMENT DOCUMENTÉES</span><h3>Les règles MSS vérifiées, mode par mode</h3></div><small>Config • Play • moteur • accès direct aux fiches</small></div>
-        <div className="mssDartsSpotlightGrid">
-          {recentlyDocumentedIds.map((id) => {
-            const game = allDartsGames.find((item) => item.id === id);
-            if (!game) return null;
-            const art = landingTickerFor(id);
-            return <a key={id} href={publicDartsUrl(id)} className="mssDartsSpotlightCard">
-              {art ? <img src={art} alt={`Ticker ${game.label}`}/> : null}
-              <span><strong>{game.label}</strong><small>RÈGLES AUDITÉES →</small></span>
-            </a>;
-          })}
-        </div>
-      </div>
       <div className="mssDartsToolbar"><label><span>RECHERCHER UN MODE</span><input value={dartsSearch} onChange={(e) => setDartsSearch(e.target.value)} placeholder="X01, Killer, Challenge, Firefighter…" /></label><div className="mssDartsQuickFilters">{catalogueCards.map(([id,label]) => <button key={id} className={dartsFilter===id ? "isActive" : ""} onClick={() => {setDartsFilter(id);setDartsSearch("");}}>{label}<b>{catalogueGroups[id].length}</b></button>)}</div></div>
       <div className="mssDartsListHeader"><div><span>CATÉGORIE</span><h3>{catalogueCards.find(([id]) => id === dartsFilter)?.[1]}</h3></div><b>{filteredDartsGames.length} MODE{filteredDartsGames.length > 1 ? "S" : ""}</b></div>
       <div className="mssDartsModeGrid">
