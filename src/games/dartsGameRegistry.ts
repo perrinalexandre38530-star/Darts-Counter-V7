@@ -63,7 +63,8 @@ export type DartsGameTab =
   | "darts_mode"
   | "darts_mode_config"
   | "count_up_config"
-  | "mode_not_ready";
+  | "mode_not_ready"
+  | "wave61_config";
 
 export type DartsGameDef = {
   id: string;
@@ -1217,19 +1218,19 @@ const rawDartsGameRegistry: DartsGameDef[] = [
 
 
   // ===========================================================
-  // VAGUE 61 — catalogue validé, moteurs à développer
-  // Les médias lourds restent externalisés : aucune ressource de
-  // cette vague n'est embarquée dans l'AAB tant que le mode n'est
-  // pas développé et validé.
+  // VAGUE 61 — moteurs mutualisés V1 branchés
+  // Les 61 modes sont jouables via Wave61Config/Wave61Play, puis seront
+  // finalisés individuellement. Aucun média lourd propre à cette vague
+  // n'est embarqué : les futurs assets passeront par Content Packs/R2.
   // ===========================================================
   ...DARTS_WAVE_61.map((g, index): DartsGameDef => ({
     ...g,
     category: "fun",
     subCategory: "wave61",
     entry: "games",
-    tab: "mode_not_ready",
+    tab: "wave61_config",
     popularityRank: 200 + index / 100,
-    ready: false,
+    ready: true,
     isNew: true,
     statsKey: `game:${g.id}`,
     infoTitle: g.label,
@@ -1545,7 +1546,7 @@ export const GAME_SUBCATEGORIES: Record<GameCategory, { id: string; label: strin
     { id: 'survie', label: 'Survie' },
     { id: 'coop', label: 'Co-op' },
     { id: 'experimental', label: 'Experimental' },
-    { id: 'wave61', label: 'Vague 61 · À développer' },
+    { id: 'wave61', label: 'Vague 61 · Moteurs V1' },
     { id: 'other', label: 'Autres' },
   ],
   training: [

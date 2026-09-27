@@ -141,6 +141,8 @@ import GameSelect from "./pages/GameSelect";
 const Home = React.lazy(() => import("./pages/Home"));
 const Games = React.lazy(() => import("./pages/Games"));
 const ModeNotReady = React.lazy(() => import("./pages/ModeNotReady"));
+const Wave61Config = React.lazy(() => import("./pages/Wave61Config"));
+const Wave61Play = React.lazy(() => import("./pages/Wave61Play"));
 const X01Setup = React.lazy(() => import("./pages/X01Setup"));
 const X01Play = React.lazy(() => import("./pages/X01Play"));
 const X01OnlineSetup = React.lazy(() => import("./pages/X01OnlineSetup"));
@@ -1014,6 +1016,8 @@ type Tab =
   | "viewer_join"
   | "viewer_display"
   | "mode_not_ready"
+  | "wave61_config"
+  | "wave61_play"
   // ✅ NEW (OBLIGATOIRE): Tabs Pétanque (snake_case)
   | "petanque_menu"
   | "petanque_config"
@@ -6745,6 +6749,14 @@ case "babyfoot_team_edit":
         break;
       }
 
+      case "wave61_config":
+        page = <Wave61Config store={store} go={go} params={routeParams} />;
+        break;
+
+      case "wave61_play":
+        page = <Wave61Play store={store} go={go} params={routeParams} />;
+        break;
+
       case "mode_not_ready":
         page = <ModeNotReady go={go} params={routeParams} />;
         break;
@@ -6813,6 +6825,7 @@ case "babyfoot_team_edit":
     "call_three_play",
     "steeplechase_play",
     "enculette_play",
+    "wave61_play",
 
     // Tournois: match en cours (plein écran)
     "tournament_match_play",
@@ -6891,7 +6904,7 @@ case "babyfoot_team_edit":
     "ocean_control_config", "castle_config", "gotcha_config", "hare_hounds_config",
     "pendu_config", "menteur_config", "crados_config", "fifty_one_by_five_config",
     "looper_config", "call_three_config", "steeplechase_config", "enculette_config",
-    "darts_mode_config",
+    "darts_mode_config", "wave61_config",
     // Ces routes historiques sont elles aussi des écrans CONFIG.
     "shanghai", "battle_royale", "training_x01"
   ]);

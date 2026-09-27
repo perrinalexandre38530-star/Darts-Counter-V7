@@ -172,7 +172,7 @@ const SUBCATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
   "fun:survie": { en: "Survival", es: "Supervivencia" },
   "fun:coop": { en: "Co-op", es: "Cooperativo" },
   "fun:experimental": { en: "Experimental", es: "Experimental" },
-  "fun:wave61": { en: "Wave 61 · In development", es: "Ola 61 · En desarrollo" },
+  "fun:wave61": { en: "Wave 61 · Engine V1", es: "Ola 61 · Motor V1" },
   "fun:other": { en: "Other", es: "Otros" },
   "training:precision": { en: "Precision", es: "Precisión" },
   "training:performance": { en: "Performance", es: "Rendimiento" },

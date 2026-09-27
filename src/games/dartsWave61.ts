@@ -2,10 +2,10 @@
 // src/games/dartsWave61.ts
 // Backlog officiel — VAGUE 61
 //
-// Ces modes sont volontairement visibles dans Games > Fun > Vague 60
-// mais restent "Bientôt disponible" tant que leur moteur n'est pas câblé.
-// Le développement pourra ensuite se faire par familles de moteurs, sans
-// perdre les noms/pitches validés pendant la phase de conception.
+// Ces 61 modes sont branchés sur les moteurs mutualisés Wave61 V1.
+// Ils sont jouables en prototype fonctionnel (config, scoring par dart, bots,
+// undo, sauvegarde/reprise, fin de partie) puis seront finalisés au cas par cas.
+// Les médias lourds restent externalisés pour préserver le budget Android.
 // =============================================================
 
 export type DartsWave61Spec = {
