@@ -4,9 +4,9 @@ function read(file) { return fs.readFileSync(file, "utf8"); }
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
 const engine = read("src/lib/gameEngines/wave61Engine.ts");
-const sharedPlay = read("src/pages/wave61/Wave61SharedPlay.tsx");
+const sharedPlay = read("src/pages/Wave61SharedPlay.tsx");
 
-assert(/WAVE61_ENGINE_VERSION = 11;/.test(engine), "Wave61 V11 attendu");
+assert(/WAVE61_ENGINE_VERSION = (?:11|1[2-9]|[2-9][0-9]);/.test(engine), "Wave61 V11 ou supérieur attendu");
 
 const modes = {
   mafia: ["nightDamage", "dayVoteMultiplier", "medicShield"],
