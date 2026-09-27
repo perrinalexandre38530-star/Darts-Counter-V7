@@ -64,7 +64,8 @@ export type DartsGameTab =
   | "darts_mode_config"
   | "count_up_config"
   | "mode_not_ready"
-  | "wave61_config";
+  | "wave61_config"
+  | "challenge_config";
 
 export type DartsGameDef = {
   id: string;
@@ -1457,6 +1458,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
 // Everything else is shown as "À venir" (disabled) in the Games menu.
 const READY_IDS = new Set<string>([
   "x01",
+  "challenge",
   "training_x01",
   "tour_horloge",
   "training_doubleio",

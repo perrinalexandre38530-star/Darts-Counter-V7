@@ -232,6 +232,8 @@ const TournamentMatchResult = React.lazy(() => import("./pages/TournamentMatchRe
 // X01 V3
 const X01ConfigV3 = React.lazy(() => import("./pages/X01ConfigV3"));
 const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
+const ChallengeConfig = React.lazy(() => import("./pages/ChallengeConfig"));
+const ChallengePlay = React.lazy(() => import("./pages/ChallengePlay"));
 const CameraScoringSetup = React.lazy(() => import("./pages/CameraScoringSetup"));
 const CameraScoringCalibration = React.lazy(() => import("./pages/CameraScoringCalibration"));
 const X01DeviceCameraPage = React.lazy(() => import("./pages/X01DeviceCameraPage"));
@@ -5783,6 +5785,13 @@ case "babyfoot_team_edit":
         );
         break;
       }
+
+      case "challenge_config":
+        page = <ChallengeConfig go={go} />;
+        break;
+      case "challenge_play":
+        page = <ChallengePlay go={go} params={routeParams} />;
+        break;
 
       case "x01_config_v3":
         page = (

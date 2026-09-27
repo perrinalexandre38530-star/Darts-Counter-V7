@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "./PublicLandingPage.css";
 import logo from "../assets/LOGO.webp";
 import awena from "../assets/running/home_actions/running_discipline_awena.webp";
@@ -92,7 +92,7 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
         {development && <div className="mssDevBanner">EN DÉVELOPPEMENT</div>}
         <p>{development ? "Ce mode fait partie du catalogue MULTISPORTS SCORING mais son moteur de jeu n’est pas encore disponible dans cette version. Sa fiche présente le concept actuellement défini." : game.infoBody}</p>
         <div className="mssRuleBadges">
-          <span>JUSQU’À {game.maxPlayers} JOUEURS</span>
+          <span>JOUEURS</span>
           {game.supportsTeams && <span>ÉQUIPES</span>}
           {game.supportsBots && <span>BOTS IA</span>}
         </div>
@@ -101,7 +101,7 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
     <section className="mssRuleContent">
       <article><b>01</b><h2>OBJECTIF</h2><p>{objective}</p></article>
       <article><b>02</b><h2>PRINCIPE & RÈGLES</h2><p>{game.infoBody}</p></article>
-      <article><b>03</b><h2>FORMAT DE PARTIE</h2><p>De 1 à {game.maxPlayers} joueur{game.maxPlayers > 1 ? "s" : ""}.{game.supportsTeams ? " Le mode accepte les équipes." : " Le mode se joue sans gestion d’équipes."}{game.supportsBots ? " Des adversaires IA sont prévus/compatibles." : ""}</p></article>
+      <article><b>03</b><h2>FORMAT DE PARTIE</h2><p>Le nombre de joueurs n’est pas présenté ici comme une limite fixe : MULTISPORTS SCORING applique les possibilités réellement prévues par la configuration du mode.{game.supportsTeams ? " Le jeu propose également une gestion par équipes." : ""}{game.supportsBots ? " Des adversaires IA sont prévus/compatibles lorsque cette option est proposée par le moteur." : ""}</p></article>
       <article><b>04</b><h2>STATUT DANS MSS</h2><p>{development ? "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée." : "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur."}</p></article>
       {!development && <article><b>05</b><h2>DÉROULEMENT</h2><p>Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.</p></article>}
       {!development && <article><b>06</b><h2>FIN DE PARTIE</h2><p>La partie se termine lorsque la condition de victoire propre au mode est atteinte. Les résultats sont alors exploitables par l’historique et les statistiques compatibles avec ce moteur.</p></article>}
@@ -127,15 +127,63 @@ const features = [
 ] as const;
 
 export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void }) {
+  const [routeHash, setRouteHash] = useState(() => window.location.hash);
+  const [dartsFilter, setDartsFilter] = useState<"classic"|"exclusive"|"fun"|"challenge"|"variant"|"training"|"development">("classic");
+
+  useEffect(() => {
+    const syncHash = () => setRouteHash(window.location.hash);
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
   const allDartsGames = DARTS_GAMES.filter((g) => g.entry === "games");
   const readyDartsGames = allDartsGames.filter((g) => g.ready);
   const developmentDartsGames = allDartsGames.filter((g) => !g.ready);
-  const ruleMatch = window.location.hash.match(/^#\/welcome\/darts\/([^?]+)/);
+  const ruleMatch = routeHash.match(/^#\/welcome\/darts\/([^?]+)/);
   if (ruleMatch) {
     const id = decodeURIComponent(ruleMatch[1]);
     const game = allDartsGames.find((g) => g.id === id);
-    if (game) return <DartsRulePage game={game} onOpenApp={onOpenApp} onBack={() => { window.location.hash = "#/welcome"; }} />;
+    if (game) return <DartsRulePage game={game} onOpenApp={onOpenApp} onBack={() => {
+      window.history.pushState(null, "", `${window.location.pathname}${window.location.search}#/welcome`);
+      setRouteHash("#/welcome");
+      requestAnimationFrame(() => document.getElementById("darts-modes")?.scrollIntoView({ block: "start" }));
+    }} />;
   }
+
+  const catalogueGroups = useMemo(() => {
+    const groups = {
+      classic: [] as DartsGameDef[],
+      exclusive: [] as DartsGameDef[],
+      fun: [] as DartsGameDef[],
+      challenge: [] as DartsGameDef[],
+      variant: [] as DartsGameDef[],
+      training: [] as DartsGameDef[],
+      development: [] as DartsGameDef[],
+    };
+    for (const game of allDartsGames) {
+      if (!game.ready) groups.development.push(game);
+      else if (MSS_EXCLUSIVE_DARTS.has(game.id)) groups.exclusive.push(game);
+      else if (game.category === "classic") groups.classic.push(game);
+      else if (game.category === "fun") groups.fun.push(game);
+      else if (game.category === "challenge") groups.challenge.push(game);
+      else if (game.category === "training") groups.training.push(game);
+      else groups.variant.push(game);
+    }
+    return groups;
+  }, [allDartsGames]);
+
+  const filteredDartsGames = catalogueGroups[dartsFilter];
+
+  const catalogueCards = [
+    ["classic","GRANDS CLASSIQUES","Les incontournables des fléchettes : X01, Cricket, Killer, Shanghai et autres références."],
+    ["exclusive","EXCLUSIVITÉS MSS","Les créations propres à MULTISPORTS SCORING : Firefighter, CRADOS, Loterie, Menteur, Président, Le Pendu, Cargo…"],
+    ["fun","FUN","Des parties pensées pour l’ambiance, les soirées et les règles décalées."],
+    ["challenge","DÉFIS","Objectifs, contraintes et formats où chaque volée devient un challenge."],
+    ["variant","VARIANTES","Des façons différentes de jouer et de revisiter la cible."],
+    ["training","TRAINING","Des modes orientés entraînement, précision, régularité et progression."],
+    ["development","EN DÉVELOPPEMENT","Les prochains modes déjà référencés dans MSS, clairement séparés des jeux actuellement jouables."],
+  ] as const;
+
   return <main className="mssLanding" id="top">
     <header className="mssNav">
       <button className="mssBrand" onClick={() => window.scrollTo({top:0,behavior:"smooth"})} aria-label="MULTISPORTS SCORING accueil"><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
@@ -177,8 +225,17 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <div><div className="mssEyebrow">L’UNIVERS FLÉCHETTES MULTISPORTS SCORING</div><h2><em>{allDartsGames.length}</em> modes référencés.<br/><span>{readyDartsGames.length} disponibles aujourd’hui.</span></h2><p>Les grands classiques des fléchettes côtoient les variantes, défis, modes fun et créations exclusives MULTISPORTS SCORING. Les modes encore en préparation restent visibles et clairement marqués « EN DÉVELOPPEMENT ».</p></div>
         <div className="mssDartsPromises"><span><strong>CLASSIQUES</strong><small>X01 • Cricket • Killer • Shanghai • Golf…</small></span><span><strong>EXCLUSIFS MSS</strong><small>DARTS FIREFIGHTER • CRADOS • ATTRAPE-MOI SI TU PEUX ! • LOTERIE • MENTEUR • PRÉSIDENT • LE PENDU • CARGO</small></span><span><strong>CATALOGUE COMPLET</strong><small>{readyDartsGames.length} disponibles • {developmentDartsGames.length} en développement</small></span></div>
       </div>
+      <div className="mssDartsCategoryGrid">
+        {catalogueCards.map(([id,label,description]) => {
+          const count = catalogueGroups[id].length;
+          return <button key={id} className={`mssDartsCategoryCard${dartsFilter === id ? " isActive" : ""}`} onClick={() => setDartsFilter(id)}>
+            <span>{String(count).padStart(2,"0")}</span><strong>{label}</strong><p>{description}</p><small>VOIR LES MODES →</small>
+          </button>;
+        })}
+      </div>
+      <div className="mssDartsListHeader"><div><span>CATÉGORIE</span><h3>{catalogueCards.find(([id]) => id === dartsFilter)?.[1]}</h3></div><b>{filteredDartsGames.length} MODE{filteredDartsGames.length > 1 ? "S" : ""}</b></div>
       <div className="mssDartsModeGrid">
-        {allDartsGames.map((game, index) => {
+        {filteredDartsGames.map((game, index) => {
           const ticker = landingTickerFor(game.id);
           const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
           const development = !game.ready;

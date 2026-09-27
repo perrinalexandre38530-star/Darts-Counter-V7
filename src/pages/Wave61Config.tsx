@@ -81,7 +81,7 @@ export default function Wave61Config(props: any) {
   const minPlayers = Math.min(spec.maxPlayers, preset.minPlayers);
   const valid = selectedProfiles.length >= minPlayers;
   const botCount = selectedProfiles.filter(isBotLike).length;
-  const familyText = `${preset.label} · moteur mutualisé V1`;
+  const familyText = `${preset.label} · moteur mutualisé V2`;
 
   function start() {
     if (!valid || typeof go !== "function") return;
@@ -107,7 +107,7 @@ export default function Wave61Config(props: any) {
       randomOrder,
       scoreInputMethod,
       engineFamily: preset.family,
-      engineVersion: 1,
+      engineVersion: 2,
     };
     try { recordProfileUsageForMode(spec.id, orderedIds); } catch {}
     go("wave61_play", { gameId: spec.id, config: payload });
@@ -117,7 +117,7 @@ export default function Wave61Config(props: any) {
   const pill = (active: boolean): React.CSSProperties => ({ minHeight: 36, padding: "7px 12px", borderRadius: 999, border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`, background: active ? `${accent}1c` : "rgba(255,255,255,.035)", color: active ? "#fff" : "#aeb5c8", fontWeight: 950 });
 
   return <div className="page" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
-    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />Cette première passe branche le mode sur le moteur mutualisé <b>{preset.label}</b>. Les règles fines, événements et habillages propres au jeu seront finalisés ensuite mode par mode.</div>} />} />
+    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />La passe V2 branche le mode sur le moteur mutualisé <b>{preset.label}</b>. Les familles Plateau & Déduction disposent maintenant de règles signature ; les autres familles seront spécialisées dans les passes suivantes.</div>} />} />
     <div style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
@@ -128,7 +128,7 @@ export default function Wave61Config(props: any) {
           {botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /></div> : null}
         </div> : null}
         <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
-        {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition V1 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
+        {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition V2 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
       </section>
 
       <section style={card}>

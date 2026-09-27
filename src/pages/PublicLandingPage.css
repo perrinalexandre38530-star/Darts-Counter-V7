@@ -139,3 +139,19 @@
 .mssExclusiveCorner{position:absolute;right:9px;top:9px;padding:6px 8px;border-radius:999px;background:#ffd900;color:#071015;font-size:8px;font-style:normal;font-weight:1000;letter-spacing:.08em}
 .mssDevBanner{display:inline-flex;margin:0 0 16px;padding:9px 12px;border:1px dashed #ffd900;border-radius:10px;color:#ffd900;background:rgba(255,217,0,.07);font-size:12px;font-weight:1000;letter-spacing:.14em}
 .mssRuleContent article:nth-child(n+5){border-color:rgba(0,229,255,.18)}
+
+/* ===== DARTS CATALOGUE HUB V42+ ===== */
+.mssDartsCategoryGrid{max-width:1500px;margin:46px auto 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.mssDartsCategoryCard{min-height:178px;padding:22px;text-align:left;border-radius:18px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(155deg,#0c151c,#070b0f);color:#fff;cursor:pointer;transition:.2s ease;position:relative;overflow:hidden}
+.mssDartsCategoryCard:hover,.mssDartsCategoryCard.isActive{transform:translateY(-4px);border-color:#00e5ff;box-shadow:0 16px 48px rgba(0,0,0,.35),inset 0 0 28px rgba(0,229,255,.05)}
+.mssDartsCategoryCard.isActive:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:#ffd900}
+.mssDartsCategoryCard>span{font-size:34px;font-weight:1000;color:#ffd900}.mssDartsCategoryCard>strong{display:block;margin-top:7px;font-size:17px;letter-spacing:.04em}.mssDartsCategoryCard>p{margin:9px 0 16px;color:#8fa0ad;font-size:12px;line-height:1.45}.mssDartsCategoryCard>small{color:#00e5ff;font-weight:900;letter-spacing:.08em}
+.mssDartsListHeader{max-width:1500px;margin:48px auto 14px;display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:14px}.mssDartsListHeader span{color:#00e5ff;font-size:10px;font-weight:900;letter-spacing:.16em}.mssDartsListHeader h3{margin:5px 0 0;font-size:30px}.mssDartsListHeader>b{color:#ffd900;font-size:12px;letter-spacing:.12em}
+.mssRuleBadges span:first-child{display:none}
+@media(max-width:1100px){.mssDartsCategoryGrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){
+  .mssDartsCategoryGrid{grid-template-columns:1fr 1fr;gap:9px}
+  .mssDartsCategoryCard{min-height:142px;padding:15px}.mssDartsCategoryCard>span{font-size:26px}.mssDartsCategoryCard>strong{font-size:13px}.mssDartsCategoryCard>p{display:none}
+  .mssRuleHero{padding:86px 16px 30px;gap:28px}.mssRuleHeroArt,.mssRuleHeroArt>img,.mssRuleFallback{min-height:0;height:230px}.mssRuleHeroCopy h1{font-size:42px}.mssRuleHeroCopy>p{font-size:15px}
+  .mssRuleContent{padding:10px 16px 60px}.mssRuleContent article{padding:20px}
+}
