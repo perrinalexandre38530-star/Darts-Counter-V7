@@ -92,6 +92,11 @@ import {
   MontBlancPanel,
   Summit14Panel,
 } from "./wave61/Wave61AscentPanels";
+import {
+  FinalBuzzerPanel,
+  JackpotPanel,
+  MafiaPanel,
+} from "./wave61/Wave61PartyArcadePanels";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -109,6 +114,9 @@ function familyRules(spec: any, preset: any) {
     sniper: "Une série de contrats de précision s'enchaîne. Plus la difficulté monte, plus le lit exact S/D/T/BULL devient obligatoire.",
     luciole: "La cible s'illumine brièvement au début du tour puis disparaît. Mémorise le secteur et touche-le avant que la luciole suivante apparaisse.",
     golden_dart: "Une cible dorée secrète se cache parmi les 20 secteurs. Chaque erreur révèle un indice ; trouve-la pour gagner une marque d'or et passer à la suivante.",
+    final_buzzer: "Huit défis sous pression. Le buzzer coupe la volée après 1, 2 ou 3 darts selon le tour ; réussir sur la dernière fléchette autorisée déclenche un bonus Clutch.",
+    jackpot: "Chaque volée devient trois rouleaux de machine à sous. Les secteurs produisent des symboles, BULL agit comme WILD et trois SEVEN déclenchent le jackpot progressif.",
+    mafia: "Alternance Nuit/Jour avec rôles cachés. La Mafia attaque la nuit, le Détective enquête, le Médecin protège ; le jour, les darts deviennent des votes d'élimination.",
     heist_180: "Quatre phases de casse : repérage, effraction, coffre, fuite. Les bons lits font avancer, les BULL réduisent la chaleur et une alarme à 100 % fait perdre une phase.",
     escape_game: "Cinq verrous à franchir dans l'ordre. Le secteur demandé ouvre le verrou courant ; BULL/DBULL servent de jokers et les erreurs ajoutent des pénalités.",
     objectif_lune: "Remplis le carburant, décolle, stabilise l'orbite puis alunis. Les BULL alimentent la fusée et sécurisent la trajectoire.",
@@ -157,7 +165,7 @@ function familyRules(spec: any, preset: any) {
   return <div style={{ display: "grid", gap: 9, fontSize: 12.5, lineHeight: 1.5 }}>
     <div><b style={{ color: preset.accent }}>CONCEPT</b><br />{spec.infoBody}</div>
     <div><b style={{ color: preset.accent }}>MOTEUR V{WAVE61_ENGINE_VERSION}</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
-    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V8 conserve les moteurs précédents et spécialise Ascension / Montagne : altitude, camps, météo, fatigue, oxygène, acclimatation et campagne des 14 sommets.</div>
+    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V9 conserve les moteurs précédents et termine les trois derniers modes encore génériques : FINAL BUZZER, JACKPOT et MAFIA.</div>
   </div>;
 }
 
@@ -490,6 +498,9 @@ export default function Wave61Play(props: any) {
       {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
       {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
       {spec.id === "golden_dart" ? <GoldenDartPanel state={state} accent={accent} /> : null}
+      {spec.id === "final_buzzer" ? <FinalBuzzerPanel state={state} accent={accent} /> : null}
+      {spec.id === "jackpot" ? <JackpotPanel state={state} accent={accent} /> : null}
+      {spec.id === "mafia" ? <MafiaPanel state={state} accent={accent} /> : null}
       {spec.id === "tug_rush" ? <TugRushPanel state={state} accent={accent} /> : null}
       {spec.id === "un_deux_trois_soleil" ? <SoleilPanel state={state} accent={accent} /> : null}
       {spec.id === "chat_souris" ? <ChatSourisPanel state={state} accent={accent} /> : null}

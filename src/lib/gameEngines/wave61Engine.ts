@@ -2,7 +2,7 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-export const WAVE61_ENGINE_VERSION = 8;
+export const WAVE61_ENGINE_VERSION = 9;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -287,6 +287,63 @@ const CONQUEST_PROFILES: Record<string, { icon: string; label: string; nodes: st
 
 const TROJAN_PHASES = ["BOIS", "ASSEMBLAGE", "SIÈGE", "INFILTRATION", "CITADELLE"] as const;
 
+const FINAL_BUZZER_CHALLENGES = [
+  { name: "RAPID 20", kind: "number", number: 20 },
+  { name: "DOUBLE RUSH", kind: "double" },
+  { name: "BULL PANIC", kind: "bull" },
+  { name: "TRIPLE SHOT", kind: "triple" },
+  { name: "SECTOR SPRINT", kind: "sequence" },
+  { name: "CLUTCH DOUBLE", kind: "double" },
+  { name: "BULL OR BUST", kind: "bull" },
+  { name: "FINAL SHOT", kind: "sequence" },
+] as const;
+
+const JACKPOT_SYMBOLS = ["CHERRY", "LEMON", "BELL", "BAR", "SEVEN", "DIAMOND"] as const;
+
+type MafiaRole = "MAFIA" | "DETECTIVE" | "MEDIC" | "CITIZEN";
+
+function mafiaPhase(state: Wave61State): "NIGHT" | "DAY" {
+  return Number(state.roundIndex || 0) % 2 === 0 ? "NIGHT" : "DAY";
+}
+export function wave61MafiaPhase(state: Wave61State): "NIGHT" | "DAY" { return mafiaPhase(state); }
+
+function assignMafiaRoles(ids: string[], seedText: string, teamByPlayer: Record<string, string>, participantMode: Wave61ParticipantMode): Record<string, MafiaRole> {
+  if (!ids.length) return {};
+  if (participantMode === "teams") {
+    const town = ids.filter((id) => String(teamByPlayer[id] || "A") !== "B");
+    const roles: Record<string, MafiaRole> = {};
+    ids.forEach((id) => { roles[id] = String(teamByPlayer[id] || "A") === "B" ? "MAFIA" : "CITIZEN"; });
+    if (town[0]) roles[town[0]] = "DETECTIVE";
+    if (town[1]) roles[town[1]] = "MEDIC";
+    return roles;
+  }
+  const ordered = [...ids].sort((a, b) => hashText(`${seedText}:${a}`) - hashText(`${seedText}:${b}`));
+  const mafiaCount = Math.max(1, Math.floor(ids.length / 4));
+  const roles: Record<string, MafiaRole> = Object.fromEntries(ids.map((id) => [id, "CITIZEN"] as const));
+  ordered.slice(0, mafiaCount).forEach((id) => { roles[id] = "MAFIA"; });
+  const town = ordered.slice(mafiaCount);
+  if (town[0]) roles[town[0]] = "DETECTIVE";
+  if (ids.length >= 5 && town[1]) roles[town[1]] = "MEDIC";
+  return roles;
+}
+
+function finalBuzzerChallenge(state: Wave61State) {
+  const index = Number(state.roundIndex || 0) % FINAL_BUZZER_CHALLENGES.length;
+  const base = FINAL_BUZZER_CHALLENGES[index];
+  const seq = state.special?.finalBuzzerSequence || [];
+  const number = base.kind === "sequence" ? raceTargetFromSequence(seq, index) : Number((base as any).number || 0);
+  return { ...base, index, number };
+}
+export function wave61FinalBuzzerChallenge(state: Wave61State) { return finalBuzzerChallenge(state); }
+
+function jackpotSymbol(d: GameDart): string {
+  if (!d || d.bed === "MISS") return "BLANK";
+  if (d.bed === "IB" || d.bed === "OB") return "WILD";
+  const n = Math.max(1, Number(d.number || 1));
+  return JACKPOT_SYMBOLS[(n - 1) % JACKPOT_SYMBOLS.length];
+}
+export function wave61JackpotSymbol(d: GameDart): string { return jackpotSymbol(d); }
+
 
 function missionThreshold(difficulty: Wave61Difficulty, easy = 2, normal = 3, hard = 4) {
   return difficulty === "easy" ? easy : difficulty === "hard" ? hard : normal;
@@ -559,6 +616,27 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       bacValidatedByPlayer: modeId === "petit_bac" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       bacHistory: [],
 
+      finalBuzzerSequence: modeId === "final_buzzer" ? seededSequence(`finalbuzzer:${seedText}`, FINAL_BUZZER_CHALLENGES.length, 20) : [],
+      finalBuzzerCutoffs: modeId === "final_buzzer" ? seededSequence(`buzzer:${seedText}`, Math.max(32, config.rounds * Math.max(1, ids.length)), 3) : [],
+      finalBuzzerStreakByPlayer: modeId === "final_buzzer" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      finalBuzzerClutchByPlayer: modeId === "final_buzzer" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      finalBuzzerHistory: [],
+
+      jackpotPot: modeId === "jackpot" ? 250 : 0,
+      jackpotLastSpinByPlayer: modeId === "jackpot" ? Object.fromEntries(ids.map((id) => [id, []])) : {},
+      jackpotWinsByPlayer: modeId === "jackpot" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      jackpotJackpotsByPlayer: modeId === "jackpot" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      jackpotHistory: [],
+
+      mafiaRoleByPlayer: modeId === "mafia" ? assignMafiaRoles(ids, seedText, teamByPlayer, config.participantMode) : {},
+      mafiaNightSequence: modeId === "mafia" ? seededSequence(`mafia-night:${seedText}`, Math.max(32, config.rounds), 20) : [],
+      mafiaShieldByPlayer: modeId === "mafia" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mafiaDamageByPlayer: modeId === "mafia" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mafiaVotesByPlayer: modeId === "mafia" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mafiaIntel: [],
+      mafiaHistory: [],
+      mafiaWinningFaction: null,
+
       ascentTargets: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? seededSequence(`ascent:${modeId}:${seedText}`, 24, 20) : [],
       ascentWeatherCycle: ["mont_blanc", "everest", "summit_14"].includes(modeId) ? seededSequence(`weather:${modeId}:${seedText}`, 64, 20) : [],
       ascentAltitudeByPlayer: ["mont_blanc", "everest"].includes(modeId) ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -664,6 +742,18 @@ export function getWave61Target(state: Wave61State): Wave61Target {
     const step = Number(state.special?.colinStepByPlayer?.[player?.id] || 0);
     const n = Number(seq[Math.min(step, Math.max(0, seq.length - 1))] || 0);
     return n ? { kind: "number", value: n, label: `Cible mémorisée ${Math.min(step + 1, seq.length)}/${seq.length}` } : null;
+  }
+  if (state.modeId === "final_buzzer") {
+    const challenge = finalBuzzerChallenge(state);
+    if (challenge.kind === "number" || challenge.kind === "sequence") return { kind: "number", value: Number(challenge.number || 20), label: `⏱️ ${challenge.name} · secteur ${challenge.number || 20}` };
+    if (challenge.kind === "double") return { kind: "double", label: `⏱️ ${challenge.name} · DOUBLE` };
+    if (challenge.kind === "triple") return { kind: "triple", label: `⏱️ ${challenge.name} · TRIPLE` };
+    return { kind: "bull", label: `⏱️ ${challenge.name} · BULL / DBULL` };
+  }
+  if (state.modeId === "mafia") {
+    if (mafiaPhase(state) === "DAY") return null;
+    const n = raceTargetFromSequence(state.special?.mafiaNightSequence || [], Math.floor(Number(state.roundIndex || 0) / 2));
+    return { kind: "number", value: n, label: `🌙 NUIT · action secrète sur secteur ${n}` };
   }
   if (state.modeId === "tug_rush") {
     const n = raceTargetFromSequence(state.special?.tugTargetSequence || [], state.turnIndex);
@@ -2199,6 +2289,176 @@ function processPetitBac(state: Wave61State, playerId: string, darts: GameDart[]
   return { delta: hits, hits };
 }
 
+function processFinalBuzzer(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  const challenge = finalBuzzerChallenge(state);
+  const cutoffs = state.special?.finalBuzzerCutoffs || [];
+  const raw = Number(cutoffs[Math.max(0, Number(state.turnIndex || 0)) % Math.max(1, cutoffs.length)] || 2);
+  const cutoff = clamp(((raw - 1) % 3) + 1, 1, 3);
+  const liveDarts = darts.slice(0, cutoff);
+  const hits = liveDarts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length;
+  const power = liveDarts.reduce((sum, d) => sum + (dartMatchesTarget(d, target, state.config.difficulty) ? bedPower(d, 10, 20, 30, 20, 35) : 0), 0);
+  const lastHit = !!liveDarts.length && dartMatchesTarget(liveDarts[liveDarts.length - 1], target, state.config.difficulty);
+  const clutch = lastHit && hits === 1 ? 25 : 0;
+  const streak = hits > 0 ? Number(state.special?.finalBuzzerStreakByPlayer?.[playerId] || 0) + 1 : 0;
+  const streakBonus = hits > 0 ? Math.min(25, streak * 3) : 0;
+  const delta = power + clutch + streakBonus;
+  state.special.finalBuzzerStreakByPlayer[playerId] = streak;
+  if (clutch) state.special.finalBuzzerClutchByPlayer[playerId] = Number(state.special?.finalBuzzerClutchByPlayer?.[playerId] || 0) + 1;
+  state.progress[playerId] = Number(state.progress[playerId] || 0) + delta;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + delta;
+  events.push(`⏱️ Buzzer après dart ${cutoff} · ${hits} réussite(s) · +${delta}`);
+  if (clutch) events.push("🚨 CLUTCH sur la dernière fléchette autorisée");
+  state.special.finalBuzzerHistory = [...(state.special.finalBuzzerHistory || []), { playerId, challenge: challenge.name, cutoff, hits, delta, round: state.roundIndex + 1 }].slice(-40);
+  if (state.config.goal > 0 && state.progress[playerId] >= state.config.goal) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta, hits };
+}
+
+function evaluateJackpotSpin(darts: GameDart[], pot: number) {
+  const raw = darts.slice(0, 3).map(jackpotSymbol);
+  while (raw.length < 3) raw.push("BLANK");
+  const nonWild = raw.filter((s) => s !== "WILD" && s !== "BLANK");
+  const fill = nonWild[0] || (raw.includes("WILD") ? "SEVEN" : "BLANK");
+  const symbols = raw.map((s) => s === "WILD" ? fill : s);
+  const counts = symbols.reduce((acc: Record<string, number>, symbol: string) => { acc[symbol] = Number(acc[symbol] || 0) + 1; return acc; }, {});
+  const triple = Object.entries(counts).find(([symbol, count]) => symbol !== "BLANK" && Number(count) >= 3)?.[0] || null;
+  const pair = Object.entries(counts).find(([symbol, count]) => symbol !== "BLANK" && Number(count) >= 2)?.[0] || null;
+  let payout = 0, label = "Rien";
+  let jackpot = false;
+  if (triple) {
+    const table: Record<string, number> = { LEMON: 80, CHERRY: 100, BELL: 150, BAR: 200, DIAMOND: 300, SEVEN: 777 };
+    payout = Number(table[triple] || 60);
+    label = `3 × ${triple}`;
+    if (triple === "SEVEN") { payout += Math.max(0, Number(pot || 0)); jackpot = true; label = "JACKPOT 777"; }
+  } else if (pair) {
+    payout = pair === "SEVEN" ? 100 : pair === "DIAMOND" ? 75 : 40;
+    label = `PAIRE ${pair}`;
+  } else if (raw.includes("WILD")) {
+    payout = 25;
+    label = "WILD BONUS";
+  } else {
+    payout = 10;
+    label = "MISE DE CONSOLATION";
+  }
+  return { raw, symbols, payout, label, jackpot };
+}
+
+function processJackpot(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  const pot = Number(state.special?.jackpotPot || 250);
+  const spin = evaluateJackpotSpin(darts, pot);
+  state.special.jackpotLastSpinByPlayer[playerId] = spin.symbols;
+  state.special.jackpotWinsByPlayer[playerId] = Number(state.special?.jackpotWinsByPlayer?.[playerId] || 0) + spin.payout;
+  if (spin.jackpot) state.special.jackpotJackpotsByPlayer[playerId] = Number(state.special?.jackpotJackpotsByPlayer?.[playerId] || 0) + 1;
+  state.special.jackpotPot = spin.jackpot ? 250 : Math.min(5000, pot + 10 + bullCount(darts) * 15);
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + spin.payout;
+  state.progress[playerId] = Number(state.scores[playerId] || 0);
+  events.push(`🎰 ${spin.symbols.join(" · ")} · ${spin.label} · +${spin.payout}`);
+  if (spin.jackpot) events.push(`💰 JACKPOT décroché : ${spin.payout}`);
+  state.special.jackpotHistory = [...(state.special.jackpotHistory || []), { playerId, ...spin, potBefore: pot, potAfter: state.special.jackpotPot }].slice(-40);
+  return { delta: spin.payout, hits: spin.payout >= 40 ? 1 : 0 };
+}
+
+function mafiaAliveByRole(state: Wave61State, role: MafiaRole): Player[] {
+  return state.players.filter((p) => !state.eliminated[p.id] && state.special?.mafiaRoleByPlayer?.[p.id] === role);
+}
+
+function checkMafiaVictory(state: Wave61State): boolean {
+  const mafia = mafiaAliveByRole(state, "MAFIA");
+  const town = state.players.filter((p) => !state.eliminated[p.id] && state.special?.mafiaRoleByPlayer?.[p.id] !== "MAFIA");
+  if (!mafia.length) {
+    state.special.mafiaWinningFaction = "CITIZENS";
+    const winner = [...town].sort((a,b) => Number(state.scores[b.id] || 0) - Number(state.scores[a.id] || 0))[0] || state.players[0];
+    if (winner) finishWith(state, winner.id);
+    return true;
+  }
+  const eliminatedCount = state.players.filter((p) => state.eliminated[p.id]).length;
+  if (mafia.length >= town.length && eliminatedCount > 0) {
+    state.special.mafiaWinningFaction = "MAFIA";
+    const winner = [...mafia].sort((a,b) => Number(state.scores[b.id] || 0) - Number(state.scores[a.id] || 0))[0] || mafia[0];
+    if (winner) finishWith(state, winner.id);
+    return true;
+  }
+  return false;
+}
+
+function mafiaVoteTarget(state: Wave61State, d: GameDart, voterId: string): Player | null {
+  const alive = state.players.filter((p) => !state.eliminated[p.id] && p.id !== voterId);
+  if (!alive.length || !d || d.bed === "MISS") return null;
+  const n = d.bed === "IB" || d.bed === "OB" ? 20 : Number(d.number || 1);
+  return alive[((n - 1) % alive.length + alive.length) % alive.length] || alive[0] || null;
+}
+
+function processMafia(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  const role: MafiaRole = state.special?.mafiaRoleByPlayer?.[playerId] || "CITIZEN";
+  const phase = mafiaPhase(state);
+  let delta = 0, hits = 0;
+  if (phase === "NIGHT") {
+    hits = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length;
+    const bulls = bullCount(darts);
+    if (role === "MAFIA") {
+      const victim = nextEnemy(state, playerId, (p) => state.special?.mafiaRoleByPlayer?.[p.id] !== "MAFIA");
+      if (victim && (hits || bulls)) {
+        if (Number(state.special?.mafiaShieldByPlayer?.[victim.id] || 0) > 0) {
+          state.special.mafiaShieldByPlayer[victim.id] = 0;
+          events.push("🛡️ Une protection nocturne bloque l'attaque");
+        } else {
+          const damage = hits * 45 + bulls * 25;
+          state.special.mafiaDamageByPlayer[victim.id] = Number(state.special?.mafiaDamageByPlayer?.[victim.id] || 0) + damage;
+          state.health[victim.id] = Math.max(0, 100 - Number(state.special.mafiaDamageByPlayer[victim.id] || 0));
+          events.push(`🌙 Attaque secrète · ${damage} dégâts`);
+          if (state.special.mafiaDamageByPlayer[victim.id] >= 100) { state.eliminated[victim.id] = true; state.health[victim.id] = 0; events.push("☠️ Un citoyen disparaît dans la nuit"); }
+        }
+      }
+    } else if (role === "DETECTIVE") {
+      if (hits || bulls) {
+        const known = new Set((state.special?.mafiaIntel || []).map((x: any) => String(x.playerId)));
+        const candidate = state.players.find((p) => !state.eliminated[p.id] && p.id !== playerId && !known.has(p.id));
+        if (candidate) {
+          const alignment = state.special?.mafiaRoleByPlayer?.[candidate.id] === "MAFIA" ? "MAFIA" : "CLEAN";
+          state.special.mafiaIntel = [...(state.special.mafiaIntel || []), { playerId: candidate.id, alignment }];
+          events.push(`🔎 Enquête réussie · ${alignment === "MAFIA" ? "suspect confirmé" : "citoyen innocent"}`);
+        }
+      }
+    } else if (role === "MEDIC") {
+      if (hits || bulls) {
+        const candidate = state.players.find((p) => !state.eliminated[p.id] && state.special?.mafiaRoleByPlayer?.[p.id] !== "MAFIA") || state.players.find((p) => !state.eliminated[p.id]);
+        if (candidate) { state.special.mafiaShieldByPlayer[candidate.id] = 1; events.push("🩺 Protection nocturne activée"); }
+      }
+    } else {
+      delta = hits * 8 + bulls * 5;
+      state.scores[playerId] = Number(state.scores[playerId] || 0) + delta;
+      events.push(hits ? `🌙 Vigilance +${delta}` : "🌙 Nuit silencieuse");
+    }
+    state.scores[playerId] = Number(state.scores[playerId] || 0) + hits * 10;
+  } else {
+    for (const d of darts) {
+      const suspect = mafiaVoteTarget(state, d, playerId);
+      if (!suspect) continue;
+      const weight = bedPower(d, 1, 2, 3, 2, 4);
+      state.special.mafiaVotesByPlayer[suspect.id] = Number(state.special?.mafiaVotesByPlayer?.[suspect.id] || 0) + weight;
+      hits += 1;
+      delta += weight * 5;
+    }
+    state.scores[playerId] = Number(state.scores[playerId] || 0) + delta;
+    events.push(hits ? `☀️ ${hits} vote(s) dart · influence +${delta}` : "☀️ Aucun vote valable");
+  }
+  state.special.mafiaHistory = [...(state.special.mafiaHistory || []), { playerId, role, phase, hits, delta, round: state.roundIndex + 1 }].slice(-60);
+  checkMafiaVictory(state);
+  return { delta, hits };
+}
+
+function resolveMafiaDay(state: Wave61State) {
+  if (state.phase !== "playing") return;
+  const entries = state.players.filter((p) => !state.eliminated[p.id]).map((p) => ({ p, votes: Number(state.special?.mafiaVotesByPlayer?.[p.id] || 0) })).sort((a,b) => b.votes - a.votes || Number(state.scores[b.p.id] || 0) - Number(state.scores[a.p.id] || 0));
+  const top = entries[0];
+  if (top && top.votes > 0) {
+    state.eliminated[top.p.id] = true;
+    state.health[top.p.id] = 0;
+    state.special.mafiaHistory = [...(state.special.mafiaHistory || []), { phase: "DAY_RESOLUTION", playerId: top.p.id, votes: top.votes, role: state.special?.mafiaRoleByPlayer?.[top.p.id] }].slice(-60);
+  }
+  state.special.mafiaVotesByPlayer = Object.fromEntries(state.players.map((p) => [p.id, 0]));
+  checkMafiaVictory(state);
+}
+
 function processAscentMode(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
   const matching = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)) : [];
   const bulls = bullCount(darts);
@@ -2968,6 +3228,12 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const result = processDisjoncte(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "petit_bac") {
     const result = processPetitBac(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "final_buzzer") {
+    const result = processFinalBuzzer(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "jackpot") {
+    const result = processJackpot(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "mafia") {
+    const result = processMafia(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (["mont_blanc", "everest", "summit_14"].includes(state.modeId)) {
     const result = processAscentMode(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (CONQUEST_PROFILES[state.modeId]) {
@@ -3098,10 +3364,24 @@ function advanceWave61Turn(state: Wave61State): Wave61State {
     if (!state.eliminated[state.players[next].id]) break;
   }
   const wrapped = next <= state.activePlayerIndex;
+  if (wrapped && state.modeId === "mafia" && mafiaPhase(state) === "DAY") resolveMafiaDay(state);
+  if (state.phase !== "playing") return state;
   state.activePlayerIndex = next;
   state.turnIndex += 1;
   if (wrapped) state.roundIndex += 1;
   if (state.roundIndex >= state.config.rounds && state.phase === "playing") {
+    if (state.modeId === "mafia") {
+      if (!checkMafiaVictory(state)) {
+        const mafia = mafiaAliveByRole(state, "MAFIA");
+        const town = state.players.filter((p) => !state.eliminated[p.id] && state.special?.mafiaRoleByPlayer?.[p.id] !== "MAFIA");
+        const faction = mafia.length && mafia.length >= Math.max(1, Math.ceil(town.length / 2)) ? "MAFIA" : "CITIZENS";
+        state.special.mafiaWinningFaction = faction;
+        const pool = faction === "MAFIA" ? mafia : town;
+        const winner = [...pool].sort((a,b) => Number(state.scores[b.id] || 0) - Number(state.scores[a.id] || 0))[0] || state.players[0];
+        if (winner) finishWith(state, winner.id);
+      }
+      return state;
+    }
     if (state.modeId === "zombie_siege") {
       const survivors = state.players.filter((p) => state.special?.zombieRoleByPlayer?.[p.id] === "SURVIVOR");
       if (survivors.length) {
@@ -3179,6 +3459,19 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
     const guessChance = level === "hard" ? 0.66 : level === "normal" ? 0.34 : 0.12;
     return Array.from({ length: 3 }, () => Math.random() < guessChance ? ({ bed: level === "hard" ? "T" : "S", number: gold || 20 } as GameDart) : ({ bed: "S", number: 1 + Math.floor(Math.random() * 20) } as GameDart));
   }
+  if (state.modeId === "jackpot") {
+    const roll = Math.random();
+    if (level === "hard" && roll < 0.28) return [5, 11, 17].map((n) => ({ bed: "T", number: n } as GameDart));
+    if ((level === "hard" && roll < 0.62) || (level === "normal" && roll < 0.42)) return [4, 10, 2].map((n) => ({ bed: "S", number: n } as GameDart));
+    return [1 + Math.floor(Math.random() * 20), 1 + Math.floor(Math.random() * 20), 1 + Math.floor(Math.random() * 20)].map((n) => ({ bed: "S", number: n } as GameDart));
+  }
+  if (state.modeId === "mafia" && mafiaPhase(state) === "DAY") {
+    const alive = state.players.filter((p) => !state.eliminated[p.id] && p.id !== activeId);
+    const suspect = alive.find((p) => state.special?.mafiaRoleByPlayer?.[p.id] === "MAFIA") || alive[0];
+    const idx = Math.max(0, alive.findIndex((p) => p.id === suspect?.id));
+    const n = idx + 1;
+    return Array.from({ length: 3 }, () => ({ bed: level === "hard" ? "T" : "S", number: n || 1 } as GameDart));
+  }
   if (state.modeId === "hi_score") {
     return Array.from({ length: 3 }, () => Math.random() < chance ? ({ bed: level === "hard" ? "T" : "S", number: 20 } as GameDart) : ({ bed: "S", number: 1 + Math.floor(Math.random() * 20) } as GameDart));
   }
@@ -3236,6 +3529,9 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
 
 export function wave61PrimaryMetric(state: Wave61State, playerId: string): { value: number; label: string; sub: string } {
   const stats = state.statsByPlayer[playerId] || blankStats();
+  if (state.modeId === "final_buzzer") return { value: Math.round(Number(state.progress[playerId] || 0)), label: "BUZZ", sub: `streak ${state.special?.finalBuzzerStreakByPlayer?.[playerId] || 0} · clutch ${state.special?.finalBuzzerClutchByPlayer?.[playerId] || 0}` };
+  if (state.modeId === "jackpot") return { value: Math.round(Number(state.scores[playerId] || 0)), label: "CRÉDITS", sub: `${state.special?.jackpotJackpotsByPlayer?.[playerId] || 0} jackpot(s) · pot ${state.special?.jackpotPot || 250}` };
+  if (state.modeId === "mafia") return { value: state.eliminated[playerId] ? 0 : 1, label: state.eliminated[playerId] ? "ÉLIMINÉ" : "EN JEU", sub: `${state.special?.mafiaVotesByPlayer?.[playerId] || 0} vote(s) · ${mafiaPhase(state) === "NIGHT" ? "nuit" : "jour"}` };
   if (state.modeId === "heist_180") return { value: Number(state.special?.heistStageByPlayer?.[playerId] || 0), label: "CASSE", sub: `${state.special?.heistLootByPlayer?.[playerId] || 0} butin · chaleur ${state.special?.heistHeatByPlayer?.[playerId] || 0}%` };
   if (state.modeId === "escape_game") return { value: Number(state.special?.escapeStepByPlayer?.[playerId] || 0), label: "VERROUS", sub: `${state.special?.escapeStepByPlayer?.[playerId] || 0}/${ESCAPE_STAGES.length} · ${state.special?.escapePenaltyByPlayer?.[playerId] || 0} pénalité(s)` };
   if (state.modeId === "objectif_lune") return { value: Math.round(Number(state.special?.lunarStageByPlayer?.[playerId] || 0) * 25), label: "MISSION", sub: `fuel ${state.special?.lunarFuelByPlayer?.[playerId] || 0}% · stabilité ${state.special?.lunarStabilityByPlayer?.[playerId] || 0}%` };
