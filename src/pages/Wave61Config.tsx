@@ -121,7 +121,7 @@ export default function Wave61Config(props: any) {
   const pill = (active: boolean): React.CSSProperties => ({ minHeight: 36, padding: "7px 12px", borderRadius: 999, border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`, background: active ? `${accent}1c` : "rgba(255,255,255,.035)", color: active ? "#fff" : "#aeb5c8", fontWeight: 950 });
 
   return <div className="page" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
-    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />La passe V4 branche le mode sur le moteur mutualisé <b>{preset.label}</b>. Course / Arcade / Performance disposent maintenant de règles signature en plus des moteurs déjà spécialisés.</div>} />} />
+    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />La passe V5 branche le mode sur le moteur mutualisé <b>{preset.label}</b>. Survie / Combat / Élimination disposent maintenant de règles signature en plus des moteurs déjà spécialisés.</div>} />} />
     {spec.id === "tug_rush" ? <div style={{ padding: "6px 10px 2px", maxWidth: 980, margin: "0 auto" }}><img src={tickerTugRush} alt="TUG RUSH" style={{ width: "100%", aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 16, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 12px 34px rgba(0,0,0,.38)` }} /></div> : null}
     <div style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section style={card}>
@@ -133,7 +133,7 @@ export default function Wave61Config(props: any) {
           {botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /></div> : null}
         </div> : null}
         <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
-        {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition V4 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
+        {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition V5 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
       </section>
 
       <section style={card}>

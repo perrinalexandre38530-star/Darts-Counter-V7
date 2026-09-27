@@ -50,6 +50,19 @@ import {
   TugRushPanel,
   TyrolienPanel,
 } from "./wave61/Wave61RacePanels";
+import {
+  ApocalypsePanel,
+  CosmoKnightsPanel,
+  DodgeballPanel,
+  EperviersPanel,
+  HotPotatoPanel,
+  IcebergPanel,
+  JurassicPanel,
+  KnockbackPanel,
+  LoupPanel,
+  SpartacusPanel,
+  ZombieSiegePanel,
+} from "./wave61/Wave61SurvivalCombatPanels";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -67,6 +80,17 @@ function familyRules(spec: any, preset: any) {
     sniper: "Une série de contrats de précision s'enchaîne. Plus la difficulté monte, plus le lit exact S/D/T/BULL devient obligatoire.",
     luciole: "La cible s'illumine brièvement au début du tour puis disparaît. Mémorise le secteur et touche-le avant que la luciole suivante apparaisse.",
     golden_dart: "Une cible dorée secrète se cache parmi les 20 secteurs. Chaque erreur révèle un indice ; trouve-la pour gagner une marque d'or et passer à la suivante.",
+    hot_potato: "La mèche descend à chaque tour. Touche le secteur demandé pour transmettre proprement la patate ; une mèche à zéro provoque une explosion et coûte une vie.",
+    zombie_siege: "Un camp commence infecté. Les zombies propagent la contamination, les survivants renforcent leurs barricades et les BULL permettent de réduire l'infection.",
+    le_loup: "Le loup doit toucher sa cible pour attraper un joueur et transmettre le rôle. Les fuyards progressent et peuvent obtenir une protection au BULL.",
+    eperviers: "Les coureurs doivent traverser le terrain jusqu'à 100. Les Éperviers capturent les coureurs ; après plusieurs touches, un coureur rejoint le camp des Éperviers.",
+    ballon_prisonnier: "Les impacts exacts attaquent un adversaire. À 0 PV il devient prisonnier ; BULL/DBULL permet de libérer un allié ou de renforcer l'esquive.",
+    iceberg: "Sécurise cinq compartiments avant que l'eau et les impacts ne détruisent la coque. Les BULL activent les pompes et les bonnes zones réparent le navire.",
+    jurassic_dart: "Progresse dans l'expédition tout en contrôlant la menace des dinosaures. Les BULL servent de tranquillisants ; une menace trop élevée déclenche une attaque.",
+    apocalypse: "Collecte des ressources, consolide ton refuge et traverse les catastrophes. Les zones sûres font progresser le refuge et les BULL servent de medkits.",
+    knockback: "Pars de 0 et atteins exactement l'objectif. Si ton nouveau score égale celui d'un adversaire, il est renvoyé à 0. Un dépassement provoque un BUST.",
+    spartacus: "Combats d'arène avec PV, armure, garde et gloire. Les bonnes fenêtres déclenchent les attaques, tandis que les BULL renforcent la garde.",
+    cosmo_knights: "Les impacts sur la constellation chargent le Cosmos. À 100 %, un COSMO BURST frappe l'adversaire ; BULL charge aussi le bouclier.",
     tug_rush: "Deux camps tirent une corde virtuelle. Le secteur demandé donne de la traction, doubles/triples renforcent le tir et les BULL déclenchent les plus gros coups.",
     un_deux_trois_soleil: "Phase verte : touche le secteur demandé pour avancer. Phase SOLEIL : reste immobile avec MISS ou sécurise au BULL ; tout autre impact fait reculer.",
     chat_souris: "Le chat part en chasse tandis que les souris disposent d'avance. Le chat capture en rattrapant leur position ; une souris gagne si elle atteint le refuge.",
@@ -81,7 +105,7 @@ function familyRules(spec: any, preset: any) {
   return <div style={{ display: "grid", gap: 9, fontSize: 12.5, lineHeight: 1.5 }}>
     <div><b style={{ color: preset.accent }}>CONCEPT</b><br />{spec.infoBody}</div>
     <div><b style={{ color: preset.accent }}>MOTEUR V{WAVE61_ENGINE_VERSION}</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
-    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V4 conserve les moteurs précédents et spécialise Course / Arcade / Performance : poursuites, vitesse, altitude, rythme et disciplines.</div>
+    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V5 conserve les moteurs précédents et spécialise Survie / Combat / Élimination : vies, contamination, captures, prisonniers, dégâts, menaces et duels.</div>
   </div>;
 }
 
@@ -423,6 +447,17 @@ export default function Wave61Play(props: any) {
       {spec.id === "chute_libre" ? <FreefallPanel state={state} accent={accent} /> : null}
       {spec.id === "tyrolien" ? <TyrolienPanel state={state} accent={accent} /> : null}
       {spec.id === "saut_a_la_corde" ? <JumpRopePanel state={state} accent={accent} /> : null}
+      {spec.id === "hot_potato" ? <HotPotatoPanel state={state} accent={accent} /> : null}
+      {spec.id === "zombie_siege" ? <ZombieSiegePanel state={state} accent={accent} /> : null}
+      {spec.id === "le_loup" ? <LoupPanel state={state} accent={accent} /> : null}
+      {spec.id === "eperviers" ? <EperviersPanel state={state} accent={accent} /> : null}
+      {spec.id === "ballon_prisonnier" ? <DodgeballPanel state={state} accent={accent} /> : null}
+      {spec.id === "iceberg" ? <IcebergPanel state={state} accent={accent} /> : null}
+      {spec.id === "jurassic_dart" ? <JurassicPanel state={state} accent={accent} /> : null}
+      {spec.id === "apocalypse" ? <ApocalypsePanel state={state} accent={accent} /> : null}
+      {spec.id === "knockback" ? <KnockbackPanel state={state} accent={accent} /> : null}
+      {spec.id === "spartacus" ? <SpartacusPanel state={state} accent={accent} /> : null}
+      {spec.id === "cosmo_knights" ? <CosmoKnightsPanel state={state} accent={accent} /> : null}
 
       {state.phase !== "finished" ? <>
         <div style={{ ...panelStyle(accent + "3d"), padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>

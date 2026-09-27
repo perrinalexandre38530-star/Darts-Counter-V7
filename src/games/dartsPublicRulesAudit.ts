@@ -1,6 +1,27 @@
 export type PublicRuleAudit = { status: 'available'|'development'; sources: string[]; options: string[] };
 
 export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
+  "knockback": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "FAMILLE MOTEUR ACTUELLE : COMBAT",
+      "OBJECTIF MOTEUR PAR DÉFAUT : 301",
+      "NOMBRE DE ROUNDS PAR DÉFAUT : 25 ; la configuration Wave61 autorise 1 à 60 rounds",
+      "DIFFICULTÉ : Facile / Normal / Difficile",
+      "PARTICIPANTS : le moteur Combat impose au moins 2 participants",
+      "BOTS IA : compatibles ; niveau Facile / Normal / Difficile",
+      "ORDRE ALÉATOIRE : activable",
+      "SAISIE : Keypad / Cible interactive",
+      "À CHAQUE VOLÉE : le score réel des fléchettes est enregistré",
+      "ATTAQUE : puissance = 10 points par hit validé + partie entière du score de volée / 12",
+      "CIBLE DE L'ATTAQUE : un adversaire encore actif est choisi par le moteur ; en équipes, un adversaire du camp opposé",
+      "DÉGÂTS : les points de vie de la cible sont diminués du montant de l'attaque",
+      "K.O. : un adversaire à 0 PV est éliminé",
+      "FIN COMBAT : en individuel, le dernier joueur encore actif gagne ; en équipes, la dernière équipe encore active gagne",
+      "Sauvegarde/reprise, Undo, scoring par dart et écran de fin : gérés par le socle Wave61"
+    ]
+  },
   "replicat": {
     "status": 'available',
     "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
@@ -101,10 +122,17 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "cricket": {
     "status": 'available',
-    "sources": [
-      "src/games/dartsGameRegistry.ts"
-    ],
-    "options": []
+    "sources": ["src/pages/CricketConfig.tsx", "src/pages/CricketPlay.tsx", "src/pages/CricketBoard.tsx"],
+    "options": [
+      "PARTICIPANTS : mode solo de 2 à 4 joueurs",
+      "ÉQUIPES : mode 2 contre 2 avec 4 joueurs",
+      "MODE DE SCORE : AVEC POINTS / SANS POINTS",
+      "CIBLES : secteurs Cricket 15 / 16 / 17 / 18 / 19 / 20 + Bull",
+      "FERMETURE : 3 marques ferment une cible pour le joueur ou l'équipe",
+      "PREMIER JOUEUR : rotation possible à chaque nouvelle manche",
+      "ORDRE DE DÉPART : sélectionné ou configurable dans l'écran Cricket",
+      "BOTS : intégrés à la liste des participants par la configuration Cricket"
+    ]
   },
   "darts_poker": {
     "status": 'available',
@@ -186,17 +214,38 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "shanghai": {
     "status": 'available',
-    "sources": [
-      "src/games/dartsGameRegistry.ts"
-    ],
-    "options": []
+    "sources": ["src/pages/ShanghaiConfig.tsx", "src/pages/ShanghaiPlay.tsx", "src/pages/ShanghaiEnd.tsx"],
+    "options": [
+      "TOURS : 10 / 15 / 20",
+      "ORDRE DES CIBLES : Chronologique / Aléatoire",
+      "ORDRE ALÉATOIRE : calculé au lancement puis conservé pendant la partie",
+      "SCORING SUR LA CIBLE DU TOUR : Simple = 1× le numéro, Double = 2×, Triple = 3×",
+      "HORS CIBLE DU TOUR : 0 point",
+      "SHANGHAI : Simple + Double + Triple de la cible dans le même tour",
+      "VICTOIRE : SHANGHAI immédiat ou points en fin de partie",
+      "VARIANTE : Points seulement, sans victoire immédiate par Shanghai",
+      "PARTICIPANTS : au moins 2 joueurs ; multi et équipes pris en charge par la configuration",
+      "BOTS IA : disponibles via la sélection de profils/bots"
+    ]
   },
   "battle_royale": {
     "status": 'available',
-    "sources": [
-      "src/games/dartsGameRegistry.ts"
-    ],
-    "options": []
+    "sources": ["src/pages/BattleRoyaleConfig.tsx", "src/pages/BattleRoyalePlay.tsx"],
+    "options": [
+      "OBJECTIF : survivre ; le dernier joueur encore en jeu remporte la partie",
+      "PARTICIPANTS : au moins 2 joueurs",
+      "BOTS IA : ajout possible depuis la configuration",
+      "RÈGLE D'ÉLIMINATION : 0 point = éliminé",
+      "RÈGLE D'ÉLIMINATION : X ratés = éliminé — option affichée dans la configuration",
+      "RÈGLE D'ÉLIMINATION : système de vies",
+      "VIES : réglables de 1 à 9",
+      "FLÉCHETTES PAR TOUR : 1 / 2 / 3",
+      "ROUND : une cible ou consigne est affichée ; le joueur doit la réussir pendant son tour",
+      "ÉCHEC : perte de vie(s) ou élimination selon la règle sélectionnée",
+      "BRUITAGES : ON / OFF",
+      "VOIX IA : ON / OFF",
+      "FIN : les rounds continuent jusqu'au dernier survivant"
+    ]
   },
   "warfare": {
     "status": 'available',
