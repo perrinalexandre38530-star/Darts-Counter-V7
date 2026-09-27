@@ -1219,15 +1219,15 @@ const rawDartsGameRegistry: DartsGameDef[] = [
 
 
   // ===========================================================
-  // VAGUE 61 — moteurs mutualisés V1 branchés
-  // Les 61 modes sont jouables via Wave61Config/Wave61Play, puis seront
-  // finalisés individuellement. Aucun média lourd propre à cette vague
-  // n'est embarqué : les futurs assets passeront par Content Packs/R2.
+  // VAGUE 61 — moteurs mutualisés, rangés dans les catégories métier.
+  // IMPORTANT : aucun onglet artificiel "Vague 61". Chaque mode apparaît
+  // directement dans Classiques / Défis / Fun et sa sous-catégorie logique.
+  // Les moteurs restent mutualisés via Wave61Config/Wave61Play.
   // ===========================================================
   ...DARTS_WAVE_61.map((g, index): DartsGameDef => ({
     ...g,
-    category: "fun",
-    subCategory: "wave61",
+    category: g.category,
+    subCategory: g.subCategory,
     entry: "games",
     tab: "wave61_config",
     popularityRank: 200 + index / 100,
@@ -1528,6 +1528,8 @@ export const GAME_CATEGORIES: { id: GameCategory; label: string }[] = [
 export const GAME_SUBCATEGORIES: Record<GameCategory, { id: string; label: string }[]> = {
   classic: [
     { id: 'classic', label: 'Classiques' },
+    { id: 'traditional', label: 'Jeux traditionnels' },
+    { id: 'electronic', label: 'Classiques électroniques' },
   ],
   variant: [
     { id: 'x01', label: 'X01' },
@@ -1536,19 +1538,27 @@ export const GAME_SUBCATEGORIES: Record<GameCategory, { id: string; label: strin
   ],
   challenge: [
     { id: 'scoring', label: 'Scoring' },
-    { id: 'precision', label: 'Precision' },
-    { id: 'elimination', label: 'Elimination' },
-    { id: 'other', label: 'Autres defis' },
+    { id: 'precision', label: 'Précision' },
+    { id: 'performance', label: 'Performance' },
+    { id: 'duel', label: 'Duel' },
+    { id: 'elimination', label: 'Élimination' },
+    { id: 'other', label: 'Autres défis' },
   ],
   fun: [
     { id: 'arcade', label: 'Arcade' },
-    { id: 'party', label: 'Party' },
-    { id: 'battle', label: 'Duel' },
-    { id: 'strategie', label: 'Strategie' },
+    { id: 'party', label: 'Party & jeux de groupe' },
+    { id: 'battle', label: 'Duel & combat' },
+    { id: 'strategie', label: 'Stratégie' },
     { id: 'survie', label: 'Survie' },
+    { id: 'reflexion', label: 'Réflexion & plateau' },
+    { id: 'aventure', label: 'Aventure & exploration' },
+    { id: 'histoire', label: 'Histoire & conquête' },
+    { id: 'mythes', label: 'Mythes & fantasy' },
+    { id: 'extreme', label: 'Sports extrêmes & montagne' },
+    { id: 'science', label: 'Science & cosmos' },
+    { id: 'nature', label: 'Nature' },
     { id: 'coop', label: 'Co-op' },
-    { id: 'experimental', label: 'Experimental' },
-    { id: 'wave61', label: 'Vague 61 · Moteurs V1' },
+    { id: 'experimental', label: 'Expérimental' },
     { id: 'other', label: 'Autres' },
   ],
   training: [

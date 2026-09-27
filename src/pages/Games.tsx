@@ -160,19 +160,30 @@ function localizedCategoryLabel(id: string, fallback: string, langCode: any): st
 }
 
 const SUBCATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
+  "classic:classic": { en: "Classics", es: "Clásicos" },
+  "classic:traditional": { en: "Traditional games", es: "Juegos tradicionales" },
+  "classic:electronic": { en: "Electronic classics", es: "Clásicos electrónicos" },
   "variant:other": { en: "Other variants", es: "Otras variantes" },
   "challenge:scoring": { en: "Scoring", es: "Puntuación" },
   "challenge:precision": { en: "Precision", es: "Precisión" },
+  "challenge:performance": { en: "Performance", es: "Rendimiento" },
+  "challenge:duel": { en: "Duel", es: "Duelo" },
   "challenge:elimination": { en: "Elimination", es: "Eliminación" },
   "challenge:other": { en: "Other challenges", es: "Otros desafíos" },
   "fun:arcade": { en: "Arcade", es: "Arcade" },
-  "fun:party": { en: "Party", es: "Fiesta" },
-  "fun:battle": { en: "Duel", es: "Duelo" },
+  "fun:party": { en: "Party & group games", es: "Fiesta y juegos de grupo" },
+  "fun:battle": { en: "Duel & combat", es: "Duelo y combate" },
   "fun:strategie": { en: "Strategy", es: "Estrategia" },
   "fun:survie": { en: "Survival", es: "Supervivencia" },
+  "fun:reflexion": { en: "Puzzle & board", es: "Reflexión y tablero" },
+  "fun:aventure": { en: "Adventure & exploration", es: "Aventura y exploración" },
+  "fun:histoire": { en: "History & conquest", es: "Historia y conquista" },
+  "fun:mythes": { en: "Myths & fantasy", es: "Mitos y fantasía" },
+  "fun:extreme": { en: "Extreme sports & mountains", es: "Deportes extremos y montaña" },
+  "fun:science": { en: "Science & cosmos", es: "Ciencia y cosmos" },
+  "fun:nature": { en: "Nature", es: "Naturaleza" },
   "fun:coop": { en: "Co-op", es: "Cooperativo" },
   "fun:experimental": { en: "Experimental", es: "Experimental" },
-  "fun:wave61": { en: "Wave 61 · Engine V1", es: "Ola 61 · Motor V1" },
   "fun:other": { en: "Other", es: "Otros" },
   "training:precision": { en: "Precision", es: "Precisión" },
   "training:performance": { en: "Performance", es: "Rendimiento" },
@@ -499,6 +510,8 @@ export default function Games({ setTab, params }: Props) {
   }, [lang]);
 
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
+  // Sous-onglet métier de la catégorie active. "all" affiche tous les groupes.
+  const [activeSubCat, setActiveSubCat] = React.useState<string>("all");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
   const [x01RulesIntroOpen, setX01RulesIntroOpen] = React.useState(false);
   const [x01IntroBusy, setX01IntroBusy] = React.useState(false);
@@ -772,11 +785,34 @@ export default function Games({ setTab, params }: Props) {
 
   React.useEffect(() => {
     if (activeCat === "training") setActiveCat("classic");
+    setActiveSubCat("all");
   }, [activeCat]);
 
   const gamesForCat = React.useMemo(() => {
     return filterDartsGamesForCurrentRuntime(DARTS_GAMES).filter((g) => g.category === activeCat).slice().sort(sortByPopularity);
   }, [activeCat]);
+
+  const subCategoryKeyForGame = React.useCallback((game: DartsGameDef) => {
+    if (game.subCategory) return String(game.subCategory);
+    // Les modes historiques Classiques n'avaient pas de subCategory : ils
+    // appartiennent au groupe Classiques, pas à un artificiel « Autres ».
+    return game.category === "classic" ? "classic" : "other";
+  }, []);
+
+  const visibleSubCategories = React.useMemo(() => {
+    const used = new Set(gamesForCat.map((g) => subCategoryKeyForGame(g)));
+    const configured = (GAME_SUBCATEGORIES?.[activeCat] || []).filter((s) => used.has(String(s.id)));
+    const configuredIds = new Set(configured.map((s) => String(s.id)));
+    const unknown = Array.from(used)
+      .filter((id) => !configuredIds.has(id))
+      .map((id) => ({ id, label: id }));
+    return [...configured, ...unknown];
+  }, [activeCat, gamesForCat, subCategoryKeyForGame]);
+
+  React.useEffect(() => {
+    if (activeSubCat === "all") return;
+    if (!visibleSubCategories.some((s) => String(s.id) === activeSubCat)) setActiveSubCat("all");
+  }, [activeSubCat, visibleSubCategories]);
 
   // Favorites (computed from counts)
   const favClassic = React.useMemo(() => pickFavoriteByCounts("classic", counts, lastPlayed), [counts, lastPlayed]);
@@ -1523,6 +1559,60 @@ export default function Games({ setTab, params }: Props) {
     </div>
   );
 
+  const renderSubcategoryTabs = (variant: "landscape" | "portrait") => {
+    if (visibleSubCategories.length <= 1) return null;
+    const allLabel = pickLegacyLocalizedText(lang, "Tous", "All", "Todos");
+    return (
+      <div
+        className={`msc-games-subcategory-tabs msc-games-subcategory-tabs--${variant}`}
+        style={{
+          display: "flex",
+          gap: 7,
+          width: "100%",
+          overflowX: "auto",
+          padding: "7px 1px 3px",
+          scrollbarWidth: "thin",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {[{ id: "all", label: allLabel }, ...visibleSubCategories].map((sub) => {
+          const id = String(sub.id);
+          const on = activeSubCat === id;
+          const label = id === "all"
+            ? String(sub.label)
+            : localizedSubcategoryLabel(String(activeCat), id, String(sub.label), lang);
+          return (
+            <button
+              key={`${variant}-${activeCat}-${id}`}
+              type="button"
+              onClick={() => setActiveSubCat(id)}
+              aria-pressed={on}
+              style={{
+                flex: "0 0 auto",
+                minHeight: 34,
+                padding: "7px 11px",
+                borderRadius: 999,
+                border: `1px solid ${on ? theme.primary : theme.borderSoft}`,
+                background: on ? `${theme.primary}1f` : "rgba(255,255,255,0.035)",
+                color: on ? theme.primary : theme.textSoft,
+                boxShadow: on ? `0 0 14px ${theme.primary}33` : "none",
+                fontSize: 10.5,
+                lineHeight: 1,
+                fontWeight: 950,
+                letterSpacing: 0.35,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div
       className="msc-landscape-page-shell msc-games-layout"
@@ -1662,6 +1752,7 @@ export default function Games({ setTab, params }: Props) {
       />
 
       {gamesView === "all" ? renderCategoryKpis("landscape") : null}
+      {gamesView === "all" ? renderSubcategoryTabs("landscape") : null}
 
 
       {(gamesView === "hub" || gamesView === "favorites") ? (
@@ -1690,6 +1781,7 @@ export default function Games({ setTab, params }: Props) {
       {gamesView === "hub" ? <div className="msc-games-hub-quick-landscape">{renderQuickLaunchTicker("msc-games-hub-quick-card")}</div> : null}
       {gamesView === "all" ? <div className="msc-games-primary-quick">{renderQuickLaunchTicker("msc-games-primary-quick-card")}</div> : null}
       {gamesView === "all" ? renderCategoryKpis("portrait") : null}
+      {gamesView === "all" ? renderSubcategoryTabs("portrait") : null}
       </section>
 
       <aside className="msc-landscape-secondary msc-games-secondary">
@@ -1800,8 +1892,11 @@ export default function Games({ setTab, params }: Props) {
               const ordered = (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
 
               const groups: Record<string, typeof gamesForCat> = {};
-              for (const g of gamesForCat) {
-                const key = (g as any).subCategory ? String((g as any).subCategory) : "other";
+              const sourceGames = activeSubCat === "all"
+                ? gamesForCat
+                : gamesForCat.filter((g) => subCategoryKeyForGame(g) === activeSubCat);
+              for (const g of sourceGames) {
+                const key = subCategoryKeyForGame(g);
                 (groups[key] ||= []).push(g);
               }
 

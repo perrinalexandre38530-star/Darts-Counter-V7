@@ -10,15 +10,29 @@ const app = read('src/App.tsx');
 const config = read('src/pages/Wave61Config.tsx');
 const play = read('src/pages/Wave61Play.tsx');
 const engine = read('src/lib/gameEngines/wave61Engine.ts');
+const gamesPage = read('src/pages/Games.tsx');
 
 const ids = [...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map((m) => m[1]);
 assert(ids.length === 61, `Catalogue: ${ids.length}/61`);
 assert(new Set(ids).size === 61, 'IDs dupliqués dans le catalogue');
 
+const classified = [...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label: "[^"]+", category: "([^"]+)", subCategory: "([^"]+)"/g)]
+  .map((m) => ({ id: m[1], category: m[2], subCategory: m[3] }));
+assert(classified.length === 61, `Classement UI incomplet: ${classified.length}/61`);
+assert(classified.every((row) => row.subCategory !== 'wave61'), 'Sous-onglet artificiel wave61 encore présent');
+assert(classified.some((row) => row.category === 'classic'), 'Aucun mode Wave61 classé en Classiques');
+assert(classified.some((row) => row.category === 'challenge'), 'Aucun mode Wave61 classé en Défis');
+assert(classified.some((row) => row.category === 'fun'), 'Aucun mode Wave61 classé en Fun');
+
 const mapBlock = families.split('const MODE_OVERRIDES')[0];
 for (const id of ids) assert(new RegExp(`\\b${id}:\\s*"`).test(mapBlock), `Famille manquante: ${id}`);
 
 assert(registry.includes('tab: "wave61_config"'), 'Registry non branché vers wave61_config');
+assert(registry.includes('category: g.category'), 'Registry force encore une catégorie unique pour Wave61');
+assert(registry.includes('subCategory: g.subCategory'), 'Registry force encore une sous-catégorie unique pour Wave61');
+assert(!registry.includes('subCategory: "wave61"'), 'Ancien groupe Vague 61 encore présent dans le registry');
+assert(gamesPage.includes('renderSubcategoryTabs'), 'Sous-onglets Games absents');
+assert(!gamesPage.includes('"fun:wave61"'), 'Libellé Vague 61 encore présent dans Games');
 assert(registry.includes('ready: true'), 'Registry sans modes ready');
 assert(app.includes('case "wave61_config"'), 'Route config absente');
 assert(app.includes('case "wave61_play"'), 'Route play absente');
@@ -36,5 +50,6 @@ assert(engine.includes('state.modeId === "nine_dart_century"'), '9 DART CENTURY 
 
 console.log(`✅ Vague 61: ${ids.length} modes, ${new Set(ids).size} IDs uniques`);
 console.log('✅ 11 familles moteur + config/play mutualisés');
+console.log('✅ 61 modes redistribués dans Classiques / Défis / Fun + sous-onglets métier');
 console.log('✅ Undo + History + Bots + Teams auto + ScoreInputHub');
 console.log('✅ Spécialisations V1: ALIGN 4, DÉMINEUR, REPLICAT, DOUBLE DOWN, 9 DART CENTURY, CODEBREAKER');

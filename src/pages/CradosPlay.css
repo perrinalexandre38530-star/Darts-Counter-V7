@@ -2563,3 +2563,227 @@
   from { opacity: 1; transform: translate(-50%, 0) scale(1); }
   to { opacity: 0; transform: translate(-50%, -8px) scale(.985); }
 }
+
+/* ===== V7(48) - End card WAOUH upgrade ===== */
+@keyframes cradosGlowPulse {
+  0%,100% { transform: scale(1); opacity: .75; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+@keyframes cradosFloatOrb {
+  0%,100% { transform: translate3d(0,0,0); }
+  50% { transform: translate3d(0,-10px,0); }
+}
+@keyframes cradosShine {
+  0% { transform: translateX(-150%) skewX(-22deg); opacity: 0; }
+  20% { opacity: .32; }
+  100% { transform: translateX(240%) skewX(-22deg); opacity: 0; }
+}
+
+.crados-end__hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.04) 42%, rgba(255,255,255,.12) 50%, transparent 58%);
+  animation: cradosShine 7.5s ease-in-out infinite;
+  pointer-events: none;
+}
+.crados-end__hero-orb { animation: cradosFloatOrb 8s ease-in-out infinite; }
+.crados-end__champion-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 220, 120, .35);
+  background: linear-gradient(180deg, rgba(255,208,88,.18), rgba(255,208,88,.07));
+  color: #ffe8a3;
+  font-size: 8px;
+  font-weight: 1100;
+  letter-spacing: .9px;
+  box-shadow: 0 8px 26px rgba(255,208,88,.12);
+}
+.crados-end__slime { margin-top: 10px; text-shadow: 0 0 18px rgba(183,242,71,.24); }
+.crados-end__winner-shell {
+  position: relative;
+  width: 148px;
+  margin: 12px auto 0;
+  display: grid;
+  place-items: center;
+}
+.crados-end__winner-halo {
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  filter: blur(14px);
+  animation: cradosGlowPulse 3.6s ease-in-out infinite;
+}
+.crados-end__winner-ring {
+  position: relative;
+  width: 122px;
+  height: 122px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.16);
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, rgba(255,255,255,.12), rgba(255,255,255,.02) 72%);
+}
+.crados-end__winner { position: relative; z-index: 1; }
+.crados-end__winner-tag {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255,234,150,.94), rgba(255,195,74,.88));
+  color: #352300;
+  font-size: 8px;
+  font-weight: 1100;
+  letter-spacing: .8px;
+  box-shadow: 0 8px 24px rgba(255,195,74,.24);
+}
+.crados-end__winner-kicker {
+  margin: 10px auto 0;
+  max-width: 280px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+  font-size: 8px;
+  font-weight: 1000;
+  letter-spacing: .35px;
+}
+.crados-end__podium-card {
+  position: relative;
+  overflow: hidden;
+}
+.crados-end__podium-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top, rgba(255,255,255,.10), transparent 55%);
+  pointer-events: none;
+}
+.crados-end__podium-medal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  color: #f8ffea;
+  font-size: 7px;
+  font-weight: 1100;
+  letter-spacing: .65px;
+}
+.crados-end__podium-card.is-rank-1 {
+  transform: translateY(-10px) scale(1.02);
+  background: linear-gradient(180deg, rgba(255,222,126,.10), rgba(255,255,255,.025));
+}
+.crados-end__podium-card.is-rank-2 {
+  background: linear-gradient(180deg, rgba(188,214,232,.09), rgba(255,255,255,.02));
+}
+.crados-end__podium-card.is-rank-3 {
+  background: linear-gradient(180deg, rgba(214,153,87,.11), rgba(255,255,255,.02));
+}
+.crados-end__kpis > div {
+  position: relative;
+  overflow: hidden;
+}
+.crados-end__kpis > div::after {
+  content: "";
+  position: absolute;
+  inset: auto -12% -30% auto;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(183,242,71,.14), transparent 70%);
+  pointer-events: none;
+}
+.crados-end__story {
+  border-radius: 18px;
+  border: 1px solid rgba(183,242,71,.18);
+  background: rgba(7,11,8,.88);
+  overflow: hidden;
+}
+.crados-end__story > header {
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.crados-end__story > header b { color:#dfff88; font-size:10px; letter-spacing:.8px; }
+.crados-end__story > header span { color:#7e8981; font-size:7px; }
+.crados-end__story-grid {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 8px;
+}
+.crados-end__story-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0,1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.07);
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+}
+.crados-end__story-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.05);
+  font-size: 22px;
+}
+.crados-end__story-copy { min-width: 0; }
+.crados-end__story-copy span {
+  display:block;
+  color:#869188;
+  font-size:7px;
+  font-weight:1000;
+  letter-spacing:.45px;
+}
+.crados-end__story-copy b {
+  display:block;
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 1100;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crados-end__story-copy p {
+  margin: 5px 0 0;
+  color: #d7dfd7;
+  font-size: 8px;
+  line-height: 1.35;
+}
+.crados-end__awards-grid,
+.crados-end__story-grid,
+.crados-end__ranking > div,
+.crados-end__details > div {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(183,242,71,.35) rgba(255,255,255,.03);
+}
+.crados-end__actions button {
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.crados-end__actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
+  border-color: rgba(183,242,71,.42);
+}
+
+@media (orientation: portrait) {
+  .crados-end__winner-shell { width: 132px; }
+  .crados-end__winner-ring { width: 112px; height: 112px; }
+  .crados-end__story-grid { grid-template-columns: 1fr; }
+  .crados-end__podium-card.is-rank-1 { transform: none; }
+}

@@ -4406,6 +4406,34 @@ html:not([data-msc-orientation="landscape"]) .msc-games-all-categories--portrait
   white-space: nowrap !important;
 }
 
+/* V61 — vrais sous-onglets de classement. On rend deux variantes comme pour
+   les KPI afin de respecter l'ordre responsive existant sans dupliquer visuellement. */
+.msc-games-subcategory-tabs--landscape {
+  display: none !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-subcategory-tabs--landscape {
+  display: flex !important;
+  max-width: 100% !important;
+  margin-top: 2px !important;
+  padding-bottom: 4px !important;
+}
+
+html[data-msc-orientation="landscape"] .msc-games-subcategory-tabs--portrait {
+  display: none !important;
+}
+
+html:not([data-msc-orientation="landscape"]) .msc-games-subcategory-tabs--landscape {
+  display: none !important;
+}
+
+html:not([data-msc-orientation="landscape"]) .msc-games-subcategory-tabs--portrait {
+  display: flex !important;
+  max-width: 100% !important;
+  margin-top: 4px !important;
+  padding-bottom: 5px !important;
+}
+
 /* Legacy V29 rules placed Awena at the exact same top-right coordinate as the
    active sport medallion on Games / Profiles / Competitions. Re-establish the
    HOME contract: sport at the extreme right, Awena immediately to its left. */
