@@ -181,3 +181,6 @@
 
 .mssDartsAuditKpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 22px}.mssDartsAuditKpis>div{padding:14px 16px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(5,13,18,.72);display:flex;align-items:baseline;justify-content:space-between;gap:10px}.mssDartsAuditKpis strong{font-size:28px;color:#ffd43b}.mssDartsAuditKpis span{font-size:9px;font-weight:1000;letter-spacing:.1em;color:#9fb2bc;text-align:right}
 @media(max-width:600px){.mssDartsAuditKpis{grid-template-columns:1fr}.mssDartsAuditKpis>div{padding:11px 13px}.mssDartsAuditKpis strong{font-size:23px}}
+
+.mssDartsStatusNote{display:flex;align-items:center;gap:14px;margin:-10px 0 24px;padding:12px 15px;border-radius:14px;border:1px solid rgba(255,212,59,.18);background:rgba(255,212,59,.045);color:#b8c7ce}.mssDartsStatusNote strong{flex:0 0 auto;color:#ffd43b;font-size:10px;letter-spacing:.12em}.mssDartsStatusNote span{font-size:11px;line-height:1.55}.mssDartsStatusNote code{font:inherit;color:#00e5ff}
+@media(max-width:600px){.mssDartsStatusNote{display:block}.mssDartsStatusNote span{display:block;margin-top:6px}}

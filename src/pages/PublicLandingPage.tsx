@@ -75,7 +75,7 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
   const ticker = landingTickerFor(game.id);
   const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
-  const development = !game.ready || audit?.status === "development" || game.tab === "mode_not_ready";
+  const development = isPublicDartsDevelopment(game);
   const objective = game.infoBody.split(".")[0] + ".";
   const auditedOptions = audit?.options || [];
   return <main className="mssLanding mssRulesPage">
@@ -142,8 +142,8 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   }, []);
 
   const allDartsGames = DARTS_GAMES.filter((g) => g.entry === "games" || g.entry === "training");
-  const readyDartsGames = allDartsGames.filter((g) => g.ready);
-  const developmentDartsGames = allDartsGames.filter((g) => !g.ready);
+  const readyDartsGames = allDartsGames.filter((g) => !isPublicDartsDevelopment(g));
+  const developmentDartsGames = allDartsGames.filter((g) => isPublicDartsDevelopment(g));
   const ruleMatch = routeHash.match(/^#\/welcome\/darts\/([^?]+)/);
   if (ruleMatch) {
     const id = decodeURIComponent(ruleMatch[1]);
@@ -166,7 +166,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
       development: [] as DartsGameDef[],
     };
     for (const game of allDartsGames) {
-      if (!game.ready) groups.development.push(game);
+      if (isPublicDartsDevelopment(game)) groups.development.push(game);
       else if (MSS_EXCLUSIVE_DARTS.has(game.id)) groups.exclusive.push(game);
       else if (game.category === "classic") groups.classic.push(game);
       else if (game.category === "fun") groups.fun.push(game);
@@ -252,6 +252,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <div><strong>{auditedReadyGames.length}</strong><span>FICHES AUDITÉES</span></div>
         <div><strong>{remainingAuditCount}</strong><span>À DOCUMENTER</span></div>
       </div>
+      <div className="mssDartsStatusNote"><strong>CATALOGUE VÉRIFIÉ</strong><span>Un mode n'est affiché comme disponible que si son état public est réellement jouable. Les concepts encore reliés à <code>mode_not_ready</code> sont automatiquement rangés dans « En développement ».</span></div>
       <div className="mssDartsSpotlight">
         <div className="mssDartsSpotlightHead"><div><span>FICHES RÉCEMMENT DOCUMENTÉES</span><h3>Les règles MSS vérifiées, mode par mode</h3></div><small>Config • Play • moteur • accès direct aux fiches</small></div>
         <div className="mssDartsSpotlightGrid">
@@ -272,7 +273,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         {filteredDartsGames.map((game, index) => {
           const ticker = landingTickerFor(game.id);
           const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
-          const development = !game.ready;
+          const development = isPublicDartsDevelopment(game);
           return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id}>
             <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`}/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? "EN DÉVELOPPEMENT" : exclusive ? "EXCLUSIF MSS" : DARTS_CATEGORY_LABEL[game.category]}</span>{exclusive && development && <i className="mssExclusiveCorner">EXCLUSIF MSS</i>}</div>
             <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{game.label}</strong>{!development && DARTS_PUBLIC_RULE_AUDIT[game.id]?.sources?.length ? <i>✓ AUDITÉ</i> : null}</div><p>{development ? "Mode référencé dans le catalogue MSS. Développement du moteur en cours." : game.infoBody}</p><small>{development ? "DÉCOUVRIR LE CONCEPT →" : "VOIR LA FICHE COMPLÈTE →"}</small></div>

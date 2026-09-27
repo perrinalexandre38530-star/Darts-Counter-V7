@@ -1110,9 +1110,19 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
     ]
   },
   "fun_gages": {
-    "status": 'development',
-    "sources": [],
-    "options": []
+    "status": 'available',
+    "sources": ["src/pages/FunGagesConfig.tsx", "src/pages/FunGagesPlay.tsx"],
+    "options": [
+      "MODE STANDALONE JOUABLE : une partie Gages peut être lancée indépendamment des autres modes",
+      "NOMBRE DE JOUEURS : 1 / 2 / 3 / 4 / 5 / 6 / 8 / 10 / 12",
+      "TOUR PAR JOUEUR : OUI / NON",
+      "OUI : après chaque tirage de gage, le tour passe automatiquement au joueur suivant",
+      "NON : les boutons Précédent / Suivant permettent de choisir manuellement le joueur",
+      "ACTION : le bouton TIRER UN GAGE sélectionne aléatoirement un gage dans la liste intégrée",
+      "HISTORIQUE : conservation à l'écran des 30 derniers gages tirés avec le joueur concerné",
+      "GAGES ACTUELS : défis de jeu, main non dominante, contraintes de parole, défis physiques ou sociaux et variantes autour du Bull",
+      "LIMITATION ACTUELLE : le déclenchement automatique depuis les événements d'autres modes (Bust, 180, Bull...) est annoncé dans le code mais n'est pas encore branché"
+    ]
   },
   "bowling": {
     "status": 'available',
