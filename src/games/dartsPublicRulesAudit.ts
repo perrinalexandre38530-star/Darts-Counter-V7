@@ -3,7 +3,7 @@ export type PublicRuleAudit = { status: 'available'|'development'; sources: stri
 export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   "un_deux_trois_soleil": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "OBJECTIF : atteindre 100 pas de progression",
       "ROUNDS : 16 par défaut",
@@ -21,7 +21,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "hi_score": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "BUT : réaliser le plus gros total de points",
       "ROUNDS : 10 par défaut ; le nombre de rounds est configurable dans le socle Wave61",
@@ -35,7 +35,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "green_vs_red": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "Chaque joueur reçoit une piste ROUGE ou VERTE",
       "La progression se fait uniquement sur les anneaux DOUBLE ou TRIPLE du secteur actuellement demandé",
@@ -51,7 +51,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "shove_a_penny": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "CIBLES : 15 / 16 / 17 / 18 / 19 / 20 + BULL",
       "OBJECTIF : obtenir 3 marques sur chacune des 7 cibles, soit 21 marques",
@@ -67,7 +67,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "nine_dart_century": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "OBJECTIF FIXE : atteindre exactement 100 points",
       "VOLUME FIXE : 3 volées, soit 9 fléchettes maximum",
@@ -80,7 +80,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "double_down": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "PARCOURS FIXE DE 9 ROUNDS : 15 → 16 → n’importe quel DOUBLE → 17 → 18 → n’importe quel TRIPLE → 19 → 20 → BULL/DBULL",
       "Le mode impose 9 rounds dans la configuration actuelle",
@@ -96,7 +96,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "knockback": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "FAMILLE MOTEUR ACTUELLE : COMBAT",
       "OBJECTIF MOTEUR PAR DÉFAUT : 301",
@@ -117,7 +117,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "replicat": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
     "options": [
       "BUT : reproduire la volée de référence précédente, fléchette par fléchette et dans le même ordre",
       "PREMIÈRE VOLÉE : elle crée la séquence de référence ; elle n'accorde aucun point de copie",
@@ -139,7 +139,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
 
   "heist_180": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
     "options": [
       "MOTEUR : famille Mission du socle Wave61",
       "DIFFICULTÉ : Facile / Normal / Difficile",
@@ -155,7 +155,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
 
   "demineur": {
     "status": 'available',
-    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts"],
+    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts"],
     "options": [
       "GRILLE : secteurs 1 à 20 organisés en grille 5 × 4",
       "DIFFICULTÉ : Facile / Normal / Difficile",

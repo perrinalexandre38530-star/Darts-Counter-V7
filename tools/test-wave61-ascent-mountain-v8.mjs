@@ -2,8 +2,8 @@ import fs from 'node:fs';
 function read(file) { return fs.readFileSync(file, 'utf8'); }
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const engine = read('src/lib/gameEngines/wave61Engine.ts');
-const play = read('src/pages/Wave61Play.tsx');
-const config = read('src/pages/Wave61Config.tsx');
+const play = read('src/pages/Wave61SharedPlay.tsx');
+const config = read('src/pages/Wave61SharedConfig.tsx');
 const panels = read('src/pages/wave61/Wave61AscentPanels.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 assert(/WAVE61_ENGINE_VERSION = (?:9|[1-9][0-9]+)/.test(engine), 'Wave61 doit conserver V8 ou supérieur');
@@ -19,6 +19,6 @@ for (const panel of ['MontBlancPanel','EverestPanel','Summit14Panel']) { assert(
 assert(config.includes('spec.id === "mont_blanc" ? 4809'), 'Objectif Mont Blanc non verrouillé');
 assert(config.includes('spec.id === "everest" ? 8849'), 'Objectif Everest non verrouillé');
 assert(config.includes('spec.id === "summit_14" ? 14'), 'Objectif Summit 14 non verrouillé');
-assert(play.includes('passe V8') || play.includes('passe V9'), 'Texte V8+ absent');
+assert(play.includes('Architecture V10') || play.includes('passe V8') || play.includes('passe V9'), 'Texte V8+ absent');
 console.log('✅ Wave61 V8 — Ascension / Montagne');
 console.log('✅ MONT BLANC / EVEREST / SUMMIT 14 spécialisés');

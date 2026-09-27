@@ -30,18 +30,18 @@ export const NEW_MODE_IDS: string[] = [
 
 // ✅ Auto-load des tickers via convention de nommage
 // Place tes fichiers ici : src/assets/tickers/ticker_<gameId>.png
-const tickerImages = import.meta.glob("../assets/tickers/ticker_*.png", {
+const tickerImages = import.meta.glob("../assets/tickers/ticker_*.{png,webp,jpg,jpeg}", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
 function tickerSrcForId(id: string): string | null {
-  // 51 BY 5 conserve son nom d'asset historique ticker_51_by_5.png.
+  // 51 BY 5 conserve son nom d'asset historique ticker_51_by_5.*
   const assetId = id === "fifty_one_by_five" ? "51_by_5" : id;
-  // On cherche une clé finissant par `ticker_<id>.png`
-  const suffix = `/ticker_${assetId}.png`;
+  const exts = ["png", "webp", "jpg", "jpeg"];
+  const suffixes = exts.map((ext) => `/ticker_${assetId}.${ext}`);
   for (const k of Object.keys(tickerImages)) {
-    if (k.endsWith(suffix)) return tickerImages[k];
+    if (suffixes.some((suffix) => k.endsWith(suffix))) return tickerImages[k];
   }
   return null;
 }

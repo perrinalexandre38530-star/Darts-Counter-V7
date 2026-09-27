@@ -1238,7 +1238,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   // VAGUE 61 — moteurs mutualisés, rangés dans les catégories métier.
   // IMPORTANT : aucun onglet artificiel "Vague 61". Chaque mode apparaît
   // directement dans Classiques / Défis / Fun et sa sous-catégorie logique.
-  // Les moteurs restent mutualisés via Wave61Config/Wave61Play.
+  // Wave61Config/Wave61Play sont désormais des dispatchers lazy vers 61 paires Config/Play dédiées ; les moteurs métier restent mutualisés dessous.
   // ===========================================================
   ...DARTS_WAVE_61.map((g, index): DartsGameDef => ({
     ...g,

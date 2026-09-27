@@ -16,15 +16,34 @@ export type AllModesTickerItem = {
   label: string;
 };
 
-const tickerGlob = import.meta.glob("../assets/tickers/ticker_*.png", {
+const tickerGlob = import.meta.glob("../assets/tickers/ticker_*.{png,webp,jpg,jpeg}", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
 function findTickerById(id: string): string | null {
-  const suffix = `/ticker_${id}.png`;
-  for (const k of Object.keys(tickerGlob)) {
-    if (k.endsWith(suffix)) return tickerGlob[k];
+  const raw = String(id || "");
+  if (!raw) return null;
+
+  const norm = raw.trim().toLowerCase();
+  const candidates = Array.from(
+    new Set([
+      norm,
+      norm.replace(/\s+/g, "_"),
+      norm.replace(/\s+/g, "-"),
+      norm.replace(/-/g, "_"),
+      norm.replace(/_/g, "-"),
+      norm.replace(/[^a-z0-9_\-]/g, ""),
+    ])
+  ).filter(Boolean);
+
+  const exts = ["png", "webp", "jpg", "jpeg"];
+
+  for (const c of candidates) {
+    const suffixes = exts.flatMap((ext) => [`/ticker_${c}.${ext}`, `/ticker-${c}.${ext}`]);
+    for (const k of Object.keys(tickerGlob)) {
+      if (suffixes.some((suffix) => k.endsWith(suffix))) return tickerGlob[k];
+    }
   }
   return null;
 }

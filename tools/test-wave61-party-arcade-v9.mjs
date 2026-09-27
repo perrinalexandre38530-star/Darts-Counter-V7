@@ -2,7 +2,7 @@ import fs from 'node:fs';
 function read(file) { return fs.readFileSync(file, 'utf8'); }
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const engine = read('src/lib/gameEngines/wave61Engine.ts');
-const play = read('src/pages/Wave61Play.tsx');
+const play = read('src/pages/Wave61SharedPlay.tsx');
 const panels = read('src/pages/wave61/Wave61PartyArcadePanels.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 assert(engine.includes('WAVE61_ENGINE_VERSION = 9'), 'Wave61 V9 absent');
@@ -12,6 +12,6 @@ assert(/final_buzzer:\s*"rhythm"/.test(families), 'FINAL BUZZER doit rester rhyt
 assert(/jackpot:\s*"score"/.test(families), 'JACKPOT doit rester score');
 assert(/mafia:\s*"deduction"/.test(families), 'MAFIA doit rester deduction');
 for (const panel of ['FinalBuzzerPanel','JackpotPanel','MafiaPanel']) { assert(panels.includes(`export function ${panel}`), `${panel} absent`); assert(play.includes(`<${panel}`), `${panel} non rendu`); }
-assert(play.includes('passe V9'), 'Texte V9 absent');
+assert(play.includes('Architecture V10') || play.includes('passe V9'), 'Texte V9+ absent');
 console.log('✅ Wave61 V9 — Party / Arcade / Rôles cachés');
 console.log('✅ FINAL BUZZER / JACKPOT / MAFIA spécialisés');
