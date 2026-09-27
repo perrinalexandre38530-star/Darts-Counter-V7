@@ -110,9 +110,9 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
     </section>
     <section className="mssRuleContent">
       <article><b>01</b><h2>OBJECTIF</h2><p>{objective}</p></article>
-      <article><b>02</b><h2>PRINCIPE & RÈGLES</h2><p>{game.infoBody}</p>{audit?.sources?.length ? <small className="mssAuditStamp">RÈGLES VÉRIFIÉES DANS LE MOTEUR MSS</small> : null}</article>
+      <article><b>02</b><h2>PRINCIPE & RÈGLES</h2><p>{game.infoBody}</p></article>
       <article><b>03</b><h2>FORMAT DE PARTIE</h2><p>Le nombre de joueurs n’est volontairement pas présenté comme une limite fixe sur cette fiche. La configuration réelle du mode dans MSS fait foi.{game.supportsTeams ? " La gestion des équipes est déclarée compatible pour ce moteur." : ""}{game.supportsBots ? " Les bots IA sont déclarés compatibles lorsque la configuration du mode les propose." : ""}</p></article>
-      <article className="mssRuleConfig"><b>04</b><h2>RÈGLES & PARAMÈTRES AUDITÉS</h2>{development ? <p>EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.</p> : auditedOptions.length ? <><p>Éléments vérifiés directement dans les écrans Config, Play et/ou le moteur de ce mode :</p><ul>{auditedOptions.map((option) => <li key={option}>{option}</li>)}</ul></> : <p>Audit détaillé en cours. Cette fiche conserve uniquement les informations déjà confirmées et n’invente aucun réglage supplémentaire.</p>}</article>
+      <article className="mssRuleConfig"><b>04</b><h2>RÈGLES & PARAMÈTRES</h2>{development ? <p>EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.</p> : auditedOptions.length ? <><p>Configuration et règles disponibles dans ce mode :</p><ul>{auditedOptions.map((option) => <li key={option}>{option}</li>)}</ul></> : <p>Les paramètres détaillés de ce mode seront complétés au fur et à mesure de son développement.</p>}</article>
       <article><b>05</b><h2>STATUT DANS MSS</h2><p>{development ? "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée." : "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur."}</p></article>
       {!development && <article><b>06</b><h2>DÉROULEMENT</h2><p>Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.</p></article>}
       {!development && <article><b>07</b><h2>FIN DE PARTIE</h2><p>La partie se termine lorsque la condition de victoire propre au mode est atteinte. Les résultats sont alors exploitables par l’historique et les statistiques compatibles avec ce moteur.</p></article>}
@@ -189,9 +189,6 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   const filteredDartsGames = normalizedDartsSearch
     ? categoryDartsGames.filter((game) => `${game.label} ${game.infoBody}`.toLocaleLowerCase("fr").includes(normalizedDartsSearch))
     : categoryDartsGames;
-  const auditedReadyGames = readyDartsGames.filter((game) => (DARTS_PUBLIC_RULE_AUDIT[game.id]?.sources?.length || 0) > 0);
-  const auditPercent = readyDartsGames.length ? Math.round((auditedReadyGames.length / readyDartsGames.length) * 100) : 0;
-  const remainingAuditCount = Math.max(0, readyDartsGames.length - auditedReadyGames.length);
 
   const catalogueCards = [
     ["classic","GRANDS CLASSIQUES","Les incontournables des fléchettes : X01, Cricket, Killer, Shanghai et autres références."],
@@ -242,7 +239,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     <section className="mssDartsUniverse" id="darts-modes">
       <div className="mssDartsIntro">
         <div><div className="mssEyebrow">L’UNIVERS FLÉCHETTES MULTISPORTS SCORING</div><h2><em>{allDartsGames.length}</em> modes référencés.<br/><span>{readyDartsGames.length} disponibles aujourd’hui.</span></h2><p>Les grands classiques des fléchettes côtoient les variantes, défis, modes fun et créations exclusives MULTISPORTS SCORING. Les modes encore en préparation restent visibles et clairement marqués « EN DÉVELOPPEMENT ».</p></div>
-        <div className="mssDartsPromises"><span><strong>CLASSIQUES</strong><small>X01 • Cricket • Killer • Shanghai • Golf…</small></span><span><strong>EXCLUSIFS MSS</strong><small>DARTS FIREFIGHTER • CRADOS • ATTRAPE-MOI SI TU PEUX ! • LOTERIE • MENTEUR • PRÉSIDENT • LE PENDU • CARGO</small></span><span><strong>CATALOGUE COMPLET</strong><small>{readyDartsGames.length} disponibles • {developmentDartsGames.length} en développement</small></span><span><strong>RÈGLES MSS</strong><small>{auditedReadyGames.length}/{readyDartsGames.length} modes disponibles déjà reliés à leurs sources Config / Play / moteur</small></span></div>
+        <div className="mssDartsPromises"><span><strong>CLASSIQUES</strong><small>X01 • Cricket • Killer • Shanghai • Golf…</small></span><span><strong>EXCLUSIFS MSS</strong><small>DARTS FIREFIGHTER • CRADOS • ATTRAPE-MOI SI TU PEUX ! • LOTERIE • MENTEUR • PRÉSIDENT • LE PENDU • CARGO</small></span><span><strong>CATALOGUE COMPLET</strong><small>{readyDartsGames.length} disponibles • {developmentDartsGames.length} en développement</small></span><span><strong>RÈGLES DÉTAILLÉES</strong><small>Objectif • déroulement • configuration • fin de partie</small></span></div>
       </div>
       <div className="mssDartsCategoryGrid">
         {catalogueCards.map(([id,label,description]) => {
@@ -252,13 +249,6 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
           </button>;
         })}
       </div>
-      <div className="mssDartsAuditBar"><div><span>DOCUMENTATION DES RÈGLES</span><strong>{auditPercent}%</strong></div><div className="mssDartsAuditTrack"><i style={{width:`${auditPercent}%`}}/></div><small>Audit en cours directement depuis les écrans Config, Play et moteurs MSS. Les modes non encore vérifiés restent clairement identifiables.</small></div>
-      <div className="mssDartsAuditKpis">
-        <div><strong>{readyDartsGames.length}</strong><span>MODES DISPONIBLES</span></div>
-        <div><strong>{auditedReadyGames.length}</strong><span>FICHES AUDITÉES</span></div>
-        <div><strong>{remainingAuditCount}</strong><span>À DOCUMENTER</span></div>
-      </div>
-      <div className="mssDartsStatusNote"><strong>CATALOGUE VÉRIFIÉ</strong><span>Un mode n'est affiché comme disponible que si son état public est réellement jouable. Les concepts encore reliés à <code>mode_not_ready</code> sont automatiquement rangés dans « En développement ».</span></div>
       <div className="mssDartsToolbar"><label><span>RECHERCHER UN MODE</span><input value={dartsSearch} onChange={(e) => setDartsSearch(e.target.value)} placeholder="X01, Killer, Challenge, Firefighter…" /></label><div className="mssDartsQuickFilters">{catalogueCards.map(([id,label]) => <button key={id} className={dartsFilter===id ? "isActive" : ""} onClick={() => {setDartsFilter(id);setDartsSearch("");}}>{label}<b>{catalogueGroups[id].length}</b></button>)}</div></div>
       <div className="mssDartsListHeader"><div><span>CATÉGORIE</span><h3>{catalogueCards.find(([id]) => id === dartsFilter)?.[1]}</h3></div><b>{filteredDartsGames.length} MODE{filteredDartsGames.length > 1 ? "S" : ""}</b></div>
       <div className="mssDartsModeGrid">
@@ -268,7 +258,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
           const development = isPublicDartsDevelopment(game);
           return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id}>
             <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`}/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? "EN DÉVELOPPEMENT" : exclusive ? "EXCLUSIF MSS" : DARTS_CATEGORY_LABEL[game.category]}</span>{exclusive && development && <i className="mssExclusiveCorner">EXCLUSIF MSS</i>}</div>
-            <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{game.label}</strong>{!development && DARTS_PUBLIC_RULE_AUDIT[game.id]?.sources?.length ? <i>✓ AUDITÉ</i> : null}</div><p>{development ? "Mode référencé dans le catalogue MSS. Développement du moteur en cours." : game.infoBody}</p><small>{development ? "DÉCOUVRIR LE CONCEPT →" : "VOIR LA FICHE COMPLÈTE →"}</small></div>
+            <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{game.label}</strong></div><p>{development ? "Mode référencé dans le catalogue MSS. Développement du moteur en cours." : game.infoBody}</p><small>{development ? "DÉCOUVRIR LE CONCEPT →" : "VOIR LA FICHE COMPLÈTE →"}</small></div>
           </a>;
         })}
       </div>

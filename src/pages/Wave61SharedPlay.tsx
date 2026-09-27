@@ -165,7 +165,7 @@ function familyRules(spec: any, preset: any) {
   return <div style={{ display: "grid", gap: 9, fontSize: 12.5, lineHeight: 1.5 }}>
     <div><b style={{ color: preset.accent }}>CONCEPT</b><br />{spec.infoBody}</div>
     <div><b style={{ color: preset.accent }}>MOTEUR V{WAVE61_ENGINE_VERSION}</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
-    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />Architecture V10 : les 61 gameplays spécialisés sont conservés et chaque mode passe désormais par son propre fichier Play dédié, au-dessus du moteur mutualisé.</div>
+    <div><b style={{ color: "#ffcc80" }}>ARCHITECTURE</b><br />Chaque mode dispose maintenant de son fichier Play dédié et peut recevoir ses propres réglages sans casser les autres jeux.</div>
   </div>;
 }
 
@@ -176,7 +176,7 @@ function Align4Board({ state, accent }: any) {
   let idx = 0;
   for (const row of board) for (const token of row) if (token && !tokenColors[token]) tokenColors[token] = idx++ % 2 ? "#ff5e78" : accent;
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ color: accent, fontSize: 10, fontWeight: 1100, marginBottom: 7 }}>ALIGN 4 · GRILLE 7 × 6</div>
+    <div style={{ color: accent, fontSize: 10, fontWeight: 1100, marginBottom: 7 }}>ALIGN {state?.config?.modeOptions?.connectLength || 4} · GRILLE 7 × 6</div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, maxWidth: 430, margin: "0 auto" }}>
       {board.flatMap((row: any[], r: number) => row.map((token: string | null, c: number) => <div key={`${r}-${c}`} style={{ aspectRatio: "1", borderRadius: 999, border: "1px solid rgba(255,255,255,.13)", background: token ? tokenColors[token] || accent : "rgba(255,255,255,.045)", boxShadow: token ? `0 0 12px ${tokenColors[token] || accent}66` : "inset 0 2px 8px rgba(0,0,0,.4)" }} />))}
     </div>
@@ -205,7 +205,7 @@ function MineBoard({ state, accent }: any) {
         </div>;
       })}
     </div>
-    <div style={{ marginTop: 7, color: SOFT, fontSize: 9.2, lineHeight: 1.45 }}>Les chiffres indiquent le nombre de mines autour de la case. BULL = scanner 1 case sûre · DBULL = scanner 2.</div>
+    <div style={{ marginTop: 7, color: SOFT, fontSize: 9.2, lineHeight: 1.45 }}>Les chiffres indiquent le nombre de mines autour de la case. {Number(state?.config?.modeOptions?.scannerStrength ?? 1) <= 0 ? "Scanner BULL désactivé." : `BULL = scanner ${Number(state?.config?.modeOptions?.scannerStrength ?? 1)} case(s) sûre(s) · DBULL = ${Number(state?.config?.modeOptions?.scannerStrength ?? 1) + 1}.`}</div>
   </div>;
 }
 
@@ -214,7 +214,7 @@ function CodebreakerPanel({ state, accent }: any) {
   const secret = state?.special?.secretCode || [];
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-      <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>CODEBREAKER · CODE À 3 SECTEURS</div>
+      <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>CODEBREAKER · CODE À {secret.length || state?.config?.modeOptions?.codeLength || 3} SECTEURS</div>
       <div style={{ color: SOFT, fontSize: 9 }}>{state?.phase === "finished" ? `CODE ${secret.join(" · ")}` : "CODE MASQUÉ"}</div>
     </div>
     <div style={{ display: "grid", gap: 5, marginTop: 8 }}>
@@ -222,7 +222,7 @@ function CodebreakerPanel({ state, accent }: any) {
         <b style={{ color: "#fff" }}>{(h.guess || []).map((n: number) => n || "—").join(" · ")}</b>
         <span style={{ color: accent, fontWeight: 1000 }}>● {h.exact} exact</span>
         <span style={{ color: "#ffd36a", fontWeight: 1000 }}>◐ {h.present} déplacé</span>
-      </div>) : <div style={{ color: SOFT, fontSize: 9.5 }}>Aucune tentative. Lance trois fléchettes pour proposer le code.</div>}
+      </div>) : <div style={{ color: SOFT, fontSize: 9.5 }}>Aucune tentative. Lance {secret.length || state?.config?.modeOptions?.codeLength || 3} fléchette(s) pour proposer le code.</div>}
     </div>
   </div>;
 }
@@ -250,14 +250,14 @@ function FaceMysterePanel({ state, accent }: any) {
   </div>;
 }
 
-function ColinBoard({ state, accent, reveal, onReveal }: any) {
+function ColinBoard({ state, accent, reveal, onReveal, previewMs = 2000 }: any) {
   const sequence = state?.special?.colinSequence || [];
   const player = state?.players?.[state?.activePlayerIndex];
   const step = Number(state?.special?.colinStepByPlayer?.[player?.id] || 0);
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
       <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>COLIN-MAILLARD · MÉMOIRE</div><div style={{ color: SOFT, fontSize: 9, marginTop: 2 }}>Progression actuelle : {Math.min(step, sequence.length)}/{sequence.length}</div></div>
-      <button type="button" onClick={onReveal} style={actionStyle(accent, false)}>👁 APERÇU 2s</button>
+      <button type="button" onClick={onReveal} style={actionStyle(accent, false)}>{`👁 APERÇU ${(Math.max(500, Number(previewMs || 2000)) / 1000).toFixed(1).replace(".0", "")}s`}</button>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, sequence.length)},1fr)`, gap: 5, marginTop: 8 }}>
       {sequence.map((n: number, i: number) => <div key={`${n}-${i}`} style={{ minHeight: 42, borderRadius: 10, display: "grid", placeItems: "center", border: `1px solid ${i < step ? accent + "77" : "rgba(255,255,255,.10)"}`, background: i < step ? `${accent}18` : "rgba(255,255,255,.03)", color: i < step ? accent : "#fff", fontWeight: 1100 }}>{reveal ? n : i < step ? "✓" : "?"}</div>)}
@@ -362,6 +362,7 @@ export default function Wave61SharedPlay(props: any) {
   const target = getWave61Target(state);
   const accent = preset.accent;
   const modeTicker = React.useMemo(() => getTicker(spec.id), [spec.id]);
+  const dedicatedPlayHint = String(props?.dedicatedPlayHint || "");
 
   const buildRecord = React.useCallback((s: Wave61State, status: "in_progress" | "finished") => ({
     id: matchIdRef.current,
@@ -440,14 +441,16 @@ export default function Wave61SharedPlay(props: any) {
     if (spec.id !== "luciole" || state.phase !== "playing") return;
     setLucioleReveal(true);
     if (lucioleTimerRef.current) window.clearTimeout(lucioleTimerRef.current);
-    lucioleTimerRef.current = window.setTimeout(() => setLucioleReveal(false), 1600);
+    const revealMs = Math.max(500, Number(config?.modeOptions?.revealMs || 1600));
+    lucioleTimerRef.current = window.setTimeout(() => setLucioleReveal(false), revealMs);
     return () => { if (lucioleTimerRef.current) window.clearTimeout(lucioleTimerRef.current); };
   }, [spec.id, activePlayer?.id, state.turnIndex, state.phase]);
 
   function revealMemory() {
     setMemoryReveal(true);
     if (memoryTimerRef.current) window.clearTimeout(memoryTimerRef.current);
-    memoryTimerRef.current = window.setTimeout(() => setMemoryReveal(false), 2000);
+    const previewMs = Math.max(500, Number(config?.modeOptions?.previewMs || 2000));
+    memoryTimerRef.current = window.setTimeout(() => setMemoryReveal(false), previewMs);
   }
 
   function replay() {
@@ -468,11 +471,20 @@ export default function Wave61SharedPlay(props: any) {
     {modeTicker ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
     <div style={{ padding: "7px 8px 18px", maxWidth: 1040, margin: "0 auto", display: "grid", gap: 8 }}>
       <div style={{ ...panelStyle(accent + "45"), padding: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
-        <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>ROUND {roundLabel}/{config.rounds} · {preset.label.toUpperCase()}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Partie terminée" : `${activePlayer?.name || "—"} joue`}</div></div>
+        <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>ROUND {roundLabel}/{config.rounds} · {preset.label.toUpperCase()}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Partie terminée" : `${activePlayer?.name || "—"} joue`}</div>{dedicatedPlayHint ? <div style={{ marginTop: 3, color: SOFT, fontSize: 9.2, lineHeight: 1.3 }}>{dedicatedPlayHint}</div> : null}</div>
         <button type="button" onClick={doUndo} disabled={!undo.length} style={actionStyle(accent, !undo.length)}>↶ UNDO</button>
       </div>
 
       {notice ? <div style={{ borderRadius: 12, padding: "7px 10px", background: `${accent}0d`, border: `1px solid ${accent}2f`, color: "#e9ecf5", fontSize: 10.5, fontWeight: 850 }}>{notice}</div> : null}
+
+      {config?.modeOptions && Object.keys(config.modeOptions).length ? <div style={{ ...panelStyle(accent + "2d"), padding: "7px 9px", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ color: accent, fontSize: 8.8, fontWeight: 1100, letterSpacing: .8 }}>RÉGLAGES MODE</span>
+        {Object.entries(config.modeOptions).map(([key, value]: any) => {
+          const labels: Record<string,string> = { mineCount: "MINES", scannerStrength: "SCANNER", mineDamage: "DÉGÂTS", connectLength: "ALIGNEMENT", bullColumn: "BULL→COL", codeLength: "CODE", allowRepeats: "RÉPÉTITIONS", cluesPerMiss: "INDICES/ERREUR", sequenceLength: "SÉQUENCE", previewMs: "APERÇU", revealMs: "LUMIÈRE", wrongPenalty: "PÉNALITÉ", headshotBonus: "HEADSHOT" };
+          const shown = key.endsWith("Ms") ? `${Number(value) / 1000}s` : typeof value === "boolean" ? (value ? "ON" : "OFF") : String(value);
+          return <span key={key} style={{ borderRadius: 999, padding: "4px 7px", border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "#cfd5e4", fontSize: 8.5, fontWeight: 900 }}>{labels[key] || key.toUpperCase()} · {shown}</span>;
+        })}
+      </div> : null}
 
       {teamMode ? <div style={{ ...panelStyle("rgba(255,255,255,.08)"), padding: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>{Object.entries(state.teamScores || {}).map(([team, score]: any) => <span key={team} style={{ borderRadius: 999, padding: "5px 9px", border: `1px solid ${team === "A" ? accent + "55" : "#ff657d55"}`, color: team === "A" ? accent : "#ff8fa0", fontSize: 10, fontWeight: 1000 }}>TEAM {team} · {Math.round(Number(score || 0))}</span>)}</div> : null}
 
@@ -490,7 +502,7 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "demineur" ? <MineBoard state={state} accent={accent} /> : null}
       {spec.id === "codebreaker" ? <CodebreakerPanel state={state} accent={accent} /> : null}
       {spec.id === "face_mystere" ? <FaceMysterePanel state={state} accent={accent} /> : null}
-      {spec.id === "colin_maillard" ? <ColinBoard state={state} accent={accent} reveal={memoryReveal} onReveal={revealMemory} /> : null}
+      {spec.id === "colin_maillard" ? <ColinBoard state={state} accent={accent} reveal={memoryReveal} onReveal={revealMemory} previewMs={config?.modeOptions?.previewMs || 2000} /> : null}
       {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
       {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
       {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}

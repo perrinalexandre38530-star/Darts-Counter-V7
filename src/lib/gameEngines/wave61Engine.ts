@@ -2,7 +2,7 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-export const WAVE61_ENGINE_VERSION = 9;
+export const WAVE61_ENGINE_VERSION = 10;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -21,6 +21,7 @@ export type Wave61Config = {
   lives: number;
   scoreInputMethod: "keypad" | "dartboard";
   randomOrder?: boolean;
+  modeOptions?: Record<string, any>;
 };
 
 export type Wave61PlayerStats = {
@@ -136,6 +137,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
     lives: Math.max(0, Number(raw?.lives ?? preset.defaultLives) || 0),
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
     randomOrder: raw?.randomOrder !== false,
+    modeOptions: raw?.modeOptions && typeof raw.modeOptions === "object" ? { ...raw.modeOptions } : {},
   };
 }
 
@@ -151,16 +153,28 @@ function seededNumbers(seedText: string, count: number, max = 20): number[] {
   return out;
 }
 
-function mineMap(seedText: string): number[] {
-  return seededNumbers(`mines:${seedText}`, 5, 20).sort((a, b) => a - b);
+function modeOptionNumber(config: Wave61Config, key: string, fallback: number, min = -Infinity, max = Infinity): number {
+  const raw = Number(config?.modeOptions?.[key]);
+  const value = Number.isFinite(raw) ? raw : fallback;
+  return clamp(value, min, max);
 }
 
-function codeSequence(seedText: string): number[] {
-  return seededNumbers(`code:${seedText}`, 3, 20);
+function modeOptionBool(config: Wave61Config, key: string, fallback = false): boolean {
+  const raw = config?.modeOptions?.[key];
+  return raw == null ? fallback : raw === true || raw === "true" || raw === 1 || raw === "1";
 }
 
-function colinSequence(seedText: string): number[] {
-  return seededNumbers(`colin:${seedText}`, 6, 20);
+function mineMap(seedText: string, count = 5): number[] {
+  return seededNumbers(`mines:${seedText}`, clamp(Math.round(count), 2, 9), 20).sort((a, b) => a - b);
+}
+
+function codeSequence(seedText: string, length = 3, allowRepeats = false): number[] {
+  const size = clamp(Math.round(length), 2, 3);
+  return allowRepeats ? seededSequence(`code:${seedText}`, size, 20) : seededNumbers(`code:${seedText}`, size, 20);
+}
+
+function colinSequence(seedText: string, length = 6): number[] {
+  return seededNumbers(`colin:${seedText}`, clamp(Math.round(length), 3, 10), 20);
 }
 
 function faceSecret(seedText: string): number {
@@ -472,7 +486,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
     special: {
       version: WAVE61_ENGINE_VERSION,
       seedText,
-      mines: modeId === "demineur" ? mineMap(seedText) : [],
+      mines: modeId === "demineur" ? mineMap(seedText, modeOptionNumber(config, "mineCount", 5, 2, 9)) : [],
       revealed: [],
       exploded: [],
       safeByPlayer: {},
@@ -480,13 +494,13 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       align4Moves: [],
       lastVisitDarts: [],
       replicatReferenceOwner: null,
-      secretCode: modeId === "codebreaker" ? codeSequence(seedText) : [],
+      secretCode: modeId === "codebreaker" ? codeSequence(seedText, modeOptionNumber(config, "codeLength", 3, 2, 3), modeOptionBool(config, "allowRepeats", false)) : [],
       codeHistory: [],
       faceSecret: modeId === "face_mystere" ? faceSecret(seedText) : null,
       faceCandidates: modeId === "face_mystere" ? Array.from({ length: 20 }, (_, i) => i + 1) : [],
       faceClues: [],
       faceHistory: [],
-      colinSequence: modeId === "colin_maillard" ? colinSequence(seedText) : [],
+      colinSequence: modeId === "colin_maillard" ? colinSequence(seedText, modeOptionNumber(config, "sequenceLength", 6, 3, 10)) : [],
       colinStepByPlayer: modeId === "colin_maillard" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       doubleDownHistory: [],
       centuryBustsByPlayer: Object.fromEntries(ids.map((id) => [id, 0])),
@@ -1065,12 +1079,13 @@ function refreshTeamScores(state: Wave61State) {
   state.teamScores = teamScores;
 }
 
-function checkFour(board: any[][], token: string): boolean {
+function checkConnect(board: any[][], token: string, length = 4): boolean {
   const H = board.length, W = board[0]?.length || 0;
+  const need = clamp(Math.round(length), 3, 5);
   const dirs = [[1,0],[0,1],[1,1],[1,-1]];
   for (let r=0;r<H;r++) for (let c=0;c<W;c++) if (board[r][c] === token) for (const [dr,dc] of dirs) {
     let ok = true;
-    for (let k=1;k<4;k++) { const rr=r+dr*k, cc=c+dc*k; if (rr<0||rr>=H||cc<0||cc>=W||board[rr][cc]!==token) { ok=false; break; } }
+    for (let k=1;k<need;k++) { const rr=r+dr*k, cc=c+dc*k; if (rr<0||rr>=H||cc<0||cc>=W||board[rr][cc]!==token) { ok=false; break; } }
     if (ok) return true;
   }
   return false;
@@ -1078,7 +1093,8 @@ function checkFour(board: any[][], token: string): boolean {
 
 function placeAlign4(state: Wave61State, playerId: string, dart: GameDart, events: string[]): { placed: boolean; won: boolean; col: number } {
   if (!state.special?.board || !dart || dart.bed === "MISS") return { placed: false, won: false, col: -1 };
-  const raw = dart.bed === "OB" || dart.bed === "IB" ? 7 : Number(dart.number || 1);
+  const bullColumn = modeOptionNumber(state.config, "bullColumn", 7, 1, 7);
+  const raw = dart.bed === "OB" || dart.bed === "IB" ? bullColumn : Number(dart.number || 1);
   const col = ((raw - 1) % 7 + 7) % 7;
   const token = state.config.participantMode === "teams" ? String(state.config.teamByPlayer?.[playerId] || "A") : playerId;
   for (let r = 5; r >= 0; r--) {
@@ -1086,7 +1102,7 @@ function placeAlign4(state: Wave61State, playerId: string, dart: GameDart, event
       state.special.board[r][col] = token;
       state.special.align4Moves = [...(state.special.align4Moves || []), { playerId, token, col: col + 1, row: r + 1 }];
       events.push(`Jeton posé en colonne ${col + 1}`);
-      return { placed: true, won: checkFour(state.special.board, token), col };
+      return { placed: true, won: checkConnect(state.special.board, token, modeOptionNumber(state.config, "connectLength", 4, 3, 5)), col };
     }
   }
   events.push(`Colonne ${col + 1} pleine`);
@@ -1151,7 +1167,9 @@ function processMinefield(state: Wave61State, playerId: string, darts: GameDart[
 
   for (const d of darts) {
     if (d?.bed === "OB" || d?.bed === "IB") {
-      scanSafe(d.bed === "IB" ? 2 : 1);
+      const scanner = modeOptionNumber(state.config, "scannerStrength", 1, 0, 3);
+      if (scanner > 0) scanSafe((d.bed === "IB" ? 1 : 0) + scanner);
+      else events.push("🔎 Scanner désactivé");
       continue;
     }
     const n = Number(d?.number || 0);
@@ -1159,7 +1177,7 @@ function processMinefield(state: Wave61State, playerId: string, darts: GameDart[
     if (mines.has(n)) {
       revealed.add(n);
       exploded.add(n);
-      const damage = state.config.difficulty === "hard" ? 45 : state.config.difficulty === "easy" ? 25 : 35;
+      const damage = modeOptionNumber(state.config, "mineDamage", state.config.difficulty === "hard" ? 45 : state.config.difficulty === "easy" ? 25 : 35, 10, 100);
       state.health[playerId] = Math.max(0, Number(state.health[playerId] || 100) - damage);
       state.statsByPlayer[playerId].damageTaken += damage;
       events.push(`💥 Mine sur ${n} · -${damage} PV`);
@@ -1376,7 +1394,7 @@ function processSniper(state: Wave61State, playerId: string, darts: GameDart[], 
       completed += 1;
       step += 1;
       const headshot = d?.bed === "T" || d?.bed === "IB";
-      scoreDelta += headshot ? 175 : 100;
+      scoreDelta += headshot ? modeOptionNumber(state.config, "headshotBonus", 175, 100, 500) : 100;
       events.push(`🎯 ${headshot ? "HEADSHOT" : "CIBLE"} · ${exactTargetLabel(contract)} validé`);
     } else if (d && d.bed !== "MISS") {
       events.push(`• ${wave61DartLabel(d)} hors contrat`);
@@ -1408,8 +1426,10 @@ function processLuciole(state: Wave61State, playerId: string, darts: GameDart[],
     step += 1;
     events.push(`✨ Luciole ${expected} capturée · ${step}/${Math.min(seq.length, state.config.goal || seq.length)}`);
   } else {
-    if (state.config.difficulty === "hard") step = Math.max(0, step - 1);
-    events.push(`🌑 Luciole ${expected} manquée${state.config.difficulty === "hard" ? " · -1 étape" : ""}`);
+    const fallbackPenalty = state.config.difficulty === "hard" ? 1 : 0;
+    const wrongPenalty = modeOptionNumber(state.config, "wrongPenalty", fallbackPenalty, 0, 2);
+    if (wrongPenalty > 0) step = Math.max(0, step - wrongPenalty);
+    events.push(`🌑 Luciole ${expected} manquée${wrongPenalty > 0 ? ` · -${wrongPenalty} étape(s)` : ""}`);
   }
   state.special.lucioleStepByPlayer[playerId] = step;
   state.progress[playerId] = step;
@@ -1460,7 +1480,8 @@ function processGoldenDart(state: Wave61State, playerId: string, darts: GameDart
       if (state.progress[playerId] >= Math.max(1, state.config.goal || 7)) finishWith(state, playerId);
       break; // une seule cible dorée peut être trouvée par volée
     } else {
-      addGoldenClue(state, guess, target);
+      const clueCount = modeOptionNumber(state.config, "cluesPerMiss", 1, 1, 3);
+      for (let clueIndex = 0; clueIndex < clueCount; clueIndex++) addGoldenClue(state, guess, target);
       state.special.goldenHistory = [...(state.special.goldenHistory || []), { playerId, target, guess, found: false }].slice(-20);
       events.push(`🔎 ${guess} n'est pas la cible dorée`);
     }
@@ -1469,9 +1490,10 @@ function processGoldenDart(state: Wave61State, playerId: string, darts: GameDart
 }
 
 function processCodebreaker(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
-  const secret = (state.special?.secretCode || []).map(Number).slice(0, 3);
-  const guess = darts.slice(0, 3).map(dartNumberGuess);
-  while (guess.length < 3) guess.push(0);
+  const codeLength = modeOptionNumber(state.config, "codeLength", 3, 2, 3);
+  const secret = (state.special?.secretCode || []).map(Number).slice(0, codeLength);
+  const guess = darts.slice(0, codeLength).map(dartNumberGuess);
+  while (guess.length < codeLength) guess.push(0);
   const { exact, present } = scoreCodeGuess(secret, guess);
   state.special.codeHistory = [...(state.special.codeHistory || []), { playerId, guess, exact, present }].slice(-12);
   state.progress[playerId] = Math.max(Number(state.progress[playerId] || 0), exact);
@@ -1522,16 +1544,19 @@ function processFaceMystere(state: Wave61State, playerId: string, darts: GameDar
     }
     candidates = candidates.filter((n) => n !== guess);
     const before = candidates.length;
-    const trait = nextFaceTrait(state);
-    if (trait) {
+    const cluesPerMiss = modeOptionNumber(state.config, "cluesPerMiss", 1, 1, 2);
+    let clueAdded = false;
+    for (let clueIndex = 0; clueIndex < cluesPerMiss; clueIndex++) {
+      const trait = nextFaceTrait(state);
+      if (!trait) break;
       const answer = trait.test(secret);
       candidates = candidates.filter((n) => trait.test(n) === answer);
       const label = answer ? trait.yes : trait.no;
       state.special.faceClues = [...(state.special.faceClues || []), { key: trait.key, label }];
       events.push(`🔎 ${label}`);
-    } else {
-      events.push(`❌ Suspect ${guess} écarté`);
+      clueAdded = true;
     }
+    if (!clueAdded) events.push(`❌ Suspect ${guess} écarté`);
     const removed = Math.max(1, before - candidates.length + 1);
     delta += removed;
     state.scores[playerId] = Number(state.scores[playerId] || 0) + removed * 8;

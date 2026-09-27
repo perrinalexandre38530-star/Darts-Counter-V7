@@ -22,6 +22,18 @@ const BUILTIN_BOTS = [
   { id: "wave61_bot_hard", name: "Arcade Ace", isBot: true, botLevel: "hard" },
 ];
 
+export type Wave61DedicatedOption = {
+  key: string;
+  label: string;
+  type: "select" | "toggle" | "number";
+  defaultValue: any;
+  options?: Array<{ value: any; label: string }>;
+  min?: number;
+  max?: number;
+  step?: number;
+  help?: string;
+};
+
 function isBotLike(p: any) { return Boolean(p?.isBot || p?.bot || p?.kind === "bot" || p?.botLevel); }
 function avatarOf(p: any) { return p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? p?.photoDataUrl ?? null; }
 function normalizeProfile(p: any, isBot = false) { return { ...p, id: String(p?.id || p?.profileId || ""), name: String(p?.name || p?.displayName || (isBot ? "BOT" : "Joueur")), avatarDataUrl: avatarOf(p), isBot: isBot || !!p?.isBot }; }
@@ -38,6 +50,10 @@ export default function Wave61SharedConfig(props: any) {
   const accent = preset.accent || theme?.primary || "#ffb13b";
   const key = `dc_wave61_cfg_${spec.id}`;
   const saved = React.useMemo(() => { try { const parsed = JSON.parse(localStorage.getItem(key) || "null"); return parsed && typeof parsed === "object" ? parsed : {}; } catch { return {}; } }, [key]);
+  const dedicatedOptions: Wave61DedicatedOption[] = Array.isArray(props?.dedicatedOptions) ? props.dedicatedOptions : [];
+  const dedicatedIntro = String(props?.dedicatedIntro || "");
+  const dedicatedDefaults = React.useMemo(() => Object.fromEntries(dedicatedOptions.map((option) => [option.key, option.defaultValue])), [spec.id]);
+  const [modeOptions, setModeOptions] = React.useState<Record<string, any>>(() => ({ ...dedicatedDefaults, ...(saved?.modeOptions && typeof saved.modeOptions === "object" ? saved.modeOptions : {}) }));
 
   const storeProfiles = Array.isArray(store?.profiles) ? store.profiles : [];
   const humanProfiles = React.useMemo(() => storeProfiles.filter((p: any) => !isBotLike(p)).map((p: any) => normalizeProfile(p)), [storeProfiles]);
@@ -73,8 +89,8 @@ export default function Wave61SharedConfig(props: any) {
   }, [humanProfiles.length, botProfiles.length]);
 
   React.useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify({ selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod })); } catch {}
-  }, [key, selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod]);
+    try { localStorage.setItem(key, JSON.stringify({ selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod, modeOptions })); } catch {}
+  }, [key, selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod, modeOptions]);
 
   function togglePlayer(rawId: any) {
     const id = String(rawId || "");
@@ -112,6 +128,7 @@ export default function Wave61SharedConfig(props: any) {
       lives: Math.max(0, Math.min(9, Number(lives) || 0)),
       randomOrder,
       scoreInputMethod,
+      modeOptions,
       engineFamily: preset.family,
       engineVersion: WAVE61_ENGINE_VERSION,
     };
@@ -123,7 +140,7 @@ export default function Wave61SharedConfig(props: any) {
   const pill = (active: boolean): React.CSSProperties => ({ minHeight: 36, padding: "7px 12px", borderRadius: 999, border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`, background: active ? `${accent}1c` : "rgba(255,255,255,.035)", color: active ? "#fff" : "#aeb5c8", fontWeight: 950 });
 
   return <div className="page" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
-    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b><br /><br />Architecture V10 : ce mode passe maintenant par son propre fichier Config dédié, tout en réutilisant le moteur mutualisé <b>{preset.label}</b>. Les options spécifiques pourront évoluer ici sans impacter les autres modes.</div>} />} />
+    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b>{dedicatedIntro ? <><br /><br /><b style={{ color: accent }}>CONFIGURATION DÉDIÉE</b><br />{dedicatedIntro}</> : null}<br /><br />Architecture dédiée : ce mode passe par son propre fichier Config tout en réutilisant le moteur mutualisé <b>{preset.label}</b>.</div>} />} />
     {modeTicker ? <div style={{ padding: "6px 10px 2px", maxWidth: 980, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 16, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 12px 34px rgba(0,0,0,.38)` }} /></div> : null}
     <div style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section style={card}>
@@ -148,6 +165,21 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
+
+      {dedicatedOptions.length ? <section style={{ ...card, borderColor: `${accent}4d` }}>
+        <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
+        {dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
+        {dedicatedOptions.map((option) => {
+          const value = modeOptions?.[option.key] ?? option.defaultValue;
+          const setValue = (next: any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
+          return <div key={option.key} style={{ marginBottom: 4 }}>
+            <OptionRow label={option.label}>
+              {option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.28)", color: "#fff", padding: "8px 9px", fontWeight: 900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={setValue} />}
+            </OptionRow>
+            {option.help ? <div style={{ color: "#777f91", fontSize: 9.3, lineHeight: 1.35, padding: "0 4px 5px" }}>{option.help}</div> : null}
+          </div>;
+        })}
+      </section> : null}
 
       <section style={{ ...card, borderColor: valid ? `${accent}66` : "rgba(255,255,255,.08)" }}>
         <div style={{ color: "#aeb5c8", fontSize: 11, lineHeight: 1.55 }}><b style={{ color: "#fff" }}>{spec.label}</b> utilise désormais le moteur <b style={{ color: accent }}>{preset.label}</b>. La sauvegarde/reprise, l'Undo, les bots, le scoring par dart et l'écran de fin sont branchés dans le socle commun.</div>
