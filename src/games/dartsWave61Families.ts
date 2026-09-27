@@ -157,6 +157,14 @@ const MODE_OVERRIDES: Record<string, Partial<Wave61FamilyPreset>> = {
   align_4: { defaultRounds: 21, defaultGoal: 4, minPlayers: 2 },
   sniper: { defaultGoal: 12, defaultRounds: 12 },
   luciole: { defaultGoal: 10, defaultRounds: 12 },
+  vikings: { minPlayers: 2, defaultGoal: 100, defaultRounds: 18 },
+  black_flag: { minPlayers: 2, defaultGoal: 100, defaultRounds: 18 },
+  menhir_mayhem: { minPlayers: 2, defaultGoal: 100, defaultRounds: 18 },
+  attila: { minPlayers: 2, defaultGoal: 100, defaultRounds: 20 },
+  poseidon: { minPlayers: 2, defaultGoal: 100, defaultRounds: 18 },
+  cheval_de_troie: { defaultGoal: 100, defaultRounds: 18 },
+  sabaudia_dauphine: { minPlayers: 2, defaultGoal: 100, defaultRounds: 20 },
+  galaxies: { minPlayers: 2, defaultGoal: 100, defaultRounds: 22 },
 };
 
 export function getWave61Family(modeId: string): Wave61Family {

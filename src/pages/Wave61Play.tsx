@@ -77,6 +77,16 @@ import {
   PetitBacPanel,
   PyramidesPanel,
 } from "./wave61/Wave61MissionAdventurePanels";
+import {
+  AttilaPanel,
+  BlackFlagPanel,
+  ChevalTroiePanel,
+  GalaxiesPanel,
+  MenhirMayhemPanel,
+  PoseidonPanel,
+  SabaudiaDauphinePanel,
+  VikingsPanel,
+} from "./wave61/Wave61ConquestPanels";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -117,6 +127,14 @@ function familyRules(spec: any, preset: any) {
     knockback: "Pars de 0 et atteins exactement l'objectif. Si ton nouveau score égale celui d'un adversaire, il est renvoyé à 0. Un dépassement provoque un BUST.",
     spartacus: "Combats d'arène avec PV, armure, garde et gloire. Les bonnes fenêtres déclenchent les attaques, tandis que les BULL renforcent la garde.",
     cosmo_knights: "Les impacts sur la constellation chargent le Cosmos. À 100 %, un COSMO BURST frappe l'adversaire ; BULL charge aussi le bouclier.",
+    vikings: "Conquiers des territoires nordiques. Les impacts sur le secteur actif créent de la pression, les fortifications adverses absorbent les attaques et la Fureur déclenche un Raid du Jarl.",
+    black_flag: "Pars à la conquête d'un archipel pirate. Les îles peuvent changer de propriétaire, les fortifications protègent les positions et le Butin chargé à 100 % déclenche une Bordée.",
+    menhir_mayhem: "Capture villages, carrières et camps. Les triples chargent davantage la Potion et une jauge pleine déclenche un Menhir géant pour accélérer la conquête.",
+    attila: "La marche des Huns traverse sept territoires. Les volées parfaites renforcent la charge et la Terreur permet de lancer une offensive massive.",
+    poseidon: "Domine récifs, ports, détroits et abysses. Les BULL renforcent la Marée et le Trident ajoute une poussée de conquête supplémentaire.",
+    cheval_de_troie: "Construis le cheval, mène le siège, infiltre la cité puis prends la citadelle. Les erreurs font monter l'alerte ; BULL améliore la discrétion.",
+    sabaudia_dauphine: "Conquête territoriale alpine entre Sabaudia et Dauphiné. Les positions peuvent être fortifiées et une Influence pleine renforce les territoires déjà contrôlés.",
+    galaxies: "Colonise des systèmes stellaires. Doubles/triples accélèrent l'expansion, l'Énergie alimente l'Hyperdrive et les systèmes fortifiés résistent aux invasions.",
     tug_rush: "Deux camps tirent une corde virtuelle. Le secteur demandé donne de la traction, doubles/triples renforcent le tir et les BULL déclenchent les plus gros coups.",
     un_deux_trois_soleil: "Phase verte : touche le secteur demandé pour avancer. Phase SOLEIL : reste immobile avec MISS ou sécurise au BULL ; tout autre impact fait reculer.",
     chat_souris: "Le chat part en chasse tandis que les souris disposent d'avance. Le chat capture en rattrapant leur position ; une souris gagne si elle atteint le refuge.",
@@ -131,7 +149,7 @@ function familyRules(spec: any, preset: any) {
   return <div style={{ display: "grid", gap: 9, fontSize: 12.5, lineHeight: 1.5 }}>
     <div><b style={{ color: preset.accent }}>CONCEPT</b><br />{spec.infoBody}</div>
     <div><b style={{ color: preset.accent }}>MOTEUR V{WAVE61_ENGINE_VERSION}</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
-    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V6 conserve les moteurs précédents et spécialise Mission / Aventure / Exploration : phases, verrous, ressources, risques, jauges et objectifs scénarisés.</div>
+    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V7 conserve les moteurs précédents et spécialise Conquête / Histoire / Territoire : cartes de zones, pression, propriétaires, fortifications, ressources et pouvoirs de faction.</div>
   </div>;
 }
 
@@ -497,6 +515,14 @@ export default function Wave61Play(props: any) {
       {spec.id === "knockback" ? <KnockbackPanel state={state} accent={accent} /> : null}
       {spec.id === "spartacus" ? <SpartacusPanel state={state} accent={accent} /> : null}
       {spec.id === "cosmo_knights" ? <CosmoKnightsPanel state={state} accent={accent} /> : null}
+      {spec.id === "vikings" ? <VikingsPanel state={state} accent={accent} /> : null}
+      {spec.id === "black_flag" ? <BlackFlagPanel state={state} accent={accent} /> : null}
+      {spec.id === "menhir_mayhem" ? <MenhirMayhemPanel state={state} accent={accent} /> : null}
+      {spec.id === "attila" ? <AttilaPanel state={state} accent={accent} /> : null}
+      {spec.id === "poseidon" ? <PoseidonPanel state={state} accent={accent} /> : null}
+      {spec.id === "cheval_de_troie" ? <ChevalTroiePanel state={state} accent={accent} /> : null}
+      {spec.id === "sabaudia_dauphine" ? <SabaudiaDauphinePanel state={state} accent={accent} /> : null}
+      {spec.id === "galaxies" ? <GalaxiesPanel state={state} accent={accent} /> : null}
 
       {state.phase !== "finished" ? <>
         <div style={{ ...panelStyle(accent + "3d"), padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>

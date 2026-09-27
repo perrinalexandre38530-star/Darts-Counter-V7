@@ -2,7 +2,7 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-export const WAVE61_ENGINE_VERSION = 6;
+export const WAVE61_ENGINE_VERSION = 7;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -232,6 +232,19 @@ const CIRCUIT_NAMES = ["ALIM", "MOTEUR", "ÉCLAIRAGE", "CAPTEUR", "RELAIS", "SOR
 const BAC_CATEGORIES = ["PRÉNOM", "VILLE", "ANIMAL", "OBJET", "SPORT", "MÉTIER"] as const;
 const BAC_LETTERS = ["A","B","C","D","E","F","G","H","I","J","L","M","N","O","P","R","S","T","V","Z"] as const;
 
+const CONQUEST_PROFILES: Record<string, { icon: string; label: string; nodes: string[]; threshold: number; win: number; resource: string; ability: string; fort: number }> = {
+  vikings: { icon: "🛡️", label: "VIKINGS", nodes: ["FJORD", "PORT", "VILLAGE", "FORT", "TEMPLE", "JARL"], threshold: 5, win: 4, resource: "FUREUR", ability: "RAID DU JARL", fort: 1 },
+  black_flag: { icon: "🏴‍☠️", label: "BLACK FLAG", nodes: ["CAYE", "PORT", "ÎLE", "FORT", "GALION", "TRÉSOR"], threshold: 6, win: 4, resource: "BUTIN", ability: "BORDÉE", fort: 2 },
+  menhir_mayhem: { icon: "🪨", label: "MENHIR MAYHEM", nodes: ["VILLAGE", "FORÊT", "CARRIÈRE", "CAMP NORD", "CAMP SUD", "FORT"], threshold: 5, win: 4, resource: "POTION", ability: "MENHIR GÉANT", fort: 1 },
+  attila: { icon: "🐎", label: "ATTILA", nodes: ["CAMPEMENT", "PLAINE", "PONT", "CITÉ", "FORT", "CAPITALE", "EMPIRE"], threshold: 5, win: 5, resource: "TERREUR", ability: "CHARGE DES HUNS", fort: 1 },
+  poseidon: { icon: "🔱", label: "POSÉIDON", nodes: ["RÉCIF", "PORT", "DÉTROIT", "ABYSSES", "TEMPLE", "OCÉAN"], threshold: 6, win: 4, resource: "MARÉE", ability: "TRIDENT", fort: 2 },
+  sabaudia_dauphine: { icon: "🏔️", label: "SABAUDIA & DAUPHINÉ", nodes: ["SAVOIE", "HAUTE-SAVOIE", "DAUPHINÉ", "CHAMBÉRY", "GRENOBLE", "MAURIENNE", "TARENTAISE", "VERCORS"], threshold: 5, win: 5, resource: "INFLUENCE", ability: "FORT DES ALPES", fort: 2 },
+  galaxies: { icon: "🌌", label: "GALAXIES", nodes: ["NÉBULEUSE", "SYSTÈME A", "SYSTÈME B", "CEINTURE", "LUNE", "MONDE", "PORTAIL", "NOYAU"], threshold: 6, win: 5, resource: "ÉNERGIE", ability: "HYPERDRIVE", fort: 2 },
+};
+
+const TROJAN_PHASES = ["BOIS", "ASSEMBLAGE", "SIÈGE", "INFILTRATION", "CITADELLE"] as const;
+
+
 function missionThreshold(difficulty: Wave61Difficulty, easy = 2, normal = 3, hard = 4) {
   return difficulty === "easy" ? easy : difficulty === "hard" ? hard : normal;
 }
@@ -334,6 +347,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
   if (config.participantMode === "teams") ids.forEach((id, i) => { if (!teamByPlayer[id]) teamByPlayer[id] = i % 2 === 0 ? "A" : "B"; });
   config.teamByPlayer = teamByPlayer;
   const teamIds = Array.from(new Set(Object.values(teamByPlayer).filter(Boolean)));
+  const conquest = CONQUEST_PROFILES[modeId] || null;
   return {
     sport: "darts",
     mode: "wave61",
@@ -501,6 +515,22 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       bacStepByPlayer: modeId === "petit_bac" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       bacValidatedByPlayer: modeId === "petit_bac" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       bacHistory: [],
+
+      conquestTargets: conquest ? seededNumbers(`conquest:${modeId}:${seedText}`, conquest.nodes.length, 20) : [],
+      conquestOwnerByNode: conquest ? Array(conquest.nodes.length).fill(null) : [],
+      conquestPressureByNode: conquest ? Array.from({ length: conquest.nodes.length }, () => ({ actor: null, value: 0 })) : [],
+      conquestFortByNode: conquest ? Array(conquest.nodes.length).fill(0) : [],
+      conquestFocusByPlayer: conquest ? Object.fromEntries(ids.map((id, i) => [id, i % conquest.nodes.length])) : {},
+      conquestResourceByPlayer: conquest ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      conquestCapturesByPlayer: conquest ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      conquestHistory: [],
+
+      trojanSequence: modeId === "cheval_de_troie" ? seededNumbers(`trojan:${seedText}`, TROJAN_PHASES.length, 20) : [],
+      trojanPhaseByPlayer: modeId === "cheval_de_troie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      trojanMarksByPlayer: modeId === "cheval_de_troie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      trojanAlertByPlayer: modeId === "cheval_de_troie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      trojanWoodByPlayer: modeId === "cheval_de_troie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      trojanHistory: [],
 
       hotPotatoSequence: modeId === "hot_potato" ? survivalSequence(seedText, "hotpotato") : [],
       hotPotatoFuse: modeId === "hot_potato" ? hotPotatoFuseReset(config.difficulty) : 0,
@@ -710,6 +740,22 @@ export function getWave61Target(state: Wave61State): Wave61Target {
     const n = missionStageTarget(state.special?.bacSequence || [], step);
     const letter = BAC_LETTERS[(n - 1) % BAC_LETTERS.length];
     return { kind: "number", value: n, label: `📝 ${BAC_CATEGORIES[Math.min(step, BAC_CATEGORIES.length - 1)]} en ${letter} · secteur ${n} · BULL = joker` };
+  }
+  if (CONQUEST_PROFILES[state.modeId]) {
+    const player = state.players[state.activePlayerIndex];
+    const profile = CONQUEST_PROFILES[state.modeId];
+    const focus = conquestFocusIndex(state, player?.id);
+    const n = Number(state.special?.conquestTargets?.[focus] || 20);
+    const node = profile.nodes[focus] || `ZONE ${focus + 1}`;
+    const owner = state.special?.conquestOwnerByNode?.[focus];
+    const fort = Number(state.special?.conquestFortByNode?.[focus] || 0);
+    return { kind: "number", value: n, label: `${profile.icon} ${node} · secteur ${n}${owner ? ` · fort ${fort}` : ""}` };
+  }
+  if (state.modeId === "cheval_de_troie") {
+    const player = state.players[state.activePlayerIndex];
+    const phase = Number(state.special?.trojanPhaseByPlayer?.[player?.id] || 0);
+    const n = Number(state.special?.trojanSequence?.[Math.min(phase, TROJAN_PHASES.length - 1)] || 20);
+    return { kind: "number", value: n, label: `🐴 ${TROJAN_PHASES[Math.min(phase, TROJAN_PHASES.length - 1)]} · secteur ${n} · alerte ${state.special?.trojanAlertByPlayer?.[player?.id] || 0}%` };
   }
   if (state.modeId === "hot_potato") {
     const n = raceTargetFromSequence(state.special?.hotPotatoSequence || [], state.turnIndex);
@@ -2083,6 +2129,164 @@ function processPetitBac(state: Wave61State, playerId: string, darts: GameDart[]
   return { delta: hits, hits };
 }
 
+function conquestActor(state: Wave61State, playerId: string): string {
+  return state.config.participantMode === "teams" ? String(state.config.teamByPlayer?.[playerId] || "A") : playerId;
+}
+
+function conquestControlledCount(state: Wave61State, actor: string): number {
+  return (state.special?.conquestOwnerByNode || []).filter((owner: any) => String(owner || "") === actor).length;
+}
+
+function conquestFocusIndex(state: Wave61State, playerId: string): number {
+  const profile = CONQUEST_PROFILES[state.modeId];
+  if (!profile) return 0;
+  const actor = conquestActor(state, playerId);
+  const owners = state.special?.conquestOwnerByNode || [];
+  const start = Number(state.special?.conquestFocusByPlayer?.[playerId] || 0) % profile.nodes.length;
+  for (let step = 0; step < profile.nodes.length; step++) {
+    const idx = (start + step) % profile.nodes.length;
+    if (String(owners[idx] || "") !== actor) return idx;
+  }
+  return start;
+}
+
+function syncConquestProgress(state: Wave61State) {
+  const profile = CONQUEST_PROFILES[state.modeId];
+  if (!profile) return;
+  for (const p of state.players) {
+    const actor = conquestActor(state, p.id);
+    const controlled = conquestControlledCount(state, actor);
+    state.progress[p.id] = Math.min(100, Math.round((controlled / profile.win) * 100));
+  }
+}
+
+function processConquestMode(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  const profile = CONQUEST_PROFILES[state.modeId];
+  if (!profile) return { delta: 0, hits: 0 };
+  const actor = conquestActor(state, playerId);
+  let focus = conquestFocusIndex(state, playerId);
+  state.special.conquestFocusByPlayer[playerId] = focus;
+  const matching = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)) : [];
+  const bulls = bullCount(darts);
+  const triples = matching.filter((d) => d?.bed === "T").length;
+  const hits = matching.length + bulls;
+  let power = matching.reduce((sum, d) => sum + bedPower(d, 1, 2, 3), 0) + bulls;
+  let resource = Number(state.special?.conquestResourceByPlayer?.[playerId] || 0);
+  resource += matching.reduce((sum, d) => sum + bedPower(d, 6, 10, 15), 0) + bulls * 20;
+
+  if (state.modeId === "black_flag") {
+    const treasure = bulls * 40 + triples * 20;
+    state.scores[playerId] = Number(state.scores[playerId] || 0) + treasure;
+    if (treasure) events.push(`🏴‍☠️ Butin +${treasure}`);
+  } else if (state.modeId === "menhir_mayhem") {
+    resource += triples * 12;
+  } else if (state.modeId === "attila" && hits >= 3) {
+    power += 2; resource += 10; events.push("🐎 Charge parfaite +2 puissance");
+  } else if (state.modeId === "poseidon" && bulls > 0) {
+    power += bulls * 2; events.push("🔱 Marée renforcée");
+  } else if (state.modeId === "galaxies") {
+    resource += triples * 15;
+  }
+
+  if (resource >= 100) {
+    resource -= 100;
+    power += state.modeId === "galaxies" ? 5 : state.modeId === "poseidon" ? 4 : 3;
+    events.push(`${profile.icon} ${profile.ability} activé`);
+    if (state.modeId === "sabaudia_dauphine") {
+      const owned = (state.special?.conquestOwnerByNode || []).map((owner: any, i: number) => String(owner || "") === actor ? i : -1).filter((i: number) => i >= 0);
+      for (const idx of owned) state.special.conquestFortByNode[idx] = Math.min(6, Number(state.special.conquestFortByNode[idx] || 0) + 1);
+    }
+  }
+  state.special.conquestResourceByPlayer[playerId] = clamp(resource, 0, 120);
+
+  let owner = state.special.conquestOwnerByNode[focus];
+  let fort = Number(state.special.conquestFortByNode[focus] || 0);
+  let pressure = state.special.conquestPressureByNode[focus] || { actor: null, value: 0 };
+
+  if (owner && String(owner) !== actor && fort > 0 && power > 0) {
+    const broken = Math.min(fort, power);
+    fort -= broken;
+    power -= broken;
+    state.special.conquestFortByNode[focus] = fort;
+    events.push(`🧱 Fortification adverse -${broken}`);
+  }
+
+  if (String(owner || "") === actor) {
+    if (power > 0) {
+      state.special.conquestFortByNode[focus] = Math.min(8, fort + power);
+      events.push(`🏰 ${profile.nodes[focus]} renforcée`);
+    }
+  } else if (power > 0) {
+    if (pressure.actor && pressure.actor !== actor) {
+      const cancel = Math.min(Number(pressure.value || 0), power);
+      pressure.value = Math.max(0, Number(pressure.value || 0) - cancel);
+      power -= cancel;
+      if (pressure.value <= 0) pressure = { actor: null, value: 0 };
+      if (cancel) events.push(`⚔️ Contestation -${cancel}`);
+    }
+    if (power > 0) {
+      if (!pressure.actor || pressure.actor === actor) pressure = { actor, value: Number(pressure.value || 0) + power };
+      else pressure = { actor, value: power };
+    }
+    if (Number(pressure.value || 0) >= profile.threshold) {
+      owner = actor;
+      state.special.conquestOwnerByNode[focus] = actor;
+      state.special.conquestFortByNode[focus] = profile.fort + Math.min(2, bulls);
+      state.special.conquestPressureByNode[focus] = { actor: null, value: 0 };
+      state.special.conquestCapturesByPlayer[playerId] = Number(state.special?.conquestCapturesByPlayer?.[playerId] || 0) + 1;
+      state.scores[playerId] = Number(state.scores[playerId] || 0) + 100 + profile.threshold * 10;
+      events.push(`${profile.icon} ${profile.nodes[focus]} conquise !`);
+      focus = conquestFocusIndex(state, playerId);
+      state.special.conquestFocusByPlayer[playerId] = focus;
+    } else {
+      state.special.conquestPressureByNode[focus] = pressure;
+      events.push(`${profile.icon} Pression ${Math.round(Number(pressure.value || 0))}/${profile.threshold}`);
+    }
+  } else events.push(`${profile.icon} Assaut repoussé`);
+
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((sum, d) => sum + wave61DartScore(d), 0);
+  syncConquestProgress(state);
+  const controlled = conquestControlledCount(state, actor);
+  state.special.conquestHistory = [...(state.special?.conquestHistory || []), { playerId, actor, focus, controlled, resource: state.special.conquestResourceByPlayer[playerId] }].slice(-50);
+  if (controlled >= profile.win) finishWith(state, playerId, state.config.participantMode === "teams" ? actor : null);
+  return { delta: hits, hits };
+}
+
+function processChevalTroie(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let phase = Number(state.special?.trojanPhaseByPlayer?.[playerId] || 0);
+  let marks = Number(state.special?.trojanMarksByPlayer?.[playerId] || 0);
+  let alert = Number(state.special?.trojanAlertByPlayer?.[playerId] || 0);
+  let wood = Number(state.special?.trojanWoodByPlayer?.[playerId] || 0);
+  const matching = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)) : [];
+  const hits = matching.length;
+  const power = matching.reduce((sum, d) => sum + bedPower(d, 1, 2, 3), 0);
+  const bulls = bullCount(darts);
+  const wrong = nonBullWrongCount(darts, target, state.config.difficulty) + darts.filter((d) => d?.bed === "MISS").length;
+  marks += power;
+  if (phase <= 1) wood += power * 12;
+  alert = clamp(alert + wrong * (state.config.difficulty === "hard" ? 14 : 9) - bulls * 18, 0, 100);
+  const baseNeed = [5, 5, 4, 4, 5][Math.min(phase, 4)] || 5;
+  const need = baseNeed + (state.config.difficulty === "hard" ? 1 : state.config.difficulty === "easy" ? -1 : 0);
+  if (marks >= Math.max(3, need)) {
+    events.push(`🐴 ${TROJAN_PHASES[Math.min(phase, TROJAN_PHASES.length - 1)]} réussi`);
+    phase += 1; marks = 0;
+  }
+  if (alert >= 100 && phase >= 2 && phase < TROJAN_PHASES.length) {
+    phase = Math.max(1, phase - 1); marks = 0; alert = 55;
+    events.push("🚨 Infiltration découverte · recul d'une phase");
+  }
+  if (bulls) events.push(`🤫 Discrétion -${bulls * 18}% alerte`);
+  state.special.trojanPhaseByPlayer[playerId] = phase;
+  state.special.trojanMarksByPlayer[playerId] = marks;
+  state.special.trojanAlertByPlayer[playerId] = alert;
+  state.special.trojanWoodByPlayer[playerId] = wood;
+  state.progress[playerId] = Math.min(100, Math.round((phase / TROJAN_PHASES.length) * 100));
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + darts.reduce((sum, d) => sum + wave61DartScore(d), 0) + power * 20;
+  state.special.trojanHistory = [...(state.special?.trojanHistory || []), { playerId, phase, alert, wood, marks }].slice(-40);
+  if (phase >= TROJAN_PHASES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
 function processHotPotato(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
   const hits = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length : 0;
   let fuse = Number(state.special?.hotPotatoFuse || hotPotatoFuseReset(state.config.difficulty));
@@ -2600,6 +2804,10 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const result = processDisjoncte(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "petit_bac") {
     const result = processPetitBac(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (CONQUEST_PROFILES[state.modeId]) {
+    const result = processConquestMode(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "cheval_de_troie") {
+    const result = processChevalTroie(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "hot_potato") {
     const result = processHotPotato(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "zombie_siege") {
@@ -2874,6 +3082,13 @@ export function wave61PrimaryMetric(state: Wave61State, playerId: string): { val
   if (state.modeId === "microscopia") return { value: Number(state.special?.microSamplesByPlayer?.[playerId] || 0), label: "ÉCHANT.", sub: `qualité ${state.special?.microQualityByPlayer?.[playerId] || 0} · contamination ${state.special?.microContaminationByPlayer?.[playerId] || 0}%` };
   if (state.modeId === "disjoncte") return { value: Number(state.special?.circuitStepByPlayer?.[playerId] || 0), label: "CIRCUITS", sub: `${state.special?.circuitStepByPlayer?.[playerId] || 0}/${CIRCUIT_NAMES.length} · surcharge ${state.special?.circuitOverloadByPlayer?.[playerId] || 0}%` };
   if (state.modeId === "petit_bac") return { value: Number(state.special?.bacValidatedByPlayer?.[playerId] || 0), label: "CATÉG.", sub: `${state.special?.bacStepByPlayer?.[playerId] || 0}/${BAC_CATEGORIES.length} validées` };
+  if (CONQUEST_PROFILES[state.modeId]) {
+    const profile = CONQUEST_PROFILES[state.modeId];
+    const actor = conquestActor(state, playerId);
+    const controlled = conquestControlledCount(state, actor);
+    return { value: controlled, label: "TERRITOIRES", sub: `${controlled}/${profile.win} · ${profile.resource.toLowerCase()} ${Math.round(Number(state.special?.conquestResourceByPlayer?.[playerId] || 0))}%` };
+  }
+  if (state.modeId === "cheval_de_troie") return { value: Number(state.special?.trojanPhaseByPlayer?.[playerId] || 0), label: "PHASES", sub: `${state.special?.trojanPhaseByPlayer?.[playerId] || 0}/${TROJAN_PHASES.length} · alerte ${state.special?.trojanAlertByPlayer?.[playerId] || 0}%` };
   if (state.modeId === "hot_potato") return { value: Number(state.lives[playerId] || 0), label: "VIES", sub: `${state.special?.hotPotatoPassesByPlayer?.[playerId] || 0} passe(s) · ${state.special?.hotPotatoExplosionsByPlayer?.[playerId] || 0} explosion(s)` };
   if (state.modeId === "zombie_siege") return { value: Number(state.special?.zombieInfectionByPlayer?.[playerId] || 0), label: state.special?.zombieRoleByPlayer?.[playerId] === "ZOMBIE" ? "ZOMBIE" : "INFECTION", sub: `${state.special?.zombieBarricadeByPlayer?.[playerId] || 0}% barricade` };
   if (state.modeId === "le_loup") return { value: state.special?.loupId === playerId ? 1 : Number(state.lives[playerId] || 0), label: state.special?.loupId === playerId ? "LOUP" : "VIES", sub: `${state.special?.loupCaughtByPlayer?.[playerId] || 0} capture(s) · fuite ${Math.round(Number(state.progress[playerId] || 0))}` };

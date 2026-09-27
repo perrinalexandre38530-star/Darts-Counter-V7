@@ -9,7 +9,7 @@ const panels = read('src/pages/wave61/Wave61RacePanels.tsx');
 const config = read('src/pages/Wave61Config.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 
-assert(engine.includes('WAVE61_ENGINE_VERSION = 4'), 'Wave61 V4 absent');
+assert(/WAVE61_ENGINE_VERSION = (?:[4-9]|[1-9][0-9]+)/.test(engine), 'Wave61 doit être au moins V4');
 assert(engine.includes('processTugRush'), 'TUG RUSH spécialisé absent');
 assert(engine.includes('tugPosition'), 'Jauge TUG RUSH absente');
 assert(engine.includes('processSoleil'), '1,2,3 SOLEIL spécialisé absent');
@@ -40,7 +40,7 @@ assert(/tug_rush:\s*\{[^}]*minPlayers:\s*2[^}]*defaultGoal:\s*60/.test(families)
 assert(/maze_chase:\s*\{\s*defaultGoal:\s*20/.test(families), 'MAZE CHASE doit avoir 20 cases');
 assert(/athletisme:\s*\{\s*defaultGoal:\s*0,\s*defaultRounds:\s*6/.test(families), 'ATHLÉTISME doit avoir 6 épreuves');
 assert(/chute_libre:\s*\{\s*defaultGoal:\s*0,\s*defaultRounds:\s*12/.test(families), 'CHUTE LIBRE doit utiliser atterrissage/crash plutôt qu’un goal moteur');
-assert(play.includes('Course / Arcade / Performance'), 'Texte de passe V4 absent');
+assert(play.includes('Wave61RacePanels'), 'Panneaux Course / Arcade V4 non importés');
 assert(config.includes('WAVE61_ENGINE_VERSION'), 'Config ne consomme pas la version moteur');
 assert(play.includes('WAVE61_ENGINE_VERSION'), 'Play ne consomme pas la version moteur');
 

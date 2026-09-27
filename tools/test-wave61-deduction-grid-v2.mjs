@@ -8,7 +8,7 @@ const play = read('src/pages/Wave61Play.tsx');
 const config = read('src/pages/Wave61Config.tsx');
 const families = read('src/games/dartsWave61Families.ts');
 
-assert(engine.includes('WAVE61_ENGINE_VERSION = 4'), 'Constante Wave61 V4 absente');
+assert(/WAVE61_ENGINE_VERSION = (?:[4-9]|[1-9][0-9]+)/.test(engine), 'Wave61 doit être au moins V4');
 assert(engine.includes('wave61MineNeighborCount'), 'Indices voisins DÉMINEUR absents');
 assert(engine.includes('Scanner BULL'), 'Scanner BULL DÉMINEUR absent');
 assert(engine.includes('processCodebreaker'), 'CODEBREAKER V2 absent');
