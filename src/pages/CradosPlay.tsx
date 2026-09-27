@@ -8,6 +8,8 @@ import tickerCrados from "../assets/tickers/ticker_crados.webp";
 import cradosDirtBar from "../assets/crados/crados_dirt_progress.png";
 import cradosRadarBoard from "../assets/crados/crados_radar_board.png";
 import { useAwenaOptional } from "../awena/AwenaProvider";
+import { awenaTranslation } from "../awena/AwenaTranslation";
+import { useLang } from "../contexts/LangContext";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
@@ -779,6 +781,140 @@ function currentCradosRound(state: any) {
   return Math.floor(Number(state?.turnIndex || 0) / participantCount) + 1;
 }
 
+
+type CradosVoiceImportance = "minor" | "normal" | "major";
+type CradosActionVoice = { text: string; delayMs: number; importance: CradosVoiceImportance };
+
+function cradosEventNumber(events: string[], pattern: RegExp) {
+  for (const event of events || []) {
+    const match = String(event || "").match(pattern);
+    if (match) return Number(match[1] || 0);
+  }
+  return 0;
+}
+
+function cradosEventSum(events: string[], pattern: RegExp) {
+  return (events || []).reduce((total, event) => {
+    const match = String(event || "").match(pattern);
+    return total + (match ? Number(match[1] || 0) : 0);
+  }, 0);
+}
+
+function buildCradosActionVoice(previous: CradosState, next: CradosState): CradosActionVoice | null {
+  try {
+    const beforeVisits = Number(previous?.visits?.length || 0);
+    const visit = (next?.visits || []).length > beforeVisits ? next.visits[next.visits.length - 1] : null;
+    if (!visit) return null;
+
+    const shooter = previous?.players?.[previous?.activePlayerIndex];
+    const shooterName = String(shooter?.name || cradosSideName(previous, visit?.sideId) || "Joueur");
+    const events = Array.isArray(visit?.events) ? visit.events.map((event: any) => String(event || "")) : [];
+    const darts = Array.isArray(visit?.darts) ? visit.darts : [];
+    const dirtLimit = Math.max(1, Number(previous?.config?.rules?.dirtLimit || 10));
+    const dirtBefore = Number(visit?.dirtBefore || 0);
+    const dirtAfter = Number(visit?.dirtAfter || 0);
+    const dirtDelta = Math.max(0, dirtAfter - dirtBefore);
+
+    const matchWinner = next?.phase === "finished" && next?.winnerId ? cradosSideName(next, next.winnerId) : "";
+    if (matchWinner) {
+      const eliminated = events.find((event) => /est trop CRADO/i.test(event));
+      const eliminatedName = eliminated?.match(/^(.+?)\s+est trop CRADO/i)?.[1]?.trim();
+      return {
+        text: eliminatedName
+          ? `${eliminatedName} est éliminé. ${matchWinner} remporte la partie.`
+          : `${matchWinner} remporte la partie. Le plus propre jusqu'au bout.`,
+        delayMs: 1050,
+        importance: "major",
+      };
+    }
+
+    const wonSideId = Object.keys(next?.legWins || {}).find((sideId) => Number(next?.legWins?.[sideId] || 0) > Number(previous?.legWins?.[sideId] || 0));
+    if (wonSideId) {
+      const winnerName = cradosSideName(next, wonSideId) || "Manche gagnée";
+      const eliminated = events.find((event) => /est trop CRADO/i.test(event));
+      const eliminatedName = eliminated?.match(/^(.+?)\s+est trop CRADO/i)?.[1]?.trim();
+      return {
+        text: eliminatedName
+          ? `${eliminatedName} est éliminé. ${winnerName} remporte la manche.`
+          : `${winnerName} remporte la manche.`,
+        delayMs: 900,
+        importance: "major",
+      };
+    }
+
+    const eliminated = events.find((event) => /est trop CRADO/i.test(event));
+    if (eliminated) {
+      const eliminatedName = eliminated.match(/^(.+?)\s+est trop CRADO/i)?.[1]?.trim() || shooterName;
+      return { text: `${eliminatedName} est éliminé. Jauge de crasse maximale.`, delayMs: 850, importance: "major" };
+    }
+
+    const stolenSector = cradosEventNumber(events, /N°(\d+)\s+VOLÉ/i);
+    if (stolenSector) {
+      return { text: `${shooterName} vole le secteur ${stolenSector}.`, delayMs: 850, importance: "major" };
+    }
+
+    const claimedSector = cradosEventNumber(events, /N°(\d+)\s+(?:devient CRADO|remporté par)/i);
+    if (claimedSector) {
+      return { text: `Secteur ${claimedSector} conquis par ${shooterName}.`, delayMs: 1250, importance: "normal" };
+    }
+
+    const warningAt = Math.max(1, Math.ceil(dirtLimit * .75));
+    if (dirtAfter > dirtBefore && dirtBefore < warningAt && dirtAfter >= warningAt && dirtAfter < dirtLimit) {
+      return { text: `Attention ${shooterName}. ${dirtAfter} sur ${dirtLimit}. La jauge se remplit.`, delayMs: 900, importance: "major" };
+    }
+
+    const dbullWash = cradosEventSum(events, /DBULL DOUCHE\s*:\s*[−-](\d+)/i);
+    if (dbullWash > 0) return { text: `Double Bull. Douche, moins ${dbullWash} de crasse.`, delayMs: 1200, importance: "normal" };
+
+    const bullWash = cradosEventSum(events.filter((event) => /^BULL DOUCHE/i.test(event)), /BULL DOUCHE\s*:\s*[−-](\d+)/i);
+    if (bullWash > 0) return { text: `Bull. Douche, moins ${bullWash} de crasse.`, delayMs: 1200, importance: "normal" };
+
+    const doubleWash = cradosEventSum(events, /DOUBLE DOUCHE\s*:\s*[−-](\d+)/i);
+    if (doubleWash > 0) return { text: `Douche double. Moins ${doubleWash} de crasse.`, delayMs: 1000, importance: "normal" };
+
+    if (events.some((event) => /PROPAGATION/i.test(event))) {
+      return { text: `Bull propre. La crasse se propage chez les adversaires.`, delayMs: 1200, importance: "major" };
+    }
+
+    const missCount = darts.filter((dart: any) => String(dart?.bed || "").toUpperCase() === "MISS").length;
+    const missDirt = cradosEventSum(events, /MISS\s*:\s*\+(\d+)\s+CRASSE/i);
+    if (missCount > 0) {
+      const gained = missDirt || Math.min(dirtLimit - dirtBefore, missCount * 2);
+      return {
+        text: missCount === 1
+          ? `Miss pour ${shooterName}. Plus ${Math.max(0, gained)} de crasse.`
+          : `${missCount} ratés pour ${shooterName}. Plus ${Math.max(0, gained)} de crasse.`,
+        delayMs: 620,
+        importance: "normal",
+      };
+    }
+
+    if (dirtDelta > 0) {
+      return { text: `${shooterName} prend ${dirtDelta} de crasse.`, delayMs: 900, importance: "normal" };
+    }
+
+    const triples = darts.filter((dart: any) => String(dart?.bed || "").toUpperCase() === "T" || Number(dart?.mult || 0) === 3);
+    if (triples.length) {
+      const label = visitDartLabel(triples[triples.length - 1]);
+      const sector = Number(String(label).replace(/^T/i, "")) || 0;
+      return { text: sector ? `Triple ${sector}. Trois couches d'un coup.` : `Triple. Trois couches d'un coup.`, delayMs: 950, importance: "normal" };
+    }
+
+    const doubles = darts.filter((dart: any) => String(dart?.bed || "").toUpperCase() === "D" || Number(dart?.mult || 0) === 2);
+    if (doubles.length) {
+      const label = visitDartLabel(doubles[doubles.length - 1]);
+      const sector = Number(String(label).replace(/^D/i, "")) || 0;
+      return { text: sector ? `Double ${sector}. Deux couches.` : `Double. Deux couches.`, delayMs: 850, importance: "minor" };
+    }
+
+    const hitCount = darts.filter((dart: any) => String(dart?.bed || "").toUpperCase() !== "MISS").length;
+    if (hitCount > 0) {
+      return { text: `${shooterName}, volée validée.`, delayMs: 650, importance: "minor" };
+    }
+  } catch {}
+  return null;
+}
+
 function buildCradosCoachHint(state: any, activeSideIdRaw: any, activeNameRaw: any) {
   if (!state || state.phase !== "playing") return { visual: "", speech: "" };
   const sideId = String(activeSideIdRaw || "");
@@ -852,6 +988,7 @@ function buildCradosCoachHint(state: any, activeSideIdRaw: any, activeNameRaw: a
 export default function CradosPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
   const awena = useAwenaOptional();
+  const { lang } = useLang() as any;
   const go = props?.go ?? props?.setTab;
   const store = props?.store;
   const onFinish = props?.onFinish;
@@ -884,6 +1021,9 @@ export default function CradosPlay(props: any) {
   const initialCheckpointRef = React.useRef(false);
   const historyHydratedRef = React.useRef(Boolean(restored));
   const coachSpokenKeyRef = React.useRef("");
+  const actionVoiceTimerRef = React.useRef<number | null>(null);
+  const actionVoiceBusyUntilRef = React.useRef(0);
+  const actionVoiceSeqRef = React.useRef(0);
   const introPlayedRef = React.useRef(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `crados-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
@@ -1097,16 +1237,58 @@ export default function CradosPlay(props: any) {
     };
   }, []);
 
+  const speakCradosAction = React.useCallback((voice: CradosActionVoice | null) => {
+    if (!voice || !awena) return;
+    if (awena?.settings?.enabled === false || awena?.settings?.voiceEnabled === false || awena?.settings?.autoSpeak === false) return;
+    const intervention = String(awena?.settings?.interventionMode || "active");
+    if (intervention === "off") return;
+    if (intervention === "discreet" && voice.importance !== "major") return;
+
+    if (actionVoiceTimerRef.current != null) window.clearTimeout(actionVoiceTimerRef.current);
+    const wordCount = Math.max(1, String(voice.text || "").trim().split(/\s+/).filter(Boolean).length);
+    const estimatedSpeechMs = Math.max(900, Math.round((wordCount / 165) * 60000));
+    actionVoiceBusyUntilRef.current = Date.now() + voice.delayMs + estimatedSpeechMs + 420;
+    const seq = ++actionVoiceSeqRef.current;
+
+    actionVoiceTimerRef.current = window.setTimeout(() => {
+      actionVoiceTimerRef.current = null;
+      void (async () => {
+        try {
+          const localized = await awenaTranslation.textFromFrench(voice.text, String(lang || "fr"));
+          // Si une nouvelle action a remplacé celle-ci pendant une traduction lente, on ne parle pas avec retard.
+          if (actionVoiceSeqRef.current !== seq) return;
+          await awena.say?.(localized);
+        } catch {}
+      })();
+    }, voice.delayMs);
+  }, [awena, lang]);
+
+  React.useEffect(() => () => {
+    if (actionVoiceTimerRef.current != null) window.clearTimeout(actionVoiceTimerRef.current);
+    actionVoiceTimerRef.current = null;
+  }, []);
+
   const coachHint = React.useMemo(() => buildCradosCoachHint(state, activeSideId, activePlayer?.name), [state.turnIndex, state.legIndex, state.sectors, state.dirt, state.phase, activeSideId, activePlayer?.name, config]);
 
   React.useEffect(() => {
     if (!awena || !activePlayer || activeIsBot || state.phase !== "playing") return;
+    if (awena?.settings?.enabled === false || awena?.settings?.voiceEnabled === false || awena?.settings?.autoSpeak === false) return;
+    const intervention = String(awena?.settings?.interventionMode || "active");
+    if (intervention === "off" || intervention === "discreet") return;
     const key = `${state.legIndex}:${state.turnIndex}:${activePlayer.id}`;
     if (coachSpokenKeyRef.current === key || !coachHint.speech) return;
     coachSpokenKeyRef.current = key;
-    const timer = window.setTimeout(() => { void awena.say?.(coachHint.speech); }, 320);
+    const waitForActionVoice = Math.max(0, actionVoiceBusyUntilRef.current - Date.now());
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const localized = await awenaTranslation.textFromFrench(coachHint.speech, String(lang || "fr"));
+          await awena.say?.(localized);
+        } catch {}
+      })();
+    }, Math.max(320, waitForActionVoice + 180));
     return () => window.clearTimeout(timer);
-  }, [awena, state.legIndex, state.turnIndex, state.phase, activePlayer?.id, activeIsBot, coachHint.speech]);
+  }, [awena, lang, state.legIndex, state.turnIndex, state.phase, activePlayer?.id, activeIsBot, coachHint.speech]);
 
   const commit = React.useCallback((next: CradosState, previous = state) => {
     setUndo((u) => [...u.slice(-39), cloneCradosState(previous)]);
@@ -1119,9 +1301,10 @@ export default function CradosPlay(props: any) {
     else if (next.legIndex > previous.legIndex && next.lastLegWinnerId) message = `🎯 ${cradosSideName(next, next.lastLegWinnerId) || "Un joueur"} remporte la manche`;
 
     playCradosStateTransitionSfx(previous, next);
+    speakCradosAction(buildCradosActionVoice(previous, next));
     setNotice(message);
     persist(next);
-  }, [state, persist]);
+  }, [state, persist, speakCradosAction]);
 
   const validate = () => {
     if (!currentThrow.length || state.phase === "finished" || activeIsBot) return;
@@ -1129,6 +1312,10 @@ export default function CradosPlay(props: any) {
   };
   const doUndo = () => setUndo((u) => {
     if (!u.length) return u;
+    if (actionVoiceTimerRef.current != null) window.clearTimeout(actionVoiceTimerRef.current);
+    actionVoiceTimerRef.current = null;
+    actionVoiceSeqRef.current += 1;
+    actionVoiceBusyUntilRef.current = 0;
     const prev = u[u.length - 1];
     setState(cloneCradosState(prev));
     setCurrentThrow([]);
@@ -1167,6 +1354,10 @@ export default function CradosPlay(props: any) {
   }, [state, activeIsBot, activePlayer?.id, activeBotLevel]);
 
   function replay() {
+    if (actionVoiceTimerRef.current != null) window.clearTimeout(actionVoiceTimerRef.current);
+    actionVoiceTimerRef.current = null;
+    actionVoiceSeqRef.current += 1;
+    actionVoiceBusyUntilRef.current = 0;
     matchIdRef.current = `crados-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     finishedRef.current = false;
     setUndo([]);

@@ -44,6 +44,17 @@ for(let i=0;i<30 && cradosFlip.phase!=="finished";i++) cradosFlip=playCradosVisi
 assert.equal(cradosFlip.phase,"finished");
 assert.ok(cradosFlip.winnerId === "a" || cradosFlip.winnerId === "b");
 
+// CRADOS voix / règles associées : les événements moteurs utilisés par les annonces
+// Awena doivent rester explicites pour MISS +2 et Douche DOUBLE -2.
+let cradosVoice=createCradosState(players,{mode:"crados",seriesWins:2,rules:{dirtLimit:10,layersToOwn:4,bullWash:true,stealMode:"block"}});
+cradosVoice=playCradosVisit(cradosVoice,[{bed:"MISS"}]);
+assert.equal(cradosVoice.dirt.a,2);
+assert.ok(cradosVoice.visits.at(-1)?.events.some((event:string)=>/MISS : \+2 CRASSE/.test(event)));
+cradosVoice=playCradosVisit(cradosVoice,[{bed:"S",number:1}]);
+cradosVoice=playCradosVisit(cradosVoice,[{bed:"D",number:20}]);
+assert.equal(cradosVoice.dirt.a,0);
+assert.ok(cradosVoice.visits.at(-1)?.events.some((event:string)=>/DOUBLE DOUCHE : −2 crasse/.test(event)));
+
 // Helpers UI : aperçu avant validation
 assert.equal(scorePenduVisit([{bed:"T",number:20},{bed:"D",number:20}] as any),100);
 assert.equal(isPenduChallengeSatisfied({kind:"segment",number:20,bed:"D"},[{bed:"T",number:20}] as any,{...pendu.config,rules:{...pendu.config.rules,executionMode:"flex"}} as any),true);
