@@ -985,10 +985,23 @@ function buildCradosCoachHint(state: any, activeSideIdRaw: any, activeNameRaw: a
   };
 }
 
-function CradosFloatingTargetAdvice({ hint, color, playerName, turnKey }: any) {
+function CradosFloatingTargetAdvice({ hint, color, playerName }: any) {
   const raw = String(hint?.visual || "").replace(/^AWENA\s*·\s*/i, "").trim();
-  if (!raw) return null;
-  return <div key={turnKey} className="crados-target-advice" style={{ borderColor: `${color}88`, boxShadow: `0 12px 38px rgba(0,0,0,.52), 0 0 28px ${color}22` }} aria-live="polite">
+  const [visible, setVisible] = React.useState(true);
+  const [leaving, setLeaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!raw) return;
+    const fadeTimer = window.setTimeout(() => setLeaving(true), 2650);
+    const hideTimer = window.setTimeout(() => setVisible(false), 3000);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, [raw]);
+
+  if (!raw || !visible) return null;
+  return <div className={`crados-target-advice${leaving ? " crados-target-advice--leaving" : ""}`} style={{ borderColor: `${color}88`, boxShadow: `0 12px 38px rgba(0,0,0,.52), 0 0 28px ${color}22` }} aria-live="polite">
     <div className="crados-target-advice__badge" style={{ color }}>🎯 CONSEIL CIBLE</div>
     <div className="crados-target-advice__target" style={{ color }}>{raw}</div>
     <div className="crados-target-advice__player">{String(playerName || "Joueur").toUpperCase()} · TOUR À JOUER</div>
@@ -1436,7 +1449,7 @@ export default function CradosPlay(props: any) {
   return <div className="crados-play" data-mss-native-play-layout="1">
     <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={10} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={config.awenaEnabled !== false ? <div style={{ marginRight: 7 }}><CradosAwenaButton /></div> : null} />
 
-    {config.coachEnabled !== false && !activeIsBot && coachHint?.visual ? <CradosFloatingTargetAdvice hint={coachHint} color={activeColor} playerName={activePlayer?.name} turnKey={`${state.legIndex}:${state.turnIndex}:${activePlayer?.id || ""}`} /> : null}
+    {config.coachEnabled !== false && !activeIsBot && coachHint?.visual ? <CradosFloatingTargetAdvice key={`${state.legIndex}:${state.turnIndex}:${activePlayer?.id || ""}`} hint={coachHint} color={activeColor} playerName={activePlayer?.name} /> : null}
 
     <main className="crados-play__body">
       <div className="crados-play__stage">

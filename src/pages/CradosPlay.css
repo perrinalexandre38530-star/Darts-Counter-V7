@@ -2303,3 +2303,12 @@
   .crados-target-advice__target { margin-top: 2px; font-size: 10px; }
   .crados-target-advice__player { margin-top: 2px; font-size: 5.8px; }
 }
+
+/* V138 CRADOS: le conseil cible est un toast temporaire (3 s max). */
+.crados-target-advice--leaving {
+  animation: cradosTargetAdviceOut .35s ease-in both;
+}
+@keyframes cradosTargetAdviceOut {
+  from { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -8px) scale(.985); }
+}

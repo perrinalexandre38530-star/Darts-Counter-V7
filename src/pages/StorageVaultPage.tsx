@@ -3337,11 +3337,15 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             )).then((slot) => setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10))).catch(() => null);
           }
           report(42, `Envoi vers ${personalCloudProviderLabel(destination)}…`);
-          await uploadPersonalCloudSnapshot(destination, prepared.snapshotJson, {
-            summary: prepared.summary, exportedAt: new Date().toISOString(), rawSizeBytes: prepared.bytes, engine: "personal-cloud-v1",
+          const uploadResult = await uploadPersonalCloudSnapshot(destination, prepared.snapshotJson, {
+            summary: prepared.summary, exportedAt: new Date().toISOString(), rawSizeBytes: prepared.bytes, engine: "personal-cloud-v2",
           });
+          if (uploadResult?.ok === false) throw new Error(uploadResult?.error || `Échec de l'envoi ${personalCloudProviderLabel(destination)}.`);
           report(92, "Vérification du cloud personnel…");
-          return { message: `Sauvegarde ${personalCloudProviderLabel(destination)} terminée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s).` };
+          const verifiedMeta = await getPersonalCloudBackupMeta(destination);
+          if (!verifiedMeta) throw new Error(`${personalCloudProviderLabel(destination)} n'a pas confirmé la sauvegarde après l'envoi.`);
+          report(99, "Sauvegarde cloud confirmée.");
+          return { message: `Sauvegarde ${personalCloudProviderLabel(destination)} terminée et vérifiée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s).` };
         }
 
         if (destination === "cloud_r2") {
