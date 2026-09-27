@@ -95,11 +95,15 @@ function findTickerById(id: string): string | null {
     ])
   ).filter(Boolean);
 
+  const exts = ["png", "webp", "jpg", "jpeg"];
+
   for (const c of candidates) {
-    const suffixA = `/ticker_${c}.png`;
-    const suffixB = `/ticker-${c}.png`;
+    const suffixes = exts.flatMap((ext) => [
+      `/ticker_${c}.${ext}`,
+      `/ticker-${c}.${ext}`,
+    ]);
     for (const k of Object.keys(TICKERS)) {
-      if (k.endsWith(suffixA) || k.endsWith(suffixB)) return TICKERS[k];
+      if (suffixes.some((suffix) => k.endsWith(suffix))) return TICKERS[k];
     }
   }
   return null;
