@@ -63,6 +63,20 @@ import {
   SpartacusPanel,
   ZombieSiegePanel,
 } from "./wave61/Wave61SurvivalCombatPanels";
+import {
+  DisjonctePanel,
+  DracoSpheresPanel,
+  EscapeGamePanel,
+  Heist180Panel,
+  HollywoodPanel,
+  JardinierPanel,
+  MayaPanel,
+  MicroscopiaPanel,
+  MythologiePanel,
+  ObjectifLunePanel,
+  PetitBacPanel,
+  PyramidesPanel,
+} from "./wave61/Wave61MissionAdventurePanels";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -80,6 +94,18 @@ function familyRules(spec: any, preset: any) {
     sniper: "Une série de contrats de précision s'enchaîne. Plus la difficulté monte, plus le lit exact S/D/T/BULL devient obligatoire.",
     luciole: "La cible s'illumine brièvement au début du tour puis disparaît. Mémorise le secteur et touche-le avant que la luciole suivante apparaisse.",
     golden_dart: "Une cible dorée secrète se cache parmi les 20 secteurs. Chaque erreur révèle un indice ; trouve-la pour gagner une marque d'or et passer à la suivante.",
+    heist_180: "Quatre phases de casse : repérage, effraction, coffre, fuite. Les bons lits font avancer, les BULL réduisent la chaleur et une alarme à 100 % fait perdre une phase.",
+    escape_game: "Cinq verrous à franchir dans l'ordre. Le secteur demandé ouvre le verrou courant ; BULL/DBULL servent de jokers et les erreurs ajoutent des pénalités.",
+    objectif_lune: "Remplis le carburant, décolle, stabilise l'orbite puis alunis. Les BULL alimentent la fusée et sécurisent la trajectoire.",
+    hollywood: "Tourne six scènes successives : casting, action, cascade, drame, première et Oscars. Multiplicateurs et BULL rapportent des étoiles.",
+    calendrier_maya: "Active cinq sceaux avant que la jauge de fin du cycle n'atteigne 100 %. Les BULL stabilisent le calendrier.",
+    pyramides: "Traverse cinq chambres jusqu'au sarcophage. La torche s'épuise sur les erreurs, les BULL la rechargent et l'obscurité peut faire reculer.",
+    draco_spheres: "Retrouve sept orbes dans l'ordre. Les BULL et triples chargent l'énergie ; à 100 %, une sphère bonus est invoquée.",
+    mythologie: "Affronte six épreuves divines. Les BULL augmentent la faveur des dieux et peuvent offrir une marque bonus.",
+    jardinier: "Fais pousser puis récolte cinq cultures. Les bonnes cibles accélèrent la croissance, BULL arrose et les erreurs assèchent le jardin.",
+    microscopia: "Isole six échantillons microscopiques tout en contrôlant la contamination. BULL désinfecte le laboratoire.",
+    disjoncte: "Alimente six circuits sans faire sauter l'installation. Doubles/triples sont puissants mais font grimper la surcharge ; BULL met à la terre.",
+    petit_bac: "Six catégories et une lettre liée au secteur. Touche la lettre demandée pour valider la catégorie ; BULL sert de joker. La saisie des mots sera ajoutée dans le Play dédié.",
     hot_potato: "La mèche descend à chaque tour. Touche le secteur demandé pour transmettre proprement la patate ; une mèche à zéro provoque une explosion et coûte une vie.",
     zombie_siege: "Un camp commence infecté. Les zombies propagent la contamination, les survivants renforcent leurs barricades et les BULL permettent de réduire l'infection.",
     le_loup: "Le loup doit toucher sa cible pour attraper un joueur et transmettre le rôle. Les fuyards progressent et peuvent obtenir une protection au BULL.",
@@ -105,7 +131,7 @@ function familyRules(spec: any, preset: any) {
   return <div style={{ display: "grid", gap: 9, fontSize: 12.5, lineHeight: 1.5 }}>
     <div><b style={{ color: preset.accent }}>CONCEPT</b><br />{spec.infoBody}</div>
     <div><b style={{ color: preset.accent }}>MOTEUR V{WAVE61_ENGINE_VERSION}</b><br />{signature[spec.id] || `Famille ${preset.label}. Scoring par dart, progression, historique, bots et Undo sont mutualisés.`}</div>
-    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V5 conserve les moteurs précédents et spécialise Survie / Combat / Élimination : vies, contamination, captures, prisonniers, dégâts, menaces et duels.</div>
+    <div><b style={{ color: "#ffcc80" }}>PHASE DE DÉVELOPPEMENT</b><br />La passe V6 conserve les moteurs précédents et spécialise Mission / Aventure / Exploration : phases, verrous, ressources, risques, jauges et objectifs scénarisés.</div>
   </div>;
 }
 
@@ -447,6 +473,18 @@ export default function Wave61Play(props: any) {
       {spec.id === "chute_libre" ? <FreefallPanel state={state} accent={accent} /> : null}
       {spec.id === "tyrolien" ? <TyrolienPanel state={state} accent={accent} /> : null}
       {spec.id === "saut_a_la_corde" ? <JumpRopePanel state={state} accent={accent} /> : null}
+      {spec.id === "heist_180" ? <Heist180Panel state={state} accent={accent} /> : null}
+      {spec.id === "escape_game" ? <EscapeGamePanel state={state} accent={accent} /> : null}
+      {spec.id === "objectif_lune" ? <ObjectifLunePanel state={state} accent={accent} /> : null}
+      {spec.id === "hollywood" ? <HollywoodPanel state={state} accent={accent} /> : null}
+      {spec.id === "calendrier_maya" ? <MayaPanel state={state} accent={accent} /> : null}
+      {spec.id === "pyramides" ? <PyramidesPanel state={state} accent={accent} /> : null}
+      {spec.id === "draco_spheres" ? <DracoSpheresPanel state={state} accent={accent} /> : null}
+      {spec.id === "mythologie" ? <MythologiePanel state={state} accent={accent} /> : null}
+      {spec.id === "jardinier" ? <JardinierPanel state={state} accent={accent} /> : null}
+      {spec.id === "microscopia" ? <MicroscopiaPanel state={state} accent={accent} /> : null}
+      {spec.id === "disjoncte" ? <DisjonctePanel state={state} accent={accent} /> : null}
+      {spec.id === "petit_bac" ? <PetitBacPanel state={state} accent={accent} /> : null}
       {spec.id === "hot_potato" ? <HotPotatoPanel state={state} accent={accent} /> : null}
       {spec.id === "zombie_siege" ? <ZombieSiegePanel state={state} accent={accent} /> : null}
       {spec.id === "le_loup" ? <LoupPanel state={state} accent={accent} /> : null}
@@ -462,7 +500,7 @@ export default function Wave61Play(props: any) {
       {state.phase !== "finished" ? <>
         <div style={{ ...panelStyle(accent + "3d"), padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
           <div><div style={{ color: accent, fontSize: 9.5, fontWeight: 1100, letterSpacing: .8 }}>{target ? "OBJECTIF ACTIF" : "OBJECTIF LIBRE"}</div><div style={{ marginTop: 4, color: "#fff", fontSize: 18, fontWeight: 1100 }}>{spec.id === "golden_dart" ? "Trouve le secteur doré grâce aux indices" : spec.id === "luciole" ? "Mémorise la luciole avant qu'elle s'éteigne" : target?.label || (state.family === "score" ? "Marque le maximum" : spec.id === "align_4" ? "Choisis ta colonne avec le secteur" : "Fais progresser ta mission")}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9.8, lineHeight: 1.4 }}>{spec.infoBody}</div></div>
-          <div style={{ minWidth: 76, minHeight: 76, borderRadius: 18, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: 11 }}>{state.family === "survival" || state.family === "combat" ? "⚔️\nSURVIE" : state.family === "ascent" ? "⛰️\nASCENSION" : state.family === "conquest" ? "🗺️\nCONQUÊTE" : state.family === "deduction" ? "🧩\nINDICES" : state.family === "rhythm" ? "⚡\nCOMBO" : state.family === "race" ? "🏁\nCOURSE" : "🎯\nACTION"}</div>
+          <div style={{ minWidth: 76, minHeight: 76, borderRadius: 18, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: 11 }}>{state.family === "survival" || state.family === "combat" ? "⚔️\nSURVIE" : state.family === "ascent" ? "⛰️\nASCENSION" : state.family === "conquest" ? "🗺️\nCONQUÊTE" : state.family === "deduction" ? "🧩\nINDICES" : state.family === "rhythm" ? "⚡\nCOMBO" : state.family === "race" ? "🏁\nCOURSE" : state.family === "mission" ? "🗝️\nMISSION" : "🎯\nACTION"}</div>
         </div>
 
         {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}

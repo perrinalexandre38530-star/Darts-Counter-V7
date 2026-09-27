@@ -245,6 +245,20 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         })}
       </div>
       <div className="mssDartsAuditBar"><div><span>DOCUMENTATION DES RÈGLES</span><strong>{auditPercent}%</strong></div><div className="mssDartsAuditTrack"><i style={{width:`${auditPercent}%`}}/></div><small>Audit en cours directement depuis les écrans Config, Play et moteurs MSS. Les modes non encore vérifiés restent clairement identifiables.</small></div>
+      <div className="mssDartsSpotlight">
+        <div className="mssDartsSpotlightHead"><div><span>NOUVELLES FICHES DOCUMENTÉES</span><h3>6 modes à découvrir en détail</h3></div><small>Règles vérifiées dans les moteurs MSS • accès direct aux fiches</small></div>
+        <div className="mssDartsSpotlightGrid">
+          {["double_down","nine_dart_century","shove_a_penny","green_vs_red","hi_score","un_deux_trois_soleil"].map((id) => {
+            const game = allDartsGames.find((item) => item.id === id);
+            if (!game) return null;
+            const art = landingTickerFor(id);
+            return <a key={id} href={publicDartsUrl(id)} className="mssDartsSpotlightCard">
+              {art ? <img src={art} alt={`Ticker ${game.label}`}/> : null}
+              <span><strong>{game.label}</strong><small>RÈGLES AUDITÉES →</small></span>
+            </a>;
+          })}
+        </div>
+      </div>
       <div className="mssDartsToolbar"><label><span>RECHERCHER UN MODE</span><input value={dartsSearch} onChange={(e) => setDartsSearch(e.target.value)} placeholder="X01, Killer, Challenge, Firefighter…" /></label><div className="mssDartsQuickFilters">{catalogueCards.map(([id,label]) => <button key={id} className={dartsFilter===id ? "isActive" : ""} onClick={() => {setDartsFilter(id);setDartsSearch("");}}>{label}<b>{catalogueGroups[id].length}</b></button>)}</div></div>
       <div className="mssDartsListHeader"><div><span>CATÉGORIE</span><h3>{catalogueCards.find(([id]) => id === dartsFilter)?.[1]}</h3></div><b>{filteredDartsGames.length} MODE{filteredDartsGames.length > 1 ? "S" : ""}</b></div>
       <div className="mssDartsModeGrid">

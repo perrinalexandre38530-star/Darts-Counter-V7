@@ -1,6 +1,99 @@
 export type PublicRuleAudit = { status: 'available'|'development'; sources: string[]; options: string[] };
 
 export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
+  "un_deux_trois_soleil": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "OBJECTIF : atteindre 100 pas de progression",
+      "ROUNDS : 16 par défaut",
+      "Le jeu alterne des phases de déplacement et des phases SOLEIL / STOP",
+      "PHASE VERTE : le moteur demande un secteur ; toucher ce numéro permet d’avancer",
+      "Progression en phase verte : Simple = +4 pas, Double = +8, Triple = +12 ; les valeurs Bull prévues par le moteur sont +6 / +10 lorsqu’elles s’appliquent",
+      "PHASE STOP : MISS signifie rester immobile ; Bull/DBULL sécurisent également l’immobilité",
+      "En STOP, toute autre touche est considérée comme un mouvement et fait reculer",
+      "PÉNALITÉ PAR MOUVEMENT : -5 pas en Facile, -8 en Normal, -12 en Difficile",
+      "STOP PARFAIT : si aucun mouvement n’est détecté, le joueur peut gagner +3 pas",
+      "Le moteur comptabilise les fautes/chutes de chaque joueur",
+      "VICTOIRE : immédiate dès qu’un joueur atteint 100 pas",
+      "BOTS IA, difficulté, ordre aléatoire et saisie Keypad / Cible interactive sont disponibles"
+    ]
+  },
+  "hi_score": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "BUT : réaliser le plus gros total de points",
+      "ROUNDS : 10 par défaut ; le nombre de rounds est configurable dans le socle Wave61",
+      "Chaque fléchette conserve sa valeur réelle ; le score de la volée est ajouté intégralement au total",
+      "Il n’y a pas de cible imposée : le joueur cherche simplement le meilleur scoring possible",
+      "À la fin du nombre de rounds configuré, le moteur classe les joueurs selon leur score total",
+      "BOTS IA : ils privilégient notamment le 20 selon leur niveau",
+      "DIFFICULTÉ IA : Facile / Normal / Difficile",
+      "ORDRE ALÉATOIRE et saisie Keypad / Cible interactive sont configurables"
+    ]
+  },
+  "green_vs_red": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "Chaque joueur reçoit une piste ROUGE ou VERTE",
+      "La progression se fait uniquement sur les anneaux DOUBLE ou TRIPLE du secteur actuellement demandé",
+      "DOUBLE sur la bonne cible : +1 étape",
+      "TRIPLE sur la bonne cible : +2 étapes",
+      "Toucher avec D/T un numéro appartenant à la piste de la couleur adverse peut faire avancer l’adversaire suivant de +1 étape",
+      "OBJECTIF FIXE DU MOTEUR : terminer les 10 étapes de sa piste",
+      "Le score interne ajoute 40 points par étape gagnée",
+      "En mode équipes, la couleur est attribuée selon le camp ; la victoire peut être rattachée à l’équipe",
+      "Le moteur exige au moins 2 participants",
+      "BOTS IA, difficulté, ordre aléatoire et saisie Keypad / Cible interactive sont disponibles"
+    ]
+  },
+  "shove_a_penny": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "CIBLES : 15 / 16 / 17 / 18 / 19 / 20 + BULL",
+      "OBJECTIF : obtenir 3 marques sur chacune des 7 cibles, soit 21 marques",
+      "Simple = 1 marque ; Double = 2 ; Triple = 3",
+      "Bull 25 = 1 marque ; DBULL 50 = 2 marques",
+      "Les marques servent d’abord à compléter sa propre cible jusqu’à 3",
+      "SURPLUS : toute marque dépassant 3 est poussée vers l’adversaire suivant, dans la limite de ce qu’il lui manque sur cette même cible",
+      "Le moteur ajoute 25 points par marque réellement gagnée par le joueur",
+      "VICTOIRE : immédiate dès que les 21 marques personnelles sont complétées",
+      "Le moteur exige au moins 2 participants",
+      "BOTS IA, difficulté et saisie Keypad / Cible interactive sont pris en charge"
+    ]
+  },
+  "nine_dart_century": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "OBJECTIF FIXE : atteindre exactement 100 points",
+      "VOLUME FIXE : 3 volées, soit 9 fléchettes maximum",
+      "Chaque volée ajoute normalement la valeur réelle des fléchettes au total",
+      "BUST : si le total projeté dépasse 100, la volée n’ajoute aucun point",
+      "100 EXACT : victoire immédiate",
+      "Le moteur comptabilise le nombre de busts par joueur",
+      "BOTS IA, difficulté Facile / Normal / Difficile, ordre aléatoire et saisie Keypad / Cible interactive sont disponibles via Wave61"
+    ]
+  },
+  "double_down": {
+    "status": 'available',
+    "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "PARCOURS FIXE DE 9 ROUNDS : 15 → 16 → n’importe quel DOUBLE → 17 → 18 → n’importe quel TRIPLE → 19 → 20 → BULL/DBULL",
+      "Le mode impose 9 rounds dans la configuration actuelle",
+      "À chaque round, seules les fléchettes qui respectent le contrat du round comptent",
+      "Sur un round numérique, Simple / Double / Triple du numéro demandé sont valides et conservent leur valeur réelle",
+      "Round DOUBLE : seuls les doubles sont valides ; DBULL est également accepté comme double",
+      "Round TRIPLE : seuls les triples sont valides",
+      "Round BULL : Bull 25 et DBULL 50 sont valides",
+      "Si aucune fléchette ne valide le contrat du round, le score cumulé du joueur est divisé par deux, arrondi à l’entier inférieur",
+      "Si le contrat est réussi, la valeur réelle des touches valides est ajoutée au score",
+      "BOTS IA, difficulté Facile / Normal / Difficile, ordre aléatoire et saisie Keypad / Cible interactive sont gérés par le socle Wave61"
+    ]
+  },
   "knockback": {
     "status": 'available',
     "sources": ["src/pages/Wave61Config.tsx", "src/pages/Wave61Play.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],

@@ -2,7 +2,7 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-export const WAVE61_ENGINE_VERSION = 5;
+export const WAVE61_ENGINE_VERSION = 6;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -220,6 +220,35 @@ const TYROLIEN_STAGES = [
   { name: "ARRIVÉE", target: 15 },
 ] as const;
 
+const HEIST_STAGES = ["REPÉRAGE", "EFFRACTION", "COFFRE", "FUITE"] as const;
+const ESCAPE_STAGES = ["CODE", "CLÉ", "LASER", "PORTAIL", "SORTIE"] as const;
+const LUNAR_PHASES = ["CARBURANT", "LANCEMENT", "ORBITE", "ALUNISSAGE"] as const;
+const HOLLYWOOD_SCENES = ["CASTING", "ACTION", "CASCADE", "DRAME", "PREMIÈRE", "OSCARS"] as const;
+const MAYA_CYCLES = ["JAGUAR", "SOLEIL", "PLUIE", "SERPENT", "TEMPLE"] as const;
+const PYRAMID_CHAMBERS = ["ENTRÉE", "GALERIE", "PIÈGES", "CHAMBRE ROYALE", "SARCOPHAGE"] as const;
+const MYTH_GODS = ["ATHÉNA", "HERMÈS", "ARÈS", "POSÉIDON", "HADÈS", "ZEUS"] as const;
+const MICRO_SAMPLES = ["CELLULE", "BACTÉRIE", "POLLEN", "SPORE", "CRISTAL", "ADN"] as const;
+const CIRCUIT_NAMES = ["ALIM", "MOTEUR", "ÉCLAIRAGE", "CAPTEUR", "RELAIS", "SORTIE"] as const;
+const BAC_CATEGORIES = ["PRÉNOM", "VILLE", "ANIMAL", "OBJET", "SPORT", "MÉTIER"] as const;
+const BAC_LETTERS = ["A","B","C","D","E","F","G","H","I","J","L","M","N","O","P","R","S","T","V","Z"] as const;
+
+function missionThreshold(difficulty: Wave61Difficulty, easy = 2, normal = 3, hard = 4) {
+  return difficulty === "easy" ? easy : difficulty === "hard" ? hard : normal;
+}
+
+function missionStageTarget(sequence: any[], step: number): number {
+  if (!sequence.length) return 20;
+  return Number(sequence[Math.min(Math.max(0, step), sequence.length - 1)] || 20);
+}
+
+function bullCount(darts: GameDart[]) {
+  return darts.filter((d) => d?.bed === "OB" || d?.bed === "IB").length;
+}
+
+function nonBullWrongCount(darts: GameDart[], target: Wave61Target, difficulty: Wave61Difficulty) {
+  return darts.filter((d) => d?.bed !== "MISS" && d?.bed !== "OB" && d?.bed !== "IB" && !dartMatchesTarget(d, target, difficulty)).length;
+}
+
 const SURVIVAL_TARGET_LENGTH = 160;
 const ICEBERG_COMPARTMENTS = 5;
 
@@ -401,6 +430,78 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       ropePaceByPlayer: modeId === "saut_a_la_corde" ? Object.fromEntries(ids.map((id) => [id, 1])) : {},
       ropeHistory: [],
 
+      heistSequence: modeId === "heist_180" ? seededSequence(`heist:${seedText}`, HEIST_STAGES.length, 20) : [],
+      heistStageByPlayer: modeId === "heist_180" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      heistMarksByPlayer: modeId === "heist_180" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      heistLootByPlayer: modeId === "heist_180" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      heistHeatByPlayer: modeId === "heist_180" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      heistHistory: [],
+
+      escapeSequence: modeId === "escape_game" ? seededSequence(`escape:${seedText}`, ESCAPE_STAGES.length, 20) : [],
+      escapeStepByPlayer: modeId === "escape_game" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      escapePenaltyByPlayer: modeId === "escape_game" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      escapeJokersByPlayer: modeId === "escape_game" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      escapeHistory: [],
+
+      lunarSequence: modeId === "objectif_lune" ? seededSequence(`moon:${seedText}`, LUNAR_PHASES.length, 20) : [],
+      lunarStageByPlayer: modeId === "objectif_lune" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      lunarMarksByPlayer: modeId === "objectif_lune" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      lunarFuelByPlayer: modeId === "objectif_lune" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      lunarStabilityByPlayer: modeId === "objectif_lune" ? Object.fromEntries(ids.map((id) => [id, 100])) : {},
+      lunarHistory: [],
+
+      hollywoodSequence: modeId === "hollywood" ? seededSequence(`hollywood:${seedText}`, HOLLYWOOD_SCENES.length, 20) : [],
+      hollywoodSceneByPlayer: modeId === "hollywood" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      hollywoodMarksByPlayer: modeId === "hollywood" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      hollywoodStarsByPlayer: modeId === "hollywood" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      hollywoodBoxOfficeByPlayer: modeId === "hollywood" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      hollywoodHistory: [],
+
+      mayaSequence: modeId === "calendrier_maya" ? seededSequence(`maya:${seedText}`, MAYA_CYCLES.length, 20) : [],
+      mayaSealByPlayer: modeId === "calendrier_maya" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mayaMarksByPlayer: modeId === "calendrier_maya" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mayaDoomByPlayer: modeId === "calendrier_maya" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mayaHistory: [],
+
+      pyramidSequence: modeId === "pyramides" ? seededSequence(`pyramid:${seedText}`, PYRAMID_CHAMBERS.length, 20) : [],
+      pyramidChamberByPlayer: modeId === "pyramides" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      pyramidMarksByPlayer: modeId === "pyramides" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      pyramidTorchByPlayer: modeId === "pyramides" ? Object.fromEntries(ids.map((id) => [id, 70])) : {},
+      pyramidHistory: [],
+
+      dracoSequence: modeId === "draco_spheres" ? seededNumbers(`draco:${seedText}`, 7, 20) : [],
+      dracoSpheresByPlayer: modeId === "draco_spheres" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      dracoEnergyByPlayer: modeId === "draco_spheres" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      dracoHistory: [],
+
+      mythSequence: modeId === "mythologie" ? seededSequence(`myth:${seedText}`, MYTH_GODS.length, 20) : [],
+      mythTrialByPlayer: modeId === "mythologie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mythMarksByPlayer: modeId === "mythologie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mythFavorByPlayer: modeId === "mythologie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mythHistory: [],
+
+      gardenSequence: modeId === "jardinier" ? seededSequence(`garden:${seedText}`, 30, 20) : [],
+      gardenGrowthByPlayer: modeId === "jardinier" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      gardenHarvestByPlayer: modeId === "jardinier" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      gardenWaterByPlayer: modeId === "jardinier" ? Object.fromEntries(ids.map((id) => [id, 60])) : {},
+      gardenHistory: [],
+
+      microSequence: modeId === "microscopia" ? seededSequence(`micro:${seedText}`, MICRO_SAMPLES.length, 20) : [],
+      microSamplesByPlayer: modeId === "microscopia" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      microQualityByPlayer: modeId === "microscopia" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      microContaminationByPlayer: modeId === "microscopia" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      microHistory: [],
+
+      circuitSequence: modeId === "disjoncte" ? seededSequence(`circuit:${seedText}`, CIRCUIT_NAMES.length, 20) : [],
+      circuitStepByPlayer: modeId === "disjoncte" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      circuitOverloadByPlayer: modeId === "disjoncte" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      circuitHistory: [],
+
+      bacSequence: modeId === "petit_bac" ? seededSequence(`bac:${seedText}`, BAC_CATEGORIES.length, 20) : [],
+      bacStepByPlayer: modeId === "petit_bac" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      bacValidatedByPlayer: modeId === "petit_bac" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      bacHistory: [],
+
       hotPotatoSequence: modeId === "hot_potato" ? survivalSequence(seedText, "hotpotato") : [],
       hotPotatoFuse: modeId === "hot_potato" ? hotPotatoFuseReset(config.difficulty) : 0,
       hotPotatoExplosionsByPlayer: modeId === "hot_potato" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -536,6 +637,79 @@ export function getWave61Target(state: Wave61State): Wave61Target {
     const step = Number(state.special?.ropeStepByPlayer?.[player?.id] || 0);
     const n = raceTargetFromSequence(state.special?.ropeSequence || [], step);
     return { kind: "number", value: n, label: `🪢 Rythme · secteur ${n}` };
+  }
+  if (state.modeId === "heist_180") {
+    const player = state.players[state.activePlayerIndex];
+    const stage = Number(state.special?.heistStageByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.heistSequence || [], stage);
+    return { kind: "number", value: n, label: `💰 ${HEIST_STAGES[Math.min(stage, HEIST_STAGES.length - 1)]} · secteur ${n} · chaleur ${state.special?.heistHeatByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "escape_game") {
+    const player = state.players[state.activePlayerIndex];
+    const step = Number(state.special?.escapeStepByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.escapeSequence || [], step);
+    return { kind: "number", value: n, label: `🔐 ${ESCAPE_STAGES[Math.min(step, ESCAPE_STAGES.length - 1)]} · secteur ${n} · BULL = joker` };
+  }
+  if (state.modeId === "objectif_lune") {
+    const player = state.players[state.activePlayerIndex];
+    const stage = Number(state.special?.lunarStageByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.lunarSequence || [], stage);
+    return { kind: "number", value: n, label: `🚀 ${LUNAR_PHASES[Math.min(stage, LUNAR_PHASES.length - 1)]} · secteur ${n} · carburant ${state.special?.lunarFuelByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "hollywood") {
+    const player = state.players[state.activePlayerIndex];
+    const scene = Number(state.special?.hollywoodSceneByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.hollywoodSequence || [], scene);
+    return { kind: "number", value: n, label: `🎬 ${HOLLYWOOD_SCENES[Math.min(scene, HOLLYWOOD_SCENES.length - 1)]} · secteur ${n}` };
+  }
+  if (state.modeId === "calendrier_maya") {
+    const player = state.players[state.activePlayerIndex];
+    const seal = Number(state.special?.mayaSealByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.mayaSequence || [], seal);
+    return { kind: "number", value: n, label: `🗿 ${MAYA_CYCLES[Math.min(seal, MAYA_CYCLES.length - 1)]} · secteur ${n} · fin ${state.special?.mayaDoomByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "pyramides") {
+    const player = state.players[state.activePlayerIndex];
+    const chamber = Number(state.special?.pyramidChamberByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.pyramidSequence || [], chamber);
+    return { kind: "number", value: n, label: `🔺 ${PYRAMID_CHAMBERS[Math.min(chamber, PYRAMID_CHAMBERS.length - 1)]} · secteur ${n} · torche ${state.special?.pyramidTorchByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "draco_spheres") {
+    const player = state.players[state.activePlayerIndex];
+    const sphere = Number(state.special?.dracoSpheresByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.dracoSequence || [], sphere);
+    return { kind: "number", value: n, label: `🐉 ORBE ${Math.min(sphere + 1, 7)}/7 · secteur ${n} · énergie ${state.special?.dracoEnergyByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "mythologie") {
+    const player = state.players[state.activePlayerIndex];
+    const trial = Number(state.special?.mythTrialByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.mythSequence || [], trial);
+    return { kind: "number", value: n, label: `⚡ ÉPREUVE ${MYTH_GODS[Math.min(trial, MYTH_GODS.length - 1)]} · secteur ${n}` };
+  }
+  if (state.modeId === "jardinier") {
+    const player = state.players[state.activePlayerIndex];
+    const harvest = Number(state.special?.gardenHarvestByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.gardenSequence || [], harvest);
+    return { kind: "number", value: n, label: `🌱 PLANTE ${Math.min(harvest + 1, 5)}/5 · secteur ${n} · eau ${state.special?.gardenWaterByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "microscopia") {
+    const player = state.players[state.activePlayerIndex];
+    const sample = Number(state.special?.microSamplesByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.microSequence || [], sample);
+    return { kind: "number", value: n, label: `🔬 ${MICRO_SAMPLES[Math.min(sample, MICRO_SAMPLES.length - 1)]} · secteur ${n} · contamination ${state.special?.microContaminationByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "disjoncte") {
+    const player = state.players[state.activePlayerIndex];
+    const step = Number(state.special?.circuitStepByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.circuitSequence || [], step);
+    return { kind: "number", value: n, label: `⚡ ${CIRCUIT_NAMES[Math.min(step, CIRCUIT_NAMES.length - 1)]} · secteur ${n} · surcharge ${state.special?.circuitOverloadByPlayer?.[player?.id] || 0}%` };
+  }
+  if (state.modeId === "petit_bac") {
+    const player = state.players[state.activePlayerIndex];
+    const step = Number(state.special?.bacStepByPlayer?.[player?.id] || 0);
+    const n = missionStageTarget(state.special?.bacSequence || [], step);
+    const letter = BAC_LETTERS[(n - 1) % BAC_LETTERS.length];
+    return { kind: "number", value: n, label: `📝 ${BAC_CATEGORIES[Math.min(step, BAC_CATEGORIES.length - 1)]} en ${letter} · secteur ${n} · BULL = joker` };
   }
   if (state.modeId === "hot_potato") {
     const n = raceTargetFromSequence(state.special?.hotPotatoSequence || [], state.turnIndex);
@@ -1550,6 +1724,365 @@ function processSautCorde(state: Wave61State, playerId: string, darts: GameDart[
   return { delta, hits };
 }
 
+function processHeist180(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let stage = Number(state.special?.heistStageByPlayer?.[playerId] || 0);
+  let marks = Number(state.special?.heistMarksByPlayer?.[playerId] || 0);
+  let loot = Number(state.special?.heistLootByPlayer?.[playerId] || 0);
+  let heat = Number(state.special?.heistHeatByPlayer?.[playerId] || 0);
+  const hits = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length;
+  const power = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).reduce((s, d) => s + bedPower(d), 0);
+  const bulls = bullCount(darts);
+  const wrong = nonBullWrongCount(darts, target, state.config.difficulty) + darts.filter((d) => d?.bed === "MISS").length;
+  marks += power;
+  loot += darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).reduce((s, d) => s + wave61DartScore(d), 0);
+  heat = clamp(heat + wrong * (state.config.difficulty === "hard" ? 12 : 8) - bulls * 18, 0, 100);
+  const threshold = missionThreshold(state.config.difficulty);
+  if (marks >= threshold) {
+    stage += 1;
+    marks = 0;
+    events.push(`✅ Phase ${HEIST_STAGES[Math.min(stage - 1, HEIST_STAGES.length - 1)]} réussie`);
+  }
+  if (heat >= 100 && stage < HEIST_STAGES.length) {
+    stage = Math.max(0, stage - 1);
+    heat = 55;
+    marks = 0;
+    events.push("🚨 ALARME ! Une phase est perdue");
+  }
+  state.special.heistStageByPlayer[playerId] = stage;
+  state.special.heistMarksByPlayer[playerId] = marks;
+  state.special.heistLootByPlayer[playerId] = loot;
+  state.special.heistHeatByPlayer[playerId] = heat;
+  state.progress[playerId] = Math.min(100, stage * 25);
+  state.scores[playerId] = loot;
+  state.special.heistHistory = [...(state.special?.heistHistory || []), { playerId, stage, loot, heat }].slice(-40);
+  if (stage >= HEIST_STAGES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
+function processEscapeGame(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let step = Number(state.special?.escapeStepByPlayer?.[playerId] || 0);
+  let penalty = Number(state.special?.escapePenaltyByPlayer?.[playerId] || 0);
+  let jokers = Number(state.special?.escapeJokersByPlayer?.[playerId] || 0);
+  const direct = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length;
+  const bulls = bullCount(darts);
+  const jokerSteps = darts.reduce((s, d) => s + (d?.bed === "IB" ? 2 : d?.bed === "OB" ? 1 : 0), 0);
+  const hits = direct + bulls;
+  let gain = direct + jokerSteps;
+  if (gain > 0) {
+    const before = step;
+    step = Math.min(ESCAPE_STAGES.length, step + gain);
+    jokers += jokerSteps;
+    events.push(`🔓 ${step - before} verrou(s) franchi(s)`);
+  } else {
+    penalty += 1;
+    events.push("⏳ Mauvaise piste · pénalité");
+  }
+  state.special.escapeStepByPlayer[playerId] = step;
+  state.special.escapePenaltyByPlayer[playerId] = penalty;
+  state.special.escapeJokersByPlayer[playerId] = jokers;
+  state.progress[playerId] = Math.round((step / ESCAPE_STAGES.length) * 100);
+  state.scores[playerId] += darts.reduce((s, d) => s + wave61DartScore(d), 0);
+  state.special.escapeHistory = [...(state.special?.escapeHistory || []), { playerId, step, penalty, jokers }].slice(-40);
+  if (step >= ESCAPE_STAGES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: gain, hits };
+}
+
+function processObjectifLune(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let stage = Number(state.special?.lunarStageByPlayer?.[playerId] || 0);
+  let marks = Number(state.special?.lunarMarksByPlayer?.[playerId] || 0);
+  let fuel = Number(state.special?.lunarFuelByPlayer?.[playerId] || 0);
+  let stability = Number(state.special?.lunarStabilityByPlayer?.[playerId] || 100);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const power = matching.reduce((s, d) => s + bedPower(d), 0);
+  const bulls = bullCount(darts);
+  const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
+  fuel = clamp(fuel + power * 9 + bulls * 18 - (stage > 0 ? 5 : 0), 0, 100);
+  stability = clamp(stability - wrong * 8 + bulls * 6, 0, 100);
+  marks += power;
+  const need = stage === 0 ? 4 : stage === 3 ? 4 : 3;
+  if (stage === 0 && fuel < 35) events.push(`⛽ Carburant ${fuel}% · minimum 35%`);
+  else if (marks >= need) {
+    stage += 1;
+    marks = 0;
+    events.push(`🚀 ${LUNAR_PHASES[Math.min(stage - 1, LUNAR_PHASES.length - 1)]} validé`);
+  }
+  if (stability <= 0 && stage > 0) {
+    stage = Math.max(0, stage - 1);
+    stability = 55;
+    marks = 0;
+    events.push("🌀 Trajectoire perdue · retour d'une phase");
+  }
+  state.special.lunarStageByPlayer[playerId] = stage;
+  state.special.lunarMarksByPlayer[playerId] = marks;
+  state.special.lunarFuelByPlayer[playerId] = fuel;
+  state.special.lunarStabilityByPlayer[playerId] = stability;
+  state.progress[playerId] = Math.min(100, stage * 25);
+  state.scores[playerId] += darts.reduce((s, d) => s + wave61DartScore(d), 0);
+  state.special.lunarHistory = [...(state.special?.lunarHistory || []), { playerId, stage, fuel, stability }].slice(-40);
+  if (stage >= LUNAR_PHASES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
+function processHollywood(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let scene = Number(state.special?.hollywoodSceneByPlayer?.[playerId] || 0);
+  let marks = Number(state.special?.hollywoodMarksByPlayer?.[playerId] || 0);
+  let stars = Number(state.special?.hollywoodStarsByPlayer?.[playerId] || 0);
+  let boxOffice = Number(state.special?.hollywoodBoxOfficeByPlayer?.[playerId] || 0);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const power = matching.reduce((s, d) => s + bedPower(d), 0);
+  const bulls = bullCount(darts);
+  marks += power;
+  stars += power + bulls;
+  boxOffice += darts.reduce((s, d) => s + wave61DartScore(d), 0);
+  const need = missionThreshold(state.config.difficulty, 2, 3, 4);
+  if (marks >= need) {
+    scene += 1;
+    marks = 0;
+    events.push(`🎬 Scène ${HOLLYWOOD_SCENES[Math.min(scene - 1, HOLLYWOOD_SCENES.length - 1)]} dans la boîte !`);
+  }
+  state.special.hollywoodSceneByPlayer[playerId] = scene;
+  state.special.hollywoodMarksByPlayer[playerId] = marks;
+  state.special.hollywoodStarsByPlayer[playerId] = stars;
+  state.special.hollywoodBoxOfficeByPlayer[playerId] = boxOffice;
+  state.progress[playerId] = Math.round((scene / HOLLYWOOD_SCENES.length) * 100);
+  state.scores[playerId] = boxOffice + stars * 10;
+  state.special.hollywoodHistory = [...(state.special?.hollywoodHistory || []), { playerId, scene, stars, boxOffice }].slice(-40);
+  if (scene >= HOLLYWOOD_SCENES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
+function processMaya(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let seal = Number(state.special?.mayaSealByPlayer?.[playerId] || 0);
+  let marks = Number(state.special?.mayaMarksByPlayer?.[playerId] || 0);
+  let doom = Number(state.special?.mayaDoomByPlayer?.[playerId] || 0);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const power = matching.reduce((s, d) => s + bedPower(d), 0);
+  const bulls = bullCount(darts);
+  const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
+  marks += power;
+  doom = clamp(doom + wrong * (state.config.difficulty === "hard" ? 14 : 10) - bulls * 20, 0, 100);
+  if (marks >= missionThreshold(state.config.difficulty, 2, 3, 4)) {
+    seal += 1;
+    marks = 0;
+    events.push(`☀️ Sceau ${MAYA_CYCLES[Math.min(seal - 1, MAYA_CYCLES.length - 1)]} activé`);
+  }
+  if (doom >= 100 && seal < MAYA_CYCLES.length) {
+    seal = Math.max(0, seal - 1);
+    doom = 50;
+    marks = 0;
+    events.push("🌋 Le cycle se brise · un sceau est perdu");
+  }
+  state.special.mayaSealByPlayer[playerId] = seal;
+  state.special.mayaMarksByPlayer[playerId] = marks;
+  state.special.mayaDoomByPlayer[playerId] = doom;
+  state.progress[playerId] = Math.round((seal / MAYA_CYCLES.length) * 100);
+  state.scores[playerId] += hits * 40 + bulls * 25;
+  state.special.mayaHistory = [...(state.special?.mayaHistory || []), { playerId, seal, doom }].slice(-40);
+  if (seal >= MAYA_CYCLES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
+function processPyramides(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let chamber = Number(state.special?.pyramidChamberByPlayer?.[playerId] || 0);
+  let marks = Number(state.special?.pyramidMarksByPlayer?.[playerId] || 0);
+  let torch = Number(state.special?.pyramidTorchByPlayer?.[playerId] || 70);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const power = matching.reduce((s, d) => s + bedPower(d), 0);
+  const bulls = bullCount(darts);
+  const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
+  marks += power;
+  torch = clamp(torch + bulls * 18 - wrong * 9, 0, 100);
+  if (marks >= missionThreshold(state.config.difficulty, 2, 3, 4)) {
+    chamber += 1;
+    marks = 0;
+    events.push(`🗝️ ${PYRAMID_CHAMBERS[Math.min(chamber - 1, PYRAMID_CHAMBERS.length - 1)]} franchie`);
+  }
+  if (torch <= 0 && chamber < PYRAMID_CHAMBERS.length) {
+    chamber = Math.max(0, chamber - 1);
+    torch = 45;
+    marks = 0;
+    events.push("🕯️ Torche éteinte · retour dans la salle précédente");
+  }
+  state.special.pyramidChamberByPlayer[playerId] = chamber;
+  state.special.pyramidMarksByPlayer[playerId] = marks;
+  state.special.pyramidTorchByPlayer[playerId] = torch;
+  state.progress[playerId] = Math.round((chamber / PYRAMID_CHAMBERS.length) * 100);
+  state.scores[playerId] += hits * 35 + bulls * 20;
+  state.special.pyramidHistory = [...(state.special?.pyramidHistory || []), { playerId, chamber, torch }].slice(-40);
+  if (chamber >= PYRAMID_CHAMBERS.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
+function processDracoSpheres(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let spheres = Number(state.special?.dracoSpheresByPlayer?.[playerId] || 0);
+  let energy = Number(state.special?.dracoEnergyByPlayer?.[playerId] || 0);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const bulls = bullCount(darts);
+  energy = clamp(energy + bulls * 22 + matching.filter((d) => d?.bed === "T").length * 12, 0, 100);
+  if (hits > 0 && spheres < 7) {
+    spheres += 1;
+    events.push(`🔮 Orbe ${spheres}/7 récupéré`);
+  }
+  if (energy >= 100 && spheres < 7) {
+    spheres += 1;
+    energy = 0;
+    events.push("🐉 Énergie maximale · un orbe bonus est invoqué");
+  }
+  state.special.dracoSpheresByPlayer[playerId] = spheres;
+  state.special.dracoEnergyByPlayer[playerId] = energy;
+  state.progress[playerId] = Math.round((spheres / 7) * 100);
+  state.scores[playerId] += darts.reduce((s, d) => s + wave61DartScore(d), 0);
+  state.special.dracoHistory = [...(state.special?.dracoHistory || []), { playerId, spheres, energy }].slice(-40);
+  if (spheres >= 7) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: hits, hits };
+}
+
+function processMythologie(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let trial = Number(state.special?.mythTrialByPlayer?.[playerId] || 0);
+  let marks = Number(state.special?.mythMarksByPlayer?.[playerId] || 0);
+  let favor = Number(state.special?.mythFavorByPlayer?.[playerId] || 0);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const power = matching.reduce((s, d) => s + bedPower(d), 0);
+  const bulls = bullCount(darts);
+  marks += power;
+  favor = clamp(favor + bulls * 18 + hits * 4, 0, 100);
+  if (favor >= 60 && marks < missionThreshold(state.config.difficulty, 2, 3, 4)) {
+    marks += 1;
+    favor = Math.max(0, favor - 40);
+    events.push("✨ Faveur divine · +1 marque");
+  }
+  if (marks >= missionThreshold(state.config.difficulty, 2, 3, 4)) {
+    trial += 1;
+    marks = 0;
+    events.push(`🏛️ Épreuve de ${MYTH_GODS[Math.min(trial - 1, MYTH_GODS.length - 1)]} accomplie`);
+  }
+  state.special.mythTrialByPlayer[playerId] = trial;
+  state.special.mythMarksByPlayer[playerId] = marks;
+  state.special.mythFavorByPlayer[playerId] = favor;
+  state.progress[playerId] = Math.round((trial / MYTH_GODS.length) * 100);
+  state.scores[playerId] += hits * 45 + bulls * 25;
+  state.special.mythHistory = [...(state.special?.mythHistory || []), { playerId, trial, favor }].slice(-40);
+  if (trial >= MYTH_GODS.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
+function processJardinier(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let growth = Number(state.special?.gardenGrowthByPlayer?.[playerId] || 0);
+  let harvest = Number(state.special?.gardenHarvestByPlayer?.[playerId] || 0);
+  let water = Number(state.special?.gardenWaterByPlayer?.[playerId] || 60);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const power = matching.reduce((s, d) => s + bedPower(d), 0);
+  const bulls = bullCount(darts);
+  const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
+  growth += power * 20;
+  water = clamp(water + bulls * 20 - wrong * 8 - 3, 0, 100);
+  if (water <= 0) {
+    growth = Math.floor(growth / 2);
+    water = 30;
+    events.push("☀️ Sécheresse · croissance divisée");
+  }
+  while (growth >= 100 && harvest < 5) {
+    growth -= 100;
+    harvest += 1;
+    events.push(`🥕 Récolte ${harvest}/5`);
+  }
+  state.special.gardenGrowthByPlayer[playerId] = growth;
+  state.special.gardenHarvestByPlayer[playerId] = harvest;
+  state.special.gardenWaterByPlayer[playerId] = water;
+  state.progress[playerId] = Math.min(100, harvest * 20);
+  state.scores[playerId] += hits * 30 + bulls * 15;
+  state.special.gardenHistory = [...(state.special?.gardenHistory || []), { playerId, growth, harvest, water }].slice(-40);
+  if (harvest >= 5) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: power, hits };
+}
+
+function processMicroscopia(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let samples = Number(state.special?.microSamplesByPlayer?.[playerId] || 0);
+  let quality = Number(state.special?.microQualityByPlayer?.[playerId] || 0);
+  let contamination = Number(state.special?.microContaminationByPlayer?.[playerId] || 0);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const bulls = bullCount(darts);
+  const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
+  if (hits > 0 && samples < MICRO_SAMPLES.length) {
+    samples += 1;
+    quality += matching.reduce((s, d) => s + bedPower(d, 10, 18, 26, 15, 25), 0);
+    events.push(`🧬 Échantillon ${samples}/${MICRO_SAMPLES.length} isolé`);
+  }
+  contamination = clamp(contamination + wrong * 11 - bulls * 22, 0, 100);
+  if (contamination >= 100 && samples > 0) {
+    samples -= 1;
+    contamination = 50;
+    events.push("☣️ Contamination critique · un échantillon est perdu");
+  }
+  state.special.microSamplesByPlayer[playerId] = samples;
+  state.special.microQualityByPlayer[playerId] = quality;
+  state.special.microContaminationByPlayer[playerId] = contamination;
+  state.progress[playerId] = Math.round((samples / MICRO_SAMPLES.length) * 100);
+  state.scores[playerId] = quality;
+  state.special.microHistory = [...(state.special?.microHistory || []), { playerId, samples, quality, contamination }].slice(-40);
+  if (samples >= MICRO_SAMPLES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: hits, hits };
+}
+
+function processDisjoncte(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let step = Number(state.special?.circuitStepByPlayer?.[playerId] || 0);
+  let overload = Number(state.special?.circuitOverloadByPlayer?.[playerId] || 0);
+  const matching = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty));
+  const hits = matching.length;
+  const bulls = bullCount(darts);
+  const wrong = darts.filter((d) => d?.bed === "MISS").length + nonBullWrongCount(darts, target, state.config.difficulty);
+  if (hits > 0 && step < CIRCUIT_NAMES.length) {
+    step += 1;
+    overload += matching.reduce((s, d) => s + (d?.bed === "T" ? 18 : d?.bed === "D" ? 12 : 7), 0);
+    events.push(`🔌 Circuit ${step}/${CIRCUIT_NAMES.length} alimenté`);
+  }
+  overload = clamp(overload + wrong * 10 - bulls * 28, 0, 110);
+  if (overload >= 100 && step < CIRCUIT_NAMES.length) {
+    step = Math.max(0, step - 1);
+    overload = 45;
+    events.push("💥 DISJONCTION ! Un circuit retombe");
+  }
+  state.special.circuitStepByPlayer[playerId] = step;
+  state.special.circuitOverloadByPlayer[playerId] = overload;
+  state.progress[playerId] = Math.round((step / CIRCUIT_NAMES.length) * 100);
+  state.scores[playerId] += hits * 40 + bulls * 20;
+  state.special.circuitHistory = [...(state.special?.circuitHistory || []), { playerId, step, overload }].slice(-40);
+  if (step >= CIRCUIT_NAMES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: hits, hits };
+}
+
+function processPetitBac(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  let step = Number(state.special?.bacStepByPlayer?.[playerId] || 0);
+  let validated = Number(state.special?.bacValidatedByPlayer?.[playerId] || 0);
+  const direct = darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length;
+  const bulls = bullCount(darts);
+  const hits = direct + bulls;
+  if (hits > 0 && step < BAC_CATEGORIES.length) {
+    const n = target?.kind === "number" ? target.value : 1;
+    const letter = BAC_LETTERS[(n - 1) % BAC_LETTERS.length];
+    events.push(`✅ ${BAC_CATEGORIES[step]} en ${letter} validé`);
+    step += 1;
+    validated += 1;
+  } else {
+    events.push("⏱️ Aucune réponse validée sur cette catégorie");
+  }
+  state.special.bacStepByPlayer[playerId] = step;
+  state.special.bacValidatedByPlayer[playerId] = validated;
+  state.progress[playerId] = Math.round((step / BAC_CATEGORIES.length) * 100);
+  state.scores[playerId] += darts.reduce((s, d) => s + wave61DartScore(d), 0) + hits * 25;
+  state.special.bacHistory = [...(state.special?.bacHistory || []), { playerId, step, validated }].slice(-40);
+  if (step >= BAC_CATEGORIES.length) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  return { delta: hits, hits };
+}
+
 function processHotPotato(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
   const hits = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length : 0;
   let fuse = Number(state.special?.hotPotatoFuse || hotPotatoFuseReset(state.config.difficulty));
@@ -2043,6 +2576,30 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const result = processTyrolien(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "saut_a_la_corde") {
     const result = processSautCorde(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "heist_180") {
+    const result = processHeist180(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "escape_game") {
+    const result = processEscapeGame(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "objectif_lune") {
+    const result = processObjectifLune(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "hollywood") {
+    const result = processHollywood(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "calendrier_maya") {
+    const result = processMaya(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "pyramides") {
+    const result = processPyramides(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "draco_spheres") {
+    const result = processDracoSpheres(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "mythologie") {
+    const result = processMythologie(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "jardinier") {
+    const result = processJardinier(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "microscopia") {
+    const result = processMicroscopia(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "disjoncte") {
+    const result = processDisjoncte(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "petit_bac") {
+    const result = processPetitBac(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "hot_potato") {
     const result = processHotPotato(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "zombie_siege") {
@@ -2305,6 +2862,18 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
 
 export function wave61PrimaryMetric(state: Wave61State, playerId: string): { value: number; label: string; sub: string } {
   const stats = state.statsByPlayer[playerId] || blankStats();
+  if (state.modeId === "heist_180") return { value: Number(state.special?.heistStageByPlayer?.[playerId] || 0), label: "CASSE", sub: `${state.special?.heistLootByPlayer?.[playerId] || 0} butin · chaleur ${state.special?.heistHeatByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "escape_game") return { value: Number(state.special?.escapeStepByPlayer?.[playerId] || 0), label: "VERROUS", sub: `${state.special?.escapeStepByPlayer?.[playerId] || 0}/${ESCAPE_STAGES.length} · ${state.special?.escapePenaltyByPlayer?.[playerId] || 0} pénalité(s)` };
+  if (state.modeId === "objectif_lune") return { value: Math.round(Number(state.special?.lunarStageByPlayer?.[playerId] || 0) * 25), label: "MISSION", sub: `fuel ${state.special?.lunarFuelByPlayer?.[playerId] || 0}% · stabilité ${state.special?.lunarStabilityByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "hollywood") return { value: Number(state.special?.hollywoodSceneByPlayer?.[playerId] || 0), label: "SCÈNES", sub: `${state.special?.hollywoodStarsByPlayer?.[playerId] || 0} ★ · box-office ${state.special?.hollywoodBoxOfficeByPlayer?.[playerId] || 0}` };
+  if (state.modeId === "calendrier_maya") return { value: Number(state.special?.mayaSealByPlayer?.[playerId] || 0), label: "SCEAUX", sub: `fin du cycle ${state.special?.mayaDoomByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "pyramides") return { value: Number(state.special?.pyramidChamberByPlayer?.[playerId] || 0), label: "SALLES", sub: `torche ${state.special?.pyramidTorchByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "draco_spheres") return { value: Number(state.special?.dracoSpheresByPlayer?.[playerId] || 0), label: "ORBES", sub: `${state.special?.dracoSpheresByPlayer?.[playerId] || 0}/7 · énergie ${state.special?.dracoEnergyByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "mythologie") return { value: Number(state.special?.mythTrialByPlayer?.[playerId] || 0), label: "ÉPREUVES", sub: `${state.special?.mythTrialByPlayer?.[playerId] || 0}/${MYTH_GODS.length} · faveur ${state.special?.mythFavorByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "jardinier") return { value: Number(state.special?.gardenHarvestByPlayer?.[playerId] || 0), label: "RÉCOLTES", sub: `croissance ${Math.round(Number(state.special?.gardenGrowthByPlayer?.[playerId] || 0))}% · eau ${state.special?.gardenWaterByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "microscopia") return { value: Number(state.special?.microSamplesByPlayer?.[playerId] || 0), label: "ÉCHANT.", sub: `qualité ${state.special?.microQualityByPlayer?.[playerId] || 0} · contamination ${state.special?.microContaminationByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "disjoncte") return { value: Number(state.special?.circuitStepByPlayer?.[playerId] || 0), label: "CIRCUITS", sub: `${state.special?.circuitStepByPlayer?.[playerId] || 0}/${CIRCUIT_NAMES.length} · surcharge ${state.special?.circuitOverloadByPlayer?.[playerId] || 0}%` };
+  if (state.modeId === "petit_bac") return { value: Number(state.special?.bacValidatedByPlayer?.[playerId] || 0), label: "CATÉG.", sub: `${state.special?.bacStepByPlayer?.[playerId] || 0}/${BAC_CATEGORIES.length} validées` };
   if (state.modeId === "hot_potato") return { value: Number(state.lives[playerId] || 0), label: "VIES", sub: `${state.special?.hotPotatoPassesByPlayer?.[playerId] || 0} passe(s) · ${state.special?.hotPotatoExplosionsByPlayer?.[playerId] || 0} explosion(s)` };
   if (state.modeId === "zombie_siege") return { value: Number(state.special?.zombieInfectionByPlayer?.[playerId] || 0), label: state.special?.zombieRoleByPlayer?.[playerId] === "ZOMBIE" ? "ZOMBIE" : "INFECTION", sub: `${state.special?.zombieBarricadeByPlayer?.[playerId] || 0}% barricade` };
   if (state.modeId === "le_loup") return { value: state.special?.loupId === playerId ? 1 : Number(state.lives[playerId] || 0), label: state.special?.loupId === playerId ? "LOUP" : "VIES", sub: `${state.special?.loupCaughtByPlayer?.[playerId] || 0} capture(s) · fuite ${Math.round(Number(state.progress[playerId] || 0))}` };
