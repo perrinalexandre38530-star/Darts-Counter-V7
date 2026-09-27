@@ -4905,3 +4905,232 @@ html[data-msc-orientation="landscape"] [data-mss-play-input="1"] {
   min-height: 0 !important;
   box-sizing: border-box !important;
 }
+
+/* ========================================================================
+   V96 — GLOBAL DARTS PLAY / TABLET LANDSCAPE / 3 ZONES
+   ------------------------------------------------------------------------
+   Portrait is intentionally untouched.
+   Contract:
+   1. header / ticker on the full width,
+   2. active player + score + status / players on the left,
+   3. scoring surface (keypad / target / ScoreInputHub) on the right.
+
+   PlayLandscapeAutoLayout only adds semantic data attributes to legacy play
+   DOM. It never moves React nodes and never changes game logic.
+   ======================================================================== */
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="1"] {
+  height: var(--msc-app-height, 100dvh) !important;
+  max-height: var(--msc-app-height, 100dvh) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"] {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: clamp(5px, .65vw, 8px) !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: clamp(5px, .65vw, 8px) !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] {
+  flex: 0 0 clamp(56px, 10.5vh, 82px) !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  max-height: clamp(56px, 10.5vh, 82px) !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  position: relative !important;
+  top: auto !important;
+  z-index: 12 !important;
+}
+
+/* PageHeader ticker: full image visible, sized by available header height. */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"][data-mss-page-header="1"] {
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] > div:first-child {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] img {
+  height: 100% !important;
+  width: auto !important;
+  max-width: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+/* Legacy custom headers that paint their ticker as a CSS background. */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] [style*="background-image"],
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] [style*="backgroundImage"] {
+  background-size: contain !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-body="1"],
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-path="1"] {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-body="1"] {
+  overflow: hidden !important;
+}
+
+/* The actual two-column gameplay workspace. */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: clamp(4px, .55vw, 7px) !important;
+  box-sizing: border-box !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr) !important;
+  grid-auto-flow: row !important;
+  grid-auto-rows: min-content !important;
+  gap: clamp(5px, .7vw, 9px) !important;
+  align-content: start !important;
+  overflow: auto !important;
+  overscroll-behavior: contain !important;
+  scrollbar-width: thin !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="left"] {
+  grid-column: 1 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="input"] {
+  grid-column: 2 !important;
+  grid-row: 1 / span 120 !important;
+  align-self: start !important;
+  position: sticky !important;
+  top: 0 !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: calc(var(--msc-app-height, 100dvh) - clamp(76px, 14vh, 112px)) !important;
+  margin: 0 !important;
+  overflow: auto !important;
+  overscroll-behavior: contain !important;
+  scrollbar-width: thin !important;
+  box-sizing: border-box !important;
+  z-index: 3 !important;
+}
+
+/* Root itself can be the split host (Gros 6 and a few custom PLAY screens).
+   Keep the header spanning the two columns while the remaining blocks form the
+   left workspace and the input branch stays fixed on the right. */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] {
+  display: grid !important;
+  grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr) !important;
+  grid-template-rows: clamp(56px, 10.5vh, 82px) repeat(120, min-content) !important;
+  align-content: start !important;
+  overflow: auto !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] > [data-mss-auto-play-header="1"] {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  position: sticky !important;
+  top: 0 !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] > [data-mss-auto-play-zone="left"] {
+  grid-column: 1 !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] > [data-mss-auto-play-zone="input"] {
+  grid-column: 2 !important;
+  grid-row: 2 / span 120 !important;
+  position: sticky !important;
+  top: calc(clamp(56px, 10.5vh, 82px) + 6px) !important;
+}
+
+/* Make shared scoring surfaces fill the right pane instead of leaving a large
+   empty black area under a portrait-sized keypad. */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="input"] :is(
+  [data-mss-score-input-hub="1"],
+  [data-mss-keypad="1"],
+  [data-mss-play-input="1"]
+) {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Compact only inside tablet landscape PLAY; portrait stays pixel-for-pixel as
+   before. This gives richer modes enough vertical room without page scrolling. */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] :where(.card, section) {
+  border-radius: min(16px, 1.2vw) !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] :where(h1, h2, h3) {
+  margin-top: 0 !important;
+  margin-bottom: 4px !important;
+}
+
+/* Short Android tablet landscape (roughly 16:9 phones/tablets rotated):
+   slightly favour the scoring surface and reduce the header a little more. */
+html[data-msc-orientation="landscape"][data-msc-device="tablet"][data-msc-short-landscape="1"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] {
+  grid-template-columns: minmax(0, .90fr) minmax(0, 1.10fr) !important;
+  gap: 5px !important;
+  padding: 4px !important;
+}
+
+html[data-msc-orientation="landscape"][data-msc-device="tablet"][data-msc-short-landscape="1"]
+.dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] {
+  flex-basis: clamp(50px, 9.5vh, 68px) !important;
+  max-height: clamp(50px, 9.5vh, 68px) !important;
+}

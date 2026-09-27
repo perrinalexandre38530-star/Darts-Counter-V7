@@ -85,6 +85,7 @@ import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import RunningActiveSessionDock from "./components/RunningActiveSessionDock";
 import SportQuickSwitch from "./components/SportQuickSwitch";
 import DartsConfigGuideBoundary from "./components/DartsConfigGuideBoundary";
+import PlayLandscapeAutoLayout from "./components/gameplay/PlayLandscapeAutoLayout";
 import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type OrganizationWorkspace } from "./organizations/organizationWorkspace";
 import { applyOrganizationPlayContext } from "./organizations/organizationPlayContext";
 // MONETIZATION_V1
@@ -6967,6 +6968,7 @@ case "babyfoot_team_edit":
             backgroundSize: "cover",
           }}
         >
+          <PlayLandscapeAutoLayout active={isGamePlayRoute} />
           <AppGate go={go} tab={tab}>
             <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
               {needsUniversalDartsConfigGuide ? (

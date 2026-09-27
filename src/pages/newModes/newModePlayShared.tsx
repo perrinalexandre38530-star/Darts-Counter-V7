@@ -49,7 +49,7 @@ export function dartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.be
 export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, fitMinScale=0.42 }:any){
   const cap=Math.max(1,Math.min(3,Number(maxDarts)||3));
   const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=cap?prev:[...prev,d]);
-  return <div style={{...panelStyle(accent+"35"),padding:8,height:"100%",minHeight:0,overflow:"hidden"}}>
+  return <div data-mss-play-input="1" style={{...panelStyle(accent+"35"),padding:8,height:"100%",minHeight:0,overflow:"hidden"}}>
     <ScoreInputHub
       currentThrow={currentThrow}
       multiplier={multiplier}

@@ -2238,3 +2238,68 @@
 
 .crados-active__turn { margin-top:3px; padding:2px 7px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(0,0,0,.22); font-size:6px; font-weight:1100; letter-spacing:.35px; line-height:1.2; }
 @media (orientation: portrait) { .crados-active__turn { font-size:5.6px; } }
+
+/* ===== V132 CRADOS: conseil cible flottant configurable ===== */
+.crados-target-advice {
+  position: fixed;
+  z-index: 78;
+  top: clamp(76px, 10.5dvh, 108px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(430px, calc(100vw - 28px));
+  padding: 8px 14px 7px;
+  border: 1px solid rgba(183,242,71,.5);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(8,13,9,.96), rgba(5,8,6,.92));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: none;
+  text-align: center;
+  animation: cradosTargetAdviceIn .34s cubic-bezier(.2,.8,.2,1) both;
+}
+.crados-target-advice__badge {
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 1100;
+  letter-spacing: 1.15px;
+}
+.crados-target-advice__target {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.05;
+  font-weight: 1100;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+}
+.crados-target-advice__player {
+  margin-top: 4px;
+  color: rgba(235,243,236,.72);
+  font-size: 7px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .6px;
+}
+@keyframes cradosTargetAdviceIn {
+  from { opacity: 0; transform: translate(-50%, -12px) scale(.96); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+@media (orientation: portrait) {
+  .crados-target-advice {
+    top: clamp(74px, 9.8dvh, 98px);
+    width: min(360px, calc(100vw - 20px));
+    padding: 7px 10px 6px;
+    border-radius: 14px;
+  }
+  .crados-target-advice__target { font-size: 12px; }
+}
+@media (orientation: landscape) and (max-height: 620px) {
+  .crados-target-advice {
+    top: 54px;
+    width: min(380px, calc(100vw - 190px));
+    padding: 5px 10px;
+    border-radius: 12px;
+  }
+  .crados-target-advice__badge { font-size: 6.5px; }
+  .crados-target-advice__target { margin-top: 2px; font-size: 10px; }
+  .crados-target-advice__player { margin-top: 2px; font-size: 5.8px; }
+}

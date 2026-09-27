@@ -207,6 +207,9 @@ export default function NewDartsModeConfig(props: Props) {
   const [cradosSectorRaceMode, setCradosSectorRaceMode] = React.useState<"claim" | "race">(saved.cradosSectorRaceMode === "race" ? "race" : "claim");
   const [cradosCleanBullSplash, setCradosCleanBullSplash] = React.useState(saved.cradosCleanBullSplash === true);
   const [cradosEndOnFirstMaxDirt, setCradosEndOnFirstMaxDirt] = React.useState(saved.cradosEndOnFirstMaxDirt !== false);
+  const [cradosSfxEnabled, setCradosSfxEnabled] = React.useState(saved.cradosSfxEnabled !== false);
+  const [cradosAwenaEnabled, setCradosAwenaEnabled] = React.useState(saved.cradosAwenaEnabled !== false);
+  const [cradosCoachEnabled, setCradosCoachEnabled] = React.useState(saved.cradosCoachEnabled !== false);
   const [cradosParticipantMode, setCradosParticipantMode] = React.useState<"players" | "teams">(saved.cradosParticipantMode === "teams" ? "teams" : "players");
   const [cradosTeamsSourceMode, setCradosTeamsSourceMode] = React.useState<"manual" | "saved" | "auto">(saved.cradosTeamsSourceMode === "saved" || saved.cradosTeamsSourceMode === "auto" ? saved.cradosTeamsSourceMode : "manual");
   const [cradosTeamAssignments, setCradosTeamAssignments] = React.useState<Record<string, string>>(() => {
@@ -514,6 +517,7 @@ export default function NewDartsModeConfig(props: Props) {
       penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution,
       menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed,
       cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt,
+      cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled,
       cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled,
       fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust,
       looperLives, looperStartTarget, looperNumberLoops, looperSetterShield,
@@ -521,7 +525,7 @@ export default function NewDartsModeConfig(props: Props) {
       steepleDirection, steepleFences, steepleFinishBull, steepleZone,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -586,6 +590,9 @@ export default function NewDartsModeConfig(props: Props) {
       seriesWins,
       rules: modeRulesPayload(),
       ...(mode === "crados" ? {
+        sfxEnabled: cradosSfxEnabled,
+        awenaEnabled: cradosAwenaEnabled,
+        coachEnabled: cradosCoachEnabled,
         participantMode: cradosParticipantMode,
         gameMode: cradosParticipantMode === "teams" ? "teams" : "players",
         teamsSourceMode: cradosParticipantMode === "teams" ? cradosTeamsSourceMode : undefined,
@@ -821,6 +828,15 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
+  const cradosAssistanceBlock = mode === "crados" ? <section style={{ ...selectorCard, padding: "11px 10px" }}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 11.2, fontWeight: 950, marginBottom: 7 }}>Ambiance & assistance</div>
+    <div style={{ ...panel, padding: 7, display: "grid", gap: 5 }}>
+      <OptionRow compact label="Bruitages CRADOS" hint="Coupe uniquement les sons du mode CRADOS."><OptionToggle compact value={cradosSfxEnabled} onChange={setCradosSfxEnabled} /></OptionRow>
+      <OptionRow compact label="Awena" hint="Active ou coupe les commentaires vocaux automatiques d’Awena pendant CRADOS."><OptionToggle compact value={cradosAwenaEnabled} onChange={setCradosAwenaEnabled} /></OptionRow>
+      <OptionRow compact label="Conseil de cible" hint="Affiche à chaque tour un bloc flottant avec la cible recommandée et la raison."><OptionToggle compact value={cradosCoachEnabled} onChange={setCradosCoachEnabled} /></OptionRow>
+    </div>
+  </section>;
+
   const fiftyOneBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles 51 BY 5</div>
     <div style={panel}>
@@ -881,7 +897,7 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "hare_hounds" ? <><SummaryLine label="Départs" value={`Lièvre 20 · Limier ${houndStart}`} /><SummaryLine label="Zone" value={hareTargetZone === "any" ? "S/D/T" : hareTargetZone === "double" ? "Doubles" : "Triples"} /></> : null}
       {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Défis" value={penduTargetFamily === "segments" ? "Segments" : penduTargetFamily === "scores" ? "Scores" : "Mixte"} /></> : null}
       {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
-      {mode === "crados" ? <><SummaryLine label="Type de partie" value={cradosTeamMode ? "Équipes" : "Joueurs"} />{cradosTeamMode ? <SummaryLine label="Composition" value={cradosTeamsSourceMode === "saved" ? "Équipes créées / familles IA" : cradosTeamsSourceMode === "auto" ? "Brassage automatique" : "Manuelle"} /> : null}<SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /><SummaryLine label="Secteur vierge" value={cradosSectorRaceMode === "race" ? "Course — toutes les touches comptent" : "Prise en main — le dernier efface l’autre"} /><SummaryLine label="Bull spécial" value={cradosCleanBullSplash ? "Bull propre contagieux" : "Standard"} /><SummaryLine label="Fin de manche" value={cradosEndOnFirstMaxDirt ? "Première jauge pleine" : "Dernier camp encore propre"} /></> : null}
+      {mode === "crados" ? <><SummaryLine label="Type de partie" value={cradosTeamMode ? "Équipes" : "Joueurs"} />{cradosTeamMode ? <SummaryLine label="Composition" value={cradosTeamsSourceMode === "saved" ? "Équipes créées / familles IA" : cradosTeamsSourceMode === "auto" ? "Brassage automatique" : "Manuelle"} /> : null}<SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /><SummaryLine label="Secteur vierge" value={cradosSectorRaceMode === "race" ? "Course — toutes les touches comptent" : "Prise en main — le dernier efface l’autre"} /><SummaryLine label="Bull spécial" value={cradosCleanBullSplash ? "Bull propre contagieux" : "Standard"} /><SummaryLine label="Fin de manche" value={cradosEndOnFirstMaxDirt ? "Première jauge pleine" : "Dernier camp encore propre"} /><SummaryLine label="Bruitages" value={cradosSfxEnabled ? "ON" : "OFF"} /><SummaryLine label="Awena" value={cradosAwenaEnabled ? "ON" : "OFF"} /><SummaryLine label="Conseil cible" value={cradosCoachEnabled ? "ON" : "OFF"} /></> : null}
       {mode === "fifty_one_by_five" ? <><SummaryLine label="Objectif" value={`${fiftyOneTarget}`} /><SummaryLine label="Calcul" value="Total ÷ 5 si divisible" /></> : null}
       {mode === "looper" ? <><SummaryLine label="Vies" value={`${looperLives}`} /><SummaryLine label="Cible" value="Segment exact" /></> : null}
       {mode === "call_three" ? <><SummaryLine label="Rounds" value={`${callThreeRounds}`} /><SummaryLine label="Appel" value={callThreeCaller === "next" ? "Joueur suivant" : "Aléatoire"} /></> : null}
@@ -901,7 +917,7 @@ export default function NewDartsModeConfig(props: Props) {
     : mode === "call_three" ? callThreeBlock
     : steeplechaseBlock;
   const steps = mode === "crados"
-    ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Zones", "Format", "Saisie", "Résumé"]
+    ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Zones", "Format", "Saisie", "Aide", "Résumé"]
     : definition.guidedSteps;
   const maxStep = steps.length - 1;
   React.useEffect(() => {
@@ -957,7 +973,8 @@ export default function NewDartsModeConfig(props: Props) {
           {guidedStep === 3 ? cradosZonesBlock : null}
           {guidedStep === 4 ? matchBlock : null}
           {guidedStep === 5 ? inputBlock : null}
-          {guidedStep === 6 ? summaryBlock : null}
+          {guidedStep === 6 ? cradosAssistanceBlock : null}
+          {guidedStep === 7 ? summaryBlock : null}
         </> : <>
           {guidedStep === 0 ? participantsBlock : null}
           {guidedStep === 1 ? modeBlock : null}
@@ -966,7 +983,7 @@ export default function NewDartsModeConfig(props: Props) {
           {guidedStep === 4 ? summaryBlock : null}
         </>}
         <div className="msc-new-darts-guided-nav" style={{ display: "flex", gap: 9, marginBottom: 12 }}><button type="button" disabled={guidedStep === 0} onClick={() => goGuidedStep(guidedStep - 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button>{guidedStep < maxStep ? <button type="button" onClick={() => goGuidedStep(guidedStep + 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: `1px solid ${accent}`, background: `${accent}18`, color: accent, fontWeight: 950 }}>Suivant →</button> : null}</div>
-      </> : <>{mode === "crados" ? cradosCompleteModeChoiceBlock : null}{participantsBlock}{mode === "crados" ? cradosOrderBlock : null}{modeBlock}{matchBlock}{inputBlock}{summaryBlock}</>)}
+      </> : <>{mode === "crados" ? cradosCompleteModeChoiceBlock : null}{participantsBlock}{mode === "crados" ? cradosOrderBlock : null}{modeBlock}{mode === "crados" ? cradosAssistanceBlock : null}{matchBlock}{inputBlock}{summaryBlock}</>)}
 
       {(mode !== "crados" || viewModeChosen) && (viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>La partie démarre avec le moteur complet, les BOTS, l’UNDO, la sauvegarde en cours et les statistiques de fin.</div></div> : null}
     </div>

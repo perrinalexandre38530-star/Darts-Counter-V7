@@ -144,6 +144,7 @@ function sectorTouchesBySide(state: any, sideId: string, sectorKey: any) {
 
 function playCradosStateTransitionSfx(previous: CradosState, next: CradosState) {
   try {
+    if (next?.config?.sfxEnabled === false) return;
     const sideIds = Array.from(new Set([
       ...Object.keys(previous?.dirt || {}),
       ...Object.keys(next?.dirt || {}),
@@ -417,7 +418,7 @@ function TacticalBoardModal({ state, sides, sideById, colorBySideId, profileBySi
   const [filterSideId, setFilterSideId] = React.useState("all");
   const modal = <div className="crados-board-modal" role="dialog" aria-modal="true" aria-label="Carte tactique CRADOS" onClick={onClose}>
     <div className="crados-board-modal__card" onClick={(event) => event.stopPropagation()}>
-      <header><div><b>CARTE DES ZONES</b></div><div className="crados-board-modal__actions"><CradosAwenaButton /><button type="button" onClick={onClose} aria-label="Fermer">×</button></div></header>
+      <header><div><b>CARTE DES ZONES</b></div><div className="crados-board-modal__actions">{config?.awenaEnabled !== false ? <CradosAwenaButton /> : null}<button type="button" onClick={onClose} aria-label="Fermer">×</button></div></header>
       <div className="crados-board-modal__filters">
         <button type="button" className={`crados-board-modal__filter-chip${filterSideId === "all" ? " is-active" : ""}`} style={{ ["--filter-color" as any]: ACCENT }} onClick={() => setFilterSideId("all")}>TOUT</button>
         <button type="button" className={`crados-board-modal__filter-chip${filterSideId === "free" ? " is-active" : ""}`} style={{ ["--filter-color" as any]: "#8e9891" }} onClick={() => setFilterSideId("free")}><i style={{ background: "#889088" }} />LIBRES</button>
@@ -587,7 +588,7 @@ function RankingModal({ rows, dirtLimit, onClose }: any) {
   </div>;
 }
 
-function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, activeSideId, activeSide, teamMode, onOpenBoard, coachHint }: any) {
+function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, activeBotLevel, color, config, activeSideId, activeSide, teamMode, onOpenBoard }: any) {
   const dirt = activeSideId ? Number(state.dirt?.[activeSideId] || 0) : 0;
   const avatarSrc = profileImageSrc(activeProfile || activePlayer);
   const headerLabel = state.phase === "finished" ? "PARTIE TERMINÉE" : teamMode ? activeSide?.name || "ÉQUIPE" : activeIsBot ? `BOT IA · NIV. ${activeBotLevel || config.botLevel}` : "";
@@ -598,7 +599,6 @@ function ActivePlayerCard({ state, activePlayer, activeProfile, activeIsBot, act
       <div className="crados-active__name" style={{ color }}>{String(activePlayer?.name || "—").toUpperCase()}</div>
       <div className="crados-active__turn" style={{ borderColor: `${color}66`, color }}>TOUR {currentCradosRound(state)} · VOLÉE {Number(state.turnIndex || 0) + 1}</div>
       <div className="crados-active__percent" style={{ color }}>{dirt}</div>
-      {!activeIsBot && coachHint?.visual ? <div className="crados-active__coach" style={{ color }}>🎯 {coachHint.visual}</div> : null}
       <CradosDirtMeter value={dirt} max={config.rules.dirtLimit} color={color} />
       <div className="crados-active__leg" style={{ color }}>{`MANCHE ${Number(state.legIndex || 0) + 1} · TOUR ${currentCradosRound(state)} · VOLÉE ${Number(state.turnIndex || 0) + 1} · ${state.legWins?.[activeSideId] || 0}/${config.seriesWins}`}</div>
     </div>
@@ -985,6 +985,16 @@ function buildCradosCoachHint(state: any, activeSideIdRaw: any, activeNameRaw: a
   };
 }
 
+function CradosFloatingTargetAdvice({ hint, color, playerName, turnKey }: any) {
+  const raw = String(hint?.visual || "").replace(/^AWENA\s*·\s*/i, "").trim();
+  if (!raw) return null;
+  return <div key={turnKey} className="crados-target-advice" style={{ borderColor: `${color}88`, boxShadow: `0 12px 38px rgba(0,0,0,.52), 0 0 28px ${color}22` }} aria-live="polite">
+    <div className="crados-target-advice__badge" style={{ color }}>🎯 CONSEIL CIBLE</div>
+    <div className="crados-target-advice__target" style={{ color }}>{raw}</div>
+    <div className="crados-target-advice__player">{String(playerName || "Joueur").toUpperCase()} · TOUR À JOUER</div>
+  </div>;
+}
+
 export default function CradosPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
   const awena = useAwenaOptional();
@@ -1196,13 +1206,15 @@ export default function CradosPlay(props: any) {
       if (next.length > previous.length) {
         const added = next.slice(previous.length);
         added.forEach((dart: UIDart, index: number) => {
-          if (index === 0) playCradosDartSfx(dart);
-          else window.setTimeout(() => playCradosDartSfx(dart), index * 140);
+          if (config.sfxEnabled !== false) {
+            if (index === 0) playCradosDartSfx(dart, true);
+            else window.setTimeout(() => playCradosDartSfx(dart, true), index * 140);
+          }
         });
       }
       return next;
     });
-  }, []);
+  }, [config.sfxEnabled]);
 
   // Même principe que Killer : le jingle démarre dès que l'autoplay est autorisé.
   // Une reprise depuis l'historique ne relance pas le jingle de début.
@@ -1210,10 +1222,11 @@ export default function CradosPlay(props: any) {
     if (restored?.mode === "crados" || resumeRecord) return;
 
     const startIntro = () => {
+      if (config.sfxEnabled === false) return;
       try { void unlockCradosAudio(); } catch {}
       if (introPlayedRef.current) return;
       introPlayedRef.current = true;
-      try { playCradosSfx("start"); } catch {}
+      try { playCradosSfx("start", undefined, true); } catch {}
     };
 
     try {
@@ -1235,10 +1248,10 @@ export default function CradosPlay(props: any) {
       window.removeEventListener("mousedown", onFirstGesture, true);
       window.removeEventListener("keydown", onFirstGesture, true);
     };
-  }, []);
+  }, [config.sfxEnabled]);
 
   const speakCradosAction = React.useCallback((voice: CradosActionVoice | null) => {
-    if (!voice || !awena) return;
+    if (!voice || !awena || config.awenaEnabled === false) return;
     if (awena?.settings?.enabled === false || awena?.settings?.voiceEnabled === false || awena?.settings?.autoSpeak === false) return;
     const intervention = String(awena?.settings?.interventionMode || "active");
     if (intervention === "off") return;
@@ -1261,7 +1274,7 @@ export default function CradosPlay(props: any) {
         } catch {}
       })();
     }, voice.delayMs);
-  }, [awena, lang]);
+  }, [awena, lang, config.awenaEnabled]);
 
   React.useEffect(() => () => {
     if (actionVoiceTimerRef.current != null) window.clearTimeout(actionVoiceTimerRef.current);
@@ -1272,6 +1285,7 @@ export default function CradosPlay(props: any) {
 
   React.useEffect(() => {
     if (!awena || !activePlayer || activeIsBot || state.phase !== "playing") return;
+    if (config.awenaEnabled === false || config.coachEnabled === false) return;
     if (awena?.settings?.enabled === false || awena?.settings?.voiceEnabled === false || awena?.settings?.autoSpeak === false) return;
     const intervention = String(awena?.settings?.interventionMode || "active");
     if (intervention === "off" || intervention === "discreet") return;
@@ -1288,7 +1302,7 @@ export default function CradosPlay(props: any) {
       })();
     }, Math.max(320, waitForActionVoice + 180));
     return () => window.clearTimeout(timer);
-  }, [awena, lang, state.legIndex, state.turnIndex, state.phase, activePlayer?.id, activeIsBot, coachHint.speech]);
+  }, [awena, lang, state.legIndex, state.turnIndex, state.phase, activePlayer?.id, activeIsBot, coachHint.speech, config.awenaEnabled, config.coachEnabled]);
 
   const commit = React.useCallback((next: CradosState, previous = state) => {
     setUndo((u) => [...u.slice(-39), cloneCradosState(previous)]);
@@ -1341,7 +1355,7 @@ export default function CradosPlay(props: any) {
     const t = window.setTimeout(() => {
       try {
         const darts = pickCradosBotDarts(state, activeBotLevel || config.botLevel);
-        const audioSpan = playCradosDartSequence(darts);
+        const audioSpan = playCradosDartSequence(darts, 170, config.sfxEnabled !== false);
         window.setTimeout(() => {
           try { commit(playCradosVisit(state, darts)); }
           finally { botBusy.current = false; }
@@ -1369,7 +1383,7 @@ export default function CradosPlay(props: any) {
     setLogOpen(false);
     setRankingOpen(false);
     introPlayedRef.current = true;
-    try { void unlockCradosAudio(); playCradosSfx("start"); } catch {}
+    try { if (config.sfxEnabled !== false) { void unlockCradosAudio(); playCradosSfx("start", undefined, true); } } catch {}
     const next = createCradosState(players, config);
     setState(next);
     initialCheckpointRef.current = true;
@@ -1414,19 +1428,21 @@ export default function CradosPlay(props: any) {
 
   if (state.phase === "finished") {
     return <div className="crados-play crados-play--finished" data-mss-native-play-layout="1">
-      <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={10} left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
+      <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={10} left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={config.awenaEnabled !== false ? <div style={{ marginRight: 7 }}><CradosAwenaButton /></div> : null} />
       <div className="crados-play__finished-wrap"><CradosEndPanel state={state} profiles={profiles} sideProfiles={sideProfiles} rankingRows={rankingRows} teamMode={teamMode} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} config={config} onReplay={replay} onStats={() => go?.("statsHub", { mode: "crados", playerId: state.players?.find((p: any) => String(p.id) === String(state.winnerId))?.id || state.players?.[0]?.id, focusMatchId: matchIdRef.current })} onHistory={() => go?.("statsHub", { tab: "history", mode: "crados", focusMatchId: matchIdRef.current })} onConfig={() => go?.("crados_config")} onGames={() => go?.("games", { gamesView: "all" })} /></div>
     </div>;
   }
 
   return <div className="crados-play" data-mss-native-play-layout="1">
-    <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={10} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={<div style={{ marginRight: 7 }}><CradosAwenaButton /></div>} />
+    <PageHeader tickerSrc={tickerCrados} tickerAlt="CRADOS" tickerHeight={68} tickerBottomGap={10} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("crados_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={config.awenaEnabled !== false ? <div style={{ marginRight: 7 }}><CradosAwenaButton /></div> : null} />
+
+    {config.coachEnabled !== false && !activeIsBot && coachHint?.visual ? <CradosFloatingTargetAdvice hint={coachHint} color={activeColor} playerName={activePlayer?.name} turnKey={`${state.legIndex}:${state.turnIndex}:${activePlayer?.id || ""}`} /> : null}
 
     <main className="crados-play__body">
       <div className="crados-play__stage">
         <div className="crados-play__left">
           <CradosSummaryStrip state={state} profiles={profiles} profileById={profileById} colorByPlayerId={colorByPlayerId} colorBySideId={colorBySideId} config={config} teamMode={teamMode} />
-          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} coachHint={coachHint} />
+          <ActivePlayerCard state={state} activePlayer={activePlayer} activeProfile={activeProfile} activeIsBot={activeIsBot} activeBotLevel={activeBotLevel} color={activeColor} config={config} activeSideId={activeSideId} activeSide={activeSide} teamMode={teamMode} onOpenBoard={() => setBoardOpen(true)} />
           <KpiStatsStrip state={state} activePlayer={activePlayer} activeSideId={activeSideId} activeSideStats={sideStats[String(activeSideId)]} config={config} teamMode={teamMode} color={activeColor} onClick={() => setStatsOpen(true)} />
           <div className="crados-play__quick-row">
             <button type="button" className="crados-stats-button crados-ranking-button" onClick={() => setRankingOpen(true)} aria-label="Ouvrir le classement"><RankingIcon size={23} /></button>

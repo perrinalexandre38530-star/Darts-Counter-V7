@@ -66,7 +66,8 @@ export function unlockCradosAudio() {
   return unlockAudio();
 }
 
-export function playCradosSfx(key: CradosSfxKey, volume = DEFAULT_VOLUME[key]) {
+export function playCradosSfx(key: CradosSfxKey, volume = DEFAULT_VOLUME[key], enabled = true) {
+  if (!enabled) return;
   playSfx(CRADOS_SFX_URL[key], { volume });
 }
 
@@ -86,16 +87,18 @@ export function cradosSfxKeyForDart(dart: any): CradosSfxKey {
   return "hit";
 }
 
-export function playCradosDartSfx(dart: any) {
-  playCradosSfx(cradosSfxKeyForDart(dart));
+export function playCradosDartSfx(dart: any, enabled = true) {
+  if (!enabled) return;
+  playCradosSfx(cradosSfxKeyForDart(dart), undefined, true);
 }
 
 /** Lecture espacée utile pour les volées automatiques des bots. */
-export function playCradosDartSequence(darts: any[], gapMs = 170) {
+export function playCradosDartSequence(darts: any[], gapMs = 170, enabled = true) {
   const rows = Array.isArray(darts) ? darts.slice(0, 3) : [];
+  if (!enabled) return 0;
   rows.forEach((dart, index) => {
-    if (index === 0) playCradosDartSfx(dart);
-    else window.setTimeout(() => playCradosDartSfx(dart), index * gapMs);
+    if (index === 0) playCradosDartSfx(dart, true);
+    else window.setTimeout(() => playCradosDartSfx(dart, true), index * gapMs);
   });
   return rows.length ? Math.max(0, (rows.length - 1) * gapMs) : 0;
 }

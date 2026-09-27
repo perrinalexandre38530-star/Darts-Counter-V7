@@ -33,6 +33,77 @@ import lucky from "../assets/avatars/loterie-bots/lucky.webp";
 import screenSports from "../assets/public-landing/screen-sports.webp";
 import screenX01 from "../assets/public-landing/screen-x01.webp";
 import screenStats from "../assets/public-landing/screen-stats.webp";
+import { DARTS_GAMES, type DartsGameDef } from "../games/dartsGameRegistry";
+
+
+const landingTickerAssets = import.meta.glob("../assets/tickers/*.{png,webp}", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "attrape_moi"]);
+const DARTS_CATEGORY_LABEL: Record<string,string> = {
+  classic: "GRANDS CLASSIQUES",
+  variant: "VARIANTES",
+  challenge: "DÉFIS",
+  fun: "FUN",
+  training: "ENTRAÎNEMENT",
+};
+
+function landingTickerFor(gameId: string): string | null {
+  const alias: Record<string,string> = {
+    fifty_one_by_five: "51_by_5",
+    mario_kart: "darts_racer",
+    killer_progressive: "killer",
+    departements: "territories_fr",
+  };
+  const id = alias[gameId] || gameId;
+  const candidates = [`ticker_${id}.png`,`ticker_${id}.webp`,`ticker_${id}_fr.png`,`ticker_${id}_fr.webp`];
+  for (const wanted of candidates) {
+    const hit = Object.entries(landingTickerAssets).find(([key]) => key.endsWith("/"+wanted));
+    if (hit) return hit[1];
+  }
+  return null;
+}
+
+function publicDartsUrl(id: string) {
+  return `#/welcome/darts/${encodeURIComponent(id)}`;
+}
+
+function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack: () => void; onOpenApp: () => void }) {
+  const ticker = landingTickerFor(game.id);
+  const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
+  return <main className="mssLanding mssRulesPage">
+    <header className="mssNav">
+      <button className="mssBrand" onClick={onBack}><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
+      <nav><button className="mssRulesBack" onClick={onBack}>← TOUS LES MODES</button></nav>
+      <button className="mssOpen" onClick={onOpenApp}>OUVRIR L’APPLICATION</button>
+    </header>
+    <section className="mssRuleHero">
+      <div className="mssRuleHeroArt">
+        {ticker ? <img src={ticker} alt={`Visuel réel ${game.label} dans MULTISPORTS SCORING`}/> :
+          <div className="mssRuleFallback"><img src={darts} alt=""/><span>MULTISPORTS SCORING</span><strong>{game.label}</strong></div>}
+      </div>
+      <div className="mssRuleHeroCopy">
+        <div className="mssEyebrow">{exclusive ? "MODE EXCLUSIF MULTISPORTS SCORING" : DARTS_CATEGORY_LABEL[game.category] || "MODE FLÉCHETTES"}</div>
+        <h1>{game.label}</h1>
+        <p>{game.infoBody}</p>
+        <div className="mssRuleBadges">
+          <span>JUSQU’À {game.maxPlayers} JOUEURS</span>
+          {game.supportsTeams && <span>ÉQUIPES</span>}
+          {game.supportsBots && <span>BOTS IA</span>}
+        </div>
+      </div>
+    </section>
+    <section className="mssRuleContent">
+      <article><b>01</b><h2>OBJECTIF</h2><p>{game.infoBody.split(".")[0]}.</p></article>
+      <article><b>02</b><h2>RÈGLE DU JEU</h2><p>{game.infoBody}</p></article>
+      <article><b>03</b><h2>DANS MSS</h2><p>Configurez les joueurs{game.supportsTeams ? ", les équipes" : ""}{game.supportsBots ? " et les adversaires IA compatibles" : ""}, lancez la partie puis laissez MULTISPORTS SCORING gérer le score et le déroulement du mode.</p></article>
+      <article><b>04</b><h2>VICTOIRE</h2><p>La condition de victoire et les variantes appliquées sont celles décrites ci-dessus et celles choisies dans la configuration du mode.</p></article>
+    </section>
+    <section className="mssRuleCta"><div><span>PRÊT À ESSAYER ?</span><h2>{game.label} est disponible dans MULTISPORTS SCORING.</h2></div><button onClick={onOpenApp}>JOUER DANS L’APPLICATION</button></section>
+  </main>;
+}
 
 const sports = [
   [darts,"Fléchettes"],[petanque,"Pétanque"],[babyfoot,"Baby-foot"],[pingpong,"Ping-pong"],
@@ -51,10 +122,17 @@ const features = [
 ] as const;
 
 export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void }) {
+  const readyDartsGames = DARTS_GAMES.filter((g) => g.ready && g.entry === "games");
+  const ruleMatch = window.location.hash.match(/^#\/welcome\/darts\/([^?]+)/);
+  if (ruleMatch) {
+    const id = decodeURIComponent(ruleMatch[1]);
+    const game = readyDartsGames.find((g) => g.id === id);
+    if (game) return <DartsRulePage game={game} onOpenApp={onOpenApp} onBack={() => { window.location.hash = "#/welcome"; }} />;
+  }
   return <main className="mssLanding" id="top">
     <header className="mssNav">
       <button className="mssBrand" onClick={() => window.scrollTo({top:0,behavior:"smooth"})} aria-label="MULTISPORTS SCORING accueil"><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
-      <nav><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#download">Télécharger</a></nav>
+      <nav><a href="#darts-modes">Fléchettes</a><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#download">Télécharger</a></nav>
       <button className="mssOpen" onClick={onOpenApp}>OUVRIR L’APPLICATION</button>
     </header>
 
@@ -84,6 +162,23 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <article className="mssDevice mssDeviceLeft"><div className="mssPhone mssPhoneReal"><img src={screenSports} alt="Écran réel Choix du sport de MULTISPORTS SCORING"/></div><strong>CHOIX DU SPORT</strong><span>Votre véritable écran de sélection MULTISPORTS SCORING.</span></article>
         <article className="mssDevice mssDeviceMain"><div className="mssPhone mssPhoneReal"><img src={screenX01} alt="Écran réel de scoring X01 501 de MULTISPORTS SCORING"/></div><strong>SCORING X01 EN DIRECT</strong><span>Le véritable moteur de saisie et de suivi d’une partie 501.</span></article>
         <article className="mssDevice mssDeviceRight"><div className="mssPhone mssPhoneReal"><img src={screenStats} alt="Écran réel Statistiques X01 de MULTISPORTS SCORING"/></div><strong>STATS & PROGRESSION</strong><span>Les véritables graphiques de performance de l’application.</span></article>
+      </div>
+    </section>
+
+    <section className="mssDartsUniverse" id="darts-modes">
+      <div className="mssDartsIntro">
+        <div><div className="mssEyebrow">L’UNIVERS FLÉCHETTES MULTISPORTS SCORING</div><h2><em>{readyDartsGames.length}</em> modes de jeu disponibles.</h2><p>Retrouvez les grands classiques des fléchettes, des variantes, des défis, des modes fun et des créations exclusives MULTISPORTS SCORING. Chaque mode possède désormais sa fiche publique de règles.</p></div>
+        <div className="mssDartsPromises"><span><strong>CLASSIQUES</strong><small>X01 • Cricket • Killer • Shanghai • Golf…</small></span><span><strong>EXCLUSIFS MSS</strong><small>DARTS FIREFIGHTER • CRADOS • ATTRAPE-MOI SI TU PEUX !</small></span><span><strong>RÈGLES</strong><small>Une fiche dédiée pour chaque mode</small></span></div>
+      </div>
+      <div className="mssDartsModeGrid">
+        {readyDartsGames.map((game, index) => {
+          const ticker = landingTickerFor(game.id);
+          const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
+          return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}`} href={publicDartsUrl(game.id)} key={game.id}>
+            <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`}/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{exclusive ? "EXCLUSIF MSS" : DARTS_CATEGORY_LABEL[game.category]}</span></div>
+            <div className="mssDartsModeText"><strong>{game.label}</strong><p>{game.infoBody}</p><small>VOIR LES RÈGLES →</small></div>
+          </a>;
+        })}
       </div>
     </section>
 

@@ -93,7 +93,7 @@ import {
   writeExternalBackupNow,
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
-import { connectPersonalCloud, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
+import { connectPersonalCloud, downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
 import {
   isBackgroundBackupRunning,
   startBackgroundBackupJob,
@@ -109,9 +109,9 @@ import {
 type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
 type RestoreView = "current" | "archives" | "trash";
-type SaveSource = "nas" | "local" | "cloud" | "file";
+type SaveSource = "nas" | "local" | "cloud" | "file" | "personal";
 type BackupProvider = "nas" | "cloud";
-type RestoreSource = BackupProvider | "local" | "file";
+type RestoreSource = BackupProvider | "local" | "file" | "google_drive";
 type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
 
 type SaveQuality = {
@@ -1918,6 +1918,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [trashCloudSlots, setTrashCloudSlots] = React.useState<CloudSlot[]>([]);
   const [backupProvider, setBackupProvider] = React.useState<BackupProvider>(() => readPreferredRemoteSource() || "nas");
   const [restoreSource, setRestoreSource] = React.useState<RestoreSource>(() => readPreferredRemoteSource() || "nas");
+  const [personalRestoreEntry, setPersonalRestoreEntry] = React.useState<SaveEntry | null>(null);
   const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
   const [externalBackupStatus, setExternalBackupStatus] = React.useState<ExternalBackupStatus>(() => ({
     supported: typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function",
@@ -2241,10 +2242,12 @@ export default function StorageVaultPage({ go }: Props) {
     ? localEntries[0] || null
     : restoreSource === "file"
       ? importedRestoreEntry
-      : latestRemoteEntry;
+      : restoreSource === "google_drive"
+        ? personalRestoreEntry
+        : latestRemoteEntry;
   const currentRestoreArchives = restoreSource === "local"
     ? localEntries.slice(1)
-    : restoreSource === "file"
+    : restoreSource === "file" || restoreSource === "google_drive"
       ? []
       : archivedRemoteEntries;
   const headerSummary = normalizeSummary(currentRestoreEntry?.summary || latestRemoteEntry?.summary || localEntries[0]?.summary || {});
@@ -2780,6 +2783,55 @@ ${label}`)) return;
     setMessage(provider === "cloud"
       ? "Source distante sélectionnée : Cloudflare R2. Les sauvegardes disponibles sur tous tes appareils sont affichées ci-dessous."
       : "Source distante sélectionnée : NAS. Les sauvegardes privées du serveur sont affichées ci-dessous.");
+  };
+
+  const selectGoogleDriveRestoreSource = async () => {
+    lastUserActionAtRef.current = Date.now();
+    if (!hasConnectedAccount) {
+      setMessage("Connexion MULTISPORTS SCORING requise avant d’ouvrir Google Drive.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const status = await getPersonalCloudStatus("google_drive");
+      if (!status.configured) throw new Error("Google Drive n’est pas configuré côté serveur.");
+      if (!status.connected) {
+        setMessage("Connexion à Google Drive…");
+        await connectPersonalCloud("google_drive");
+        return;
+      }
+      const meta = await getPersonalCloudBackupMeta("google_drive");
+      if (!meta) {
+        setPersonalRestoreEntry(null);
+        setRestoreSource("google_drive");
+        setRestoreView("current");
+        setMessage("Google Drive connecté, mais aucune sauvegarde MULTISPORTS SCORING n’y est encore disponible.");
+        return;
+      }
+      const snapshot = await downloadPersonalCloudSnapshot("google_drive");
+      const summary = strictSummaryForRestore(snapshot);
+      const quality = assessSave(summary);
+      const timestamp = String(meta.updatedAt || meta?.metadata?.exportedAt || new Date().toISOString());
+      const slot: MemorySlot = {
+        id: "personal_google_drive_latest", ownerId: getVaultCurrentUserId(),
+        createdAt: timestamp, updatedAt: timestamp, label: "Google Drive", source: "manual",
+        payload: snapshot, summary,
+      };
+      setPersonalRestoreEntry({
+        key: "personal:google_drive:latest", source: "personal", slot, summary,
+        createdAt: timestamp, updatedAt: timestamp, index: 1, latest: true, quality,
+        title: "Sauvegarde Google Drive",
+        subtitle: `${fmtDate(timestamp)} · ${summary.matches} partie(s) · ${summary.profiles} profil(s)`,
+      });
+      setRestoreSource("google_drive");
+      setRestoreView("current");
+      setMessage(`Google Drive prêt : ${summary.matches} partie(s) · ${summary.profiles} profil(s) · ${summary.statsMatches || summary.statsBlocks} partie(s) avec stats.`);
+    } catch (error: any) {
+      setPersonalRestoreEntry(null);
+      setMessage(`Google Drive impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const selectLocalRestoreSource = () => {
@@ -3878,6 +3930,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   <VaultActionButton icon="nas" label="NAS privé" active={restoreSource === "nas"} onClick={() => void selectRemoteRestoreSource("nas")}/>
                 ) : null}
                 <VaultActionButton icon="cloud" label="Cloud R2" active={restoreSource === "cloud"} onClick={() => void selectRemoteRestoreSource("cloud")}/>
+                <VaultActionButton icon="cloud" label="Google Drive" active={restoreSource === "google_drive"} onClick={() => void selectGoogleDriveRestoreSource()}/>
                 <VaultActionButton icon="local" label="Cet appareil" active={restoreSource === "local"} onClick={selectLocalRestoreSource}/>
                 <VaultActionButton icon="file" label="Fichier / SD / Cloud perso" active={restoreSource === "file"} onClick={selectFileRestoreSource}/>
                 <input ref={restoreFileRef} type="file" accept="application/json,.json,.dcbackup" style={{ display: "none" }} onChange={(event) => void loadRestoreFile(event.currentTarget.files?.[0] || null)}/>
@@ -3885,7 +3938,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
               <div style={{ display: "grid", gridTemplateColumns: restoreSource === "file" ? "1fr" : restoreSource === "local" ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
                 <VaultActionButton icon="current" label="Dernière" active={restoreView === "current"} onClick={() => setRestoreView("current")}/>
-                {restoreSource !== "file" ? <VaultActionButton icon="archive" label={`Archives ${currentRestoreArchives.length}`} active={restoreView === "archives"} onClick={() => setRestoreView("archives")}/> : null}
+                {restoreSource !== "file" && restoreSource !== "google_drive" ? <VaultActionButton icon="archive" label={`Archives ${currentRestoreArchives.length}`} active={restoreView === "archives"} onClick={() => setRestoreView("archives")}/> : null}
                 {restoreSource === "nas" || restoreSource === "cloud" ? <VaultActionButton icon="trash" label={`Corbeille ${trashRemoteEntries.length}`} active={restoreView === "trash"} onClick={() => setRestoreView("trash")}/> : null}
               </div>
             </div>
@@ -3893,11 +3946,11 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             {restoreView === "current" && (currentRestoreEntry
               ? renderEntry(currentRestoreEntry)
               : <CompactEmpty
-                  title={restoreSource === "file" ? "Sélectionne un fichier de sauvegarde" : restoreSource === "local" ? "Aucune sauvegarde locale" : `Aucune sauvegarde ${restoreSource === "nas" ? "NAS" : "Cloud R2"} courante`}
+                  title={restoreSource === "file" ? "Sélectionne un fichier de sauvegarde" : restoreSource === "local" ? "Aucune sauvegarde locale" : restoreSource === "google_drive" ? "Aucune sauvegarde Google Drive" : `Aucune sauvegarde ${restoreSource === "nas" ? "NAS" : "Cloud R2"} courante`}
                   detail={restoreSource === "file" ? "Le fichier sera d’abord analysé et affiché. Rien ne sera restauré avant confirmation." : "Crée une sauvegarde depuis l’onglet Sauver, puis actualise."}
                 />)}
 
-            {restoreView === "archives" && restoreSource !== "file" ? (
+            {restoreView === "archives" && restoreSource !== "file" && restoreSource !== "google_drive" ? (
               <>
                 {currentRestoreArchives.map(renderEntry)}
                 {!currentRestoreArchives.length ? <CompactEmpty title="Aucune archive restaurable"/> : null}

@@ -34,6 +34,9 @@ export type CradosConfigPayload = {
   randomOrder?: boolean;
   scoreInputMethod?: "keypad" | "dartboard";
   seriesWins: 1 | 2 | 3;
+  sfxEnabled?: boolean;
+  awenaEnabled?: boolean;
+  coachEnabled?: boolean;
   rules: {
     dirtLimit: 10 | 15 | 20;
     layersToOwn: 2 | 3 | 4;
@@ -170,6 +173,9 @@ export function normalizeCradosConfig(raw: any): CradosConfigPayload {
     randomOrder: raw?.randomOrder !== false,
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
     seriesWins: raw?.seriesWins === 2 || raw?.seriesWins === 3 ? raw.seriesWins : 1,
+    sfxEnabled: raw?.sfxEnabled !== false,
+    awenaEnabled: raw?.awenaEnabled !== false,
+    coachEnabled: raw?.coachEnabled !== false,
     rules: {
       dirtLimit: r?.dirtLimit === 15 || r?.dirtLimit === 20 ? r.dirtLimit : 10,
       layersToOwn: r?.layersToOwn === 2 || r?.layersToOwn === 4 ? r.layersToOwn : 3,
