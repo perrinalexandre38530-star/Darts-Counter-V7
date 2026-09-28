@@ -67,6 +67,12 @@ export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvide
       snapshotJson: wrapper,
       summary: metadata?.summary || {},
       metadata,
+    }, {
+      // Une sauvegarde réelle fait ~20-30 Mo avant compression et dépassait
+      // régulièrement le timeout POST global de 10 s (les sauvegardes valides
+      // observées prennent déjà ~12-13 s). Action utilisateur => délai dédié.
+      manual: true,
+      timeoutMs: 120_000,
     }) as any;
   }
   return apiPost(`/account/personal-cloud/${provider}/backup`, { ...packed, metadata }) as any;

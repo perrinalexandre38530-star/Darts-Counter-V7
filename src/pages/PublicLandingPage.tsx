@@ -43,6 +43,7 @@ const landingTickerAssets = import.meta.glob("../assets/tickers/*.{png,webp}", {
 }) as Record<string, string>;
 
 const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo"]);
+const NEW_PUBLIC_DARTS = new Set(["mistigri", "corbeau_renard", "radin", "darts_impossible"]);
 const DARTS_CATEGORY_LABEL: Record<string,string> = {
   classic: "GRANDS CLASSIQUES",
   variant: "VARIANTES",
@@ -282,7 +283,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
           const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
           const development = isPublicDartsDevelopment(game);
           return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id}>
-            <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`} loading="lazy" decoding="async"/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? "EN DÉVELOPPEMENT" : exclusive ? "EXCLUSIF MSS" : DARTS_CATEGORY_LABEL[game.category]}</span>{exclusive && development && <i className="mssExclusiveCorner">EXCLUSIF MSS</i>}</div>
+            <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`} loading="lazy" decoding="async"/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? "EN DÉVELOPPEMENT" : exclusive ? "EXCLUSIF MSS" : DARTS_CATEGORY_LABEL[game.category]}</span>{NEW_PUBLIC_DARTS.has(game.id) && <i className="mssNewModeCorner">NOUVEAU</i>}{exclusive && development && <i className="mssExclusiveCorner">EXCLUSIF MSS</i>}</div>
             <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{game.label}</strong></div><p>{development ? "Mode référencé dans le catalogue MSS. Développement du moteur en cours." : game.infoBody}</p><small>{development ? "DÉCOUVRIR LE CONCEPT →" : "VOIR LA FICHE COMPLÈTE →"}</small></div>
           </a>;
         })}

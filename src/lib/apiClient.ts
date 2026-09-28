@@ -368,7 +368,9 @@ function clearNasAuthBecauseUnauthorized(sourcePath = "") {
   try {
     window.localStorage.removeItem("dc_nas_access_token_v1");
     window.localStorage.removeItem("dc_nas_refresh_token_v1");
-    window.localStorage.removeItem("dc_online_auth_supabase_v1");
+    // CRITIQUE: dc_online_auth_supabase_v1 porte aussi la session publique du
+    // compte MULTISPORTS. Un 401 NAS ne doit jamais détruire cette session,
+    // sinon Google Drive et toutes les sauvegardes compte tombent en cascade.
   } catch {}
   setApiAccessToken("");
   dispatchSignedOut("401", sourcePath);
@@ -732,12 +734,12 @@ export async function apiGetBytes(path: string, options?: Omit<ApiRequestOptions
   return doFetch(path, undefined, { ...options, responseType: "bytes" }) as Promise<ApiBinaryResponse>;
 }
 
-export async function apiPost(path: string, body: unknown) {
+export async function apiPost(path: string, body: unknown, options?: ApiRequestOptions) {
   return doFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }, options);
 }
 
 export async function apiPut(path: string, body: unknown) {

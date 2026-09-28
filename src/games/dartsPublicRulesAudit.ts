@@ -1372,5 +1372,73 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
       "Même objectif et même limite pour tous les participants",
       "Sélection de participants : solo, multi ou équipes"
     ]
+  },
+  "mistigri": {
+    "status": "available",
+    "sources": ["src/pages/wave61/modes/mistigriConfig.tsx", "src/pages/wave61/modes/mistigriPlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "PRINCIPE : version darts du Mistigri ; éviter de conserver la mauvaise carte et transmettre la pression au bon moment",
+      "SOCLE MOTEUR : famille Survival",
+      "CONFIGURATION ACTUELLE : 16 rounds par défaut et 4 vies par défaut",
+      "OBJECTIF MOTEUR : 100 par défaut",
+      "Difficulté : Facile / Normal / Difficile",
+      "Bots IA disponibles avec niveau Facile / Normal / Difficile",
+      "Mode joueurs ou 2 équipes automatiques",
+      "Ordre des participants configurable, avec ordre aléatoire disponible",
+      "Saisie : Keypad ou Cible interactive",
+      "Sauvegarde/reprise, Undo, scoring par fléchette et écran de fin branchés sur le socle Wave61",
+      "Les réglages exclusifs supplémentaires de MISTIGRI ne sont pas encore ajoutés à cette première version dédiée"
+    ]
+  },
+  "radin": {
+    "status": "available",
+    "sources": ["src/pages/wave61/modes/radinConfig.tsx", "src/pages/wave61/modes/radinPlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "PRINCIPE : accumuler un pactole, limiter les pertes et faire payer les mauvaises décisions aux adversaires",
+      "SOCLE MOTEUR : famille Score",
+      "CONFIGURATION ACTUELLE : 12 rounds par défaut",
+      "OBJECTIF MOTEUR : 100 par défaut",
+      "Difficulté : Facile / Normal / Difficile",
+      "Bots IA disponibles avec niveau Facile / Normal / Difficile",
+      "Mode joueurs ou 2 équipes automatiques",
+      "Ordre des participants configurable, avec ordre aléatoire disponible",
+      "Saisie : Keypad ou Cible interactive",
+      "Sauvegarde/reprise, Undo, scoring par fléchette et écran de fin branchés sur le socle Wave61",
+      "Les paramètres avancés propres à RADIN sont annoncés comme une passe de finition ultérieure dans la configuration dédiée"
+    ]
+  },
+  "corbeau_renard": {
+    "status": "available",
+    "sources": ["src/pages/wave61/modes/corbeau_renardConfig.tsx", "src/pages/wave61/modes/corbeau_renardPlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "PRINCIPE : jeu de ruse inspiré de la fable ; protéger son butin et exploiter les ouvertures adverses",
+      "SOCLE MOTEUR : famille Mission",
+      "CONFIGURATION ACTUELLE : 16 rounds par défaut",
+      "OBJECTIF MOTEUR : 100 par défaut",
+      "Difficulté : Facile / Normal / Difficile",
+      "Bots IA disponibles avec niveau Facile / Normal / Difficile",
+      "Mode joueurs ou 2 équipes automatiques",
+      "Ordre des participants configurable, avec ordre aléatoire disponible",
+      "Saisie : Keypad ou Cible interactive",
+      "Moteur, bots, historique et reprise sont déjà branchés dans la première version dédiée",
+      "La page dédiée est prévue pour recevoir ensuite des réglages exclusifs supplémentaires"
+    ]
+  },
+  "darts_impossible": {
+    "status": "available",
+    "sources": ["src/pages/wave61/modes/darts_impossibleConfig.tsx", "src/pages/wave61/modes/darts_impossiblePlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "PRINCIPE : défi d’infiltration et de précision basé sur des contrats exigeants",
+      "SOCLE MOTEUR : famille Precision",
+      "CONFIGURATION ACTUELLE : 12 rounds par défaut",
+      "OBJECTIF MOTEUR : 10 par défaut",
+      "Difficulté : Facile / Normal / Difficile",
+      "Bots IA disponibles avec niveau Facile / Normal / Difficile",
+      "Mode joueurs ou 2 équipes automatiques",
+      "Ordre des participants configurable, avec ordre aléatoire disponible",
+      "Saisie : Keypad ou Cible interactive",
+      "La base dédiée permet déjà de lancer des parties complètes",
+      "Les réglages experts propres aux futures missions ne sont pas encore ajoutés"
+    ]
   }
 } as any;
