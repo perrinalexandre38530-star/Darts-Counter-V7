@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -257,7 +258,7 @@ function ColinBoard({ state, accent, reveal, onReveal, previewMs = 2000 }: any) 
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
       <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>COLIN-MAILLARD · MÉMOIRE</div><div style={{ color: SOFT, fontSize: 9, marginTop: 2 }}>Progression actuelle : {Math.min(step, sequence.length)}/{sequence.length}</div></div>
-      <button type="button" onClick={onReveal} style={actionStyle(accent, false)}>{`👁 APERÇU ${(Math.max(500, Number(previewMs || 2000)) / 1000).toFixed(1).replace(".0", "")}s`}</button>
+      <button type="button" onClick={onReveal} title="APERÇU 2s" style={actionStyle(accent, false)}>{`👁 APERÇU ${(Math.max(500, Number(previewMs || 2000)) / 1000).toFixed(1).replace(".0", "")}s`}</button>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, sequence.length)},1fr)`, gap: 5, marginTop: 8 }}>
       {sequence.map((n: number, i: number) => <div key={`${n}-${i}`} style={{ minHeight: 42, borderRadius: 10, display: "grid", placeItems: "center", border: `1px solid ${i < step ? accent + "77" : "rgba(255,255,255,.10)"}`, background: i < step ? `${accent}18` : "rgba(255,255,255,.03)", color: i < step ? accent : "#fff", fontWeight: 1100 }}>{reveal ? n : i < step ? "✓" : "?"}</div>)}
@@ -480,7 +481,7 @@ export default function Wave61SharedPlay(props: any) {
       {config?.modeOptions && Object.keys(config.modeOptions).length ? <div style={{ ...panelStyle(accent + "2d"), padding: "7px 9px", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ color: accent, fontSize: 8.8, fontWeight: 1100, letterSpacing: .8 }}>RÉGLAGES MODE</span>
         {Object.entries(config.modeOptions).map(([key, value]: any) => {
-          const labels: Record<string,string> = { mineCount: "MINES", scannerStrength: "SCANNER", mineDamage: "DÉGÂTS", connectLength: "ALIGNEMENT", bullColumn: "BULL→COL", codeLength: "CODE", allowRepeats: "RÉPÉTITIONS", cluesPerMiss: "INDICES/ERREUR", sequenceLength: "SÉQUENCE", previewMs: "APERÇU", revealMs: "LUMIÈRE", wrongPenalty: "PÉNALITÉ", headshotBonus: "HEADSHOT" };
+          const labels: Record<string,string> = { mineCount: "MINES", scannerStrength: "SCANNER", mineDamage: "DÉGÂTS", connectLength: "ALIGNEMENT", bullColumn: "BULL→COL", codeLength: "CODE", allowRepeats: "RÉPÉTITIONS", cluesPerMiss: "INDICES/ERREUR", sequenceLength: "SÉQUENCE", previewMs: "APERÇU", revealMs: "LUMIÈRE", wrongPenalty: "PÉNALITÉ", headshotBonus: "HEADSHOT", nightDamage: "NUIT", dayVoteMultiplier: "VOTES", medicShield: "BOUCLIER", captureThreshold: "SEUIL", territoryGoal: "OBJECTIF", resourceBoost: "RESSOURCE", baseFort: "FORT", torchStart: "TORCHE", torchDrain: "USURE", chamberNeed: "SALLE", weatherSeverity: "MÉTÉO", oxygenReserve: "OXYGÈNE", climbPower: "ASCENSION", peakThreshold: "SOMMET", burstThreshold: "COSMO", burstDamage: "BURST", shieldCap: "BOUCLIER", energyThreshold: "ÉNERGIE", bullEnergy: "BULL ÉNERGIE", tripleEnergy: "TRIPLE ÉNERGIE", trialNeed: "ÉPREUVE", favorThreshold: "FAVEUR", bullFavor: "BULL FAVEUR", alertGain: "ALERTE", bullStealth: "DISCRÉTION", phaseNeedBonus: "PHASE", attackThreshold: "ATTAQUE", tranquilizerPower: "TRANQ.", securityDamage: "SÉCURITÉ", pullPowerPct: "TRACTION", slipPenalty: "RECUL", bullBoostPct: "BULL", copyPoints: "COPIE", perfectBonus: "PARFAIT", failurePenalty: "ERREUR", missPenaltyPercent: "SANCTION", hitMultiplierPct: "TOUCHES", bustBack: "BUST", bustResetAfter: "RESET BUST", marksPerBox: "MARQUES", overflowRule: "SURPLUS", overflowBonus: "BONUS SURPLUS", finishSteps: "PISTE", tripleAdvance: "TRIPLE", wrongColorAdvance: "MAUV. COULEUR", scoreMultiplierPct: "SCORE", bullBonus: "BULL BONUS", missPenalty: "MISS", collisionResetPct: "COLLISION", collisionScoreBonus: "KNOCK BONUS" };
           const shown = key.endsWith("Ms") ? `${Number(value) / 1000}s` : typeof value === "boolean" ? (value ? "ON" : "OFF") : String(value);
           return <span key={key} style={{ borderRadius: 999, padding: "4px 7px", border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "#cfd5e4", fontSize: 8.5, fontWeight: 900 }}>{labels[key] || key.toUpperCase()} · {shown}</span>;
         })}

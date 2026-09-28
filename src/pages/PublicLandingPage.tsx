@@ -96,6 +96,7 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
       <nav><button className="mssRulesBack" onClick={onBack}>← TOUS LES MODES</button></nav>
       <button className="mssOpen" onClick={onOpenApp}>OUVRIR L’APPLICATION</button>
     </header>
+    <div className="mssRuleBreadcrumb"><button onClick={onBack}>MODES DE FLÉCHETTES</button><span>›</span><b>{game.label}</b><i>{development ? "EN DÉVELOPPEMENT" : "DISPONIBLE"}</i></div>
     <section className="mssRuleHero">
       <div className="mssRuleHeroArt">
         {ticker ? <img src={ticker} alt={`Visuel réel ${game.label} dans MULTISPORTS SCORING`} decoding="async" fetchPriority="high"/> :
@@ -123,6 +124,7 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
       <div><span>CATÉGORIE</span><strong>{exclusive ? "Exclusivité MSS" : DARTS_CATEGORY_LABEL[game.category] || "Fléchettes"}</strong></div>
       <div><span>OPTIONS</span><strong>{[game.supportsTeams ? "Équipes" : "", game.supportsBots ? "Bots IA" : ""].filter(Boolean).join(" • ") || "Selon le mode"}</strong></div>
     </section>
+    {development && <section className="mssDevelopmentNotice"><div><span>MODE EN PRÉPARATION</span><h2>Cette fiche évoluera avec le développement du moteur.</h2><p>Le concept est déjà référencé dans le catalogue MULTISPORTS SCORING. Les règles, options et écrans jouables seront détaillés ici uniquement lorsqu’ils seront réellement intégrés à l’application.</p></div><b>WORK IN<br/>PROGRESS</b></section>}
     <section className="mssRuleContent" id="regles">
       <article><b>01</b><h2>OBJECTIF</h2><p>{objective}</p></article>
       <article><b>02</b><h2>PRINCIPE & RÈGLES</h2><p>{game.infoBody}</p></article>
@@ -239,8 +241,8 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
       <div className="mssHeroVisual" aria-label="Les disciplines MULTISPORTS SCORING">
         <div className="mssVisualKicker">UN ÉCOSYSTÈME • 22 DISCIPLINES</div>
         <div className="mssGlow"/>
-        <div className="mssOrbit mssOrbitOuter">{sports.slice(0,12).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n}/></div>)}</div>
-        <div className="mssOrbit mssOrbitInner">{sports.slice(12,22).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n}/></div>)}</div>
+        <div className="mssOrbit mssOrbitOuter">{sports.slice(0,12).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n} loading="lazy" decoding="async"/></div>)}</div>
+        <div className="mssOrbit mssOrbitInner">{sports.slice(12,22).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n} loading="lazy" decoding="async"/></div>)}</div>
         <div className="mssHeroCore"><img src={logo} alt="MULTISPORTS SCORING"/><strong>22</strong><span>DISCIPLINES</span></div>
         <div className="mssHeroFeatureRail" aria-label="Fonctionnalités principales"><span><b>ONLINE</b><small>Communauté</small></span><span><b>BOTS IA</b><small>Adversaires</small></span><span><b>STATS</b><small>Progression</small></span></div>
       </div>
@@ -285,7 +287,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
       </div>
     </section>
 
-    <section className="mssSection" id="disciplines"><div className="mssEyebrow">TOUT VOTRE SPORT. UNE SEULE APPLICATION.</div><h2>22 disciplines, une identité commune</h2><p>Chaque discipline conserve son univers tout en profitant du même compte, des mêmes profils, de l’historique et de l’écosystème MULTISPORTS SCORING.</p><div className="mssSports">{sports.map(([src,n],i)=><article key={n}><span className="mssSportNo">{String(i+1).padStart(2,"0")}</span><img src={src} alt={n}/><strong>{n}</strong></article>)}</div></section>
+    <section className="mssSection" id="disciplines"><div className="mssEyebrow">TOUT VOTRE SPORT. UNE SEULE APPLICATION.</div><h2>22 disciplines, une identité commune</h2><p>Chaque discipline conserve son univers tout en profitant du même compte, des mêmes profils, de l’historique et de l’écosystème MULTISPORTS SCORING.</p><div className="mssSports">{sports.map(([src,n],i)=><article key={n}><span className="mssSportNo">{String(i+1).padStart(2,"0")}</span><img src={src} alt={n} loading="lazy" decoding="async"/><strong>{n}</strong></article>)}</div></section>
 
     <section className="mssSection mssDarkCards"><div className="mssEyebrow">BIEN PLUS QU’UN COMPTEUR DE SCORE</div><h2>Jouez. Analysez. Progressez.</h2><div className="mssCards"><article><b>◎</b><h3>Jeu libre & multijoueur</h3><p>Solo, duo, équipes, local ou online : choisissez votre façon de jouer et retrouvez vos parties dans votre historique.</p></article><article><b>◈</b><h3>Bots & adversaires IA</h3><p>Affrontez des adversaires de niveaux différents et personnalisez vos propres bots dans les modes compatibles.</p></article><article><b>↗</b><h3>Statistiques détaillées</h3><p>Performances, records, tendances, classements et progression : vos résultats deviennent enfin exploitables.</p></article><article><b>⌂</b><h3>Clubs & organisations</h3><p>Membres, équipes, calendrier, compétitions, classements et vie collective dans un espace dédié.</p></article></div></section>
 
@@ -298,7 +300,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
 
     <section className="mssOnlineShowcase" id="online">
       <div className="mssOnlineCopy"><div className="mssEyebrow">ONLINE • BOTS • ADVERSAIRES IA</div><h2>Il y a toujours quelqu’un à affronter.</h2><p>Retrouvez vos amis et la communauté en ligne, ou lancez immédiatement une partie contre les adversaires IA disponibles dans les modes compatibles. Chaque personnage possède son identité et son niveau.</p><div className="mssOnlineFacts"><span><b>LOCAL + ONLINE</b><small>Jouez selon vos envies</small></span><span><b>NIVEAUX VARIÉS</b><small>Des adversaires pour progresser</small></span><span><b>UNIVERS UNIQUES</b><small>Des personnages propres aux modes</small></span></div></div>
-      <div className="mssBotStage" aria-label="Exemples d’adversaires IA MULTISPORTS SCORING"><div className="mssBotHalo"/><article className="mssBotCard mssBotCard1"><img src={kael} alt="Kaël"/><strong>KAËL</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard2"><img src={greenMachine} alt="Green Machine"/><strong>GREEN MACHINE</strong><span>BOT IA PRO</span><i>PRO</i></article><article className="mssBotCard mssBotCard3"><img src={gegeDeglingue} alt="Gégé Déglingué"/><strong>GÉGÉ DÉGLINGUÉ</strong><span>CRADOS</span><i>IA</i></article><article className="mssBotCard mssBotCard4"><img src={eliaz} alt="Eliaz"/><strong>ELIAZ</strong><span>ARRÊTE-MOI SI TU PEUX</span><i>IA</i></article><article className="mssBotCard mssBotCard5"><img src={zeno} alt="Zeno"/><strong>ZENO</strong><span>KILLER</span><i>IA</i></article><article className="mssBotCard mssBotCard6"><img src={lucky} alt="Lucky"/><strong>LUCKY</strong><span>LOTERIE</span><i>IA</i></article><div className="mssOnlineCenter"><b>ONLINE</b><strong>+</strong><b>BOTS IA</b><span>Plusieurs univers</span></div></div>
+      <div className="mssBotStage" aria-label="Exemples d’adversaires IA MULTISPORTS SCORING"><div className="mssBotHalo"/><article className="mssBotCard mssBotCard1"><img loading="lazy" decoding="async" src={kael} alt="Kaël"/><strong>KAËL</strong><span>DARTS FIREFIGHTER</span><i>IA</i></article><article className="mssBotCard mssBotCard2"><img loading="lazy" decoding="async" src={greenMachine} alt="Green Machine"/><strong>GREEN MACHINE</strong><span>BOT IA PRO</span><i>PRO</i></article><article className="mssBotCard mssBotCard3"><img loading="lazy" decoding="async" src={gegeDeglingue} alt="Gégé Déglingué"/><strong>GÉGÉ DÉGLINGUÉ</strong><span>CRADOS</span><i>IA</i></article><article className="mssBotCard mssBotCard4"><img loading="lazy" decoding="async" src={eliaz} alt="Eliaz"/><strong>ELIAZ</strong><span>ATTRAPE-MOI SI TU PEUX</span><i>IA</i></article><article className="mssBotCard mssBotCard5"><img loading="lazy" decoding="async" src={zeno} alt="Zeno"/><strong>ZENO</strong><span>KILLER</span><i>IA</i></article><article className="mssBotCard mssBotCard6"><img loading="lazy" decoding="async" src={lucky} alt="Lucky"/><strong>LUCKY</strong><span>LOTERIE</span><i>IA</i></article><div className="mssOnlineCenter"><b>ONLINE</b><strong>+</strong><b>BOTS IA</b><span>Plusieurs univers</span></div></div>
     </section>
 
     <section className="mssAwenaSection" id="awena">
