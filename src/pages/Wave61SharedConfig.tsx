@@ -67,7 +67,7 @@ export default function Wave61SharedConfig(props: any) {
   const profileById = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
 
   const lockedRounds = spec.id === "nine_dart_century" ? 3 : spec.id === "double_down" ? 9 : spec.id === "athletisme" ? 6 : null;
-  const lockedGoal = spec.id === "nine_dart_century" ? 100 : spec.id === "shove_a_penny" ? 7 * Math.max(2, Number(modeOptions?.marksPerBox || 3)) : spec.id === "green_vs_red" ? Math.max(3, Number(modeOptions?.finishSteps || 10)) : spec.id === "mont_blanc" ? 4809 : spec.id === "everest" ? 8849 : spec.id === "summit_14" ? 14 : null;
+  const lockedGoal = spec.id === "nine_dart_century" ? 100 : spec.id === "shove_a_penny" ? 7 * Math.max(2, Number(modeOptions?.marksPerBox || 3)) : spec.id === "green_vs_red" ? Math.max(3, Number(modeOptions?.finishSteps || 10)) : spec.id === "eperviers" ? Math.max(50, Number(modeOptions?.crossingGoal || 100)) : spec.id === "iceberg" ? Math.max(2, Number(modeOptions?.compartmentGoal || 5)) : spec.id === "apocalypse" ? Math.max(50, Number(modeOptions?.refugeGoal || 100)) : spec.id === "mont_blanc" ? 4809 : spec.id === "everest" ? 8849 : spec.id === "summit_14" ? 14 : null;
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, spec.maxPlayers) : []);
   const [botsOpen, setBotsOpen] = React.useState(saved.botsOpen === true);
   const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(saved.participantMode === "teams" && spec.supportsTeams ? "teams" : "players");

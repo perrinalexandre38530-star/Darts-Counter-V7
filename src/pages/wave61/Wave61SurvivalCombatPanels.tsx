@@ -46,7 +46,7 @@ export function LoupPanel({ state, accent }: any) {
 export function EperviersPanel({ state, accent }: any) {
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
     <Title accent={accent}>🦅 LES ÉPERVIERS</Title>
-    <Grid>{state.players.map((p:any)=>{const hawk=state.special?.epervierRoleByPlayer?.[p.id]==="HAWK"; const crossing=Number(state.special?.epervierCrossingByPlayer?.[p.id]||0); return <div key={p.id} style={miniCard(hawk?"#ffc35e":accent)}><b>{hawk?"🦅":"🏃"} {p.name}</b>{!hawk?<Meter value={crossing} max={100} accent={accent}/>:null}<span style={{color:SOFT,fontSize:9}}>{hawk?"ÉPERVIER":`Traversée ${crossing}/100`} · {state.special?.epervierCaughtByPlayer?.[p.id]||0} touche(s)</span></div>})}</Grid>
+    <Grid>{state.players.map((p:any)=>{const hawk=state.special?.epervierRoleByPlayer?.[p.id]==="HAWK"; const crossing=Number(state.special?.epervierCrossingByPlayer?.[p.id]||0); const goal=Number(state.config?.modeOptions?.crossingGoal||100); return <div key={p.id} style={miniCard(hawk?"#ffc35e":accent)}><b>{hawk?"🦅":"🏃"} {p.name}</b>{!hawk?<Meter value={crossing} max={goal} accent={accent}/>:null}<span style={{color:SOFT,fontSize:9}}>{hawk?"ÉPERVIER":`Traversée ${crossing}/${goal}`} · {state.special?.epervierCaughtByPlayer?.[p.id]||0} touche(s)</span></div>})}</Grid>
   </div>;
 }
 
@@ -60,7 +60,7 @@ export function DodgeballPanel({ state, accent }: any) {
 export function IcebergPanel({ state, accent }: any) {
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
     <Title accent={accent}>🧊 ICEBERG</Title>
-    <Grid>{state.players.map((p:any)=>{const hull=Number(state.special?.icebergHullByPlayer?.[p.id]||0); const water=Number(state.special?.icebergFloodByPlayer?.[p.id]||0); return <div key={p.id} style={miniCard(accent)}><b>🚢 {p.name}</b><Meter value={hull} max={100} accent={accent}/><span style={{color:SOFT,fontSize:9}}>Coque {hull}% · Eau {water}% · {state.special?.icebergCompartmentsByPlayer?.[p.id]||0}/5 compartiments</span></div>})}</Grid>
+    <Grid>{state.players.map((p:any)=>{const hull=Number(state.special?.icebergHullByPlayer?.[p.id]||0); const water=Number(state.special?.icebergFloodByPlayer?.[p.id]||0); return <div key={p.id} style={miniCard(accent)}><b>🚢 {p.name}</b><Meter value={hull} max={100} accent={accent}/><span style={{color:SOFT,fontSize:9}}>Coque {hull}% · Eau {water}% · {state.special?.icebergCompartmentsByPlayer?.[p.id]||0}/{state.config?.modeOptions?.compartmentGoal||5} compartiments</span></div>})}</Grid>
   </div>;
 }
 
@@ -74,7 +74,7 @@ export function JurassicPanel({ state, accent }: any) {
 export function ApocalypsePanel({ state, accent }: any) {
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
     <Title accent={accent}>☢️ APOCALYPSE</Title>
-    <Grid>{state.players.map((p:any)=>{const refuge=Number(state.special?.apocalypseRefugeByPlayer?.[p.id]||0); const threat=Number(state.special?.apocalypseThreatByPlayer?.[p.id]||0); return <div key={p.id} style={miniCard(threat>=80?"#ff775f":accent)}><b>🏚️ {p.name}</b><Meter value={refuge} max={100} accent={accent}/><span style={{color:SOFT,fontSize:9}}>Refuge {refuge}% · Ressources {state.special?.apocalypseResourcesByPlayer?.[p.id]||0} · Menace {threat}% · PV {state.health[p.id]||0}</span></div>})}</Grid>
+    <Grid>{state.players.map((p:any)=>{const refuge=Number(state.special?.apocalypseRefugeByPlayer?.[p.id]||0); const threat=Number(state.special?.apocalypseThreatByPlayer?.[p.id]||0); return <div key={p.id} style={miniCard(threat>=80?"#ff775f":accent)}><b>🏚️ {p.name}</b><Meter value={refuge} max={Number(state.config?.modeOptions?.refugeGoal||100)} accent={accent}/><span style={{color:SOFT,fontSize:9}}>Refuge {refuge}/{state.config?.modeOptions?.refugeGoal||100} · Ressources {state.special?.apocalypseResourcesByPlayer?.[p.id]||0} · Menace {threat}% · PV {state.health[p.id]||0}</span></div>})}</Grid>
   </div>;
 }
 

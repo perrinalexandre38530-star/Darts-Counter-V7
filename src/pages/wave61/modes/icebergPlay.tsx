@@ -3,9 +3,6 @@ import Wave61SharedPlay from "../../Wave61SharedPlay";
 
 export const WAVE61_MODE_ID = "iceberg" as const;
 
-/** Écran Play dédié à iceberg.
- * Le moteur mutualisé reste en dessous; l'UI spécifique peut évoluer ici indépendamment.
- */
 export default function DedicatedWave61Play(props: any) {
-  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} />;
+  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} dedicatedPlayHint="Sécurise les compartiments avant que la coque ne cède : vise les secteurs de réparation et utilise les BULLS pour pomper l’eau." />;
 }

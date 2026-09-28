@@ -20,10 +20,12 @@ export async function connectPersonalCloud(provider: PersonalCloudProvider): Pro
 async function gzipBase64(text: string): Promise<{ encoding: "gzip-base64" | "plain-base64"; data: string }> {
   const bytes = new TextEncoder().encode(text);
   if (typeof CompressionStream !== "undefined") {
-    const cs = new CompressionStream("gzip");
-    const writer = cs.writable.getWriter();
-    await writer.write(bytes); await writer.close();
-    const zipped = new Uint8Array(await new Response(cs.readable).arrayBuffer());
+    // IMPORTANT : ne jamais attendre writer.write() avant de consommer le
+    // readable d'un CompressionStream. Sur les gros snapshots (30+ Mo), le
+    // buffer interne applique une back-pressure et writer.write() peut rester
+    // bloqué indéfiniment. C'était précisément le gel à 42 % de Google Drive.
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+    const zipped = new Uint8Array(await new Response(stream).arrayBuffer());
     let binary = ""; const step = 0x8000;
     for (let i = 0; i < zipped.length; i += step) binary += String.fromCharCode(...zipped.subarray(i, i + step));
     return { encoding: "gzip-base64", data: btoa(binary) };
@@ -40,9 +42,10 @@ async function decodePayload(payload: any): Promise<any> {
   const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
   let text = "";
   if (payload.encoding === "gzip-base64" && typeof DecompressionStream !== "undefined") {
-    const ds = new DecompressionStream("gzip");
-    const writer = ds.writable.getWriter(); await writer.write(bytes); await writer.close();
-    text = await new Response(ds.readable).text();
+    // Même protection au retour : consommation en pipeline pour éviter la
+    // back-pressure lors de la restauration d'une grosse sauvegarde Drive.
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    text = await new Response(stream).text();
   } else text = new TextDecoder().decode(bytes);
   return JSON.parse(text);
 }

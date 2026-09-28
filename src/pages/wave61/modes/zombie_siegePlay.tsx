@@ -3,9 +3,6 @@ import Wave61SharedPlay from "../../Wave61SharedPlay";
 
 export const WAVE61_MODE_ID = "zombie_siege" as const;
 
-/** Écran Play dédié à zombie_siege.
- * Le moteur mutualisé reste en dessous; l'UI spécifique peut évoluer ici indépendamment.
- */
 export default function DedicatedWave61Play(props: any) {
-  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} />;
+  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} dedicatedPlayHint="Zombies : contamine les survivants. Survivants : construis la barricade et utilise les BULLS pour repousser l’infection." />;
 }
