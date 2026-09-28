@@ -73,7 +73,7 @@ export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvide
 }
 
 async function latestGoogleDriveBackup(): Promise<any | null> {
-  const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=20`).catch(() => null);
+  const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=20`, { manual: true, timeoutMs: 30_000 }).catch(() => null);
   const items = Array.isArray(res?.backups) ? res.backups : Array.isArray(res?.files) ? res.files : [];
   if (!items.length) return null;
   return [...items].sort((a: any, b: any) => Date.parse(String(b?.updatedAt || b?.createdAt || 0)) - Date.parse(String(a?.updatedAt || a?.createdAt || 0)))[0] || null;
@@ -89,7 +89,7 @@ export async function downloadPersonalCloudSnapshot(provider: PersonalCloudProvi
   if (provider === "google_drive") {
     const latest = await latestGoogleDriveBackup();
     if (!latest?.id) throw new Error("Aucune sauvegarde Google Drive disponible.");
-    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(String(latest.id))}`);
+    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(String(latest.id))}`, { manual: true, timeoutMs: 120_000 });
     const raw = String(res?.snapshotJson || "");
     if (!raw) throw new Error("Sauvegarde Google Drive vide.");
     const parsed = JSON.parse(raw);
