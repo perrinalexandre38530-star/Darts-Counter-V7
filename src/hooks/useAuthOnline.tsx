@@ -21,13 +21,11 @@ import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled, isSupabaseHardDisabledInNasMode } from "../lib/serverConfig";
 import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
-import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import { cloudCommunityHeartbeat } from "../lib/publicSocialApi";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
 const PROFILE_HYDRATION_COOLDOWN_MS = 2200;
-const BACKUP_RESTORE_COOLDOWN_MS = 2 * 60 * 1000;
 import type { OnlineProfile } from "../lib/onlineTypes";
 
 const AUTH_REDIRECT_LOGIN = "#/account/start";
@@ -373,7 +371,8 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
 
 function applyAuthFromSession(
   setState: React.Dispatch<React.SetStateAction<AuthState>>,
-  session: Session | null
+  session: Session | null,
+  opts?: { ready?: boolean }
 ) {
   const user = session?.user ?? null;
   setApiAccessToken((session as any)?.access_token || "");
@@ -394,7 +393,7 @@ function applyAuthFromSession(
       session,
       user,
       loading: false,
-      ready: true,
+      ready: opts?.ready ?? true,
       error: null,
     }));
   } else {
@@ -473,56 +472,6 @@ function authSessionToPseudoSupabaseSession(s: any): Session | null {
   }
 }
 
-
-function shouldSearchBackupsForUser(user: any): boolean {
-  // Un compte créé à l'instant ne peut pas avoir de sauvegarde historique à
-  // restaurer. On évite donc NAS/R2/fichier au premier login. Sur un nouvel
-  // appareil avec un ancien compte, created_at est ancien et la recherche part.
-  const createdMs = Date.parse(String(user?.created_at || ""));
-  if (!Number.isFinite(createdMs) || createdMs <= 0) return true;
-  const ageMs = Date.now() - createdMs;
-  return ageMs < -60_000 || ageMs > 10 * 60_000;
-}
-
-const backupRestoreLastScheduledAt = new Map<string, number>();
-const backupRestoreInFlight = new Set<string>();
-
-function scheduleOutsideNavigation(task: () => void, delayMs: number, attempt = 0): void {
-  if (typeof window === "undefined") return;
-  window.setTimeout(() => {
-    const navigating = (() => {
-      try { return document.documentElement.dataset.mscNavigating === "1"; } catch { return false; }
-    })();
-    if (navigating && attempt < 8) {
-      scheduleOutsideNavigation(task, 450, attempt + 1);
-      return;
-    }
-    scheduleRuntimeIdle(task, {
-      timeoutMs: isCapacitorNativeRuntime() ? 5000 : 3000,
-      fallbackDelayMs: isCapacitorNativeRuntime() ? 900 : 180,
-    });
-  }, Math.max(0, delayMs));
-}
-
-function searchBackupsInBackground(user: any): void {
-  const userId = String(user?.id || "").trim();
-  if (!userId || !shouldSearchBackupsForUser(user)) return;
-
-  const nowTs = Date.now();
-  const lastTs = backupRestoreLastScheduledAt.get(userId) || 0;
-  if (nowTs - lastTs < BACKUP_RESTORE_COOLDOWN_MS || backupRestoreInFlight.has(userId)) return;
-  backupRestoreLastScheduledAt.set(userId, nowTs);
-
-  // Android : la restauration cloud/NAS/R2 ne démarre plus 250 ms après login.
-  // Elle attend la fin du montage et un vrai créneau idle.
-  scheduleOutsideNavigation(() => {
-    if (backupRestoreInFlight.has(userId)) return;
-    backupRestoreInFlight.add(userId);
-    void maybeAutoRestoreCloudForSignedInUser(userId)
-      .catch(() => false)
-      .finally(() => backupRestoreInFlight.delete(userId));
-  }, isCapacitorNativeRuntime() ? 2400 : 650);
-}
 
 async function safeGetNasBridgeSession(): Promise<Session | null> {
   try {
@@ -674,6 +623,41 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const authChangeInFlightRef = React.useRef(false);
   const lastProfileHydrationRef = React.useRef(new Map<string, number>());
   const lastSignedInSessionRef = React.useRef<Session | null>(null);
+  const accountBootstrapInFlightRef = React.useRef(new Map<string, Promise<void>>());
+
+  const bootstrapSignedInAccount = React.useCallback(async (user: User) => {
+    const userId = String(user?.id || "").trim();
+    if (!userId) return;
+
+    const existing = accountBootstrapInFlightRef.current.get(userId);
+    if (existing) return existing;
+
+    const task = (async () => {
+      // IMPORTANT: tant que la sauvegarde de référence du compte n'a pas été
+      // vérifiée/restaurée, AppGate reste fermé. Aucune restauration différée
+      // ne pourra donc éjecter l'utilisateur d'une configuration ou d'une partie.
+      setState((current) => ({ ...current, loading: true, ready: false, status: "checking" }));
+      try {
+        await maybeAutoRestoreCloudForSignedInUser(userId);
+      } catch (error) {
+        console.warn("[useAuthOnline] account bootstrap restore skipped", error);
+      } finally {
+        setState((current) => {
+          if (String(current.user?.id || "") !== userId) return current;
+          return { ...current, loading: false, ready: true, status: "signed_in" };
+        });
+      }
+    })();
+
+    accountBootstrapInFlightRef.current.set(userId, task);
+    try {
+      await task;
+    } finally {
+      if (accountBootstrapInFlightRef.current.get(userId) === task) {
+        accountBootstrapInFlightRef.current.delete(userId);
+      }
+    }
+  }, []);
 
   const hydrateProfileAndBackups = React.useCallback((user: User) => {
     const userId = String(user?.id || "").trim();
@@ -707,7 +691,6 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             applyAuthFromSession(setState, bridged);
           }
         }
-        searchBackupsInBackground(user);
       });
     }, isCapacitorNativeRuntime() ? 3600 : 120);
   }, []);
@@ -716,6 +699,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     const t = window.setTimeout(() => {
       setState((s) => {
         if (s.ready) return s;
+        const uid = String(s.user?.id || "").trim();
+        if (uid && accountBootstrapInFlightRef.current.has(uid)) return s;
         console.warn("[useAuthOnline] WATCHDOG -> force ready=true");
         return { ...s, ready: true, loading: false };
       });
@@ -743,10 +728,12 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         lastSignedInSessionRef.current = null;
       }
 
-      applyAuthFromSession(setState, session);
-
       const user = session?.user ?? null;
-      if (user) hydrateProfileAndBackups(user);
+      applyAuthFromSession(setState, session, { ready: !user });
+      if (user) {
+        await bootstrapSignedInAccount(user);
+        hydrateProfileAndBackups(user);
+      }
     } catch (e: any) {
       console.warn("[useAuthOnline] refresh fatal:", e);
       setState((s) => ({
@@ -756,7 +743,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         error: e?.message || "refresh error",
       }));
     }
-  }, [hydrateProfileAndBackups]);
+  }, [bootstrapSignedInAccount, hydrateProfileAndBackups]);
 
   React.useEffect(() => {
     let alive = true;
@@ -776,10 +763,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           lastSignedInSessionRef.current = session;
         }
 
-        applyAuthFromSession(setState, session);
-
         const user = session?.user ?? null;
-        if (user) hydrateProfileAndBackups(user);
+        applyAuthFromSession(setState, session, { ready: !user });
+        if (user) {
+          await bootstrapSignedInAccount(user);
+          if (!alive) return;
+          hydrateProfileAndBackups(user);
+        }
 
         nasHandler = async () => {
           if (!alive || authChangeInFlightRef.current) return;
@@ -797,7 +787,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
             if (nextSession?.user) {
               lastSignedInSessionRef.current = nextSession;
-              applyAuthFromSession(setState, nextSession);
+              applyAuthFromSession(setState, nextSession, { ready: false });
+              await bootstrapSignedInAccount(nextSession.user);
               hydrateProfileAndBackups(nextSession.user);
             } else {
               lastSignedInSessionRef.current = null;
@@ -835,12 +826,19 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           // immédiatement. Aucun getCurrentSession()/restoreSession()/NAS bridge
           // n'est autorisé dans le task qui suit directement ce callback.
           lastSignedInSessionRef.current = emittedSession;
-          applyAuthFromSession(setState, emittedSession);
-
-          // TOKEN_REFRESHED ne change pas l'identité : ne réveille ni profil ni cloud.
-          if (event !== "TOKEN_REFRESHED") {
-            hydrateProfileAndBackups(emittedSession.user);
+          if (event === "TOKEN_REFRESHED") {
+            applyAuthFromSession(setState, emittedSession);
+            return;
           }
+
+          applyAuthFromSession(setState, emittedSession, { ready: false });
+          // Sortir immédiatement du callback Supabase puis initialiser le compte.
+          // Le coordinateur déduplique si le login/boot a déjà lancé la même tâche.
+          window.setTimeout(() => {
+            void bootstrapSignedInAccount(emittedSession.user).then(() => {
+              hydrateProfileAndBackups(emittedSession.user);
+            });
+          }, 0);
         });
 
         supaSubscription = data?.subscription ?? null;
@@ -864,7 +862,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         supaSubscription?.unsubscribe?.();
       } catch {}
     };
-  }, [hydrateProfileAndBackups]);
+  }, [bootstrapSignedInAccount, hydrateProfileAndBackups]);
 
   // Présence communautaire globale : un compte authentifié compte comme actif même
   // s'il n'ouvre jamais la page ONLINE. Le RPC ne publie aucune donnée de profil :
@@ -917,7 +915,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           const directSession = authSessionToPseudoSupabaseSession(ok);
           if (directSession?.user) {
             lastSignedInSessionRef.current = directSession;
-            applyAuthFromSession(setState, directSession);
+            applyAuthFromSession(setState, directSession, { ready: false });
+            await bootstrapSignedInAccount(directSession.user);
             hydrateProfileAndBackups(directSession.user);
           } else {
             void refresh();
@@ -929,7 +928,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         return false;
       }
     },
-    [hydrateProfileAndBackups, refresh]
+    [bootstrapSignedInAccount, hydrateProfileAndBackups, refresh]
   );
 
   const login = React.useCallback(
@@ -945,7 +944,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           const directSession = authSessionToPseudoSupabaseSession(ok);
           if (directSession?.user) {
             lastSignedInSessionRef.current = directSession;
-            applyAuthFromSession(setState, directSession);
+            applyAuthFromSession(setState, directSession, { ready: false });
+            await bootstrapSignedInAccount(directSession.user);
             hydrateProfileAndBackups(directSession.user);
           } else {
             void refresh();
@@ -957,7 +957,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         return false;
       }
     },
-    [hydrateProfileAndBackups, refresh]
+    [bootstrapSignedInAccount, hydrateProfileAndBackups, refresh]
   );
 
   const logout = React.useCallback(async () => {

@@ -676,11 +676,9 @@ export async function restoreLatestBackupForSignedInUser(
         scanErrors: scan.errors,
       });
 
-      // Reload uniquement si le compte restauré est TOUJOURS le compte actif.
-      window.setTimeout(() => {
-        if (!accountStillActive(uid)) return;
-        try { window.location.reload(); } catch {}
-      }, 220);
+      // Aucun reload ici : l'auto-restauration est désormais terminée AVANT
+      // l'ouverture d'AppGate. Les écrans se montent directement sur les données
+      // restaurées et une sauvegarde ne peut plus provoquer un retour GameSelect.
       return true;
     } catch (error: any) {
       saveDiagnostic(uid, { ok: false, restored: false, error: String(error?.message || error || "Restauration impossible") });
