@@ -6,6 +6,7 @@ import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
+import { useViewport } from "../hooks/useViewport";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
 import { History } from "../lib/history";
@@ -349,6 +350,7 @@ function GoldenDartPanel({ state, accent }: any) {
 
 export default function Wave61SharedPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: false });
+  const { w: viewportW, h: viewportH, isLandscapeTablet } = useViewport();
   const awena = useAwenaOptional();
   const go = props?.go ?? props?.setTab;
   const store = props?.store;
@@ -568,6 +570,119 @@ export default function Wave61SharedPlay(props: any) {
 
   const roundLabel = Math.min(config.rounds, state.roundIndex + 1);
   const teamMode = config.participantMode === "teams";
+
+  const renderModeSpecificPanel = () => <>
+    {spec.id === "align_4" ? <Align4Board state={state} accent={accent} /> : null}
+    {spec.id === "demineur" ? <MineBoard state={state} accent={accent} /> : null}
+    {spec.id === "codebreaker" ? <CodebreakerPanel state={state} accent={accent} /> : null}
+    {spec.id === "face_mystere" ? <FaceMysterePanel state={state} accent={accent} /> : null}
+    {spec.id === "colin_maillard" ? <ColinBoard state={state} accent={accent} reveal={memoryReveal} onReveal={revealMemory} previewMs={config?.modeOptions?.previewMs || 2000} /> : null}
+    {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
+    {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
+    {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
+    {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
+    {spec.id === "green_vs_red" ? <GreenRedPanel state={state} accent={accent} /> : null}
+    {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
+    {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
+    {spec.id === "golden_dart" ? <GoldenDartPanel state={state} accent={accent} /> : null}
+    {spec.id === "final_buzzer" ? <FinalBuzzerPanel state={state} accent={accent} /> : null}
+    {spec.id === "jackpot" ? <JackpotPanel state={state} accent={accent} /> : null}
+    {spec.id === "mafia" ? <MafiaPanel state={state} accent={accent} /> : null}
+    {spec.id === "tug_rush" ? <TugRushPanel state={state} accent={accent} /> : null}
+    {spec.id === "un_deux_trois_soleil" ? <SoleilPanel state={state} accent={accent} /> : null}
+    {spec.id === "chat_souris" ? <ChatSourisPanel state={state} accent={accent} /> : null}
+    {spec.id === "maze_chase" ? <MazeChasePanel state={state} accent={accent} /> : null}
+    {spec.id === "chien_chat" ? <ChienChatPanel state={state} accent={accent} /> : null}
+    {spec.id === "roller_coaster" ? <RollerCoasterPanel state={state} accent={accent} /> : null}
+    {spec.id === "athletisme" ? <AthleticsPanel state={state} accent={accent} /> : null}
+    {spec.id === "chute_libre" ? <FreefallPanel state={state} accent={accent} /> : null}
+    {spec.id === "tyrolien" ? <TyrolienPanel state={state} accent={accent} /> : null}
+    {spec.id === "saut_a_la_corde" ? <JumpRopePanel state={state} accent={accent} /> : null}
+    {spec.id === "heist_180" ? <Heist180Panel state={state} accent={accent} /> : null}
+    {spec.id === "escape_game" ? <EscapeGamePanel state={state} accent={accent} /> : null}
+    {spec.id === "objectif_lune" ? <ObjectifLunePanel state={state} accent={accent} /> : null}
+    {spec.id === "hollywood" ? <HollywoodPanel state={state} accent={accent} /> : null}
+    {spec.id === "calendrier_maya" ? <MayaPanel state={state} accent={accent} /> : null}
+    {spec.id === "pyramides" ? <PyramidesPanel state={state} accent={accent} /> : null}
+    {spec.id === "draco_spheres" ? <DracoSpheresPanel state={state} accent={accent} /> : null}
+    {spec.id === "mythologie" ? <MythologiePanel state={state} accent={accent} /> : null}
+    {spec.id === "jardinier" ? <JardinierPanel state={state} accent={accent} /> : null}
+    {spec.id === "microscopia" ? <MicroscopiaPanel state={state} accent={accent} /> : null}
+    {spec.id === "disjoncte" ? <DisjonctePanel state={state} accent={accent} /> : null}
+    {spec.id === "petit_bac" ? <PetitBacPanel state={state} accent={accent} /> : null}
+    {spec.id === "hot_potato" ? <HotPotatoPanel state={state} accent={accent} /> : null}
+    {spec.id === "zombie_siege" ? <ZombieSiegePanel state={state} accent={accent} /> : null}
+    {spec.id === "le_loup" ? <LoupPanel state={state} accent={accent} /> : null}
+    {spec.id === "eperviers" ? <EperviersPanel state={state} accent={accent} /> : null}
+    {spec.id === "ballon_prisonnier" ? <DodgeballPanel state={state} accent={accent} /> : null}
+    {spec.id === "iceberg" ? <IcebergPanel state={state} accent={accent} /> : null}
+    {spec.id === "jurassic_dart" ? <JurassicPanel state={state} accent={accent} /> : null}
+    {spec.id === "apocalypse" ? <ApocalypsePanel state={state} accent={accent} /> : null}
+    {spec.id === "mistigri" ? <MistigriPanel state={state} accent={accent} /> : null}
+    {spec.id === "radin" ? <RadinPanel state={state} accent={accent} /> : null}
+    {spec.id === "corbeau_renard" ? <CorbeauRenardPanel state={state} accent={accent} /> : null}
+    {spec.id === "darts_impossible" ? <DartsImpossiblePanel state={state} accent={accent} /> : null}
+    {spec.id === "knockback" ? <KnockbackPanel state={state} accent={accent} /> : null}
+    {spec.id === "spartacus" ? <SpartacusPanel state={state} accent={accent} /> : null}
+    {spec.id === "cosmo_knights" ? <CosmoKnightsPanel state={state} accent={accent} /> : null}
+    {spec.id === "vikings" ? <VikingsPanel state={state} accent={accent} /> : null}
+    {spec.id === "black_flag" ? <BlackFlagPanel state={state} accent={accent} /> : null}
+    {spec.id === "menhir_mayhem" ? <MenhirMayhemPanel state={state} accent={accent} /> : null}
+    {spec.id === "attila" ? <AttilaPanel state={state} accent={accent} /> : null}
+    {spec.id === "poseidon" ? <PoseidonPanel state={state} accent={accent} /> : null}
+    {spec.id === "cheval_de_troie" ? <ChevalTroiePanel state={state} accent={accent} /> : null}
+    {spec.id === "sabaudia_dauphine" ? <SabaudiaDauphinePanel state={state} accent={accent} /> : null}
+    {spec.id === "galaxies" ? <GalaxiesPanel state={state} accent={accent} /> : null}
+    {spec.id === "mont_blanc" ? <MontBlancPanel state={state} accent={accent} /> : null}
+    {spec.id === "everest" ? <EverestPanel state={state} accent={accent} /> : null}
+    {spec.id === "summit_14" ? <Summit14Panel state={state} accent={accent} /> : null}
+  </>;
+
+  if (isLandscapeTablet) {
+    const compactHeight = viewportH > 0 && viewportH <= 560;
+    const activeMetric = activePlayer ? wave61PrimaryMetric(state, activePlayer.id) : { value: "—", label: "", sub: "" };
+    const activeProfile = activePlayer ? (profileById.get(String(activePlayer.id)) || activePlayer) : null;
+    const tickerHeight = compactHeight ? 48 : Math.max(58, Math.min(82, Math.round(viewportH * 0.105)));
+    const familyBadge = state.family === "survival" || state.family === "combat" ? "⚔️ SURVIE" : state.family === "ascent" ? "⛰️ ASCENSION" : state.family === "conquest" ? "🗺️ CONQUÊTE" : state.family === "deduction" ? "🧩 INDICES" : state.family === "rhythm" ? "⚡ COMBO" : state.family === "race" ? "🏁 COURSE" : state.family === "mission" ? "🗝️ MISSION" : "🎯 ACTION";
+
+    return <div data-wave61-landscape="three-zone" style={{ height: "100dvh", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
+      <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
+      {modeTicker ? <div data-wave61-landscape-ticker="1" style={{ flex: `0 0 ${tickerHeight}px`, minHeight: 0, padding: "3px 8px 2px", display: "grid", placeItems: "center" }}><img src={modeTicker} alt={spec.label} style={{ width: "min(760px,58vw)", height: tickerHeight - 5, objectFit: "cover", borderRadius: 13, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 8px 24px rgba(0,0,0,.34)` }} /></div> : null}
+      {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: compactHeight ? 56 : 76, right: 10, width: "min(350px,34vw)", borderRadius: 14, padding: "7px 9px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 14px 34px rgba(0,0,0,.48),0 0 22px ${accent}20` }}>
+        <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88` }} />
+        <div><div style={{ color: accent, fontSize: 7.8, fontWeight: 1100, letterSpacing: .8 }}>AWENA · CONSEIL</div><div style={{ marginTop: 1, color: "#fff", fontSize: 9.2, fontWeight: 850, lineHeight: 1.28 }}>{adviceText}</div></div>
+        {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 28, height: 28, borderRadius: 9, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, cursor: "pointer" }}>🔊</button> : null}
+      </div> : null}
+
+      {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={{ [state.winnerId || ""]: 1 }} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
+        <section data-wave61-zone="players" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ ...panelStyle(accent + "45"), padding: compactHeight ? 7 : 9, flex: "0 0 auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div><div style={{ color: accent, fontSize: compactHeight ? 8.4 : 9.5, fontWeight: 1100, letterSpacing: .8 }}>ROUND {roundLabel}/{config.rounds}</div><div style={{ marginTop: 2, color: "#fff", fontSize: compactHeight ? 12 : 14, fontWeight: 1000 }}>{activePlayer?.name || "—"}</div></div><button type="button" onClick={doUndo} disabled={!undo.length} style={{ ...actionStyle(accent, !undo.length), minHeight: compactHeight ? 32 : 36, padding: "0 8px", fontSize: 9 }}>↶ UNDO</button></div>
+            {activeProfile ? <div style={{ marginTop: 6 }}><PlayerCard profile={activeProfile} active accent={accent} value={activeMetric.value} subValue={`${activeMetric.label} · ${activeMetric.sub}${teamMode ? ` · Team ${config.teamByPlayer?.[activePlayer?.id] || "?"}` : ""}`} badge={state.eliminated?.[activePlayer?.id || ""] ? "OUT" : null} muted={!!state.eliminated?.[activePlayer?.id || ""]} /></div> : null}
+          </div>
+          {teamMode ? <div style={{ ...panelStyle("rgba(255,255,255,.08)"), padding: 6, display: "flex", gap: 5, flexWrap: "wrap", flex: "0 0 auto" }}>{Object.entries(state.teamScores || {}).map(([team, score]: any) => <span key={team} style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${team === "A" ? accent + "55" : "#ff657d55"}`, color: team === "A" ? accent : "#ff8fa0", fontSize: 8.5, fontWeight: 1000 }}>TEAM {team} · {Math.round(Number(score || 0))}</span>)}</div> : null}
+          <div data-wave61-player-list="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", alignContent: "start", gap: 5, paddingRight: 2 }}>
+            {state.players.map((p: any, i: number) => { const prof = profileById.get(String(p.id)) || p; const metric = wave61PrimaryMetric(state, p.id); const eliminated = !!state.eliminated[p.id]; return <div key={p.id} style={{ opacity: state.activePlayerIndex === i ? .72 : 1 }}><PlayerCard profile={prof} active={state.activePlayerIndex === i} accent={accent} value={metric.value} subValue={`${metric.label} · ${metric.sub}${teamMode ? ` · Team ${config.teamByPlayer?.[p.id] || "?"}` : ""}`} badge={eliminated ? "OUT" : null} muted={eliminated} /></div>; })}
+          </div>
+        </section>
+
+        <section data-wave61-zone="mission" style={{ minWidth: 0, minHeight: 0, overflowY: "auto", display: "grid", alignContent: "start", gap: 6, paddingRight: 2 }}>
+          {notice ? <div style={{ borderRadius: 11, padding: "6px 8px", background: `${accent}0d`, border: `1px solid ${accent}2f`, color: "#e9ecf5", fontSize: 9.2, fontWeight: 850 }}>{notice}</div> : null}
+          {config?.modeOptions && Object.keys(config.modeOptions).length ? <div style={{ ...panelStyle(accent + "2d"), padding: "6px 7px", display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}><span style={{ color: accent, fontSize: 7.8, fontWeight: 1100 }}>RÉGLAGES</span>{Object.entries(config.modeOptions).slice(0, compactHeight ? 5 : 9).map(([key, value]: any) => <span key={key} style={{ borderRadius: 999, padding: "3px 5px", border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", color: "#cfd5e4", fontSize: 7.4, fontWeight: 850 }}>{key.replace(/([A-Z])/g, " $1").toUpperCase()} · {key.endsWith("Ms") ? `${Number(value) / 1000}s` : typeof value === "boolean" ? (value ? "ON" : "OFF") : String(value)}</span>)}</div> : null}
+          {renderModeSpecificPanel()}
+          <div style={{ ...panelStyle(accent + "3d"), padding: compactHeight ? 8 : 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+            <div><div style={{ color: accent, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>{target ? "OBJECTIF ACTIF" : "OBJECTIF LIBRE"}</div><div style={{ marginTop: 3, color: "#fff", fontSize: compactHeight ? 14 : 17, fontWeight: 1100, lineHeight: 1.12 }}>{spec.id === "golden_dart" ? "Trouve le secteur doré grâce aux indices" : spec.id === "luciole" ? "Mémorise la luciole avant qu'elle s'éteigne" : target?.label || (state.family === "score" ? "Marque le maximum" : spec.id === "align_4" ? "Choisis ta colonne avec le secteur" : "Fais progresser ta mission")}</div>{!compactHeight ? <div style={{ marginTop: 4, color: SOFT, fontSize: 8.8, lineHeight: 1.35 }}>{spec.infoBody}</div> : null}</div>
+            <div style={{ minWidth: compactHeight ? 58 : 70, minHeight: compactHeight ? 54 : 68, borderRadius: 15, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: compactHeight ? 8.5 : 9.5 }}>{familyBadge}</div>
+          </div>
+          <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={compactHeight ? 2 : 3} />
+        </section>
+
+        <section data-wave61-zone="input" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
+        </section>
+      </div>}
+    </div>;
+  }
 
   return <div style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
     <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />

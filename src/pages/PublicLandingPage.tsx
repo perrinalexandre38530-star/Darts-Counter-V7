@@ -174,6 +174,15 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     return () => window.removeEventListener("hashchange", syncHash);
   }, []);
 
+  useEffect(() => {
+    if (!/^#\/welcome\/darts\//.test(routeHash)) return;
+    // Chaque fiche de règle doit toujours s’ouvrir depuis son début,
+    // même si le visiteur était très bas dans le catalogue ou dans la fiche précédente.
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [routeHash]);
+
   const allDartsGames = DARTS_GAMES.filter((g) => g.entry === "games" || g.entry === "training");
   const readyDartsGames = allDartsGames.filter((g) => !isPublicDartsDevelopment(g));
   const developmentDartsGames = allDartsGames.filter((g) => isPublicDartsDevelopment(g));

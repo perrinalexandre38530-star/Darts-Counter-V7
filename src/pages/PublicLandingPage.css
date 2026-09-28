@@ -190,3 +190,11 @@
 @media(max-width:760px){.mssRuleBreadcrumb{padding:15px 16px 0;flex-wrap:wrap}.mssRuleBreadcrumb i{margin-left:0}.mssDevelopmentNotice{padding:20px 16px}.mssDevelopmentNotice>b{display:none}}
 
 .mssNewModeCorner{position:absolute;right:9px;top:9px;z-index:3;padding:5px 8px;border-radius:999px;background:#ffd900;color:#071015;font-size:8px;font-weight:1100;font-style:normal;letter-spacing:.08em;box-shadow:0 4px 14px rgba(0,0,0,.32)}
+
+/* V111 — fiche règle : le visuel principal respecte strictement le ratio ticker MSS 800 × 230. */
+.mssRulesPage .mssRuleHero{grid-template-columns:minmax(0,800px) minmax(320px,1fr);align-items:center}
+.mssRulesPage .mssRuleHeroArt{width:100%;min-height:0;height:auto;aspect-ratio:800/230;border-radius:20px}
+.mssRulesPage .mssRuleHeroArt>img{display:block;width:100%;height:100%;min-height:0;aspect-ratio:800/230;object-fit:contain;background:#020507}
+.mssRulesPage .mssRuleFallback{width:100%;min-height:0;height:auto;aspect-ratio:800/230}
+@media(max-width:1100px){.mssRulesPage .mssRuleHero{grid-template-columns:1fr}.mssRulesPage .mssRuleHeroArt{max-width:800px}}
+@media(max-width:760px){.mssRulesPage .mssRuleHeroArt,.mssRulesPage .mssRuleHeroArt>img,.mssRulesPage .mssRuleFallback{height:auto;min-height:0;aspect-ratio:800/230}}
