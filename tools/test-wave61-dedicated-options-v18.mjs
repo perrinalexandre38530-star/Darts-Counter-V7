@@ -36,7 +36,8 @@ for (const [id, keys] of Object.entries(cases)) {
 
 const modeDir='src/pages/wave61/modes';
 const configs=fs.readdirSync(modeDir).filter((name)=>name.endsWith('Config.tsx'));
-assert(configs.length === 61, `61 Config attendues, trouvé ${configs.length}`);
+const EXPECTED = 65;
+assert(configs.length === EXPECTED, `${EXPECTED} Config attendues, trouvé ${configs.length}`);
 for (const name of configs) {
   const text=read(`${modeDir}/${name}`);
   assert(text.includes('dedicatedOptions={DEDICATED_OPTIONS}'), `${name}: finition individuelle manquante`);
@@ -50,4 +51,4 @@ assert(engine.includes('payoutMultiplierPct'), 'Multiplicateur Jackpot non câbl
 console.log('✅ Wave61 V18 — septième et dernier lot de finitions individuelles');
 console.log('✅ HEIST 180 / ESCAPE GAME / OBJECTIF LUNE / HOLLYWOOD / CALENDRIER MAYA');
 console.log('✅ LE JARDINIER / MICROSCOPIA / DISJONCTÉ / LE PETIT BAC / JACKPOT');
-console.log('✅ 61/61 modes disposent désormais de réglages Config dédiés enrichis');
+console.log(`✅ ${EXPECTED}/${EXPECTED} modes disposent désormais de réglages Config dédiés enrichis`);

@@ -4,8 +4,9 @@ import path from 'node:path';
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const catalog = fs.readFileSync('src/games/dartsWave61.ts', 'utf8');
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
-assert(ids.length === 61, `Catalogue attendu: 61, trouvé: ${ids.length}`);
-assert(new Set(ids).size === 61, 'IDs Wave61 dupliqués');
+const EXPECTED = 65;
+assert(ids.length === EXPECTED, `Catalogue attendu: ${EXPECTED}, trouvé: ${ids.length}`);
+assert(new Set(ids).size === EXPECTED, 'IDs Wave61 dupliqués');
 
 const dir = 'src/pages/wave61/modes';
 for (const id of ids) {
@@ -28,5 +29,5 @@ assert(playRouter.includes('import.meta.glob("./wave61/modes/*Play.tsx")'), 'Dis
 assert(configRouter.includes('React.lazy'), 'Lazy loading Config V10 absent');
 assert(playRouter.includes('React.lazy'), 'Lazy loading Play V10 absent');
 
-console.log('✅ Wave61 V10 — 61 fichiers Config dédiés + 61 fichiers Play dédiés');
+console.log(`✅ Wave61 V10 — ${EXPECTED} fichiers Config dédiés + ${EXPECTED} fichiers Play dédiés`);
 console.log('✅ Dispatchers lazy par gameId + moteur mutualisé conservé');

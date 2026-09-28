@@ -100,6 +100,10 @@ const MODE_FAMILY: Record<string, Wave61Family> = {
   sabaudia_dauphine: "conquest",
   galaxies: "conquest",
   apocalypse: "survival",
+  mistigri: "survival",
+  radin: "score",
+  corbeau_renard: "mission",
+  darts_impossible: "precision",
 };
 
 const MODE_OVERRIDES: Record<string, Partial<Wave61FamilyPreset>> = {
@@ -165,6 +169,10 @@ const MODE_OVERRIDES: Record<string, Partial<Wave61FamilyPreset>> = {
   cheval_de_troie: { defaultGoal: 100, defaultRounds: 18 },
   sabaudia_dauphine: { minPlayers: 2, defaultGoal: 100, defaultRounds: 20 },
   galaxies: { minPlayers: 2, defaultGoal: 100, defaultRounds: 22 },
+  mistigri: { defaultLives: 4, defaultRounds: 16, defaultGoal: 100, minPlayers: 2 },
+  radin: { defaultRounds: 12, defaultGoal: 100, minPlayers: 2 },
+  corbeau_renard: { defaultRounds: 16, defaultGoal: 100, minPlayers: 2 },
+  darts_impossible: { defaultRounds: 12, defaultGoal: 10, minPlayers: 1 },
 };
 
 export function getWave61Family(modeId: string): Wave61Family {

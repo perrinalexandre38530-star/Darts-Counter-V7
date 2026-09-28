@@ -77,6 +77,10 @@ export const WAVE61_GUIDANCE: Record<string, GuidanceMeta> = {
   sabaudia_dauphine: { verb: "Prends le col", fallback: "Concentre la pression sur la zone alpine active et fortifie immédiatement les positions acquises." },
   galaxies: { verb: "Colonise le système", fallback: "Prends le système actif et charge l’Hyperdrive pour accélérer la conquête suivante." },
   apocalypse: { verb: "Sécurise le refuge", fallback: "Ramène des ressources avant la catastrophe ; les BULLS servent de medkits d’urgence." },
+  mistigri: { verb: "Refile le Mistigri", fallback: "Évite de garder la mauvaise carte ; joue propre pour transmettre la pression au bon moment." },
+  radin: { verb: "Préserve ton pactole", fallback: "Cherche le meilleur rendement possible et évite les erreurs qui te coûtent trop cher." },
+  corbeau_renard: { verb: "Joue plus rusé", fallback: "Protège ton butin, observe l’adversaire et profite de chaque ouverture pour le piéger." },
+  darts_impossible: { verb: "Passe le laser", fallback: "Concentre-toi sur le contrat le plus précis ; un BULL peut sécuriser une phase critique." },
 };
 
 function cleanTargetLabel(value: string) {

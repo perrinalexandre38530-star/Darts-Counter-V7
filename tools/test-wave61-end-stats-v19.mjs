@@ -9,8 +9,9 @@ const summary = read('src/pages/DartsModeSummaryPage.tsx');
 const catalog = read('src/games/dartsWave61.ts');
 
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
-assert(ids.length === 61, `61 modes attendus, trouvé ${ids.length}`);
-assert(new Set(ids).size === 61, 'IDs Wave61 dupliqués');
+const EXPECTED = 65;
+assert(ids.length === EXPECTED, `${EXPECTED} modes attendus, trouvé ${ids.length}`);
+assert(new Set(ids).size === EXPECTED, 'IDs Wave61 dupliqués');
 
 for (const token of ['Wave61EndSummary', 'buildWave61EndRows', 'buildWave61MatchStats', 'onStats={() => go?.("darts_mode_summary"', 'onHistory={() => go?.("statsHub"']) {
   assert(play.includes(token), `Play Wave61: ${token} absent`);
@@ -27,6 +28,6 @@ for (const token of ['rankings', 'playerStats', 'matchStats', 'finalScores', 'fi
 
 console.log('✅ Wave61 V19 — fin de partie + statistiques transverses');
 console.log('✅ Podium / KPIs / tableau joueurs / équipes');
-console.log('✅ Boutons STATS + HISTORIQUE depuis les 61 modes');
-console.log('✅ DartsModeSummary reconnaît les 61 modeId Wave61');
+console.log(`✅ Boutons STATS + HISTORIQUE depuis les ${EXPECTED} modes`);
+console.log(`✅ DartsModeSummary reconnaît les ${EXPECTED} modeId Wave61`);
 console.log('✅ Historique enrichi rankings / playerStats / matchStats');

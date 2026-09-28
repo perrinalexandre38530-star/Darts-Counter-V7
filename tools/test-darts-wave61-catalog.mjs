@@ -11,13 +11,14 @@ const rows = [...source.matchAll(/\{\s*id:\s*"([^"]+)",\s*label:\s*"([^"]+)"/g)]
   label: m[2],
 }));
 
-assert.equal(rows.length, 61, `61 modes attendus, ${rows.length} trouvés`);
-assert.equal(new Set(rows.map((row) => row.id)).size, 61, 'IDs dupliqués dans la Vague 61');
-assert.equal(new Set(rows.map((row) => row.label)).size, 61, 'Labels dupliqués dans la Vague 61');
+const EXPECTED = 65;
+assert.equal(rows.length, EXPECTED, `${EXPECTED} modes attendus, ${rows.length} trouvés`);
+assert.equal(new Set(rows.map((row) => row.id)).size, EXPECTED, 'IDs dupliqués dans la Vague 61');
+assert.equal(new Set(rows.map((row) => row.label)).size, EXPECTED, 'Labels dupliqués dans la Vague 61');
 assert.ok(rows.some((row) => row.id === 'apocalypse' && row.label === 'APOCALYPSE'), 'APOCALYPSE absent');
 assert.ok(rows.some((row) => row.id === 'microscopia' && row.label === 'MICROSCOPIA'), 'MICROSCOPIA absent');
 assert.ok(rows.some((row) => row.id === 'jurassic_dart' && row.label === 'JURASSIC DART'), 'JURASSIC DART absent');
 assert.ok(rows.some((row) => row.id === 'align_4' && row.label === 'ALIGN 4'), 'ALIGN 4 absent');
 assert.ok(rows.some((row) => row.id === 'sabaudia_dauphine' && row.label === 'SABAUDIA & DAUPHINÉ'), 'SABAUDIA & DAUPHINÉ absent');
 
-console.log('✅ Vague 61: 61 modes, 61 IDs uniques, 61 labels uniques.');
+console.log(`✅ Vague 61: ${EXPECTED} modes, ${EXPECTED} IDs uniques, ${EXPECTED} labels uniques.`);

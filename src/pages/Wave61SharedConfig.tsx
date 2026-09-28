@@ -174,7 +174,7 @@ export default function Wave61SharedConfig(props: any) {
 
       <section style={{ ...card, borderColor: `${accent}45` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Assistance & ambiance</div>
-        <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.45, marginBottom: 6 }}>Ces réglages sont communs aux 61 modes et restent mémorisés séparément pour chaque jeu.</div>
+        <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.45, marginBottom: 6 }}>Ces réglages sont communs à tout le catalogue Wave61 et restent mémorisés séparément pour chaque jeu.</div>
         <OptionRow label="Conseil de cible · 3 secondes"><OptionToggle value={targetAdviceEnabled} onChange={setTargetAdviceEnabled} /></OptionRow>
         <OptionRow label="Awena · conseils & commentaires brefs"><OptionToggle value={awenaCommentaryEnabled} onChange={setAwenaCommentaryEnabled} /></OptionRow>
         <OptionRow label="Bruitages Wave61"><OptionToggle value={wave61SfxEnabled} onChange={setWave61SfxEnabled} /></OptionRow>

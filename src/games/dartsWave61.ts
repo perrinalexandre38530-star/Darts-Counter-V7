@@ -2,8 +2,8 @@
 // src/games/dartsWave61.ts
 // Backlog officiel — VAGUE 61
 //
-// Ces 61 modes utilisent les moteurs spécialisés Wave61 V9 et disposent désormais de pages Config/Play dédiées (architecture V10).
-// Ils sont jouables en prototype fonctionnel (config, scoring par dart, bots,
+// Ce catalogue Wave61 étendu utilise les moteurs spécialisés Wave61 V9 et dispose désormais de pages Config/Play dédiées (architecture V10).
+// Les modes sont jouables en prototype fonctionnel (config, scoring par dart, bots,
 // undo, sauvegarde/reprise, fin de partie) puis seront finalisés au cas par cas.
 // Les médias lourds restent externalisés pour préserver le budget Android.
 // =============================================================
@@ -85,10 +85,14 @@ export const DARTS_WAVE_61: readonly DartsWave61Spec[] = [
   { id: "sabaudia_dauphine", label: "SABAUDIA & DAUPHINÉ", category: "fun", subCategory: "histoire", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Duel alpin de territoires : choisis ton camp, conquiers vallées, cols et forteresses, défends tes positions et fais basculer la carte entre Sabaudia et Dauphiné." },
   { id: "galaxies", label: "GALAXIES", category: "fun", subCategory: "science", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Conquête cosmique à grande échelle : explore des systèmes, colonise des planètes, traverse des anomalies et contrôle un maximum de secteurs avant la bataille galactique finale." },
   { id: "apocalypse", label: "APOCALYPSE", category: "fun", subCategory: "survie", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Survis à l’effondrement du monde : sécurise des ressources, protège ton refuge, traverse des catastrophes et reste en vie jusqu’au scénario final. Chaque manche peut modifier les zones sûres et les menaces." },
+  { id: "mistigri", label: "MISTIGRI", category: "fun", subCategory: "party", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Version darts du Mistigri : évite de garder la mauvaise carte, transmets-la au bon moment et protège-toi des pénalités qui s’accumulent tour après tour." },
+  { id: "radin", label: "RADIN", category: "fun", subCategory: "party", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Un mode mesquin et tactique : accumule un petit pactole, dépense le moins possible et oblige les autres à payer les mauvaises décisions au fil de la partie." },
+  { id: "corbeau_renard", label: "CORBEAU & RENARD", category: "fun", subCategory: "fable", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Inspiré de la fable, ce duel mêle ruse et opportunisme : sécurise ton fromage, manipule le rythme de la manche et profite de chaque ouverture pour déstabiliser tes adversaires." },
+  { id: "darts_impossible", label: "DARTS IMPOSSIBLE", category: "challenge", subCategory: "precision", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Défi d’infiltration et de précision : enchaîne des contrats ultra-serrés, évite les lasers, déjoue les alarmes et réussis les missions les plus tendues sans craquer." },
 ] as const;
 
-if (DARTS_WAVE_61.length !== 61) {
-  throw new Error(`[DARTS_WAVE_61] Catalogue invalide : ${DARTS_WAVE_61.length} modes au lieu de 61.`);
+if (DARTS_WAVE_61.length !== 65) {
+  throw new Error(`[DARTS_WAVE_61] Catalogue invalide : ${DARTS_WAVE_61.length} modes au lieu de 65.`);
 }
 
 const WAVE_61_IDS = new Set(DARTS_WAVE_61.map((mode) => mode.id));
