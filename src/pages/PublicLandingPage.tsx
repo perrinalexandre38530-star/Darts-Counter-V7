@@ -57,6 +57,8 @@ function landingTickerFor(gameId: string): string | null {
     mario_kart: "darts_racer",
     killer_progressive: "killer",
     departements: "territories_fr",
+    training_x01: "x01",
+    training_super_bull: "super_bull",
   };
   const id = alias[gameId] || gameId;
   const candidates = [`ticker_${id}.png`,`ticker_${id}.webp`,`ticker_${id}_fr.png`,`ticker_${id}_fr.webp`];

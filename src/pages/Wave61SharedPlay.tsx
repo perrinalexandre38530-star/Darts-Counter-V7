@@ -98,6 +98,7 @@ import {
   JackpotPanel,
   MafiaPanel,
 } from "./wave61/Wave61PartyArcadePanels";
+import Wave61EndSummary, { buildWave61EndRows, buildWave61MatchStats } from "./wave61/Wave61EndSummary";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -365,25 +366,54 @@ export default function Wave61SharedPlay(props: any) {
   const modeTicker = React.useMemo(() => getTicker(spec.id), [spec.id]);
   const dedicatedPlayHint = String(props?.dedicatedPlayHint || "");
 
-  const buildRecord = React.useCallback((s: Wave61State, status: "in_progress" | "finished") => ({
-    id: matchIdRef.current,
-    matchId: matchIdRef.current,
-    resumeId: matchIdRef.current,
-    kind: spec.id,
-    mode: spec.id,
-    modeId: spec.id,
-    sport: "darts",
-    status,
-    createdAt: s.startedAt,
-    updatedAt: Date.now(),
-    finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined,
-    winnerId: s.winnerId,
-    players: profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null })),
-    game: { mode: spec.id, modeId: spec.id, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION },
-    summary: { mode: spec.id, modeId: spec.id, family: s.family, winnerId: s.winnerId, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, statsByPlayer: s.statsByPlayer, config: s.config },
-    resume: { mode: "wave61", modeId: spec.id, config: s.config, state: cloneWave61State(s), updatedAt: Date.now() },
-    payload: { kind: spec.id, mode: spec.id, modeId: spec.id, sport: "darts", config: s.config, stateSnapshot: cloneWave61State(s), visits: s.visits, stats: { players: s.statsByPlayer } },
-  }), [profiles, spec.id]);
+  const buildRecord = React.useCallback((s: Wave61State, status: "in_progress" | "finished") => {
+    const rankings = buildWave61EndRows(s, profiles);
+    const matchStats = buildWave61MatchStats(s);
+    const playerStats = Object.fromEntries(rankings.map((row: any) => [row.id, {
+      id: row.id,
+      name: row.name,
+      rank: row.rank,
+      isWinner: row.winner,
+      team: row.team,
+      score: row.score,
+      progress: row.progress,
+      health: row.health,
+      lives: row.lives,
+      darts: row.darts,
+      visits: row.visits,
+      hits: row.hits,
+      misses: row.misses,
+      bulls: row.bulls,
+      doubles: row.doubles,
+      triples: row.triples,
+      bestVisit: row.bestVisit,
+      bestCombo: row.bestCombo,
+      damage: row.damage,
+      damageTaken: row.damageTaken,
+      safeReveals: row.safeReveals,
+      accuracy: row.accuracy,
+    }]));
+    return {
+      id: matchIdRef.current,
+      matchId: matchIdRef.current,
+      resumeId: matchIdRef.current,
+      kind: spec.id,
+      mode: spec.id,
+      modeId: spec.id,
+      sport: "darts",
+      status,
+      createdAt: s.startedAt,
+      updatedAt: Date.now(),
+      finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined,
+      winnerId: s.winnerId,
+      winnerTeamId: s.winnerTeamId,
+      players: profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null })),
+      game: { mode: spec.id, modeId: spec.id, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION },
+      summary: { mode: spec.id, modeId: spec.id, family: s.family, winnerId: s.winnerId, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config },
+      resume: { mode: "wave61", modeId: spec.id, config: s.config, state: cloneWave61State(s), updatedAt: Date.now() },
+      payload: { kind: spec.id, mode: spec.id, modeId: spec.id, sport: "darts", config: s.config, stateSnapshot: cloneWave61State(s), visits: s.visits, stats: { players: playerStats, match: matchStats } },
+    };
+  }, [profiles, spec.id]);
 
   const persist = React.useCallback((s: Wave61State) => {
     if (s.phase === "finished") {
@@ -568,7 +598,7 @@ export default function Wave61SharedPlay(props: any) {
 
         {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
         <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={5} />
-      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={{ [state.winnerId || ""]: 1 }} accent={accent} onReplay={replay} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<div style={{ color: SOFT, fontSize: 10.5, lineHeight: 1.5 }}>{state.winnerTeamId ? `Team ${state.winnerTeamId} victorieuse · ` : ""}{preset.label} · {state.visits.length} volées enregistrées</div>} />}
+      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={{ [state.winnerId || ""]: 1 }} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} />}
     </div>
   </div>;
 }
