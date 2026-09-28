@@ -712,31 +712,45 @@ export async function restoreLatestBackupForSignedInUser(
       if (!accountStillActive(uid)) return false;
       emitAccountSync(uid, "search", 12, "Recherche de la dernière sauvegarde du compte…");
       const scan = await scanAccountBackups(uid);
-      emitAccountSync(uid, "compare", 38, "Comparaison avec les données de cet appareil…");
+      // IMPORTANT : ne jamais rester sur un faux palier 38 %. À ce stade le scan
+      // réseau est terminé. La décision suivante ne manipule que de petites métadonnées.
+      emitAccountSync(uid, "compare", 55, "Analyse de la dernière sauvegarde du compte…");
       if (!accountStillActive(uid)) return false;
 
-      const latest = pickLatestBackupCandidate(scan.candidates);
+      // V110 SYNC MULTI-APPAREIL : la sauvegarde distante la plus récente doit être
+      // comparée à l'appareil. L'ancien pickLatestBackupCandidate() mélangeait la copie
+      // locale avec le cloud et pouvait donc choisir la copie locale (plus riche) avant
+      // même de présenter la sauvegarde du PC au téléphone. Les pertes éventuelles sont
+      // désormais montrées par AWENA au lieu d'empêcher silencieusement la comparaison.
+      const remoteCandidates = scan.candidates.filter((c) => c.source !== "local" && c.source !== "legacy-auto");
+      const latest = [...remoteCandidates].filter((c) => meaningfulSummary(c.summary)).sort((a, b) => {
+        const dt = b.updatedAtMs - a.updatedAtMs;
+        if (dt) return dt;
+        const rev = b.revision - a.revision;
+        if (rev) return rev;
+        return summaryQuality(b.summary) - summaryQuality(a.summary);
+      })[0] || null;
+
       if (!latest) {
-        saveDiagnostic(uid, { ok: true, restored: false, reason: "no-backup", scanErrors: scan.errors });
+        saveDiagnostic(uid, { ok: true, restored: false, reason: "no-remote-backup", scanErrors: scan.errors });
         emitAccountSync(uid, "done", 100, "Compte synchronisé", { restored: false });
         return false;
       }
 
+      emitAccountSync(uid, "compare", 72, "Comparaison des appareils…", { source: latest.source });
       const signature = candidateSignature(latest);
       const alreadyApplied = readAppliedSignature(uid) === signature;
 
-      // CHEMIN RAPIDE : une signature déjà appliquée suffit. Ne réexporte surtout
-      // pas les ~24 Mo locaux à chaque ouverture, c'était le palier bloqué à 38 %.
+      // CHEMIN RAPIDE : une signature distante déjà appliquée suffit. Aucun export
+      // IndexedDB, aucun téléchargement et aucune reconstruction de snapshot.
       if (alreadyApplied) {
         saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current-fast", candidate: { source: latest.source, id: latest.id } });
         emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored: false });
         return false;
       }
 
-      // COMPARAISON RAPIDE : on utilise les métadonnées/résumés déjà lus pendant
-      // le scan. On n'exporte PLUS tout IndexedDB (~24 Mo) juste pour comparer :
-      // c'était précisément le palier qui restait figé à 38 %.
-      emitAccountSync(uid, "compare", 70, "Comparaison des résumés de sauvegarde…");
+      // COMPARAISON RAPIDE : uniquement les résumés déjà disponibles. La copie locale
+      // sert de référence de comparaison, mais elle ne peut plus masquer le cloud.
       const localCandidates = scan.candidates.filter((c) => c.source === "local");
       const localReference = pickLatestBackupCandidate(localCandidates);
       const localSummary = localReference?.summary || {};
