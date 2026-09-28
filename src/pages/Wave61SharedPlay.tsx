@@ -4,11 +4,18 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
 import { History } from "../lib/history";
 import { getTicker } from "../lib/tickers";
+import {
+  buildWave61Advice,
+  buildWave61VisitComment,
+  playWave61FeedbackTone,
+  wave61ToneForVisit,
+} from "../lib/wave61Feedback";
 import type { Dart as UIDart } from "../lib/types";
 import {
   cloneWave61State,
@@ -332,6 +339,7 @@ function GoldenDartPanel({ state, accent }: any) {
 
 export default function Wave61SharedPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: false });
+  const awena = useAwenaOptional();
   const go = props?.go ?? props?.setTab;
   const store = props?.store;
   const resumeRecord = props?.params?.rec || props?.params?.record || props?.params?.match || null;
@@ -349,6 +357,11 @@ export default function Wave61SharedPlay(props: any) {
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const [undo, setUndo] = React.useState<Wave61State[]>([]);
   const [notice, setNotice] = React.useState("");
+  const [adviceText, setAdviceText] = React.useState("");
+  const adviceTimerRef = React.useRef<number | null>(null);
+  const adviceSpeechTimerRef = React.useRef<number | null>(null);
+  const lastAdviceKeyRef = React.useRef("");
+  const lastVoiceAtRef = React.useRef(0);
   const [memoryReveal, setMemoryReveal] = React.useState(false);
   const memoryTimerRef = React.useRef<number | null>(null);
   const [lucioleReveal, setLucioleReveal] = React.useState(spec.id === "luciole");
@@ -365,6 +378,9 @@ export default function Wave61SharedPlay(props: any) {
   const accent = preset.accent;
   const modeTicker = React.useMemo(() => getTicker(spec.id), [spec.id]);
   const dedicatedPlayHint = String(props?.dedicatedPlayHint || "");
+  const targetAdviceEnabled = config?.targetAdviceEnabled !== false;
+  const awenaCommentaryEnabled = config?.awenaCommentaryEnabled !== false;
+  const wave61SfxEnabled = config?.wave61SfxEnabled !== false;
 
   const buildRecord = React.useCallback((s: Wave61State, status: "in_progress" | "finished") => {
     const rankings = buildWave61EndRows(s, profiles);
@@ -430,8 +446,16 @@ export default function Wave61SharedPlay(props: any) {
     setMultiplier(1);
     const last = next.visits[next.visits.length - 1];
     setNotice(next.phase === "finished" ? `🏆 ${next.players.find((p) => p.id === next.winnerId)?.name || "Victoire"} remporte ${spec.label}` : (last?.events || []).join(" · "));
+    playWave61FeedbackTone(wave61ToneForVisit(next, last), wave61SfxEnabled);
+    if (awenaCommentaryEnabled) {
+      const comment = buildWave61VisitComment(next, last);
+      if (comment && awena?.say) {
+        lastVoiceAtRef.current = Date.now();
+        void awena.say(comment).catch(() => undefined);
+      }
+    }
     persist(next);
-  }, [state, spec.label, persist]);
+  }, [state, spec.label, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena]);
 
   const validate = () => {
     if (!currentThrow.length || state.phase === "finished" || activeIsBot) return;
@@ -469,6 +493,42 @@ export default function Wave61SharedPlay(props: any) {
   }, [activePlayer?.id, state.roundIndex]);
 
   React.useEffect(() => {
+    if (adviceTimerRef.current) window.clearTimeout(adviceTimerRef.current);
+    if (adviceSpeechTimerRef.current) window.clearTimeout(adviceSpeechTimerRef.current);
+    if (!targetAdviceEnabled || state.phase !== "playing" || activeIsBot) {
+      setAdviceText("");
+      return;
+    }
+    const adviceKey = `${spec.id}:${state.turnIndex}:${state.roundIndex}:${activePlayer?.id || ""}`;
+    if (lastAdviceKeyRef.current === adviceKey) return;
+    lastAdviceKeyRef.current = adviceKey;
+    const advice = buildWave61Advice(state);
+    if (!advice) return;
+    setAdviceText(advice);
+    playWave61FeedbackTone("turn", wave61SfxEnabled);
+    adviceTimerRef.current = window.setTimeout(() => setAdviceText(""), 3000);
+    if (awenaCommentaryEnabled && awena?.say) {
+      const elapsed = Date.now() - lastVoiceAtRef.current;
+      const delay = Math.max(220, 1650 - Math.max(0, elapsed));
+      adviceSpeechTimerRef.current = window.setTimeout(() => {
+        lastVoiceAtRef.current = Date.now();
+        void awena.say(advice).catch(() => undefined);
+      }, delay);
+    }
+    return () => {
+      if (adviceTimerRef.current) window.clearTimeout(adviceTimerRef.current);
+      if (adviceSpeechTimerRef.current) window.clearTimeout(adviceSpeechTimerRef.current);
+    };
+  }, [spec.id, state.turnIndex, state.roundIndex, state.phase, activePlayer?.id, activeIsBot, targetAdviceEnabled, awenaCommentaryEnabled, wave61SfxEnabled]);
+
+  React.useEffect(() => {
+    return () => {
+      if (adviceTimerRef.current) window.clearTimeout(adviceTimerRef.current);
+      if (adviceSpeechTimerRef.current) window.clearTimeout(adviceSpeechTimerRef.current);
+    };
+  }, []);
+
+  React.useEffect(() => {
     if (spec.id !== "luciole" || state.phase !== "playing") return;
     setLucioleReveal(true);
     if (lucioleTimerRef.current) window.clearTimeout(lucioleTimerRef.current);
@@ -489,6 +549,8 @@ export default function Wave61SharedPlay(props: any) {
     finishedRef.current = false;
     setUndo([]);
     setNotice("");
+    setAdviceText("");
+    lastAdviceKeyRef.current = "";
     setCurrentThrow([]);
     setMultiplier(1);
     setState(createWave61State(players, spec.id, config));
@@ -500,6 +562,11 @@ export default function Wave61SharedPlay(props: any) {
   return <div style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
     <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
     {modeTicker ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
+    {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: 86, right: 12, width: "min(360px,calc(100vw - 24px))", borderRadius: 16, padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.48),0 0 26px ${accent}20` }}>
+      <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88`, boxShadow: `0 0 14px ${accent}35` }} />
+      <div><div style={{ color: accent, fontSize: 8.8, fontWeight: 1100, letterSpacing: 1 }}>AWENA · CONSEIL CIBLE</div><div style={{ marginTop: 2, color: "#fff", fontSize: 10.4, fontWeight: 850, lineHeight: 1.35 }}>{adviceText}</div></div>
+      {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, fontWeight: 1100, cursor: "pointer" }}>🔊</button> : null}
+    </div> : null}
     <div style={{ padding: "7px 8px 18px", maxWidth: 1040, margin: "0 auto", display: "grid", gap: 8 }}>
       <div style={{ ...panelStyle(accent + "45"), padding: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
         <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>ROUND {roundLabel}/{config.rounds} · {preset.label.toUpperCase()}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Partie terminée" : `${activePlayer?.name || "—"} joue`}</div>{dedicatedPlayHint ? <div style={{ marginTop: 3, color: SOFT, fontSize: 9.2, lineHeight: 1.3 }}>{dedicatedPlayHint}</div> : null}</div>

@@ -2,8 +2,8 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-// Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15.
-export const WAVE61_ENGINE_VERSION = 16;
+// Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16.
+export const WAVE61_ENGINE_VERSION = 17;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -23,6 +23,9 @@ export type Wave61Config = {
   scoreInputMethod: "keypad" | "dartboard";
   randomOrder?: boolean;
   modeOptions?: Record<string, any>;
+  targetAdviceEnabled?: boolean;
+  awenaCommentaryEnabled?: boolean;
+  wave61SfxEnabled?: boolean;
 };
 
 export type Wave61PlayerStats = {
@@ -139,6 +142,9 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
     randomOrder: raw?.randomOrder !== false,
     modeOptions: raw?.modeOptions && typeof raw.modeOptions === "object" ? { ...raw.modeOptions } : {},
+    targetAdviceEnabled: raw?.targetAdviceEnabled !== false,
+    awenaCommentaryEnabled: raw?.awenaCommentaryEnabled !== false,
+    wave61SfxEnabled: raw?.wave61SfxEnabled !== false,
   };
 }
 

@@ -78,6 +78,9 @@ export default function Wave61SharedConfig(props: any) {
   const [lives, setLives] = React.useState(Number(saved.lives ?? preset.defaultLives));
   const [randomOrder, setRandomOrder] = React.useState(saved.randomOrder !== false);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
+  const [targetAdviceEnabled, setTargetAdviceEnabled] = React.useState(saved.targetAdviceEnabled !== false);
+  const [awenaCommentaryEnabled, setAwenaCommentaryEnabled] = React.useState(saved.awenaCommentaryEnabled !== false);
+  const [wave61SfxEnabled, setWave61SfxEnabled] = React.useState(saved.wave61SfxEnabled !== false);
 
   React.useEffect(() => {
     if (selectedIds.length) return;
@@ -89,8 +92,8 @@ export default function Wave61SharedConfig(props: any) {
   }, [humanProfiles.length, botProfiles.length]);
 
   React.useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify({ selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod, modeOptions })); } catch {}
-  }, [key, selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod, modeOptions]);
+    try { localStorage.setItem(key, JSON.stringify({ selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod, modeOptions, targetAdviceEnabled, awenaCommentaryEnabled, wave61SfxEnabled })); } catch {}
+  }, [key, selectedIds, botsOpen, participantMode, difficulty, botLevel, rounds, goal, lives, randomOrder, scoreInputMethod, modeOptions, targetAdviceEnabled, awenaCommentaryEnabled, wave61SfxEnabled]);
 
   function togglePlayer(rawId: any) {
     const id = String(rawId || "");
@@ -129,6 +132,9 @@ export default function Wave61SharedConfig(props: any) {
       randomOrder,
       scoreInputMethod,
       modeOptions,
+      targetAdviceEnabled,
+      awenaCommentaryEnabled,
+      wave61SfxEnabled,
       engineFamily: preset.family,
       engineVersion: WAVE61_ENGINE_VERSION,
     };
@@ -164,6 +170,14 @@ export default function Wave61SharedConfig(props: any) {
         {preset.defaultLives > 0 ? <OptionRow label="Vies"><OptionSelect value={lives} options={[3,4,5,6,7]} onChange={(v: any) => setLives(Number(v))} /></OptionRow> : null}
         <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
+      </section>
+
+      <section style={{ ...card, borderColor: `${accent}45` }}>
+        <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Assistance & ambiance</div>
+        <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.45, marginBottom: 6 }}>Ces réglages sont communs aux 61 modes et restent mémorisés séparément pour chaque jeu.</div>
+        <OptionRow label="Conseil de cible · 3 secondes"><OptionToggle value={targetAdviceEnabled} onChange={setTargetAdviceEnabled} /></OptionRow>
+        <OptionRow label="Awena · conseils & commentaires brefs"><OptionToggle value={awenaCommentaryEnabled} onChange={setAwenaCommentaryEnabled} /></OptionRow>
+        <OptionRow label="Bruitages Wave61"><OptionToggle value={wave61SfxEnabled} onChange={setWave61SfxEnabled} /></OptionRow>
       </section>
 
       {dedicatedOptions.length ? <section style={{ ...card, borderColor: `${accent}4d` }}>
