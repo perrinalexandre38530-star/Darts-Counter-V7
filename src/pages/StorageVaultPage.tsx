@@ -94,6 +94,7 @@ import {
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
 import { connectPersonalCloud, downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
+import { registerAccountLatestBackup } from "../lib/latestBackupApi";
 import {
   isBackgroundBackupRunning,
   startBackgroundBackupJob,
@@ -3257,6 +3258,14 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         }
         setExternalBackupStatus(status);
         if (status.lastError) throw new Error(status.lastError);
+        void registerAccountLatestBackup({
+          provider: "external",
+          backupId: `external_${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          sizeBytes: Number(status.lastBytes || prepared.bytes || 0),
+          summary: prepared.summary as any,
+          metadata: { fileName: status.fileName || null },
+        }).catch(() => null);
         if (storagePrefs.keepLocalSafetyCopy) {
           const compressed = await getPreparedGzip(prepared);
           const slot = await createLocalMemorySlotFromSnapshot(
@@ -3317,6 +3326,11 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             compressed,
           );
           setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
+          void registerAccountLatestBackup({
+            provider: "local", backupId: String(slot.id),
+            createdAt: String(slot.updatedAt || slot.createdAt || new Date().toISOString()),
+            summary: prepared.summary as any,
+          }).catch(() => null);
           return {
             message: `Sauvegarde locale créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s) · ${formatStorageBytes(compressed.byteLength)} compressés.`,
           };

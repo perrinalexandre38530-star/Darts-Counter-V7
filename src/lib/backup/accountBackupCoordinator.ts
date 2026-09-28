@@ -24,7 +24,8 @@ import {
   setStorageUser,
 } from "../storage";
 import { getAutoBackups, type AutoBackupItem } from "./autoBackupService";
-import { downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, type PersonalCloudProvider } from "../personalCloudApi";
+import { downloadPersonalCloudSnapshot, downloadPersonalCloudSnapshotById, getPersonalCloudBackupMeta, isPersonalCloudProvider, personalCloudProviderLabel, type PersonalCloudProvider } from "../personalCloudApi";
+import { getAccountLatestBackup, registerAccountLatestBackup, type AccountLatestBackup } from "../latestBackupApi";
 import { loadStoragePrefs } from "../storagePlans";
 
 export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
@@ -55,6 +56,7 @@ const RUN_COOLDOWN_MS = 4_000;
 const inFlightByUser = new Map<string, Promise<boolean>>();
 const lastRunAtByUser = new Map<string, number>();
 
+
 export type AccountSyncConflict = {
   userId: string;
   candidate: AccountBackupCandidate;
@@ -65,28 +67,30 @@ export type AccountSyncConflict = {
 
 const pendingConflicts = new Map<string, AccountSyncConflict>();
 
+function emitAccountSync(userId: string, phase: string, progress: number, message: string, extra: Record<string, any> = {}): void {
+  if (typeof window === "undefined") return;
+  try { window.dispatchEvent(new CustomEvent("msc:account-sync", { detail: { userId, phase, progress: Math.max(0, Math.min(100, Math.round(progress))), message, ...extra } })); } catch {}
+}
+
 function buildConflict(userId: string, candidate: AccountBackupCandidate, local: Partial<VaultSummary> | null | undefined): AccountSyncConflict {
-  const remote = candidate.summary || {};
-  const rows = [
-    ["profiles", "Profils", Number(local?.profiles || 0), Number(remote.profiles || 0)],
-    ["matches", "Parties / historique", Math.max(Number(local?.matches || 0), Number(local?.historyRows || 0)), Math.max(Number(remote.matches || 0), Number(remote.historyRows || 0))],
-    ["stats", "Statistiques", Number(local?.statsMatches || local?.statsBlocks || 0), Number(remote.statsMatches || remote.statsBlocks || 0)],
-    ["media", "Médias", Number(local?.mediaRefs || local?.images || 0), Number(remote.mediaRefs || remote.images || 0)],
-  ] as const;
-  return {
-    userId, candidate, localSummary: local || {}, remoteSummary: remote,
-    differences: rows.map(([key,label,l,r]) => ({ key, label, local:l, remote:r, delta:r-l, lossIfRemote:Math.max(0,l-r), gainIfRemote:Math.max(0,r-l) })).filter(x => x.delta !== 0),
-  };
+  const remote: any = candidate.summary || {};
+  const here: any = local || {};
+  const rows: Array<[string,string,number,number]> = [
+    ["profiles", "Profils", Number(here.profiles || 0), Number(remote.profiles || 0)],
+    ["matches", "Parties / historique", Math.max(Number(here.matches || 0), Number(here.historyRows || 0)), Math.max(Number(remote.matches || 0), Number(remote.historyRows || 0))],
+    ["stats", "Statistiques", Number(here.statsMatches || here.statsBlocks || 0), Number(remote.statsMatches || remote.statsBlocks || 0)],
+    ["media", "Médias", Number(here.mediaRefs || here.images || 0), Number(remote.mediaRefs || remote.images || 0)],
+  ];
+  return { userId, candidate, localSummary: local || {}, remoteSummary: remote,
+    differences: rows.map(([key,label,l,r]) => ({ key,label,local:l,remote:r,delta:r-l,lossIfRemote:Math.max(0,l-r),gainIfRemote:Math.max(0,r-l) })).filter(x => x.delta !== 0) };
 }
 
 function emitConflict(conflict: AccountSyncConflict): void {
   pendingConflicts.set(conflict.userId, conflict);
-  emitAccountSync(conflict.userId, "conflict", 100, "Différences détectées entre vos appareils", {
-    conflict: {
-      source: conflict.candidate.source, label: conflict.candidate.label, updatedAt: conflict.candidate.updatedAt,
-      localSummary: conflict.localSummary, remoteSummary: conflict.remoteSummary, differences: conflict.differences,
-    }
-  });
+  emitAccountSync(conflict.userId, "conflict", 100, "Différences détectées entre vos appareils", { conflict: {
+    source: conflict.candidate.source, label: conflict.candidate.label, updatedAt: conflict.candidate.updatedAt,
+    localSummary: conflict.localSummary, remoteSummary: conflict.remoteSummary, differences: conflict.differences,
+  }});
 }
 
 export async function resolveAccountSyncConflict(userId: string, action: "remote" | "local"): Promise<boolean> {
@@ -104,13 +108,6 @@ export async function resolveAccountSyncConflict(userId: string, action: "remote
   pendingConflicts.delete(uid);
   emitAccountSync(uid, "done", 100, "Compte synchronisé ✓", { restored:true, source: conflict.candidate.source });
   return true;
-}
-
-function emitAccountSync(userId: string, phase: string, progress: number, message: string, extra: Record<string, any> = {}): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.dispatchEvent(new CustomEvent("msc:account-sync", { detail: { userId, phase, progress: Math.max(0, Math.min(100, Math.round(progress))), message, ...extra } }));
-  } catch {}
 }
 
 function parseMs(value: any): number {
@@ -488,7 +485,10 @@ async function scanR2(): Promise<AccountBackupCandidate[]> {
   return rows.map(r2Candidate).filter(Boolean) as AccountBackupCandidate[];
 }
 
-async function scanPersonalCloud(userId: string, provider: PersonalCloudProvider): Promise<AccountBackupCandidate[]> {
+async function scanPersonalCloud(userId: string): Promise<AccountBackupCandidate[]> {
+  const selected = loadStoragePrefs().selectedDestination;
+  if (!isPersonalCloudProvider(selected)) return [];
+  const provider = selected as PersonalCloudProvider;
   const meta = await getPersonalCloudBackupMeta(provider);
   if (!meta) return [];
   const summary = meta?.metadata?.summary || {};
@@ -507,6 +507,55 @@ async function scanExternal(userId: string): Promise<AccountBackupCandidate[]> {
   return candidate ? [candidate] : [];
 }
 
+async function candidateFromLatestPointer(userId: string, pointer: AccountLatestBackup): Promise<AccountBackupCandidate | null> {
+  const provider = String(pointer?.provider || "") as AccountBackupSource;
+  const id = String(pointer?.backupId || "").trim();
+  if (!id || !accountStillActive(userId)) return null;
+  const ms = candidateTime(pointer.createdAt, pointer.updatedAt);
+  const common = {
+    source: provider,
+    id,
+    label: `Dernière sauvegarde — ${provider}`,
+    updatedAt: String(pointer.createdAt || pointer.updatedAt || isoFromMs(ms)),
+    updatedAtMs: ms,
+    revision: candidateRevision(pointer.revision),
+    summary: (pointer.summary || {}) as Partial<VaultSummary>,
+    accountScoped: true,
+  };
+
+  if (provider === "nas") return { ...common, load: async () => (await pullNasMemorySlot(id, { summaryHint: pointer.summary as VaultSummary | undefined })).payload };
+  if (provider === "r2") return { ...common, load: async () => {
+    const downloaded = await downloadCloudObject(id);
+    if (!downloaded?.ok) throw new Error("Téléchargement R2 impossible");
+    return downloaded.content ?? downloaded.text;
+  }};
+  if (provider === "google_drive" || provider === "onedrive" || provider === "dropbox") {
+    return { ...common, load: () => downloadPersonalCloudSnapshotById(provider as PersonalCloudProvider, id) };
+  }
+  if (provider === "local") {
+    const slots = await listLocalMemorySlots().catch(() => []);
+    const slot = slots.find((row) => String(row.id) === id);
+    return slot ? localCandidate(slot) : null;
+  }
+  if (provider === "external") {
+    const payload = await readExternalBackupSnapshotIfPermitted();
+    if (!payload || !payloadOwnerCompatible(payload, userId, false)) return null;
+    const candidate = externalCandidate(payload);
+    return candidate ? { ...candidate, id } : null;
+  }
+  return null;
+}
+
+async function getDirectLatestCandidate(userId: string): Promise<{ pointer: AccountLatestBackup | null; candidate: AccountBackupCandidate | null }> {
+  try {
+    const pointer = await getAccountLatestBackup();
+    if (!pointer || !accountStillActive(userId)) return { pointer: null, candidate: null };
+    return { pointer, candidate: await candidateFromLatestPointer(userId, pointer) };
+  } catch {
+    return { pointer: null, candidate: null };
+  }
+}
+
 export async function scanAccountBackups(userId: string): Promise<AccountBackupScanResult> {
   const uid = String(userId || "").trim();
   if (!uid) return { candidates: [], errors: [] };
@@ -515,32 +564,13 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
   // possède le scope ; si l'utilisateur a changé de compte entre-temps on annule.
   if (!accountStillActive(uid)) return { candidates: [], errors: [] };
 
-  // AUTO-RESTORE AU BOOT : ne sonde pas tous les backends.
-  // La destination active du compte est la source cloud de référence ; scanner
-  // NAS + R2 + cloud perso + fichier à chaque auth provoquait des 502, des
-  // centaines de requêtes et plusieurs secondes de blocage AppGate.
-  // La restauration MANUELLE du StorageVault conserve, elle, l'accès aux autres sources.
-  const selected = loadStoragePrefs().selectedDestination;
   const jobs: Array<{ source: AccountBackupSource; run: () => Promise<AccountBackupCandidate[]> }> = [
     { source: "local", run: () => scanLocal(uid) },
+    { source: "nas", run: () => scanNas(uid) },
+    { source: "r2", run: scanR2 },
+    { source: "google_drive", run: () => scanPersonalCloud(uid) },
+    { source: "external", run: () => scanExternal(uid) },
   ];
-  if (selected === "nas" || selected === "founder_nas") jobs.push({ source: "nas", run: () => scanNas(uid) });
-  else if (selected === "r2" || selected === "cloud_r2") jobs.push({ source: "r2", run: scanR2 });
-
-  // IMPORTANT MULTI-APPAREIL : selectedDestination est une préférence LOCALE.
-  // Sur un nouvel appareil elle vaut app_local, même si le compte possède déjà
-  // Google Drive. On découvre donc les clouds personnels réellement connectés
-  // au COMPTE côté serveur, puis on sonde uniquement ceux-là.
-  const personalProviders: PersonalCloudProvider[] = ["google_drive", "onedrive", "dropbox"];
-  const connectedProviders = await Promise.all(personalProviders.map(async (provider) => {
-    try {
-      const status = await getPersonalCloudStatus(provider);
-      return status?.connected ? provider : null;
-    } catch { return null; }
-  }));
-  for (const provider of connectedProviders.filter(Boolean) as PersonalCloudProvider[]) {
-    jobs.push({ source: provider, run: () => scanPersonalCloud(uid, provider) });
-  }
 
   const settled = await Promise.all(jobs.map(async (job) => {
     try {
@@ -623,7 +653,6 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
 
   try {
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé : restauration annulée.");
-    emitAccountSync(userId, "prepare", 55, "Préparation de la restauration…", { source: candidate.source });
 
     // Filet anti-régression : cette copie est explicitement exclue du choix automatique
     // au prochain boot, donc elle ne peut pas "gagner" parce qu'elle vient d'être créée.
@@ -639,9 +668,7 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
     }
 
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé : restauration annulée.");
-    emitAccountSync(userId, "download", 62, `Téléchargement ${candidate.label}…`, { source: candidate.source });
     const loaded = await candidate.load();
-    emitAccountSync(userId, "import", 82, "Import des données du compte…", { source: candidate.source });
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant le téléchargement : restauration annulée.");
     const payload = unwrapPayload(loaded);
     if (!payload || typeof payload !== "object") throw new Error("Sauvegarde vide ou illisible.");
@@ -652,7 +679,6 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
 
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé avant import : restauration annulée.");
     await importCloudSnapshot(payload, { mode: "replace" });
-    emitAccountSync(userId, "verify", 94, "Vérification des données synchronisées…", { source: candidate.source });
     restoreAuth();
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant l'import : rollback.");
     try { setStorageUser(userId); } catch {}
@@ -711,66 +737,61 @@ export async function restoreLatestBackupForSignedInUser(
     try {
       if (!accountStillActive(uid)) return false;
       emitAccountSync(uid, "search", 12, "Recherche de la dernière sauvegarde du compte…");
-      const scan = await scanAccountBackups(uid);
-      // IMPORTANT : ne jamais rester sur un faux palier 38 %. À ce stade le scan
-      // réseau est terminé. La décision suivante ne manipule que de petites métadonnées.
-      emitAccountSync(uid, "compare", 55, "Analyse de la dernière sauvegarde du compte…");
+      // V115 : chemin rapide. Le compte possède un pointeur serveur vers SA dernière
+      // sauvegarde réussie. Aucun scan NAS/R2/Drive n'est lancé lorsqu'il existe.
+      const direct = await getDirectLatestCandidate(uid);
       if (!accountStillActive(uid)) return false;
 
-      // V110 SYNC MULTI-APPAREIL : la sauvegarde distante la plus récente doit être
-      // comparée à l'appareil. L'ancien pickLatestBackupCandidate() mélangeait la copie
-      // locale avec le cloud et pouvait donc choisir la copie locale (plus riche) avant
-      // même de présenter la sauvegarde du PC au téléphone. Les pertes éventuelles sont
-      // désormais montrées par AWENA au lieu d'empêcher silencieusement la comparaison.
-      const remoteCandidates = scan.candidates.filter((c) => c.source !== "local" && c.source !== "legacy-auto");
-      const latest = [...remoteCandidates].filter((c) => meaningfulSummary(c.summary)).sort((a, b) => {
-        const dt = b.updatedAtMs - a.updatedAtMs;
-        if (dt) return dt;
-        const rev = b.revision - a.revision;
-        if (rev) return rev;
-        return summaryQuality(b.summary) - summaryQuality(a.summary);
-      })[0] || null;
+      let scan: AccountBackupScanResult = { candidates: [], errors: [] };
+      let latest = direct.candidate;
+
+      // Migration des anciens comptes uniquement : s'il n'existe encore aucun
+      // pointeur, on effectue UNE découverte historique, puis on mémorise le gagnant.
+      if (!direct.pointer) {
+        scan = await scanAccountBackups(uid);
+        if (!accountStillActive(uid)) return false;
+        latest = pickLatestBackupCandidate(scan.candidates);
+        if (latest) {
+          void registerAccountLatestBackup({
+            provider: latest.source === "legacy-auto" ? "local" : latest.source as any,
+            backupId: latest.id, createdAt: latest.updatedAt, revision: latest.revision,
+            summary: (latest.summary || {}) as Record<string, any>,
+          } as any).catch(() => null);
+        }
+      }
 
       if (!latest) {
-        saveDiagnostic(uid, { ok: true, restored: false, reason: "no-remote-backup", scanErrors: scan.errors });
-        emitAccountSync(uid, "done", 100, "Compte synchronisé", { restored: false });
+        saveDiagnostic(uid, { ok: true, restored: false, reason: direct.pointer ? "latest-pointer-unavailable" : "no-backup", pointer: direct.pointer, scanErrors: scan.errors });
         return false;
       }
 
-      emitAccountSync(uid, "compare", 72, "Comparaison des appareils…", { source: latest.source });
       const signature = candidateSignature(latest);
       const alreadyApplied = readAppliedSignature(uid) === signature;
-
-      // CHEMIN RAPIDE : une signature distante déjà appliquée suffit. Aucun export
-      // IndexedDB, aucun téléchargement et aucune reconstruction de snapshot.
       if (alreadyApplied) {
-        saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current-fast", candidate: { source: latest.source, id: latest.id } });
-        emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored: false });
-        return false;
+        const local = await summarizeCurrentLocal().catch(() => null);
+        if (!accountStillActive(uid)) return false;
+        if (local && localLooksAtLeastAsComplete(local, latest.summary)) {
+          saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current", candidate: { ...latest, load: undefined }, scanErrors: scan.errors });
+          return false;
+        }
       }
 
-      // COMPARAISON RAPIDE : uniquement les résumés déjà disponibles. La copie locale
-      // sert de référence de comparaison, mais elle ne peut plus masquer le cloud.
-      const localCandidates = scan.candidates.filter((c) => c.source === "local");
-      const localReference = pickLatestBackupCandidate(localCandidates);
-      const localSummary = localReference?.summary || {};
-      const conflict = buildConflict(uid, latest, localSummary);
-
-      // Même résumé : mémorise la signature sans téléchargement ni export massif.
-      if (!conflict.differences.length && meaningfulSummary(localSummary) && localLooksAtLeastAsComplete(localSummary as VaultSummary, latest.summary)) {
+      emitAccountSync(uid, "compare", 78, "Comparaison des appareils…", { source: latest.source });
+      const localBefore = await summarizeCurrentLocal().catch(() => null);
+      if (!accountStillActive(uid)) return false;
+      const conflict = buildConflict(uid, latest, localBefore || {});
+      if (!conflict.differences.length && localBefore && meaningfulSummary(localBefore) && localLooksAtLeastAsComplete(localBefore, latest.summary)) {
         writeAppliedSignature(uid, signature);
         saveDiagnostic(uid, { ok: true, restored: false, reason: "same-summary", candidate: { source: latest.source, id: latest.id } });
         emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
         return false;
       }
-
       emitConflict(conflict);
       saveDiagnostic(uid, { ok:true, restored:false, reason:"user-choice-required", candidate:{source:latest.source,id:latest.id}, differences:conflict.differences });
       return false;
     } catch (error: any) {
       saveDiagnostic(uid, { ok: false, restored: false, error: String(error?.message || error || "Restauration impossible") });
       console.warn("[backupCoordinator] automatic latest-backup restore skipped", error);
-      emitAccountSync(uid, "error", 100, "Synchronisation du compte impossible", { error: String(error?.message || error || "Erreur") });
       return false;
     } finally {
       if (inFlightByUser.get(uid) === task) inFlightByUser.delete(uid);

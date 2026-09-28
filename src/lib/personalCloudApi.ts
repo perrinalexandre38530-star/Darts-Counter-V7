@@ -67,12 +67,6 @@ export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvide
       snapshotJson: wrapper,
       summary: metadata?.summary || {},
       metadata,
-    }, {
-      // Une sauvegarde réelle fait ~20-30 Mo avant compression et dépassait
-      // régulièrement le timeout POST global de 10 s (les sauvegardes valides
-      // observées prennent déjà ~12-13 s). Action utilisateur => délai dédié.
-      manual: true,
-      timeoutMs: 120_000,
     }) as any;
   }
   return apiPost(`/account/personal-cloud/${provider}/backup`, { ...packed, metadata }) as any;
@@ -89,6 +83,22 @@ export async function getPersonalCloudBackupMeta(provider: PersonalCloudProvider
   if (provider === "google_drive") return latestGoogleDriveBackup();
   const res: any = await apiGet(`/account/personal-cloud/${provider}/backup/meta`).catch(() => null);
   return res?.backup || null;
+}
+
+export async function downloadPersonalCloudSnapshotById(provider: PersonalCloudProvider, backupId: string): Promise<any> {
+  const id = String(backupId || "").trim();
+  if (!id) throw new Error("Identifiant de sauvegarde cloud manquant.");
+  if (provider === "google_drive") {
+    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}`, { manual: true, timeoutMs: 120_000 });
+    const raw = String(res?.snapshotJson || "");
+    if (!raw) throw new Error("Sauvegarde Google Drive vide.");
+    const parsed = JSON.parse(raw);
+    if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed);
+    return parsed;
+  }
+  // OneDrive/Dropbox conserveront le contrat courant tant qu'un endpoint par ID
+  // n'est pas déployé pour ces providers.
+  return downloadPersonalCloudSnapshot(provider);
 }
 
 export async function downloadPersonalCloudSnapshot(provider: PersonalCloudProvider): Promise<any> {
