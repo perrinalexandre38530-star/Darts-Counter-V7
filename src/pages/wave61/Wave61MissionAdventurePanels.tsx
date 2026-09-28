@@ -70,8 +70,9 @@ export function MythologiePanel({ state, accent }: any) {
   </div>;
 }
 export function JardinierPanel({ state, accent }: any) {
+  const harvestGoal=Math.max(1,Number(state?.config?.modeOptions?.harvestGoal||5));
   return <div style={card(accent)}>{title(accent, "LE JARDINIER · CULTURES")}
-    {playerGrid(state.players.map((p:any)=>{const harvest=Number(state.special?.gardenHarvestByPlayer?.[p.id]||0); return <div key={p.id} style={{display:"grid",gap:4}}><b>🌱 {p.name}</b><span style={{color:SOFT,fontSize:9}}>Récoltes {harvest}/5 · Eau {state.special?.gardenWaterByPlayer?.[p.id]||0}%</span><Meter value={state.special?.gardenGrowthByPlayer?.[p.id]||0} max={100} accent={accent}/><span style={{color:SOFT,fontSize:8.5}}>Croissance de la plante actuelle</span></div>}))}
+    {playerGrid(state.players.map((p:any)=>{const harvest=Number(state.special?.gardenHarvestByPlayer?.[p.id]||0); return <div key={p.id} style={{display:"grid",gap:4}}><b>🌱 {p.name}</b><span style={{color:SOFT,fontSize:9}}>Récoltes {harvest}/{harvestGoal} · Eau {state.special?.gardenWaterByPlayer?.[p.id]||0}%</span><Meter value={state.special?.gardenGrowthByPlayer?.[p.id]||0} max={100} accent={accent}/><span style={{color:SOFT,fontSize:8.5}}>Croissance de la plante actuelle</span></div>}))}
   </div>;
 }
 export function MicroscopiaPanel({ state, accent }: any) {

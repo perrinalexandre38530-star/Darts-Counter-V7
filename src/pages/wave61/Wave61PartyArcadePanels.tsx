@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { Meter, SOFT, panelStyle } from "../newModes/newModePlayShared";
-import { wave61FinalBuzzerChallenge, wave61MafiaPhase } from "../../lib/gameEngines/wave61Engine";
+import { wave61FinalBuzzerChallenge, wave61FinalBuzzerCutoff, wave61MafiaPhase } from "../../lib/gameEngines/wave61Engine";
 
 function shell(accent: string): React.CSSProperties {
   return { ...panelStyle(`${accent}40`), padding: 9, display: "grid", gap: 8 };
@@ -20,9 +20,7 @@ const SYMBOL_ICON: Record<string, string> = {
 
 export function FinalBuzzerPanel({ state, accent }: any) {
   const challenge = wave61FinalBuzzerChallenge(state);
-  const cutoffs = state.special?.finalBuzzerCutoffs || [];
-  const raw = Number(cutoffs[Math.max(0, Number(state.turnIndex || 0)) % Math.max(1, cutoffs.length)] || 2);
-  const cutoff = ((raw - 1) % 3) + 1;
+  const cutoff = wave61FinalBuzzerCutoff(state);
   return <div style={shell(accent)}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
       <div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: .7 }}>⏱️ FINAL BUZZER · {challenge?.name || "DÉFI"}</div>
@@ -47,7 +45,7 @@ export function FinalBuzzerPanel({ state, accent }: any) {
 }
 
 export function JackpotPanel({ state, accent }: any) {
-  const pot = Math.round(Number(state.special?.jackpotPot || 250));
+  const pot = Math.round(Number(state.special?.jackpotPot || state?.config?.modeOptions?.basePot || 250));
   return <div style={shell(accent)}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
       <div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: .7 }}>🎰 JACKPOT · MACHINE À SOUS DARTS</div>
