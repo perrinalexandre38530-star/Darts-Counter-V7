@@ -21,11 +21,31 @@ import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled, isSupabaseHardDisabledInNasMode } from "../lib/serverConfig";
 import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import { cloudCommunityHeartbeat } from "../lib/publicSocialApi";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
 const PROFILE_HYDRATION_COOLDOWN_MS = 2200;
+
+// Exécute les tâches non critiques uniquement hors d’une navigation active.
+// Cette fonction est utilisée par l’hydratation de profil et le heartbeat.
+function scheduleOutsideNavigation(task: () => void, delayMs: number, attempt = 0): void {
+  if (typeof window === "undefined") return;
+  window.setTimeout(() => {
+    const navigating = (() => {
+      try { return document.documentElement.dataset.mscNavigating === "1"; } catch { return false; }
+    })();
+    if (navigating && attempt < 8) {
+      scheduleOutsideNavigation(task, 450, attempt + 1);
+      return;
+    }
+    scheduleRuntimeIdle(task, {
+      timeoutMs: isCapacitorNativeRuntime() ? 5000 : 3000,
+      fallbackDelayMs: isCapacitorNativeRuntime() ? 900 : 180,
+    });
+  }, Math.max(0, delayMs));
+}
 import type { OnlineProfile } from "../lib/onlineTypes";
 
 const AUTH_REDIRECT_LOGIN = "#/account/start";
