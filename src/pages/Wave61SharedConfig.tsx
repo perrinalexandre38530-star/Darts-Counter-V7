@@ -145,11 +145,11 @@ export default function Wave61SharedConfig(props: any) {
   const card: React.CSSProperties = { borderRadius: 18, padding: 12, background: "linear-gradient(180deg,rgba(16,18,30,.96),rgba(7,9,16,.98))", border: `1px solid ${accent}35`, boxShadow: "0 15px 36px rgba(0,0,0,.38)" };
   const pill = (active: boolean): React.CSSProperties => ({ minHeight: 36, padding: "7px 12px", borderRadius: 999, border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`, background: active ? `${accent}1c` : "rgba(255,255,255,.035)", color: active ? "#fff" : "#aeb5c8", fontWeight: 950 });
 
-  return <div className="page" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
-    <PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b>{dedicatedIntro ? <><br /><br /><b style={{ color: accent }}>CONFIGURATION DÉDIÉE</b><br />{dedicatedIntro}</> : null}<br /><br />Architecture dédiée : ce mode passe par son propre fichier Config tout en réutilisant le moteur mutualisé <b>{preset.label}</b>.</div>} />} />
-    {modeTicker ? <div style={{ padding: "6px 10px 2px", maxWidth: 980, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 16, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 12px 34px rgba(0,0,0,.38)` }} /></div> : null}
-    <div style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
-      <section style={card}>
+  return <div className="page wave61-config-screen" data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
+    <div className="wave61-config-header"><PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b>{dedicatedIntro ? <><br /><br /><b style={{ color: accent }}>CONFIGURATION DÉDIÉE</b><br />{dedicatedIntro}</> : null}<br /><br />Architecture dédiée : ce mode passe par son propre fichier Config tout en réutilisant le moteur mutualisé <b>{preset.label}</b>.</div>} />} /></div>
+    {modeTicker ? <div className="wave61-config-ticker" style={{ padding: "6px 10px 2px", maxWidth: 980, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 16, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 12px 34px rgba(0,0,0,.38)` }} /></div> : null}
+    <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
+      <section className="wave61-config-participants" style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
         {spec.supportsTeams ? <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button style={pill(participantMode === "players")} onClick={() => setParticipantMode("players")}>JOUEURS</button><button style={pill(participantMode === "teams")} onClick={() => setParticipantMode("teams")}>2 ÉQUIPES AUTO</button></div> : null}
         <PlayerPagedSelector usageMode={spec.id} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={true} />
@@ -161,7 +161,7 @@ export default function Wave61SharedConfig(props: any) {
         {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition Wave61 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
       </section>
 
-      <section style={card}>
+      <section className="wave61-config-engine" style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Moteur · {preset.label}</div>
         <OptionRow label="Difficulté"><OptionSelect value={difficulty} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setDifficulty} /></OptionRow>
         {botCount ? <OptionRow label="Niveau BOT"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow> : null}
@@ -172,7 +172,11 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
 
-      <section style={{ ...card, borderColor: `${accent}45` }}>
+      <section className="wave61-config-assistance" style={{ ...card, borderColor: `${accent}45` }}>
+        <div className="wave61-config-awena-card" aria-hidden="true">
+          <img src="/awena/awena-avatar.webp" alt="" />
+          <div><b>AWENA VOUS EXPLIQUE</b><span>{spec.infoBody}</span></div>
+        </div>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Assistance & ambiance</div>
         <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.45, marginBottom: 6 }}>Ces réglages sont communs à tout le catalogue Wave61 et restent mémorisés séparément pour chaque jeu.</div>
         <OptionRow label="Conseil de cible · 3 secondes"><OptionToggle value={targetAdviceEnabled} onChange={setTargetAdviceEnabled} /></OptionRow>
@@ -180,7 +184,7 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label="Bruitages Wave61"><OptionToggle value={wave61SfxEnabled} onChange={setWave61SfxEnabled} /></OptionRow>
       </section>
 
-      {dedicatedOptions.length ? <section style={{ ...card, borderColor: `${accent}4d` }}>
+      {dedicatedOptions.length ? <section className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
         {dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
         {dedicatedOptions.map((option) => {
@@ -195,7 +199,7 @@ export default function Wave61SharedConfig(props: any) {
         })}
       </section> : null}
 
-      <section style={{ ...card, borderColor: valid ? `${accent}66` : "rgba(255,255,255,.08)" }}>
+      <section className="wave61-config-launch" style={{ ...card, borderColor: valid ? `${accent}66` : "rgba(255,255,255,.08)" }}>
         <div style={{ color: "#aeb5c8", fontSize: 11, lineHeight: 1.55 }}><b style={{ color: "#fff" }}>{spec.label}</b> utilise désormais le moteur <b style={{ color: accent }}>{preset.label}</b>. La sauvegarde/reprise, l'Undo, les bots, le scoring par dart et l'écran de fin sont branchés dans le socle commun.</div>
         <button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 48, marginTop: 12, borderRadius: 14, border: `1px solid ${valid ? accent : "rgba(255,255,255,.1)"}`, background: valid ? `linear-gradient(180deg,${accent}33,${accent}12)` : "rgba(255,255,255,.03)", color: valid ? "#fff" : "#5e6474", fontWeight: 1100, letterSpacing: .8 }}>LANCER {spec.label}</button>
       </section>

@@ -35,6 +35,7 @@ import screenX01 from "../assets/public-landing/screen-x01.webp";
 import screenStats from "../assets/public-landing/screen-stats.webp";
 import { DARTS_GAMES, type DartsGameDef } from "../games/dartsGameRegistry";
 import { DARTS_PUBLIC_RULE_AUDIT } from "../games/dartsPublicRulesAudit";
+import { useLang, type Lang } from "../contexts/LangContext";
 
 
 const landingTickerAssets = import.meta.glob("../assets/tickers/*.{png,webp}", {
@@ -51,6 +52,32 @@ const DARTS_CATEGORY_LABEL: Record<string,string> = {
   fun: "FUN",
   training: "ENTRAÎNEMENT",
 };
+
+const PUBLIC_LANGUAGES: ReadonlyArray<{ code: Lang; label: string; flag: string }> = [
+  { code: "fr", label: "Français", flag: "🇫🇷" },
+  { code: "en", label: "English", flag: "🇬🇧" },
+  { code: "es", label: "Español", flag: "🇪🇸" },
+  { code: "de", label: "Deutsch", flag: "🇩🇪" },
+  { code: "it", label: "Italiano", flag: "🇮🇹" },
+  { code: "pt", label: "Português", flag: "🇵🇹" },
+  { code: "nl", label: "Nederlands", flag: "🇳🇱" },
+  { code: "pl", label: "Polski", flag: "🇵🇱" },
+  { code: "ro", label: "Română", flag: "🇷🇴" },
+  { code: "sr", label: "Srpski", flag: "🇷🇸" },
+  { code: "hr", label: "Hrvatski", flag: "🇭🇷" },
+  { code: "da", label: "Dansk", flag: "🇩🇰" },
+  { code: "no", label: "Norsk", flag: "🇳🇴" },
+  { code: "sv", label: "Svenska", flag: "🇸🇪" },
+  { code: "is", label: "Íslenska", flag: "🇮🇸" },
+  { code: "cs", label: "Čeština", flag: "🇨🇿" },
+  { code: "tr", label: "Türkçe", flag: "🇹🇷" },
+  { code: "ar", label: "العربية", flag: "🇸🇦" },
+  { code: "ru", label: "Русский", flag: "🇷🇺" },
+  { code: "hi", label: "हिन्दी", flag: "🇮🇳" },
+  { code: "zh", label: "中文", flag: "🇨🇳" },
+  { code: "ja", label: "日本語", flag: "🇯🇵" },
+];
+
 
 function landingTickerFor(gameId: string): string | null {
   const alias: Record<string,string> = {
@@ -81,7 +108,7 @@ function isPublicDartsDevelopment(game: DartsGameDef) {
   return !game.ready || game.tab === "mode_not_ready";
 }
 
-function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack: () => void; onOpenApp: () => void }) {
+function DartsRulePage({ game, onBack, onOpenApp, lang, setLang }: { game: DartsGameDef; onBack: () => void; onOpenApp: () => void; lang: Lang; setLang: (lang: Lang) => void }) {
   const ticker = landingTickerFor(game.id);
   const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
@@ -97,6 +124,12 @@ function DartsRulePage({ game, onBack, onOpenApp }: { game: DartsGameDef; onBack
     <header className="mssNav">
       <button className="mssBrand" onClick={onBack}><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
       <nav><button className="mssRulesBack" onClick={onBack}>← TOUS LES MODES</button></nav>
+      <label className="mssLanguageSelect" title="Choisir la langue">
+        <span aria-hidden="true">{(PUBLIC_LANGUAGES.find((item) => item.code === lang) || PUBLIC_LANGUAGES[0]).flag}</span>
+        <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Choisir la langue de la page">
+          {PUBLIC_LANGUAGES.map((item) => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
+        </select>
+      </label>
       <button className="mssOpen" onClick={onOpenApp}>OUVRIR L’APPLICATION</button>
     </header>
     <div className="mssRuleBreadcrumb"><button onClick={onBack}>MODES DE FLÉCHETTES</button><span>›</span><b>{game.label}</b><i>{development ? "EN DÉVELOPPEMENT" : "DISPONIBLE"}</i></div>
@@ -164,6 +197,8 @@ const features = [
 ] as const;
 
 export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void }) {
+  const { lang, setLang } = useLang();
+  const currentPublicLanguage = PUBLIC_LANGUAGES.find((item) => item.code === lang) || PUBLIC_LANGUAGES[0];
   const [routeHash, setRouteHash] = useState(() => window.location.hash);
   const [dartsFilter, setDartsFilter] = useState<"classic"|"exclusive"|"fun"|"challenge"|"variant"|"training"|"development">("classic");
   const [dartsSearch, setDartsSearch] = useState("");
@@ -190,7 +225,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   if (ruleMatch) {
     const id = decodeURIComponent(ruleMatch[1]);
     const game = allDartsGames.find((g) => g.id === id);
-    if (game) return <DartsRulePage game={game} onOpenApp={onOpenApp} onBack={() => {
+    if (game) return <DartsRulePage game={game} onOpenApp={onOpenApp} lang={lang} setLang={setLang} onBack={() => {
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/welcome`);
       setRouteHash("#/welcome");
       window.setTimeout(() => document.getElementById("darts-modes")?.scrollIntoView({ block: "start", behavior: "auto" }), 0);
@@ -238,7 +273,13 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   return <main className="mssLanding" id="top">
     <header className="mssNav">
       <button className="mssBrand" onClick={() => window.scrollTo({top:0,behavior:"smooth"})} aria-label="MULTISPORTS SCORING accueil"><img src={logo} alt=""/><span>MULTISPORTS <b>SCORING</b></span></button>
-      <nav><a href="#darts-modes">Fléchettes</a><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#awena">Awena</a><a href="#download">Télécharger</a></nav>
+      <nav><a href="#darts-modes">Fléchettes</a><a href="#disciplines">Disciplines</a><a href="#features">Fonctionnalités</a><a href="#languages">Langues</a><a href="#awena">Awena</a><a href="#download">Télécharger</a></nav>
+      <label className="mssLanguageSelect" title="Choisir la langue">
+        <span aria-hidden="true">{currentPublicLanguage.flag}</span>
+        <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Choisir la langue de la page">
+          {PUBLIC_LANGUAGES.map((item) => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
+        </select>
+      </label>
       <button className="mssOpen" onClick={onOpenApp}>OUVRIR L’APPLICATION</button>
     </header>
 
@@ -248,7 +289,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <h1>UNE APPLICATION.<br/><em>TOUS VOS SPORTS.</em></h1>
         <p className="mssLead">Jouez, scorez, entraînez-vous et suivez vos performances dans un seul univers. MULTISPORTS SCORING réunit le jeu local et online, les statistiques, les équipes, les bots et les outils pour clubs.</p>
         <div className="mssCtas"><button onClick={onOpenApp}>COMMENCER GRATUITEMENT</button><a href="https://play.google.com/store/apps/details?id=com.multisportsscoring.app" target="_blank" rel="noreferrer">GOOGLE PLAY</a></div>
-        <div className="mssStoreLine"><span>✓ Gratuit</span><span>✓ Google Play</span><span>✓ Version Web</span></div>
+        <div className="mssStoreLine"><span>✓ Gratuit</span><span>✓ Google Play</span><span>✓ Version Web</span><span>✓ 22 langues</span></div>
       </div>
       <div className="mssHeroVisual" aria-label="Les disciplines MULTISPORTS SCORING">
         <div className="mssVisualKicker">UN ÉCOSYSTÈME • 22 DISCIPLINES</div>
@@ -261,6 +302,24 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     </section>
 
     <section className="mssStrip" id="features">{features.map(([big,small])=><article key={big}><strong>{big}</strong><span>{small}</span></article>)}</section>
+
+    <section className="mssLanguagesSection" id="languages">
+      <div className="mssLanguagesCopy">
+        <div className="mssEyebrow">MULTILINGUE • 22 LANGUES DISPONIBLES</div>
+        <h2>L’application s’adapte à votre langue.</h2>
+        <p>MULTISPORTS SCORING propose 22 langues directement dans l’application. La langue choisie ici est également celle utilisée par l’interface lorsque vous ouvrez l’application.</p>
+        <strong>Choisissez votre langue</strong>
+        <label className="mssLanguageHeroSelect">
+          <span>{currentPublicLanguage.flag}</span>
+          <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Sélectionner une langue">
+            {PUBLIC_LANGUAGES.map((item) => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="mssLanguageGrid" aria-label="22 langues disponibles dans MULTISPORTS SCORING">
+        {PUBLIC_LANGUAGES.map((item) => <button key={item.code} className={item.code === lang ? "isActive" : ""} onClick={() => setLang(item.code)}><span>{item.flag}</span><b>{item.label}</b></button>)}
+      </div>
+    </section>
 
     <section className="mssAppPreview" aria-label="Aperçu de MULTISPORTS SCORING">
       <div className="mssPreviewHead"><div className="mssEyebrow">L’APPLICATION EN ACTION</div><h2>Un seul univers. Des écrans pensés pour chaque usage.</h2><p>Choisissez une discipline, jouez immédiatement puis retrouvez vos performances dans le même environnement.</p></div>
@@ -321,14 +380,14 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     </section>
 
     <section className="mssDownload" id="download">
-      <div className="mssDownloadCopy"><div className="mssEyebrow">PRÊT À JOUER ?</div><h2>Votre univers sportif commence ici.</h2><p>Accédez à MULTISPORTS SCORING depuis le Web ou installez l’application Android. Vos disciplines, vos profils et vos performances restent réunis dans la même expérience.</p><div className="mssDownloadActions"><a className="mssPlayCta" href="https://play.google.com/store/apps/details?id=com.multisportsscoring.app" target="_blank" rel="noreferrer"><small>DISPONIBLE SUR</small><strong>Google Play</strong></a><button className="mssWebCta" onClick={onOpenApp}><small>UTILISER MAINTENANT</small><strong>Ouvrir l’application</strong></button></div><div className="mssDownloadMeta"><span>✓ Application gratuite</span><span>✓ 22 disciplines</span><span>✓ Local + Online</span><span>✓ Statistiques</span></div></div>
+      <div className="mssDownloadCopy"><div className="mssEyebrow">PRÊT À JOUER ?</div><h2>Votre univers sportif commence ici.</h2><p>Accédez à MULTISPORTS SCORING depuis le Web ou installez l’application Android. Vos disciplines, vos profils et vos performances restent réunis dans la même expérience.</p><div className="mssDownloadActions"><a className="mssPlayCta" href="https://play.google.com/store/apps/details?id=com.multisportsscoring.app" target="_blank" rel="noreferrer"><small>DISPONIBLE SUR</small><strong>Google Play</strong></a><button className="mssWebCta" onClick={onOpenApp}><small>UTILISER MAINTENANT</small><strong>Ouvrir l’application</strong></button></div><div className="mssDownloadMeta"><span>✓ Application gratuite</span><span>✓ 22 disciplines</span><span>✓ 22 langues</span><span>✓ Local + Online</span><span>✓ Statistiques</span></div></div>
       <div className="mssDownloadMark"><div className="mssDownloadRing"><img src={logo} alt="MULTISPORTS SCORING"/><strong>MULTISPORTS</strong><b>SCORING</b><span>JOUEZ • SCOREZ • PROGRESSEZ</span></div></div>
     </section>
 
     <section className="mssCommunity" id="community"><div><div className="mssEyebrow">UN SEUL PROFIL • TOUT VOTRE SPORT</div><h2>Vos performances vous suivent partout.</h2><p>Retrouvez vos disciplines, vos équipes, vos parties, vos entraînements et votre progression dans le même écosystème.</p></div><div className="mssCommunityBtns"><button onClick={onOpenApp}>COMMENCER GRATUITEMENT</button><span>Web • Android • MULTISPORTS SCORING</span></div></section>
 
     <footer className="mssFooter">
-      <div className="mssFooterBrand"><img src={logo} alt=""/><div><strong>MULTISPORTS <b>SCORING</b></strong><span>22 disciplines • Une seule application</span></div></div>
+      <div className="mssFooterBrand"><img src={logo} alt=""/><div><strong>MULTISPORTS <b>SCORING</b></strong><span>22 disciplines • 22 langues • Une seule application</span></div></div>
       <div className="mssFooterLinks"><a href="https://multisports-scoring.pages.dev/privacy-policy/" target="_blank" rel="noreferrer">Politique de confidentialité</a><a href="https://multisports-scoring.pages.dev/terms-of-service/" target="_blank" rel="noreferrer">Conditions d’utilisation</a><a href="#disciplines">Disciplines</a><a href="#awena">Awena</a><a href="#download">Télécharger</a><a href="#top">Retour en haut ↑</a></div>
       <span className="mssCopyright">© 2026 MULTISPORTS SCORING</span>
     </footer>
