@@ -28,6 +28,11 @@ import { cloudCommunityHeartbeat } from "../lib/publicSocialApi";
 const NAS_AUTH_COOLDOWN_MS = 1500;
 const PROFILE_HYDRATION_COOLDOWN_MS = 2200;
 
+// Une vérification/restauration de compte ne doit avoir lieu qu'UNE fois par
+// cycle de vie de l'application. Les événements TOKEN_REFRESHED, visibilité,
+// bridge NAS ou remount React ne doivent jamais refermer AppGate.
+const bootstrappedAccountsThisRuntime = new Set<string>();
+
 // Exécute les tâches non critiques uniquement hors d’une navigation active.
 // Cette fonction est utilisée par l’hydratation de profil et le heartbeat.
 function scheduleOutsideNavigation(task: () => void, delayMs: number, attempt = 0): void {
@@ -649,8 +654,21 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     const userId = String(user?.id || "").trim();
     if (!userId) return;
 
+    if (bootstrappedAccountsThisRuntime.has(userId)) {
+      setState((current) => {
+        if (String(current.user?.id || "") !== userId) return current;
+        if (current.ready && current.status === "signed_in" && !current.loading) return current;
+        return { ...current, loading: false, ready: true, status: "signed_in" };
+      });
+      return;
+    }
+
     const existing = accountBootstrapInFlightRef.current.get(userId);
     if (existing) return existing;
+
+    // Marqué avant le réseau : un second événement auth concurrent ne peut pas
+    // remettre l'écran « Vérification du compte… » pendant le bootstrap courant.
+    bootstrappedAccountsThisRuntime.add(userId);
 
     const task = (async () => {
       // IMPORTANT: tant que la sauvegarde de référence du compte n'a pas été
@@ -807,7 +825,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
             if (nextSession?.user) {
               lastSignedInSessionRef.current = nextSession;
-              applyAuthFromSession(setState, nextSession, { ready: false });
+              applyAuthFromSession(setState, nextSession, { ready: bootstrappedAccountsThisRuntime.has(String(nextSession.user?.id || "").trim()) });
               await bootstrapSignedInAccount(nextSession.user);
               hydrateProfileAndBackups(nextSession.user);
             } else {
@@ -851,7 +869,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             return;
           }
 
-          applyAuthFromSession(setState, emittedSession, { ready: false });
+          applyAuthFromSession(setState, emittedSession, { ready: bootstrappedAccountsThisRuntime.has(String(emittedSession.user?.id || "").trim()) });
           // Sortir immédiatement du callback Supabase puis initialiser le compte.
           // Le coordinateur déduplique si le login/boot a déjà lancé la même tâche.
           window.setTimeout(() => {

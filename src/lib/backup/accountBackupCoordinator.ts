@@ -460,13 +460,18 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
   // possède le scope ; si l'utilisateur a changé de compte entre-temps on annule.
   if (!accountStillActive(uid)) return { candidates: [], errors: [] };
 
+  // AUTO-RESTORE AU BOOT : ne sonde pas tous les backends.
+  // La destination active du compte est la source cloud de référence ; scanner
+  // NAS + R2 + cloud perso + fichier à chaque auth provoquait des 502, des
+  // centaines de requêtes et plusieurs secondes de blocage AppGate.
+  // La restauration MANUELLE du StorageVault conserve, elle, l'accès aux autres sources.
+  const selected = loadStoragePrefs().selectedDestination;
   const jobs: Array<{ source: AccountBackupSource; run: () => Promise<AccountBackupCandidate[]> }> = [
     { source: "local", run: () => scanLocal(uid) },
-    { source: "nas", run: () => scanNas(uid) },
-    { source: "r2", run: scanR2 },
-    { source: "google_drive", run: () => scanPersonalCloud(uid) },
-    { source: "external", run: () => scanExternal(uid) },
   ];
+  if (selected === "nas") jobs.push({ source: "nas", run: () => scanNas(uid) });
+  else if (selected === "r2") jobs.push({ source: "r2", run: scanR2 });
+  else if (isPersonalCloudProvider(selected)) jobs.push({ source: selected as AccountBackupSource, run: () => scanPersonalCloud(uid) });
 
   const settled = await Promise.all(jobs.map(async (job) => {
     try {
