@@ -7042,6 +7042,38 @@ case "babyfoot_team_edit":
    🔒 APP GATE — NE BLOQUE QUE LES PAGES ONLINE "post-login"
    ✅ V7: compte unique -> useAuthOnline()
 -------------------------------------------- */
+function AccountSyncBanner() {
+  const [sync, setSync] = React.useState<any>(null);
+  React.useEffect(() => {
+    let hideTimer: number | null = null;
+    const onSync = (event: any) => {
+      const detail = event?.detail || {};
+      setSync(detail);
+      if (hideTimer) window.clearTimeout(hideTimer);
+      if (detail.phase === "done") hideTimer = window.setTimeout(() => setSync(null), 3500);
+    };
+    window.addEventListener("msc:account-sync", onSync as EventListener);
+    return () => {
+      window.removeEventListener("msc:account-sync", onSync as EventListener);
+      if (hideTimer) window.clearTimeout(hideTimer);
+    };
+  }, []);
+  if (!sync) return null;
+  const pct = Math.max(0, Math.min(100, Number(sync.progress || 0)));
+  const failed = sync.phase === "error";
+  return (
+    <div style={{ position: "fixed", zIndex: 2147482000, top: 8, left: "50%", transform: "translateX(-50%)", width: "min(92vw, 560px)", padding: "9px 12px", borderRadius: 14, background: "rgba(5,14,28,.94)", border: `1px solid ${failed ? "rgba(255,90,90,.75)" : "rgba(35,230,255,.72)"}`, boxShadow: "0 8px 30px rgba(0,0,0,.42)", color: "#eaffff", pointerEvents: "none" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontWeight: 900 }}>
+        <span>{failed ? "Synchronisation interrompue" : String(sync.message || "Synchronisation du compte…")}</span>
+        <span>{pct}%</span>
+      </div>
+      <div style={{ height: 4, marginTop: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.14)" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: failed ? "#ff5a5a" : "linear-gradient(90deg,#20dfff,#8cff66)" }} />
+      </div>
+    </div>
+  );
+}
+
 function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
   const { status, ready } = useAuthOnline();
   const samsungTvNativeApp = isSamsungTvNativeAppMode();
@@ -7094,7 +7126,10 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     );
   }
 
-  return <>{children}</>;
+  return <>
+    <AccountSyncBanner />
+    {children}
+  </>;
 }
 
 /* ---------- ROOT PROVIDERS ---------- */

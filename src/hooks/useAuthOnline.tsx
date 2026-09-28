@@ -671,19 +671,18 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     bootstrappedAccountsThisRuntime.add(userId);
 
     const task = (async () => {
-      // IMPORTANT: tant que la sauvegarde de référence du compte n'a pas été
-      // vérifiée/restaurée, AppGate reste fermé. Aucune restauration différée
-      // ne pourra donc éjecter l'utilisateur d'une configuration ou d'une partie.
-      setState((current) => ({ ...current, loading: true, ready: false, status: "checking" }));
+      // L'authentification libère immédiatement l'interface. La sauvegarde du
+      // compte est recherchée/restaurée EN ARRIÈRE-PLAN : jamais d'AppGate de
+      // 10-15 s sur un nouvel appareil. La progression est publiée globalement.
+      setState((current) => {
+        if (String(current.user?.id || "") !== userId) return current;
+        return { ...current, loading: false, ready: true, status: "signed_in" };
+      });
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
       try {
         await maybeAutoRestoreCloudForSignedInUser(userId);
       } catch (error) {
-        console.warn("[useAuthOnline] account bootstrap restore skipped", error);
-      } finally {
-        setState((current) => {
-          if (String(current.user?.id || "") !== userId) return current;
-          return { ...current, loading: false, ready: true, status: "signed_in" };
-        });
+        console.warn("[useAuthOnline] background account restore skipped", error);
       }
     })();
 

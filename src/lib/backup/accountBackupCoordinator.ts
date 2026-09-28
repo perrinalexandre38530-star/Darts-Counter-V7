@@ -24,7 +24,7 @@ import {
   setStorageUser,
 } from "../storage";
 import { getAutoBackups, type AutoBackupItem } from "./autoBackupService";
-import { downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, isPersonalCloudProvider, personalCloudProviderLabel, type PersonalCloudProvider } from "../personalCloudApi";
+import { downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, type PersonalCloudProvider } from "../personalCloudApi";
 import { loadStoragePrefs } from "../storagePlans";
 
 export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
@@ -54,6 +54,13 @@ const RUN_COOLDOWN_MS = 4_000;
 
 const inFlightByUser = new Map<string, Promise<boolean>>();
 const lastRunAtByUser = new Map<string, number>();
+
+function emitAccountSync(userId: string, phase: string, progress: number, message: string, extra: Record<string, any> = {}): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new CustomEvent("msc:account-sync", { detail: { userId, phase, progress: Math.max(0, Math.min(100, Math.round(progress))), message, ...extra } }));
+  } catch {}
+}
 
 function parseMs(value: any): number {
   const numeric = Number(value);
@@ -430,10 +437,7 @@ async function scanR2(): Promise<AccountBackupCandidate[]> {
   return rows.map(r2Candidate).filter(Boolean) as AccountBackupCandidate[];
 }
 
-async function scanPersonalCloud(userId: string): Promise<AccountBackupCandidate[]> {
-  const selected = loadStoragePrefs().selectedDestination;
-  if (!isPersonalCloudProvider(selected)) return [];
-  const provider = selected as PersonalCloudProvider;
+async function scanPersonalCloud(userId: string, provider: PersonalCloudProvider): Promise<AccountBackupCandidate[]> {
   const meta = await getPersonalCloudBackupMeta(provider);
   if (!meta) return [];
   const summary = meta?.metadata?.summary || {};
@@ -469,9 +473,23 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
   const jobs: Array<{ source: AccountBackupSource; run: () => Promise<AccountBackupCandidate[]> }> = [
     { source: "local", run: () => scanLocal(uid) },
   ];
-  if (selected === "nas") jobs.push({ source: "nas", run: () => scanNas(uid) });
-  else if (selected === "r2") jobs.push({ source: "r2", run: scanR2 });
-  else if (isPersonalCloudProvider(selected)) jobs.push({ source: selected as AccountBackupSource, run: () => scanPersonalCloud(uid) });
+  if (selected === "nas" || selected === "founder_nas") jobs.push({ source: "nas", run: () => scanNas(uid) });
+  else if (selected === "r2" || selected === "cloud_r2") jobs.push({ source: "r2", run: scanR2 });
+
+  // IMPORTANT MULTI-APPAREIL : selectedDestination est une préférence LOCALE.
+  // Sur un nouvel appareil elle vaut app_local, même si le compte possède déjà
+  // Google Drive. On découvre donc les clouds personnels réellement connectés
+  // au COMPTE côté serveur, puis on sonde uniquement ceux-là.
+  const personalProviders: PersonalCloudProvider[] = ["google_drive", "onedrive", "dropbox"];
+  const connectedProviders = await Promise.all(personalProviders.map(async (provider) => {
+    try {
+      const status = await getPersonalCloudStatus(provider);
+      return status?.connected ? provider : null;
+    } catch { return null; }
+  }));
+  for (const provider of connectedProviders.filter(Boolean) as PersonalCloudProvider[]) {
+    jobs.push({ source: provider, run: () => scanPersonalCloud(uid, provider) });
+  }
 
   const settled = await Promise.all(jobs.map(async (job) => {
     try {
@@ -554,6 +572,7 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
 
   try {
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé : restauration annulée.");
+    emitAccountSync(userId, "prepare", 55, "Préparation de la restauration…", { source: candidate.source });
 
     // Filet anti-régression : cette copie est explicitement exclue du choix automatique
     // au prochain boot, donc elle ne peut pas "gagner" parce qu'elle vient d'être créée.
@@ -569,7 +588,9 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
     }
 
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé : restauration annulée.");
+    emitAccountSync(userId, "download", 62, `Téléchargement ${candidate.label}…`, { source: candidate.source });
     const loaded = await candidate.load();
+    emitAccountSync(userId, "import", 82, "Import des données du compte…", { source: candidate.source });
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant le téléchargement : restauration annulée.");
     const payload = unwrapPayload(loaded);
     if (!payload || typeof payload !== "object") throw new Error("Sauvegarde vide ou illisible.");
@@ -580,6 +601,7 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
 
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé avant import : restauration annulée.");
     await importCloudSnapshot(payload, { mode: "replace" });
+    emitAccountSync(userId, "verify", 94, "Vérification des données synchronisées…", { source: candidate.source });
     restoreAuth();
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant l'import : rollback.");
     try { setStorageUser(userId); } catch {}
@@ -637,12 +659,15 @@ export async function restoreLatestBackupForSignedInUser(
   const task = (async () => {
     try {
       if (!accountStillActive(uid)) return false;
+      emitAccountSync(uid, "search", 12, "Recherche de la dernière sauvegarde du compte…");
       const scan = await scanAccountBackups(uid);
+      emitAccountSync(uid, "compare", 38, "Comparaison avec les données de cet appareil…");
       if (!accountStillActive(uid)) return false;
 
       const latest = pickLatestBackupCandidate(scan.candidates);
       if (!latest) {
         saveDiagnostic(uid, { ok: true, restored: false, reason: "no-backup", scanErrors: scan.errors });
+        emitAccountSync(uid, "done", 100, "Compte synchronisé", { restored: false });
         return false;
       }
 
@@ -653,6 +678,7 @@ export async function restoreLatestBackupForSignedInUser(
         if (!accountStillActive(uid)) return false;
         if (local && localLooksAtLeastAsComplete(local, latest.summary)) {
           saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current", candidate: { ...latest, load: undefined }, scanErrors: scan.errors });
+          emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored: false });
           return false;
         }
       }
@@ -665,6 +691,7 @@ export async function restoreLatestBackupForSignedInUser(
       const localMatches = localBefore ? Math.max(Number(localBefore.matches || 0), Number(localBefore.historyRows || 0), Number(localBefore.statsMatches || 0)) : 0;
       if (localMatches > 0 && remoteMatches > 0 && localMatches > remoteMatches) {
         saveDiagnostic(uid, { ok: true, restored: false, reason: "local-newer-richer", localMatches, remoteMatches, candidate: { source: latest.source, id: latest.id } });
+        emitAccountSync(uid, "done", 100, "Données locales conservées (plus récentes)", { restored: false });
         return false;
       }
 
@@ -681,6 +708,8 @@ export async function restoreLatestBackupForSignedInUser(
         scanErrors: scan.errors,
       });
 
+      emitAccountSync(uid, "done", 100, "Compte synchronisé ✓", { restored: true, source: latest.source });
+
       // Aucun reload ici : l'auto-restauration est désormais terminée AVANT
       // l'ouverture d'AppGate. Les écrans se montent directement sur les données
       // restaurées et une sauvegarde ne peut plus provoquer un retour GameSelect.
@@ -688,6 +717,7 @@ export async function restoreLatestBackupForSignedInUser(
     } catch (error: any) {
       saveDiagnostic(uid, { ok: false, restored: false, error: String(error?.message || error || "Restauration impossible") });
       console.warn("[backupCoordinator] automatic latest-backup restore skipped", error);
+      emitAccountSync(uid, "error", 100, "Synchronisation du compte impossible", { error: String(error?.message || error || "Erreur") });
       return false;
     } finally {
       if (inFlightByUser.get(uid) === task) inFlightByUser.delete(uid);
