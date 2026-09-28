@@ -2,8 +2,8 @@
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
-// Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16.
-export const WAVE61_ENGINE_VERSION = 17;
+// Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
+export const WAVE61_ENGINE_VERSION = 18;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -332,6 +332,23 @@ const FINAL_BUZZER_CHALLENGES = [
 
 const JACKPOT_SYMBOLS = ["CHERRY", "LEMON", "BELL", "BAR", "SEVEN", "DIAMOND"] as const;
 
+type ImpossibleContract = { number?: number; bed: "S" | "D" | "T" | "OB" | "IB" };
+
+function impossibleContracts(seedText: string, count: number): ImpossibleContract[] {
+  const total = clamp(Math.round(count), 6, 18);
+  const nums = seededSequence(`impossible:${seedText}`, total, 20);
+  const beds: Array<"S" | "D" | "T"> = ["D", "T", "S", "T"];
+  return nums.map((number, index) => {
+    if ((index + 1) % 7 === 0) return { bed: "IB" };
+    if ((index + 1) % 5 === 0) return { bed: "OB" };
+    return { number, bed: beds[(hashText(`${seedText}:impossible:${index}`) + index) % beds.length] };
+  });
+}
+
+function corbeauRenardRoles(ids: string[], teamByPlayer: Record<string,string>, participantMode: Wave61ParticipantMode) {
+  return Object.fromEntries(ids.map((id, index) => [id, participantMode === "teams" ? (String(teamByPlayer[id] || "A") === "B" ? "RENARD" : "CORBEAU") : (index % 2 === 0 ? "CORBEAU" : "RENARD")]));
+}
+
 type MafiaRole = "MAFIA" | "DETECTIVE" | "MEDIC" | "CITIZEN";
 
 function mafiaPhase(state: Wave61State): "NIGHT" | "DAY" {
@@ -507,7 +524,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
     phase: "playing",
     winnerId: null,
     winnerTeamId: null,
-    scores: Object.fromEntries(ids.map((id) => [id, 0])),
+    scores: Object.fromEntries(ids.map((id) => [id, modeId === "radin" ? modeOptionNumber(config, "startWallet", 100, 20, 500) : 0])),
     progress: Object.fromEntries(ids.map((id) => [id, 0])),
     health: Object.fromEntries(ids.map((id) => [id, 100])),
     lives: Object.fromEntries(ids.map((id) => [id, config.lives || 0])),
@@ -758,6 +775,32 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       apocalypseThreatByPlayer: modeId === "apocalypse" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       apocalypseHistory: [],
 
+      mistigriSequence: modeId === "mistigri" ? survivalSequence(seedText, "mistigri") : [],
+      mistigriHolderId: modeId === "mistigri" ? (ids[hashText(`mistigri-holder:${seedText}`) % Math.max(1, ids.length)] || ids[0] || null) : null,
+      mistigriDangerByPlayer: modeId === "mistigri" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mistigriPairsByPlayer: modeId === "mistigri" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mistigriShieldByPlayer: modeId === "mistigri" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      mistigriHistory: [],
+
+      radinSequence: modeId === "radin" ? seededSequence(`radin:${seedText}`, 160, 20) : [],
+      radinWalletByPlayer: modeId === "radin" ? Object.fromEntries(ids.map((id) => [id, modeOptionNumber(config, "startWallet", 100, 20, 500)])) : {},
+      radinSpentByPlayer: modeId === "radin" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      radinEarnedByPlayer: modeId === "radin" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      radinHistory: [],
+
+      fableSequence: modeId === "corbeau_renard" ? seededSequence(`fable:${seedText}`, 160, 20) : [],
+      fableRoleByPlayer: modeId === "corbeau_renard" ? corbeauRenardRoles(ids, teamByPlayer, config.participantMode) : {},
+      fableCheeseByPlayer: modeId === "corbeau_renard" ? Object.fromEntries(ids.map((id) => [id, modeOptionNumber(config, "startingCheese", 2, 1, 5)])) : {},
+      fableMeterByPlayer: modeId === "corbeau_renard" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      fableGuardByPlayer: modeId === "corbeau_renard" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      fableHistory: [],
+
+      impossibleContracts: modeId === "darts_impossible" ? impossibleContracts(seedText, modeOptionNumber(config, "missionCount", config.goal || 10, 6, 18)) : [],
+      impossibleStepByPlayer: modeId === "darts_impossible" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      impossibleAlarmByPlayer: modeId === "darts_impossible" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      impossibleFailsByPlayer: modeId === "darts_impossible" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      impossibleHistory: [],
+
       knockbackHistory: modeId === "knockback" ? [] : [],
       spartacusSequence: modeId === "spartacus" ? survivalSequence(seedText, "spartacus") : [],
       spartacusArmorByPlayer: modeId === "spartacus" ? Object.fromEntries(ids.map((id) => [id, modeOptionNumber(config, "startingArmor", 40, 0, 100)])) : {},
@@ -1004,6 +1047,33 @@ export function getWave61Target(state: Wave61State): Wave61Target {
     const player = state.players[state.activePlayerIndex];
     const n = raceTargetFromSequence(state.special?.apocalypseSequence || [], state.turnIndex + Math.floor(Number(state.special?.apocalypseThreatByPlayer?.[player?.id] || 0) / 10));
     return { kind: "number", value: n, label: `☢️ Zone sûre · secteur ${n} · BULL medkit` };
+  }
+  if (state.modeId === "mistigri") {
+    const player = state.players[state.activePlayerIndex];
+    const n = raceTargetFromSequence(state.special?.mistigriSequence || [], state.turnIndex);
+    const holder = String(state.special?.mistigriHolderId || "") === String(player?.id || "");
+    return { kind: "number", value: n, label: `${holder ? "🃏 MISTIGRI EN MAIN" : "🎴 FAIS UNE PAIRE"} · secteur ${n} · BULL protège` };
+  }
+  if (state.modeId === "radin") {
+    const player = state.players[state.activePlayerIndex];
+    const wallet = Math.round(Number(state.special?.radinWalletByPlayer?.[player?.id] ?? state.scores?.[player?.id] ?? 0));
+    const n = raceTargetFromSequence(state.special?.radinSequence || [], state.turnIndex);
+    return { kind: "number", value: n, label: `💰 ÉCONOMISE · secteur rentable ${n} · caisse ${wallet}` };
+  }
+  if (state.modeId === "corbeau_renard") {
+    const player = state.players[state.activePlayerIndex];
+    const role = String(state.special?.fableRoleByPlayer?.[player?.id] || "CORBEAU");
+    const n = raceTargetFromSequence(state.special?.fableSequence || [], state.turnIndex);
+    return { kind: "number", value: n, label: `${role === "RENARD" ? "🦊 FLATTE" : "🐦 GARDE LE FROMAGE"} · secteur ${n} · BULL = ruse` };
+  }
+  if (state.modeId === "darts_impossible") {
+    const player = state.players[state.activePlayerIndex];
+    const contracts = Array.isArray(state.special?.impossibleContracts) ? state.special.impossibleContracts : [];
+    const step = clamp(Number(state.special?.impossibleStepByPlayer?.[player?.id] || 0), 0, Math.max(0, contracts.length - 1));
+    const contract = contracts[step];
+    if (!contract) return null;
+    if (state.config.difficulty === "easy" && contract.number) return { kind: "number", value: Number(contract.number), label: `🕶️ MISSION ${step + 1}/${contracts.length} · secteur ${contract.number}` };
+    return { kind: "exact", number: contract.number, bed: contract.bed, label: `🕶️ MISSION ${step + 1}/${contracts.length} · ${exactTargetLabel(contract)} · alarme ${Math.round(Number(state.special?.impossibleAlarmByPlayer?.[player?.id] || 0))}%` };
   }
   if (state.modeId === "knockback") return null;
   if (state.modeId === "spartacus") {
@@ -3158,6 +3228,233 @@ function processApocalypse(state: Wave61State, playerId: string, darts: GameDart
   return { delta, hits };
 }
 
+function processMistigri(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  const holderId = String(state.special?.mistigriHolderId || "");
+  const isHolder = holderId === playerId;
+  const hits = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length : 0;
+  const bulls = bullCount(darts);
+  const dangerThreshold = modeOptionNumber(state.config, "dangerThreshold", 3, 2, 6);
+  const dangerPerMiss = modeOptionNumber(state.config, "dangerPerMiss", 1, 1, 3);
+  const bullShield = modeOptionNumber(state.config, "bullShield", 1, 0, 3);
+  let danger = Number(state.special?.mistigriDangerByPlayer?.[playerId] || 0);
+  let shield = Number(state.special?.mistigriShieldByPlayer?.[playerId] || 0);
+  let pairs = Number(state.special?.mistigriPairsByPlayer?.[playerId] || 0);
+  let delta = 0;
+
+  if (bulls > 0 && bullShield > 0) {
+    shield += bulls * bullShield;
+    events.push(`🛡️ Protection Mistigri +${bulls * bullShield}`);
+  }
+
+  if (hits > 0) {
+    pairs += 1;
+    delta += 30 + hits * 20 + bulls * 15;
+    danger = Math.max(0, danger - hits);
+    events.push(`🎴 Paire validée · ${hits} touche(s)`);
+    if (isHolder) {
+      const next = nextEnemy(state, playerId)?.id || nextOpponentId(state, playerId);
+      if (next) {
+        state.special.mistigriHolderId = next;
+        danger = 0;
+        events.push(`🃏 Mistigri transmis à ${state.players.find((p) => p.id === next)?.name || "l'adversaire"}`);
+      }
+    }
+  } else if (isHolder) {
+    danger += dangerPerMiss;
+    events.push(`😬 Le Mistigri reste en main · danger ${danger}/${dangerThreshold}`);
+    if (danger >= dangerThreshold) {
+      if (shield > 0) {
+        shield -= 1;
+        danger = Math.max(0, dangerThreshold - 1);
+        events.push("🛡️ Protection consommée · pénalité évitée");
+      } else {
+        const before = Number(state.lives[playerId] || 0);
+        state.lives[playerId] = Math.max(0, before - 1);
+        danger = 0;
+        events.push(`💀 Mistigri ! Vie perdue · ${state.lives[playerId]} restante(s)`);
+        if (state.lives[playerId] <= 0) {
+          state.eliminated[playerId] = true;
+          events.push("☠️ Éliminé par le Mistigri");
+        }
+        const next = nextEnemy(state, playerId)?.id || nextOpponentId(state, playerId);
+        if (next) state.special.mistigriHolderId = next;
+      }
+    }
+  } else {
+    delta += bulls * 10;
+    events.push(hits ? "🎴 Tu restes hors du Mistigri" : "🃏 Le Mistigri est ailleurs");
+  }
+
+  state.special.mistigriDangerByPlayer[playerId] = danger;
+  state.special.mistigriShieldByPlayer[playerId] = shield;
+  state.special.mistigriPairsByPlayer[playerId] = pairs;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + delta;
+  state.progress[playerId] = pairs;
+  state.special.mistigriHistory = [...(state.special?.mistigriHistory || []), { playerId, hits, pairs, danger, shield, holderId: state.special.mistigriHolderId }].slice(-60);
+  return { delta, hits: hits + bulls };
+}
+
+function processRadin(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  const targetWallet = modeOptionNumber(state.config, "targetWallet", 250, 100, 1000);
+  const missFee = modeOptionNumber(state.config, "missFee", 12, 0, 50);
+  const bullRebate = modeOptionNumber(state.config, "bullRebate", 25, 0, 100);
+  let wallet = Number(state.special?.radinWalletByPlayer?.[playerId] ?? state.scores[playerId] ?? 100);
+  let spent = Number(state.special?.radinSpentByPlayer?.[playerId] || 0);
+  let earned = Number(state.special?.radinEarnedByPlayer?.[playerId] || 0);
+  let visitEarned = 0, visitSpent = 0, hits = 0;
+
+  for (const d of darts) {
+    if (!d || d.bed === "MISS") {
+      visitSpent += missFee;
+      continue;
+    }
+    if (d.bed === "OB" || d.bed === "IB") {
+      const rebate = d.bed === "IB" ? bullRebate * 2 : bullRebate;
+      visitEarned += rebate;
+      hits += 1;
+      events.push(`🎟️ Coupon BULL +${rebate}`);
+      continue;
+    }
+    const cost = bedPower(d, 2, 4, 6, 0, 0);
+    visitSpent += cost;
+    if (target && dartMatchesTarget(d, target, state.config.difficulty)) {
+      const reward = bedPower(d, 14, 28, 42, 0, 0);
+      visitEarned += reward;
+      hits += 1;
+    }
+  }
+
+  spent += visitSpent;
+  earned += visitEarned;
+  wallet = Math.max(0, wallet + visitEarned - visitSpent);
+  state.special.radinWalletByPlayer[playerId] = wallet;
+  state.special.radinSpentByPlayer[playerId] = spent;
+  state.special.radinEarnedByPlayer[playerId] = earned;
+  state.scores[playerId] = wallet;
+  state.progress[playerId] = Math.round((wallet / Math.max(1, targetWallet)) * 100);
+  const delta = visitEarned - visitSpent;
+  events.push(`💰 +${visitEarned} / -${visitSpent} · caisse ${Math.round(wallet)}/${targetWallet}`);
+  if (wallet >= targetWallet) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  state.special.radinHistory = [...(state.special?.radinHistory || []), { playerId, wallet, spent, earned, visitEarned, visitSpent }].slice(-60);
+  return { delta, hits };
+}
+
+function processCorbeauRenard(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
+  const role = String(state.special?.fableRoleByPlayer?.[playerId] || "CORBEAU");
+  const threshold = modeOptionNumber(state.config, "fableThreshold", 5, 3, 9);
+  const cheeseGoal = modeOptionNumber(state.config, "cheeseGoal", 6, 3, 12);
+  const bullGuard = modeOptionNumber(state.config, "bullGuard", 1, 0, 3);
+  const matches = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)) : [];
+  const bulls = bullCount(darts);
+  const hits = matches.length + bulls;
+  let meter = Number(state.special?.fableMeterByPlayer?.[playerId] || 0);
+  let cheese = Number(state.special?.fableCheeseByPlayer?.[playerId] || 0);
+  let guard = Number(state.special?.fableGuardByPlayer?.[playerId] || 0);
+  const power = matches.reduce((sum, d) => sum + bedPower(d, 1, 2, 3), 0) + bulls * 2;
+  meter += power;
+  if (bulls && bullGuard > 0) {
+    guard += bulls * bullGuard;
+    events.push(`🛡️ Ruse protégée +${bulls * bullGuard}`);
+  }
+
+  let actions = 0;
+  while (meter >= threshold) {
+    meter -= threshold;
+    actions += 1;
+    if (role === "RENARD") {
+      const victim = nextEnemy(state, playerId);
+      if (!victim) break;
+      const victimGuard = Number(state.special?.fableGuardByPlayer?.[victim.id] || 0);
+      if (victimGuard > 0) {
+        state.special.fableGuardByPlayer[victim.id] = victimGuard - 1;
+        events.push(`🐦 ${victim.name} protège son fromage`);
+      } else {
+        const victimCheese = Number(state.special?.fableCheeseByPlayer?.[victim.id] || 0);
+        if (victimCheese > 0) {
+          state.special.fableCheeseByPlayer[victim.id] = victimCheese - 1;
+          cheese += 1;
+          events.push(`🦊 Fromage volé à ${victim.name}`);
+        } else events.push(`🦊 ${victim.name} n'avait plus de fromage à voler`);
+      }
+    } else {
+      cheese += 1;
+      events.push("🧀 Le Corbeau sécurise un fromage");
+    }
+  }
+
+  state.special.fableMeterByPlayer[playerId] = meter;
+  state.special.fableCheeseByPlayer[playerId] = cheese;
+  state.special.fableGuardByPlayer[playerId] = guard;
+  state.progress[playerId] = cheese;
+  const delta = power * 12 + actions * 40;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + delta;
+  events.push(`${role === "RENARD" ? "🦊" : "🐦"} ${role} · fromage ${cheese}/${cheeseGoal} · ruse ${meter}/${threshold}`);
+  if (cheese >= cheeseGoal) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  state.special.fableHistory = [...(state.special?.fableHistory || []), { playerId, role, cheese, meter, guard, actions }].slice(-60);
+  return { delta, hits };
+}
+
+function impossibleContractMatches(d: GameDart, contract: ImpossibleContract, difficulty: Wave61Difficulty): boolean {
+  if (!d || d.bed === "MISS" || !contract) return false;
+  if (contract.bed === "OB" || contract.bed === "IB") {
+    if (difficulty === "easy") return d.bed === "OB" || d.bed === "IB";
+    return d.bed === contract.bed;
+  }
+  if (Number(d.number || 0) !== Number(contract.number || 0)) return false;
+  if (difficulty === "easy") return true;
+  return d.bed === contract.bed;
+}
+
+function processDartsImpossible(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
+  const contracts: ImpossibleContract[] = Array.isArray(state.special?.impossibleContracts) ? state.special.impossibleContracts : [];
+  const missionCount = Math.min(contracts.length, modeOptionNumber(state.config, "missionCount", contracts.length || 10, 6, 18));
+  const alarmGain = modeOptionNumber(state.config, "alarmGain", 18, 8, 40);
+  const alarmThreshold = modeOptionNumber(state.config, "alarmThreshold", 100, 60, 150);
+  const failBack = modeOptionNumber(state.config, "failBack", 1, 0, 4);
+  const bullCooling = modeOptionNumber(state.config, "bullCooling", 16, 0, 50);
+  let step = Number(state.special?.impossibleStepByPlayer?.[playerId] || 0);
+  let alarm = Number(state.special?.impossibleAlarmByPlayer?.[playerId] || 0);
+  let fails = Number(state.special?.impossibleFailsByPlayer?.[playerId] || 0);
+  let hits = 0, delta = 0;
+
+  for (const d of darts) {
+    if (step >= missionCount) break;
+    const contract = contracts[step];
+    if (impossibleContractMatches(d, contract, state.config.difficulty)) {
+      step += 1;
+      hits += 1;
+      const reward = 80 + bedPower(d, 20, 35, 55, 35, 70);
+      delta += reward;
+      alarm = Math.max(0, alarm - 8);
+      events.push(`✅ Mission ${step}/${missionCount} validée · +${reward}`);
+      continue;
+    }
+    if (d?.bed === "OB" || d?.bed === "IB") {
+      const cool = d.bed === "IB" ? bullCooling * 2 : bullCooling;
+      alarm = Math.max(0, alarm - cool);
+      events.push(`🧯 Piratage BULL · alarme -${cool}`);
+    } else {
+      alarm += alarmGain + (d?.bed === "MISS" ? 5 : 0);
+      events.push(`🚨 Laser déclenché · alarme ${Math.round(alarm)}%`);
+    }
+    if (alarm >= alarmThreshold) {
+      fails += 1;
+      step = Math.max(0, step - failBack);
+      alarm = Math.round(alarmThreshold * 0.35);
+      events.push(`💥 MISSION COMPROMISE · recul ${failBack} · alarme réinitialisée`);
+    }
+  }
+
+  state.special.impossibleStepByPlayer[playerId] = step;
+  state.special.impossibleAlarmByPlayer[playerId] = alarm;
+  state.special.impossibleFailsByPlayer[playerId] = fails;
+  state.progress[playerId] = step;
+  state.scores[playerId] = Number(state.scores[playerId] || 0) + delta;
+  if (step >= missionCount) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  state.special.impossibleHistory = [...(state.special?.impossibleHistory || []), { playerId, step, alarm, fails, hits, delta }].slice(-60);
+  return { delta, hits };
+}
+
 function processKnockback(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
   const before = Number(state.scores[playerId] || 0);
   const visit = darts.reduce((sum, d) => sum + wave61DartScore(d), 0);
@@ -3455,6 +3752,14 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const result = processJurassic(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "apocalypse") {
     const result = processApocalypse(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "mistigri") {
+    const result = processMistigri(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "radin") {
+    const result = processRadin(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "corbeau_renard") {
+    const result = processCorbeauRenard(state, player.id, darts, target, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "darts_impossible") {
+    const result = processDartsImpossible(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "knockback") {
     const result = processKnockback(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "spartacus") {
@@ -3768,6 +4073,10 @@ export function wave61PrimaryMetric(state: Wave61State, playerId: string): { val
   if (state.modeId === "iceberg") return { value: Math.round(Number(state.special?.icebergHullByPlayer?.[playerId] || 0)), label: "COQUE", sub: `${state.special?.icebergCompartmentsByPlayer?.[playerId] || 0}/${modeOptionNumber(state.config, "compartmentGoal", ICEBERG_COMPARTMENTS, 2, 10)} compartiments · eau ${Math.round(Number(state.special?.icebergFloodByPlayer?.[playerId] || 0))}%` };
   if (state.modeId === "jurassic_dart") return { value: Math.round(Number(state.special?.jurassicProgressByPlayer?.[playerId] || 0)), label: "EXPÉDITION", sub: `menace ${Math.round(Number(state.special?.jurassicThreatByPlayer?.[playerId] || 0))}% · sécurité ${Math.round(Number(state.special?.jurassicSecurityByPlayer?.[playerId] || 0))}%` };
   if (state.modeId === "apocalypse") return { value: Math.round(Number(state.special?.apocalypseRefugeByPlayer?.[playerId] || 0)), label: "REFUGE", sub: `${Math.round(Number(state.special?.apocalypseRefugeByPlayer?.[playerId] || 0))}/${modeOptionNumber(state.config, "refugeGoal", 100, 50, 150)} · ${state.special?.apocalypseResourcesByPlayer?.[playerId] || 0} ressources · menace ${Math.round(Number(state.special?.apocalypseThreatByPlayer?.[playerId] || 0))}%` };
+  if (state.modeId === "mistigri") return { value: Number(state.lives[playerId] || 0), label: state.special?.mistigriHolderId === playerId ? "MISTIGRI" : "VIES", sub: `${state.special?.mistigriPairsByPlayer?.[playerId] || 0} paire(s) · danger ${state.special?.mistigriDangerByPlayer?.[playerId] || 0}/${modeOptionNumber(state.config, "dangerThreshold", 3, 2, 6)} · bouclier ${state.special?.mistigriShieldByPlayer?.[playerId] || 0}` };
+  if (state.modeId === "radin") return { value: Math.round(Number(state.special?.radinWalletByPlayer?.[playerId] || 0)), label: "CAISSE", sub: `${Math.round(Number(state.special?.radinWalletByPlayer?.[playerId] || 0))}/${modeOptionNumber(state.config, "targetWallet", 250, 100, 1000)} · dépensé ${state.special?.radinSpentByPlayer?.[playerId] || 0} · gagné ${state.special?.radinEarnedByPlayer?.[playerId] || 0}` };
+  if (state.modeId === "corbeau_renard") return { value: Number(state.special?.fableCheeseByPlayer?.[playerId] || 0), label: String(state.special?.fableRoleByPlayer?.[playerId] || "CORBEAU"), sub: `fromage ${state.special?.fableCheeseByPlayer?.[playerId] || 0}/${modeOptionNumber(state.config, "cheeseGoal", 6, 3, 12)} · ruse ${state.special?.fableMeterByPlayer?.[playerId] || 0}/${modeOptionNumber(state.config, "fableThreshold", 5, 3, 9)} · garde ${state.special?.fableGuardByPlayer?.[playerId] || 0}` };
+  if (state.modeId === "darts_impossible") return { value: Number(state.special?.impossibleStepByPlayer?.[playerId] || 0), label: "MISSIONS", sub: `${state.special?.impossibleStepByPlayer?.[playerId] || 0}/${modeOptionNumber(state.config, "missionCount", state.special?.impossibleContracts?.length || 10, 6, 18)} · alarme ${Math.round(Number(state.special?.impossibleAlarmByPlayer?.[playerId] || 0))}% · échecs ${state.special?.impossibleFailsByPlayer?.[playerId] || 0}` };
   if (state.modeId === "knockback") return { value: Math.round(Number(state.scores[playerId] || 0)), label: "SCORE", sub: `${Math.round(Number(state.scores[playerId] || 0))}/${state.config.goal}` };
   if (state.modeId === "spartacus") return { value: Math.round(Number(state.health[playerId] || 0)), label: "PV", sub: `armure ${state.special?.spartacusArmorByPlayer?.[playerId] || 0} · gloire ${state.special?.spartacusGloryByPlayer?.[playerId] || 0}` };
   if (state.modeId === "cosmo_knights") return { value: Math.round(Number(state.health[playerId] || 0)), label: "PV", sub: `Cosmos ${Math.round(Number(state.special?.cosmoChargeByPlayer?.[playerId] || 0))}% · bouclier ${state.special?.cosmoShieldByPlayer?.[playerId] || 0}` };
