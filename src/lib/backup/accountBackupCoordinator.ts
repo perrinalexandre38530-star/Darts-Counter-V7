@@ -55,6 +55,57 @@ const RUN_COOLDOWN_MS = 4_000;
 const inFlightByUser = new Map<string, Promise<boolean>>();
 const lastRunAtByUser = new Map<string, number>();
 
+export type AccountSyncConflict = {
+  userId: string;
+  candidate: AccountBackupCandidate;
+  localSummary: Partial<VaultSummary>;
+  remoteSummary: Partial<VaultSummary>;
+  differences: Array<{ key: string; label: string; local: number; remote: number; delta: number; lossIfRemote: number; gainIfRemote: number }>;
+};
+
+const pendingConflicts = new Map<string, AccountSyncConflict>();
+
+function buildConflict(userId: string, candidate: AccountBackupCandidate, local: Partial<VaultSummary> | null | undefined): AccountSyncConflict {
+  const remote = candidate.summary || {};
+  const rows = [
+    ["profiles", "Profils", Number(local?.profiles || 0), Number(remote.profiles || 0)],
+    ["matches", "Parties / historique", Math.max(Number(local?.matches || 0), Number(local?.historyRows || 0)), Math.max(Number(remote.matches || 0), Number(remote.historyRows || 0))],
+    ["stats", "Statistiques", Number(local?.statsMatches || local?.statsBlocks || 0), Number(remote.statsMatches || remote.statsBlocks || 0)],
+    ["media", "Médias", Number(local?.mediaRefs || local?.images || 0), Number(remote.mediaRefs || remote.images || 0)],
+  ] as const;
+  return {
+    userId, candidate, localSummary: local || {}, remoteSummary: remote,
+    differences: rows.map(([key,label,l,r]) => ({ key, label, local:l, remote:r, delta:r-l, lossIfRemote:Math.max(0,l-r), gainIfRemote:Math.max(0,r-l) })).filter(x => x.delta !== 0),
+  };
+}
+
+function emitConflict(conflict: AccountSyncConflict): void {
+  pendingConflicts.set(conflict.userId, conflict);
+  emitAccountSync(conflict.userId, "conflict", 100, "Différences détectées entre vos appareils", {
+    conflict: {
+      source: conflict.candidate.source, label: conflict.candidate.label, updatedAt: conflict.candidate.updatedAt,
+      localSummary: conflict.localSummary, remoteSummary: conflict.remoteSummary, differences: conflict.differences,
+    }
+  });
+}
+
+export async function resolveAccountSyncConflict(userId: string, action: "remote" | "local"): Promise<boolean> {
+  const uid = String(userId || "").trim();
+  const conflict = pendingConflicts.get(uid);
+  if (!conflict || !accountStillActive(uid)) return false;
+  if (action === "local") {
+    pendingConflicts.delete(uid);
+    emitAccountSync(uid, "done", 100, "Données de cet appareil conservées", { restored:false });
+    return false;
+  }
+  emitAccountSync(uid, "download", 56, `Synchronisation depuis ${conflict.candidate.label}…`, { source: conflict.candidate.source });
+  await restoreCandidate(uid, conflict.candidate);
+  writeAppliedSignature(uid, candidateSignature(conflict.candidate));
+  pendingConflicts.delete(uid);
+  emitAccountSync(uid, "done", 100, "Compte synchronisé ✓", { restored:true, source: conflict.candidate.source });
+  return true;
+}
+
 function emitAccountSync(userId: string, phase: string, progress: number, message: string, extra: Record<string, any> = {}): void {
   if (typeof window === "undefined") return;
   try {
@@ -673,47 +724,35 @@ export async function restoreLatestBackupForSignedInUser(
 
       const signature = candidateSignature(latest);
       const alreadyApplied = readAppliedSignature(uid) === signature;
-      if (alreadyApplied) {
-        const local = await summarizeCurrentLocal().catch(() => null);
-        if (!accountStillActive(uid)) return false;
-        if (local && localLooksAtLeastAsComplete(local, latest.summary)) {
-          saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current", candidate: { ...latest, load: undefined }, scanErrors: scan.errors });
-          emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored: false });
-          return false;
-        }
-      }
 
-      // Dernière barrière anti-régression : si l'appareil possède déjà plus de
-      // parties que le snapshot distant retenu, on ne l'écrase jamais en AUTO.
-      // Cela protège notamment une partie tout juste terminée pendant une panne réseau.
-      const localBefore = await summarizeCurrentLocal().catch(() => null);
-      const remoteMatches = candidateMatchCount(latest);
-      const localMatches = localBefore ? Math.max(Number(localBefore.matches || 0), Number(localBefore.historyRows || 0), Number(localBefore.statsMatches || 0)) : 0;
-      if (localMatches > 0 && remoteMatches > 0 && localMatches > remoteMatches) {
-        saveDiagnostic(uid, { ok: true, restored: false, reason: "local-newer-richer", localMatches, remoteMatches, candidate: { source: latest.source, id: latest.id } });
-        emitAccountSync(uid, "done", 100, "Données locales conservées (plus récentes)", { restored: false });
+      // CHEMIN RAPIDE : une signature déjà appliquée suffit. Ne réexporte surtout
+      // pas les ~24 Mo locaux à chaque ouverture, c'était le palier bloqué à 38 %.
+      if (alreadyApplied) {
+        saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current-fast", candidate: { source: latest.source, id: latest.id } });
+        emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored: false });
         return false;
       }
 
-      await restoreCandidate(uid, latest);
-      if (!accountStillActive(uid)) return false;
-      writeAppliedSignature(uid, signature);
-      saveDiagnostic(uid, {
-        ok: true,
-        restored: true,
-        source: latest.source,
-        id: latest.id,
-        updatedAt: latest.updatedAt,
-        candidates: scan.candidates.map((c) => ({ source: c.source, id: c.id, updatedAt: c.updatedAt, revision: c.revision, quality: summaryQuality(c.summary) })),
-        scanErrors: scan.errors,
-      });
+      // COMPARAISON RAPIDE : on utilise les métadonnées/résumés déjà lus pendant
+      // le scan. On n'exporte PLUS tout IndexedDB (~24 Mo) juste pour comparer :
+      // c'était précisément le palier qui restait figé à 38 %.
+      emitAccountSync(uid, "compare", 70, "Comparaison des résumés de sauvegarde…");
+      const localCandidates = scan.candidates.filter((c) => c.source === "local");
+      const localReference = pickLatestBackupCandidate(localCandidates);
+      const localSummary = localReference?.summary || {};
+      const conflict = buildConflict(uid, latest, localSummary);
 
-      emitAccountSync(uid, "done", 100, "Compte synchronisé ✓", { restored: true, source: latest.source });
+      // Même résumé : mémorise la signature sans téléchargement ni export massif.
+      if (!conflict.differences.length && meaningfulSummary(localSummary) && localLooksAtLeastAsComplete(localSummary as VaultSummary, latest.summary)) {
+        writeAppliedSignature(uid, signature);
+        saveDiagnostic(uid, { ok: true, restored: false, reason: "same-summary", candidate: { source: latest.source, id: latest.id } });
+        emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
+        return false;
+      }
 
-      // Aucun reload ici : l'auto-restauration est désormais terminée AVANT
-      // l'ouverture d'AppGate. Les écrans se montent directement sur les données
-      // restaurées et une sauvegarde ne peut plus provoquer un retour GameSelect.
-      return true;
+      emitConflict(conflict);
+      saveDiagnostic(uid, { ok:true, restored:false, reason:"user-choice-required", candidate:{source:latest.source,id:latest.id}, differences:conflict.differences });
+      return false;
     } catch (error: any) {
       saveDiagnostic(uid, { ok: false, restored: false, error: String(error?.message || error || "Restauration impossible") });
       console.warn("[backupCoordinator] automatic latest-backup restore skipped", error);

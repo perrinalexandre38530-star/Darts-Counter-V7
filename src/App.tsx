@@ -248,6 +248,7 @@ import { AudioProvider } from "./contexts/AudioContext";
 import { AwenaProvider } from "./awena/AwenaProvider";
 import AwenaOverlay from "./awena/components/AwenaOverlay";
 import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
+import { resolveAccountSyncConflict } from "./lib/backup/accountBackupCoordinator";
 import { DevModeProvider } from "./contexts/DevModeContext";
 
 // ✅ NEW: Sport context + Pétanque pages
@@ -7044,6 +7045,7 @@ case "babyfoot_team_edit":
 -------------------------------------------- */
 function AccountSyncBanner() {
   const [sync, setSync] = React.useState<any>(null);
+  const [busy, setBusy] = React.useState(false);
   React.useEffect(() => {
     let hideTimer: number | null = null;
     const onSync = (event: any) => {
@@ -7061,15 +7063,48 @@ function AccountSyncBanner() {
   if (!sync) return null;
   const pct = Math.max(0, Math.min(100, Number(sync.progress || 0)));
   const failed = sync.phase === "error";
+  const conflict = sync.phase === "conflict" ? sync.conflict : null;
+  const decide = async (action: "remote" | "local") => {
+    if (busy) return;
+    setBusy(true);
+    try { await resolveAccountSyncConflict(String(sync.userId || ""), action); }
+    finally { setBusy(false); }
+  };
+
+  if (conflict) {
+    const rows = Array.isArray(conflict.differences) ? conflict.differences : [];
+    return (
+      <div style={{ position:"fixed", zIndex:2147482500, inset:0, display:"grid", placeItems:"center", padding:16, background:"rgba(0,4,10,.46)", pointerEvents:"auto" }}>
+        <div style={{ width:"min(94vw,520px)", maxHeight:"86vh", overflow:"auto", borderRadius:22, padding:18, color:"#effcff", background:"linear-gradient(180deg,rgba(5,19,32,.98),rgba(3,9,17,.99))", border:"1px solid rgba(42,229,255,.68)", boxShadow:"0 22px 70px rgba(0,0,0,.65),0 0 28px rgba(34,220,255,.12)" }}>
+          <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:12 }}>
+            <div style={{ width:52, height:52, borderRadius:"50%", display:"grid", placeItems:"center", fontWeight:950, fontSize:13, color:"#061018", background:"linear-gradient(135deg,#4df3ff,#9cff6a)", boxShadow:"0 0 20px rgba(77,243,255,.28)" }}>AWENA</div>
+            <div><div style={{fontSize:18,fontWeight:950}}>Une autre sauvegarde a été trouvée</div><div style={{fontSize:12,color:"#9fc1cf",marginTop:3}}>Je ne remplace rien sans ton accord.</div></div>
+          </div>
+          <div style={{fontSize:13,lineHeight:1.45,color:"#c9dce5",marginBottom:12}}>Les données de cet appareil et la dernière sauvegarde de <b>{String(conflict.label || "ton cloud")}</b> sont différentes. Voici ce qui changerait si tu synchronises cet appareil.</div>
+          <div style={{display:"grid",gap:7}}>
+            {rows.length ? rows.map((r:any) => {
+              const loss=Number(r.lossIfRemote||0), gain=Number(r.gainIfRemote||0);
+              return <div key={String(r.key)} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,padding:"10px 11px",borderRadius:12,background:"rgba(255,255,255,.045)",border:"1px solid rgba(255,255,255,.07)"}}>
+                <div><b>{String(r.label)}</b><div style={{fontSize:11,color:"#8fa9b6",marginTop:2}}>Cet appareil : {Number(r.local||0)} · Sauvegarde : {Number(r.remote||0)}</div></div>
+                <div style={{alignSelf:"center",fontWeight:950,fontSize:12,color:loss>0?"#ff8b8b":"#8cff9a"}}>{loss>0?`−${loss} perte${loss>1?"s":""}`:gain>0?`+${gain}`:"="}</div>
+              </div>;
+            }) : <div style={{fontSize:12,color:"#a9bdc7"}}>Les métadonnées diffèrent, sans perte quantitative détectée.</div>}
+          </div>
+          {rows.some((r:any)=>Number(r.lossIfRemote||0)>0) && <div style={{marginTop:11,padding:"9px 10px",borderRadius:11,background:"rgba(255,87,87,.10)",border:"1px solid rgba(255,100,100,.28)",fontSize:12,color:"#ffc1c1"}}>⚠ Certaines données présentes sur cet appareil sont absentes de la sauvegarde distante. Elles sont listées ci-dessus avant toute décision.</div>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginTop:15}}>
+            <button disabled={busy} onClick={()=>decide("local")} style={{padding:"12px 10px",borderRadius:13,border:"1px solid rgba(255,255,255,.18)",background:"rgba(255,255,255,.06)",color:"#eaf7fb",fontWeight:900}}>GARDER CET APPAREIL</button>
+            <button disabled={busy} onClick={()=>decide("remote")} style={{padding:"12px 10px",borderRadius:13,border:"1px solid rgba(55,235,255,.72)",background:"linear-gradient(90deg,rgba(35,222,255,.25),rgba(111,255,120,.22))",color:"#efffff",fontWeight:950}}>{busy?"SYNCHRONISATION…":"UTILISER LA SAUVEGARDE"}</button>
+          </div>
+          <div style={{fontSize:10.5,color:"#78909b",marginTop:10,textAlign:"center"}}>La fusion sélective par catégorie sera proposée uniquement lorsqu’elle peut être garantie sans supprimer silencieusement des données liées.</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ position: "fixed", zIndex: 2147482000, top: 8, left: "50%", transform: "translateX(-50%)", width: "min(92vw, 560px)", padding: "9px 12px", borderRadius: 14, background: "rgba(5,14,28,.94)", border: `1px solid ${failed ? "rgba(255,90,90,.75)" : "rgba(35,230,255,.72)"}`, boxShadow: "0 8px 30px rgba(0,0,0,.42)", color: "#eaffff", pointerEvents: "none" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontWeight: 900 }}>
-        <span>{failed ? "Synchronisation interrompue" : String(sync.message || "Synchronisation du compte…")}</span>
-        <span>{pct}%</span>
-      </div>
-      <div style={{ height: 4, marginTop: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.14)" }}>
-        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: failed ? "#ff5a5a" : "linear-gradient(90deg,#20dfff,#8cff66)" }} />
-      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontWeight: 900 }}><span>{failed ? "Synchronisation interrompue" : String(sync.message || "Synchronisation du compte…")}</span><span>{pct}%</span></div>
+      <div style={{ height: 4, marginTop: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.14)" }}><div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: failed ? "#ff5a5a" : "linear-gradient(90deg,#20dfff,#8cff66)", transition:"width .18s ease" }} /></div>
     </div>
   );
 }
