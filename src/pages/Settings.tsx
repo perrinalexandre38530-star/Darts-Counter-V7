@@ -127,6 +127,7 @@ import {
   type StorageStripeStatus,
 } from "../lib/cloudStorageApi";
 import { getDirectR2Status, getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "../lib/directR2BackupApi";
+import { connectPersonalCloud, disconnectPersonalCloud, getPersonalCloudStatus, type PersonalCloudStatus } from "../lib/personalCloudApi";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -2268,6 +2269,8 @@ function AccountPages({
   const [cloudUsageLoading, setCloudUsageLoading] = React.useState(false);
   const [cloudUsageError, setCloudUsageError] = React.useState<string | null>(null);
   const [cloudStorageStatus, setCloudStorageStatus] = React.useState<CloudStorageStatus | null>(null);
+  const [googleDriveStatus, setGoogleDriveStatus] = React.useState<PersonalCloudStatus | null>(null);
+  const [googleDriveBusy, setGoogleDriveBusy] = React.useState(false);
   const [cloudStorageTestLoading, setCloudStorageTestLoading] = React.useState(false);
   const [cloudStorageTestResult, setCloudStorageTestResult] = React.useState<{
     status: "ok" | "error" | "info";
@@ -2439,6 +2442,41 @@ function AccountPages({
     } finally {
       setStorageStripeStatusLoading(false);
     }
+  }
+
+  React.useEffect(() => {
+    if (page !== "account_storage" || !isSignedIn) return;
+    void refreshGoogleDriveStatus();
+  }, [page, isSignedIn]);
+
+  async function refreshGoogleDriveStatus() {
+    if (!isSignedIn) { setGoogleDriveStatus(null); return; }
+    try { setGoogleDriveStatus(await getPersonalCloudStatus("google_drive")); }
+    catch { setGoogleDriveStatus(null); }
+  }
+
+  async function handleGoogleDriveConnect() {
+    if (!isSignedIn) { setMessage("Connecte-toi d’abord à ton compte MULTISPORTS SCORING."); return; }
+    setGoogleDriveBusy(true);
+    try {
+      setMessage("Ouverture de Google Drive…");
+      await connectPersonalCloud("google_drive");
+    } catch (e: any) {
+      setMessage(`Connexion Google Drive impossible : ${e?.message || e}`);
+      setGoogleDriveBusy(false);
+    }
+  }
+
+  async function handleGoogleDriveDisconnect() {
+    if (!window.confirm("Déconnecter Google Drive de MULTISPORTS SCORING ? Les sauvegardes déjà présentes dans Google Drive ne seront pas supprimées.")) return;
+    setGoogleDriveBusy(true);
+    try {
+      await disconnectPersonalCloud("google_drive");
+      await refreshGoogleDriveStatus();
+      setMessage("Google Drive déconnecté. Tu peux maintenant le reconnecter et accepter les nouvelles autorisations.");
+    } catch (e: any) {
+      setMessage(`Déconnexion Google Drive impossible : ${e?.message || e}`);
+    } finally { setGoogleDriveBusy(false); }
   }
 
   async function syncStoragePrefsToBackend(saved: typeof storagePrefs) {
@@ -3185,6 +3223,28 @@ function AccountPages({
             </div>
             <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
               OPFS : {storageCapabilities.opfs ? "OK" : "non dispo"} · Persistance : {storageCapabilities.persistentStorage ? "OK" : "non dispo"} · Export fichier : {storageCapabilities.filePicker ? "sélecteur avancé" : "fallback téléchargement"}
+            </div>
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>Google Drive</div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: googleDriveStatus?.connected ? "#62d26f" : "#ffcc66" }}>
+                  {!isSignedIn ? "Compte MULTISPORTS SCORING requis" : googleDriveStatus?.connected ? "CONNECTÉ" : googleDriveStatus?.configured === false ? "NON CONFIGURÉ" : "DÉCONNECTÉ"}
+                </div>
+                <div style={{ marginTop: 5, fontSize: 10.8, color: theme.textSoft, lineHeight: 1.35 }}>
+                  Cloud personnel Google Drive. La déconnexion retire uniquement l’autorisation de MULTISPORTS SCORING ; elle ne supprime pas tes fichiers déjà sauvegardés.
+                </div>
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" disabled={googleDriveBusy || !isSignedIn} onClick={() => void refreshGoogleDriveStatus()} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,0.055)", color: theme.text, padding: "8px 10px", fontSize: 11, fontWeight: 900, cursor: googleDriveBusy || !isSignedIn ? "not-allowed" : "pointer" }}>Actualiser</button>
+                {googleDriveStatus?.connected ? (
+                  <button type="button" disabled={googleDriveBusy} onClick={() => void handleGoogleDriveDisconnect()} style={{ borderRadius: 999, border: "1px solid rgba(255,107,107,0.65)", background: "rgba(255,107,107,0.10)", color: "#ff8c8c", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: googleDriveBusy ? "not-allowed" : "pointer" }}>{googleDriveBusy ? "Patiente…" : "Déconnecter"}</button>
+                ) : (
+                  <button type="button" disabled={googleDriveBusy || !isSignedIn || googleDriveStatus?.configured === false} onClick={() => void handleGoogleDriveConnect()} style={{ borderRadius: 999, border: "1px solid rgba(98,210,111,0.55)", background: "rgba(98,210,111,0.10)", color: "#9cffaa", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: googleDriveBusy || !isSignedIn ? "not-allowed" : "pointer" }}>{googleDriveBusy ? "Ouverture…" : "Connecter Google Drive"}</button>
+                )}
+              </div>
             </div>
           </div>
 

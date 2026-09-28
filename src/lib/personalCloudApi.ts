@@ -1,4 +1,4 @@
-import { apiGet, apiPost, buildApiUrl } from "./apiClient";
+import { apiDelete, apiGet, apiPost, buildApiUrl } from "./apiClient";
 
 export type PersonalCloudProvider = "google_drive" | "onedrive" | "dropbox";
 export type PersonalCloudStatus = { provider: PersonalCloudProvider; configured: boolean; connected: boolean; accountLabel?: string | null; updatedAt?: string | null; error?: string };
@@ -15,6 +15,11 @@ export async function connectPersonalCloud(provider: PersonalCloudProvider): Pro
   const res: any = await apiGet(`/account/personal-cloud/${provider}/connect-url?returnTo=${encodeURIComponent(returnTo)}`);
   if (!res?.url) throw new Error(res?.error || "Connexion cloud indisponible.");
   window.location.assign(String(res.url));
+}
+
+export async function disconnectPersonalCloud(provider: PersonalCloudProvider): Promise<void> {
+  const res: any = await apiDelete(`/account/personal-cloud/${provider}/disconnect`);
+  if (res?.ok === false) throw new Error(res?.error || "Déconnexion cloud impossible.");
 }
 
 async function gzipBase64(text: string): Promise<{ encoding: "gzip-base64" | "plain-base64"; data: string }> {
