@@ -1,7 +1,7 @@
 {
   "name": "darts-counter-v5",
   "private": true,
-  "version": "1.0.0-rc16",
+  "version": "1.0.0-rc17",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -157,7 +157,7 @@
     "seo:indexnow": "node ./tools/submit-indexnow.mjs",
     "seo:build": "node ./tools/build-seo-public-pages.mjs",
     "seo:check": "npm run seo:build && npm run test:seo",
-    "test:health-connect": "node ./tools/test-health-connect-compliance-v16.mjs",
+    "test:health-connect": "node ./tools/test-health-connect-compliance-v17.mjs",
     "fit:awena:pilot:build": "node ./tools/build-fit-awena-pilot-jobs.mjs",
     "fit:awena:pilot:refs": "node ./tools/prepare-fit-awena-pilot-references.mjs",
     "fit:awena:pilot:run": "node ./tools/run-comfyui-awena-image-pilot.mjs",

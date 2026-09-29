@@ -36,7 +36,7 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
     sync: "IMPORTER 30 J", syncDone: "Import Health Connect terminé", lastSync: "Dernier import",
     routesMissing: "parcours protégés", routesOk: "Parcours autorisés", routesOff: "Parcours non autorisés",
     export: "ENVOYER MES SORTIES", exportDone: "Export Health Connect terminé", lastExport: "Dernier envoi",
-    disclosure: "Import : séances, parcours, distance, vitesse, dénivelé, fréquence cardiaque et cadence. Export : uniquement les données réellement enregistrées par MULTISPORTS SCORING ; cardio et cadence ne sont envoyés que lorsqu’un capteur les a mesurés.",
+    disclosure: "Import : séances, distance, vitesse, dénivelé, fréquence cardiaque et cadence. Les parcours protégés ne sont jamais demandés dans l’autorisation standard. Export : uniquement les données réellement enregistrées par MULTISPORTS SCORING ; cardio et cadence ne sont envoyés que lorsqu’un capteur les a mesurés.",
   } : lang === "es" ? {
     title: "CONEXIONES Y SENSORES",
     sub: "Conecta tus sensores deportivos y sincroniza tus sesiones con Health Connect. Los permisos se solicitan solo para la importación o exportación elegida.",
@@ -51,7 +51,7 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
     sync: "IMPORTAR 30 D", syncDone: "Importación Health Connect terminada", lastSync: "Última importación",
     routesMissing: "rutas protegidas", routesOk: "Rutas autorizadas", routesOff: "Rutas no autorizadas",
     export: "ENVIAR MIS ACTIVIDADES", exportDone: "Exportación Health Connect terminada", lastExport: "Último envío",
-    disclosure: "Importación: sesiones, rutas, distancia, velocidad, desnivel, frecuencia cardíaca y cadencia. Exportación: solo datos realmente registrados por MULTISPORTS SCORING; el pulso y la cadencia se envían únicamente cuando un sensor los ha medido.",
+    disclosure: "Importación: sesiones, distancia, velocidad, desnivel, frecuencia cardíaca y cadencia. Las rutas protegidas nunca se solicitan en el permiso estándar. Exportación: solo datos realmente registrados por MULTISPORTS SCORING; el pulso y la cadencia se envían únicamente cuando un sensor los ha medido.",
   } : {
     title: "CONNECTIONS & SENSORS",
     sub: "Connect your sport sensors and sync workouts with Health Connect. Permissions are requested only for the import or export action you choose.",
@@ -66,7 +66,7 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
     sync: "IMPORT 30 DAYS", syncDone: "Health Connect import complete", lastSync: "Last import",
     routesMissing: "protected routes", routesOk: "Routes allowed", routesOff: "Routes not allowed",
     export: "SEND MY WORKOUTS", exportDone: "Health Connect export complete", lastExport: "Last export",
-    disclosure: "Import: workouts, routes, distance, speed, elevation, heart rate and cadence. Export: only data actually recorded by MULTISPORTS SCORING; heart rate and cadence are sent only when a sensor measured them.",
+    disclosure: "Import: workouts, distance, speed, elevation, heart rate and cadence. Protected routes are never requested in the standard permission flow. Export: only data actually recorded by MULTISPORTS SCORING; heart rate and cadence are sent only when a sensor measured them.",
   };
 
   const sensorDevices = Array.isArray(sensor.devices) ? sensor.devices : [];

@@ -70,7 +70,9 @@ public class HealthConnectPlugin extends Plugin {
     private static final String WRITE_ROUTES = "android.permission.health.WRITE_EXERCISE_ROUTE";
 
     // Google Play / Health Connect compliance:
-    // - import only asks for data the app reads;
+    // - import only asks for health data the visible RUNNING PERF sync actually reads;
+    // - READ_EXERCISE_ROUTES is deliberately NOT requested in the normal permission batch:
+    //   Android only grants route access through Settings or ExerciseRouteRequestContract;
     // - export only asks for data the app really writes;
     // - optional metrics are skipped safely if the user denies one permission.
     private static final Set<String> IMPORT_CORE_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
@@ -81,7 +83,6 @@ public class HealthConnectPlugin extends Plugin {
     ));
     private static final Set<String> IMPORT_WORKOUT_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
         "android.permission.health.READ_EXERCISE",
-        "android.permission.health.READ_EXERCISE_ROUTES",
         "android.permission.health.READ_HEART_RATE",
         "android.permission.health.READ_DISTANCE",
         "android.permission.health.READ_SPEED",

@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-02T21:03:44.975Z",
+  "generatedAt": "2026-09-29T20:46:13.827Z",
   "ffmpeg": true,
-  "before": 252385627,
-  "after": 108899813,
-  "saved": 143485814,
-  "optimizedCount": 583,
+  "before": 274062332,
+  "after": 122627717,
+  "saved": 151434615,
+  "optimizedCount": 664,
   "skippedCount": 0,
   "files": [
     {
@@ -26,6 +26,13 @@
       "before": 2865890,
       "after": 1090472,
       "saved": 1775418,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_gros_6_players_panel-VCyZ4Y_v.png",
+      "before": 2382971,
+      "after": 608421,
+      "saved": 1774550,
       "note": "png"
     },
     {
@@ -57,6 +64,13 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/crados_radar_board-CrJ7DcGJ.png",
+      "before": 2341493,
+      "after": 719516,
+      "saved": 1621977,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/ticker_babyfoot_events_3-C7iYzshT.png",
       "before": 2531898,
       "after": 925848,
@@ -82,6 +96,13 @@
       "before": 2362793,
       "after": 822342,
       "saved": 1540451,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_gros_6_active_panel-D77Jtm1v.png",
+      "before": 2300234,
+      "after": 777472,
+      "saved": 1522762,
       "note": "png"
     },
     {
@@ -131,6 +152,20 @@
       "before": 2259973,
       "after": 860693,
       "saved": 1399280,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_gros_6-B9G_8FCK.png",
+      "before": 2257934,
+      "after": 861188,
+      "saved": 1396746,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_gros_6_en-BL1sMr9n.png",
+      "before": 2188381,
+      "after": 848696,
+      "saved": 1339685,
       "note": "png"
     },
     {
@@ -309,17 +344,17 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/crados_dirt_progress-AE5BrZ_H.png",
+      "before": 690535,
+      "after": 209965,
+      "saved": 480570,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/BEC-DskEozVt.png",
       "before": 740127,
       "after": 265950,
       "saved": 474177,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/LOGO-DDsKUeia.png",
-      "before": 651140,
-      "after": 190687,
-      "saved": 460453,
       "note": "png"
     },
     {
@@ -400,20 +435,6 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/running_discipline_awena-Cze5wKZo.png",
-      "before": 479007,
-      "after": 123652,
-      "saved": 355355,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/running_coach_training-BBekUJBO.png",
-      "before": 478267,
-      "after": 123183,
-      "saved": 355084,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/cool-hand-CIvbudZQ.png",
       "before": 500851,
       "after": 172689,
@@ -442,6 +463,13 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/ticker_crados-LY9NVq13.png",
+      "before": 469507,
+      "after": 152604,
+      "saved": 316903,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/green-machine-DvT1cHDt.png",
       "before": 482135,
       "after": 166671,
@@ -449,17 +477,17 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/logo-badminton-CaWriznV.png",
-      "before": 378084,
-      "after": 63415,
-      "saved": 314669,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/bully-boy-BeWaqv32.png",
       "before": 489585,
       "after": 175912,
       "saved": 313673,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_steeplechase-yNn7-muo.png",
+      "before": 461400,
+      "after": 149501,
+      "saved": 311899,
       "note": "png"
     },
     {
@@ -505,6 +533,20 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/ticker_menteur-D4Z2bpfB.png",
+      "before": 426907,
+      "after": 134879,
+      "saved": 292028,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_pendu-Bs3PWbZA.png",
+      "before": 422050,
+      "after": 131428,
+      "saved": 290622,
+      "note": "png"
+    },
+    {
       "file": "dist/images/loterie/express-cards/T10.webp",
       "before": 603100,
       "after": 312682,
@@ -512,25 +554,11 @@
       "note": "webp"
     },
     {
-      "file": "dist/assets/running_routes_map-JKhEF575.png",
-      "before": 398834,
-      "after": 108501,
-      "saved": 290333,
-      "note": "png"
-    },
-    {
       "file": "dist/images/loterie/express-cards/T16.webp",
       "before": 569082,
       "after": 279126,
       "saved": 289956,
       "note": "webp"
-    },
-    {
-      "file": "dist/assets/logo-basket-CPuenCe8.png",
-      "before": 351076,
-      "after": 61172,
-      "saved": 289904,
-      "note": "png"
     },
     {
       "file": "dist/images/loterie/express-cards/T4.webp",
@@ -552,13 +580,6 @@
       "after": 275274,
       "saved": 285980,
       "note": "webp"
-    },
-    {
-      "file": "dist/assets/logo-cornhole-C-NeivNy.png",
-      "before": 343867,
-      "after": 60027,
-      "saved": 283840,
-      "note": "png"
     },
     {
       "file": "dist/images/loterie/express-cards/T13.webp",
@@ -596,13 +617,6 @@
       "note": "webp"
     },
     {
-      "file": "dist/assets/running_session_timer-Dc8smZ_o.png",
-      "before": 374378,
-      "after": 95253,
-      "saved": 279125,
-      "note": "png"
-    },
-    {
       "file": "dist/images/loterie/express-cards/T8.webp",
       "before": 552120,
       "after": 273688,
@@ -622,13 +636,6 @@
       "after": 267980,
       "saved": 277438,
       "note": "webp"
-    },
-    {
-      "file": "dist/assets/running_recommendation_badge-LEf9aTQG.png",
-      "before": 389744,
-      "after": 112425,
-      "saved": 277319,
-      "note": "png"
     },
     {
       "file": "dist/assets/darts_racer_race_bg-B2ajH3Vg.png",
@@ -652,10 +659,10 @@
       "note": "webp"
     },
     {
-      "file": "dist/assets/logo-billard-qaV2fs6L.png",
-      "before": 329123,
-      "after": 54289,
-      "saved": 274834,
+      "file": "dist/assets/ticker_51_by_5-BO2z3w5H.png",
+      "before": 411444,
+      "after": 136016,
+      "saved": 275428,
       "note": "png"
     },
     {
@@ -666,6 +673,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/ticker_looper-DkvsXOT0.png",
+      "before": 413045,
+      "after": 138632,
+      "saved": 274413,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/the-menace-Cy5m6eIQ.png",
       "before": 449124,
       "after": 174795,
@@ -673,24 +687,10 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/logo-molkky-DGaoLzkX.png",
-      "before": 328847,
-      "after": 57347,
-      "saved": 271500,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-chess-Cj1CKEvb.png",
-      "before": 325083,
-      "after": 54501,
-      "saved": 270582,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-frisbee-DaWqEdQC.png",
-      "before": 328354,
-      "after": 57850,
-      "saved": 270504,
+      "file": "dist/assets/ticker_call_three-CzvtEv1c.png",
+      "before": 404150,
+      "after": 132497,
+      "saved": 271653,
       "note": "png"
     },
     {
@@ -701,38 +701,10 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/logo-tennis-DewGaJlx.png",
-      "before": 325695,
-      "after": 56475,
-      "saved": 269220,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/ticker_pingpong_tips_2-BnbRdgGg.png",
       "before": 366280,
       "after": 97719,
       "saved": 268561,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-foot-DGtxlvAT.png",
-      "before": 321843,
-      "after": 54069,
-      "saved": 267774,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-volley-Bgnp2qzl.png",
-      "before": 322035,
-      "after": 55524,
-      "saved": 266511,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/running_goal_target-CKwY5iQM.png",
-      "before": 359983,
-      "after": 94283,
-      "saved": 265700,
       "note": "png"
     },
     {
@@ -741,13 +713,6 @@
       "after": 254458,
       "saved": 265018,
       "note": "webp"
-    },
-    {
-      "file": "dist/assets/logo-pickleball-DGCtP9Ba.png",
-      "before": 318272,
-      "after": 56539,
-      "saved": 261733,
-      "note": "png"
     },
     {
       "file": "dist/assets/ticker_ocean_control-iVM_siwI.png",
@@ -813,13 +778,6 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/logo-padel-CPCayUYQ.png",
-      "before": 306351,
-      "after": 50750,
-      "saved": 255601,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/ticker_babyfoot_training_teamquick7-DDLsM5pu.png",
       "before": 369855,
       "after": 115481,
@@ -855,13 +813,6 @@
       "note": "webp"
     },
     {
-      "file": "dist/assets/logo-archery-V6G9SwA_.png",
-      "before": 308774,
-      "after": 56738,
-      "saved": 252036,
-      "note": "png"
-    },
-    {
       "file": "dist/assets/one-dart-DvUaJqWl.png",
       "before": 382868,
       "after": 130896,
@@ -887,13 +838,6 @@
       "before": 353128,
       "after": 102279,
       "saved": 250849,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/logo-rugby-CVFCutXu.png",
-      "before": 305955,
-      "after": 56035,
-      "saved": 249920,
       "note": "png"
     },
     {
@@ -929,6 +873,13 @@
       "before": 374258,
       "after": 125410,
       "saved": 248848,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_hare_hounds-BjDBZNnu.png",
+      "before": 395633,
+      "after": 147502,
+      "saved": 248131,
       "note": "png"
     },
     {
@@ -1107,10 +1058,24 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/ticker_gotcha-BFkjqawn.png",
+      "before": 362505,
+      "after": 125525,
+      "saved": 236980,
+      "note": "png"
+    },
+    {
       "file": "dist/assets/ticker_territories_fi-zQHNkahW.png",
       "before": 367356,
       "after": 131358,
       "saved": 235998,
+      "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_castle-ldGN_5r1.png",
+      "before": 374857,
+      "after": 139069,
+      "saved": 235788,
       "note": "png"
     },
     {
@@ -1566,6 +1531,13 @@
       "before": 331819,
       "after": 117782,
       "saved": 214037,
+      "note": "png"
+    },
+    {
+      "file": "dist/app-512.png",
+      "before": 281135,
+      "after": 67892,
+      "saved": 213243,
       "note": "png"
     },
     {
@@ -2255,13 +2227,6 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/agenda-molkky-B6wUs1aA.webp",
-      "before": 350602,
-      "after": 185986,
-      "saved": 164616,
-      "note": "webp"
-    },
-    {
       "file": "dist/assets/ticker_babyfoot_match-_hr0_5FY.png",
       "before": 250868,
       "after": 86424,
@@ -2528,6 +2493,13 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/decompositos_team_badge-D1kSlNIF.webp",
+      "before": 411054,
+      "after": 265548,
+      "saved": 145506,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/Parcours 16-CgE5HqQV.png",
       "before": 258751,
       "after": 113984,
@@ -2540,6 +2512,27 @@
       "after": 113561,
       "saved": 144716,
       "note": "png"
+    },
+    {
+      "file": "dist/assets/deglingos_team_badge-B3QZU7MO.webp",
+      "before": 397978,
+      "after": 257756,
+      "saved": 140222,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/gastros_team_badge-DP5M3Zmx.webp",
+      "before": 314098,
+      "after": 177920,
+      "saved": 136178,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/crado_team_badge-DF13oJzQ.webp",
+      "before": 366754,
+      "after": 231730,
+      "saved": 135024,
+      "note": "webp"
     },
     {
       "file": "dist/assets/competition_league_watermark-BiZRyfbM.png",
@@ -2563,6 +2556,13 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/gerbos_team_badge-C10sMYcn.webp",
+      "before": 333664,
+      "after": 201708,
+      "saved": 131956,
+      "note": "webp"
+    },
+    {
       "file": "dist/images/darts/jack-daniels-1024.png",
       "before": 228584,
       "after": 97545,
@@ -2582,6 +2582,13 @@
       "after": 84463,
       "saved": 129200,
       "note": "png"
+    },
+    {
+      "file": "dist/assets/morvellos_team_badge-DPeaPgdh.webp",
+      "before": 335170,
+      "after": 207526,
+      "saved": 127644,
+      "note": "webp"
     },
     {
       "file": "dist/images/darts/koto-kingprove-1024.png",
@@ -2988,20 +2995,6 @@
       "after": 108438,
       "saved": 80874,
       "note": "webp"
-    },
-    {
-      "file": "dist/app-512.png",
-      "before": 132865,
-      "after": 52321,
-      "saved": 80544,
-      "note": "png"
-    },
-    {
-      "file": "dist/assets/auth-logo-ms-gold-Cd-HAyfE.png",
-      "before": 132865,
-      "after": 52321,
-      "saved": 80544,
-      "note": "png"
     },
     {
       "file": "dist/images/darts/winmau-aspria-1024.png",
@@ -3851,6 +3844,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/languages-22-fr-BOioUQQ-.webp",
+      "before": 320114,
+      "after": 263094,
+      "saved": 57020,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/eEurope-DM2-anpv.png",
       "before": 132101,
       "after": 78529,
@@ -3870,6 +3870,20 @@
       "after": 78994,
       "saved": 52445,
       "note": "png"
+    },
+    {
+      "file": "dist/assets/target_bull25-47ioG3Hu.webp",
+      "before": 219190,
+      "after": 167568,
+      "saved": 51622,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/languages-22-en-DkqRET80.webp",
+      "before": 255734,
+      "after": 204820,
+      "saved": 50914,
+      "note": "webp"
     },
     {
       "file": "dist/assets/caribbean-C9yE6tAI.png",
@@ -3914,13 +3928,6 @@
       "note": "png"
     },
     {
-      "file": "dist/assets/agenda-chess-BtGh5srx.webp",
-      "before": 106738,
-      "after": 57978,
-      "saved": 48760,
-      "note": "webp"
-    },
-    {
       "file": "dist/assets/sAfrica-CSDjOIFF.png",
       "before": 121842,
       "after": 73680,
@@ -3963,6 +3970,13 @@
       "note": "png"
     },
     {
+      "file": "dist/img/crados-badges/boucher-toxique.webp",
+      "before": 448656,
+      "after": 403180,
+      "saved": 45476,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/money_9-Cv5_ql0W.webp",
       "before": 120216,
       "after": 74938,
@@ -3974,6 +3988,20 @@
       "before": 104912,
       "after": 59890,
       "saved": 45022,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_bull50-B4-cuizl.webp",
+      "before": 184038,
+      "after": 139032,
+      "saved": 45006,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_apocalypse-N2OMFZp-.webp",
+      "before": 108364,
+      "after": 64046,
+      "saved": 44318,
       "note": "webp"
     },
     {
@@ -3998,11 +4026,67 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/ticker_galaxies-C9cGHDLI.webp",
+      "before": 108908,
+      "after": 65118,
+      "saved": 43790,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_cosmo_knights-B0C5D0t9.webp",
+      "before": 107530,
+      "after": 63838,
+      "saved": 43692,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/wAfrica-Dm2X9iw3.png",
       "before": 126903,
       "after": 83264,
       "saved": 43639,
       "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_microscopia-DhoBu2Ax.webp",
+      "before": 107218,
+      "after": 63974,
+      "saved": 43244,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_attila-t_MHomtH.webp",
+      "before": 109636,
+      "after": 66628,
+      "saved": 43008,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_jardinier-D-1_vLOE.webp",
+      "before": 112228,
+      "after": 69270,
+      "saved": 42958,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_everest-BcWeG9Mc.webp",
+      "before": 111098,
+      "after": 68236,
+      "saved": 42862,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_disjoncte-jwgCvguv.webp",
+      "before": 109880,
+      "after": 67084,
+      "saved": 42796,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_poseidon-zJHdvqEP.webp",
+      "before": 114132,
+      "after": 71440,
+      "saved": 42692,
+      "note": "webp"
     },
     {
       "file": "dist/assets/eAsia-ChR-DCTJ.png",
@@ -4012,11 +4096,81 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/ticker_vikings-DcWawArC.webp",
+      "before": 112128,
+      "after": 69650,
+      "saved": 42478,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_colin_maillard_en-DaGdxikh.webp",
+      "before": 107980,
+      "after": 65594,
+      "saved": 42386,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_eperviers-BDBnV2b7.webp",
+      "before": 108852,
+      "after": 66654,
+      "saved": 42198,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_replicat-BrUQ-tw_.webp",
+      "before": 113804,
+      "after": 71948,
+      "saved": 41856,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_pyramides-BNAVnUUM.webp",
+      "before": 104056,
+      "after": 62292,
+      "saved": 41764,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_zombie_siege-BFLLI6t9.webp",
+      "before": 108014,
+      "after": 66260,
+      "saved": 41754,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_demineur_en-Cf2yJmt6.webp",
+      "before": 117378,
+      "after": 75646,
+      "saved": 41732,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/nAfrica-BBTTd0Zi.png",
       "before": 139636,
       "after": 98045,
       "saved": 41591,
       "note": "png"
+    },
+    {
+      "file": "dist/assets/ticker_calendrier_maya-Cwtl-Yn4.webp",
+      "before": 111372,
+      "after": 69812,
+      "saved": 41560,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_le_loup_en-CP2oGl2v.webp",
+      "before": 116594,
+      "after": 75056,
+      "saved": 41538,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_corbeau_renard_en-DtwgC1cw.webp",
+      "before": 109680,
+      "after": 68174,
+      "saved": 41506,
+      "note": "webp"
     },
     {
       "file": "dist/assets/sAsia-DULYS_i7.png",
@@ -4026,10 +4180,101 @@
       "note": "png"
     },
     {
+      "file": "dist/assets/ticker_tug_rush-BE3yoDuQ.webp",
+      "before": 103738,
+      "after": 62338,
+      "saved": 41400,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_chute_libre_en-Ca8Sje0f.webp",
+      "before": 106706,
+      "after": 65462,
+      "saved": 41244,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_green_vs_red-BTplH7Zy.webp",
+      "before": 105648,
+      "after": 64414,
+      "saved": 41234,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_jurassic_dart-CNlUfWO7.webp",
+      "before": 103932,
+      "after": 62858,
+      "saved": 41074,
+      "note": "webp"
+    },
+    {
+      "file": "dist/img/crados-badges/clean-master.webp",
+      "before": 325676,
+      "after": 285238,
+      "saved": 40438,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_athletisme-DjYgX0PO.webp",
+      "before": 102666,
+      "after": 62408,
+      "saved": 40258,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_saut_a_la_corde_en-D0JIS64R.webp",
+      "before": 99490,
+      "after": 59404,
+      "saved": 40086,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_radin_en-BRxxc2-E.webp",
+      "before": 103206,
+      "after": 63218,
+      "saved": 39988,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/team_esquive-CsWslF-S.webp",
       "before": 104230,
       "after": 64246,
       "saved": 39984,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_eperviers_en-CWZNk06h.webp",
+      "before": 108742,
+      "after": 68762,
+      "saved": 39980,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_tyrolien_en-CICIyrij.webp",
+      "before": 103794,
+      "after": 64124,
+      "saved": 39670,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_double_down-BSXrUljL.webp",
+      "before": 99550,
+      "after": 60180,
+      "saved": 39370,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_knockback-DgF_LF5B.webp",
+      "before": 101526,
+      "after": 62250,
+      "saved": 39276,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_jackpot-CCUwLj8X.webp",
+      "before": 102904,
+      "after": 64084,
+      "saved": 38820,
       "note": "webp"
     },
     {
@@ -4040,6 +4285,13 @@
       "note": "webp"
     },
     {
+      "file": "dist/img/crados-badges/sniper-crados.webp",
+      "before": 336186,
+      "after": 297554,
+      "saved": 38632,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/mission_wildfire-CtPl-IMC.webp",
       "before": 143526,
       "after": 105050,
@@ -4047,10 +4299,38 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/ticker_athletisme_en-Bjc8Bcs_.webp",
+      "before": 98974,
+      "after": 60580,
+      "saved": 38394,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_disjoncte_en-DpTXMnfs.webp",
+      "before": 101256,
+      "after": 63098,
+      "saved": 38158,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/ticker_hollywood-CpFvknR5.webp",
+      "before": 100110,
+      "after": 62066,
+      "saved": 38044,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/mission_civil_protection-BsDDCUmn.webp",
       "before": 147244,
       "after": 109550,
       "saved": 37694,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/gros6_rules_board-MmI-Hpws.webp",
+      "before": 202228,
+      "after": 165394,
+      "saved": 36834,
       "note": "webp"
     },
     {
@@ -4068,10 +4348,31 @@
       "note": "webp"
     },
     {
+      "file": "dist/img/crados-badges/voleur-supreme.webp",
+      "before": 314588,
+      "after": 279226,
+      "saved": 35362,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/money_7-BYPCIIco.webp",
       "before": 98460,
       "after": 63100,
       "saved": 35360,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_1-BV6RTOga.webp",
+      "before": 160058,
+      "after": 126150,
+      "saved": 33908,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/agenda-molkky-Bx4ZN8VY.webp",
+      "before": 244874,
+      "after": 211194,
+      "saved": 33680,
       "note": "webp"
     },
     {
@@ -4082,11 +4383,277 @@
       "note": "webp"
     },
     {
+      "file": "dist/assets/target_9-DMEkC07_.webp",
+      "before": 136118,
+      "after": 108994,
+      "saved": 27124,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_7-i05NSxx6.webp",
+      "before": 124196,
+      "after": 98736,
+      "saved": 25460,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_6-CUweJQNP.webp",
+      "before": 121214,
+      "after": 95786,
+      "saved": 25428,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_18-D3LJ7GYG.webp",
+      "before": 135300,
+      "after": 109884,
+      "saved": 25416,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_19-DxBe7kAg.webp",
+      "before": 140868,
+      "after": 115614,
+      "saved": 25254,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_13-B3gt3D3a.webp",
+      "before": 133710,
+      "after": 108480,
+      "saved": 25230,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_5-DwVz491h.webp",
+      "before": 126152,
+      "after": 101030,
+      "saved": 25122,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_14-DMHv89CO.webp",
+      "before": 134362,
+      "after": 109358,
+      "saved": 25004,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_10-FYmhNO06.webp",
+      "before": 132366,
+      "after": 107430,
+      "saved": 24936,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_8-DItQLJs6.webp",
+      "before": 123604,
+      "after": 98800,
+      "saved": 24804,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_4-CpPZhrS2.webp",
+      "before": 118312,
+      "after": 93542,
+      "saved": 24770,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_16-Dy2eBesZ.webp",
+      "before": 138626,
+      "after": 113878,
+      "saved": 24748,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_12-Beggp15W.webp",
+      "before": 132518,
+      "after": 107998,
+      "saved": 24520,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_15-mhqbvtWw.webp",
+      "before": 134264,
+      "after": 109916,
+      "saved": 24348,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_17-BBUG_Ty_.webp",
+      "before": 134456,
+      "after": 110346,
+      "saved": 24110,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_3-CTtr21y2.webp",
+      "before": 115804,
+      "after": 91744,
+      "saved": 24060,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_20-BgxUDdbW.webp",
+      "before": 136294,
+      "after": 112404,
+      "saved": 23890,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_11-Dpo5Xeq_.webp",
+      "before": 128440,
+      "after": 104558,
+      "saved": 23882,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/target_2-B2uDhpvE.webp",
+      "before": 115526,
+      "after": 92994,
+      "saved": 22532,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/running_session_timer-CL-Q3baF.webp",
+      "before": 102882,
+      "after": 89612,
+      "saved": 13270,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/running_coach_training-CyJr2io5.webp",
+      "before": 129558,
+      "after": 119912,
+      "saved": 9646,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/decompositos_marion_putrefaction-BuFj8RVy.webp",
+      "before": 135296,
+      "after": 126630,
+      "saved": 8666,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/running_discipline_awena-CvlsqzEK.webp",
+      "before": 166244,
+      "after": 157812,
+      "saved": 8432,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/decompositos_fany_pourrie-BzEg7cbK.webp",
+      "before": 133614,
+      "after": 125424,
+      "saved": 8190,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/decompositos_jose_ratatine-C1TOX6Wr.webp",
+      "before": 127552,
+      "after": 119646,
+      "saved": 7906,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/decompositos_lili_moisie-CKghReVw.webp",
+      "before": 133056,
+      "after": 125414,
+      "saved": 7642,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/morvellos_mathieu_morveux-BNo0Ibb3.webp",
+      "before": 111014,
+      "after": 103534,
+      "saved": 7480,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/crado_momo_poubello-83Uj45A7.webp",
+      "before": 110268,
+      "after": 103034,
+      "saved": 7234,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/crado_alban_degoutant-DXAORxiA.webp",
+      "before": 107624,
+      "after": 100624,
+      "saved": 7000,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/crado_romain_vilain-Qt-wBR7Z.webp",
+      "before": 107814,
+      "after": 100936,
+      "saved": 6878,
+      "note": "webp"
+    },
+    {
       "file": "dist/assets/multisports_scoring_nav-DXkVww7Q.m4a",
       "before": 1357848,
       "after": 1351326,
       "saved": 6522,
       "note": "audio"
+    },
+    {
+      "file": "dist/assets/crado_marco_crado-CCvhi7h6.webp",
+      "before": 110734,
+      "after": 104228,
+      "saved": 6506,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/deglingos_gege_deglingue-D6vdvhew.webp",
+      "before": 112366,
+      "after": 106060,
+      "saved": 6306,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/deglingos_rike_nique-BxnsDNeq.webp",
+      "before": 116720,
+      "after": 110474,
+      "saved": 6246,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/deglingos_dede_detraque-371b6nmy.webp",
+      "before": 114252,
+      "after": 108022,
+      "saved": 6230,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/deglingos_emile_debile-fYpbANWd.webp",
+      "before": 116640,
+      "after": 110480,
+      "saved": 6160,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/morvellos_alex_kleenex-Dz9Y-M20.webp",
+      "before": 125322,
+      "after": 119496,
+      "saved": 5826,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/morvellos_bruno_rhino-bw9fNXX4.webp",
+      "before": 99660,
+      "after": 94028,
+      "saved": 5632,
+      "note": "webp"
+    },
+    {
+      "file": "dist/assets/morvellos_rene_qui_coule-lq8x0-Mn.webp",
+      "before": 106406,
+      "after": 100960,
+      "saved": 5446,
+      "note": "webp"
     }
   ],
   "skipped": []
