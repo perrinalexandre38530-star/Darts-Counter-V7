@@ -628,6 +628,32 @@ export function pickLatestBackupCandidate(candidates: AccountBackupCandidate[]):
   return sorted[0] || null;
 }
 
+async function withSyncTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} : délai dépassé`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Résumé local RAPIDE : ne reconstruit jamais le snapshot complet au démarrage.
+ * On exploite uniquement les métadonnées des sauvegardes locales déjà indexées.
+ * Cela évite le gel observé à 78 % sur Android avec un coffre de plusieurs dizaines de Mo.
+ */
+async function summarizeCurrentLocalFast(): Promise<Partial<VaultSummary>> {
+  const slots = await withSyncTimeout(listLocalMemorySlots().catch(() => []), 2500, "Lecture du résumé local").catch(() => []);
+  const candidates = slots.map(localCandidate).filter(Boolean) as AccountBackupCandidate[];
+  const latest = pickLatestBackupCandidate(candidates);
+  return latest?.summary && meaningfulSummary(latest.summary) ? latest.summary : {};
+}
+
 async function summarizeCurrentLocal(): Promise<VaultSummary> {
   const snapshot = await exportCloudSnapshot({
     mediaMirror: "skip",
@@ -768,21 +794,22 @@ export async function restoreLatestBackupForSignedInUser(
       const signature = candidateSignature(latest);
       const alreadyApplied = readAppliedSignature(uid) === signature;
       if (alreadyApplied) {
-        const local = await summarizeCurrentLocal().catch(() => null);
-        if (!accountStillActive(uid)) return false;
-        if (local && localLooksAtLeastAsComplete(local, latest.summary)) {
-          saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current", candidate: { ...latest, load: undefined }, scanErrors: scan.errors });
-          return false;
-        }
+        // La signature du dernier backup serveur a déjà été appliquée : surtout ne pas
+        // réexporter les dizaines de Mo du stockage local juste pour le revalider.
+        saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current-signature", candidate: { ...latest, load: undefined }, scanErrors: scan.errors });
+        emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
+        return false;
       }
 
       emitAccountSync(uid, "compare", 78, "Comparaison des appareils…", { source: latest.source });
-      const localBefore = await summarizeCurrentLocal().catch(() => null);
+      // IMPORTANT : comparaison metadata-only. Aucun exportCloudSnapshot ici.
+      // Le snapshot complet n'est chargé qu'après un choix explicite de restauration.
+      const localBefore = await summarizeCurrentLocalFast().catch(() => ({} as Partial<VaultSummary>));
       if (!accountStillActive(uid)) return false;
       const conflict = buildConflict(uid, latest, localBefore || {});
-      if (!conflict.differences.length && localBefore && meaningfulSummary(localBefore) && localLooksAtLeastAsComplete(localBefore, latest.summary)) {
+      if (!conflict.differences.length && meaningfulSummary(localBefore) && localLooksAtLeastAsComplete(localBefore as VaultSummary, latest.summary)) {
         writeAppliedSignature(uid, signature);
-        saveDiagnostic(uid, { ok: true, restored: false, reason: "same-summary", candidate: { source: latest.source, id: latest.id } });
+        saveDiagnostic(uid, { ok: true, restored: false, reason: "same-summary-fast", candidate: { source: latest.source, id: latest.id } });
         emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
         return false;
       }
