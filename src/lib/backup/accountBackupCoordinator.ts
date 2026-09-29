@@ -572,9 +572,18 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
     { source: "external", run: () => scanExternal(uid) },
   ];
 
+  // IMPORTANT Android : aucune source ne peut retenir le scan global indéfiniment.
+  // Promise.all sans garde était la cause principale de la barre figée à 12 % :
+  // une seule source (NAS/R2/Drive/externe) pouvait ne jamais résoudre.
+  const timeoutBySource: Partial<Record<AccountBackupSource, number>> = {
+    local: 2_500, nas: 5_000, r2: 5_000, google_drive: 5_000,
+    onedrive: 5_000, dropbox: 5_000, external: 2_000,
+  };
   const settled = await Promise.all(jobs.map(async (job) => {
     try {
-      return { source: job.source, items: await job.run(), error: "" };
+      const timeoutMs = timeoutBySource[job.source] || 5_000;
+      const items = await withSyncTimeout(job.run(), timeoutMs, `Scan ${job.source}`);
+      return { source: job.source, items, error: "" };
     } catch (error: any) {
       return { source: job.source, items: [] as AccountBackupCandidate[], error: String(error?.message || error || "Source indisponible") };
     }
@@ -765,8 +774,15 @@ export async function restoreLatestBackupForSignedInUser(
       emitAccountSync(uid, "search", 12, "Recherche de la dernière sauvegarde du compte…");
       // V115 : chemin rapide. Le compte possède un pointeur serveur vers SA dernière
       // sauvegarde réussie. Aucun scan NAS/R2/Drive n'est lancé lorsqu'il existe.
-      const direct = await getDirectLatestCandidate(uid);
-      if (!accountStillActive(uid)) return false;
+      const direct = await withSyncTimeout(
+        getDirectLatestCandidate(uid),
+        9_000,
+        "Lecture du pointeur de sauvegarde",
+      ).catch(() => ({ pointer: null, candidate: null }));
+      if (!accountStillActive(uid)) {
+        emitAccountSync(uid, "done", 100, "Synchronisation annulée — compte changé", { restored:false });
+        return false;
+      }
 
       let scan: AccountBackupScanResult = { candidates: [], errors: [] };
       let latest = direct.candidate;
@@ -774,8 +790,17 @@ export async function restoreLatestBackupForSignedInUser(
       // Migration des anciens comptes uniquement : s'il n'existe encore aucun
       // pointeur, on effectue UNE découverte historique, puis on mémorise le gagnant.
       if (!direct.pointer) {
-        scan = await scanAccountBackups(uid);
-        if (!accountStillActive(uid)) return false;
+        // Ancien compte / backend sans pointeur : on informe l'UI que la première
+        // étape est terminée. La barre ne doit jamais sembler gelée à 12 %.
+        emitAccountSync(uid, "search", 36, "Recherche des sauvegardes disponibles…");
+        scan = await withSyncTimeout(scanAccountBackups(uid), 7_000, "Recherche des sauvegardes").catch((error: any) => ({
+          candidates: [],
+          errors: [{ source: "external" as AccountBackupSource, message: String(error?.message || error || "Scan interrompu") }],
+        }));
+        if (!accountStillActive(uid)) {
+          emitAccountSync(uid, "done", 100, "Synchronisation annulée — compte changé", { restored:false });
+          return false;
+        }
         latest = pickLatestBackupCandidate(scan.candidates);
         if (latest) {
           void registerAccountLatestBackup({
@@ -806,8 +831,15 @@ export async function restoreLatestBackupForSignedInUser(
       emitAccountSync(uid, "compare", 78, "Comparaison des appareils…", { source: latest.source });
       // IMPORTANT : comparaison metadata-only. Aucun exportCloudSnapshot ici.
       // Le snapshot complet n'est chargé qu'après un choix explicite de restauration.
-      const localBefore = await summarizeCurrentLocalFast().catch(() => ({} as Partial<VaultSummary>));
-      if (!accountStillActive(uid)) return false;
+      const localBefore = await withSyncTimeout(
+        summarizeCurrentLocalFast(),
+        3_000,
+        "Comparaison locale",
+      ).catch(() => ({} as Partial<VaultSummary>));
+      if (!accountStillActive(uid)) {
+        emitAccountSync(uid, "done", 100, "Synchronisation annulée — compte changé", { restored:false });
+        return false;
+      }
       const conflict = buildConflict(uid, latest, localBefore || {});
       if (!conflict.differences.length && meaningfulSummary(localBefore) && localLooksAtLeastAsComplete(localBefore as VaultSummary, latest.summary)) {
         writeAppliedSignature(uid, signature);
