@@ -103,6 +103,27 @@ function publicDartsUrl(id: string) {
   return `#/welcome/darts/${encodeURIComponent(id)}`;
 }
 
+function forcePublicPageTop() {
+  const root = document.scrollingElement || document.documentElement;
+  root.scrollTop = 0;
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  window.scrollTo(0, 0);
+}
+
+function openPublicDartsRule(event: React.MouseEvent<HTMLAnchorElement>, id: string) {
+  event.preventDefault();
+  // pushState is intentional: unlike assigning location.hash, it does not ask
+  // the browser to restore the previous vertical position of this hash route.
+  window.history.pushState(null, "", publicDartsUrl(id));
+  forcePublicPageTop();
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  window.requestAnimationFrame(forcePublicPageTop);
+  window.setTimeout(forcePublicPageTop, 0);
+  window.setTimeout(forcePublicPageTop, 80);
+  window.setTimeout(forcePublicPageTop, 250);
+}
+
 function isPublicDartsDevelopment(game: DartsGameDef) {
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
   if (audit?.status === "available") return false;
@@ -111,16 +132,18 @@ function isPublicDartsDevelopment(game: DartsGameDef) {
 }
 
 function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: DartsGameDef; onBack: () => void; onOpenApp: () => void; lang: Lang; setLang: (lang: Lang) => void; t: (key: string, fallback?: string) => string }) {
-  const tr = (key: string, fallback: string) => lang === "fr" ? fallback : (lang === "en" || lang === "es" ? t(`landing.${key}`, fallback) : fallback);
+  const tr = (key: string, fallback: string) => lang === "fr" ? fallback : t(`landing.${key}`, fallback);
   const ticker = landingTickerFor(game.id, lang);
   useLayoutEffect(() => {
     if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
-    const top = () => window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    const top = forcePublicPageTop;
     top();
     const a = window.requestAnimationFrame(top);
     const b = window.setTimeout(top, 0);
     const c = window.setTimeout(top, 80);
-    return () => { window.cancelAnimationFrame(a); window.clearTimeout(b); window.clearTimeout(c); };
+    const d = window.setTimeout(top, 250);
+    const e = window.setTimeout(top, 600);
+    return () => { window.cancelAnimationFrame(a); window.clearTimeout(b); window.clearTimeout(c); window.clearTimeout(d); window.clearTimeout(e); };
   }, [game.id]);
   const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
@@ -154,7 +177,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
         <div className="mssEyebrow">{exclusive ? tr("rules.exclusiveMode", "MODE EXCLUSIF MULTISPORTS SCORING") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "MODE FLÉCHETTES")}</div>
         <h1>{game.label}</h1>
         {development && <div className="mssDevBanner">{tr("status.development", "EN DÉVELOPPEMENT")}</div>}
-        <p>{development ? "Ce mode fait partie du catalogue MULTISPORTS SCORING mais son moteur de jeu n’est pas encore disponible dans cette version. Sa fiche présente le concept actuellement défini." : game.infoBody}</p>
+        <p>{development ? tr("rules.developmentIntro", "Ce mode fait partie du catalogue MULTISPORTS SCORING mais son moteur de jeu n’est pas encore disponible dans cette version. Sa fiche présente le concept actuellement défini.") : tr(`game.${game.id}.info`, game.infoBody)}</p>
         <div className="mssRuleBadges">
           <span>{tr("rules.players", "JOUEURS")}</span>
           {game.supportsTeams && <span>{tr("rules.teams", "ÉQUIPES")}</span>}
@@ -168,27 +191,27 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <a href="#autres-modes">{tr("rules.otherModes", "AUTRES MODES")}</a>
     </nav>
     <section className="mssRuleSummary">
-      <div><span>{tr("rules.objective", "OBJECTIF")}</span><strong>{objective}</strong></div>
-      <div><span>{tr("rules.category", "CATÉGORIE")}</span><strong>{exclusive ? "Exclusivité MSS" : DARTS_CATEGORY_LABEL[game.category] || "Fléchettes"}</strong></div>
-      <div><span>{tr("rules.options", "OPTIONS")}</span><strong>{[game.supportsTeams ? "Équipes" : "", game.supportsBots ? "Bots IA" : ""].filter(Boolean).join(" • ") || "Selon le mode"}</strong></div>
+      <div><span>{tr("rules.objective", "OBJECTIF")}</span><strong>{tr(`game.${game.id}.objective`, objective)}</strong></div>
+      <div><span>{tr("rules.category", "CATÉGORIE")}</span><strong>{exclusive ? tr("rules.mssExclusive", "Exclusivité MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "Fléchettes")}</strong></div>
+      <div><span>{tr("rules.options", "OPTIONS")}</span><strong>{[game.supportsTeams ? tr("rules.teams", "Équipes") : "", game.supportsBots ? tr("rules.aiBots", "Bots IA") : ""].filter(Boolean).join(" • ") || tr("rules.dependsMode", "Selon le mode")}</strong></div>
     </section>
-    {development && <section className="mssDevelopmentNotice"><div><span>MODE EN PRÉPARATION</span><h2>Cette fiche évoluera avec le développement du moteur.</h2><p>Le concept est déjà référencé dans le catalogue MULTISPORTS SCORING. Les règles, options et écrans jouables seront détaillés ici uniquement lorsqu’ils seront réellement intégrés à l’application.</p></div><b>WORK IN<br/>PROGRESS</b></section>}
+    {development && <section className="mssDevelopmentNotice"><div><span>{tr("rules.modePreparing", "MODE EN PRÉPARATION")}</span><h2>{tr("rules.sheetWillEvolve", "Cette fiche évoluera avec le développement du moteur.")}</h2><p>{tr("rules.developmentNotice", "Le concept est déjà référencé dans le catalogue MULTISPORTS SCORING. Les règles, options et écrans jouables seront détaillés ici uniquement lorsqu’ils seront réellement intégrés à l’application.")}</p></div><b>WORK IN<br/>PROGRESS</b></section>}
     <section className="mssRuleContent" id="regles">
       <article><b>01</b><h2>{tr("rules.objective", "OBJECTIF")}</h2><p>{tr(`game.${game.id}.objective`, objective)}</p></article>
       <article><b>02</b><h2>{tr("rules.principle", "PRINCIPE & RÈGLES")}</h2><p>{tr(`game.${game.id}.info`, game.infoBody)}</p></article>
-      <article><b>03</b><h2>{tr("rules.format", "FORMAT DE PARTIE")}</h2><p>Le format est déterminé par la configuration propre à ce mode dans MULTISPORTS SCORING.{game.supportsTeams ? " Les équipes sont prises en charge lorsque cette option est proposée." : ""}{game.supportsBots ? " Les bots IA peuvent être utilisés lorsque la configuration du mode les active." : ""}</p></article>
-      <article className="mssRuleConfig" id="configuration"><b>04</b><h2>{tr("rules.parameters", "RÈGLES & PARAMÈTRES")}</h2>{development ? <p>EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.</p> : auditedOptions.length ? <><p>Configuration et règles disponibles dans ce mode :</p><ol>{auditedOptions.map((option, index) => <li key={`${index}-${option}`}><b>{String(index + 1).padStart(2, "0")}</b><span>{tr(`game.${game.id}.option.${index}`, option)}</span></li>)}</ol></> : <p>Les paramètres détaillés de ce mode seront complétés au fur et à mesure de son développement.</p>}</article>
-      <article><b>05</b><h2>{tr("rules.status", "STATUT DANS MSS")}</h2><p>{development ? "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée." : "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur."}</p></article>
-      {!development && <article><b>06</b><h2>{tr("rules.flow", "DÉROULEMENT")}</h2><p>Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.</p></article>}
-      {!development && <article><b>07</b><h2>{tr("rules.end", "FIN DE PARTIE")}</h2><p>La condition de fin et le classement appliqués sont ceux du moteur de ce mode. Les particularités confirmées figurent dans la section « Règles & paramètres » ci-dessus.</p></article>}
+      <article><b>03</b><h2>{tr("rules.format", "FORMAT DE PARTIE")}</h2><p>{tr("rules.formatBody", "Le format est déterminé par la configuration propre à ce mode dans MULTISPORTS SCORING.")}{game.supportsTeams ? ` ${tr("rules.teamsBody", "Les équipes sont prises en charge lorsque cette option est proposée.")}` : ""}{game.supportsBots ? ` ${tr("rules.botsBody", "Les bots IA peuvent être utilisés lorsque la configuration du mode les active.")}` : ""}</p></article>
+      <article className="mssRuleConfig" id="configuration"><b>04</b><h2>{tr("rules.parameters", "RÈGLES & PARAMÈTRES")}</h2>{development ? <p>{tr("rules.developmentConfig", "EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.")}</p> : auditedOptions.length ? <><p>{tr("rules.configAvailable", "Configuration et règles disponibles dans ce mode :")}</p><ol>{auditedOptions.map((option, index) => <li key={`${index}-${option}`}><b>{String(index + 1).padStart(2, "0")}</b><span>{tr(`game.${game.id}.option.${index}`, option)}</span></li>)}</ol></> : <p>{tr("rules.configLater", "Les paramètres détaillés de ce mode seront complétés au fur et à mesure de son développement.")}</p>}</article>
+      <article><b>05</b><h2>{tr("rules.status", "STATUT DANS MSS")}</h2><p>{development ? tr("rules.developmentStatusBody", "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée.") : tr("rules.availableStatusBody", "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur.")}</p></article>
+      {!development && <article><b>06</b><h2>{tr("rules.flow", "DÉROULEMENT")}</h2><p>{tr("rules.flowBody", "Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.")}</p></article>}
+      {!development && <article><b>07</b><h2>{tr("rules.end", "FIN DE PARTIE")}</h2><p>{tr("rules.endBody", "La condition de fin et le classement appliqués sont ceux du moteur de ce mode. Les particularités confirmées figurent dans la section « Règles & paramètres » ci-dessus.")}</p></article>}
     </section>
-    {sameCategoryGames.length > 0 && <section className="mssRuleRelated" id="autres-modes"><div className="mssRuleRelatedHead"><span>{tr("rules.discoverAlso", "À DÉCOUVRIR AUSSI")}</span><h2>{tr("rules.sameFamily", "D’autres modes de la même famille")}</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id, lang); return <a key={related.id} href={publicDartsUrl(related.id)} onClick={() => { window.scrollTo(0,0); window.setTimeout(() => window.scrollTo(0,0), 0); }}>{art ? <img src={art} alt="" loading="lazy" decoding="async"/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{related.label}</span></a>; })}</div></section>}
+    {sameCategoryGames.length > 0 && <section className="mssRuleRelated" id="autres-modes"><div className="mssRuleRelatedHead"><span>{tr("rules.discoverAlso", "À DÉCOUVRIR AUSSI")}</span><h2>{tr("rules.sameFamily", "D’autres modes de la même famille")}</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id, lang); return <a key={related.id} href={publicDartsUrl(related.id)} onClick={(event) => openPublicDartsRule(event, related.id)}>{art ? <img src={art} alt="" loading="lazy" decoding="async"/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{related.label}</span></a>; })}</div></section>}
     <nav className="mssRulePager">
-      {previousGame ? <a href={publicDartsUrl(previousGame.id)} onClick={() => window.scrollTo(0,0)}><small>{tr("rules.previous", "← MODE PRÉCÉDENT")}</small><strong>{previousGame.label}</strong></a> : <span/>}
+      {previousGame ? <a href={publicDartsUrl(previousGame.id)} onClick={(event) => openPublicDartsRule(event, previousGame.id)}><small>{tr("rules.previous", "← MODE PRÉCÉDENT")}</small><strong>{previousGame.label}</strong></a> : <span/>}
       <button onClick={onBack}>{tr("rules.allModes", "TOUS LES MODES")}</button>
-      {nextGame ? <a href={publicDartsUrl(nextGame.id)} className="isNext" onClick={() => window.scrollTo(0,0)}><small>{tr("rules.next", "MODE SUIVANT →")}</small><strong>{nextGame.label}</strong></a> : <span/>}
+      {nextGame ? <a href={publicDartsUrl(nextGame.id)} className="isNext" onClick={(event) => openPublicDartsRule(event, nextGame.id)}><small>{tr("rules.next", "MODE SUIVANT →")}</small><strong>{nextGame.label}</strong></a> : <span/>}
     </nav>
-    <section className="mssRuleCta"><div><span>{development ? "BIENTÔT DANS MSS" : "PRÊT À ESSAYER ?"}</span><h2>{development ? `${game.label} est actuellement en développement.` : `${game.label} est disponible dans MULTISPORTS SCORING.`}</h2></div>{!development && <button onClick={onOpenApp}>{tr("actions.playInApp", "JOUER DANS L’APPLICATION")}</button>}</section>
+    <section className="mssRuleCta"><div><span>{development ? tr("rules.soonMss", "BIENTÔT DANS MSS") : tr("rules.readyTry", "PRÊT À ESSAYER ?")}</span><h2>{development ? `${game.label} est actuellement en développement.` : `${game.label} est disponible dans MULTISPORTS SCORING.`}</h2></div>{!development && <button onClick={onOpenApp}>{tr("actions.playInApp", "JOUER DANS L’APPLICATION")}</button>}</section>
   </main>;
 }
 
@@ -210,7 +233,7 @@ const features = [
 
 export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void }) {
   const { lang, setLang, t } = useLang();
-  const tr = (key: string, fallback: string) => lang === "fr" ? fallback : (lang === "en" || lang === "es" ? t(`landing.${key}`, fallback) : fallback);
+  const tr = (key: string, fallback: string) => lang === "fr" ? fallback : t(`landing.${key}`, fallback);
   const currentPublicLanguage = PUBLIC_LANGUAGES.find((item) => item.code === lang) || PUBLIC_LANGUAGES[0];
   const [routeHash, setRouteHash] = useState(() => window.location.hash);
   const [dartsFilter, setDartsFilter] = useState<"classic"|"exclusive"|"fun"|"challenge"|"variant"|"training"|"development">("classic");
@@ -226,9 +249,15 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     if (!/^#\/welcome\/darts\//.test(routeHash)) return;
     // Chaque fiche de règle doit toujours s’ouvrir depuis son début,
     // même si le visiteur était très bas dans le catalogue ou dans la fiche précédente.
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
-    return () => window.cancelAnimationFrame(frame);
+    forcePublicPageTop();
+    const frame = window.requestAnimationFrame(forcePublicPageTop);
+    const t1 = window.setTimeout(forcePublicPageTop, 80);
+    const t2 = window.setTimeout(forcePublicPageTop, 250);
+    const t3 = window.setTimeout(forcePublicPageTop, 600);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(t1); window.clearTimeout(t2); window.clearTimeout(t3);
+    };
   }, [routeHash]);
 
   const allDartsGames = DARTS_GAMES.filter((g) => g.entry === "games" || g.entry === "training");
@@ -362,7 +391,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
           const ticker = landingTickerFor(game.id, lang);
           const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
           const development = isPublicDartsDevelopment(game);
-          return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id} onClick={() => { window.scrollTo(0,0); window.setTimeout(() => window.scrollTo(0,0), 0); }}>
+          return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id} onClick={(event) => openPublicDartsRule(event, game.id)}>
             <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`} loading="lazy" decoding="async"/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? tr("status.development", "EN DÉVELOPPEMENT") : exclusive ? tr("status.exclusive", "EXCLUSIF MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category])}</span>{NEW_PUBLIC_DARTS.has(game.id) && <i className="mssNewModeCorner">{tr("status.new", "NOUVEAU")}</i>}{exclusive && development && <i className="mssExclusiveCorner">{tr("status.exclusive", "EXCLUSIF MSS")}</i>}</div>
             <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{game.label}</strong></div><p>{development ? "Mode référencé dans le catalogue MSS. Développement du moteur en cours." : game.infoBody}</p><small>{development ? tr("darts.discoverConcept", "DÉCOUVRIR LE CONCEPT →") : tr("darts.fullSheet", "VOIR LA FICHE COMPLÈTE →")}</small></div>
           </a>;
