@@ -788,6 +788,8 @@ export async function restoreLatestBackupForSignedInUser(
 
       if (!latest) {
         saveDiagnostic(uid, { ok: true, restored: false, reason: direct.pointer ? "latest-pointer-unavailable" : "no-backup", pointer: direct.pointer, scanErrors: scan.errors });
+        // Etat terminal indispensable : sans lui l'UI restait figée à 12 %.
+        emitAccountSync(uid, "done", 100, direct.pointer ? "Synchronisation vérifiée" : "Aucune sauvegarde à synchroniser", { restored:false });
         return false;
       }
 
@@ -818,6 +820,8 @@ export async function restoreLatestBackupForSignedInUser(
       return false;
     } catch (error: any) {
       saveDiagnostic(uid, { ok: false, restored: false, error: String(error?.message || error || "Restauration impossible") });
+      // Ne jamais laisser la barre dans un état intermédiaire (12/78 %) si une source échoue.
+      emitAccountSync(uid, "error", 100, "Synchronisation interrompue", { restored:false });
       console.warn("[backupCoordinator] automatic latest-backup restore skipped", error);
       return false;
     } finally {

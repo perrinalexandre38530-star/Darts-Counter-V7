@@ -7048,11 +7048,28 @@ function AccountSyncBanner() {
   const [busy, setBusy] = React.useState(false);
   React.useEffect(() => {
     let hideTimer: number | null = null;
+    const completedUsers = new Set<string>();
     const onSync = (event: any) => {
       const detail = event?.detail || {};
+      const uid = String(detail.userId || "");
+      const phase = String(detail.phase || "");
+
+      // Une fois la synchro de démarrage terminée pour ce compte, on ne réaffiche
+      // plus la barre pendant cette session. Un vrai conflit reste prioritaire et
+      // ouvre toujours le bloc AWENA.
+      if (phase !== "conflict" && uid && completedUsers.has(uid)) return;
+
+      if (hideTimer) { window.clearTimeout(hideTimer); hideTimer = null; }
       setSync(detail);
-      if (hideTimer) window.clearTimeout(hideTimer);
-      if (detail.phase === "done") hideTimer = window.setTimeout(() => setSync(null), 3500);
+
+      if (phase === "done") {
+        if (uid) completedUsers.add(uid);
+        // 100 % est visible très brièvement puis la barre disparaît.
+        hideTimer = window.setTimeout(() => setSync(null), 650);
+      } else if (phase === "error") {
+        if (uid) completedUsers.add(uid);
+        hideTimer = window.setTimeout(() => setSync(null), 3500);
+      }
     };
     window.addEventListener("msc:account-sync", onSync as EventListener);
     return () => {
