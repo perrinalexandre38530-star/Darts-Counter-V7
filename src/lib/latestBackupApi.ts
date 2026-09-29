@@ -14,7 +14,7 @@ export type AccountLatestBackup = {
 };
 
 export async function getAccountLatestBackup(): Promise<AccountLatestBackup | null> {
-  const res: any = await apiGet("/account/backups/latest", { manual: true, timeoutMs: 8_000 });
+  const res: any = await apiGet("/account/backups/latest", { manual: true, timeoutMs: 2_500 });
   return res?.latest || null;
 }
 

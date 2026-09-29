@@ -772,11 +772,15 @@ export async function restoreLatestBackupForSignedInUser(
     try {
       if (!accountStillActive(uid)) return false;
       emitAccountSync(uid, "search", 12, "Recherche de la dernière sauvegarde du compte…");
+      // V126 FIX : le pointeur serveur est une simple lecture de métadonnées.
+      // Il ne doit jamais immobiliser le téléphone plusieurs secondes à 12 %.
+      // On fait progresser immédiatement l'UI puis on borne très court cette lecture.
+      emitAccountSync(uid, "search", 24, "Lecture de l’index de sauvegarde…");
       // V115 : chemin rapide. Le compte possède un pointeur serveur vers SA dernière
       // sauvegarde réussie. Aucun scan NAS/R2/Drive n'est lancé lorsqu'il existe.
       const direct = await withSyncTimeout(
         getDirectLatestCandidate(uid),
-        9_000,
+        3_200,
         "Lecture du pointeur de sauvegarde",
       ).catch(() => ({ pointer: null, candidate: null }));
       if (!accountStillActive(uid)) {
