@@ -369,6 +369,7 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
   const sideName = cradosSideName(s, sideId);
   const team = cradosTeamForPlayer(s, playerId);
   const ds = (dartsRaw || []).slice(0, 3);
+  const processedDarts: GameDart[] = [];
   const st = s.statsByPlayer[playerId] = { ...blankStats(), ...(s.statsByPlayer[playerId] || {}) };
   const before = Number(s.dirt[sideId] || 0);
   const events: string[] = [];
@@ -405,7 +406,10 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     return delta;
   };
 
+  const hasNewElimination = () => cradosSideIds(s).some((candidate) => Boolean(s.eliminated[candidate]) && !eliminatedBefore.has(String(candidate)));
+
   for (const d of ds) {
+    processedDarts.push(d);
     st.darts += 1;
     if (!d || d.bed === "MISS") {
       st.misses += 1;
@@ -441,6 +445,7 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
         st.bullSplashInflicted += splashTotal;
         if (touched.length) events.push(`${d.bed === "IB" ? "DBULL" : "BULL"} PROPAGATION : ${touched.join(" · ")}`);
       }
+      if (s.config.rules.endOnFirstMaxDirt && hasNewElimination()) break;
       continue;
     }
 
@@ -491,6 +496,7 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
         } else {
           events.push(`N°${n} : ${mine}/${s.config.rules.layersToOwn} touches pour ${sideName}`);
         }
+        if (s.config.rules.endOnFirstMaxDirt && hasNewElimination()) break;
         continue;
       }
 
@@ -546,7 +552,7 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
     teamId: team?.id || null,
     leg: s.legIndex + 1,
     turn: s.turnIndex + 1,
-    darts: ds,
+    darts: processedDarts,
     events,
     dirtBefore: before,
     dirtAfter: after,
@@ -568,6 +574,10 @@ export function playCradosVisit(input: CradosState, dartsRaw: GameDart[]): Crado
 
   const alive = aliveSideIds(s);
   if (alive.length === 1) return winLeg(s, alive[0]);
+  if (alive.length === 0) {
+    const fallbackWinner = pickCleanestSide(s);
+    if (fallbackWinner) return winLeg(s, fallbackWinner);
+  }
   s.activePlayerIndex = nextAliveIndex(s, s.activePlayerIndex);
   return s;
 }

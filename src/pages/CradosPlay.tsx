@@ -172,9 +172,13 @@ function playCradosStateTransitionSfx(previous: CradosState, next: CradosState) 
     ]));
     const newlyEliminated = sideIds.filter((sideId) => !previous?.eliminated?.[sideId] && Boolean(next?.eliminated?.[sideId]));
     const wonLeg = Object.keys(next?.legWins || {}).some((sideId) => Number(next?.legWins?.[sideId] || 0) > Number(previous?.legWins?.[sideId] || 0));
+    const latestVisitEvents = lastEvents(next?.visits || []).map((event: any) => String(event || ""));
+    // En BO3/BO5, winLeg() réinitialise immédiatement eliminated[] pour la manche suivante.
+    // On conserve donc la détection via le journal de la dernière volée afin de ne jamais perdre le SFX d'élimination.
+    const eliminatedInLatestVisit = latestVisitEvents.some((event: string) => /est trop CRADO|jauge maximale/i.test(event));
 
     // Les sons de fin sont prioritaires pour éviter un empilement sonore illisible.
-    if (newlyEliminated.length) {
+    if (newlyEliminated.length || (wonLeg && eliminatedInLatestVisit)) {
       playCradosSfx("eliminated");
       if (next.phase === "finished" && previous.phase !== "finished") {
         window.setTimeout(() => { try { playCradosVictorySignature(cradosVictoryMoodFromState(next), true); } catch {} }, 4100);
@@ -681,7 +685,7 @@ function PlayersButton({ state, profiles, profileById, colorByPlayerId, colorByS
 function PlayersModal({ state, profiles, profileById, colorByPlayerId, colorBySideId, config, onClose, teamMode, sideById }: any) {
   return <div className="crados-players-modal" role="dialog" aria-modal="true" aria-label="Liste des joueurs CRADOS" onClick={onClose}>
     <div className="crados-players-modal__card" onClick={(e) => e.stopPropagation()}>
-      <header><div><b>ORDRE DE JEU</b><span>{teamMode ? "Score CRASSE partagé par équipe · zones personnelles" : "Score CRASSE, zones et manches"}</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
+      <header><div><b>ORDRE DE JEU</b><span>{teamMode ? "Score CRASSE et zones partagés par équipe" : "Score CRASSE, zones et manches"}</span></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>
       <div className="crados-players-modal__list">
         {state.players.map((p: any, i: number) => {
           const prof = profileById.get(String(p.id)) || profiles[i] || p;
@@ -1074,14 +1078,32 @@ function buildCradosActionVoice(previous: CradosState, next: CradosState): Crado
       return { text: `Attention ${shooterName}. ${dirtAfter} sur ${dirtLimit}. La jauge se remplit.`, delayMs: 900, importance: "major" };
     }
 
+    const blockOpponentPenalty = cradosEventSum(events, /N°\d+\s+adverse\s*:\s*\+(\d+)\s+CRASSE/i);
+    const flipOpponentPenalty = cradosEventSum(events, /Contact avec la crasse adverse\s*:\s*\+(\d+)\s+CRASSE/i);
+    const opponentPenalty = blockOpponentPenalty + flipOpponentPenalty;
+    const doubleWashTotal = cradosEventSum(events, /DOUBLE DOUCHE\s*:\s*[−-](\d+)/i);
+    const hasOpponentTriple = darts.some((dart: any) => (String(dart?.bed || "").toUpperCase() === "T" || Number(dart?.mult || 0) === 3)) && opponentPenalty > 0;
+    const hasOpponentDouble = darts.some((dart: any) => (String(dart?.bed || "").toUpperCase() === "D" || Number(dart?.mult || 0) === 2) && String(dart?.bed || "").toUpperCase() !== "IB") && opponentPenalty > 0;
+    if (hasOpponentDouble) {
+      return {
+        text: doubleWashTotal > 0
+          ? `Double sur zone adverse. Douche moins ${doubleWashTotal}, mais plus ${opponentPenalty} de crasse.`
+          : `Double sur zone adverse. Plus ${opponentPenalty} de crasse.`,
+        delayMs: 850,
+        importance: "normal",
+      };
+    }
+    if (hasOpponentTriple) {
+      return { text: `Triple sur zone adverse. Plus ${opponentPenalty} de crasse.`, delayMs: 850, importance: "normal" };
+    }
+
     const dbullWash = cradosEventSum(events, /DBULL DOUCHE\s*:\s*[−-](\d+)/i);
     if (dbullWash > 0) return { text: `Double Bull. Douche, moins ${dbullWash} de crasse.`, delayMs: 1200, importance: "normal" };
 
     const bullWash = cradosEventSum(events.filter((event) => /^BULL DOUCHE/i.test(event)), /BULL DOUCHE\s*:\s*[−-](\d+)/i);
     if (bullWash > 0) return { text: `Bull. Douche, moins ${bullWash} de crasse.`, delayMs: 1200, importance: "normal" };
 
-    const doubleWash = cradosEventSum(events, /DOUBLE DOUCHE\s*:\s*[−-](\d+)/i);
-    if (doubleWash > 0) return { text: `Douche double. Moins ${doubleWash} de crasse.`, delayMs: 1000, importance: "normal" };
+    if (doubleWashTotal > 0) return { text: `Douche double. Moins ${doubleWashTotal} de crasse.`, delayMs: 1000, importance: "normal" };
 
     if (events.some((event) => /PROPAGATION/i.test(event))) {
       return { text: `Bull propre. La crasse se propage chez les adversaires.`, delayMs: 1200, importance: "major" };
@@ -1327,10 +1349,25 @@ export default function CradosPlay(props: any) {
     const compactConfig = compactCradosResumeConfig(s.config);
     const resumeState = compactCradosResumeState(s);
     const ranking = buildCradosRanking({ state: s, profiles, profileById: new Map(profiles.map((p: any) => [String(p.id), p])), colorByPlayerId, colorBySideId, teamMode: isTeams });
+    const teamRanking = isTeams
+      ? Object.values(perTeam || {}).map((row: any, index: number) => ({
+          ...row,
+          sideId: String(row?.id || ""),
+          zones: Number(row?.sectorsClaimed || 0),
+          steals: Number(row?.sectorsStolen || 0),
+          layers: Number(row?.layersPlaced || 0),
+          legs: Number(row?.wins || 0),
+          order: index,
+        })).sort((a: any, b: any) => Number(a.eliminated) - Number(b.eliminated) || Number(a.dirt || 0) - Number(b.dirt || 0) || Number(b.zones || 0) - Number(a.zones || 0) || Number(b.legs || 0) - Number(a.legs || 0) || a.order - b.order)
+      : undefined;
     const winnerSummaryId = String(s.winnerId || "");
-    const winnerSummaryRow = ranking.find((row: any) => String(row.sideId || row.id) === winnerSummaryId || String(row.id) === winnerSummaryId) || ranking[0] || null;
+    const winnerSummaryRow = isTeams
+      ? (teamRanking || []).find((row: any) => String(row.sideId || row.id) === winnerSummaryId) || (teamRanking || [])[0] || null
+      : ranking.find((row: any) => String(row.sideId || row.id) === winnerSummaryId || String(row.id) === winnerSummaryId) || ranking[0] || null;
     const winnerSummaryAccuracy = winnerSummaryRow?.darts ? Math.round((Number(winnerSummaryRow?.hits || 0) / Math.max(1, Number(winnerSummaryRow?.darts || 0))) * 100) : 0;
-    const winnerBadge = resolveCradosWinnerBadge({ dirtLimit: Number(s.config?.rules?.dirtLimit || 1), winnerRow: winnerSummaryRow, winnerAccuracy: winnerSummaryAccuracy });
+    const winnerBadge = status === "finished" && winnerSummaryId
+      ? resolveCradosWinnerBadge({ dirtLimit: Number(s.config?.rules?.dirtLimit || 1), winnerRow: winnerSummaryRow, winnerAccuracy: winnerSummaryAccuracy })
+      : null;
     const winnerBadgeSummary = winnerBadge ? { key: winnerBadge.key, title: winnerBadge.title, icon: winnerBadge.icon, accent: winnerBadge.accent, text: winnerBadge.text, image: winnerBadge.image, reason: winnerBadge.reason } : null;
     return {
       id: matchIdRef.current, matchId: matchIdRef.current, resumeId: matchIdRef.current,
@@ -1348,6 +1385,7 @@ export default function CradosPlay(props: any) {
         totalDirtInflicted: Object.values(s.statsByPlayer || {}).reduce((sum: number, row: any) => sum + Number(row?.dirtInflicted || 0), 0),
         totalDirtWashed: Object.values(s.statsByPlayer || {}).reduce((sum: number, row: any) => sum + Number(row?.dirtWashed || 0), 0),
         ranking,
+        teamRanking,
         winnerBadge: winnerBadgeSummary,
       },
       resume: { mode: "crados", config: compactConfig, state: resumeState, currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, updatedAt: Date.now() },
@@ -1433,14 +1471,26 @@ export default function CradosPlay(props: any) {
   const setCurrentThrowWithSfx = React.useCallback((update: any) => {
     setCurrentThrow((previous: UIDart[]) => {
       const resolved = typeof update === "function" ? update(previous) : update;
-      const next = Array.isArray(resolved) ? resolved.slice(0, 3) : previous;
+      const requested = Array.isArray(resolved) ? resolved.slice(0, 3) : previous;
+      // Le moteur décide combien de fléchettes sont réellement jouables : si la première/2e
+      // remplit une jauge et termine la manche, on n'accepte ni ne sonorise les fléchettes suivantes.
+      let next = requested;
+      try {
+        const preview = playCradosVisit(state, requested.map(uiToGameDart));
+        const processed = preview?.visits?.[preview.visits.length - 1]?.darts?.length;
+        if (Number.isFinite(processed) && Number(processed) < requested.length) next = requested.slice(0, Math.max(0, Number(processed)));
+      } catch {}
       if (next.length > previous.length) {
         const added = next.slice(previous.length);
         added.forEach((dart: UIDart, index: number) => {
-          if (config.sfxEnabled !== false) {
-            if (index === 0) playCradosDartSfx(dart, true, { state, activeSideId });
-            else window.setTimeout(() => playCradosDartSfx(dart, true, { state, activeSideId }), index * 140);
+          if (config.sfxEnabled === false) return;
+          const absoluteIndex = previous.length + index;
+          let contextState: any = state;
+          if (absoluteIndex > 0) {
+            try { contextState = playCradosVisit(state, next.slice(0, absoluteIndex).map(uiToGameDart)); } catch {}
           }
+          if (index === 0) playCradosDartSfx(dart, true, { state: contextState, activeSideId });
+          else window.setTimeout(() => playCradosDartSfx(dart, true, { state: contextState, activeSideId }), index * 140);
         });
       }
       return next;
@@ -1586,9 +1636,19 @@ export default function CradosPlay(props: any) {
     const t = window.setTimeout(() => {
       try {
         const darts = pickCradosBotDarts(state, activeBotLevel || config.botLevel);
-        const audioSpan = playCradosDartSequence(darts, 170, config.sfxEnabled !== false, { state, activeSideId });
+        const nextState = playCradosVisit(state, darts);
+        const processedCount = Number(nextState?.visits?.[nextState.visits.length - 1]?.darts?.length || 0);
+        const effectiveDarts = darts.slice(0, processedCount || darts.length);
+        const audioSpan = playCradosDartSequence(effectiveDarts, 170, config.sfxEnabled !== false, {
+          state,
+          activeSideId,
+          stateForDart: (index: number) => {
+            if (index <= 0) return state;
+            try { return playCradosVisit(state, effectiveDarts.slice(0, index)); } catch { return state; }
+          },
+        });
         window.setTimeout(() => {
-          try { commit(playCradosVisit(state, darts)); }
+          try { commit(nextState); }
           finally { botBusy.current = false; }
         }, audioSpan + 120);
       } catch {

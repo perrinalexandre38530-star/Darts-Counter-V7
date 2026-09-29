@@ -94,6 +94,8 @@ export function playCradosVictorySignature(mood: CradosVictoryMood = "solid", en
 export type CradosDartSfxContext = {
   state?: any;
   activeSideId?: string | null;
+  /** État exact juste avant une fléchette d'une séquence (utile si la 1re fléchette vole/prend une zone). */
+  stateForDart?: (index: number, dart: any) => any;
 };
 
 function cradosDartNumber(dart: any) {
@@ -148,8 +150,11 @@ export function playCradosDartSequence(darts: any[], gapMs = 170, enabled = true
   const rows = Array.isArray(darts) ? darts.slice(0, 3) : [];
   if (!enabled) return 0;
   rows.forEach((dart, index) => {
-    if (index === 0) playCradosDartSfx(dart, true, context);
-    else window.setTimeout(() => playCradosDartSfx(dart, true, context), index * gapMs);
+    const scopedContext = context?.stateForDart
+      ? { ...context, state: context.stateForDart(index, dart), stateForDart: undefined }
+      : context;
+    if (index === 0) playCradosDartSfx(dart, true, scopedContext);
+    else window.setTimeout(() => playCradosDartSfx(dart, true, scopedContext), index * gapMs);
   });
   return rows.length ? Math.max(0, (rows.length - 1) * gapMs) : 0;
 }
