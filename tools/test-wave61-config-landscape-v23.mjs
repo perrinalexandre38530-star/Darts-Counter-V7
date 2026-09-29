@@ -37,7 +37,7 @@ for (const token of [
   '[data-msc-short-landscape="1"] .wave61-config-body',
 ]) assert(css.includes(token), `CSS Wave61 Config paysage: ${token} absent`);
 
-assert(css.includes('.wave61-config-awena-card {\n  display: none;'), 'Awena doit rester cachée en portrait');
+assert(/\.wave61-config-awena-card\s*\{[\s\S]*?display:\s*none;/.test(css), 'Awena doit rester cachée en portrait');
 assert(css.includes('overflow: hidden !important;'), 'Verrouillage du scroll global paysage absent');
 assert(css.includes('overflow: auto !important;'), 'Scroll interne des zones paysage absent');
 

@@ -1485,6 +1485,8 @@ export default function Games({ setTab, params }: Props) {
         <img
           src={src}
           alt=""
+          loading="lazy"
+          decoding="async"
           style={{
             position: "absolute",
             inset: 0,
