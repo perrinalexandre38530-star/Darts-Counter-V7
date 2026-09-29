@@ -588,6 +588,14 @@ export const zh: Dict = {
   "lang.sr": "塞尔维亚语",
   "lang.hr": "克罗地亚语",
   "lang.cs": "捷克语",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': '开始游戏前，请选择玩家以及该模式提供的设置。你可以在配置界面中调整比赛形式和可用的游戏参数。',
+  'landing.rules.configTeamsNarrative': '如果采用团队模式，可以在开始前创建或选择队伍。',
+  'landing.rules.configBotsNarrative': '还可以添加 AI 机器人来补充参与者，或与电脑对战。',
+  'landing.rules.isPreparing': '目前正在开发中。',
+  'landing.rules.isAvailableIn': '已在 MULTISPORTS SCORING 中提供。',
+  'landing.darts.developmentCard': '该模式已列入 MSS 目录，游戏引擎正在开发中。',
 };
 
 export default zh;

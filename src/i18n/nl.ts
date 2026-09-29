@@ -599,6 +599,14 @@ export const nl: Dict = {
   "lang.sr": "Servisch",
   "lang.hr": "Kroatisch",
   "lang.cs": "Tsjechisch",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Kies vóór de start de spelers en de instellingen die voor deze modus beschikbaar zijn. Je kunt het wedstrijdformaat en de spelparameters aanpassen via het configuratiescherm.',
+  'landing.rules.configTeamsNarrative': 'Bij teamspel kun je vóór de start teams samenstellen of selecteren.',
+  'landing.rules.configBotsNarrative': 'Je kunt ook AI-bots toevoegen om deelnemers aan te vullen of tegen de computer te spelen.',
+  'landing.rules.isPreparing': 'is momenteel in ontwikkeling.',
+  'landing.rules.isAvailableIn': 'is beschikbaar in MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Modus opgenomen in de MSS-catalogus. De game-engine is in ontwikkeling.',
 };
 
 export default nl;

@@ -599,6 +599,14 @@ export const cs: Dict = {
   "lang.sr": "Srbština",
   "lang.hr": "Chorvatština",
   "lang.cs": "Čeština",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Před spuštěním vyberte hráče a nastavení dostupná pro tento režim. Na konfigurační obrazovce můžete upravit formát zápasu a dostupné herní parametry.',
+  'landing.rules.configTeamsNarrative': 'Při týmové hře můžete před startem vytvořit nebo vybrat týmy.',
+  'landing.rules.configBotsNarrative': 'Lze také přidat AI boty pro doplnění účastníků nebo hru proti počítači.',
+  'landing.rules.isPreparing': 'je momentálně ve vývoji.',
+  'landing.rules.isAvailableIn': 'je k dispozici v MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Režim je uveden v katalogu MSS. Herní engine je ve vývoji.',
 };
 
 export default cs;

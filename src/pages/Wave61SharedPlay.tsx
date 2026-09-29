@@ -435,13 +435,20 @@ export default function Wave61SharedPlay(props: any) {
       finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined,
       winnerId: s.winnerId,
       winnerTeamId: s.winnerTeamId,
-      players: profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null })),
+      players: s.players.map((player: any, index: number) => {
+        const profile: any = profileById.get(String(player.id)) || player;
+        return {
+          id: String(player.id),
+          name: playerName(profile, index) || String(player.name || `Joueur ${index + 1}`),
+          avatarDataUrl: profile?.avatarDataUrl ?? null,
+        };
+      }),
       game: { mode: spec.id, modeId: spec.id, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION },
       summary: { mode: spec.id, modeId: spec.id, family: s.family, winnerId: s.winnerId, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config },
       resume: { mode: "wave61", modeId: spec.id, config: s.config, state: cloneWave61State(s), updatedAt: Date.now() },
       payload: { kind: spec.id, mode: spec.id, modeId: spec.id, sport: "darts", config: s.config, stateSnapshot: cloneWave61State(s), visits: s.visits, stats: { players: playerStats, match: matchStats } },
     };
-  }, [profiles, spec.id]);
+  }, [profiles, profileById, spec.id]);
 
   const persist = React.useCallback((s: Wave61State) => {
     if (s.phase === "finished") {

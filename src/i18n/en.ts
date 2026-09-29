@@ -673,6 +673,14 @@ export const en: Dict = {
   'landing.hero.opponents': 'Opponents',
   'landing.hero.progress': 'Progress',
   'landing.languages.select': 'Choose language',
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Before starting the game, choose the players and the settings offered by this mode. You can adjust the match format and the available gameplay parameters from its configuration screen.',
+  'landing.rules.configTeamsNarrative': 'If you play in teams, you can create or select the teams before starting.',
+  'landing.rules.configBotsNarrative': 'AI bots can also be added to complete the participants or play against the computer.',
+  'landing.rules.isPreparing': 'is currently in development.',
+  'landing.rules.isAvailableIn': 'is available in MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Mode listed in the MSS catalogue. Game engine development is in progress.',
 };
 
 export default en;

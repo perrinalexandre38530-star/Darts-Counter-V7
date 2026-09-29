@@ -570,6 +570,14 @@ export const de: Dict = {
   "lang.sr": "Serbisch",
   "lang.hr": "Kroatisch",
   "lang.cs": "Tschechisch",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Vor dem Start wählst du die Spieler und die für diesen Modus verfügbaren Einstellungen. Spielformat und Spielparameter lassen sich im Konfigurationsbildschirm anpassen.',
+  'landing.rules.configTeamsNarrative': 'Bei Teamspielen kannst du die Teams vor dem Start zusammenstellen oder auswählen.',
+  'landing.rules.configBotsNarrative': 'KI-Bots können ebenfalls hinzugefügt werden, um Teilnehmer zu ergänzen oder gegen den Computer zu spielen.',
+  'landing.rules.isPreparing': 'befindet sich derzeit in Entwicklung.',
+  'landing.rules.isAvailableIn': 'ist in MULTISPORTS SCORING verfügbar.',
+  'landing.darts.developmentCard': 'Im MSS-Katalog aufgeführter Modus. Die Spiel-Engine befindet sich in Entwicklung.',
 };
 
 export default de;

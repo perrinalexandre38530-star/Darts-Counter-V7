@@ -614,6 +614,14 @@ export const it: Dict = {
   "lang.sr": "Serbo",
   "lang.hr": "Croato",
   "lang.cs": "Ceco",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Prima di iniziare scegli i giocatori e le impostazioni disponibili per questa modalità. Puoi adattare il formato della partita e i parametri di gioco dalla schermata di configurazione.',
+  'landing.rules.configTeamsNarrative': "Se giochi a squadre, puoi creare o selezionare le squadre prima dell'avvio.",
+  'landing.rules.configBotsNarrative': 'Puoi anche aggiungere bot IA per completare i partecipanti o giocare contro il computer.',
+  'landing.rules.isPreparing': 'è attualmente in sviluppo.',
+  'landing.rules.isAvailableIn': 'è disponibile in MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Modalità presente nel catalogo MSS. Il motore di gioco è in fase di sviluppo.',
 };
 
 export default it;

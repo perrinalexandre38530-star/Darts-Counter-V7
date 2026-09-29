@@ -620,6 +620,14 @@ export const ru: Dict = {
   "lang.sr": "Сербский",
   "lang.hr": "Хорватский",
   "lang.cs": "Чешский",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Перед началом выберите игроков и настройки, доступные для этого режима. Формат матча и игровые параметры можно изменить на экране конфигурации.',
+  'landing.rules.configTeamsNarrative': 'При командной игре команды можно создать или выбрать до начала матча.',
+  'landing.rules.configBotsNarrative': 'Также можно добавить ИИ-ботов, чтобы дополнить состав участников или играть против компьютера.',
+  'landing.rules.isPreparing': 'сейчас находится в разработке.',
+  'landing.rules.isAvailableIn': 'доступен в MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Режим указан в каталоге MSS. Игровой движок находится в разработке.',
 };
 
 export default ru;

@@ -600,4 +600,12 @@ export const no: Dict = {
   "lang.sr": "Serbisk",
   "lang.hr": "Kroatisk",
   "lang.cs": "Tsjekkisk",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Før kampen starter velger du spillere og innstillingene som er tilgjengelige i denne modusen. Kampformat og spillparametere kan tilpasses på konfigurasjonsskjermen.',
+  'landing.rules.configTeamsNarrative': 'Hvis dere spiller på lag, kan lagene opprettes eller velges før start.',
+  'landing.rules.configBotsNarrative': 'AI-boter kan også legges til for å fylle ut deltakerne eller spille mot datamaskinen.',
+  'landing.rules.isPreparing': 'er for tiden under utvikling.',
+  'landing.rules.isAvailableIn': 'er tilgjengelig i MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Modusen er oppført i MSS-katalogen. Spillmotoren er under utvikling.',
 };

@@ -593,6 +593,14 @@ export const hr: Dict = {
   "lang.sr": "Srpski",
   "lang.hr": "Hrvatski",
   "lang.cs": "Češki",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Prije početka odaberite igrače i postavke dostupne u ovom načinu. Format meča i parametre igre možete prilagoditi na zaslonu konfiguracije.',
+  'landing.rules.configTeamsNarrative': 'Ako igrate timski, timove možete sastaviti ili odabrati prije početka.',
+  'landing.rules.configBotsNarrative': 'Možete dodati i AI botove kako biste popunili sudionike ili igrali protiv računala.',
+  'landing.rules.isPreparing': 'trenutačno je u razvoju.',
+  'landing.rules.isAvailableIn': 'dostupan je u MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Način je naveden u MSS katalogu. Razvoj mehanizma igre je u tijeku.',
 };
 
 export default hr;

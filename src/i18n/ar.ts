@@ -603,6 +603,14 @@ export const ar: Dict = {
   "lang.sr": "الصربية",
   "lang.hr": "الكرواتية",
   "lang.cs": "التشيكية",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'قبل بدء المباراة، اختر اللاعبين والإعدادات المتاحة لهذا الوضع. يمكنك ضبط صيغة المباراة ومعلمات اللعب المتاحة من شاشة الإعداد.',
+  'landing.rules.configTeamsNarrative': 'إذا كنت تلعب ضمن فرق، يمكنك إنشاء الفرق أو اختيارها قبل البدء.',
+  'landing.rules.configBotsNarrative': 'يمكن أيضًا إضافة روبوتات الذكاء الاصطناعي لإكمال المشاركين أو اللعب ضد الكمبيوتر.',
+  'landing.rules.isPreparing': 'قيد التطوير حاليًا.',
+  'landing.rules.isAvailableIn': 'متاح في MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'وضع مُدرج في كتالوج MSS. محرك اللعبة قيد التطوير.',
 };
 
 export default ar;

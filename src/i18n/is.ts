@@ -597,6 +597,14 @@ export const is: Dict = {
   "lang.sr": "Serbneska",
   "lang.hr": "Króatíska",
   "lang.cs": "Tékkneska",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Áður en leikurinn hefst velurðu leikmenn og þær stillingar sem eru í boði fyrir þennan leikham. Hægt er að aðlaga leikfyrirkomulag og leikbreytur á stillingaskjánum.',
+  'landing.rules.configTeamsNarrative': 'Ef spilað er í liðum er hægt að búa til eða velja lið áður en leikur hefst.',
+  'landing.rules.configBotsNarrative': 'Einnig er hægt að bæta við gervigreindarbotum til að fylla upp í þátttakendur eða spila gegn tölvunni.',
+  'landing.rules.isPreparing': 'er nú í þróun.',
+  'landing.rules.isAvailableIn': 'er í boði í MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Leikhamurinn er skráður í MSS-skránni. Leikjavélin er í þróun.',
 };
 
 export default is;

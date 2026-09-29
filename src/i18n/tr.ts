@@ -607,6 +607,14 @@ export const tr: Dict = {
   "lang.sr": "Sırpça",
   "lang.hr": "Hırvatça",
   "lang.cs": "Çekçe",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Oyunu başlatmadan önce oyuncuları ve bu modda sunulan ayarları seçin. Maç formatını ve mevcut oyun parametrelerini yapılandırma ekranından ayarlayabilirsiniz.',
+  'landing.rules.configTeamsNarrative': 'Takım halinde oynuyorsanız başlamadan önce takımları oluşturabilir veya seçebilirsiniz.',
+  'landing.rules.configBotsNarrative': 'Katılımcıları tamamlamak ya da bilgisayara karşı oynamak için yapay zekâ botları da eklenebilir.',
+  'landing.rules.isPreparing': 'şu anda geliştiriliyor.',
+  'landing.rules.isAvailableIn': "MULTISPORTS SCORING'de kullanılabilir.",
+  'landing.darts.developmentCard': 'MSS kataloğunda listelenen mod. Oyun motoru geliştiriliyor.',
 };
 
 export default tr;

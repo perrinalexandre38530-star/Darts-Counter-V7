@@ -543,6 +543,14 @@ export const hi: Dict = {
   "lang.sr": "सर्बियाई",
   "lang.hr": "क्रोएशियाई",
   "lang.cs": "चेक",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'खेल शुरू करने से पहले खिलाड़ियों और इस मोड में उपलब्ध सेटिंग्स को चुनें। कॉन्फ़िगरेशन स्क्रीन से मैच का प्रारूप और उपलब्ध गेम पैरामीटर बदले जा सकते हैं।',
+  'landing.rules.configTeamsNarrative': 'टीम में खेलने पर शुरुआत से पहले टीम बनाई या चुनी जा सकती हैं।',
+  'landing.rules.configBotsNarrative': 'प्रतिभागियों को पूरा करने या कंप्यूटर के विरुद्ध खेलने के लिए AI बॉट भी जोड़े जा सकते हैं।',
+  'landing.rules.isPreparing': 'अभी विकास में है।',
+  'landing.rules.isAvailableIn': 'MULTISPORTS SCORING में उपलब्ध है।',
+  'landing.darts.developmentCard': 'यह मोड MSS कैटलॉग में सूचीबद्ध है। गेम इंजन का विकास जारी है।',
 };
 
 export default hi;

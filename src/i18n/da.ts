@@ -600,4 +600,12 @@ export const da: Dict = {
   "lang.sr": "Serbisk",
   "lang.hr": "Kroatisk",
   "lang.cs": "Tjekkisk",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Før kampen starter, vælger du spillere og de indstillinger, der findes i denne tilstand. Kampformat og spilparametre kan tilpasses på konfigurationsskærmen.',
+  'landing.rules.configTeamsNarrative': 'Hvis I spiller på hold, kan holdene oprettes eller vælges før start.',
+  'landing.rules.configBotsNarrative': 'AI-bots kan også tilføjes for at udfylde deltagerne eller spille mod computeren.',
+  'landing.rules.isPreparing': 'er i øjeblikket under udvikling.',
+  'landing.rules.isAvailableIn': 'er tilgængelig i MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Tilstanden er registreret i MSS-kataloget. Spilmotoren er under udvikling.',
 };

@@ -551,6 +551,14 @@ export const ro: Dict = {
   "lang.sr": "Sârbă",
   "lang.hr": "Croată",
   "lang.cs": "Cehă",
+
+  // Public landing rule-sheet copy — V130
+  'landing.rules.configNarrative': 'Înainte de a începe, alege jucătorii și setările disponibile pentru acest mod. Poți adapta formatul partidei și parametrii de joc din ecranul de configurare.',
+  'landing.rules.configTeamsNarrative': 'Dacă joci pe echipe, poți crea sau selecta echipele înainte de start.',
+  'landing.rules.configBotsNarrative': 'Poți adăuga și boți IA pentru a completa participanții sau pentru a juca împotriva calculatorului.',
+  'landing.rules.isPreparing': 'este în curs de dezvoltare.',
+  'landing.rules.isAvailableIn': 'este disponibil în MULTISPORTS SCORING.',
+  'landing.darts.developmentCard': 'Mod inclus în catalogul MSS. Motorul jocului este în curs de dezvoltare.',
 };
 
 export default ro;
