@@ -397,6 +397,7 @@ export default function Wave61SharedPlay(props: any) {
   const buildRecord = React.useCallback((s: Wave61State, status: "in_progress" | "finished") => {
     const rankings = buildWave61EndRows(s, profiles);
     const matchStats = buildWave61MatchStats(s);
+    const winnerIds = rankings.filter((row: any) => row.winner).map((row: any) => row.id);
     const playerStats = Object.fromEntries(rankings.map((row: any) => [row.id, {
       id: row.id,
       name: row.name,
@@ -434,6 +435,7 @@ export default function Wave61SharedPlay(props: any) {
       updatedAt: Date.now(),
       finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined,
       winnerId: s.winnerId,
+      winnerIds,
       winnerTeamId: s.winnerTeamId,
       players: s.players.map((player: any, index: number) => {
         const profile: any = profileById.get(String(player.id)) || player;
@@ -444,9 +446,9 @@ export default function Wave61SharedPlay(props: any) {
         };
       }),
       game: { mode: spec.id, modeId: spec.id, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION },
-      summary: { mode: spec.id, modeId: spec.id, family: s.family, winnerId: s.winnerId, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config },
+      summary: { mode: spec.id, modeId: spec.id, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config },
       resume: { mode: "wave61", modeId: spec.id, config: s.config, state: cloneWave61State(s), updatedAt: Date.now() },
-      payload: { kind: spec.id, mode: spec.id, modeId: spec.id, sport: "darts", config: s.config, stateSnapshot: cloneWave61State(s), visits: s.visits, stats: { players: playerStats, match: matchStats } },
+      payload: { kind: spec.id, mode: spec.id, modeId: spec.id, sport: "darts", winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, config: s.config, stateSnapshot: cloneWave61State(s), visits: s.visits, stats: { players: playerStats, match: matchStats } },
     };
   }, [profiles, profileById, spec.id]);
 

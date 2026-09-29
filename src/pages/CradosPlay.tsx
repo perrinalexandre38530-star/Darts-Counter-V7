@@ -15,6 +15,7 @@ import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { cloneCradosState, createCradosState, normalizeCradosConfig, pickCradosBotDarts, playCradosVisit, cradosSideIdForPlayer, cradosSideName, isCradosTeamMode, type CradosState } from "../lib/gameEngines/cradosEngine";
 import { cradosBotLevelForProfile } from "../lib/dartsCradosBots";
+import { resolveCradosWinnerBadge } from "../lib/cradosBadgeAssets";
 import { playCradosDartSequence, playCradosDartSfx, playCradosSfx, playCradosVictorySignature, unlockCradosAudio } from "../lib/cradosSfx";
 import {
   Meter,
@@ -799,41 +800,7 @@ function CradosEndPanel({ state, profiles, sideProfiles, rankingRows, teamMode, 
           : { title: "VICTOIRE SOLIDE", subtitle: `${String(winnerRow?.name || '#1').toUpperCase()} a contrôlé la partie`, tone: "solid" }
     : { title: "VICTOIRE NETTE", subtitle: `partie remportée sans véritable opposition finale`, tone: "solid" };
 
-  const badgeCandidates = [
-    {
-      key: 'clean',
-      title: 'CLEAN MASTER',
-      icon: '✨',
-      accent: '#73e5c1',
-      score: Math.max(0, dirtLimit - Number(winnerRow?.dirt || 0)) * 2 + Number(winnerRow?.dirtWashed || 0) * 3,
-      text: 'le roi du nettoyage et de la jauge sous contrôle',
-    },
-    {
-      key: 'thief',
-      title: 'VOLEUR SUPRÊME',
-      icon: '🥷',
-      accent: '#ffd866',
-      score: Number(winnerRow?.steals || 0) * 7 + Number(winnerRow?.zones || 0) * 2,
-      text: 'spécialiste des secteurs arrachés aux adversaires',
-    },
-    {
-      key: 'toxic',
-      title: 'BOUCHER TOXIQUE',
-      icon: '☣',
-      accent: '#ff8f80',
-      score: Number(winnerRow?.dirtInflicted || 0) * 4 + Number(winnerRow?.bestVisitImpact || 0) * 2,
-      text: 'a étouffé la concurrence sous la crasse',
-    },
-    {
-      key: 'sniper',
-      title: 'SNIPER CRADOS',
-      icon: '🎯',
-      accent: '#8fc8ff',
-      score: winnerAccuracy * .7 + Number(winnerRow?.triples || 0) * 3 + Number(winnerRow?.dbulls || 0) * 6,
-      text: 'précision et impacts lourds au moment décisif',
-    },
-  ];
-  const winnerBadge = badgeCandidates.sort((a, b) => b.score - a.score)[0];
+  const winnerBadge = resolveCradosWinnerBadge({ dirtLimit, winnerRow, winnerAccuracy });
 
   const awards = [
     { title: "ROI DU VOL", subtitle: "zones dérobées", key: "steals", suffix: "vols", accent: "#ffd866", icon: "⚡" },
@@ -917,7 +884,14 @@ function CradosEndPanel({ state, profiles, sideProfiles, rankingRows, teamMode, 
           <div className="crados-end__title" style={{ color: winnerAccent }}>{String(winnerProfile?.name || "VICTOIRE").toUpperCase()}</div>
           <div className="crados-end__subtitle">reste le plus propre après {durationMin} min · {totalDarts} fléchettes · {teamMode ? "victoire d'équipe" : "victoire individuelle"}</div>
           <div className="crados-end__winner-kicker" style={{ borderColor: `${winnerAccent}44`, color: winnerAccent }}>{winnerLead > 0 && runnerUpRow ? `+${winnerLead} d'avance sur ${String(runnerUpRow.name || "#2").toUpperCase()}` : `victoire maîtrisée du début à la fin`}</div>
-          <div className="crados-end__winner-special" style={{ borderColor: `${winnerBadge.accent}55` }}><span style={{ color: winnerBadge.accent }}>{winnerBadge.icon}</span><div><small>BADGE SPÉCIAL</small><b style={{ color: winnerBadge.accent }}>{winnerBadge.title}</b><em>{winnerBadge.text}</em></div></div>
+          <div className="crados-end__winner-special" style={{ borderColor: `${winnerBadge.accent}55` }}>
+            <div className="crados-end__winner-special-art"><img src={winnerBadge.image} alt={winnerBadge.title} loading="lazy" /></div>
+            <div className="crados-end__winner-special-copy">
+              <small>BADGE SPÉCIAL</small>
+              <b style={{ color: winnerBadge.accent }}>{winnerBadge.title}</b>
+              <em>{winnerBadge.text}</em>
+            </div>
+          </div>
           <div className="crados-end__winner-chips"><span>CRASSE {winnerRow ? `${winnerRow.dirt}/${dirtLimit}` : `0/${dirtLimit}`}</span><span>{winnerRow?.zones || 0} ZONES</span><span>{winnerRow?.steals || 0} VOLS</span><span>{winnerRow?.legs || 0} MANCHES</span></div>
           <div className="crados-end__facts">{quickFacts.map((fact) => <div key={fact.label}><span>{fact.label}</span><b>{fact.value}</b></div>)}</div>
         </div>
@@ -1352,6 +1326,12 @@ export default function CradosPlay(props: any) {
     })) : undefined;
     const compactConfig = compactCradosResumeConfig(s.config);
     const resumeState = compactCradosResumeState(s);
+    const ranking = buildCradosRanking({ state: s, profiles, profileById: new Map(profiles.map((p: any) => [String(p.id), p])), colorByPlayerId, colorBySideId, teamMode: isTeams });
+    const winnerSummaryId = String(s.winnerId || "");
+    const winnerSummaryRow = ranking.find((row: any) => String(row.sideId || row.id) === winnerSummaryId || String(row.id) === winnerSummaryId) || ranking[0] || null;
+    const winnerSummaryAccuracy = winnerSummaryRow?.darts ? Math.round((Number(winnerSummaryRow?.hits || 0) / Math.max(1, Number(winnerSummaryRow?.darts || 0))) * 100) : 0;
+    const winnerBadge = resolveCradosWinnerBadge({ dirtLimit: Number(s.config?.rules?.dirtLimit || 1), winnerRow: winnerSummaryRow, winnerAccuracy: winnerSummaryAccuracy });
+    const winnerBadgeSummary = winnerBadge ? { key: winnerBadge.key, title: winnerBadge.title, icon: winnerBadge.icon, accent: winnerBadge.accent, text: winnerBadge.text, image: winnerBadge.image, reason: winnerBadge.reason } : null;
     return {
       id: matchIdRef.current, matchId: matchIdRef.current, resumeId: matchIdRef.current,
       kind: "crados", mode: "crados", sport: "darts", status, createdAt: s.startedAt, updatedAt: Date.now(),
@@ -1367,13 +1347,14 @@ export default function CradosPlay(props: any) {
         totalSteals: Object.values(s.statsByPlayer || {}).reduce((sum: number, row: any) => sum + Number(row?.sectorsStolen || 0), 0),
         totalDirtInflicted: Object.values(s.statsByPlayer || {}).reduce((sum: number, row: any) => sum + Number(row?.dirtInflicted || 0), 0),
         totalDirtWashed: Object.values(s.statsByPlayer || {}).reduce((sum: number, row: any) => sum + Number(row?.dirtWashed || 0), 0),
-        ranking: buildCradosRanking({ state: s, profiles, profileById: new Map(profiles.map((p: any) => [String(p.id), p])), colorByPlayerId, colorBySideId, teamMode: isTeams }),
+        ranking,
+        winnerBadge: winnerBadgeSummary,
       },
       resume: { mode: "crados", config: compactConfig, state: resumeState, currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, updatedAt: Date.now() },
       payload: {
         kind: "crados", mode: "crados", sport: "darts", config: status === "finished" ? s.config : compactConfig, teams: isTeams ? compactConfig.teams : undefined,
         stateSnapshot: status === "finished" ? cloneCradosState(s) : resumeState, currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, visits: s.visits, visitHistory: s.visits,
-        stats: { mode: "crados", teamMode: isTeams, players: perPlayer, teams: perTeam, legWins: s.legWins, sectors: s.sectors },
+        stats: { mode: "crados", teamMode: isTeams, players: perPlayer, teams: perTeam, legWins: s.legWins, sectors: s.sectors, winnerBadge: winnerBadgeSummary },
       },
     };
   }, [profiles, currentThrow, multiplier, colorByPlayerId, colorBySideId]);
@@ -1457,14 +1438,14 @@ export default function CradosPlay(props: any) {
         const added = next.slice(previous.length);
         added.forEach((dart: UIDart, index: number) => {
           if (config.sfxEnabled !== false) {
-            if (index === 0) playCradosDartSfx(dart, true);
-            else window.setTimeout(() => playCradosDartSfx(dart, true), index * 140);
+            if (index === 0) playCradosDartSfx(dart, true, { state, activeSideId });
+            else window.setTimeout(() => playCradosDartSfx(dart, true, { state, activeSideId }), index * 140);
           }
         });
       }
       return next;
     });
-  }, [config.sfxEnabled]);
+  }, [config.sfxEnabled, state, activeSideId]);
 
   // Même principe que Killer : le jingle démarre dès que l'autoplay est autorisé.
   // Une reprise depuis l'historique ne relance pas le jingle de début.
@@ -1605,7 +1586,7 @@ export default function CradosPlay(props: any) {
     const t = window.setTimeout(() => {
       try {
         const darts = pickCradosBotDarts(state, activeBotLevel || config.botLevel);
-        const audioSpan = playCradosDartSequence(darts, 170, config.sfxEnabled !== false);
+        const audioSpan = playCradosDartSequence(darts, 170, config.sfxEnabled !== false, { state, activeSideId });
         window.setTimeout(() => {
           try { commit(playCradosVisit(state, darts)); }
           finally { botBusy.current = false; }

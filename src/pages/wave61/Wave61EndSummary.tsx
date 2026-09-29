@@ -40,8 +40,10 @@ export function buildWave61EndRows(state: Wave61State, profiles: any[]) {
       id,
       profile,
       name: nameOf(profile, p?.name || "Joueur"),
-      winner: String(state?.winnerId || "") === id,
       team: state?.config?.teamByPlayer?.[id] || null,
+      winner: state?.winnerTeamId
+        ? String(state?.config?.teamByPlayer?.[id] || "") === String(state.winnerTeamId)
+        : String(state?.winnerId || "") === id,
       score: n(state?.scores?.[id]),
       progress: n(state?.progress?.[id]),
       health: n(state?.health?.[id]),

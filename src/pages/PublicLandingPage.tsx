@@ -55,6 +55,25 @@ const DARTS_CATEGORY_LABEL: Record<string,string> = {
   training: "ENTRAÎNEMENT",
 };
 
+const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
+  x01: "Avant de jouer, choisissez le score de départ (301, 501, 701 ou 901), le mode d’entrée et de sortie (Simple, Double ou Master selon les options proposées), puis le format du match en legs et en sets. Vous pouvez également régler l’ordre des joueurs, les sons et la voix lorsque ces options sont activées.",
+  cricket: "La configuration permet de choisir les participants et les variantes proposées par le Cricket, puis de préparer la partie autour des cibles 15, 16, 17, 18, 19, 20 et Bull. Les options disponibles déterminent notamment la façon de fermer les cibles et de comptabiliser les points pendant la partie.",
+  killer: "Avant le lancement, sélectionnez les joueurs puis la manière d’attribuer les numéros. La configuration permet de préparer la phase où chaque joueur devient Killer, puis la phase d’élimination. Lorsque les options correspondantes sont disponibles, vous pouvez aussi jouer avec des bots IA et adapter leur niveau.",
+  shanghai: "Choisissez les joueurs et les paramètres de la partie avant de commencer. Le jeu fait ensuite progresser la cible de round en round ; l’objectif est de marquer sur le numéro demandé et de rechercher un Shanghai en réalisant un simple, un double et un triple du même numéro pendant le même round.",
+  battle_royale: "La configuration sert à préparer les participants, le format de la confrontation et les éventuelles options d’élimination proposées par ce mode. Chaque joueur doit ensuite survivre aux manches successives jusqu’à la condition de victoire prévue par la partie.",
+  warfare: "Avant la partie, répartissez les participants dans les camps prévus par le mode et choisissez les options disponibles. La partie se joue ensuite comme un affrontement : les touches valides attaquent les cibles adverses et la victoire dépend de la destruction ou de l’élimination du camp opposé.",
+  five_lives: "Chaque joueur commence avec un nombre de vies défini par le mode. La configuration permet de choisir les participants et les options disponibles ; pendant la partie, chaque volée doit respecter l’objectif imposé sous peine de perdre une vie. Le dernier joueur encore en jeu remporte la partie.",
+  gros_6: "Avant le lancement, choisissez les joueurs ou les équipes, la gestion des vies et les options de cible proposées par le mode. Gros 6 commence sur le simple 6 : le joueur dispose de trois fléchettes pour atteindre la cible active. Une validation permet d’imposer la cible suivante ; un échec fait perdre une vie selon les règles choisies. Les bots IA peuvent être ajoutés lorsque cette option est activée.",
+  golf: "La configuration permet de choisir les joueurs et le parcours proposé par le mode. Chaque manche correspond à un trou et à une cible précise ; le but est de terminer le parcours avec le meilleur résultat possible en optimisant chaque volée.",
+  scram: "Préparez les participants et les rôles prévus par la variante avant de lancer la partie. Scram oppose généralement un joueur qui ferme les cibles à un joueur qui cherche à marquer dessus ; les rôles et le comptage sont ensuite inversés afin de comparer les performances.",
+};
+
+function publicRuleConfigCopy(game: DartsGameDef, tr: (key:string, fallback:string) => string) {
+  const fallback = PUBLIC_RULE_CONFIG_COPY[game.id]
+    || "Avant de lancer la partie, choisissez les participants puis adaptez les paramètres proposés par ce mode depuis son écran de configuration. Les réglages affichés sont ceux réellement disponibles pour cette variante.";
+  return tr(`game.${game.id}.configNarrative`, fallback);
+}
+
 const PUBLIC_LANGUAGES: ReadonlyArray<{ code: Lang; label: string; flag: string }> = [
   { code: "fr", label: "Français", flag: "🇫🇷" },
   { code: "en", label: "English", flag: "🇬🇧" },
@@ -149,7 +168,6 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
   const development = isPublicDartsDevelopment(game);
   const objective = game.infoBody.split(".")[0] + ".";
-  const auditedOptions = audit?.options || [];
   const catalogueGames = DARTS_GAMES.filter((item) => item.id !== game.id);
   const sameCategoryGames = catalogueGames.filter((item) => item.category === game.category && isPublicDartsDevelopment(item) === development).slice(0, 4);
   const currentIndex = DARTS_GAMES.findIndex((item) => item.id === game.id);
@@ -199,7 +217,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <article><b>01</b><h2>{tr("rules.objective", "OBJECTIF")}</h2><p>{tr(`game.${game.id}.objective`, objective)}</p></article>
       <article><b>02</b><h2>{tr("rules.principle", "PRINCIPE & RÈGLES")}</h2><p>{tr(`game.${game.id}.info`, game.infoBody)}</p></article>
       <article><b>03</b><h2>{tr("rules.format", "FORMAT DE PARTIE")}</h2><p>{tr("rules.formatBody", "Le format est déterminé par la configuration propre à ce mode dans MULTISPORTS SCORING.")}{game.supportsTeams ? ` ${tr("rules.teamsBody", "Les équipes sont prises en charge lorsque cette option est proposée.")}` : ""}{game.supportsBots ? ` ${tr("rules.botsBody", "Les bots IA peuvent être utilisés lorsque la configuration du mode les active.")}` : ""}</p></article>
-      <article className="mssRuleConfig" id="configuration"><b>04</b><h2>{tr("rules.parameters", "RÈGLES & PARAMÈTRES")}</h2>{development ? <p>{tr("rules.developmentConfig", "EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.")}</p> : <p>{tr("rules.configNarrative", "Avant de lancer la partie, vous choisissez les joueurs et les réglages proposés par ce mode. Vous pouvez adapter le format de partie et les paramètres de jeu disponibles depuis son écran de configuration.")}{game.supportsTeams ? ` ${tr("rules.configTeamsNarrative", "Si vous jouez en équipes, vous pouvez constituer ou sélectionner les équipes avant le lancement.")}` : ""}{game.supportsBots ? ` ${tr("rules.configBotsNarrative", "Les bots IA peuvent également être ajoutés lorsque vous souhaitez compléter les participants ou jouer contre l’ordinateur.")}` : ""}</p>}</article>
+      <article className="mssRuleConfig" id="configuration"><b>04</b><h2>{tr("rules.parameters", "RÈGLES & PARAMÈTRES")}</h2>{development ? <p>{tr("rules.developmentConfig", "EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.")}</p> : <p>{publicRuleConfigCopy(game, tr)}</p>}</article>
       <article><b>05</b><h2>{tr("rules.status", "STATUT DANS MSS")}</h2><p>{development ? tr("rules.developmentStatusBody", "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée.") : tr("rules.availableStatusBody", "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur.")}</p></article>
       {!development && <article><b>06</b><h2>{tr("rules.flow", "DÉROULEMENT")}</h2><p>{tr("rules.flowBody", "Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.")}</p></article>}
       {!development && <article><b>07</b><h2>{tr("rules.end", "FIN DE PARTIE")}</h2><p>{tr("rules.endBody", "La condition de fin et le classement appliqués sont ceux du moteur de ce mode. Les particularités confirmées figurent dans la section « Règles & paramètres » ci-dessus.")}</p></article>}

@@ -80,7 +80,8 @@ export function playCradosVictorySignature(mood: CradosVictoryMood = "solid", en
   if (typeof window === "undefined") return;
   if (mood === "blowout") {
     window.setTimeout(() => playCradosSfx("dbull", 0.50, true), 520);
-    window.setTimeout(() => playCradosSfx("triple", 0.42, true), 980);
+    // Les sons DOUBLE / TRIPLE sont réservés aux contacts avec une zone adverse.
+    window.setTimeout(() => playCradosSfx("zoneClaimed", 0.42, true), 980);
   } else if (mood === "tight") {
     window.setTimeout(() => playCradosSfx("bull", 0.46, true), 720);
   } else if (mood === "comeback") {
@@ -89,8 +90,35 @@ export function playCradosVictorySignature(mood: CradosVictoryMood = "solid", en
   }
 }
 
+/** Contexte facultatif utilisé pour décider si un DOUBLE / TRIPLE est réellement un handicap. */
+export type CradosDartSfxContext = {
+  state?: any;
+  activeSideId?: string | null;
+};
+
+function cradosDartNumber(dart: any) {
+  if (!dart) return 0;
+  const bed = String(dart?.bed || "").trim().toUpperCase();
+  if (bed === "OB" || bed === "IB" || bed === "BULL" || bed === "DBULL" || bed === "MISS") return 0;
+  return Number(dart?.v ?? dart?.value ?? dart?.number ?? dart?.n ?? 0) || 0;
+}
+
+/**
+ * Vrai uniquement si la fléchette touche un secteur possédé par un camp adverse.
+ * En équipes, activeSideId est l'id de l'équipe : toucher une zone d'un partenaire
+ * ne déclenche donc jamais les sons de handicap DOUBLE / TRIPLE.
+ */
+export function cradosDartHitsOpponentSector(dart: any, context?: CradosDartSfxContext) {
+  const state = context?.state;
+  const activeSideId = String(context?.activeSideId || "");
+  const number = cradosDartNumber(dart);
+  if (!state || !activeSideId || !number) return false;
+  const ownerId = String(state?.sectors?.[number]?.ownerId || "");
+  return Boolean(ownerId && ownerId !== activeSideId);
+}
+
 /** Accepte aussi bien la forme UI ({v,mult}) que moteur ({bed,number}). */
-export function cradosSfxKeyForDart(dart: any): CradosSfxKey {
+export function cradosSfxKeyForDart(dart: any, context?: CradosDartSfxContext): CradosSfxKey {
   if (!dart) return "hit";
 
   const bed = String(dart?.bed || "").trim().toUpperCase();
@@ -100,23 +128,28 @@ export function cradosSfxKeyForDart(dart: any): CradosSfxKey {
   if (bed === "MISS" || rawValue === 0) return "miss";
   if (bed === "IB" || bed === "DBULL" || rawValue === 50 || (rawValue === 25 && rawMult === 2)) return "dbull";
   if (bed === "OB" || bed === "BULL" || rawValue === 25) return "bull";
-  if (bed === "T" || rawMult === 3) return "triple";
-  if (bed === "D" || rawMult === 2) return "double";
+
+  // IMPORTANT CRADOS : DOUBLE et TRIPLE sont des sons de HANDICAP.
+  // Ils ne jouent que lorsque le joueur frappe un secteur déjà détenu par l'adversaire.
+  // Sur une zone libre ou sa propre zone, on conserve simplement le dart-hit standard X01.
+  const opponentSector = cradosDartHitsOpponentSector(dart, context);
+  if ((bed === "T" || rawMult === 3) && opponentSector) return "triple";
+  if ((bed === "D" || rawMult === 2) && opponentSector) return "double";
   return "hit";
 }
 
-export function playCradosDartSfx(dart: any, enabled = true) {
+export function playCradosDartSfx(dart: any, enabled = true, context?: CradosDartSfxContext) {
   if (!enabled) return;
-  playCradosSfx(cradosSfxKeyForDart(dart), undefined, true);
+  playCradosSfx(cradosSfxKeyForDart(dart, context), undefined, true);
 }
 
 /** Lecture espacée utile pour les volées automatiques des bots. */
-export function playCradosDartSequence(darts: any[], gapMs = 170, enabled = true) {
+export function playCradosDartSequence(darts: any[], gapMs = 170, enabled = true, context?: CradosDartSfxContext) {
   const rows = Array.isArray(darts) ? darts.slice(0, 3) : [];
   if (!enabled) return 0;
   rows.forEach((dart, index) => {
-    if (index === 0) playCradosDartSfx(dart, true);
-    else window.setTimeout(() => playCradosDartSfx(dart, true), index * gapMs);
+    if (index === 0) playCradosDartSfx(dart, true, context);
+    else window.setTimeout(() => playCradosDartSfx(dart, true, context), index * gapMs);
   });
   return rows.length ? Math.max(0, (rows.length - 1) * gapMs) : 0;
 }
