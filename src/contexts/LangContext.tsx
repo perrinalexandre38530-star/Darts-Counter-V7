@@ -278,6 +278,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     };
 
     const applyText = (node: Text) => {
+      if (node.parentElement?.closest('[translate="no"],[data-i18n-skip="true"]')) return;
       const current = node.nodeValue || "";
       const prev = textState.get(node);
       const source = prev && current === prev.applied ? prev.source : current;
@@ -290,6 +291,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     };
 
     const applyAttr = (el: Element, attr: string) => {
+      if (el.closest('[translate="no"],[data-i18n-skip="true"]')) return;
       if (!el.hasAttribute(attr)) return;
       const current = el.getAttribute(attr) || "";
       let map = attrState.get(el);
@@ -318,6 +320,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 
       if (root.nodeType === Node.ELEMENT_NODE) {
         const el = root as Element;
+        if (el.closest('[translate="no"],[data-i18n-skip="true"]')) return;
         for (const attr of translatedAttrs) applyAttr(el, attr);
       }
 

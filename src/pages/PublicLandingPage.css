@@ -216,3 +216,9 @@
 .mssLanguagesBanner .mssLanguageHeroSelect{margin:0;background:rgba(4,12,15,.88);backdrop-filter:blur(10px)}
 @media(max-width:1000px){.mssLanguagesBanner{margin:20px 22px 55px}.mssLanguagesBannerOverlay{min-height:300px}}
 @media(max-width:620px){.mssLanguagesBanner{margin:12px 14px 45px;min-height:390px}.mssLanguagesBannerOverlay{min-height:390px;padding:24px 18px}.mssLanguagesBanner:after{background:linear-gradient(0deg,rgba(2,9,12,.94),rgba(2,9,12,.2) 75%)}}
+
+/* LANDING V125 — full 1650×953 artwork, never cropped */
+.mssLanguagesBanner{max-width:1400px;min-height:0!important;aspect-ratio:1650/953;background:#02070a}
+.mssLanguagesBanner>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain!important;object-position:center!important}
+.mssLanguagesBannerOverlay{min-height:0!important;height:100%;box-sizing:border-box;justify-content:flex-end}
+@media(max-width:620px){.mssLanguagesBanner{min-height:0!important;aspect-ratio:1650/953}.mssLanguagesBannerOverlay{min-height:0!important;padding:12px}.mssLanguagesBannerOverlay>div{display:none}.mssLanguagesBanner .mssLanguageHeroSelect{transform:scale(.88);transform-origin:left bottom}}
