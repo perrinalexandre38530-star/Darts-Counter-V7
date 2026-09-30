@@ -1154,7 +1154,11 @@ function primaryValue(state: Wave61State, playerId: string): number {
 function finishWith(state: Wave61State, playerId: string, teamId: string | null = null) {
   state.phase = "finished";
   state.winnerId = playerId;
-  state.winnerTeamId = teamId;
+  // Dedicated engines historically did not all forward their team id. Keep the
+  // terminal contract centralized so every Teams victory reaches history/stats.
+  state.winnerTeamId = state.config.participantMode === "teams"
+    ? (teamId || state.config.teamByPlayer?.[playerId] || null)
+    : null;
   state.finishedAt = Date.now();
 }
 
@@ -3852,8 +3856,21 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const alive = state.players.filter((p) => !state.eliminated[p.id]);
     if (state.config.participantMode === "teams") {
       const aliveTeams = Array.from(new Set(alive.map((p) => state.config.teamByPlayer?.[p.id] || "A")));
-      if (aliveTeams.length === 1 && state.players.length > 1) finishWith(state, alive.find((p) => (state.config.teamByPlayer?.[p.id] || "A") === aliveTeams[0])?.id || player.id, aliveTeams[0]);
-    } else if (alive.length === 1 && state.players.length > 1) finishWith(state, alive[0].id);
+      if (aliveTeams.length === 1 && state.players.length > 1) {
+        finishWith(state, alive.find((p) => (state.config.teamByPlayer?.[p.id] || "A") === aliveTeams[0])?.id || player.id, aliveTeams[0]);
+      } else if (aliveTeams.length === 0 && state.players.length > 0) {
+        // A simultaneous/last-survivor elimination must still terminate the match.
+        // Rank the completed teams instead of leaving the engine stuck in `playing`.
+        const team = bestTeam(state);
+        if (team) finishWith(state, team.playerId, team.teamId);
+      }
+    } else if (alive.length === 1 && state.players.length > 1) {
+      finishWith(state, alive[0].id);
+    } else if (alive.length === 0 && state.players.length > 0) {
+      // No eligible player remains: close immediately using the final metrics.
+      const winner = bestPlayer(state);
+      if (winner) finishWith(state, winner);
+    }
   }
 
   if (state.phase === "playing") return advanceWave61Turn(state);

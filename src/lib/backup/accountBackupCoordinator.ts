@@ -96,18 +96,37 @@ function emitConflict(conflict: AccountSyncConflict): void {
 export async function resolveAccountSyncConflict(userId: string, action: "remote" | "local"): Promise<boolean> {
   const uid = String(userId || "").trim();
   const conflict = pendingConflicts.get(uid);
-  if (!conflict || !accountStillActive(uid)) return false;
+
+  // Un clic utilisateur ne doit jamais rester sans réaction.
+  if (!conflict) {
+    emitAccountSync(uid, "error", 100, "La proposition de synchronisation a expiré. Relance la synchronisation.", { restored:false });
+    throw new Error("Conflit de synchronisation introuvable ou expiré.");
+  }
+
+  // Garder l'appareil est toujours une décision sûre : aucune donnée n'est importée.
   if (action === "local") {
+    writeAppliedSignature(uid, candidateSignature(conflict.candidate));
     pendingConflicts.delete(uid);
     emitAccountSync(uid, "done", 100, "Données de cet appareil conservées", { restored:false });
     return false;
   }
-  emitAccountSync(uid, "download", 56, `Synchronisation depuis ${conflict.candidate.label}…`, { source: conflict.candidate.source });
-  await restoreCandidate(uid, conflict.candidate);
-  writeAppliedSignature(uid, candidateSignature(conflict.candidate));
-  pendingConflicts.delete(uid);
-  emitAccountSync(uid, "done", 100, "Compte synchronisé ✓", { restored:true, source: conflict.candidate.source });
-  return true;
+
+  if (!accountStillActive(uid)) {
+    emitAccountSync(uid, "error", 100, "Le compte actif a changé. Synchronisation annulée.", { restored:false });
+    throw new Error("Le compte actif a changé : synchronisation annulée.");
+  }
+
+  try {
+    emitAccountSync(uid, "download", 56, `Synchronisation depuis ${conflict.candidate.label}…`, { source: conflict.candidate.source });
+    await restoreCandidate(uid, conflict.candidate);
+    writeAppliedSignature(uid, candidateSignature(conflict.candidate));
+    pendingConflicts.delete(uid);
+    emitAccountSync(uid, "done", 100, "Compte synchronisé ✓", { restored:true, source: conflict.candidate.source });
+    return true;
+  } catch (error: any) {
+    emitAccountSync(uid, "error", 100, String(error?.message || "Synchronisation impossible"), { restored:false });
+    throw error;
+  }
 }
 
 function parseMs(value: any): number {

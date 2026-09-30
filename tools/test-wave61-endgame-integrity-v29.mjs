@@ -11,7 +11,7 @@ for(const token of [
   'if (state.phase !== "playing" || !state.players.length) return state',
   'state.phase = "finished"',
   'state.winnerId = playerId',
-  'state.winnerTeamId = teamId',
+  'state.winnerTeamId = state.config.participantMode === "teams"',
   'state.finishedAt = Date.now()'
 ]) assert(engine.includes(token),`Engine V29: ${token}`);
 for(const token of [

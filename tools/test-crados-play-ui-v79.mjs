@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const tsx = fs.readFileSync(new URL("../src/pages/CradosPlay.tsx", import.meta.url), "utf8");
-const css = fs.readFileSync(new URL("../src/pages/CradosPlay.css", import.meta.url), "utf8");
+const tsx = fs.readFileSync(new URL("../pages/CradosPlay.tsx", import.meta.url), "utf8");
+const css = fs.readFileSync(new URL("../pages/CradosPlay.css", import.meta.url), "utf8");
 
 const colors = tsx.match(/const PLAYER_COLORS = \[(.*?)\];/s)?.[1]?.match(/#[0-9a-fA-F]{6}/g) || [];
 assert.equal(colors.length, 10, "CRADOS Play doit disposer de 10 couleurs joueurs distinctes");
@@ -22,7 +22,7 @@ assert.match(tsx, /lockBodyScroll: true/, "Le Play CRADOS doit verrouiller le sc
 assert.match(tsx, /isCradosTeamMode\(config\)/, "Le mode équipes V79 doit être conservé");
 assert.match(tsx, /cradosSideIdForPlayer/, "Les jauges et secteurs doivent utiliser les side IDs V79");
 assert.match(tsx, /winnerTeamId: isTeams \? s\.winnerId/, "L'historique doit conserver winnerTeamId en équipes");
-assert.match(tsx, /profiles=\{teamMode \? sideProfiles : profiles\}/, "L'écran de fin doit afficher les équipes en mode teams");
+assert.match(tsx, /const teamRows = teamMode[\s\S]*PODIUM DES ÉQUIPES/, "L'écran de fin doit agréger et afficher les équipes en mode teams");
 assert.match(css, /height:\s*100dvh/, "Le Play CRADOS doit tenir dans le viewport");
 assert.match(css, /\.crados-play\s*\{[\s\S]*?overflow:\s*hidden/, "Le long scroll global doit être supprimé");
 assert.match(css, /@media \(orientation: landscape\)[\s\S]*?grid-template-columns:/, "Une mise en page paysage dédiée doit être présente");
