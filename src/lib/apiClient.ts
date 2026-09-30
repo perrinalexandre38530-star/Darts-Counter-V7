@@ -494,9 +494,26 @@ async function parseJsonSafe(
   }
 }
 
-function buildHeaders(init?: RequestInit): HeadersInit {
-  const token = readNasAccessToken();
+function readAccountAccessToken(): string {
+  const raw = (
+    safeReadLocalStorage("dc_online_auth_supabase_v1") ||
+    safeReadSessionStorage("dc_online_auth_supabase_v1")
+  ).trim();
+  if (!raw) return "";
+  return tokenFromStoredValue(raw);
+}
+
+function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   const baseHeaders = new Headers(init?.headers || {});
+  const normalizedPath = String(requestPath || "");
+
+  // Les routes de cloud personnel appartiennent au COMPTE MULTISPORTS et non
+  // au provider NAS courant. Quand la session active est Supabase, envoyer son
+  // access token au backend permet au middleware hybride de retrouver le même
+  // compte canonique. Cela supprime la dépendance aléatoire à un ancien JWT NAS.
+  const token = normalizedPath.startsWith("/account/personal-cloud/")
+    ? (readAccountAccessToken() || readNasAccessToken())
+    : readNasAccessToken();
 
   if (token && !baseHeaders.has("Authorization")) {
     baseHeaders.set("Authorization", `Bearer ${token}`);
@@ -635,7 +652,7 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
         res = await fetch(`${apiBase}${normalizedPath}`, {
           ...init,
           signal: ctrl?.signal ?? init?.signal,
-          headers: buildHeaders(init),
+          headers: buildHeaders(init, normalizedPath),
         });
         // Le délai reste actif pendant la lecture du corps. Avant V61 il était
         // supprimé dès la réception des en-têtes, ce qui pouvait laisser un

@@ -67,6 +67,12 @@ export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvide
       snapshotJson: wrapper,
       summary: metadata?.summary || {},
       metadata,
+    }, {
+      // Une sauvegarde complète peut dépasser 10 s : compression côté client,
+      // tunnel NAS puis upload Google Drive. Le timeout générique des POST était
+      // trop court et produisait le comportement « une fois sur quinze ».
+      timeoutMs: 120_000,
+      manual: true,
     }) as any;
   }
   return apiPost(`/account/personal-cloud/${provider}/backup`, { ...packed, metadata }) as any;

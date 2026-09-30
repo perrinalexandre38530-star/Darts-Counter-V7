@@ -215,7 +215,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   const maxVisits=Math.max(0,...parts.map(st=>st.visitScores.length));const visitScores=Array.from({length:maxVisits},(_,i)=>parts.reduce((a,st)=>a+Number(st.visitScores[i]||0),0));let running=0;const cumulativeScores=visitScores.map(v=>(running+=v));const darts=parts.reduce((a,st)=>a+st.darts,0);const successful=parts.reduce((a,st)=>a+st.successful,0);const score=parts.reduce((a,st)=>a+st.score,0);
   return {score,darts,successful,failures:Math.max(0,darts-successful),accuracy:darts?Math.round(successful/darts*1000)/10:0,bestStreak:Math.max(0,...parts.map(st=>st.bestStreak)),bestVisit:Math.max(0,...parts.map(st=>st.bestVisit)),avgVisit:visitScores.length?Math.round((visitScores.reduce((a,b)=>a+b,0)/visitScores.length)*10)/10:0,hitCounts,positionStats,visitScores,cumulativeScores};
  },[detailedByPlayer]);
- const detailCurrent=detailTab==='global'?null:(detailedByPlayer.find(x=>x.participant.id===detailTab)||detailedByPlayer[0]||null);
+ const detailCurrent=(detailTab==='global'||detailTab==='match')?null:(detailedByPlayer.find(x=>x.participant.id===detailTab)||detailedByPlayer[0]||null);
  const detailStats=detailCurrent?.stats||globalDetailed;
  const bestDartPosition=detailStats.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];
 
@@ -232,8 +232,11 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
     {safeParticipants.length>1&&<div className="challenge-roster portrait-only">{safeParticipants.map((p,i)=><div key={p.id} title={p.name} aria-label={`${p.name} : ${participantScore(p)} points`} className={i===activeIndex?'active':''}><span className="roster-avatar"><ChallengeAvatar participant={p} size={30}/></span><strong>{participantScore(p)}</strong></div>)}</div>}
     <div className="player">
      {current.team&&<div className="player-team-bg" aria-hidden="true"><ResolvedTeamLogo team={current.team}/></div>}
-     <div className="player-avatar"><ChallengeAvatar participant={current} size={64}/></div>
-     <div className="player-meta"><small>{playerLabel}</small><b>{current.name}</b>{current.teamName?<span>{current.teamName}</span>:null}{safeParticipants.length>1&&<em>{activeIndex+1}/{safeParticipants.length}</em>}<i className="landscape-only">TOUR {done?cfg.visits:turn}/{cfg.visits}</i></div>
+     <div className="player-avatar-wrap">
+      <div className="player-avatar"><ChallengeAvatar participant={current} size={64}/></div>
+      <div className="player-avatar-label portrait-only"><b style={{color:theme.primary}}>{String(current.name||'Joueur').toUpperCase()}</b>{current.teamName?<span>{current.teamName}</span>:null}</div>
+     </div>
+     <div className="player-meta landscape-player-meta"><small>{playerLabel}</small><b>{current.name}</b>{current.teamName?<span>{current.teamName}</span>:null}{safeParticipants.length>1&&<em>{activeIndex+1}/{safeParticipants.length}</em>}<i>TOUR {done?cfg.visits:turn}/{cfg.visits}</i></div>
      <div className="player-score"><small>SCORE</small><b>{currentScore}</b></div>
      <div className="player-objective portrait-only"><img src={targetBoards[cfg.target]||target20} alt={`Objectif ${targetLabel(cfg.target)}`}/><span>OBJECTIF</span></div>
     </div>
@@ -248,9 +251,9 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    </section>
 
    <aside className="cp-right">
-    <div className="turn-banner portrait-only"><span>TOUR</span><b>{done?cfg.visits:turn}</b><i>/ {cfg.visits}</i></div>
-    <div className="portrait-stats-wrap portrait-only"><div className="portrait-stats"><div className="ps-title"><strong>STATS CHALLENGE</strong><button type="button" className="online-rank" aria-label="Classement online" onClick={()=>setRankOpen(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9"/></svg></button></div><div className="ps-kpis"><div><span>SCORE</span><b>{currentScore}</b></div><div><span>RÉUSSITE</span><b>{pct}%</b></div><div><span>FLÉCHETTES</span><b>{currentLog.length}/{cfg.visits*3}</b></div><div><span>SUITE</span><b>{streak}</b></div></div><div className="ps-hits">{allowedHits.map(h=><div className={'psh '+h} key={h}><span>{h}</span><b>{counts[h]}</b></div>)}</div></div><button type="button" className="match-detail-trigger" onClick={()=>{setDetailTab('global');setDetailOpen(true)}}>{safeParticipants.length===2?'DÉTAIL MATCH':'STATS DÉTAILLÉES'} <span>↗</span></button></div>
-    <div className="landscape-turn landscape-only"><span>TOUR</span><b>{done?cfg.visits:turn}</b><i>/ {cfg.visits}</i></div>
+    <div className="turn-banner portrait-only"><span>TOUR</span><b>{done?cfg.visits:turn}</b><i>/ {cfg.visits}</i><em className="turn-player-count">{safeParticipants.length} {safeParticipants.length>1?'JOUEURS':'JOUEUR'}</em></div>
+    <div className="portrait-stats-wrap portrait-only"><div className="portrait-stats"><div className="ps-title"><strong>STATS CHALLENGE</strong><button type="button" className="online-rank" aria-label="Classement online" onClick={()=>setRankOpen(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9"/></svg></button></div><div className="ps-kpis"><div><span>SCORE</span><b>{currentScore}</b></div><div><span>RÉUSSITE</span><b>{pct}%</b></div><div><span>FLÉCHETTES</span><b>{currentLog.length}/{cfg.visits*3}</b></div><div><span>SUITE</span><b>{streak}</b></div></div><div className="ps-hits">{allowedHits.map(h=><div className={'psh '+h} key={h}><span>{h}</span><b>{counts[h]}</b></div>)}</div></div><button type="button" className="match-detail-trigger" onClick={()=>{setDetailTab('global');setDetailOpen(true)}}>STATS DÉTAILLÉES <span>↗</span></button></div>
+    <div className="landscape-turn landscape-only"><span>TOUR</span><b>{done?cfg.visits:turn}</b><i>/ {cfg.visits}</i><em className="turn-player-count">{safeParticipants.length} {safeParticipants.length>1?'JOUEURS':'JOUEUR'}</em></div>
     <button type="button" className="landscape-stats landscape-only stats-hit-open" onClick={()=>{setDetailTab('global');setDetailOpen(true)}}><h2>STATS HITS <span>↗</span></h2><div className="hitstats">{hits.map(h=><div className={'hs '+h} key={h}><b>{h}<small>{h==='S'?' ×1':h==='D'?' ×2':h==='T'?' ×3':''}</small></b><strong>{counts[h]}</strong></div>)}</div></button>
     <div className="input-tools"><button className="undo" disabled={!log.length} onClick={()=>setLog(v=>v.slice(0,-1))}>↶ <span>ANNULER</span></button><button className={'voice '+(voiceOn?'listening':'')} type="button" onClick={startVoice} aria-label="Saisie vocale"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg><span>{voiceOn?'ÉCOUTE…':'VOCAL'}</span></button></div>
     <div className={'keypad keys-'+allowedHits.length}>{allowedHits.map(h=><button className={h} key={h} disabled={done} onClick={()=>add(h)}><b>{h==='25'?'BULL 25':h==='50'?'BULL 50':h}</b><span>{h==='S'?'×1':h==='D'?'×2':h==='T'?'×3':h==='25'?'×1':h==='50'?'×2':'×'}</span></button>)}</div>
@@ -260,15 +263,31 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
 
 
   {detailOpen&&<div className="match-detail-modal" onClick={()=>setDetailOpen(false)}><div className="match-detail-card advanced" onClick={e=>e.stopPropagation()}>
-   {safeParticipants.length===2&&(()=>{const left=safeParticipants[0],right=safeParticipants[1],a=participantStats(left),b=participantStats(right);return <div className="match-detail-top tall"><div className="match-side">{left.team&&<div className="match-side-team-bg" aria-hidden="true"><ResolvedTeamLogo team={left.team}/></div>}<span><ChallengeAvatar participant={left} size={58}/></span><b>{left.name}</b><strong>{a.score}</strong></div><div className="match-center-title"><small>CHALLENGE</small><b>DÉTAIL MATCH</b><em>OBJECTIF {targetLabel(cfg.target)}</em></div><div className="match-side">{right.team&&<div className="match-side-team-bg" aria-hidden="true"><ResolvedTeamLogo team={right.team}/></div>}<span><ChallengeAvatar participant={right} size={58}/></span><b>{right.name}</b><strong>{b.score}</strong></div></div>})()}
-   <div className="detail-tabs"><button type="button" className={detailTab==='global'?'on':''} onClick={()=>setDetailTab('global')}>GLOBALE</button>{safeParticipants.map(p=><button type="button" key={p.id} className={detailTab===p.id?'on':''} onClick={()=>setDetailTab(p.id)}>{p.name}</button>)}</div>
-   <div className="detail-scroll">
+   {safeParticipants.length===2&&(()=>{const left=safeParticipants[0],right=safeParticipants[1],a=participantStats(left),b=participantStats(right);return <div className="match-detail-top tall">
+    <div className="match-side match-side-left">
+     <div className="match-identity"><span><ChallengeAvatar participant={left} size={62}/></span><b style={{color:theme.primary}}>{String(left.name||'Joueur').toUpperCase()}</b></div>
+     <div className="match-team-logo">{left.team?<ResolvedTeamLogo team={left.team}/>:null}</div>
+     <strong>{a.score}</strong>
+    </div>
+    <div className="match-center-title"><small>CHALLENGE</small><b>DÉTAIL MATCH</b><em>OBJECTIF {targetLabel(cfg.target)}</em></div>
+    <div className="match-side match-side-right">
+     <strong>{b.score}</strong>
+     <div className="match-team-logo">{right.team?<ResolvedTeamLogo team={right.team}/>:null}</div>
+     <div className="match-identity"><span><ChallengeAvatar participant={right} size={62}/></span><b style={{color:theme.primary}}>{String(right.name||'Joueur').toUpperCase()}</b></div>
+    </div>
+   </div>})()}
+   <div className="detail-tabs baby-match-tabs">
+    <button type="button" className={'detail-tab-main '+(detailTab==='global'?'on':'')} onClick={()=>setDetailTab('global')} aria-label="Statistiques détaillées"><svg className="detail-stats-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V7M10 20V4M16 20v-6M22 20V9"/></svg><span>DÉTAILLÉES</span></button>
+    {safeParticipants.length===2&&<button type="button" className={'detail-tab-match '+(detailTab==='match'?'on':'')} onClick={()=>setDetailTab('match')}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6v14H4zM14 5h6v14h-6zM10 12h4"/></svg><span>DÉTAIL MATCH</span></button>}
+    {safeParticipants.map(p=><button type="button" key={p.id} className={'detail-tab-player '+(detailTab===p.id?'on':'')} onClick={()=>setDetailTab(p.id)} title={p.name}><span className="detail-tab-avatar"><ChallengeAvatar participant={p} size={40}/></span>{detailTab===p.id&&<b style={{color:theme.primary}}>{String(p.name||'Joueur').toUpperCase()}</b>}</button>)}
+   </div>
+   {detailTab==='match'&&safeParticipants.length===2?(()=>{const left=safeParticipants[0],right=safeParticipants[1],a=participantStats(left),b=participantStats(right);const rows=[['SCORE',a.score,b.score],['RÉUSSITE',`${a.pct}%`,`${b.pct}%`],['FLÉCHETTES',`${a.darts}/${cfg.visits*3}`,`${b.darts}/${cfg.visits*3}`],['SUITE MAX',a.streak,b.streak],['BEST VOLÉE',a.detailed.bestVisit,b.detailed.bestVisit],['MOY. / VOLÉE',a.detailed.avgVisit.toFixed(1),b.detailed.avgVisit.toFixed(1)],['S',a.hitCounts.S,b.hitCounts.S],['D',a.hitCounts.D,b.hitCounts.D],['T',a.hitCounts.T,b.hitCounts.T],['BULL 25',a.hitCounts['25'],b.hitCounts['25']],['BULL 50',a.hitCounts['50'],b.hitCounts['50']],['MISS',a.hitCounts.MISS,b.hitCounts.MISS]] as Array<[string,React.ReactNode,React.ReactNode]>;return <div className="detail-scroll detail-match-scroll"><div className="match-compare restored">{rows.map(([label,leftValue,rightValue])=><div className="match-compare-row" key={label}><strong>{leftValue}</strong><span>{label}</span><strong>{rightValue}</strong></div>)}</div></div>})():<div className="detail-scroll">
     <div className="detail-kpis"><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>PRÉCISION</span><b>{detailStats.accuracy.toFixed(1)}%</b></div><div><span>SUITE MAX</span><b>{detailStats.bestStreak}</b></div><div><span>BEST VOLÉE</span><b>{detailStats.bestVisit}</b></div><div><span>MOY. / VOLÉE</span><b>{detailStats.avgVisit.toFixed(1)}</b></div><div><span>MEILLEURE FLÉCHETTE</span><b>{bestDartPosition?`#${bestDartPosition.position} · ${bestDartPosition.accuracy.toFixed(1)}%`:'—'}</b></div></div>
     <div className="detail-grid"><section><h3>RÉPARTITION S / D / T / BULL / MISS</h3><Donut stats={detailStats}/></section><section><h3>ÉVOLUTION DU SCORE</h3><MiniLine values={detailStats.cumulativeScores}/></section></div>
     <section className="position-section"><h3>PRÉCISION PAR FLÉCHETTE</h3><div className="position-grid">{detailStats.positionStats.map(pos=><div className="position-card" key={pos.position}><div className="position-head"><b>FLÉCHETTE {pos.position}</b><strong>{pos.accuracy.toFixed(1)}%</strong></div><div className="position-bar"><i style={{width:`${Math.min(100,pos.accuracy)}%`}}/></div><div className="position-rings"><span>S <b>{pos.attempts?((pos.S/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.S}</em></span><span>D <b>{pos.attempts?((pos.D/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.D}</em></span><span>T <b>{pos.attempts?((pos.T/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.T}</em></span><span>25 <b>{pos.attempts?((pos.B25/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.B25}</em></span><span>50 <b>{pos.attempts?((pos.B50/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.B50}</em></span><span>MISS <b>{pos.attempts?((pos.MISS/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.MISS}</em></span></div></div>)}</div></section>
     <section className="visits-section"><h3>VOLÉES</h3><div className="visit-bars">{detailStats.visitScores.map((v,i)=>{const max=Math.max(1,...detailStats.visitScores);return <div key={i} title={`Tour ${i+1} : ${v}`}><i style={{height:`${Math.max(5,(v/max)*100)}%`}}/><span>{i+1}</span></div>})}</div></section>
     {detailTab==='global'&&safeParticipants.length>1&&<section className="players-detail-list"><h3>COMPARATIF JOUEURS</h3>{detailedByPlayer.map(({participant,stats})=><button type="button" key={participant.id} onClick={()=>setDetailTab(participant.id)}><span><ChallengeAvatar participant={participant} size={34}/></span><b>{participant.name}</b><em>{stats.score} pts</em><strong>{stats.accuracy.toFixed(1)}%</strong><small>suite {stats.bestStreak} · best volée {stats.bestVisit}</small></button>)}</section>}
-   </div>
+   </div>}
    <button type="button" className="match-detail-close" onClick={()=>setDetailOpen(false)}>FERMER</button>
   </div></div>}
   {rankOpen&&<div className="stats-modal" onClick={()=>setRankOpen(false)}><div className="stats-modal-card" onClick={e=>e.stopPropagation()}><div className="stats-modal-head"><div><strong>CLASSEMENT CHALLENGE</strong><span>Objectif {targetLabel(cfg.target)} · {cfg.visits} tours</span></div><button onClick={()=>setRankOpen(false)}>×</button></div><div className="rank-list">{standings.map((p,i)=><div key={p.id}><strong>{i+1}</strong><span>{p.name}</span><b>{participantScore(p)} pts</b><em>{participantDarts(p)} fl. · suite {participantMaxStreak(p)}</em></div>)}</div><button className="online-open" onClick={()=>go('online',{tab:'rankings',gameId:'challenge',target:cfg.target,visits:cfg.visits})}>◎ OUVRIR LES CLASSEMENTS ONLINE</button></div></div>}
@@ -298,4 +317,76 @@ const css=`
 }
 @media(orientation:portrait) and (max-height:700px){.cp-head{height:58px}.cp-awena{width:42px;height:42px}.cp-back{transform:translateY(-50%) scale(.9)}.player{height:82px;min-height:82px;grid-template-columns:52px minmax(0,1fr) 50px minmax(68px,22%)}.player-avatar{width:52px;height:52px}.player-objective{height:60px}.player-objective img{height:50px}.ps-title{height:20px}.ps-kpis div{height:30px}.ps-hits{margin-top:2px}.psh{height:23px}.match-detail-trigger{height:26px;margin-top:3px;font-size:8px}.cp-right{padding-bottom:9px}.turn-banner{flex-basis:25px;height:25px}.input-tools{flex-basis:46px;height:46px}.challenge-roster>div{height:34px}.challenge-roster{padding-bottom:2px}.keypad{height:auto;padding-bottom:3px}}
 @media(orientation:landscape) and (max-height:520px){.cp{gap:4px;padding:3px max(4px,env(safe-area-inset-right,0px)) max(4px,env(safe-area-inset-bottom,0px)) max(4px,env(safe-area-inset-left,0px))}.cp-head{height:46px;border-radius:11px}.cp-back{left:5px;transform:translateY(-50%) scale(.82)}.cp-awena{right:5px;width:40px;height:40px}.cp-awena i{width:16px;height:16px;font-size:8px}.cp-ticker{width:min(360px,50%);height:42px}.cp-layout{gap:5px;grid-template-columns:25fr 35fr 40fr}.cp-left,.cp-right{padding:5px;gap:4px;border-radius:11px}.player{min-height:68px;padding:4px;grid-template-columns:48px minmax(0,1fr) auto;gap:5px}.player-avatar{width:48px;height:48px}.player-meta>b{font-size:14px}.player-meta i{margin-top:2px;font-size:7px}.player-score{min-width:48px}.player-score b{font-size:23px}.left-kpis{gap:3px}.left-kpis>div{min-height:42px}.left-kpis span{font-size:6px}.left-kpis b{font-size:15px}.left-actions{gap:3px}.left-actions>button,.left-actions>div{min-height:36px}.left-actions span{font-size:6px}.left-actions b{font-size:9px}.player-list-title{height:25px;flex-basis:25px}.player-list-scroll{padding:3px;gap:2px}.player-row{min-height:35px;grid-template-columns:28px minmax(0,1fr) auto;padding:2px 3px}.list-avatar{width:28px;height:28px}.list-name b{font-size:8px}.list-name small,.list-score small{font-size:6px}.list-score b{font-size:11px}.cp-board{padding:5px;border-radius:11px}.board-caption{min-height:36px;padding:2px 8px;border-radius:9px}.board-caption span{font-size:10px}.board-caption b{font-size:24px}.landscape-turn{min-height:30px;padding:2px 6px}.landscape-turn span{font-size:9px}.landscape-turn b{font-size:22px}.landscape-turn i{font-size:12px}.landscape-stats h2{font-size:11px;margin-bottom:3px;padding-bottom:3px}.hitstats{gap:2px}.hs{min-height:46px;padding:2px 1px;border-bottom-width:3px}.hs b{font-size:8px}.hs b small{font-size:6px}.hs strong{font-size:17px}.input-tools{height:40px;gap:4px}.input-tools .undo{font-size:9px}.voice svg{width:17px;height:17px}.voice span{font-size:8px}.keypad{height:auto;grid-auto-rows:clamp(62px,18vh,78px);gap:4px}.keypad.keys-4{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,clamp(62px,18vh,78px))}.keypad.keys-3{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:clamp(62px,18vh,78px)}.keypad button{border-radius:9px}.keypad button b{font-size:clamp(25px,5vh,34px)}.keypad button span{font-size:8px}}
+
+
+/* Challenge V13 — détails match / identité portrait / tabs joueurs */
+.player-avatar-wrap{display:flex;align-items:center;justify-content:center;min-width:0}
+.player-avatar-label{display:none}
+.turn-banner,.landscape-turn{position:relative}
+.turn-player-count{position:absolute;right:10px;top:50%;transform:translateY(-50%);margin:0!important;max-width:none!important;font-size:8px!important;letter-spacing:.55px;color:#aeb9c7!important;font-style:normal!important;font-weight:1000!important;white-space:nowrap}
+.match-detail-top.tall{min-height:118px;align-items:center}
+.match-side{display:grid!important;grid-template-rows:1fr!important;align-items:center!important;overflow:visible!important;padding:8px 6px!important}
+.match-side-left{grid-template-columns:minmax(72px,1fr) 62px 64px!important}
+.match-side-right{grid-template-columns:64px 62px minmax(72px,1fr)!important}
+.match-identity{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.match-identity>span{width:62px;height:62px;border-radius:50%;overflow:hidden;border:1px solid #536174;display:grid;place-items:center;box-shadow:0 0 15px #0008}
+.match-identity>span>*{width:100%!important;height:100%!important}
+.match-identity>b{max-width:100%;font-size:10px;line-height:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.65px}
+.match-team-logo{width:58px;height:58px;display:grid;place-items:center;opacity:.38;filter:saturate(1.1);overflow:hidden}
+.match-team-logo img{width:100%;height:100%;object-fit:contain}
+.match-side>strong{font-size:34px!important;color:#ff4850!important;line-height:1!important;text-align:center;text-shadow:0 0 14px #ff273344}
+.match-center-title{justify-content:center}
+.match-center-title b{font-size:13px}
+.detail-tabs.baby-match-tabs{gap:7px;padding:8px 2px;align-items:center;background:linear-gradient(90deg,#080d14,#0e1621,#080d14)}
+.detail-tabs.baby-match-tabs button{height:46px;min-height:46px;padding:4px 9px;border-radius:13px;display:flex;align-items:center;justify-content:center;gap:6px}
+.detail-tab-main,.detail-tab-match{min-width:112px}
+.detail-tab-main svg,.detail-tab-match svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.detail-tab-main span,.detail-tab-match span{font-size:8px;font-weight:1000;letter-spacing:.6px}
+.detail-tab-player{width:50px!important;min-width:50px!important;padding:3px!important;overflow:hidden;transition:width .16s ease,min-width .16s ease}
+.detail-tab-player.on{width:auto!important;min-width:104px!important;padding-right:10px!important}
+.detail-tab-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;overflow:hidden;display:grid;place-items:center;transform:scale(1.06)}
+.detail-tab-avatar>*{width:100%!important;height:100%!important}
+.detail-tab-player b{max-width:120px;font-size:8px;letter-spacing:.55px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.detail-match-scroll{padding-top:9px}
+.match-compare.restored{margin-top:0}
+.match-compare.restored .match-compare-row{min-height:39px;grid-template-columns:minmax(0,1fr) 132px minmax(0,1fr)}
+.match-compare.restored .match-compare-row>strong{font-size:17px}
+.match-compare.restored .match-compare-row>span{font-size:8px}
+@media(orientation:portrait){
+ .player{height:104px;min-height:104px;grid-template-columns:minmax(112px,1fr) 58px minmax(80px,24%);gap:7px;padding:6px 8px}
+ .landscape-player-meta{display:none!important}
+ .player-avatar-wrap{height:100%;flex-direction:column;gap:3px;align-items:center;justify-content:center;position:relative;z-index:2}
+ .player-avatar{width:60px!important;height:60px!important;flex:0 0 60px}
+ .player-avatar-label{display:flex!important;max-width:116px;flex-direction:column;align-items:center;gap:2px;line-height:1}
+ .player-avatar-label b{max-width:116px;font-size:9px;font-weight:1000;letter-spacing:.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+ .player-avatar-label span{max-width:116px;font-size:7px;color:#fff;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+ .player-team-bg{inset:6px 58% 6px 3%!important;opacity:.25!important;justify-content:center!important}
+ .player-team-bg img{max-width:90%!important;object-position:center!important}
+ .player-score{min-width:54px;padding-left:5px}
+ .turn-player-count{right:8px;font-size:6.8px!important}
+ .match-detail-top{grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr)!important;gap:4px!important;min-height:102px!important}
+ .match-side-left{grid-template-columns:minmax(55px,1fr) 44px 45px!important}
+ .match-side-right{grid-template-columns:45px 44px minmax(55px,1fr)!important}
+ .match-identity>span{width:50px;height:50px}
+ .match-identity>b{font-size:7px}
+ .match-team-logo{width:42px;height:42px;opacity:.42}
+ .match-side>strong{font-size:28px!important}
+ .match-center-title b{font-size:10px}
+ .detail-tabs.baby-match-tabs{gap:5px;padding:7px 1px}
+ .detail-tabs.baby-match-tabs button{height:42px;min-height:42px;border-radius:11px;padding:3px 7px}
+ .detail-tab-main,.detail-tab-match{min-width:96px}
+ .detail-tab-main span,.detail-tab-match span{font-size:6.8px}
+ .detail-tab-main svg,.detail-tab-match svg{width:19px;height:19px}
+ .detail-tab-player{width:44px!important;min-width:44px!important}
+ .detail-tab-player.on{min-width:92px!important}
+ .detail-tab-avatar{width:34px;height:34px;flex-basis:34px}
+ .detail-tab-player b{max-width:78px;font-size:6.8px}
+ .match-compare.restored .match-compare-row{grid-template-columns:minmax(0,1fr) 112px minmax(0,1fr);min-height:36px}
+ .match-compare.restored .match-compare-row>strong{font-size:15px}
+}
+@media(orientation:portrait) and (max-height:700px){
+ .player{height:88px;min-height:88px;grid-template-columns:minmax(100px,1fr) 52px minmax(72px,23%)}
+ .player-avatar{width:50px!important;height:50px!important;flex-basis:50px}
+ .player-avatar-label b{font-size:7.5px}.player-avatar-label span{font-size:6.3px}
+}
 `;
