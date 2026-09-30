@@ -28,6 +28,13 @@ export function trainingConfigSummary(rawModeId: string, cfg: any): string {
     return `${String(config.mode || "DO").toUpperCase()} • ${Number(config.rounds || 20)} rounds`;
   }
   if (modeId === "training_challenges") {
+    if (String(config.sourceMode || "").toLowerCase() === "challenge") {
+      const target = String(config.challengeTarget || config.target || "20").replace("bull25", "BULL 25").replace("bull50", "BULL 50");
+      const visits = Number(config.visits || 0);
+      const ruleMap: Record<string, string> = { all: "Tous les hits", single: "Simple", double: "Double", triple: "Triple", bull25: "Bull 25", bull50: "Bull 50" };
+      const rule = ruleMap[String(config.challengeRule || config.rule || "all")] || String(config.challengeRule || config.rule || "all");
+      return `Challenge • cible ${target}${visits ? ` • ${visits} tours` : ""} • ${rule}`;
+    }
     const id = String(config.challengeId || config.id || "3_DOUBLES_9");
     const map: Record<string, string> = {
       "3_DOUBLES_9": "3 doubles / 9 fléchettes",

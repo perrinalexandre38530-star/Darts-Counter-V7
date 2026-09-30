@@ -358,6 +358,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "x01", label: "X01", aliases: ["x01", "leg", "301", "501", "701", "901"] },
     { key: "cricket", label: "Cricket", aliases: ["cricket", "cricket_cut_throat", "cut_throat", "cut-throat", "enculette", "vache"] },
     { key: "killer", label: "Killer", aliases: ["killer"] },
+    { key: "challenge", label: "CHALLENGE", aliases: ["challenge"] },
     { key: "shanghai", label: "Shanghai", aliases: ["shanghai"] },
     { key: "golf", label: "Golf", aliases: ["golf"] },
     { key: "territories", label: "Territories", aliases: ["territories", "territoires", "departement", "département"] },
@@ -486,7 +487,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|castle|gotcha|hare_hounds|harehounds|pendu|menteur|crados|fifty_one_by_five|51_by_5|51by5|looper|call_three|callthree|steeplechase|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|castle|gotcha|hare_hounds|harehounds|pendu|menteur|crados|challenge|fifty_one_by_five|51_by_5|51by5|looper|call_three|callthree|steeplechase|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -675,6 +676,7 @@ function modeLabel(e: SavedEntry) {
   if (m === "pendu") return "PENDU";
   if (m === "menteur") return "MENTEUR";
   if (m === "crados") return "CRADOS";
+  if (m === "challenge") return "CHALLENGE";
   if (m === "fifty_one_by_five" || m === "51_by_5" || m === "51by5") return "51 BY 5";
   if (m === "looper") return "LOOPER";
   if (m === "call_three" || m === "callthree") return "CALL THREE";
@@ -861,6 +863,7 @@ const modeColor: Record<string, string> = {
   clock: "#ff40b4",
   training: "#71c9ff",
   killer: "#ff6a3c",
+  challenge: "#ff4148",
   shanghai: "#ffb000",
   golf: "#f6c256",
   territories: "#4ac29a",
@@ -4680,6 +4683,22 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         : wid;
       const firstPlayerId = winnerPlayerId || (allPlayers.length ? getId(allPlayers[0]) : null) || null;
       go("statsHub", { tab: "stats", initialStatsSubTab: "gros_6", initialPlayerId: firstPlayerId, playerId: firstPlayerId, matchId: e.id, resumeId, from: "history" });
+      return;
+    }
+
+    // ✅ CHALLENGE : ouvre directement le panneau stats Challenge avec le joueur du match.
+    if (m === "challenge" || inferredMode === "challenge") {
+      const wid = (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
+      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || (e as any)?.payload?.players?.[0]?.id || null;
+      go("statsHub", {
+        tab: "stats",
+        initialStatsSubTab: "challenge",
+        initialPlayerId: firstPlayerId,
+        playerId: firstPlayerId,
+        matchId: e.id,
+        resumeId,
+        from: "history",
+      });
       return;
     }
 

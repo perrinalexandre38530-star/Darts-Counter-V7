@@ -144,6 +144,14 @@ export default function StatsTrainingModesLocal() {
     return Array.from(map.values()).sort((a: any, b: any) => b.lastAt - a.lastAt);
   }, [data.recent]);
 
+  const challengeEvolution = React.useMemo(() => {
+    return (data.recent || [])
+      .filter((session) => session.modeId === "training_challenges" && String((session.config as any)?.sourceMode || "").toLowerCase() === "challenge")
+      .slice()
+      .sort((a, b) => Number(a.endedAt || 0) - Number(b.endedAt || 0))
+      .slice(-20);
+  }, [data.recent]);
+
   const global = data.global || EMPTY_ROW;
   const globalAccuracy = pct(int(global.hits), int(global.darts));
   const successRate = pct(int(global.successes), int(global.sessions));
@@ -283,6 +291,38 @@ export default function StatsTrainingModesLocal() {
           );
         })}
       </div>
+
+      {challengeEvolution.length ? (
+        <section style={{ ...shell, marginTop: 10, padding: 11 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", marginBottom: 7 }}>
+            <div style={{ fontSize: 11, fontWeight: 950, color: "#ff5a61", letterSpacing: 0.7 }}>CHALLENGE — ÉVOLUTION SOLO</div>
+            <div style={{ fontSize: 9, opacity: .55 }}>{challengeEvolution.length} session{challengeEvolution.length > 1 ? "s" : ""}</div>
+          </div>
+          {(() => {
+            const width = 620, height = 180, pad = 26;
+            const values = challengeEvolution.map((session) => Number(session.points || 0));
+            const max = Math.max(1, ...values);
+            const points = challengeEvolution.map((session, index) => {
+              const x = challengeEvolution.length <= 1 ? width / 2 : pad + (index / (challengeEvolution.length - 1)) * (width - pad * 2);
+              const y = height - pad - (Number(session.points || 0) / max) * (height - pad * 2);
+              return { x, y, session };
+            });
+            const line = points.map((point) => `${point.x},${point.y}`).join(" ");
+            return <>
+              <svg viewBox={`0 0 ${width} ${height}`} style={{ display: "block", width: "100%", minHeight: 150 }} role="img" aria-label="Évolution des scores Challenge en training">
+                {[0,.25,.5,.75,1].map((ratio) => { const y = pad + ratio * (height - pad * 2); const value = Math.round(max * (1-ratio)); return <g key={ratio}><line x1={pad} y1={y} x2={width-pad} y2={y} stroke="rgba(255,255,255,.08)"/><text x="3" y={y+4} fontSize="9" fill="rgba(255,255,255,.42)">{value}</text></g>; })}
+                <polyline points={line} fill="none" stroke="#ff5a61" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                {points.map((point,index)=><g key={point.session.id}><circle cx={point.x} cy={point.y} r="4.5" fill="#ff5a61" stroke="#fff" strokeWidth="1.2"/><title>{`Session ${index+1} · ${point.session.points} pts · ${trainingConfigSummary(point.session.modeId, point.session.config)}`}</title></g>)}
+              </svg>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 6, marginTop: 4 }}>
+                <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>BEST SCORE</div><b style={{ color: "#ff5a61" }}>{Math.max(...values)}</b></div>
+                <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>SCORE MOYEN</div><b style={{ color: "#ff5a61" }}>{one(values.reduce((a,b)=>a+b,0)/Math.max(1,values.length))}</b></div>
+                <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>DERNIÈRE CIBLE</div><b style={{ color: "#ff5a61" }}>{String((challengeEvolution[challengeEvolution.length-1]?.config as any)?.challengeTarget || "—").toUpperCase()}</b></div>
+              </div>
+            </>;
+          })()}
+        </section>
+      ) : null}
 
       {variants.length ? (
         <section style={{ ...shell, marginTop: 10, padding: 11 }}>
