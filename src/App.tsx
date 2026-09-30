@@ -6830,6 +6830,7 @@ case "babyfoot_team_edit":
     "gotcha_play",
     "hare_hounds_play",
     "crados_play",
+    "challenge_play",
     "fifty_one_by_five_play",
     "looper_play",
     "call_three_play",
