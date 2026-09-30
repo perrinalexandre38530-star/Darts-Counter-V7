@@ -5018,6 +5018,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       const rule = String(row?.game?.rule ?? row?.summary?.rule ?? row?.payload?.config?.rule ?? "all");
       const visits = N(row?.game?.visits ?? row?.summary?.visits ?? row?.payload?.config?.visits);
       const at = N(row?.finishedAt ?? row?.updatedAt ?? row?.createdAt ?? row?.ts ?? row?.created_at, Date.now());
+      const positionStats = Array.isArray(pl?.positionStats) ? pl.positionStats : Array.isArray(pl?.stats?.positionStats) ? pl.stats.positionStats : Array.isArray(pl?.special?.positionStats) ? pl.special.positionStats : [];
       return {
         id: String(row?.id || row?.matchId || `${at}`),
         at,
@@ -5026,6 +5027,9 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
         miss,
         hits: hitsCount,
         bestStreak,
+        bestVisit: N(pl?.bestVisit ?? pl?.stats?.bestVisit ?? pl?.special?.bestVisit),
+        avgVisit: N(pl?.avgVisit ?? pl?.stats?.avgVisit ?? pl?.special?.avgVisit),
+        positionStats,
         target,
         rule,
         visits,
@@ -5062,6 +5066,14 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
   const avgScore = sessions ? totalScore / sessions : 0;
   const accuracy = totalDarts ? (totalHits / totalDarts) * 100 : (totalHits + totalMiss ? (totalHits / (totalHits + totalMiss)) * 100 : 0);
   const ringTotals = rows.reduce((acc: any, row: any) => ({ S: acc.S + row.S, D: acc.D + row.D, T: acc.T + row.T, B25: acc.B25 + row.B25, B50: acc.B50 + row.B50, MISS: acc.MISS + row.miss }), { S: 0, D: 0, T: 0, B25: 0, B50: 0, MISS: 0 });
+  const bestVisit = Math.max(0, ...rows.map((row: any) => Number(row.bestVisit || 0)));
+  const positionTotals = [0, 1, 2].map((index) => {
+    const posRows = rows.map((row: any) => Array.isArray(row.positionStats) ? row.positionStats[index] : null).filter(Boolean);
+    const attempts = posRows.reduce((a: number, p: any) => a + N(p?.attempts), 0);
+    const successful = posRows.reduce((a: number, p: any) => a + N(p?.successful), 0);
+    return { position: index + 1, attempts, successful, accuracy: attempts ? (successful / attempts) * 100 : 0, S: posRows.reduce((a: number,p:any)=>a+N(p?.S),0), D: posRows.reduce((a: number,p:any)=>a+N(p?.D),0), T: posRows.reduce((a: number,p:any)=>a+N(p?.T),0), B25: posRows.reduce((a: number,p:any)=>a+N(p?.B25),0), B50: posRows.reduce((a: number,p:any)=>a+N(p?.B50),0), MISS: posRows.reduce((a: number,p:any)=>a+N(p?.MISS),0) };
+  });
+  const bestPosition = positionTotals.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];
   const evolution = rows.slice(-24);
   const chartW = 720;
   const chartH = 220;
@@ -5098,6 +5110,8 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
           ["BEST SCORE", bestScore],
           ["PRÉCISION", `${accuracy.toFixed(1)}%`],
           ["BEST SUITE", bestStreak],
+          ["BEST VOLÉE", bestVisit],
+          ["MEILLEURE FLÉCHETTE", bestPosition?.attempts ? `#${bestPosition.position} · ${bestPosition.accuracy.toFixed(1)}%` : "—"],
           ["FLÉCHETTES", totalDarts],
         ].map(([label, value]) => <div key={String(label)} style={box}><div style={statLabel}>{label}</div><div style={statValue}>{value}</div></div>)}
       </div>
@@ -5123,6 +5137,22 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
           {[["S",ringTotals.S],["D",ringTotals.D],["T",ringTotals.T],["25",ringTotals.B25],["50",ringTotals.B50],["MISS",ringTotals.MISS]].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: "rgba(255,255,255,.045)", padding: "7px 4px", textAlign: "center" }}><div style={{ fontSize: 8, opacity: .58, fontWeight: 950 }}>{label}</div><div style={{ marginTop: 2, fontWeight: 1000, fontSize: 15 }}>{value}</div></div>)}
         </div>
+      </div>
+
+      <div style={{ ...box, marginTop: 9 }}>
+        <div style={{ ...statLabel, marginBottom: 8 }}>PRÉCISION PAR FLÉCHETTE</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+          {positionTotals.map((pos: any) => <div key={pos.position} style={{ borderRadius: 11, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", padding: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 5 }}><b style={{ fontSize: 9 }}>FLÉCHETTE {pos.position}</b><strong style={{ color: "#ff6268", fontSize: 16 }}>{pos.accuracy.toFixed(1)}%</strong></div>
+            <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden", margin: "6px 0" }}><i style={{ display: "block", height: "100%", width: `${Math.min(100,pos.accuracy)}%`, borderRadius: 999, background: "linear-gradient(90deg,#ff4148,#ffb01c)" }}/></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4, fontSize: 8 }}>{[["S",pos.S],["D",pos.D],["T",pos.T],["25",pos.B25],["50",pos.B50],["MISS",pos.MISS]].map(([label,count]:any)=><span key={String(label)} style={{ padding: 4, borderRadius: 6, background: "rgba(0,0,0,.2)", textAlign: "center" }}>{label} <b>{pos.attempts ? ((Number(count)/pos.attempts)*100).toFixed(1) : "0.0"}%</b><small style={{ display: "block", opacity: .55 }}>{count}</small></span>)}</div>
+          </div>)}
+        </div>
+      </div>
+
+      <div style={{ ...box, marginTop: 9 }}>
+        <div style={{ ...statLabel, marginBottom: 8 }}>CAMEMBERT DES IMPACTS</div>
+        {(() => { const parts = [["S",ringTotals.S,"#169cff"],["D",ringTotals.D,"#ff3b48"],["T",ringTotals.T,"#ffad19"],["25",ringTotals.B25,"#10d47b"],["50",ringTotals.B50,"#bc55ff"],["MISS",ringTotals.MISS,"#758196"]] as any[]; const total=Math.max(1,parts.reduce((a,p)=>a+Number(p[1]||0),0)); let cursor=0; const stops=parts.filter(p=>p[1]>0).map(p=>{const start=cursor;cursor+=Number(p[1])/total*100;return `${p[2]} ${start}% ${cursor}%`}); return <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}><div style={{ width: 132, height: 132, borderRadius: "50%", background: stops.length ? `conic-gradient(${stops.join(",")})` : "#1a2330", display: "grid", placeItems: "center" }}><div style={{ width: 72, height: 72, borderRadius: "50%", background: "#0a1018", display: "grid", placeItems: "center", textAlign: "center", fontWeight: 1000 }}>{accuracy.toFixed(1)}%<small style={{ display: "block", fontSize: 7, opacity: .55 }}>PRÉCISION</small></div></div><div style={{ flex: 1, minWidth: 160, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5 }}>{parts.map(p=><div key={p[0]} style={{ display: "grid", gridTemplateColumns: "9px 1fr auto", gap: 5, alignItems: "center", fontSize: 9 }}><i style={{ width: 9, height: 9, borderRadius: "50%", background: p[2] }}/><b>{p[0]}</b><span>{p[1]}</span></div>)}</div></div>; })()}
       </div>
 
       <div style={{ ...box, marginTop: 9 }}>

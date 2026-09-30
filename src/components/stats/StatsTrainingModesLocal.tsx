@@ -152,6 +152,29 @@ export default function StatsTrainingModesLocal() {
       .slice(-20);
   }, [data.recent]);
 
+  const challengePositionStats = React.useMemo(() => {
+    return [1, 2, 3].map((position) => {
+      const attempts = challengeEvolution.reduce((sum, session) => sum + Number((session.metrics as any)?.[`dart${position}Attempts`] || 0), 0);
+      const successful = challengeEvolution.reduce((sum, session) => sum + Number((session.metrics as any)?.[`dart${position}Successful`] || 0), 0);
+      const rings = ["S", "D", "T", "B25", "B50", "MISS"].map((ring) => ({
+        ring,
+        count: challengeEvolution.reduce((sum, session) => sum + Number((session.metrics as any)?.[`dart${position}${ring}`] || 0), 0),
+      }));
+      return {
+        position,
+        attempts,
+        successful,
+        accuracy: attempts > 0 ? (successful / attempts) * 100 : 0,
+        rings,
+      };
+    });
+  }, [challengeEvolution]);
+
+  const challengeBestPosition = React.useMemo(
+    () => challengePositionStats.slice().sort((a, b) => b.accuracy - a.accuracy)[0] || null,
+    [challengePositionStats],
+  );
+
   const global = data.global || EMPTY_ROW;
   const globalAccuracy = pct(int(global.hits), int(global.darts));
   const successRate = pct(int(global.successes), int(global.sessions));
@@ -318,6 +341,30 @@ export default function StatsTrainingModesLocal() {
                 <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>BEST SCORE</div><b style={{ color: "#ff5a61" }}>{Math.max(...values)}</b></div>
                 <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>SCORE MOYEN</div><b style={{ color: "#ff5a61" }}>{one(values.reduce((a,b)=>a+b,0)/Math.max(1,values.length))}</b></div>
                 <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>DERNIÈRE CIBLE</div><b style={{ color: "#ff5a61" }}>{String((challengeEvolution[challengeEvolution.length-1]?.config as any)?.challengeTarget || "—").toUpperCase()}</b></div>
+              </div>
+              <div style={{ marginTop: 10, fontSize: 9, fontWeight: 950, letterSpacing: .65, color: "#ff7a80" }}>
+                PRÉCISION PAR FLÉCHETTE {challengeBestPosition && challengeBestPosition.attempts ? `• meilleure : #${challengeBestPosition.position} (${one(challengeBestPosition.accuracy)}%)` : ""}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 6 }}>
+                {challengePositionStats.map((pos) => (
+                  <div key={pos.position} style={{ borderRadius: 11, border: "1px solid rgba(255,90,97,.23)", background: "rgba(0,0,0,.23)", padding: 7, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+                      <b style={{ fontSize: 9 }}>FLÉCHETTE {pos.position}</b>
+                      <strong style={{ color: "#ff5a61", fontSize: 14 }}>{pos.attempts ? `${one(pos.accuracy)}%` : "—"}</strong>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,.08)", marginTop: 6, overflow: "hidden" }}>
+                      <i style={{ display: "block", width: `${Math.min(100, pos.accuracy)}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#ff5a61,#ffb23f)" }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 3, marginTop: 6 }}>
+                      {pos.rings.map((ring) => (
+                        <span key={ring.ring} style={{ minWidth: 0, borderRadius: 7, background: "rgba(255,255,255,.035)", padding: "4px 5px", display: "flex", justifyContent: "space-between", gap: 4, fontSize: 7.5 }}>
+                          <b>{ring.ring === "B25" ? "25" : ring.ring === "B50" ? "50" : ring.ring}</b>
+                          <em style={{ fontStyle: "normal", opacity: .7 }}>{pos.attempts ? `${one((ring.count / pos.attempts) * 100)}%` : "0.0%"}</em>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </>;
           })()}

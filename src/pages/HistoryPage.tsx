@@ -1856,6 +1856,23 @@ function CapitalHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
   );
 }
 
+
+function ChallengeHistoryScoreBlock({e,theme}:{e:SavedEntry;theme:any}){
+ const anyE:any=e as any;
+ const pool=[anyE?.summary?.perPlayer,anyE?.payload?.summary?.perPlayer,anyE?.payload?.stats?.players,anyE?.payload?.players,anyE?.players].find((v:any)=>Array.isArray(v)&&v.length)||[];
+ const rows=(pool as any[]).map((row:any,index:number)=>{
+  const darts=Number(row?.darts??row?.dartsThrown??row?.stats?.darts??0)||0;
+  const hitSummary=row?.hitSummary??row?.stats?.hitSummary??{};
+  const successful=Number(row?.hitCount??row?.stats?.hitCount??hitSummary?.hits??0)||0;
+  const accuracy=Number(row?.successRate??row?.stats?.successRate??(darts?successful/darts*100:0))||0;
+  const positions=Array.isArray(row?.positionStats)?row.positionStats:Array.isArray(row?.stats?.positionStats)?row.stats.positionStats:[];
+  const bestPos=positions.slice().sort((a:any,b:any)=>Number(b?.accuracy||0)-Number(a?.accuracy||0))[0];
+  return {id:String(row?.id||row?.playerId||index),name:historyScoreName(e,row)||getName(row)||`Joueur ${index+1}`,score:Number(row?.score??row?.points??0)||0,darts,accuracy,bestStreak:Number(row?.bestStreak??row?.stats?.bestStreak??row?.special?.bestStreak??0)||0,bestVisit:Number(row?.bestVisit??row?.stats?.bestVisit??row?.special?.bestVisit??0)||0,bestPos:Number(bestPos?.position||0),bestPosAccuracy:Number(bestPos?.accuracy||0),positions:positions.map((pos:any)=>({position:Number(pos?.position||0),accuracy:Number(pos?.accuracy||0)})),S:Number(hitSummary?.S||0),D:Number(hitSummary?.D||0),T:Number(hitSummary?.T||0)};
+ }).sort((a:any,b:any)=>b.score-a.score);
+ if(!rows.length){const score=summarizeScore(e);return score?<>{score}</>:null}
+ return <div style={{display:'grid',gap:5,minWidth:0}}><div style={{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap'}}>{rows.slice(0,5).map((row:any,index:number)=><React.Fragment key={row.id}>{index?<span style={{color:'rgba(255,255,255,.34)'}}>•</span>:null}<span style={{color:historyRankColor(index+1),fontWeight:1000}}>{index+1}.</span><span style={{color:'rgba(255,255,255,.93)',fontWeight:900}}>{row.name}</span><span style={{color:theme.primary,fontWeight:1000}}>{row.score} pts</span></React.Fragment>)}</div><div style={{color:'rgba(255,255,255,.62)',fontSize:9.5,fontWeight:850,lineHeight:1.35}}>{rows.slice(0,4).map((row:any)=>`${row.name}: ${row.accuracy.toFixed(1)}% • suite ${row.bestStreak} • best volée ${row.bestVisit} • meilleure #${row.bestPos||'—'} ${row.bestPos?row.bestPosAccuracy.toFixed(1):'0.0'}% • F1/F2/F3 ${row.positions.map((p:any)=>p.accuracy.toFixed(1)+'%').join('/')} • S/D/T ${row.S}/${row.D}/${row.T}`).join('  |  ')}</div></div>;
+}
+
 function historyRankColor(rank: number): string {
   return rank === 1 ? "#ffd76a" : rank === 2 ? "#dce6f2" : rank === 3 ? "#c98945" : "rgba(255,255,255,.88)";
 }
@@ -1891,6 +1908,9 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
   }
   if (isTerritoriesHistoryEntry(e)) {
     return <TerritoriesHistoryScoreBlock e={e} theme={theme} />;
+  }
+  if (normalizeToken(baseMode(e)) === "challenge" || inferGameFilterKey(e, "darts") === "challenge") {
+    return <ChallengeHistoryScoreBlock e={e} theme={theme} />;
   }
   if (isBabyFootEntry(e)) {
     const d = babyFootHistoryData(e);
@@ -4443,6 +4463,17 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     }
 
     const inferredMode = inferGameFilterKey(e, "darts");
+
+    // CHALLENGE : reprise exacte à n'importe quel moment (config + journal de touches + joueur/tour actif).
+    if ((normalizeToken(baseMode(e)) === "challenge" || normalizeToken(inferredMode) === "challenge") && statusOf(e) === "in_progress") {
+      let recForResume:any=e;
+      try { const full=await History.get(String(resumeId||e.id||'')); if(full) recForResume={...(e as any),...(full as any),resume:(full as any)?.resume||(e as any)?.resume}; } catch(error){ console.warn('[HistoryPage] Challenge resume hydration failed',error); }
+      const payload:any=(recForResume as any)?.decoded||((recForResume as any)?.payload&&typeof (recForResume as any).payload==='object'?(recForResume as any).payload:null)||{};
+      const config=(recForResume as any)?.resume?.config||payload?.config||(recForResume as any)?.summary?.config||null;
+      const snapshot=(recForResume as any)?.resume?.state||(recForResume as any)?.resume?.livePayload?.state||payload?.state||payload?.snapshot||{log:payload?.entries||[]};
+      const params={rec:recForResume,resumeId,config,snapshot,mode:'challenge',from:preview?'history_preview':'history',preview:!!preview};
+      const ok=safeGo(['challenge_play'],params); if(!ok) go('challenge_play',params); return;
+    }
 
     // GROS 6 : reprise exacte du snapshot de partie (vies, tour, cible, volée et historique).
     if ((isGros6Entry(e) || ["gros6", "big6"].includes(normalizeToken(inferredMode))) && statusOf(e) === "in_progress") {
