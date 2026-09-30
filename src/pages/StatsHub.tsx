@@ -1259,7 +1259,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "challenge", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const mode = classifyRecordMode(r);
@@ -1554,6 +1554,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("enculette") || tag.includes("vache")) return "cricket";
   if (tag.includes("cricket")) return "cricket";
   if (tag.includes("killer")) return "killer";
+  if (tag.includes("challenge")) return "challenge";
   if (tag.includes("shanghai")) return "shanghai";
   if (tag.includes("golf")) return "golf";
   if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
@@ -5236,6 +5237,7 @@ const modeDefs = React.useMemo(
               { key: "cricket", label: "Cricket" },
               { key: "shanghai", label: "Shanghai" },
               { key: "killer", label: "Killer" },
+              { key: "challenge", label: "Challenge" },
               { key: "golf", label: "Golf" },
               { key: "battle_royale", label: "Battle Royale" },
               { key: "warfare", label: "Warfare" },
