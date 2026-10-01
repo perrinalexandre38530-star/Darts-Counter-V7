@@ -502,8 +502,6 @@ const css=`
  .player-avatar{width:50px!important;height:50px!important;flex-basis:50px}
  .player-avatar-label b{font-size:7.5px}.player-avatar-label span{font-size:6.3px}
 }
-`;
-
 
 /* Challenge V17 — active player / detail header / player lists */
 .player{position:relative;overflow:hidden}
@@ -520,3 +518,4 @@ const css=`
 
 @media(orientation:landscape){.player{height:108px;min-height:108px;grid-template-columns:88px minmax(0,1fr) 86px 94px;gap:10px;padding:10px 12px}.player-avatar-wrap{align-items:flex-start;justify-content:center}.player-avatar{width:72px!important;height:72px!important;flex:0 0 72px}.player-avatar-label{display:none}.player-team-bg{inset:8px 26% 8px 12%}.cp-left .player-list .player-row{grid-template-columns:34px minmax(0,1fr) auto}.cp-left .list-team-bg{left:94px;right:48px;inset-block:3px;justify-content:center}.match-detail-card.advanced .detail-scroll{padding-right:4px}.challenge-records .record-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(orientation:portrait){.player{height:122px;min-height:122px;grid-template-columns:82px minmax(0,1fr) 64px 80px;gap:6px;padding:8px 8px 8px 10px}.player-avatar-wrap{align-items:flex-start;justify-content:center}.player-avatar{width:66px!important;height:66px!important;flex:0 0 66px}.player-avatar-label{display:flex;align-items:flex-start;max-width:100%}.landscape-player-meta{display:none!important}.player-team-bg{inset:10px 26% 10px 13%}.player-score{min-width:58px;padding-left:6px}.player-score b{font-size:52px}.player-score small{font-size:8px}.player-objective{min-width:74px}.player-objective img{width:68px}.player-objective span{font-size:8px}.match-detail-card.advanced{width:min(96vw,760px)}.match-detail-top.redesigned{grid-template-columns:minmax(0,1fr) 132px minmax(0,1fr);gap:6px;min-height:116px}.match-side-panel{padding:10px 10px 10px}.match-side-panel-avatar{top:10px;width:50px;height:50px}.match-side-panel-left .match-side-panel-avatar{left:10px}.match-side-panel-right .match-side-panel-avatar{right:10px}.match-side-panel-bg{width:58%;top:6px;bottom:6px}.match-side-panel b,.match-side-panel small{max-width:58%}.match-side-panel b{font-size:9px}.match-side-panel small{font-size:7px;margin-top:2px}.match-center-scoreboard small{font-size:8px}.match-center-scoreboard em{font-size:7px}.match-score-boxes{grid-template-columns:repeat(2,44px);gap:5px}.match-score-boxes strong{height:44px;font-size:30px;border-radius:8px}.challenge-records .record-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+`;
