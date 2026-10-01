@@ -173,7 +173,7 @@ function buildGlobalRecordCards(rows:Array<{participant:Participant;raw:Challeng
    ? candidates.reduce((best,c)=>c.numeric<best.numeric?c:best,candidates[0])
    : candidates.reduce((best,c)=>c.numeric>best.numeric?c:best,candidates[0]);
   const tied=candidates.filter(c=>Math.abs(c.numeric-winner.numeric)<1e-9).map(c=>c.holder).filter(Boolean) as string[];
-  const holder=tied.length>2?`${tied.slice(0,2).join(' + ')} +${tied.length-2}`:tied.length>1?tied.join(' + '):winner.holder;
+  const holder=tied.length>1?`EX ÆQUO · ${tied.join(' / ')}`:winner.holder;
   return {...winner,holder};
  });
 }
@@ -232,6 +232,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const [log,setLog]=React.useState<Entry[]>(()=>initialLog);
  const [rankOpen,setRankOpen]=React.useState(false);
  const [detailOpen,setDetailOpen]=React.useState(false);
+ const [playersOpen,setPlayersOpen]=React.useState(false);
  const [detailTab,setDetailTab]=React.useState<string>('global');
  const [voiceOn,setVoiceOn]=React.useState(false);
  const [voiceHeard,setVoiceHeard]=React.useState('');
@@ -304,11 +305,29 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const globalRecordCards=React.useMemo(()=>buildGlobalRecordCards(recordRows,cfg),[recordRows,cfg]);
  const globalDetailed=React.useMemo<ChallengeDetailedStats>(()=>{
   const parts=detailedByPlayer.map(x=>x.stats);
-  const hitCounts=Object.fromEntries(hits.map(h=>[h,parts.reduce((a,st)=>a+st.hitCounts[h],0)])) as Record<Hit,number>;
-  const positionStats=[0,1,2].map(index=>{const rows=parts.map(st=>st.positionStats[index]);const attempts=rows.reduce((a,r)=>a+r.attempts,0);const successful=rows.reduce((a,r)=>a+r.successful,0);return {position:index+1,attempts,successful,accuracy:attempts?Math.round(successful/attempts*1000)/10:0,S:rows.reduce((a,r)=>a+r.S,0),D:rows.reduce((a,r)=>a+r.D,0),T:rows.reduce((a,r)=>a+r.T,0),B25:rows.reduce((a,r)=>a+r.B25,0),B50:rows.reduce((a,r)=>a+r.B50,0),MISS:rows.reduce((a,r)=>a+r.MISS,0)}});
-  const maxVisits=Math.max(0,...parts.map(st=>st.visitScores.length));const visitScores=Array.from({length:maxVisits},(_,i)=>parts.reduce((a,st)=>a+Number(st.visitScores[i]||0),0));let running=0;const cumulativeScores=visitScores.map(v=>(running+=v));const darts=parts.reduce((a,st)=>a+st.darts,0);const successful=parts.reduce((a,st)=>a+st.successful,0);const score=parts.reduce((a,st)=>a+st.score,0);
-  return {score,darts,successful,failures:Math.max(0,darts-successful),accuracy:darts?Math.round(successful/darts*1000)/10:0,bestStreak:Math.max(0,...parts.map(st=>st.bestStreak)),bestVisit:Math.max(0,...parts.map(st=>st.bestVisit)),avgVisit:visitScores.length?Math.round((visitScores.reduce((a,b)=>a+b,0)/visitScores.length)*10)/10:0,hitCounts,positionStats,visitScores,cumulativeScores};
- },[detailedByPlayer]);
+  const fallback=computeChallengeDetailedStats([],cfg);
+  if(!parts.length) return fallback;
+  const hitCounts=Object.fromEntries(hits.map(h=>[h,Math.max(0,...parts.map(st=>Number(st.hitCounts[h]||0)))])) as Record<Hit,number>;
+  const positionStats=[0,1,2].map(index=>{
+   const rows=parts.map(st=>st.positionStats[index]).filter(Boolean);
+   const best=rows.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]||fallback.positionStats[index];
+   return {...best,position:index+1};
+  });
+  const maxVisits=Math.max(0,...parts.map(st=>st.cumulativeScores.length));
+  const cumulativeScores=Array.from({length:maxVisits},(_,i)=>Math.max(0,...parts.map(st=>Number(st.cumulativeScores[i]||0))));
+  const visitScores=Array.from({length:maxVisits},(_,i)=>Math.max(0,...parts.map(st=>Number(st.visitScores[i]||0))));
+  return {
+   score:Math.max(0,...parts.map(st=>st.score)),
+   darts:Math.max(0,...parts.map(st=>st.darts)),
+   successful:Math.max(0,...parts.map(st=>st.successful)),
+   failures:Math.min(...parts.map(st=>st.failures)),
+   accuracy:Math.max(0,...parts.map(st=>st.accuracy)),
+   bestStreak:Math.max(0,...parts.map(st=>st.bestStreak)),
+   bestVisit:Math.max(0,...parts.map(st=>st.bestVisit)),
+   avgVisit:Math.max(0,...parts.map(st=>st.avgVisit)),
+   hitCounts,positionStats,visitScores,cumulativeScores
+  };
+ },[detailedByPlayer,cfg]);
  const detailCurrent=(detailTab==='global'||detailTab==='match')?null:(detailedByPlayer.find(x=>x.participant.id===detailTab)||detailedByPlayer[0]||null);
  const detailStats=detailCurrent?.stats||globalDetailed;
  const detailRecordCards=React.useMemo(()=>{if(detailTab==='global'||detailTab==='match')return globalRecordCards;const row=recordRows.find(x=>x.participant.id===detailTab)||recordRows[0];return row?makeRecordCards(row.raw,cfg):globalRecordCards},[detailTab,globalRecordCards,recordRows,cfg]);
@@ -352,7 +371,13 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    <aside className="cp-right">
     <div className="turn-banner portrait-only"><span>TOUR</span><b>{done?cfg.visits:turn}</b><i>/ {cfg.visits}</i><em className="turn-player-count">{safeParticipants.length} {safeParticipants.length>1?'JOUEURS':'JOUEUR'}</em></div>
     <div className="portrait-stats-wrap portrait-only"><div className="portrait-stats"><div className="ps-title"><strong>STATS CHALLENGE</strong><button type="button" className="online-rank" aria-label="Classement online" onClick={()=>setRankOpen(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9"/></svg></button></div><div className="ps-kpis"><div><span>SCORE</span><b>{currentScore}</b></div><div><span>RÉUSSITE</span><b>{pct}%</b></div><div><span>FLÉCHETTES</span><b>{currentLog.length}/{cfg.visits*3}</b></div><div><span>SUITE</span><b>{streak}</b></div></div><div className="ps-hits">{allowedHits.map(h=><div className={'psh '+h} key={h}><span>{h}</span><b>{counts[h]}</b></div>)}</div></div><button type="button" className="match-detail-trigger" onClick={()=>{setDetailTab('global');setDetailOpen(true)}}>STATS DÉTAILLÉES <span>↗</span></button></div>
-    {safeParticipants.length>1&&<div className="player-list portrait-player-list portrait-only"><div className="player-list-title"><b>JOUEURS</b><span>{safeParticipants.length}</span></div><div className="player-list-scroll">{safeParticipants.map((p,i)=><div key={p.id} className={'player-row '+(i===activeIndex?'active':'')}><div className="list-team-bg">{p.team?<ResolvedTeamLogo team={p.team}/>:null}</div><span className="list-avatar"><ChallengeAvatar participant={p} size={32}/></span><span className="list-name"><b>{p.name}</b>{p.teamName?<small>{p.teamName}</small>:null}</span><span className="list-score"><b>{participantScore(p)}</b><small>{participantDarts(p)} fl.</small></span></div>)}</div></div>}
+    {safeParticipants.length>1&&<button type="button" className="players-launch portrait-only" onClick={()=>setPlayersOpen(true)} aria-label="Ouvrir la liste des joueurs">
+     <img src="/challenge/ticker_challenge.png" alt="" aria-hidden="true"/>
+     <span className="players-launch-shade"/>
+     <b>JOUEURS</b>
+     <span className="players-launch-avatars">{safeParticipants.slice(0,4).map(p=><i key={p.id}><ChallengeAvatar participant={p} size={28}/></i>)}</span>
+     <strong>{safeParticipants.length}</strong>
+    </button>}
     <div className="landscape-turn landscape-only"><span>TOUR</span><b>{done?cfg.visits:turn}</b><i>/ {cfg.visits}</i><em className="turn-player-count">{safeParticipants.length} {safeParticipants.length>1?'JOUEURS':'JOUEUR'}</em></div>
     <button type="button" className="landscape-stats landscape-only stats-hit-open" onClick={()=>{setDetailTab('global');setDetailOpen(true)}}><h2>STATS HITS <span>↗</span></h2><div className="hitstats">{hits.map(h=><div className={'hs '+h} key={h}><b>{h}<small>{h==='S'?' ×1':h==='D'?' ×2':h==='T'?' ×3':''}</small></b><strong>{counts[h]}</strong></div>)}</div></button>
     <div className="input-tools"><button className="undo" disabled={!log.length} onClick={()=>setLog(v=>v.slice(0,-1))}>↶ <span>ANNULER</span></button><button className={'voice '+(voiceOn?'listening':'')} type="button" onClick={startVoice} aria-label="Saisie vocale"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg><span>{voiceOn?'ÉCOUTE…':'VOCAL'}</span></button></div>
@@ -361,6 +386,16 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    </aside>
   </main>
 
+
+  {playersOpen&&<div className="players-modal" onClick={()=>setPlayersOpen(false)}><div className="players-modal-card" onClick={e=>e.stopPropagation()}>
+   <div className="players-modal-head"><img src="/challenge/ticker_challenge.png" alt=""/><span/><b>JOUEURS</b><strong>{safeParticipants.length}</strong><button type="button" onClick={()=>setPlayersOpen(false)}>×</button></div>
+   <div className="players-modal-list">{safeParticipants.map((p,i)=><div key={p.id} className={'players-modal-row '+(i===activeIndex?'active':'')}>
+    {p.team&&<div className="players-modal-team-bg"><ResolvedTeamLogo team={p.team}/></div>}
+    <span className="players-modal-avatar"><ChallengeAvatar participant={p} size={42}/></span>
+    <span className="players-modal-name"><b style={{color:i===activeIndex?theme.primary:undefined}}>{String(p.name||'Joueur').toUpperCase()}</b>{p.teamName?<small>{p.teamName}</small>:null}</span>
+    <span className="players-modal-score"><b>{participantScore(p)}</b><small>{participantDarts(p)} fl.</small></span>
+   </div>)}</div>
+  </div></div>}
 
   {detailOpen&&<div className="match-detail-modal" onClick={()=>setDetailOpen(false)}><div className="match-detail-card advanced" onClick={e=>e.stopPropagation()}>
    {safeParticipants.length===2&&(()=>{const left=safeParticipants[0],right=safeParticipants[1],a=participantStats(left),b=participantStats(right);return <div className="match-detail-top tall redesigned">
@@ -518,4 +553,22 @@ const css=`
 
 @media(orientation:landscape){.player{height:108px;min-height:108px;grid-template-columns:88px minmax(0,1fr) 86px 94px;gap:10px;padding:10px 12px}.player-avatar-wrap{align-items:flex-start;justify-content:center}.player-avatar{width:72px!important;height:72px!important;flex:0 0 72px}.player-avatar-label{display:none}.player-team-bg{inset:8px 26% 8px 12%}.cp-left .player-list .player-row{grid-template-columns:34px minmax(0,1fr) auto}.cp-left .list-team-bg{left:94px;right:48px;inset-block:3px;justify-content:center}.match-detail-card.advanced .detail-scroll{padding-right:4px}.challenge-records .record-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(orientation:portrait){.player{height:122px;min-height:122px;grid-template-columns:82px minmax(0,1fr) 64px 80px;gap:6px;padding:8px 8px 8px 10px}.player-avatar-wrap{align-items:flex-start;justify-content:center}.player-avatar{width:66px!important;height:66px!important;flex:0 0 66px}.player-avatar-label{display:flex;align-items:flex-start;max-width:100%}.landscape-player-meta{display:none!important}.player-team-bg{inset:10px 26% 10px 13%}.player-score{min-width:58px;padding-left:6px}.player-score b{font-size:52px}.player-score small{font-size:8px}.player-objective{min-width:74px}.player-objective img{width:68px}.player-objective span{font-size:8px}.match-detail-card.advanced{width:min(96vw,760px)}.match-detail-top.redesigned{grid-template-columns:minmax(0,1fr) 132px minmax(0,1fr);gap:6px;min-height:116px}.match-side-panel{padding:10px 10px 10px}.match-side-panel-avatar{top:10px;width:50px;height:50px}.match-side-panel-left .match-side-panel-avatar{left:10px}.match-side-panel-right .match-side-panel-avatar{right:10px}.match-side-panel-bg{width:58%;top:6px;bottom:6px}.match-side-panel b,.match-side-panel small{max-width:58%}.match-side-panel b{font-size:9px}.match-side-panel small{font-size:7px;margin-top:2px}.match-center-scoreboard small{font-size:8px}.match-center-scoreboard em{font-size:7px}.match-score-boxes{grid-template-columns:repeat(2,44px);gap:5px}.match-score-boxes strong{height:44px;font-size:30px;border-radius:8px}.challenge-records .record-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Challenge V18 — team watermark / records winners / mobile players modal */
+.player-team-bg{top:-28%!important;bottom:-28%!important;left:-4%!important;right:48%!important;display:flex!important;align-items:center!important;justify-content:center!important;opacity:.17!important;overflow:hidden!important;filter:saturate(1.18) contrast(1.08) brightness(1.05)!important;mask-image:linear-gradient(90deg,#000 0%,#000 58%,rgba(0,0,0,.72) 76%,transparent 100%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 58%,rgba(0,0,0,.72) 76%,transparent 100%)}
+.player-team-bg img{height:156%!important;width:auto!important;max-width:none!important;object-fit:contain!important;object-position:center!important;transform:translateX(8%) scale(1.08)}
+.player-objective{justify-self:end!important;align-self:stretch!important;margin-right:-4px!important;padding-right:0!important;border-left:1px solid rgba(90,108,128,.35);min-width:84px!important}
+.player-objective img{margin-left:auto!important;margin-right:0!important}
+
+.match-side-panel-bg{top:-34%!important;bottom:-34%!important;width:88%!important;opacity:.18!important;overflow:hidden!important;filter:saturate(1.2) contrast(1.08) brightness(1.05)!important}
+.match-side-panel-left .match-side-panel-bg{right:-2%!important;justify-content:flex-end!important;mask-image:linear-gradient(90deg,#000 0%,#000 55%,rgba(0,0,0,.72) 76%,transparent 100%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 55%,rgba(0,0,0,.72) 76%,transparent 100%)}
+.match-side-panel-right .match-side-panel-bg{left:-2%!important;justify-content:flex-start!important;mask-image:linear-gradient(270deg,#000 0%,#000 55%,rgba(0,0,0,.72) 76%,transparent 100%);-webkit-mask-image:linear-gradient(270deg,#000 0%,#000 55%,rgba(0,0,0,.72) 76%,transparent 100%)}
+.match-side-panel-bg img{height:158%!important;width:auto!important;max-width:none!important;object-fit:contain!important;transform:scale(1.08)}
+
+.players-launch{position:relative;overflow:hidden;width:100%;height:42px;flex:0 0 42px;border:1px solid #405064;border-radius:11px;background:#07101a;color:#fff;align-items:center;justify-content:flex-start;padding:0 10px;gap:8px;box-shadow:inset 0 0 16px #0008}.players-launch>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;opacity:.52}.players-launch-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(2,5,9,.88),rgba(4,8,12,.58),rgba(2,5,9,.9))}.players-launch>b,.players-launch>strong,.players-launch-avatars{position:relative;z-index:2}.players-launch>b{font-size:10px;letter-spacing:.9px}.players-launch>strong{margin-left:auto;min-width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:1px solid #36eaff;color:#36eaff;background:#061019;font-size:10px}.players-launch-avatars{display:flex;align-items:center;margin-left:auto}.players-launch-avatars i{width:28px;height:28px;border-radius:50%;overflow:hidden;display:grid;place-items:center;border:2px solid #0a1018;margin-left:-7px;background:#101722}.players-launch-avatars i:first-child{margin-left:0}.players-launch-avatars i>*{width:100%!important;height:100%!important}
+.players-modal{position:fixed;inset:0;z-index:10022;background:#000d;backdrop-filter:blur(7px);display:grid;place-items:center;padding:14px}.players-modal-card{width:min(470px,96vw);max-height:min(82dvh,650px);display:flex;flex-direction:column;border:1px solid #4a596c;border-radius:16px;background:linear-gradient(180deg,#0d1520,#06090e);overflow:hidden;box-shadow:0 26px 70px #000}.players-modal-head{position:relative;height:62px;flex:0 0 62px;display:flex;align-items:center;padding:0 12px;gap:8px;overflow:hidden}.players-modal-head>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.58}.players-modal-head>span{position:absolute;inset:0;background:linear-gradient(90deg,#02050ade,rgba(2,5,10,.38),#02050ade)}.players-modal-head>b,.players-modal-head>strong,.players-modal-head>button{position:relative;z-index:2}.players-modal-head>b{font-size:14px;letter-spacing:1px}.players-modal-head>strong{margin-left:auto;color:#36eaff;font-size:13px}.players-modal-head>button{width:32px;height:32px;border-radius:50%;border:1px solid #506174;background:#0b121c;color:#fff;font-size:20px}.players-modal-list{min-height:0;overflow:auto;padding:8px;display:grid;gap:6px}.players-modal-row{position:relative;overflow:hidden;min-height:54px;display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 8px;border:1px solid #2b3949;border-radius:11px;background:#081019}.players-modal-row.active{border-color:#ff4a52;box-shadow:0 0 0 1px rgba(255,74,82,.24) inset}.players-modal-team-bg{position:absolute;top:-38%;bottom:-38%;right:42px;width:42%;display:flex;align-items:center;justify-content:center;opacity:.15;pointer-events:none}.players-modal-team-bg img{height:158%;width:auto;max-width:none;object-fit:contain}.players-modal-row>*:not(.players-modal-team-bg){position:relative;z-index:2}.players-modal-avatar{width:42px;height:42px;border-radius:50%;overflow:hidden;display:grid;place-items:center}.players-modal-avatar>*{width:100%!important;height:100%!important}.players-modal-name{min-width:0}.players-modal-name b{display:block;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.players-modal-name small{display:block;margin-top:2px;font-size:7px;color:#c1c9d3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.players-modal-score{text-align:right}.players-modal-score b{display:block;font-size:18px;color:#ff555b}.players-modal-score small{display:block;font-size:7px;color:#8e9cac}
+
+@media(orientation:portrait){.player-team-bg{top:-30%!important;bottom:-30%!important;left:-6%!important;right:50%!important}.player-objective{margin-right:-5px!important;min-width:78px!important}.player-objective img{width:72px!important}.cp-right{gap:4px}.players-launch{display:flex!important}.portrait-player-list{display:none!important}}
+@media(orientation:landscape){.player-team-bg{top:-30%!important;bottom:-30%!important;left:-5%!important;right:48%!important}.player-objective{margin-right:-4px!important}.players-launch{display:none!important}.match-detail-card.advanced{width:min(1160px,96vw)!important;max-height:92dvh!important}.match-detail-card.advanced .detail-scroll{columns:auto!important}.challenge-records .record-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+
 `;
