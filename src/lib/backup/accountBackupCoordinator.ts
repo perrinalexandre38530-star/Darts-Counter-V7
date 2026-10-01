@@ -20,6 +20,7 @@ import {
 import {
   exportCloudSnapshot,
   importCloudSnapshot,
+  loadStore,
   getStorageUser,
   setStorageUser,
 } from "../storage";
@@ -689,7 +690,21 @@ async function withSyncTimeout<T>(promise: Promise<T>, timeoutMs: number, label:
  * Cela évite le gel observé à 78 % sur Android avec un coffre de plusieurs dizaines de Mo.
  */
 async function summarizeCurrentLocalFast(): Promise<Partial<VaultSummary>> {
-  const slots = await withSyncTimeout(listLocalMemorySlots().catch(() => []), 2500, "Lecture du résumé local").catch(() => []);
+  // V127 : comparer la sauvegarde distante avec les DONNÉES ACTUELLES de l'appareil,
+  // pas avec la dernière sauvegarde locale. Une sauvegarde locale peut être ancienne
+  // et masquer précisément les changements que la synchro doit détecter.
+  const liveStore = await withSyncTimeout(
+    loadStore<any>().catch(() => null),
+    3_000,
+    "Lecture des données locales",
+  ).catch(() => null);
+  if (liveStore) {
+    const liveSummary = summarizeVaultPayload({ store: liveStore });
+    if (meaningfulSummary(liveSummary)) return liveSummary;
+  }
+
+  // Fallback uniquement si IndexedDB n'est momentanément pas lisible.
+  const slots = await withSyncTimeout(listLocalMemorySlots().catch(() => []), 1500, "Lecture du résumé local").catch(() => []);
   const candidates = slots.map(localCandidate).filter(Boolean) as AccountBackupCandidate[];
   const latest = pickLatestBackupCandidate(candidates);
   return latest?.summary && meaningfulSummary(latest.summary) ? latest.summary : {};

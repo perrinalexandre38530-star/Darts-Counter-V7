@@ -111,7 +111,7 @@ type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
 type RestoreView = "current" | "archives" | "trash";
 type SaveSource = "nas" | "local" | "cloud" | "file" | "personal";
-type BackupProvider = "nas" | "cloud";
+type BackupProvider = "nas" | "cloud" | "google_drive";
 type RestoreSource = BackupProvider | "local" | "file" | "google_drive";
 type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
 
@@ -1590,7 +1590,10 @@ function TechnicalBlockCard({ block, busy, onExport }: {
 async function pushSnapshotToAccount(payload: any, reason: string) {
   const snapshot = unwrapSnapshotEnvelope(payload);
   const version = Number(snapshot?._v || snapshot?.v || 2) || 2;
-  return apiPost("/sync/push", { payload: snapshot, version, reason });
+  // Un snapshot complet peut dépasser largement les 10 s sur le NAS/tunnel.
+  // Une écriture manuelle ne doit pas être annulée alors que le serveur continue
+  // encore à stocker le snapshot.
+  return apiPost("/sync/push", { payload: snapshot, version, reason }, { manual: true, timeoutMs: 120_000 });
 }
 
 type PreparedBackupKind = "full" | "cloud-fast";
@@ -2537,7 +2540,7 @@ export default function StorageVaultPage({ go }: Props) {
     }
 
     const isNativeRestore = Capacitor.isNativePlatform();
-    const targetLabel = provider === "cloud" ? "Cloudflare R2" : "compte NAS";
+    const targetLabel = provider === "cloud" ? "Cloudflare R2" : provider === "google_drive" ? "Google Drive" : "compte NAS";
     const restoreFlowText = isNativeRestore
       ? "L’application va créer une sécurité puis remplacer uniquement les données locales par cette sauvegarde. Aucune autre source ne sera chargée en arrière-plan."
       : `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`;
@@ -2638,6 +2641,11 @@ export default function StorageVaultPage({ go }: Props) {
         report(94, `Synchronisation de l’état restauré vers ${targetLabel}…`, "finalize");
         if (provider === "cloud") {
           await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
+        } else if (provider === "google_drive") {
+          // La source EST Google Drive : restaurer sur cet appareil ne doit surtout
+          // pas déclencher un /sync/push NAS de ~24 Mo. C'était la cause du faux
+          // « Restauration locale impossible ... timeout 10000ms ».
+          report(96, "Sauvegarde Google Drive restaurée sur cet appareil.", "finalize");
         } else {
           await pushSnapshotToAccount(snapshot, reason);
         }
@@ -3618,6 +3626,21 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     } finally { setBusy(false); }
   };
 
+  const restorePersonal = async (entry: SaveEntry) => {
+    setBusy(true);
+    try {
+      const slot = entry.slot as MemorySlot;
+      await restoreSnapshotIntoBrowserAndAccount(
+        decodeMaybeCompressedNasPayload(slot.payload),
+        `restore-google-drive:${slot.id}`,
+        entry.title,
+        { provider: "google_drive" },
+      );
+    } catch (error: any) {
+      setMessage(`Restauration Google Drive impossible : ${error?.message || error}`);
+    } finally { setBusy(false); }
+  };
+
   const restoreLocal = async (entry: SaveEntry) => {
     if (Capacitor.isNativePlatform()) {
       launchNativeRestore(entry, "nas", async (report) => {
@@ -3665,7 +3688,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       entry={entry}
       busy={busy || restoreRunning}
       onDetails={() => void openSaveDetails(entry)}
-      onRestore={() => entry.source === "nas" ? restoreNas(entry) : entry.source === "cloud" ? restoreCloud(entry) : restoreLocal(entry)}
+      onRestore={() => entry.source === "nas" ? restoreNas(entry) : entry.source === "cloud" ? restoreCloud(entry) : entry.source === "personal" ? restorePersonal(entry) : restoreLocal(entry)}
       onExport={async () => {
         try {
           if (entry.source === "nas") {

@@ -5089,21 +5089,21 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
   });
   const polyline = chartPoints.map((point: any) => `${point.x},${point.y}`).join(" ");
 
-  const box: React.CSSProperties = { borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.24)", padding: 10 };
-  const statLabel: React.CSSProperties = { fontSize: 8.5, opacity: .58, fontWeight: 950, letterSpacing: .45 };
-  const statValue: React.CSSProperties = { marginTop: 2, fontSize: 20, fontWeight: 1000, color: "#ff555b" };
+  const box: React.CSSProperties = { minWidth: 0, overflow: "hidden", borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.24)", padding: 10 };
+  const statLabel: React.CSSProperties = { minWidth: 0, fontSize: "clamp(7px,1.8vw,8.5px)", opacity: .58, fontWeight: 950, letterSpacing: .35, lineHeight: 1.2, overflowWrap: "anywhere" };
+  const statValue: React.CSSProperties = { minWidth: 0, marginTop: 3, fontSize: "clamp(14px,4vw,20px)", lineHeight: 1.05, fontWeight: 1000, color: "#ff555b", overflowWrap: "anywhere", wordBreak: "break-word" };
 
   return (
     <div style={{ padding: 4 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 1000, color: "#ff555b", letterSpacing: 1 }}>CHALLENGE — STATS</div>
-          <div style={{ fontSize: 10.5, color: T.text70, marginTop: 2 }}>Scores, précision, meilleure suite et évolution des parties terminées.</div>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10, minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: "1 1 220px" }}>
+          <div style={{ fontSize: "clamp(13px,3.8vw,16px)", fontWeight: 1000, color: "#ff555b", letterSpacing: .8, lineHeight: 1.15, overflowWrap: "anywhere" }}>CHALLENGE — STATS</div>
+          <div style={{ fontSize: "clamp(8px,2.6vw,10.5px)", color: T.text70, marginTop: 3, lineHeight: 1.3, overflowWrap: "anywhere" }}>Scores, précision, meilleure suite et évolution des parties terminées.</div>
         </div>
-        <div style={{ color: T.text70, fontSize: 10, fontWeight: 900 }}>{sessions} partie{sessions > 1 ? "s" : ""}</div>
+        <div style={{ color: T.text70, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap" }}>{sessions} partie{sessions > 1 ? "s" : ""}</div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 7 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(118px,100%),1fr))", gap: 7, minWidth: 0 }}>
         {[
           ["PARTIES", sessions],
           ["SCORE MOYEN", avgScore.toFixed(1)],
@@ -5134,14 +5134,14 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
 
       <div style={{ ...box, marginTop: 9 }}>
         <div style={{ ...statLabel, marginBottom: 7 }}>RÉPARTITION DES IMPACTS</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(54px,1fr))", gap: 5, minWidth: 0 }}>
           {[["S",ringTotals.S],["D",ringTotals.D],["T",ringTotals.T],["25",ringTotals.B25],["50",ringTotals.B50],["MISS",ringTotals.MISS]].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: "rgba(255,255,255,.045)", padding: "7px 4px", textAlign: "center" }}><div style={{ fontSize: 8, opacity: .58, fontWeight: 950 }}>{label}</div><div style={{ marginTop: 2, fontWeight: 1000, fontSize: 15 }}>{value}</div></div>)}
         </div>
       </div>
 
       <div style={{ ...box, marginTop: 9 }}>
         <div style={{ ...statLabel, marginBottom: 8 }}>PRÉCISION PAR FLÉCHETTE</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(180px,100%),1fr))", gap: 7, minWidth: 0 }}>
           {positionTotals.map((pos: any) => <div key={pos.position} style={{ borderRadius: 11, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", padding: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 5 }}><b style={{ fontSize: 9 }}>FLÉCHETTE {pos.position}</b><strong style={{ color: "#ff6268", fontSize: 16 }}>{pos.accuracy.toFixed(1)}%</strong></div>
             <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden", margin: "6px 0" }}><i style={{ display: "block", height: "100%", width: `${Math.min(100,pos.accuracy)}%`, borderRadius: 999, background: "linear-gradient(90deg,#ff4148,#ffb01c)" }}/></div>
@@ -5158,7 +5158,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       <div style={{ ...box, marginTop: 9 }}>
         <div style={{ ...statLabel, marginBottom: 7 }}>DERNIÈRES PARTIES</div>
         <div style={{ display: "grid", gap: 5 }}>
-          {[...rows].reverse().slice(0, 8).map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.035)" }}><span style={{ minWidth: 0, fontSize: 9.5, color: T.text70 }}>{new Date(row.at).toLocaleDateString()} · cible {row.target} · {row.visits || "—"} tours</span><b style={{ color: "#ff656b" }}>{row.score} pts</b><em style={{ fontStyle: "normal", fontSize: 9, opacity: .65 }}>{row.darts} fl.</em></div>)}
+          {[...rows].reverse().slice(0, 8).map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gridTemplateAreas: "'meta score' 'meta darts'", gap: "2px 8px", alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.035)", minWidth: 0 }}><span style={{ gridArea: "meta", minWidth: 0, fontSize: "clamp(8px,2.3vw,9.5px)", lineHeight: 1.25, color: T.text70, overflowWrap: "anywhere" }}>{new Date(row.at).toLocaleDateString()} · cible {row.target} · {row.visits || "—"} tours</span><b style={{ gridArea: "score", color: "#ff656b", whiteSpace: "nowrap", fontSize: "clamp(10px,2.8vw,13px)" }}>{row.score} pts</b><em style={{ gridArea: "darts", fontStyle: "normal", fontSize: 8, opacity: .65, whiteSpace: "nowrap", textAlign: "right" }}>{row.darts} fl.</em></div>)}
         </div>
       </div>
     </div>

@@ -4922,7 +4922,7 @@ const doLogout = React.useCallback(async () => {
         <GhostButton label="👀 Spectateur" onClick={() => go("spectator" as any)} />
 
         <GhostButton label="💬 Chat amis (SOON)" onClick={() => {}} disabled />
-        <GhostButton label="🏆 Classements (SOON)" onClick={() => {}} disabled />
+        <GhostButton label="🏆 Classement Challenge" onClick={() => go("challenge_leaderboard" as any, { from: "online" })} />
       </div>
         </>
       ) : null}

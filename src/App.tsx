@@ -234,6 +234,7 @@ const X01ConfigV3 = React.lazy(() => import("./pages/X01ConfigV3"));
 const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
 const ChallengeConfig = React.lazy(() => import("./pages/ChallengeConfig"));
 const ChallengePlay = React.lazy(() => import("./pages/ChallengePlay"));
+const ChallengeLeaderboardPage = React.lazy(() => import("./pages/ChallengeLeaderboardPage"));
 const CameraScoringSetup = React.lazy(() => import("./pages/CameraScoringSetup"));
 const CameraScoringCalibration = React.lazy(() => import("./pages/CameraScoringCalibration"));
 const X01DeviceCameraPage = React.lazy(() => import("./pages/X01DeviceCameraPage"));
@@ -5793,6 +5794,9 @@ case "babyfoot_team_edit":
       case "challenge_play":
         page = <ChallengePlay go={go} params={routeParams} />;
         break;
+      case "challenge_leaderboard":
+        page = <ChallengeLeaderboardPage go={go} params={routeParams} />;
+        break;
 
       case "x01_config_v3":
         page = (
@@ -6831,6 +6835,7 @@ case "babyfoot_team_edit":
     "hare_hounds_play",
     "crados_play",
     "challenge_play",
+    "challenge_leaderboard",
     "fifty_one_by_five_play",
     "looper_play",
     "call_three_play",
