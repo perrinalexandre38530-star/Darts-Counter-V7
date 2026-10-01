@@ -432,7 +432,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
      </div>
      <div className="player-meta landscape-player-meta" aria-hidden="true" />
      <div className="player-score"><small>SCORE</small><b>{currentScore}</b></div>
-     <div className="player-objective"><img src={targetBoards[cfg.target]||target20} alt={`Objectif ${targetLabel(cfg.target)}`}/><span>OBJECTIF</span></div>
+     <div className="player-objective"><img src={targetBoards[cfg.target]||target20} alt={`Objectif ${targetLabel(cfg.target)}`}/><b className="player-objective-value">{targetLabel(cfg.target)}</b><span>OBJECTIF</span></div>
     </div>
     <div className="player-context-strip landscape-only"><span>TOUR <b>{done?cfg.visits:turn}</b> / {cfg.visits}</span><strong>{safeParticipants.length} {safeParticipants.length>1?'JOUEURS':'JOUEUR'}</strong></div>
     <div className="left-kpis landscape-only"><div><span>RÉUSSITE</span><b>{pct}%</b></div><div><span>SUITE</span><b>{streak}</b></div><div><span>FLÉCHETTES</span><b>{currentLog.length}/{cfg.visits*3}</b></div></div>
@@ -701,6 +701,35 @@ const css=`
  .player-objective{margin-right:-6px!important;min-width:82px!important;padding-left:4px!important}
  .player-objective img{width:70px!important;height:54px!important}
  .player-objective span{font-size:6.5px!important}
+}
+
+/* Challenge V24 — objectif responsive, sans empiéter sur le joueur actif */
+.player-objective-value{display:none;font-size:16px;line-height:1;color:#ff5259;font-weight:1000;text-align:center;text-shadow:0 0 10px rgba(255,72,82,.32)}
+
+@media(orientation:portrait){
+ .player{grid-template-columns:minmax(104px,1fr) 56px clamp(56px,16vw,64px)!important;column-gap:5px!important}
+ .player-objective{width:100%!important;min-width:0!important;max-width:64px!important;margin:0!important;padding:0 2px!important;justify-self:end!important;align-self:stretch!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:2px!important;border-left:1px solid rgba(90,108,128,.34)!important;overflow:hidden!important}
+ .player-objective img{display:block!important;width:clamp(42px,12vw,52px)!important;height:44px!important;max-width:100%!important;margin:0 auto!important;object-fit:contain!important;object-position:center!important}
+ .player-objective span{position:static!important;display:block!important;width:100%!important;margin:1px 0 0!important;text-align:center!important;font-size:6px!important;line-height:1!important;letter-spacing:.45px!important;white-space:nowrap!important}
+ .player-objective-value{display:none!important}
+}
+
+@media(orientation:landscape){
+ .player{grid-template-columns:minmax(72px,1fr) clamp(48px,6vw,66px) clamp(42px,5vw,58px)!important;column-gap:5px!important;padding-left:7px!important;padding-right:7px!important}
+ .player-objective{width:100%!important;min-width:0!important;max-width:58px!important;margin:0!important;padding:0 2px!important;justify-self:end!important;align-self:stretch!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:2px!important;border-left:1px solid rgba(90,108,128,.34)!important;overflow:hidden!important}
+ .player-objective img{display:none!important}
+ .player-objective-value{display:block!important;font-size:clamp(12px,1.6vw,17px)!important}
+ .player-objective span{position:static!important;display:block!important;width:100%!important;margin:0!important;text-align:center!important;font-size:clamp(5px,.8vw,7px)!important;line-height:1!important;letter-spacing:.35px!important;white-space:nowrap!important}
+}
+
+@media(orientation:landscape) and (max-width:950px){
+ .player{grid-template-columns:minmax(82px,1fr) clamp(46px,7vw,58px)!important;column-gap:5px!important}
+ .player-objective{display:none!important}
+ .player-avatar{width:clamp(48px,8vh,62px)!important;height:clamp(48px,8vh,62px)!important;flex-basis:clamp(48px,8vh,62px)!important}
+ .player-avatar-label b{font-size:clamp(8px,1.5vw,11px)!important}
+ .player-avatar-label span{font-size:clamp(6px,1vw,7px)!important}
+ .player-score{min-width:46px!important;padding-left:4px!important}
+ .player-score b{font-size:clamp(26px,5vh,38px)!important}
 }
 
 .online-challenge-card{width:min(620px,96vw)!important}
