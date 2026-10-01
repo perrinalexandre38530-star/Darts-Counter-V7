@@ -9,7 +9,18 @@ import { loadTeamsBySport, resolveTeamLogo } from '../lib/petanqueTeamsStore';
 import { resolveTeamLogoSrc } from '../assets/teamLogoLibrary';
 import { History } from '../lib/history';
 import { recordTrainingDetailedSession } from '../training/stats/trainingStatsHub';
-import { fetchChallengeLeaderboard, getChallengeOnlineUserId, submitChallengeBestScore, type ChallengeLeaderboardRow } from '../lib/challengeLeaderboard';
+import {
+ fetchChallengeLeaderboard,
+ getChallengeOnlineUserId,
+ listChallengeTeamScopes,
+ registerChallengeTeamMemberships,
+ challengeTeamsForProfile,
+ challengeTeamKey,
+ syncChallengeHistoricalScores,
+ submitChallengeBestScore,
+ type ChallengeLeaderboardRow,
+ type ChallengeLeaderboardTeam,
+} from '../lib/challengeLeaderboard';
 import target1 from '../assets/challenge_targets/target_1.webp';
 import target2 from '../assets/challenge_targets/target_2.webp';
 import target3 from '../assets/challenge_targets/target_3.webp';
@@ -39,9 +50,15 @@ type Entry={hit:Hit;pid:string};
 type Participant={id:string;name:string;profile?:any;team?:any;teamName?:string};
 
 const hits:Hit[]=['S','D','T','25','50','MISS'];
+const onlineTargetFilters=['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','bull','bull25','bull50'];
+const onlineVisitFilters=[5,10,15,20,30,50,100];
+const onlineRuleFilters=['all','single','double','triple','bull','bull25','bull50'];
+const onlineModeFilters=['solo','duo','multi'];
 const val:Record<Hit,number>={S:1,D:2,T:3,'25':1,'50':2,MISS:0};
 const targetBoards:Record<string,string>={'1':target1,'2':target2,'3':target3,'4':target4,'5':target5,'6':target6,'7':target7,'8':target8,'9':target9,'10':target10,'11':target11,'12':target12,'13':target13,'14':target14,'15':target15,'16':target16,'17':target17,'18':target18,'19':target19,'20':target20,bull:targetBull50,bull25:targetBull25,bull50:targetBull50};
 const targetLabel=(t:string)=>t==='bull'?'BULL':t==='bull25'?'BULL 25':t==='bull50'?'BULL 50':t;
+const ruleLabel=(r:string)=>r==='single'?'S':r==='double'?'D':r==='triple'?'T':r==='bull'?'BULL':r==='bull25'?'B25':r==='bull50'?'B50':'TOUS';
+const modeLabel=(m:string)=>m==='duo'||m==='duel'?'DUO':m==='multi'?'MULTI':'SOLO';
 const isBullMode=(rule:string,target:string)=>target==='bull'||target==='bull25'||target==='bull50'||rule==='bull'||rule==='bull25'||rule==='bull50';
 const ok=(h:Hit,r:ChallengeRule,t:string)=>{
  if(h==='MISS') return true;
@@ -250,6 +267,14 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const [onlineRanking,setOnlineRanking]=React.useState<ChallengeLeaderboardRow[]>([]);
  const [onlineRankingLoading,setOnlineRankingLoading]=React.useState(false);
  const [onlineRankingError,setOnlineRankingError]=React.useState('');
+ const [onlineHistorySyncing,setOnlineHistorySyncing]=React.useState(false);
+ const [onlineTarget,setOnlineTarget]=React.useState<string>(()=>String(cfg.target||'20'));
+ const [onlineRule,setOnlineRule]=React.useState<string>(()=>String(cfg.rule||'all'));
+ const [onlineVisits,setOnlineVisits]=React.useState<number>(()=>Math.max(1,Number(cfg.visits||30)));
+ const [onlineMatchMode,setOnlineMatchMode]=React.useState<string>(()=>String(cfg.matchMode||'solo'));
+ const [onlineScope,setOnlineScope]=React.useState<'public'|'team'>('public');
+ const [onlineTeamKey,setOnlineTeamKey]=React.useState('');
+ const [onlineTeams,setOnlineTeams]=React.useState<ChallengeLeaderboardTeam[]>([]);
  const [detailOpen,setDetailOpen]=React.useState(false);
  const [playersOpen,setPlayersOpen]=React.useState(false);
  const [detailTab,setDetailTab]=React.useState<string>('global');
@@ -261,6 +286,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const trainingSavedRef=React.useRef(false);
  const onlineSubmittedRef=React.useRef(false);
  const onlineSubmittingRef=React.useRef(false);
+ const onlineHistorySyncedRef=React.useRef(false);
  const totalMax=cfg.visits*3*safeParticipants.length;
  const done=log.length>=totalMax;
  const activeIndex=Math.floor(log.length/3)%safeParticipants.length;
@@ -325,19 +351,70 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   setOnlineRankingLoading(true);
   setOnlineRankingError('');
   try{
-   const rows=await fetchChallengeLeaderboard({target:cfg.target,rule:cfg.rule,visits:cfg.visits},100);
+   const rows=await fetchChallengeLeaderboard(
+    {target:onlineTarget,rule:onlineRule,visits:onlineVisits,matchMode:onlineMatchMode},
+    100,
+    onlineScope==='team'?{type:'team',teamKey:onlineTeamKey}:{type:'public'},
+   );
    setOnlineRanking(rows);
   }catch(error:any){
    console.warn('[challenge] online leaderboard fetch failed',error);
-   setOnlineRankingError('Classement online indisponible pour le moment.');
+   const message=String(error?.message||'');
+   setOnlineRankingError(message.includes('PRIVATE_TEAM')?'Classement privé réservé aux membres de cette équipe.':'Classement online indisponible pour le moment.');
   }finally{
    setOnlineRankingLoading(false);
   }
- },[cfg.target,cfg.rule,cfg.visits]);
+ },[onlineTarget,onlineRule,onlineVisits,onlineMatchMode,onlineScope,onlineTeamKey]);
+
+ const refreshOnlineTeams=React.useCallback(async()=>{
+  try{
+   const uid=await getChallengeOnlineUserId();
+   if(!uid){setOnlineTeams([]);return [] as ChallengeLeaderboardTeam[]}
+   const linkedProfile=(profiles||[]).find((profile:any)=>{
+    const pi:any=profile?.privateInfo||profile?.private_info||{};
+    return [pi?.onlineUserId,pi?.online_user_id,pi?.userId,profile?.onlineUserId,profile?.userId].some(v=>String(v||'')===uid);
+   })||null;
+   const localTeams=linkedProfile?challengeTeamsForProfile(linkedProfile,teams):[];
+   if(localTeams.length) await registerChallengeTeamMemberships(localTeams);
+   const remoteTeams=await listChallengeTeamScopes();
+   const byKey=new Map<string,ChallengeLeaderboardTeam>();
+   [...localTeams,...remoteTeams].forEach(team=>{if(team?.key&&!byKey.has(team.key))byKey.set(team.key,team)});
+   const merged=Array.from(byKey.values());
+   setOnlineTeams(merged);
+   if(!onlineTeamKey&&merged[0]) setOnlineTeamKey(merged[0].key);
+   return merged;
+  }catch(error){
+   console.warn('[challenge] online team scopes failed',error);
+   return [] as ChallengeLeaderboardTeam[];
+  }
+ },[profiles,teams,onlineTeamKey]);
 
  React.useEffect(()=>{
-  if(rankOpen) void refreshOnlineRanking();
- },[rankOpen,refreshOnlineRanking]);
+  if(!rankOpen) return;
+  let cancelled=false;
+  void (async()=>{
+   if(!onlineHistorySyncedRef.current){
+    onlineHistorySyncedRef.current=true;
+    setOnlineHistorySyncing(true);
+    try{
+     await syncChallengeHistoricalScores(profiles,teams);
+    }catch(error){
+     console.warn('[challenge] historical online leaderboard sync failed',error);
+     onlineHistorySyncedRef.current=false;
+    }finally{
+     if(!cancelled)setOnlineHistorySyncing(false);
+    }
+   }
+   const scopes=await refreshOnlineTeams();
+   if(cancelled) return;
+   if(onlineScope==='team'&&!onlineTeamKey){
+    if(scopes[0]) setOnlineTeamKey(scopes[0].key);
+    else {setOnlineRanking([]);setOnlineRankingLoading(false);return;}
+   }
+   await refreshOnlineRanking();
+  })();
+  return()=>{cancelled=true};
+ },[rankOpen,onlineTarget,onlineRule,onlineVisits,onlineMatchMode,onlineScope,onlineTeamKey,profiles,teams,refreshOnlineTeams,refreshOnlineRanking]);
 
  React.useEffect(()=>{
   if(!done||onlineSubmittedRef.current||onlineSubmittingRef.current) return;
@@ -349,16 +426,26 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
     const linked=safeParticipants.find((p:any)=>{
      const profile:any=p?.profile||{};
      const pi:any=profile?.privateInfo||profile?.private_info||{};
-     return [pi?.onlineUserId,profile?.onlineUserId,profile?.userId,profile?.id].some(v=>String(v||'')===uid);
+     return [pi?.onlineUserId,pi?.online_user_id,profile?.onlineUserId,profile?.userId].some(v=>String(v||'')===uid);
     }) || (safeParticipants.length===1?safeParticipants[0]:null);
     if(!linked) return;
     const stats=participantStats(linked);
     const profile:any=linked.profile||{};
     const pi:any=profile?.privateInfo||profile?.private_info||{};
+    const myTeams=challengeTeamsForProfile(profile,teams);
+    if(linked.team){
+     const key=String(linked.team?.syncedClubTeamId||linked.team?.clubTeamId||linked.team?.onlineTeamId||linked.team?.id||'').trim();
+     if(key&&!myTeams.some(team=>team.key===key)) myTeams.push({key,name:String(linked.teamName||linked.team?.name||'Équipe'),localId:String(linked.team?.id||'')||null});
+    }
     const result=await submitChallengeBestScore({
      target:cfg.target,
      rule:cfg.rule,
      visits:cfg.visits,
+     matchMode:cfg.matchMode||'solo',
+     setMode:(cfg as any).setMode||null,
+     setTarget:(cfg as any).setTarget||null,
+     legMode:(cfg as any).legMode||null,
+     legTarget:(cfg as any).legTarget||null,
      score:stats.score,
      darts:stats.darts,
      bestStreak:stats.streak,
@@ -367,9 +454,11 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
      displayName:linked.name,
      avatarUrl:avatarSrc(profile)||null,
      countryCode:profile?.countryCode||profile?.country||pi?.countryCode||pi?.country||null,
+     teams:myTeams,
     });
     if(result.ok){
      onlineSubmittedRef.current=true;
+     await refreshOnlineTeams();
      if(rankOpen) await refreshOnlineRanking();
     }
    }catch(error){
@@ -378,7 +467,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
     onlineSubmittingRef.current=false;
    }
   })();
- },[done,cfg.target,cfg.rule,cfg.visits,safeParticipants,rankOpen,refreshOnlineRanking]);
+ },[done,cfg.target,cfg.rule,cfg.visits,cfg.matchMode,safeParticipants,teams,rankOpen,refreshOnlineRanking,refreshOnlineTeams]);
 
  const detailedByPlayer=React.useMemo(()=>safeParticipants.map(p=>({participant:p,stats:computeChallengeDetailedStats(log.filter(e=>e.pid===p.id),cfg)})),[safeParticipants,log,cfg]);
  const recordRows=React.useMemo(()=>safeParticipants.map(p=>({participant:p,raw:buildRecordRaw(log.filter(e=>e.pid===p.id),cfg)})),[safeParticipants,log,cfg]);
@@ -412,6 +501,8 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const detailStats=detailCurrent?.stats||globalDetailed;
  const detailRecordCards=React.useMemo(()=>{if(detailTab==='global'||detailTab==='match')return globalRecordCards;const row=recordRows.find(x=>x.participant.id===detailTab)||recordRows[0];return row?makeRecordCards(row.raw,cfg):globalRecordCards},[detailTab,globalRecordCards,recordRows,cfg]);
  const bestDartPosition=detailStats.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];
+ const selectedOnlineTeam=onlineTeams.find(team=>team.key===onlineTeamKey)||null;
+ const selectedOnlineLocalTeam=teams.find((team:any)=>challengeTeamKey(team)===onlineTeamKey)||null;
 
 
  return <div className="cp" style={{background:theme.bg,color:theme.text}}>
@@ -510,14 +601,24 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    <button type="button" className="match-detail-close" onClick={()=>setDetailOpen(false)}>FERMER</button>
   </div></div>}
   {rankOpen&&<div className="stats-modal" onClick={()=>setRankOpen(false)}><div className="stats-modal-card online-challenge-card" onClick={e=>e.stopPropagation()}>
-   <div className="stats-modal-head"><div><strong>CLASSEMENT ONLINE CHALLENGE</strong><span>Objectif {targetLabel(cfg.target)} · {cfg.visits} tours · meilleur score par joueur</span></div><button onClick={()=>setRankOpen(false)}>×</button></div>
-   {onlineRankingLoading?<div className="online-rank-state">CHARGEMENT DU CLASSEMENT…</div>:onlineRankingError?<div className="online-rank-state error">{onlineRankingError}</div>:onlineRanking.length===0?<div className="online-rank-state">Aucun score publié pour cet objectif.</div>:<div className="rank-list online-rank-list">{onlineRanking.map(row=><div key={row.userId}>
+   <div className="stats-modal-head"><div><strong>CLASSEMENT ONLINE CHALLENGE</strong><span>Un seul score affiché par joueur : son meilleur résultat pour cette configuration exacte.</span></div><button onClick={()=>setRankOpen(false)}>×</button></div>
+   <div className="online-filter-panel">
+    <div className="online-filter-summary"><b>🎯 {targetLabel(onlineTarget)}</b><b>🔁 {onlineVisits} TOURS</b><b>✦ {ruleLabel(onlineRule)}</b><b>{onlineMatchMode==='solo'?'👤':onlineMatchMode==='multi'?'👥':'⚔'} {modeLabel(onlineMatchMode)}</b><b>{onlineScope==='team'?'🛡':'🌍'} {onlineScope==='team'?(selectedOnlineTeam?.name||'ÉQUIPE'):'PUBLIC'}</b></div>
+    <div className="online-filter-row scope"><span>CLASSEMENT</span><div><button className={onlineScope==='public'?'on':''} onClick={()=>setOnlineScope('public')}>🌍 <b>PUBLIC</b></button><button className={onlineScope==='team'?'on':''} onClick={()=>setOnlineScope('team')} disabled={!onlineTeams.length}>🛡 <b>ÉQUIPE</b></button></div></div>
+    {onlineScope==='team'&&<div className="online-filter-row teams"><span>ÉQUIPE</span><div>{onlineTeams.length?onlineTeams.map(team=>{const local=teams.find((candidate:any)=>challengeTeamKey(candidate)===team.key);return <button key={team.key} className={onlineTeamKey===team.key?'on':''} onClick={()=>setOnlineTeamKey(team.key)}>{local?<i className="online-team-filter-logo"><ResolvedTeamLogo team={local}/></i>:<i className="online-team-filter-fallback">🛡</i>}<b>{team.name}</b></button>}):<em>Aucune équipe liée à ce compte.</em>}</div></div>}
+    <div className="online-filter-row"><span>🎯 CIBLE</span><div>{onlineTargetFilters.map(value=><button key={value} className={onlineTarget===value?'on':''} onClick={()=>setOnlineTarget(value)}><b>{targetLabel(value)}</b></button>)}</div></div>
+    <div className="online-filter-row"><span>🔁 TOURS</span><div>{onlineVisitFilters.map(value=><button key={value} className={onlineVisits===value?'on':''} onClick={()=>setOnlineVisits(value)}><b>{value}</b></button>)}</div></div>
+    <div className="online-filter-row"><span>✦ HITS</span><div>{onlineRuleFilters.map(value=><button key={value} className={onlineRule===value?'on':''} onClick={()=>setOnlineRule(value)}><b>{ruleLabel(value)}</b></button>)}</div></div>
+    <div className="online-filter-row"><span>FORMAT</span><div>{onlineModeFilters.map(value=><button key={value} className={onlineMatchMode===value?'on':''} onClick={()=>setOnlineMatchMode(value)}><b>{value==='solo'?'👤':value==='multi'?'👥':'⚔'} {modeLabel(value)}</b></button>)}</div></div>
+   </div>
+   {onlineHistorySyncing&&<div className="online-history-sync">↻ SYNCHRONISATION DES ANCIENNES PARTIES CHALLENGE…</div>}
+   {onlineRankingLoading?<div className="online-rank-state">CHARGEMENT DU CLASSEMENT…</div>:onlineRankingError?<div className="online-rank-state error">{onlineRankingError}</div>:onlineRanking.length===0?<div className="online-rank-state">Aucun score publié pour cette combinaison de filtres.</div>:<div className="rank-list online-rank-list">{onlineRanking.map(row=><div key={row.userId}>
     <strong>#{row.rank}</strong>
     <span className="online-rank-player">{row.avatarUrl?<img src={row.avatarUrl} alt=""/>:<i>{String(row.displayName||'?').slice(0,1).toUpperCase()}</i>}<span>{row.displayName}</span></span>
     <b>{row.score} pts</b>
     <em>{row.darts} fl. · suite {row.bestStreak} · {row.accuracy.toFixed(1)}% · {row.playedCount} partie{row.playedCount>1?'s':''}</em>
    </div>)}</div>}
-   <button className="online-open" onClick={()=>void refreshOnlineRanking()}>↻ ACTUALISER LE CLASSEMENT</button>
+   <button className="online-open" onClick={()=>void (async()=>{setOnlineHistorySyncing(true);try{await syncChallengeHistoricalScores(profiles,teams);onlineHistorySyncedRef.current=true;await refreshOnlineTeams();await refreshOnlineRanking()}finally{setOnlineHistorySyncing(false)}})()}>↻ SYNCHRONISER & ACTUALISER</button>
   </div></div>}
   {done&&<div className="finish"><h2>CHALLENGE TERMINÉ</h2><strong>{standings[0]?participantScore(standings[0]):0} POINTS</strong><span className="finish-streak">MEILLEURE SUITE : {standings[0]?participantMaxStreak(standings[0]):0}</span><div className="finish-scoreline">{standings.map((p,i)=>{const st=participantStats(p).detailed;const bestPos=st.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];return <div className="finish-score-row" key={p.id}><span>{i+1}. {p.name}</span><b>{participantScore(p)} pts</b><em>{participantDarts(p)} fl. · précision {st.accuracy.toFixed(1)}% · suite {st.bestStreak} · best volée {st.bestVisit} · flèche #{bestPos?.position||'—'} {bestPos?bestPos.accuracy.toFixed(1):'0.0'}%</em></div>})}</div><div className="finish-actions"><button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailOpen(true)}}>STATS DÉTAILLÉES</button><button onClick={()=>go('challenge_config')}>REJOUER</button><button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button></div></div>}
   <style>{css}</style>
@@ -732,7 +833,12 @@ const css=`
  .player-score b{font-size:clamp(26px,5vh,38px)!important}
 }
 
-.online-challenge-card{width:min(620px,96vw)!important}
+.online-challenge-card{width:min(920px,96vw)!important;max-height:min(92dvh,880px)!important;overflow:auto!important}
+.online-filter-panel{margin-top:10px;display:grid;gap:7px;padding:9px;border:1px solid #2a394b;border-radius:13px;background:linear-gradient(180deg,#09121c,#060b11)}
+.online-filter-summary{display:flex;gap:6px;overflow-x:auto;padding-bottom:3px;scrollbar-width:thin}.online-filter-summary b{flex:0 0 auto;min-height:27px;display:flex;align-items:center;padding:0 9px;border-radius:999px;border:1px solid #39485a;background:#0d1722;color:#e8eef7;font-size:8px;letter-spacing:.35px}
+.online-filter-row{display:grid;grid-template-columns:76px minmax(0,1fr);gap:7px;align-items:center}.online-filter-row>span{font-size:7.5px;color:#92a0b2;font-weight:1000;letter-spacing:.6px}.online-filter-row>div{display:flex;gap:5px;overflow-x:auto;padding:1px 0 3px;scrollbar-width:thin}.online-filter-row button{flex:0 0 auto;min-height:30px;min-width:38px;padding:4px 8px;border-radius:9px;border:1px solid #334255;background:#0a111a;color:#aab6c6;display:flex;align-items:center;justify-content:center;gap:5px;font-size:8px;font-weight:1000;white-space:nowrap}.online-filter-row button.on{border-color:#ff4a52;color:#fff;background:linear-gradient(180deg,#4a1218,#17090c);box-shadow:0 0 12px #ff293326}.online-filter-row button:disabled{opacity:.35}.online-filter-row.scope button{min-width:96px}.online-filter-row.teams button{padding-left:5px;padding-right:10px}.online-filter-row>div>em{font-size:8px;color:#8c98a7;font-style:normal;padding:7px}
+.online-team-filter-logo,.online-team-filter-fallback{width:24px;height:24px;flex:0 0 24px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#111923;border:1px solid #4a596c;font-style:normal}.online-team-filter-logo img{width:100%!important;height:100%!important;object-fit:cover!important}.online-team-filter-fallback{font-size:12px}
+.online-history-sync{margin:8px 0 0;padding:8px 10px;border:1px solid #1b8292;border-radius:9px;background:#072029;color:#43e9ff;font-size:8px;font-weight:1000;text-align:center;letter-spacing:.45px}
 .online-rank-state{margin:12px 0;padding:18px 12px;border:1px dashed #3b4a5d;border-radius:12px;background:#081019;color:#a9b5c5;text-align:center;font-size:10px;font-weight:900;letter-spacing:.45px}
 .online-rank-state.error{color:#ff7b82;border-color:#7d3037;background:#1a0b0e}
 .online-rank-list>div{grid-template-columns:38px minmax(0,1fr) auto!important;grid-template-areas:'rank player score' 'rank meta score'!important;min-height:58px}
@@ -742,5 +848,6 @@ const css=`
 .online-rank-player{grid-area:player!important;display:flex!important;align-items:center!important;gap:8px!important;min-width:0!important}
 .online-rank-player>img,.online-rank-player>i{width:32px;height:32px;border-radius:50%;object-fit:cover;display:grid;place-items:center;flex:0 0 32px;border:1px solid #4d5c70;background:#111923;color:#fff;font-style:normal;font-weight:1000}
 .online-rank-player>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:950;color:#fff}
+@media(max-width:620px){.online-challenge-card{width:98vw!important;padding:9px!important}.online-filter-row{grid-template-columns:1fr;gap:3px}.online-filter-row>span{padding-left:2px}.online-filter-summary b{font-size:7px}.online-rank-list>div{grid-template-columns:32px minmax(0,1fr) auto!important}.online-rank-player>img,.online-rank-player>i{width:28px;height:28px;flex-basis:28px}.online-rank-list>div>em{font-size:7px!important}}
 
 `;
