@@ -257,8 +257,21 @@ function payloadOwnerCompatible(payload: any, userId: string, accountScoped = fa
 }
 
 function currentAccountScope(): string {
-  try { return String(getStorageUser() || localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_user_id") || "").trim(); }
-  catch { return String(getStorageUser() || "").trim(); }
+  // La session d'authentification est la source de vérité. `getStorageUser()` est
+  // volontairement mis en cache et peut rester quelques ms sur l'ancien compte
+  // pendant un login/switch : c'était suffisant pour annuler une synchro valide.
+  try {
+    const raw = localStorage.getItem("dc_online_auth_supabase_v1") || "";
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const live = String(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || "").trim();
+      if (live) return live;
+    }
+  } catch {}
+  try {
+    const direct = String(localStorage.getItem("dc_user_id") || localStorage.getItem("dc_storage_user_id_v1") || getStorageUser() || "").trim();
+    return direct;
+  } catch { return String(getStorageUser() || "").trim(); }
 }
 
 function accountStillActive(userId: string): boolean {

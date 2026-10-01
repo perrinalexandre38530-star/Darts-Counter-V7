@@ -9,6 +9,7 @@ import { loadTeamsBySport, resolveTeamLogo } from '../lib/petanqueTeamsStore';
 import { resolveTeamLogoSrc } from '../assets/teamLogoLibrary';
 import { History } from '../lib/history';
 import { recordTrainingDetailedSession } from '../training/stats/trainingStatsHub';
+import { fetchChallengeLeaderboard, getChallengeOnlineUserId, submitChallengeBestScore, type ChallengeLeaderboardRow } from '../lib/challengeLeaderboard';
 import target1 from '../assets/challenge_targets/target_1.webp';
 import target2 from '../assets/challenge_targets/target_2.webp';
 import target3 from '../assets/challenge_targets/target_3.webp';
@@ -246,6 +247,9 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const initialLog=React.useMemo<Entry[]>(()=>{const source=resumeSnapshot?.log||resumeSnapshot?.entries||resumePayload?.entries||resumeRecord?.resume?.livePayload?.entries||[];return Array.isArray(source)?source.filter((e:any)=>e&&hits.includes(e.hit)&&e.pid).map((e:any)=>({hit:e.hit as Hit,pid:String(e.pid)})):[]},[resumeSnapshot,resumePayload,resumeRecord]);
  const [log,setLog]=React.useState<Entry[]>(()=>initialLog);
  const [rankOpen,setRankOpen]=React.useState(false);
+ const [onlineRanking,setOnlineRanking]=React.useState<ChallengeLeaderboardRow[]>([]);
+ const [onlineRankingLoading,setOnlineRankingLoading]=React.useState(false);
+ const [onlineRankingError,setOnlineRankingError]=React.useState('');
  const [detailOpen,setDetailOpen]=React.useState(false);
  const [playersOpen,setPlayersOpen]=React.useState(false);
  const [detailTab,setDetailTab]=React.useState<string>('global');
@@ -255,6 +259,8 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const createdAtRef=React.useRef(Number(resumeRecord?.createdAt||resumeRecord?.created_at||Date.now())||Date.now());
  const lastPersistSignatureRef=React.useRef('');
  const trainingSavedRef=React.useRef(false);
+ const onlineSubmittedRef=React.useRef(false);
+ const onlineSubmittingRef=React.useRef(false);
  const totalMax=cfg.visits*3*safeParticipants.length;
  const done=log.length>=totalMax;
  const activeIndex=Math.floor(log.length/3)%safeParticipants.length;
@@ -314,6 +320,65 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    recordTrainingDetailedSession({id:`${matchIdRef.current}-training`,modeId:'training_challenges',participantId:p.profile?.id?String(p.profile.id):String(p.id),participantName:p.name,participantType:'player',startedAt:createdAtRef.current,endedAt:Date.now(),durationMs:Date.now()-createdAtRef.current,darts:stats.darts,hits:stats.hits,misses:stats.misses,points:stats.score,accuracyPct:stats.pct,success:stats.score>0,config:{...cfg,sourceMode:'challenge',challengeTarget:cfg.target,challengeRule:cfg.rule},metrics:{sourceMode:'challenge',score:stats.score,bestStreak:stats.streak,bestVisit:stats.detailed.bestVisit,avgVisit:stats.detailed.avgVisit,target:cfg.target,rule:cfg.rule,visits:cfg.visits,matchId:matchIdRef.current,bestDartPosition:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.position||0),bestDartAccuracy:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.accuracy||0),...Object.fromEntries(stats.detailed.positionStats.flatMap(pos=>[[`dart${pos.position}Attempts`,pos.attempts],[`dart${pos.position}Successful`,pos.successful],[`dart${pos.position}Accuracy`,pos.accuracy],[`dart${pos.position}S`,pos.S],[`dart${pos.position}D`,pos.D],[`dart${pos.position}T`,pos.T],[`dart${pos.position}B25`,pos.B25],[`dart${pos.position}B50`,pos.B50],[`dart${pos.position}MISS`,pos.MISS]]))},visitHistory:log,telemetry:{target:cfg.target,rule:cfg.rule,hits:stats.hitCounts,positionStats:stats.detailed.positionStats,visitScores:stats.detailed.visitScores,cumulativeScores:stats.detailed.cumulativeScores},telemetryCoverage:'exact'} as any);
   }catch(error){console.warn('[challenge] training stats persistence failed',error)}
  },[cfg,done,log,participantStats,safeParticipants]);
+
+ const refreshOnlineRanking=React.useCallback(async()=>{
+  setOnlineRankingLoading(true);
+  setOnlineRankingError('');
+  try{
+   const rows=await fetchChallengeLeaderboard({target:cfg.target,rule:cfg.rule,visits:cfg.visits},100);
+   setOnlineRanking(rows);
+  }catch(error:any){
+   console.warn('[challenge] online leaderboard fetch failed',error);
+   setOnlineRankingError('Classement online indisponible pour le moment.');
+  }finally{
+   setOnlineRankingLoading(false);
+  }
+ },[cfg.target,cfg.rule,cfg.visits]);
+
+ React.useEffect(()=>{
+  if(rankOpen) void refreshOnlineRanking();
+ },[rankOpen,refreshOnlineRanking]);
+
+ React.useEffect(()=>{
+  if(!done||onlineSubmittedRef.current||onlineSubmittingRef.current) return;
+  onlineSubmittingRef.current=true;
+  void (async()=>{
+   try{
+    const uid=await getChallengeOnlineUserId();
+    if(!uid) return;
+    const linked=safeParticipants.find((p:any)=>{
+     const profile:any=p?.profile||{};
+     const pi:any=profile?.privateInfo||profile?.private_info||{};
+     return [pi?.onlineUserId,profile?.onlineUserId,profile?.userId,profile?.id].some(v=>String(v||'')===uid);
+    }) || (safeParticipants.length===1?safeParticipants[0]:null);
+    if(!linked) return;
+    const stats=participantStats(linked);
+    const profile:any=linked.profile||{};
+    const pi:any=profile?.privateInfo||profile?.private_info||{};
+    const result=await submitChallengeBestScore({
+     target:cfg.target,
+     rule:cfg.rule,
+     visits:cfg.visits,
+     score:stats.score,
+     darts:stats.darts,
+     bestStreak:stats.streak,
+     accuracy:stats.pct,
+     matchId:matchIdRef.current,
+     displayName:linked.name,
+     avatarUrl:avatarSrc(profile)||null,
+     countryCode:profile?.countryCode||profile?.country||pi?.countryCode||pi?.country||null,
+    });
+    if(result.ok){
+     onlineSubmittedRef.current=true;
+     if(rankOpen) await refreshOnlineRanking();
+    }
+   }catch(error){
+    console.warn('[challenge] online leaderboard submit failed',error);
+   }finally{
+    onlineSubmittingRef.current=false;
+   }
+  })();
+ },[done,cfg.target,cfg.rule,cfg.visits,safeParticipants,rankOpen,refreshOnlineRanking]);
 
  const detailedByPlayer=React.useMemo(()=>safeParticipants.map(p=>({participant:p,stats:computeChallengeDetailedStats(log.filter(e=>e.pid===p.id),cfg)})),[safeParticipants,log,cfg]);
  const recordRows=React.useMemo(()=>safeParticipants.map(p=>({participant:p,raw:buildRecordRaw(log.filter(e=>e.pid===p.id),cfg)})),[safeParticipants,log,cfg]);
@@ -444,7 +509,16 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    </div>}
    <button type="button" className="match-detail-close" onClick={()=>setDetailOpen(false)}>FERMER</button>
   </div></div>}
-  {rankOpen&&<div className="stats-modal" onClick={()=>setRankOpen(false)}><div className="stats-modal-card" onClick={e=>e.stopPropagation()}><div className="stats-modal-head"><div><strong>CLASSEMENT CHALLENGE</strong><span>Objectif {targetLabel(cfg.target)} · {cfg.visits} tours</span></div><button onClick={()=>setRankOpen(false)}>×</button></div><div className="rank-list">{standings.map((p,i)=><div key={p.id}><strong>{i+1}</strong><span>{p.name}</span><b>{participantScore(p)} pts</b><em>{participantDarts(p)} fl. · suite {participantMaxStreak(p)}</em></div>)}</div><button className="online-open" onClick={()=>go('online',{tab:'rankings',gameId:'challenge',target:cfg.target,visits:cfg.visits})}>◎ OUVRIR LES CLASSEMENTS ONLINE</button></div></div>}
+  {rankOpen&&<div className="stats-modal" onClick={()=>setRankOpen(false)}><div className="stats-modal-card online-challenge-card" onClick={e=>e.stopPropagation()}>
+   <div className="stats-modal-head"><div><strong>CLASSEMENT ONLINE CHALLENGE</strong><span>Objectif {targetLabel(cfg.target)} · {cfg.visits} tours · meilleur score par joueur</span></div><button onClick={()=>setRankOpen(false)}>×</button></div>
+   {onlineRankingLoading?<div className="online-rank-state">CHARGEMENT DU CLASSEMENT…</div>:onlineRankingError?<div className="online-rank-state error">{onlineRankingError}</div>:onlineRanking.length===0?<div className="online-rank-state">Aucun score publié pour cet objectif.</div>:<div className="rank-list online-rank-list">{onlineRanking.map(row=><div key={row.userId}>
+    <strong>#{row.rank}</strong>
+    <span className="online-rank-player">{row.avatarUrl?<img src={row.avatarUrl} alt=""/>:<i>{String(row.displayName||'?').slice(0,1).toUpperCase()}</i>}<span>{row.displayName}</span></span>
+    <b>{row.score} pts</b>
+    <em>{row.darts} fl. · suite {row.bestStreak} · {row.accuracy.toFixed(1)}% · {row.playedCount} partie{row.playedCount>1?'s':''}</em>
+   </div>)}</div>}
+   <button className="online-open" onClick={()=>void refreshOnlineRanking()}>↻ ACTUALISER LE CLASSEMENT</button>
+  </div></div>}
   {done&&<div className="finish"><h2>CHALLENGE TERMINÉ</h2><strong>{standings[0]?participantScore(standings[0]):0} POINTS</strong><span className="finish-streak">MEILLEURE SUITE : {standings[0]?participantMaxStreak(standings[0]):0}</span><div className="finish-scoreline">{standings.map((p,i)=>{const st=participantStats(p).detailed;const bestPos=st.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];return <div className="finish-score-row" key={p.id}><span>{i+1}. {p.name}</span><b>{participantScore(p)} pts</b><em>{participantDarts(p)} fl. · précision {st.accuracy.toFixed(1)}% · suite {st.bestStreak} · best volée {st.bestVisit} · flèche #{bestPos?.position||'—'} {bestPos?bestPos.accuracy.toFixed(1):'0.0'}%</em></div>})}</div><div className="finish-actions"><button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailOpen(true)}}>STATS DÉTAILLÉES</button><button onClick={()=>go('challenge_config')}>REJOUER</button><button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button></div></div>}
   <style>{css}</style>
  </div>;
@@ -628,5 +702,16 @@ const css=`
  .player-objective img{width:70px!important;height:54px!important}
  .player-objective span{font-size:6.5px!important}
 }
+
+.online-challenge-card{width:min(620px,96vw)!important}
+.online-rank-state{margin:12px 0;padding:18px 12px;border:1px dashed #3b4a5d;border-radius:12px;background:#081019;color:#a9b5c5;text-align:center;font-size:10px;font-weight:900;letter-spacing:.45px}
+.online-rank-state.error{color:#ff7b82;border-color:#7d3037;background:#1a0b0e}
+.online-rank-list>div{grid-template-columns:38px minmax(0,1fr) auto!important;grid-template-areas:'rank player score' 'rank meta score'!important;min-height:58px}
+.online-rank-list>div>strong{grid-area:rank;font-size:13px}
+.online-rank-list>div>b{grid-area:score;font-size:16px;color:#ffb33f!important}
+.online-rank-list>div>em{grid-area:meta;font-size:8px!important}
+.online-rank-player{grid-area:player!important;display:flex!important;align-items:center!important;gap:8px!important;min-width:0!important}
+.online-rank-player>img,.online-rank-player>i{width:32px;height:32px;border-radius:50%;object-fit:cover;display:grid;place-items:center;flex:0 0 32px;border:1px solid #4d5c70;background:#111923;color:#fff;font-style:normal;font-weight:1000}
+.online-rank-player>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:950;color:#fff}
 
 `;

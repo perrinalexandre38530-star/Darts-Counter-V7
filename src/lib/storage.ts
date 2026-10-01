@@ -13,7 +13,7 @@ import { isSensitiveAuthStorageKey } from "./authSessionGuard";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS, makeAvatarPlaceholderDataUrl } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
-import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
+import { setAvatarCache as setAvatarCacheLib, resetAvatarCacheRuntime } from "./avatarCache";
 import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
 import {
   captureStoreUserMedia,
@@ -3187,7 +3187,15 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
     else if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
   } catch (error) { recordError("portable dartsets restore failed", error); }
   try {
-    if (Array.isArray(portable?.teams)) saveStoredTeams(portable.teams as any[]);
+    if (Array.isArray(portable?.teams)) {
+      // `portable.teams` est volontairement allégé : les data:image sont retirées.
+      // Il faut donc sauver la version déjà réhydratée depuis userMediaFallback/R2,
+      // sinon ce second save écrase exactement les logos récupérés quelques lignes plus haut.
+      const hydratedTeams = await hydrateStoreUserMedia({ teams: portable.teams }, { allowRemote: true })
+        .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portable.teams)
+        .catch(() => portable.teams);
+      saveStoredTeams(hydratedTeams as any[]);
+    }
   } catch (error) { recordError("portable teams restore failed", error); }
   try {
     const critical = portable?.criticalLocalStorage && typeof portable.criticalLocalStorage === "object" ? portable.criticalLocalStorage : {};
@@ -3509,6 +3517,10 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       report(1, "Nettoyage sécurisé de l’ancien état local…");
       await nukeAll();
       clearLocalStorageDc();
+      // Les miniatures avatar existent aussi en RAM/session. Sans purge explicite,
+      // un ancien avatar peut survivre au remplacement complet du compte et gagner
+      // temporairement sur l'avatar restauré du profil actif.
+      resetAvatarCacheRuntime({ clearPersistent: true });
       await yieldIfNeeded(true);
     }
 
@@ -3602,7 +3614,14 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   const { teams } = extractTeamsFromSnapshot(dump);
   if (Array.isArray(teams)) {
     try {
-      saveStoredTeams(teams as any[]);
+      // Dernière activation des équipes : ne jamais réécrire la copie brute/sanitisée
+      // après avoir restauré le coffre média, sinon les logos disparaissent au reboot.
+      const currentTeams = loadStoredTeams();
+      const sourceTeams = Array.isArray(currentTeams) && currentTeams.length ? currentTeams : teams;
+      const hydratedTeams = await hydrateStoreUserMedia({ teams: sourceTeams }, { allowRemote: true })
+        .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : sourceTeams)
+        .catch(() => sourceTeams);
+      saveStoredTeams(hydratedTeams as any[]);
       try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
       try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
     } catch (e) {

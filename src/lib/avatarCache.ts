@@ -342,6 +342,23 @@ export function setAvatarCache(entry: AvatarCacheEntry) {
   } catch {}
 }
 
+export function resetAvatarCacheRuntime(opts: { clearPersistent?: boolean } = {}): void {
+  memoryCache = null;
+  sessionThumbs.clear();
+  sessionThumbChars = 0;
+  if (writeTimer != null && typeof window !== "undefined") { window.clearTimeout(writeTimer); writeTimer = null; }
+  if (fastPruneTimer != null && typeof window !== "undefined") { window.clearTimeout(fastPruneTimer); fastPruneTimer = null; }
+  if (!opts.clearPersistent || typeof localStorage === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i) || "";
+      if (key === KEY || key.startsWith(FAST_KEY_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {}
+}
+
 export function getAvatarCacheDiagnostics() {
   let fastEntries = 0;
   let fastChars = 0;
