@@ -7117,8 +7117,73 @@ function AccountSyncBanner() {
           </div>
 
           <div style={{marginTop:16,padding:"14px 15px",borderRadius:16,background:"rgba(255,255,255,.055)",border:"1px solid rgba(255,255,255,.08)",fontSize:14,lineHeight:1.5,color:"#e2f2f7"}}>
-            Nous avons détecté une sauvegarde différente de cet appareil. Veux-tu la synchroniser ?
+            Nous avons détecté une sauvegarde différente de cet appareil. Vérifie son contenu avant de choisir.
           </div>
+
+          {(() => {
+            const remote = conflict.remoteSummary || {};
+            const local = conflict.localSummary || {};
+            const remoteMatches = Math.max(Number(remote.matches || 0), Number(remote.historyRows || 0));
+            const localMatches = Math.max(Number(local.matches || 0), Number(local.historyRows || 0));
+            const remoteStats = Number(remote.statsMatches || remote.statsBlocks || 0);
+            const localStats = Number(local.statsMatches || local.statsBlocks || 0);
+            const remoteMedia = Number(remote.mediaRefs || remote.images || 0);
+            const localMedia = Number(local.mediaRefs || local.images || 0);
+            const parsedDate = conflict.updatedAt ? new Date(conflict.updatedAt) : null;
+            const dateText = parsedDate && !Number.isNaN(parsedDate.getTime())
+              ? parsedDate.toLocaleString(undefined, { dateStyle:"medium", timeStyle:"short" })
+              : String(conflict.updatedAt || "Date inconnue");
+            const bytes = Number(remote.bytes || 0);
+            const sizeText = bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 1 : 2)} Mo` : null;
+            const sourceLabel = String(conflict.label || conflict.source || "Sauvegarde distante");
+            const metric = (label: string, value: number) => (
+              <div style={{padding:"8px 9px",borderRadius:11,background:"rgba(255,255,255,.045)",border:"1px solid rgba(255,255,255,.07)"}}>
+                <div style={{fontSize:10,color:"#8faab4",fontWeight:800,textTransform:"uppercase",letterSpacing:.35}}>{label}</div>
+                <div style={{fontSize:16,color:"#f3fdff",fontWeight:950,marginTop:2}}>{value}</div>
+              </div>
+            );
+            return (
+              <div style={{marginTop:12,display:"grid",gap:10}}>
+                <div style={{padding:"13px",borderRadius:16,background:"linear-gradient(135deg,rgba(28,216,255,.10),rgba(98,255,126,.07))",border:"1px solid rgba(52,226,255,.34)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:950,color:"#55eaff",letterSpacing:.45}}>SAUVEGARDE TROUVÉE</div>
+                      <div style={{fontSize:14,fontWeight:950,marginTop:3,color:"#f2fdff"}}>{sourceLabel}</div>
+                    </div>
+                    {sizeText && <div style={{fontSize:11,fontWeight:900,color:"#b7f7ff",whiteSpace:"nowrap"}}>{sizeText}</div>}
+                  </div>
+                  <div style={{fontSize:12,color:"#b9d3da",marginTop:6}}>Créée / mise à jour : <strong style={{color:"#fff"}}>{dateText}</strong></div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:7,marginTop:10}}>
+                    {metric("Profils", Number(remote.profiles || 0))}
+                    {metric("Parties", remoteMatches)}
+                    {metric("Statistiques", remoteStats)}
+                    {metric("Médias", remoteMedia)}
+                  </div>
+                </div>
+
+                <div style={{padding:"11px 12px",borderRadius:14,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.08)"}}>
+                  <div style={{fontSize:11,fontWeight:950,color:"#a9bdc4",letterSpacing:.35}}>CET APPAREIL ACTUELLEMENT</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6,marginTop:8,textAlign:"center"}}>
+                    <div><b>{Number(local.profiles || 0)}</b><div style={{fontSize:9,color:"#8faab4"}}>profils</div></div>
+                    <div><b>{localMatches}</b><div style={{fontSize:9,color:"#8faab4"}}>parties</div></div>
+                    <div><b>{localStats}</b><div style={{fontSize:9,color:"#8faab4"}}>stats</div></div>
+                    <div><b>{localMedia}</b><div style={{fontSize:9,color:"#8faab4"}}>médias</div></div>
+                  </div>
+                </div>
+
+                {Array.isArray(conflict.differences) && conflict.differences.length > 0 && (
+                  <div style={{padding:"10px 12px",borderRadius:13,background:"rgba(255,184,77,.07)",border:"1px solid rgba(255,184,77,.20)",fontSize:11,lineHeight:1.45,color:"#ffe2b2"}}>
+                    {conflict.differences.map((d:any) => (
+                      <div key={d.key} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"2px 0"}}>
+                        <span>{d.label}</span>
+                        <strong>{Number(d.delta) > 0 ? `+${d.delta}` : d.delta} avec la sauvegarde</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {decisionError && <div style={{marginTop:10,padding:"9px 11px",borderRadius:11,background:"rgba(255,87,87,.10)",border:"1px solid rgba(255,100,100,.30)",fontSize:12,color:"#ffc1c1"}}>{decisionError}</div>}
 

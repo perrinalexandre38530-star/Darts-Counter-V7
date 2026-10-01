@@ -8,8 +8,8 @@ import { loadTeamsBySport, resolveTeamLogo, type TeamEntity } from '../lib/petan
 import { resolveTeamLogoSrc } from '../assets/teamLogoLibrary';
 import type { Profile } from '../lib/types';
 
-export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull25'|'bull50';
-export type ChallengeRule='all'|'single'|'double'|'triple'|'bull25'|'bull50';
+export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'bull25'|'bull50';
+export type ChallengeRule='all'|'single'|'double'|'triple'|'bull'|'bull25'|'bull50';
 export type ChallengeMatchMode='solo'|'duo'|'duel'|'multi';
 export type ChallengeParticipantSource='direct'|'team';
 export type ChallengeConfigData={
@@ -28,7 +28,7 @@ type ConfigMode='guided'|'complete';
 type MatchMode='solo'|'duo'|'multi';
 type TeamSelections=Record<string,string[]>;
 
-const targetText=(target:ChallengeTarget)=>target==='bull25'?'BULL 25':target==='bull50'?'BULL 50':target;
+const targetText=(target:ChallengeTarget)=>target==='bull'?'BULL':target==='bull25'?'BULL 25':target==='bull50'?'BULL 50':target;
 const teamLogo=(team:any)=>team?.logoDataUrl||resolveTeamLogoSrc(team?.logoLibraryId||team?.logoLibraryFileName||null)||team?.logoUrl||team?.avatarUrl||team?.imageUrl||'';
 const unique=(values:any[])=>Array.from(new Set((values||[]).map(String).filter(Boolean)));
 
@@ -63,6 +63,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   ['single','SEULEMENT SIMPLE','Seuls les simples comptent'],
   ['double','SEULEMENT DOUBLE','Seuls les doubles comptent'],
   ['triple','SEULEMENT TRIPLE','Seuls les triples comptent'],
+  ['bull','MODE BULL','Bull 25 = 1 • Bull 50 = 2'],
   ['bull25','BULL 25','Bull extérieur uniquement'],
   ['bull50','BULL 50','Bull intérieur uniquement']
  ];
@@ -196,7 +197,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   </>}
  </Section>;
 
- const targetStage=<Section title="CIBLE" subtitle="Choisissez le secteur à travailler." key="target"><div className="target-grid">{[...Array.from({length:20},(_,i)=>String(i+1)),'bull25','bull50'].map(x=><button type="button" key={x} className={'target-btn '+(target===x?'on':'')} onClick={()=>setTarget(x as ChallengeTarget)}>{x==='bull25'?'BULL 25':x==='bull50'?'BULL 50':x}</button>)}</div></Section>;
+ const targetStage=<Section title="CIBLE" subtitle="Choisissez le secteur à travailler." key="target"><div className="target-grid">{[...Array.from({length:20},(_,i)=>String(i+1)),'bull'].map(x=><button type="button" key={x} className={'target-btn '+(target===x?'on':'')} onClick={()=>setTarget(x as ChallengeTarget)}>{x==='bull'?'BULL':x}</button>)}</div></Section>;
  const visitsStage=<Section title="NOMBRE DE TOURS" subtitle="Chaque tour comprend jusqu’à 3 fléchettes par joueur." key="visits"><div className="visit-grid">{[5,10,15,20,30,50,100].map(n=><button type="button" key={n} className={'arcade-choice '+(visits===n?'on':'')} onClick={()=>setVisits(n)}>{n}</button>)}</div><div className="hint">{visits} tours • {visits*3} fléchettes maximum par joueur</div></Section>;
  const ruleStage=<Section title="OBJECTIF" subtitle="Déterminez quels impacts rapportent des points." key="rule"><div className="rule-grid">{rules.map(([id,label,detail])=><button type="button" key={id} className={'rule-btn '+(rule===id?'on':'')} onClick={()=>setRule(id)}><b>{label}</b><span>{detail}</span></button>)}</div></Section>;
  const stages=[formatStage,playersStage,targetStage,visitsStage,ruleStage];
