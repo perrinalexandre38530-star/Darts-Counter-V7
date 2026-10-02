@@ -17,7 +17,6 @@ import StatsPlayerDashboard, {
 import { useQuickStats } from "../hooks/useQuickStats";
 import { loadStatsIndex, scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
 import StatsCricketDashboard from "../components/StatsCricketDashboard";
-import StatsDartSetsSection from "../components/StatsDartSetsSection";
 import AttrapeMoiStatsTabFull from "../components/stats/AttrapeMoiStatsTabFull";
 import CradosStatsTabFull from "../components/stats/CradosStatsTabFull";
 import HistoryPage from "./HistoryPage";
@@ -290,9 +289,8 @@ function lazyWithRetry<T extends React.ComponentType<any>>(loader: () => Promise
 const TrainingRadar = React.lazy(() => import("../components/TrainingRadar"));
 const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/StatsShanghaiDashboard"));
 const StatsX01Compare = lazyWithRetry(() => import("./StatsX01Compare"));
-const X01MultiStatsTabFull = React.lazy(
-  () => import("../stats/X01MultiStatsTabFull")
-);
+const StatsDartSetsSection = lazyWithRetry(() => import("../components/StatsDartSetsSection"));
+const X01MultiStatsTabFull = lazyWithRetry(() => import("../stats/X01MultiStatsTabFull"));
 const FiveLivesStatsTabFull = React.lazy(
   () => import("../stats/FiveLivesStatsTabFull")
 );
@@ -4984,7 +4982,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
   const normId = (v: any) => String(v ?? "").replace(/^online:/, "");
   const pid = normId(playerId || "");
   const pname = normPlayerName(playerName || "");
-  const rows = (records || [])
+  const allRows = (records || [])
     .filter((row: any) => classifyRecordMode(row as any) === "challenge")
     .filter((row: any) => {
       const status = lc(row?.status ?? row?.summary?.status ?? row?.payload?.status);
@@ -5043,6 +5041,30 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
     .filter((row: any) => row.score > 0 || row.darts > 0)
     .sort((a: any, b: any) => a.at - b.at);
 
+  const configKeyOf = React.useCallback((row: any) => `${String(row?.target || "20")}|${String(row?.rule || "all")}|${Math.max(1, N(row?.visits, 1))}`, []);
+  const configOptions = React.useMemo(() => {
+    const byKey = new Map<string, { key: string; target: string; rule: string; visits: number; count: number; lastAt: number }>();
+    for (const row of allRows) {
+      const key = configKeyOf(row);
+      const prev = byKey.get(key);
+      if (prev) {
+        prev.count += 1;
+        prev.lastAt = Math.max(prev.lastAt, N(row?.at, 0));
+      } else {
+        byKey.set(key, { key, target: String(row?.target || "20"), rule: String(row?.rule || "all"), visits: Math.max(1, N(row?.visits, 1)), count: 1, lastAt: N(row?.at, 0) });
+      }
+    }
+    return [...byKey.values()].sort((a, b) => b.lastAt - a.lastAt || a.target.localeCompare(b.target) || a.visits - b.visits);
+  }, [allRows, configKeyOf]);
+  const [selectedConfigKey, setSelectedConfigKey] = React.useState("");
+  const effectiveConfigKey = configOptions.some((option) => option.key === selectedConfigKey)
+    ? selectedConfigKey
+    : (configOptions[0]?.key || "");
+  const rows = effectiveConfigKey ? allRows.filter((row: any) => configKeyOf(row) === effectiveConfigKey) : allRows;
+  const activeConfig = configOptions.find((option) => option.key === effectiveConfigKey) || null;
+  const challengeRuleLabel = (value: any) => String(value || "all") === "single" ? "S" : String(value || "all") === "double" ? "D" : String(value || "all") === "triple" ? "T" : String(value || "all").startsWith("bull") ? "BULL" : "TOUS";
+  const challengeTargetLabel = (value: any) => String(value || "20").startsWith("bull") ? "BULL" : String(value || "20");
+
   if (!playerId && !playerName) {
     return <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher ses statistiques Challenge.</div>;
   }
@@ -5065,8 +5087,10 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
   const bestStreak = Math.max(...rows.map((row: any) => row.bestStreak));
   const avgScore = sessions ? totalScore / sessions : 0;
   const accuracy = totalDarts ? (totalHits / totalDarts) * 100 : (totalHits + totalMiss ? (totalHits / (totalHits + totalMiss)) * 100 : 0);
+  const missPct = totalDarts ? (totalMiss / totalDarts) * 100 : 0;
   const ringTotals = rows.reduce((acc: any, row: any) => ({ S: acc.S + row.S, D: acc.D + row.D, T: acc.T + row.T, B25: acc.B25 + row.B25, B50: acc.B50 + row.B50, MISS: acc.MISS + row.miss }), { S: 0, D: 0, T: 0, B25: 0, B50: 0, MISS: 0 });
   const bestVisit = Math.max(0, ...rows.map((row: any) => Number(row.bestVisit || 0)));
+  const avgVisit = sessions ? rows.reduce((acc: number, row: any) => acc + Number(row.avgVisit || 0), 0) / sessions : 0;
   const positionTotals = [0, 1, 2].map((index) => {
     const posRows = rows.map((row: any) => Array.isArray(row.positionStats) ? row.positionStats[index] : null).filter(Boolean);
     const attempts = posRows.reduce((a: number, p: any) => a + N(p?.attempts), 0);
@@ -5088,6 +5112,22 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
     return { x, y, row };
   });
   const polyline = chartPoints.map((point: any) => `${point.x},${point.y}`).join(" ");
+  const accuracyPoints = evolution.map((row: any, index: number) => {
+    const rowAccuracy = row.darts > 0 ? (row.hits / row.darts) * 100 : 0;
+    const x = evolution.length <= 1 ? chartW / 2 : px + (index / (evolution.length - 1)) * (chartW - px * 2);
+    const y = chartH - py - (Math.max(0, Math.min(100, rowAccuracy)) / 100) * (chartH - py * 2);
+    return { x, y, value: rowAccuracy, row };
+  });
+  const accuracyPolyline = accuracyPoints.map((point: any) => `${point.x},${point.y}`).join(" ");
+  const hitBarRows = [
+    { label: "S", value: ringTotals.S, tone: "#169cff" },
+    { label: "D", value: ringTotals.D, tone: "#ff3b48" },
+    { label: "T", value: ringTotals.T, tone: "#ffad19" },
+    { label: "25", value: ringTotals.B25, tone: "#10d47b" },
+    { label: "50", value: ringTotals.B50, tone: "#bc55ff" },
+    { label: "MISS", value: ringTotals.MISS, tone: "#758196" },
+  ];
+  const maxHitBar = Math.max(1, ...hitBarRows.map((row) => Number(row.value || 0)));
 
   const box: React.CSSProperties = { minWidth: 0, overflow: "hidden", borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.24)", padding: 10 };
   const statLabel: React.CSSProperties = { minWidth: 0, fontSize: "clamp(7px,1.8vw,8.5px)", opacity: .58, fontWeight: 950, letterSpacing: .35, lineHeight: 1.2, overflowWrap: "anywhere" };
@@ -5098,10 +5138,38 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10, minWidth: 0 }}>
         <div style={{ minWidth: 0, flex: "1 1 220px" }}>
           <div style={{ fontSize: "clamp(13px,3.8vw,16px)", fontWeight: 1000, color: "#ff555b", letterSpacing: .8, lineHeight: 1.15, overflowWrap: "anywhere" }}>CHALLENGE — STATS</div>
-          <div style={{ fontSize: "clamp(8px,2.6vw,10.5px)", color: T.text70, marginTop: 3, lineHeight: 1.3, overflowWrap: "anywhere" }}>Scores, précision, meilleure suite et évolution des parties terminées.</div>
+          <div style={{ fontSize: "clamp(8px,2.6vw,10.5px)", color: T.text70, marginTop: 3, lineHeight: 1.3, overflowWrap: "anywhere" }}>Chaque configuration Challenge reste séparée : cible, tours et règle doivent être identiques.</div>
         </div>
         <div style={{ color: T.text70, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap" }}>{sessions} partie{sessions > 1 ? "s" : ""}</div>
       </div>
+
+      {configOptions.length > 0 && <div style={{ marginBottom: 10, minWidth: 0 }}>
+        <div style={{ ...statLabel, marginBottom: 6 }}>CONFIGURATION</div>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 3, scrollbarWidth: "thin" }}>
+          {configOptions.map((option) => {
+            const on = option.key === effectiveConfigKey;
+            return <button
+              key={option.key}
+              type="button"
+              onClick={() => setSelectedConfigKey(option.key)}
+              style={{
+                flex: "0 0 auto",
+                minHeight: 38,
+                borderRadius: 999,
+                border: `1px solid ${on ? "#ff5159" : "rgba(255,255,255,.13)"}`,
+                background: on ? "linear-gradient(180deg,#52131a,#1b090d)" : "rgba(0,0,0,.28)",
+                color: "#fff",
+                padding: "6px 10px",
+                fontSize: "clamp(7.5px,2.4vw,9px)",
+                fontWeight: 1000,
+                whiteSpace: "nowrap",
+                boxShadow: on ? "0 0 12px rgba(255,65,72,.24)" : "none",
+              }}
+            >🎯 {challengeTargetLabel(option.target)} · 🔁 {option.visits} · ✦ {challengeRuleLabel(option.rule)} <small style={{ opacity: .65 }}>({option.count})</small></button>;
+          })}
+        </div>
+        {activeConfig && <div style={{ marginTop: 5, fontSize: 8, color: T.text70, lineHeight: 1.3 }}>Affichage actuel : cible {challengeTargetLabel(activeConfig.target)} · {activeConfig.visits} tours · {challengeRuleLabel(activeConfig.rule)}.</div>}
+      </div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(118px,100%),1fr))", gap: 7, minWidth: 0 }}>
         {[
@@ -5109,8 +5177,10 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
           ["SCORE MOYEN", avgScore.toFixed(1)],
           ["BEST SCORE", bestScore],
           ["PRÉCISION", `${accuracy.toFixed(1)}%`],
+          ["MISS", `${missPct.toFixed(1)}%`],
           ["BEST SUITE", bestStreak],
           ["BEST VOLÉE", bestVisit],
+          ["MOY. / VOLÉE", avgVisit.toFixed(1)],
           ["MEILLEURE FLÉCHETTE", bestPosition?.attempts ? `#${bestPosition.position} · ${bestPosition.accuracy.toFixed(1)}%` : "—"],
           ["FLÉCHETTES", totalDarts],
         ].map(([label, value]) => <div key={String(label)} style={box}><div style={statLabel}>{label}</div><div style={statValue}>{value}</div></div>)}
@@ -5130,6 +5200,35 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
           {polyline ? <polyline points={polyline} fill="none" stroke="#ff555b" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/> : null}
           {chartPoints.map((point: any, index: number) => <g key={`${point.row.id}-${index}`}><circle cx={point.x} cy={point.y} r="5" fill="#ff555b" stroke="#fff" strokeWidth="1.5"/><title>{`Partie ${rows.length-evolution.length+index+1} · ${point.row.score} pts · cible ${point.row.target}`}</title></g>)}
         </svg>
+      </div>
+
+      <div style={{ ...box, marginTop: 9, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+          <div style={{ fontWeight: 1000, fontSize: 11, color: "#ff6268", letterSpacing: .7 }}>ÉVOLUTION DE LA PRÉCISION</div>
+          <div style={{ fontSize: 9, color: T.text70 }}>même configuration uniquement</div>
+        </div>
+        <svg viewBox={`0 0 ${chartW} ${chartH}`} role="img" aria-label="Évolution de la précision Challenge" style={{ width: "100%", minHeight: 170, display: "block" }}>
+          {[0,25,50,75,100].map((value) => {
+            const y = chartH - py - (value / 100) * (chartH - py * 2);
+            return <g key={value}><line x1={px} y1={y} x2={chartW-px} y2={y} stroke="rgba(255,255,255,.08)" strokeWidth="1"/><text x="3" y={y+4} fill="rgba(255,255,255,.45)" fontSize="10">{value}%</text></g>;
+          })}
+          {accuracyPolyline ? <polyline points={accuracyPolyline} fill="none" stroke="#ffb01c" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/> : null}
+          {accuracyPoints.map((point: any, index: number) => <g key={`accuracy-${point.row.id}-${index}`}><circle cx={point.x} cy={point.y} r="5" fill="#ffb01c" stroke="#fff" strokeWidth="1.5"/><title>{`Partie ${rows.length-evolution.length+index+1} · ${point.value.toFixed(1)}%`}</title></g>)}
+        </svg>
+      </div>
+
+      <div style={{ ...box, marginTop: 9, padding: 12 }}>
+        <div style={{ ...statLabel, marginBottom: 10 }}>HITS PAR TYPE — BARRES</div>
+        <div style={{ height: 176, display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 7, alignItems: "end", minWidth: 0 }}>
+          {hitBarRows.map((item) => {
+            const height = Math.max(item.value > 0 ? 5 : 0, (Number(item.value || 0) / maxHitBar) * 128);
+            return <div key={item.label} style={{ minWidth: 0, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+              <b style={{ fontSize: "clamp(9px,2.5vw,12px)", color: item.tone }}>{item.value}</b>
+              <div style={{ width: "min(34px,80%)", height, minHeight: item.value > 0 ? 5 : 1, borderRadius: "7px 7px 2px 2px", background: item.tone, boxShadow: `0 0 10px ${item.tone}55` }}/>
+              <span style={{ fontSize: "clamp(7px,2vw,9px)", color: T.text70, fontWeight: 1000, whiteSpace: "nowrap" }}>{item.label}</span>
+            </div>;
+          })}
+        </div>
       </div>
 
       <div style={{ ...box, marginTop: 9 }}>

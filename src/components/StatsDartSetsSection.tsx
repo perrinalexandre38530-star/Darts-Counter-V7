@@ -2191,7 +2191,9 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
           if (tNew >= tOld) byId.set(id, r);
         }
 
-        const all = Array.from(byId.values());
+        // Mes fléchettes ne dépend que des matchs X01 : filtrer les headers
+        // AVANT tri/hydratation évite de parcourir tous les autres modes.
+        const all = Array.from(byId.values()).filter((rec: any) => isX01Record(rec));
         const sortedForEnrich = all.slice().sort((a: any, b: any) => {
           const ta = N(a?.endedAt, 0) || N(a?.finishedAt, 0) || N(a?.updatedAt, 0) || N(a?.createdAt, 0) || 0;
           const tb = N(b?.endedAt, 0) || N(b?.finishedAt, 0) || N(b?.updatedAt, 0) || N(b?.createdAt, 0) || 0;
@@ -2205,7 +2207,6 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         }
 
         const candidates = sortedForEnrich
-          .filter((rec: any) => isX01Record(rec))
           .map((rec: any) => ({ rec, id: String(rec?.id ?? rec?.matchId ?? "").trim() }))
           .filter((x: any) => !!x.id)
           .slice(0, 120);

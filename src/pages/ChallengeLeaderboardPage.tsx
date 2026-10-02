@@ -7,6 +7,7 @@ import {
   fetchChallengeLeaderboard,
   fetchChallengeLeaderboardDetail,
   enrichChallengeLeaderboardDetailFromHistory,
+  findChallengeHistoryRecordForLeaderboardDetail,
   listChallengeTeamScopes,
   syncChallengeHistoricalScores,
   type ChallengeLeaderboardDetail,
@@ -145,6 +146,35 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    try{await syncChallengeHistoricalScores(profiles)}catch(e){console.warn('[challenge leaderboard] detail backfill',e)}
    const fetched=await fetchChallengeLeaderboardDetail(objective,row.userId,scope==='team'?{type:'team',teamKey}:{type:'public'});
    if(!fetched){setError('Le détail de cette ancienne performance n’est pas encore disponible.');return}
+
+   // Pour le compte connecté, si la partie existe encore localement on réouvre
+   // EXACTEMENT le record History. C'est le même chemin que le bouton VOIR STATS
+   // de l'Historique, donc le rendu est strictement celui de ChallengePlay.
+   const localMatch=await findChallengeHistoryRecordForLeaderboardDetail(fetched,profiles);
+   if(localMatch){
+    const rec:any=localMatch.record;
+    const payload:any=rec?.decoded||((rec?.payload&&typeof rec.payload==='object')?rec.payload:{})||{};
+    const livePayload:any=rec?.resume?.livePayload||{};
+    const config=rec?.resume?.config||payload?.config||livePayload?.config||rec?.summary?.config||null;
+    const snapshot=rec?.resume?.state||livePayload?.state||payload?.state||payload?.snapshot||{
+     log:payload?.entries||payload?.events||[],entries:payload?.entries||payload?.events||[],
+    };
+    go('challenge_play',{
+     rec,
+     resumeId:rec?.resumeId||rec?.matchId||rec?.id,
+     config,
+     snapshot,
+     mode:'challenge',
+     from:'challenge_leaderboard',
+     historyStatsOnly:true,
+     onlineStatsOnly:true,
+     initialDetailTab:localMatch.playerId||'global',
+     returnTab:'challenge_leaderboard',
+     returnParams:{from:params?.from||'online',target,rule,visits},
+    });
+    return;
+   }
+
    const data=await enrichChallengeLeaderboardDetailFromHistory(fetched,profiles);
    if(openFullStats(data))return;
    // Très anciennes performances serveur : aucun journal fléchette-par-fléchette

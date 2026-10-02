@@ -479,6 +479,44 @@ function historyFingerprint(rows: any[]): string {
   return `${list.length}:${latest}:${hash.toString(36)}`;
 }
 
+function isLikelyX01HistoryRow(row: any): boolean {
+  const markers = [
+    row?.kind,
+    row?.game,
+    row?.mode,
+    row?.variant,
+    row?.type,
+    row?.gameMode,
+    row?.summary?.game?.mode,
+    row?.summary?.mode,
+    row?.payload?.kind,
+    row?.payload?.game,
+    row?.payload?.mode,
+    row?.payload?.variant,
+    row?.payload?.gameMode,
+    row?.payload?.summary?.game?.mode,
+    row?.payload?.config?.mode,
+    row?.payload?.config?.gameMode,
+  ].filter((value) => value != null && String(value).trim() !== "");
+  if (markers.some((value) => String(value).toLowerCase().includes("x01"))) return true;
+
+  const startScore = Number(
+    row?.summary?.game?.startScore ??
+    row?.game?.startScore ??
+    row?.payload?.summary?.game?.startScore ??
+    row?.payload?.game?.startScore ??
+    row?.payload?.config?.startScore ??
+    row?.payload?.config?.start
+  );
+  if ([301, 501, 701, 901].includes(startScore)) return true;
+
+  // Si le header léger ne sait vraiment pas identifier le mode, on conserve
+  // la ligne en fallback pour ne pas perdre de très vieux X01. En revanche,
+  // tous les matchs explicitement identifiés comme un autre mode sont ignorés
+  // AVANT History.get(), ce qui évite d'hydrater tout l'historique.
+  return markers.length === 0;
+}
+
 function isConstrainedX01MultiDevice(): boolean {
   try {
     const nav: any = navigator;
@@ -1956,16 +1994,18 @@ async function loadX01MultiSessionsInternal(
     return [];
   }
 
-  const fingerprint = historyFingerprint(list);
+  const x01Candidates = list.filter(isLikelyX01HistoryRow);
+  const fingerprint = historyFingerprint(x01Candidates);
   const cached = await readX01MultiSessionsCache(profileId, fingerprint);
   if (cached) return cached.sessions.slice().sort((a, b) => a.date - b.date);
 
   // Même source qu'avant, mais lectures IndexedDB parallélisées par petits lots.
-  // Aucun match n'est supprimé ni plafonné : seule l'attente séquentielle disparaît.
+  // On hydrate uniquement les headers susceptibles d'être X01 au lieu de relire
+  // les payloads de TOUS les jeux présents dans l'historique.
   const hydratedList: any[] = [];
   const batchSize = isConstrainedX01MultiDevice() ? 6 : 20;
-  for (let offset = 0; offset < list.length; offset += batchSize) {
-    const batch = list.slice(offset, offset + batchSize);
+  for (let offset = 0; offset < x01Candidates.length; offset += batchSize) {
+    const batch = x01Candidates.slice(offset, offset + batchSize);
     const hydrated = await Promise.all(batch.map(async (liteMatch: any) => {
       try {
         const id = String(liteMatch?.id ?? liteMatch?.matchId ?? "").trim();
@@ -1975,7 +2015,7 @@ async function loadX01MultiSessionsInternal(
       }
     }));
     hydratedList.push(...hydrated);
-    if (offset + batchSize < list.length) await yieldX01MultiWork();
+    if (offset + batchSize < x01Candidates.length) await yieldX01MultiWork();
   }
 
   const out: X01MultiSession[] = [];

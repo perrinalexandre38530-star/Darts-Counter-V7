@@ -274,7 +274,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const [onlineFiltersOpen,setOnlineFiltersOpen]=React.useState(false);
  const [detailOpen,setDetailOpen]=React.useState(historyStatsOnly);
  const [playersOpen,setPlayersOpen]=React.useState(false);
- const [detailTab,setDetailTab]=React.useState<string>('global');
+ const [detailTab,setDetailTab]=React.useState<string>(()=>String(params?.initialDetailTab||'global'));
  const [detailSection,setDetailSection]=React.useState<string>('PERFORMANCE');
  const [voiceOn,setVoiceOn]=React.useState(false);
  const [voiceHeard,setVoiceHeard]=React.useState('');

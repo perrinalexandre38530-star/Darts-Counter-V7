@@ -570,6 +570,68 @@ export async function enrichChallengeLeaderboardDetailFromHistory(
   };
 }
 
+/**
+ * Retrouve la partie locale exacte correspondant à une performance Online du
+ * compte connecté. Le but n'est pas de reconstruire une pseudo-fiche à partir
+ * d'agrégats Supabase : quand la partie existe encore dans History, on réouvre
+ * directement le même record que depuis la page Historique. ChallengePlay peut
+ * alors afficher STRICTEMENT le même panneau STATS DÉTAILLÉES.
+ */
+export async function findChallengeHistoryRecordForLeaderboardDetail(
+  detail: ChallengeLeaderboardDetail,
+  profiles: any[],
+): Promise<{ record: any; playerId: string } | null> {
+  const uid = await getChallengeOnlineUserId();
+  if (!uid || clean(detail?.userId) !== uid) return null;
+
+  const profileIds = new Set(linkedProfileIds(profiles, uid));
+  const wantedMatchId = clean(detail?.matchId);
+  const wantedName = lower(detail?.displayName);
+  const history = await History.getAll();
+
+  const candidates = history
+    .filter(historyIsFinishedChallenge)
+    .filter((record: any) => {
+      const cfg = historyConfig(record);
+      return clean(cfg.target) === clean(detail.target)
+        && clean(cfg.rule) === clean(detail.rule)
+        && int(cfg.visits) === int(detail.visits);
+    })
+    .map((record: any) => {
+      const rows = historyPlayerRows(record);
+      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
+      let row = rows.find((candidate: any) => profileIds.has(historyRowId(candidate))) || null;
+
+      // Anciennes sauvegardes : le lien profil Online n'était pas toujours
+      // présent. Un matchId exact reste un identifiant suffisamment fort pour
+      // retrouver la ligne du joueur sans inventer de données.
+      if (!row && wantedMatchId && recordMatchId === wantedMatchId) {
+        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || (rows.length === 1 ? rows[0] : null);
+      }
+      if (!row && wantedName) {
+        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || null;
+      }
+      if (!row && rows.length === 1 && lower(rows[0]?.name || rows[0]?.displayName) === wantedName) row = rows[0];
+      if (!row) return null;
+
+      const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+      if (score !== int(detail.score)) return null;
+      const stats = historyStatsPayload(record, row);
+      return {
+        record,
+        playerId: historyRowId(row),
+        exactMatchId: Boolean(wantedMatchId && recordMatchId === wantedMatchId),
+        entryCount: Array.isArray(stats?.entries) ? stats.entries.length : 0,
+      };
+    })
+    .filter(Boolean) as Array<{record:any;playerId:string;exactMatchId:boolean;entryCount:number}>;
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => Number(b.exactMatchId) - Number(a.exactMatchId) || b.entryCount - a.entryCount);
+  const best = candidates[0];
+  return best?.entryCount > 0 ? { record: best.record, playerId: best.playerId } : null;
+}
+
 /** Backfill des anciennes parties Challenge. V3 reclassera aussi les anciennes parties DUO/MULTI dans la même catégorie individuelle. */
 export async function syncChallengeHistoricalScores(profiles: any[], _teams: any[] = []): Promise<ChallengeHistorySyncResult> {
   const uid = await getChallengeOnlineUserId();
