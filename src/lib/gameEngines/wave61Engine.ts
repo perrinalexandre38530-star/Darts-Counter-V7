@@ -3891,6 +3891,33 @@ function advanceWave61Turn(state: Wave61State): Wave61State {
   state.turnIndex += 1;
   if (wrapped) state.roundIndex += 1;
   if (state.roundIndex >= state.config.rounds && state.phase === "playing") {
+    if (state.modeId === "tug_rush") {
+      // TUG RUSH is decided by the rope itself. Raw score/contribution is only a
+      // centre-line tie-breaker because misses can move the rope backwards.
+      const position = Number(state.special?.tugPosition || 0);
+      const side = position > 0 ? "A" : position < 0 ? "B" : null;
+      const sideOf = (id: string) => String(state.special?.tugSideByPlayer?.[id] || "A") === "B" ? "B" : "A";
+      let winningSide: "A" | "B";
+      if (side) winningSide = side;
+      else {
+        const contribution = (wanted: "A" | "B") => state.players
+          .filter((p) => sideOf(p.id) === wanted)
+          .reduce((sum, p) => sum + Number(state.special?.tugContributionByPlayer?.[p.id] || 0), 0);
+        const a = contribution("A"), b = contribution("B");
+        if (a !== b) winningSide = a > b ? "A" : "B";
+        else {
+          const score = (wanted: "A" | "B") => state.players
+            .filter((p) => sideOf(p.id) === wanted)
+            .reduce((sum, p) => sum + Number(state.scores[p.id] || 0), 0);
+          winningSide = score("B") > score("A") ? "B" : "A";
+        }
+      }
+      const winner = state.players
+        .filter((p) => sideOf(p.id) === winningSide)
+        .sort((a, b) => Number(state.special?.tugContributionByPlayer?.[b.id] || 0) - Number(state.special?.tugContributionByPlayer?.[a.id] || 0) || Number(state.scores[b.id] || 0) - Number(state.scores[a.id] || 0))[0];
+      if (winner) finishWith(state, winner.id, state.config.participantMode === "teams" ? winningSide : null);
+      return state;
+    }
     if (state.modeId === "mafia") {
       if (!checkMafiaVictory(state)) {
         const mafia = mafiaAliveByRole(state, "MAFIA");
