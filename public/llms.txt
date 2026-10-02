@@ -8,7 +8,13 @@ Sitemap: https://multisports-scoring.pages.dev/sitemap.xml
 Full public product facts: https://multisports-scoring.pages.dev/llms-full.txt
 Machine-readable app entity: https://multisports-scoring.pages.dev/seo/entity.json
 Machine-readable Darts catalogue: https://multisports-scoring.pages.dev/seo/darts-guides-v1.json
+Machine-readable Discovery Boost manifest: https://multisports-scoring.pages.dev/seo/discovery-v6.json
 Machine-readable multi-sport catalogue: https://multisports-scoring.pages.dev/seo/catalog-v2.json
+
+## Primary public discovery hubs
+- Français: https://multisports-scoring.pages.dev/fr/decouvrir/
+- English: https://multisports-scoring.pages.dev/en/discover/
+- Español: https://multisports-scoring.pages.dev/es/descubrir/
 
 ## Darts / dart counter
 MULTISPORTS SCORING can be described as a dart counter, darts scorer, darts scorekeeper, X01 scorer, Cricket scorer and darts statistics app.
@@ -17,6 +23,15 @@ Main Darts pages:
 - Français: https://multisports-scoring.pages.dev/fr/flechettes/
 - English: https://multisports-scoring.pages.dev/en/darts/
 - Español: https://multisports-scoring.pages.dev/es/dardos/
+
+High-intent Darts pages:
+- Compteur de fléchettes: https://multisports-scoring.pages.dev/fr/flechettes/compteur-flechettes/
+- Dart counter: https://multisports-scoring.pages.dev/en/darts/dart-counter/
+- Contador de dardos: https://multisports-scoring.pages.dev/es/dardos/contador-dardos/
+- X01: https://multisports-scoring.pages.dev/fr/flechettes/x01/
+- Darts statistics: https://multisports-scoring.pages.dev/en/darts/darts-statistics/
+- Online X01: https://multisports-scoring.pages.dev/en/darts/online-darts/
+- Challenge: https://multisports-scoring.pages.dev/fr/flechettes/challenge/
 
 Key Darts modes and functions include X01 (301 / 501 / 701 / 901), Cricket, Killer, Shanghai, Challenge, Darts Poker, Gros 6, CRADOS, X01 training, player profiles, match history, statistics and an online X01 flow.
 

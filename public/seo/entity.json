@@ -58,6 +58,21 @@
       "@type": "WebPage",
       "url": "https://multisports-scoring.pages.dev/es/dardos/",
       "name": "Contador de dardos MULTISPORTS SCORING"
+    },
+    {
+      "@type": "CollectionPage",
+      "url": "https://multisports-scoring.pages.dev/fr/decouvrir/",
+      "name": "Répertoire public MULTISPORTS SCORING"
+    },
+    {
+      "@type": "CollectionPage",
+      "url": "https://multisports-scoring.pages.dev/en/discover/",
+      "name": "MULTISPORTS SCORING public directory"
+    },
+    {
+      "@type": "CollectionPage",
+      "url": "https://multisports-scoring.pages.dev/es/descubrir/",
+      "name": "Directorio público MULTISPORTS SCORING"
     }
   ]
 }

@@ -75,6 +75,12 @@ const features = {
 };
 
 const DARTS_LANGS = ['fr','en','es'];
+const DISCOVERY_ROUTES = {
+  fr:`${BASE}/fr/decouvrir/`,
+  en:`${BASE}/en/discover/`,
+  es:`${BASE}/es/descubrir/`,
+};
+const PRIORITY_DARTS_GUIDES = ['dart-counter','x01','statistics','online-x01','challenge','cricket','killer'];
 const dartsLandingCopy = {
   fr:{
     title:'Compteur de fléchettes et application Darts | MULTISPORTS SCORING',
@@ -284,13 +290,40 @@ function relatedGuideLinks(catalog, lang, currentId) {
     .join(' · ');
 }
 
+function discoveryLabel(lang) {
+  if (lang==='fr') return 'Répertoire public · Fléchettes & application';
+  if (lang==='es') return 'Directorio público · Dardos y aplicación';
+  return 'Public directory · Darts & app';
+}
+
+function discoveryFooter(lang) {
+  if (!DARTS_LANGS.includes(lang)) return '<footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer>';
+  const route = DISCOVERY_ROUTES[lang];
+  return `<footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA · <a href="${urlPath(route)}">${escapeHtml(discoveryLabel(lang))}</a></footer>`;
+}
+
+function priorityDartsLinks(catalog, lang) {
+  return PRIORITY_DARTS_GUIDES.map((id)=>`<a href="${urlPath(guideUrl(catalog,lang,id))}">${escapeHtml(dartsGuides[id].names[lang])}</a>`).join(' · ');
+}
+
+function homeDiscoverySection(catalog, lang) {
+  if (!DARTS_LANGS.includes(lang)) return '';
+  const sport = catalog.sports.find((s)=>s.id==='darts');
+  const copy = {
+    fr:{h:'Vous cherchez une application de fléchettes ?',p:'Accédez directement au compteur de fléchettes MULTISPORTS SCORING, aux règles X01, aux statistiques, au jeu en ligne et aux principaux modes Darts.',all:'Voir tout l’univers Fléchettes'},
+    en:{h:'Looking for a darts scoring app?',p:'Go directly to the MULTISPORTS SCORING dart counter, X01 scoring, darts statistics, online play and the main Darts modes.',all:'Explore the full Darts hub'},
+    es:{h:'¿Buscas una aplicación para puntuar dardos?',p:'Accede directamente al contador de dardos de MULTISPORTS SCORING, X01, estadísticas, juego online y los principales modos.',all:'Ver todo el universo de Dardos'},
+  }[lang];
+  return `<section class="discovery"><h2>${escapeHtml(copy.h)}</h2><p>${escapeHtml(copy.p)}</p><p class="link-cloud"><a href="${urlPath(sport.routes[lang])}">${escapeHtml(copy.all)}</a> · ${priorityDartsLinks(catalog,lang)} · <a href="${urlPath(DISCOVERY_ROUTES[lang])}">${escapeHtml(discoveryLabel(lang))}</a></p></section>`;
+}
+
 function homePage(catalog, lang) {
   const t = locale[lang];
   const url = `${BASE}/${lang}/`;
   const homeMap = Object.fromEntries(Object.keys(locale).map((code)=>[code,`${BASE}/${code}/`]));
   const cards = catalog.sports.map((s)=>`<article class="card"><h2><a href="${urlPath(s.routes[lang])}">${escapeHtml(sportNames[lang][s.id])}</a></h2><p>${escapeHtml(s.androidPublicV1 ? t.android : t.webOnly)}</p></article>`).join('');
   const ld = jsonLd({lang,url,title:t.homeTitle,description:t.homeLead,breadcrumb:[{name:t.home,url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title:t.homeTitle,description:t.homeLead,alternatesMap:homeMap})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING</div><h1>${escapeHtml(t.homeH1)}</h1><p class="lead">${escapeHtml(t.homeLead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a></header><section><h2>${escapeHtml(t.available)}</h2><div class="grid">${cards}</div></section><section><h2>${escapeHtml(t.about)}</h2><p>${escapeHtml(t.aboutText)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title:t.homeTitle,description:t.homeLead,alternatesMap:homeMap})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING</div><h1>${escapeHtml(t.homeH1)}</h1><p class="lead">${escapeHtml(t.homeLead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a></header>${homeDiscoverySection(catalog,lang)}<section><h2>${escapeHtml(t.available)}</h2><div class="grid">${cards}</div></section><section><h2>${escapeHtml(t.about)}</h2><p>${escapeHtml(t.aboutText)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog)}</p></section>${discoveryFooter(lang)}</main></body></html>`;
 }
 
 function sportPage(catalog, lang, sport) {
@@ -305,9 +338,9 @@ function sportPage(catalog, lang, sport) {
   const url = sport.routes[lang];
   const featureItems = features[sport.id].map((x)=>`<li>${escapeHtml(x)}</li>`).join('');
   const dartsGuideSection = sport.id==='darts' && DARTS_LANGS.includes(lang)
-    ? `<section><h2>${lang==='fr'?'Guides et fonctions fléchettes':lang==='es'?'Guías y funciones de dardos':'Darts guides and features'}</h2><p>${Object.entries(dartsGuides).map(([id,g])=>`<a href="${urlPath(guideUrl(catalog,lang,id))}">${escapeHtml(g.names[lang])}</a>`).join(' · ')}</p></section>` : '';
+    ? `<section class="discovery"><h2>${lang==='fr'?'Compteur, X01, statistiques et modes fléchettes':lang==='es'?'Contador, X01, estadísticas y modos de dardos':'Dart counter, X01, statistics and darts modes'}</h2><p>${lang==='fr'?'Cette page est le hub public de MULTISPORTS SCORING pour découvrir les fonctions fléchettes avant d’ouvrir l’application.':lang==='es'?'Esta página es el hub público de MULTISPORTS SCORING para descubrir las funciones de dardos antes de abrir la aplicación.':'This is the public MULTISPORTS SCORING hub for discovering Darts features before opening the app.'}</p><div class="guide-grid">${Object.entries(dartsGuides).map(([id,g])=>`<article class="mini-card"><a href="${urlPath(guideUrl(catalog,lang,id))}"><strong>${escapeHtml(g.names[lang])}</strong></a><span>${escapeHtml(g.descriptions[lang])}</span></article>`).join('')}</div><p class="link-cloud"><a href="${urlPath(DISCOVERY_ROUTES[lang])}">${escapeHtml(discoveryLabel(lang))}</a></p></section>` : '';
   const ld = jsonLd({lang,url,title,description,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name,url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title,description,alternatesMap:sport.routes})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(name)}</div><h1>${escapeHtml(titleBase)}</h1><p class="lead">${escapeHtml(lead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a></nav></header><section><h2>${escapeHtml(t.features)}</h2><ul>${featureItems}</ul></section><section><h2>${escapeHtml(t.availability)}</h2><p>${escapeHtml(sport.androidPublicV1 ? t.android : t.webOnly)}</p></section>${dartsGuideSection}<section><h2>${escapeHtml(t.faq)}</h2><ul><li><strong>${escapeHtml(t.faqQ)}</strong><br>${escapeHtml(t.faqA)}</li></ul></section><section><h2>${escapeHtml(t.others)}</h2><p>${sportLinks(catalog,lang,sport.id)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog,sport.id)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title,description,alternatesMap:sport.routes})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(name)}</div><h1>${escapeHtml(titleBase)}</h1><p class="lead">${escapeHtml(lead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a>${DARTS_LANGS.includes(lang)?`<a href="${urlPath(DISCOVERY_ROUTES[lang])}">${escapeHtml(discoveryLabel(lang))}</a>`:''}</nav></header><section><h2>${escapeHtml(t.features)}</h2><ul>${featureItems}</ul></section><section><h2>${escapeHtml(t.availability)}</h2><p>${escapeHtml(sport.androidPublicV1 ? t.android : t.webOnly)}</p></section>${dartsGuideSection}<section><h2>${escapeHtml(t.faq)}</h2><ul><li><strong>${escapeHtml(t.faqQ)}</strong><br>${escapeHtml(t.faqA)}</li></ul></section><section><h2>${escapeHtml(t.others)}</h2><p>${sportLinks(catalog,lang,sport.id)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog,sport.id)}</p></section>${discoveryFooter(lang)}</main></body></html>`;
 }
 
 function guidePage(catalog, lang, guideId) {
@@ -324,7 +357,26 @@ function guidePage(catalog, lang, guideId) {
   const faq = faqItems.length ? `<section><h2>${escapeHtml(t.faq)}</h2><ul>${faqItems.map((f)=>`<li><strong>${escapeHtml(f.q)}</strong><br>${escapeHtml(f.a)}</li>`).join('')}</ul></section>` : '';
   const alternatesMap = guideAlternates(catalog,guideId);
   const ld = jsonLd({lang,url,title,description:desc,faqItems,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name:sportName,url:sportUrl},{name:guide.names[lang],url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title,description:desc,alternatesMap})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(sportName)} · ${escapeHtml(guide.names[lang])}</div><h1>${escapeHtml(title.replace(/ \| MULTISPORTS SCORING$/,''))}</h1><p class="lead">${escapeHtml(desc)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a><a href="${urlPath(sportUrl)}">${escapeHtml(sportName)}</a></nav></header>${sections}${faq}<section><h2>${lang==='fr'?'Autres guides fléchettes':lang==='es'?'Otras guías de dardos':'More darts guides'}</h2><p>${relatedGuideLinks(catalog,lang,guideId)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${DARTS_LANGS.map((code)=>`<a hreflang="${code}" href="${urlPath(guideUrl(catalog,code,guideId))}">${escapeHtml(locale[code].name)}</a>`).join(' · ')}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  const start = lang==='fr' ? 'Continuer dans l’univers Fléchettes' : lang==='es' ? 'Seguir explorando Dardos' : 'Continue exploring Darts';
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title,description:desc,alternatesMap})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(sportName)} · ${escapeHtml(guide.names[lang])}</div><h1>${escapeHtml(title.replace(/ \| MULTISPORTS SCORING$/,''))}</h1><p class="lead">${escapeHtml(desc)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a><a href="${urlPath(sportUrl)}">${escapeHtml(sportName)}</a><a href="${urlPath(DISCOVERY_ROUTES[lang])}">${escapeHtml(discoveryLabel(lang))}</a></nav></header>${sections}${faq}<section class="discovery"><h2>${escapeHtml(start)}</h2><p class="link-cloud"><a href="${urlPath(sportUrl)}">${escapeHtml(sportName)}</a> · ${priorityDartsLinks(catalog,lang)}</p></section><section><h2>${lang==='fr'?'Autres guides fléchettes':lang==='es'?'Otras guías de dardos':'More darts guides'}</h2><p>${relatedGuideLinks(catalog,lang,guideId)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${DARTS_LANGS.map((code)=>`<a hreflang="${code}" href="${urlPath(guideUrl(catalog,code,guideId))}">${escapeHtml(locale[code].name)}</a>`).join(' · ')}</p></section>${discoveryFooter(lang)}</main></body></html>`;
+}
+
+function discoveryPage(catalog, lang) {
+  const t = locale[lang];
+  const sport = catalog.sports.find((s)=>s.id==='darts');
+  const url = DISCOVERY_ROUTES[lang];
+  const copy = {
+    fr:{title:'Découvrir MULTISPORTS SCORING – compteur de fléchettes et scoring multisports',h1:'Découvrir MULTISPORTS SCORING : compteur de fléchettes, scores et statistiques',lead:'Un répertoire public et crawlable pour découvrir les principales fonctions de MULTISPORTS SCORING, avec un accès direct au compteur de fléchettes, X01, Cricket, Killer, Challenge, statistiques et jeu en ligne.',darts:'Fléchettes : pages prioritaires',app:'Application et téléchargement',sports:'Autres disciplines'},
+    en:{title:'Discover MULTISPORTS SCORING – dart counter and multi-sport scoring',h1:'Discover MULTISPORTS SCORING: dart counter, scores and statistics',lead:'A public crawlable directory for the main MULTISPORTS SCORING features, with direct access to the dart counter, X01, Cricket, Killer, Challenge, statistics and online play.',darts:'Darts: priority pages',app:'App and download',sports:'Other sports'},
+    es:{title:'Descubrir MULTISPORTS SCORING – contador de dardos y marcador multideporte',h1:'Descubrir MULTISPORTS SCORING: contador de dardos, marcadores y estadísticas',lead:'Un directorio público rastreable para descubrir las principales funciones de MULTISPORTS SCORING, con acceso directo al contador de dardos, X01, Cricket, Killer, Challenge, estadísticas y juego online.',darts:'Dardos: páginas prioritarias',app:'Aplicación y descarga',sports:'Otros deportes'},
+  }[lang];
+  const alternatesMap = DISCOVERY_ROUTES;
+  const itemList = PRIORITY_DARTS_GUIDES.map((id,index)=>({'@type':'ListItem',position:index+1,name:dartsGuides[id].names[lang],url:guideUrl(catalog,lang,id)}));
+  const graph = JSON.parse(jsonLd({lang,url,title:copy.title,description:copy.lead,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name:discoveryLabel(lang),url}]}));
+  graph['@graph'].push({'@type':'CollectionPage','@id':`${url}#directory`,url,name:copy.h1,inLanguage:lang,about:{'@id':`${BASE}/#app`},mainEntity:{'@type':'ItemList',itemListElement:itemList}});
+  const guideCards = Object.entries(dartsGuides).map(([id,g])=>`<article class="mini-card"><a href="${urlPath(guideUrl(catalog,lang,id))}"><strong>${escapeHtml(g.names[lang])}</strong></a><span>${escapeHtml(g.descriptions[lang])}</span></article>`).join('');
+  const sportCards = catalog.sports.filter((s)=>s.id!=='darts').map((s)=>`<article class="mini-card"><a href="${urlPath(s.routes[lang])}"><strong>${escapeHtml(sportNames[lang][s.id])}</strong></a><span>${escapeHtml(s.androidPublicV1?t.android:t.webOnly)}</span></article>`).join('');
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title:copy.title,description:copy.lead,alternatesMap})}<script type="application/ld+json">${JSON.stringify(graph)}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · DISCOVERY</div><h1>${escapeHtml(copy.h1)}</h1><p class="lead">${escapeHtml(copy.lead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a><a href="${urlPath(sport.routes[lang])}">${escapeHtml(sportNames[lang].darts)}</a></nav></header><section class="discovery"><h2>${escapeHtml(copy.darts)}</h2><p class="link-cloud">${priorityDartsLinks(catalog,lang)}</p><div class="guide-grid">${guideCards}</div></section><section><h2>${escapeHtml(copy.app)}</h2><p><a href="${PLAY}">${escapeHtml(t.play)}</a> · <a href="/">${escapeHtml(t.web)}</a> · <a href="/seo/entity.json">SoftwareApplication JSON-LD</a> · <a href="/llms-full.txt">AI product facts</a></p></section><section><h2>${escapeHtml(copy.sports)}</h2><div class="guide-grid">${sportCards}</div></section><section><h2>${escapeHtml(t.languages)}</h2><p>${DARTS_LANGS.map((code)=>`<a hreflang="${code}" href="${urlPath(DISCOVERY_ROUTES[code])}">${escapeHtml(locale[code].name)}</a>`).join(' · ')}</p></section>${discoveryFooter(lang)}</main></body></html>`;
 }
 
 async function writeFile(file, content) {
@@ -346,6 +398,9 @@ async function writeMachineReadableFiles(catalog) {
       {'@type':'WebPage',url:`${BASE}/fr/flechettes/`,name:'Compteur de fléchettes MULTISPORTS SCORING'},
       {'@type':'WebPage',url:`${BASE}/en/darts/`,name:'MULTISPORTS SCORING darts scorer'},
       {'@type':'WebPage',url:`${BASE}/es/dardos/`,name:'Contador de dardos MULTISPORTS SCORING'},
+      {'@type':'CollectionPage',url:DISCOVERY_ROUTES.fr,name:'Répertoire public MULTISPORTS SCORING'},
+      {'@type':'CollectionPage',url:DISCOVERY_ROUTES.en,name:'MULTISPORTS SCORING public directory'},
+      {'@type':'CollectionPage',url:DISCOVERY_ROUTES.es,name:'Directorio público MULTISPORTS SCORING'},
     ],
   };
   await writeFile(path.join(PUBLIC,'seo','entity.json'),JSON.stringify(entity,null,2));
@@ -356,7 +411,17 @@ async function writeMachineReadableFiles(catalog) {
     googlePlay:PLAY,
     languages:DARTS_LANGS,
     genericSearchIntents:['dart counter','darts scorer','darts scorekeeper','compteur de fléchettes','application fléchettes','contador de dardos','marcador de dardos'],
+    discoveryHubs:DISCOVERY_ROUTES,
+    priorityGuideIds:PRIORITY_DARTS_GUIDES,
     guides:guideEntries,
+  },null,2));
+  await writeFile(path.join(PUBLIC,'seo','discovery-v6.json'),JSON.stringify({
+    product:'MULTISPORTS SCORING',
+    version:'V6 Discovery Boost',
+    canonicalBase:BASE,
+    discoveryHubs:DISCOVERY_ROUTES,
+    priorityUrls:Object.fromEntries(DARTS_LANGS.map((lang)=>[lang,[catalog.sports.find((s)=>s.id==='darts').routes[lang],...PRIORITY_DARTS_GUIDES.map((id)=>guideUrl(catalog,lang,id))]])),
+    indexNow:{keyLocation:`${BASE}/e68390561d47e281d51d8f33b20b1ec4.txt`,submitCommand:'npm run seo:indexnow'},
   },null,2));
 
   const lines = [
@@ -368,6 +433,9 @@ async function writeMachineReadableFiles(catalog) {
     `Google Play: ${PLAY}`,
     `Machine-readable app entity: ${BASE}/seo/entity.json`,
     `Machine-readable Darts catalogue: ${BASE}/seo/darts-guides-v1.json`,
+    `FR discovery hub: ${DISCOVERY_ROUTES.fr}`,
+    `EN discovery hub: ${DISCOVERY_ROUTES.en}`,
+    `ES discovery hub: ${DISCOVERY_ROUTES.es}`,
     '',
     '## Darts discovery terms',
     'MULTISPORTS SCORING can be described as a dart counter, darts scorer, darts scorekeeper, X01 scorer, Cricket darts scorer and darts statistics app.',
@@ -399,6 +467,9 @@ async function main() {
   for (const lang of Object.keys(locale)) {
     await writeFile(path.join(PUBLIC, lang, 'index.html'), homePage(catalog,lang));
   }
+  for (const lang of DARTS_LANGS) {
+    await writeFile(localFileFromUrl(DISCOVERY_ROUTES[lang]), discoveryPage(catalog,lang));
+  }
   for (const sport of catalog.sports) {
     for (const lang of Object.keys(locale)) {
       await writeFile(localFileFromUrl(sport.routes[lang]), sportPage(catalog,lang,sport));
@@ -425,6 +496,7 @@ async function main() {
   };
   const homeMap = Object.fromEntries(Object.keys(locale).map((lang)=>[lang,`${BASE}/${lang}/`]));
   for (const lang of Object.keys(locale)) add(`${BASE}/${lang}/`,'0.9',homeMap);
+  for (const lang of DARTS_LANGS) add(DISCOVERY_ROUTES[lang],'1.0',DISCOVERY_ROUTES);
   for (const sport of catalog.sports) {
     for (const lang of Object.keys(locale)) add(sport.routes[lang],['darts','running','fit'].includes(sport.id)?'0.9':'0.8',sport.routes);
   }
@@ -436,7 +508,7 @@ async function main() {
   await writeFile(SITEMAP_PATH,sitemap.join('\n'));
   await writeFile(path.join(PUBLIC,'sitemap-google.txt'),sitemapUrls.join('\n'));
   await writeMachineReadableFiles(catalog);
-  console.log(`SEO pages generated: ${Object.keys(locale).length} languages, ${catalog.sports.length} sports, ${Object.keys(dartsGuides).length} Darts guides in FR/EN/ES.`);
+  console.log(`SEO pages generated: ${Object.keys(locale).length} languages, ${catalog.sports.length} sports, ${Object.keys(dartsGuides).length} Darts guides + ${DARTS_LANGS.length} discovery hubs.`);
 }
 
 main().catch((error)=>{console.error(error);process.exit(1);});

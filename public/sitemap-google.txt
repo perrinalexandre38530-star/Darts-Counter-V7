@@ -20,6 +20,9 @@ https://multisports-scoring.pages.dev/ro/
 https://multisports-scoring.pages.dev/sr/
 https://multisports-scoring.pages.dev/hr/
 https://multisports-scoring.pages.dev/cs/
+https://multisports-scoring.pages.dev/fr/decouvrir/
+https://multisports-scoring.pages.dev/en/discover/
+https://multisports-scoring.pages.dev/es/descubrir/
 https://multisports-scoring.pages.dev/fr/flechettes/
 https://multisports-scoring.pages.dev/en/darts/
 https://multisports-scoring.pages.dev/es/dardos/

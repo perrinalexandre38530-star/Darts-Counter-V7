@@ -2,65 +2,85 @@ import fs from 'node:fs/promises';
 
 const DEFAULT_SITE = 'https://multisports-scoring.pages.dev';
 const DEFAULT_KEY = 'e68390561d47e281d51d8f33b20b1ec4';
+const ENDPOINT = 'https://api.indexnow.org/indexnow';
 
 const site = (process.env.SEO_SITE_URL || DEFAULT_SITE).replace(/\/$/, '');
 const host = new URL(site).host;
 const key = process.env.INDEXNOW_KEY || DEFAULT_KEY;
 const keyLocation = process.env.INDEXNOW_KEY_LOCATION || `${site}/${key}.txt`;
 const sitemapPath = process.env.SEO_SITEMAP_PATH || 'public/sitemap.xml';
+const discoveryPath = process.env.SEO_DISCOVERY_PATH || 'public/seo/discovery-v6.json';
 const strict = process.argv.includes('--strict') || String(process.env.INDEXNOW_STRICT || '').toLowerCase() === 'true';
+const dryRun = process.argv.includes('--dry-run');
+const priorityOnly = process.argv.includes('--priority') || !process.argv.includes('--all');
 
 function extractJsonLikeMessage(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(text); } catch { return null; }
 }
 
-const xml = await fs.readFile(sitemapPath, 'utf8');
-const urlList = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)]
-  .map((match) => match[1].trim())
-  .filter((url) => url.startsWith(site));
-
-if (!urlList.length) {
-  throw new Error(`No URLs matching ${site} were found in ${sitemapPath}`);
+function normalizeUrls(urls) {
+  return [...new Set(urls)].filter((url)=>{
+    try { return new URL(url).host === host; } catch { return false; }
+  });
 }
 
-console.log(`Submitting ${urlList.length} URLs to IndexNow for ${host}...`);
+async function sitemapUrls() {
+  const xml = await fs.readFile(sitemapPath, 'utf8');
+  return normalizeUrls([...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((match)=>match[1].trim()));
+}
 
-const response = await fetch('https://api.indexnow.org/indexnow', {
+async function priorityUrls() {
+  const data = JSON.parse(await fs.readFile(discoveryPath, 'utf8'));
+  return normalizeUrls(Object.values(data.priorityUrls || {}).flat());
+}
+
+async function verifyKey() {
+  const response = await fetch(keyLocation, {headers:{'user-agent':'MULTISPORTS-SCORING-IndexNow/1.0'}});
+  if (!response.ok) throw new Error(`IndexNow key preflight failed: ${response.status} ${response.statusText} at ${keyLocation}`);
+  const body = (await response.text()).trim();
+  if (body !== key) throw new Error(`IndexNow key preflight failed: ${keyLocation} returned unexpected content.`);
+  console.log(`IndexNow ownership key verified: ${keyLocation}`);
+}
+
+const urlList = priorityOnly ? await priorityUrls() : await sitemapUrls();
+if (!urlList.length) throw new Error(`No URLs matching ${site} were found.`);
+
+console.log(`IndexNow target: ${host}`);
+console.log(`Mode: ${priorityOnly ? 'priority discovery URLs' : 'all sitemap URLs'}`);
+console.log(`URLs ready: ${urlList.length}`);
+console.log(`Key location: ${keyLocation}`);
+
+if (dryRun) {
+  console.log('\nDry run only. First URLs:');
+  for (const url of urlList.slice(0,20)) console.log(`- ${url}`);
+  process.exit(0);
+}
+
+await verifyKey();
+
+const response = await fetch(ENDPOINT, {
   method: 'POST',
   headers: { 'content-type': 'application/json; charset=utf-8' },
   body: JSON.stringify({ host, key, keyLocation, urlList }),
 });
 
+const body = await response.text();
 if (!response.ok) {
-  const body = await response.text();
   const parsed = extractJsonLikeMessage(body);
   const errorCode = parsed?.errorCode || '';
   const message = parsed?.message || body || response.statusText;
-
-  if (errorCode === 'SiteVerificationNotComplete') {
-    const lines = [
-      `IndexNow not accepted yet for ${host}.`,
-      'Reason: site verification is still pending on the IndexNow/Bing side.',
-      `Remote message: ${message}`,
-      '',
-      'What to do now:',
-      `1. Open ${keyLocation} in the browser and confirm it returns only the key.`,
-      `2. Wait a little while for the remote verification to propagate.`,
-      '3. Retry the same command later: node tools/submit-indexnow.mjs',
-      '4. Use --strict if you want this script to fail with a non-zero exit code.',
-    ];
-    console.warn(lines.join('\n'));
-    if (strict) {
-      process.exitCode = 1;
-    }
-    process.exit(process.exitCode ?? 0);
-  }
-
-  throw new Error(`IndexNow failed: ${response.status} ${response.statusText}${body ? ` — ${body}` : ''}`);
+  const lines = [
+    `IndexNow rejected the submission for ${host}.`,
+    `HTTP ${response.status} ${response.statusText}`,
+    errorCode ? `Code: ${errorCode}` : '',
+    message ? `Message: ${message}` : '',
+    '',
+    `Verify ${keyLocation} in a browser, then retry.`,
+  ].filter(Boolean);
+  console.warn(lines.join('\n'));
+  if (strict) process.exitCode = 1;
+  process.exit(process.exitCode ?? 0);
 }
 
 console.log(`IndexNow accepted ${urlList.length} MULTISPORTS SCORING URLs for ${host}.`);
+console.log('Bing Webmaster Tools > IndexNow can be used to monitor received URLs, crawl status and index status.');

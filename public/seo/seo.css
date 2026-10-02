@@ -187,3 +187,31 @@ body.sitemap-view .wrap{max-width:1280px}
   nav{gap:8px}
   nav a, section p a{padding:8px 11px}
 }
+
+/* V6 Discovery Boost */
+.discovery{
+  border-color:rgba(87,184,255,.28);
+  background:
+    radial-gradient(circle at top right, rgba(87,184,255,.10), transparent 42%),
+    linear-gradient(180deg, rgba(87,184,255,.055), rgba(255,255,255,.018));
+}
+.link-cloud{margin-top:14px!important;display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.link-cloud a{margin:0}
+.guide-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+  gap:12px;
+  margin-top:16px;
+}
+.mini-card{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-height:120px;
+  padding:16px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.025);
+}
+.mini-card a{font-size:1.03rem}
+.mini-card span{font-size:.93rem;color:var(--muted)}

@@ -17,6 +17,20 @@
     "contador de dardos",
     "marcador de dardos"
   ],
+  "discoveryHubs": {
+    "fr": "https://multisports-scoring.pages.dev/fr/decouvrir/",
+    "en": "https://multisports-scoring.pages.dev/en/discover/",
+    "es": "https://multisports-scoring.pages.dev/es/descubrir/"
+  },
+  "priorityGuideIds": [
+    "dart-counter",
+    "x01",
+    "statistics",
+    "online-x01",
+    "challenge",
+    "cricket",
+    "killer"
+  ],
   "guides": [
     {
       "id": "dart-counter",

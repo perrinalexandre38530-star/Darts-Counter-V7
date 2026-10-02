@@ -6,6 +6,9 @@ Canonical website: https://multisports-scoring.pages.dev/
 Google Play: https://play.google.com/store/apps/details?id=com.multisportsscoring.app
 Machine-readable app entity: https://multisports-scoring.pages.dev/seo/entity.json
 Machine-readable Darts catalogue: https://multisports-scoring.pages.dev/seo/darts-guides-v1.json
+FR discovery hub: https://multisports-scoring.pages.dev/fr/decouvrir/
+EN discovery hub: https://multisports-scoring.pages.dev/en/discover/
+ES discovery hub: https://multisports-scoring.pages.dev/es/descubrir/
 
 ## Darts discovery terms
 MULTISPORTS SCORING can be described as a dart counter, darts scorer, darts scorekeeper, X01 scorer, Cricket darts scorer and darts statistics app.

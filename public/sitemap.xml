@@ -640,6 +640,36 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/" />
   </url>
   <url>
+    <loc>https://multisports-scoring.pages.dev/fr/decouvrir/</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/decouvrir/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/discover/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/descubrir/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/discover/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/en/discover/</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/decouvrir/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/discover/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/descubrir/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/discover/" />
+  </url>
+  <url>
+    <loc>https://multisports-scoring.pages.dev/es/descubrir/</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://multisports-scoring.pages.dev/fr/decouvrir/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://multisports-scoring.pages.dev/en/discover/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://multisports-scoring.pages.dev/es/descubrir/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://multisports-scoring.pages.dev/en/discover/" />
+  </url>
+  <url>
     <loc>https://multisports-scoring.pages.dev/fr/flechettes/</loc>
     <lastmod>2026-10-02</lastmod>
     <changefreq>weekly</changefreq>

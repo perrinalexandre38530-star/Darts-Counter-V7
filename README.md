@@ -23,11 +23,17 @@ The Android release also includes scoring tools for **pétanque** and **table fo
 - Français: https://multisports-scoring.pages.dev/fr/
 - English: https://multisports-scoring.pages.dev/en/
 - Español: https://multisports-scoring.pages.dev/es/
-- Fléchettes: https://multisports-scoring.pages.dev/fr/flechettes/
-- Darts: https://multisports-scoring.pages.dev/en/darts/
+- Public discovery hub (FR): https://multisports-scoring.pages.dev/fr/decouvrir/
+- Public discovery hub (EN): https://multisports-scoring.pages.dev/en/discover/
+- Public discovery hub (ES): https://multisports-scoring.pages.dev/es/descubrir/
+- Compteur de fléchettes: https://multisports-scoring.pages.dev/fr/flechettes/compteur-flechettes/
+- Dart counter: https://multisports-scoring.pages.dev/en/darts/dart-counter/
+- X01: https://multisports-scoring.pages.dev/fr/flechettes/x01/
+- Darts statistics: https://multisports-scoring.pages.dev/en/darts/darts-statistics/
+- Online darts: https://multisports-scoring.pages.dev/en/darts/online-darts/
 - Running: https://multisports-scoring.pages.dev/en/running/
 
-The public site exposes a sitemap, structured `SoftwareApplication` metadata and crawler rules for Google, Bing and OpenAI Search discovery.
+The public site exposes crawlable HTML hubs, a sitemap, structured `SoftwareApplication` / `MobileApplication` metadata, OpenAI Search crawler rules and an IndexNow integration for Bing and participating search engines.
 
 ---
 
