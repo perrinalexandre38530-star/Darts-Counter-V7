@@ -81,6 +81,7 @@ function buildConflict(userId: string, candidate: AccountBackupCandidate, local:
     ["matches", "Parties / historique", Math.max(Number(here.matches || 0), Number(here.historyRows || 0)), Math.max(Number(remote.matches || 0), Number(remote.historyRows || 0))],
     ["stats", "Statistiques", Number(here.statsMatches || here.statsBlocks || 0), Number(remote.statsMatches || remote.statsBlocks || 0)],
     ["media", "Médias", Number(here.mediaRefs || here.images || 0), Number(remote.mediaRefs || remote.images || 0)],
+    ["teams", "Équipes", Number(here.teams || 0), Number(remote.teams || 0)],
   ];
   return { userId, candidate, localSummary: local || {}, remoteSummary: remote,
     differences: rows.map(([key,label,l,r]) => ({ key,label,local:l,remote:r,delta:r-l,lossIfRemote:Math.max(0,l-r),gainIfRemote:Math.max(0,r-l) })).filter(x => x.delta !== 0) };

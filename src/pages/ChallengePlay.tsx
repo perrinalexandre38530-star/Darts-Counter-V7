@@ -507,6 +507,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  },[detailedByPlayer,cfg]);
  const detailCurrent=(detailTab==='global'||detailTab==='match')?null:(detailedByPlayer.find(x=>x.participant.id===detailTab)||detailedByPlayer[0]||null);
  const detailStats=detailCurrent?.stats||globalDetailed;
+ const isSoloDetailView=safeParticipants.length===1;
  const detailRecordCards=React.useMemo(()=>{if(detailTab==='global'||detailTab==='match')return globalRecordCards;const row=recordRows.find(x=>x.participant.id===detailTab)||recordRows[0];return row?makeRecordCards(row.raw,cfg):globalRecordCards},[detailTab,globalRecordCards,recordRows,cfg]);
  const bestDartPosition=detailStats.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];
  const detailRecordGroups=React.useMemo(()=>Array.from(new Set(detailRecordCards.map(card=>card.group))),[detailRecordCards]);
@@ -595,11 +596,18 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    </div>})()}
    <div className="detail-tabs baby-match-tabs">
     {safeParticipants.length===2&&<button type="button" className={'detail-tab-match '+(detailTab==='match'?'on':'')} onClick={()=>{setDetailTab('match');setDetailSection('PERFORMANCE')}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6v14H4zM14 5h6v14h-6zM10 12h4"/></svg><span>DÉTAIL MATCH</span></button>}
-    <button type="button" className={'detail-tab-main '+(detailTab==='global'?'on':'')} onClick={()=>{setDetailTab('global');setDetailSection('PERFORMANCE')}} aria-label="Records de la partie"><svg className="detail-stats-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V7M10 20V4M16 20v-6M22 20V9"/></svg><span>RECORDS</span></button>
-    {safeParticipants.map(p=><button type="button" key={p.id} className={'detail-tab-player '+(detailTab===p.id?'on':'')} onClick={()=>{setDetailTab(p.id);setDetailSection('PERFORMANCE')}} title={p.name}><span className="detail-tab-avatar"><ChallengeAvatar participant={p} size={40}/></span>{detailTab===p.id&&<b style={{color:theme.primary}}>{String(p.name||'Joueur').toUpperCase()}</b>}</button>)}
+    {isSoloDetailView?
+     <button type="button" className="detail-tab-solo on" onClick={()=>{setDetailTab('global');setDetailSection('PERFORMANCE')}} aria-label="Stats du joueur">
+      <span className="detail-tab-avatar"><ChallengeAvatar participant={safeParticipants[0]} size={40}/></span>
+      <span>STATS</span>
+     </button>
+    :<>
+     <button type="button" className={'detail-tab-main '+(detailTab==='global'?'on':'')} onClick={()=>{setDetailTab('global');setDetailSection('PERFORMANCE')}} aria-label="Records de la partie"><svg className="detail-stats-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V7M10 20V4M16 20v-6M22 20V9"/></svg><span>RECORDS</span></button>
+     {safeParticipants.map(p=><button type="button" key={p.id} className={'detail-tab-player '+(detailTab===p.id?'on':'')} onClick={()=>{setDetailTab(p.id);setDetailSection('PERFORMANCE')}} title={p.name}><span className="detail-tab-avatar"><ChallengeAvatar participant={p} size={40}/></span>{detailTab===p.id&&<b style={{color:theme.primary}}>{String(p.name||'Joueur').toUpperCase()}</b>}</button>)}
+    </>}
    </div>
    {detailTab==='match'&&safeParticipants.length===2?(()=>{const left=safeParticipants[0],right=safeParticipants[1],a=participantStats(left),b=participantStats(right);const rows=[['SCORE',a.score,b.score],['RÉUSSITE',`${a.pct}%`,`${b.pct}%`],['FLÉCHETTES',`${a.darts}/${cfg.visits*3}`,`${b.darts}/${cfg.visits*3}`],['SUITE MAX',a.streak,b.streak],['BEST VOLÉE',a.detailed.bestVisit,b.detailed.bestVisit],['MOY. / VOLÉE',a.detailed.avgVisit.toFixed(1),b.detailed.avgVisit.toFixed(1)],['S',a.hitCounts.S,b.hitCounts.S],['D',a.hitCounts.D,b.hitCounts.D],['T',a.hitCounts.T,b.hitCounts.T],['BULL 25',a.hitCounts['25'],b.hitCounts['25']],['BULL 50',a.hitCounts['50'],b.hitCounts['50']],['MISS',a.hitCounts.MISS,b.hitCounts.MISS]] as Array<[string,React.ReactNode,React.ReactNode]>;return <div className="detail-scroll detail-match-scroll"><div className="match-compare restored">{rows.map(([label,leftValue,rightValue])=><div className="match-compare-row" key={label}><strong>{leftValue}</strong><span>{label}</span><strong>{rightValue}</strong></div>)}</div></div>})():<div className="detail-scroll compact-detail-scroll">
-    <div className="records-head"><strong>{detailTab==='global'?'STATS DE LA PARTIE':`STATS · ${String(detailCurrent?.participant?.name||'JOUEUR').toUpperCase()}`}</strong><span>Les groupes sont rangés par onglets pour limiter le scroll.</span></div>
+    <div className="records-head"><strong>{isSoloDetailView?`STATS · ${String(safeParticipants[0]?.name||'JOUEUR').toUpperCase()}`:detailTab==='global'?'STATS DE LA PARTIE':`STATS · ${String(detailCurrent?.participant?.name||'JOUEUR').toUpperCase()}`}</strong><span>Les groupes sont rangés par onglets pour limiter le scroll.</span></div>
     <div className="detail-section-tabs">{detailSectionTabs.map(section=><button type="button" key={section} className={detailSection===section?'on':''} onClick={()=>setDetailSection(section)}>{section}</button>)}</div>
     {detailRecordGroups.includes(detailSection)&&<><ChallengeRecordGrid cards={detailRecordCards} group={detailSection}/><div className="records-legend"><span><i style={{background:RECORD_COLORS.green}}/>75–100% · TOP</span><span><i style={{background:RECORD_COLORS.yellow}}/>50–75% · BON</span><span><i style={{background:RECORD_COLORS.orange}}/>25–50% · MOYEN</span><span><i style={{background:RECORD_COLORS.red}}/>0–25% · FAIBLE</span></div></>}
     {detailSection==='ANALYSE'&&<section className="visual-analysis"><h3>ANALYSE VISUELLE</h3><div className="detail-kpis"><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>PRÉCISION</span><b>{detailStats.accuracy.toFixed(1)}%</b></div><div><span>SUITE MAX</span><b>{detailStats.bestStreak}</b></div><div><span>BEST VOLÉE</span><b>{detailStats.bestVisit}</b></div><div><span>MOY. / VOLÉE</span><b>{detailStats.avgVisit.toFixed(1)}</b></div><div><span>MEILLEURE FLÉCHETTE</span><b>{bestDartPosition?`#${bestDartPosition.position} · ${bestDartPosition.accuracy.toFixed(1)}%`:'—'}</b></div></div><div className="detail-grid"><section><h3>RÉPARTITION S / D / T / BULL / MISS</h3><Donut stats={detailStats}/></section><section><h3>ÉVOLUTION DU SCORE</h3><MiniLine values={detailStats.cumulativeScores}/></section></div></section>}
@@ -672,6 +680,8 @@ const css=`
 .detail-tabs.baby-match-tabs{gap:7px;padding:8px 2px;align-items:center;background:linear-gradient(90deg,#080d14,#0e1621,#080d14)}
 .detail-tabs.baby-match-tabs button{height:46px;min-height:46px;padding:4px 9px;border-radius:13px;display:flex;align-items:center;justify-content:center;gap:6px}
 .detail-tab-main,.detail-tab-match{min-width:112px}
+.detail-tab-solo{min-width:124px;height:46px;min-height:46px;padding:4px 10px;border-radius:13px;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid #ff4e56;background:linear-gradient(180deg,#4b1218,#17090c);color:#fff;box-shadow:0 0 12px #ff293326}
+.detail-tab-solo span:last-child{font-size:8px;font-weight:1000;letter-spacing:.6px}
 .detail-tab-main svg,.detail-tab-match svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
 .detail-tab-main span,.detail-tab-match span{font-size:8px;font-weight:1000;letter-spacing:.6px}
 .detail-tab-player{width:50px!important;min-width:50px!important;padding:3px!important;overflow:hidden;transition:width .16s ease,min-width .16s ease}
@@ -709,7 +719,7 @@ const css=`
  .match-side>strong{font-size:28px!important}
  .match-center-title b{font-size:10px}
  .detail-tabs.baby-match-tabs{gap:5px;padding:7px 1px}
- .detail-tabs.baby-match-tabs button{height:42px;min-height:42px;border-radius:11px;padding:3px 7px}
+ .detail-tabs.baby-match-tabs button{height:42px;min-height:42px;border-radius:11px;padding:3px 7px}.detail-tab-solo{height:42px;min-height:42px}
  .detail-tab-main,.detail-tab-match{min-width:96px}
  .detail-tab-main span,.detail-tab-match span{font-size:6.8px}
  .detail-tab-main svg,.detail-tab-match svg{width:19px;height:19px}

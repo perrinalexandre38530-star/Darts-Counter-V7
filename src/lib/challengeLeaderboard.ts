@@ -534,9 +534,9 @@ export async function enrichChallengeLeaderboardDetailFromHistory(
   profiles: any[],
 ): Promise<ChallengeLeaderboardDetail> {
   const uid = await getChallengeOnlineUserId();
-  if (!uid || clean(detail?.userId) !== uid) return detail;
-  const profileIds = new Set(linkedProfileIds(profiles, uid));
-  if (!profileIds.size) return detail;
+  const wantedMatchId = clean(detail?.matchId);
+  const wantedName = lower(detail?.displayName);
+  const profileIds = new Set(uid ? linkedProfileIds(profiles, uid) : []);
 
   const history = await History.getAll();
   const matches = history
@@ -549,12 +549,22 @@ export async function enrichChallengeLeaderboardDetailFromHistory(
     })
     .map((record: any) => {
       const rows = historyPlayerRows(record);
-      const row = rows.find((candidate: any) => profileIds.has(historyRowId(candidate))) || null;
+      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
+      let row = rows.find((candidate: any) => profileIds.has(historyRowId(candidate))) || null;
+
+      if (!row && wantedMatchId && recordMatchId === wantedMatchId) {
+        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || (rows.length === 1 ? rows[0] : null);
+      }
+      if (!row && wantedName) {
+        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || null;
+      }
+      if (!row && rows.length === 1 && uid && clean(detail?.userId) === uid) row = rows[0];
       if (!row) return null;
+
       const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
       if (score !== int(detail.score)) return null;
       const stats = historyStatsPayload(record, row);
-      return { record, row, stats, exactMatchId: clean(record?.matchId || record?.id || record?.resumeId) === clean(detail.matchId) };
+      return { record, row, stats, exactMatchId: recordMatchId === wantedMatchId };
     })
     .filter(Boolean) as Array<{record:any;row:any;stats:any;exactMatchId:boolean}>;
 
@@ -582,9 +592,7 @@ export async function findChallengeHistoryRecordForLeaderboardDetail(
   profiles: any[],
 ): Promise<{ record: any; playerId: string } | null> {
   const uid = await getChallengeOnlineUserId();
-  if (!uid || clean(detail?.userId) !== uid) return null;
-
-  const profileIds = new Set(linkedProfileIds(profiles, uid));
+  const profileIds = new Set(uid ? linkedProfileIds(profiles, uid) : []);
   const wantedMatchId = clean(detail?.matchId);
   const wantedName = lower(detail?.displayName);
   const history = await History.getAll();
@@ -611,6 +619,7 @@ export async function findChallengeHistoryRecordForLeaderboardDetail(
       if (!row && wantedName) {
         row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || null;
       }
+      if (!row && rows.length === 1 && uid && clean(detail?.userId) === uid) row = rows[0];
       if (!row && rows.length === 1 && lower(rows[0]?.name || rows[0]?.displayName) === wantedName) row = rows[0];
       if (!row) return null;
 
