@@ -15,6 +15,7 @@ import { useLang, type Lang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 import { appSportMeta, isAppSportEnabled } from "../config/sportCatalog";
+import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.webp";
@@ -602,14 +603,12 @@ export default function GameSelect({ go }: Props) {
   // 2) sports grisés ensuite
   // 3) ordre alphabétique FR dans chaque groupe
   const sortedItems = React.useMemo(() => {
-    // IMPORTANT : le GameSelect doit toujours conserver le catalogue complet.
-    // On ne filtre donc plus les sports selon le runtime ici : les sports non
-    // disponibles restent visibles (grisés / SOON), comme dans le GameSelect
-    // historique. On trie seulement l'ordre d'affichage :
-    //   1) sports actuellement débloqués / disponibles ;
-    //   2) sports non disponibles ;
-    //   3) ordre alphabétique localisé dans chacun des deux groupes.
-    const copy = items.map((item) => ({
+    // Android Store V1 : le carrousel principal ne doit exposer que les sports
+    // validés pour la version publique. Le Web/PWA conserve le catalogue complet.
+    // Les deux bandes décoratives restent, elles, sur les 22 disciplines afin de
+    // conserver la vitrine multisports validée sans rendre les modules SOON jouables.
+    const runtimeItems = filterSportsForCurrentRuntime(items);
+    const copy = runtimeItems.map((item) => ({
       ...item,
       label: localizedSportLabel(item.id as GameId, lang),
     }));
@@ -623,9 +622,14 @@ export default function GameSelect({ go }: Props) {
     return copy;
   }, [items, lang]);
 
-  const showcaseSports = React.useMemo(() => sortedItems.map((item) => ({ id: item.id as ShowcaseSportId, label: item.label })), [sortedItems]);
-  const showcaseTop = React.useMemo(() => showcaseSports.slice(0, 11), [showcaseSports]);
-  const showcaseBottom = React.useMemo(() => showcaseSports.slice(11, 22), [showcaseSports]);
+  const showcaseTop = React.useMemo(
+    () => SPORT_SHOWCASE_TOP.map((item) => ({ ...item, label: localizedSportLabel(item.id as GameId, lang) })),
+    [lang],
+  );
+  const showcaseBottom = React.useMemo(
+    () => SPORT_SHOWCASE_BOTTOM.map((item) => ({ ...item, label: localizedSportLabel(item.id as GameId, lang) })),
+    [lang],
+  );
   const currentLangOption = React.useMemo(() => GAME_SELECT_LANG_OPTIONS.find((option) => option.code === lang) || GAME_SELECT_LANG_OPTIONS[0], [lang]);
 
   // ------------------------------------------
