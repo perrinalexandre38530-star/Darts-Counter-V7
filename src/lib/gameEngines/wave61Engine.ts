@@ -2119,8 +2119,10 @@ function processHeist180(state: Wave61State, playerId: string, darts: GameDart[]
     marks = 0;
     events.push(`✅ Phase ${HEIST_STAGES[Math.min(stage - 1, HEIST_STAGES.length - 1)]} réussie`);
   }
-  if (heat >= 100 && stage < HEIST_STAGES.length) {
-    stage = Math.max(0, stage - 1);
+  if (heat >= 100) {
+    // The alarm has priority over phase completion, including FUITE. A player
+    // cannot escape successfully on the same visit that makes the alarm hit 100%.
+    stage = Math.max(0, Math.min(stage, HEIST_STAGES.length - 1) - 1);
     heat = 55;
     marks = 0;
     events.push("🚨 ALARME ! Une phase est perdue");
@@ -2940,6 +2942,8 @@ function processChevalTroie(state: Wave61State, playerId: string, darts: GameDar
 function processHotPotato(state: Wave61State, playerId: string, darts: GameDart[], target: Wave61Target, events: string[]): { delta: number; hits: number } {
   const hits = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length : 0;
   let fuse = Number(state.special?.hotPotatoFuse || hotPotatoFuseReset(state.config));
+  // One visit consumes one fuse step. A successful pass can restore time,
+  // but a miss must not accidentally consume a second hidden step.
   fuse -= 1;
   if (hits > 0) {
     const passBonus = modeOptionNumber(state.config, "passFuseBonus", 1, 0, 4);
@@ -2948,7 +2952,6 @@ function processHotPotato(state: Wave61State, playerId: string, darts: GameDart[
     state.scores[playerId] += hits * 30;
     events.push(`🥔 Passe réussie · mèche ${Math.max(0, fuse)}`);
   } else {
-    fuse -= 1;
     events.push(`🔥 La patate chauffe · mèche ${Math.max(0, fuse)}`);
   }
   if (fuse <= 0) {
@@ -3616,8 +3619,25 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const safeCount = 20 - (state.special?.mines?.length || 0);
     const safeRevealed = (state.special?.revealed || []).filter((n: number) => !(state.special?.mines || []).includes(n)).length;
     if (safeRevealed >= safeCount) {
-      const winner = [...state.players].sort((a, b) => Number(state.special?.safeByPlayer?.[b.id] || 0) - Number(state.special?.safeByPlayer?.[a.id] || 0))[0]?.id || player.id;
-      finishWith(state, winner, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[winner] || null : null);
+      if (state.config.participantMode === "teams") {
+        const teamTotals = new Map<string, { safe: number; health: number }>();
+        for (const p of state.players) {
+          const teamId = state.config.teamByPlayer?.[p.id] || "A";
+          const current = teamTotals.get(teamId) || { safe: 0, health: 0 };
+          current.safe += Number(state.special?.safeByPlayer?.[p.id] || 0);
+          current.health += Number(state.health[p.id] || 0);
+          teamTotals.set(teamId, current);
+        }
+        const winningTeam = [...teamTotals.entries()]
+          .sort((a, b) => b[1].safe - a[1].safe || b[1].health - a[1].health || a[0].localeCompare(b[0]))[0]?.[0] || "A";
+        const winner = state.players
+          .filter((p) => (state.config.teamByPlayer?.[p.id] || "A") === winningTeam)
+          .sort((a, b) => Number(state.special?.safeByPlayer?.[b.id] || 0) - Number(state.special?.safeByPlayer?.[a.id] || 0) || Number(state.health[b.id] || 0) - Number(state.health[a.id] || 0))[0]?.id || player.id;
+        finishWith(state, winner, winningTeam);
+      } else {
+        const winner = [...state.players].sort((a, b) => Number(state.special?.safeByPlayer?.[b.id] || 0) - Number(state.special?.safeByPlayer?.[a.id] || 0) || Number(state.health[b.id] || 0) - Number(state.health[a.id] || 0))[0]?.id || player.id;
+        finishWith(state, winner);
+      }
     }
   } else if (state.modeId === "replicat") {
     const res = scoreReplicat(state, darts);
@@ -3846,8 +3866,10 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
   st.score = Number(state.scores[player.id] || 0);
   st.progress = Number(state.progress[player.id] || 0);
   st.hits += hits;
-  // Chaque volée devient la référence suivante de REPLICAT ; pour les autres
-  // modes cette mémoire sert également aux écrans/timelines sans modifier les règles.
+  // Chaque volée devient la référence suivante de REPLICAT ; mémoriser aussi
+  // son auteur rend la reprise/UI explicites et évite une référence orpheline.
+  if (state.modeId === "replicat") state.special.replicatReferenceOwner = player.id;
+  // Pour les autres modes cette mémoire sert également aux écrans/timelines.
   state.special.lastVisitDarts = darts;
   state.visits.push({ id: uid("wave61-visit"), playerId: player.id, round: state.roundIndex + 1, turn: state.turnIndex + 1, darts, visitScore, delta, hits, events, targetLabel: target?.label });
   refreshTeamScores(state);
