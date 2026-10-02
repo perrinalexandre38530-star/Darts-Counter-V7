@@ -7181,6 +7181,19 @@ function AccountSyncBanner() {
                   </>}
                 </div>
 
+                {Array.isArray(conflict.details) && conflict.details.length > 0 && (
+                  <div style={{padding:"11px 12px",borderRadius:13,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.10)",fontSize:11,lineHeight:1.45}}>
+                    <div style={{fontWeight:950,color:"#55eaff",marginBottom:7}}>DIFFÉRENCES RÉELLES DÉTECTÉES</div>
+                    {conflict.details.map((group:any) => (
+                      <div key={group.key} style={{marginTop:7,paddingTop:7,borderTop:"1px solid rgba(255,255,255,.06)"}}>
+                        <b>{group.label}</b> · {Number(group.common||0)} identique(s)
+                        {Array.isArray(group.onlyLocal) && group.onlyLocal.length > 0 && <div style={{color:"#ffcf8b",marginTop:3}}>Seulement sur cet appareil ({group.onlyLocal.length}) : {group.onlyLocal.slice(0,6).join(" · ")}{group.onlyLocal.length>6?` · +${group.onlyLocal.length-6} autres`:""}</div>}
+                        {Array.isArray(group.onlyRemote) && group.onlyRemote.length > 0 && <div style={{color:"#8dffad",marginTop:3}}>Seulement dans la sauvegarde ({group.onlyRemote.length}) : {group.onlyRemote.slice(0,6).join(" · ")}{group.onlyRemote.length>6?` · +${group.onlyRemote.length-6} autres`:""}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div style={{padding:"10px 12px",borderRadius:13,background:"rgba(80,190,255,.06)",border:"1px solid rgba(80,190,255,.18)",fontSize:11,lineHeight:1.45,color:"#cceeff"}}>
                   <b>NON, GARDER ICI</b> = aucune donnée de cet appareil n’est remplacée. <b>OUI, SYNCHRONISER</b> = cet appareil est remplacé par la sauvegarde distante affichée ci-dessus.
                 </div>

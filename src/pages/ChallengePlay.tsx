@@ -161,6 +161,81 @@ function buildRecordRaw(entries:Entry[],cfg:ChallengeConfigData):ChallengeRecord
   hitCounts,hitStreaks,hitPct,positionPct,darts:detailed.darts,visitsPlayed:detailed.visitScores.length,
  };
 }
+
+function onlineDetailedStatsOverride(raw:any,cfg:ChallengeConfigData):ChallengeDetailedStats|null{
+ if(!raw||typeof raw!=='object') return null;
+ const stats=(raw?.stats&&typeof raw.stats==='object')?raw.stats:raw;
+ const hc=stats?.hitCounts||stats?.hits||stats?.hitSummary||{};
+ const hitCounts:Record<Hit,number>={
+  S:Number(hc?.S??hc?.single??0)||0,
+  D:Number(hc?.D??hc?.double??0)||0,
+  T:Number(hc?.T??hc?.triple??0)||0,
+  '25':Number(hc?.['25']??hc?.SBull??hc?.bull25??0)||0,
+  '50':Number(hc?.['50']??hc?.DBull??hc?.bull50??0)||0,
+  MISS:Number(hc?.MISS??hc?.miss??0)||0,
+ };
+ const darts=Math.max(0,Number(raw?.darts??stats?.darts??0)||0);
+ const accuracy=Math.max(0,Math.min(100,Number(raw?.accuracy??stats?.accuracy??stats?.successRate??0)||0));
+ const countedSuccess=hitCounts.S+hitCounts.D+hitCounts.T+hitCounts['25']+hitCounts['50'];
+ const countedTotal=countedSuccess+hitCounts.MISS;
+ const successful=countedTotal>0?countedSuccess:Math.max(0,Math.min(darts,Math.round(darts*accuracy/100)));
+ const failures=countedTotal>0?hitCounts.MISS:Math.max(0,darts-successful);
+ const sourcePositions=Array.isArray(stats?.positionStats)?stats.positionStats:[];
+ const positionStats=[0,1,2].map(index=>{
+  const src=sourcePositions.find((p:any)=>Number(p?.position||0)===index+1)||sourcePositions[index]||{};
+  const attempts=Math.max(0,Number(src?.attempts??0)||0);
+  const okCount=Math.max(0,Number(src?.successful??src?.hits??0)||0);
+  return {
+   position:index+1,
+   attempts,
+   successful:okCount,
+   accuracy:Math.max(0,Math.min(100,Number(src?.accuracy??(attempts?okCount/attempts*100:0))||0)),
+   S:Number(src?.S??0)||0,D:Number(src?.D??0)||0,T:Number(src?.T??0)||0,
+   B25:Number(src?.B25??src?.['25']??0)||0,B50:Number(src?.B50??src?.['50']??0)||0,
+   MISS:Number(src?.MISS??src?.miss??0)||0,
+  };
+ });
+ const visitScores=Array.isArray(stats?.visitScores)?stats.visitScores.map((v:any)=>Number(v)||0):[];
+ const cumulativeScores=Array.isArray(stats?.cumulativeScores)?stats.cumulativeScores.map((v:any)=>Number(v)||0):(()=>{let total=0;return visitScores.map(v=>(total+=v))})();
+ return {
+  score:Math.max(0,Number(raw?.score??stats?.score??0)||0),
+  darts,
+  successful,
+  failures,
+  accuracy,
+  bestStreak:Math.max(0,Number(raw?.bestStreak??stats?.bestStreak??0)||0),
+  bestVisit:Math.max(0,Number(stats?.bestVisit??stats?.bestVolley??0)||0),
+  avgVisit:Math.max(0,Number(stats?.avgVisit??stats?.averageVisit??0)||0),
+  hitCounts,
+  positionStats,
+  visitScores,
+  cumulativeScores,
+ };
+}
+
+function onlineRecordRawOverride(raw:any,cfg:ChallengeConfigData,detailed:ChallengeDetailedStats):ChallengeRecordRaw{
+ const stats=(raw?.stats&&typeof raw.stats==='object')?raw.stats:raw||{};
+ const hitStreakSource=stats?.hitStreaks||stats?.streaks||{};
+ const hitStreaks=Object.fromEntries(hits.map(h=>[h,Math.max(0,Number(hitStreakSource?.[h]??hitStreakSource?.[hitLabel(h)]??0)||0)])) as Record<Hit,number>;
+ const hitPct=Object.fromEntries(hits.map(h=>[h,Number(stats?.hitPct?.[h]??(detailed.darts?detailed.hitCounts[h]/detailed.darts*100:0))||0])) as Record<Hit,number>;
+ const positionPct=detailed.positionStats.map(pos=>Object.fromEntries((['S','D','T','25','50','MISS'] as Hit[]).map(h=>{
+  const count=h==='25'?pos.B25:h==='50'?pos.B50:h==='MISS'?pos.MISS:(pos as any)[h];
+  return [h,pos.attempts?Number(count||0)/pos.attempts*100:0];
+ })) as Record<Hit,number>);
+ return {
+  score:detailed.score,
+  firstNine:Math.max(0,Number(stats?.firstNine??stats?.first9??stats?.scoreFirst9??0)||0),
+  bestStreak:detailed.bestStreak,
+  hitVisitStreak:Math.max(0,Number(stats?.hitVisitStreak??stats?.bestHitVisitStreak??0)||0),
+  bestVisit:detailed.bestVisit,
+  hitCounts:detailed.hitCounts,
+  hitStreaks,
+  hitPct,
+  positionPct,
+  darts:detailed.darts,
+  visitsPlayed:detailed.visitScores.length||Math.ceil(detailed.darts/3),
+ };
+}
 function makeRecordCards(raw:ChallengeRecordRaw,cfg:ChallengeConfigData,holder?:string):ChallengeRecordCard[]{
  const totalDarts=Math.max(1,Number(cfg.visits||1)*3);
  const totalVisits=Math.max(1,Number(cfg.visits||1));
@@ -236,6 +311,7 @@ function ChallengeAvatar({participant,size}: {participant:Participant;size:numbe
 
 export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;params?:any}){
  const historyStatsOnly=Boolean(params?.historyStatsOnly);
+ const onlineStatsOverride=params?.onlineStatsOverride||null;
  useFullscreenPlay({enabled:true,lockBodyScroll:true});
  const theme=useTheme(); const {store}=useStore(); const awena=useAwenaOptional();
  const resumeRecord=params?.rec||null;
@@ -505,10 +581,17 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    hitCounts,positionStats,visitScores,cumulativeScores
   };
  },[detailedByPlayer,cfg]);
+ const overrideDetailed=React.useMemo(()=>onlineDetailedStatsOverride(onlineStatsOverride,cfg),[onlineStatsOverride,cfg]);
+ const overrideRecordRaw=React.useMemo(()=>overrideDetailed?onlineRecordRawOverride(onlineStatsOverride,cfg,overrideDetailed):null,[onlineStatsOverride,cfg,overrideDetailed]);
  const detailCurrent=(detailTab==='global'||detailTab==='match')?null:(detailedByPlayer.find(x=>x.participant.id===detailTab)||detailedByPlayer[0]||null);
- const detailStats=detailCurrent?.stats||globalDetailed;
+ const detailStats=(historyStatsOnly&&safeParticipants.length===1&&overrideDetailed)?overrideDetailed:(detailCurrent?.stats||globalDetailed);
  const isSoloDetailView=safeParticipants.length===1;
- const detailRecordCards=React.useMemo(()=>{if(detailTab==='global'||detailTab==='match')return globalRecordCards;const row=recordRows.find(x=>x.participant.id===detailTab)||recordRows[0];return row?makeRecordCards(row.raw,cfg):globalRecordCards},[detailTab,globalRecordCards,recordRows,cfg]);
+ const detailRecordCards=React.useMemo(()=>{
+  if(historyStatsOnly&&safeParticipants.length===1&&overrideRecordRaw)return makeRecordCards(overrideRecordRaw,cfg,String(safeParticipants[0]?.name||'Joueur').toUpperCase());
+  if(detailTab==='global'||detailTab==='match')return globalRecordCards;
+  const row=recordRows.find(x=>x.participant.id===detailTab)||recordRows[0];
+  return row?makeRecordCards(row.raw,cfg):globalRecordCards;
+ },[historyStatsOnly,safeParticipants,overrideRecordRaw,detailTab,globalRecordCards,recordRows,cfg]);
  const bestDartPosition=detailStats.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];
  const detailRecordGroups=React.useMemo(()=>Array.from(new Set(detailRecordCards.map(card=>card.group))),[detailRecordCards]);
  const detailSectionTabs=React.useMemo(()=>[...detailRecordGroups,'ANALYSE','FLÉCHETTES','VOLÉES'],[detailRecordGroups]);

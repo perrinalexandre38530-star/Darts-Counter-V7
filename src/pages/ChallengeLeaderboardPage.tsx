@@ -109,8 +109,6 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
   const entries=(Array.isArray(rawEntries)?rawEntries:[])
    .filter((entry:any)=>entry&&['S','D','T','25','50','MISS'].includes(String(entry?.hit||'').toUpperCase()))
    .map((entry:any)=>({hit:String(entry.hit).toUpperCase(),pid}));
-  if(!entries.length)return false;
-
   const player={
    id:pid,
    userId:pid,
@@ -160,6 +158,15 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
   go('challenge_play',{
    historyStatsOnly:true,
    onlineStatsOnly:true,
+   onlineStatsOverride:{
+    ...data,
+    stats:{
+     ...stats,
+     entries,
+     hitCounts,
+    },
+   },
+   initialDetailTab:'global',
    returnTab:'challenge_leaderboard',
    returnParams:{from:params?.from||'online',target,rule,visits},
    rec,
@@ -205,11 +212,12 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    }
 
    const data=await enrichChallengeLeaderboardDetailFromHistory(fetched,profiles);
-   if(openFullStats(data))return;
-   // Très anciennes performances serveur : aucun journal fléchette-par-fléchette
-   // n'existe encore. On garde le résumé disponible au lieu d'inventer des données.
-   setDetail(data);
-   setError('Ancienne performance : le détail complet fléchette par fléchette n’était pas encore enregistré.');
+   // Toujours ouvrir le VRAI panneau STATS DÉTAILLÉES de ChallengePlay.
+   // Même une ancienne performance sans journal fléchette-par-fléchette doit
+   // conserver exactement le même composant/rendu ; les agrégats disponibles
+   // sont passés via onlineStatsOverride et complètent le journal s'il manque.
+   openFullStats(data);
+   return;
   }catch(e:any){setError(String(e?.message||'Détail indisponible.'))}finally{setDetailLoading(false)}
  };
  const stats:any=detail?.stats||{};

@@ -64,6 +64,7 @@ export type AccountSyncConflict = {
   localSummary: Partial<VaultSummary>;
   remoteSummary: Partial<VaultSummary>;
   differences: Array<{ key: string; label: string; local: number; remote: number; delta: number; lossIfRemote: number; gainIfRemote: number }>;
+  details?: Array<{ key: string; label: string; onlyLocal: string[]; onlyRemote: string[]; common: number }>;
 };
 
 const pendingConflicts = new Map<string, AccountSyncConflict>();
@@ -87,11 +88,58 @@ function buildConflict(userId: string, candidate: AccountBackupCandidate, local:
     differences: rows.map(([key,label,l,r]) => ({ key,label,local:l,remote:r,delta:r-l,lossIfRemote:Math.max(0,l-r),gainIfRemote:Math.max(0,r-l) })).filter(x => x.delta !== 0) };
 }
 
+
+function entityId(row: any, fallback: string): string {
+  return String(row?.id ?? row?.profileId ?? row?.teamId ?? row?.matchId ?? row?.uuid ?? fallback).trim();
+}
+
+function entityLabel(row: any, fallback: string): string {
+  const name = String(row?.name ?? row?.displayName ?? row?.nickname ?? row?.teamName ?? row?.title ?? row?.mode ?? row?.gameMode ?? "").trim();
+  const date = String(row?.updatedAt ?? row?.playedAt ?? row?.createdAt ?? row?.date ?? "").trim();
+  return name ? (date ? `${name} — ${date}` : name) : (date ? `${fallback} — ${date}` : fallback);
+}
+
+function snapshotCollections(snapshot: any): Record<string, Map<string,string>> {
+  const root = unwrapPayload(snapshot) || snapshot || {};
+  const portable = root?.portableAccountData || root?.portable_account_data || {};
+  const store = root?.store || root?.data?.store || root?.data || {};
+  const profiles = Array.isArray(portable?.profiles) ? portable.profiles : (Array.isArray(store?.profiles) ? store.profiles : []);
+  const teams = Array.isArray(portable?.teams) ? portable.teams : (Array.isArray(store?.teams) ? store.teams : []);
+  const historyRows = root?.history?.rows && typeof root.history.rows === "object" ? root.history.rows : {};
+  const matchesArray = Array.isArray(store?.matches) ? store.matches : [];
+  const make = (rows: any[], prefix: string) => {
+    const out = new Map<string,string>();
+    rows.forEach((row, i) => { const id = entityId(row, `${prefix}-${i+1}`); if (id) out.set(id, entityLabel(row, id)); });
+    return out;
+  };
+  const matches = make(matchesArray, "partie");
+  Object.entries(historyRows).forEach(([id,row]: any) => { const key = entityId(row, id); if (key) matches.set(key, entityLabel(row, key)); });
+  return { profiles: make(profiles, "profil"), teams: make(teams, "équipe"), matches };
+}
+
+async function buildDetailedDifferences(remoteSnapshot: any): Promise<AccountSyncConflict["details"]> {
+  // Cette analyse n'est lancée qu'après détection d'un conflit : on peut alors
+  // construire un snapshot local allégé afin de comparer les IDENTIFIANTS réels,
+  // et pas seulement 60 profils contre 60 profils.
+  const localSnapshot = await withSyncTimeout(exportCloudSnapshot({ mediaMirror:"skip", includeEmbeddedMedia:false, includeAvatarFallbacks:false }), 20_000, "Analyse détaillée locale").catch(() => null);
+  if (!localSnapshot || !remoteSnapshot) return [];
+  const local = snapshotCollections(localSnapshot);
+  const remote = snapshotCollections(remoteSnapshot);
+  const defs: Array<[string,string]> = [["profiles","Profils"],["matches","Parties"],["teams","Équipes"]];
+  return defs.map(([key,label]) => {
+    const l = local[key] || new Map<string,string>(); const r = remote[key] || new Map<string,string>();
+    const onlyLocal = [...l.entries()].filter(([id]) => !r.has(id)).map(([,name]) => name);
+    const onlyRemote = [...r.entries()].filter(([id]) => !l.has(id)).map(([,name]) => name);
+    const common = [...l.keys()].filter(id => r.has(id)).length;
+    return { key,label,onlyLocal,onlyRemote,common };
+  }).filter(x => x.onlyLocal.length || x.onlyRemote.length);
+}
+
 function emitConflict(conflict: AccountSyncConflict): void {
   pendingConflicts.set(conflict.userId, conflict);
   emitAccountSync(conflict.userId, "conflict", 100, "Différences détectées entre vos appareils", { conflict: {
     source: conflict.candidate.source, label: conflict.candidate.label, updatedAt: conflict.candidate.updatedAt,
-    localSummary: conflict.localSummary, remoteSummary: conflict.remoteSummary, differences: conflict.differences,
+    localSummary: conflict.localSummary, remoteSummary: conflict.remoteSummary, differences: conflict.differences, details: conflict.details || [],
   }});
 }
 
@@ -899,8 +947,14 @@ export async function restoreLatestBackupForSignedInUser(
         emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
         return false;
       }
+      // V37 : une différence de quantité déclenche une vraie comparaison des IDs.
+      // Ainsi l'utilisateur voit précisément ce qui n'existe que sur cet appareil
+      // et ce qui n'existe que dans la sauvegarde distante.
+      emitAccountSync(uid, "compare-details", 88, "Analyse détaillée des différences…", { source: latest.source });
+      const remoteForDiff = await withSyncTimeout(latest.load(), 30_000, "Lecture détaillée de la sauvegarde").catch(() => null);
+      conflict.details = await buildDetailedDifferences(remoteForDiff).catch(() => []);
       emitConflict(conflict);
-      saveDiagnostic(uid, { ok:true, restored:false, reason:"user-choice-required", candidate:{source:latest.source,id:latest.id}, differences:conflict.differences });
+      saveDiagnostic(uid, { ok:true, restored:false, reason:"user-choice-required", candidate:{source:latest.source,id:latest.id}, differences:conflict.differences, details:conflict.details });
       return false;
     } catch (error: any) {
       saveDiagnostic(uid, { ok: false, restored: false, error: String(error?.message || error || "Restauration impossible") });
