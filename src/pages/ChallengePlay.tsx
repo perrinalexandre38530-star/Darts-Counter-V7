@@ -45,7 +45,7 @@ import type { ChallengeConfigData,ChallengeRule } from './ChallengeConfig';
 
 type Hit='S'|'D'|'T'|'25'|'50'|'MISS';
 type Entry={hit:Hit;pid:string};
-type Participant={id:string;name:string;profile?:any;team?:any;teamName?:string};
+type Participant={id:string;name:string;profile?:any;team?:any;teamName?:string;avatarDataUrl?:string|null};
 
 const hits:Hit[]=['S','D','T','25','50','MISS'];
 const onlineTargetFilters=['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','bull','bull25','bull50'];
@@ -225,7 +225,7 @@ function Donut({stats}:{stats:ChallengeDetailedStats}){
 }
 
 function ChallengeAvatar({participant,size}: {participant:Participant;size:number}){
- const direct=participant.profile?avatarSrc(participant.profile):teamSrc(participant.team);
+ const direct=participant.avatarDataUrl||(participant.profile?avatarSrc(participant.profile):teamSrc(participant.team));
  const [directFailed,setDirectFailed]=React.useState(false);
  React.useEffect(()=>setDirectFailed(false),[direct]);
  if(direct&&!directFailed) return <img className="challenge-avatar-img" src={direct} alt="" onError={()=>setDirectFailed(true)}/>;
@@ -235,6 +235,7 @@ function ChallengeAvatar({participant,size}: {participant:Participant;size:numbe
 }
 
 export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;params?:any}){
+ const historyStatsOnly=Boolean(params?.historyStatsOnly);
  useFullscreenPlay({enabled:true,lockBodyScroll:true});
  const theme=useTheme(); const {store}=useStore(); const awena=useAwenaOptional();
  const resumeRecord=params?.rec||null;
@@ -251,7 +252,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   });
   if(picked.length) return picked;
   const resumedPlayers=(resumeRecord?.players||resumePayload?.players||resumePayload?.finalPlayers||resumeRecord?.summary?.perPlayer||[]);
-  if(Array.isArray(resumedPlayers)&&resumedPlayers.length){return resumedPlayers.map((p:any)=>{const id=String(p?.id||p?.playerId||p?.profileId||'');const profile=profiles.find((x:any)=>String(x.id)===id);const teamId=String(p?.teamId||'');const team=selectedTeams.find((t:any)=>String(t.id)===teamId)||selectedTeams.find((t:any)=>Array.isArray(t?.playerIds)&&t.playerIds.map(String).includes(id));return {id,name:p?.name||profile?.name||profile?.nickname||'Joueur',profile,team,teamName:p?.teamName||team?.name||''}}).filter((p:any)=>p.id)}
+  if(Array.isArray(resumedPlayers)&&resumedPlayers.length){return resumedPlayers.map((p:any)=>{const id=String(p?.id||p?.playerId||p?.profileId||p?.userId||'');const profile=profiles.find((x:any)=>String(x.id)===id);const teamId=String(p?.teamId||'');const team=selectedTeams.find((t:any)=>String(t.id)===teamId)||selectedTeams.find((t:any)=>Array.isArray(t?.playerIds)&&t.playerIds.map(String).includes(id));return {id,name:p?.name||p?.displayName||profile?.name||profile?.nickname||'Joueur',profile,team,teamName:p?.teamName||team?.name||'',avatarDataUrl:p?.avatarDataUrl||p?.avatarUrl||null}}).filter((p:any)=>p.id)}
   // Compatibilité avec les anciennes configs Challenge où l'équipe elle-même était un participant.
   if(cfg.participantMode==='teams') return (cfg.teamIds||[]).map(id=>{const team=teams.find((t:any)=>String(t.id)===String(id));return team?{id:`team:${team.id}`,name:team.name||'Équipe',team}:null}).filter(Boolean) as Participant[];
   return [];
@@ -271,7 +272,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const [onlineTeamKey,setOnlineTeamKey]=React.useState('');
  const [onlineTeams,setOnlineTeams]=React.useState<ChallengeLeaderboardTeam[]>([]);
  const [onlineFiltersOpen,setOnlineFiltersOpen]=React.useState(false);
- const [detailOpen,setDetailOpen]=React.useState(false);
+ const [detailOpen,setDetailOpen]=React.useState(historyStatsOnly);
  const [playersOpen,setPlayersOpen]=React.useState(false);
  const [detailTab,setDetailTab]=React.useState<string>('global');
  const [detailSection,setDetailSection]=React.useState<string>('PERFORMANCE');
@@ -306,6 +307,13 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const startVoice=React.useCallback(()=>{const Ctor=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!Ctor){setVoiceHeard('Micro non supporté');return;}try{const rec=new Ctor();rec.lang=localeMap[String(lang).toLowerCase().split('-')[0]]||lang||'fr-FR';rec.interimResults=false;rec.maxAlternatives=5;rec.continuous=false;setVoiceOn(true);setVoiceHeard('…');rec.onresult=(ev:any)=>{const alternatives=Array.from(ev?.results?.[0]||[]) as any[];const heard=alternatives.map(a=>a?.transcript||'').filter(Boolean).join(' | ');setVoiceHeard(heard);const hit=parseChallengeVoice(heard,String(lang),allowedHits);if(hit)add(hit);else setVoiceHeard(`${heard} ?`);};rec.onerror=()=>setVoiceHeard('');rec.onend=()=>setVoiceOn(false);rec.start();}catch{setVoiceOn(false);}},[lang,allowedHits,add]);
  const standings=[...safeParticipants].sort((a,b)=>participantScore(b)-participantScore(a));
  const playerLabel=current.team?'ÉQUIPE ACTIVE':'JOUEUR ACTIF';
+ const statsReturnTab=String(params?.returnTab||'history');
+ const statsReturnParams=params?.returnParams;
+ const statsReturnLabel=statsReturnTab==='challenge_leaderboard'?'RETOUR CLASSEMENT':'RETOUR HISTORIQUE';
+ const closeDetail=React.useCallback(()=>{
+  if(historyStatsOnly){go(statsReturnTab,statsReturnParams);return;}
+  setDetailOpen(false);
+ },[historyStatsOnly,go,statsReturnTab,statsReturnParams]);
 
  const buildChallengeRecord=React.useCallback((status:'in_progress'|'finished')=>{
   const now=Date.now();
@@ -316,7 +324,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    return {id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||'',score:detailed.score,points:detailed.score,darts:detailed.darts,dartsThrown:detailed.darts,hitCount:detailed.successful,misses:detailed.failures,bestStreak:detailed.bestStreak,bestVisit:detailed.bestVisit,avgVisit:detailed.avgVisit,successRate:detailed.accuracy,target:cfg.target,rule:cfg.rule,hitSummary:{S:detailed.hitCounts.S,D:detailed.hitCounts.D,T:detailed.hitCounts.T,SBull:detailed.hitCounts['25'],DBull:detailed.hitCounts['50'],MISS:detailed.hitCounts.MISS,darts:detailed.darts,hits:detailed.successful},positionStats:detailed.positionStats,visitScores:detailed.visitScores,cumulativeScores:detailed.cumulativeScores,favNumberHits:{[String(targetSegment)]:detailed.successful}};
   });
   const rankings=[...perPlayer].sort((a,b)=>b.score-a.score).map((row,index)=>({...row,rank:index+1}));
-  const winnerId=status==='finished'?(rankings[0]?.id||null):null;
+  const winnerId=status==='finished'&&safeParticipants.length>1?(rankings[0]?.id||null):null;
   const finalScores=Object.fromEntries(rankings.map(row=>[row.id,row.score]));
   const scoreLine=rankings.map(row=>`${row.name} ${row.score}`).join(' • ');
   const resumeState={log:[...log],entries:[...log],activePlayerIndex:activeIndex,turn,updatedAt:now};
@@ -326,23 +334,24 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  },[activeIndex,cfg,log,safeParticipants,turn]);
 
  React.useEffect(()=>{
+  if(historyStatsOnly||log.length===0) return;
   const status=done?'finished':'in_progress';
   const record:any=buildChallengeRecord(status);
   const signature=`${status}|${log.length}|${record?.summary?.scoreLine||''}`;
   if(lastPersistSignatureRef.current===signature) return;
   lastPersistSignatureRef.current=signature;
   void History.upsert(record).catch((error:any)=>console.warn('[challenge] history persistence failed',error));
- },[buildChallengeRecord,done,log.length]);
+ },[buildChallengeRecord,done,log.length,historyStatsOnly]);
 
  React.useEffect(()=>{
-  if(!done||trainingSavedRef.current||safeParticipants.length!==1) return;
+  if(historyStatsOnly||!done||trainingSavedRef.current||safeParticipants.length!==1) return;
   trainingSavedRef.current=true;
   const p=safeParticipants[0];
   const stats=participantStats(p);
   try{
    recordTrainingDetailedSession({id:`${matchIdRef.current}-training`,modeId:'training_challenges',participantId:p.profile?.id?String(p.profile.id):String(p.id),participantName:p.name,participantType:'player',startedAt:createdAtRef.current,endedAt:Date.now(),durationMs:Date.now()-createdAtRef.current,darts:stats.darts,hits:stats.hits,misses:stats.misses,points:stats.score,accuracyPct:stats.pct,success:stats.score>0,config:{...cfg,sourceMode:'challenge',challengeTarget:cfg.target,challengeRule:cfg.rule},metrics:{sourceMode:'challenge',score:stats.score,bestStreak:stats.streak,bestVisit:stats.detailed.bestVisit,avgVisit:stats.detailed.avgVisit,target:cfg.target,rule:cfg.rule,visits:cfg.visits,matchId:matchIdRef.current,bestDartPosition:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.position||0),bestDartAccuracy:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.accuracy||0),...Object.fromEntries(stats.detailed.positionStats.flatMap(pos=>[[`dart${pos.position}Attempts`,pos.attempts],[`dart${pos.position}Successful`,pos.successful],[`dart${pos.position}Accuracy`,pos.accuracy],[`dart${pos.position}S`,pos.S],[`dart${pos.position}D`,pos.D],[`dart${pos.position}T`,pos.T],[`dart${pos.position}B25`,pos.B25],[`dart${pos.position}B50`,pos.B50],[`dart${pos.position}MISS`,pos.MISS]]))},visitHistory:log,telemetry:{target:cfg.target,rule:cfg.rule,hits:stats.hitCounts,positionStats:stats.detailed.positionStats,visitScores:stats.detailed.visitScores,cumulativeScores:stats.detailed.cumulativeScores},telemetryCoverage:'exact'} as any);
   }catch(error){console.warn('[challenge] training stats persistence failed',error)}
- },[cfg,done,log,participantStats,safeParticipants]);
+ },[cfg,done,log,participantStats,safeParticipants,historyStatsOnly]);
 
  const refreshOnlineRanking=React.useCallback(async()=>{
   setOnlineRankingLoading(true);
@@ -403,7 +412,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  },[rankOpen,onlineTarget,onlineRule,onlineVisits,onlineScope,onlineTeamKey,profiles,teams,refreshOnlineTeams,refreshOnlineRanking]);
 
  React.useEffect(()=>{
-  if(!done||onlineSubmittedRef.current||onlineSubmittingRef.current) return;
+  if(historyStatsOnly||!done||onlineSubmittedRef.current||onlineSubmittingRef.current) return;
   onlineSubmittingRef.current=true;
   void (async()=>{
    try{
@@ -448,6 +457,11 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
      positionStats:stats.detailed.positionStats,
      visitScores:stats.detailed.visitScores,
      cumulativeScores:stats.detailed.cumulativeScores,
+     entries:log.filter(entry=>entry.pid===linked.id).map(entry=>({hit:entry.hit,pid:String(linked.id)})),
+     score:stats.score,
+     darts:stats.darts,
+     bestStreak:stats.streak,
+     accuracy:stats.pct,
     },
     });
     if(result.ok){
@@ -461,7 +475,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
     onlineSubmittingRef.current=false;
    }
   })();
- },[done,cfg.target,cfg.rule,cfg.visits,cfg.matchMode,safeParticipants,teams,rankOpen,refreshOnlineRanking,refreshOnlineTeams]);
+ },[done,cfg.target,cfg.rule,cfg.visits,cfg.matchMode,safeParticipants,teams,rankOpen,refreshOnlineRanking,refreshOnlineTeams,historyStatsOnly]);
 
  const detailedByPlayer=React.useMemo(()=>safeParticipants.map(p=>({participant:p,stats:computeChallengeDetailedStats(log.filter(e=>e.pid===p.id),cfg)})),[safeParticipants,log,cfg]);
  const recordRows=React.useMemo(()=>safeParticipants.map(p=>({participant:p,raw:buildRecordRaw(log.filter(e=>e.pid===p.id),cfg)})),[safeParticipants,log,cfg]);
@@ -502,7 +516,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
 
  return <div className="cp" style={{background:theme.bg,color:theme.text}}>
   <header className="cp-head">
-   <div className="cp-back"><BackDot onClick={()=>go('challenge_config')} size={44} color="#35e9ff" glow="#35e9ff77"/></div>
+   <div className="cp-back"><BackDot onClick={()=>historyStatsOnly?go(statsReturnTab,statsReturnParams):go('challenge_config')} size={44} color="#35e9ff" glow="#35e9ff77"/></div>
    <img className="cp-ticker" src="/challenge/ticker_challenge.png" alt="Challenge"/>
    <button className="cp-awena" type="button" aria-label="Ouvrir Awena" title="Awena" onClick={()=>awena?.openPanel?.()}><span><img src="/awena/awena-avatar.webp" alt="Awena"/></span><i aria-hidden>🎙</i></button>
   </header>
@@ -559,7 +573,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    </div>)}</div>
   </div></div>}
 
-  {detailOpen&&<div className="match-detail-modal" onClick={()=>setDetailOpen(false)}><div className="match-detail-card advanced" onClick={e=>e.stopPropagation()}>
+  {detailOpen&&<div className="match-detail-modal" onClick={closeDetail}><div className="match-detail-card advanced" onClick={e=>e.stopPropagation()}>
    {safeParticipants.length===2&&(()=>{const left=safeParticipants[0],right=safeParticipants[1],a=participantStats(left),b=participantStats(right);return <div className="match-detail-top tall redesigned">
     <div className="match-side-panel match-side-panel-left">
      {left.team&&<div className="match-side-panel-bg"><ResolvedTeamLogo team={left.team}/></div>}
@@ -592,7 +606,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
     {detailSection==='FLÉCHETTES'&&<section className="position-section standalone"><h3>PRÉCISION PAR FLÉCHETTE</h3><div className="position-grid">{detailStats.positionStats.map(pos=><div className="position-card" key={pos.position}><div className="position-head"><b>FLÉCHETTE {pos.position}</b><strong>{pos.accuracy.toFixed(1)}%</strong></div><div className="position-bar"><i style={{width:`${Math.min(100,pos.accuracy)}%`}}/></div><div className="position-rings"><span>S <b>{pos.attempts?((pos.S/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.S}</em></span><span>D <b>{pos.attempts?((pos.D/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.D}</em></span><span>T <b>{pos.attempts?((pos.T/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.T}</em></span><span>25 <b>{pos.attempts?((pos.B25/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.B25}</em></span><span>50 <b>{pos.attempts?((pos.B50/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.B50}</em></span><span>MISS <b>{pos.attempts?((pos.MISS/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{pos.MISS}</em></span></div></div>)}</div></section>}
     {detailSection==='VOLÉES'&&<section className="visits-section standalone"><h3>POINTS PAR VOLÉE</h3><div className="visit-bars">{detailStats.visitScores.map((value,index)=>{const max=Math.max(1,...detailStats.visitScores);return <div key={index}><i style={{height:`${Math.max(3,(value/max)*100)}%`}}/><span>{index+1}</span><b>{value}</b></div>})}</div></section>}
    </div>}
-   <button type="button" className="match-detail-close" onClick={()=>setDetailOpen(false)}>FERMER</button>
+   <button type="button" className="match-detail-close" onClick={closeDetail}>{historyStatsOnly?statsReturnLabel:'FERMER'}</button>
   </div></div>}
   {rankOpen&&<div className="stats-modal" onClick={()=>setRankOpen(false)}><div className="stats-modal-card online-challenge-card" onClick={e=>e.stopPropagation()}>
    <div className="stats-modal-head"><div><strong>CLASSEMENT ONLINE CHALLENGE</strong><span>Une seule ligne par joueur : son meilleur score pour cette configuration comparable.</span></div><button onClick={()=>setRankOpen(false)}>×</button></div>
@@ -608,7 +622,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    <div className="online-ranking-actions"><button className="online-open" onClick={()=>void (async()=>{setOnlineHistorySyncing(true);try{await syncChallengeHistoricalScores(profiles,teams);onlineHistorySyncedRef.current=true;await refreshOnlineTeams();await refreshOnlineRanking()}finally{setOnlineHistorySyncing(false)}})()}>↻ SYNCHRONISER</button><button className="online-open full" onClick={()=>go('challenge_leaderboard',{from:'challenge_play',target:onlineTarget,rule:onlineRule,visits:onlineVisits})}>🏆 CLASSEMENT COMPLET & STATS</button></div>
    {onlineFiltersOpen&&<div className="online-filter-picker" onClick={()=>setOnlineFiltersOpen(false)}><div className="online-filter-picker-card" onClick={e=>e.stopPropagation()}><header><div><strong>FILTRES</strong><span>SOLO / DUO / MULTI sont regroupés : la performance est individuelle.</span></div><button onClick={()=>setOnlineFiltersOpen(false)}>×</button></header><section><h3>CLASSEMENT</h3><div><button className={onlineScope==='public'?'on':''} onClick={()=>setOnlineScope('public')}>🌍 PUBLIC</button><button className={onlineScope==='team'?'on':''} onClick={()=>setOnlineScope('team')} disabled={!onlineTeams.length}>🛡️ ÉQUIPE OFFICIELLE</button></div></section>{onlineScope==='team'&&<section><h3>ÉQUIPE OFFICIELLE</h3><div>{onlineTeams.length?onlineTeams.map(team=><button key={team.key} className={onlineTeamKey===team.key?'on':''} onClick={()=>setOnlineTeamKey(team.key)}><b>✓ {team.name}</b><small>{team.organizationName||'Organisation MSS'}</small></button>):<em>Aucune équipe officielle. Affecte ton compte à une équipe Darts dans une Organisation MSS.</em>}</div></section>}<section><h3>🎯 CIBLE</h3><div>{onlineTargetFilters.map(value=><button key={value} className={onlineTarget===value?'on':''} onClick={()=>setOnlineTarget(value)}>{targetLabel(value)}</button>)}</div></section><section><h3>🔁 TOURS</h3><div>{onlineVisitFilters.map(value=><button key={value} className={onlineVisits===value?'on':''} onClick={()=>setOnlineVisits(value)}>{value}</button>)}</div></section><section><h3>✦ HITS</h3><div>{onlineRuleFilters.map(value=><button key={value} className={onlineRule===value?'on':''} onClick={()=>setOnlineRule(value)}>{ruleLabel(value)}</button>)}</div></section><footer><button onClick={()=>{setOnlineFiltersOpen(false);void refreshOnlineRanking()}}>APPLIQUER</button></footer></div></div>}
   </div></div>}
-  {done&&<div className="finish"><h2>CHALLENGE TERMINÉ</h2><strong>{standings[0]?participantScore(standings[0]):0} POINTS</strong><span className="finish-streak">MEILLEURE SUITE : {standings[0]?participantMaxStreak(standings[0]):0}</span><div className="finish-scoreline">{standings.map((p,i)=>{const st=participantStats(p).detailed;const bestPos=st.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];return <div className="finish-score-row" key={p.id}><span>{i+1}. {p.name}</span><b>{participantScore(p)} pts</b><em>{participantDarts(p)} fl. · précision {st.accuracy.toFixed(1)}% · suite {st.bestStreak} · best volée {st.bestVisit} · flèche #{bestPos?.position||'—'} {bestPos?bestPos.accuracy.toFixed(1):'0.0'}%</em></div>})}</div><div className="finish-actions"><button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection('PERFORMANCE');setDetailOpen(true)}}>STATS DÉTAILLÉES</button><button onClick={()=>go('challenge_config')}>REJOUER</button><button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button></div></div>}
+  {done&&!historyStatsOnly&&<div className="finish"><h2>CHALLENGE TERMINÉ</h2><strong>{standings[0]?participantScore(standings[0]):0} POINTS</strong><span className="finish-streak">MEILLEURE SUITE : {standings[0]?participantMaxStreak(standings[0]):0}</span><div className="finish-scoreline">{standings.map((p,i)=>{const st=participantStats(p).detailed;const bestPos=st.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0];return <div className="finish-score-row" key={p.id}><span>{i+1}. {p.name}</span><b>{participantScore(p)} pts</b><em>{participantDarts(p)} fl. · précision {st.accuracy.toFixed(1)}% · suite {st.bestStreak} · best volée {st.bestVisit} · flèche #{bestPos?.position||'—'} {bestPos?bestPos.accuracy.toFixed(1):'0.0'}%</em></div>})}</div><div className="finish-actions"><button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection('PERFORMANCE');setDetailOpen(true)}}>STATS DÉTAILLÉES</button><button onClick={()=>go('challenge_config')}>REJOUER</button><button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button></div></div>}
   <style>{css}</style>
  </div>;
 }

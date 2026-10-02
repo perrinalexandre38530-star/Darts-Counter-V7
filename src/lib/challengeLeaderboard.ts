@@ -138,6 +138,60 @@ function isBackendMissing(error: any, marker = ''): boolean {
   return code === '42883' || code === 'PGRST202' || (!!marker && message.includes(marker.toLowerCase()));
 }
 
+function normalizeLeaderboardRows(rows: any[]): ChallengeLeaderboardRow[] {
+  return (Array.isArray(rows) ? rows : []).map((row: any) => ({
+    rank: Number(row?.rank || 0),
+    userId: clean(row?.userId || row?.user_id),
+    displayName: clean(row?.displayName || row?.display_name, 'Joueur'),
+    avatarUrl: row?.avatarUrl || row?.avatar_url || null,
+    countryCode: row?.countryCode || row?.country_code || null,
+    score: Number(row?.score || row?.bestScore || row?.best_score || 0),
+    darts: Number(row?.darts || row?.bestDarts || row?.best_darts || 0),
+    bestStreak: Number(row?.bestStreak || row?.best_streak || 0),
+    accuracy: Number(row?.accuracy || row?.bestAccuracy || row?.best_accuracy || 0),
+    playedCount: Number(row?.playedCount || row?.played_count || 1),
+    updatedAt: row?.updatedAt || row?.updated_at || null,
+    matchId: row?.matchId || row?.match_id || null,
+    detailAvailable: Boolean(row?.detailAvailable ?? row?.detail_available ?? row?.statsAvailable ?? row?.stats_available),
+  })).filter((row) => row.userId);
+}
+
+function challengeRowIsBetter(next: ChallengeLeaderboardRow, current: ChallengeLeaderboardRow): boolean {
+  if (next.score !== current.score) return next.score > current.score;
+  if (next.accuracy !== current.accuracy) return next.accuracy > current.accuracy;
+  if (next.bestStreak !== current.bestStreak) return next.bestStreak > current.bestStreak;
+  if (next.darts !== current.darts) return next.darts < current.darts;
+  if (Boolean(next.detailAvailable) !== Boolean(current.detailAvailable)) return Boolean(next.detailAvailable);
+  return String(next.updatedAt || '') < String(current.updatedAt || '');
+}
+
+/**
+ * Les migrations V1/V2 utilisaient des clés différentes. Après le passage à
+ * la clé V3 (qui ne sépare plus SOLO/DUO/MULTI), les anciennes lignes ne
+ * doivent surtout pas disparaître du classement. On fusionne donc les sources
+ * par compte et on recalcule le rang à partir du meilleur score réellement
+ * disponible.
+ */
+function mergeChallengeLeaderboardRows(groups: ChallengeLeaderboardRow[][], limit: number): ChallengeLeaderboardRow[] {
+  const byUser = new Map<string, ChallengeLeaderboardRow>();
+  for (const rows of groups) {
+    for (const row of rows) {
+      const previous = byUser.get(row.userId);
+      if (!previous) {
+        byUser.set(row.userId, { ...row });
+        continue;
+      }
+      const playedCount = Math.max(previous.playedCount || 1, row.playedCount || 1);
+      if (challengeRowIsBetter(row, previous)) byUser.set(row.userId, { ...row, playedCount });
+      else byUser.set(row.userId, { ...previous, playedCount });
+    }
+  }
+  return [...byUser.values()]
+    .sort((a, b) => b.score - a.score || b.accuracy - a.accuracy || b.bestStreak - a.bestStreak || a.darts - b.darts || String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
+    .slice(0, Math.max(1, Math.min(100, int(limit, 100))))
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
 export async function getChallengeOnlineUserId(): Promise<string | null> {
   try {
     const { data, error } = await supabase.auth.getUser();
@@ -304,6 +358,7 @@ export async function fetchChallengeLeaderboard(
   const userId = await getChallengeOnlineUserId();
   if (!userId) return [];
   const scopeKey = scope.type === 'team' && clean(scope.teamKey) ? `official:${clean(scope.teamKey)}` : 'public';
+  const groups: ChallengeLeaderboardRow[][] = [];
 
   const v3 = await supabase.rpc('ms_challenge_leaderboard_v3', {
     p_objective_key: challengeObjectiveKey(input),
@@ -311,48 +366,44 @@ export async function fetchChallengeLeaderboard(
     p_limit: Math.max(1, Math.min(100, int(limit, 100))),
   });
 
-  let rows: any[] = [];
-  if (!v3.error) {
-    rows = Array.isArray(v3.data) ? v3.data : [];
-  } else {
-    if (!isBackendMissing(v3.error, 'ms_challenge_leaderboard_v3')) throw v3.error;
-    // Fallback V2. Les anciens classements privés locaux restent lisibles si présents.
-    const legacyScopeKey = scope.type === 'team' && clean(scope.teamKey) ? `team:${clean(scope.teamKey)}` : 'public';
-    const v2 = await supabase.rpc('ms_challenge_leaderboard_v2', {
-      p_objective_key: v2ChallengeObjectiveKey(input),
-      p_scope_key: legacyScopeKey,
-      p_limit: Math.max(1, Math.min(100, int(limit, 100))),
-    });
-    if (v2.error) {
-      if (!isBackendMissing(v2.error, 'ms_challenge_leaderboard_v2')) throw v2.error;
-      if (scope.type === 'team') return [];
-      const legacy = await supabase.rpc('ms_challenge_leaderboard', {
-        p_objective_key: legacyChallengeObjectiveKey(input),
+  if (!v3.error) groups.push(normalizeLeaderboardRows(Array.isArray(v3.data) ? v3.data : []));
+  else if (!isBackendMissing(v3.error, 'ms_challenge_leaderboard_v3')) throw v3.error;
+
+  if (scope.type === 'public') {
+    // Compatibilité : V2 séparait encore SOLO / DUO / DUEL / MULTI. On lit les
+    // quatre anciennes clés et on les refusionne dans le même classement
+    // individuel, sinon les joueurs historiques disparaissent après migration V3.
+    for (const matchMode of ['solo', 'duo', 'duel', 'multi']) {
+      const v2 = await supabase.rpc('ms_challenge_leaderboard_v2', {
+        p_objective_key: v2ChallengeObjectiveKey({ ...input, matchMode }),
+        p_scope_key: 'public',
         p_limit: Math.max(1, Math.min(100, int(limit, 100))),
       });
-      if (legacy.error) {
-        if (isBackendMissing(legacy.error, 'ms_challenge_leaderboard')) return [];
-        throw legacy.error;
-      }
-      rows = Array.isArray(legacy.data) ? legacy.data : [];
-    } else rows = Array.isArray(v2.data) ? v2.data : [];
+      if (!v2.error) groups.push(normalizeLeaderboardRows(Array.isArray(v2.data) ? v2.data : []));
+      else if (!isBackendMissing(v2.error, 'ms_challenge_leaderboard_v2')) console.warn('[challenge] legacy V2 leaderboard read failed', matchMode, v2.error);
+    }
+
+    const legacy = await supabase.rpc('ms_challenge_leaderboard', {
+      p_objective_key: legacyChallengeObjectiveKey(input),
+      p_limit: Math.max(1, Math.min(100, int(limit, 100))),
+    });
+    if (!legacy.error) groups.push(normalizeLeaderboardRows(Array.isArray(legacy.data) ? legacy.data : []));
+    else if (!isBackendMissing(legacy.error, 'ms_challenge_leaderboard')) console.warn('[challenge] legacy V1 leaderboard read failed', legacy.error);
+  } else if (v3.error && isBackendMissing(v3.error, 'ms_challenge_leaderboard_v3')) {
+    // Ancien backend V2 : uniquement en secours. Les classements privés V3
+    // restent prioritaires car ils valident l'appartenance Organisation côté serveur.
+    const legacyScopeKey = clean(scope.teamKey) ? `team:${clean(scope.teamKey)}` : 'public';
+    for (const matchMode of ['solo', 'duo', 'duel', 'multi']) {
+      const v2 = await supabase.rpc('ms_challenge_leaderboard_v2', {
+        p_objective_key: v2ChallengeObjectiveKey({ ...input, matchMode }),
+        p_scope_key: legacyScopeKey,
+        p_limit: Math.max(1, Math.min(100, int(limit, 100))),
+      });
+      if (!v2.error) groups.push(normalizeLeaderboardRows(Array.isArray(v2.data) ? v2.data : []));
+    }
   }
 
-  return rows.map((row: any) => ({
-    rank: Number(row?.rank || 0),
-    userId: clean(row?.userId || row?.user_id),
-    displayName: clean(row?.displayName || row?.display_name, 'Joueur'),
-    avatarUrl: row?.avatarUrl || row?.avatar_url || null,
-    countryCode: row?.countryCode || row?.country_code || null,
-    score: Number(row?.score || row?.bestScore || row?.best_score || 0),
-    darts: Number(row?.darts || row?.bestDarts || row?.best_darts || 0),
-    bestStreak: Number(row?.bestStreak || row?.best_streak || 0),
-    accuracy: Number(row?.accuracy || row?.bestAccuracy || row?.best_accuracy || 0),
-    playedCount: Number(row?.playedCount || row?.played_count || 1),
-    updatedAt: row?.updatedAt || row?.updated_at || null,
-    matchId: row?.matchId || row?.match_id || null,
-    detailAvailable: Boolean(row?.detailAvailable ?? row?.detail_available ?? row?.statsAvailable ?? row?.stats_available),
-  })).filter((row) => row.userId);
+  return mergeChallengeLeaderboardRows(groups, limit);
 }
 
 export async function fetchChallengeLeaderboardDetail(
@@ -432,8 +483,24 @@ function avatarFromProfile(profile: any): string | null {
   return clean(profile?.avatarDataUrl || profile?.photoDataUrl || profile?.avatarUrl || profile?.photoUrl || profile?.avatar || profile?.imageUrl) || null;
 }
 
-function historyStatsPayload(row: any) {
+function historyStatsPayload(record: any, row: any) {
   const hitSummary = row?.hitSummary || row?.stats?.hitSummary || {};
+  const payload = record?.payload || record?.decoded || record?.resume?.livePayload || {};
+  const state = payload?.state || payload?.snapshot || record?.resume?.state || {};
+  const sourceEntries = Array.isArray(payload?.entries)
+    ? payload.entries
+    : Array.isArray(state?.entries)
+      ? state.entries
+      : Array.isArray(state?.log)
+        ? state.log
+        : Array.isArray(record?.entries)
+          ? record.entries
+          : [];
+  const rowId = historyRowId(row);
+  const entries = sourceEntries
+    .filter((entry: any) => entry && clean(entry?.pid || entry?.playerId || entry?.profileId) === rowId)
+    .map((entry: any) => ({ hit: clean(entry?.hit).toUpperCase(), pid: rowId }))
+    .filter((entry: any) => ['S','D','T','25','50','MISS'].includes(entry.hit));
   return {
     bestVisit: num(row?.bestVisit ?? row?.special?.bestVisit ?? row?.stats?.bestVisit, 0),
     avgVisit: num(row?.avgVisit ?? row?.special?.avgVisit ?? row?.stats?.avgVisit, 0),
@@ -448,6 +515,58 @@ function historyStatsPayload(row: any) {
     positionStats: Array.isArray(row?.positionStats) ? row.positionStats : Array.isArray(row?.special?.positionStats) ? row.special.positionStats : [],
     visitScores: Array.isArray(row?.visitScores) ? row.visitScores : [],
     cumulativeScores: Array.isArray(row?.cumulativeScores) ? row.cumulativeScores : [],
+    entries,
+    score: Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0)),
+    darts: Math.max(0, int(row?.darts ?? row?.dartsThrown ?? hitSummary?.darts, entries.length)),
+    bestStreak: Math.max(0, int(row?.bestStreak ?? row?.special?.bestStreak, 0)),
+    accuracy: Math.max(0, Math.min(100, num(row?.successRate ?? row?.accuracy ?? row?.accuracyPct ?? row?.special?.successRate, 0))),
+  };
+}
+
+/**
+ * Pour le compte connecté, tente de réhydrater une ancienne ligne Online avec
+ * les fléchettes exactes encore présentes dans l'Historique local. Cela permet
+ * d'ouvrir exactement le même panneau STATS DÉTAILLÉES que ChallengePlay,
+ * même si l'ancien score Supabase ne contenait qu'un résumé.
+ */
+export async function enrichChallengeLeaderboardDetailFromHistory(
+  detail: ChallengeLeaderboardDetail,
+  profiles: any[],
+): Promise<ChallengeLeaderboardDetail> {
+  const uid = await getChallengeOnlineUserId();
+  if (!uid || clean(detail?.userId) !== uid) return detail;
+  const profileIds = new Set(linkedProfileIds(profiles, uid));
+  if (!profileIds.size) return detail;
+
+  const history = await History.getAll();
+  const matches = history
+    .filter(historyIsFinishedChallenge)
+    .filter((record: any) => {
+      const cfg = historyConfig(record);
+      return clean(cfg.target) === clean(detail.target)
+        && clean(cfg.rule) === clean(detail.rule)
+        && int(cfg.visits) === int(detail.visits);
+    })
+    .map((record: any) => {
+      const rows = historyPlayerRows(record);
+      const row = rows.find((candidate: any) => profileIds.has(historyRowId(candidate))) || null;
+      if (!row) return null;
+      const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+      if (score !== int(detail.score)) return null;
+      const stats = historyStatsPayload(record, row);
+      return { record, row, stats, exactMatchId: clean(record?.matchId || record?.id || record?.resumeId) === clean(detail.matchId) };
+    })
+    .filter(Boolean) as Array<{record:any;row:any;stats:any;exactMatchId:boolean}>;
+
+  if (!matches.length) return detail;
+  matches.sort((a,b) => Number(b.exactMatchId)-Number(a.exactMatchId) || Number(b.stats?.entries?.length||0)-Number(a.stats?.entries?.length||0));
+  const best = matches[0];
+  return {
+    ...detail,
+    stats: {
+      ...(detail.stats && typeof detail.stats === 'object' ? detail.stats : {}),
+      ...best.stats,
+    },
   };
 }
 
@@ -489,7 +608,7 @@ export async function syncChallengeHistoricalScores(profiles: any[], _teams: any
         displayName: clean(profile?.name || profile?.nickname || row?.name, 'Joueur'),
         avatarUrl: avatarFromProfile(profile),
         countryCode: clean(profile?.countryCode || profile?.country || pi?.countryCode || pi?.country) || null,
-        stats: historyStatsPayload(row),
+        stats: historyStatsPayload(record, row),
       });
       if (result.ok) submitted += 1;
     } catch (error) {

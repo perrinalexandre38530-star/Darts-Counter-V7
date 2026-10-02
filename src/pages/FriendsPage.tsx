@@ -968,7 +968,7 @@ function ShareDetailsModal({
    Objectif: conserver la page historique et restructurer l'affichage
    sans supprimer les blocs existants.
 --------------------------------------------------*/
-type OnlineMainTab = "hub" | "friends" | "nearby" | "requests" | "shares" | "play" | "activity" | "official" | "clubs";
+type OnlineMainTab = "hub" | "friends" | "nearby" | "requests" | "shares" | "play" | "activity" | "official" | "clubs" | "challenge";
 
 type OnlineTabSpec = {
   id: OnlineMainTab;
@@ -1359,6 +1359,7 @@ function OnlineTabIcon({ id, size = 30, color = "currentColor" }: { id: OnlineMa
       {id === "official" ? <><path {...common} d="M8 21h8" /><path {...common} d="M12 17v4" /><path {...common} d="M7 4h10v4a5 5 0 0 1-10 0V4Z" /><path {...common} d="M7 6H4a3 3 0 0 0 3 3" /><path {...common} d="M17 6h3a3 3 0 0 1-3 3" /></> : null}
       {id === "nearby" ? <><path {...common} d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle {...common} cx="12" cy="10" r="2.4" /></> : null}
       {id === "clubs" ? <><path {...common} d="M4 20V9l8-5 8 5v11" /><path {...common} d="M8 20v-6h8v6" /><path {...common} d="M9 10h6" /></> : null}
+      {id === "challenge" ? <><path {...common} d="M4 20V7" /><path {...common} d="M10 20V4" /><path {...common} d="M16 20v-6" /><path {...common} d="M22 20V9" /><path {...common} d="M3 21h20" /></> : null}
     </svg>
   );
 }
@@ -3518,6 +3519,14 @@ const doLogout = React.useCallback(async () => {
         tone: lobby?.code ? "gold" : "blue",
       },
       {
+        id: "challenge",
+        label: "Challenge",
+        icon: "🏆",
+        hint: "",
+        badge: "RANK",
+        tone: "gold",
+      },
+      {
         id: "official",
         label: "Officiel",
         icon: "🏆",
@@ -3938,7 +3947,17 @@ const doLogout = React.useCallback(async () => {
       {/* ================= TICKER ================= */}
       <OnlineTicker items={tickerItems} speedSec={22} />
 
-      <OnlineTabsBar tabs={onlineTabs} active={activeOnlineTab} onChange={setActiveOnlineTab} />
+      <OnlineTabsBar
+        tabs={onlineTabs}
+        active={activeOnlineTab}
+        onChange={(tab) => {
+          if (tab === "challenge") {
+            go("challenge_leaderboard" as any, { from: "online" });
+            return;
+          }
+          setActiveOnlineTab(tab);
+        }}
+      />
 
       {showHubTab ? (
         <>
@@ -3991,6 +4010,9 @@ const doLogout = React.useCallback(async () => {
                     onClick={() => setActiveOnlineTab("play")}
                     disabled={!isSignedIn}
                   />
+                  {isSignedIn ? (
+                    <GhostButton label="🏆 Classements Challenge" onClick={() => go("challenge_leaderboard" as any, { from: "online" })} />
+                  ) : null}
                   {isSignedIn ? (
                     <GhostButton label="📍 Trouver des joueurs proches" onClick={() => setActiveOnlineTab("nearby")} />
                   ) : null}

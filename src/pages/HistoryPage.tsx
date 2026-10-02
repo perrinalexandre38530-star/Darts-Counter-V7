@@ -4717,18 +4717,25 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
-    // ✅ CHALLENGE : ouvre directement le panneau stats Challenge avec le joueur du match.
+    // ✅ CHALLENGE : réutilise EXACTEMENT la carte STATS DÉTAILLÉES de ChallengePlay.
+    // Le record a été hydraté juste au-dessus : on lui redonne donc le journal de
+    // touches et la config complète au lieu d'ouvrir le résumé agrégé StatsHub.
     if (m === "challenge" || inferredMode === "challenge") {
-      const wid = (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
-      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || (e as any)?.payload?.players?.[0]?.id || null;
-      go("statsHub", {
-        tab: "stats",
-        initialStatsSubTab: "challenge",
-        initialPlayerId: firstPlayerId,
-        playerId: firstPlayerId,
-        matchId: e.id,
+      const payload: any = (e as any)?.decoded || (((e as any)?.payload && typeof (e as any).payload === "object") ? (e as any).payload : {}) || {};
+      const livePayload: any = (e as any)?.resume?.livePayload || {};
+      const config = (e as any)?.resume?.config || payload?.config || livePayload?.config || (e as any)?.summary?.config || null;
+      const snapshot = (e as any)?.resume?.state || livePayload?.state || payload?.state || payload?.snapshot || {
+        log: payload?.entries || payload?.events || [],
+        entries: payload?.entries || payload?.events || [],
+      };
+      go("challenge_play", {
+        rec: e,
         resumeId,
+        config,
+        snapshot,
+        mode: "challenge",
         from: "history",
+        historyStatsOnly: true,
       });
       return;
     }

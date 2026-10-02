@@ -6,6 +6,7 @@ import { useFullscreenPlay } from '../hooks/useFullscreenPlay';
 import {
   fetchChallengeLeaderboard,
   fetchChallengeLeaderboardDetail,
+  enrichChallengeLeaderboardDetailFromHistory,
   listChallengeTeamScopes,
   syncChallengeHistoricalScores,
   type ChallengeLeaderboardDetail,
@@ -72,11 +73,84 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
  })()},[]);
  React.useEffect(()=>{void refresh()},[refresh]);
 
+ const openFullStats=React.useCallback((data:ChallengeLeaderboardDetail)=>{
+  const rawEntries=Array.isArray(data?.stats?.entries)?data.stats.entries:[];
+  const pid=String(data.userId||'online-player');
+  const entries=rawEntries
+   .filter((entry:any)=>entry&&['S','D','T','25','50','MISS'].includes(String(entry?.hit||'').toUpperCase()))
+   .map((entry:any)=>({hit:String(entry.hit).toUpperCase(),pid}));
+  if(!entries.length)return false;
+
+  const player={
+   id:pid,
+   userId:pid,
+   name:data.displayName||'Joueur',
+   displayName:data.displayName||'Joueur',
+   avatarDataUrl:data.avatarUrl||null,
+   score:data.score,
+   points:data.score,
+   darts:data.darts,
+   dartsThrown:data.darts,
+   bestStreak:data.bestStreak,
+   successRate:data.accuracy,
+   bestVisit:Number(data?.stats?.bestVisit||0),
+   avgVisit:Number(data?.stats?.avgVisit||0),
+   hitSummary:{
+    S:Number(data?.stats?.hitCounts?.S||0),
+    D:Number(data?.stats?.hitCounts?.D||0),
+    T:Number(data?.stats?.hitCounts?.T||0),
+    SBull:Number(data?.stats?.hitCounts?.['25']||0),
+    DBull:Number(data?.stats?.hitCounts?.['50']||0),
+    MISS:Number(data?.stats?.hitCounts?.MISS||0),
+    darts:data.darts,
+   },
+   positionStats:Array.isArray(data?.stats?.positionStats)?data.stats.positionStats:[],
+   visitScores:Array.isArray(data?.stats?.visitScores)?data.stats.visitScores:[],
+   cumulativeScores:Array.isArray(data?.stats?.cumulativeScores)?data.stats.cumulativeScores:[],
+  };
+  const config={
+   target:data.target as any,
+   visits:data.visits,
+   rule:data.rule as any,
+   playerIds:[],teamIds:[],participantMode:'players',participantSource:'direct',configMode:'complete',matchMode:'solo',
+  };
+  const summary={
+   title:'CHALLENGE',kind:'challenge',mode:'challenge',status:'finished',finished:true,winnerId:null,
+   scoreLine:`${data.displayName} ${data.score}`,
+   finalScores:{[pid]:data.score},rankings:[{...player,rank:1}],perPlayer:[{...player,rank:1}],
+   target:data.target,objective:targetLabel(data.target),rule:data.rule,visits:data.visits,
+  };
+  const rec={
+   id:data.matchId||`online-${pid}-${data.target}-${data.visits}`,
+   matchId:data.matchId||`online-${pid}-${data.target}-${data.visits}`,
+   kind:'challenge',mode:'challenge',sport:'darts',status:'finished',finishedAt:data.updatedAt||Date.now(),
+   players:[player],summary,
+   payload:{kind:'challenge',mode:'challenge',sport:'darts',status:'finished',config,state:{log:entries,entries},entries,players:[player],finalPlayers:[player],summary},
+  };
+  go('challenge_play',{
+   historyStatsOnly:true,
+   onlineStatsOnly:true,
+   returnTab:'challenge_leaderboard',
+   returnParams:{from:params?.from||'online',target,rule,visits},
+   rec,
+  });
+  return true;
+ },[go,params?.from,target,rule,visits]);
+
  const openDetail=async(row:ChallengeLeaderboardRow)=>{
   setDetailLoading(true);setError('');
   try{
-   const data=await fetchChallengeLeaderboardDetail(objective,row.userId,scope==='team'?{type:'team',teamKey}:{type:'public'});
-   if(data)setDetail(data);else setError('Le détail de cette ancienne performance n’est pas encore disponible.');
+   // Réinjecte d'abord les anciennes parties locales du compte connecté afin
+   // qu'un ancien best score puisse récupérer ses fléchettes/statistiques exactes.
+   try{await syncChallengeHistoricalScores(profiles)}catch(e){console.warn('[challenge leaderboard] detail backfill',e)}
+   const fetched=await fetchChallengeLeaderboardDetail(objective,row.userId,scope==='team'?{type:'team',teamKey}:{type:'public'});
+   if(!fetched){setError('Le détail de cette ancienne performance n’est pas encore disponible.');return}
+   const data=await enrichChallengeLeaderboardDetailFromHistory(fetched,profiles);
+   if(openFullStats(data))return;
+   // Très anciennes performances serveur : aucun journal fléchette-par-fléchette
+   // n'existe encore. On garde le résumé disponible au lieu d'inventer des données.
+   setDetail(data);
+   setError('Ancienne performance : le détail complet fléchette par fléchette n’était pas encore enregistré.');
   }catch(e:any){setError(String(e?.message||'Détail indisponible.'))}finally{setDetailLoading(false)}
  };
  const stats:any=detail?.stats||{};
