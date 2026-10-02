@@ -62,7 +62,7 @@ const sportNames = {
 
 const sportCategory = { darts:'score',running:'perf',fit:'perf',foot:'score',babyfoot:'score',pingpong:'score',petanque:'score',molkky:'score',dicegame:'score',esports:'hub' };
 const features = {
-  darts:['X01 301 / 501 / 701 / 901','Cricket · Killer · Shanghai','Profiles · history · statistics'],
+  darts:['X01 301 / 501 / 701 / 901','Cricket · Killer · Shanghai · Challenge','Darts Poker · Gros 6 · CRADOS','Profils · historique · statistiques · X01 online'],
   running:['GPS tracking','Distance · pace · time','Session history'],
   fit:['Sets · reps · loads','Rest timer · volume','Personal records · 1RM'],
   foot:['Scoreboard','Teams · matches','History · statistics'],
@@ -74,39 +74,187 @@ const features = {
   esports:['E-Sports Hub','Ranked sessions','Progression · competitive network'],
 };
 
-const guides = ['x01','cricket','killer','shanghai'];
-const guideNames = { x01:'X01', cricket:'Cricket', killer:'Killer', shanghai:'Shanghai' };
+const DARTS_LANGS = ['fr','en','es'];
+const dartsLandingCopy = {
+  fr:{
+    title:'Compteur de fléchettes et application Darts | MULTISPORTS SCORING',
+    h1:'Compteur de fléchettes complet : X01, Cricket, Killer, Challenge et plus',
+    description:'MULTISPORTS SCORING est une application de compteur de fléchettes sur Android et Web/PWA avec X01, Cricket, Killer, Shanghai, Challenge, statistiques, profils et historique.',
+    lead:'Scorez vos parties de fléchettes, suivez vos profils et retrouvez vos statistiques dans MULTISPORTS SCORING. L’application réunit les classiques X01 et Cricket avec des modes originaux et des outils de progression.'
+  },
+  en:{
+    title:'Darts scorer and dart counter app | MULTISPORTS SCORING',
+    h1:'Darts scorer and dart counter for X01, Cricket, Killer, Challenge and more',
+    description:'MULTISPORTS SCORING is a darts scorer and dart counter app for Android and Web/PWA with X01, Cricket, Killer, Shanghai, Challenge, statistics, profiles and match history.',
+    lead:'Score darts matches, manage player profiles and review statistics in MULTISPORTS SCORING. The app combines classic X01 and Cricket scoring with original modes and progression tools.'
+  },
+  es:{
+    title:'Contador y marcador de dardos | MULTISPORTS SCORING',
+    h1:'Contador de dardos para X01, Cricket, Killer, Challenge y más',
+    description:'MULTISPORTS SCORING es una aplicación de contador de dardos para Android y Web/PWA con X01, Cricket, Killer, Shanghai, Challenge, estadísticas, perfiles e historial.',
+    lead:'Anota partidas de dardos, gestiona perfiles y consulta estadísticas en MULTISPORTS SCORING. La aplicación combina X01 y Cricket con modos originales y herramientas de progresión.'
+  },
+};
+
+const dartsGuides = {
+  'dart-counter': {
+    slugs:{fr:'compteur-flechettes',en:'dart-counter',es:'contador-dardos'},
+    names:{fr:'Compteur de fléchettes',en:'Dart counter',es:'Contador de dardos'},
+    titles:{
+      fr:'Compteur de fléchettes gratuit – X01, Cricket et plus | MULTISPORTS SCORING',
+      en:'Free dart counter app – X01, Cricket and more | MULTISPORTS SCORING',
+      es:'Contador de dardos gratis – X01, Cricket y más | MULTISPORTS SCORING',
+    },
+    descriptions:{
+      fr:'Utilisez MULTISPORTS SCORING comme compteur de fléchettes pour X01, Cricket, Killer, Challenge et d’autres modes, avec profils, historique et statistiques.',
+      en:'Use MULTISPORTS SCORING as a dart counter for X01, Cricket, Killer, Challenge and other modes, with player profiles, match history and statistics.',
+      es:'Usa MULTISPORTS SCORING como contador de dardos para X01, Cricket, Killer, Challenge y otros modos, con perfiles, historial y estadísticas.',
+    },
+    sections:{
+      fr:[
+        {h:'Un compteur de fléchettes pour jouer immédiatement',items:['Saisie des scores pensée pour téléphone, tablette et Web/PWA.','Profils joueurs, historique des parties et statistiques réunis dans la même application.','Modes classiques et créations originales accessibles depuis le même univers Darts.']},
+        {h:'Modes de fléchettes disponibles',items:['X01 : 301, 501, 701 et 901.','Cricket, Killer et Shanghai.','Challenge, Darts Poker, Gros 6, CRADOS et autres variantes.']},
+      ],
+      en:[
+        {h:'A dart counter built for real matches',items:['Fast score entry for phone, tablet and Web/PWA.','Player profiles, match history and statistics in the same application.','Classic games and original darts modes inside one Darts hub.']},
+        {h:'Darts modes',items:['X01: 301, 501, 701 and 901.','Cricket, Killer and Shanghai.','Challenge, Darts Poker, Gros 6, CRADOS and other variants.']},
+      ],
+      es:[
+        {h:'Un contador de dardos para partidas reales',items:['Entrada rápida de puntuaciones en móvil, tableta y Web/PWA.','Perfiles, historial de partidas y estadísticas en la misma aplicación.','Juegos clásicos y modos originales dentro del mismo espacio de dardos.']},
+        {h:'Modos de dardos',items:['X01: 301, 501, 701 y 901.','Cricket, Killer y Shanghai.','Challenge, Darts Poker, Gros 6, CRADOS y otras variantes.']},
+      ],
+    },
+    faqs:{
+      fr:[{q:'MULTISPORTS SCORING peut-il servir de compteur pour une partie de 501 ?',a:'Oui. Le module X01 prend en charge notamment 301, 501, 701 et 901 avec suivi de partie et statistiques.'},{q:'L’application se limite-t-elle aux fléchettes ?',a:'Non. MULTISPORTS SCORING est une application multisports ; les fléchettes disposent toutefois de leur propre univers de scoring et de statistiques.'}],
+      en:[{q:'Can MULTISPORTS SCORING score a 501 darts match?',a:'Yes. The X01 module supports 301, 501, 701 and 901 with match tracking and statistics.'},{q:'Is the app only for darts?',a:'No. MULTISPORTS SCORING is a multi-sport application, while darts has its own scoring and statistics ecosystem.'}],
+      es:[{q:'¿MULTISPORTS SCORING sirve para contar una partida de 501?',a:'Sí. El módulo X01 admite 301, 501, 701 y 901 con seguimiento de partida y estadísticas.'},{q:'¿La aplicación es solo para dardos?',a:'No. MULTISPORTS SCORING es una aplicación multideporte, aunque los dardos tienen su propio espacio de puntuación y estadísticas.'}],
+    },
+    intents:['dart counter','darts scorer','darts scorekeeper','compteur de fléchettes','application fléchettes','contador de dardos'],
+  },
+  x01: {
+    slugs:{fr:'x01',en:'x01',es:'x01'}, names:{fr:'X01',en:'X01',es:'X01'},
+    titles:{fr:'Compteur X01 301 / 501 / 701 / 901 | MULTISPORTS SCORING',en:'X01 darts scorer – 301 / 501 / 701 / 901 | MULTISPORTS SCORING',es:'Marcador X01 – 301 / 501 / 701 / 901 | MULTISPORTS SCORING'},
+    descriptions:{fr:'Comptez vos parties X01 301, 501, 701 ou 901 avec MULTISPORTS SCORING : options d’entrée/sortie, sets, legs, annulation et statistiques.',en:'Score X01 darts games in 301, 501, 701 or 901 with MULTISPORTS SCORING, including in/out options, sets, legs, undo and statistics.',es:'Anota partidas X01 de 301, 501, 701 o 901 con MULTISPORTS SCORING, con opciones de entrada/salida, sets, legs, deshacer y estadísticas.'},
+    sections:{fr:[{h:'X01 dans MULTISPORTS SCORING',items:['Parties 301, 501, 701 et 901.','Gestion des legs et des sets selon la configuration.','Historique, statistiques et reprise de partie.']}],en:[{h:'X01 in MULTISPORTS SCORING',items:['301, 501, 701 and 901 games.','Legs and sets according to match configuration.','Match history, statistics and resume support.']}],es:[{h:'X01 en MULTISPORTS SCORING',items:['Partidas de 301, 501, 701 y 901.','Legs y sets según la configuración.','Historial, estadísticas y reanudación de partida.']}]},
+    faqs:{fr:[{q:'Peut-on jouer au 501 ?',a:'Oui, 501 fait partie des formats X01 proposés aux côtés de 301, 701 et 901.'}],en:[{q:'Does it support 501 darts?',a:'Yes. 501 is available alongside 301, 701 and 901.'}],es:[{q:'¿Incluye 501?',a:'Sí. 501 está disponible junto con 301, 701 y 901.'}]}, intents:['501 darts scorer','X01 scorer','301 darts app','compteur 501','marcador 501'],
+  },
+  cricket: {
+    slugs:{fr:'cricket',en:'cricket',es:'cricket'}, names:{fr:'Cricket',en:'Cricket',es:'Cricket'},
+    titles:{fr:'Compteur Cricket fléchettes | MULTISPORTS SCORING',en:'Cricket darts scorer | MULTISPORTS SCORING',es:'Marcador Cricket de dardos | MULTISPORTS SCORING'},
+    descriptions:{fr:'Comptez une partie de Cricket aux fléchettes avec les cibles 15 à 20 et Bull, suivi des fermetures, points et statistiques.',en:'Score Cricket darts with targets 15 to 20 and Bull, tracking closes, points and match statistics.',es:'Anota Cricket de dardos con objetivos 15 a 20 y Bull, siguiendo cierres, puntos y estadísticas.'},
+    sections:{fr:[{h:'Suivi du Cricket',items:['Cibles 15, 16, 17, 18, 19, 20 et Bull.','Ouverture et fermeture des cibles.','Suivi des points et statistiques de partie.']}],en:[{h:'Cricket scoring',items:['Targets 15, 16, 17, 18, 19, 20 and Bull.','Open and close target tracking.','Points and match statistics.']}],es:[{h:'Puntuación Cricket',items:['Objetivos 15, 16, 17, 18, 19, 20 y Bull.','Seguimiento de apertura y cierre.','Puntos y estadísticas de partida.']}]},
+    faqs:{fr:[{q:'Quelles cibles sont suivies en Cricket ?',a:'Le mode suit les cibles 15 à 20 ainsi que le Bull.'}],en:[{q:'Which targets are used in Cricket?',a:'The mode tracks 15 through 20 plus Bull.'}],es:[{q:'¿Qué objetivos usa Cricket?',a:'El modo sigue del 15 al 20 y Bull.'}]}, intents:['cricket darts scorer','compteur cricket fléchettes','marcador cricket dardos'],
+  },
+  killer: {
+    slugs:{fr:'killer',en:'killer',es:'killer'}, names:{fr:'Killer',en:'Killer',es:'Killer'},
+    titles:{fr:'Compteur Killer fléchettes | MULTISPORTS SCORING',en:'Killer darts scorer | MULTISPORTS SCORING',es:'Marcador Killer de dardos | MULTISPORTS SCORING'},
+    descriptions:{fr:'Jouez au Killer aux fléchettes avec numéros joueurs, vies, phase Killer, éliminations, bots et suivi de partie dans MULTISPORTS SCORING.',en:'Play Killer darts with player numbers, lives, Killer phase, eliminations, bots and match tracking in MULTISPORTS SCORING.',es:'Juega a Killer con números de jugador, vidas, fase Killer, eliminaciones, bots y seguimiento de partida en MULTISPORTS SCORING.'},
+    sections:{fr:[{h:'Killer : vies et éliminations',items:['Chaque joueur évolue autour de son numéro.','Le passage en Killer permet d’attaquer les adversaires.','Le suivi des vies et des éliminations est géré par l’application.']}],en:[{h:'Killer: lives and eliminations',items:['Each player plays around their assigned number.','Becoming a Killer opens the elimination phase.','Lives and eliminations are tracked by the app.']}],es:[{h:'Killer: vidas y eliminaciones',items:['Cada jugador juega alrededor de su número asignado.','Convertirse en Killer abre la fase de eliminación.','La aplicación controla vidas y eliminaciones.']}]},
+    faqs:{fr:[{q:'Le mode Killer gère-t-il les vies ?',a:'Oui. Les vies, le statut Killer et les éliminations sont suivis pendant la partie.'}],en:[{q:'Does Killer track lives?',a:'Yes. Lives, Killer status and eliminations are tracked during the match.'}],es:[{q:'¿Killer controla las vidas?',a:'Sí. Se siguen vidas, estado Killer y eliminaciones durante la partida.'}]}, intents:['killer darts app','killer darts scorer','compteur killer fléchettes'],
+  },
+  shanghai: {
+    slugs:{fr:'shanghai',en:'shanghai',es:'shanghai'}, names:{fr:'Shanghai',en:'Shanghai',es:'Shanghai'},
+    titles:{fr:'Compteur Shanghai fléchettes | MULTISPORTS SCORING',en:'Shanghai darts scorer | MULTISPORTS SCORING',es:'Marcador Shanghai de dardos | MULTISPORTS SCORING'},
+    descriptions:{fr:'Suivez une partie de Shanghai aux fléchettes, les manches, simples, doubles, triples et le score avec MULTISPORTS SCORING.',en:'Track a Shanghai darts game with rounds, singles, doubles, triples and scoring in MULTISPORTS SCORING.',es:'Sigue una partida Shanghai de dardos con rondas, simples, dobles, triples y puntuación en MULTISPORTS SCORING.'},
+    sections:{fr:[{h:'Le Shanghai dans l’application',items:['Progression par manches et cibles.','Prise en compte des simples, doubles et triples.','Score et historique intégrés à l’univers Darts.']}],en:[{h:'Shanghai in the app',items:['Round-by-round target progression.','Singles, doubles and triples are tracked.','Score and history are integrated into the Darts hub.']}],es:[{h:'Shanghai en la aplicación',items:['Progresión por rondas y objetivos.','Seguimiento de simples, dobles y triples.','Puntuación e historial integrados en el espacio Darts.']}]},
+    faqs:{fr:[{q:'Le Shanghai suit-il les doubles et triples ?',a:'Oui. Le mode distingue les simples, doubles et triples.'}],en:[{q:'Does Shanghai track doubles and triples?',a:'Yes. The mode distinguishes singles, doubles and triples.'}],es:[{q:'¿Shanghai distingue dobles y triples?',a:'Sí. El modo distingue simples, dobles y triples.'}]}, intents:['shanghai darts scorer','compteur shanghai fléchettes'],
+  },
+  challenge: {
+    slugs:{fr:'challenge',en:'challenge',es:'challenge'}, names:{fr:'Challenge',en:'Challenge',es:'Challenge'},
+    titles:{fr:'Challenge fléchettes – précision et séries | MULTISPORTS SCORING',en:'Darts Challenge – accuracy and streak scoring | MULTISPORTS SCORING',es:'Challenge de dardos – precisión y rachas | MULTISPORTS SCORING'},
+    descriptions:{fr:'Le mode Challenge de MULTISPORTS SCORING mesure vos touches S, D, T, Bull et MISS sur des objectifs configurables, en solo ou à plusieurs.',en:'MULTISPORTS SCORING Challenge tracks S, D, T, Bull and MISS results on configurable targets for solo or multiplayer darts sessions.',es:'Challenge en MULTISPORTS SCORING registra S, D, T, Bull y MISS sobre objetivos configurables para sesiones individuales o multijugador.'},
+    sections:{fr:[{h:'Un mode de précision',items:['Saisie S, D, T, 25, 50 et MISS.','Objectifs et nombre de tours configurables.','Solo, duel, multi et équipes avec suivi des séries de touches.']}],en:[{h:'Accuracy-focused darts mode',items:['Inputs for S, D, T, 25, 50 and MISS.','Configurable targets and number of rounds.','Solo, duel, multiplayer and teams with hit streak tracking.']}],es:[{h:'Modo centrado en la precisión',items:['Entradas S, D, T, 25, 50 y MISS.','Objetivos y número de rondas configurables.','Solo, duelo, multijugador y equipos con seguimiento de rachas.']}]},
+    faqs:{fr:[{q:'Challenge peut-il se jouer en solo ?',a:'Oui. Le mode prévoit le solo ainsi que le duel, le multi et les équipes.'}],en:[{q:'Can Challenge be played solo?',a:'Yes. Challenge supports solo, duel, multiplayer and team configurations.'}],es:[{q:'¿Challenge se puede jugar en solitario?',a:'Sí. Admite solo, duelo, multijugador y equipos.'}]}, intents:['darts accuracy training','challenge darts app','entrainement précision fléchettes'],
+  },
+  'darts-poker': {
+    slugs:{fr:'darts-poker',en:'darts-poker',es:'darts-poker'}, names:{fr:'Darts Poker',en:'Darts Poker',es:'Darts Poker'},
+    titles:{fr:'Darts Poker – mode poker aux fléchettes | MULTISPORTS SCORING',en:'Darts Poker – poker-style darts mode | MULTISPORTS SCORING',es:'Darts Poker – modo póker con dardos | MULTISPORTS SCORING'},
+    descriptions:{fr:'Darts Poker mélange fléchettes et mécanique de cartes dans MULTISPORTS SCORING avec suivi des mains, cibles et tours.',en:'Darts Poker combines darts with card-hand mechanics in MULTISPORTS SCORING, tracking hands, targets and turns.',es:'Darts Poker combina dardos y mecánica de cartas en MULTISPORTS SCORING con seguimiento de manos, objetivos y turnos.'},
+    sections:{fr:[{h:'Fléchettes + cartes',items:['Mode original basé sur des mains de cartes.','Les touches sur la cible alimentent la mécanique de jeu.','Tours et progression suivis directement dans l’application.']}],en:[{h:'Darts meets cards',items:['Original mode built around card hands.','Dartboard hits feed the game mechanic.','Turns and progression are tracked inside the app.']}],es:[{h:'Dardos y cartas',items:['Modo original basado en manos de cartas.','Los impactos en la diana alimentan la mecánica de juego.','Turnos y progresión controlados por la aplicación.']}]},
+    faqs:{fr:[{q:'Darts Poker est-il un simple compteur X01 ?',a:'Non. C’est un mode original qui combine scoring de fléchettes et logique de cartes.'}],en:[{q:'Is Darts Poker just X01 scoring?',a:'No. It is an original mode combining darts scoring with card mechanics.'}],es:[{q:'¿Darts Poker es solo X01?',a:'No. Es un modo original que combina puntuación de dardos con mecánica de cartas.'}]}, intents:['darts poker game','poker darts app','mode poker fléchettes'],
+  },
+  'gros-6': {
+    slugs:{fr:'gros-6',en:'gros-6',es:'gros-6'}, names:{fr:'Gros 6',en:'Gros 6',es:'Gros 6'},
+    titles:{fr:'Gros 6 – jeu de fléchettes | MULTISPORTS SCORING',en:'Gros 6 darts game | MULTISPORTS SCORING',es:'Gros 6 – juego de dardos | MULTISPORTS SCORING'},
+    descriptions:{fr:'Découvrez Gros 6 dans MULTISPORTS SCORING, un mode de fléchettes avec zones Gros/Petit, configuration guidée et suivi de partie.',en:'Discover Gros 6 in MULTISPORTS SCORING, a darts mode with Gros/Petit target zones, guided setup and match tracking.',es:'Descubre Gros 6 en MULTISPORTS SCORING, un modo de dardos con zonas Gros/Petit, configuración guiada y seguimiento de partida.'},
+    sections:{fr:[{h:'Un mode original',items:['Saisie dédiée aux zones de jeu Gros et Petit.','Configuration guidée pour préparer la partie.','Suivi des joueurs et de la progression pendant le match.']}],en:[{h:'An original darts mode',items:['Dedicated scoring for Gros and Petit target zones.','Guided configuration before the match.','Player and match progression tracking.']}],es:[{h:'Un modo original',items:['Puntuación dedicada a zonas Gros y Petit.','Configuración guiada antes de la partida.','Seguimiento de jugadores y progresión.']}]},
+    faqs:{fr:[{q:'Gros 6 dispose-t-il d’une configuration guidée ?',a:'Oui. Une configuration guidée accompagne la préparation de la partie.'}],en:[{q:'Does Gros 6 have guided setup?',a:'Yes. Guided setup helps configure the match before play.'}],es:[{q:'¿Gros 6 tiene configuración guiada?',a:'Sí. La configuración guiada ayuda a preparar la partida.'}]}, intents:['gros 6 darts','jeu gros 6 fléchettes'],
+  },
+  crados: {
+    slugs:{fr:'crados',en:'crados',es:'crados'}, names:{fr:'CRADOS',en:'CRADOS',es:'CRADOS'},
+    titles:{fr:'CRADOS – mode arcade de fléchettes | MULTISPORTS SCORING',en:'CRADOS – arcade darts mode | MULTISPORTS SCORING',es:'CRADOS – modo arcade de dardos | MULTISPORTS SCORING'},
+    descriptions:{fr:'CRADOS est un mode arcade original de MULTISPORTS SCORING avec jauge, règles de touches spécifiques, bots IA et statistiques.',en:'CRADOS is an original arcade darts mode in MULTISPORTS SCORING with a gauge, custom hit rules, AI bots and statistics.',es:'CRADOS es un modo arcade original de MULTISPORTS SCORING con medidor, reglas de impacto propias, bots de IA y estadísticas.'},
+    sections:{fr:[{h:'Un mode arcade exclusif',items:['Règles de score différentes d’un X01 classique.','Jauge de progression visible pendant la partie.','Bots IA, historique et statistiques dédiées.']}],en:[{h:'An original arcade mode',items:['Scoring rules differ from classic X01.','A progression gauge is visible during play.','AI bots, history and dedicated statistics.']}],es:[{h:'Un modo arcade original',items:['Reglas de puntuación diferentes de X01.','Medidor de progresión durante la partida.','Bots de IA, historial y estadísticas específicas.']}]},
+    faqs:{fr:[{q:'CRADOS est-il un mode X01 ?',a:'Non. CRADOS utilise ses propres règles et sa propre logique de progression.'}],en:[{q:'Is CRADOS an X01 mode?',a:'No. CRADOS uses its own scoring rules and progression logic.'}],es:[{q:'¿CRADOS es un modo X01?',a:'No. CRADOS utiliza sus propias reglas y lógica de progresión.'}]}, intents:['crados darts','arcade darts game','jeu fléchettes original'],
+  },
+  'training-x01': {
+    slugs:{fr:'entrainement-x01',en:'x01-training',es:'entrenamiento-x01'}, names:{fr:'Entraînement X01',en:'X01 training',es:'Entrenamiento X01'},
+    titles:{fr:'Entraînement X01 et progression aux fléchettes | MULTISPORTS SCORING',en:'X01 darts training and progress tracking | MULTISPORTS SCORING',es:'Entrenamiento X01 y progreso en dardos | MULTISPORTS SCORING'},
+    descriptions:{fr:'Entraînez-vous au X01 avec MULTISPORTS SCORING et suivez vos séances, vos performances et votre progression dans le temps.',en:'Train X01 darts with MULTISPORTS SCORING and track sessions, performance and progress over time.',es:'Entrena X01 con MULTISPORTS SCORING y sigue sesiones, rendimiento y progreso con el tiempo.'},
+    sections:{fr:[{h:'S’entraîner et mesurer sa progression',items:['Sessions d’entraînement X01 dédiées.','Statistiques et historique pour comparer les séances.','Profils joueurs pour conserver la progression individuelle.']}],en:[{h:'Train and measure progress',items:['Dedicated X01 training sessions.','Statistics and history to compare sessions.','Player profiles preserve individual progress.']}],es:[{h:'Entrenar y medir el progreso',items:['Sesiones dedicadas de entrenamiento X01.','Estadísticas e historial para comparar sesiones.','Perfiles para conservar el progreso individual.']}]},
+    faqs:{fr:[{q:'Peut-on suivre sa progression ?',a:'Oui. Les séances et statistiques permettent de suivre l’évolution d’un profil dans le temps.'}],en:[{q:'Can I track improvement over time?',a:'Yes. Sessions and statistics help track a player profile over time.'}],es:[{q:'¿Se puede seguir la progresión?',a:'Sí. Las sesiones y estadísticas permiten seguir la evolución del perfil.'}]}, intents:['darts training app','x01 training','application entrainement fléchettes'],
+  },
+  statistics: {
+    slugs:{fr:'statistiques-flechettes',en:'darts-statistics',es:'estadisticas-dardos'}, names:{fr:'Statistiques fléchettes',en:'Darts statistics',es:'Estadísticas de dardos'},
+    titles:{fr:'Statistiques fléchettes, historique et profils | MULTISPORTS SCORING',en:'Darts statistics, match history and player profiles | MULTISPORTS SCORING',es:'Estadísticas de dardos, historial y perfiles | MULTISPORTS SCORING'},
+    descriptions:{fr:'Retrouvez vos statistiques de fléchettes, historiques de parties, profils et records dans MULTISPORTS SCORING.',en:'Review darts statistics, match history, player profiles and records in MULTISPORTS SCORING.',es:'Consulta estadísticas de dardos, historial de partidas, perfiles y récords en MULTISPORTS SCORING.'},
+    sections:{fr:[{h:'Des données après la partie',items:['Historique des parties enregistrées.','Statistiques rattachées aux profils joueurs.','Indicateurs et records selon les modes pris en charge.']}],en:[{h:'Data beyond the match',items:['Saved match history.','Statistics linked to player profiles.','Mode-specific indicators and records.']}],es:[{h:'Datos después de la partida',items:['Historial de partidas guardadas.','Estadísticas vinculadas a perfiles.','Indicadores y récords según el modo.']}]},
+    faqs:{fr:[{q:'Les statistiques sont-elles liées aux profils ?',a:'Oui. Les profils permettent de conserver un suivi individuel des performances.'}],en:[{q:'Are statistics linked to player profiles?',a:'Yes. Player profiles preserve individual performance tracking.'}],es:[{q:'¿Las estadísticas están vinculadas a perfiles?',a:'Sí. Los perfiles permiten conservar el seguimiento individual del rendimiento.'}]}, intents:['darts statistics app','darts stats tracker','statistiques fléchettes'],
+  },
+  'online-x01': {
+    slugs:{fr:'flechettes-en-ligne',en:'online-darts',es:'dardos-online'}, names:{fr:'X01 en ligne',en:'Online X01',es:'X01 online'},
+    titles:{fr:'Fléchettes en ligne – X01 online | MULTISPORTS SCORING',en:'Online darts – X01 scoring | MULTISPORTS SCORING',es:'Dardos online – puntuación X01 | MULTISPORTS SCORING'},
+    descriptions:{fr:'MULTISPORTS SCORING propose un parcours X01 online pour jouer à distance tout en conservant le scoring et le suivi de partie.',en:'MULTISPORTS SCORING includes an online X01 flow for remote darts matches while keeping score and match tracking.',es:'MULTISPORTS SCORING incluye un flujo X01 online para partidas a distancia con puntuación y seguimiento del encuentro.'},
+    sections:{fr:[{h:'X01 à distance',items:['Lobby et partie X01 online dédiés.','Scoring synchronisé pour le déroulement du match.','Intégration avec l’écosystème de profils et de statistiques.']}],en:[{h:'Remote X01 matches',items:['Dedicated online X01 lobby and play flow.','Synchronized scoring during the match.','Integrated with player profiles and statistics.']}],es:[{h:'Partidas X01 a distancia',items:['Lobby y partida X01 online dedicados.','Puntuación sincronizada durante el encuentro.','Integración con perfiles y estadísticas.']}]},
+    faqs:{fr:[{q:'Tous les modes sont-ils jouables en ligne ?',a:'Cette page décrit spécifiquement le parcours X01 online actuellement intégré à l’application.'}],en:[{q:'Are all darts modes online?',a:'This page specifically describes the online X01 flow currently integrated into the app.'}],es:[{q:'¿Todos los modos están online?',a:'Esta página describe específicamente el flujo X01 online integrado en la aplicación.'}]}, intents:['online darts scorer','play darts online x01','fléchettes en ligne x01'],
+  },
+};
 
 const escapeHtml = (value='') => String(value).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fill = (template, sport) => template.replace('{sport}', sport);
 const urlPath = (full) => new URL(full).pathname;
 const localFileFromUrl = (full) => path.join(PUBLIC, urlPath(full).replace(/^\//,''), 'index.html');
 
-function alternates(catalog, sportId=null) {
-  const langs = Object.keys(locale);
-  const links = langs.map((code) => {
-    const href = sportId ? catalog.sports.find((s)=>s.id===sportId).routes[code] : `${BASE}/${code}/`;
-    return `<link rel="alternate" hreflang="${code}" href="${escapeHtml(href)}">`;
-  });
-  const def = sportId ? catalog.sports.find((s)=>s.id===sportId).routes.en : `${BASE}/`;
-  links.push(`<link rel="alternate" hreflang="x-default" href="${escapeHtml(def)}">`);
+function alternateTags(alternatesMap, defaultUrl) {
+  const links = Object.entries(alternatesMap).map(([code,href]) => `<link rel="alternate" hreflang="${code}" href="${escapeHtml(href)}">`);
+  links.push(`<link rel="alternate" hreflang="x-default" href="${escapeHtml(defaultUrl || alternatesMap.en || BASE+'/')}">`);
   return links.join('');
 }
 
-function jsonLd({lang,url,title,description,breadcrumb}) {
-  return JSON.stringify({
-    '@context':'https://schema.org',
-    '@graph':[
-      {'@type':'Organization','@id':`${BASE}/#organization`,name:'MULTISPORTS SCORING',url:`${BASE}/`,logo:`${BASE}/app-512.png`},
-      {'@type':['SoftwareApplication','MobileApplication'],'@id':`${BASE}/#app`,name:'MULTISPORTS SCORING',url:`${BASE}/`,downloadUrl:PLAY,image:`${BASE}/app-512.png`,operatingSystem:'Android, Web',applicationCategory:'SportsApplication',offers:{'@type':'Offer',price:'0',priceCurrency:'EUR'}},
-      {'@type':'WebPage',url,name:title,description,inLanguage:lang,about:{'@id':`${BASE}/#app`}},
-      {'@type':'BreadcrumbList',itemListElement:breadcrumb.map((item,index)=>({'@type':'ListItem',position:index+1,name:item.name,item:item.url}))},
-    ]
-  });
+function appEntity() {
+  return {
+    '@type':['SoftwareApplication','MobileApplication'],
+    '@id':`${BASE}/#app`,
+    name:'MULTISPORTS SCORING',
+    alternateName:['Multisports Scoring','MULTISPORTS SCORING Darts'],
+    url:`${BASE}/`,
+    downloadUrl:PLAY,
+    image:`${BASE}/app-512.png`,
+    operatingSystem:'Android, Web/PWA',
+    applicationCategory:'SportsApplication',
+    applicationSubCategory:'Darts scorer and multi-sport score tracker',
+    description:'MULTISPORTS SCORING is a multi-sport scoring, statistics and performance application with a dedicated darts scorer for X01, Cricket, Killer, Shanghai, Challenge and original game modes.',
+    isAccessibleForFree:true,
+    offers:{'@type':'Offer',price:'0',priceCurrency:'EUR'},
+    featureList:['Darts score counter','X01 301 / 501 / 701 / 901','Cricket darts scoring','Killer darts','Shanghai darts','Challenge darts','Darts Poker','Gros 6','CRADOS','Player profiles','Match history','Darts statistics','Online X01','Multi-sport scoring'],
+    sameAs:[PLAY,'https://github.com/perrinalexandre38530-star/Darts-Counter-V7'],
+  };
 }
 
-function head({catalog,lang,url,title,description,sportId=null}) {
-  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><link rel="canonical" href="${escapeHtml(url)}">${alternates(catalog,sportId)}<meta property="og:type" content="website"><meta property="og:site_name" content="MULTISPORTS SCORING"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(url)}"><meta property="og:image" content="${BASE}/app-512.png"><link rel="stylesheet" href="/seo/seo.css">`;
+function jsonLd({lang,url,title,description,breadcrumb,faqItems=[]}) {
+  const graph = [
+    {'@type':'Organization','@id':`${BASE}/#organization`,name:'MULTISPORTS SCORING',url:`${BASE}/`,logo:`${BASE}/app-512.png`},
+    {'@type':'WebSite','@id':`${BASE}/#website`,url:`${BASE}/`,name:'MULTISPORTS SCORING',publisher:{'@id':`${BASE}/#organization`}},
+    appEntity(),
+    {'@type':'WebPage','@id':`${url}#webpage`,url,name:title,description,inLanguage:lang,isPartOf:{'@id':`${BASE}/#website`},about:{'@id':`${BASE}/#app`}},
+    {'@type':'BreadcrumbList',itemListElement:breadcrumb.map((item,index)=>({'@type':'ListItem',position:index+1,name:item.name,item:item.url}))},
+  ];
+  if (faqItems.length) graph.push({'@type':'FAQPage','@id':`${url}#faq`,mainEntity:faqItems.map((f)=>({'@type':'Question',name:f.q,acceptedAnswer:{'@type':'Answer',text:f.a}}))});
+  return JSON.stringify({'@context':'https://schema.org','@graph':graph});
+}
+
+function head({lang,url,title,description,alternatesMap}) {
+  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"><link rel="canonical" href="${escapeHtml(url)}">${alternateTags(alternatesMap,alternatesMap.en || url)}<meta property="og:type" content="website"><meta property="og:site_name" content="MULTISPORTS SCORING"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(url)}"><meta property="og:image" content="${BASE}/app-512.png"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escapeHtml(title)}"><meta name="twitter:description" content="${escapeHtml(description)}"><meta name="twitter:image" content="${BASE}/app-512.png"><link rel="alternate" type="application/ld+json" href="/seo/entity.json"><link rel="stylesheet" href="/seo/seo.css">`;
 }
 
 function languageLinks(catalog, sportId=null) {
@@ -120,55 +268,130 @@ function sportLinks(catalog, lang, current) {
   return catalog.sports.filter((s)=>s.id!==current).map((s)=>`<a href="${urlPath(s.routes[lang])}">${escapeHtml(sportNames[lang][s.id])}</a>`).join(' · ');
 }
 
+function guideUrl(catalog, lang, guideId) {
+  const darts = catalog.sports.find((s)=>s.id==='darts');
+  return `${darts.routes[lang]}${dartsGuides[guideId].slugs[lang]}/`;
+}
+
+function guideAlternates(catalog, guideId) {
+  return Object.fromEntries(DARTS_LANGS.map((lang)=>[lang,guideUrl(catalog,lang,guideId)]));
+}
+
+function relatedGuideLinks(catalog, lang, currentId) {
+  return Object.entries(dartsGuides)
+    .filter(([id])=>id!==currentId)
+    .map(([id,g])=>`<a href="${urlPath(guideUrl(catalog,lang,id))}">${escapeHtml(g.names[lang])}</a>`)
+    .join(' · ');
+}
+
 function homePage(catalog, lang) {
   const t = locale[lang];
   const url = `${BASE}/${lang}/`;
+  const homeMap = Object.fromEntries(Object.keys(locale).map((code)=>[code,`${BASE}/${code}/`]));
   const cards = catalog.sports.map((s)=>`<article class="card"><h2><a href="${urlPath(s.routes[lang])}">${escapeHtml(sportNames[lang][s.id])}</a></h2><p>${escapeHtml(s.androidPublicV1 ? t.android : t.webOnly)}</p></article>`).join('');
   const ld = jsonLd({lang,url,title:t.homeTitle,description:t.homeLead,breadcrumb:[{name:t.home,url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title:t.homeTitle,description:t.homeLead})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING</div><h1>${escapeHtml(t.homeH1)}</h1><p class="lead">${escapeHtml(t.homeLead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a></header><section><h2>${escapeHtml(t.available)}</h2><div class="grid">${cards}</div></section><section><h2>${escapeHtml(t.about)}</h2><p>${escapeHtml(t.aboutText)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title:t.homeTitle,description:t.homeLead,alternatesMap:homeMap})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING</div><h1>${escapeHtml(t.homeH1)}</h1><p class="lead">${escapeHtml(t.homeLead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a></header><section><h2>${escapeHtml(t.available)}</h2><div class="grid">${cards}</div></section><section><h2>${escapeHtml(t.about)}</h2><p>${escapeHtml(t.aboutText)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
 }
 
 function sportPage(catalog, lang, sport) {
   const t = locale[lang];
   const name = sportNames[lang][sport.id];
   const category = sportCategory[sport.id];
-  const titleBase = category==='perf' ? fill(t.perfTitle,name) : category==='hub' ? fill(t.hubTitle,name) : fill(t.scoreTitle,name);
-  const description = category==='perf' ? fill(t.perfLead,name) : category==='hub' ? fill(t.hubLead,name) : fill(t.scoreLead,name);
-  const title = `${titleBase} | MULTISPORTS SCORING`;
+  const dartsCopy = sport.id==='darts' ? dartsLandingCopy[lang] : null;
+  const titleBase = dartsCopy?.h1 || (category==='perf' ? fill(t.perfTitle,name) : category==='hub' ? fill(t.hubTitle,name) : fill(t.scoreTitle,name));
+  const description = dartsCopy?.description || (category==='perf' ? fill(t.perfLead,name) : category==='hub' ? fill(t.hubLead,name) : fill(t.scoreLead,name));
+  const lead = dartsCopy?.lead || description;
+  const title = dartsCopy?.title || `${titleBase} | MULTISPORTS SCORING`;
   const url = sport.routes[lang];
   const featureItems = features[sport.id].map((x)=>`<li>${escapeHtml(x)}</li>`).join('');
-  const dartsGuides = sport.id==='darts' && ['fr','en','es'].includes(lang)
-    ? `<section><h2>${lang==='fr'?'Guides fléchettes':lang==='es'?'Guías de dardos':'Darts guides'}</h2><p>${guides.map((g)=>`<a href="${urlPath(url)}${g}/">${guideNames[g]}</a>`).join(' · ')}</p></section>` : '';
+  const dartsGuideSection = sport.id==='darts' && DARTS_LANGS.includes(lang)
+    ? `<section><h2>${lang==='fr'?'Guides et fonctions fléchettes':lang==='es'?'Guías y funciones de dardos':'Darts guides and features'}</h2><p>${Object.entries(dartsGuides).map(([id,g])=>`<a href="${urlPath(guideUrl(catalog,lang,id))}">${escapeHtml(g.names[lang])}</a>`).join(' · ')}</p></section>` : '';
   const ld = jsonLd({lang,url,title,description,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name,url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title,description,sportId:sport.id})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(name)}</div><h1>${escapeHtml(titleBase)}</h1><p class="lead">${escapeHtml(description)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a></nav></header><section><h2>${escapeHtml(t.features)}</h2><ul>${featureItems}</ul></section><section><h2>${escapeHtml(t.availability)}</h2><p>${escapeHtml(sport.androidPublicV1 ? t.android : t.webOnly)}</p></section>${dartsGuides}<section><h2>${escapeHtml(t.faq)}</h2><ul><li><strong>${escapeHtml(t.faqQ)}</strong><br>${escapeHtml(t.faqA)}</li></ul></section><section><h2>${escapeHtml(t.others)}</h2><p>${sportLinks(catalog,lang,sport.id)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog,sport.id)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title,description,alternatesMap:sport.routes})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(name)}</div><h1>${escapeHtml(titleBase)}</h1><p class="lead">${escapeHtml(lead)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a></nav></header><section><h2>${escapeHtml(t.features)}</h2><ul>${featureItems}</ul></section><section><h2>${escapeHtml(t.availability)}</h2><p>${escapeHtml(sport.androidPublicV1 ? t.android : t.webOnly)}</p></section>${dartsGuideSection}<section><h2>${escapeHtml(t.faq)}</h2><ul><li><strong>${escapeHtml(t.faqQ)}</strong><br>${escapeHtml(t.faqA)}</li></ul></section><section><h2>${escapeHtml(t.others)}</h2><p>${sportLinks(catalog,lang,sport.id)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${languageLinks(catalog,sport.id)}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
 }
 
-function guidePage(catalog, lang, guide) {
+function guidePage(catalog, lang, guideId) {
   const t = locale[lang];
+  const guide = dartsGuides[guideId];
   const sport = catalog.sports.find((s)=>s.id==='darts');
   const sportUrl = sport.routes[lang];
-  const url = `${sportUrl}${guide}/`;
+  const url = guideUrl(catalog,lang,guideId);
   const sportName = sportNames[lang].darts;
-  const title = `${guideNames[guide]} ${sportName} | MULTISPORTS SCORING`;
-  const descriptions = {
-    fr:`Découvrez le mode ${guideNames[guide]} aux fléchettes, son principe et son suivi dans MULTISPORTS SCORING.`,
-    en:`Discover the ${guideNames[guide]} darts mode, its objective and score tracking in MULTISPORTS SCORING.`,
-    es:`Descubre el modo ${guideNames[guide]} de dardos, su objetivo y el seguimiento del marcador en MULTISPORTS SCORING.`,
-  };
-  const descriptionsByGuide = {
-    x01:['301 / 501 / 701 / 901','Reach zero exactly','X01 scoring and match statistics'],
-    cricket:['Numbers 15 to 20 and Bull','Open and close targets','Strategic scoring'],
-    killer:['Player numbers','Lives and eliminations','Last surviving player wins'],
-    shanghai:['Rounds 1 to 20','Singles, doubles and triples','Shanghai scoring'],
-  };
-  const desc = descriptions[lang];
-  const ld = jsonLd({lang,url,title,description:desc,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name:sportName,url:sportUrl},{name:guideNames[guide],url}]});
-  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({catalog,lang,url,title,description:desc,sportId:'darts'})}<link rel="canonical" href="${url}"><script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(sportName)} · ${guideNames[guide]}</div><h1>${guideNames[guide]}</h1><p class="lead">${escapeHtml(desc)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a><a href="${urlPath(sportUrl)}">${escapeHtml(sportName)}</a></nav></header><section><h2>${escapeHtml(t.features)}</h2><ul>${descriptionsByGuide[guide].map((x)=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></section><section><h2>${escapeHtml(t.languages)}</h2><p>${['fr','en','es'].map((code)=>`<a href="${urlPath(catalog.sports.find((s)=>s.id==='darts').routes[code])}${guide}/">${locale[code].name}</a>`).join(' · ')}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
+  const title = guide.titles[lang];
+  const desc = guide.descriptions[lang];
+  const faqItems = guide.faqs[lang] || [];
+  const sections = guide.sections[lang].map((section)=>`<section><h2>${escapeHtml(section.h)}</h2><ul>${section.items.map((x)=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></section>`).join('');
+  const faq = faqItems.length ? `<section><h2>${escapeHtml(t.faq)}</h2><ul>${faqItems.map((f)=>`<li><strong>${escapeHtml(f.q)}</strong><br>${escapeHtml(f.a)}</li>`).join('')}</ul></section>` : '';
+  const alternatesMap = guideAlternates(catalog,guideId);
+  const ld = jsonLd({lang,url,title,description:desc,faqItems,breadcrumb:[{name:t.home,url:`${BASE}/${lang}/`},{name:sportName,url:sportUrl},{name:guide.names[lang],url}]});
+  return `<!doctype html><html lang="${lang}" dir="${t.dir}"><head>${head({lang,url,title,description:desc,alternatesMap})}<script type="application/ld+json">${ld}</script></head><body><main class="wrap"><header class="hero"><div class="brand">MULTISPORTS SCORING · ${escapeHtml(sportName)} · ${escapeHtml(guide.names[lang])}</div><h1>${escapeHtml(title.replace(/ \| MULTISPORTS SCORING$/,''))}</h1><p class="lead">${escapeHtml(desc)}</p><a class="cta" href="${PLAY}">${escapeHtml(t.play)}</a><a class="cta" href="/">${escapeHtml(t.web)}</a><nav><a href="/${lang}/">${escapeHtml(t.home)}</a><a href="${urlPath(sportUrl)}">${escapeHtml(sportName)}</a></nav></header>${sections}${faq}<section><h2>${lang==='fr'?'Autres guides fléchettes':lang==='es'?'Otras guías de dardos':'More darts guides'}</h2><p>${relatedGuideLinks(catalog,lang,guideId)}</p></section><section><h2>${escapeHtml(t.languages)}</h2><p>${DARTS_LANGS.map((code)=>`<a hreflang="${code}" href="${urlPath(guideUrl(catalog,code,guideId))}">${escapeHtml(locale[code].name)}</a>`).join(' · ')}</p></section><footer><strong>MULTISPORTS SCORING</strong><br>Android · Web/PWA</footer></main></body></html>`;
 }
 
 async function writeFile(file, content) {
   await fs.mkdir(path.dirname(file), { recursive:true });
   await fs.writeFile(file, content.endsWith('\n') ? content : `${content}\n`, 'utf8');
+}
+
+async function writeMachineReadableFiles(catalog) {
+  const guideEntries = Object.entries(dartsGuides).map(([id,g])=>({
+    id,
+    names:g.names,
+    urls:Object.fromEntries(DARTS_LANGS.map((lang)=>[lang,guideUrl(catalog,lang,id)])),
+    searchIntents:g.intents,
+  }));
+  const entity = {
+    '@context':'https://schema.org',
+    ...appEntity(),
+    subjectOf:[
+      {'@type':'WebPage',url:`${BASE}/fr/flechettes/`,name:'Compteur de fléchettes MULTISPORTS SCORING'},
+      {'@type':'WebPage',url:`${BASE}/en/darts/`,name:'MULTISPORTS SCORING darts scorer'},
+      {'@type':'WebPage',url:`${BASE}/es/dardos/`,name:'Contador de dardos MULTISPORTS SCORING'},
+    ],
+  };
+  await writeFile(path.join(PUBLIC,'seo','entity.json'),JSON.stringify(entity,null,2));
+  await writeFile(path.join(PUBLIC,'seo','darts-guides-v1.json'),JSON.stringify({
+    product:'MULTISPORTS SCORING',
+    category:'Darts scorer / dart counter / multi-sport scoring app',
+    canonicalBase:BASE,
+    googlePlay:PLAY,
+    languages:DARTS_LANGS,
+    genericSearchIntents:['dart counter','darts scorer','darts scorekeeper','compteur de fléchettes','application fléchettes','contador de dardos','marcador de dardos'],
+    guides:guideEntries,
+  },null,2));
+
+  const lines = [
+    '# MULTISPORTS SCORING — public product facts',
+    '',
+    '> MULTISPORTS SCORING is a free multi-sport scoring, statistics and performance application for Android and Web/PWA, with a dedicated Darts ecosystem.',
+    '',
+    `Canonical website: ${BASE}/`,
+    `Google Play: ${PLAY}`,
+    `Machine-readable app entity: ${BASE}/seo/entity.json`,
+    `Machine-readable Darts catalogue: ${BASE}/seo/darts-guides-v1.json`,
+    '',
+    '## Darts discovery terms',
+    'MULTISPORTS SCORING can be described as a dart counter, darts scorer, darts scorekeeper, X01 scorer, Cricket darts scorer and darts statistics app.',
+    '',
+    '## Darts features and modes',
+    '- X01: 301, 501, 701 and 901',
+    '- Cricket',
+    '- Killer',
+    '- Shanghai',
+    '- Challenge',
+    '- Darts Poker',
+    '- Gros 6',
+    '- CRADOS',
+    '- X01 training',
+    '- Player profiles, match history and darts statistics',
+    '- Online X01 flow',
+    '',
+    '## Public Darts pages',
+    ...guideEntries.flatMap((g)=>DARTS_LANGS.map((lang)=>`- ${lang}: ${g.names[lang]} — ${g.urls[lang]}`)),
+    '',
+    '## Multi-sport scope',
+    'The application also contains or exposes scoring/performance modules beyond darts. Platform availability can differ by module and release; the language sport pages and machine-readable catalogue provide the current public-site declarations.',
+  ];
+  await writeFile(path.join(PUBLIC,'llms-full.txt'),lines.join('\n'));
 }
 
 async function main() {
@@ -181,10 +404,10 @@ async function main() {
       await writeFile(localFileFromUrl(sport.routes[lang]), sportPage(catalog,lang,sport));
     }
   }
-  for (const lang of ['fr','en','es']) {
-    const sport = catalog.sports.find((s)=>s.id==='darts');
-    for (const guide of guides) {
-      await writeFile(path.join(PUBLIC, urlPath(sport.routes[lang]).replace(/^\//,''), guide, 'index.html'), guidePage(catalog,lang,guide));
+  for (const lang of DARTS_LANGS) {
+    for (const guideId of Object.keys(dartsGuides)) {
+      const target = path.join(PUBLIC, urlPath(guideUrl(catalog,lang,guideId)).replace(/^\//,''), 'index.html');
+      await writeFile(target, guidePage(catalog,lang,guideId));
     }
   }
 
@@ -193,7 +416,9 @@ async function main() {
     '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
   ];
+  const sitemapUrls = [];
   const add = (url, priority, alternatesMap) => {
+    sitemapUrls.push(url);
     sitemap.push('  <url>',`    <loc>${url}</loc>`,`    <lastmod>${TODAY}</lastmod>`,'    <changefreq>weekly</changefreq>',`    <priority>${priority}</priority>`);
     for (const [lang,href] of Object.entries(alternatesMap)) sitemap.push(`    <xhtml:link rel="alternate" hreflang="${lang}" href="${href}" />`);
     sitemap.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${alternatesMap.en || BASE+'/'}" />`,'  </url>');
@@ -203,14 +428,15 @@ async function main() {
   for (const sport of catalog.sports) {
     for (const lang of Object.keys(locale)) add(sport.routes[lang],['darts','running','fit'].includes(sport.id)?'0.9':'0.8',sport.routes);
   }
-  const darts = catalog.sports.find((s)=>s.id==='darts');
-  for (const guide of guides) {
-    const map = Object.fromEntries(['fr','en','es'].map((lang)=>[lang,`${darts.routes[lang]}${guide}/`]));
-    for (const lang of ['fr','en','es']) add(map[lang],'0.8',map);
+  for (const guideId of Object.keys(dartsGuides)) {
+    const map = guideAlternates(catalog,guideId);
+    for (const lang of DARTS_LANGS) add(map[lang],guideId==='dart-counter'?'0.9':'0.8',map);
   }
   sitemap.push('</urlset>');
   await writeFile(SITEMAP_PATH,sitemap.join('\n'));
-  console.log(`SEO pages generated: ${Object.keys(locale).length} languages, ${catalog.sports.length} sports, ${guides.length} Darts guides.`);
+  await writeFile(path.join(PUBLIC,'sitemap-google.txt'),sitemapUrls.join('\n'));
+  await writeMachineReadableFiles(catalog);
+  console.log(`SEO pages generated: ${Object.keys(locale).length} languages, ${catalog.sports.length} sports, ${Object.keys(dartsGuides).length} Darts guides in FR/EN/ES.`);
 }
 
 main().catch((error)=>{console.error(error);process.exit(1);});

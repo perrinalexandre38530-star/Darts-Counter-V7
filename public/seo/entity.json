@@ -1,0 +1,63 @@
+{
+  "@context": "https://schema.org",
+  "@type": [
+    "SoftwareApplication",
+    "MobileApplication"
+  ],
+  "@id": "https://multisports-scoring.pages.dev/#app",
+  "name": "MULTISPORTS SCORING",
+  "alternateName": [
+    "Multisports Scoring",
+    "MULTISPORTS SCORING Darts"
+  ],
+  "url": "https://multisports-scoring.pages.dev/",
+  "downloadUrl": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+  "image": "https://multisports-scoring.pages.dev/app-512.png",
+  "operatingSystem": "Android, Web/PWA",
+  "applicationCategory": "SportsApplication",
+  "applicationSubCategory": "Darts scorer and multi-sport score tracker",
+  "description": "MULTISPORTS SCORING is a multi-sport scoring, statistics and performance application with a dedicated darts scorer for X01, Cricket, Killer, Shanghai, Challenge and original game modes.",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "EUR"
+  },
+  "featureList": [
+    "Darts score counter",
+    "X01 301 / 501 / 701 / 901",
+    "Cricket darts scoring",
+    "Killer darts",
+    "Shanghai darts",
+    "Challenge darts",
+    "Darts Poker",
+    "Gros 6",
+    "CRADOS",
+    "Player profiles",
+    "Match history",
+    "Darts statistics",
+    "Online X01",
+    "Multi-sport scoring"
+  ],
+  "sameAs": [
+    "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+    "https://github.com/perrinalexandre38530-star/Darts-Counter-V7"
+  ],
+  "subjectOf": [
+    {
+      "@type": "WebPage",
+      "url": "https://multisports-scoring.pages.dev/fr/flechettes/",
+      "name": "Compteur de fléchettes MULTISPORTS SCORING"
+    },
+    {
+      "@type": "WebPage",
+      "url": "https://multisports-scoring.pages.dev/en/darts/",
+      "name": "MULTISPORTS SCORING darts scorer"
+    },
+    {
+      "@type": "WebPage",
+      "url": "https://multisports-scoring.pages.dev/es/dardos/",
+      "name": "Contador de dardos MULTISPORTS SCORING"
+    }
+  ]
+}

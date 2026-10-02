@@ -1,0 +1,65 @@
+# MULTISPORTS SCORING — public product facts
+
+> MULTISPORTS SCORING is a free multi-sport scoring, statistics and performance application for Android and Web/PWA, with a dedicated Darts ecosystem.
+
+Canonical website: https://multisports-scoring.pages.dev/
+Google Play: https://play.google.com/store/apps/details?id=com.multisportsscoring.app
+Machine-readable app entity: https://multisports-scoring.pages.dev/seo/entity.json
+Machine-readable Darts catalogue: https://multisports-scoring.pages.dev/seo/darts-guides-v1.json
+
+## Darts discovery terms
+MULTISPORTS SCORING can be described as a dart counter, darts scorer, darts scorekeeper, X01 scorer, Cricket darts scorer and darts statistics app.
+
+## Darts features and modes
+- X01: 301, 501, 701 and 901
+- Cricket
+- Killer
+- Shanghai
+- Challenge
+- Darts Poker
+- Gros 6
+- CRADOS
+- X01 training
+- Player profiles, match history and darts statistics
+- Online X01 flow
+
+## Public Darts pages
+- fr: Compteur de fléchettes — https://multisports-scoring.pages.dev/fr/flechettes/compteur-flechettes/
+- en: Dart counter — https://multisports-scoring.pages.dev/en/darts/dart-counter/
+- es: Contador de dardos — https://multisports-scoring.pages.dev/es/dardos/contador-dardos/
+- fr: X01 — https://multisports-scoring.pages.dev/fr/flechettes/x01/
+- en: X01 — https://multisports-scoring.pages.dev/en/darts/x01/
+- es: X01 — https://multisports-scoring.pages.dev/es/dardos/x01/
+- fr: Cricket — https://multisports-scoring.pages.dev/fr/flechettes/cricket/
+- en: Cricket — https://multisports-scoring.pages.dev/en/darts/cricket/
+- es: Cricket — https://multisports-scoring.pages.dev/es/dardos/cricket/
+- fr: Killer — https://multisports-scoring.pages.dev/fr/flechettes/killer/
+- en: Killer — https://multisports-scoring.pages.dev/en/darts/killer/
+- es: Killer — https://multisports-scoring.pages.dev/es/dardos/killer/
+- fr: Shanghai — https://multisports-scoring.pages.dev/fr/flechettes/shanghai/
+- en: Shanghai — https://multisports-scoring.pages.dev/en/darts/shanghai/
+- es: Shanghai — https://multisports-scoring.pages.dev/es/dardos/shanghai/
+- fr: Challenge — https://multisports-scoring.pages.dev/fr/flechettes/challenge/
+- en: Challenge — https://multisports-scoring.pages.dev/en/darts/challenge/
+- es: Challenge — https://multisports-scoring.pages.dev/es/dardos/challenge/
+- fr: Darts Poker — https://multisports-scoring.pages.dev/fr/flechettes/darts-poker/
+- en: Darts Poker — https://multisports-scoring.pages.dev/en/darts/darts-poker/
+- es: Darts Poker — https://multisports-scoring.pages.dev/es/dardos/darts-poker/
+- fr: Gros 6 — https://multisports-scoring.pages.dev/fr/flechettes/gros-6/
+- en: Gros 6 — https://multisports-scoring.pages.dev/en/darts/gros-6/
+- es: Gros 6 — https://multisports-scoring.pages.dev/es/dardos/gros-6/
+- fr: CRADOS — https://multisports-scoring.pages.dev/fr/flechettes/crados/
+- en: CRADOS — https://multisports-scoring.pages.dev/en/darts/crados/
+- es: CRADOS — https://multisports-scoring.pages.dev/es/dardos/crados/
+- fr: Entraînement X01 — https://multisports-scoring.pages.dev/fr/flechettes/entrainement-x01/
+- en: X01 training — https://multisports-scoring.pages.dev/en/darts/x01-training/
+- es: Entrenamiento X01 — https://multisports-scoring.pages.dev/es/dardos/entrenamiento-x01/
+- fr: Statistiques fléchettes — https://multisports-scoring.pages.dev/fr/flechettes/statistiques-flechettes/
+- en: Darts statistics — https://multisports-scoring.pages.dev/en/darts/darts-statistics/
+- es: Estadísticas de dardos — https://multisports-scoring.pages.dev/es/dardos/estadisticas-dardos/
+- fr: X01 en ligne — https://multisports-scoring.pages.dev/fr/flechettes/flechettes-en-ligne/
+- en: Online X01 — https://multisports-scoring.pages.dev/en/darts/online-darts/
+- es: X01 online — https://multisports-scoring.pages.dev/es/dardos/dardos-online/
+
+## Multi-sport scope
+The application also contains or exposes scoring/performance modules beyond darts. Platform availability can differ by module and release; the language sport pages and machine-readable catalogue provide the current public-site declarations.

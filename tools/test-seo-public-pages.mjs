@@ -4,14 +4,20 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const SITEMAP = path.join(PUBLIC_DIR, 'sitemap.xml');
+const SITEMAP_TXT = path.join(PUBLIC_DIR, 'sitemap-google.txt');
 const LLMS = path.join(PUBLIC_DIR, 'llms.txt');
+const LLMS_FULL = path.join(PUBLIC_DIR, 'llms-full.txt');
 const SEO_CSS = path.join(PUBLIC_DIR, 'seo', 'seo.css');
+const ENTITY = path.join(PUBLIC_DIR, 'seo', 'entity.json');
+const DARTS_CATALOG = path.join(PUBLIC_DIR, 'seo', 'darts-guides-v1.json');
 const SITEMAP_XSL = path.join(PUBLIC_DIR, 'sitemap.xsl');
+const ROBOTS = path.join(PUBLIC_DIR, 'robots.txt');
+const ROOT_INDEX = path.join(ROOT, 'index.html');
 const BASE = 'https://multisports-scoring.pages.dev';
 
 function localPathForUrl(url) {
   const normalized = url.replace(BASE, '');
-  if (!normalized || normalized === '/') return path.join(ROOT, 'index.html');
+  if (!normalized || normalized === '/') return ROOT_INDEX;
   if (normalized.endsWith('/')) return path.join(PUBLIC_DIR, normalized.slice(1), 'index.html');
   return path.join(PUBLIC_DIR, normalized.slice(1));
 }
@@ -20,11 +26,16 @@ async function exists(file) {
   try { await fs.access(file); return true; } catch { return false; }
 }
 
+function count(haystack, needle) {
+  return haystack.split(needle).length - 1;
+}
+
 async function main() {
   const errors = [];
   const warnings = [];
 
-  for (const file of [SITEMAP, LLMS, SEO_CSS, SITEMAP_XSL]) {
+  const required = [SITEMAP, SITEMAP_TXT, LLMS, LLMS_FULL, SEO_CSS, SITEMAP_XSL, ENTITY, DARTS_CATALOG, ROBOTS, ROOT_INDEX];
+  for (const file of required) {
     if (!await exists(file)) errors.push(`Missing required SEO file: ${path.relative(ROOT, file)}`);
   }
 
@@ -32,8 +43,17 @@ async function main() {
   if (!xml.includes('xml-stylesheet')) warnings.push('Sitemap is missing the XML stylesheet instruction.');
   const urls = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1].trim());
   if (!urls.length) errors.push('No <loc> URLs were found in public/sitemap.xml.');
+  if (urls.length < 278) errors.push(`Expected at least 278 sitemap URLs after Darts authority V5, found ${urls.length}.`);
+  if (new Set(urls).size !== urls.length) errors.push('Duplicate <loc> URLs found in sitemap.xml.');
+
+  const txtUrls = (await fs.readFile(SITEMAP_TXT, 'utf8')).split(/\r?\n/).map((x)=>x.trim()).filter(Boolean);
+  if (txtUrls.length !== urls.length) errors.push(`sitemap-google.txt has ${txtUrls.length} URLs but sitemap.xml has ${urls.length}.`);
+  const missingInTxt = urls.filter((url)=>!txtUrls.includes(url));
+  if (missingInTxt.length) errors.push(`sitemap-google.txt is missing ${missingInTxt.length} sitemap URLs.`);
 
   let localChecked = 0;
+  let cssLinkedCount = 0;
+  let canonicalErrors = 0;
   for (const url of urls) {
     if (!url.startsWith(BASE)) continue;
     const local = localPathForUrl(url);
@@ -42,32 +62,67 @@ async function main() {
       continue;
     }
     localChecked += 1;
-  }
-
-  const htmlFiles = [];
-  async function walk(dir) {
-    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-      const target = path.join(dir, entry.name);
-      if (entry.isDirectory()) await walk(target);
-      else if (entry.name === 'index.html') htmlFiles.push(target);
-    }
-  }
-  await walk(PUBLIC_DIR);
-
-  let cssLinkedCount = 0;
-  for (const file of htmlFiles) {
-    const source = await fs.readFile(file, 'utf8');
+    const source = await fs.readFile(local, 'utf8');
     if (source.includes('/seo/seo.css')) cssLinkedCount += 1;
+    const canonicalCount = count(source, '<link rel="canonical"');
+    if (canonicalCount !== 1) {
+      canonicalErrors += 1;
+      errors.push(`Expected exactly one canonical link in ${path.relative(ROOT, local)}, found ${canonicalCount}.`);
+    }
+    if (!source.includes('SoftwareApplication')) errors.push(`Missing SoftwareApplication JSON-LD in ${path.relative(ROOT, local)}.`);
   }
 
-  console.log('SEO public pages audit');
-  console.log('----------------------');
+  const expectedDartsUrls = [
+    `${BASE}/fr/flechettes/compteur-flechettes/`,
+    `${BASE}/en/darts/dart-counter/`,
+    `${BASE}/es/dardos/contador-dardos/`,
+    `${BASE}/fr/flechettes/challenge/`,
+    `${BASE}/en/darts/darts-statistics/`,
+    `${BASE}/es/dardos/dardos-online/`,
+  ];
+  for (const url of expectedDartsUrls) {
+    if (!urls.includes(url)) errors.push(`Missing Darts discovery URL from sitemap: ${url}`);
+  }
+
+  const frCounter = await fs.readFile(path.join(PUBLIC_DIR,'fr','flechettes','compteur-flechettes','index.html'),'utf8');
+  const enCounter = await fs.readFile(path.join(PUBLIC_DIR,'en','darts','dart-counter','index.html'),'utf8');
+  const esCounter = await fs.readFile(path.join(PUBLIC_DIR,'es','dardos','contador-dardos','index.html'),'utf8');
+  if (!/compteur de fléchettes/i.test(frCounter)) errors.push('FR dart-counter page does not contain the target query phrase.');
+  if (!/dart counter/i.test(enCounter)) errors.push('EN dart-counter page does not contain the target query phrase.');
+  if (!/contador de dardos/i.test(esCounter)) errors.push('ES dart-counter page does not contain the target query phrase.');
+  for (const [name,source] of [['FR counter',frCounter],['EN counter',enCounter],['ES counter',esCounter]]) {
+    if (!source.includes(`${BASE}/fr/flechettes/compteur-flechettes/`)) errors.push(`${name} is missing FR guide hreflang.`);
+    if (!source.includes(`${BASE}/en/darts/dart-counter/`)) errors.push(`${name} is missing EN guide hreflang.`);
+    if (!source.includes(`${BASE}/es/dardos/contador-dardos/`)) errors.push(`${name} is missing ES guide hreflang.`);
+  }
+
+  const robots = await fs.readFile(ROBOTS,'utf8');
+  if (!/User-agent:\s*OAI-SearchBot[\s\S]*?Allow:\s*\//i.test(robots)) errors.push('robots.txt must explicitly allow OAI-SearchBot.');
+  if (!/User-agent:\s*GPTBot[\s\S]*?Disallow:\s*\//i.test(robots)) warnings.push('GPTBot is not explicitly disallowed; verify this is intentional.');
+
+  const entity = JSON.parse(await fs.readFile(ENTITY,'utf8'));
+  const types = Array.isArray(entity['@type']) ? entity['@type'] : [entity['@type']];
+  if (!types.includes('SoftwareApplication') || !types.includes('MobileApplication')) errors.push('entity.json must co-type SoftwareApplication and MobileApplication.');
+  if (entity.applicationCategory !== 'SportsApplication') errors.push('entity.json must use SportsApplication.');
+  if (entity?.offers?.price !== '0') errors.push('entity.json must declare the current free offer with price 0.');
+
+  const dartsCatalog = JSON.parse(await fs.readFile(DARTS_CATALOG,'utf8'));
+  if (!Array.isArray(dartsCatalog.guides) || dartsCatalog.guides.length < 12) errors.push('darts-guides-v1.json must expose at least 12 Darts discovery guides.');
+
+  const rootIndex = await fs.readFile(ROOT_INDEX,'utf8');
+  if (!/compteur de fléchettes|dart counter/i.test(rootIndex)) errors.push('Root index metadata should explicitly identify the Darts counter capability.');
+
+  console.log('SEO / AI public discovery audit');
+  console.log('--------------------------------');
   console.log(`Sitemap URLs found      : ${urls.length}`);
+  console.log(`Text sitemap URLs       : ${txtUrls.length}`);
   console.log(`Local sitemap pages ok  : ${localChecked}`);
-  console.log(`Public index.html pages : ${htmlFiles.length}`);
   console.log(`Pages using seo.css     : ${cssLinkedCount}`);
+  console.log(`Darts guides exposed    : ${dartsCatalog.guides?.length || 0}`);
+  console.log(`Canonical errors        : ${canonicalErrors}`);
   console.log(`llms.txt present        : ${await exists(LLMS) ? 'yes' : 'no'}`);
-  console.log(`sitemap.xsl present     : ${await exists(SITEMAP_XSL) ? 'yes' : 'no'}`);
+  console.log(`llms-full.txt present   : ${await exists(LLMS_FULL) ? 'yes' : 'no'}`);
+  console.log(`entity.json present     : ${await exists(ENTITY) ? 'yes' : 'no'}`);
 
   if (warnings.length) {
     console.log('\nWarnings');
@@ -81,7 +136,7 @@ async function main() {
     return;
   }
 
-  console.log('\nOK: SEO public pages look structurally consistent.');
+  console.log('\nOK: SEO / AI public discovery files are structurally consistent.');
 }
 
 main().catch((error) => {

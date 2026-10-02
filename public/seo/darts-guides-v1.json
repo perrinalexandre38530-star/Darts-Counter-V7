@@ -1,0 +1,241 @@
+{
+  "product": "MULTISPORTS SCORING",
+  "category": "Darts scorer / dart counter / multi-sport scoring app",
+  "canonicalBase": "https://multisports-scoring.pages.dev",
+  "googlePlay": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+  "languages": [
+    "fr",
+    "en",
+    "es"
+  ],
+  "genericSearchIntents": [
+    "dart counter",
+    "darts scorer",
+    "darts scorekeeper",
+    "compteur de fléchettes",
+    "application fléchettes",
+    "contador de dardos",
+    "marcador de dardos"
+  ],
+  "guides": [
+    {
+      "id": "dart-counter",
+      "names": {
+        "fr": "Compteur de fléchettes",
+        "en": "Dart counter",
+        "es": "Contador de dardos"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/compteur-flechettes/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/dart-counter/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/contador-dardos/"
+      },
+      "searchIntents": [
+        "dart counter",
+        "darts scorer",
+        "darts scorekeeper",
+        "compteur de fléchettes",
+        "application fléchettes",
+        "contador de dardos"
+      ]
+    },
+    {
+      "id": "x01",
+      "names": {
+        "fr": "X01",
+        "en": "X01",
+        "es": "X01"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/x01/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/x01/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/x01/"
+      },
+      "searchIntents": [
+        "501 darts scorer",
+        "X01 scorer",
+        "301 darts app",
+        "compteur 501",
+        "marcador 501"
+      ]
+    },
+    {
+      "id": "cricket",
+      "names": {
+        "fr": "Cricket",
+        "en": "Cricket",
+        "es": "Cricket"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/cricket/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/cricket/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/cricket/"
+      },
+      "searchIntents": [
+        "cricket darts scorer",
+        "compteur cricket fléchettes",
+        "marcador cricket dardos"
+      ]
+    },
+    {
+      "id": "killer",
+      "names": {
+        "fr": "Killer",
+        "en": "Killer",
+        "es": "Killer"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/killer/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/killer/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/killer/"
+      },
+      "searchIntents": [
+        "killer darts app",
+        "killer darts scorer",
+        "compteur killer fléchettes"
+      ]
+    },
+    {
+      "id": "shanghai",
+      "names": {
+        "fr": "Shanghai",
+        "en": "Shanghai",
+        "es": "Shanghai"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/shanghai/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/shanghai/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/shanghai/"
+      },
+      "searchIntents": [
+        "shanghai darts scorer",
+        "compteur shanghai fléchettes"
+      ]
+    },
+    {
+      "id": "challenge",
+      "names": {
+        "fr": "Challenge",
+        "en": "Challenge",
+        "es": "Challenge"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/challenge/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/challenge/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/challenge/"
+      },
+      "searchIntents": [
+        "darts accuracy training",
+        "challenge darts app",
+        "entrainement précision fléchettes"
+      ]
+    },
+    {
+      "id": "darts-poker",
+      "names": {
+        "fr": "Darts Poker",
+        "en": "Darts Poker",
+        "es": "Darts Poker"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/darts-poker/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/darts-poker/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/darts-poker/"
+      },
+      "searchIntents": [
+        "darts poker game",
+        "poker darts app",
+        "mode poker fléchettes"
+      ]
+    },
+    {
+      "id": "gros-6",
+      "names": {
+        "fr": "Gros 6",
+        "en": "Gros 6",
+        "es": "Gros 6"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/gros-6/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/gros-6/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/gros-6/"
+      },
+      "searchIntents": [
+        "gros 6 darts",
+        "jeu gros 6 fléchettes"
+      ]
+    },
+    {
+      "id": "crados",
+      "names": {
+        "fr": "CRADOS",
+        "en": "CRADOS",
+        "es": "CRADOS"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/crados/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/crados/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/crados/"
+      },
+      "searchIntents": [
+        "crados darts",
+        "arcade darts game",
+        "jeu fléchettes original"
+      ]
+    },
+    {
+      "id": "training-x01",
+      "names": {
+        "fr": "Entraînement X01",
+        "en": "X01 training",
+        "es": "Entrenamiento X01"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/entrainement-x01/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/x01-training/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/entrenamiento-x01/"
+      },
+      "searchIntents": [
+        "darts training app",
+        "x01 training",
+        "application entrainement fléchettes"
+      ]
+    },
+    {
+      "id": "statistics",
+      "names": {
+        "fr": "Statistiques fléchettes",
+        "en": "Darts statistics",
+        "es": "Estadísticas de dardos"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/statistiques-flechettes/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/darts-statistics/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/estadisticas-dardos/"
+      },
+      "searchIntents": [
+        "darts statistics app",
+        "darts stats tracker",
+        "statistiques fléchettes"
+      ]
+    },
+    {
+      "id": "online-x01",
+      "names": {
+        "fr": "X01 en ligne",
+        "en": "Online X01",
+        "es": "X01 online"
+      },
+      "urls": {
+        "fr": "https://multisports-scoring.pages.dev/fr/flechettes/flechettes-en-ligne/",
+        "en": "https://multisports-scoring.pages.dev/en/darts/online-darts/",
+        "es": "https://multisports-scoring.pages.dev/es/dardos/dardos-online/"
+      },
+      "searchIntents": [
+        "online darts scorer",
+        "play darts online x01",
+        "fléchettes en ligne x01"
+      ]
+    }
+  ]
+}

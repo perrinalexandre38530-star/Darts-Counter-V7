@@ -1,40 +1,27 @@
 # MULTISPORTS SCORING
 
-> MULTISPORTS SCORING is a multi-sport scoring, statistics and performance application for Android and Web/PWA.
+> MULTISPORTS SCORING is a free multi-sport scoring, statistics and performance application for Android and Web/PWA, with a dedicated Darts scorer / dart counter ecosystem.
 
 Canonical website: https://multisports-scoring.pages.dev/
 Google Play: https://play.google.com/store/apps/details?id=com.multisportsscoring.app
 Sitemap: https://multisports-scoring.pages.dev/sitemap.xml
-Machine-readable catalogue: https://multisports-scoring.pages.dev/seo/catalog-v2.json
+Full public product facts: https://multisports-scoring.pages.dev/llms-full.txt
+Machine-readable app entity: https://multisports-scoring.pages.dev/seo/entity.json
+Machine-readable Darts catalogue: https://multisports-scoring.pages.dev/seo/darts-guides-v1.json
+Machine-readable multi-sport catalogue: https://multisports-scoring.pages.dev/seo/catalog-v2.json
 
-## Public Android availability
-Darts, Baby-foot, Pétanque, Running, FIT PERF.
+## Darts / dart counter
+MULTISPORTS SCORING can be described as a dart counter, darts scorer, darts scorekeeper, X01 scorer, Cricket scorer and darts statistics app.
 
-## Additional enabled Web/PWA catalogue modules
-Football, Ping-pong, Mölkky, Dice Game, E-Sports.
+Main Darts pages:
+- Français: https://multisports-scoring.pages.dev/fr/flechettes/
+- English: https://multisports-scoring.pages.dev/en/darts/
+- Español: https://multisports-scoring.pages.dev/es/dardos/
+
+Key Darts modes and functions include X01 (301 / 501 / 701 / 901), Cricket, Killer, Shanghai, Challenge, Darts Poker, Gros 6, CRADOS, X01 training, player profiles, match history, statistics and an online X01 flow.
+
+## Multi-sport scope
+The public website exposes sport-specific landing pages in 22 languages. Platform availability can differ by module and release; use the public sport pages and catalogue for the current declarations.
 
 ## Languages
-- fr: Français — https://multisports-scoring.pages.dev/fr/
-- en: English — https://multisports-scoring.pages.dev/en/
-- es: Español — https://multisports-scoring.pages.dev/es/
-- de: Deutsch — https://multisports-scoring.pages.dev/de/
-- it: Italiano — https://multisports-scoring.pages.dev/it/
-- pt: Português — https://multisports-scoring.pages.dev/pt/
-- nl: Nederlands — https://multisports-scoring.pages.dev/nl/
-- ru: Русский — https://multisports-scoring.pages.dev/ru/
-- zh: 中文 — https://multisports-scoring.pages.dev/zh/
-- ja: 日本語 — https://multisports-scoring.pages.dev/ja/
-- ar: العربية — https://multisports-scoring.pages.dev/ar/
-- hi: हिन्दी — https://multisports-scoring.pages.dev/hi/
-- tr: Türkçe — https://multisports-scoring.pages.dev/tr/
-- da: Dansk — https://multisports-scoring.pages.dev/da/
-- no: Norsk — https://multisports-scoring.pages.dev/no/
-- sv: Svenska — https://multisports-scoring.pages.dev/sv/
-- is: Íslenska — https://multisports-scoring.pages.dev/is/
-- pl: Polski — https://multisports-scoring.pages.dev/pl/
-- ro: Română — https://multisports-scoring.pages.dev/ro/
-- sr: Srpski — https://multisports-scoring.pages.dev/sr/
-- hr: Hrvatski — https://multisports-scoring.pages.dev/hr/
-- cs: Čeština — https://multisports-scoring.pages.dev/cs/
-
-Use the sitemap for the complete public URL matrix.
+fr, en, es, de, it, pt, nl, ru, zh, ja, ar, hi, tr, da, no, sv, is, pl, ro, sr, hr, cs.
