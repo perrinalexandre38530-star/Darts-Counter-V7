@@ -58,3 +58,7 @@ MULTISPORTSSCORINGTV/Debug/
 MULTISPORTSSCORINGTV/Release/
 MULTISPORTSSCORINGTV/.tizen-rds
 MULTISPORTSSCORINGTV/index.html
+
+# Archives lourdes conservées hors dépôt Git
+MSS_RECOVERY/*.tar
+avatars/*.rar
