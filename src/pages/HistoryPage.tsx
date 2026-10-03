@@ -478,22 +478,95 @@ function challengeHistoryMatchMode(e: SavedEntry): "solo" | "multi" | null {
   const anyE: any = e as any;
   const raw = String(
     anyE?.game?.matchMode ??
+    anyE?.matchMode ??
     anyE?.summary?.matchMode ??
+    anyE?.summary?.config?.matchMode ??
     anyE?.payload?.config?.matchMode ??
+    anyE?.payload?.matchMode ??
     anyE?.payload?.summary?.matchMode ??
     anyE?.decoded?.config?.matchMode ??
+    anyE?.decoded?.matchMode ??
+    anyE?.decoded?.summary?.matchMode ??
     ""
   ).toLowerCase().trim();
   if (raw === "solo") return "solo";
-  if (["duel", "multi", "teams", "team", "equipes", "équipe", "équipes"].includes(raw)) return "multi";
-  const players = safeArray(anyE?.players);
+  if (["duel", "multi", "teams", "team", "equipes", "equipe", "équipe", "équipes"].includes(raw)) return "multi";
+
+  // Compatibilité historique : les anciennes sauvegardes Challenge ne mettaient
+  // pas toujours matchMode au même niveau. On déduit alors le format à partir
+  // de toutes les listes de participants connues, pas seulement e.players.
+  const candidates = [
+    anyE?.players,
+    anyE?.summary?.players,
+    anyE?.summary?.rankings,
+    anyE?.summary?.perPlayer,
+    anyE?.payload?.players,
+    anyE?.payload?.finalPlayers,
+    anyE?.payload?.summary?.players,
+    anyE?.payload?.summary?.rankings,
+    anyE?.payload?.summary?.perPlayer,
+    anyE?.decoded?.players,
+    anyE?.decoded?.finalPlayers,
+    anyE?.decoded?.summary?.players,
+    anyE?.decoded?.summary?.rankings,
+    anyE?.decoded?.summary?.perPlayer,
+  ].map(safeArray).filter((rows) => rows.length > 0);
+  const players = candidates.sort((a, b) => b.length - a.length)[0] || [];
   if (players.length === 1) return "solo";
   if (players.length > 1) return "multi";
   return null;
 }
 
 function isChallengeHistoryEntry(e: SavedEntry): boolean {
-  return collectEntryModeTokens(e).some((token) => token === "challenge" || token.includes("challenge"));
+  const anyE: any = e as any;
+  const explicit = [
+    anyE?.kind, anyE?.mode, anyE?.game?.mode, anyE?.game?.kind,
+    anyE?.summary?.kind, anyE?.summary?.mode, anyE?.summary?.title,
+    anyE?.payload?.kind, anyE?.payload?.mode, anyE?.payload?.summary?.kind,
+    anyE?.payload?.summary?.mode, anyE?.payload?.summary?.title,
+    anyE?.decoded?.kind, anyE?.decoded?.mode, anyE?.decoded?.summary?.kind,
+    anyE?.decoded?.summary?.mode, anyE?.decoded?.summary?.title,
+  ].map(normalizeToken);
+  return explicit.some((token) => token === "challenge" || token.includes("challenge")) ||
+    collectEntryModeTokens(e).some((token) => token === "challenge" || token.includes("challenge"));
+}
+
+function challengeHistoryEventCount(e: SavedEntry): number {
+  const anyE: any = e as any;
+  const arrays = [
+    anyE?.resume?.state?.log,
+    anyE?.resume?.state?.entries,
+    anyE?.resume?.livePayload?.entries,
+    anyE?.resume?.livePayload?.events,
+    anyE?.payload?.entries,
+    anyE?.payload?.events,
+    anyE?.payload?.state?.log,
+    anyE?.decoded?.entries,
+    anyE?.decoded?.events,
+    anyE?.decoded?.state?.log,
+  ];
+  return arrays.reduce((max, value) => Math.max(max, safeArray(value).length), 0);
+}
+
+function challengeHistoryHasStarted(e: SavedEntry): boolean {
+  if (!isChallengeHistoryEntry(e)) return true;
+  const anyE: any = e as any;
+  if (challengeHistoryEventCount(e) > 0) return true;
+  const darts = [
+    anyE?.summary?.darts,
+    anyE?.summary?.dartsThrown,
+    anyE?.payload?.summary?.darts,
+    anyE?.payload?.summary?.dartsThrown,
+    ...safeArray(anyE?.summary?.perPlayer).flatMap((p: any) => [p?.darts, p?.dartsThrown]),
+    ...safeArray(anyE?.summary?.rankings).flatMap((p: any) => [p?.darts, p?.dartsThrown]),
+    ...safeArray(anyE?.payload?.players).flatMap((p: any) => [p?.darts, p?.dartsThrown]),
+    ...safeArray(anyE?.payload?.finalPlayers).flatMap((p: any) => [p?.darts, p?.dartsThrown]),
+  ].some((v: any) => Number(v) > 0);
+  if (darts) return true;
+  // Une sauvegarde explicitement terminée est forcément une partie réellement jouée,
+  // même pour les anciens enregistrements qui ne conservaient pas le journal complet.
+  return String(anyE?.status || anyE?.summary?.status || anyE?.payload?.status || anyE?.payload?.summary?.status || "").toLowerCase() === "finished" ||
+    anyE?.summary?.finished === true || anyE?.payload?.summary?.finished === true || !!anyE?.finishedAt;
 }
 
 function inferGameFilterKey(e: SavedEntry, sport: SportId): string {
@@ -671,8 +744,9 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
   // CHALLENGE possède toujours un status explicite depuis sa première fléchette.
   // Ses rankings/stats existent aussi pendant le live et ne sont donc JAMAIS une preuve de fin.
   if (isChallengeHistoryEntry(e)) {
-    const challengeStatus = String((e as any)?.status || (e as any)?.summary?.status || (e as any)?.payload?.status || (e as any)?.payload?.summary?.status || "").toLowerCase();
-    const challengeFinished = (e as any)?.summary?.finished === true || (e as any)?.payload?.summary?.finished === true;
+    const anyE: any = e as any;
+    const challengeStatus = String(anyE?.status || anyE?.summary?.status || anyE?.payload?.status || anyE?.payload?.summary?.status || anyE?.decoded?.status || anyE?.decoded?.summary?.status || "").toLowerCase();
+    const challengeFinished = anyE?.summary?.finished === true || anyE?.payload?.summary?.finished === true || anyE?.decoded?.summary?.finished === true || !!anyE?.finishedAt;
     if (challengeStatus === "finished" || challengeFinished) return "finished";
     return "in_progress";
   }
@@ -1951,7 +2025,7 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
   if (isTerritoriesHistoryEntry(e)) {
     return <TerritoriesHistoryScoreBlock e={e} theme={theme} />;
   }
-  if (normalizeToken(baseMode(e)) === "challenge" || inferGameFilterKey(e, "darts") === "challenge") {
+  if (isChallengeHistoryEntry(e)) {
     return <ChallengeHistoryScoreBlock e={e} theme={theme} />;
   }
   if (isBabyFootEntry(e)) {
@@ -4331,7 +4405,7 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
   }
 
 
-  const allItems = useMemo(() => dedupe(items), [items]);
+  const allItems = useMemo(() => dedupe(items).filter((e) => !isChallengeHistoryEntry(e) || challengeHistoryHasStarted(e)), [items]);
 
   const { done, running } = useMemo(() => {
     const fins = allItems.filter((e) => statusOf(e) === "finished");
@@ -4544,7 +4618,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     const inferredMode = inferGameFilterKey(e, "darts");
 
     // CHALLENGE : reprise exacte à n'importe quel moment (config + journal de touches + joueur/tour actif).
-    if ((normalizeToken(baseMode(e)) === "challenge" || normalizeToken(inferredMode) === "challenge") && statusOf(e) === "in_progress") {
+    if (isChallengeHistoryEntry(e) && statusOf(e) === "in_progress") {
       let recForResume:any=e;
       try { const full=await History.get(String(resumeId||e.id||'')); if(full) recForResume={...(e as any),...(full as any),resume:(full as any)?.resume||(e as any)?.resume}; } catch(error){ console.warn('[HistoryPage] Challenge resume hydration failed',error); }
       const payload:any=(recForResume as any)?.decoded||((recForResume as any)?.payload&&typeof (recForResume as any).payload==='object'?(recForResume as any).payload:null)||{};

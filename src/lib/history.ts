@@ -2224,8 +2224,8 @@ function isAndroidHistoryRuntime(): boolean {
 }
 
 let __historyDecodeLane: Promise<void> = Promise.resolve();
-async function runHistoryDecodeLane<T>(job: () => T): Promise<T> {
-  if (!isAndroidHistoryRuntime()) return job();
+async function runHistoryDecodeLane<T>(job: () => T | Promise<T>): Promise<T> {
+  if (!isAndroidHistoryRuntime()) return await job();
 
   const previous = __historyDecodeLane;
   let release!: () => void;
@@ -2233,8 +2233,8 @@ async function runHistoryDecodeLane<T>(job: () => T): Promise<T> {
 
   try { await previous.catch(() => {}); } catch {}
 
-  // Important: yield BEFORE every heavy decode. A Promise.all of 8 History.get()
-  // calls used to execute 8 synchronous LZ/JSON decodes back-to-back in one turn.
+  // Rend la main AVANT chaque decode. La file globale garantit qu'un seul
+  // payload lourd est traite a la fois sur Android.
   await new Promise<void>((resolve) => {
     try {
       if (typeof requestAnimationFrame === "function") {
@@ -2246,9 +2246,158 @@ async function runHistoryDecodeLane<T>(job: () => T): Promise<T> {
   });
 
   try {
-    return job();
+    return await job();
   } finally {
     release();
+  }
+}
+
+type HistoryWorkerDecodeResult = {
+  ok: boolean;
+  value: any | null;
+  stage: string;
+  decompressMs: number;
+  parseMs: number;
+  totalMs: number;
+  error?: string;
+};
+
+let __historyDecodeWorker: Worker | null = null;
+let __historyDecodeWorkerSeq = 0;
+const __historyDecodeWorkerPending = new Map<
+  number,
+  {
+    resolve: (value: HistoryWorkerDecodeResult) => void;
+    reject: (reason?: any) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+
+function destroyHistoryDecodeWorker(reason?: any) {
+  try { __historyDecodeWorker?.terminate(); } catch {}
+  __historyDecodeWorker = null;
+  for (const [requestId, pending] of __historyDecodeWorkerPending) {
+    clearTimeout(pending.timer);
+    pending.reject(reason || new Error(`history decode worker reset (${requestId})`));
+  }
+  __historyDecodeWorkerPending.clear();
+}
+
+function getHistoryDecodeWorker(): Worker | null {
+  if (__historyDecodeWorker) return __historyDecodeWorker;
+  if (typeof Worker === "undefined") return null;
+
+  try {
+    const worker = new Worker(new URL("./historyPayloadDecode.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent<any>) => {
+      const requestId = Number(event?.data?.id);
+      const pending = __historyDecodeWorkerPending.get(requestId);
+      if (!pending) return;
+      __historyDecodeWorkerPending.delete(requestId);
+      clearTimeout(pending.timer);
+      pending.resolve({
+        ok: !!event?.data?.ok,
+        value: event?.data?.value ?? null,
+        stage: String(event?.data?.stage || "worker"),
+        decompressMs: Number(event?.data?.decompressMs || 0),
+        parseMs: Number(event?.data?.parseMs || 0),
+        totalMs: Number(event?.data?.totalMs || 0),
+        ...(event?.data?.error ? { error: String(event.data.error) } : {}),
+      });
+    };
+    worker.onerror = (event: ErrorEvent) => {
+      destroyHistoryDecodeWorker(new Error(event?.message || "history decode worker error"));
+    };
+    __historyDecodeWorker = worker;
+    return worker;
+  } catch {
+    __historyDecodeWorker = null;
+    return null;
+  }
+}
+
+async function decodePayloadCompressedOffMainThread(
+  payloadCompressed: any,
+  ctx?: { id?: string; stage?: string }
+): Promise<any | null> {
+  if (!payloadCompressed || typeof payloadCompressed !== "string") return null;
+
+  // Sur desktop, garder le chemin synchrone existant. Sur Android, le decode
+  // LZ + JSON.parse est sorti du thread UI via Web Worker.
+  if (!isAndroidHistoryRuntime()) {
+    return decodePayloadCompressedBestEffort(payloadCompressed, ctx);
+  }
+
+  const worker = getHistoryDecodeWorker();
+  if (!worker) {
+    const syncMarker = beginFreezeOperation("history.payload.decode.syncFallback", {
+      id: String(ctx?.id || ""),
+      compressedChars: payloadCompressed.length,
+    });
+    try {
+      return decodePayloadCompressedBestEffort(payloadCompressed, ctx);
+    } finally {
+      endFreezeOperation(syncMarker);
+    }
+  }
+
+  const requestId = ++__historyDecodeWorkerSeq;
+  recordFreezeWatchEvent("history-payload-worker-submit", {
+    id: String(ctx?.id || ""),
+    requestId,
+    compressedChars: payloadCompressed.length,
+  });
+
+  try {
+    const result = await new Promise<HistoryWorkerDecodeResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        __historyDecodeWorkerPending.delete(requestId);
+        reject(new Error("history decode worker timeout"));
+        destroyHistoryDecodeWorker(new Error("history decode worker timeout"));
+      }, 20_000);
+      __historyDecodeWorkerPending.set(requestId, { resolve, reject, timer });
+      try {
+        worker.postMessage({ id: requestId, payload: payloadCompressed });
+      } catch (error) {
+        __historyDecodeWorkerPending.delete(requestId);
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+
+    recordFreezeWatchEvent("history-payload-worker-complete", {
+      id: String(ctx?.id || ""),
+      requestId,
+      ok: result.ok,
+      stage: result.stage,
+      decompressMs: Math.round(result.decompressMs),
+      parseMs: Math.round(result.parseMs),
+      totalMs: Math.round(result.totalMs),
+      compressedChars: payloadCompressed.length,
+    });
+    return result.ok ? result.value : null;
+  } catch (error: any) {
+    recordFreezeWatchEvent("history-payload-worker-failed", {
+      id: String(ctx?.id || ""),
+      requestId,
+      error: String(error?.message || error || "worker failed"),
+    });
+
+    // Important : ne pas relancer un gros decode synchrone apres un timeout du
+    // worker, sinon on recree exactement le freeze que ce patch supprime. Le
+    // header.resume prendra le relais pour les parties reprenables.
+    if (payloadCompressed.length > 220_000) return null;
+
+    const syncMarker = beginFreezeOperation("history.payload.decode.syncFallback", {
+      id: String(ctx?.id || ""),
+      compressedChars: payloadCompressed.length,
+      reason: "worker-failed-small-payload",
+    });
+    try {
+      return decodePayloadCompressedBestEffort(payloadCompressed, ctx);
+    } finally {
+      endFreezeOperation(syncMarker);
+    }
   }
 }
 
@@ -2654,24 +2803,17 @@ async function getUncached(id: string): Promise<SavedMatch | null> {
     const header = { ...(rec.header || {}) };
     const detail = rec.detail || null;
 
-    const __decodeFreezeOp = beginFreezeOperation("history.payload.decode", {
-      id: String(id),
-      compressedChars: typeof detail?.payloadCompressed === "string" ? detail.payloadCompressed.length : 0,
-      kind: String(header?.kind || ""),
-    });
     let payload: any | null = null;
-    try {
-      payload = await runHistoryDecodeLane(() =>
-        decodePayloadCompressedBestEffort(detail?.payloadCompressed, {
-          id: String(id),
-          stage: "get",
-        })
-      );
-    } finally {
-      endFreezeOperation(__decodeFreezeOp, {
-        decoded: !!payload,
-      });
-    }
+    // V7 P0 : la file est globale et le decode LZ + JSON.parse s'execute dans
+    // un Web Worker sur Android. Le marqueur "decode" n'est plus ouvert pendant
+    // l'attente en file, afin que le freezer ne confonde pas une requete en
+    // attente avec le travail qui bloque reellement le thread UI.
+    payload = await runHistoryDecodeLane(() =>
+      decodePayloadCompressedOffMainThread(detail?.payloadCompressed, {
+        id: String(id),
+        stage: "get",
+      })
+    );
 
     if (!payload && typeof detail?.payloadCompressed === "string") {
       const t = String(detail.payloadCompressed || "").trim();
