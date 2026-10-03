@@ -165,6 +165,15 @@ function isUsableSavedEntry(v: any): boolean {
   try {
     const id = String(v?.id ?? v?.matchId ?? v?.resumeId ?? "").trim();
     if (!id) return false;
+    // Une configuration CHALLENGE ouverte puis quittée sans aucune fléchette
+    // n'est pas une partie et ne doit apparaître dans aucun onglet historique.
+    const modeBlob = [v?.kind, v?.mode, v?.game?.mode, v?.summary?.mode, v?.payload?.mode, v?.payload?.kind]
+      .map((x: any) => String(x || "").toLowerCase()).join("|");
+    if (modeBlob.includes("challenge")) {
+      const played = [v?.payload?.entries, v?.payload?.events, v?.resume?.state?.log, v?.resume?.state?.entries, v?.payload?.state?.log, v?.payload?.state?.entries]
+        .some((rows: any) => Array.isArray(rows) && rows.length > 0);
+      if (!played) return false;
+    }
     return true;
   } catch {
     return false;
@@ -358,7 +367,8 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "x01", label: "X01", aliases: ["x01", "leg", "301", "501", "701", "901"] },
     { key: "cricket", label: "Cricket", aliases: ["cricket", "cricket_cut_throat", "cut_throat", "cut-throat", "enculette", "vache"] },
     { key: "killer", label: "Killer", aliases: ["killer"] },
-    { key: "challenge", label: "CHALLENGE", aliases: ["challenge"] },
+    { key: "challenge_solo", label: "CHALLENGE SOLO", aliases: ["challenge_solo"] },
+    { key: "challenge_multi", label: "CHALLENGE DUEL / MULTI", aliases: ["challenge_multi"] },
     { key: "shanghai", label: "Shanghai", aliases: ["shanghai"] },
     { key: "golf", label: "Golf", aliases: ["golf"] },
     { key: "territories", label: "Territories", aliases: ["territories", "territoires", "departement", "département"] },
@@ -464,8 +474,31 @@ function collectEntryModeTokens(e: SavedEntry): string[] {
   return [...new Set(out)];
 }
 
+function challengeHistoryMatchMode(e: SavedEntry): "solo" | "multi" | null {
+  const anyE: any = e as any;
+  const raw = String(
+    anyE?.game?.matchMode ??
+    anyE?.summary?.matchMode ??
+    anyE?.payload?.config?.matchMode ??
+    anyE?.payload?.summary?.matchMode ??
+    anyE?.decoded?.config?.matchMode ??
+    ""
+  ).toLowerCase().trim();
+  if (raw === "solo") return "solo";
+  if (["duel", "multi", "teams", "team", "equipes", "équipe", "équipes"].includes(raw)) return "multi";
+  const players = safeArray(anyE?.players);
+  if (players.length === 1) return "solo";
+  if (players.length > 1) return "multi";
+  return null;
+}
+
+function isChallengeHistoryEntry(e: SavedEntry): boolean {
+  return collectEntryModeTokens(e).some((token) => token === "challenge" || token.includes("challenge"));
+}
+
 function inferGameFilterKey(e: SavedEntry, sport: SportId): string {
   if (sport === "darts") {
+    if (isChallengeHistoryEntry(e)) return challengeHistoryMatchMode(e) === "solo" ? "challenge_solo" : "challenge_multi";
     if (isKillerEntry(e)) return "killer";
     if (isShanghaiEntry(e)) return "shanghai";
     if (isBatardEntry(e)) return "batard";
@@ -635,6 +668,15 @@ function getKnownPlayers(store: Store, entries: SavedEntry[]): { id: string; lab
 }
 
 function statusOf(e: SavedEntry): "finished" | "in_progress" {
+  // CHALLENGE possède toujours un status explicite depuis sa première fléchette.
+  // Ses rankings/stats existent aussi pendant le live et ne sont donc JAMAIS une preuve de fin.
+  if (isChallengeHistoryEntry(e)) {
+    const challengeStatus = String((e as any)?.status || (e as any)?.summary?.status || (e as any)?.payload?.status || (e as any)?.payload?.summary?.status || "").toLowerCase();
+    const challengeFinished = (e as any)?.summary?.finished === true || (e as any)?.payload?.summary?.finished === true;
+    if (challengeStatus === "finished" || challengeFinished) return "finished";
+    return "in_progress";
+  }
+
   // 1️⃣ Status explicite : un checkpoint de reprise doit rester prioritaire.
   // Certains modes (dont CRADOS) transportent déjà un bloc stats pendant la
   // partie ; ce bloc ne doit jamais suffire à reclasser la ligne en « terminée ».
@@ -1870,7 +1912,7 @@ function ChallengeHistoryScoreBlock({e,theme}:{e:SavedEntry;theme:any}){
   return {id:String(row?.id||row?.playerId||index),name:historyScoreName(e,row)||getName(row)||`Joueur ${index+1}`,score:Number(row?.score??row?.points??0)||0,darts,accuracy,bestStreak:Number(row?.bestStreak??row?.stats?.bestStreak??row?.special?.bestStreak??0)||0,bestVisit:Number(row?.bestVisit??row?.stats?.bestVisit??row?.special?.bestVisit??0)||0,bestPos:Number(bestPos?.position||0),bestPosAccuracy:Number(bestPos?.accuracy||0),positions:positions.map((pos:any)=>({position:Number(pos?.position||0),accuracy:Number(pos?.accuracy||0)})),S:Number(hitSummary?.S||0),D:Number(hitSummary?.D||0),T:Number(hitSummary?.T||0)};
  }).sort((a:any,b:any)=>b.score-a.score);
  if(!rows.length){const score=summarizeScore(e);return score?<>{score}</>:null}
- return <div style={{display:'grid',gap:5,minWidth:0}}><div style={{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap'}}>{rows.slice(0,5).map((row:any,index:number)=><React.Fragment key={row.id}>{index?<span style={{color:'rgba(255,255,255,.34)'}}>•</span>:null}<span style={{color:historyRankColor(index+1),fontWeight:1000}}>{index+1}.</span><span style={{color:'rgba(255,255,255,.93)',fontWeight:900}}>{row.name}</span><span style={{color:theme.primary,fontWeight:1000}}>{row.score} pts</span></React.Fragment>)}</div><div style={{color:'rgba(255,255,255,.62)',fontSize:9.5,fontWeight:850,lineHeight:1.35}}>{rows.slice(0,4).map((row:any)=>`${row.name}: ${row.accuracy.toFixed(1)}% • suite ${row.bestStreak} • best volée ${row.bestVisit} • meilleure #${row.bestPos||'—'} ${row.bestPos?row.bestPosAccuracy.toFixed(1):'0.0'}% • F1/F2/F3 ${row.positions.map((p:any)=>p.accuracy.toFixed(1)+'%').join('/')} • S/D/T ${row.S}/${row.D}/${row.T}`).join('  |  ')}</div></div>;
+ const solo=challengeHistoryMatchMode(e)==='solo'; return <div style={{display:'grid',gap:5,minWidth:0}}><div style={{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap'}}>{rows.slice(0,5).map((row:any,index:number)=><React.Fragment key={row.id}>{index?<span style={{color:'rgba(255,255,255,.34)'}}>•</span>:null}{!solo?<span style={{color:historyRankColor(index+1),fontWeight:1000}}>{index+1}.</span>:null}<span style={{color:'rgba(255,255,255,.93)',fontWeight:900}}>{row.name}</span><span style={{color:theme.primary,fontWeight:1000}}>{row.score} pts</span></React.Fragment>)}</div><div style={{color:'rgba(255,255,255,.62)',fontSize:9.5,fontWeight:850,lineHeight:1.35}}>{rows.slice(0,4).map((row:any)=>`${row.name}: ${row.accuracy.toFixed(1)}% • suite ${row.bestStreak} • best volée ${row.bestVisit} • meilleure #${row.bestPos||'—'} ${row.bestPos?row.bestPosAccuracy.toFixed(1):'0.0'}% • F1/F2/F3 ${row.positions.map((p:any)=>p.accuracy.toFixed(1)+'%').join('/')} • S/D/T ${row.S}/${row.D}/${row.T}`).join('  |  ')}</div></div>;
 }
 
 function historyRankColor(rank: number): string {
@@ -2563,6 +2605,8 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
 }
 
 function deriveHistoryWinnerName(e: SavedEntry): string {
+  // Une performance SOLO n'est ni une victoire ni une défaite : pas de trophée/vainqueur.
+  if (isChallengeHistoryEntry(e) && challengeHistoryMatchMode(e) === "solo") return "";
   if (isDartsFirefighterHistoryEntry(e)) {
     const d = dartsFirefighterHistoryData(e);
     return d.won ? "BRIGADE D’INTERVENTION" : "INCENDIE";

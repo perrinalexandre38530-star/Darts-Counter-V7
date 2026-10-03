@@ -423,9 +423,10 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   const finalScores=Object.fromEntries(rankings.map(row=>[row.id,row.score]));
   const scoreLine=rankings.map(row=>`${row.name} ${row.score}`).join(' • ');
   const resumeState={log:[...log],entries:[...log],activePlayerIndex:activeIndex,turn,updatedAt:now};
-  const summary={title:'CHALLENGE',kind:'challenge',mode:'challenge',status,finished:status==='finished',winnerId,scoreLine,finalScores,rankings,perPlayer:rankings,target:cfg.target,objective:targetLabel(cfg.target),rule:cfg.rule,visits:cfg.visits};
+  const matchMode=String(cfg.matchMode||'solo').toLowerCase();
+  const summary={title:'CHALLENGE',kind:'challenge',mode:'challenge',matchMode,status,finished:status==='finished',winnerId,scoreLine,finalScores,rankings,perPlayer:rankings,target:cfg.target,objective:targetLabel(cfg.target),rule:cfg.rule,visits:cfg.visits};
   const payload={kind:'challenge',mode:'challenge',sport:'darts',status,config:cfg,state:resumeState,entries:[...log],events:[...log],players:rankings,finalPlayers:rankings,summary:{...summary},stats:{kind:'challenge',mode:'challenge',players:rankings.map(row=>({id:row.id,name:row.name,score:row.score,points:row.score,best:row.score,bestScore:row.score,darts:row.darts,dartsThrown:row.darts,hitCount:row.hitCount,misses:row.misses,bestStreak:row.bestStreak,bestVisit:row.bestVisit,avgVisit:row.avgVisit,successRate:row.successRate,hitSummary:row.hitSummary,positionStats:row.positionStats,visitScores:row.visitScores,cumulativeScores:row.cumulativeScores,favNumberHits:row.favNumberHits,special:{score:row.score,points:row.score,best:row.score,bestScore:row.score,bestStreak:row.bestStreak,bestVisit:row.bestVisit,avgVisit:row.avgVisit,successRate:row.successRate,positionStats:row.positionStats,targetHits:row.hitCount,misses:row.misses,target:cfg.target,rule:cfg.rule}})),global:{matches:1,target:cfg.target,rule:cfg.rule,visits:cfg.visits}}};
-  return {id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:'challenge',mode:'challenge',sport:'darts',status,createdAt:createdAtRef.current,updatedAt:now,finishedAt:status==='finished'?now:undefined,winnerId,players:safeParticipants.map(p=>({id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||''})),game:{mode:'challenge',target:cfg.target,objective:targetLabel(cfg.target),rule:cfg.rule,visits:cfg.visits,matchMode:cfg.matchMode||'solo'},summary,payload,resume:status==='in_progress'?{config:cfg,state:resumeState,livePayload:payload,summary}:undefined};
+  return {id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:'challenge',mode:'challenge',sport:'darts',status,createdAt:createdAtRef.current,updatedAt:now,finishedAt:status==='finished'?now:undefined,winnerId,players:safeParticipants.map(p=>({id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||''})),game:{mode:'challenge',target:cfg.target,objective:targetLabel(cfg.target),rule:cfg.rule,visits:cfg.visits,matchMode},summary,payload,resume:status==='in_progress'?{config:cfg,state:resumeState,livePayload:payload,summary}:undefined};
  },[activeIndex,cfg,log,safeParticipants,turn]);
 
  React.useEffect(()=>{
@@ -517,7 +518,9 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
      const profile:any=p?.profile||{};
      const pi:any=profile?.privateInfo||profile?.private_info||{};
      return [pi?.onlineUserId,pi?.online_user_id,profile?.onlineUserId,profile?.userId].some(v=>String(v||'')===uid);
-    }) || (safeParticipants.length===1?safeParticipants[0]:null);
+    });
+    // ONLINE = comptes utilisateurs uniquement. Un profil purement local ne doit
+    // jamais être publié, même lorsqu'il est le seul participant d'un Challenge SOLO.
     if(!linked) return;
     const stats=participantStats(linked);
     const profile:any=linked.profile||{};
