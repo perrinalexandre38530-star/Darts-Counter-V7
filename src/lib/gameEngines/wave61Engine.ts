@@ -1406,9 +1406,15 @@ function doubleDownContractMatches(d: GameDart, target: Wave61Target): boolean {
 
 function nextOpponentId(state: Wave61State, playerId: string): string | null {
   const start = state.players.findIndex((p) => p.id === playerId);
+  const ownTeam = state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] : null;
   for (let i = 1; i < state.players.length; i++) {
     const p = state.players[(start + i) % state.players.length];
-    if (p && !state.eliminated[p.id]) return p.id;
+    if (!p || state.eliminated[p.id]) continue;
+    // In Teams, an "opponent" must really belong to the other camp. This is
+    // especially important for GREEN VS RED where a wrong-colour dart helps
+    // the opposition and must never advance a team-mate.
+    if (ownTeam && state.config.teamByPlayer?.[p.id] === ownTeam) continue;
+    return p.id;
   }
   return null;
 }
@@ -1492,6 +1498,12 @@ function processGreenVsRed(state: Wave61State, playerId: string, darts: GameDart
         state.special.greenRedStepByPlayer[oppId] = Math.min(finishSteps, oppStep + wrongColorAdvance);
         state.progress[oppId] = state.special.greenRedStepByPlayer[oppId];
         events.push(`⚠️ Mauvaise couleur · +${wrongColorAdvance} à ${state.players.find((p) => p.id === oppId)?.name || "l'adversaire"}`);
+        // A gifted step can itself cross the finish line. Resolve it now instead
+        // of leaving the match alive until that opponent's next turn.
+        if (state.special.greenRedStepByPlayer[oppId] >= finishSteps) {
+          finishWith(state, oppId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[oppId] || null : null);
+          break;
+        }
       } else if (oppId) events.push("⚠️ Mauvaise couleur · bonus adverse désactivé");
     }
   }

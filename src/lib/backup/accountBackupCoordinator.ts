@@ -957,7 +957,7 @@ export async function restoreLatestBackupForSignedInUser(
       // Ainsi l'utilisateur voit précisément ce qui n'existe que sur cet appareil
       // et ce qui n'existe que dans la sauvegarde distante.
       emitAccountSync(uid, "compare-details", 88, "Analyse détaillée des différences…", { source: latest.source });
-      const remoteForDiff = await withSyncTimeout(latest.load(), 30_000, "Lecture détaillée de la sauvegarde").catch(() => null);
+      const remoteForDiff = await withSyncTimeout(latest.load(), 6_000, "Lecture détaillée de la sauvegarde").catch(() => null);
       const localStoreForDiff = await withSyncTimeout(loadStore<any>().catch(() => null), 3_000, "Lecture détaillée locale").catch(() => null);
       conflict.details = await buildDetailedDifferences(remoteForDiff, localStoreForDiff).catch(() => []);
       // Etat terminal obligatoire : 88 % ne doit jamais être le dernier événement.

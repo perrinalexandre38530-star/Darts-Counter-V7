@@ -1,5 +1,10 @@
 import { supabase } from './supabaseClient';
 import { History } from './history';
+import {
+  fetchChallengeLeaderboardCloud,
+  fetchChallengeLeaderboardDetailCloud,
+  submitChallengeScoreCloud,
+} from './challengeCloudflareApi';
 
 export type ChallengeLeaderboardObjective = {
   target: string;
@@ -277,6 +282,21 @@ export async function submitChallengeBestScore(input: ChallengeLeaderboardSubmit
   const userId = await getChallengeOnlineUserId();
   if (!userId) return { ok: false, skipped: 'AUTH_REQUIRED' };
 
+  // Cloudflare D1/R2 devient la source principale. Tant que le binding D1 n'est
+  // pas activé sur Pages, on retombe proprement sur l'ancien backend Supabase.
+  try {
+    const cloud = await submitChallengeScoreCloud(input);
+    if (cloud.available && cloud.data?.ok) {
+      return {
+        ok: true,
+        improved: Boolean(cloud.data?.improved),
+        bestScore: Number(cloud.data?.bestScore ?? input.score),
+      };
+    }
+  } catch (error) {
+    console.warn('[challenge] Cloudflare submit failed, Supabase fallback enabled', error);
+  }
+
   try {
     await supabase.rpc('ms_touch_public_profile', {
       p_display_name: input.displayName || null,
@@ -360,6 +380,23 @@ export async function fetchChallengeLeaderboard(
   const scopeKey = scope.type === 'team' && clean(scope.teamKey) ? `official:${clean(scope.teamKey)}` : 'public';
   const groups: ChallengeLeaderboardRow[][] = [];
 
+  let cloudAvailable = false;
+  try {
+    const cloud = await fetchChallengeLeaderboardCloud(input, Math.max(1, Math.min(100, int(limit, 100))), scope);
+    if (cloud.available) {
+      cloudAvailable = true;
+      const payload: any = cloud.data || {};
+      groups.push(normalizeLeaderboardRows(Array.isArray(payload?.rows) ? payload.rows : []));
+    }
+  } catch (error) {
+    console.warn('[challenge] Cloudflare leaderboard read failed, Supabase fallback enabled', error);
+  }
+
+  // Une fois D1 actif, la Pages Function effectue elle-même une migration lazy
+  // du Top Supabase vers D1 quand une configuration n'y existe pas encore.
+  // On évite donc de relire PostgreSQL à chaque ouverture du classement.
+  if (cloudAvailable) return mergeChallengeLeaderboardRows(groups, limit);
+
   const v3 = await supabase.rpc('ms_challenge_leaderboard_v3', {
     p_objective_key: challengeObjectiveKey(input),
     p_scope_key: scopeKey,
@@ -412,6 +449,34 @@ export async function fetchChallengeLeaderboardDetail(
   scope: ChallengeLeaderboardScope = { type: 'public' },
 ): Promise<ChallengeLeaderboardDetail | null> {
   if (!clean(userId)) return null;
+
+  try {
+    const cloud = await fetchChallengeLeaderboardDetailCloud(input, clean(userId), scope);
+    if (cloud.available) {
+      const payload: any = cloud.data || {};
+      const row: any = payload?.detail || null;
+      if (!row) return null;
+      return {
+        userId: clean(row?.userId || row?.user_id),
+        displayName: clean(row?.displayName || row?.display_name, 'Joueur'),
+        avatarUrl: row?.avatarUrl || row?.avatar_url || null,
+        countryCode: row?.countryCode || row?.country_code || null,
+        score: Number(row?.score || 0),
+        darts: Number(row?.darts || 0),
+        bestStreak: Number(row?.bestStreak || row?.best_streak || 0),
+        accuracy: Number(row?.accuracy || 0),
+        matchId: row?.matchId || row?.match_id || null,
+        target: clean(row?.target, input.target),
+        rule: clean(row?.rule, input.rule),
+        visits: Math.max(1, int(row?.visits, input.visits)),
+        updatedAt: row?.updatedAt || row?.updated_at || null,
+        stats: row?.stats || row?.statsPayload || row?.stats_payload || {},
+      };
+    }
+  } catch (error) {
+    console.warn('[challenge] Cloudflare detail read failed, Supabase fallback enabled', error);
+  }
+
   const scopeKey = scope.type === 'team' && clean(scope.teamKey) ? `official:${clean(scope.teamKey)}` : 'public';
   const { data, error } = await supabase.rpc('ms_challenge_score_detail_v3', {
     p_objective_key: challengeObjectiveKey(input),

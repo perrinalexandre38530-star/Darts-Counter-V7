@@ -445,19 +445,20 @@ export default function ProfileAvatar(props: Props) {
   const rawImg = React.useMemo(() => {
     // Une URL explicite distante/packagée doit rester prioritaire (bots, assets, amis liés).
     if (propDataUrl && propLooksRemote) return propDataUrl;
-    // V42 FIX IDENTITÉ : le cache rapide ne doit JAMAIS écraser l'avatar porté par
-    // le profil courant. Les clés de cache historiques sont basées sur profileId et
-    // peuvent survivre à une restauration/changement de compte ; leur donner priorité
-    // pouvait donc afficher le portrait d'un ancien état sur HOME.
+    // IMPORTANT ANTI-FLASH : le cache rapide est alimenté au moment où l'avatar est
+    // réellement validé. Au boot, le store React peut encore contenir pendant quelques
+    // centaines de ms un ancien avatarDataUrl avant hydrateStoreUserMedia(). Dans ce cas,
+    // attendre la comparaison avatarUpdatedAt faisait peindre l'ancien portrait puis le bon.
+    // Pour les médaillons UI, toute miniature locale disponible gagne dès le PREMIER paint ;
+    // l'hydratation de fond remplacera ensuite la donnée si une révision plus récente existe.
+    if (size <= 180 && cachedThumb) return cachedThumb;
     if (propDataUrl) return propDataUrl;
     if (avatarDataUrl) return avatarDataUrl;
     if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
     if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
     if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
-    // Cache uniquement en secours, et seulement si sa révision n'est pas plus vieille.
-    if (size <= 180 && cachedThumbFresh) return cachedThumb;
     return null;
-  }, [propDataUrl, propLooksRemote, size, cachedThumb, cachedThumbFresh, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+  }, [propDataUrl, propLooksRemote, size, cachedThumb, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   // -------------------------------------------------------------------------
   // FAILOVER AVATAR : NAS -> cache local -> Cloudflare R2

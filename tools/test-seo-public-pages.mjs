@@ -10,6 +10,7 @@ const LLMS_FULL = path.join(PUBLIC_DIR, 'llms-full.txt');
 const SEO_CSS = path.join(PUBLIC_DIR, 'seo', 'seo.css');
 const ENTITY = path.join(PUBLIC_DIR, 'seo', 'entity.json');
 const DARTS_CATALOG = path.join(PUBLIC_DIR, 'seo', 'darts-guides-v1.json');
+const MULTISPORT_CATALOG = path.join(PUBLIC_DIR, 'seo', 'catalog-v2.json');
 const DISCOVERY_V6 = path.join(PUBLIC_DIR, 'seo', 'discovery-v6.json');
 const INDEXNOW_KEY = 'e68390561d47e281d51d8f33b20b1ec4';
 const INDEXNOW_KEY_FILE = path.join(PUBLIC_DIR, `${INDEXNOW_KEY}.txt`);
@@ -18,7 +19,8 @@ const SITEMAP_XSL = path.join(PUBLIC_DIR, 'sitemap.xsl');
 const ROBOTS = path.join(PUBLIC_DIR, 'robots.txt');
 const ROOT_INDEX = path.join(ROOT, 'index.html');
 const BASE = 'https://multisports-scoring.pages.dev';
-const MAX_SEO_TITLE_LENGTH = 60;
+const MAX_SEO_TITLE_LENGTH = 55;
+const EXPECTED_LANGUAGES = ['fr','en','es','de','it','pt','nl','ru','zh','ja','ar','hi','tr','da','no','sv','is','pl','ro','sr','hr','cs'];
 
 function localPathForUrl(url) {
   const normalized = url.replace(BASE, '');
@@ -39,9 +41,25 @@ async function main() {
   const errors = [];
   const warnings = [];
 
-  const required = [SITEMAP, SITEMAP_TXT, LLMS, LLMS_FULL, SEO_CSS, SITEMAP_XSL, ENTITY, DARTS_CATALOG, DISCOVERY_V6, INDEXNOW_KEY_FILE, INDEXNOW_SCRIPT, ROBOTS, ROOT_INDEX];
+  const required = [SITEMAP, SITEMAP_TXT, LLMS, LLMS_FULL, SEO_CSS, SITEMAP_XSL, ENTITY, DARTS_CATALOG, MULTISPORT_CATALOG, DISCOVERY_V6, INDEXNOW_KEY_FILE, INDEXNOW_SCRIPT, ROBOTS, ROOT_INDEX];
   for (const file of required) {
     if (!await exists(file)) errors.push(`Missing required SEO file: ${path.relative(ROOT, file)}`);
+  }
+
+  const multisportCatalog = JSON.parse(await fs.readFile(MULTISPORT_CATALOG, 'utf8'));
+  const catalogLanguages = Array.isArray(multisportCatalog.languages) ? multisportCatalog.languages : [];
+  if (catalogLanguages.length !== EXPECTED_LANGUAGES.length || EXPECTED_LANGUAGES.some((lang)=>!catalogLanguages.includes(lang))) {
+    errors.push(`catalog-v2.json must expose all ${EXPECTED_LANGUAGES.length} supported languages.`);
+  }
+  if (!Array.isArray(multisportCatalog.sports) || multisportCatalog.sports.length !== 10) {
+    errors.push('catalog-v2.json must expose the 10 public sport modules used by the SEO generator.');
+  }
+  for (const lang of EXPECTED_LANGUAGES) {
+    const homeFile = path.join(PUBLIC_DIR, lang, 'index.html');
+    if (!await exists(homeFile)) errors.push(`Missing language homepage: public/${lang}/index.html`);
+    for (const sport of multisportCatalog.sports || []) {
+      if (!sport.routes?.[lang]) errors.push(`Missing ${lang} route for sport ${sport.id} in catalog-v2.json.`);
+    }
   }
 
   const xml = await fs.readFile(SITEMAP, 'utf8');
@@ -188,6 +206,7 @@ async function main() {
 
   console.log('SEO / AI public discovery audit');
   console.log('--------------------------------');
+  console.log(`Supported languages    : ${EXPECTED_LANGUAGES.length}`);
   console.log(`Sitemap URLs found      : ${urls.length}`);
   console.log(`Text sitemap URLs       : ${txtUrls.length}`);
   console.log(`Local sitemap pages ok  : ${localChecked}`);

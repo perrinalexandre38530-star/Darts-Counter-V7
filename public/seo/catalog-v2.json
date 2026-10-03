@@ -1,103 +1,35 @@
 {
+  "version": "v2",
   "product": "MULTISPORTS SCORING",
   "canonicalBase": "https://multisports-scoring.pages.dev",
-  "googlePlay": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
-  "generatedAt": "2026-09-08",
   "languages": [
-    {
-      "code": "fr",
-      "name": "Français"
-    },
-    {
-      "code": "en",
-      "name": "English"
-    },
-    {
-      "code": "es",
-      "name": "Español"
-    },
-    {
-      "code": "de",
-      "name": "Deutsch"
-    },
-    {
-      "code": "it",
-      "name": "Italiano"
-    },
-    {
-      "code": "pt",
-      "name": "Português"
-    },
-    {
-      "code": "nl",
-      "name": "Nederlands"
-    },
-    {
-      "code": "ru",
-      "name": "Русский"
-    },
-    {
-      "code": "zh",
-      "name": "中文"
-    },
-    {
-      "code": "ja",
-      "name": "日本語"
-    },
-    {
-      "code": "ar",
-      "name": "العربية"
-    },
-    {
-      "code": "hi",
-      "name": "हिन्दी"
-    },
-    {
-      "code": "tr",
-      "name": "Türkçe"
-    },
-    {
-      "code": "da",
-      "name": "Dansk"
-    },
-    {
-      "code": "no",
-      "name": "Norsk"
-    },
-    {
-      "code": "sv",
-      "name": "Svenska"
-    },
-    {
-      "code": "is",
-      "name": "Íslenska"
-    },
-    {
-      "code": "pl",
-      "name": "Polski"
-    },
-    {
-      "code": "ro",
-      "name": "Română"
-    },
-    {
-      "code": "sr",
-      "name": "Srpski"
-    },
-    {
-      "code": "hr",
-      "name": "Hrvatski"
-    },
-    {
-      "code": "cs",
-      "name": "Čeština"
-    }
+    "fr",
+    "en",
+    "es",
+    "de",
+    "it",
+    "pt",
+    "nl",
+    "ru",
+    "zh",
+    "ja",
+    "ar",
+    "hi",
+    "tr",
+    "da",
+    "no",
+    "sv",
+    "is",
+    "pl",
+    "ro",
+    "sr",
+    "hr",
+    "cs"
   ],
   "sports": [
     {
       "id": "darts",
       "androidPublicV1": true,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/flechettes/",
         "en": "https://multisports-scoring.pages.dev/en/darts/",
@@ -126,7 +58,6 @@
     {
       "id": "running",
       "androidPublicV1": true,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/running/",
         "en": "https://multisports-scoring.pages.dev/en/running/",
@@ -155,7 +86,6 @@
     {
       "id": "fit",
       "androidPublicV1": true,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/fit-perf/",
         "en": "https://multisports-scoring.pages.dev/en/fit-perf/",
@@ -184,7 +114,6 @@
     {
       "id": "foot",
       "androidPublicV1": false,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/football/",
         "en": "https://multisports-scoring.pages.dev/en/football/",
@@ -213,7 +142,6 @@
     {
       "id": "babyfoot",
       "androidPublicV1": true,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/baby-foot/",
         "en": "https://multisports-scoring.pages.dev/en/foosball/",
@@ -242,7 +170,6 @@
     {
       "id": "pingpong",
       "androidPublicV1": false,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/ping-pong/",
         "en": "https://multisports-scoring.pages.dev/en/table-tennis/",
@@ -271,7 +198,6 @@
     {
       "id": "petanque",
       "androidPublicV1": true,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/petanque/",
         "en": "https://multisports-scoring.pages.dev/en/petanque/",
@@ -300,7 +226,6 @@
     {
       "id": "molkky",
       "androidPublicV1": false,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/molkky/",
         "en": "https://multisports-scoring.pages.dev/en/molkky/",
@@ -329,7 +254,6 @@
     {
       "id": "dicegame",
       "androidPublicV1": false,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/dice-game/",
         "en": "https://multisports-scoring.pages.dev/en/dice-game/",
@@ -358,7 +282,6 @@
     {
       "id": "esports",
       "androidPublicV1": false,
-      "webPwa": true,
       "routes": {
         "fr": "https://multisports-scoring.pages.dev/fr/esports/",
         "en": "https://multisports-scoring.pages.dev/en/esports/",
