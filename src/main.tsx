@@ -21,6 +21,7 @@ import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/r
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
 import { initKeepAwakeRuntime } from "./lib/keepAwake";
 import { installResponsiveLayout } from "./lib/responsiveLayout";
+import { recordReactFreezeCommit, startFreezeWatchIfEnabled } from "./lib/freezeWatch";
 
 // Publie la plateforme avant le premier rendu afin que les garde-fous CSS
 // Android soient actifs dès la première frame.
@@ -32,6 +33,11 @@ try {
 // téléphone/tablette/TV. Les pages existantes héritent des règles CSS sans
 // câblage route par route.
 installResponsiveLayout();
+
+// Si le Freeze Watchdog a été activé lors d'une session précédente, il doit
+// démarrer AVANT les timers/sync globaux afin de pouvoir identifier leur callback
+// exact s'ils figent le WebView plus tard.
+startFreezeWatchIfEnabled();
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
@@ -913,7 +919,9 @@ async function devUnregisterSW() {
           <BootGuard>
             <AsyncGuard>
               <ErrorBoundary>
-                <Component />
+                <React.Profiler id="AppRoot" onRender={recordReactFreezeCommit}>
+                  <Component />
+                </React.Profiler>
               </ErrorBoundary>
             </AsyncGuard>
           </BootGuard>

@@ -51,6 +51,7 @@ import { auditHistoryDecodePerformance, auditHistoryStorageFootprint } from "../
 import {
   clearFreezeWatchData,
   clearHardFreezeReport,
+  diagnoseHardFreeze,
   getFreezeWatchSnapshot,
   getHardFreezeReport,
   isFreezeWatchEnabled,
@@ -5381,6 +5382,7 @@ export function Settings({ go, params }: Props) {
     const lastStall = [...freezeEvents].reverse().find((e: any) => e?.kind === "main-thread-stall") || null;
     const lastSlowOp = [...freezeEvents].reverse().find((e: any) => String(e?.kind || "").startsWith("slow-operation")) || null;
     const staleInterruptedOps = Array.isArray(freezeWatch?.interrupted?.staleActiveOps) ? freezeWatch.interrupted.staleActiveOps : [];
+    const freezeDiagnosis = diagnoseHardFreeze(hardFreezeReport);
 
     const rowStyle: React.CSSProperties = {
       display: "grid",
@@ -5593,9 +5595,44 @@ export function Settings({ go, params }: Props) {
               <div style={{ color: hardFreezeReport?.kind === "freeze" ? "#ffb7b7" : "#ffd28a" }}><strong>WATCHDOG WORKER — {String(hardFreezeReport?.kind || "?").toUpperCase()}</strong></div>
               <div>Blocage détecté: {Math.round(Number(hardFreezeReport?.gapMs || 0))} ms — route={hardFreezeReport?.route || "—"}</div>
               <div>Session: {hardFreezeReport?.sessionId || "—"}</div>
+              <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 10, border: "1px solid rgba(255,210,110,.45)", background: "rgba(255,190,70,.08)", color: theme.text }}>
+                <div style={{ color: "#ffd28a", fontWeight: 950 }}>CAUSE LA PLUS PROBABLE — confiance {freezeDiagnosis?.confidence || "—"}</div>
+                <div style={{ marginTop: 3, fontWeight: 900 }}>{freezeDiagnosis?.title || "—"}</div>
+                <div style={{ marginTop: 3, color: theme.textSoft }}>{freezeDiagnosis?.detail || ""}</div>
+                {freezeDiagnosis?.source ? (
+                  <details style={{ marginTop: 5 }}>
+                    <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 850 }}>Voir la fonction / stack source</summary>
+                    <div style={{ marginTop: 5, whiteSpace: "pre-wrap", wordBreak: "break-word", color: "#d8f7ff" }}>{freezeDiagnosis.source}</div>
+                  </details>
+                ) : null}
+                {freezeDiagnosis?.meta ? (
+                  <details style={{ marginTop: 5 }}>
+                    <summary style={{ cursor: "pointer", color: theme.textSoft }}>Données techniques du suspect</summary>
+                    <div style={{ marginTop: 5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{JSON.stringify(freezeDiagnosis.meta, null, 2)}</div>
+                  </details>
+                ) : null}
+              </div>
               {Array.isArray(hardFreezeReport?.activeOps) && hardFreezeReport.activeOps.length ? (
                 <div style={{ marginTop: 4, color: "#ffd28a" }}><strong>Opérations actives au gel:</strong> {hardFreezeReport.activeOps.map((op: any) => `${op.label}${op?.meta?.id ? ` [${op.meta.id}]` : ""}`).join(" | ")}</div>
               ) : <div>Opération active au gel: aucune identifiée.</div>}
+              {hardFreezeReport?.runtimeProbe ? (
+                <div style={{ marginTop: 5, color: "#ffd28a" }}>
+                  <strong>Callback capturé au moment du gel:</strong> {hardFreezeReport.runtimeProbe.label}
+                  {hardFreezeReport?.runtimeProbe?.meta?.delayMs != null ? ` — délai=${hardFreezeReport.runtimeProbe.meta.delayMs} ms` : ""}
+                </div>
+              ) : null}
+              {Array.isArray(hardFreezeReport?.recentTrace) && hardFreezeReport.recentTrace.length ? (
+                <details style={{ marginTop: 6 }}>
+                  <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 850 }}>Chronologie JS juste avant le gel</summary>
+                  <div style={{ marginTop: 5 }}>
+                    {hardFreezeReport.recentTrace.slice(-10).map((row: any, idx: number) => (
+                      <div key={`freeze-trace-${idx}`}>
+                        {row?.at ? new Date(row.at).toLocaleTimeString() : "—"} — {row?.phase || "?"} — {row?.label || "?"}{row?.durationMs != null ? ` — ${row.durationMs} ms` : ""}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
               <div style={{ marginTop: 4 }}>{hardFreezeReport?.note || ""}</div>
             </div>
           ) : null}

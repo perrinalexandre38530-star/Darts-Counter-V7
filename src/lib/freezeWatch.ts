@@ -46,6 +46,30 @@ export type FreezeWatchHeartbeat = {
   reason?: string;
 };
 
+export type FreezeRuntimeProbe = {
+  token: string;
+  label: string;
+  startedAt: number;
+  route: string;
+  meta?: Record<string, any> | null;
+};
+
+export type FreezeRuntimeTrace = {
+  at: number;
+  phase: "start" | "end" | "evidence";
+  label: string;
+  route: string;
+  durationMs?: number;
+  meta?: Record<string, any> | null;
+};
+
+export type FreezePerformanceEvidence = {
+  lastLongTask?: any;
+  lastLongAnimationFrame?: any;
+  lastEventTiming?: any;
+  lastReactCommit?: any;
+};
+
 export type FreezeWatchHardFreezeReport = {
   key: "latest";
   kind: "freeze" | "recovered";
@@ -57,6 +81,9 @@ export type FreezeWatchHardFreezeReport = {
   visibility: string;
   memory: FreezeWatchHeartbeat["memory"];
   activeOps: FreezeWatchOperation[];
+  runtimeProbe?: FreezeRuntimeProbe | null;
+  recentTrace?: FreezeRuntimeTrace[];
+  performanceEvidence?: FreezePerformanceEvidence | null;
   note: string;
 };
 
@@ -66,6 +93,7 @@ const ACTIVE_OPS_KEY = "dc_freeze_watch_active_ops_v1";
 const EVENTS_KEY = "dc_freeze_watch_events_v1";
 const INTERRUPTED_KEY = "dc_freeze_watch_interrupted_v1";
 const HISTORY_AUDIT_KEY = "dc_freeze_watch_history_audit_v1";
+const EVIDENCE_KEY = "dc_freeze_watch_evidence_v4";
 const HARD_FREEZE_DB = "dc-freeze-watchdog-v1";
 const HARD_FREEZE_STORE = "state";
 const HARD_FREEZE_KEY = "latest";
@@ -75,6 +103,10 @@ const HEARTBEAT_INTERVAL_MS = 1500;
 const HEARTBEAT_PERSIST_EVERY_MS = 4500;
 const STALL_THRESHOLD_MS = 900;
 const SLOW_OPERATION_MS = 250;
+const RUNTIME_TRACE_MAX = 28;
+const TIMER_PROBE_MIN_DELAY_MS = 250;
+const LARGE_JSON_CHARS = 100_000;
+const LARGE_STORAGE_CHARS = 100_000;
 
 const SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 let started = false;
@@ -86,7 +118,21 @@ let seq = 0;
 let lastTickPerf = 0;
 let lastHeartbeatPersistAt = 0;
 let opSeq = 0;
+let runtimeProbeSeq = 0;
 const activeOps = new Map<string, FreezeWatchOperation>();
+const runtimeProbes = new Map<string, FreezeRuntimeProbe>();
+let runtimeTrace: FreezeRuntimeTrace[] = [];
+let performanceEvidence: FreezePerformanceEvidence = {};
+let runtimeInstrumentationInstalled = false;
+let performanceObserversInstalled = false;
+let originalWatchSetTimeout: any = null;
+let originalWatchSetInterval: any = null;
+let originalWatchRequestIdleCallback: any = null;
+let originalWatchJsonParse: any = null;
+let originalWatchJsonStringify: any = null;
+let originalWatchStorageSetItem: any = null;
+let originalWatchAtob: any = null;
+let originalWatchBtoa: any = null;
 
 function hasWindow() {
   return typeof window !== "undefined";
@@ -149,6 +195,322 @@ function memorySnapshot() {
   }
 }
 
+function captureCallsite(): string {
+  try {
+    const raw = String(new Error("freeze-watch-callsite").stack || "");
+    return raw
+      .split("\n")
+      .filter((line) => !line.includes("freezeWatch.ts") && !line.includes("freeze-watch-callsite"))
+      .slice(0, 9)
+      .join("\n")
+      .slice(0, 2200);
+  } catch {
+    return "";
+  }
+}
+
+function currentRuntimeProbe(): FreezeRuntimeProbe | null {
+  const rows = Array.from(runtimeProbes.values()).sort((a, b) => a.startedAt - b.startedAt);
+  const row = rows.length ? rows[rows.length - 1] : null;
+  return row ? { ...row, meta: row.meta ? { ...row.meta } : null } : null;
+}
+
+function pushRuntimeTrace(row: FreezeRuntimeTrace) {
+  runtimeTrace = [...runtimeTrace, row].slice(-RUNTIME_TRACE_MAX);
+}
+
+function persistPerformanceEvidence() {
+  writeJson(EVIDENCE_KEY, { at: Date.now(), ...performanceEvidence });
+}
+
+function beginRuntimeProbe(label: string, meta?: Record<string, any> | null): string | null {
+  if (!isFreezeWatchEnabled()) return null;
+  const token = `rp-${Date.now()}-${++runtimeProbeSeq}`;
+  const probe: FreezeRuntimeProbe = {
+    token,
+    label,
+    startedAt: Date.now(),
+    route: currentRoute(),
+    meta: meta ? { ...meta } : null,
+  };
+  runtimeProbes.set(token, probe);
+  pushRuntimeTrace({ at: probe.startedAt, phase: "start", label, route: probe.route, meta: probe.meta });
+  // Le Worker reçoit le suspect AVANT l'exécution du callback.
+  postHardFreezeState("state");
+  return token;
+}
+
+function endRuntimeProbe(token: string | null | undefined, meta?: Record<string, any> | null) {
+  if (!token) return;
+  const probe = runtimeProbes.get(token);
+  if (!probe) return;
+  runtimeProbes.delete(token);
+  const durationMs = Math.max(0, Date.now() - probe.startedAt);
+  pushRuntimeTrace({
+    at: Date.now(),
+    phase: "end",
+    label: probe.label,
+    route: currentRoute(),
+    durationMs,
+    meta: { ...(probe.meta || {}), ...(meta || {}) },
+  });
+  if (durationMs >= SLOW_OPERATION_MS) {
+    appendEvent({
+      at: Date.now(),
+      kind: durationMs >= STALL_THRESHOLD_MS ? "runtime-probe-critical" : "runtime-probe-slow",
+      route: currentRoute(),
+      durationMs,
+      label: probe.label,
+      meta: { ...(probe.meta || {}), ...(meta || {}) },
+    });
+  }
+  postHardFreezeState("state");
+}
+
+function heavyStringifyCandidate(value: any): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.length >= 40;
+  try {
+    return (
+      "history" in value || "profiles" in value || "matches" in value ||
+      "records" in value || "snapshot" in value || "backup" in value ||
+      "payload" in value || "stats" in value || "organizations" in value
+    );
+  } catch {
+    return false;
+  }
+}
+
+function installRuntimeInstrumentation() {
+  if (!hasWindow() || runtimeInstrumentationInstalled || !isFreezeWatchEnabled()) return;
+  runtimeInstrumentationInstalled = true;
+
+  try {
+    originalWatchSetTimeout = window.setTimeout.bind(window);
+    window.setTimeout = ((handler: any, delay?: any, ...args: any[]) => {
+      const ms = Math.max(0, Number(delay || 0));
+      if (typeof handler !== "function" || ms < TIMER_PROBE_MIN_DELAY_MS) {
+        return originalWatchSetTimeout(handler, delay, ...args);
+      }
+      const registeredAt = Date.now();
+      const registeredRoute = currentRoute();
+      const registrationStack = captureCallsite();
+      let id: any = null;
+      id = originalWatchSetTimeout((...cbArgs: any[]) => {
+        const token = beginRuntimeProbe("timer.setTimeout", {
+          delayMs: ms,
+          ageMs: Date.now() - registeredAt,
+          timerId: String(id),
+          handlerName: String(handler?.name || "anonymous"),
+          registeredRoute,
+          registrationStack,
+        });
+        try { return handler(...cbArgs); }
+        finally { endRuntimeProbe(token); }
+      }, delay, ...args);
+      return id;
+    }) as any;
+  } catch {}
+
+  try {
+    originalWatchSetInterval = window.setInterval.bind(window);
+    window.setInterval = ((handler: any, delay?: any, ...args: any[]) => {
+      const ms = Math.max(0, Number(delay || 0));
+      if (typeof handler !== "function" || ms < TIMER_PROBE_MIN_DELAY_MS) {
+        return originalWatchSetInterval(handler, delay, ...args);
+      }
+      const registeredAt = Date.now();
+      const registeredRoute = currentRoute();
+      const registrationStack = captureCallsite();
+      let id: any = null;
+      id = originalWatchSetInterval((...cbArgs: any[]) => {
+        const token = beginRuntimeProbe("timer.setInterval", {
+          delayMs: ms,
+          ageMs: Date.now() - registeredAt,
+          timerId: String(id),
+          handlerName: String(handler?.name || "anonymous"),
+          registeredRoute,
+          registrationStack,
+        });
+        try { return handler(...cbArgs); }
+        finally { endRuntimeProbe(token); }
+      }, delay, ...args);
+      return id;
+    }) as any;
+  } catch {}
+
+  try {
+    const ric = (window as any).requestIdleCallback;
+    if (typeof ric === "function") {
+      originalWatchRequestIdleCallback = ric.bind(window);
+      (window as any).requestIdleCallback = (handler: any, options?: any) => {
+        if (typeof handler !== "function") return originalWatchRequestIdleCallback(handler, options);
+        const registrationStack = captureCallsite();
+        const registeredRoute = currentRoute();
+        return originalWatchRequestIdleCallback((deadline: any) => {
+          const token = beginRuntimeProbe("runtime.requestIdleCallback", { handlerName: String(handler?.name || "anonymous"), registeredRoute, registrationStack });
+          try { return handler(deadline); }
+          finally { endRuntimeProbe(token); }
+        }, options);
+      };
+    }
+  } catch {}
+
+  try {
+    originalWatchJsonParse = JSON.parse.bind(JSON);
+    (JSON as any).parse = (text: any, reviver?: any) => {
+      if (typeof text !== "string" || text.length < LARGE_JSON_CHARS) return originalWatchJsonParse(text, reviver);
+      const token = beginRuntimeProbe("json.parse.large", { chars: text.length, registrationStack: captureCallsite() });
+      try { return originalWatchJsonParse(text, reviver); }
+      finally { endRuntimeProbe(token); }
+    };
+  } catch {}
+
+  try {
+    originalWatchJsonStringify = JSON.stringify.bind(JSON);
+    (JSON as any).stringify = (value: any, replacer?: any, space?: any) => {
+      if (!heavyStringifyCandidate(value)) return originalWatchJsonStringify(value, replacer, space);
+      const token = beginRuntimeProbe("json.stringify.store-like", { registrationStack: captureCallsite() });
+      let out: any;
+      try {
+        out = originalWatchJsonStringify(value, replacer, space);
+        return out;
+      } finally {
+        endRuntimeProbe(token, { chars: typeof out === "string" ? out.length : null });
+      }
+    };
+  } catch {}
+
+  try {
+    if (typeof Storage !== "undefined" && Storage.prototype?.setItem) {
+      originalWatchStorageSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key: string, value: string) {
+        const size = typeof value === "string" ? value.length : 0;
+        if (size < LARGE_STORAGE_CHARS) return originalWatchStorageSetItem.call(this, key, value);
+        const token = beginRuntimeProbe("storage.setItem.large", {
+          key: String(key || ""),
+          chars: size,
+          registrationStack: captureCallsite(),
+        });
+        try { return originalWatchStorageSetItem.call(this, key, value); }
+        finally { endRuntimeProbe(token); }
+      };
+    }
+  } catch {}
+
+  try {
+    if (typeof window.atob === "function") {
+      originalWatchAtob = window.atob.bind(window);
+      window.atob = ((value: string) => {
+        if (typeof value !== "string" || value.length < LARGE_JSON_CHARS) return originalWatchAtob(value);
+        const token = beginRuntimeProbe("base64.atob.large", { chars: value.length, registrationStack: captureCallsite() });
+        try { return originalWatchAtob(value); }
+        finally { endRuntimeProbe(token); }
+      }) as any;
+    }
+    if (typeof window.btoa === "function") {
+      originalWatchBtoa = window.btoa.bind(window);
+      window.btoa = ((value: string) => {
+        if (typeof value !== "string" || value.length < LARGE_JSON_CHARS) return originalWatchBtoa(value);
+        const token = beginRuntimeProbe("base64.btoa.large", { chars: value.length, registrationStack: captureCallsite() });
+        try { return originalWatchBtoa(value); }
+        finally { endRuntimeProbe(token); }
+      }) as any;
+    }
+  } catch {}
+}
+
+function restoreRuntimeInstrumentation() {
+  if (!hasWindow() || !runtimeInstrumentationInstalled) return;
+  try { if (originalWatchSetTimeout) window.setTimeout = originalWatchSetTimeout as any; } catch {}
+  try { if (originalWatchSetInterval) window.setInterval = originalWatchSetInterval as any; } catch {}
+  try { if (originalWatchRequestIdleCallback) (window as any).requestIdleCallback = originalWatchRequestIdleCallback; } catch {}
+  try { if (originalWatchJsonParse) (JSON as any).parse = originalWatchJsonParse; } catch {}
+  try { if (originalWatchJsonStringify) (JSON as any).stringify = originalWatchJsonStringify; } catch {}
+  try { if (originalWatchStorageSetItem && typeof Storage !== "undefined") Storage.prototype.setItem = originalWatchStorageSetItem; } catch {}
+  try { if (originalWatchAtob) window.atob = originalWatchAtob; } catch {}
+  try { if (originalWatchBtoa) window.btoa = originalWatchBtoa; } catch {}
+  runtimeInstrumentationInstalled = false;
+  runtimeProbes.clear();
+}
+
+function installPerformanceEvidenceObservers() {
+  if (!hasWindow() || performanceObserversInstalled || !isFreezeWatchEnabled()) return;
+  performanceObserversInstalled = true;
+  const PO: any = (window as any).PerformanceObserver;
+  if (typeof PO !== "function") return;
+  const supported: string[] = Array.isArray(PO.supportedEntryTypes) ? PO.supportedEntryTypes : [];
+
+  const saveEvidence = (key: keyof FreezePerformanceEvidence, value: any) => {
+    if (!isFreezeWatchEnabled()) return;
+    (performanceEvidence as any)[key] = value;
+    pushRuntimeTrace({ at: Date.now(), phase: "evidence", label: String(key), route: currentRoute(), meta: value });
+    persistPerformanceEvidence();
+    postHardFreezeState("state");
+  };
+
+  try {
+    if (supported.includes("long-animation-frame")) {
+      const obs = new PO((list: any) => {
+        for (const entry of list.getEntries()) {
+          const duration = Math.round(Number(entry.duration || 0));
+          if (duration < 120) continue;
+          const scripts = (Array.isArray((entry as any).scripts) ? (entry as any).scripts : []).slice(0, 6).map((x: any) => ({
+            sourceURL: String(x?.sourceURL || "").slice(0, 500),
+            functionName: String(x?.functionName || "").slice(0, 180),
+            invoker: String(x?.invoker || x?.invokerType || "").slice(0, 220),
+            duration: Math.round(Number(x?.duration || 0)),
+            executionDuration: Math.round(Number(x?.executionDuration || 0)),
+            forcedStyleAndLayoutDuration: Math.round(Number(x?.forcedStyleAndLayoutDuration || 0)),
+          }));
+          saveEvidence("lastLongAnimationFrame", {
+            at: Date.now(),
+            duration,
+            blockingDuration: Math.round(Number((entry as any).blockingDuration || 0)),
+            renderStart: Math.round(Number((entry as any).renderStart || 0)),
+            styleAndLayoutStart: Math.round(Number((entry as any).styleAndLayoutStart || 0)),
+            scripts,
+            route: currentRoute(),
+          });
+        }
+      });
+      obs.observe({ type: "long-animation-frame", buffered: true });
+    }
+  } catch {}
+
+  try {
+    if (supported.includes("longtask")) {
+      const obs = new PO((list: any) => {
+        for (const entry of list.getEntries()) {
+          const duration = Math.round(Number(entry.duration || 0));
+          if (duration < 120) continue;
+          saveEvidence("lastLongTask", { at: Date.now(), duration, name: String(entry.name || "longtask"), route: currentRoute() });
+        }
+      });
+      obs.observe({ type: "longtask", buffered: true });
+    }
+  } catch {}
+
+  try {
+    if (supported.includes("event")) {
+      const obs = new PO((list: any) => {
+        for (const entry of list.getEntries()) {
+          const duration = Math.round(Number(entry.duration || 0));
+          if (duration < 120) continue;
+          saveEvidence("lastEventTiming", {
+            at: Date.now(),
+            duration,
+            name: String(entry.name || "event"),
+            interactionId: Number((entry as any).interactionId || 0),
+            route: currentRoute(),
+          });
+        }
+      });
+      obs.observe({ type: "event", buffered: true, durationThreshold: 120 });
+    }
+  } catch {}
+}
+
 function copyActiveOps(): FreezeWatchOperation[] {
   return Array.from(activeOps.values())
     .sort((a, b) => a.startedAt - b.startedAt)
@@ -204,7 +566,7 @@ let freezeStartedAt=0;
 let freezeSnapshot=null;
 function openDb(){return new Promise((resolve,reject)=>{try{const req=indexedDB.open(DB_NAME,1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(STORE_NAME))db.createObjectStore(STORE_NAME,{keyPath:'key'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);}catch(e){reject(e);}});}
 async function save(report){try{const db=await openDb();await new Promise((resolve)=>{try{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put({key:REPORT_KEY,value:report});tx.oncomplete=()=>resolve();tx.onerror=()=>resolve();tx.onabort=()=>resolve();}catch{resolve();}});try{db.close();}catch{}}catch{}}
-function report(kind,gapMs){const now=Date.now();return {key:REPORT_KEY,kind,sessionId:String(latest?.sessionId||''),detectedAt:freezeStartedAt||now,recoveredAt:kind==='recovered'?now:undefined,gapMs:Math.max(0,Math.round(gapMs||0)),route:String(latest?.route||'/'),visibility:String(latest?.visibility||'unknown'),memory:latest?.memory||null,activeOps:Array.isArray(latest?.activeOps)?latest.activeOps.slice(-8):[],note:kind==='freeze'?'UI heartbeat missing while app remained visible.':'UI heartbeat resumed after a hard stall.'};}
+function report(kind,gapMs){const now=Date.now();return {key:REPORT_KEY,kind,sessionId:String(latest?.sessionId||''),detectedAt:freezeStartedAt||now,recoveredAt:kind==='recovered'?now:undefined,gapMs:Math.max(0,Math.round(gapMs||0)),route:String(latest?.route||'/'),visibility:String(latest?.visibility||'unknown'),memory:latest?.memory||null,activeOps:Array.isArray(latest?.activeOps)?latest.activeOps.slice(-8):[],runtimeProbe:latest?.runtimeProbe||null,recentTrace:Array.isArray(latest?.recentTrace)?latest.recentTrace.slice(-14):[],performanceEvidence:latest?.performanceEvidence||null,note:kind==='freeze'?'UI heartbeat missing while app remained visible.':'UI heartbeat resumed after a hard stall.'};}
 self.onmessage=(event)=>{const msg=event?.data||{};if(msg.type==='stop'){latest=null;lastBeat=0;freezeOpen=false;return;}if(msg.type==='beat'||msg.type==='state'){latest=msg.payload||latest;if(msg.type==='beat'){const now=Date.now();if(freezeOpen){const recovered={...(freezeSnapshot||report('freeze',now-freezeStartedAt)),kind:'recovered',recoveredAt:now,gapMs:Math.max(0,now-freezeStartedAt),note:'UI heartbeat resumed after a hard stall.'};void save(recovered);freezeOpen=false;freezeSnapshot=null;}lastBeat=now;}}};
 setInterval(()=>{if(!latest||!lastBeat)return;if(String(latest.visibility||'visible')!=='visible')return;const gap=Date.now()-lastBeat;if(gap>=4000&&!freezeOpen){freezeOpen=true;freezeStartedAt=lastBeat;freezeSnapshot=report('freeze',gap);void save(freezeSnapshot);}},750);
 `;
@@ -217,6 +579,9 @@ function hardFreezePayload() {
     visibility: visibilityState(),
     memory: memorySnapshot(),
     activeOps: copyActiveOps(),
+    runtimeProbe: currentRuntimeProbe(),
+    recentTrace: runtimeTrace.slice(-14),
+    performanceEvidence: { ...performanceEvidence },
   };
 }
 
@@ -403,10 +768,13 @@ export function startFreezeWatchIfEnabled(): boolean {
   lastTickPerf = (() => { try { return performance.now(); } catch { return Date.now(); } })();
   persistHeartbeat(0, "watch-start");
   try {
+    // Le timer du watchdog doit rester natif et ne pas s'auto-profiler.
     timerId = window.setInterval(onWatchTick, HEARTBEAT_INTERVAL_MS);
   } catch {
     timerId = null;
   }
+  installPerformanceEvidenceObservers();
+  installRuntimeInstrumentation();
   appendEvent({ at: Date.now(), kind: "watch-start", route: currentRoute(), meta: getDeviceSummary() });
   return true;
 }
@@ -425,7 +793,9 @@ export function setFreezeWatchEnabled(enabled: boolean): boolean {
   }
   started = false;
   stopHardFreezeWorker();
+  restoreRuntimeInstrumentation();
   activeOps.clear();
+  runtimeProbes.clear();
   removeKey(ACTIVE_OPS_KEY);
   persistHeartbeat(0, "disabled-by-user", true);
   return false;
@@ -491,7 +861,7 @@ export function saveFreezeHistoryAudit(audit: any) {
 export function clearFreezeWatchData(options?: { keepEnabled?: boolean }) {
   const keepEnabled = options?.keepEnabled !== false;
   const wasEnabled = isFreezeWatchEnabled();
-  for (const key of [HEARTBEAT_KEY, ACTIVE_OPS_KEY, EVENTS_KEY, INTERRUPTED_KEY, HISTORY_AUDIT_KEY]) removeKey(key);
+  for (const key of [HEARTBEAT_KEY, ACTIVE_OPS_KEY, EVENTS_KEY, INTERRUPTED_KEY, HISTORY_AUDIT_KEY, EVIDENCE_KEY]) removeKey(key);
   void clearHardFreezeReport();
   activeOps.clear();
   if (!keepEnabled) {
@@ -499,6 +869,122 @@ export function clearFreezeWatchData(options?: { keepEnabled?: boolean }) {
   } else if (wasEnabled) {
     persistHeartbeat(0, "logs-cleared");
   }
+}
+
+export function recordReactFreezeCommit(
+  id: string,
+  phase: string,
+  actualDuration: number,
+  baseDuration: number,
+  startTime: number,
+  commitTime: number,
+) {
+  if (!isFreezeWatchEnabled()) return;
+  const duration = Math.round(Number(actualDuration || 0));
+  if (duration < 80) return;
+  performanceEvidence.lastReactCommit = {
+    at: Date.now(),
+    id: String(id || "AppRoot"),
+    phase: String(phase || "update"),
+    actualDuration: duration,
+    baseDuration: Math.round(Number(baseDuration || 0)),
+    startTime: Math.round(Number(startTime || 0)),
+    commitTime: Math.round(Number(commitTime || 0)),
+    route: currentRoute(),
+  };
+  pushRuntimeTrace({ at: Date.now(), phase: "evidence", label: "react.commit", route: currentRoute(), meta: performanceEvidence.lastReactCommit });
+  persistPerformanceEvidence();
+  postHardFreezeState("state");
+}
+
+function nearestEvidence(report: FreezeWatchHardFreezeReport | null, snapshotEvidence: any) {
+  const evidence = report?.performanceEvidence || snapshotEvidence || {};
+  const rows: any[] = [
+    ["Long Animation Frame", evidence?.lastLongAnimationFrame],
+    ["Long Task", evidence?.lastLongTask],
+    ["Interaction lente", evidence?.lastEventTiming],
+    ["Commit React", evidence?.lastReactCommit],
+  ].filter((x: any) => x?.[1]);
+  if (!rows.length) return null;
+  const target = Number(report?.recoveredAt || report?.detectedAt || Date.now());
+  rows.sort((a: any, b: any) => Math.abs(target - Number(a[1]?.at || 0)) - Math.abs(target - Number(b[1]?.at || 0)));
+  return { label: rows[0][0], value: rows[0][1], distanceMs: Math.abs(target - Number(rows[0][1]?.at || 0)) };
+}
+
+export function diagnoseHardFreeze(report?: FreezeWatchHardFreezeReport | null) {
+  const snapshotEvidence = readJson<any>(EVIDENCE_KEY, null);
+  if (!report) {
+    return { confidence: "AUCUNE", title: "Aucun gel Worker enregistré", detail: "Reproduis le gel avec la surveillance active.", source: "", meta: null };
+  }
+
+  const runtimeProbe = report.runtimeProbe || null;
+  if (runtimeProbe) {
+    const meta: any = runtimeProbe.meta || {};
+    const names: Record<string, string> = {
+      "timer.setTimeout": "callback setTimeout",
+      "timer.setInterval": "callback setInterval",
+      "runtime.requestIdleCallback": "travail requestIdleCallback",
+      "json.parse.large": "JSON.parse volumineux",
+      "json.stringify.store-like": "JSON.stringify d'un gros store/snapshot",
+      "storage.setItem.large": "écriture localStorage/sessionStorage volumineuse",
+      "base64.atob.large": "décodage base64 volumineux",
+      "base64.btoa.large": "encodage base64 volumineux",
+    };
+    return {
+      confidence: "ÉLEVÉE",
+      title: names[runtimeProbe.label] || runtimeProbe.label,
+      detail: `Cette opération était EN COURS lorsque le Worker a constaté ${Math.round(report.gapMs || 0)} ms sans heartbeat.`,
+      source: String(meta.registrationStack || ""),
+      meta,
+    };
+  }
+
+  if (Array.isArray(report.activeOps) && report.activeOps.length) {
+    const op = report.activeOps[report.activeOps.length - 1];
+    return {
+      confidence: "ÉLEVÉE",
+      title: op.label,
+      detail: `Opération MSS marquée active pendant le gel (${Math.round(report.gapMs || 0)} ms).`,
+      source: String((op.meta as any)?.registrationStack || ""),
+      meta: op.meta || null,
+    };
+  }
+
+  const nearest = nearestEvidence(report, snapshotEvidence);
+  if (nearest && nearest.distanceMs <= 10_000) {
+    const value: any = nearest.value || {};
+    const scripts = Array.isArray(value.scripts) ? [...value.scripts] : [];
+    scripts.sort((a: any, b: any) => Number(b?.duration || b?.executionDuration || 0) - Number(a?.duration || a?.executionDuration || 0));
+    const topScript = scripts[0];
+    const scriptSource = topScript ? [topScript.functionName, topScript.sourceURL, topScript.invoker].filter(Boolean).join(" — ") : "";
+    return {
+      confidence: nearest.label === "Long Animation Frame" && topScript ? "MOYENNE/ÉLEVÉE" : "MOYENNE",
+      title: `${nearest.label}${value.duration ? ` (${value.duration} ms)` : ""}`,
+      detail: `Mesure PerformanceObserver la plus proche du gel (écart ${nearest.distanceMs} ms).`,
+      source: scriptSource,
+      meta: value,
+    };
+  }
+
+  const recent = Array.isArray(report.recentTrace) ? report.recentTrace : [];
+  const last = recent.length ? recent[recent.length - 1] : null;
+  if (last) {
+    return {
+      confidence: "FAIBLE/MOYENNE",
+      title: `Dernière activité JS: ${last.label}`,
+      detail: "Aucune opération n'était encore marquée active. Cette activité est la dernière trace connue avant le gel.",
+      source: String((last.meta as any)?.registrationStack || ""),
+      meta: last.meta || null,
+    };
+  }
+
+  return {
+    confidence: "FAIBLE",
+    title: "Blocage hors instrumentation JS",
+    detail: "Aucun callback JS instrumenté n'était actif. Suspects restants: rendu/compositing WebView, GC natif, décodage image/audio, plugin Capacitor/JNI ou tâche JS non instrumentée.",
+    source: "",
+    meta: null,
+  };
 }
 
 export function getDeviceSummary() {
@@ -527,6 +1013,9 @@ export function getFreezeWatchSnapshot() {
     interrupted: readJson<any>(INTERRUPTED_KEY, null),
     events: readJson<FreezeWatchEvent[]>(EVENTS_KEY, []),
     historyAudit: readJson<any>(HISTORY_AUDIT_KEY, null),
+    runtimeProbe: currentRuntimeProbe(),
+    recentTrace: runtimeTrace.slice(-RUNTIME_TRACE_MAX),
+    performanceEvidence: readJson<any>(EVIDENCE_KEY, { ...performanceEvidence }),
     device: getDeviceSummary(),
   };
 }
