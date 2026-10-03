@@ -2201,8 +2201,70 @@ let __historyListInFlightScope = "";
 let __historyListRecent: { scope: string; at: number; rows: SavedMatch[] } | null = null;
 const HISTORY_LIST_COALESCE_MS = 450;
 
+// P0 V6 — History.get() anti-storm
+// Several screens (Home / Stats / Profile cards) can ask for the same heavy
+// history details at almost the same time. On Android WebView, letting those
+// requests all reach IndexedDB + LZ/JSON decode creates long uninterrupted
+// main-thread bursts. Share identical reads and keep a very small short-lived
+// decoded cache so navigation cannot immediately decode the same match again.
+const __historyGetInFlight = new Map<string, Promise<SavedMatch | null>>();
+const __historyGetRecent = new Map<string, { at: number; value: SavedMatch | null }>();
+const HISTORY_GET_RECENT_MS = 15_000;
+const HISTORY_GET_RECENT_MAX = 36;
+
+function isAndroidHistoryRuntime(): boolean {
+  try {
+    const ua = typeof navigator !== "undefined" ? String(navigator.userAgent || "") : "";
+    if (/Android/i.test(ua)) return true;
+    const platform = (globalThis as any)?.Capacitor?.getPlatform?.();
+    return String(platform || "").toLowerCase() === "android";
+  } catch {
+    return false;
+  }
+}
+
+let __historyDecodeLane: Promise<void> = Promise.resolve();
+async function runHistoryDecodeLane<T>(job: () => T): Promise<T> {
+  if (!isAndroidHistoryRuntime()) return job();
+
+  const previous = __historyDecodeLane;
+  let release!: () => void;
+  __historyDecodeLane = new Promise<void>((resolve) => { release = resolve; });
+
+  try { await previous.catch(() => {}); } catch {}
+
+  // Important: yield BEFORE every heavy decode. A Promise.all of 8 History.get()
+  // calls used to execute 8 synchronous LZ/JSON decodes back-to-back in one turn.
+  await new Promise<void>((resolve) => {
+    try {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => setTimeout(resolve, 0));
+        return;
+      }
+    } catch {}
+    setTimeout(resolve, 0);
+  });
+
+  try {
+    return job();
+  } finally {
+    release();
+  }
+}
+
+function rememberHistoryGet(id: string, value: SavedMatch | null) {
+  __historyGetRecent.delete(id);
+  __historyGetRecent.set(id, { at: Date.now(), value });
+  while (__historyGetRecent.size > HISTORY_GET_RECENT_MAX) {
+    const first = __historyGetRecent.keys().next().value;
+    if (!first) break;
+    __historyGetRecent.delete(first);
+  }
+}
+
 function invalidateHistoryListReadCache() {
   __historyListRecent = null;
+  __historyGetRecent.clear();
 }
 
 export async function list(): Promise<SavedMatch[]> {
@@ -2487,7 +2549,7 @@ export async function auditHistoryDecodePerformance(options?: {
   return audit;
 }
 
-export async function get(id: string): Promise<SavedMatch | null> {
+async function getUncached(id: string): Promise<SavedMatch | null> {
   await migrateFromLocalStorageOnce();
 
   // ✅ MOBILE V6 : get() et list() doivent avoir la même notion de "supprimé".
@@ -2496,7 +2558,10 @@ export async function get(id: string): Promise<SavedMatch | null> {
 
   const __freezeOp = beginFreezeOperation("history.get", { id: String(id || "") });
   try {
-    const rec: any = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
+    const __idbFreezeOp = beginFreezeOperation("history.get.idbRead", { id: String(id || "") });
+    let rec: any = null;
+    try {
+      rec = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
       const headers = stores[STORE_HEADERS];
       const details = stores[STORE_DETAILS];
 
@@ -2534,7 +2599,12 @@ export async function get(id: string): Promise<SavedMatch | null> {
           req.onerror = () => resolve(null);
         });
 
-      let header = (await getHeaderDirect()) || (await getHeaderByMatchId()) || (await scanHeader());
+      let header = await getHeaderDirect();
+      if (!header) {
+        let hasMatchIdIndex = false;
+        try { hasMatchIdIndex = !!headers.indexNames?.contains("by_matchId"); } catch {}
+        header = hasMatchIdIndex ? await getHeaderByMatchId() : await scanHeader();
+      }
 
       // V14 DETAIL FIX: si l’appelant demande un id composite "matchId:playerId",
       // retenter automatiquement avec la partie avant ':' pour retrouver le vrai match.
@@ -2571,7 +2641,10 @@ export async function get(id: string): Promise<SavedMatch | null> {
       });
 
       return { header, detail };
-    });
+      });
+    } finally {
+      endFreezeOperation(__idbFreezeOp, { found: !!rec?.header });
+    }
 
     if (!rec?.header) {
       const rows = readLegacyRowsSafe();
@@ -2588,10 +2661,12 @@ export async function get(id: string): Promise<SavedMatch | null> {
     });
     let payload: any | null = null;
     try {
-      payload = decodePayloadCompressedBestEffort(detail?.payloadCompressed, {
-        id: String(id),
-        stage: "get",
-      });
+      payload = await runHistoryDecodeLane(() =>
+        decodePayloadCompressedBestEffort(detail?.payloadCompressed, {
+          id: String(id),
+          stage: "get",
+        })
+      );
     } finally {
       endFreezeOperation(__decodeFreezeOp, {
         decoded: !!payload,
@@ -2665,6 +2740,33 @@ export async function get(id: string): Promise<SavedMatch | null> {
   } finally {
     endFreezeOperation(__freezeOp);
   }
+}
+
+
+export async function get(id: string): Promise<SavedMatch | null> {
+  const key = String(id || "").trim();
+  if (!key) return null;
+
+  const cached = __historyGetRecent.get(key);
+  if (cached && Date.now() - cached.at <= HISTORY_GET_RECENT_MS) {
+    return cached.value;
+  }
+  if (cached) __historyGetRecent.delete(key);
+
+  const pending = __historyGetInFlight.get(key);
+  if (pending) return pending;
+
+  const job = getUncached(key)
+    .then((value) => {
+      rememberHistoryGet(key, value);
+      return value;
+    })
+    .finally(() => {
+      if (__historyGetInFlight.get(key) === job) __historyGetInFlight.delete(key);
+    });
+
+  __historyGetInFlight.set(key, job);
+  return job;
 }
 
 

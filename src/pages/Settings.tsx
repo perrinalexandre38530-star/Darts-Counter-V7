@@ -5381,6 +5381,7 @@ export function Settings({ go, params }: Props) {
     const freezeEvents = Array.isArray(freezeWatch?.events) ? freezeWatch.events : [];
     const lastStall = [...freezeEvents].reverse().find((e: any) => e?.kind === "main-thread-stall") || null;
     const lastSlowOp = [...freezeEvents].reverse().find((e: any) => String(e?.kind || "").startsWith("slow-operation")) || null;
+    const lastLoadStoreStageWarning = [...freezeEvents].reverse().find((e: any) => e?.kind === "storage.loadStore.stage-warning") || null;
     const staleInterruptedOps = Array.isArray(freezeWatch?.interrupted?.staleActiveOps) ? freezeWatch.interrupted.staleActiveOps : [];
     const freezeDiagnosis = diagnoseHardFreeze(hardFreezeReport);
 
@@ -5665,6 +5666,13 @@ export function Settings({ go, params }: Props) {
             <div style={{ marginTop: 6 }}><strong>Dernier blocage thread UI</strong>: {lastStall ? `${lastStall.durationMs} ms — ${fmtDateTime(lastStall.at)}` : "—"}</div>
             {lastStall?.activeOps?.length ? <div>Actif pendant le blocage: {lastStall.activeOps.map((op: any) => op.label).join(" | ")}</div> : null}
             <div style={{ marginTop: 6 }}><strong>Dernière opération lente</strong>: {lastSlowOp ? `${lastSlowOp.label || "?"} — ${lastSlowOp.durationMs} ms` : "—"}</div>
+            {lastLoadStoreStageWarning ? (
+              <div style={{ marginTop: 6, color: Number(lastLoadStoreStageWarning?.meta?.heapDeltaMB || 0) >= 64 ? "#ffb7b7" : "#ffd28a" }}>
+                <strong>loadStore V5 — dernière étape suspecte</strong>: {String(lastLoadStoreStageWarning?.meta?.stage || "?")} — {Number(lastLoadStoreStageWarning?.meta?.durationMs || 0)} ms
+                {lastLoadStoreStageWarning?.meta?.heapDeltaMB != null ? ` — ΔMEM ${Number(lastLoadStoreStageWarning.meta.heapDeltaMB) > 0 ? "+" : ""}${lastLoadStoreStageWarning.meta.heapDeltaMB} MB` : ""}
+                {lastLoadStoreStageWarning?.meta?.jsonChars ? ` — JSON ${(Number(lastLoadStoreStageWarning.meta.jsonChars) / 1048576).toFixed(1)} MB` : ""}
+              </div>
+            ) : null}
           </div>
 
           {freezeWatch?.historyAudit ? (

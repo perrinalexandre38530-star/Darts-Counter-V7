@@ -1335,7 +1335,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
 
       // Chunk to avoid hammering IDB / blocking UI
       const constrained = isConstrainedStatsDevice();
-      const CHUNK = constrained ? 6 : 16;
+      const CHUNK = constrained ? 2 : 10;
       for (let i = 0; i < toHydrate.length; i += CHUNK) {
         const slice = toHydrate.slice(i, i + CHUNK);
         const got = await Promise.all(
@@ -6317,7 +6317,7 @@ const [liveDashboard, setLiveDashboard] =
 
         const constrained = isConstrainedStatsDevice();
         const cap = 600;
-        const chunk = constrained ? 8 : 24;
+        const chunk = constrained ? 2 : 12;
         const rows: any[] = [];
         const selected = uniq.slice(0, cap);
         for (let i = 0; i < selected.length; i += chunk) {

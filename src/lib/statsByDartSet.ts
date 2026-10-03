@@ -755,7 +755,7 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
       .filter((x: any) => !!x.id)
       .slice(0, 120);
 
-    const batchSize = isConstrainedDartStatsDevice() ? 4 : 12;
+    const batchSize = isConstrainedDartStatsDevice() ? 2 : 8;
     for (let i = 0; i < enrichCandidates.length; i += batchSize) {
       const batch = enrichCandidates.slice(i, i + batchSize);
       const hydrated = await Promise.all(

@@ -2780,7 +2780,7 @@ async function hydrateHistoryRowsInBatches(
   // WebView avec un gros historique. On ne travaille que sur la zone proche de
   // l'écran ; l'ouverture/reprise d'une partie hydrate toujours son détail à la demande.
   const maxHydratedRows = constrained ? 24 : 48;
-  const batchSize = constrained ? 4 : 10;
+  const batchSize = constrained ? 2 : 8;
   const targets = rows
     .map((row, index) => ({ row, index }))
     .filter(({ row, index }) => index < maxHydratedRows && shouldHydrate(row, index));

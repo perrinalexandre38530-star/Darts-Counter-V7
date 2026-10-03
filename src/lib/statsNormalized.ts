@@ -621,7 +621,9 @@ if (debug) {
       if (toHydrate.length) {
         const byId = new Map<string, any>((rows || []).map((r: any) => [String(r?.id ?? ""), r]));
 
-        const CONCURRENCY = 6;
+        const CONCURRENCY = (() => {
+          try { return /Android/i.test(String(navigator?.userAgent || "")) ? 2 : 6; } catch { return 2; }
+        })();
         let i = 0;
         const workers = Array.from(
           { length: Math.min(CONCURRENCY, toHydrate.length) },

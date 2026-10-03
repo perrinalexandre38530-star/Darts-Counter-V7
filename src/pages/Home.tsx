@@ -675,7 +675,8 @@ function computeKillerAggFromMatches(
 async function buildStatsForProfile(
   profileId: string,
   profileName?: string,
-  activeSport: string = "darts"
+  activeSport: string = "darts",
+  shouldCancel?: () => boolean
 ): Promise<ActiveProfileStats> {
   try {
     const [base, multiRaw, cricket] = await Promise.all([
@@ -689,14 +690,47 @@ async function buildStatsForProfile(
               : typeof anyHistory.list === "function"
               ? await anyHistory.list()
               : [];
-          return await Promise.all((Array.isArray(rows) ? rows : []).map(async (row: any) => {
-            try {
-              const id = String(row?.matchId ?? row?.id ?? "").trim();
-              return id && typeof anyHistory.get === "function" ? ((await anyHistory.get(id)) || row) : row;
-            } catch {
-              return row;
+          // P0 V6 — NEVER hydrate the whole history with one Promise.all().
+          // On a phone with ~90 saved games this created dozens of concurrent
+          // History.get() calls that continued even after leaving Home. The freeze
+          // watchdog caught exactly that storm (History.get > 40 s). Home only
+          // needs full payloads for X01 aggregation, so filter first, then hydrate
+          // in tiny cancellable batches.
+          const lightRows = Array.isArray(rows) ? rows : [];
+          const x01Rows = lightRows.filter((row: any) => {
+            try { return isX01Match(row as any); } catch { return false; }
+          });
+          const hydrated: any[] = [];
+          const isAndroid = (() => {
+            try { return /Android/i.test(String(navigator?.userAgent || "")); } catch { return false; }
+          })();
+          const batchSize = isAndroid ? 1 : 4;
+
+          for (let i = 0; i < x01Rows.length; i += batchSize) {
+            if (shouldCancel?.()) break;
+            const batch = x01Rows.slice(i, i + batchSize);
+            const fullBatch = await Promise.all(batch.map(async (row: any) => {
+              try {
+                const id = String(row?.matchId ?? row?.id ?? "").trim();
+                return id && typeof anyHistory.get === "function" ? ((await anyHistory.get(id)) || row) : row;
+              } catch {
+                return row;
+              }
+            }));
+            hydrated.push(...fullBatch);
+            if (i + batchSize < x01Rows.length) {
+              await new Promise<void>((resolve) => {
+                try {
+                  if (isAndroid && typeof requestAnimationFrame === "function") {
+                    requestAnimationFrame(() => setTimeout(resolve, 0));
+                    return;
+                  }
+                } catch {}
+                setTimeout(resolve, 0);
+              });
             }
-          }));
+          }
+          return hydrated;
         } catch (e) {
           console.warn("[Home] History.listFinished all games failed", e);
         }
@@ -2608,17 +2642,39 @@ export default function Home({ store, go, activeSport }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    let refreshRunning = false;
+    let refreshQueued = false;
 
     const refresh = async () => {
-      if (isFootSport || !activeProfile) {
-        if (!cancelled) setStats(emptyActiveProfileStats());
+      if (cancelled) return;
+      if (refreshRunning) {
+        refreshQueued = true;
         return;
       }
-      try { await loadLinkedProfileProjection([activeProfile as any]); } catch {}
-      const baseStats = await buildStatsForProfile(activeProfile.id, activeProfile.name, String(sport)).catch(() => emptyActiveProfileStats());
-      const linkedMiniStats = await loadIncomingLinkedMiniStatsForHome((auth as any)?.userId || (auth as any)?.user?.id || activeProfile.id);
-      const s = linkedMiniStats ? applyLinkedMiniStatsToHomeStats(baseStats, linkedMiniStats) : baseStats;
-      if (!cancelled) setStats(s);
+      refreshRunning = true;
+      try {
+        if (isFootSport || !activeProfile) {
+          if (!cancelled) setStats(emptyActiveProfileStats());
+          return;
+        }
+        try { await loadLinkedProfileProjection([activeProfile as any]); } catch {}
+        const baseStats = await buildStatsForProfile(
+          activeProfile.id,
+          activeProfile.name,
+          String(sport),
+          () => cancelled
+        ).catch(() => emptyActiveProfileStats());
+        if (cancelled) return;
+        const linkedMiniStats = await loadIncomingLinkedMiniStatsForHome((auth as any)?.userId || (auth as any)?.user?.id || activeProfile.id);
+        const s = linkedMiniStats ? applyLinkedMiniStatsToHomeStats(baseStats, linkedMiniStats) : baseStats;
+        if (!cancelled) setStats(s);
+      } finally {
+        refreshRunning = false;
+        if (refreshQueued && !cancelled) {
+          refreshQueued = false;
+          void refresh();
+        }
+      }
     };
 
     void refresh();

@@ -950,6 +950,34 @@ export function diagnoseHardFreeze(report?: FreezeWatchHardFreezeReport | null) 
     };
   }
 
+  // V5: si loadStore vient de provoquer une forte allocation ou une étape
+  // anormalement longue, cette preuve est plus pertinente qu'une simple frame
+  // longue enregistrée juste après (souvent le GC/compositing consécutif).
+  try {
+    const events = readJson<FreezeWatchEvent[]>(EVENTS_KEY, []);
+    const target = Number(report?.recoveredAt || report?.detectedAt || Date.now());
+    const loadStoreWarnings = events
+      .filter((row: any) => row?.kind === "storage.loadStore.stage-warning")
+      .map((row: any) => ({ row, distanceMs: Math.abs(target - Number(row?.at || 0)) }))
+      .filter((entry: any) => entry.distanceMs <= 15_000)
+      .sort((a: any, b: any) => a.distanceMs - b.distanceMs);
+    const closest = loadStoreWarnings[0];
+    if (closest?.row) {
+      const meta: any = closest.row.meta || {};
+      const heapDelta = Number(meta.heapDeltaMB || 0);
+      const duration = Number(meta.durationMs || 0);
+      const stage = String(meta.stage || "?");
+      const confidence = heapDelta >= 128 || duration >= 900 ? "ÉLEVÉE" : "MOYENNE/ÉLEVÉE";
+      return {
+        confidence,
+        title: `loadStore.${stage}${heapDelta ? ` — ${heapDelta > 0 ? "+" : ""}${heapDelta} MB` : ""}`,
+        detail: `Étape loadStore anormale détectée ${closest.distanceMs} ms du gel (${duration} ms${heapDelta ? `, delta heap ${heapDelta} MB` : ""}). Un GC/WebView peut geler juste après une forte allocation, même quand l'étape JS est déjà terminée.`,
+        source: "src/lib/storage.ts — loadStore V5 stage instrumentation",
+        meta,
+      };
+    }
+  } catch {}
+
   const nearest = nearestEvidence(report, snapshotEvidence);
   if (nearest && nearest.distanceMs <= 10_000) {
     const value: any = nearest.value || {};

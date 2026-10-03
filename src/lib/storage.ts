@@ -13,7 +13,7 @@ import { isSensitiveAuthStorageKey } from "./authSessionGuard";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS, makeAvatarPlaceholderDataUrl } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
-import { beginFreezeOperation, endFreezeOperation } from "./freezeWatch";
+import { beginFreezeOperation, endFreezeOperation, recordFreezeWatchEvent } from "./freezeWatch";
 import { setAvatarCache as setAvatarCacheLib, resetAvatarCacheRuntime } from "./avatarCache";
 import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
 import {
@@ -43,6 +43,128 @@ const QUOTA_ESTIMATE_TTL_MS = 15_000;
 let lastQuotaEstimateAt = 0;
 let lastQuotaEstimateValue: { quota: number | null; usage: number | null } = { quota: null, usage: null };
 let lastSavedStoreJsonByScope = new Map<string, string>();
+
+
+// P0 FREEZE V5 — loadStore doit rester une lecture légère, même si plusieurs
+// écrans/composants le demandent dans la même rafale. Sur Android, plusieurs
+// parse du même gros store pouvaient coexister et provoquer un pic mémoire/GC.
+const LOAD_STORE_BURST_CACHE_TTL_MS = 1800;
+const LOAD_STORE_COMPACT_THRESHOLD_CHARS = 4_000_000;
+const LOAD_STORE_HEAP_DELTA_WARN_MB = 64;
+let loadStoreRunSeq = 0;
+const loadStoreInFlightByScope = new Map<string, Promise<Store | null>>();
+const loadStoreBurstCacheByScope = new Map<string, { at: number; value: Store | null }>();
+
+function loadStoreHeapUsedMB(): number | null {
+  try {
+    const mem = (performance as any)?.memory;
+    const used = Number(mem?.usedJSHeapSize || 0);
+    if (!used) return null;
+    return Math.round((used / 1048576) * 10) / 10;
+  } catch {
+    return null;
+  }
+}
+
+function loadStorePayloadBytes(value: any): number {
+  try {
+    if (typeof value === "string") return value.length;
+    if (value instanceof Uint8Array) return value.byteLength;
+    if (value instanceof ArrayBuffer) return value.byteLength;
+    if (ArrayBuffer.isView(value)) return Number((value as any).byteLength || 0);
+  } catch {}
+  return 0;
+}
+
+function invalidateLoadStoreBurstCache(scopeKey?: string) {
+  if (scopeKey) loadStoreBurstCacheByScope.delete(scopeKey);
+  else loadStoreBurstCacheByScope.clear();
+}
+
+function cloneLoadedStoreTopLevel<T extends Store>(value: T | null): T | null {
+  if (!value) return null;
+  return guardStoreShape(value);
+}
+
+async function runLoadStoreStage<T>(
+  stage: string,
+  run: () => Promise<T> | T,
+  meta?: Record<string, any>,
+): Promise<T> {
+  const startedAt = storageNowMs();
+  const heapBeforeMB = loadStoreHeapUsedMB();
+  const token = beginFreezeOperation(`storage.loadStore.${stage}`, {
+    ...(meta || {}),
+    heapBeforeMB,
+  });
+  try {
+    const value = await run();
+    const durationMs = Math.round((storageNowMs() - startedAt) * 10) / 10;
+    const heapAfterMB = loadStoreHeapUsedMB();
+    const heapDeltaMB = heapBeforeMB != null && heapAfterMB != null
+      ? Math.round((heapAfterMB - heapBeforeMB) * 10) / 10
+      : null;
+    endFreezeOperation(token, { durationMs, heapAfterMB, heapDeltaMB });
+    if ((heapDeltaMB ?? 0) >= LOAD_STORE_HEAP_DELTA_WARN_MB || durationMs >= 500) {
+      recordFreezeWatchEvent("storage.loadStore.stage-warning", {
+        stage,
+        durationMs,
+        heapBeforeMB,
+        heapAfterMB,
+        heapDeltaMB,
+        ...(meta || {}),
+      });
+    }
+    return value;
+  } catch (error: any) {
+    const durationMs = Math.round((storageNowMs() - startedAt) * 10) / 10;
+    const heapAfterMB = loadStoreHeapUsedMB();
+    endFreezeOperation(token, {
+      durationMs,
+      heapAfterMB,
+      error: String(error?.message || error || "unknown"),
+    });
+    throw error;
+  }
+}
+
+function storeHasLegacyHeavyTopLevel(store: any): boolean {
+  if (!store || typeof store !== "object") return false;
+  try {
+    if (STORE_HISTORY_KEYS.some((key) => Object.prototype.hasOwnProperty.call(store, key))) return true;
+    if (STORE_HEAVY_STATS_KEYS.some((key) => Object.prototype.hasOwnProperty.call(store, key))) return true;
+    return Object.keys(store).some((key) => isLikelyEphemeralStoreKey(key));
+  } catch {
+    return false;
+  }
+}
+
+function stripLegacyHeavyTopLevelInPlace(store: any): string[] {
+  if (!store || typeof store !== "object") return [];
+  const removed: string[] = [];
+  const remove = (key: string) => {
+    if (!Object.prototype.hasOwnProperty.call(store, key)) return;
+    try { delete store[key]; removed.push(key); } catch {}
+  };
+  for (const key of STORE_HISTORY_KEYS) remove(String(key));
+  for (const key of STORE_HEAVY_STATS_KEYS) remove(String(key));
+  for (const key of Object.keys(store)) {
+    if (isLikelyEphemeralStoreKey(key)) remove(key);
+  }
+  return removed;
+}
+
+function shouldScanForRicherPersistedStore(store: any): boolean {
+  try {
+    const currentProfiles = validProfileList(store?.profiles);
+    if (currentProfiles.length <= 1) return true;
+    const cached = getCachedLocalProfilesForSafety();
+    if ((cached?.profiles?.length || 0) > currentProfiles.length) return true;
+    const active = String(store?.activeProfileId || "").trim();
+    if (active && !currentProfiles.some((profile) => String(profile?.id || "") === active)) return true;
+  } catch {}
+  return false;
+}
 
 // MEDIA CAPTURE PERF/MEMORY GUARD
 // Avant ce garde-fou, chaque saveStore lançait un scan média asynchrone sans
@@ -1924,23 +2046,77 @@ function attachAuthoritativeDartSetsToStore<T extends any>(store: T): T {
 /* ---------- API publique principale ---------- */
 
 export async function loadStore<T extends Store>(): Promise<T | null> {
-  const __freezeOp = beginFreezeOperation("storage.loadStore", { scope: getActiveStoreScopeKey() });
-  try {
-    await migrateLegacyStoreIfNeeded();
-    let raw = (await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY))) ?? null;
+  const scopeKey = getActiveStoreScopeKey();
+  const now = Date.now();
+  const cached = loadStoreBurstCacheByScope.get(scopeKey);
+  if (cached && now - cached.at <= LOAD_STORE_BURST_CACHE_TTL_MS) {
+    recordFreezeWatchEvent("storage.loadStore.cache-hit", {
+      scope: scopeKey,
+      ageMs: now - cached.at,
+    });
+    return cloneLoadedStoreTopLevel(cached.value as T | null);
+  }
 
-    // ✅ RESTORE NAS ROBUSTE : si l'utilisateur courant n'est pas encore connu
-    // au boot, ou si le restore a écrit store:<uid> alors que la page lit store,
-    // on récupère automatiquement le meilleur store existant avec profils.
+  const existing = loadStoreInFlightByScope.get(scopeKey);
+  if (existing) {
+    recordFreezeWatchEvent("storage.loadStore.coalesced", { scope: scopeKey });
+    const value = await existing;
+    return cloneLoadedStoreTopLevel(value as T | null);
+  }
+
+  const runId = ++loadStoreRunSeq;
+  const promise = loadStoreInternal<Store>(scopeKey, runId);
+  loadStoreInFlightByScope.set(scopeKey, promise);
+  try {
+    const value = await promise;
+    loadStoreBurstCacheByScope.set(scopeKey, { at: Date.now(), value });
+    return cloneLoadedStoreTopLevel(value as T | null);
+  } finally {
+    if (loadStoreInFlightByScope.get(scopeKey) === promise) {
+      loadStoreInFlightByScope.delete(scopeKey);
+    }
+  }
+}
+
+async function loadStoreInternal<T extends Store>(scopeKey: string, runId: number): Promise<T | null> {
+  const __freezeOp = beginFreezeOperation("storage.loadStore", { scope: scopeKey, runId });
+  const heapAtStartMB = loadStoreHeapUsedMB();
+  try {
+    await runLoadStoreStage("migrateLegacy", () => migrateLegacyStoreIfNeeded(), { scope: scopeKey, runId });
+    let raw = (await runLoadStoreStage(
+      "idbGet",
+      () => idbGet<ArrayBuffer | Uint8Array | string>(scopeKey),
+      { scope: scopeKey, runId },
+    )) ?? null;
+
+    // Si la clé attendue n'existe pas, on autorise le scan de secours. Ce scan
+    // est volontairement absent du chemin normal : il peut décoder plusieurs
+    // anciennes copies du store et devenir très coûteux sur un compte ancien.
     if (raw == null) {
-      const best = await findBestPersistedStoreAcrossKeys();
+      const best = await runLoadStoreStage(
+        "fallbackStoreScan",
+        () => findBestPersistedStoreAcrossKeys(),
+        { scope: scopeKey, runId, reason: "missing-current-store" },
+      );
       if (best?.store && best.profiles.length > 0) {
-        const targetKey = scopedStorageKey(STORE_KEY);
+        const targetKey = scopeKey;
         const repaired = guardStoreShape(best.store);
-        const repairedJson = safeJsonStringify(repaired);
+        const repairedJson = await runLoadStoreStage(
+          "fallbackRepairStringify",
+          () => safeJsonStringify(repaired),
+          { scope: scopeKey, runId, profiles: best.profiles.length },
+        );
         try {
-          const repairedPayload = await persistPayloadForKey(targetKey, repairedJson);
-          await idbSet(targetKey, repairedPayload);
+          const repairedPayload = await runLoadStoreStage(
+            "fallbackRepairPersist",
+            () => persistPayloadForKey(targetKey, repairedJson),
+            { scope: scopeKey, runId, jsonChars: repairedJson.length },
+          );
+          await runLoadStoreStage("fallbackRepairWrite", () => idbSet(targetKey, repairedPayload), {
+            scope: scopeKey,
+            runId,
+            payloadBytes: loadStorePayloadBytes(repairedPayload),
+          });
           try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, repairedJson)); } catch {}
           lastSavedStoreJsonByScope.set(targetKey, repairedJson);
           lastSavedStoreJsonByScope.set(STORE_KEY, repairedJson);
@@ -1952,53 +2128,136 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
     }
 
     if (raw != null) {
-      const json = await decompressGzip(raw as any);
-      let parsed = safeJsonParse<T | null>(json, null);
+      const rawBytes = loadStorePayloadBytes(raw);
+      const json = await runLoadStoreStage(
+        "decode",
+        () => decompressGzip(raw as any),
+        { scope: scopeKey, runId, rawBytes, rawKind: typeof raw === "string" ? "string" : "binary" },
+      );
+      let parsed = await runLoadStoreStage<T | null>(
+        "jsonParse",
+        () => safeJsonParse<T | null>(json, null),
+        { scope: scopeKey, runId, rawBytes, jsonChars: json.length },
+      );
 
       if (!parsed) return null;
 
-      // ANDROID PROFILS V59 : une clé scopée peut exister mais ne contenir que
-      // le profil actif. L'ancien fallback ne s'exécutait que si la clé était
-      // absente. On compare maintenant au meilleur store simple de la même
-      // famille de compte et on répare la clé courante lorsqu'il est plus riche.
+      // MIGRATION PERF/MEMORY : les anciennes versions ont pu conserver history,
+      // stats/caches ou snapshots directement dans le store principal. On les
+      // retire immédiatement après le premier parse et on réécrit une version
+      // compacte. Le prochain démarrage n'a donc plus à recréer ces centaines de
+      // Mo temporaires. Les vraies parties restent dans dc-history-v1.
+      const legacyHeavy = storeHasLegacyHeavyTopLevel(parsed);
+      if (legacyHeavy || json.length >= LOAD_STORE_COMPACT_THRESHOLD_CHARS) {
+        const beforeChars = json.length;
+        const removedKeys = stripLegacyHeavyTopLevelInPlace(parsed as any);
+        let compacted = await runLoadStoreStage(
+          "legacyCompaction",
+          () => sanitizeStoreForPersistence(guardStoreShape(parsed as T)),
+          { scope: scopeKey, runId, beforeChars, removedKeys: removedKeys.slice(0, 24) },
+        );
+        let compactJson = await runLoadStoreStage(
+          "legacyCompactionStringify",
+          () => safeJsonStringify(compacted),
+          { scope: scopeKey, runId, beforeChars, removedCount: removedKeys.length },
+        );
+
+        // Même politique que saveStore : une vieille clé peut encore contenir
+        // store.matches/resumes/etc. Si elle reste trop grosse, on applique le
+        // compactage mobile afin que la migration soit réellement définitive.
+        if (compactJson.length > STORE_SOFT_TARGET_BYTES) {
+          compacted = compactStoreForMobile(compacted as T, "soft");
+          compactJson = safeJsonStringify(compacted);
+        }
+        if (compactJson.length > STORE_HARD_TARGET_BYTES) {
+          compacted = compactStoreForMobile(compacted as T, "hard");
+          compactJson = safeJsonStringify(compacted);
+        }
+        parsed = compacted as T;
+
+        const materiallySmaller = compactJson.length <= beforeChars * 0.92;
+        if (legacyHeavy || materiallySmaller) {
+          try {
+            const compactPayload = await runLoadStoreStage(
+              "legacyCompactionPersist",
+              () => persistPayloadForKey(scopeKey, compactJson),
+              { scope: scopeKey, runId, beforeChars, afterChars: compactJson.length },
+            );
+            await runLoadStoreStage("legacyCompactionWrite", () => idbSet(scopeKey, compactPayload), {
+              scope: scopeKey,
+              runId,
+              beforeChars,
+              afterChars: compactJson.length,
+              payloadBytes: loadStorePayloadBytes(compactPayload),
+            });
+            lastSavedStoreJsonByScope.set(scopeKey, compactJson);
+            recordFreezeWatchEvent("storage.loadStore.legacy-store-compacted", {
+              scope: scopeKey,
+              runId,
+              beforeMB: Math.round((beforeChars / 1048576) * 100) / 100,
+              afterMB: Math.round((compactJson.length / 1048576) * 100) / 100,
+              removedKeys: removedKeys.slice(0, 24),
+            });
+          } catch (compactError) {
+            console.warn("[storage] legacy store compaction persist skipped", compactError);
+          }
+        }
+      }
+
+      // ANDROID PROFILS : le scan de toutes les copies du store n'est plus fait
+      // à CHAQUE loadStore. Il n'est autorisé que si l'état courant est suspect
+      // (0/1 profil, profil actif absent, ou cache de sécurité plus riche).
       try {
         const currentProfiles = validProfileList((parsed as any)?.profiles);
-        const best = await findBestPersistedStoreAcrossKeys();
-        if (best?.store && best.profiles.length > currentProfiles.length) {
-          const targetKey = scopedStorageKey(STORE_KEY);
-          const repaired = guardStoreShape({
-            ...(best.store || {}),
-            activeProfileId: (parsed as any)?.activeProfileId || best.store?.activeProfileId || best.profiles[0]?.id || null,
-            profiles: mergeCanonicalProfileLists(best.profiles, currentProfiles),
-          } as any);
-          const repairedJson = safeJsonStringify(repaired);
-          await idbSet(targetKey, await persistPayloadForKey(targetKey, repairedJson));
-          try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, repairedJson)); } catch {}
-          lastSavedStoreJsonByScope.set(targetKey, repairedJson);
-          lastSavedStoreJsonByScope.set(STORE_KEY, repairedJson);
-          writeProfilesSafetyCache(repaired);
-          parsed = repaired as T;
-          console.warn("[storage] store scopé enrichi depuis la source locale canonique", {
-            from: best.key,
-            to: targetKey,
-            beforeProfiles: currentProfiles.length,
-            afterProfiles: repaired.profiles.length,
-          });
+        if (shouldScanForRicherPersistedStore(parsed)) {
+          const best = await runLoadStoreStage(
+            "richerProfileScan",
+            () => findBestPersistedStoreAcrossKeys(),
+            { scope: scopeKey, runId, currentProfiles: currentProfiles.length },
+          );
+          if (best?.store && best.profiles.length > currentProfiles.length) {
+            const targetKey = scopeKey;
+            const repaired = guardStoreShape({
+              ...(best.store || {}),
+              activeProfileId: (parsed as any)?.activeProfileId || best.store?.activeProfileId || best.profiles[0]?.id || null,
+              profiles: mergeCanonicalProfileLists(best.profiles, currentProfiles),
+            } as any);
+            const repairedJson = safeJsonStringify(repaired);
+            await idbSet(targetKey, await persistPayloadForKey(targetKey, repairedJson));
+            try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, repairedJson)); } catch {}
+            lastSavedStoreJsonByScope.set(targetKey, repairedJson);
+            lastSavedStoreJsonByScope.set(STORE_KEY, repairedJson);
+            writeProfilesSafetyCache(repaired);
+            parsed = repaired as T;
+            console.warn("[storage] store scopé enrichi depuis la source locale canonique", {
+              from: best.key,
+              to: targetKey,
+              beforeProfiles: currentProfiles.length,
+              afterProfiles: repaired.profiles.length,
+            });
+          }
         }
       } catch (repairError) {
         console.warn("[storage] richer scoped store recovery skipped", repairError);
       }
 
-      const guarded = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(parsed), "loadStore:idb");
-      const norm = await normalizeStoreAll(guarded);
+      const guarded = await runLoadStoreStage(
+        "profileProtection",
+        () => protectProfilesAgainstEmptyOverwrite(guardStoreShape(parsed), "loadStore:idb"),
+        { scope: scopeKey, runId, profiles: validProfileList((parsed as any)?.profiles).length },
+      );
+      const norm = await runLoadStoreStage(
+        "avatarNormalization",
+        () => normalizeStoreAll(guarded),
+        { scope: scopeKey, runId, profiles: validProfileList((guarded as any)?.profiles).length },
+      );
 
       if (norm.changed) {
         try {
-          const storeScopeKey = scopedStorageKey(STORE_KEY);
           const normJson = safeJsonStringify(norm.store);
-          const payload = await persistPayloadForKey(storeScopeKey, normJson);
-          await idbSet(storeScopeKey, payload);
-          lastSavedStoreJsonByScope.set(storeScopeKey, normJson);
+          const payload = await persistPayloadForKey(scopeKey, normJson);
+          await idbSet(scopeKey, payload);
+          lastSavedStoreJsonByScope.set(scopeKey, normJson);
 
           try {
             emitCloudChange(scopedCloudChangeReason("idb:set:store"));
@@ -2008,12 +2267,20 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         } catch {}
       }
 
-      return guardStoreShape(attachAuthoritativeDartSetsToStore(norm.store));
+      return await runLoadStoreStage(
+        "finalize",
+        () => guardStoreShape(attachAuthoritativeDartSetsToStore(norm.store)),
+        { scope: scopeKey, runId },
+      );
     }
 
     const legacy = localStorage.getItem(LEGACY_LS_KEY);
     if (legacy) {
-      const parsed = safeJsonParse<T | null>(legacy, null);
+      const parsed = await runLoadStoreStage<T | null>(
+        "legacyLocalStorageParse",
+        () => safeJsonParse<T | null>(legacy, null),
+        { scope: scopeKey, runId, jsonChars: legacy.length },
+      );
       if (!parsed) return null;
 
       const guarded = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(parsed), "loadStore:idb");
@@ -2032,7 +2299,15 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
     console.warn("[storage] loadStore error:", err);
     return null;
   } finally {
-    endFreezeOperation(__freezeOp);
+    const heapAtEndMB = loadStoreHeapUsedMB();
+    endFreezeOperation(__freezeOp, {
+      runId,
+      heapAtStartMB,
+      heapAtEndMB,
+      heapDeltaMB: heapAtStartMB != null && heapAtEndMB != null
+        ? Math.round((heapAtEndMB - heapAtStartMB) * 10) / 10
+        : null,
+    });
   }
 }
 
@@ -2041,6 +2316,7 @@ type SaveOpts = {
 };
 
 export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
+  invalidateLoadStoreBurstCache(getActiveStoreScopeKey());
   const guardedInput = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(store), "saveStore");
   const __freezeOp = beginFreezeOperation("storage.saveStore", {
     profiles: Array.isArray((guardedInput as any)?.profiles) ? (guardedInput as any).profiles.length : 0,
@@ -2171,6 +2447,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
 }
 
 export async function clearStore(): Promise<void> {
+  invalidateLoadStoreBurstCache(getActiveStoreScopeKey());
   try {
     await idbDel(scopedStorageKey(STORE_KEY));
     lastSavedStoreJsonByScope.delete(scopedStorageKey(STORE_KEY));
