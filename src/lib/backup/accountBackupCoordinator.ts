@@ -117,13 +117,19 @@ function snapshotCollections(snapshot: any): Record<string, Map<string,string>> 
   return { profiles: make(profiles, "profil"), teams: make(teams, "équipe"), matches };
 }
 
-async function buildDetailedDifferences(remoteSnapshot: any): Promise<AccountSyncConflict["details"]> {
-  // Cette analyse n'est lancée qu'après détection d'un conflit : on peut alors
-  // construire un snapshot local allégé afin de comparer les IDENTIFIANTS réels,
-  // et pas seulement 60 profils contre 60 profils.
-  const localSnapshot = await withSyncTimeout(exportCloudSnapshot({ mediaMirror:"skip", includeEmbeddedMedia:false, includeAvatarFallbacks:false }), 20_000, "Analyse détaillée locale").catch(() => null);
-  if (!localSnapshot || !remoteSnapshot) return [];
-  const local = snapshotCollections(localSnapshot);
+async function buildDetailedDifferences(remoteSnapshot: any, localStore?: any): Promise<AccountSyncConflict["details"]> {
+  // V42 FIX : ne JAMAIS reconstruire exportCloudSnapshot() pendant le boot.
+  // Sur mobile/IndexedDB cette opération peut monopoliser le thread JS ; même un
+  // Promise.race ne peut alors pas faire avancer le timeout et la barre reste à 88 %.
+  // Le store courant suffit pour les IDs de profils/équipes et les parties qui y sont
+  // indexées. Si sa lecture échoue, on garde le comparatif de compteurs déjà calculé.
+  const currentStore = localStore ?? await withSyncTimeout(
+    loadStore<any>().catch(() => null),
+    3_000,
+    "Lecture détaillée locale",
+  ).catch(() => null);
+  if (!currentStore || !remoteSnapshot) return [];
+  const local = snapshotCollections({ store: currentStore });
   const remote = snapshotCollections(remoteSnapshot);
   const defs: Array<[string,string]> = [["profiles","Profils"],["matches","Parties"],["teams","Équipes"]];
   return defs.map(([key,label]) => {
@@ -952,7 +958,9 @@ export async function restoreLatestBackupForSignedInUser(
       // et ce qui n'existe que dans la sauvegarde distante.
       emitAccountSync(uid, "compare-details", 88, "Analyse détaillée des différences…", { source: latest.source });
       const remoteForDiff = await withSyncTimeout(latest.load(), 30_000, "Lecture détaillée de la sauvegarde").catch(() => null);
-      conflict.details = await buildDetailedDifferences(remoteForDiff).catch(() => []);
+      const localStoreForDiff = await withSyncTimeout(loadStore<any>().catch(() => null), 3_000, "Lecture détaillée locale").catch(() => null);
+      conflict.details = await buildDetailedDifferences(remoteForDiff, localStoreForDiff).catch(() => []);
+      // Etat terminal obligatoire : 88 % ne doit jamais être le dernier événement.
       emitConflict(conflict);
       saveDiagnostic(uid, { ok:true, restored:false, reason:"user-choice-required", candidate:{source:latest.source,id:latest.id}, differences:conflict.differences, details:conflict.details });
       return false;

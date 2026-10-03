@@ -442,25 +442,6 @@ export async function fetchChallengeLeaderboardDetail(
   };
 }
 
-function historyConfig(record: any): ChallengeLeaderboardObjective {
-  const payload = record?.payload || record?.decoded || record?.resume?.livePayload || {};
-  const config = payload?.config || record?.resume?.config || {};
-  const game = record?.game || payload?.game || {};
-  const summary = record?.summary || payload?.summary || {};
-  const rawPlayers = summary?.perPlayer || payload?.stats?.players || payload?.finalPlayers || payload?.players || record?.players || [];
-  const playerCount = Array.isArray(rawPlayers) ? rawPlayers.length : 0;
-  return {
-    target: clean(config?.target || game?.target || summary?.target, '20'),
-    rule: clean(config?.rule || game?.rule || summary?.rule, 'all'),
-    visits: Math.max(1, int(config?.visits || game?.visits || summary?.visits, 30)),
-    matchMode: clean(config?.matchMode || game?.matchMode || summary?.matchMode || (playerCount <= 1 ? 'solo' : playerCount === 2 ? 'duo' : 'multi'), 'solo'),
-    setMode: clean(config?.setMode || game?.setMode || summary?.setMode) || null,
-    setTarget: int(config?.setTarget || game?.setTarget || summary?.setTarget, 0) || null,
-    legMode: clean(config?.legMode || game?.legMode || summary?.legMode) || null,
-    legTarget: int(config?.legTarget || game?.legTarget || summary?.legTarget, 0) || null,
-  };
-}
-
 function historyPlayerRows(record: any): any[] {
   const payload = record?.payload || record?.decoded || record?.resume?.livePayload || {};
   const candidates = [record?.summary?.perPlayer, payload?.summary?.perPlayer, payload?.stats?.players, payload?.finalPlayers, payload?.players, record?.players];
@@ -470,6 +451,30 @@ function historyPlayerRows(record: any): any[] {
 
 function historyRowId(row: any): string {
   return clean(row?.id || row?.playerId || row?.profileId || row?.userId || row?.user_id);
+}
+
+function historyConfig(record: any): ChallengeLeaderboardObjective {
+  const payload = record?.payload || record?.decoded || record?.resume?.livePayload || {};
+  const config = payload?.config || record?.resume?.config || {};
+  const game = record?.game || payload?.game || {};
+  const summary = record?.summary || payload?.summary || {};
+  const rawPlayers = historyPlayerRows(record);
+  const playerCount = rawPlayers.length;
+  const explicitVisits = int(config?.visits || game?.visits || summary?.visits, 0);
+  const inferredDarts = rawPlayers.reduce((best: number, row: any) => Math.max(best, int(row?.darts ?? row?.dartsThrown ?? row?.hitSummary?.darts, 0)), 0);
+  const inferredVisits = inferredDarts > 0 ? Math.max(1, Math.ceil(inferredDarts / 3)) : 0;
+  const firstPlayer = rawPlayers[0] || {};
+  const special = firstPlayer?.special || firstPlayer?.stats?.special || {};
+  return {
+    target: clean(config?.target || game?.target || summary?.target || firstPlayer?.target || special?.target, '20'),
+    rule: clean(config?.rule || game?.rule || summary?.rule || firstPlayer?.rule || special?.rule, 'all'),
+    visits: Math.max(1, explicitVisits || inferredVisits || 30),
+    matchMode: clean(config?.matchMode || game?.matchMode || summary?.matchMode || (playerCount <= 1 ? 'solo' : playerCount === 2 ? 'duo' : 'multi'), 'solo'),
+    setMode: clean(config?.setMode || game?.setMode || summary?.setMode) || null,
+    setTarget: int(config?.setTarget || game?.setTarget || summary?.setTarget, 0) || null,
+    legMode: clean(config?.legMode || game?.legMode || summary?.legMode) || null,
+    legTarget: int(config?.legTarget || game?.legTarget || summary?.legTarget, 0) || null,
+  };
 }
 
 function historyIsFinishedChallenge(record: any): boolean {
@@ -483,6 +488,8 @@ function avatarFromProfile(profile: any): string | null {
   return clean(profile?.avatarDataUrl || profile?.photoDataUrl || profile?.avatarUrl || profile?.photoUrl || profile?.avatar || profile?.imageUrl) || null;
 }
 
+const historyHitValue = (hit: string) => hit === 'S' ? 1 : hit === 'D' ? 2 : hit === 'T' ? 3 : hit === '25' ? 1 : hit === '50' ? 2 : 0;
+
 function historyStatsPayload(record: any, row: any) {
   const hitSummary = row?.hitSummary || row?.stats?.hitSummary || {};
   const payload = record?.payload || record?.decoded || record?.resume?.livePayload || {};
@@ -493,33 +500,118 @@ function historyStatsPayload(record: any, row: any) {
       ? state.entries
       : Array.isArray(state?.log)
         ? state.log
-        : Array.isArray(record?.entries)
-          ? record.entries
-          : [];
+        : Array.isArray(payload?.events)
+          ? payload.events
+          : Array.isArray(record?.entries)
+            ? record.entries
+            : [];
   const rowId = historyRowId(row);
+  const rows = historyPlayerRows(record);
+  const onePlayer = rows.length <= 1;
+  const validHits = new Set(['S','D','T','25','50','MISS']);
   const entries = sourceEntries
-    .filter((entry: any) => entry && clean(entry?.pid || entry?.playerId || entry?.profileId) === rowId)
-    .map((entry: any) => ({ hit: clean(entry?.hit).toUpperCase(), pid: rowId }))
-    .filter((entry: any) => ['S','D','T','25','50','MISS'].includes(entry.hit));
+    .filter((entry: any) => {
+      if (!entry) return false;
+      const hit = clean(entry?.hit).toUpperCase();
+      if (!validHits.has(hit)) return false;
+      if (onePlayer) return true;
+      const entryId = clean(entry?.pid || entry?.playerId || entry?.profileId || entry?.userId || entry?.user_id);
+      return !!rowId && entryId === rowId;
+    })
+    .map((entry: any) => ({ hit: clean(entry?.hit).toUpperCase(), pid: rowId || clean(entry?.pid || entry?.playerId || entry?.profileId) || 'player' }));
+
+  const derivedHitCounts = { S: 0, D: 0, T: 0, '25': 0, '50': 0, MISS: 0 } as Record<string, number>;
+  for (const entry of entries) derivedHitCounts[entry.hit] = (derivedHitCounts[entry.hit] || 0) + 1;
+
+  let running = 0;
+  let bestStreakDerived = 0;
+  for (const entry of entries) {
+    if (entry.hit !== 'MISS') {
+      running += 1;
+      bestStreakDerived = Math.max(bestStreakDerived, running);
+    } else running = 0;
+  }
+
+  const visitScoresDerived: number[] = [];
+  for (let i = 0; i < entries.length; i += 3) {
+    visitScoresDerived.push(entries.slice(i, i + 3).reduce((sum: number, entry: any) => sum + historyHitValue(entry.hit), 0));
+  }
+  let cumulative = 0;
+  const cumulativeScoresDerived = visitScoresDerived.map(value => (cumulative += value));
+  const positionStatsDerived = [0,1,2].map(index => {
+    const bucket = { position: index + 1, attempts: 0, successful: 0, accuracy: 0, S: 0, D: 0, T: 0, B25: 0, B50: 0, MISS: 0 };
+    entries.forEach((entry: any, entryIndex: number) => {
+      if (entryIndex % 3 !== index) return;
+      bucket.attempts += 1;
+      if (entry.hit !== 'MISS') bucket.successful += 1;
+      if (entry.hit === 'S') bucket.S += 1;
+      else if (entry.hit === 'D') bucket.D += 1;
+      else if (entry.hit === 'T') bucket.T += 1;
+      else if (entry.hit === '25') bucket.B25 += 1;
+      else if (entry.hit === '50') bucket.B50 += 1;
+      else bucket.MISS += 1;
+    });
+    bucket.accuracy = bucket.attempts ? Math.round((bucket.successful / bucket.attempts) * 1000) / 10 : 0;
+    return bucket;
+  });
+
+  const storedCounts = {
+    S: int(hitSummary?.S ?? hitSummary?.single, 0),
+    D: int(hitSummary?.D ?? hitSummary?.double, 0),
+    T: int(hitSummary?.T ?? hitSummary?.triple, 0),
+    '25': int(hitSummary?.SBull ?? hitSummary?.['25'], 0),
+    '50': int(hitSummary?.DBull ?? hitSummary?.['50'], 0),
+    MISS: int(hitSummary?.MISS ?? hitSummary?.miss ?? row?.misses, 0),
+  };
+  const storedCountTotal = Object.values(storedCounts).reduce((sum, value) => sum + Number(value || 0), 0);
+  const hitCounts = entries.length && storedCountTotal === 0 ? derivedHitCounts : storedCounts;
+  const storedPositionStats = Array.isArray(row?.positionStats) ? row.positionStats : Array.isArray(row?.special?.positionStats) ? row.special.positionStats : [];
+  const storedVisitScores = Array.isArray(row?.visitScores) ? row.visitScores : [];
+  const storedCumulativeScores = Array.isArray(row?.cumulativeScores) ? row.cumulativeScores : [];
+  const darts = Math.max(0, int(row?.darts ?? row?.dartsThrown ?? hitSummary?.darts, entries.length));
+  const successfulDerived = entries.filter((entry: any) => entry.hit !== 'MISS').length;
+  const accuracyDerived = entries.length ? Math.round((successfulDerived / entries.length) * 1000) / 10 : 0;
+  const scoreStored = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+  const scoreDerived = entries.reduce((sum: number, entry: any) => sum + historyHitValue(entry.hit), 0);
+  const bestVisitStored = num(row?.bestVisit ?? row?.special?.bestVisit ?? row?.stats?.bestVisit, 0);
+  const avgVisitStored = num(row?.avgVisit ?? row?.special?.avgVisit ?? row?.stats?.avgVisit, 0);
+  const bestStreakStored = Math.max(0, int(row?.bestStreak ?? row?.special?.bestStreak, 0));
+  const accuracyStored = Math.max(0, Math.min(100, num(row?.successRate ?? row?.accuracy ?? row?.accuracyPct ?? row?.special?.successRate, 0)));
+
+  const hitStreaks: Record<string, number> = { S: 0, D: 0, T: 0, '25': 0, '50': 0, MISS: 0 };
+  for (const hit of ['S','D','T','25','50','MISS']) {
+    let best = 0;
+    let run = 0;
+    for (const entry of entries) {
+      if (entry.hit === hit) { run += 1; best = Math.max(best, run); }
+      else run = 0;
+    }
+    hitStreaks[hit] = best;
+  }
+  let hitVisitStreak = 0;
+  let visitRun = 0;
+  for (let i = 0; i < entries.length; i += 3) {
+    if (entries.slice(i, i + 3).some((entry: any) => entry.hit !== 'MISS')) { visitRun += 1; hitVisitStreak = Math.max(hitVisitStreak, visitRun); }
+    else visitRun = 0;
+  }
+  const hitPct = Object.fromEntries(Object.entries(hitCounts).map(([hit, count]) => [hit, darts ? Number(count || 0) / darts * 100 : 0]));
+
   return {
-    bestVisit: num(row?.bestVisit ?? row?.special?.bestVisit ?? row?.stats?.bestVisit, 0),
-    avgVisit: num(row?.avgVisit ?? row?.special?.avgVisit ?? row?.stats?.avgVisit, 0),
-    hitCounts: {
-      S: int(hitSummary?.S ?? hitSummary?.single, 0),
-      D: int(hitSummary?.D ?? hitSummary?.double, 0),
-      T: int(hitSummary?.T ?? hitSummary?.triple, 0),
-      '25': int(hitSummary?.SBull ?? hitSummary?.['25'], 0),
-      '50': int(hitSummary?.DBull ?? hitSummary?.['50'], 0),
-      MISS: int(hitSummary?.MISS ?? hitSummary?.miss ?? row?.misses, 0),
-    },
-    positionStats: Array.isArray(row?.positionStats) ? row.positionStats : Array.isArray(row?.special?.positionStats) ? row.special.positionStats : [],
-    visitScores: Array.isArray(row?.visitScores) ? row.visitScores : [],
-    cumulativeScores: Array.isArray(row?.cumulativeScores) ? row.cumulativeScores : [],
+    bestVisit: bestVisitStored || (visitScoresDerived.length ? Math.max(...visitScoresDerived) : 0),
+    avgVisit: avgVisitStored || (visitScoresDerived.length ? scoreDerived / visitScoresDerived.length : 0),
+    hitCounts,
+    hitStreaks,
+    hitVisitStreak,
+    hitPct,
+    firstNine: entries.slice(0, 9).reduce((sum: number, entry: any) => sum + historyHitValue(entry.hit), 0),
+    positionStats: storedPositionStats.length ? storedPositionStats : positionStatsDerived,
+    visitScores: storedVisitScores.length ? storedVisitScores : visitScoresDerived,
+    cumulativeScores: storedCumulativeScores.length ? storedCumulativeScores : cumulativeScoresDerived,
     entries,
-    score: Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0)),
-    darts: Math.max(0, int(row?.darts ?? row?.dartsThrown ?? hitSummary?.darts, entries.length)),
-    bestStreak: Math.max(0, int(row?.bestStreak ?? row?.special?.bestStreak, 0)),
-    accuracy: Math.max(0, Math.min(100, num(row?.successRate ?? row?.accuracy ?? row?.accuracyPct ?? row?.special?.successRate, 0))),
+    score: scoreStored || scoreDerived,
+    darts: darts || entries.length,
+    bestStreak: bestStreakStored || bestStreakDerived,
+    accuracy: accuracyStored || accuracyDerived,
   };
 }
 
@@ -542,6 +634,8 @@ export async function enrichChallengeLeaderboardDetailFromHistory(
   const matches = history
     .filter(historyIsFinishedChallenge)
     .filter((record: any) => {
+      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
+      if (wantedMatchId && recordMatchId === wantedMatchId) return true;
       const cfg = historyConfig(record);
       return clean(cfg.target) === clean(detail.target)
         && clean(cfg.rule) === clean(detail.rule)
@@ -600,6 +694,8 @@ export async function findChallengeHistoryRecordForLeaderboardDetail(
   const candidates = history
     .filter(historyIsFinishedChallenge)
     .filter((record: any) => {
+      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
+      if (wantedMatchId && recordMatchId === wantedMatchId) return true;
       const cfg = historyConfig(record);
       return clean(cfg.target) === clean(detail.target)
         && clean(cfg.rule) === clean(detail.rule)

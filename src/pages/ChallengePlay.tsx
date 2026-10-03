@@ -176,9 +176,28 @@ function onlineDetailedStatsOverride(raw:any,cfg:ChallengeConfigData):ChallengeD
  };
  const darts=Math.max(0,Number(raw?.darts??stats?.darts??0)||0);
  const accuracy=Math.max(0,Math.min(100,Number(raw?.accuracy??stats?.accuracy??stats?.successRate??0)||0));
- const countedSuccess=hitCounts.S+hitCounts.D+hitCounts.T+hitCounts['25']+hitCounts['50'];
- const countedTotal=countedSuccess+hitCounts.MISS;
- const successful=countedTotal>0?countedSuccess:Math.max(0,Math.min(darts,Math.round(darts*accuracy/100)));
+ let countedSuccess=hitCounts.S+hitCounts.D+hitCounts.T+hitCounts['25']+hitCounts['50'];
+ let countedTotal=countedSuccess+hitCounts.MISS;
+ const derivedSuccessful=Math.max(0,Math.min(darts,Math.round(darts*accuracy/100)));
+ // Anciennes lignes Online : le serveur pouvait avoir le score/précision mais
+ // pas encore la ventilation S/D/T/Bull/Miss. On reconstruit uniquement ce qui
+ // est mathématiquement certain, sans inventer une répartition S/D/T.
+ if(countedTotal===0&&darts>0){
+  const derivedMiss=Math.max(0,darts-derivedSuccessful);
+  hitCounts.MISS=derivedMiss;
+  if(cfg.rule==='single')hitCounts.S=derivedSuccessful;
+  else if(cfg.rule==='double')hitCounts.D=derivedSuccessful;
+  else if(cfg.rule==='triple')hitCounts.T=derivedSuccessful;
+  else if(isBullMode(cfg.rule,cfg.target)){
+   const score=Math.max(0,Number(raw?.score??stats?.score??0)||0);
+   const b50=Math.max(0,Math.min(derivedSuccessful,score-derivedSuccessful));
+   const b25=Math.max(0,derivedSuccessful-b50);
+   hitCounts['25']=b25;hitCounts['50']=b50;
+  }
+  countedSuccess=hitCounts.S+hitCounts.D+hitCounts.T+hitCounts['25']+hitCounts['50'];
+  countedTotal=countedSuccess+hitCounts.MISS;
+ }
+ const successful=countedTotal>0?countedSuccess:derivedSuccessful;
  const failures=countedTotal>0?hitCounts.MISS:Math.max(0,darts-successful);
  const sourcePositions=Array.isArray(stats?.positionStats)?stats.positionStats:[];
  const positionStats=[0,1,2].map(index=>{
@@ -205,7 +224,7 @@ function onlineDetailedStatsOverride(raw:any,cfg:ChallengeConfigData):ChallengeD
   accuracy,
   bestStreak:Math.max(0,Number(raw?.bestStreak??stats?.bestStreak??0)||0),
   bestVisit:Math.max(0,Number(stats?.bestVisit??stats?.bestVolley??0)||0),
-  avgVisit:Math.max(0,Number(stats?.avgVisit??stats?.averageVisit??0)||0),
+  avgVisit:Math.max(0,Number(stats?.avgVisit??stats?.averageVisit??((darts>0)?((Number(raw?.score??stats?.score??0)||0)/Math.max(1,Math.ceil(darts/3))):0))||0),
   hitCounts,
   positionStats,
   visitScores,
