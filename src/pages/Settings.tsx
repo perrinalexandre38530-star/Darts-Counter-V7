@@ -47,6 +47,15 @@ import { getApiUrl } from "../lib/apiClient";
 import { onlineApi } from "../lib/onlineApi";
 import { exportCloudBackupAsJson, restoreCloudBackupFromJson } from "../lib/cloudBackup";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
+import { auditHistoryDecodePerformance, auditHistoryStorageFootprint } from "../lib/history";
+import {
+  clearFreezeWatchData,
+  clearHardFreezeReport,
+  getFreezeWatchSnapshot,
+  getHardFreezeReport,
+  isFreezeWatchEnabled,
+  setFreezeWatchEnabled,
+} from "../lib/freezeWatch";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
 import { simulateDevMatchesAllGames } from "../lib/devMatchSimulator";
 import { injectDevX01ReferenceMatch } from "../lib/devInjectX01TestMatch";
@@ -5342,11 +5351,22 @@ export function Settings({ go, params }: Props) {
   function DiagnosticsSection() {
     const [tick, setTick] = React.useState(0);
     const [report, setReport] = React.useState<any>(null);
+    const [auditBusy, setAuditBusy] = React.useState(false);
+    const [deepAuditBusy, setDeepAuditBusy] = React.useState(false);
+    const [deepAuditProgress, setDeepAuditProgress] = React.useState<any>(null);
+    const [deepAuditResult, setDeepAuditResult] = React.useState<any>(null);
+    const [hardFreezeReport, setHardFreezeReport] = React.useState<any>(null);
 
     React.useEffect(() => {
       const id = window.setInterval(() => setTick((v) => v + 1), 2000);
       return () => window.clearInterval(id);
     }, []);
+
+    React.useEffect(() => {
+      let cancelled = false;
+      void getHardFreezeReport().then((value) => { if (!cancelled) setHardFreezeReport(value); }).catch(() => {});
+      return () => { cancelled = true; };
+    }, [tick]);
 
     const memoryDiag = safeReadJson<any>("dc_memory_diag_v1");
     const storeDiag = safeReadJson<any>("dc_last_store_size_v1");
@@ -5356,6 +5376,11 @@ export function Settings({ go, params }: Props) {
     const chunkErr = safeReadJson<any>("dc_last_chunk_error_v1");
     const lastCrash = getLastCrashReport();
     const crashLog = getCrashLog();
+    const freezeWatch = getFreezeWatchSnapshot();
+    const freezeEvents = Array.isArray(freezeWatch?.events) ? freezeWatch.events : [];
+    const lastStall = [...freezeEvents].reverse().find((e: any) => e?.kind === "main-thread-stall") || null;
+    const lastSlowOp = [...freezeEvents].reverse().find((e: any) => String(e?.kind || "").startsWith("slow-operation")) || null;
+    const staleInterruptedOps = Array.isArray(freezeWatch?.interrupted?.staleActiveOps) ? freezeWatch.interrupted.staleActiveOps : [];
 
     const rowStyle: React.CSSProperties = {
       display: "grid",
@@ -5389,6 +5414,7 @@ export function Settings({ go, params }: Props) {
       chunkErr,
       lastCrash,
       crashLog,
+      freezeWatch,
       href: (() => {
         try { return location.href; } catch { return ""; }
       })(),
@@ -5402,6 +5428,68 @@ export function Settings({ go, params }: Props) {
       } catch (e: any) {
         safeAlert(`Diagnostic impossible: ${e?.message || e || "erreur inconnue"}`);
       }
+    }
+
+    async function runHistoryFootprintAudit() {
+      if (auditBusy) return;
+      setAuditBusy(true);
+      try {
+        const audit = await auditHistoryStorageFootprint();
+        safeAlert(
+          `Audit historique terminé.\n${audit.rows} partie(s) — ~${audit.totalApproxMB} MB.\n` +
+          `${audit.suspiciousCount} enregistrement(s) >= 1,5 MB.`
+        );
+        setTick((v) => v + 1);
+      } catch (e: any) {
+        safeAlert(`Audit historique impossible: ${e?.message || e || "erreur inconnue"}`);
+      } finally {
+        setAuditBusy(false);
+      }
+    }
+
+    async function runHistoryDeepAudit() {
+      if (deepAuditBusy) return;
+      if (!isFreezeWatchEnabled()) {
+        setFreezeWatchEnabled(true);
+      }
+      setDeepAuditBusy(true);
+      setDeepAuditResult(null);
+      setDeepAuditProgress({ index: 0, total: 0, id: "préparation" });
+      try {
+        const audit = await auditHistoryDecodePerformance({
+          maxRows: 150,
+          onProgress: (progress) => {
+            if (progress?.durationMs != null || progress?.index === 1) setDeepAuditProgress(progress);
+          },
+        });
+        setDeepAuditResult(audit);
+        setTick((v) => v + 1);
+        safeAlert(
+          `Test profond terminé.\n${audit.tested}/${audit.totalAvailable} partie(s) lues.\n` +
+          `Plus lente: ${audit.maxMs} ms — moyenne: ${audit.avgMs} ms — erreurs: ${audit.failed}.`
+        );
+      } catch (e: any) {
+        safeAlert(`Test profond interrompu: ${e?.message || e || "erreur inconnue"}`);
+      } finally {
+        setDeepAuditBusy(false);
+      }
+    }
+
+    async function clearHardFreezeOnly() {
+      await clearHardFreezeReport().catch(() => {});
+      setHardFreezeReport(null);
+      setTick((v) => v + 1);
+    }
+
+    function toggleFreezeWatch() {
+      const next = !isFreezeWatchEnabled();
+      setFreezeWatchEnabled(next);
+      setTick((v) => v + 1);
+      safeAlert(
+        next
+          ? "Surveillance Freeze activée. Utilise maintenant l'application normalement jusqu'au gel. Après redémarrage, reviens ici : le dernier heartbeat et l'opération restée active seront conservés."
+          : "Surveillance Freeze désactivée."
+      );
     }
 
     const copyReport = async () => {
@@ -5436,6 +5524,7 @@ export function Settings({ go, params }: Props) {
       for (const k of keys) {
         try { localStorage.removeItem(k); } catch {}
       }
+      clearFreezeWatchData({ keepEnabled: true });
       setTick((v) => v + 1);
     };
 
@@ -5467,6 +5556,92 @@ export function Settings({ go, params }: Props) {
             "settings.diagnostics.help",
             "Ces informations servent à identifier les crashs PWA / mémoire sur mobile et les erreurs de chargement."
           )}
+        </div>
+
+        <div
+          style={{
+            marginBottom: 12,
+            padding: 12,
+            borderRadius: 14,
+            border: `1px solid ${freezeWatch?.enabled ? theme.primary : theme.borderSoft}`,
+            background: freezeWatch?.enabled ? `${theme.primary}12` : "rgba(255,255,255,0.025)",
+          }}
+        >
+          <div style={{ color: freezeWatch?.enabled ? theme.primary : theme.text, fontWeight: 950, textTransform: "uppercase", letterSpacing: .7 }}>
+            TEST INTERNE — FREEZE WATCHDOG {freezeWatch?.enabled ? "ON" : "OFF"}
+          </div>
+          <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 11.5, lineHeight: 1.45 }}>
+            Active-le puis utilise l'application normalement. Le test conserve un heartbeat et écrit le nom d'une opération lourde AVANT son exécution. Si le téléphone gèle et que tu dois tuer l'application, reviens ici après le redémarrage : le dernier état reste disponible.
+          </div>
+          <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button type="button" onClick={toggleFreezeWatch} style={{ borderRadius: 12, border: `1px solid ${freezeWatch?.enabled ? "rgba(255,120,120,.65)" : theme.primary}`, padding: "9px 12px", background: "rgba(0,0,0,.32)", color: freezeWatch?.enabled ? "#ffb7b7" : theme.primary, fontWeight: 950, cursor: "pointer" }}>
+              {freezeWatch?.enabled ? "Désactiver la surveillance" : "Activer la surveillance Freeze"}
+            </button>
+            <button type="button" onClick={runHistoryFootprintAudit} disabled={auditBusy} style={{ borderRadius: 12, border: `1px solid ${theme.primary}`, padding: "9px 12px", background: "rgba(0,0,0,.32)", color: auditBusy ? theme.textSoft : theme.primary, fontWeight: 950, cursor: auditBusy ? "wait" : "pointer" }}>
+              {auditBusy ? "Audit historique…" : "Auditer les parties sauvegardées"}
+            </button>
+            <button type="button" onClick={runHistoryDeepAudit} disabled={deepAuditBusy} style={{ borderRadius: 12, border: `1px solid ${deepAuditBusy ? theme.borderSoft : "#ffb347"}`, padding: "9px 12px", background: "rgba(0,0,0,.32)", color: deepAuditBusy ? theme.textSoft : "#ffd28a", fontWeight: 950, cursor: deepAuditBusy ? "wait" : "pointer" }}>
+              {deepAuditBusy ? `Test profond ${deepAuditProgress?.index || 0}/${deepAuditProgress?.total || "?"}` : "TEST PROFOND DES PARTIES"}
+            </button>
+            <button type="button" onClick={clearHardFreezeOnly} style={{ borderRadius: 12, border: `1px solid ${theme.borderSoft}`, padding: "9px 12px", background: "rgba(0,0,0,.32)", color: theme.textSoft, fontWeight: 850, cursor: "pointer" }}>
+              Effacer dernier gel Worker
+            </button>
+          </div>
+
+          {hardFreezeReport ? (
+            <div style={{ ...monoBox, marginTop: 10, borderColor: hardFreezeReport?.kind === "freeze" ? "rgba(255,100,100,.75)" : "rgba(255,190,80,.55)" }}>
+              <div style={{ color: hardFreezeReport?.kind === "freeze" ? "#ffb7b7" : "#ffd28a" }}><strong>WATCHDOG WORKER — {String(hardFreezeReport?.kind || "?").toUpperCase()}</strong></div>
+              <div>Blocage détecté: {Math.round(Number(hardFreezeReport?.gapMs || 0))} ms — route={hardFreezeReport?.route || "—"}</div>
+              <div>Session: {hardFreezeReport?.sessionId || "—"}</div>
+              {Array.isArray(hardFreezeReport?.activeOps) && hardFreezeReport.activeOps.length ? (
+                <div style={{ marginTop: 4, color: "#ffd28a" }}><strong>Opérations actives au gel:</strong> {hardFreezeReport.activeOps.map((op: any) => `${op.label}${op?.meta?.id ? ` [${op.meta.id}]` : ""}`).join(" | ")}</div>
+              ) : <div>Opération active au gel: aucune identifiée.</div>}
+              <div style={{ marginTop: 4 }}>{hardFreezeReport?.note || ""}</div>
+            </div>
+          ) : null}
+
+          {deepAuditResult ? (
+            <div style={{ ...monoBox, marginTop: 8 }}>
+              <div><strong>Dernier test profond terminé</strong>: {deepAuditResult.tested}/{deepAuditResult.totalAvailable} — max={deepAuditResult.maxMs} ms — moyenne={deepAuditResult.avgMs} ms</div>
+              {(Array.isArray(deepAuditResult.slowest) ? deepAuditResult.slowest.slice(0, 8) : []).map((row: any) => (
+                <div key={`deep-${row.id}`} style={{ paddingTop: 3, color: Number(row.durationMs || 0) >= 500 ? "#ffb7b7" : theme.textSoft }}>
+                  {row.durationMs} ms — {row.kind || "?"} — {row.id}{row.ok ? "" : " ⚠"}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div style={{ ...monoBox, marginTop: 10 }}>
+            <div><strong>Heartbeat</strong>: {freezeWatch?.heartbeat?.at ? fmtDateTime(freezeWatch.heartbeat.at) : "—"} — route={freezeWatch?.heartbeat?.route || "—"}</div>
+            <div>Dernier lag mesuré: {Number(freezeWatch?.heartbeat?.lagMs || 0)} ms</div>
+            <div>Opérations actives maintenant: {Array.isArray(freezeWatch?.activeOps) ? freezeWatch.activeOps.length : 0}</div>
+            {Array.isArray(freezeWatch?.activeOps) && freezeWatch.activeOps.length ? (
+              <div>{freezeWatch.activeOps.map((op: any) => `${op.label} (${Math.max(0, Date.now() - Number(op.startedAt || Date.now()))} ms)`).join(" | ")}</div>
+            ) : null}
+            <div style={{ marginTop: 6 }}><strong>Session précédente interrompue</strong>: {freezeWatch?.interrupted ? "OUI" : "non détectée"}</div>
+            {freezeWatch?.interrupted ? <div>Dernière route: {freezeWatch?.interrupted?.previousHeartbeat?.route || "—"} — raison={freezeWatch?.interrupted?.reason || "—"}</div> : null}
+            {staleInterruptedOps.length ? (
+              <div style={{ color: "#ffd28a", marginTop: 4 }}>
+                <strong>Opération(s) restée(s) active(s) avant arrêt:</strong> {staleInterruptedOps.map((op: any) => `${op.label}${op?.meta?.id ? ` [${op.meta.id}]` : ""}`).join(" | ")}
+              </div>
+            ) : null}
+            <div style={{ marginTop: 6 }}><strong>Dernier blocage thread UI</strong>: {lastStall ? `${lastStall.durationMs} ms — ${fmtDateTime(lastStall.at)}` : "—"}</div>
+            {lastStall?.activeOps?.length ? <div>Actif pendant le blocage: {lastStall.activeOps.map((op: any) => op.label).join(" | ")}</div> : null}
+            <div style={{ marginTop: 6 }}><strong>Dernière opération lente</strong>: {lastSlowOp ? `${lastSlowOp.label || "?"} — ${lastSlowOp.durationMs} ms` : "—"}</div>
+          </div>
+
+          {freezeWatch?.historyAudit ? (
+            <div style={{ ...monoBox, marginTop: 8 }}>
+              <div><strong>Audit historique</strong>: {freezeWatch.historyAudit.rows ?? 0} partie(s) — ~{freezeWatch.historyAudit.totalApproxMB ?? 0} MB</div>
+              <div>Fallback local/session: ~{freezeWatch.historyAudit.fallbackApproxMB ?? 0} MB — suspects ≥ 1,5 MB: {freezeWatch.historyAudit.suspiciousCount ?? 0}</div>
+              <div style={{ marginTop: 6 }}><strong>Plus grosses parties:</strong></div>
+              {(Array.isArray(freezeWatch.historyAudit.largest) ? freezeWatch.historyAudit.largest.slice(0, 10) : []).map((row: any) => (
+                <div key={String(row?.id || Math.random())} style={{ paddingTop: 3, color: row?.suspicious ? "#ffb7b7" : theme.textSoft }}>
+                  {row?.approxKB ?? 0} KB — {row?.kind || "?"} — {row?.id || "?"}{row?.suspicious ? " ⚠" : ""}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div style={rowStyle}>

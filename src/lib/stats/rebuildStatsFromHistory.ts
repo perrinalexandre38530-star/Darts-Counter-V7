@@ -9,6 +9,7 @@
 import { delKV, getKV, setKV } from "../storage";
 import { normalizeMatchForStats } from "../matchCompactCodec";
 import { computeBabyFootRichStats } from "../babyfootRichStats";
+import { beginFreezeOperation, endFreezeOperation } from "../freezeWatch";
 
 // ----------------------------
 // Types génériques (safe)
@@ -1339,7 +1340,12 @@ export async function rebuildStatsFromHistory(options?: {
 
   // Hydratation par petits lots parallèles. L'ancien parcours faisait un
   // History.get() séquentiel par match, très lent après une grosse restauration.
+  const __freezeOp = beginFreezeOperation("stats.rebuildFromHistory", {
+    rows: rows.length,
+    includeNonFinished,
+  });
   const HYDRATE_CHUNK = isConstrainedStatsIndexDevice() ? 4 : 12;
+  try {
   for (let offset = 0; offset < rows.length; offset += HYDRATE_CHUNK) {
     const lightChunk = rows.slice(offset, offset + HYDRATE_CHUNK);
     const hydratedChunk = await Promise.all(lightChunk.map(async (lightRec: any) => {
@@ -1388,4 +1394,7 @@ export async function rebuildStatsFromHistory(options?: {
   if (persist) await saveStatsIndex(idx);
   clearStatsIndexDirty();
   return idx;
+  } finally {
+    endFreezeOperation(__freezeOp);
+  }
 }

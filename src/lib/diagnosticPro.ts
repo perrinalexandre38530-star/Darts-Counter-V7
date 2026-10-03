@@ -13,6 +13,8 @@ import { loadStore } from "./storage";
 import { captureCrash, getCrashLog, getLastCrashReport } from "./crashReporter";
 import { getCrashGuardState, getCrashGuardRouteHistory } from "./crashGuard";
 import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./runtimePerformance";
+import { isCapacitorNativeRuntime } from "./nativePlatform";
+import { getFreezeWatchSnapshot, getHardFreezeReport, startFreezeWatchIfEnabled } from "./freezeWatch";
 
 export interface DiagnosticReport {
   generatedAt: string;
@@ -106,6 +108,9 @@ function queueSafeSet(key: string, value: any) {
 function deepProbeEnabled() {
   if (!hasWindow()) return false;
   try {
+    // Le Freeze Watchdog reste volontairement léger. Les monkey-patches
+    // réseau/timers/listeners ne sont activés que par le diagnostic ultra
+    // explicite (?diag=1 / bouton Analyser), jamais par la simple surveillance.
     const url = new URL(window.location.href);
     if (url.searchParams.get("diag") === "1") return true;
     return sessionStorage.getItem("dc_diag_deep_probe_v1") === "1" || localStorage.getItem("dc_diag_deep_probe_v1") === "1";
@@ -583,6 +588,13 @@ function buildProbableCauses(input: any) {
   if (runtime?.lastCrash?.message) causes.push(`Crash capturé: ${runtime.lastCrash.message}`);
   if (runtime?.runtimeError?.message) causes.push(`Erreur runtime persistée: ${runtime.runtimeError.message}`);
   if (runtime?.promiseError?.message) causes.push(`Promesse rejetée non gérée: ${runtime.promiseError.message}`);
+  const freezeWatch = runtime?.freezeWatch;
+  const staleOps = Array.isArray(freezeWatch?.interrupted?.staleActiveOps) ? freezeWatch.interrupted.staleActiveOps : [];
+  if (staleOps.length) causes.push(`Freeze Watchdog: opération restée active avant l'arrêt: ${staleOps.slice(0, 3).map((x: any) => x?.label || "?").join(", ")}`);
+  const fwEvents = Array.isArray(freezeWatch?.events) ? freezeWatch.events : [];
+  const lastFwStall = [...fwEvents].reverse().find((x: any) => x?.kind === "main-thread-stall");
+  if (Number(lastFwStall?.durationMs || 0) >= 900) causes.push(`Freeze Watchdog: blocage du thread UI détecté (${lastFwStall.durationMs} ms).`);
+  if (Number(freezeWatch?.historyAudit?.suspiciousCount || 0) > 0) causes.push(`Freeze Watchdog: ${freezeWatch.historyAudit.suspiciousCount} partie(s) anormalement volumineuse(s) dans l'historique.`);
   if (memory?.jsHeap?.pressure != null && memory.jsHeap.pressure >= 0.8) causes.push("Mémoire JS proche de la limite: possible fuite mémoire ou assets trop lourds.");
   if (memory?.trend?.risingFast) causes.push("La mémoire monte rapidement pendant la session.");
   if (avatars?.totalMB > 20) causes.push("Les avatars base64 sont très lourds.");
@@ -608,6 +620,11 @@ function buildRecommendations(input: any) {
   if (input.runtime?.lastCrash?.message || input.runtime?.runtimeError?.message || input.runtime?.promiseError?.message) {
     recos.push("Corriger d'abord la dernière stack capturée avant toute optimisation générale.");
   }
+  const fw = input.runtime?.freezeWatch;
+  if (Array.isArray(fw?.interrupted?.staleActiveOps) && fw.interrupted.staleActiveOps.length) {
+    recos.push(`Priorité: instrumenter/corriger ${fw.interrupted.staleActiveOps[0]?.label || "l'opération restée active"}, capturée juste avant l'arrêt.`);
+  }
+  if (Number(fw?.historyAudit?.suspiciousCount || 0) > 0) recos.push("Inspecter les plus grosses parties listées par l'audit historique avant de supprimer des données au hasard.");
   if (input.memory?.trend?.risingFast) recos.push("Tester un écran ouvert plusieurs minutes puis comparer les samples mémoire avant/après navigation.");
   if (input.avatars?.totalMB > 20 || input.images?.heavyCount > 0) recos.push("Compresser les images lourdes et remplacer les base64 persistants par des fichiers/URLs.");
   if (input.history?.sizeMB > 20) recos.push("Archiver / compresser l'historique ancien hors du store principal.");
@@ -623,6 +640,7 @@ function installOnce() {
   if (!hasWindow() || started) return;
   started = true;
   getSession();
+  startFreezeWatchIfEnabled();
   rememberEvent("boot", { href: String(window.location.href || "") });
   if (!routeHistory.length) {
     routeHistory = pushBounded(routeHistory, currentRoute(), MAX_ROUTES);
@@ -687,18 +705,22 @@ function installOnce() {
 
   if (!intervalsInstalled) {
     intervalsInstalled = true;
-    // Routine monitoring is intentionally sparse and suspended during gameplay.
-    window.setInterval(() => sampleMemory("interval", false), 60_000);
-    window.setInterval(() => {
-      if (!deepProbeEnabled() || isGameplayRuntime() || isRuntimeHidden()) return;
-      try {
-        const t = buildTimerSnapshot();
-        if (t.activeIntervals > 0 || t.activeTimeouts > 0) {
-          timerSnapshots = pushBounded(timerSnapshots, t, 40);
-          queueSafeSet(TIMERS_KEY, timerSnapshots);
-        }
-      } catch {}
-    }, 60_000);
+    // P0 FREEZE V2: Android production must not wake extra diagnostic writers at
+    // the same 60-second boundary as maintenance/sync code. Explicit diagnostics
+    // still install the deep probes on demand via enableDeepDiagnosticsForSession().
+    if (!isCapacitorNativeRuntime()) {
+      window.setInterval(() => sampleMemory("interval", false), 60_000);
+      window.setInterval(() => {
+        if (!deepProbeEnabled() || isGameplayRuntime() || isRuntimeHidden()) return;
+        try {
+          const t = buildTimerSnapshot();
+          if (t.activeIntervals > 0 || t.activeTimeouts > 0) {
+            timerSnapshots = pushBounded(timerSnapshots, t, 40);
+            queueSafeSet(TIMERS_KEY, timerSnapshots);
+          }
+        } catch {}
+      }, 60_000);
+    }
   }
 }
 
@@ -752,6 +774,7 @@ export async function generateDiagnostic(): Promise<DiagnosticReport> {
   const lastCrash = getLastCrashReport();
   const crashLog = getCrashLog();
   const cacheInfo = await getCacheInfo();
+  const hardFreezeReport = await getHardFreezeReport().catch(() => null);
   const storageEstimate = typeof navigator !== "undefined" && (navigator as any).storage?.estimate
     ? await (navigator as any).storage.estimate().catch(() => null)
     : null;
@@ -778,6 +801,7 @@ export async function generateDiagnostic(): Promise<DiagnosticReport> {
       controlled: typeof navigator !== "undefined" && !!navigator.serviceWorker?.controller,
     },
     lastSnapshot: safeGet<any>(SNAPSHOT_KEY, null),
+    freezeWatch: { ...getFreezeWatchSnapshot(), hardFreezeReport },
   };
 
   const memory = {
@@ -942,6 +966,7 @@ export async function generateCompactDiagnostic() {
     probableCause: Array.isArray(report?.probableCause) ? report.probableCause.slice(0, 6) : [],
     recommendations: Array.isArray(report?.recommendations) ? report.recommendations.slice(0, 6) : [],
     crashGuard: report?.crashGuard || null,
+    freezeWatch: report?.runtime?.freezeWatch || null,
   };
 }
 

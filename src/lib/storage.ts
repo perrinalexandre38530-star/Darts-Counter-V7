@@ -13,6 +13,7 @@ import { isSensitiveAuthStorageKey } from "./authSessionGuard";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS, makeAvatarPlaceholderDataUrl } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
+import { beginFreezeOperation, endFreezeOperation } from "./freezeWatch";
 import { setAvatarCache as setAvatarCacheLib, resetAvatarCacheRuntime } from "./avatarCache";
 import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
 import {
@@ -63,9 +64,15 @@ function scheduleStoreUserMediaCapture(store: any): void {
     pendingStoreMediaCapture = null;
     if (!latest) return;
     storeMediaCaptureInFlight = true;
+    const __freezeMediaOp = beginFreezeOperation("storage.mediaCapture", {
+      profiles: Array.isArray((latest as any)?.profiles) ? (latest as any).profiles.length : 0,
+      dartSets: Array.isArray((latest as any)?.dartSets) ? (latest as any).dartSets.length : 0,
+    });
     try {
       await captureStoreUserMedia(latest, { mirrorR2: false });
-    } catch {}
+    } catch {} finally {
+      endFreezeOperation(__freezeMediaOp);
+    }
     storeMediaCaptureInFlight = false;
     if (pendingStoreMediaCapture) scheduleStoreUserMediaCapture(pendingStoreMediaCapture);
   };
@@ -1917,6 +1924,7 @@ function attachAuthoritativeDartSetsToStore<T extends any>(store: T): T {
 /* ---------- API publique principale ---------- */
 
 export async function loadStore<T extends Store>(): Promise<T | null> {
+  const __freezeOp = beginFreezeOperation("storage.loadStore", { scope: getActiveStoreScopeKey() });
   try {
     await migrateLegacyStoreIfNeeded();
     let raw = (await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY))) ?? null;
@@ -2023,6 +2031,8 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
   } catch (err) {
     console.warn("[storage] loadStore error:", err);
     return null;
+  } finally {
+    endFreezeOperation(__freezeOp);
   }
 }
 
@@ -2032,6 +2042,10 @@ type SaveOpts = {
 
 export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
   const guardedInput = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(store), "saveStore");
+  const __freezeOp = beginFreezeOperation("storage.saveStore", {
+    profiles: Array.isArray((guardedInput as any)?.profiles) ? (guardedInput as any).profiles.length : 0,
+    scope: getActiveStoreScopeKey(),
+  });
 
   // MEDIA FAILOVER: capture les pixels AVANT que le store principal soit allégé.
   // Ainsi avatars/photos de sets/logos restent dans un coffre IndexedDB dédié et
@@ -2151,6 +2165,8 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     } catch {
       console.warn("[storage] legacy fallback skipped");
     }
+  } finally {
+    endFreezeOperation(__freezeOp);
   }
 }
 
@@ -3369,6 +3385,11 @@ export type CloudSnapshotExportOptions = {
 };
 
 export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {}): Promise<CloudSnapshot> {
+  const __freezeOp = beginFreezeOperation("storage.exportCloudSnapshot", {
+    mediaMirror: opts.mediaMirror ?? "await",
+    includeEmbeddedMedia: opts.includeEmbeddedMedia !== false,
+  });
+  try {
   const dump = await exportAll();
   const mediaMirror = opts.mediaMirror ?? "await";
   // IMPORTANT RESTAURATION MULTI-APPAREILS : un snapshot NAS/local/fichier doit
@@ -3501,9 +3522,13 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     console.warn("[storage] exportCloudSnapshot sanitize failed", err);
     return dump;
   }
+  } finally {
+    endFreezeOperation(__freezeOp);
+  }
 }
 
 export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnapshotImportOptions): Promise<CloudSnapshotImportReport> {
+  const __freezeOp = beginFreezeOperation("storage.importCloudSnapshot", { mode: opts?.mode ?? "replace" });
   dump = unwrapNasSnapshotPayload(dump) as any;
   const mode = opts?.mode ?? "replace";
   const report = opts?.onProgress || (() => {});
@@ -3636,6 +3661,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   report(100, "Import local terminé.");
   } finally {
     try { sessionStorage.removeItem("dc_cloud_restore_in_progress_v2"); } catch {}
+    endFreezeOperation(__freezeOp);
   }
   return { mode, portable: portableReport, runtimeRefreshed };
 }

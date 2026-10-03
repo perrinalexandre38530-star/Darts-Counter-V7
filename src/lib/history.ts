@@ -99,6 +99,7 @@ import { EventBuffer } from "./sync/EventBuffer";
 import { recordProfileUsageFromMatch } from "./profileUsage";
 import { fingerprintHistoryPayload, protectFinishedHistoryPayload } from "./historyIntegrity";
 import { enrichDartsTelemetry } from "./dartsTelemetry";
+import { beginFreezeOperation, endFreezeOperation, recordFreezeWatchEvent, saveFreezeHistoryAudit } from "./freezeWatch";
 
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
@@ -1505,8 +1506,18 @@ function readLegacyRowsSafe(): SavedMatch[] {
     // PERF P0: decoding a compressed fallback containing dozens/hundreds of
     // matches is one of the most expensive synchronous operations in the app.
     // Decode only when the underlying raw value has actually changed.
-    const localRows = parseHistoryLocalStorage(localRaw) as SavedMatch[];
-    const sessionRows = parseHistoryLocalStorage(sessionRaw) as SavedMatch[];
+    const __freezeOp = beginFreezeOperation("history.legacyFallback.decode", {
+      localChars: localRaw?.length || 0,
+      sessionChars: sessionRaw?.length || 0,
+    });
+    let localRows: SavedMatch[] = [];
+    let sessionRows: SavedMatch[] = [];
+    try {
+      localRows = parseHistoryLocalStorage(localRaw) as SavedMatch[];
+      sessionRows = parseHistoryLocalStorage(sessionRaw) as SavedMatch[];
+    } finally {
+      endFreezeOperation(__freezeOp, { rows: localRows.length + sessionRows.length });
+    }
     const rows = _historyRowsMerge(localRows, sessionRows);
     __legacyRowsCache = { scopeKey, localRaw, sessionRaw, rows };
     __legacyFallbackKnownEmpty = false;
@@ -2213,12 +2224,14 @@ export async function list(): Promise<SavedMatch[]> {
     return (await __historyListInFlight).slice();
   }
 
+  const __freezeOp = beginFreezeOperation("history.list", { scope });
   const job = listUncached()
     .then((rows) => {
       const safeRows = Array.isArray(rows) ? rows : [];
       __historyListRecent = { scope, at: Date.now(), rows: safeRows };
       return safeRows;
-    });
+    })
+    .finally(() => endFreezeOperation(__freezeOp));
 
   __historyListInFlight = job;
   __historyListInFlightScope = scope;
@@ -2257,6 +2270,223 @@ export async function getAll(): Promise<SavedMatch[]> {
     .map((row: any) => normalizeHistoryRow(row)) as SavedMatch[];
 }
 
+
+export type HistoryStorageAudit = {
+  generatedAt: number;
+  dbName: string;
+  rows: number;
+  headerRows: number;
+  detailRows: number;
+  totalApproxBytes: number;
+  totalApproxMB: number;
+  fallbackApproxBytes: number;
+  fallbackApproxMB: number;
+  largest: Array<{
+    id: string;
+    kind: string;
+    status: string;
+    updatedAt: number;
+    headerApproxBytes: number;
+    payloadCompressedChars: number;
+    payloadApproxBytes: number;
+    approxBytes: number;
+    approxKB: number;
+    suspicious: boolean;
+  }>;
+  suspiciousCount: number;
+};
+
+function _historyAuditJsonBytes(value: any): number {
+  try { return JSON.stringify(value ?? null).length * 2; } catch { return 0; }
+}
+
+/**
+ * Diagnostic P0: scanne uniquement les tailles stockées, SANS décompresser les
+ * payloads. Cela permet d'identifier une partie anormalement volumineuse sans
+ * provoquer nous-mêmes le freeze que l'on cherche à diagnostiquer.
+ */
+export async function auditHistoryStorageFootprint(): Promise<HistoryStorageAudit> {
+  const __freezeOp = beginFreezeOperation("history.auditFootprint", { dbName: historyDbName() });
+  try {
+    await migrateFromLocalStorageOnce();
+    const collected = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
+      const readAll = (store: IDBObjectStore) => new Promise<any[]>((resolve) => {
+        const out: any[] = [];
+        try {
+          const req = store.openCursor();
+          req.onsuccess = () => {
+            const cur = req.result as IDBCursorWithValue | null;
+            if (!cur) return resolve(out);
+            out.push(cur.value);
+            cur.continue();
+          };
+          req.onerror = () => resolve(out);
+        } catch {
+          resolve(out);
+        }
+      });
+      const [headers, details] = await Promise.all([
+        readAll(stores[STORE_HEADERS]),
+        readAll(stores[STORE_DETAILS]),
+      ]);
+      return { headers, details };
+    });
+
+    const headersById = new Map<string, any>();
+    for (const h of collected.headers || []) {
+      const id = String(h?.id ?? h?.matchId ?? "").trim();
+      if (id) headersById.set(id, h);
+    }
+    const detailsById = new Map<string, any>();
+    for (const d of collected.details || []) {
+      const id = String(d?.id ?? d?.matchId ?? "").trim();
+      if (id) detailsById.set(id, d);
+    }
+
+    const ids = new Set<string>([...headersById.keys(), ...detailsById.keys()]);
+    const rows = Array.from(ids).map((id) => {
+      const header = headersById.get(id) || {};
+      const detail = detailsById.get(id) || {};
+      const compressedChars = typeof detail?.payloadCompressed === "string" ? detail.payloadCompressed.length : 0;
+      // UTF-16 JS string ~= 2 bytes/code unit. C'est une approximation volontaire
+      // et suffisante pour comparer les enregistrements entre eux.
+      const payloadApproxBytes = compressedChars * 2;
+      const headerApproxBytes = _historyAuditJsonBytes(header);
+      const approxBytes = headerApproxBytes + payloadApproxBytes;
+      return {
+        id,
+        kind: String(header?.kind || detail?.kind || ""),
+        status: String(header?.status || detail?.status || ""),
+        updatedAt: Number(header?.updatedAt || detail?.updatedAt || 0),
+        headerApproxBytes,
+        payloadCompressedChars: compressedChars,
+        payloadApproxBytes,
+        approxBytes,
+        approxKB: Math.round((approxBytes / 1024) * 10) / 10,
+        suspicious: approxBytes >= 1_500_000,
+      };
+    }).sort((a, b) => b.approxBytes - a.approxBytes);
+
+    const localRaw = _historyStorageGet(typeof localStorage !== "undefined" ? localStorage : null);
+    const sessionRaw = _historyStorageGet(typeof sessionStorage !== "undefined" ? sessionStorage : null);
+    const fallbackApproxBytes = ((localRaw?.length || 0) + (sessionRaw?.length || 0)) * 2;
+    const totalApproxBytes = rows.reduce((sum, row) => sum + row.approxBytes, 0) + fallbackApproxBytes;
+
+    const audit: HistoryStorageAudit = {
+      generatedAt: Date.now(),
+      dbName: historyDbName(),
+      rows: rows.length,
+      headerRows: collected.headers?.length || 0,
+      detailRows: collected.details?.length || 0,
+      totalApproxBytes,
+      totalApproxMB: Math.round((totalApproxBytes / 1024 / 1024) * 100) / 100,
+      fallbackApproxBytes,
+      fallbackApproxMB: Math.round((fallbackApproxBytes / 1024 / 1024) * 100) / 100,
+      largest: rows.slice(0, 20),
+      suspiciousCount: rows.filter((row) => row.suspicious).length,
+    };
+    saveFreezeHistoryAudit(audit);
+    return audit;
+  } finally {
+    endFreezeOperation(__freezeOp);
+  }
+}
+
+
+export type HistoryDecodeAudit = {
+  generatedAt: number;
+  tested: number;
+  totalAvailable: number;
+  failed: number;
+  maxMs: number;
+  avgMs: number;
+  slowest: Array<{
+    id: string;
+    kind: string;
+    status: string;
+    durationMs: number;
+    ok: boolean;
+    error?: string;
+  }>;
+};
+
+/**
+ * Diagnostic volontaire et non destructif. Lit les parties une par une et
+ * laisse volontairement un marqueur persistant AVANT chaque History.get().
+ * Si un payload précis fige Android/WebView, le prochain démarrage indiquera
+ * l'ID exact dans freezeWatch.interrupted.staleActiveOps.
+ */
+export async function auditHistoryDecodePerformance(options?: {
+  maxRows?: number;
+  onProgress?: (progress: { index: number; total: number; id: string; durationMs?: number }) => void;
+}): Promise<HistoryDecodeAudit> {
+  const rows = await list();
+  const maxRows = Math.max(1, Math.min(400, Number(options?.maxRows || 150)));
+  const candidates = rows.slice(0, maxRows);
+  const results: HistoryDecodeAudit["slowest"] = [];
+  let failed = 0;
+  let durationTotal = 0;
+
+  recordFreezeWatchEvent("history-deep-audit-start", { totalAvailable: rows.length, testedTarget: candidates.length });
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const row: any = candidates[index] || {};
+    const id = String(row?.id || row?.matchId || "").trim();
+    if (!id) continue;
+
+    options?.onProgress?.({ index: index + 1, total: candidates.length, id });
+    const marker = beginFreezeOperation("history.deepAudit.record", {
+      id,
+      index: index + 1,
+      total: candidates.length,
+      kind: String(row?.kind || ""),
+      status: String(row?.status || ""),
+    });
+    const startedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();
+    let ok = false;
+    let error = "";
+    try {
+      const full = await get(id);
+      ok = !!full;
+    } catch (e: any) {
+      failed += 1;
+      error = String(e?.message || e || "read failed").slice(0, 240);
+    } finally {
+      const endedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();
+      const durationMs = Math.max(0, Math.round((endedAt - startedAt) * 10) / 10);
+      durationTotal += durationMs;
+      const result = {
+        id,
+        kind: String(row?.kind || ""),
+        status: String(row?.status || ""),
+        durationMs,
+        ok,
+        ...(error ? { error } : {}),
+      };
+      results.push(result);
+      endFreezeOperation(marker, { durationMs, ok, ...(error ? { error } : {}) });
+      options?.onProgress?.({ index: index + 1, total: candidates.length, id, durationMs });
+    }
+
+    // Rend explicitement la main à l'UI entre deux payloads. Le but est de
+    // trouver LE record problématique, pas de créer nous-mêmes une rafale CPU.
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 12));
+  }
+
+  const sorted = [...results].sort((a, b) => b.durationMs - a.durationMs);
+  const audit: HistoryDecodeAudit = {
+    generatedAt: Date.now(),
+    tested: results.length,
+    totalAvailable: rows.length,
+    failed,
+    maxMs: sorted.length ? sorted[0].durationMs : 0,
+    avgMs: results.length ? Math.round((durationTotal / results.length) * 10) / 10 : 0,
+    slowest: sorted.slice(0, 20),
+  };
+  recordFreezeWatchEvent("history-deep-audit-complete", audit);
+  return audit;
+}
+
 export async function get(id: string): Promise<SavedMatch | null> {
   await migrateFromLocalStorageOnce();
 
@@ -2264,6 +2494,7 @@ export async function get(id: string): Promise<SavedMatch | null> {
   // Sans ceci, get() pouvait retrouver physiquement une ligne que list() masquait.
   if (isHistoryDeletedByTombstone(String(id || ""))) return null;
 
+  const __freezeOp = beginFreezeOperation("history.get", { id: String(id || "") });
   try {
     const rec: any = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
       const headers = stores[STORE_HEADERS];
@@ -2350,10 +2581,22 @@ export async function get(id: string): Promise<SavedMatch | null> {
     const header = { ...(rec.header || {}) };
     const detail = rec.detail || null;
 
-    let payload: any | null = decodePayloadCompressedBestEffort(detail?.payloadCompressed, {
+    const __decodeFreezeOp = beginFreezeOperation("history.payload.decode", {
       id: String(id),
-      stage: "get",
+      compressedChars: typeof detail?.payloadCompressed === "string" ? detail.payloadCompressed.length : 0,
+      kind: String(header?.kind || ""),
     });
+    let payload: any | null = null;
+    try {
+      payload = decodePayloadCompressedBestEffort(detail?.payloadCompressed, {
+        id: String(id),
+        stage: "get",
+      });
+    } finally {
+      endFreezeOperation(__decodeFreezeOp, {
+        decoded: !!payload,
+      });
+    }
 
     if (!payload && typeof detail?.payloadCompressed === "string") {
       const t = String(detail.payloadCompressed || "").trim();
@@ -2419,6 +2662,8 @@ export async function get(id: string): Promise<SavedMatch | null> {
     const rows = readLegacyRowsSafe();
     const hit = rows.find((r) => r.id === id || r.matchId === id) || null;
     return hit ? (normalizeHistoryRow(hit as any) as SavedMatch) : null;
+  } finally {
+    endFreezeOperation(__freezeOp);
   }
 }
 
