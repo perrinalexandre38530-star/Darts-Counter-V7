@@ -3,8 +3,9 @@ import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
 import { queueExternalBackup } from "./externalBackupTarget";
-import { uploadPersonalCloudSnapshot, isPersonalCloudProvider } from "./personalCloudApi";
+import { uploadPersonalCloudSnapshot, isPersonalCloudProvider, type PersonalCloudProvider } from "./personalCloudApi";
 import { getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
+import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
   deleteCloudObjectRemote,
@@ -26,6 +27,84 @@ const CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS = 90_000;
 
 type StorageProviderCache = { at: number; provider: string; ok: boolean } | null;
 let storageProviderCache: StorageProviderCache = null;
+
+type DeferredPersonalCloudSnapshot = {
+  provider: PersonalCloudProvider;
+  metadata: Record<string, any>;
+};
+
+let deferredPersonalCloudSnapshot: DeferredPersonalCloudSnapshot | null = null;
+let deferredPersonalCloudListenersInstalled = false;
+let deferredPersonalCloudRunning: Promise<void> | null = null;
+
+async function runPersonalCloudFullSnapshot(job: DeferredPersonalCloudSnapshot): Promise<void> {
+  if (deferredPersonalCloudRunning) {
+    deferredPersonalCloudSnapshot = job;
+    return deferredPersonalCloudRunning;
+  }
+
+  deferredPersonalCloudRunning = (async () => {
+    const snapshot = await exportCloudSnapshot({ mediaMirror: "skip", includeEmbeddedMedia: false });
+    await uploadPersonalCloudSnapshot(job.provider, JSON.stringify(snapshot), job.metadata);
+  })().catch((error) => {
+    try {
+      localStorage.setItem("dc_personal_cloud_last_error_v1", JSON.stringify({
+        at: nowIso(),
+        provider: job.provider,
+        message: error?.message || String(error),
+      }));
+    } catch {}
+  }).finally(() => {
+    deferredPersonalCloudRunning = null;
+    if (deferredPersonalCloudSnapshot && isRuntimeHidden()) {
+      const next = deferredPersonalCloudSnapshot;
+      deferredPersonalCloudSnapshot = null;
+      void runPersonalCloudFullSnapshot(next);
+    }
+  });
+
+  return deferredPersonalCloudRunning;
+}
+
+function installDeferredPersonalCloudListeners(): void {
+  if (deferredPersonalCloudListenersInstalled || typeof window === "undefined") return;
+  deferredPersonalCloudListenersInstalled = true;
+
+  const flushWhenHidden = () => {
+    if (!deferredPersonalCloudSnapshot || !isRuntimeHidden()) return;
+    const job = deferredPersonalCloudSnapshot;
+    deferredPersonalCloudSnapshot = null;
+    window.setTimeout(() => {
+      if (shouldDeferHeavyRuntimeWork()) {
+        deferredPersonalCloudSnapshot = job;
+        return;
+      }
+      void runPersonalCloudFullSnapshot(job);
+    }, 1200);
+  };
+
+  try { document.addEventListener("visibilitychange", flushWhenHidden, { passive: true }); } catch {}
+  try { window.addEventListener("pagehide", flushWhenHidden, { passive: true }); } catch {}
+}
+
+function queuePersonalCloudFullSnapshot(provider: PersonalCloudProvider, metadata: Record<string, any>): void {
+  const job: DeferredPersonalCloudSnapshot = { provider, metadata };
+
+  if (shouldDeferHeavyRuntimeWork()) {
+    deferredPersonalCloudSnapshot = job;
+    installDeferredPersonalCloudListeners();
+    try {
+      localStorage.setItem("dc_personal_cloud_deferred_snapshot_v1", JSON.stringify({
+        at: nowIso(),
+        provider,
+        reason: metadata?.reason || "history-upsert",
+      }));
+    } catch {}
+    return;
+  }
+
+  void runPersonalCloudFullSnapshot(job);
+}
 
 export type MatchBackupOrigin = "local" | "nas" | "cloud";
 
@@ -615,6 +694,20 @@ export async function pushMatchBackupToCloud(item: MatchBackupItem): Promise<voi
 async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
   if (!readNasAccessToken()) return;
   if (!(await shouldUseCloudR2())) return;
+
+  // Le backup de la partie elle-même est déjà envoyé juste avant. Sur mobile,
+  // le gros snapshot compte complet est pris en charge par la file de backup
+  // complet hors premier plan : ne jamais le reconstruire pendant la navigation.
+  if (shouldDeferHeavyRuntimeWork()) {
+    try {
+      localStorage.setItem("dc_cloud_auto_full_backup_deferred_v1", JSON.stringify({
+        at: nowIso(),
+        reason,
+      }));
+    } catch {}
+    return;
+  }
+
   const now = Date.now();
   try {
     const last = Number(localStorage.getItem("dc_cloud_auto_full_backup_last_at_v1") || "0") || 0;
@@ -732,20 +825,24 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
   const provider = await getActiveStorageProviderCached().catch(() => "local_device");
 
   if (provider === "external_file") {
-    queueExternalBackup("history-upsert");
+    if (args.source !== "history-prewrite-revision") queueExternalBackup("history-upsert");
     return;
   }
   if (provider === "local_device") return;
 
   if (isPersonalCloudProvider(provider)) {
-    // Mode console : après une partie, la copie locale est immédiate puis le
-    // snapshot complet du compte est remplacé dans SON cloud personnel.
-    void exportCloudSnapshot({ mediaMirror: "skip", includeEmbeddedMedia: false })
-      .then((snapshot) => uploadPersonalCloudSnapshot(provider, JSON.stringify(snapshot), {
-        reason: "history-upsert", exportedAt: new Date().toISOString(),
-        matchId: item.matchId, sport: item.sport, ownerId: currentOwnerId(),
-      }))
-      .catch((error) => { try { localStorage.setItem("dc_personal_cloud_last_error_v1", JSON.stringify({ at: nowIso(), provider, message: error?.message || String(error) })); } catch {} });
+    // La révision PRECEDENTE reste protégée localement, mais elle ne doit pas
+    // déclencher à elle seule un export complet du compte. Le snapshot personnel
+    // est coalescé sur l'état courant et, sur mobile, reporté hors navigation.
+    if (args.source !== "history-prewrite-revision") {
+      queuePersonalCloudFullSnapshot(provider, {
+        reason: "history-upsert",
+        exportedAt: new Date().toISOString(),
+        matchId: item.matchId,
+        sport: item.sport,
+        ownerId: currentOwnerId(),
+      });
+    }
     return;
   }
 
@@ -755,11 +852,13 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
         localStorage.setItem("dc_match_backup_last_cloud_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
       } catch {}
     });
-    void pushLatestSnapshotToCloud("history-upsert").catch((error) => {
-      try {
-        localStorage.setItem("dc_cloud_auto_full_backup_last_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
-      } catch {}
-    });
+    if (args.source !== "history-prewrite-revision") {
+      void pushLatestSnapshotToCloud("history-upsert").catch((error) => {
+        try {
+          localStorage.setItem("dc_cloud_auto_full_backup_last_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
+        } catch {}
+      });
+    }
     return;
   }
   if (provider === "nas_founder") {

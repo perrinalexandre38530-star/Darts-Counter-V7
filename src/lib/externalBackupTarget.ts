@@ -1,5 +1,6 @@
 import { exportCloudSnapshot } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
+import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
 
 const DB_NAME = "dc-external-backup-target-v1";
 const STORE_NAME = "handles";
@@ -20,6 +21,8 @@ export type ExternalBackupStatus = {
 let queuedTimer: number | null = null;
 let running: Promise<ExternalBackupStatus> | null = null;
 let lastAutoWriteAt = 0;
+let deferredAutoReason = "";
+let deferredAutoListenersInstalled = false;
 
 function supportsFilePicker(): boolean {
   return typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function";
@@ -383,14 +386,55 @@ export async function writeExternalBackupNow(reason = "manual", opts?: { request
   }
 }
 
-export function queueExternalBackup(reason = "auto"): void {
-  const prefs = loadStoragePrefs();
-  if (prefs.selectedDestination !== "device_file" && prefs.selectedDestination !== "external_sd_manual" && prefs.selectedDestination !== "personal_cloud_manual") return;
+function installDeferredExternalBackupListeners(): void {
+  if (deferredAutoListenersInstalled || typeof window === "undefined") return;
+  deferredAutoListenersInstalled = true;
+
+  const flushWhenHidden = () => {
+    if (!deferredAutoReason || !isRuntimeHidden()) return;
+    const reason = deferredAutoReason;
+    deferredAutoReason = "";
+    scheduleExternalBackupTimer(reason);
+  };
+
+  try { document.addEventListener("visibilitychange", flushWhenHidden, { passive: true }); } catch {}
+  try { window.addEventListener("pagehide", flushWhenHidden, { passive: true }); } catch {}
+}
+
+function scheduleExternalBackupTimer(reason: string): void {
   if (typeof window === "undefined") return;
   if (queuedTimer) window.clearTimeout(queuedTimer);
   const delay = Math.max(3000, MIN_AUTO_WRITE_MS - (Date.now() - lastAutoWriteAt));
   queuedTimer = window.setTimeout(() => {
     queuedTimer = null;
+
+    // Un timer programmé en arrière-plan peut être relâché seulement après le
+    // retour dans l'app. Revalider la visibilité évite alors un snapshot géant
+    // exactement au moment où l'utilisateur recommence à naviguer.
+    if (shouldDeferHeavyRuntimeWork()) {
+      deferredAutoReason = reason;
+      installDeferredExternalBackupListeners();
+      return;
+    }
+
     void writeExternalBackupNow(reason, { requestPermission: false });
   }, delay);
+}
+
+export function queueExternalBackup(reason = "auto"): void {
+  const prefs = loadStoragePrefs();
+  if (prefs.selectedDestination !== "device_file" && prefs.selectedDestination !== "external_sd_manual" && prefs.selectedDestination !== "personal_cloud_manual") return;
+  if (typeof window === "undefined") return;
+
+  if (shouldDeferHeavyRuntimeWork()) {
+    deferredAutoReason = String(reason || "auto");
+    if (queuedTimer) {
+      window.clearTimeout(queuedTimer);
+      queuedTimer = null;
+    }
+    installDeferredExternalBackupListeners();
+    return;
+  }
+
+  scheduleExternalBackupTimer(String(reason || "auto"));
 }

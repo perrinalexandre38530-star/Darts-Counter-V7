@@ -116,6 +116,24 @@ function isConstrainedStatsIndexDevice(): boolean {
   }
 }
 
+function isStatsIndexRuntimeActive(): boolean {
+  try {
+    const w: any = (globalThis as any)?.window;
+    const tab = String(w?.__mscActiveTab || w?.__appStore?.tab || "").trim().toLowerCase();
+    if (!tab) return false;
+    return (
+      tab === "stats" ||
+      tab === "statshub" ||
+      tab === "statsdetail" ||
+      tab.startsWith("stats_") ||
+      tab.endsWith("_stats") ||
+      tab.includes("_stats_")
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function yieldStatsIndexWork(): Promise<void> {
   await new Promise<void>((resolve) => {
     const raf = (globalThis as any)?.requestAnimationFrame;
@@ -1168,6 +1186,20 @@ export function scheduleStatsIndexRefresh(options?: {
   const reason = options?.reason || "scheduled-refresh";
   markStatsIndexDirty(reason);
 
+  // P0 MOBILE: un changement d'historique ne doit jamais lancer tout seul un
+  // rebuild complet pendant Home/Games/Profiles/Settings. Avec un historique
+  // important, ce rebuild hydrate les payloads match par match et peut entrer
+  // en concurrence avec la navigation. On conserve le marqueur "dirty" et le
+  // rebuild reprendra dès qu'une vraie page Stats le demandera.
+  const constrained = isConstrainedStatsIndexDevice();
+  if (constrained && !isStatsIndexRuntimeActive()) {
+    if (__statsRefreshTimer) {
+      clearTimeout(__statsRefreshTimer);
+      __statsRefreshTimer = null;
+    }
+    return loadStatsIndex().then((cached) => cached || createEmptyStatsIndex(!!options?.includeNonFinished));
+  }
+
   // Le coût du rebuild est payé APRES la mutation d'historique, jamais à
   // l'ouverture de Stats. Les imports massifs repoussent ce timer et ne font
   // donc qu'un seul rebuild final.
@@ -1177,6 +1209,10 @@ export function scheduleStatsIndexRefresh(options?: {
   __statsRefreshTimer = setTimeout(() => {
     __statsRefreshTimer = null;
     const run = () => {
+      // L'utilisateur a pu quitter Stats entre la planification idle et son
+      // exécution. Dans ce cas on abandonne sans effacer le flag dirty.
+      if (constrained && !isStatsIndexRuntimeActive()) return;
+
       const p = refreshStatsIndexFromHistoryNow({
         includeNonFinished: options?.includeNonFinished,
         persist: options?.persist,

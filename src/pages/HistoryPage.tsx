@@ -2742,24 +2742,57 @@ function mergeHistoryRowsFast(rowsLocal: SavedEntry[], linkedRows: SavedEntry[] 
   return Array.from(byId.values());
 }
 
+function isConstrainedHistoryDevice(): boolean {
+  try {
+    const nav: any = navigator;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function yieldHistoryCardWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    try {
+      if (isConstrainedHistoryDevice() && typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+        return;
+      }
+    } catch {}
+    window.setTimeout(resolve, 0);
+  });
+}
+
 async function hydrateHistoryRowsInBatches(
   rows: SavedEntry[],
   shouldHydrate: (row: SavedEntry, index: number) => boolean,
   hydrateOne: (row: SavedEntry) => Promise<SavedEntry>,
 ): Promise<SavedEntry[]> {
   const out = [...rows];
+  const constrained = isConstrainedHistoryDevice();
+
+  // P0 FLUIDITÉ : l'écran affiche 18 cartes au départ. Hydrater 81 payloads
+  // complets en arrière-plan n'apporte rien au premier rendu et surcharge le
+  // WebView avec un gros historique. On ne travaille que sur la zone proche de
+  // l'écran ; l'ouverture/reprise d'une partie hydrate toujours son détail à la demande.
+  const maxHydratedRows = constrained ? 24 : 48;
+  const batchSize = constrained ? 4 : 10;
   const targets = rows
     .map((row, index) => ({ row, index }))
-    .filter(({ row, index }) => index <= 80 && shouldHydrate(row, index));
+    .filter(({ row, index }) => index < maxHydratedRows && shouldHydrate(row, index));
 
-  for (let offset = 0; offset < targets.length; offset += 12) {
-    const batch = targets.slice(offset, offset + 12);
+  for (let offset = 0; offset < targets.length; offset += batchSize) {
+    const batch = targets.slice(offset, offset + batchSize);
     const hydrated = await Promise.all(batch.map(({ row }) => hydrateOne(row)));
     hydrated.forEach((row, index) => {
       out[batch[index].index] = row;
     });
-    if (offset + 12 < targets.length) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    if (offset + batchSize < targets.length) {
+      await yieldHistoryCardWork();
     }
   }
 
@@ -2899,7 +2932,9 @@ async function enrichHistoryRowsForCards(rowsInput: SavedEntry[]): Promise<Saved
   const babyFootRows = await hydrateBabyFootHistoryRows(rowsInput);
   const rows = await hydrateInProgressKillerRows(babyFootRows);
   const enhanced: SavedEntry[] = [];
-  let payloadDecodeBudget = 25;
+  // Legacy string payloads are synchronous to decode. Keep that compatibility
+  // path bounded on phones instead of decoding dozens of old matches at once.
+  let payloadDecodeBudget = isConstrainedHistoryDevice() ? 6 : 16;
 
   for (const row of rows) {
     try {

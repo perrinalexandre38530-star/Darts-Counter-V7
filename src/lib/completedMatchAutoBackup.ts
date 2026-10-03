@@ -1,4 +1,5 @@
 import { saveConfiguredBackupNow } from "./configuredBackupNow";
+import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
 
 const LAST_SIGNATURE_PREFIX = "dc_match_full_backup_last_signature_v1";
 const LAST_RESULT_KEY = "dc_match_full_backup_last_result_v1";
@@ -11,6 +12,48 @@ let retryTimer: number | null = null;
 let running: Promise<void> | null = null;
 let queued: { matchId: string; signature: string; reason: string; attempt: number } | null = null;
 const recentSuccessfulMatches = new Map<string, number>();
+
+let deferredFlushListenersInstalled = false;
+
+function rememberDeferred(job: { matchId: string; signature: string; reason: string }): void {
+  try {
+    localStorage.setItem(LAST_RESULT_KEY, JSON.stringify({
+      at: new Date().toISOString(),
+      ok: true,
+      deferred: true,
+      signature: job.signature,
+      matchId: job.matchId,
+      reason: job.reason,
+      message: "Snapshot complet reporté hors navigation sur appareil mobile.",
+    }));
+  } catch {}
+}
+
+function installDeferredFlushListeners(): void {
+  if (deferredFlushListenersInstalled || typeof window === "undefined") return;
+  deferredFlushListenersInstalled = true;
+
+  const flushWhenHidden = () => {
+    if (!queued || !isRuntimeHidden()) return;
+    if (timer != null) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+    if (retryTimer != null) {
+      window.clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    // Petite grâce : si Android ne fait qu'un aller-retour de visibilité, le
+    // callback se réveillera au retour et revalidera la règle "pas au premier plan".
+    timer = window.setTimeout(() => {
+      timer = null;
+      void flushQueued();
+    }, 1200);
+  };
+
+  try { document.addEventListener("visibilitychange", flushWhenHidden, { passive: true }); } catch {}
+  try { window.addEventListener("pagehide", flushWhenHidden, { passive: true }); } catch {}
+}
 
 function currentUserScope(): string {
   try {
@@ -44,6 +87,17 @@ function rememberFailure(signature: string, result: any): void {
 
 async function flushQueued(): Promise<void> {
   if (running || !queued) return;
+
+  // P0 FLUIDITÉ MOBILE : un snapshot complet sérialise tout le compte et peut
+  // monopoliser le WebView lorsque l'historique est volumineux. Tant que
+  // l'application est visible, on garde uniquement le job coalescé en attente.
+  // La sauvegarde PAR PARTIE a déjà été créée par History.upsert.
+  if (shouldDeferHeavyRuntimeWork()) {
+    installDeferredFlushListeners();
+    rememberDeferred(queued);
+    return;
+  }
+
   const job = queued;
   queued = null;
   if (alreadyBackedUp(job.signature)) return;
@@ -106,6 +160,16 @@ export function queueCompletedMatchAutoBackup(args: {
   };
 
   if (timer != null) window.clearTimeout(timer);
+
+  if (shouldDeferHeavyRuntimeWork()) {
+    // Ne jamais lancer l'export complet 900 ms après la fin d'une partie sur
+    // téléphone. Ce délai était précisément assez long pour que le gel semble
+    // arriver "de nulle part" pendant la navigation suivante.
+    installDeferredFlushListeners();
+    rememberDeferred(queued);
+    return;
+  }
+
   timer = window.setTimeout(() => {
     timer = null;
     void flushQueued();

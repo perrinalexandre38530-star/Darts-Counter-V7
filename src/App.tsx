@@ -3792,6 +3792,16 @@ useEffect(() => {
       }
     };
 
+    // P0 NAVIGATION / FLUIDITÉ:
+    // Sur téléphone, ces préchauffages sont purement opportunistes mais chacun
+    // peut hydrater/décompresser une grosse partie de l'historique. Avec 90+
+    // matchs, les lancer automatiquement après le boot ou un save peut empiler
+    // plusieurs scans (dartsets, X01 multi, compare, détails) au moment où
+    // l'utilisateur navigue. Les pages Stats savent déjà charger leur cache à la
+    // demande : on réserve donc ce préchauffage automatique aux appareils non
+    // contraints. Aucune donnée/statistique n'est supprimée.
+    if (isConstrained()) return;
+
     const startWarm = (force: boolean) => {
       if (cancelled) return;
       const run = () => {
@@ -7054,6 +7064,7 @@ function AccountSyncBanner() {
   const [sync, setSync] = React.useState<any>(null);
   const [busy, setBusy] = React.useState(false);
   const [decisionError, setDecisionError] = React.useState("");
+  const [showConflictDetails, setShowConflictDetails] = React.useState(false);
   const spokenConflictRef = React.useRef("");
 
   React.useEffect(() => {
@@ -7067,6 +7078,7 @@ function AccountSyncBanner() {
       if (hideTimer) { window.clearTimeout(hideTimer); hideTimer = null; }
       setSync(detail);
       setDecisionError("");
+      if (phase !== "conflict") setShowConflictDetails(false);
       if (phase === "done") {
         if (uid) completedUsers.add(uid);
         hideTimer = window.setTimeout(() => setSync(null), 650);
@@ -7110,7 +7122,7 @@ function AccountSyncBanner() {
   if (conflict) {
     return (
       <div style={{ position:"fixed", zIndex:2147482500, inset:0, display:"grid", placeItems:"center", padding:16, background:"rgba(0,4,10,.52)", pointerEvents:"auto" }}>
-        <div role="dialog" aria-modal="true" aria-label="Dialogue de synchronisation Awena" style={{ width:"min(92vw,460px)", borderRadius:24, padding:18, color:"#effcff", background:"linear-gradient(180deg,rgba(5,19,32,.99),rgba(3,9,17,.99))", border:"1px solid rgba(42,229,255,.68)", boxShadow:"0 22px 70px rgba(0,0,0,.65),0 0 28px rgba(34,220,255,.14)" }}>
+        <div role="dialog" aria-modal="true" aria-label="Dialogue de synchronisation Awena" style={{ width:"min(92vw,460px)", maxHeight:"calc(100dvh - 28px)", overflow:"hidden", borderRadius:24, padding:18, color:"#effcff", background:"linear-gradient(180deg,rgba(5,19,32,.99),rgba(3,9,17,.99))", border:"1px solid rgba(42,229,255,.68)", boxShadow:"0 22px 70px rgba(0,0,0,.65),0 0 28px rgba(34,220,255,.14)" }}>
           <div style={{ display:"flex", gap:13, alignItems:"center" }}>
             <div style={{ width:62, height:62, flex:"0 0 62px", borderRadius:"50%", overflow:"hidden", border:"2px solid rgba(77,243,255,.8)", boxShadow:"0 0 22px rgba(77,243,255,.28)" }}>
               <img src="/awena/awena-avatar.webp" alt="Awena" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
@@ -7151,54 +7163,38 @@ function AccountSyncBanner() {
               ["Médias", localMedia, remoteMedia],
             ] as Array<[string,number,number]>;
             const changed = rows.filter(([,l,r]) => l !== r);
-            return (
-              <div style={{marginTop:12,display:"grid",gap:10}}>
-                <div style={{padding:"12px 13px",borderRadius:15,background:"rgba(38,222,255,.07)",border:"1px solid rgba(52,226,255,.28)"}}>
-                  <div style={{fontSize:11,fontWeight:950,color:"#55eaff",letterSpacing:.4}}>SAUVEGARDE DISTANTE TROUVÉE</div>
-                  <div style={{fontSize:14,fontWeight:950,marginTop:3}}>{sourceLabel}</div>
-                  <div style={{fontSize:12,color:"#c3d9df",marginTop:5}}><b style={{color:"#fff"}}>{dateText}</b> · {sizeText}</div>
-                </div>
-
-                <div style={{overflow:"hidden",borderRadius:15,border:"1px solid rgba(255,255,255,.10)",background:"rgba(255,255,255,.035)"}}>
-                  <div style={{display:"grid",gridTemplateColumns:"1.25fr .9fr .9fr",gap:6,padding:"9px 10px",background:"rgba(255,255,255,.045)",fontSize:10,fontWeight:950,color:"#9fb8c1",textTransform:"uppercase"}}>
-                    <span>Donnée</span><span style={{textAlign:"center"}}>Cet appareil</span><span style={{textAlign:"center",color:"#64eaff"}}>Sauvegarde</span>
-                  </div>
-                  {rows.map(([label,l,r]) => {
-                    const delta = r-l;
-                    return <div key={label} style={{display:"grid",gridTemplateColumns:"1.25fr .9fr .9fr",gap:6,padding:"9px 10px",borderTop:"1px solid rgba(255,255,255,.06)",alignItems:"center",fontSize:12}}>
-                      <span style={{fontWeight:850}}>{label}</span>
-                      <span style={{textAlign:"center",fontWeight:900}}>{l}</span>
-                      <span style={{textAlign:"center",fontWeight:950,color:delta===0?"#d8e7eb":delta>0?"#7dff9b":"#ffbf78"}}>{r}{delta!==0 && <small style={{marginLeft:5,fontWeight:950}}>({delta>0?`+${delta}`:delta})</small>}</span>
-                    </div>;
-                  })}
-                </div>
-
-                <div style={{padding:"11px 12px",borderRadius:13,background:changed.length?"rgba(255,184,77,.08)":"rgba(94,255,147,.07)",border:`1px solid ${changed.length?"rgba(255,184,77,.25)":"rgba(94,255,147,.22)"}`,fontSize:11,lineHeight:1.45,color:changed.length?"#ffe1b0":"#baffce"}}>
-                  {changed.length ? <>
-                    <b>À comprendre avant de choisir :</b> les nombres entre parenthèses indiquent ce que la sauvegarde contient en plus ou en moins par rapport à cet appareil. Une valeur négative signifie que remplacer cet appareil par cette sauvegarde peut retirer des éléments de cette catégorie.
-                  </> : <>
-                    <b>Mêmes quantités détectées.</b> Cela ne garantit pas encore que chaque élément soit identique ; aucune différence de quantité n’a été trouvée.
-                  </>}
-                </div>
-
-                {Array.isArray(conflict.details) && conflict.details.length > 0 && (
-                  <div style={{padding:"11px 12px",borderRadius:13,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.10)",fontSize:11,lineHeight:1.45}}>
-                    <div style={{fontWeight:950,color:"#55eaff",marginBottom:7}}>DIFFÉRENCES RÉELLES DÉTECTÉES</div>
-                    {conflict.details.map((group:any) => (
-                      <div key={group.key} style={{marginTop:7,paddingTop:7,borderTop:"1px solid rgba(255,255,255,.06)"}}>
-                        <b>{group.label}</b> · {Number(group.common||0)} identique(s)
-                        {Array.isArray(group.onlyLocal) && group.onlyLocal.length > 0 && <div style={{color:"#ffcf8b",marginTop:3}}>Seulement sur cet appareil ({group.onlyLocal.length}) : {group.onlyLocal.slice(0,6).join(" · ")}{group.onlyLocal.length>6?` · +${group.onlyLocal.length-6} autres`:""}</div>}
-                        {Array.isArray(group.onlyRemote) && group.onlyRemote.length > 0 && <div style={{color:"#8dffad",marginTop:3}}>Seulement dans la sauvegarde ({group.onlyRemote.length}) : {group.onlyRemote.slice(0,6).join(" · ")}{group.onlyRemote.length>6?` · +${group.onlyRemote.length-6} autres`:""}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{padding:"10px 12px",borderRadius:13,background:"rgba(80,190,255,.06)",border:"1px solid rgba(80,190,255,.18)",fontSize:11,lineHeight:1.45,color:"#cceeff"}}>
-                  <b>NON, GARDER ICI</b> = aucune donnée de cet appareil n’est remplacée. <b>OUI, SYNCHRONISER</b> = cet appareil est remplacé par la sauvegarde distante affichée ci-dessus.
-                </div>
+            return <>
+              <div style={{marginTop:12,padding:"12px 13px",borderRadius:15,background:"rgba(38,222,255,.07)",border:"1px solid rgba(52,226,255,.28)"}}>
+                <div style={{fontSize:11,fontWeight:950,color:"#55eaff",letterSpacing:.4}}>SAUVEGARDE DISTANTE TROUVÉE</div>
+                <div style={{fontSize:14,fontWeight:950,marginTop:3}}>{sourceLabel}</div>
+                <div style={{fontSize:12,color:"#c3d9df",marginTop:5}}><b style={{color:"#fff"}}>{dateText}</b> · {sizeText}</div>
+                <div style={{fontSize:11,color:"#b9d4dc",marginTop:5}}>{Number(remote.profiles || 0)} profils · {remoteMatches} parties · {remoteStats} stats</div>
               </div>
-            );
+
+              <button type="button" onClick={()=>setShowConflictDetails(true)} style={{width:"100%",marginTop:10,cursor:"pointer",padding:"11px 12px",borderRadius:13,border:"1px solid rgba(85,234,255,.42)",background:"rgba(85,234,255,.08)",color:"#74efff",fontWeight:950}}>
+                VOIR LES DÉTAILS DE LA COMPARAISON
+              </button>
+
+              {showConflictDetails && (
+                <div onClick={()=>setShowConflictDetails(false)} style={{position:"fixed",zIndex:2147482600,inset:0,display:"grid",placeItems:"center",padding:14,background:"rgba(0,4,10,.76)"}}>
+                  <div onClick={(e)=>e.stopPropagation()} style={{width:"min(94vw,560px)",maxHeight:"82dvh",display:"flex",flexDirection:"column",overflow:"hidden",borderRadius:20,background:"#06111d",border:"1px solid rgba(85,234,255,.55)",boxShadow:"0 22px 70px rgba(0,0,0,.72)",color:"#effcff"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"14px 15px",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+                      <div><div style={{fontSize:11,fontWeight:950,color:"#55eaff"}}>AWENA · COMPARAISON</div><div style={{fontSize:16,fontWeight:950,marginTop:2}}>Détails des différences</div></div>
+                      <button type="button" onClick={()=>setShowConflictDetails(false)} aria-label="Fermer" style={{cursor:"pointer",width:36,height:36,borderRadius:12,border:"1px solid rgba(255,255,255,.18)",background:"rgba(255,255,255,.06)",color:"#fff",fontSize:20}}>×</button>
+                    </div>
+                    <div style={{overflowY:"auto",overscrollBehavior:"contain",padding:14}}>
+                      <div style={{overflow:"hidden",borderRadius:15,border:"1px solid rgba(255,255,255,.10)",background:"rgba(255,255,255,.035)"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"1.25fr .9fr .9fr",gap:6,padding:"9px 10px",background:"rgba(255,255,255,.045)",fontSize:10,fontWeight:950,color:"#9fb8c1",textTransform:"uppercase"}}><span>Donnée</span><span style={{textAlign:"center"}}>Cet appareil</span><span style={{textAlign:"center",color:"#64eaff"}}>Sauvegarde</span></div>
+                        {rows.map(([label,l,r]) => { const delta=r-l; return <div key={label} style={{display:"grid",gridTemplateColumns:"1.25fr .9fr .9fr",gap:6,padding:"9px 10px",borderTop:"1px solid rgba(255,255,255,.06)",alignItems:"center",fontSize:12}}><span style={{fontWeight:850}}>{label}</span><span style={{textAlign:"center",fontWeight:900}}>{l}</span><span style={{textAlign:"center",fontWeight:950,color:delta===0?"#d8e7eb":delta>0?"#7dff9b":"#ffbf78"}}>{r}{delta!==0&&<small style={{marginLeft:5,fontWeight:950}}>({delta>0?`+${delta}`:delta})</small>}</span></div>; })}
+                      </div>
+                      <div style={{marginTop:10,padding:"11px 12px",borderRadius:13,background:changed.length?"rgba(255,184,77,.08)":"rgba(94,255,147,.07)",border:`1px solid ${changed.length?"rgba(255,184,77,.25)":"rgba(94,255,147,.22)"}`,fontSize:11,lineHeight:1.45,color:changed.length?"#ffe1b0":"#baffce"}}>{changed.length ? <><b>Lecture :</b> une valeur négative signifie que la sauvegarde contient moins d’éléments que cet appareil dans cette catégorie.</> : <><b>Mêmes quantités détectées.</b> Aucun écart de quantité n’a été trouvé.</>}</div>
+                      {Array.isArray(conflict.details) && conflict.details.length > 0 && <div style={{marginTop:10,padding:"11px 12px",borderRadius:13,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.10)",fontSize:11,lineHeight:1.45}}><div style={{fontWeight:950,color:"#55eaff",marginBottom:7}}>DIFFÉRENCES RÉELLES DÉTECTÉES</div>{conflict.details.map((group:any)=><div key={group.key} style={{marginTop:7,paddingTop:7,borderTop:"1px solid rgba(255,255,255,.06)"}}><b>{group.label}</b> · {Number(group.common||0)} identique(s){Array.isArray(group.onlyLocal)&&group.onlyLocal.length>0&&<div style={{color:"#ffcf8b",marginTop:3}}>Seulement sur cet appareil ({group.onlyLocal.length}) : {group.onlyLocal.slice(0,6).join(" · ")}{group.onlyLocal.length>6?` · +${group.onlyLocal.length-6} autres`:""}</div>}{Array.isArray(group.onlyRemote)&&group.onlyRemote.length>0&&<div style={{color:"#8dffad",marginTop:3}}>Seulement dans la sauvegarde ({group.onlyRemote.length}) : {group.onlyRemote.slice(0,6).join(" · ")}{group.onlyRemote.length>6?` · +${group.onlyRemote.length-6} autres`:""}</div>}</div>)}</div>}
+                    </div>
+                    <div style={{padding:"11px 14px",borderTop:"1px solid rgba(255,255,255,.08)"}}><button type="button" onClick={()=>setShowConflictDetails(false)} style={{width:"100%",cursor:"pointer",padding:"11px",borderRadius:12,border:"1px solid rgba(85,234,255,.45)",background:"rgba(85,234,255,.10)",color:"#dffcff",fontWeight:950}}>REVENIR AU CHOIX</button></div>
+                  </div>
+                </div>
+              )}
+            </>;
           })()}
 
           {decisionError && <div style={{marginTop:10,padding:"9px 11px",borderRadius:11,background:"rgba(255,87,87,.10)",border:"1px solid rgba(255,100,100,.30)",fontSize:12,color:"#ffc1c1"}}>{decisionError}</div>}

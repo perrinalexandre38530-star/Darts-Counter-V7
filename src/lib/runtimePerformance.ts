@@ -39,6 +39,24 @@ export function isRuntimeHidden(): boolean {
   }
 }
 
+export function isConstrainedRuntimeDevice(): boolean {
+  try {
+    const nav: any = typeof navigator !== "undefined" ? navigator : null;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function shouldDeferHeavyRuntimeWork(): boolean {
+  return isConstrainedRuntimeDevice() && !isRuntimeHidden();
+}
+
+
 export function scheduleRuntimeIdle(
   task: () => void,
   options: { timeoutMs?: number; fallbackDelayMs?: number } = {},

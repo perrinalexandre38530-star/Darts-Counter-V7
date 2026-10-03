@@ -94,6 +94,7 @@ import { exportCloudSnapshot, getStorageUser, loadStore, scopedStorageKey } from
 import { loadStoragePrefs } from "./storagePlans";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
+import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
 import { EventBuffer } from "./sync/EventBuffer";
 import { recordProfileUsageFromMatch } from "./profileUsage";
 import { fingerprintHistoryPayload, protectFinishedHistoryPayload } from "./historyIntegrity";
@@ -672,7 +673,24 @@ function _sanitizeStoreForCloudMini(s: any) {
 
 let __cloudPushTimer: number | null = null;
 let __lastCloudPushAt = 0;
+let __deferredCloudPushReason: string | null = null;
+let __cloudPushVisibilityListenerInstalled = false;
 const HISTORY_CLOUD_MIN_INTERVAL_MS = 60_000;
+
+function installDeferredCloudPushListener() {
+  if (__cloudPushVisibilityListenerInstalled || typeof window === "undefined") return;
+  __cloudPushVisibilityListenerInstalled = true;
+
+  const flushWhenHidden = () => {
+    if (!__deferredCloudPushReason || !isRuntimeHidden()) return;
+    const deferredReason = __deferredCloudPushReason;
+    __deferredCloudPushReason = null;
+    scheduleCloudSnapshotPush(deferredReason);
+  };
+
+  try { document.addEventListener("visibilitychange", flushWhenHidden, { passive: true }); } catch {}
+  try { window.addEventListener("pagehide", flushWhenHidden, { passive: true }); } catch {}
+}
 
 function scheduleCloudSnapshotPush(reason: string) {
   try {
@@ -688,6 +706,19 @@ function scheduleCloudSnapshotPush(reason: string) {
       prefs.selectedDestination === "founder_nas";
     if (!wantsRemoteSnapshot) return;
 
+    // P0 FLUIDITÉ MOBILE : ce snapshot historique est un export du compte
+    // complet. Conserver uniquement la dernière demande tant que l'app est au
+    // premier plan ; les petites sauvegardes par match continuent immédiatement.
+    if (shouldDeferHeavyRuntimeWork()) {
+      __deferredCloudPushReason = String(reason || "history-change");
+      if (__cloudPushTimer) {
+        window.clearTimeout(__cloudPushTimer);
+        __cloudPushTimer = null;
+      }
+      installDeferredCloudPushListener();
+      return;
+    }
+
     if (__cloudPushTimer) {
       window.clearTimeout(__cloudPushTimer);
       __cloudPushTimer = null;
@@ -696,6 +727,15 @@ function scheduleCloudSnapshotPush(reason: string) {
     const delay = Math.max(1200, HISTORY_CLOUD_MIN_INTERVAL_MS - (Date.now() - __lastCloudPushAt));
     __cloudPushTimer = window.setTimeout(async () => {
       __cloudPushTimer = null;
+
+      // Un timer créé pendant que l'app était cachée peut n'être exécuté
+      // qu'après le retour au premier plan. Ne jamais payer alors le gros export.
+      if (shouldDeferHeavyRuntimeWork()) {
+        __deferredCloudPushReason = String(reason || "history-change");
+        installDeferredCloudPushListener();
+        return;
+      }
+
       try {
         const session = await onlineApi.getCurrentSession().catch(() => null);
         const uid = String((session as any)?.user?.id || "");
@@ -1408,15 +1448,70 @@ function _historyRowsMerge(...groups: SavedMatch[][]): SavedMatch[] {
   );
 }
 
+type _LegacyRowsCache = {
+  scopeKey: string;
+  localRaw: string | null;
+  sessionRaw: string | null;
+  rows: SavedMatch[];
+};
+
+let __legacyRowsCache: _LegacyRowsCache | null = null;
+let __legacyFallbackKnownEmpty = false;
+let __legacyFallbackEmptyCheckedAt = 0;
+const LEGACY_FALLBACK_EMPTY_RECHECK_MS = 5000;
+
+function invalidateLegacyRowsCache(knownEmpty = false) {
+  __legacyRowsCache = null;
+  __legacyFallbackKnownEmpty = knownEmpty;
+  __legacyFallbackEmptyCheckedAt = knownEmpty ? Date.now() : 0;
+}
+
+function cloneLegacyRows(rows: SavedMatch[]): SavedMatch[] {
+  // Callers sort/splice the returned array in a few legacy paths. Never expose
+  // the cached array itself, otherwise one screen can silently mutate another.
+  return Array.isArray(rows) ? rows.slice() : [];
+}
+
 function readLegacyRowsSafe(): SavedMatch[] {
   try {
-    const localRows = parseHistoryLocalStorage(
-      _historyStorageGet(typeof localStorage !== "undefined" ? localStorage : null)
-    ) as SavedMatch[];
-    const sessionRows = parseHistoryLocalStorage(
-      _historyStorageGet(typeof sessionStorage !== "undefined" ? sessionStorage : null)
-    ) as SavedMatch[];
-    return _historyRowsMerge(localRows, sessionRows);
+    // After a successful migration there is normally no fallback at all. Avoid
+    // two synchronous Storage.getItem() calls on every History.list() in that
+    // common case. writeLegacyRowsSafe() flips this flag back automatically.
+    if (
+      __legacyFallbackKnownEmpty &&
+      Date.now() - __legacyFallbackEmptyCheckedAt < LEGACY_FALLBACK_EMPTY_RECHECK_MS
+    ) return [];
+    if (__legacyFallbackKnownEmpty) __legacyFallbackKnownEmpty = false;
+
+    const scopeKey = scopedHistoryLsKey();
+    const localRaw = _historyStorageGet(typeof localStorage !== "undefined" ? localStorage : null);
+    const sessionRaw = _historyStorageGet(typeof sessionStorage !== "undefined" ? sessionStorage : null);
+
+    if (!localRaw && !sessionRaw) {
+      invalidateLegacyRowsCache(true);
+      return [];
+    }
+
+    const cached = __legacyRowsCache;
+    if (
+      cached &&
+      cached.scopeKey === scopeKey &&
+      cached.localRaw === localRaw &&
+      cached.sessionRaw === sessionRaw
+    ) {
+      return cloneLegacyRows(cached.rows);
+    }
+
+    // PERF P0: decoding a compressed fallback containing dozens/hundreds of
+    // matches is one of the most expensive synchronous operations in the app.
+    // Decode only when the underlying raw value has actually changed.
+    const localRows = parseHistoryLocalStorage(localRaw) as SavedMatch[];
+    const sessionRows = parseHistoryLocalStorage(sessionRaw) as SavedMatch[];
+    const rows = _historyRowsMerge(localRows, sessionRows);
+    __legacyRowsCache = { scopeKey, localRaw, sessionRaw, rows };
+    __legacyFallbackKnownEmpty = false;
+    __legacyFallbackEmptyCheckedAt = 0;
+    return cloneLegacyRows(rows);
   } catch {
     return [];
   }
@@ -1434,20 +1529,38 @@ function writeLegacyRowsSafe(rows: SavedMatch[]): "local" | "session" | "none" {
   try {
     localStorage.setItem(scopedHistoryLsKey(), value);
     try { sessionStorage.removeItem(scopedHistoryLsKey()); } catch {}
+    __legacyRowsCache = {
+      scopeKey: scopedHistoryLsKey(),
+      localRaw: value,
+      sessionRaw: null,
+      rows: cloneLegacyRows(Array.isArray(rows) ? rows : []),
+    };
+    __legacyFallbackKnownEmpty = false;
+    __legacyFallbackEmptyCheckedAt = 0;
     return "local";
   } catch {}
 
   try {
     sessionStorage.setItem(scopedHistoryLsKey(), value);
+    __legacyRowsCache = {
+      scopeKey: scopedHistoryLsKey(),
+      localRaw: null,
+      sessionRaw: value,
+      rows: cloneLegacyRows(Array.isArray(rows) ? rows : []),
+    };
+    __legacyFallbackKnownEmpty = false;
+    __legacyFallbackEmptyCheckedAt = 0;
     return "session";
   } catch {}
 
+  invalidateLegacyRowsCache(false);
   return "none";
 }
 
 function clearLegacyRowsSafe() {
   try { localStorage.removeItem(scopedHistoryLsKey()); } catch {}
   try { sessionStorage.removeItem(scopedHistoryLsKey()); } catch {}
+  invalidateLegacyRowsCache(true);
 }
 
 /* =========================
@@ -1968,7 +2081,7 @@ async function migrateFromLocalStorageOnce() {
 /* =========================
    Lectures
 ========================= */
-export async function list(): Promise<SavedMatch[]> {
+async function listUncached(): Promise<SavedMatch[]> {
   await migrateFromLocalStorageOnce();
 
   try {
@@ -2069,6 +2182,54 @@ export async function list(): Promise<SavedMatch[]> {
       .filter((r: any) => !isHistoryDeletedByTombstone(r))
       .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
     return _filterStaleInProgressFast(normalized) as SavedMatch[];
+  }
+}
+
+let __historyListInFlight: Promise<SavedMatch[]> | null = null;
+let __historyListInFlightScope = "";
+let __historyListRecent: { scope: string; at: number; rows: SavedMatch[] } | null = null;
+const HISTORY_LIST_COALESCE_MS = 450;
+
+function invalidateHistoryListReadCache() {
+  __historyListRecent = null;
+}
+
+export async function list(): Promise<SavedMatch[]> {
+  const scope = historyDbName();
+  const now = Date.now();
+
+  // P0 FLUIDITY: several screens/listeners can react to the same
+  // dc-history-updated event. Coalesce those reads instead of opening/scanning
+  // the same 90/200/400 headers repeatedly during the same navigation burst.
+  if (
+    __historyListRecent &&
+    __historyListRecent.scope === scope &&
+    now - __historyListRecent.at <= HISTORY_LIST_COALESCE_MS
+  ) {
+    return __historyListRecent.rows.slice();
+  }
+
+  if (__historyListInFlight && __historyListInFlightScope === scope) {
+    return (await __historyListInFlight).slice();
+  }
+
+  const job = listUncached()
+    .then((rows) => {
+      const safeRows = Array.isArray(rows) ? rows : [];
+      __historyListRecent = { scope, at: Date.now(), rows: safeRows };
+      return safeRows;
+    });
+
+  __historyListInFlight = job;
+  __historyListInFlightScope = scope;
+
+  try {
+    return (await job).slice();
+  } finally {
+    if (__historyListInFlight === job) {
+      __historyListInFlight = null;
+      __historyListInFlightScope = "";
+    }
   }
 }
 
@@ -2570,6 +2731,7 @@ export async function upsertInProgressCheckpoint(rec: SavedMatch): Promise<void>
     return;
   }
   if (wrote) {
+    invalidateHistoryListReadCache();
     try { _resumeIndexAdd(id); } catch {}
   }
 }
@@ -3440,6 +3602,8 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       });
     });
 
+    invalidateHistoryListReadCache();
+
     // TERRITORIES : reflète toute partie riche (locale/importée/R2)
     // dans l'index local utilisé par StatsTerritories et les classements.
     try {
@@ -3604,6 +3768,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();
       const fallbackTarget = writeLegacyRowsSafe(rows);
+      invalidateHistoryListReadCache();
       if (fallbackTarget === "none") {
         throw new Error("Historique impossible à enregistrer : IndexedDB, localStorage et sessionStorage indisponibles");
       }
@@ -3934,6 +4099,8 @@ export async function remove(id: string): Promise<void> {
       });
     });
 
+    invalidateHistoryListReadCache();
+
     try {
       idsToDelete.forEach((x) => _resumeIndexRemove(String(x)));
     } catch {}
@@ -4024,6 +4191,8 @@ export async function clear(): Promise<void> {
         window.dispatchEvent(new Event("dc-history-updated"));
       }
     } catch {}
+
+    invalidateHistoryListReadCache();
 
     // ✅ ANDROID / PWA FIX V5
     // Clear doit vider IndexedDB ET le fallback local/session.
@@ -4276,6 +4445,7 @@ async function _hydrateCacheFromList() {
 }
 
 function _applyUpsertToCache(rec: SavedMatch) {
+  invalidateHistoryListReadCache();
   _ensureHistoryCacheScope();
   const cid = getCanonicalMatchId(rec) ?? (rec as any)?.matchId ?? rec.id;
   const { payload, ...lite0 } = (rec as any) || {};
@@ -4286,12 +4456,14 @@ function _applyUpsertToCache(rec: SavedMatch) {
 }
 
 function _applyRemoveToCache(id: string) {
+  invalidateHistoryListReadCache();
   _ensureHistoryCacheScope();
   __cache = __cache.filter((r) => r.id !== id && (r as any).matchId !== id);
   _saveCache();
 }
 
 function _clearCache() {
+  invalidateHistoryListReadCache();
   _ensureHistoryCacheScope();
   __cache = [];
   try {

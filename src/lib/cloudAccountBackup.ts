@@ -2,6 +2,7 @@ import { exportCloudSnapshot, getCachedLocalProfilesForSafety, getStorageUser } 
 import { uploadCloudVaultSnapshotJson } from "./cloudStorageApi";
 import { loadStoragePrefs } from "./storagePlans";
 import { canAttemptDirectR2FromStoredSession, getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
+import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
 
 const RESTORE_GUARD_KEY = "dc_cloud_restore_in_progress_v2";
 const MIN_INTERVAL_MS = 15_000;
@@ -12,6 +13,7 @@ let inFlight: Promise<void> | null = null;
 let queuedReason = "";
 let queuedAfterFlight = false;
 let lastSuccessAt = 0;
+let deferredRuntimeListenersInstalled = false;
 
 function signedInUserId(): string {
   try {
@@ -202,9 +204,18 @@ export function prepareSnapshotForDirectR2(snapshot: any): {
   };
 }
 
-async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
+async function flushQueuedCloudR2AccountBackup(reason: string, allowForeground = false): Promise<void> {
   if (typeof window === "undefined") return;
   if (restoreInProgress()) return;
+
+  // P0 FLUIDITÉ MOBILE : exportCloudSnapshot() parcourt le compte complet
+  // (historique, profils, organisations, médias...). Un timer R2 ne doit jamais
+  // lancer ce travail pendant Home/Games/Stats/navigation sur téléphone.
+  if (!allowForeground && shouldDeferHeavyRuntimeWork()) {
+    queuedReason = String(reason || queuedReason || "account-data-change");
+    installDeferredRuntimeListeners();
+    return;
+  }
   if (!signedInUserId()) return;
   if (!cloudR2Selected()) return;
   // Un userId local ne suffit pas : sans JWT frais, aucune tentative R2.
@@ -300,6 +311,27 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
   return inFlight;
 }
 
+function installDeferredRuntimeListeners(): void {
+  if (deferredRuntimeListenersInstalled || typeof window === "undefined") return;
+  deferredRuntimeListenersInstalled = true;
+
+  const flushWhenHidden = () => {
+    if (!queuedReason || !isRuntimeHidden() || inFlight) return;
+    if (timer != null) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+    const nextReason = queuedReason || "account-data-change";
+    queuedReason = "";
+    // Repasser par la file donne quelques secondes à l'app pour rester réellement
+    // cachée. Si elle revient visible avant le timer, flushQueued... redéférera.
+    queueCloudR2AccountBackup(nextReason, DEFAULT_DEBOUNCE_MS);
+  };
+
+  try { document.addEventListener("visibilitychange", flushWhenHidden, { passive: true }); } catch {}
+  try { window.addEventListener("pagehide", flushWhenHidden, { passive: true }); } catch {}
+}
+
 export function queueCloudR2AccountBackup(reason = "account-data-change", delayMs = DEFAULT_DEBOUNCE_MS): void {
   if (typeof window === "undefined") return;
   if (restoreInProgress()) return;
@@ -307,7 +339,19 @@ export function queueCloudR2AccountBackup(reason = "account-data-change", delayM
   // Les rotations de tokens/session sont techniques et ne sont pas des données utilisateur.
   if (/auth|refresh[_:-]?token|supabase-auth|dc-supabase-auth/i.test(normalizedReason)) return;
   queuedReason = normalizedReason;
-  if (timer != null) window.clearTimeout(timer);
+
+  if (timer != null) {
+    window.clearTimeout(timer);
+    timer = null;
+  }
+
+  if (shouldDeferHeavyRuntimeWork()) {
+    // On ne perd pas la demande : seule la DERNIERE raison est conservée. Dès
+    // que l'app passe en arrière-plan, un unique snapshot compte complet part.
+    installDeferredRuntimeListeners();
+    return;
+  }
+
   timer = window.setTimeout(() => {
     timer = null;
     const nextReason = queuedReason || "account-data-change";
@@ -322,5 +366,5 @@ export async function flushCloudR2AccountBackupNow(reason = "manual-account-flus
     timer = null;
   }
   queuedReason = "";
-  await flushQueuedCloudR2AccountBackup(reason);
+  await flushQueuedCloudR2AccountBackup(reason, true);
 }
