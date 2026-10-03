@@ -18,6 +18,7 @@ const SITEMAP_XSL = path.join(PUBLIC_DIR, 'sitemap.xsl');
 const ROBOTS = path.join(PUBLIC_DIR, 'robots.txt');
 const ROOT_INDEX = path.join(ROOT, 'index.html');
 const BASE = 'https://multisports-scoring.pages.dev';
+const MAX_SEO_TITLE_LENGTH = 60;
 
 function localPathForUrl(url) {
   const normalized = url.replace(BASE, '');
@@ -58,6 +59,7 @@ async function main() {
   let localChecked = 0;
   let cssLinkedCount = 0;
   let canonicalErrors = 0;
+  let titleLengthErrors = 0;
   const inbound = new Map(urls.map((url)=>[url,0]));
   const sources = new Map();
   for (const url of urls) {
@@ -84,6 +86,22 @@ async function main() {
       errors.push(`Expected exactly one canonical link in ${path.relative(ROOT, local)}, found ${canonicalCount}.`);
     }
     if (!source.includes('SoftwareApplication')) errors.push(`Missing SoftwareApplication JSON-LD in ${path.relative(ROOT, local)}.`);
+    const titleMatch = source.match(/<title>([\s\S]*?)<\/title>/i);
+    if (!titleMatch) {
+      errors.push(`Missing <title> in ${path.relative(ROOT, local)}.`);
+    } else {
+      const decodedTitle = titleMatch[1]
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .trim();
+      if (decodedTitle.length > MAX_SEO_TITLE_LENGTH) {
+        titleLengthErrors += 1;
+        errors.push(`SEO title exceeds ${MAX_SEO_TITLE_LENGTH} characters in ${path.relative(ROOT, local)} (${decodedTitle.length}): ${decodedTitle}`);
+      }
+    }
   }
 
   const expectedDartsUrls = [
@@ -160,6 +178,13 @@ async function main() {
 
   const rootIndex = await fs.readFile(ROOT_INDEX,'utf8');
   if (!/compteur de fléchettes|dart counter/i.test(rootIndex)) errors.push('Root index metadata should explicitly identify the Darts counter capability.');
+  const rootTitleMatch = rootIndex.match(/<title>([\s\S]*?)<\/title>/i);
+  if (!rootTitleMatch) {
+    errors.push('Root index is missing a <title>.');
+  } else if (rootTitleMatch[1].trim().length > MAX_SEO_TITLE_LENGTH) {
+    titleLengthErrors += 1;
+    errors.push(`Root SEO title exceeds ${MAX_SEO_TITLE_LENGTH} characters (${rootTitleMatch[1].trim().length}).`);
+  }
 
   console.log('SEO / AI public discovery audit');
   console.log('--------------------------------');
@@ -169,6 +194,7 @@ async function main() {
   console.log(`Pages using seo.css     : ${cssLinkedCount}`);
   console.log(`Darts guides exposed    : ${dartsCatalog.guides?.length || 0}`);
   console.log(`Canonical errors        : ${canonicalErrors}`);
+  console.log(`Titles over ${MAX_SEO_TITLE_LENGTH} chars : ${titleLengthErrors}`);
   console.log(`Orphan sitemap pages    : ${orphanUrls.length}`);
   console.log(`FR dart-counter inbound : ${inbound.get(`${BASE}/fr/flechettes/compteur-flechettes/`) || 0}`);
   console.log(`Discovery hubs          : ${discoveryUrls.length}`);
