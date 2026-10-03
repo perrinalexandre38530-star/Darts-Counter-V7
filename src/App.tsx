@@ -7172,7 +7172,7 @@ function AccountSyncBanner() {
               </div>
 
               <button type="button" onClick={()=>setShowConflictDetails(true)} style={{width:"100%",marginTop:10,cursor:"pointer",padding:"11px 12px",borderRadius:13,border:"1px solid rgba(85,234,255,.42)",background:"rgba(85,234,255,.08)",color:"#74efff",fontWeight:950}}>
-                VOIR LES DÉTAILS DE LA COMPARAISON
+                VOIR DÉTAILS
               </button>
 
               {showConflictDetails && (

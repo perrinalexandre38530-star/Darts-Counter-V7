@@ -451,14 +451,27 @@ export default function ProfileAvatar(props: Props) {
     // attendre la comparaison avatarUpdatedAt faisait peindre l'ancien portrait puis le bon.
     // Pour les médaillons UI, toute miniature locale disponible gagne dès le PREMIER paint ;
     // l'hydratation de fond remplacera ensuite la donnée si une révision plus récente existe.
-    if (size <= 180 && cachedThumb) return cachedThumb;
+    // Le cache rapide ne doit JAMAIS écraser un avatar plus récent déjà présent
+    // dans le profil. C'était la cause du mauvais portrait visible dans HOME au boot :
+    // une miniature persistée d'une ancienne révision gagnait systématiquement.
+    // En revanche, si le cache possède une révision au moins aussi récente, il reste
+    // prioritaire et évite le flash d'un ancien avatar pendant l'hydratation du store.
+    const profileHasOwnMedia = Boolean(avatarDataUrl || legacyAvatar || avatarUrl || avatarPath);
+    const cacheIsAuthoritative = Boolean(
+      cachedThumb &&
+      (
+        (!profileHasOwnMedia) ||
+        (cachedRevision > 0 && profileRevision > 0 && cachedRevision >= profileRevision)
+      )
+    );
+    if (size <= 180 && cacheIsAuthoritative) return cachedThumb;
     if (propDataUrl) return propDataUrl;
     if (avatarDataUrl) return avatarDataUrl;
     if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
     if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
     if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     return null;
-  }, [propDataUrl, propLooksRemote, size, cachedThumb, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+  }, [propDataUrl, propLooksRemote, size, cachedThumb, cachedRevision, profileRevision, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   // -------------------------------------------------------------------------
   // FAILOVER AVATAR : NAS -> cache local -> Cloudflare R2
