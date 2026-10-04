@@ -237,9 +237,9 @@ function profileOnlineIdentityValues(profile: any): string[] {
 }
 
 /**
- * V7 crée un profil compte dédié avec `profile.id === auth.user.id`.
- * Cette égalité est donc une preuve de liaison aussi forte que privateInfo.onlineUserId.
- * Elle ne doit pas être confondue avec un profil local arbitraire.
+ * Le binding normal est désormais `privateInfo.onlineUserId === auth.user.id`.
+ * `profile.id === uid` reste accepté uniquement pour les anciens appareils et
+ * les comptes ne possédant encore aucun autre profil joueur local.
  */
 export function isChallengeProfileLinkedToUser(profile: any, uid: string): boolean {
   const wanted = clean(uid);
@@ -248,23 +248,43 @@ export function isChallengeProfileLinkedToUser(profile: any, uid: string): boole
   return profileOnlineIdentityValues(profile).some((value) => value === wanted);
 }
 
+function profileLinkedLocalIds(profile: any): string[] {
+  const pi = profile?.privateInfo || profile?.private_info || {};
+  const values = [
+    ...(Array.isArray(pi?.linkedLocalProfileIds) ? pi.linkedLocalProfileIds : []),
+    ...(Array.isArray(pi?.legacyProfileIds) ? pi.legacyProfileIds : []),
+    ...(Array.isArray(profile?.linkedLocalProfileIds) ? profile.linkedLocalProfileIds : []),
+    ...(Array.isArray(profile?.legacyProfileIds) ? profile.legacyProfileIds : []),
+    pi?.legacyProfileId,
+    profile?.legacyProfileId,
+  ];
+  return values.map((value) => clean(value)).filter(Boolean);
+}
+
 function linkedProfileIds(profiles: any[], uid: string): string[] {
   const wanted = clean(uid);
   const out = new Set<string>();
   for (const profile of (Array.isArray(profiles) ? profiles : [])) {
     if (!isChallengeProfileLinkedToUser(profile, wanted)) continue;
-    for (const value of [profile?.id, profile?.profileId, profile?.playerId]) {
+    for (const value of [profile?.id, profile?.profileId, profile?.playerId, ...profileLinkedLocalIds(profile)]) {
       const id = clean(value);
       if (id) out.add(id);
     }
   }
-  // Les records récents peuvent déjà avoir été écrits directement avec le uid.
+  // Les parties jouées pendant la période du profil compte dédié utilisaient
+  // directement l'UID Supabase comme playerId. On le garde donc comme alias.
   if (wanted) out.add(wanted);
   return [...out];
 }
 
 function linkedProfile(profiles: any[], uid: string): any | null {
-  return (Array.isArray(profiles) ? profiles : []).find((profile: any) => isChallengeProfileLinkedToUser(profile, uid)) || null;
+  const list = Array.isArray(profiles) ? profiles : [];
+  const wanted = clean(uid);
+  // Après dédoublonnage, le profil joueur peut garder son id local : le binding
+  // explicite onlineUserId est alors prioritaire sur l'ancien clone id==uid.
+  return list.find((profile: any) => profileOnlineIdentityValues(profile).some((value) => value === wanted))
+    || list.find((profile: any) => clean(profile?.id) === wanted)
+    || null;
 }
 
 /** Équipes locales : utiles pour le gameplay, mais NON officielles pour le classement privé sécurisé. */

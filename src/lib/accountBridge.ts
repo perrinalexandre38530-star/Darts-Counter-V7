@@ -2,17 +2,12 @@
 // src/lib/accountBridge.ts
 // Pont COMPTE ONLINE ↔ PROFIL LOCAL ACTIF
 //
-// ✅ V7 FINAL — COMPTE UNIQUE (FIX DUPLICATE UID PROFILE)
-// - ❌ SUPPRIME le concept de "mirror profile" online:<uid>
-// - ✅ Un seul profil local actif, lié à Supabase via privateInfo.onlineUserId / onlineEmail
-// - ✅ Anti-duplication: si un profil id==uid existe déjà mais qu'un profil actif/local
-//   est plus riche, on LIE le profil actif au uid et on SUPPRIME le profil id==uid.
-//
-// ✅ PATCH NAS/AUDIT
-// - on attend maintenant que le cloud ait fini d’hydrater avant d’appeler ce bridge (App.tsx)
-// - on évite de détourner un profil local arbitraire pour le compte connecté
-// - si nécessaire, on crée un profil compte dédié `id === uid`
-// - on conserve les profils locaux et on réinjecte les infos online sur le profil compte
+// ✅ V7 FINAL — COMPTE UNIQUE / PROFIL JOUEUR UNIQUE
+// - ❌ aucun mirror `online:<uid>`
+// - ❌ aucun profil joueur dédié supplémentaire `id === uid` si un profil local existe déjà
+// - ✅ le profil joueur actif est lié au compte via `privateInfo.onlineUserId`
+// - ✅ migration automatique des anciens doublons compte/local sans perdre leurs alias
+// - ✅ compatible multi-appareils : l’identité réseau reste l’UID Supabase, pas l’id joueur local
 // ============================================
 
 import type { Profile } from "./types";
@@ -254,103 +249,258 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
 }
 
 // ============================================================
-// ✅ Auto-link a local profile for a signed-in user (NO DUPLICATE)
+// ✅ COMPTE ONLINE ↔ UN SEUL PROFIL JOUEUR LOCAL
 // ============================================================
+// Le compte authentifié n'est PAS un joueur supplémentaire.
+// Le profil joueur déjà présent devient le profil du compte via
+// privateInfo.onlineUserId. Cela évite les doublons dans tous les sélecteurs.
+//
+// Migration automatique des builds qui créaient un profil dédié id==uid :
+// - on retrouve le profil local d'origine (binding, alias, createdAt, nom/avatar),
+// - on fusionne les données utiles du profil compte dans ce profil local,
+// - on supprime uniquement le clone compte devenu redondant,
+// - on conserve uid + anciens ids en alias pour l'Historique / classements.
+// ============================================================
+
+function identityLabel(profile: any): string {
+  const pi = readPrivateInfo(profile);
+  return safeLower(
+    profile?.name ||
+    profile?.displayName ||
+    profile?.nickname ||
+    profile?.surname ||
+    pi?.nickname ||
+    pi?.displayName ||
+    ""
+  );
+}
+
+function identityAvatar(profile: any): string {
+  return String(
+    profile?.avatarDataUrl ||
+    profile?.avatarUrl ||
+    profile?.photoDataUrl ||
+    profile?.photoUrl ||
+    ""
+  ).trim();
+}
+
+function profileAliasIds(profile: any): string[] {
+  const pi = readPrivateInfo(profile);
+  const values = [
+    ...(Array.isArray((pi as any)?.linkedLocalProfileIds) ? (pi as any).linkedLocalProfileIds : []),
+    ...(Array.isArray((pi as any)?.legacyProfileIds) ? (pi as any).legacyProfileIds : []),
+    ...(Array.isArray((profile as any)?.linkedLocalProfileIds) ? (profile as any).linkedLocalProfileIds : []),
+    ...(Array.isArray((profile as any)?.legacyProfileIds) ? (profile as any).legacyProfileIds : []),
+    (pi as any)?.legacyProfileId,
+    (profile as any)?.legacyProfileId,
+  ];
+  return Array.from(new Set(values.map((v) => String(v || "").trim()).filter(Boolean)));
+}
+
+function hasOnlineBindingTo(profile: any, uid: string): boolean {
+  const pi = readPrivateInfo(profile);
+  return [
+    pi?.onlineUserId,
+    (pi as any)?.online_user_id,
+    (pi as any)?.accountUserId,
+    (profile as any)?.onlineUserId,
+    (profile as any)?.online_user_id,
+    (profile as any)?.accountUserId,
+    (profile as any)?.account_user_id,
+  ].some((value) => String(value || "").trim() === uid);
+}
+
+function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, activeId: string): any | null {
+  const locals = profiles.filter((profile) => {
+    const id = String(profile?.id || "").trim();
+    return !!id && id !== uid && id !== `online:${uid}` && !profile?.isBot;
+  });
+  if (!locals.length) return null;
+
+  // 1) Binding explicite : preuve la plus forte.
+  const explicitlyLinked = locals.find((profile) => hasOnlineBindingTo(profile, uid));
+  if (explicitlyLinked) return explicitlyLinked;
+
+  // 2) Alias écrit par les correctifs précédents.
+  const dedicatedAliases = new Set(profileAliasIds(dedicated));
+  const byAlias = locals.find((profile) => dedicatedAliases.has(String(profile?.id || "").trim()));
+  if (byAlias) return byAlias;
+
+  // 3) Le profil dédié V7 était cloné depuis le profil actif, en conservant
+  // notamment createdAt. C'est un marqueur très fiable pour réparer l'existant.
+  const createdAt = Number(dedicated?.createdAt || 0);
+  if (createdAt > 0) {
+    const sameCreated = locals.filter((profile) => Number(profile?.createdAt || 0) === createdAt);
+    if (sameCreated.length === 1) return sameCreated[0];
+  }
+
+  // 4) Nom + avatar identiques : autre signature forte du clone.
+  const label = identityLabel(dedicated);
+  const avatar = identityAvatar(dedicated);
+  if (label && avatar) {
+    const exact = locals.filter((profile) => identityLabel(profile) === label && identityAvatar(profile) === avatar);
+    if (exact.length === 1) return exact[0];
+  }
+
+  // 5) Nom identique et unique. Les anciens clones reprenaient systématiquement
+  // le nom du profil source, même lorsque l'avatar distant avait changé.
+  if (label) {
+    const byName = locals.filter((profile) => identityLabel(profile) === label);
+    if (byName.length === 1) return byName[0];
+  }
+
+  // 6) Lors d'une première liaison (pas encore de profil dédié), le profil actif
+  // est le choix explicite de l'utilisateur.
+  if (!dedicated && activeId) {
+    const active = locals.find((profile) => String(profile?.id || "") === activeId);
+    if (active) return active;
+  }
+
+  // 7) Un seul profil humain local : aucune ambiguïté possible.
+  if (locals.length === 1) return locals[0];
+  return null;
+}
+
+function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, user: any, onlineProfile?: any): any {
+  const uid = String(user?.id || "").trim();
+  const local = localProfile || {};
+  const account = accountProfile || {};
+  const localPI = readPrivateInfo(local);
+  const accountPI = readPrivateInfo(account);
+  const onlineAvatar = getOnlineAvatar(onlineProfile);
+
+  const aliasIds = Array.from(new Set([
+    ...profileAliasIds(local),
+    ...profileAliasIds(account),
+    String(account?.id || "").trim(),
+    uid,
+  ].filter(Boolean))).filter((id) => id !== String(local?.id || "").trim());
+
+  const merged: any = {
+    ...account,
+    ...local,
+    id: String(local?.id || uid),
+    name: local?.name || account?.name || getOnlineNickname(user, onlineProfile) || "",
+    surname: local?.surname ?? account?.surname ?? onlineProfile?.surname ?? "",
+    firstName: local?.firstName ?? account?.firstName ?? onlineProfile?.firstName ?? onlineProfile?.first_name ?? "",
+    lastName: local?.lastName ?? account?.lastName ?? onlineProfile?.lastName ?? onlineProfile?.last_name ?? "",
+    birthDate: local?.birthDate ?? account?.birthDate ?? onlineProfile?.birthDate ?? onlineProfile?.birth_date ?? "",
+    city: local?.city ?? account?.city ?? onlineProfile?.city ?? "",
+    phone: local?.phone ?? account?.phone ?? onlineProfile?.phone ?? "",
+    country: local?.country || account?.country || onlineProfile?.country || localPI?.country || accountPI?.country || "FR",
+    avatarDataUrl: local?.avatarDataUrl || local?.avatarUrl || account?.avatarDataUrl || account?.avatarUrl || onlineAvatar,
+    avatarUrl: local?.avatarUrl || local?.avatarDataUrl || account?.avatarUrl || account?.avatarDataUrl || onlineAvatar,
+    favoriteDartSetId: local?.favoriteDartSetId ?? account?.favoriteDartSetId ?? null,
+    preferences: {
+      ...(account?.preferences || {}),
+      ...(((onlineProfile as any)?.preferences || {}) as Record<string, any>),
+      ...(local?.preferences || {}),
+    },
+    stats: {
+      ...(account?.stats || {}),
+      ...(local?.stats || {}),
+    },
+    createdAt: local?.createdAt || account?.createdAt || Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  return writePrivateInfo(merged, {
+    ...accountPI,
+    ...localPI,
+    ...buildPrivateInfoPatch(user, onlineProfile),
+    onlineUserId: uid,
+    onlineEmail: safeLower(user?.email) || localPI?.onlineEmail || accountPI?.onlineEmail || "",
+    accountUserId: uid,
+    linkedLocalProfileIds: aliasIds,
+    password: "",
+  });
+}
+
 export function ensureLocalProfileForOnlineUser(store: any, user: any, onlineProfile?: any) {
   if (!store || !user?.id) return store;
 
-  const uid = String(user.id);
-  const email = safeLower(user.email);
+  const uid = String(user.id).trim();
+  const mirrorId = `online:${uid}`;
+  const inputProfiles: any[] = Array.isArray(store.profiles) ? store.profiles.filter(Boolean) : [];
+  const activeId = String(store.activeProfileId || inputProfiles[0]?.id || "").trim();
 
-  const profiles: any[] = Array.isArray(store.profiles) ? store.profiles : [];
+  const dedicated = inputProfiles.find((profile) => String(profile?.id || "").trim() === uid) || null;
+  const legacyMirror = inputProfiles.find((profile) => String(profile?.id || "").trim() === mirrorId) || null;
+  const explicitlyLinked = inputProfiles.find((profile) => {
+    const id = String(profile?.id || "").trim();
+    return id !== uid && id !== mirrorId && hasOnlineBindingTo(profile, uid);
+  }) || null;
 
-  const activeId = String(store.activeProfileId || profiles[0]?.id || "");
-  const active = profiles.find((p) => String(p?.id || "") === activeId) || profiles[0] || null;
-
-  const byPI = profiles.find((p) => String(readPrivateInfo(p)?.onlineUserId || "") === uid) || null;
-  const byId = profiles.find((p) => String(p?.id || "") === uid) || null;
-
-  // If we already have BOTH (dup), keep the dedicated id==uid profile for the account
-  // and strip the binding from the local profile so it remains a true local profile.
-  if (byPI && byId && String(byPI.id) !== String(byId.id)) {
-    const keep = buildDedicatedAccountProfile(user, onlineProfile, byId);
-    const nextProfiles = profiles.map((p) => {
-      const pid = String(p?.id || "");
-      if (pid === String(byId?.id || "")) return keep;
-      if (pid === String(byPI?.id || "")) return stripOnlineBinding(p);
-      return p;
-    });
-    return { ...store, profiles: nextProfiles, activeProfileId: String(keep?.id || activeId) };
+  // Aucun profil joueur sur cet appareil : le compte devient naturellement le
+  // premier profil joueur. Il n'y a donc pas de doublon.
+  if (!inputProfiles.length) {
+    const only = buildDedicatedAccountProfile(user, onlineProfile, undefined);
+    return { ...store, profiles: [only], activeProfileId: uid };
   }
 
-  // Prefer profile linked via privateInfo — but if it is not the dedicated uid profile,
-  // create the dedicated account profile and keep the linked one as a normal local profile.
-  if (byPI) {
-    if (String(byPI?.id || "") !== uid) {
-      const accountProfile = buildDedicatedAccountProfile(user, onlineProfile, byId || undefined);
-      const nextProfiles = [
-        ...profiles.map((p) => (String(p?.id || "") === String(byPI?.id || "") ? stripOnlineBinding(p) : p)).filter(Boolean),
-      ];
-      const already = nextProfiles.findIndex((p) => String(p?.id || "") === uid);
-      if (already >= 0) nextProfiles[already] = accountProfile;
-      else nextProfiles.push(accountProfile);
-      return { ...store, profiles: nextProfiles, activeProfileId: uid };
-    }
+  // Le profil à conserver est d'abord celui déjà explicitement lié. Sinon on
+  // retrouve le profil local ayant servi de source au clone id==uid. Pour une
+  // première connexion, on lie simplement le profil actif au compte.
+  const originalLocal = explicitlyLinked || pickOriginalLocalProfile(inputProfiles, uid, dedicated, activeId);
 
-    const pi = readPrivateInfo(byPI);
-    const next = writePrivateInfo(
-      {
-        ...byPI,
-        name: String(byPI?.privateInfo?.nickname || byPI?.surname || getOnlineNickname(user, onlineProfile) || byPI?.name || "").trim(),
-        surname: onlineProfile?.surname ?? byPI?.surname,
-        firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? byPI?.firstName,
-        lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? byPI?.lastName,
-        birthDate: onlineProfile?.birthDate ?? onlineProfile?.birth_date ?? byPI?.birthDate,
-        city: onlineProfile?.city ?? byPI?.city,
-        phone: onlineProfile?.phone ?? byPI?.phone,
-        avatarDataUrl: getOnlineAvatar(onlineProfile) || byPI?.avatarDataUrl || byPI?.avatarUrl,
-        avatarUrl: getOnlineAvatar(onlineProfile) || byPI?.avatarUrl || byPI?.avatarDataUrl,
-        country: onlineProfile?.country || byPI?.country,
-        updatedAt: Date.now(),
-      },
-      {
-        ...pi,
-        ...buildPrivateInfoPatch(user, onlineProfile),
-        onlineUserId: uid,
-        onlineEmail: email || pi.onlineEmail || "",
-        password: "",
+  if (originalLocal) {
+    // Le clone compte et l'ancien mirror sont uniquement des sources de données;
+    // ils ne doivent plus rester comme joueurs séparés.
+    const accountSource = dedicated || legacyMirror || null;
+    const merged = mergeAccountIntoLocalProfile(originalLocal, accountSource, user, onlineProfile);
+    const canonicalId = String(merged?.id || originalLocal?.id || "").trim();
+
+    const nextProfiles: any[] = [];
+    let inserted = false;
+    for (const profile of inputProfiles) {
+      const id = String(profile?.id || "").trim();
+      if (id === uid || id === mirrorId) continue;
+      if (id === canonicalId) {
+        if (!inserted) nextProfiles.push(merged);
+        inserted = true;
+        continue;
       }
-    );
-
-    const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(byPI?.id || "") ? next : p));
-    return { ...store, profiles: nextProfiles, activeProfileId: String(next?.id || activeId) };
-  }
-
-  // If only id==uid exists, refresh it from online and keep all locals intact.
-  if (byId) {
-    const next = buildDedicatedAccountProfile(user, onlineProfile, byId);
-    const nextProfiles = profiles.map((p) => (String(p?.id || "") === uid ? next : p));
-    return { ...store, profiles: nextProfiles, activeProfileId: String(next?.id || activeId || uid) };
-  }
-
-  // No profiles at all: create minimal uid profile
-  if (profiles.length === 0) {
-    const newProfile: any = buildDedicatedAccountProfile(user, onlineProfile, undefined);
+      nextProfiles.push(profile);
+    }
+    if (!inserted) nextProfiles.push(merged);
 
     return {
       ...store,
-      profiles: [newProfile],
+      profiles: nextProfiles,
+      activeProfileId: canonicalId,
+    };
+  }
+
+  // Pas de doublon détectable : si le seul profil compte id==uid existe déjà,
+  // on le rafraîchit sans créer une nouvelle ligne.
+  if (dedicated) {
+    const next = buildDedicatedAccountProfile(user, onlineProfile, dedicated);
+    const aliases = Array.from(new Set([...profileAliasIds(dedicated), uid].filter(Boolean)));
+    const pi = { ...readPrivateInfo(next), accountUserId: uid, linkedLocalProfileIds: aliases, password: "" };
+    const refreshed = writePrivateInfo(next, pi);
+    return {
+      ...store,
+      profiles: inputProfiles
+        .filter((profile) => String(profile?.id || "").trim() !== mirrorId)
+        .map((profile) => String(profile?.id || "").trim() === uid ? refreshed : profile),
       activeProfileId: uid,
     };
   }
 
-  // Default: DO NOT hijack the active local profile anymore.
-  // Create a dedicated account profile id==uid and keep locals unchanged.
-  const seedProfile = active && String(active?.id || "") !== uid ? active : undefined;
-  const dedicated = buildDedicatedAccountProfile(user, onlineProfile, seedProfile as any);
+  // Plusieurs profils locaux mais aucun clone/alias ne permet de savoir lequel
+  // appartient au compte : on ne supprime rien arbitrairement. On lie le profil
+  // actif (ou le premier humain) au compte, ce qui évite toute création future
+  // de profil supplémentaire.
+  const active = inputProfiles.find((profile) => String(profile?.id || "").trim() === activeId && !profile?.isBot)
+    || inputProfiles.find((profile) => !profile?.isBot)
+    || inputProfiles[0];
+  const merged = mergeAccountIntoLocalProfile(active, legacyMirror, user, onlineProfile);
+  const canonicalId = String(merged?.id || active?.id || "").trim();
   return {
     ...store,
-    profiles: [...profiles, dedicated],
-    activeProfileId: uid,
+    profiles: inputProfiles.map((profile) => String(profile?.id || "").trim() === canonicalId ? merged : profile)
+      .filter((profile) => String(profile?.id || "").trim() !== mirrorId),
+    activeProfileId: canonicalId,
   };
 }
