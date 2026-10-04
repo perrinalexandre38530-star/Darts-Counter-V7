@@ -199,8 +199,11 @@ async function queryBestRows(db: D1Database, objective: string, scopeKey: string
   return Array.isArray(result?.results) ? result.results : [];
 }
 
-function mapLeaderboard(rows: any[]) {
-  return rows.map((row: any, index: number) => ({
+async function mapLeaderboard(rows: any[], bucket?: R2Bucket) {
+  return await Promise.all(rows.map(async (row: any, index: number) => {
+    let team:any=null;
+    if(bucket && row?.stats_key){try{const detail=await readDetail(bucket,String(row.stats_key));team=detail?.performance?.stats?.team||null;}catch{}}
+    return ({
     rank: index + 1,
     userId: clean(row.user_id),
     displayName: clean(row.display_name, 'Joueur'),
@@ -214,6 +217,9 @@ function mapLeaderboard(rows: any[]) {
     updatedAt: row.updated_at || null,
     matchId: row.best_match_id || null,
     detailAvailable: row.detail_state === 'available' || Boolean(row.stats_key),
+    teamName: clean(team?.name) || null,
+    teamLogoUrl: clean(team?.logoUrl) || null,
+  });
   }));
 }
 
@@ -663,7 +669,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       // Supabase de disparaître dès le premier nouveau score D1.
       await importLegacyLeaderboardIfNeeded(env, db, identity, objective, scope.scopeKey);
       const rows = await queryBestRows(db, key, scope.scopeKey, limit);
-      return json({ ok: true, backend: 'cloudflare-d1-r2-v1', objectiveKey: key, scopeKey: scope.scopeKey, rows: mapLeaderboard(rows) });
+      return json({ ok: true, backend: 'cloudflare-d1-r2-v1', objectiveKey: key, scopeKey: scope.scopeKey, rows: await mapLeaderboard(rows, env.USER_DATA_BUCKET) });
     }
 
     return json({ ok: false, code: 'not_found', error: 'Route Challenge inconnue.' }, 404);

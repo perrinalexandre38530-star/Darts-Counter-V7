@@ -61,6 +61,8 @@ export type ChallengeLeaderboardRow = {
   updatedAt?: string | null;
   matchId?: string | null;
   detailAvailable?: boolean;
+  teamName?: string | null;
+  teamLogoUrl?: string | null;
 };
 
 export type ChallengeLeaderboardDetail = {
@@ -159,6 +161,8 @@ function normalizeLeaderboardRows(rows: any[]): ChallengeLeaderboardRow[] {
     updatedAt: row?.updatedAt || row?.updated_at || null,
     matchId: row?.matchId || row?.match_id || null,
     detailAvailable: Boolean(row?.detailAvailable ?? row?.detail_available ?? row?.statsAvailable ?? row?.stats_available),
+    teamName: row?.teamName || row?.team_name || null,
+    teamLogoUrl: row?.teamLogoUrl || row?.team_logo_url || null,
   })).filter((row) => row.userId);
 }
 

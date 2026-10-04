@@ -1,0 +1,4 @@
+import fs from 'node:fs';
+const e=fs.readFileSync('src/lib/gameEngines/wave61Engine.ts','utf8'); const c=fs.readFileSync('src/games/dartsWave61.ts','utf8');
+const checks=[['catalogue',c.includes('id: "ballon_prisonnier"')&&c.includes('supportsTeams: true')],['engine',e.includes('function processBallonPrisonnier')],['prison',e.includes('dodgePrisonerByPlayer')&&e.includes('prisonnier')],['release',e.includes('releaseCandidate')&&e.includes('libéré')],['custom teams',e.includes('filter((team): team is string => !!team)')&&!e.includes('free.map((p) => state.config.teamByPlayer?.[p.id] || "A")')],['terminal',e.includes('freeTeams.length === 1')&&e.includes('finishWith(state, free[0]?.id || playerId, freeTeams[0] || null)')]];
+for(const [n,ok] of checks){if(!ok) throw new Error('V48 '+n)} console.log('✅ Wave61 V48 — BALLON PRISONNIER finalisé');

@@ -576,8 +576,8 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       soleilSequence: modeId === "un_deux_trois_soleil" ? seededSequence(`soleil:${seedText}`, 100, 20) : [],
       soleilFallsByPlayer: modeId === "un_deux_trois_soleil" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       soleilHistory: [],
-      chatSourisRoleByPlayer: modeId === "chat_souris" ? Object.fromEntries(ids.map((id, i) => [id, config.participantMode === "teams" ? (teamByPlayer[id] === "B" ? "MOUSE" : "CAT") : (i === 0 ? "CAT" : "MOUSE")])) : {},
-      chatSourisPosByPlayer: modeId === "chat_souris" ? Object.fromEntries(ids.map((id, i) => [id, (config.participantMode === "teams" ? (teamByPlayer[id] === "B") : i > 0) ? modeOptionNumber(config, "mouseHeadStart", 25, 0, 60) : 0])) : {},
+      chatSourisRoleByPlayer: modeId === "chat_souris" ? Object.fromEntries(ids.map((id, i) => [id, config.participantMode === "teams" ? (teamByPlayer[id] === teamIds[0] ? "CAT" : "MOUSE") : (i === 0 ? "CAT" : "MOUSE")])) : {},
+      chatSourisPosByPlayer: modeId === "chat_souris" ? Object.fromEntries(ids.map((id, i) => [id, (config.participantMode === "teams" ? (teamByPlayer[id] !== teamIds[0]) : i > 0) ? modeOptionNumber(config, "mouseHeadStart", 25, 0, 60) : 0])) : {},
       chatSourisCaughtByPlayer: {},
       chatSourisRoute: modeId === "chat_souris" ? seededSequence(`catmouse:${seedText}`, 120, 20) : [],
       mazeRoute: modeId === "maze_chase" ? seededSequence(`maze:${seedText}`, 60, 20) : [],
@@ -585,7 +585,12 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       mazeGhostByPlayer: modeId === "maze_chase" ? Object.fromEntries(ids.map((id) => [id, -modeOptionNumber(config, "ghostGap", 6, 2, 12)])) : {},
       mazePowerByPlayer: modeId === "maze_chase" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       mazeHistory: [],
-      chienChatRoleByPlayer: modeId === "chien_chat" ? Object.fromEntries(ids.map((id, i) => [id, config.participantMode === "teams" ? (teamByPlayer[id] === "B" ? "CAT" : "DOG") : (i % 2 === 0 ? "DOG" : "CAT")])) : {},
+      chienChatRoleByPlayer: modeId === "chien_chat" ? Object.fromEntries(ids.map((id, i) => {
+        if (config.participantMode !== "teams") return [id, i % 2 === 0 ? "DOG" : "CAT"];
+        const orderedTeams = Array.from(new Set(ids.map((pid) => teamByPlayer[pid]).filter(Boolean)));
+        const teamIndex = Math.max(0, orderedTeams.indexOf(teamByPlayer[id]));
+        return [id, teamIndex % 2 === 0 ? "DOG" : "CAT"];
+      })) : {},
       chienChatPosByPlayer: modeId === "chien_chat" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       chienChatRoute: modeId === "chien_chat" ? seededSequence(`dogcat:${seedText}`, 100, 20) : [],
       chienChatHistory: [],
@@ -746,7 +751,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       loupHistory: [],
 
       epervierSequence: modeId === "eperviers" ? survivalSequence(seedText, "hawk") : [],
-      epervierRoleByPlayer: modeId === "eperviers" ? Object.fromEntries(ids.map((id, i) => [id, i === 0 ? "HAWK" : "RUNNER"])) : {},
+      epervierRoleByPlayer: modeId === "eperviers" ? Object.fromEntries(ids.map((id, i) => [id, config.participantMode === "teams" ? (teamByPlayer[id] === teamIds[0] ? "HAWK" : "RUNNER") : (i === 0 ? "HAWK" : "RUNNER")])) : {},
       epervierCrossingByPlayer: modeId === "eperviers" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       epervierCaughtByPlayer: modeId === "eperviers" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       epervierHistory: [],
@@ -1837,10 +1842,10 @@ function processChatSouris(state: Wave61State, playerId: string, darts: GameDart
       }
     }
     const remaining = state.players.filter((p) => state.special?.chatSourisRoleByPlayer?.[p.id] === "MOUSE" && !state.special?.chatSourisCaughtByPlayer?.[p.id]);
-    if (!remaining.length) finishWith(state, playerId, state.config.participantMode === "teams" ? "A" : null);
+    if (!remaining.length) finishWith(state, playerId);
   } else if (pos >= state.config.goal) {
     events.push("🐭 La souris atteint le refuge !");
-    finishWith(state, playerId, state.config.participantMode === "teams" ? "B" : null);
+    finishWith(state, playerId);
   }
   state.special.chatSourisHistory = [...(state.special?.chatSourisHistory || []), { playerId, role, delta, pos }].slice(-30);
   if (!delta) events.push(role === "CAT" ? "🐱 La souris garde ses distances" : "🐭 Pas d'avance");
@@ -3089,7 +3094,7 @@ function processEperviers(state: Wave61State, playerId: string, darts: GameDart[
   }
   const runners = state.players.filter((p) => state.special?.epervierRoleByPlayer?.[p.id] === "RUNNER");
   if (!runners.length && state.phase === "playing") {
-    const hawk = state.players[0];
+    const hawk = state.players.find((p) => state.special?.epervierRoleByPlayer?.[p.id] === "HAWK") || state.players[0];
     if (hawk) finishWith(state, hawk.id);
   }
   state.special.epervierHistory = [...(state.special?.epervierHistory || []), { playerId, role, hits, delta }].slice(-40);
@@ -3141,7 +3146,7 @@ function processBallonPrisonnier(state: Wave61State, playerId: string, darts: Ga
   state.scores[playerId] += delta + hits * 10;
   const free = state.players.filter((p) => !state.special?.dodgePrisonerByPlayer?.[p.id]);
   if (state.config.participantMode === "teams") {
-    const freeTeams = Array.from(new Set(free.map((p) => state.config.teamByPlayer?.[p.id] || "A")));
+    const freeTeams = Array.from(new Set(free.map((p) => state.config.teamByPlayer?.[p.id]).filter((team): team is string => !!team)));
     if (freeTeams.length === 1 && state.players.length > 1) finishWith(state, free[0]?.id || playerId, freeTeams[0] || null);
   } else if (free.length === 1 && state.players.length > 1) finishWith(state, free[0].id);
   state.special.dodgeHistory = [...(state.special?.dodgeHistory || []), { playerId, prisoner, hits, delta }].slice(-40);
@@ -3173,8 +3178,13 @@ function processIceberg(state: Wave61State, playerId: string, darts: GameDart[],
   state.special.icebergFloodByPlayer[playerId] = flood;
   state.special.icebergCompartmentsByPlayer[playerId] = compartments;
   state.health[playerId] = hull; state.progress[playerId] = compartments; state.scores[playerId] += delta * 3;
-  if (hull <= 0) { state.eliminated[playerId] = true; events.push("🚢 Navire perdu"); }
-  if (compartments >= compartmentGoal) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  if (hull <= 0) {
+    state.eliminated[playerId] = true;
+    events.push("🚢 Navire perdu");
+  } else if (compartments >= compartmentGoal) {
+    // A ship that sinks on the same visit cannot also win by securing its last compartment.
+    finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  }
   state.special.icebergHistory = [...(state.special?.icebergHistory || []), { playerId, hull, flood, compartments }].slice(-40);
   return { delta, hits };
 }

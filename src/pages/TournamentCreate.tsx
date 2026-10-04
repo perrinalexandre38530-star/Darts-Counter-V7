@@ -79,7 +79,7 @@ type Props = {
   params?: any; // ✅ IMPORTANT: route params (ex: { forceMode: "petanque" })
 };
 
-type Mode = "x01" | "cricket" | "killer" | "shanghai" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis";
+type Mode = "x01" | "cricket" | "killer" | "shanghai" | "challenge" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis";
 type TourFormat = "single_ko" | "double_ko" | "round_robin" | "groups_ko";
 type BestOf = 1 | 3 | 5 | 7;
 
@@ -274,6 +274,7 @@ const MODE_LABEL: Record<Mode, string> = {
   cricket: "Cricket",
   killer: "Killer",
   shanghai: "Shanghai",
+  challenge: "Challenge",
   petanque: "Pétanque",
   babyfoot: "Baby-foot",
   pingpong: "Ping-Pong",
@@ -287,7 +288,7 @@ const MODE_LABEL: Record<Mode, string> = {
 };
 
 
-const DARTS_CREATE_MODES: Mode[] = ["x01", "cricket", "shanghai"];
+const DARTS_CREATE_MODES: Mode[] = ["x01", "cricket", "shanghai", "challenge"];
 const SPORT_CREATE_MODES: Record<string, Mode[]> = {
   darts: DARTS_CREATE_MODES,
   petanque: ["petanque"],
@@ -1999,6 +2000,9 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [x01Start, setX01Start] = React.useState<301 | 501 | 701 | 901>(defaultStart);
   const [x01In, setX01In] = React.useState<"simple" | "double" | "master">("simple");
   const [x01Out, setX01Out] = React.useState<"simple" | "double" | "master">(store?.settings?.doubleOut ? "double" : "simple");
+  const [challengeTarget, setChallengeTarget] = React.useState<string>("20");
+  const [challengeRule, setChallengeRule] = React.useState<string>("all");
+  const [challengeVisits, setChallengeVisits] = React.useState<number>(30);
   const [leagueFormat, setLeagueFormat] = React.useState<"simple" | "return" | "free" | "multi">("simple");
   const isLeagueMulti = isLeague && leagueFormat === "multi";
   const isLeagueFree = isLeague && leagueFormat === "free";
@@ -2699,6 +2703,15 @@ async function createTournament() {
           sport: "babyfoot",
           matchMode: (forceMode === "babyfoot" ? "1v1" : "1v1"),
           target: 10,
+        }
+      : mode === "challenge"
+      ? {
+          challenge: true, target: challengeTarget, rule: challengeRule, visits: challengeVisits,
+          scoring: (challengeTarget === "any-double" || challengeTarget === "any-triple") ? "hits_then_segment_sum" : "standard",
+          bestOf, repechageEnabled: !!repechageEnabled, seedMode: effectiveSeedMode, rrRounds: Math.max(1, Number(rrRounds) || 1),
+          playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0, qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
+          bracketAuto: !!bracketAuto, bracketTarget: Math.floor(numFromText(bracketTarget)) || 0, desiredSize: desiredSize || 0,
+          autoFillBots: !!autoFillBots, maxPlayers: capEnabled ? cap : 0, teamConfrontation,
         }
       : mode === "x01"
       ? {
@@ -4909,6 +4922,19 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                 <div style={{ fontSize: 12.5, opacity: .8 }}>Mode verrouillé : <b style={{ color: primary }}>{MODE_LABEL[lockedSportMode]}</b></div>
               )}
 
+              {mode === "challenge" ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <RowTitle label="Challenge" />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <NeonPill active={challengeTarget === "any-double"} label="TOUS LES DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); }} primary={primary} />
+                    <NeonPill active={challengeTarget === "any-triple"} label="TOUS LES TRIPLES" onClick={() => { setChallengeTarget("any-triple"); setChallengeRule("triple"); }} primary={primary} />
+                    {[20,19,18,17,16,15].map(n => <NeonPill key={n} active={challengeTarget === String(n)} label={`CIBLE ${n}`} onClick={() => { setChallengeTarget(String(n)); if(challengeRule === "double" || challengeRule === "triple") setChallengeRule("all"); }} primary={primary} />)}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{[5,10,15,20,30,50,100].map(n => <NeonPill key={n} active={challengeVisits === n} label={`${n} TOURS`} onClick={() => setChallengeVisits(n)} primary={primary} />)}</div>
+                  <div style={{ fontSize: 11, opacity: .72 }}>Double/Triple : 1 point par touche. En cas d’égalité, la somme des numéros touchés départage les joueurs (T20 = 20, D3 = 3).</div>
+                </div>
+              ) : null}
+
               {mode === "x01" ? (
                 <div style={{ display: "grid", gap: 10 }}>
                   <RowTitle label="X01" />
@@ -5797,6 +5823,18 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </div>
         ) : null}
       </Section>
+
+      {!isPetanque && mode === "challenge" ? (
+        <Section title="Match — Paramètres Challenge" subtitle="Configuration utilisée pour chaque rencontre de la compétition." accent={primary}>
+          <RowTitle label="Type de Challenge" />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <NeonPill active={challengeTarget === "any-double"} label="TOUS LES DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); }} primary={primary} />
+            <NeonPill active={challengeTarget === "any-triple"} label="TOUS LES TRIPLES" onClick={() => { setChallengeTarget("any-triple"); setChallengeRule("triple"); }} primary={primary} />
+            {[20,19,18,17,16,15].map(n => <NeonPill key={n} active={challengeTarget === String(n)} label={`CIBLE ${n}`} onClick={() => { setChallengeTarget(String(n)); setChallengeRule("all"); }} primary={primary} />)}
+          </div>
+          <div style={{ height: 10 }} /><RowTitle label="Nombre de tours" /><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{[5,10,15,20,30,50,100].map(n => <NeonPill key={n} active={challengeVisits === n} label={String(n)} onClick={() => setChallengeVisits(n)} primary={primary} />)}</div>
+        </Section>
+      ) : null}
 
       {/* Params match X01 (hors pétanque) */}
       {!isPetanque && mode === "x01" ? (
