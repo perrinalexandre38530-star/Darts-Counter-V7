@@ -2280,8 +2280,10 @@ function processMaya(state: Wave61State, playerId: string, darts: GameDart[], ta
     marks = 0;
     events.push(`☀️ Sceau ${MAYA_CYCLES[Math.min(seal - 1, MAYA_CYCLES.length - 1)]} activé`);
   }
-  if (doom >= 100 && seal < MAYA_CYCLES.length) {
-    seal = Math.max(0, seal - 1);
+  if (doom >= 100) {
+    // La catastrophe a priorité sur la validation d’un sceau, y compris le dernier.
+    // On ne peut pas terminer le calendrier sur la même volée qui déclenche la fin du cycle.
+    seal = Math.max(0, Math.min(seal, MAYA_CYCLES.length) - 1);
     doom = 50;
     marks = 0;
     events.push("🌋 Le cycle se brise · un sceau est perdu");

@@ -83,7 +83,7 @@ const LEGACY_DARTSET_STORAGE_KEYS = [
 
 // Les photos sont compressées côté panel. On accepte large pour ne plus remplacer
 // des photos valides par le placeholder 🎯 au premier souci de quota.
-const MAX_DARTSET_IMAGE_DATA_URL_CHARS = 8_000_000;
+const MAX_DARTSET_IMAGE_DATA_URL_CHARS = 480_000;
 
 type DartSetMutationLock = {
   at: number;
@@ -1139,14 +1139,42 @@ function extractImageBankEntry(raw: any): any | null {
   });
 }
 
+function compactImageBankEntry(raw: any): any {
+  const entry: any = { ...(raw || {}) };
+  const hasDurableAsset = !!(entry.mainImageAssetId || entry.thumbImageAssetId || entry.photoAssetId || entry.mediaAssetId || entry.assetId);
+  // Ne jamais dupliquer la même image base64 dans 6 champs de la banque de secours.
+  for (const key of ["photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "photoThumbDataUrl", "thumbDataUrl", "thumbImageDataUrl"]) delete entry[key];
+  if (hasDurableAsset) {
+    if (typeof entry.mainImageUrl === "string" && entry.mainImageUrl.startsWith("data:image/")) entry.mainImageUrl = "";
+    if (typeof entry.thumbImageUrl === "string" && entry.thumbImageUrl.startsWith("data:image/")) delete entry.thumbImageUrl;
+  } else {
+    // Sans asset persistant, on garde au maximum une seule image inline raisonnable.
+    const main = typeof entry.mainImageUrl === "string" ? entry.mainImageUrl : "";
+    const thumb = typeof entry.thumbImageUrl === "string" ? entry.thumbImageUrl : "";
+    if (main.startsWith("data:image/") && main.length > MAX_DARTSET_IMAGE_DATA_URL_CHARS) entry.mainImageUrl = "";
+    if (thumb.startsWith("data:image/")) {
+      if (entry.mainImageUrl && thumb === entry.mainImageUrl) delete entry.thumbImageUrl;
+      else if (thumb.length > 220_000) delete entry.thumbImageUrl;
+    }
+  }
+  return entry;
+}
+
+function pruneImageBank(bank: Record<string, any>, maxKeys = 72): Record<string, any> {
+  const rows = Object.entries(bank || {}).map(([key, value]) => ({ key, value: compactImageBankEntry(value), updatedAt: n(value?.mediaUpdatedAt || value?.updatedAt, 0), score: scoreDartSetForCanonical(value) }));
+  rows.sort((a, b) => b.updatedAt - a.updatedAt || b.score - a.score);
+  return Object.fromEntries(rows.slice(0, Math.max(12, maxKeys)).map(row => [row.key, row.value]));
+}
+
 function rememberImagesForSets(rawList: any[]) {
   try {
     if (typeof window === "undefined" || !window.localStorage) return;
     const bank = safeLocalStorageGetJson<Record<string, any>>(IMAGE_BANK_KEY, {}) || {};
     let changed = false;
     for (const raw of rawList || []) {
-      const entry = extractImageBankEntry(raw);
-      if (!entry) continue;
+      const extracted = extractImageBankEntry(raw);
+      if (!extracted) continue;
+      const entry = compactImageBankEntry(extracted);
       const keys = imageBankKeysForSet(entry);
       for (const key of keys) {
         const old = bank[key];
@@ -1160,10 +1188,30 @@ function rememberImagesForSets(rawList: any[]) {
       }
     }
     if (!changed) return;
-    safeLocalStorageSetJson(IMAGE_BANK_KEY, bank, {
-      sanitizeImages: false,
-      compressAboveChars: 8_000,
+    const compactBank = pruneImageBank(bank);
+    const saved = safeLocalStorageSetJson(IMAGE_BANK_KEY, compactBank, {
+      sanitizeImages: true,
+      imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
+      compressAboveChars: 4_000,
     });
+    if (!saved) {
+      // La banque n'est qu'un cache de récupération. Si l'ancien cache a saturé
+      // localStorage, on le jette plutôt que de bloquer toute l'application.
+      try { localStorage.removeItem(IMAGE_BANK_KEY); } catch {}
+      const fresh: Record<string, any> = {};
+      for (const raw of rawList || []) {
+        const extracted = extractImageBankEntry(raw);
+        if (!extracted) continue;
+        const entry = compactImageBankEntry(extracted);
+        const primaryKey = recoveryKeysStrict(entry).find(key => key.startsWith("id:")) || recoveryKeysStrict(entry)[0];
+        if (primaryKey) fresh[primaryKey] = entry;
+      }
+      safeLocalStorageSetJson(IMAGE_BANK_KEY, pruneImageBank(fresh, 36), {
+        sanitizeImages: true,
+        imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
+        compressAboveChars: 2_000,
+      });
+    }
   } catch (err) {
     console.warn("[DartSetsDiag] image-bank save failed", err);
   }
@@ -1358,27 +1406,17 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
   let saved = false;
 
   try {
-    // 1er essai : ne pas couper les photos valides. Le packer compresse déjà la clé.
+    // Les visuels originaux sont déjà protégés dans IndexedDB/R2 par DartSetsPanel.
+    // localStorage ne garde qu'une version bornée : une dataURL multi-Mo ne doit
+    // jamais pouvoir saturer le quota et bloquer la navigation.
     saved = !!safeLocalStorageSetJson(STORAGE_KEY, sanitized, {
-      sanitizeImages: false,
-      compressAboveChars: 12_000,
+      sanitizeImages: true,
+      imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
+      compressAboveChars: 8_000,
     });
   } catch (err) {
-    console.warn("[dartSetsStore] save error", err);
+    console.warn("[dartSetsStore] save compact error", err);
     saved = false;
-  }
-
-  if (!saved) {
-    try {
-      saved = !!safeLocalStorageSetJson(STORAGE_KEY, sanitized, {
-        sanitizeImages: true,
-        imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
-        compressAboveChars: 12_000,
-      });
-    } catch (err) {
-      console.warn("[dartSetsStore] save sanitized error", err);
-      saved = false;
-    }
   }
 
   if (!saved) {
