@@ -17,7 +17,7 @@ assert(history.includes('history.get.idbRead'), 'History.get IDB sub-step instru
 assert(history.includes('hasMatchIdIndex ? await getHeaderByMatchId() : await scanHeader()'), 'History.get still scans headers after a valid matchId index miss');
 
 assert(!home.includes('return await Promise.all((Array.isArray(rows) ? rows : []).map'), 'Home still hydrates the entire history in one Promise.all');
-assert(home.includes('const batchSize = isAndroid ? 1 : 4;'), 'Home Android hydration must be serial');
+assert(home.includes('if (isAndroid) return x01Rows;') || home.includes('const batchSize = isAndroid ? 1 : 4;'), 'Home Android must skip full hydration or hydrate serially');
 assert(home.includes('() => cancelled'), 'Home history hydration is not cancellable on unmount/navigation');
 assert(home.includes('refreshRunning'), 'Home stats refresh can overlap');
 

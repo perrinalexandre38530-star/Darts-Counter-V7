@@ -704,8 +704,16 @@ async function buildStatsForProfile(
           const isAndroid = (() => {
             try { return /Android/i.test(String(navigator?.userAgent || "")); } catch { return false; }
           })();
-          const batchSize = isAndroid ? 1 : 4;
 
+          // P0 V8 — HOME MUST STAY LIGHT ON ANDROID.
+          // computeX01MultiAgg already supports compact/light summaries. Hydrating
+          // every finished X01 match here made Home retain all full decoded payloads
+          // until the aggregation finished (hundreds of MB with ~90 matches).
+          // Detailed payload hydration remains available in Stats / match details,
+          // where it is explicitly requested by the user.
+          if (isAndroid) return x01Rows;
+
+          const batchSize = 4;
           for (let i = 0; i < x01Rows.length; i += batchSize) {
             if (shouldCancel?.()) break;
             const batch = x01Rows.slice(i, i + batchSize);
@@ -718,17 +726,7 @@ async function buildStatsForProfile(
               }
             }));
             hydrated.push(...fullBatch);
-            if (i + batchSize < x01Rows.length) {
-              await new Promise<void>((resolve) => {
-                try {
-                  if (isAndroid && typeof requestAnimationFrame === "function") {
-                    requestAnimationFrame(() => setTimeout(resolve, 0));
-                    return;
-                  }
-                } catch {}
-                setTimeout(resolve, 0);
-              });
-            }
+            if (i + batchSize < x01Rows.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
           }
           return hydrated;
         } catch (e) {

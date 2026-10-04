@@ -2212,6 +2212,14 @@ const __historyGetRecent = new Map<string, { at: number; value: SavedMatch | nul
 const HISTORY_GET_RECENT_MS = 15_000;
 const HISTORY_GET_RECENT_MAX = 36;
 
+// P0 V8 — Android memory guard. Full decoded matches can be very large.
+// Keeping dozens of them alive for 15 s retained hundreds of MB on the
+// affected phone. Android already has identical-request in-flight dedupe,
+// so do not retain completed full payloads after the caller has consumed them.
+function shouldCacheDecodedHistoryGet(): boolean {
+  return !isAndroidHistoryRuntime();
+}
+
 function isAndroidHistoryRuntime(): boolean {
   try {
     const ua = typeof navigator !== "undefined" ? String(navigator.userAgent || "") : "";
@@ -2270,8 +2278,18 @@ const __historyDecodeWorkerPending = new Map<
     resolve: (value: HistoryWorkerDecodeResult) => void;
     reject: (reason?: any) => void;
     timer: ReturnType<typeof setTimeout>;
+    memBeforeMb: number;
   }
 >();
+
+function historyHeapMb(): number {
+  try {
+    const used = Number((performance as any)?.memory?.usedJSHeapSize || 0);
+    return used > 0 ? used / (1024 * 1024) : 0;
+  } catch {
+    return 0;
+  }
+}
 
 function destroyHistoryDecodeWorker(reason?: any) {
   try { __historyDecodeWorker?.terminate(); } catch {}
@@ -2295,6 +2313,15 @@ function getHistoryDecodeWorker(): Worker | null {
       if (!pending) return;
       __historyDecodeWorkerPending.delete(requestId);
       clearTimeout(pending.timer);
+      const memAfterMb = historyHeapMb();
+      recordFreezeWatchEvent("history-payload-worker-handoff", {
+        requestId,
+        memBeforeMb: Math.round(pending.memBeforeMb * 10) / 10,
+        memAfterMb: Math.round(memAfterMb * 10) / 10,
+        deltaMb: Math.round((memAfterMb - pending.memBeforeMb) * 10) / 10,
+        stage: String(event?.data?.stage || "worker"),
+        totalMs: Math.round(Number(event?.data?.totalMs || 0)),
+      });
       pending.resolve({
         ok: !!event?.data?.ok,
         value: event?.data?.value ?? null,
@@ -2304,6 +2331,14 @@ function getHistoryDecodeWorker(): Worker | null {
         totalMs: Number(event?.data?.totalMs || 0),
         ...(event?.data?.error ? { error: String(event.data.error) } : {}),
       });
+
+      // P0 V8 — release the worker heap immediately after every Android decode.
+      // The parsed object otherwise remains eligible for worker-side GC only,
+      // while the main thread simultaneously owns its structured-cloned copy.
+      if (isAndroidHistoryRuntime() && __historyDecodeWorkerPending.size === 0) {
+        try { worker.terminate(); } catch {}
+        if (__historyDecodeWorker === worker) __historyDecodeWorker = null;
+      }
     };
     worker.onerror = (event: ErrorEvent) => {
       destroyHistoryDecodeWorker(new Error(event?.message || "history decode worker error"));
@@ -2355,7 +2390,7 @@ async function decodePayloadCompressedOffMainThread(
         reject(new Error("history decode worker timeout"));
         destroyHistoryDecodeWorker(new Error("history decode worker timeout"));
       }, 20_000);
-      __historyDecodeWorkerPending.set(requestId, { resolve, reject, timer });
+      __historyDecodeWorkerPending.set(requestId, { resolve, reject, timer, memBeforeMb: historyHeapMb() });
       try {
         worker.postMessage({ id: requestId, payload: payloadCompressed });
       } catch (error) {
@@ -2402,6 +2437,12 @@ async function decodePayloadCompressedOffMainThread(
 }
 
 function rememberHistoryGet(id: string, value: SavedMatch | null) {
+  if (!shouldCacheDecodedHistoryGet()) {
+    // Never retain full decoded payloads on Android: the caller owns the only
+    // reference and it can be reclaimed immediately after aggregation/render.
+    __historyGetRecent.clear();
+    return;
+  }
   __historyGetRecent.delete(id);
   __historyGetRecent.set(id, { at: Date.now(), value });
   while (__historyGetRecent.size > HISTORY_GET_RECENT_MAX) {
@@ -2889,11 +2930,12 @@ export async function get(id: string): Promise<SavedMatch | null> {
   const key = String(id || "").trim();
   if (!key) return null;
 
-  const cached = __historyGetRecent.get(key);
+  const cached = shouldCacheDecodedHistoryGet() ? __historyGetRecent.get(key) : undefined;
   if (cached && Date.now() - cached.at <= HISTORY_GET_RECENT_MS) {
     return cached.value;
   }
   if (cached) __historyGetRecent.delete(key);
+  if (!shouldCacheDecodedHistoryGet() && __historyGetRecent.size) __historyGetRecent.clear();
 
   const pending = __historyGetInFlight.get(key);
   if (pending) return pending;

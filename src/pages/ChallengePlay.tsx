@@ -16,6 +16,7 @@ import {
  challengeTeamsForProfile,
  syncChallengeHistoricalScores,
  submitChallengeBestScore,
+ isChallengeProfileLinkedToUser,
  type ChallengeLeaderboardRow,
  type ChallengeLeaderboardTeam,
 } from '../lib/challengeLeaderboard';
@@ -48,6 +49,11 @@ type Entry={hit:Hit;pid:string};
 type Participant={id:string;name:string;profile?:any;team?:any;teamName?:string;avatarDataUrl?:string|null};
 
 const hits:Hit[]=['S','D','T','25','50','MISS'];
+
+const explicitOnlineUserIdFromProfile=(profile:any)=>{
+ const pi:any=profile?.privateInfo||profile?.private_info||{};
+ return String(pi?.onlineUserId||pi?.online_user_id||pi?.userId||pi?.user_id||profile?.onlineUserId||profile?.online_user_id||profile?.userId||profile?.user_id||profile?.linkedUserId||profile?.linked_user_id||'').trim();
+};
 const onlineTargetFilters=['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','bull','bull25','bull50'];
 const onlineVisitFilters=[5,10,15,20,30,50,100];
 const onlineRuleFilters=['all','single','double','triple','bull','bull25','bull50'];
@@ -416,7 +422,8 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   const perPlayer=safeParticipants.map((p)=>{
    const entries=log.filter(e=>e.pid===p.id);
    const detailed=computeChallengeDetailedStats(entries,cfg);
-   return {id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||'',score:detailed.score,points:detailed.score,darts:detailed.darts,dartsThrown:detailed.darts,hitCount:detailed.successful,misses:detailed.failures,bestStreak:detailed.bestStreak,bestVisit:detailed.bestVisit,avgVisit:detailed.avgVisit,successRate:detailed.accuracy,target:cfg.target,rule:cfg.rule,hitSummary:{S:detailed.hitCounts.S,D:detailed.hitCounts.D,T:detailed.hitCounts.T,SBull:detailed.hitCounts['25'],DBull:detailed.hitCounts['50'],MISS:detailed.hitCounts.MISS,darts:detailed.darts,hits:detailed.successful},positionStats:detailed.positionStats,visitScores:detailed.visitScores,cumulativeScores:detailed.cumulativeScores,favNumberHits:{[String(targetSegment)]:detailed.successful}};
+   const onlineUserId=explicitOnlineUserIdFromProfile(p.profile);
+   return {id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,...(onlineUserId?{onlineUserId,userId:onlineUserId}:{}),teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||'',score:detailed.score,points:detailed.score,darts:detailed.darts,dartsThrown:detailed.darts,hitCount:detailed.successful,misses:detailed.failures,bestStreak:detailed.bestStreak,bestVisit:detailed.bestVisit,avgVisit:detailed.avgVisit,successRate:detailed.accuracy,target:cfg.target,rule:cfg.rule,hitSummary:{S:detailed.hitCounts.S,D:detailed.hitCounts.D,T:detailed.hitCounts.T,SBull:detailed.hitCounts['25'],DBull:detailed.hitCounts['50'],MISS:detailed.hitCounts.MISS,darts:detailed.darts,hits:detailed.successful},positionStats:detailed.positionStats,visitScores:detailed.visitScores,cumulativeScores:detailed.cumulativeScores,favNumberHits:{[String(targetSegment)]:detailed.successful}};
   });
   const rankings=[...perPlayer].sort((a,b)=>b.score-a.score).map((row,index)=>({...row,rank:index+1}));
   const winnerId=status==='finished'&&safeParticipants.length>1?(rankings[0]?.id||null):null;
@@ -426,7 +433,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   const matchMode=String(cfg.matchMode||'solo').toLowerCase();
   const summary={title:'CHALLENGE',kind:'challenge',mode:'challenge',matchMode,status,finished:status==='finished',winnerId,scoreLine,finalScores,rankings,perPlayer:rankings,target:cfg.target,objective:targetLabel(cfg.target),rule:cfg.rule,visits:cfg.visits};
   const payload={kind:'challenge',mode:'challenge',sport:'darts',status,config:cfg,state:resumeState,entries:[...log],events:[...log],players:rankings,finalPlayers:rankings,summary:{...summary},stats:{kind:'challenge',mode:'challenge',players:rankings.map(row=>({id:row.id,name:row.name,score:row.score,points:row.score,best:row.score,bestScore:row.score,darts:row.darts,dartsThrown:row.darts,hitCount:row.hitCount,misses:row.misses,bestStreak:row.bestStreak,bestVisit:row.bestVisit,avgVisit:row.avgVisit,successRate:row.successRate,hitSummary:row.hitSummary,positionStats:row.positionStats,visitScores:row.visitScores,cumulativeScores:row.cumulativeScores,favNumberHits:row.favNumberHits,special:{score:row.score,points:row.score,best:row.score,bestScore:row.score,bestStreak:row.bestStreak,bestVisit:row.bestVisit,avgVisit:row.avgVisit,successRate:row.successRate,positionStats:row.positionStats,targetHits:row.hitCount,misses:row.misses,target:cfg.target,rule:cfg.rule}})),global:{matches:1,target:cfg.target,rule:cfg.rule,visits:cfg.visits}}};
-  return {id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:'challenge',mode:'challenge',sport:'darts',status,createdAt:createdAtRef.current,updatedAt:now,finishedAt:status==='finished'?now:undefined,winnerId,players:safeParticipants.map(p=>({id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||''})),game:{mode:'challenge',target:cfg.target,objective:targetLabel(cfg.target),rule:cfg.rule,visits:cfg.visits,matchMode},summary,payload,resume:status==='in_progress'?{config:cfg,state:resumeState,livePayload:payload,summary}:undefined};
+  return {id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:'challenge',mode:'challenge',sport:'darts',status,createdAt:createdAtRef.current,updatedAt:now,finishedAt:status==='finished'?now:undefined,winnerId,players:safeParticipants.map(p=>{const onlineUserId=explicitOnlineUserIdFromProfile(p.profile);return {id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,...(onlineUserId?{onlineUserId,userId:onlineUserId}:{}),teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||''}}),game:{mode:'challenge',target:cfg.target,objective:targetLabel(cfg.target),rule:cfg.rule,visits:cfg.visits,matchMode},summary,payload,resume:status==='in_progress'?{config:cfg,state:resumeState,livePayload:payload,summary}:undefined};
  },[activeIndex,cfg,log,safeParticipants,turn]);
 
  React.useEffect(()=>{
@@ -514,11 +521,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    try{
     const uid=await getChallengeOnlineUserId();
     if(!uid) return;
-    const linked=safeParticipants.find((p:any)=>{
-     const profile:any=p?.profile||{};
-     const pi:any=profile?.privateInfo||profile?.private_info||{};
-     return [pi?.onlineUserId,pi?.online_user_id,profile?.onlineUserId,profile?.userId].some(v=>String(v||'')===uid);
-    });
+    const linked=safeParticipants.find((p:any)=>isChallengeProfileLinkedToUser(p?.profile,uid));
     // ONLINE = comptes utilisateurs uniquement. Un profil purement local ne doit
     // jamais être publié, même lorsqu'il est le seul participant d'un Challenge SOLO.
     if(!linked) return;

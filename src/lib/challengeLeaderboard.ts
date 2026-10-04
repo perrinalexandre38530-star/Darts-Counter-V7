@@ -198,29 +198,73 @@ function mergeChallengeLeaderboardRows(groups: ChallengeLeaderboardRow[][], limi
 }
 
 export async function getChallengeOnlineUserId(): Promise<string | null> {
+  // Ne dépend pas d'un aller-retour réseau pour savoir si le compte EST connecté.
+  // Le Worker Cloudflare revalide de toute façon le JWT côté serveur. Sur Android,
+  // getUser() pouvait échouer transitoirement alors qu'une session locale valide
+  // existait encore : la partie était alors silencieusement ignorée par ONLINE.
+  try {
+    const { data } = await supabase.auth.getSession();
+    const sessionUid = clean(data?.session?.user?.id);
+    if (sessionUid) return sessionUid;
+  } catch {}
+
   try {
     const { data, error } = await supabase.auth.getUser();
     if (error) return null;
-    return data?.user?.id ? String(data.user.id) : null;
+    return clean(data?.user?.id) || null;
   } catch {
     return null;
   }
 }
 
+function profileOnlineIdentityValues(profile: any): string[] {
+  const pi = profile?.privateInfo || profile?.private_info || {};
+  return [
+    pi?.onlineUserId,
+    pi?.online_user_id,
+    pi?.userId,
+    pi?.user_id,
+    pi?.accountUserId,
+    profile?.onlineUserId,
+    profile?.online_user_id,
+    profile?.userId,
+    profile?.user_id,
+    profile?.linkedUserId,
+    profile?.linked_user_id,
+    profile?.accountUserId,
+    profile?.account_user_id,
+  ].map((value) => clean(value)).filter(Boolean);
+}
+
+/**
+ * V7 crée un profil compte dédié avec `profile.id === auth.user.id`.
+ * Cette égalité est donc une preuve de liaison aussi forte que privateInfo.onlineUserId.
+ * Elle ne doit pas être confondue avec un profil local arbitraire.
+ */
+export function isChallengeProfileLinkedToUser(profile: any, uid: string): boolean {
+  const wanted = clean(uid);
+  if (!wanted || !profile) return false;
+  if (clean(profile?.id) === wanted) return true;
+  return profileOnlineIdentityValues(profile).some((value) => value === wanted);
+}
+
 function linkedProfileIds(profiles: any[], uid: string): string[] {
-  return (Array.isArray(profiles) ? profiles : [])
-    .filter((profile: any) => {
-      const pi = profile?.privateInfo || profile?.private_info || {};
-      return [pi?.onlineUserId, pi?.online_user_id, pi?.userId, profile?.onlineUserId, profile?.online_user_id, profile?.userId]
-        .some((value) => clean(value) === uid);
-    })
-    .map((profile: any) => clean(profile?.id))
-    .filter(Boolean);
+  const wanted = clean(uid);
+  const out = new Set<string>();
+  for (const profile of (Array.isArray(profiles) ? profiles : [])) {
+    if (!isChallengeProfileLinkedToUser(profile, wanted)) continue;
+    for (const value of [profile?.id, profile?.profileId, profile?.playerId]) {
+      const id = clean(value);
+      if (id) out.add(id);
+    }
+  }
+  // Les records récents peuvent déjà avoir été écrits directement avec le uid.
+  if (wanted) out.add(wanted);
+  return [...out];
 }
 
 function linkedProfile(profiles: any[], uid: string): any | null {
-  const ids = new Set(linkedProfileIds(profiles, uid));
-  return (Array.isArray(profiles) ? profiles : []).find((p: any) => ids.has(clean(p?.id))) || null;
+  return (Array.isArray(profiles) ? profiles : []).find((profile: any) => isChallengeProfileLinkedToUser(profile, uid)) || null;
 }
 
 /** Équipes locales : utiles pour le gameplay, mais NON officielles pour le classement privé sécurisé. */
@@ -514,8 +558,31 @@ function historyPlayerRows(record: any): any[] {
   return [];
 }
 
+function historyRowIdentityValues(row: any): string[] {
+  return [
+    row?.id,
+    row?.playerId,
+    row?.player_id,
+    row?.profileId,
+    row?.profile_id,
+    row?.userId,
+    row?.user_id,
+    row?.onlineUserId,
+    row?.online_user_id,
+    row?.linkedUserId,
+    row?.linked_user_id,
+    row?.accountUserId,
+    row?.account_user_id,
+  ].map((value) => clean(value)).filter(Boolean);
+}
+
 function historyRowId(row: any): string {
-  return clean(row?.id || row?.playerId || row?.profileId || row?.userId || row?.user_id);
+  return historyRowIdentityValues(row)[0] || '';
+}
+
+function historyRowMatchesProfileIds(row: any, profileIds: Set<string>): boolean {
+  if (!profileIds.size) return false;
+  return historyRowIdentityValues(row).some((value) => profileIds.has(value));
 }
 
 function historyConfig(record: any): ChallengeLeaderboardObjective {
@@ -709,7 +776,7 @@ export async function enrichChallengeLeaderboardDetailFromHistory(
     .map((record: any) => {
       const rows = historyPlayerRows(record);
       const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
-      let row = rows.find((candidate: any) => profileIds.has(historyRowId(candidate))) || null;
+      let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds)) || null;
 
       if (!row && wantedMatchId && recordMatchId === wantedMatchId) {
         row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || (rows.length === 1 ? rows[0] : null);
@@ -769,7 +836,7 @@ export async function findChallengeHistoryRecordForLeaderboardDetail(
     .map((record: any) => {
       const rows = historyPlayerRows(record);
       const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
-      let row = rows.find((candidate: any) => profileIds.has(historyRowId(candidate))) || null;
+      let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds)) || null;
 
       // Anciennes sauvegardes : le lien profil Online n'était pas toujours
       // présent. Un matchId exact reste un identifiant suffisamment fort pour
@@ -807,18 +874,20 @@ export async function syncChallengeHistoricalScores(profiles: any[], _teams: any
   const uid = await getChallengeOnlineUserId();
   if (!uid) return { ok: false, submitted: 0, scanned: 0, skipped: 'AUTH_REQUIRED' };
   const profile = linkedProfile(profiles, uid);
-  if (!profile) return { ok: false, submitted: 0, scanned: 0, skipped: 'NO_LINKED_PROFILE' };
   const profileIds = new Set(linkedProfileIds(profiles, uid));
+  // Même si l'hydratation du store n'est pas encore terminée, un historique qui
+  // porte déjà le uid du compte peut être resynchronisé sans autoriser un profil local.
+  profileIds.add(uid);
 
   const history = await History.getAll();
   const challengeRows = history.filter(historyIsFinishedChallenge);
   let submitted = 0;
   for (const record of challengeRows) {
     const rows = historyPlayerRows(record);
-    let row = rows.find((candidate: any) => profileIds.has(historyRowId(candidate)));
+    let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds));
     if (!row && rows.length === 1) {
       const headerPlayers = Array.isArray(record?.players) ? record.players : [];
-      if (headerPlayers.some((candidate: any) => profileIds.has(historyRowId(candidate)))) row = rows[0];
+      if (headerPlayers.some((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds))) row = rows[0];
     }
     if (!row) continue;
     const config = historyConfig(record);
@@ -837,7 +906,7 @@ export async function syncChallengeHistoricalScores(profiles: any[], _teams: any
         bestStreak,
         accuracy,
         matchId,
-        displayName: clean(profile?.name || profile?.nickname || row?.name, 'Joueur'),
+        displayName: clean(profile?.name || profile?.nickname || row?.name || row?.displayName, 'Joueur'),
         avatarUrl: avatarFromProfile(profile),
         countryCode: clean(profile?.countryCode || profile?.country || pi?.countryCode || pi?.country) || null,
         stats: historyStatsPayload(record, row),
