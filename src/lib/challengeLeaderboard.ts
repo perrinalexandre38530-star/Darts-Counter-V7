@@ -4,6 +4,7 @@ import {
   fetchChallengeLeaderboardCloud,
   fetchChallengeLeaderboardDetailCloud,
   submitChallengeScoreCloud,
+  syncChallengeIdentityCloud,
 } from './challengeCloudflareApi';
 
 export type ChallengeLeaderboardObjective = {
@@ -287,6 +288,108 @@ function linkedProfile(profiles: any[], uid: string): any | null {
     || null;
 }
 
+type ChallengeAccountIdentity = {
+  displayName: string;
+  avatarUrl: string | null;
+  countryCode: string | null;
+};
+
+let challengeIdentityCache: { userId: string; value: ChallengeAccountIdentity; at: number } | null = null;
+const CHALLENGE_IDENTITY_CACHE_MS = 8_000;
+
+/**
+ * L'identité affichée dans ONLINE appartient au COMPTE, pas à la performance.
+ * On privilégie donc le profil cloud `profiles.id = auth.uid()` (avatar actuel),
+ * puis seulement le profil joueur local lié comme secours offline.
+ */
+async function resolveCurrentChallengeAccountIdentity(fallback: Partial<ChallengeAccountIdentity> = {}): Promise<ChallengeAccountIdentity> {
+  let user: any = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    user = data?.session?.user || null;
+  } catch {}
+
+  const uid = clean(user?.id);
+  let remote: any = null;
+  if (uid) {
+    try {
+      const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+      remote = data || null;
+    } catch {}
+  }
+
+  const meta = user?.user_metadata || {};
+  const displayName = clean(
+    remote?.display_name || remote?.displayName || remote?.nickname || remote?.surname ||
+    meta?.display_name || meta?.displayName || meta?.nickname ||
+    fallback.displayName,
+    'Joueur',
+  );
+  // Si le profil cloud existe, avatar_url est la source de vérité y compris
+  // lorsqu'il vaut NULL : supprimer l'avatar du compte doit aussi retirer
+  // l'ancien avatar du classement, pas ressusciter une image locale obsolète.
+  const remoteHasAvatarField = Boolean(remote) && (
+    Object.prototype.hasOwnProperty.call(remote, 'avatar_url')
+    || Object.prototype.hasOwnProperty.call(remote, 'avatarUrl')
+    || Object.prototype.hasOwnProperty.call(remote, 'avatar')
+  );
+  const avatarUrl = remoteHasAvatarField
+    ? (clean(remote?.avatar_url || remote?.avatarUrl || remote?.avatar) || null)
+    : (clean(meta?.avatar_url || meta?.avatarUrl || meta?.picture || fallback.avatarUrl) || null);
+  const countryCode = clean(
+    remote?.country_code || remote?.countryCode || remote?.country || remote?.pays ||
+    meta?.country_code || meta?.countryCode || meta?.country ||
+    fallback.countryCode,
+  ).toUpperCase() || null;
+
+  return { displayName, avatarUrl, countryCode };
+}
+
+async function publishChallengeAccountIdentity(fallback: Partial<ChallengeAccountIdentity> = {}, force = false): Promise<ChallengeAccountIdentity> {
+  const userId = clean(await getChallengeOnlineUserId());
+  const now = Date.now();
+  if (!force && userId && challengeIdentityCache?.userId === userId && now - challengeIdentityCache.at < CHALLENGE_IDENTITY_CACHE_MS) {
+    return challengeIdentityCache.value;
+  }
+
+  const identity = await resolveCurrentChallengeAccountIdentity(fallback);
+
+  // La table publique Supabase reste utile aux autres modules ONLINE et aux
+  // anciennes RPC. On la maintient alignée sur le même avatar de compte.
+  try {
+    await supabase.rpc('ms_touch_public_profile', {
+      p_display_name: identity.displayName || null,
+      p_avatar_url: identity.avatarUrl || null,
+      p_country_code: identity.countryCode || null,
+      p_city_label: null,
+    });
+  } catch {}
+
+  // D1 conserve les scores, mais l'identité est rafraîchie séparément sur TOUTES
+  // les configurations du compte afin qu'un changement d'avatar soit immédiat.
+  try {
+    await syncChallengeIdentityCloud(identity);
+  } catch (error) {
+    console.warn('[challenge] Cloudflare account identity sync failed', error);
+  }
+
+  if (userId) challengeIdentityCache = { userId, value: identity, at: Date.now() };
+  return identity;
+}
+
+export async function syncChallengeAccountIdentity(profiles: any[] = []): Promise<{ ok: boolean; skipped?: string }> {
+  const uid = await getChallengeOnlineUserId();
+  if (!uid) return { ok: false, skipped: 'AUTH_REQUIRED' };
+  const profile = linkedProfile(profiles, uid);
+  const pi = profile?.privateInfo || profile?.private_info || {};
+  await publishChallengeAccountIdentity({
+    displayName: clean(profile?.name || profile?.displayName || profile?.nickname, 'Joueur'),
+    avatarUrl: avatarFromProfile(profile),
+    countryCode: clean(profile?.countryCode || profile?.country || pi?.countryCode || pi?.country) || null,
+  }, true);
+  return { ok: true };
+}
+
 /** Équipes locales : utiles pour le gameplay, mais NON officielles pour le classement privé sécurisé. */
 export function challengeTeamsForProfile(profile: any, teams: any[]): ChallengeLeaderboardTeam[] {
   const profileId = clean(profile?.id);
@@ -346,6 +449,16 @@ export async function submitChallengeBestScore(input: ChallengeLeaderboardSubmit
   const userId = await getChallengeOnlineUserId();
   if (!userId) return { ok: false, skipped: 'AUTH_REQUIRED' };
 
+  // IMPORTANT : le nom/avatar du classement représentent le COMPTE ACTUEL, pas
+  // une photo figée le jour du best score. On résout d'abord le profil cloud du
+  // compte et on rafraîchit l'identité D1 indépendamment de la performance.
+  const currentIdentity = await publishChallengeAccountIdentity({
+    displayName: input.displayName || 'Joueur',
+    avatarUrl: input.avatarUrl || null,
+    countryCode: input.countryCode || null,
+  });
+  input = { ...input, ...currentIdentity };
+
   // Cloudflare D1/R2 devient la source principale. Tant que le binding D1 n'est
   // pas activé sur Pages, on retombe proprement sur l'ancien backend Supabase.
   try {
@@ -360,15 +473,6 @@ export async function submitChallengeBestScore(input: ChallengeLeaderboardSubmit
   } catch (error) {
     console.warn('[challenge] Cloudflare submit failed, Supabase fallback enabled', error);
   }
-
-  try {
-    await supabase.rpc('ms_touch_public_profile', {
-      p_display_name: input.displayName || null,
-      p_avatar_url: input.avatarUrl || null,
-      p_country_code: input.countryCode || null,
-      p_city_label: null,
-    });
-  } catch {}
 
   const objectiveKey = challengeObjectiveKey(input);
   const v3 = await supabase.rpc('ms_submit_challenge_score_v3', {
@@ -639,7 +743,8 @@ function historyIsFinishedChallenge(record: any): boolean {
 }
 
 function avatarFromProfile(profile: any): string | null {
-  return clean(profile?.avatarDataUrl || profile?.photoDataUrl || profile?.avatarUrl || profile?.photoUrl || profile?.avatar || profile?.imageUrl) || null;
+  // ONLINE privilégie l'URL cloud actuelle ; le dataURL local ne sert que de secours.
+  return clean(profile?.avatarUrl || profile?.photoUrl || profile?.avatar || profile?.imageUrl || profile?.avatarDataUrl || profile?.photoDataUrl) || null;
 }
 
 const historyHitValue = (hit: string) => hit === 'S' ? 1 : hit === 'D' ? 2 : hit === 'T' ? 3 : hit === '25' ? 1 : hit === '50' ? 2 : 0;

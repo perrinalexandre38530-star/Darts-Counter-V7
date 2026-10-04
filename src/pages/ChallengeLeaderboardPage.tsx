@@ -10,6 +10,7 @@ import {
   findChallengeHistoryRecordForLeaderboardDetail,
   listChallengeTeamScopes,
   syncChallengeHistoricalScores,
+  syncChallengeAccountIdentity,
   type ChallengeLeaderboardDetail,
   type ChallengeLeaderboardRow,
   type ChallengeLeaderboardTeam,
@@ -94,7 +95,7 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
  },[objective,scope,teamKey]);
 
  React.useEffect(()=>{void (async()=>{
-  if(!syncedRef.current){syncedRef.current=true;setSyncing(true);try{await syncChallengeHistoricalScores(profiles)}catch(e){console.warn('[challenge leaderboard] backfill',e)}finally{setSyncing(false)}}
+  if(!syncedRef.current){syncedRef.current=true;setSyncing(true);try{await syncChallengeAccountIdentity(profiles);await syncChallengeHistoricalScores(profiles)}catch(e){console.warn('[challenge leaderboard] backfill',e)}finally{setSyncing(false)}}
   const official=await refreshTeams();
   if(scope==='team'&&!teamKey&&official[0])setTeamKey(official[0].key);
   await refresh();
@@ -243,7 +244,7 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
   {error&&<div className="challenge-lb-status error">{error}</div>}
 
   <main className="challenge-lb-card">
-   <div className="challenge-lb-title"><div><b>MEILLEURS SCORES</b><small>Une seule ligne par joueur : sa meilleure performance pour cette configuration exacte.</small></div><button type="button" onClick={()=>void (async()=>{setSyncing(true);try{await syncChallengeHistoricalScores(profiles);await refreshTeams();await refresh()}finally{setSyncing(false)}})()}>↻</button></div>
+   <div className="challenge-lb-title"><div><b>MEILLEURS SCORES</b><small>Une seule ligne par joueur : sa meilleure performance pour cette configuration exacte.</small></div><button type="button" onClick={()=>void (async()=>{setSyncing(true);try{await syncChallengeAccountIdentity(profiles);await syncChallengeHistoricalScores(profiles);await refreshTeams();await refresh()}finally{setSyncing(false)}})()}>↻</button></div>
    {loading?<div className="challenge-lb-empty">CHARGEMENT…</div>:rows.length===0?<div className="challenge-lb-empty">Aucun score pour cette configuration.</div>:<div className="challenge-lb-list">{rows.map(row=><button type="button" className="challenge-lb-row" key={row.userId} onClick={()=>void openDetail(row)}>
     <strong>#{row.rank}</strong><span className="challenge-lb-player">{row.avatarUrl?<img src={row.avatarUrl} alt=""/>:<i>{String(row.displayName||'?').slice(0,1).toUpperCase()}</i>}<span><b>{row.displayName}</b><small>{row.playedCount} partie{row.playedCount>1?'s':''} · meilleur résultat</small></span></span><em>{row.score}<small>PTS</small></em><span className="challenge-lb-meta">{row.accuracy.toFixed(1)}% · suite {row.bestStreak} · {row.darts} fl.</span><span className="challenge-lb-detail">STATS ›</span>
    </button>)}</div>}

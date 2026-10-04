@@ -512,9 +512,21 @@ async function submitScope(env: Env, db: D1Database, bucket: R2Bucket | undefine
       matchId, statsKey, detailState, timestamp,
       key, scopeKey, userId,
     ).run();
-  } else if (!receipt) {
-    await db.prepare(`UPDATE challenge_best_scores SET played_count=?1, updated_at=?2 WHERE objective_key=?3 AND scope_key=?4 AND user_id=?5`)
-      .bind(playedCount, timestamp, key, scopeKey, userId).run();
+  } else {
+    // Même sans nouveau record, le profil public peut avoir changé. Ne jamais
+    // laisser l'avatar attaché au jour où le best score a été réalisé.
+    await db.prepare(`
+      UPDATE challenge_best_scores SET
+        display_name=CASE WHEN length(?1)>0 THEN ?1 ELSE display_name END,
+        avatar_url=?2,
+        country_code=?3,
+        played_count=?4,
+        updated_at=CASE WHEN ?5=1 THEN updated_at ELSE ?6 END
+      WHERE objective_key=?7 AND scope_key=?8 AND user_id=?9
+    `).bind(
+      clean(input?.displayName), clean(input?.avatarUrl), clean(input?.countryCode).toUpperCase(),
+      playedCount, receipt ? 1 : 0, timestamp, key, scopeKey, userId,
+    ).run();
   }
 
   if (!receipt) {
@@ -553,6 +565,31 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
     if (!env.CHALLENGE_DB) return json({ ok: false, code: 'challenge_d1_not_configured', error: 'Binding D1 CHALLENGE_DB manquant.' }, 503);
     const db = env.CHALLENGE_DB;
     const identity = await resolveIdentity(request, env);
+
+    if (method === 'POST' && parts[0] === 'profile') {
+      const body: any = await request.json().catch(() => ({}));
+      const displayName = clean(body?.displayName);
+      const avatarUrl = clean(body?.avatarUrl);
+      const countryCode = clean(body?.countryCode).toUpperCase();
+
+      // L'identité du compte est indépendante du best score. Un changement
+      // d'avatar/nom doit donc se propager à TOUTES ses lignes D1, sans exiger
+      // une nouvelle meilleure performance et sans toucher à updated_at du score.
+      const result = await db.prepare(`
+        UPDATE challenge_best_scores SET
+          display_name=CASE WHEN length(?1)>0 THEN ?1 ELSE display_name END,
+          avatar_url=?2,
+          country_code=?3
+        WHERE user_id=?4
+      `).bind(displayName, avatarUrl, countryCode, identity.userId).run();
+
+      return json({
+        ok: true,
+        backend: 'cloudflare-d1-r2-v1',
+        userId: identity.userId,
+        updatedRows: Number((result as any)?.meta?.changes || 0),
+      });
+    }
 
     if (method === 'POST' && parts[0] === 'submit') {
       if (!env.USER_DATA_BUCKET) return json({ ok: false, code: 'challenge_r2_not_configured', error: 'Binding R2 USER_DATA_BUCKET manquant.' }, 503);
@@ -596,9 +633,11 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
         backend: 'cloudflare-d1-r2-v1',
         detail: {
           userId: clean(row.user_id),
-          displayName: clean(performance.displayName || row.display_name, 'Joueur'),
-          avatarUrl: performance.avatarUrl || row.avatar_url || null,
-          countryCode: performance.countryCode || row.country_code || null,
+          // L'identité n'est pas une donnée de performance : toujours préférer
+          // la valeur courante D1, rafraîchie par /profile, à l'ancien snapshot R2.
+          displayName: clean(row.display_name || performance.displayName, 'Joueur'),
+          avatarUrl: row.avatar_url || performance.avatarUrl || null,
+          countryCode: row.country_code || performance.countryCode || null,
           score: Number(performance.score ?? row.score ?? 0),
           darts: Number(performance.darts ?? row.darts ?? 0),
           bestStreak: Number(performance.bestStreak ?? row.best_streak ?? 0),

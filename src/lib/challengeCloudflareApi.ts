@@ -98,6 +98,13 @@ export async function submitChallengeScoreCloud(input: any): Promise<ChallengeCl
   });
 }
 
+export async function syncChallengeIdentityCloud(input: { displayName?: string | null; avatarUrl?: string | null; countryCode?: string | null }): Promise<ChallengeCloudResult<any>> {
+  return request('/profile', {
+    method: 'POST',
+    body: JSON.stringify(input || {}),
+  });
+}
+
 export async function fetchChallengeLeaderboardCloud(input: any, limit: number, scope: any): Promise<ChallengeCloudResult<any>> {
   return request(`?${query(input, scope, { limit })}`);
 }
