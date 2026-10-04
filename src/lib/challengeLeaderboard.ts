@@ -425,21 +425,23 @@ export async function fetchChallengeLeaderboard(
   const groups: ChallengeLeaderboardRow[][] = [];
 
   let cloudAvailable = false;
+  let cloudRows: ChallengeLeaderboardRow[] = [];
   try {
     const cloud = await fetchChallengeLeaderboardCloud(input, Math.max(1, Math.min(100, int(limit, 100))), scope);
     if (cloud.available) {
       cloudAvailable = true;
       const payload: any = cloud.data || {};
-      groups.push(normalizeLeaderboardRows(Array.isArray(payload?.rows) ? payload.rows : []));
+      cloudRows = normalizeLeaderboardRows(Array.isArray(payload?.rows) ? payload.rows : []);
+      if (cloudRows.length) groups.push(cloudRows);
     }
   } catch (error) {
     console.warn('[challenge] Cloudflare leaderboard read failed, Supabase fallback enabled', error);
   }
 
-  // Une fois D1 actif, la Pages Function effectue elle-même une migration lazy
-  // du Top Supabase vers D1 quand une configuration n'y existe pas encore.
-  // On évite donc de relire PostgreSQL à chaque ouverture du classement.
-  if (cloudAvailable) return mergeChallengeLeaderboardRows(groups, limit);
+  // D1 est la source principale. MAIS pendant la migration, une réponse D1 vide
+  // ne doit jamais masquer un classement Supabase qui contenait déjà des joueurs.
+  // Dès qu'au moins une ligne D1 existe pour cette configuration, on reste 100% D1.
+  if (cloudAvailable && cloudRows.length > 0) return mergeChallengeLeaderboardRows(groups, limit);
 
   const v3 = await supabase.rpc('ms_challenge_leaderboard_v3', {
     p_objective_key: challengeObjectiveKey(input),

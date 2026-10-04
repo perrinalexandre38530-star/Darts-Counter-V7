@@ -24,6 +24,7 @@ type Objective = {
 
 const MAX_LIMIT = 100;
 const R2_PREFIX = 'challenge-online/v1';
+const LEGACY_MIGRATION_SOURCE = 'supabase-all-v4';
 
 function corsHeaders(extra: Record<string, string> = {}) {
   return {
@@ -67,6 +68,14 @@ function objectiveFrom(input: any): Objective {
 
 function objectiveKey(input: Objective) {
   return `challenge:v3:${lower(input.target, '20')}:${lower(input.rule, 'all')}:${Math.max(1, int(input.visits, 1))}:${lower(input.setMode, 'none') || 'none'}:${Math.max(0, int(input.setTarget, 0))}:${lower(input.legMode, 'none') || 'none'}:${Math.max(0, int(input.legTarget, 0))}`;
+}
+
+function legacyV2ObjectiveKey(input: Objective, matchMode: string) {
+  return `challenge:v2:${lower(input.target, '20')}:${lower(input.rule, 'all')}:${Math.max(1, int(input.visits, 1))}:${lower(matchMode, 'solo') || 'solo'}:${lower(input.setMode, 'none') || 'none'}:${Math.max(0, int(input.setTarget, 0))}:${lower(input.legMode, 'none') || 'none'}:${Math.max(0, int(input.legTarget, 0))}`;
+}
+
+function legacyV1ObjectiveKey(input: Objective) {
+  return `challenge:v1:${lower(input.target, '20')}:${lower(input.rule, 'all')}:${Math.max(1, int(input.visits, 1))}`;
 }
 
 function routeParts(params: any): string[] {
@@ -209,44 +218,123 @@ function mapLeaderboard(rows: any[]) {
 }
 
 async function migrationMarked(db: D1Database, objective: string, scopeKey: string) {
-  const row = await db.prepare('SELECT migrated_at FROM challenge_migration_marks WHERE objective_key=?1 AND scope_key=?2 LIMIT 1').bind(objective, scopeKey).first();
-  return Boolean(row);
+  const row: any = await db.prepare('SELECT migrated_at, imported_rows, source FROM challenge_migration_marks WHERE objective_key=?1 AND scope_key=?2 LIMIT 1')
+    .bind(objective, scopeKey).first();
+  // Les premiers essais D1 ne lisaient que la RPC V3. Des marqueurs pouvaient
+  // donc être créés avec 0 ligne alors que les joueurs existaient encore en V2/V1.
+  // On ne considère la migration terminée que si elle a été faite par la passe
+  // complète V4 ci-dessous.
+  return Boolean(row && clean(row.source) === LEGACY_MIGRATION_SOURCE);
 }
 
 async function markMigration(db: D1Database, objective: string, scopeKey: string, imported: number) {
   await db.prepare(`
     INSERT INTO challenge_migration_marks(objective_key, scope_key, migrated_at, imported_rows, source)
-    VALUES(?1, ?2, ?3, ?4, 'supabase-v3')
-    ON CONFLICT(objective_key, scope_key) DO UPDATE SET migrated_at=excluded.migrated_at, imported_rows=excluded.imported_rows
-  `).bind(objective, scopeKey, nowIso(), imported).run();
+    VALUES(?1, ?2, ?3, ?4, ?5)
+    ON CONFLICT(objective_key, scope_key) DO UPDATE SET
+      migrated_at=excluded.migrated_at,
+      imported_rows=excluded.imported_rows,
+      source=excluded.source
+  `).bind(objective, scopeKey, nowIso(), imported, LEGACY_MIGRATION_SOURCE).run();
+}
+
+function legacyRowUserId(row: any) {
+  return clean(row?.userId || row?.user_id);
+}
+
+function legacyCandidate(row: any) {
+  return {
+    score: Math.max(0, int(row?.score ?? row?.bestScore ?? row?.best_score, 0)),
+    darts: Math.max(0, int(row?.darts ?? row?.bestDarts ?? row?.best_darts, 0)),
+    bestStreak: Math.max(0, int(row?.bestStreak ?? row?.best_streak, 0)),
+    accuracy: Math.max(0, Math.min(100, num(row?.accuracy ?? row?.bestAccuracy ?? row?.best_accuracy, 0))),
+  };
+}
+
+function legacyCandidateBetter(next: any, current: any) {
+  if (!current) return true;
+  if (Number(next.score) !== Number(current.score)) return Number(next.score) > Number(current.score);
+  if (Number(next.accuracy) !== Number(current.accuracy)) return Number(next.accuracy) > Number(current.accuracy);
+  if (Number(next.bestStreak) !== Number(current.bestStreak)) return Number(next.bestStreak) > Number(current.bestStreak);
+  if (Number(next.darts) !== Number(current.darts)) return Number(next.darts) < Number(current.darts);
+  return false;
 }
 
 async function importLegacyLeaderboardIfNeeded(env: Env, db: D1Database, identity: Identity, objective: Objective, scopeKey: string) {
   const key = objectiveKey(objective);
   if (await migrationMarked(db, key, scopeKey)) return 0;
 
-  const legacy = await supabaseRpc(env, identity.token, 'ms_challenge_leaderboard_v3', {
+  // IMPORTANT : avant D1, les scores Challenge ont vécu dans trois générations
+  // de clés Supabase. Ne lire que V3 fait disparaître les joueurs encore présents
+  // en V2/V1. On collecte donc toutes les générations puis on garde le meilleur
+  // résultat individuel par user_id avant l'upsert D1.
+  const sources: any[][] = [];
+  let reachedLegacyBackend = false;
+
+  const v3 = await supabaseRpc(env, identity.token, 'ms_challenge_leaderboard_v3', {
     p_objective_key: key,
     p_scope_key: scopeKey,
     p_limit: MAX_LIMIT,
   });
-  // null = RPC absente / timeout / erreur transitoire : surtout ne pas créer le
-  // marqueur de migration, sinon les anciens joueurs seraient perdus à jamais.
-  if (!Array.isArray(legacy)) return 0;
+  if (Array.isArray(v3)) { sources.push(v3); reachedLegacyBackend = true; }
+
+  if (scopeKey === 'public') {
+    for (const matchMode of ['solo', 'duo', 'duel', 'multi']) {
+      const v2 = await supabaseRpc(env, identity.token, 'ms_challenge_leaderboard_v2', {
+        p_objective_key: legacyV2ObjectiveKey(objective, matchMode),
+        p_scope_key: 'public',
+        p_limit: MAX_LIMIT,
+      });
+      if (Array.isArray(v2)) { sources.push(v2); reachedLegacyBackend = true; }
+    }
+
+    const v1 = await supabaseRpc(env, identity.token, 'ms_challenge_leaderboard', {
+      p_objective_key: legacyV1ObjectiveKey(objective),
+      p_limit: MAX_LIMIT,
+    });
+    if (Array.isArray(v1)) { sources.push(v1); reachedLegacyBackend = true; }
+  } else if (scopeKey.startsWith('official:')) {
+    // Compatibilité privée V2 : les anciens scopes étaient team:<id>.
+    const teamId = scopeKey.slice('official:'.length);
+    if (teamId) {
+      for (const matchMode of ['solo', 'duo', 'duel', 'multi']) {
+        const v2 = await supabaseRpc(env, identity.token, 'ms_challenge_leaderboard_v2', {
+          p_objective_key: legacyV2ObjectiveKey(objective, matchMode),
+          p_scope_key: `team:${teamId}`,
+          p_limit: MAX_LIMIT,
+        });
+        if (Array.isArray(v2)) { sources.push(v2); reachedLegacyBackend = true; }
+      }
+    }
+  }
+
+  // Si Supabase est momentanément indisponible, surtout ne pas poser de marqueur :
+  // la prochaine ouverture doit pouvoir retenter la migration.
+  if (!reachedLegacyBackend) return 0;
+
+  const bestByUser = new Map<string, { row: any; candidate: any; playedCount: number }>();
+  for (const rows of sources) {
+    for (const row of rows) {
+      const userId = legacyRowUserId(row);
+      if (!userId) continue;
+      const candidate = legacyCandidate(row);
+      const playedCount = Math.max(1, int(row?.playedCount ?? row?.played_count, 1));
+      const previous = bestByUser.get(userId);
+      if (!previous || legacyCandidateBetter(candidate, previous.candidate)) {
+        bestByUser.set(userId, { row, candidate, playedCount: Math.max(playedCount, previous?.playedCount || 1) });
+      } else if (playedCount > previous.playedCount) {
+        previous.playedCount = playedCount;
+      }
+    }
+  }
 
   let imported = 0;
-  for (const row of legacy) {
-    const userId = clean(row?.userId || row?.user_id);
-    if (!userId) continue;
-    const candidate = {
-      score: Math.max(0, int(row?.score, 0)),
-      darts: Math.max(0, int(row?.darts, 0)),
-      bestStreak: Math.max(0, int(row?.bestStreak || row?.best_streak, 0)),
-      accuracy: Math.max(0, Math.min(100, num(row?.accuracy, 0))),
-    };
+  for (const [userId, item] of bestByUser) {
+    const row = item.row;
+    const candidate = item.candidate;
     const current: any = await db.prepare(`SELECT * FROM challenge_best_scores WHERE objective_key=?1 AND scope_key=?2 AND user_id=?3 LIMIT 1`)
       .bind(key, scopeKey, userId).first();
-    const legacyPlayed = Math.max(1, int(row?.playedCount || row?.played_count, 1));
+    const legacyPlayed = item.playedCount;
     const updatedAt = clean(row?.updatedAt || row?.updated_at, nowIso());
     const matchId = clean(row?.matchId || row?.match_id).slice(0, 160) || `legacy-${safe(userId)}-${safe(key)}`.slice(0, 160);
 
@@ -294,6 +382,7 @@ async function importLegacyLeaderboardIfNeeded(env: Env, db: D1Database, identit
     }
     imported += 1;
   }
+
   await markMigration(db, key, scopeKey, imported);
   return imported;
 }
