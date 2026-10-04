@@ -2981,14 +2981,11 @@ useEffect(() => {
       setRouteParams(nextParams ?? null);
       setTab(next);
     };
-    if (getRuntimePlatform() === "android") {
-      // Android WebView : le montage d'une page lourde devient interruptible.
-      // Les interactions de la page courante restent traitables pendant que
-      // React prépare le prochain écran au lieu de monopoliser le thread UI.
-      React.startTransition(commitRouteState);
-    } else {
-      commitRouteState();
-    }
+    // P0 V10 NAVIGATION: une navigation est une interaction urgente.
+    // startTransition gardait parfois l'ancien écran affiché pendant le chargement
+    // d'une page lazy sur Android, ce qui donnait l'impression d'un tap ignoré / freeze.
+    // On commit la route immédiatement ; Suspense peut afficher son fallback tout de suite.
+    commitRouteState();
 
     // Deux frames = nouvel écran engagé dans le pipeline de rendu. On libère alors
     // les effets visuels temporairement mis en pause et on garde une mesure de

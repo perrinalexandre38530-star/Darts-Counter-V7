@@ -491,18 +491,8 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   if(!rankOpen) return;
   let cancelled=false;
   void (async()=>{
-   if(!onlineHistorySyncedRef.current){
-    onlineHistorySyncedRef.current=true;
-    setOnlineHistorySyncing(true);
-    try{
-     await syncChallengeHistoricalScores(profiles,teams);
-    }catch(error){
-     console.warn('[challenge] historical online leaderboard sync failed',error);
-     onlineHistorySyncedRef.current=false;
-    }finally{
-     if(!cancelled)setOnlineHistorySyncing(false);
-    }
-   }
+   // P0 V10: ouvrir le classement doit être immédiat. Le backfill des anciennes
+   // parties reste uniquement sur le bouton SYNCHRONISER explicite.
    const scopes=await refreshOnlineTeams();
    if(cancelled) return;
    if(onlineScope==='team'&&!onlineTeamKey){
@@ -512,7 +502,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    await refreshOnlineRanking();
   })();
   return()=>{cancelled=true};
- },[rankOpen,onlineTarget,onlineRule,onlineVisits,onlineScope,onlineTeamKey,profiles,teams,refreshOnlineTeams,refreshOnlineRanking]);
+ },[rankOpen,onlineTarget,onlineRule,onlineVisits,onlineScope,onlineTeamKey,refreshOnlineTeams,refreshOnlineRanking]);
 
  React.useEffect(()=>{
   if(historyStatsOnly||!done||onlineSubmittedRef.current||onlineSubmittingRef.current) return;

@@ -9,7 +9,6 @@ import {
   enrichChallengeLeaderboardDetailFromHistory,
   findChallengeHistoryRecordForLeaderboardDetail,
   listChallengeTeamScopes,
-  syncChallengeHistoricalScores,
   syncChallengeAccountIdentity,
   type ChallengeLeaderboardDetail,
   type ChallengeLeaderboardRow,
@@ -41,12 +40,10 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
  const [teamKey,setTeamKey]=React.useState('');
  const [rows,setRows]=React.useState<ChallengeLeaderboardRow[]>([]);
  const [loading,setLoading]=React.useState(false);
- const [syncing,setSyncing]=React.useState(false);
  const [error,setError]=React.useState('');
  const [filtersOpen,setFiltersOpen]=React.useState(false);
  const [detail,setDetail]=React.useState<ChallengeLeaderboardDetail|null>(null);
  const [detailLoading,setDetailLoading]=React.useState(false);
- const syncedRef=React.useRef(false);
  const selectedTeam=teams.find(t=>t.key===teamKey)||null;
  const objective=React.useMemo(()=>({target,rule,visits,setMode:params?.setMode||null,setTarget:params?.setTarget||null,legMode:params?.legMode||null,legTarget:params?.legTarget||null}),[target,rule,visits,params?.setMode,params?.setTarget,params?.legMode,params?.legTarget]);
 
@@ -77,30 +74,43 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
   try{
    const official=await listChallengeTeamScopes();
    setTeams(official);
-   if(!teamKey&&official[0])setTeamKey(official[0].key);
+   setTeamKey(current=>current||official[0]?.key||'');
    return official;
   }catch(e){console.warn('[challenge leaderboard] teams',e);return [] as ChallengeLeaderboardTeam[]}
- },[teamKey]);
+ },[]);
 
+ const activeTeamKey=scope==='team'?teamKey:'';
  const refresh=React.useCallback(async()=>{
   setLoading(true);setError('');
   try{
-   if(scope==='team'&&!teamKey){setRows([]);return}
-   const data=await fetchChallengeLeaderboard(objective,100,scope==='team'?{type:'team',teamKey}:{type:'public'});
+   if(scope==='team'&&!activeTeamKey){setRows([]);return}
+   const data=await fetchChallengeLeaderboard(objective,100,scope==='team'?{type:'team',teamKey:activeTeamKey}:{type:'public'});
    setRows(data);
   }catch(e:any){
    const msg=String(e?.message||'');
    setError(msg.includes('PRIVATE_TEAM')?'Classement privé réservé aux membres officiels de cette équipe.':'Classement indisponible pour le moment.');
   }finally{setLoading(false)}
- },[objective,scope,teamKey]);
+ },[objective,scope,activeTeamKey]);
 
- React.useEffect(()=>{void (async()=>{
-  if(!syncedRef.current){syncedRef.current=true;setSyncing(true);try{await syncChallengeAccountIdentity(profiles);await syncChallengeHistoricalScores(profiles)}catch(e){console.warn('[challenge leaderboard] backfill',e)}finally{setSyncing(false)}}
-  const official=await refreshTeams();
-  if(scope==='team'&&!teamKey&&official[0])setTeamKey(official[0].key);
-  await refresh();
- })()},[]);
+ // P0 V10: l'ouverture du classement ne doit JAMAIS resynchroniser tout l'historique.
+ // Les données ONLINE se chargent directement ; l'identité du compte est rafraîchie
+ // en tâche séparée et ne bloque pas le premier rendu.
+ React.useEffect(()=>{
+  void refreshTeams();
+  void syncChallengeAccountIdentity(profiles).catch((e)=>console.warn('[challenge leaderboard] identity sync',e));
+ },[refreshTeams,profiles]);
  React.useEffect(()=>{void refresh()},[refresh]);
+
+ const hasMeaningfulStats=React.useCallback((data:ChallengeLeaderboardDetail)=>{
+  const stats:any=data?.stats&&typeof data.stats==='object'?data.stats:{};
+  const entries=[stats?.entries,stats?.dartLog,stats?.log,stats?.events,stats?.telemetry?.entries].find(Array.isArray) as any[]|undefined;
+  if(Array.isArray(entries)&&entries.length>0)return true;
+  const counts=stats?.hitCounts||stats?.hits||stats?.hitSummary||{};
+  if(Object.values(counts).some(value=>Number(value||0)>0))return true;
+  if(Array.isArray(stats?.positionStats)&&stats.positionStats.length>0)return true;
+  if(Array.isArray(stats?.visitScores)&&stats.visitScores.length>0)return true;
+  return Number(stats?.bestVisit||stats?.bestVolley||0)>0||Number(stats?.avgVisit||stats?.averageVisit||0)>0;
+ },[]);
 
  const openFullStats=React.useCallback((data:ChallengeLeaderboardDetail)=>{
   const stats:any=(data?.stats&&typeof data.stats==='object')?data.stats:{};
@@ -178,9 +188,8 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
  const openDetail=async(row:ChallengeLeaderboardRow)=>{
   setDetailLoading(true);setError('');
   try{
-   // Réinjecte d'abord les anciennes parties locales du compte connecté afin
-   // qu'un ancien best score puisse récupérer ses fléchettes/statistiques exactes.
-   try{await syncChallengeHistoricalScores(profiles)}catch(e){console.warn('[challenge leaderboard] detail backfill',e)}
+   // P0 V10: ouvrir les stats d'un joueur est une lecture directe.
+   // Aucun backfill / scan complet de l'historique n'est autorisé ici.
    const fetched=await fetchChallengeLeaderboardDetail(objective,row.userId,scope==='team'?{type:'team',teamKey}:{type:'public'});
    if(!fetched){setError('Le détail de cette ancienne performance n’est pas encore disponible.');return}
 
@@ -213,10 +222,10 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    }
 
    const data=await enrichChallengeLeaderboardDetailFromHistory(fetched,profiles);
-   // Toujours ouvrir le VRAI panneau STATS DÉTAILLÉES de ChallengePlay.
-   // Même une ancienne performance sans journal fléchette-par-fléchette doit
-   // conserver exactement le même composant/rendu ; les agrégats disponibles
-   // sont passés via onlineStatsOverride et complètent le journal s'il manque.
+   if(!hasMeaningfulStats(data)){
+    setError('Les statistiques détaillées de cette ancienne performance ne sont pas disponibles. Le classement reste valide, mais l’application n’affichera plus de faux zéros.');
+    return;
+   }
    openFullStats(data);
    return;
   }catch(e:any){setError(String(e?.message||'Détail indisponible.'))}finally{setDetailLoading(false)}
@@ -240,11 +249,10 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    <button type="button" className="challenge-kpi-block" onClick={cycleScope} aria-label="Changer le scope du classement"><span className="challenge-kpi-icon"><ScopeIcon/></span><span className="challenge-kpi-label">CLASSEMENT</span><i className="challenge-kpi-sep"/><b className="challenge-kpi-value">{scope==='team'?(selectedTeam?.name||'ÉQUIPE OFFICIELLE'):'PUBLIC'}</b></button>
   </div>
   {scope==='team'&&<div className="challenge-official-note">✓ OFFICIEL · classement réservé aux membres réellement affectés à cette équipe dans une Organisation MSS.</div>}
-  {syncing&&<div className="challenge-lb-status">↻ Synchronisation de tes anciennes parties Challenge…</div>}
   {error&&<div className="challenge-lb-status error">{error}</div>}
 
   <main className="challenge-lb-card">
-   <div className="challenge-lb-title"><div><b>MEILLEURS SCORES</b><small>Une seule ligne par joueur : sa meilleure performance pour cette configuration exacte.</small></div><button type="button" onClick={()=>void (async()=>{setSyncing(true);try{await syncChallengeAccountIdentity(profiles);await syncChallengeHistoricalScores(profiles);await refreshTeams();await refresh()}finally{setSyncing(false)}})()}>↻</button></div>
+   <div className="challenge-lb-title"><div><b>MEILLEURS SCORES</b><small>Une seule ligne par joueur : sa meilleure performance pour cette configuration exacte.</small></div><button type="button" onClick={()=>void (async()=>{await syncChallengeAccountIdentity(profiles).catch(()=>undefined);await Promise.all([refreshTeams(),refresh()])})()}>↻</button></div>
    {loading?<div className="challenge-lb-empty">CHARGEMENT…</div>:rows.length===0?<div className="challenge-lb-empty">Aucun score pour cette configuration.</div>:<div className="challenge-lb-list">{rows.map(row=><button type="button" className="challenge-lb-row" key={row.userId} onClick={()=>void openDetail(row)}>
     <strong>#{row.rank}</strong><span className="challenge-lb-player">{row.avatarUrl?<img src={row.avatarUrl} alt=""/>:<i>{String(row.displayName||'?').slice(0,1).toUpperCase()}</i>}<span><b>{row.displayName}</b><small>{row.playedCount} partie{row.playedCount>1?'s':''} · meilleur résultat</small></span></span><em>{row.score}<small>PTS</small></em><span className="challenge-lb-meta">{row.accuracy.toFixed(1)}% · suite {row.bestStreak} · {row.darts} fl.</span><span className="challenge-lb-detail">STATS ›</span>
    </button>)}</div>}

@@ -667,24 +667,40 @@ async function materializeLinkedDartSetsForProjection(projection: LinkedProfileP
     const next = current.slice();
     let written = 0;
 
+    const projectedSetChanged = (prev: any, merged: any) => {
+      const keys = [
+        "name", "scope", "profileId", "mainImageUrl", "thumbImageUrl",
+        "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl",
+        "mainImageAssetId", "thumbImageAssetId", "photoAssetId",
+        "linkedSourceProfileId", "linkedTargetLocalProfileId", "linkedSourceDartSetId",
+        "linkedOwnerUserId", "updatedAt", "createdAt",
+      ];
+      return keys.some((key) => (prev?.[key] ?? null) !== (merged?.[key] ?? null));
+    };
+
     const upsert = (set: any) => {
       if (!set?.id) return;
       const idx = next.findIndex((x: any) => String(x?.id) === String(set.id) && String(x?.profileId) === String(set.profileId));
       if (idx >= 0) {
         const prev = next[idx] || {};
-        // Ne pas écraser une image existante par du vide : sinon on recrée les points d'interrogation.
-        next[idx] = {
+        const incomingUpdatedAt = Number(set.updatedAt || 0);
+        const merged = {
           ...prev,
           ...set,
           mainImageUrl: set.mainImageUrl || prev.mainImageUrl || "",
           thumbImageUrl: set.thumbImageUrl || prev.thumbImageUrl,
           photoDataUrl: set.photoDataUrl || prev.photoDataUrl,
           imageDataUrl: set.imageDataUrl || prev.imageDataUrl,
-          updatedAt: Math.max(Number(prev.updatedAt || 0), Number(set.updatedAt || Date.now())),
+          updatedAt: incomingUpdatedAt > 0
+            ? Math.max(Number(prev.updatedAt || 0), incomingUpdatedAt)
+            : Number(prev.updatedAt || 0),
         };
-      } else {
-        next.push(set);
+        if (!projectedSetChanged(prev, merged)) return;
+        next[idx] = merged;
+        written += 1;
+        return;
       }
+      next.push(set);
       written += 1;
     };
 
@@ -741,8 +757,10 @@ async function materializeLinkedDartSetsForProjection(projection: LinkedProfileP
           linkedTargetLocalProfileId: targetLocalId || null,
           linkedSourceDartSetId: setId,
           linkedOwnerUserId: (snap as any)?.ownerUserId || link?.requesterUser?.id || null,
-          updatedAt: Number(rawSet?.updatedAt || Date.now()),
-          createdAt: Number(rawSet?.createdAt || rawSet?.updatedAt || Date.now()),
+          // Ne jamais transformer une simple projection distante en mutation locale
+          // en injectant Date.now(). Sinon chaque lecture réécrit dc_dart_sets_v1.
+          updatedAt: Number(rawSet?.updatedAt || 0),
+          createdAt: Number(rawSet?.createdAt || rawSet?.updatedAt || 0),
         };
         upsert(normalized);
       }

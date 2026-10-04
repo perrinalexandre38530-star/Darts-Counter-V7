@@ -17,6 +17,52 @@ type LocalStorageJsonOptions = {
   sanitizeImages?: boolean;
 };
 
+type StorageFailureState = {
+  count: number;
+  firstAt: number;
+  blockedUntil: number;
+  lastWarnAt: number;
+};
+
+const storageFailureState = new Map<string, StorageFailureState>();
+const STORAGE_FAILURE_WINDOW_MS = 2_500;
+const STORAGE_QUOTA_COOLDOWN_MS = 120_000;
+const STORAGE_WARN_COOLDOWN_MS = 30_000;
+
+function isQuotaExceededError(err: any): boolean {
+  const name = String(err?.name || "");
+  const code = Number(err?.code || 0);
+  return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED" || code === 22 || code === 1014;
+}
+
+function localStorageWriteBlocked(key: string): boolean {
+  const state = storageFailureState.get(key);
+  if (!state?.blockedUntil) return false;
+  if (Date.now() >= state.blockedUntil) {
+    storageFailureState.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function noteLocalStorageFailure(key: string, err: any) {
+  const now = Date.now();
+  const previous = storageFailureState.get(key);
+  const sameBurst = previous && now - previous.firstAt <= STORAGE_FAILURE_WINDOW_MS;
+  const count = sameBurst ? previous!.count + 1 : 1;
+  const blockedUntil = isQuotaExceededError(err) && count >= 3 ? now + STORAGE_QUOTA_COOLDOWN_MS : 0;
+  const lastWarnAt = previous?.lastWarnAt || 0;
+  storageFailureState.set(key, { count, firstAt: sameBurst ? previous!.firstAt : now, blockedUntil, lastWarnAt: now });
+  if (now - lastWarnAt >= STORAGE_WARN_COOLDOWN_MS) {
+    console.warn("[imageStorageCodec] set failed", key, err);
+    if (blockedUntil) console.warn("[imageStorageCodec] write circuit open", key, `${STORAGE_QUOTA_COOLDOWN_MS / 1000}s`);
+  }
+}
+
+function clearLocalStorageFailure(key: string) {
+  storageFailureState.delete(key);
+}
+
 function isObjectLike(value: any): value is Record<string, any> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -130,12 +176,18 @@ export function safeLocalStorageSetJson(
   value: any,
   options?: LocalStorageJsonOptions
 ): boolean {
+  // Après trois QuotaExceeded consécutifs sur la même clé, ne plus refaire
+  // pendant 2 minutes les coûteux sanitize -> JSON.stringify -> LZ -> setItem.
+  // C'était visible dans DevTools sur dc_dart_sets_v1 et pouvait rendre toute
+  // l'application molle alors que l'écriture était condamnée à échouer.
+  if (localStorageWriteBlocked(key)) return false;
   try {
     const packed = packJsonForStorage(value, options);
     localStorage.setItem(key, packed);
+    clearLocalStorageFailure(key);
     return true;
   } catch (err) {
-    console.warn("[imageStorageCodec] set failed", key, err);
+    noteLocalStorageFailure(key, err);
     return false;
   }
 }

@@ -677,6 +677,7 @@ function ActiveProfileCard({
                 profile={profile as any}
                 ringColor={primary}
                 showStars={false}
+                preferProfileAvatarUrl
               />
               {!hideStarRing && (
                 <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>

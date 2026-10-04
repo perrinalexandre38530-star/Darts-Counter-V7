@@ -875,173 +875,146 @@ function historyStatsPayload(record: any, row: any) {
 }
 
 /**
- * Pour le compte connecté, tente de réhydrater une ancienne ligne Online avec
- * les fléchettes exactes encore présentes dans l'Historique local. Cela permet
- * d'ouvrir exactement le même panneau STATS DÉTAILLÉES que ChallengePlay,
- * même si l'ancien score Supabase ne contenait qu'un résumé.
+ * P0 V10 — lecture locale ciblée.
+ *
+ * Le classement ONLINE ne doit JAMAIS appeler History.getAll() pour ouvrir le
+ * détail d'une seule performance. Pour le compte connecté, le matchId publié
+ * par le leaderboard suffit à charger exactement UN record.
  */
+async function exactLocalChallengeDetail(
+  detail: ChallengeLeaderboardDetail,
+  profiles: any[],
+): Promise<{ record: any; row: any; stats: any; playerId: string } | null> {
+  const uid = await getChallengeOnlineUserId();
+  if (!uid || clean(detail?.userId) !== clean(uid)) return null;
+  const wantedMatchId = clean(detail?.matchId);
+  if (!wantedMatchId) return null;
+
+  let record: any = null;
+  try { record = await History.get(wantedMatchId); } catch { return null; }
+  if (!record || !historyIsFinishedChallenge(record)) return null;
+
+  const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
+  if (recordMatchId && recordMatchId !== wantedMatchId) return null;
+  const cfg = historyConfig(record);
+  if (clean(cfg.target) !== clean(detail.target) || clean(cfg.rule) !== clean(detail.rule) || int(cfg.visits) !== int(detail.visits)) return null;
+
+  const profileIds = new Set(linkedProfileIds(profiles, uid));
+  profileIds.add(uid);
+  const wantedName = lower(detail?.displayName);
+  const rows = historyPlayerRows(record);
+  let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds)) || null;
+  if (!row && wantedName) row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || null;
+  if (!row && rows.length === 1) row = rows[0];
+  if (!row) return null;
+
+  const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+  if (score !== int(detail.score)) return null;
+  const stats = historyStatsPayload(record, row);
+  return { record, row, stats, playerId: historyRowId(row) || uid };
+}
+
+/** Enrichit uniquement via le matchId exact ; aucun scan complet de l'historique. */
 export async function enrichChallengeLeaderboardDetailFromHistory(
   detail: ChallengeLeaderboardDetail,
   profiles: any[],
 ): Promise<ChallengeLeaderboardDetail> {
-  const uid = await getChallengeOnlineUserId();
-  const wantedMatchId = clean(detail?.matchId);
-  const wantedName = lower(detail?.displayName);
-  const profileIds = new Set(uid ? linkedProfileIds(profiles, uid) : []);
-
-  const history = await History.getAll();
-  const matches = history
-    .filter(historyIsFinishedChallenge)
-    .filter((record: any) => {
-      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
-      if (wantedMatchId && recordMatchId === wantedMatchId) return true;
-      const cfg = historyConfig(record);
-      return clean(cfg.target) === clean(detail.target)
-        && clean(cfg.rule) === clean(detail.rule)
-        && int(cfg.visits) === int(detail.visits);
-    })
-    .map((record: any) => {
-      const rows = historyPlayerRows(record);
-      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
-      let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds)) || null;
-
-      if (!row && wantedMatchId && recordMatchId === wantedMatchId) {
-        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || (rows.length === 1 ? rows[0] : null);
-      }
-      if (!row && wantedName) {
-        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || null;
-      }
-      if (!row && rows.length === 1 && uid && clean(detail?.userId) === uid) row = rows[0];
-      if (!row) return null;
-
-      const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
-      if (score !== int(detail.score)) return null;
-      const stats = historyStatsPayload(record, row);
-      return { record, row, stats, exactMatchId: recordMatchId === wantedMatchId };
-    })
-    .filter(Boolean) as Array<{record:any;row:any;stats:any;exactMatchId:boolean}>;
-
-  if (!matches.length) return detail;
-  matches.sort((a,b) => Number(b.exactMatchId)-Number(a.exactMatchId) || Number(b.stats?.entries?.length||0)-Number(a.stats?.entries?.length||0));
-  const best = matches[0];
+  const local = await exactLocalChallengeDetail(detail, profiles);
+  if (!local) return detail;
   return {
     ...detail,
     stats: {
       ...(detail.stats && typeof detail.stats === 'object' ? detail.stats : {}),
-      ...best.stats,
+      ...local.stats,
     },
   };
 }
 
-/**
- * Retrouve la partie locale exacte correspondant à une performance Online du
- * compte connecté. Le but n'est pas de reconstruire une pseudo-fiche à partir
- * d'agrégats Supabase : quand la partie existe encore dans History, on réouvre
- * directement le même record que depuis la page Historique. ChallengePlay peut
- * alors afficher STRICTEMENT le même panneau STATS DÉTAILLÉES.
- */
+/** Réouvre le record local exact du compte connecté : un seul History.get(matchId). */
 export async function findChallengeHistoryRecordForLeaderboardDetail(
   detail: ChallengeLeaderboardDetail,
   profiles: any[],
 ): Promise<{ record: any; playerId: string } | null> {
-  const uid = await getChallengeOnlineUserId();
-  const profileIds = new Set(uid ? linkedProfileIds(profiles, uid) : []);
-  const wantedMatchId = clean(detail?.matchId);
-  const wantedName = lower(detail?.displayName);
-  const history = await History.getAll();
-
-  const candidates = history
-    .filter(historyIsFinishedChallenge)
-    .filter((record: any) => {
-      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
-      if (wantedMatchId && recordMatchId === wantedMatchId) return true;
-      const cfg = historyConfig(record);
-      return clean(cfg.target) === clean(detail.target)
-        && clean(cfg.rule) === clean(detail.rule)
-        && int(cfg.visits) === int(detail.visits);
-    })
-    .map((record: any) => {
-      const rows = historyPlayerRows(record);
-      const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
-      let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds)) || null;
-
-      // Anciennes sauvegardes : le lien profil Online n'était pas toujours
-      // présent. Un matchId exact reste un identifiant suffisamment fort pour
-      // retrouver la ligne du joueur sans inventer de données.
-      if (!row && wantedMatchId && recordMatchId === wantedMatchId) {
-        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || (rows.length === 1 ? rows[0] : null);
-      }
-      if (!row && wantedName) {
-        row = rows.find((candidate: any) => lower(candidate?.name || candidate?.displayName) === wantedName) || null;
-      }
-      if (!row && rows.length === 1 && uid && clean(detail?.userId) === uid) row = rows[0];
-      if (!row && rows.length === 1 && lower(rows[0]?.name || rows[0]?.displayName) === wantedName) row = rows[0];
-      if (!row) return null;
-
-      const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
-      if (score !== int(detail.score)) return null;
-      const stats = historyStatsPayload(record, row);
-      return {
-        record,
-        playerId: historyRowId(row),
-        exactMatchId: Boolean(wantedMatchId && recordMatchId === wantedMatchId),
-        entryCount: Array.isArray(stats?.entries) ? stats.entries.length : 0,
-      };
-    })
-    .filter(Boolean) as Array<{record:any;playerId:string;exactMatchId:boolean;entryCount:number}>;
-
-  if (!candidates.length) return null;
-  candidates.sort((a, b) => Number(b.exactMatchId) - Number(a.exactMatchId) || b.entryCount - a.entryCount);
-  const best = candidates[0];
-  return best?.entryCount > 0 ? { record: best.record, playerId: best.playerId } : null;
+  const local = await exactLocalChallengeDetail(detail, profiles);
+  if (!local) return null;
+  const hasEntries = Array.isArray(local.stats?.entries) && local.stats.entries.length > 0;
+  const hasAggregates = local.stats && typeof local.stats === 'object' && (
+    Object.values(local.stats?.hitCounts || {}).some((value: any) => Number(value || 0) > 0)
+    || (Array.isArray(local.stats?.positionStats) && local.stats.positionStats.length > 0)
+    || (Array.isArray(local.stats?.visitScores) && local.stats.visitScores.length > 0)
+    || Number(local.stats?.bestVisit || 0) > 0
+  );
+  return hasEntries || hasAggregates ? { record: local.record, playerId: local.playerId } : null;
 }
 
-/** Backfill des anciennes parties Challenge. V3 reclassera aussi les anciennes parties DUO/MULTI dans la même catégorie individuelle. */
+/**
+ * Backfill MANUEL des anciennes parties Challenge.
+ * P0 V10 : cette fonction n'est plus appelée à l'ouverture du classement.
+ * Elle parcourt les headers légers puis hydrate au maximum un record à la fois.
+ */
+let challengeHistoricalSyncInFlight: Promise<ChallengeHistorySyncResult> | null = null;
 export async function syncChallengeHistoricalScores(profiles: any[], _teams: any[] = []): Promise<ChallengeHistorySyncResult> {
-  const uid = await getChallengeOnlineUserId();
-  if (!uid) return { ok: false, submitted: 0, scanned: 0, skipped: 'AUTH_REQUIRED' };
-  const profile = linkedProfile(profiles, uid);
-  const profileIds = new Set(linkedProfileIds(profiles, uid));
-  // Même si l'hydratation du store n'est pas encore terminée, un historique qui
-  // porte déjà le uid du compte peut être resynchronisé sans autoriser un profil local.
-  profileIds.add(uid);
+  if (challengeHistoricalSyncInFlight) return challengeHistoricalSyncInFlight;
 
-  const history = await History.getAll();
-  const challengeRows = history.filter(historyIsFinishedChallenge);
-  let submitted = 0;
-  for (const record of challengeRows) {
-    const rows = historyPlayerRows(record);
-    let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds));
-    if (!row && rows.length === 1) {
-      const headerPlayers = Array.isArray(record?.players) ? record.players : [];
-      if (headerPlayers.some((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds))) row = rows[0];
+  const job = (async (): Promise<ChallengeHistorySyncResult> => {
+    const uid = await getChallengeOnlineUserId();
+    if (!uid) return { ok: false, submitted: 0, scanned: 0, skipped: 'AUTH_REQUIRED' };
+    const profile = linkedProfile(profiles, uid);
+    const profileIds = new Set(linkedProfileIds(profiles, uid));
+    profileIds.add(uid);
+
+    const headers = await History.list();
+    const challengeHeaders = headers.filter(historyIsFinishedChallenge);
+    let submitted = 0;
+    let scanned = 0;
+
+    for (const header of challengeHeaders) {
+      const matchId = clean(header?.matchId || header?.id || header?.resumeId);
+      if (!matchId) continue;
+
+      const headerPlayers = Array.isArray(header?.players) ? header.players : [];
+      if (headerPlayers.length && !headerPlayers.some((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds))) continue;
+
+      let record: any = header;
+      try { record = (await History.get(matchId)) || header; } catch {}
+      scanned += 1;
+      const rows = historyPlayerRows(record);
+      let row = rows.find((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds));
+      if (!row && rows.length === 1 && headerPlayers.some((candidate: any) => historyRowMatchesProfileIds(candidate, profileIds))) row = rows[0];
+      if (!row) continue;
+
+      const config = historyConfig(record);
+      const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+      const darts = Math.max(0, int(row?.darts ?? row?.dartsThrown ?? row?.hitSummary?.darts, 0));
+      const bestStreak = Math.max(0, int(row?.bestStreak ?? row?.special?.bestStreak, 0));
+      const accuracy = Math.max(0, Math.min(100, num(row?.successRate ?? row?.accuracy ?? row?.accuracyPct ?? row?.special?.successRate, 0)));
+      const pi = profile?.privateInfo || profile?.private_info || {};
+      try {
+        const result = await submitChallengeBestScore({
+          ...config,
+          score,
+          darts,
+          bestStreak,
+          accuracy,
+          matchId,
+          displayName: clean(profile?.name || profile?.nickname || row?.name || row?.displayName, 'Joueur'),
+          avatarUrl: avatarFromProfile(profile),
+          countryCode: clean(profile?.countryCode || profile?.country || pi?.countryCode || pi?.country) || null,
+          stats: historyStatsPayload(record, row),
+        });
+        if (result.ok) submitted += 1;
+      } catch (error) {
+        console.warn('[challenge] historical leaderboard backfill failed', matchId, error);
+      }
+
+      if (scanned % 2 === 0 && typeof window !== 'undefined') {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      }
     }
-    if (!row) continue;
-    const config = historyConfig(record);
-    const matchId = clean(record?.matchId || record?.id || record?.resumeId);
-    if (!matchId) continue;
-    const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
-    const darts = Math.max(0, int(row?.darts ?? row?.dartsThrown ?? row?.hitSummary?.darts, 0));
-    const bestStreak = Math.max(0, int(row?.bestStreak ?? row?.special?.bestStreak, 0));
-    const accuracy = Math.max(0, Math.min(100, num(row?.successRate ?? row?.accuracy ?? row?.accuracyPct ?? row?.special?.successRate, 0)));
-    const pi = profile?.privateInfo || profile?.private_info || {};
-    try {
-      const result = await submitChallengeBestScore({
-        ...config,
-        score,
-        darts,
-        bestStreak,
-        accuracy,
-        matchId,
-        displayName: clean(profile?.name || profile?.nickname || row?.name || row?.displayName, 'Joueur'),
-        avatarUrl: avatarFromProfile(profile),
-        countryCode: clean(profile?.countryCode || profile?.country || pi?.countryCode || pi?.country) || null,
-        stats: historyStatsPayload(record, row),
-      });
-      if (result.ok) submitted += 1;
-    } catch (error) {
-      console.warn('[challenge] historical leaderboard backfill failed', matchId, error);
-    }
-  }
-  return { ok: true, submitted, scanned: challengeRows.length };
+    return { ok: true, submitted, scanned };
+  })();
+
+  challengeHistoricalSyncInFlight = job;
+  try { return await job; }
+  finally { if (challengeHistoricalSyncInFlight === job) challengeHistoricalSyncInFlight = null; }
 }

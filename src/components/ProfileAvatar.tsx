@@ -63,6 +63,9 @@ type VisualOpts = {
   // Permet aux grilles réellement visibles de forcer le chargement immédiat
   // sans rendre tous les avatars de l'application eager par défaut.
   loading?: "eager" | "lazy";
+  // HOME / "Mon profil" : quand vrai, l'URL du profil courant est la source
+  // autoritaire et le cache rapide ne peut pas peindre une ancienne miniature.
+  preferProfileAvatarUrl?: boolean;
 };
 
 function isDeadRemoteAvatar(src: string) {
@@ -442,20 +445,26 @@ export default function ProfileAvatar(props: Props) {
   const cachedThumbFresh = !!cachedThumb && (!profileRevision || !cachedRevision || cachedRevision >= profileRevision);
   const propLooksRemote = /^(https?:\/\/|\/media\/|\/assets\/|\/images\/|\.\.?\/)/i.test(propDataUrl);
 
+  const preferProfileAvatarUrl = props.preferProfileAvatarUrl === true;
   const rawImg = React.useMemo(() => {
     // Une URL explicite distante/packagée doit rester prioritaire (bots, assets, amis liés).
     if (propDataUrl && propLooksRemote) return propDataUrl;
-    // IMPORTANT ANTI-FLASH : le cache rapide est alimenté au moment où l'avatar est
-    // réellement validé. Au boot, le store React peut encore contenir pendant quelques
-    // centaines de ms un ancien avatarDataUrl avant hydrateStoreUserMedia(). Dans ce cas,
-    // attendre la comparaison avatarUpdatedAt faisait peindre l'ancien portrait puis le bon.
-    // Pour les médaillons UI, toute miniature locale disponible gagne dès le PREMIER paint ;
-    // l'hydratation de fond remplacera ensuite la donnée si une révision plus récente existe.
-    // Le cache rapide ne doit JAMAIS écraser un avatar plus récent déjà présent
-    // dans le profil. C'était la cause du mauvais portrait visible dans HOME au boot :
-    // une miniature persistée d'une ancienne révision gagnait systématiquement.
-    // En revanche, si le cache possède une révision au moins aussi récente, il reste
-    // prioritaire et évite le flash d'un ancien avatar pendant l'hydratation du store.
+
+    // HOME doit suivre exactement la logique de "Mon profil" : l'avatarUrl du
+    // profil courant gagne sur l'ancien avatarDataUrl/cache local. Cela supprime
+    // le flash du mauvais portrait au démarrage.
+    if (preferProfileAvatarUrl) {
+      if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
+      if (propDataUrl) return propDataUrl;
+      if (avatarDataUrl) return avatarDataUrl;
+      if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
+      if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
+      if (size <= 180 && cachedThumb) return cachedThumb;
+      return null;
+    }
+
+    // Mode générique : le cache rapide peut éviter un paint coûteux si sa
+    // révision est au moins aussi récente que celle du profil.
     const profileHasOwnMedia = Boolean(avatarDataUrl || legacyAvatar || avatarUrl || avatarPath);
     const cacheIsAuthoritative = Boolean(
       cachedThumb &&
@@ -471,7 +480,7 @@ export default function ProfileAvatar(props: Props) {
     if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
     if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     return null;
-  }, [propDataUrl, propLooksRemote, size, cachedThumb, cachedRevision, profileRevision, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+  }, [preferProfileAvatarUrl, propDataUrl, propLooksRemote, size, cachedThumb, cachedRevision, profileRevision, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   // -------------------------------------------------------------------------
   // FAILOVER AVATAR : NAS -> cache local -> Cloudflare R2

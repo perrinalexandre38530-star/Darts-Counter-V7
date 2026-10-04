@@ -10,6 +10,7 @@
 
 import { loadStore, saveStore } from "./storage";
 import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./runtimePerformance";
+import { getRuntimePlatform } from "./nativePlatform";
 
 type AnyObj = Record<string, any>;
 
@@ -380,14 +381,27 @@ export function startCrashGuard(options?: CrashGuardOptions) {
   if (intervalId !== null) return;
 
   const maybeRun = () => {
-    if (isRuntimeHidden()) return;
-
-    // PERF V68: runCrashGuardCheck() loads and scans the full persisted Store.
-    // Doing that every 15s during scoring creates periodic main-thread/IDB
-    // contention. During gameplay only a truly critical heap condition may
-    // bypass the pause; normal checks resume as soon as the player leaves Play.
+    const hidden = isRuntimeHidden();
     const perf = getPerfMemory();
     const critical = !!perf && Number(perf.usedMB || 0) >= Number(opts.memoryHardLimitMB || 900);
+
+    // P0 V10 ANDROID: CrashGuard ne doit JAMAIS charger/analyser le store complet
+    // pendant que l'utilisateur manipule l'application. Ce tick de 60 s était un
+    // candidat direct aux freezes aléatoires. En premier plan on se limite au
+    // compteur mémoire déjà disponible sans IndexedDB/JSON.parse.
+    if (getRuntimePlatform() === "android" && !hidden) {
+      state.lastCheckAt = now();
+      state.memoryUsedMB = perf?.usedMB ?? null;
+      state.memoryLimitMB = perf?.limitMB ?? null;
+      if (critical) {
+        addWarning(`Mémoire critique Android: ${perf?.usedMB ?? "?"} / ${perf?.limitMB ?? "?"} MB`);
+        setReason("Critical memory");
+        dropVolatileCaches();
+      }
+      return;
+    }
+
+    if (hidden) return;
     if (isGameplayRuntime() && !critical) return;
 
     scheduleRuntimeIdle(() => {

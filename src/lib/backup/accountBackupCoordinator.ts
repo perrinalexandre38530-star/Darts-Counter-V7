@@ -953,14 +953,22 @@ export async function restoreLatestBackupForSignedInUser(
         emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
         return false;
       }
-      // V37 : une différence de quantité déclenche une vraie comparaison des IDs.
-      // Ainsi l'utilisateur voit précisément ce qui n'existe que sur cet appareil
-      // et ce qui n'existe que dans la sauvegarde distante.
+      // P0 V10: au boot/login, la comparaison reste STRICTEMENT metadata-only.
+      // Télécharger un snapshot complet + loadStore() uniquement pour détailler une
+      // différence pouvait tomber 30-90 s plus tard et figer Android. Les détails
+      // complets restent disponibles lors d'une action manuelle explicite (force).
+      if (!opts?.force) {
+        conflict.details = [];
+        emitConflict(conflict);
+        saveDiagnostic(uid, { ok:true, restored:false, reason:"user-choice-required-metadata-only", candidate:{source:latest.source,id:latest.id}, differences:conflict.differences, details:[] });
+        emitAccountSync(uid, "done", 100, "Synchronisation vérifiée — choix utilisateur requis", { restored:false });
+        return false;
+      }
+
       emitAccountSync(uid, "compare-details", 88, "Analyse détaillée des différences…", { source: latest.source });
       const remoteForDiff = await withSyncTimeout(latest.load(), 6_000, "Lecture détaillée de la sauvegarde").catch(() => null);
       const localStoreForDiff = await withSyncTimeout(loadStore<any>().catch(() => null), 3_000, "Lecture détaillée locale").catch(() => null);
       conflict.details = await buildDetailedDifferences(remoteForDiff, localStoreForDiff).catch(() => []);
-      // Etat terminal obligatoire : 88 % ne doit jamais être le dernier événement.
       emitConflict(conflict);
       saveDiagnostic(uid, { ok:true, restored:false, reason:"user-choice-required", candidate:{source:latest.source,id:latest.id}, differences:conflict.differences, details:conflict.details });
       return false;

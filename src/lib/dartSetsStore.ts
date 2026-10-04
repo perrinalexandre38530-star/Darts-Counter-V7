@@ -1131,7 +1131,11 @@ function extractImageBankEntry(raw: any): any | null {
     photoThumbDataUrl: raw.photoThumbDataUrl || normalized.photoThumbDataUrl,
     thumbDataUrl: raw.thumbDataUrl || normalized.thumbDataUrl,
     thumbImageDataUrl: raw.thumbImageDataUrl || normalized.thumbImageDataUrl,
-    updatedAt: Math.max(n(normalized.updatedAt, 0), Date.now()),
+    // P0 V10: ne jamais fabriquer un nouveau updatedAt pendant une simple LECTURE.
+    // Date.now() ici rendait l'entrée "plus récente" à chaque loadAll(), donc
+    // rememberImagesForSets() recompressait/réécrivait toute la banque d'images
+    // à chaque navigation jusqu'au QuotaExceededError.
+    updatedAt: Math.max(n(normalized.updatedAt, 0), n(raw?.updatedAt, 0)),
   });
 }
 
@@ -1146,7 +1150,10 @@ function rememberImagesForSets(rawList: any[]) {
       const keys = imageBankKeysForSet(entry);
       for (const key of keys) {
         const old = bank[key];
-        if (!old || scoreDartSetForCanonical(entry) >= scoreDartSetForCanonical(old)) {
+        const entryScore = scoreDartSetForCanonical(entry);
+        const oldScore = old ? scoreDartSetForCanonical(old) : -1;
+        const visualChanged = !!old && imageIdentity(old) !== imageIdentity(entry);
+        if (!old || entryScore > oldScore || visualChanged) {
           bank[key] = entry;
           changed = true;
         }
