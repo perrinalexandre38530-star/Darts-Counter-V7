@@ -47,6 +47,7 @@ import botTeamRisingLogo from "../assets/ui/competition_bot_team_rising.webp";
 import { BABYFOOT_LEAGUE_BADGES } from "../lib/leagueBadgeAssets";
 import { loadTeamsBySport, createTeam as createStoredTeam, upsertTeam as upsertStoredTeam, fileToDataUrl as fileToCompressedTeamLogoDataUrl } from "../lib/petanqueTeamsStore";
 import { listMyOrganizations, type OrganizationRecord } from "../organizations/organizationService";
+import { resolveUserMediaFallback, organizationLogoMediaKey, organizationCoverMediaKey } from "../lib/userMediaFallback";
 import { getUserId } from "../lib/sync/profileSync";
 
 // ✅ AVATARS BOTS PRO (assets existants) — (utilisés hors Pétanque)
@@ -1051,6 +1052,10 @@ function LineOption({ label, active, onClick, onInfo, primary = THEME, disabled 
   );
 }
 
+
+function ScopeCard({label,icon,active,onClick,primary=THEME}:{label:string;icon:string;active:boolean;onClick:()=>void;primary?:string}){
+  return <button type="button" onClick={onClick} style={{minHeight:74,borderRadius:16,border:active?`1px solid ${primary}CC`:"1px solid rgba(255,255,255,.12)",background:active?`linear-gradient(180deg,${primary}20,rgba(0,0,0,.28))`:"rgba(255,255,255,.035)",color:"#fff",fontWeight:1000,display:"grid",placeItems:"center",alignContent:"center",gap:5,padding:"10px 7px",minWidth:0,overflow:"hidden",boxShadow:active?`0 0 18px ${primary}33`:"none"}}><span style={{fontSize:16,lineHeight:1}}>{icon}</span><strong style={{fontSize:11.5,lineHeight:1.1,letterSpacing:.25,textAlign:"center",maxWidth:"100%",whiteSpace:"normal",overflowWrap:"anywhere"}}>{label}</strong></button>;
+}
 function RowTitle({ label }: any) {
   return <div style={{ fontSize: 11.5, opacity: 0.82, marginBottom: 8 }}>{label}</div>;
 }
@@ -1462,8 +1467,17 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
         const uid = await getUserId();
         const result = await listMyOrganizations(uid);
         if (!alive) return;
-        setOrganizations(result.organizations || []);
-        if (!hostOrganizationId && result.organizations?.[0]?.id) setHostOrganizationId(String(result.organizations[0].id));
+        const seen = new Map<string, OrganizationRecord>();
+        for (const org of (result.organizations || [])) {
+          const semanticKey = `${String(org?.name||"").trim().toLowerCase()}|${String(org?.kind||"")}|${String(org?.city||"").trim().toLowerCase()}`;
+          const key = semanticKey || String(org?.id || "").trim();
+          if (!key) continue;
+          const prev = seen.get(key);
+          if (!prev || (prev.source === "local" && org.source === "cloud")) seen.set(key, org);
+        }
+        const uniqueOrganizations = Array.from(seen.values());
+        setOrganizations(uniqueOrganizations);
+        if (!hostOrganizationId && uniqueOrganizations?.[0]?.id) setHostOrganizationId(String(uniqueOrganizations[0].id));
       } catch { if (alive) setOrganizations([]); }
     })();
     return () => { alive = false; };
@@ -1473,6 +1487,25 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
     if (competitionScope !== "team") return;
     if (!hostOrganizationId && organizations?.[0]?.id) setHostOrganizationId(String(organizations[0].id));
   }, [competitionScope, organizations, hostOrganizationId]);
+
+  React.useEffect(() => {
+    if (competitionScope !== "team" || !hostOrganizationId) return;
+    const org:any = organizations.find((item:any)=>String(item?.id)===String(hostOrganizationId));
+    if (!org) return;
+    let alive = true;
+    void (async()=>{
+      const logoKey = String(org?.profile?.logoMediaKey || organizationLogoMediaKey(org.id));
+      const coverKey = String(org?.profile?.coverMediaKey || organizationCoverMediaKey(org.id));
+      const [logo,cover] = await Promise.all([
+        resolveUserMediaFallback(logoKey,"",{kind:"club_logo",allowR2:true}),
+        resolveUserMediaFallback(coverKey,"",{kind:"club_cover",allowR2:true}),
+      ]);
+      if (!alive) return;
+      setCompetitionAvatar(logo || null);
+      setCompetitionCover(cover || null);
+    })().catch(()=>undefined);
+    return()=>{alive=false};
+  },[competitionScope,hostOrganizationId,organizations]);
 
   React.useEffect(() => {
     setSource(competitionScope === "online" ? "online" : "local");
@@ -2051,6 +2084,22 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [challengeAssignment, setChallengeAssignment] = React.useState<"same_for_all"|"rotate"|"random"|"player_choice">("same_for_all");
   const [challengeObjectiveCadence, setChallengeObjectiveCadence] = React.useState<"competition"|"round"|"match">("match");
   const [challengeTieBreak, setChallengeTieBreak] = React.useState<"segment_sum"|"accuracy"|"best_streak">("segment_sum");
+  const challengeSegmentTargets = React.useMemo(()=>{
+    if (challengeObjectiveMode === "fixed") return [challengeTarget];
+    if (challengeObjectiveMode === "range") return [];
+    return challengeObjectives;
+  },[challengeObjectiveMode,challengeTarget,challengeObjectives]);
+  const challengeCanUseSegmentSum = challengeSegmentTargets.some((value)=>value === "any-double" || value === "any-triple");
+  React.useEffect(()=>{
+    if (challengeObjectiveMode === "fixed") {
+      setChallengeAssignment("same_for_all");
+      setChallengeObjectiveCadence("competition");
+    } else if (challengeObjectiveMode === "player_choice") {
+      setChallengeAssignment("player_choice");
+      setChallengeObjectiveCadence("match");
+    }
+  },[challengeObjectiveMode]);
+  React.useEffect(()=>{ if (!challengeCanUseSegmentSum && challengeTieBreak === "segment_sum") setChallengeTieBreak("accuracy"); },[challengeCanUseSegmentSum,challengeTieBreak]);
   const [leagueFormat, setLeagueFormat] = React.useState<"simple" | "return" | "free" | "multi">("simple");
   const isLeagueMulti = isLeague && leagueFormat === "multi";
   const isLeagueFree = isLeague && leagueFormat === "free";
@@ -4525,6 +4574,14 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
     if (k === "type_single") return { title: "Élimination (KO)", body: <>{TYPE_INFO.single_ko}</> };
     if (k === "type_double") return { title: "Élimination double", body: <>{TYPE_INFO.double_ko}</> };
     if (k === "type_rr") return { title: "Championnat", body: <>{TYPE_INFO.round_robin}</> };
+    if (k === "league_simple") return { title: "Championnat simple", body: <>Chaque participant rencontre tous les autres une seule fois. Classement cumulé sur l’ensemble des rencontres : format clair et compact pour une saison courte.</> };
+    if (k === "league_return") return { title: "Aller / retour", body: <>Chaque participant rencontre les autres deux fois, une fois à l’aller puis une fois au retour. Idéal pour une vraie saison longue et équilibrée.</> };
+    if (k === "league_free") return { title: "Saison libre", body: <>Aucun calendrier figé au départ. Les rencontres sont ajoutées au fil de la saison et alimentent le classement. Pratique pour les clubs où les joueurs ne sont pas toujours présents ensemble.</> };
+    if (k === "league_multi") return { title: "Ligue MULTI", body: <>Pensée pour des parties à plusieurs joueurs dans un même match. Le classement distribue des points selon la position finale de chaque participant, au lieu d’un simple duel 1 contre 1.</> };
+    if (k === "challenge_fixed") return { title: "Objectif fixe", body: <>Un seul objectif est imposé pour toute la compétition. Exemple : TRIPLES uniquement ou cible 20 uniquement. C’est le format le plus simple à comprendre et à comparer.</> };
+    if (k === "challenge_pool") return { title: "Plusieurs objectifs", body: <>Tu définis une liste d’objectifs autorisés. L’application choisit ensuite comment les attribuer selon la règle définie : même objectif, rotation ou aléatoire.</> };
+    if (k === "challenge_range") return { title: "Fourchette", body: <>Tu définis une plage numérique continue, par exemple 15 à 20. Les objectifs sont alors pris uniquement dans cette fourchette.</> };
+    if (k === "challenge_player") return { title: "Choix du joueur", body: <>Tu définis la liste autorisée, puis le joueur choisit son objectif avant son match parmi ces choix. L’objectif peut donc varier d’un match à l’autre.</> };
     if (k === "type_groups") return { title: "Poules + KO", body: <>{TYPE_INFO.groups_ko}</> };
 
     if (k === "bestof") return { title: "Best-of", body: <>{OTHER_INFO.bestOf}</> };
@@ -4633,11 +4690,12 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               <div>
                 <TextInput value={name} onChange={(e: any) => setName(e.target.value)} placeholder={isLeague ? "Nom de la ligue" : "Nom du tournoi"} />
               </div>
-              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(3,minmax(0,1fr))" }}>
-                <button type="button" onClick={()=>setCompetitionScope("local")} style={{minHeight:86,borderRadius:16,border:competitionScope==="local"?`1px solid ${primary}`:"1px solid rgba(255,255,255,.12)",background:competitionScope==="local"?`${primary}18`:"rgba(255,255,255,.035)",color:"#fff",fontWeight:1000}}>⌂<br/>LOCAL<small style={{display:"block",marginTop:5,opacity:.62}}>sur place</small></button>
-                <button type="button" onClick={()=>setCompetitionScope("team")} style={{minHeight:86,borderRadius:16,border:competitionScope==="team"?`1px solid ${primary}`:"1px solid rgba(255,255,255,.12)",background:competitionScope==="team"?`${primary}18`:"rgba(255,255,255,.035)",color:"#fff",fontWeight:1000}}>⬢<br/>ORGANISATION<small style={{display:"block",marginTop:5,opacity:.62}}>club · asso · structure</small></button>
-                <button type="button" onClick={()=>setCompetitionScope("online")} style={{minHeight:86,borderRadius:16,border:competitionScope==="online"?"1px solid #4fb4ff":"1px solid rgba(255,255,255,.12)",background:competitionScope==="online"?"rgba(79,180,255,.12)":"rgba(255,255,255,.035)",color:"#fff",fontWeight:1000}}>◎<br/>ONLINE<small style={{display:"block",marginTop:5,opacity:.62}}>public</small></button>
+              <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(3,minmax(0,1fr))" }}>
+                <ScopeCard label="LOCAL" icon="⌂" active={competitionScope==="local"} onClick={()=>setCompetitionScope("local")} primary={primary}/>
+                <ScopeCard label="ORGANISATION" icon="⬢" active={competitionScope==="team"} onClick={()=>setCompetitionScope("team")} primary={primary}/>
+                <ScopeCard label="ONLINE" icon="◎" active={competitionScope==="online"} onClick={()=>setCompetitionScope("online")} primary="#4fb4ff"/>
               </div>
+              <div style={{fontSize:10.5,lineHeight:1.38,opacity:.72,padding:"0 2px"}}>{competitionScope==="local"?"Compétition jouée physiquement sur cet appareil, immédiatement ou sur une période longue.":competitionScope==="team"?"Compétition rattachée à une organisation. Son logo et sa couverture deviennent automatiquement l’identité de la compétition.":"Compétition publiée dans l’espace ONLINE et accessible aux comptes autorisés."}</div>
               {competitionScope === "team" ? <div style={{display:"grid",gap:7}}><RowTitle label="Organisation organisatrice"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{organizations.length?organizations.map((org:any)=><NeonPill key={org.id} active={String(hostOrganizationId)===String(org.id)} label={String(org.name||"ORGANISATION")} onClick={()=>setHostOrganizationId(String(org.id))} primary={primary}/>):<div style={{fontSize:11,opacity:.7}}>Aucune organisation disponible. Crée ou rejoins d’abord un club, une association ou une structure.</div>}</div></div>:null}
               {competitionScope === "online" ? <div style={{display:"grid",gap:8}}><RowTitle label="Inscriptions"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={enrollmentPolicy==="open"} label="OUVERTES" onClick={()=>setEnrollmentPolicy("open")} primary={primary}/><NeonPill active={enrollmentPolicy==="approval"} label="SUR VALIDATION" onClick={()=>setEnrollmentPolicy("approval")} primary={primary}/><NeonPill active={enrollmentPolicy==="invite"} label="SUR INVITATION" onClick={()=>setEnrollmentPolicy("invite")} primary={primary}/><NeonPill active={enrollmentPolicy==="fixed"} label="LISTE FIXE" onClick={()=>setEnrollmentPolicy("fixed")} primary={primary}/></div></div>:null}
             </div>
@@ -4973,10 +5031,10 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             <div style={{ display: "grid", gap: 10 }}>
               {isLeague ? (
                 <>
-                  <LineOption label="Championnat simple" active={leagueFormat === "simple"} onClick={() => { setLeagueFormat("simple"); setFormat("round_robin"); setRrRounds(1); }} onInfo={() => openInfo("type_rr")} primary={primary} />
-                  <LineOption label="Aller / retour" active={leagueFormat === "return"} onClick={() => { setLeagueFormat("return"); setFormat("round_robin"); setRrRounds(2); }} onInfo={() => openInfo("type_rr")} primary={primary} />
-                  <LineOption label="Saison libre" active={leagueFormat === "free"} onClick={() => { setLeagueFormat("free"); setFormat("round_robin"); setRrRounds(4); }} onInfo={() => openInfo("type_rr")} primary={primary} />
-                  <LineOption label="Ligue MULTI" active={leagueFormat === "multi"} onClick={() => { setLeagueFormat("multi"); setFormat("round_robin"); setRrRounds(1); }} onInfo={() => openInfo("type_rr")} primary={primary} />
+                  <LineOption label="Championnat simple" active={leagueFormat === "simple"} onClick={() => { setLeagueFormat("simple"); setFormat("round_robin"); setRrRounds(1); }} onInfo={() => openInfo("league_simple")} primary={primary} />
+                  <LineOption label="Aller / retour" active={leagueFormat === "return"} onClick={() => { setLeagueFormat("return"); setFormat("round_robin"); setRrRounds(2); }} onInfo={() => openInfo("league_return")} primary={primary} />
+                  <LineOption label="Saison libre" active={leagueFormat === "free"} onClick={() => { setLeagueFormat("free"); setFormat("round_robin"); setRrRounds(4); }} onInfo={() => openInfo("league_free")} primary={primary} />
+                  <LineOption label="Ligue MULTI" active={leagueFormat === "multi"} onClick={() => { setLeagueFormat("multi"); setFormat("round_robin"); setRrRounds(1); }} onInfo={() => openInfo("league_multi")} primary={primary} />
                 </>
               ) : (
                 <>
@@ -5006,17 +5064,23 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               )}
 
               {mode === "challenge" ? (
-                <div style={{ display: "grid", gap: 13 }}>
-                  <RowTitle label="Challenge · objectifs" />
-                  <div style={{ display:"flex",gap:7,flexWrap:"wrap" }}><NeonPill active={challengeObjectiveMode==="fixed"} label="OBJECTIF FIXE" onClick={()=>setChallengeObjectiveMode("fixed")} primary={primary}/><NeonPill active={challengeObjectiveMode==="pool"} label="PLUSIEURS OBJECTIFS" onClick={()=>setChallengeObjectiveMode("pool")} primary={primary}/><NeonPill active={challengeObjectiveMode==="range"} label="FOURCHETTE" onClick={()=>setChallengeObjectiveMode("range")} primary={primary}/><NeonPill active={challengeObjectiveMode==="player_choice"} label="CHOIX DU JOUEUR" onClick={()=>{setChallengeObjectiveMode("player_choice");setChallengeAssignment("player_choice")}} primary={primary}/></div>
-                  {challengeObjectiveMode === "fixed" ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><NeonPill active={challengeTarget === "any-double"} label="DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); setChallengeObjectives(["any-double"]); }} primary={primary} /><NeonPill active={challengeTarget === "any-triple"} label="TRIPLES" onClick={() => { setChallengeTarget("any-triple"); setChallengeRule("triple"); setChallengeObjectives(["any-triple"]); }} primary={primary} />{Array.from({length:20},(_,i)=>20-i).map(n => <NeonPill key={n} active={challengeTarget === String(n)} label={String(n)} onClick={() => { setChallengeTarget(String(n)); setChallengeObjectives([String(n)]); if(challengeRule === "double" || challengeRule === "triple") setChallengeRule("all"); }} primary={primary} />)}</div>:null}
-                  {challengeObjectiveMode === "pool" || challengeObjectiveMode === "player_choice" ? <div><div style={{fontSize:11,opacity:.7,marginBottom:6}}>Sélectionne tous les objectifs autorisés :</div><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{["any-double","any-triple",...Array.from({length:20},(_,i)=>String(20-i)),"bull25","bull50"].map(value=>{const on=challengeObjectives.includes(value);const label=value==="any-double"?"DOUBLES":value==="any-triple"?"TRIPLES":value==="bull25"?"BULL25":value==="bull50"?"BULL50":value;return <NeonPill key={value} active={on} label={label} onClick={()=>setChallengeObjectives(prev=>on?prev.filter(x=>x!==value):[...prev,value])} primary={primary}/>})}</div></div>:null}
-                  {challengeObjectiveMode === "range" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><label style={{fontSize:11}}>DE <TextInput value={String(challengeRangeFrom)} onChange={(e:any)=>setChallengeRangeFrom(Math.max(1,Math.min(20,Number(e.target.value)||1)))} /></label><label style={{fontSize:11}}>À <TextInput value={String(challengeRangeTo)} onChange={(e:any)=>setChallengeRangeTo(Math.max(1,Math.min(20,Number(e.target.value)||20)))} /></label></div>:null}
-                  {challengeObjectiveMode !== "fixed" && challengeObjectiveMode !== "player_choice" ? <><RowTitle label="Attribution des objectifs"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeAssignment==="same_for_all"} label="MÊME POUR TOUS" onClick={()=>setChallengeAssignment("same_for_all")} primary={primary}/><NeonPill active={challengeAssignment==="rotate"} label="ROTATION" onClick={()=>setChallengeAssignment("rotate")} primary={primary}/><NeonPill active={challengeAssignment==="random"} label="ALÉATOIRE" onClick={()=>setChallengeAssignment("random")} primary={primary}/></div></>:null}
-                  <RowTitle label="Changement d'objectif"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeObjectiveCadence==="competition"} label="COMPÉTITION" onClick={()=>setChallengeObjectiveCadence("competition")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="round"} label="PAR TOUR DE TABLEAU" onClick={()=>setChallengeObjectiveCadence("round")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="match"} label="PAR MATCH" onClick={()=>setChallengeObjectiveCadence("match")} primary={primary}/></div>
+                <div style={{ display: "grid", gap: 12 }}>
+                  <RowTitle label="Challenge · choix des objectifs" />
+                  <div style={{display:"grid",gap:7}}>
+                    <LineOption label="Objectif fixe" active={challengeObjectiveMode==="fixed"} onClick={()=>setChallengeObjectiveMode("fixed")} onInfo={()=>openInfo("challenge_fixed")} primary={primary}/>
+                    <LineOption label="Plusieurs objectifs" active={challengeObjectiveMode==="pool"} onClick={()=>setChallengeObjectiveMode("pool")} onInfo={()=>openInfo("challenge_pool")} primary={primary}/>
+                    <LineOption label="Fourchette" active={challengeObjectiveMode==="range"} onClick={()=>setChallengeObjectiveMode("range")} onInfo={()=>openInfo("challenge_range")} primary={primary}/>
+                    <LineOption label="Choix du joueur" active={challengeObjectiveMode==="player_choice"} onClick={()=>setChallengeObjectiveMode("player_choice")} onInfo={()=>openInfo("challenge_player")} primary={primary}/>
+                  </div>
+                  <div style={{padding:"9px 10px",borderRadius:12,border:`1px solid ${primary}2c`,background:`${primary}0d`,fontSize:10.5,lineHeight:1.4,opacity:.9}}>{challengeObjectiveMode==="fixed"?"Un seul objectif pour toute la compétition.":challengeObjectiveMode==="pool"?"Plusieurs objectifs autorisés, puis attribution automatique selon la règle choisie.":challengeObjectiveMode==="range"?"Une plage continue de numéros autorisés.":"Chaque joueur choisit son objectif parmi la liste proposée avant le match."}</div>
+                  {challengeObjectiveMode === "fixed" ? <><RowTitle label="Objectif"/><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><NeonPill active={challengeTarget === "any-double"} label="DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); setChallengeObjectives(["any-double"]); }} primary={primary} /><NeonPill active={challengeTarget === "any-triple"} label="TRIPLES" onClick={() => { setChallengeTarget("any-triple"); setChallengeRule("triple"); setChallengeObjectives(["any-triple"]); }} primary={primary} />{Array.from({length:20},(_,i)=>20-i).map(n => <NeonPill key={n} active={challengeTarget === String(n)} label={String(n)} onClick={() => { setChallengeTarget(String(n)); setChallengeObjectives([String(n)]); if(challengeRule === "double" || challengeRule === "triple") setChallengeRule("all"); }} primary={primary} />)}</div></>:null}
+                  {(challengeObjectiveMode === "pool" || challengeObjectiveMode === "player_choice") ? <><RowTitle label="Objectifs autorisés"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{["any-double","any-triple",...Array.from({length:20},(_,i)=>String(20-i)),"bull25","bull50"].map(value=>{const on=challengeObjectives.includes(value);const label=value==="any-double"?"DOUBLES":value==="any-triple"?"TRIPLES":value==="bull25"?"BULL25":value==="bull50"?"BULL50":value;return <NeonPill key={value} active={on} label={label} onClick={()=>setChallengeObjectives(prev=>on?prev.filter(x=>x!==value):[...prev,value])} primary={primary}/>})}</div></>:null}
+                  {challengeObjectiveMode === "range" ? <><RowTitle label="Fourchette de numéros"/><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><label style={{fontSize:11}}>DE <TextInput value={String(challengeRangeFrom)} onChange={(e:any)=>setChallengeRangeFrom(Math.max(1,Math.min(20,Number(e.target.value)||1)))} /></label><label style={{fontSize:11}}>À <TextInput value={String(challengeRangeTo)} onChange={(e:any)=>setChallengeRangeTo(Math.max(1,Math.min(20,Number(e.target.value)||20)))} /></label></div></>:null}
+                  {(challengeObjectiveMode === "pool" || challengeObjectiveMode === "range") ? <><RowTitle label="Attribution"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeAssignment==="same_for_all"} label="MÊME POUR TOUS" onClick={()=>setChallengeAssignment("same_for_all")} primary={primary}/><NeonPill active={challengeAssignment==="rotate"} label="ROTATION" onClick={()=>setChallengeAssignment("rotate")} primary={primary}/><NeonPill active={challengeAssignment==="random"} label="ALÉATOIRE" onClick={()=>setChallengeAssignment("random")} primary={primary}/></div></>:null}
+                  {(challengeObjectiveMode === "pool" || challengeObjectiveMode === "range") ? <><RowTitle label="Quand l’objectif change"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeObjectiveCadence==="competition"} label="COMPÉTITION" onClick={()=>setChallengeObjectiveCadence("competition")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="round"} label="PAR RONDE" onClick={()=>setChallengeObjectiveCadence("round")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="match"} label="PAR MATCH" onClick={()=>setChallengeObjectiveCadence("match")} primary={primary}/></div></>:null}
                   <RowTitle label="Nombre de tours"/><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{[5,10,15,20,30,50,100].map(n => <NeonPill key={n} active={challengeVisits === n} label={`${n}`} onClick={() => setChallengeVisits(n)} primary={primary} />)}</div>
-                  <RowTitle label="Départage"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeTieBreak==="segment_sum"} label="SOMME SEGMENTS" onClick={()=>setChallengeTieBreak("segment_sum")} primary={primary}/><NeonPill active={challengeTieBreak==="accuracy"} label="PRÉCISION" onClick={()=>setChallengeTieBreak("accuracy")} primary={primary}/><NeonPill active={challengeTieBreak==="best_streak"} label="MEILLEURE SUITE" onClick={()=>setChallengeTieBreak("best_streak")} primary={primary}/></div>
-                  <div style={{ fontSize: 11, opacity: .72 }}>Les règles complètes sont enregistrées dans la compétition et le match Challenge reçoit automatiquement l'objectif prévu pour sa ronde / son match.</div>
+                  <RowTitle label="Départage"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeTieBreak==="segment_sum"} label="SOMME SEGMENTS" onClick={()=>setChallengeTieBreak("segment_sum")} disabled={!challengeCanUseSegmentSum} primary={primary}/><NeonPill active={challengeTieBreak==="accuracy"} label="PRÉCISION" onClick={()=>setChallengeTieBreak("accuracy")} primary={primary}/><NeonPill active={challengeTieBreak==="best_streak"} label="MEILLEURE SUITE" onClick={()=>setChallengeTieBreak("best_streak")} primary={primary}/></div>
+                  {!challengeCanUseSegmentSum?<div style={{fontSize:9.8,opacity:.58}}>Somme des segments est disponible uniquement quand DOUBLES ou TRIPLES font partie des objectifs.</div>:null}
                 </div>
               ) : null}
 

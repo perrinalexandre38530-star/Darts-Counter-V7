@@ -3083,8 +3083,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
       {/* HEADER VISUEL COMPÉTITION */}
-      {(tournamentCoverSrc || tournamentLogoSrc) ? (
-        <div
+      <div
           style={{
             position: "relative",
             overflow: "hidden",
@@ -3125,12 +3124,16 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 {(tour as any)?.name || "Mon tournoi"}
               </div>
               <div style={{ marginTop: 3, fontSize: 11.5, opacity: 0.88, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 2px 12px rgba(0,0,0,.75)" }}>
-                {(tour as any)?.status ? String((tour as any).status).toUpperCase() : "—"} • {playableMatches.length} à jouer
+                {(tour as any)?.status ? String((tour as any).status).toUpperCase() : "—"} • {playableMatches.length} à jouer • {doneMatches.length} terminé{doneMatches.length>1?"s":""}
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+                <span style={{padding:"4px 8px",borderRadius:999,border:"1px solid rgba(255,207,87,.35)",background:"rgba(255,207,87,.09)",fontSize:8.5,fontWeight:1000,color:"#ffcf57"}}>{String((tour as any)?.kind||"COMPÉTITION").toUpperCase()}</span>
+                <span style={{padding:"4px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.14)",background:"rgba(0,0,0,.26)",fontSize:8.5,fontWeight:1000}}>{String((tour as any)?.competitionScope||"local").toUpperCase()==="TEAM"?"ORGANISATION":String((tour as any)?.competitionScope||"LOCAL").toUpperCase()}</span>
+                <span style={{padding:"4px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.14)",background:"rgba(0,0,0,.26)",fontSize:8.5,fontWeight:1000}}>{String((tour as any)?.game?.mode||"—").toUpperCase()}</span>
               </div>
             </div>
           </div>
         </div>
-      ) : null}
 
       <PageAdBanner placement="competitions" slotKey="page-competitions-view-under-header" style={{ marginBottom: 12 }} />
 
@@ -3222,6 +3225,15 @@ async function createSyntheticHistoryForSimulation(args: any) {
         {tabLabel[tab] || "—"}
       </div>
 
+      {tour ? <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7,margin:"10px 0 12px"}}>
+        {[
+          ["PARTICIPANTS",Array.isArray((tour as any)?.players)?(tour as any).players.length:0,"#ffcf57"],
+          ["À JOUER",playableMatches.length,"#4fb4ff"],
+          ["TERMINÉS",doneMatches.length,"#65e6a2"],
+          ["LIÉS",linkedHistoryMatches.length,"#ffe68a"],
+        ].map(([label,value,accent]:any)=><div key={label} style={{minWidth:0,borderRadius:13,border:`1px solid ${accent}33`,background:`linear-gradient(180deg,${accent}12,rgba(5,8,14,.78))`,padding:"8px 6px",textAlign:"center"}}><b style={{display:"block",fontSize:18,color:accent,lineHeight:1}}>{value}</b><span style={{display:"block",marginTop:4,fontSize:7.4,fontWeight:1000,opacity:.72,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span></div>)}
+      </div>:null}
+
       {loading ? (
         <Card title="Chargement…" subtitle="Récupération du tournoi et des matchs." accent={TAB_COLORS.home} />
       ) : !tour ? (
@@ -3265,59 +3277,23 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 </Card>
               ) : null}
 
-              <Card
-                title="À jouer"
-                subtitle={playableMatches.length ? "Les prochains matchs jouables." : "Aucun match jouable pour le moment."}
-                accent={TAB_COLORS.home}
-                icon="⚡"
-                badge={<MiniBadge label="À jouer" value={playableMatches.length} accent={TAB_COLORS.home} />}
-              >
-                {playableMatches.length ? <div style={{ display: "grid", gap: 10 }}>{playableMatches.slice(0, 8).map((m: any) => renderMatchCard(m, TAB_COLORS.home))}</div> : null}
-              </Card>
-
-              <Card
-                title="Derniers matchs terminés"
-                subtitle={doneMatches.length ? "Résultats récents." : "Aucun match terminé."}
-                accent={TAB_COLORS.standings}
-                icon="✓"
-                badge={<MiniBadge label="Terminés" value={doneMatches.length} accent={TAB_COLORS.standings} />}
-              >
-                {doneMatches.length ? (
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {doneMatches
-                      .slice()
-                      .sort((a: any, b: any) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-                      .slice(0, 6)
-                      .map((m: any) => renderMatchCard(m, TAB_COLORS.standings))}
+              <div style={{display:"grid",gap:10}}>
+                <div style={{borderRadius:18,border:"1px solid rgba(79,180,255,.24)",background:"linear-gradient(180deg,rgba(79,180,255,.09),rgba(6,10,16,.84))",padding:12}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:playableMatches.length?9:0}}><div><b style={{fontSize:13,color:TAB_COLORS.home}}>⚡ PROCHAINS MATCHS</b><div style={{fontSize:9,opacity:.65,marginTop:2}}>{playableMatches.length?"Lance directement une rencontre prête à jouer.":"Aucune rencontre jouable actuellement."}</div></div><MiniBadge label="À jouer" value={playableMatches.length} accent={TAB_COLORS.home}/></div>
+                  {playableMatches.length?<div style={{display:"grid",gap:8}}>{playableMatches.slice(0,4).map((m:any)=>renderMatchCard(m,TAB_COLORS.home))}</div>:null}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10}}>
+                  <div style={{borderRadius:18,border:"1px solid rgba(101,230,162,.22)",background:"linear-gradient(180deg,rgba(101,230,162,.075),rgba(6,10,16,.82))",padding:11,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.standings}}>✓ RÉSULTATS</b><strong style={{color:TAB_COLORS.standings,fontSize:16}}>{doneMatches.length}</strong></div>
+                    <div style={{fontSize:8.5,opacity:.62,marginTop:4}}>{doneMatches.length?"Dernières rencontres terminées":"Aucun résultat pour le moment"}</div>
                   </div>
-                ) : null}
-              </Card>
-
-              <Card
-                title="Parties déjà jouées"
-                subtitle="Rattache des parties terminées de l’historique à cette ligue, sans les supprimer de l’historique."
-                accent={TAB_COLORS.linked}
-                icon="＋"
-                badge={<MiniBadge label="Liées" value={linkedHistoryMatches.length} accent={TAB_COLORS.linked} />}
-              >
-                <button
-                  type="button"
-                  onClick={loadAttachableHistory}
-                  style={{
-                    width: "100%",
-                    border: "none",
-                    borderRadius: 999,
-                    padding: "12px 14px",
-                    fontWeight: 1000,
-                    cursor: "pointer",
-                    color: "#1b1204",
-                    background: "linear-gradient(180deg,#ffe68a,#ffc447)",
-                    boxShadow: "0 12px 28px rgba(255,207,87,.22)",
-                  }}
-                >
-                  + Ajouter des parties déjà jouées
-                </button>
-              </Card>
+                  <div style={{borderRadius:18,border:"1px solid rgba(255,230,138,.22)",background:"linear-gradient(180deg,rgba(255,230,138,.075),rgba(6,10,16,.82))",padding:11,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.linked}}>＋ HISTORIQUE</b><strong style={{color:TAB_COLORS.linked,fontSize:16}}>{linkedHistoryMatches.length}</strong></div>
+                    <button type="button" onClick={loadAttachableHistory} style={{marginTop:7,width:"100%",border:"1px solid rgba(255,230,138,.25)",borderRadius:10,padding:"7px 8px",fontWeight:950,fontSize:8.5,cursor:"pointer",color:"#ffe68a",background:"rgba(255,230,138,.07)"}}>AJOUTER UNE PARTIE</button>
+                  </div>
+                </div>
+                {doneMatches.length?<div style={{display:"grid",gap:8}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,TAB_COLORS.standings))}</div>:null}
+              </div>
             </>
           ) : null}
 
