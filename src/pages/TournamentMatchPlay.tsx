@@ -31,6 +31,7 @@ import { History } from "../lib/history";
 import X01PlayV3 from "./X01PlayV3";
 import CricketPlay from "./CricketPlay";
 import KillerPlay from "./KillerPlay";
+import ChallengePlay from "./ChallengePlay";
 
 // ✅ Baby-Foot store (pour lancer un vrai match depuis un match de tournoi)
 import {
@@ -237,6 +238,32 @@ function extractTournamentScore(source: any, aId: string, bId: string) {
   return null;
 }
 
+function challengeObjectivesFromRules(rules:any): string[] {
+  const mode=String(rules?.objectiveMode||"fixed");
+  if(mode==="range"){
+    const from=Math.max(1,Math.min(20,Number(rules?.objectiveRange?.from)||1));
+    const to=Math.max(1,Math.min(20,Number(rules?.objectiveRange?.to)||20));
+    const a=Math.min(from,to),b=Math.max(from,to);
+    return Array.from({length:b-a+1},(_,i)=>String(a+i));
+  }
+  const arr=Array.isArray(rules?.objectiveTargets)?rules.objectiveTargets.map(String).filter(Boolean):[];
+  return arr.length?arr:[String(rules?.target||"20")];
+}
+function resolveChallengeObjective(rules:any, tm:any): string {
+  const pool=challengeObjectivesFromRules(rules);
+  if(!pool.length) return String(rules?.target||"20");
+  const assignment=String(rules?.objectiveAssignment||"same_for_all");
+  const cadence=String(rules?.objectiveCadence||"match");
+  const cadenceIndex=cadence==="competition"?0:cadence==="round"?Math.max(0,Number(tm?.roundIndex||0)):Math.max(0,Number(tm?.roundIndex||0)+Number(tm?.orderIndex||0));
+  if(assignment==="rotate") return pool[cadenceIndex%pool.length];
+  if(assignment==="random"){
+    const seedBase=cadence==="competition"?String(tm?.tournamentId||"competition"):cadence==="round"?String(tm?.roundIndex||0):String(tm?.id||"");
+    const seed=seedBase.split("").reduce((a:number,c:string)=>a+c.charCodeAt(0),0);
+    return pool[Math.abs(seed)%pool.length];
+  }
+  return pool[0];
+}
+
 export default function TournamentMatchPlay({ store, go, params }: any) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -248,6 +275,7 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
   const [tour, setTour] = React.useState<Tournament | null>(null);
   const [matches, setMatches] = React.useState<TournamentMatch[]>([]);
   const [tm, setTm] = React.useState<TournamentMatch | null>(null);
+  const [chosenChallengeTarget,setChosenChallengeTarget]=React.useState<string>("");
 
   const safeMatches = React.useMemo(() => (Array.isArray(matches) ? matches : []), [matches]);
 
@@ -868,6 +896,42 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
         </div>
       </div>
     );
+  }
+
+
+  // ------------------------------------------------------------
+  // ✅ CHALLENGE — compétition
+  // ------------------------------------------------------------
+  if (mode === "challenge" || mode.includes("challenge")) {
+    const rules:any=(tour as any)?.game?.rules||{};
+    const pool=challengeObjectivesFromRules(rules);
+    const objectiveMode=String(rules?.objectiveMode||"fixed");
+    const playerChoice=objectiveMode==="player_choice"||String(rules?.objectiveAssignment||"")==="player_choice";
+    if(playerChoice&&!chosenChallengeTarget){
+      return <div style={{minHeight:"100vh",padding:18,background:theme.bg,color:theme.text}}><button onClick={()=>go("tournament_view",{id:tournamentId})}>← Retour</button><div style={{maxWidth:760,margin:"28px auto",padding:18,borderRadius:20,border:`1px solid ${theme.borderSoft}`,background:theme.card}}><h2 style={{marginTop:0}}>CHOIX DE L’OBJECTIF CHALLENGE</h2><p style={{opacity:.72}}>Cette compétition autorise les joueurs à choisir l’objectif du match parmi la sélection de l’organisateur.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:9}}>{pool.map(target=><button key={target} onClick={()=>setChosenChallengeTarget(target)} style={{minHeight:64,borderRadius:14,border:"1px solid #ff5058",background:"linear-gradient(180deg,#401116,#16080b)",color:"#fff",fontWeight:1000,fontSize:15}}>{target==="any-double"?"DOUBLES":target==="any-triple"?"TRIPLES":target==="bull25"?"BULL 25":target==="bull50"?"BULL 50":target}</button>)}</div></div></div>;
+    }
+    const target=chosenChallengeTarget||resolveChallengeObjective(rules,tm);
+    const rule=target==="any-double"?"double":target==="any-triple"?"triple":String(rules?.rule||"all");
+    const challengeConfig:any={
+      target,
+      rule,
+      visits:Math.max(1,Number(rules?.visits||30)),
+      playerIds:[aId,bId],
+      teamIds:[],participantMode:"players",participantSource:"direct",configMode:"guided",matchMode:"duo",
+      soundsEnabled:true,
+      competition:{tournamentId,matchId:(tm as any)?.id||matchId,name:(tour as any)?.name||"Compétition",scope:(tour as any)?.competitionScope||"local",tieBreak:rules?.tieBreak||"segment_sum"}
+    };
+    const competitionParticipants=[{id:aId,name:nameOf(tour,aId),avatarDataUrl:avatarOf(tour,aId)},{id:bId,name:nameOf(tour,bId),avatarDataUrl:avatarOf(tour,bId)}];
+    return <ChallengePlay go={go} params={{config:challengeConfig,competitionParticipants}} onCompetitionFinish={async(result:any)=>{
+      try{
+        const aRow=result?.standings?.find((x:any)=>String(x.id)===String(aId));
+        const bRow=result?.standings?.find((x:any)=>String(x.id)===String(bId));
+        if(result?.winnerId){
+          const r=submitResult({tournament:tour as any,matches:safeMatches as any,matchId:(tm as any).id,winnerId:String(result.winnerId),historyMatchId:result?.record?.id||null,scoreA:Number(aRow?.score||0),scoreB:Number(bRow?.score||0)});
+          persist(r.tournament as any,r.matches as any);
+        }
+      }catch(e){console.error("[tournament_match_play] Challenge submitResult error:",e)}finally{go("tournament_view",{id:tournamentId})}
+    }}/>;
   }
 
   // ------------------------------------------------------------

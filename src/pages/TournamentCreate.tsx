@@ -1288,11 +1288,15 @@ export default function TournamentCreate({ store, go, params }: Props) {
 
   // ✅ FORCE SPORT multi-sport (local + online) : vient de GameSelect / BottomNav.
   const forceMode = normalizeCompetitionSport(params?.forceMode ?? params?.sport ?? "darts");
-  const initialSource = String(params?.source || "local").toLowerCase() === "online" ? "online" : "local";
+  const initialScope = (["local","team","online"].includes(String(params?.competitionScope || "").toLowerCase()) ? String(params?.competitionScope).toLowerCase() : (String(params?.source || "local").toLowerCase() === "online" ? "online" : "local")) as "local"|"team"|"online";
+  const [competitionScope, setCompetitionScope] = React.useState<"local"|"team"|"online">(initialScope);
+  const initialSource = initialScope === "local" ? "local" : "online";
   const [source, setSource] = React.useState<"local" | "online">(initialSource as "local" | "online");
   React.useEffect(() => {
-    setSource(initialSource as "local" | "online");
-  }, [initialSource]);
+    const nextScope = (["local","team","online"].includes(String(params?.competitionScope || "").toLowerCase()) ? String(params?.competitionScope).toLowerCase() : (String(params?.source || "local").toLowerCase() === "online" ? "online" : "local")) as "local"|"team"|"online";
+    setCompetitionScope(nextScope);
+    setSource(nextScope === "local" ? "local" : "online");
+  }, [params?.competitionScope, params?.source]);
   const competitionKind = String(params?.kind || params?.competitionKind || "tournament").toLowerCase();
   const isLeague = competitionKind === "league" || competitionKind === "championship" || competitionKind === "championnat";
   const primary = isLeague ? "#f7c85c" : "#ff7fe2";
@@ -1340,6 +1344,11 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [teamsImportText, setTeamsImportText] = React.useState<string>("");
   const [teamsInput, setTeamsInput] = React.useState<{ id: string; name: string; players: string[]; logoDataUrl?: string | null; playerIds?: string[] }[]>([]);
   const [storedTeams, setStoredTeams] = React.useState<any[]>([]);
+  const [hostTeamId, setHostTeamId] = React.useState<string>(String(params?.hostTeamId || ""));
+  const [enrollmentPolicy, setEnrollmentPolicy] = React.useState<"fixed"|"open"|"approval"|"invite">(() => competitionScope === "online" ? "open" : "fixed");
+  const [enrollmentStartMode, setEnrollmentStartMode] = React.useState<"manual"|"auto_when_full"|"scheduled">("manual");
+  const [enrollmentMin, setEnrollmentMin] = React.useState<string>(isLeague ? "4" : "4");
+  const [enrollmentMax, setEnrollmentMax] = React.useState<string>("");
   const [teamCreateOpen, setTeamCreateOpen] = React.useState(false);
   const [teamCreateName, setTeamCreateName] = React.useState("");
   const [teamCreateLogo, setTeamCreateLogo] = React.useState<string | null>(null);
@@ -1439,6 +1448,17 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [reloadStoredTeams]);
+
+  React.useEffect(() => {
+    if (competitionScope !== "team") return;
+    if (!hostTeamId && storedTeams?.[0]?.id) setHostTeamId(String(storedTeams[0].id));
+  }, [competitionScope, storedTeams, hostTeamId]);
+
+  React.useEffect(() => {
+    setSource(competitionScope === "local" ? "local" : "online");
+    if (competitionScope === "online" && enrollmentPolicy === "fixed") setEnrollmentPolicy("open");
+    if (competitionScope !== "online" && enrollmentPolicy !== "fixed") setEnrollmentPolicy("fixed");
+  }, [competitionScope]);
 
   // ---- Players (LOCAL) : humains uniquement ici
   const profiles = React.useMemo(() => {
@@ -1885,7 +1905,8 @@ const togglePlayer = (id: string) => {
   const teamModeReady = !isPetanque && participantKind === "teams"
     ? (teamsInput || []).filter((t: any) => String(t?.name || "").trim()).length >= 2
     : true;
-  const minPlayersOk = isPetanque ? petanqueMinOk : participantKind === "teams" ? teamModeReady : totalSelectedIds.length >= 2;
+  const registrationCanStartEmpty = competitionScope === "online" && enrollmentPolicy !== "fixed";
+  const minPlayersOk = registrationCanStartEmpty ? true : (isPetanque ? petanqueMinOk : participantKind === "teams" ? teamModeReady : totalSelectedIds.length >= 2);
 
 
 // ✅ PÉTANQUE — nombre d’équipes + normalisation assignations
@@ -2003,6 +2024,13 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [challengeTarget, setChallengeTarget] = React.useState<string>("20");
   const [challengeRule, setChallengeRule] = React.useState<string>("all");
   const [challengeVisits, setChallengeVisits] = React.useState<number>(30);
+  const [challengeObjectiveMode, setChallengeObjectiveMode] = React.useState<"fixed"|"pool"|"range"|"player_choice">("fixed");
+  const [challengeObjectives, setChallengeObjectives] = React.useState<string[]>(["20"]);
+  const [challengeRangeFrom, setChallengeRangeFrom] = React.useState<number>(15);
+  const [challengeRangeTo, setChallengeRangeTo] = React.useState<number>(20);
+  const [challengeAssignment, setChallengeAssignment] = React.useState<"same_for_all"|"rotate"|"random"|"player_choice">("same_for_all");
+  const [challengeObjectiveCadence, setChallengeObjectiveCadence] = React.useState<"competition"|"round"|"match">("match");
+  const [challengeTieBreak, setChallengeTieBreak] = React.useState<"segment_sum"|"accuracy"|"best_streak">("segment_sum");
   const [leagueFormat, setLeagueFormat] = React.useState<"simple" | "return" | "free" | "multi">("simple");
   const isLeagueMulti = isLeague && leagueFormat === "multi";
   const isLeagueFree = isLeague && leagueFormat === "free";
@@ -2356,7 +2384,7 @@ async function createTournament() {
       console.error("[TournamentCreate] persist failed:", e);
     }
 
-    go("tournament_view", { id: tour.id, forceMode, source, competitionKind });
+    go("tournament_view", { id: tour.id, forceMode, source, competitionScope, competitionKind });
     return;
   }
 
@@ -2569,7 +2597,7 @@ async function createTournament() {
       console.error("[TournamentCreate] persist failed:", e);
     }
 
-    go("tournament_view", { id: tour.id, forceMode, source, competitionKind });
+    go("tournament_view", { id: tour.id, forceMode, source, competitionScope, competitionKind });
     return;
   }
 
@@ -2706,7 +2734,17 @@ async function createTournament() {
         }
       : mode === "challenge"
       ? {
-          challenge: true, target: challengeTarget, rule: challengeRule, visits: challengeVisits,
+          challenge: true,
+          challengeFormatVersion: 2,
+          target: challengeTarget,
+          rule: challengeRule,
+          visits: challengeVisits,
+          objectiveMode: challengeObjectiveMode,
+          objectiveTargets: challengeObjectiveMode === "fixed" ? [challengeTarget] : challengeObjectives,
+          objectiveRange: challengeObjectiveMode === "range" ? { from: Math.min(challengeRangeFrom, challengeRangeTo), to: Math.max(challengeRangeFrom, challengeRangeTo) } : null,
+          objectiveAssignment: challengeObjectiveMode === "player_choice" ? "player_choice" : challengeAssignment,
+          objectiveCadence: challengeObjectiveCadence,
+          tieBreak: challengeTieBreak,
           scoring: (challengeTarget === "any-double" || challengeTarget === "any-triple") ? "hits_then_segment_sum" : "standard",
           bestOf, repechageEnabled: !!repechageEnabled, seedMode: effectiveSeedMode, rrRounds: Math.max(1, Number(rrRounds) || 1),
           playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0, qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
@@ -2747,12 +2785,22 @@ async function createTournament() {
           teamConfrontation,
         };
 
-  const stages = buildStagesForEngine(format, finalPlayers.length);
+  const registrationOnly = competitionScope === "online" && enrollmentPolicy !== "fixed" && finalPlayers.length < 2;
+  const stages = registrationOnly ? [] : buildStagesForEngine(format, finalPlayers.length);
   const viewKind = viewKindFromFormat(format);
 
   const tour: Tournament = createTournamentDraft({
     name: name.trim(),
     source: source as any,
+    competitionScope: competitionScope as any,
+    hostTeamId: competitionScope === "team" ? (hostTeamId || null) : null,
+    hostTeamName: competitionScope === "team" ? (storedTeams.find((t:any)=>String(t.id)===String(hostTeamId))?.name || null) : null,
+    enrollment: {
+      policy: enrollmentPolicy,
+      minParticipants: Math.max(2, Math.floor(Number(enrollmentMin) || 2)),
+      maxParticipants: Number(enrollmentMax) > 1 ? Math.floor(Number(enrollmentMax)) : null,
+      startMode: enrollmentStartMode,
+    },
     sport: forceMode || mode || "darts",
     kind: competitionKind,
     ownerProfileId: (store as any)?.activeProfileId ?? null,
@@ -2788,6 +2836,13 @@ async function createTournament() {
       maxPlayers: capEnabled ? cap : 0,
       forceMode,
       source,
+      competitionScope,
+      hostTeamId: competitionScope === "team" ? hostTeamId || null : null,
+      enrollmentPolicy,
+      enrollmentStartMode,
+      enrollmentMin: Math.max(2, Math.floor(Number(enrollmentMin) || 2)),
+      enrollmentMax: Number(enrollmentMax) > 1 ? Math.floor(Number(enrollmentMax)) : null,
+      phase: registrationOnly ? "registration" : "competition",
       competitionKind,
       participantKind,
       teamConfrontation: participantKind === "teams" ? teamConfrontation : undefined,
@@ -2813,7 +2868,7 @@ async function createTournament() {
   // Le statut "draft" restait caché derrière le filtre Brouillons et donnait l'impression que la création avait échoué.
   (tour as any).status = "running";
 
-  const matches = buildInitialMatches(tour);
+  const matches = registrationOnly ? [] : buildInitialMatches(tour);
 
   try {
     upsertTournamentLocal(tour as any);
@@ -2835,7 +2890,7 @@ async function createTournament() {
     console.error("[TournamentCreate] persist failed:", e);
   }
 
-  go("tournament_view", { id: tour.id, forceMode, source, competitionKind });
+  go("tournament_view", { id: tour.id, forceMode, source, competitionScope, competitionKind });
 }
 
   const computedGroups = React.useMemo(() => {
@@ -4467,7 +4522,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
     ? String(name || "").trim().toUpperCase()
     : defaultTitleLine2.toUpperCase();
   const heroKindLabel = isLeague ? "LIGUE" : "TOURNOI";
-  const heroSourceLabel = source === "online" ? "ONLINE" : "LOCAL";
+  const heroSourceLabel = competitionScope === "team" ? "TEAM" : competitionScope === "online" ? "ONLINE" : "LOCAL";
   const heroInfoContent = (
     <div style={{ display: "grid", gap: 10, lineHeight: 1.4 }}>
       <p style={{ margin: 0 }}>
@@ -4554,10 +4609,13 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               <div>
                 <TextInput value={name} onChange={(e: any) => setName(e.target.value)} placeholder={isLeague ? "Nom de la ligue" : "Nom du tournoi"} />
               </div>
-              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-                <SourceIconChoice active={source === "local"} kind="local" onClick={() => setSource("local")} />
-                <SourceIconChoice active={source === "online"} kind="online" accent="#4fb4ff" onClick={() => setSource("online")} />
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(3,minmax(0,1fr))" }}>
+                <button type="button" onClick={()=>setCompetitionScope("local")} style={{minHeight:86,borderRadius:16,border:competitionScope==="local"?`1px solid ${primary}`:"1px solid rgba(255,255,255,.12)",background:competitionScope==="local"?`${primary}18`:"rgba(255,255,255,.035)",color:"#fff",fontWeight:1000}}>⌂<br/>LOCAL<small style={{display:"block",marginTop:5,opacity:.62}}>sur place</small></button>
+                <button type="button" onClick={()=>setCompetitionScope("team")} style={{minHeight:86,borderRadius:16,border:competitionScope==="team"?`1px solid ${primary}`:"1px solid rgba(255,255,255,.12)",background:competitionScope==="team"?`${primary}18`:"rgba(255,255,255,.035)",color:"#fff",fontWeight:1000}}>⬢<br/>TEAM<small style={{display:"block",marginTop:5,opacity:.62}}>interne</small></button>
+                <button type="button" onClick={()=>setCompetitionScope("online")} style={{minHeight:86,borderRadius:16,border:competitionScope==="online"?"1px solid #4fb4ff":"1px solid rgba(255,255,255,.12)",background:competitionScope==="online"?"rgba(79,180,255,.12)":"rgba(255,255,255,.035)",color:"#fff",fontWeight:1000}}>◎<br/>ONLINE<small style={{display:"block",marginTop:5,opacity:.62}}>public</small></button>
               </div>
+              {competitionScope === "team" ? <div style={{display:"grid",gap:7}}><RowTitle label="Team organisatrice"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{storedTeams.length?storedTeams.map((team:any)=><NeonPill key={team.id} active={String(hostTeamId)===String(team.id)} label={String(team.name||"TEAM")} onClick={()=>setHostTeamId(String(team.id))} primary={primary}/>):<div style={{fontSize:11,opacity:.7}}>Aucune Team Darts locale disponible.</div>}</div></div>:null}
+              {competitionScope === "online" ? <div style={{display:"grid",gap:8}}><RowTitle label="Inscriptions"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={enrollmentPolicy==="open"} label="OUVERTES" onClick={()=>setEnrollmentPolicy("open")} primary={primary}/><NeonPill active={enrollmentPolicy==="approval"} label="SUR VALIDATION" onClick={()=>setEnrollmentPolicy("approval")} primary={primary}/><NeonPill active={enrollmentPolicy==="invite"} label="SUR INVITATION" onClick={()=>setEnrollmentPolicy("invite")} primary={primary}/><NeonPill active={enrollmentPolicy==="fixed"} label="LISTE FIXE" onClick={()=>setEnrollmentPolicy("fixed")} primary={primary}/></div></div>:null}
             </div>
             <GuidedFooter />
           </Section>
@@ -4622,11 +4680,13 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                 ) : (!isPetanque || petanqueEntry === "profiles") ? (
                   <>
                     <NeonGhost label="Tout sélectionner" onClick={() => setPlayerIds(profiles.map((p: any) => String(p.id)))} />
+                    {competitionScope === "team" && hostTeamId ? <NeonGhost label="Tous les membres de la Team" onClick={() => { const team:any=storedTeams.find((t:any)=>String(t.id)===String(hostTeamId)); const ids=Array.isArray(team?.playerIds)?team.playerIds.map(String):[]; setPlayerIds(ids.filter((id:string)=>profiles.some((p:any)=>String(p.id)===id))); }} /> : null}
                     <NeonGhost label="Vider" onClick={() => setPlayerIds([])} />
                   </>
                 ) : null}
               </div>
             </div>
+            {competitionScope === "online" && enrollmentPolicy !== "fixed" ? <div style={{marginTop:10,padding:10,borderRadius:14,border:"1px solid rgba(79,180,255,.35)",background:"rgba(79,180,255,.08)",fontSize:11.5,lineHeight:1.4}}>◎ Les profils choisis ici sont seulement des <b>inscrits initiaux</b>. Tu peux publier la compétition sans être déjà deux : les comptes utilisateurs rejoindront ensuite l'inscription ONLINE.</div>:null}
 
             {participantKind !== "teams" && (!isPetanque || petanqueEntry === "profiles") ? (
               <div style={{ marginTop: 12, display: "flex", gap: 14, overflowX: "auto", overflowY: "visible", paddingTop: 10, paddingBottom: 10, WebkitOverflowScrolling: "touch" }} className="dc-scroll-thin">
@@ -4923,15 +4983,17 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               )}
 
               {mode === "challenge" ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <RowTitle label="Challenge" />
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <NeonPill active={challengeTarget === "any-double"} label="TOUS LES DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); }} primary={primary} />
-                    <NeonPill active={challengeTarget === "any-triple"} label="TOUS LES TRIPLES" onClick={() => { setChallengeTarget("any-triple"); setChallengeRule("triple"); }} primary={primary} />
-                    {[20,19,18,17,16,15].map(n => <NeonPill key={n} active={challengeTarget === String(n)} label={`CIBLE ${n}`} onClick={() => { setChallengeTarget(String(n)); if(challengeRule === "double" || challengeRule === "triple") setChallengeRule("all"); }} primary={primary} />)}
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{[5,10,15,20,30,50,100].map(n => <NeonPill key={n} active={challengeVisits === n} label={`${n} TOURS`} onClick={() => setChallengeVisits(n)} primary={primary} />)}</div>
-                  <div style={{ fontSize: 11, opacity: .72 }}>Double/Triple : 1 point par touche. En cas d’égalité, la somme des numéros touchés départage les joueurs (T20 = 20, D3 = 3).</div>
+                <div style={{ display: "grid", gap: 13 }}>
+                  <RowTitle label="Challenge · objectifs" />
+                  <div style={{ display:"flex",gap:7,flexWrap:"wrap" }}><NeonPill active={challengeObjectiveMode==="fixed"} label="OBJECTIF FIXE" onClick={()=>setChallengeObjectiveMode("fixed")} primary={primary}/><NeonPill active={challengeObjectiveMode==="pool"} label="PLUSIEURS OBJECTIFS" onClick={()=>setChallengeObjectiveMode("pool")} primary={primary}/><NeonPill active={challengeObjectiveMode==="range"} label="FOURCHETTE" onClick={()=>setChallengeObjectiveMode("range")} primary={primary}/><NeonPill active={challengeObjectiveMode==="player_choice"} label="CHOIX DU JOUEUR" onClick={()=>{setChallengeObjectiveMode("player_choice");setChallengeAssignment("player_choice")}} primary={primary}/></div>
+                  {challengeObjectiveMode === "fixed" ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><NeonPill active={challengeTarget === "any-double"} label="DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); setChallengeObjectives(["any-double"]); }} primary={primary} /><NeonPill active={challengeTarget === "any-triple"} label="TRIPLES" onClick={() => { setChallengeTarget("any-triple"); setChallengeRule("triple"); setChallengeObjectives(["any-triple"]); }} primary={primary} />{Array.from({length:20},(_,i)=>20-i).map(n => <NeonPill key={n} active={challengeTarget === String(n)} label={String(n)} onClick={() => { setChallengeTarget(String(n)); setChallengeObjectives([String(n)]); if(challengeRule === "double" || challengeRule === "triple") setChallengeRule("all"); }} primary={primary} />)}</div>:null}
+                  {challengeObjectiveMode === "pool" || challengeObjectiveMode === "player_choice" ? <div><div style={{fontSize:11,opacity:.7,marginBottom:6}}>Sélectionne tous les objectifs autorisés :</div><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{["any-double","any-triple",...Array.from({length:20},(_,i)=>String(20-i)),"bull25","bull50"].map(value=>{const on=challengeObjectives.includes(value);const label=value==="any-double"?"DOUBLES":value==="any-triple"?"TRIPLES":value==="bull25"?"BULL25":value==="bull50"?"BULL50":value;return <NeonPill key={value} active={on} label={label} onClick={()=>setChallengeObjectives(prev=>on?prev.filter(x=>x!==value):[...prev,value])} primary={primary}/>})}</div></div>:null}
+                  {challengeObjectiveMode === "range" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><label style={{fontSize:11}}>DE <TextInput value={String(challengeRangeFrom)} onChange={(e:any)=>setChallengeRangeFrom(Math.max(1,Math.min(20,Number(e.target.value)||1)))} /></label><label style={{fontSize:11}}>À <TextInput value={String(challengeRangeTo)} onChange={(e:any)=>setChallengeRangeTo(Math.max(1,Math.min(20,Number(e.target.value)||20)))} /></label></div>:null}
+                  {challengeObjectiveMode !== "fixed" && challengeObjectiveMode !== "player_choice" ? <><RowTitle label="Attribution des objectifs"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeAssignment==="same_for_all"} label="MÊME POUR TOUS" onClick={()=>setChallengeAssignment("same_for_all")} primary={primary}/><NeonPill active={challengeAssignment==="rotate"} label="ROTATION" onClick={()=>setChallengeAssignment("rotate")} primary={primary}/><NeonPill active={challengeAssignment==="random"} label="ALÉATOIRE" onClick={()=>setChallengeAssignment("random")} primary={primary}/></div></>:null}
+                  <RowTitle label="Changement d'objectif"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeObjectiveCadence==="competition"} label="COMPÉTITION" onClick={()=>setChallengeObjectiveCadence("competition")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="round"} label="PAR TOUR DE TABLEAU" onClick={()=>setChallengeObjectiveCadence("round")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="match"} label="PAR MATCH" onClick={()=>setChallengeObjectiveCadence("match")} primary={primary}/></div>
+                  <RowTitle label="Nombre de tours"/><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{[5,10,15,20,30,50,100].map(n => <NeonPill key={n} active={challengeVisits === n} label={`${n}`} onClick={() => setChallengeVisits(n)} primary={primary} />)}</div>
+                  <RowTitle label="Départage"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeTieBreak==="segment_sum"} label="SOMME SEGMENTS" onClick={()=>setChallengeTieBreak("segment_sum")} primary={primary}/><NeonPill active={challengeTieBreak==="accuracy"} label="PRÉCISION" onClick={()=>setChallengeTieBreak("accuracy")} primary={primary}/><NeonPill active={challengeTieBreak==="best_streak"} label="MEILLEURE SUITE" onClick={()=>setChallengeTieBreak("best_streak")} primary={primary}/></div>
+                  <div style={{ fontSize: 11, opacity: .72 }}>Les règles complètes sont enregistrées dans la compétition et le match Challenge reçoit automatiquement l'objectif prévu pour sa ronde / son match.</div>
                 </div>
               ) : null}
 
@@ -5085,7 +5147,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               <div><b style={{ color: primary }}>Type :</b> {guidedKindLabel}</div>
               <div><b style={{ color: primary }}>Sport :</b> {sportLabel}</div>
               <div><b style={{ color: primary }}>Source :</b> {source === "online" ? "Online" : "Local"}</div>
-              <div><b style={{ color: primary }}>Participants :</b> {isParticipantlessLeague ? "Dynamiques, ajoutés par les parties" : participantKind === "teams" && !isPetanque ? (teamsInput || []).length : isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
+              <div><b style={{ color: primary }}>Portée :</b> {competitionScope === "team" ? "TEAM" : competitionScope === "online" ? "ONLINE" : "LOCAL"}</div>
+              <div><b style={{ color: primary }}>Participants :</b> {competitionScope === "online" && enrollmentPolicy !== "fixed" ? `Inscriptions ${enrollmentPolicy === "open" ? "ouvertes" : enrollmentPolicy === "approval" ? "sur validation" : "sur invitation"} · ${totalSelectedIds.length} inscrit(s) initial(aux)` : isParticipantlessLeague ? "Dynamiques, ajoutés par les parties" : participantKind === "teams" && !isPetanque ? (teamsInput || []).length : isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
               <div><b style={{ color: primary }}>Format :</b> {isLeagueMulti ? "Ligue MULTI" : isLeague ? (leagueFormat === "return" ? "Aller / retour" : leagueFormat === "free" ? "Saison libre" : "Championnat simple") : (TYPE_INFO[format] ? format : "—")}</div>
               {isLeagueMulti ? <div><b style={{ color: primary }}>Barème :</b> {parsedLeagueMultiPoints.map((p, idx) => `${idx + 1}${idx === 0 ? "er" : "e"}=${p}`).join(" · ")} · puis 0 pt</div> : null}
               <div><b style={{ color: primary }}>Identité :</b> {competitionAvatar ? "Logo OK" : "Sans logo"} · {competitionCover ? "Couverture OK" : "Sans couverture"}</div>

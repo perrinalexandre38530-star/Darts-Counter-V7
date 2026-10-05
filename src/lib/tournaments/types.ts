@@ -8,6 +8,7 @@
 // ============================================
 
 export type TournamentSource = "local" | "online";
+export type TournamentCompetitionScope = "local" | "team" | "online";
 
 export type TournamentMode = "x01" | "cricket" | "killer" | "clock" | "shanghai" | "babyfoot" | "petanque" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis" | string;
 
@@ -66,9 +67,20 @@ export type TournamentStage = {
 export type Tournament = {
   id: string;
   source: TournamentSource;
+  competitionScope?: TournamentCompetitionScope;
   sport?: string;
   kind?: "league" | "championship" | "tournament" | "cup" | string;
   onlineCompetitionId?: string | null;
+  hostTeamId?: string | null;
+  hostTeamName?: string | null;
+  enrollment?: {
+    policy?: "fixed" | "open" | "approval" | "invite";
+    minParticipants?: number;
+    maxParticipants?: number | null;
+    startMode?: "manual" | "auto_when_full" | "scheduled";
+    opensAt?: number | null;
+    closesAt?: number | null;
+  };
   name: string;
   status: TournamentStatus;
 

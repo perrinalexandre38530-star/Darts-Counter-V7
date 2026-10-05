@@ -294,6 +294,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
   const leagueWatermark2 = isFoot ? FOOT_TICKERS.competition[1] : leagueWatermark;
   const tournamentWatermark2 = isFoot ? FOOT_TICKERS.competition[2] : tournamentWatermark;
   type EntryMode = "menu" | "create" | "resume" | "consult";
+  type CompetitionScope = "local" | "team" | "online";
 
   function initialMode(): EntryMode {
     const raw = String(params?.entry || params?.action || params?.view || "").toLowerCase();
@@ -304,11 +305,13 @@ export default function TournamentsHome({ store, go, params }: Props) {
   }
 
   const [entryMode, setEntryMode] = React.useState<EntryMode>(() => initialMode());
+  const [createScope, setCreateScope] = React.useState<CompetitionScope | null>(null);
 
   const createParams = (competitionKind: "league" | "tournament") => ({
     forceMode: activeSport,
     sport: activeSport,
-    source: "local",
+    competitionScope: createScope || "local",
+    source: createScope === "online" || createScope === "team" ? "online" : "local",
     competitionKind,
     configMode: "guided",
   });
@@ -325,8 +328,10 @@ export default function TournamentsHome({ store, go, params }: Props) {
   });
 
   const back = () => {
+    if (entryMode === "create" && createScope) { setCreateScope(null); return; }
     if (entryMode !== "menu") {
       setEntryMode("menu");
+      setCreateScope(null);
       return;
     }
     smartBack(go, "home");
@@ -353,8 +358,13 @@ export default function TournamentsHome({ store, go, params }: Props) {
             />
           ) : null}
 
-          {entryMode === "create" ? <>
-            <SectionLabel>{L("Créer", "Create", "Crear")}</SectionLabel>
+          {entryMode === "create" && !createScope ? <>
+            <SectionLabel>{L("Où se joue la compétition ?", "Where is the competition played?", "¿Dónde se juega la competición?")}</SectionLabel>
+            <CompetitionCard tag="LOCAL" title={L("Compétition locale / physique", "Local / physical competition", "Competición local / física")} tone="gold" watermark={leagueWatermark2} info={<div style={{lineHeight:1.4}}>{L("Pour jouer sur place, immédiatement ou sur une longue période. Les participants sont choisis parmi les profils locaux.","For in-person play, now or over a long period. Participants come from local profiles.","Para jugar presencialmente, ahora o durante un periodo largo. Participantes de perfiles locales.")}</div>} onClick={()=>setCreateScope("local")}/>
+          </> : null}
+
+          {entryMode === "create" && createScope ? <>
+            <SectionLabel>{createScope === "local" ? "LOCAL" : createScope === "team" ? "TEAM" : "ONLINE"}</SectionLabel>
             <CompetitionCard
               tag={L("LIGUE / CHAMPIONNAT", "LEAGUE / CHAMPIONSHIP", "LIGA / CAMPEONATO")}
               title={`${L("Créer une ligue", "Create a league", "Crear una liga")} ${label}`}
@@ -412,7 +422,8 @@ export default function TournamentsHome({ store, go, params }: Props) {
             </div>
           ) : null}
 
-          {entryMode === "create" ? <CompetitionCard tag={L("TOURNOI", "TOURNAMENT", "TORNEO")} title={`${L("Créer un tournoi", "Create a tournament", "Crear un torneo")} ${label}`} tone="pink" watermark={tournamentWatermark2} info={<InfoContent kind="tournament" sportLabel={label} lang={lang} />} onClick={() => go("tournament_create", createParams("tournament"))} /> : null}
+          {entryMode === "create" && !createScope ? <div style={{display:"grid",gap:12}}><CompetitionCard tag="TEAM" title={L("Compétition interne à une Team", "Internal Team competition", "Competición interna de Team")} tone="green" watermark={consultWatermark2} info={<div style={{lineHeight:1.4}}>{L("Une Team organise une ligue ou un tournoi réservé à ses membres. Le roster de la Team sert de base aux inscriptions.","A Team runs a league or tournament reserved for its members. The Team roster is the registration base.","Una Team organiza una liga o torneo reservado a sus miembros.")}</div>} onClick={()=>setCreateScope("team")}/><CompetitionCard tag="ONLINE" title={L("Compétition officielle en ligne", "Official online competition", "Competición oficial online")} tone="blue" watermark={resumeWatermark2} info={<div style={{lineHeight:1.4}}>{L("Compétition publique accessible en ligne. Les joueurs peuvent s'inscrire eux-mêmes selon les règles d'inscription.","Public online competition. Players can self-register according to enrollment rules.","Competición pública online. Los jugadores pueden registrarse según las reglas.")}</div>} onClick={()=>setCreateScope("online")}/></div> : null}
+          {entryMode === "create" && createScope ? <CompetitionCard tag={L("TOURNOI", "TOURNAMENT", "TORNEO")} title={`${L("Créer un tournoi", "Create a tournament", "Crear un torneo")} ${label}`} tone="pink" watermark={tournamentWatermark2} info={<InfoContent kind="tournament" sportLabel={label} lang={lang} />} onClick={() => go("tournament_create", createParams("tournament"))} /> : null}
 
           {entryMode === "resume" ? <CompetitionCard tag={L("TOURNOIS EN COURS", "ONGOING TOURNAMENTS", "TORNEOS EN CURSO")} title={`${L("Reprendre un tournoi", "Resume a tournament", "Reanudar un torneo")} ${label}`} tone="pink" watermark={tournamentWatermark2} info={<div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}><p style={{ margin: 0 }}>{L("Affiche les tournois non terminés pour", "Show unfinished tournaments for", "Muestra torneos sin terminar para")} <b>{label}</b>.</p></div>} onClick={() => go("tournament_list", listParams("tournament", "active"))} /> : null}
 

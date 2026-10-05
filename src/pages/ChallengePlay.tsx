@@ -338,7 +338,7 @@ function ChallengeAvatar({participant,size}: {participant:Participant;size:numbe
  return <span className="challenge-avatar-fallback">{String(participant.name||'?').slice(0,1).toUpperCase()}</span>;
 }
 
-export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;params?:any}){
+export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=>void;params?:any;onCompetitionFinish?:(result:{winnerId:string|null;standings:Array<{id:string;name:string;score:number;tieBreak:number;accuracy:number;bestStreak:number}>;record:any})=>void|Promise<void>}){
  const historyStatsOnly=Boolean(params?.historyStatsOnly);
  const onlineStatsOverride=params?.onlineStatsOverride||null;
  useFullscreenPlay({enabled:true,lockBodyScroll:true});
@@ -357,12 +357,14 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
    return {id:String(p.id),name:p.name||p.nickname||'Joueur',profile:p,team,teamName:team?.name||''};
   });
   if(picked.length) return picked;
+  const competitionPlayers=Array.isArray(params?.competitionParticipants)?params.competitionParticipants:[];
+  if(competitionPlayers.length){return competitionPlayers.map((p:any)=>{const id=String(p?.id||p?.playerId||p?.profileId||'');const profile=profiles.find((x:any)=>String(x.id)===id);return {id,name:p?.name||profile?.name||profile?.nickname||'Joueur',profile,team:p?.team||null,teamName:p?.teamName||'',avatarDataUrl:p?.avatarDataUrl||p?.avatarUrl||null}}).filter((p:any)=>p.id)}
   const resumedPlayers=(resumeRecord?.players||resumePayload?.players||resumePayload?.finalPlayers||resumeRecord?.summary?.perPlayer||[]);
   if(Array.isArray(resumedPlayers)&&resumedPlayers.length){return resumedPlayers.map((p:any)=>{const id=String(p?.id||p?.playerId||p?.profileId||p?.userId||'');const profile=profiles.find((x:any)=>String(x.id)===id);const teamId=String(p?.teamId||'');const team=selectedTeams.find((t:any)=>String(t.id)===teamId)||selectedTeams.find((t:any)=>Array.isArray(t?.playerIds)&&t.playerIds.map(String).includes(id));return {id,name:p?.name||p?.displayName||profile?.name||profile?.nickname||'Joueur',profile,team,teamName:p?.teamName||team?.name||'',avatarDataUrl:p?.avatarDataUrl||p?.avatarUrl||null}}).filter((p:any)=>p.id)}
   // Compatibilité avec les anciennes configs Challenge où l'équipe elle-même était un participant.
   if(cfg.participantMode==='teams') return (cfg.teamIds||[]).map(id=>{const team=teams.find((t:any)=>String(t.id)===String(id));return team?{id:`team:${team.id}`,name:team.name||'Équipe',team}:null}).filter(Boolean) as Participant[];
   return [];
- },[cfg.playerIds,cfg.participantMode,cfg.teamIds,profiles,selectedTeams,teams,resumeRecord,resumePayload]);
+ },[cfg.playerIds,cfg.participantMode,cfg.teamIds,profiles,selectedTeams,teams,resumeRecord,resumePayload,params?.competitionParticipants]);
  const safeParticipants=participants.length?participants:[{id:'solo',name:'Joueur'}];
  const initialLog=React.useMemo<Entry[]>(()=>{const source=resumeSnapshot?.log||resumeSnapshot?.entries||resumePayload?.entries||resumeRecord?.resume?.livePayload?.entries||[];return Array.isArray(source)?source.filter((e:any)=>e&&hits.includes(e.hit)&&e.pid).map((e:any)=>({hit:e.hit as Hit,pid:String(e.pid),...(Number(e?.segment)>0?{segment:Number(e.segment)}:{})})):[]},[resumeSnapshot,resumePayload,resumeRecord]);
  const [log,setLog]=React.useState<Entry[]>(()=>initialLog);
@@ -391,6 +393,7 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
  const onlineSubmittedRef=React.useRef(false);
  const onlineSubmittingRef=React.useRef(false);
  const onlineHistorySyncedRef=React.useRef(false);
+ const competitionFinishRef=React.useRef(false);
  const soundPoolsRef=React.useRef<Partial<Record<keyof typeof challengeSoundUrls,HTMLAudioElement[]>>>({});
  const introPlayedRef=React.useRef(false);
  const endPlayedRef=React.useRef(false);
@@ -479,6 +482,17 @@ export default function ChallengePlay({go,params}:{go:(t:any,p?:any)=>void;param
   lastPersistSignatureRef.current=signature;
   void History.upsert(record).catch((error:any)=>console.warn('[challenge] history persistence failed',error));
  },[buildChallengeRecord,done,log.length,historyStatsOnly]);
+
+ React.useEffect(()=>{
+  if(!done||historyStatsOnly||!onCompetitionFinish||competitionFinishRef.current) return;
+  competitionFinishRef.current=true;
+  const record:any=buildChallengeRecord('finished');
+  const rows=safeParticipants.map(p=>{const st=participantStats(p);return{id:String(p.id),name:p.name,score:st.score,tieBreak:participantTieBreak(p),accuracy:st.pct,bestStreak:st.streak}});
+  const tieMode=String((cfg as any)?.competition?.tieBreak||'segment_sum');
+  rows.sort((a,b)=>b.score-a.score||(tieMode==='accuracy'?b.accuracy-a.accuracy:tieMode==='best_streak'?b.bestStreak-a.bestStreak:b.tieBreak-a.tieBreak));
+  const winnerId=rows[0]?.id||null;
+  void Promise.resolve(onCompetitionFinish({winnerId,standings:rows,record})).catch(error=>console.warn('[challenge] competition finish callback failed',error));
+ },[done,historyStatsOnly,onCompetitionFinish,buildChallengeRecord,standings]);
 
  React.useEffect(()=>{
   if(historyStatsOnly||!done||trainingSavedRef.current||safeParticipants.length!==1) return;
