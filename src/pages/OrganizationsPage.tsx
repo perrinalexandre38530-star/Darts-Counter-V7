@@ -913,7 +913,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "profile") return <div style={{ display: "grid", gap: 10 }}>{sectionHeader(L("FICHE ORGANISME", "ORGANIZATION PROFILE", "FICHA DE LA ORGANIZACIÓN"), active.name)}<OrganizationProfilePanel organization={active} userId={userId} logoUrl={activeLogo} coverUrl={activeCover} onChanged={async () => { await load(); }} /></div>;
     if (view === "members") return <OrganizationMembersPanel organization={active} groups={localGroups} userId={userId} onChanged={() => void load()} />;
     if (view === "groups") return <OrganizationTeamsPanel organization={active} userId={userId} initialGroups={localGroups} onChanged={async () => { setRefreshTick((value) => value + 1); await load(); }} />;
-    if (view === "competitions") return <OrganizationCompetitionsPanel organization={active} userId={userId} initialGroups={localGroups} />;
+    if (view === "competitions") return <OrganizationCompetitionsPanel organization={active} userId={userId} initialGroups={localGroups} go={go} />;
     if (view === "stats") return <OrganizationStatsPanel organization={active} userId={userId} />;
     if (view === "communication") return <OrganizationCommunicationPanel organization={active} userId={userId} />;
     if (view === "federations") return <OrganizationFederationsPanel organization={active} userId={userId} />;

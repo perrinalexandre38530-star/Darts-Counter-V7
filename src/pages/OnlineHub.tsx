@@ -292,7 +292,7 @@ export default function OnlineHub({ store, go }: Props) {
             <div style={{ minWidth: 0, display: "grid", gap: 8 }}>
               <button className="online-tile" style={{ ...outlineButton(primary), minHeight: 42, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }} onClick={() => setShowStatusPanel((v) => !v)}><Icon kind="wifi" size={18} color={primary} />Statut</button>
               <button className="online-tile" style={{ ...outlineButton(primary), minHeight: 42, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }} onClick={() => go?.("stats_online")}><Icon kind="star" size={18} color={primary} />Rating</button>
-              <button className="online-tile" style={{ ...outlineButton(primary), minHeight: 42, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }} onClick={() => go?.("tournaments")}><Icon kind="trophy" size={18} color={primary} />Ligue</button>
+              <button className="online-tile" style={{ ...outlineButton(primary), minHeight: 42, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }} onClick={() => go?.("tournament_list", { source: "online", forceMode: "darts" })}><Icon kind="trophy" size={18} color={primary} />Compétitions</button>
               <button className="online-tile" style={{ ...outlineButton(primary), minHeight: 42, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }} onClick={() => go?.("stats_online")}><Icon kind="rank" size={18} color={primary} />Classement</button>
             </div>
           </div>

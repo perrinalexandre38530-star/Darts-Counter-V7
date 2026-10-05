@@ -2,6 +2,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
+import { listTournamentsLocalAsync, TOURNAMENTS_UPDATED_EVENT } from "../lib/tournaments/storeLocal";
 import {
   createOrganizationCompetition,
   createOrganizationCompetitionFixture,
@@ -55,16 +56,19 @@ export default function OrganizationCompetitionsPanel({
   organization,
   userId,
   initialGroups = [],
+  go,
 }: {
   organization: OrganizationRecord;
   userId: string | null;
   initialGroups?: OrganizationLocalGroup[];
+  go?: (tab: any, params?: any) => void;
 }) {
   const { theme } = useTheme();
   const { lang } = useLang();
   const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
 
   const [competitions, setCompetitions] = React.useState<OrganizationCompetition[]>([]);
+  const [mssCompetitions, setMssCompetitions] = React.useState<any[]>([]);
   const [groups, setGroups] = React.useState<OrganizationLocalGroup[]>(initialGroups);
   const [members, setMembers] = React.useState<OrganizationMember[]>([]);
   const [detail, setDetail] = React.useState<OrganizationCompetitionDetail | null>(null);
@@ -143,6 +147,20 @@ export default function OrganizationCompetitionsPanel({
     completed: L("Terminée", "Completed", "Finalizada"),
     archived: L("Archivée", "Archived", "Archivada"),
   }[value]);
+
+  const refreshMssCompetitions = React.useCallback(async () => {
+    try {
+      const all = await listTournamentsLocalAsync();
+      setMssCompetitions((all || []).filter((item:any) => String(item?.hostOrganizationId || item?.organizationId || "") === String(organization.id)));
+    } catch { setMssCompetitions([]); }
+  }, [organization.id]);
+
+  React.useEffect(() => {
+    void refreshMssCompetitions();
+    const onUpdated = () => void refreshMssCompetitions();
+    window.addEventListener(TOURNAMENTS_UPDATED_EVENT, onUpdated as any);
+    return () => window.removeEventListener(TOURNAMENTS_UPDATED_EVENT, onUpdated as any);
+  }, [refreshMssCompetitions]);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -294,8 +312,12 @@ export default function OrganizationCompetitionsPanel({
     {screen === "list" ? <>
       <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
         <div style={{ color: theme.textSoft, fontSize: 9.5, alignSelf: "center" }}>{L("Championnat, tournoi, challenge ou ladder : les données restent légères dans Supabase.", "League, tournament, challenge or ladder: only lightweight data stays in Supabase.", "Liga, torneo, reto o ladder: solo los datos ligeros permanecen en Supabase.")}</div>
-        {canManage ? <button type="button" style={primaryButton} onClick={() => { resetCreate(); setScreen("create"); }}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : null}
+        {canManage ? <button type="button" style={primaryButton} onClick={() => go?.("tournament_create", { forceMode: "darts", sport: "darts", competitionScope: "organization", organizationId: organization.id, organizationName: organization.name, configMode: "guided" })}>+ {L("CRÉER", "CREATE", "CREAR")}</button> : null}
       </div>
+      {mssCompetitions.length ? <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ color: theme.primary, fontSize: 9, fontWeight: 1000, letterSpacing: .7 }}>COMPÉTITIONS MULTISPORTS SCORING</div>
+        {mssCompetitions.map((competition:any) => <button key={competition.id} type="button" onClick={() => go?.("tournament_view", { id: competition.id, forceMode: competition.sport || "darts", source: "local" })} style={{ ...card, width: "100%", padding: 13, color: theme.text, textAlign: "left", cursor: "pointer" }}><div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10 }}><div><div style={{ color: theme.primary, fontSize: 8.2, fontWeight: 1000, letterSpacing: .8 }}>{String(competition.kind || "COMPÉTITION").toUpperCase()} · {String(competition.sport || "darts").toUpperCase()}</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 1000 }}>{competition.name}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9 }}>{competition.players?.length || 0} participants · {competition.status === "finished" ? L("Terminée","Completed","Finalizada") : L("En cours","Active","En curso")}</div></div><span style={{ alignSelf: "start", borderRadius: 999, padding: "5px 8px", border: `1px solid ${theme.primary}`, color: theme.primary, fontSize: 7.7, fontWeight: 1000 }}>MSS</span></div></button>)}
+      </div> : null}
       <div style={{ display: "grid", gap: 8 }}>
         {competitions.length ? competitions.map((competition) => <button key={competition.id} type="button" onClick={() => void openDetail(competition)} style={{ ...card, width: "100%", padding: 13, color: theme.text, textAlign: "left", cursor: "pointer" }}>
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10 }}><div><div style={{ color: theme.primary, fontSize: 8.2, fontWeight: 1000, letterSpacing: .8 }}>{formatLabel(competition.format).toUpperCase()} · {competition.sportId}</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 1000 }}>{competition.name}</div><div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9 }}>{competition.participantCount} {L("participants","participants","participantes")} · {competition.fixtureCount} {L("rencontres","fixtures","encuentros")} · {fmtDate(competition.startsAt)}</div></div><span style={{ alignSelf: "start", borderRadius: 999, padding: "5px 8px", border: `1px solid ${competition.status === "active" ? theme.primary : theme.borderSoft}`, color: competition.status === "active" ? theme.primary : theme.textSoft, fontSize: 7.7, fontWeight: 1000 }}>{statusLabel(competition.status)}</span></div>
@@ -303,7 +325,7 @@ export default function OrganizationCompetitionsPanel({
       </div>
     </> : null}
 
-    {screen === "create" ? <div style={{ ...card, padding: 14, display: "grid", gap: 11 }}>
+    {false && screen === "create" ? <div style={{ ...card, padding: 14, display: "grid", gap: 11 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={{ color: theme.primary, fontSize: 12, fontWeight: 1000 }}>{L("NOUVELLE COMPÉTITION", "NEW COMPETITION", "NUEVA COMPETICIÓN")}</div><div style={{ color: theme.textSoft, fontSize: 8.8 }}>{L("Configure le format puis choisis les participants.", "Configure the format then choose participants.", "Configura el formato y luego elige los participantes.")}</div></div><button type="button" style={button} onClick={() => setScreen("list")}>✕</button></div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,.8fr)", gap: 8 }}><input style={input} value={name} onChange={(e) => setName(e.target.value)} placeholder={L("Nom de la compétition", "Competition name", "Nombre de la competición")} /><select style={input} value={sportId} onChange={(e) => setSportId(e.target.value)}>{SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}</select></div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><select style={input} value={format} onChange={(e) => setFormat(e.target.value as OrganizationCompetitionFormat)}>{FORMATS.map((value) => <option key={value} value={value}>{formatLabel(value)}</option>)}</select><select style={input} value={participantMode} onChange={(e) => { setParticipantMode(e.target.value as OrganizationCompetitionParticipantMode); setSelectedEntityIds([]); }}><option value="teams">{L("Par équipes / groupes","Teams / groups","Por equipos / grupos")}</option><option value="individuals">{L("Individuelle","Individual","Individual")}</option></select></div>

@@ -5396,7 +5396,8 @@ case "babyfoot_team_edit":
 
         case "tournament_list": {
           const sportLc = String((routeParams as any)?.forceMode || activeSport || "darts").toLowerCase();
-          const source = String((routeParams as any)?.source || "local").toLowerCase() === "online" ? "online" : "local";
+          const sourceRaw = String((routeParams as any)?.source || "local").toLowerCase();
+          const source = sourceRaw === "online" ? "online" : sourceRaw === "all" ? "all" : "local";
           page = (
             <TournamentsList
               store={store}

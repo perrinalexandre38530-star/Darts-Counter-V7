@@ -73,6 +73,8 @@ export type Tournament = {
   onlineCompetitionId?: string | null;
   hostTeamId?: string | null;
   hostTeamName?: string | null;
+  hostOrganizationId?: string | null;
+  hostOrganizationName?: string | null;
   enrollment?: {
     policy?: "fixed" | "open" | "approval" | "invite";
     minParticipants?: number;

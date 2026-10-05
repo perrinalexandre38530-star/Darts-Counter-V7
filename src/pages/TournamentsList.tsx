@@ -27,7 +27,7 @@ type Props = {
   store: Store;
   update: (mut: (s: Store) => Store) => void;
   go: (tab: any, params?: any) => void;
-  source?: "local" | "online";
+  source?: "local" | "online" | "all";
   params?: any; // ✅ NEW : reçoit routeParams (dont forceMode)
 };
 
@@ -745,7 +745,9 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   // ✅ SCOPE strict via GameSelect / SportContext : une compétition ne propose que le sport actif.
   const forceMode = normalizeCompetitionSport({ sport: (params as any)?.forceMode || (params as any)?.sport || "darts" });
   const isPetanque = forceMode === "petanque";
-  const isOnline = String(source || "local").toLowerCase() === "online";
+  const sourceMode = String(source || "local").toLowerCase();
+  const isOnline = sourceMode === "online";
+  const isAll = sourceMode === "all";
   const sportLabel = competitionSportLabel(forceMode);
   const kindFilter = normalizeCompetitionKindValue((params as any)?.filterKind || (params as any)?.competitionKind || (params as any)?.kind);
   const kindHeaderLabel = competitionKindLabel(kindFilter);
@@ -763,10 +765,10 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     go("tournaments", {
       forceMode,
       sport: forceMode,
-      source: isOnline ? "online" : "local",
+      source: isAll ? "all" : (isOnline ? "online" : "local"),
       entry,
     });
-  }, [forceMode, go, isOnline, listContext]);
+  }, [forceMode, go, isOnline, isAll, listContext]);
 
   React.useEffect(() => {
     setFilter(routeStatusFilter);
@@ -790,6 +792,18 @@ export default function TournamentsHome({ store, go, source = "local", params }:
       return;
     }
 
+    if (isAll) {
+      void Promise.all([
+        listTournamentsLocalAsync().catch(() => listTournamentsLocal() || []),
+        listOnlineCompetitions({ sport: forceMode || undefined, limit: 200 }).catch(() => []),
+      ]).then(([localItems, onlineItems]) => {
+        const merged = [...applyScope(localItems || []), ...applyScope(onlineItems || [])];
+        const seen = new Set<string>();
+        setItems(merged.filter((item:any) => { const key = `${String(item?.source || "local")}:${String(item?.id || item?.onlineCompetitionId || "")}`; if (seen.has(key)) return false; seen.add(key); return true; }));
+      }).finally(() => setLoading(false));
+      return;
+    }
+
     try {
       // ✅ fiable au premier affichage : attend l’hydratation IndexedDB/migration localStorage.
       // Avant, listTournamentsLocal() pouvait renvoyer [] pendant le load async,
@@ -806,7 +820,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
       setItems([]);
       setLoading(false);
     }
-  }, [forceMode, isOnline]);
+  }, [forceMode, isOnline, isAll]);
 
   React.useEffect(() => {
     reload();
@@ -885,7 +899,8 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const openTournament = React.useCallback((t: any) => {
     const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
     if (!id) return;
-    if (isOnline) {
+    const itemOnline = String(t?.source || "").toLowerCase() === "online" || Boolean(t?.__onlineRow);
+    if (itemOnline) {
       try {
         const payload = (t as any)?.__onlineRow?.payload || {};
         const remoteTournament = payload?.tournament || t;
@@ -896,17 +911,18 @@ export default function TournamentsHome({ store, go, source = "local", params }:
         console.error("[TournamentsHome] online hydrate failed:", e);
       }
     }
-    go("tournament_view", { id, forceMode: forceMode || undefined, source: isOnline ? "online" : "local" });
-  }, [forceMode, go, isOnline]);
+    go("tournament_view", { id, forceMode: forceMode || undefined, source: itemOnline ? "online" : "local" });
+  }, [forceMode, go]);
 
   const removeTournament = React.useCallback((t: any) => {
     const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
-    if (!id || isOnline) return;
+    const itemOnline = String(t?.source || "").toLowerCase() === "online" || Boolean(t?.__onlineRow);
+    if (!id || itemOnline) return;
     const name = String(t?.name || t?.title || "cette compétition");
     if (!window.confirm(`Supprimer ${name} ?`)) return;
     deleteTournamentLocal(id);
     setItems((old) => (Array.isArray(old) ? old.filter((x: any) => String(x?.id || x?.tournamentId || x?.tid || x?.code || "") !== id) : []));
-  }, [isOnline]);
+  }, []);
 
   return (
     <div
@@ -962,7 +978,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
         <div style={{ marginTop: 8, textAlign: "center", fontSize: 10.5, lineHeight: 1.22, opacity: 0.74 }}>
           <div>{kindHeaderLabel} · {sportLabel}</div>
-          <div>{isOnline ? "ONLINE NAS" : "LOCAL + BACKUP NAS"}</div>
+          <div>{isAll ? "TOUTES LES COMPÉTITIONS" : isOnline ? "ONLINE NAS" : "LOCAL + BACKUP NAS"}</div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 12 }}>
@@ -1166,7 +1182,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                     <button type="button" onClick={(ev) => { ev.stopPropagation(); openTournament(t); }} style={competitionCardActionStyle(accent, true)}>
                       <TinyIcon kind="play" size={15} /> Reprendre
                     </button>
-                    {!isOnline ? (
+                    {!(String(t?.source || "").toLowerCase() === "online" || Boolean(t?.__onlineRow)) ? (
                       <button type="button" onClick={(ev) => { ev.stopPropagation(); removeTournament(t); }} style={competitionCardActionStyle("#ff4f8b", false)}>
                         <TinyIcon kind="trash" size={15} /> Suppr.
                       </button>
