@@ -27,7 +27,7 @@ import { loadStore, getCachedLocalProfilesForSafety } from "../lib/storage";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
 import { getAvatarCacheFast } from "../lib/avatarCache";
-import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { isConstrainedRuntimeDevice, scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { captureUserMediaFallback, profileAvatarMediaKey, readLocalUserMediaFallback, resolveUserMediaFallback } from "../lib/userMediaFallback";
 import DartSetImage from "./DartSetImage";
@@ -271,7 +271,11 @@ async function getProfileByIdFromStore(
         };
       }
 
-      // 3) Secours legacy : un seul loadStore par profil et résultat mis en cache.
+      // 3) Secours legacy. Sur mobile, un avatar ne doit jamais déclencher le
+      // chargement du store complet : le store React + cache sécurité/R2 sont les
+      // sources autorisées dans le critical path. Un placeholder vaut mieux qu'un
+      // loadStore de plusieurs centaines de ms pendant une navigation.
+      if (isConstrainedRuntimeDevice()) return null;
       const store = await loadStore<any>();
       if (!store) return null;
       const arr: any[] = Array.isArray(store.profiles) ? store.profiles : [];

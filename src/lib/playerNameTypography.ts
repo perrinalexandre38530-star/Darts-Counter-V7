@@ -3,7 +3,7 @@
 // PERF V68: no full IndexedDB/localStorage/document scan every 10 seconds and no
 // characterData observer on every live score update.
 
-import { isGameplayRuntime, scheduleRuntimeIdle } from "./runtimePerformance";
+import { isConstrainedRuntimeDevice, isGameplayRuntime, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast, scheduleRuntimeIdle } from "./runtimePerformance";
 import { getRuntimePlatform } from "./nativePlatform";
 
 const PLAYER_NAME_CLASS = "dc-player-name-jumbo";
@@ -176,7 +176,7 @@ const ANDROID_PLAYER_SELECTOR = [
 ].join(",");
 
 function scanTree(root: ParentNode | Node) {
-  const android = getRuntimePlatform() === "android";
+  const android = getRuntimePlatform() === "android" || isConstrainedRuntimeDevice();
 
   if (root instanceof HTMLElement) {
     if (!android || root.matches(ANDROID_PLAYER_SELECTOR)) tagElement(root);
@@ -275,7 +275,7 @@ export function installPlayerNameTypography() {
   const start = () => {
     installObserver();
 
-    if (getRuntimePlatform() === "android") {
+    if (getRuntimePlatform() === "android" || isConstrainedRuntimeDevice()) {
       // Le store/IndexedDB et le DOM complet ne font pas partie du critical path
       // Android. Les noms explicites sont pris en charge par l'observer léger ;
       // le catalogue de noms est hydraté plus tard en idle.
@@ -303,8 +303,13 @@ export function installPlayerNameTypography() {
     // + full DOM scan every 10 seconds. It now uses the in-memory store and never
     // runs a whole-document scan during gameplay.
     refreshTimer = window.setInterval(() => {
-      if (!isGameplayRuntime()) queueRefresh(true);
-    }, 60_000);
+      if (isGameplayRuntime()) return;
+      if (android && (isRuntimeNavigationBusy() || isRuntimePerformanceShieldActiveFast())) return;
+      // On a constrained/mobile runtime never rescan the whole document on a
+      // maintenance timer. MutationObserver + explicit profile events already
+      // cover visible names.
+      queueRefresh(android ? false : true);
+    }, android ? 120_000 : 60_000);
 
     window.addEventListener("beforeunload", () => {
       if (refreshTimer) window.clearInterval(refreshTimer);

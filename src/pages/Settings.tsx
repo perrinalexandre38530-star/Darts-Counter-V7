@@ -49,12 +49,15 @@ import { exportCloudBackupAsJson, restoreCloudBackupFromJson } from "../lib/clou
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { auditHistoryDecodePerformance, auditHistoryStorageFootprint } from "../lib/history";
 import {
+  activateRuntimePerformanceShield,
   clearFreezeWatchData,
   clearHardFreezeReport,
   diagnoseHardFreeze,
+  getFreezeRuntimeInventory,
   getFreezeWatchSnapshot,
   getHardFreezeReport,
   isFreezeWatchEnabled,
+  isRuntimePerformanceShieldActive,
   setFreezeWatchEnabled,
 } from "../lib/freezeWatch";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
@@ -5384,6 +5387,11 @@ export function Settings({ go, params }: Props) {
     const lastLoadStoreStageWarning = [...freezeEvents].reverse().find((e: any) => e?.kind === "storage.loadStore.stage-warning") || null;
     const staleInterruptedOps = Array.isArray(freezeWatch?.interrupted?.staleActiveOps) ? freezeWatch.interrupted.staleActiveOps : [];
     const freezeDiagnosis = diagnoseHardFreeze(hardFreezeReport);
+    const liveFreezeInventory = getFreezeRuntimeInventory();
+    const runtimeTimers = Array.isArray(liveFreezeInventory?.timers) ? liveFreezeInventory.timers : [];
+    const runningTimers = runtimeTimers.filter((row: any) => row?.running);
+    const staleTimers = runtimeTimers.filter((row: any) => row?.registeredRoute && row.registeredRoute !== liveFreezeInventory?.route && /src\/pages\/|Page|Home|Play|Hub|Create/i.test(String(row?.registrationStack || "")));
+    const perfShieldActive = isRuntimePerformanceShieldActive();
 
     const rowStyle: React.CSSProperties = {
       display: "grid",
@@ -5418,6 +5426,11 @@ export function Settings({ go, params }: Props) {
       lastCrash,
       crashLog,
       freezeWatch,
+      hardFreezeReport,
+      freezeDiagnosis,
+      freezeRuntimeInventory: liveFreezeInventory,
+      performanceShieldActive: perfShieldActive,
+      historyDeepAudit: deepAuditResult,
       href: (() => {
         try { return location.href; } catch { return ""; }
       })(),
@@ -5493,6 +5506,12 @@ export function Settings({ go, params }: Props) {
           ? "Surveillance Freeze activée. Utilise maintenant l'application normalement jusqu'au gel. Après redémarrage, reviens ici : le dernier heartbeat et l'opération restée active seront conservés."
           : "Surveillance Freeze désactivée."
       );
+    }
+
+    function forcePerformanceShield() {
+      const state = activateRuntimePerformanceShield("manual-developer-shield", 0);
+      setTick((v) => v + 1);
+      safeAlert(state ? "Protection anti-freeze activée pendant 30 minutes hors gameplay." : "Protection impossible sur ce runtime.");
     }
 
     const copyReport = async () => {
@@ -5589,6 +5608,9 @@ export function Settings({ go, params }: Props) {
             <button type="button" onClick={clearHardFreezeOnly} style={{ borderRadius: 12, border: `1px solid ${theme.borderSoft}`, padding: "9px 12px", background: "rgba(0,0,0,.32)", color: theme.textSoft, fontWeight: 850, cursor: "pointer" }}>
               Effacer dernier gel Worker
             </button>
+            <button type="button" onClick={forcePerformanceShield} style={{ borderRadius: 12, border: `1px solid ${perfShieldActive ? "#65f3b0" : "#ffb347"}`, padding: "9px 12px", background: perfShieldActive ? "rgba(40,180,120,.12)" : "rgba(0,0,0,.32)", color: perfShieldActive ? "#9fffd0" : "#ffd28a", fontWeight: 950, cursor: "pointer" }}>
+              {perfShieldActive ? "PROTECTION ANTI-FREEZE ACTIVE" : "ACTIVER PROTECTION ANTI-FREEZE"}
+            </button>
           </div>
 
           {hardFreezeReport ? (
@@ -5596,6 +5618,9 @@ export function Settings({ go, params }: Props) {
               <div style={{ color: hardFreezeReport?.kind === "freeze" ? "#ffb7b7" : "#ffd28a" }}><strong>WATCHDOG WORKER — {String(hardFreezeReport?.kind || "?").toUpperCase()}</strong></div>
               <div>Blocage détecté: {Math.round(Number(hardFreezeReport?.gapMs || 0))} ms — route={hardFreezeReport?.route || "—"}</div>
               <div>Session: {hardFreezeReport?.sessionId || "—"}</div>
+              {hardFreezeReport?.lastInteraction ? <div style={{ marginTop: 4 }}><strong>Dernière interaction:</strong> {hardFreezeReport.lastInteraction.type} — {hardFreezeReport.lastInteraction.target} — route={hardFreezeReport.lastInteraction.route}</div> : null}
+              {hardFreezeReport?.lastNavigation ? <div><strong>Dernière navigation:</strong> {hardFreezeReport.lastNavigation.from} → {hardFreezeReport.lastNavigation.to} ({Math.max(0, Number(hardFreezeReport.detectedAt || 0) - Number(hardFreezeReport.lastNavigation.at || 0))} ms avant détection)</div> : null}
+              {Array.isArray(hardFreezeReport?.timers) && hardFreezeReport.timers.length ? <div><strong>Timers capturés:</strong> {hardFreezeReport.timers.length} — actifs: {hardFreezeReport.timers.filter((row:any)=>row?.running).length}</div> : null}
               <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 10, border: "1px solid rgba(255,210,110,.45)", background: "rgba(255,190,70,.08)", color: theme.text }}>
                 <div style={{ color: "#ffd28a", fontWeight: 950 }}>CAUSE LA PLUS PROBABLE — confiance {freezeDiagnosis?.confidence || "—"}</div>
                 <div style={{ marginTop: 3, fontWeight: 900 }}>{freezeDiagnosis?.title || "—"}</div>
@@ -5673,6 +5698,23 @@ export function Settings({ go, params }: Props) {
                 {lastLoadStoreStageWarning?.meta?.jsonChars ? ` — JSON ${(Number(lastLoadStoreStageWarning.meta.jsonChars) / 1048576).toFixed(1)} MB` : ""}
               </div>
             ) : null}
+          </div>
+
+          <div style={{ ...monoBox, marginTop: 10, borderColor: staleTimers.length ? "rgba(255,120,120,.65)" : perfShieldActive ? "rgba(101,243,176,.55)" : theme.borderSoft }}>
+            <div style={{ color: perfShieldActive ? "#9fffd0" : theme.primary, fontWeight: 950 }}><strong>V14 — INVENTAIRE RUNTIME / NAVIGATION</strong></div>
+            <div>Route réelle: <strong>{liveFreezeInventory?.route || "—"}</strong> — Shield: <strong>{perfShieldActive ? "ACTIF" : "inactif"}</strong></div>
+            <div>Timers suivis: {runtimeTimers.length} — callbacks actifs: {runningTimers.length} — timers de page hors route: {staleTimers.length}</div>
+            <div>Dernière interaction: {liveFreezeInventory?.lastInteraction ? `${liveFreezeInventory.lastInteraction.type} — ${liveFreezeInventory.lastInteraction.target}` : "—"}</div>
+            <div>Dernière navigation: {liveFreezeInventory?.lastNavigation ? `${liveFreezeInventory.lastNavigation.from} → ${liveFreezeInventory.lastNavigation.to}` : "—"}</div>
+            {runtimeTimers.slice(0, 8).map((timer: any, idx: number) => (
+              <details key={`runtime-timer-${timer.id}-${idx}`} style={{ marginTop: 5 }}>
+                <summary style={{ cursor: "pointer", color: timer.running ? "#ffb7b7" : Number(timer.maxDurationMs || 0) >= 250 ? "#ffd28a" : theme.textSoft }}>
+                  {timer.kind} {timer.delayMs} ms · {timer.handlerName || "anonymous"} · route={timer.registeredRoute || "?"} · ticks={timer.ticks || 0} · max={timer.maxDurationMs || 0} ms
+                </summary>
+                <div style={{ marginTop: 4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{timer.registrationStack || "stack indisponible"}</div>
+              </details>
+            ))}
+            {staleTimers.length ? <div style={{ marginTop: 6, color: "#ffb7b7", fontWeight: 900 }}>⚠ {staleTimers.length} timer(s) de page semblent survivre après navigation. Le garde V14 les coupe au prochain tick sur mobile.</div> : null}
           </div>
 
           {freezeWatch?.historyAudit ? (

@@ -12,8 +12,7 @@
 import { loadStore } from "./storage";
 import { captureCrash, getCrashLog, getLastCrashReport } from "./crashReporter";
 import { getCrashGuardState, getCrashGuardRouteHistory } from "./crashGuard";
-import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./runtimePerformance";
-import { isCapacitorNativeRuntime } from "./nativePlatform";
+import { isConstrainedRuntimeDevice, isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./runtimePerformance";
 import { getFreezeWatchSnapshot, getHardFreezeReport, startFreezeWatchIfEnabled } from "./freezeWatch";
 
 export interface DiagnosticReport {
@@ -708,7 +707,7 @@ function installOnce() {
     // P0 FREEZE V2: Android production must not wake extra diagnostic writers at
     // the same 60-second boundary as maintenance/sync code. Explicit diagnostics
     // still install the deep probes on demand via enableDeepDiagnosticsForSession().
-    if (!isCapacitorNativeRuntime()) {
+    if (!isConstrainedRuntimeDevice()) {
       window.setInterval(() => sampleMemory("interval", false), 60_000);
       window.setInterval(() => {
         if (!deepProbeEnabled() || isGameplayRuntime() || isRuntimeHidden()) return;

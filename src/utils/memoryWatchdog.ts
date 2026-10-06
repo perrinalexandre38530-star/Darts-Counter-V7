@@ -5,7 +5,7 @@
 // - compact diagnostics for media/localStorage hot spots
 // ============================================
 
-import { isRuntimeHidden } from "../lib/runtimePerformance";
+import { isConstrainedRuntimeDevice, isRuntimeHidden, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast } from "../lib/runtimePerformance";
 
 let interval: any = null;
 let lastWarningAt = 0;
@@ -57,9 +57,11 @@ export function startMemoryWatchdog() {
     document.getElementById("dc-mobile-memory-hud")?.remove();
   } catch {}
 
+  const constrained = isConstrainedRuntimeDevice();
   interval = setInterval(() => {
     try {
       if (isRuntimeHidden()) return;
+      if (constrained && (isRuntimeNavigationBusy() || isRuntimePerformanceShieldActiveFast())) return;
       const perf: any = performance as any;
       const mem = perf?.memory;
       if (!mem) return;
@@ -95,5 +97,5 @@ export function startMemoryWatchdog() {
         } catch {}
       }
     } catch {}
-  }, 5000);
+  }, constrained ? 15_000 : 5000);
 }

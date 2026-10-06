@@ -7,6 +7,7 @@ import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type
 import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidStoreV1";
 import { dismissBackgroundBackupState, useBackgroundBackupState } from "../lib/backgroundBackup";
 import { dismissBackgroundRestoreState, useBackgroundRestoreState } from "../lib/backgroundRestore";
+import { isConstrainedRuntimeDevice, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast } from "../lib/runtimePerformance";
 
 /**
  * BottomNav
@@ -367,8 +368,10 @@ export default function BottomNav({
     let alive = true;
     let timer: number | undefined;
 
+    const constrained = isConstrainedRuntimeDevice();
     const run = async (notify = true) => {
       try {
+        if (constrained && (isRuntimeNavigationBusy() || isRuntimePerformanceShieldActiveFast())) return;
         const summary = await pollMessageCenterAndNotify({ notify, updateDocumentTitle: true });
         if (alive) setMessageSummary(summary);
       } catch {
@@ -377,7 +380,7 @@ export default function BottomNav({
     };
 
     run(false);
-    timer = window.setInterval(() => run(true), 15000);
+    timer = window.setInterval(() => run(true), constrained ? 45_000 : 15_000);
     const onFocus = () => run(false);
     const onManual = () => run(false);
     const onCount = (event: any) => {

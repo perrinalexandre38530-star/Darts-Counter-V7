@@ -63,6 +63,40 @@ export type FreezeRuntimeTrace = {
   meta?: Record<string, any> | null;
 };
 
+export type FreezeUserInteraction = {
+  at: number;
+  type: string;
+  route: string;
+  target: string;
+  key?: string;
+  x?: number;
+  y?: number;
+};
+
+export type FreezeNavigationTrace = {
+  at: number;
+  from: string;
+  to: string;
+  meta?: Record<string, any> | null;
+};
+
+export type FreezeTimerDiagnostic = {
+  id: string;
+  kind: "interval" | "timeout";
+  delayMs: number;
+  createdAt: number;
+  registeredRoute: string;
+  handlerName: string;
+  registrationStack: string;
+  ticks: number;
+  running: boolean;
+  lastStartedAt?: number;
+  lastEndedAt?: number;
+  lastDurationMs?: number;
+  maxDurationMs?: number;
+  staleSkips?: number;
+};
+
 export type FreezePerformanceEvidence = {
   lastLongTask?: any;
   lastLongAnimationFrame?: any;
@@ -84,6 +118,9 @@ export type FreezeWatchHardFreezeReport = {
   runtimeProbe?: FreezeRuntimeProbe | null;
   recentTrace?: FreezeRuntimeTrace[];
   performanceEvidence?: FreezePerformanceEvidence | null;
+  lastInteraction?: FreezeUserInteraction | null;
+  lastNavigation?: FreezeNavigationTrace | null;
+  timers?: FreezeTimerDiagnostic[];
   note: string;
 };
 
@@ -94,6 +131,8 @@ const EVENTS_KEY = "dc_freeze_watch_events_v1";
 const INTERRUPTED_KEY = "dc_freeze_watch_interrupted_v1";
 const HISTORY_AUDIT_KEY = "dc_freeze_watch_history_audit_v1";
 const EVIDENCE_KEY = "dc_freeze_watch_evidence_v4";
+const PERF_SHIELD_KEY = "dc_runtime_perf_shield_v1";
+const PERF_SHIELD_DURATION_MS = 30 * 60 * 1000;
 const HARD_FREEZE_DB = "dc-freeze-watchdog-v1";
 const HARD_FREEZE_STORE = "state";
 const HARD_FREEZE_KEY = "latest";
@@ -133,6 +172,16 @@ let originalWatchJsonStringify: any = null;
 let originalWatchStorageSetItem: any = null;
 let originalWatchAtob: any = null;
 let originalWatchBtoa: any = null;
+let originalWatchClearTimeout: any = null;
+let originalWatchClearInterval: any = null;
+let originalWatchIdbGet: any = null;
+let originalWatchIdbGetAll: any = null;
+let originalWatchIdbOpenCursor: any = null;
+let originalWatchIdbIndexGet: any = null;
+let originalWatchIdbIndexGetAll: any = null;
+let lastUserInteraction: FreezeUserInteraction | null = null;
+let lastNavigationTrace: FreezeNavigationTrace | null = null;
+const timerRegistry = new Map<string, FreezeTimerDiagnostic>();
 
 function hasWindow() {
   return typeof window !== "undefined";
@@ -160,13 +209,132 @@ function removeKey(key: string) {
   try { window.localStorage.removeItem(key); } catch {}
 }
 
+type RuntimePerfShieldState = {
+  activeAt: number;
+  until: number;
+  reason: string;
+  gapMs?: number;
+};
+
+function readRuntimePerfShieldState(): RuntimePerfShieldState | null {
+  const state = readJson<RuntimePerfShieldState | null>(PERF_SHIELD_KEY, null);
+  return state && Number(state.until || 0) > 0 ? state : null;
+}
+
+function applyRuntimePerfShieldDom(active: boolean) {
+  if (!hasWindow()) return;
+  try {
+    if (active) document.documentElement.dataset.mscPerfShield = "1";
+    else delete document.documentElement.dataset.mscPerfShield;
+    (window as any).__mscRuntimePerfShield = active;
+  } catch {}
+}
+
+export function isRuntimePerformanceShieldActive(): boolean {
+  if (!hasWindow()) return false;
+  const state = readRuntimePerfShieldState();
+  const active = Boolean(state && Number(state.until || 0) > Date.now());
+  applyRuntimePerfShieldDom(active);
+  return active;
+}
+
+export function activateRuntimePerformanceShield(reason = "hard-stall", gapMs = 0): RuntimePerfShieldState | null {
+  if (!hasWindow()) return null;
+  const now = Date.now();
+  const state: RuntimePerfShieldState = {
+    activeAt: now,
+    until: now + PERF_SHIELD_DURATION_MS,
+    reason: String(reason || "hard-stall"),
+    gapMs: Math.max(0, Math.round(Number(gapMs || 0))),
+  };
+  writeJson(PERF_SHIELD_KEY, state);
+  applyRuntimePerfShieldDom(true);
+  try {
+    window.dispatchEvent(new CustomEvent("msc:performance-shield", { detail: state }));
+  } catch {}
+  return state;
+}
+
+function applyPersistedRuntimePerformanceShield() {
+  const active = isRuntimePerformanceShieldActive();
+  if (!active) return;
+  try {
+    const state = readRuntimePerfShieldState();
+    window.dispatchEvent(new CustomEvent("msc:performance-shield", { detail: state || {} }));
+  } catch {}
+}
+
 function currentRoute() {
   if (!hasWindow()) return "/";
   try {
+    const logical = String((window as any).__mscActiveTab || "").trim();
+    if (logical) return logical;
     return String(window.location.hash || window.location.pathname || "/");
   } catch {
     return "/";
   }
+}
+
+function isConstrainedFreezeRuntime(): boolean {
+  try {
+    const nav: any = typeof navigator !== "undefined" ? navigator : null;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(String(nav?.userAgent || "")) ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function describeEventTarget(target: any): string {
+  try {
+    const el = target?.nodeType === 1 ? target as HTMLElement : target?.parentElement as HTMLElement | undefined;
+    if (!el) return "unknown";
+    const tag = String(el.tagName || "node").toLowerCase();
+    const id = String(el.id || "").trim();
+    const action = String(el.getAttribute?.("data-action") || el.getAttribute?.("aria-label") || "").trim();
+    const cls = String(el.className || "").trim().split(/\s+/).filter(Boolean).slice(0, 3).join(".");
+    const text = String(el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 70);
+    return `${tag}${id ? `#${id}` : ""}${cls ? `.${cls}` : ""}${action ? ` [${action.slice(0, 70)}]` : ""}${text ? ` "${text}"` : ""}`.slice(0, 260);
+  } catch {
+    return "unknown";
+  }
+}
+
+function timerInventorySnapshot(): FreezeTimerDiagnostic[] {
+  return [...timerRegistry.values()]
+    .sort((a, b) => Number(b.running) - Number(a.running) || Number(b.maxDurationMs || 0) - Number(a.maxDurationMs || 0) || b.createdAt - a.createdAt)
+    .slice(0, 14)
+    .map((row) => ({ ...row }));
+}
+
+function timerKey(id: any): string {
+  return String(id ?? "?");
+}
+
+function isRouteScopedTimerStack(stack: string): boolean {
+  const source = String(stack || "");
+  if (!source) return false;
+  return /(?:src\/pages\/|TournamentCreate|(?:Page|Home|Play|Hub|Create)-[A-Za-z0-9_-]+\.js)/i.test(source);
+}
+
+function shouldQuarantineStaleInterval(registeredRoute: string, stack: string, delayMs: number): boolean {
+  if (!hasWindow()) return false;
+  const owner = String(registeredRoute || "").trim();
+  const active = currentRoute();
+  if (!owner || !active || owner === active) return false;
+  if (!isRouteScopedTimerStack(stack)) return false;
+  // P0 V14: on constrained phones, a timer registered by a page that is no
+  // longer active is a leak by definition. Do not wait for a first 40-second
+  // hard stall before neutralising it.
+  if (isConstrainedFreezeRuntime()) return true;
+  // Le timer TournamentCreate vu dans les hard stalls n'a aucune raison de vivre
+  // après la sortie de la page. On le neutralise même avant activation du shield.
+  if (/TournamentCreate/i.test(stack)) return true;
+  // Desktop: after a hard stall, the shield becomes stricter too.
+  return isRuntimePerformanceShieldActive() && delayMs <= 30_000;
 }
 
 function visibilityState() {
@@ -287,6 +455,11 @@ function installRuntimeInstrumentation() {
 
   try {
     originalWatchSetTimeout = window.setTimeout.bind(window);
+    originalWatchClearTimeout = window.clearTimeout.bind(window);
+    window.clearTimeout = ((id: any) => {
+      timerRegistry.delete(timerKey(id));
+      return originalWatchClearTimeout(id);
+    }) as any;
     window.setTimeout = ((handler: any, delay?: any, ...args: any[]) => {
       const ms = Math.max(0, Number(delay || 0));
       if (typeof handler !== "function" || ms < TIMER_PROBE_MIN_DELAY_MS) {
@@ -297,23 +470,61 @@ function installRuntimeInstrumentation() {
       const registrationStack = captureCallsite();
       let id: any = null;
       id = originalWatchSetTimeout((...cbArgs: any[]) => {
+        const key = timerKey(id);
+        const timer = timerRegistry.get(key);
+        const activeRoute = currentRoute();
+        if (shouldQuarantineStaleInterval(registeredRoute, registrationStack, ms)) {
+          pushRuntimeTrace({
+            at: Date.now(), phase: "evidence", label: "timer.stale-timeout-quarantined", route: activeRoute,
+            meta: { delayMs: ms, registeredRoute, activeRoute, handlerName: String(handler?.name || "anonymous"), registrationStack },
+          });
+          timerRegistry.delete(key);
+          postHardFreezeState("state");
+          return;
+        }
+        const startedAt = Date.now();
+        if (timer) {
+          timer.running = true;
+          timer.ticks += 1;
+          timer.lastStartedAt = startedAt;
+        }
         const token = beginRuntimeProbe("timer.setTimeout", {
           delayMs: ms,
-          ageMs: Date.now() - registeredAt,
-          timerId: String(id),
+          ageMs: startedAt - registeredAt,
+          timerId: key,
           handlerName: String(handler?.name || "anonymous"),
           registeredRoute,
           registrationStack,
         });
         try { return handler(...cbArgs); }
-        finally { endRuntimeProbe(token); }
+        finally {
+          const durationMs = Math.max(0, Date.now() - startedAt);
+          if (timer) {
+            timer.running = false;
+            timer.lastEndedAt = Date.now();
+            timer.lastDurationMs = durationMs;
+            timer.maxDurationMs = Math.max(Number(timer.maxDurationMs || 0), durationMs);
+          }
+          endRuntimeProbe(token, { callbackDurationMs: durationMs });
+          timerRegistry.delete(key);
+          postHardFreezeState("state");
+        }
       }, delay, ...args);
+      timerRegistry.set(timerKey(id), {
+        id: timerKey(id), kind: "timeout", delayMs: ms, createdAt: registeredAt, registeredRoute,
+        handlerName: String(handler?.name || "anonymous"), registrationStack, ticks: 0, running: false,
+      });
       return id;
     }) as any;
   } catch {}
 
   try {
     originalWatchSetInterval = window.setInterval.bind(window);
+    originalWatchClearInterval = window.clearInterval.bind(window);
+    window.clearInterval = ((id: any) => {
+      timerRegistry.delete(timerKey(id));
+      return originalWatchClearInterval(id);
+    }) as any;
     window.setInterval = ((handler: any, delay?: any, ...args: any[]) => {
       const ms = Math.max(0, Number(delay || 0));
       if (typeof handler !== "function" || ms < TIMER_PROBE_MIN_DELAY_MS) {
@@ -324,17 +535,53 @@ function installRuntimeInstrumentation() {
       const registrationStack = captureCallsite();
       let id: any = null;
       id = originalWatchSetInterval((...cbArgs: any[]) => {
+        const key = timerKey(id);
+        const timer = timerRegistry.get(key);
+        if (shouldQuarantineStaleInterval(registeredRoute, registrationStack, ms)) {
+          if (timer) timer.staleSkips = Number(timer.staleSkips || 0) + 1;
+          pushRuntimeTrace({
+            at: Date.now(), phase: "evidence", label: "timer.stale-route-quarantined", route: currentRoute(),
+            meta: { delayMs: ms, registeredRoute, activeRoute: currentRoute(), handlerName: String(handler?.name || "anonymous"), registrationStack },
+          });
+          // V14: a page timer firing on another route is a confirmed leak on
+          // constrained devices. Kill it on the first stale tick.
+          try { originalWatchClearInterval(id); } catch {}
+          timerRegistry.delete(key);
+          postHardFreezeState("state");
+          return;
+        }
+        const startedAt = Date.now();
+        if (timer) {
+          timer.running = true;
+          timer.ticks += 1;
+          timer.lastStartedAt = startedAt;
+        }
         const token = beginRuntimeProbe("timer.setInterval", {
           delayMs: ms,
-          ageMs: Date.now() - registeredAt,
-          timerId: String(id),
+          ageMs: startedAt - registeredAt,
+          timerId: key,
           handlerName: String(handler?.name || "anonymous"),
           registeredRoute,
           registrationStack,
+          tick: timer?.ticks || 1,
         });
         try { return handler(...cbArgs); }
-        finally { endRuntimeProbe(token); }
+        finally {
+          const durationMs = Math.max(0, Date.now() - startedAt);
+          if (timer) {
+            timer.running = false;
+            timer.lastEndedAt = Date.now();
+            timer.lastDurationMs = durationMs;
+            timer.maxDurationMs = Math.max(Number(timer.maxDurationMs || 0), durationMs);
+          }
+          endRuntimeProbe(token, { callbackDurationMs: durationMs });
+          postHardFreezeState("state");
+        }
       }, delay, ...args);
+      timerRegistry.set(timerKey(id), {
+        id: timerKey(id), kind: "interval", delayMs: ms, createdAt: registeredAt, registeredRoute,
+        handlerName: String(handler?.name || "anonymous"), registrationStack, ticks: 0, running: false,
+      });
       return id;
     }) as any;
   } catch {}
@@ -348,6 +595,11 @@ function installRuntimeInstrumentation() {
         const registrationStack = captureCallsite();
         const registeredRoute = currentRoute();
         return originalWatchRequestIdleCallback((deadline: any) => {
+          if (shouldQuarantineStaleInterval(registeredRoute, registrationStack, Number(options?.timeout || 0))) {
+            pushRuntimeTrace({ at: Date.now(), phase: "evidence", label: "idle.stale-route-quarantined", route: currentRoute(), meta: { registeredRoute, activeRoute: currentRoute(), registrationStack } });
+            postHardFreezeState("state");
+            return;
+          }
           const token = beginRuntimeProbe("runtime.requestIdleCallback", { handlerName: String(handler?.name || "anonymous"), registeredRoute, registrationStack });
           try { return handler(deadline); }
           finally { endRuntimeProbe(token); }
@@ -399,6 +651,62 @@ function installRuntimeInstrumentation() {
   } catch {}
 
   try {
+    const instrumentIdbRequest = (request: any, label: string, meta: Record<string, any>, token: string | null) => {
+      if (!request || typeof request.addEventListener !== "function") {
+        endRuntimeProbe(token, { error: "no-request" });
+        return request;
+      }
+      const finish = (event: any) => {
+        endRuntimeProbe(token, { ok: event?.type === "success", error: event?.type === "error" ? String(request?.error?.message || request?.error || "idb-error") : undefined });
+      };
+      try { request.addEventListener("success", finish, { once: true }); } catch {}
+      try { request.addEventListener("error", finish, { once: true }); } catch {}
+      return request;
+    };
+    if (typeof IDBObjectStore !== "undefined") {
+      const proto: any = IDBObjectStore.prototype as any;
+      originalWatchIdbGet = proto.get;
+      originalWatchIdbGetAll = proto.getAll;
+      originalWatchIdbOpenCursor = proto.openCursor;
+      if (typeof originalWatchIdbGet === "function") proto.get = function(...args: any[]) {
+        const meta = { store: String(this?.name || "?"), registrationStack: captureCallsite() };
+        const token = beginRuntimeProbe("idb.objectStore.get", meta);
+        try { return instrumentIdbRequest(originalWatchIdbGet.apply(this, args), "idb.objectStore.get", meta, token); }
+        catch (error: any) { endRuntimeProbe(token, { error: String(error?.message || error) }); throw error; }
+      };
+      if (typeof originalWatchIdbGetAll === "function") proto.getAll = function(...args: any[]) {
+        const meta = { store: String(this?.name || "?"), registrationStack: captureCallsite() };
+        const token = beginRuntimeProbe("idb.objectStore.getAll", meta);
+        try { return instrumentIdbRequest(originalWatchIdbGetAll.apply(this, args), "idb.objectStore.getAll", meta, token); }
+        catch (error: any) { endRuntimeProbe(token, { error: String(error?.message || error) }); throw error; }
+      };
+      if (typeof originalWatchIdbOpenCursor === "function") proto.openCursor = function(...args: any[]) {
+        const meta = { store: String(this?.name || "?"), registrationStack: captureCallsite() };
+        const token = beginRuntimeProbe("idb.objectStore.openCursor", meta);
+        try { return instrumentIdbRequest(originalWatchIdbOpenCursor.apply(this, args), "idb.objectStore.openCursor", meta, token); }
+        catch (error: any) { endRuntimeProbe(token, { error: String(error?.message || error) }); throw error; }
+      };
+    }
+    if (typeof IDBIndex !== "undefined") {
+      const proto: any = IDBIndex.prototype as any;
+      originalWatchIdbIndexGet = proto.get;
+      originalWatchIdbIndexGetAll = proto.getAll;
+      if (typeof originalWatchIdbIndexGet === "function") proto.get = function(...args: any[]) {
+        const meta = { index: String(this?.name || "?"), store: String(this?.objectStore?.name || "?"), registrationStack: captureCallsite() };
+        const token = beginRuntimeProbe("idb.index.get", meta);
+        try { return instrumentIdbRequest(originalWatchIdbIndexGet.apply(this, args), "idb.index.get", meta, token); }
+        catch (error: any) { endRuntimeProbe(token, { error: String(error?.message || error) }); throw error; }
+      };
+      if (typeof originalWatchIdbIndexGetAll === "function") proto.getAll = function(...args: any[]) {
+        const meta = { index: String(this?.name || "?"), store: String(this?.objectStore?.name || "?"), registrationStack: captureCallsite() };
+        const token = beginRuntimeProbe("idb.index.getAll", meta);
+        try { return instrumentIdbRequest(originalWatchIdbIndexGetAll.apply(this, args), "idb.index.getAll", meta, token); }
+        catch (error: any) { endRuntimeProbe(token, { error: String(error?.message || error) }); throw error; }
+      };
+    }
+  } catch {}
+
+  try {
     if (typeof window.atob === "function") {
       originalWatchAtob = window.atob.bind(window);
       window.atob = ((value: string) => {
@@ -423,15 +731,23 @@ function installRuntimeInstrumentation() {
 function restoreRuntimeInstrumentation() {
   if (!hasWindow() || !runtimeInstrumentationInstalled) return;
   try { if (originalWatchSetTimeout) window.setTimeout = originalWatchSetTimeout as any; } catch {}
+  try { if (originalWatchClearTimeout) window.clearTimeout = originalWatchClearTimeout as any; } catch {}
   try { if (originalWatchSetInterval) window.setInterval = originalWatchSetInterval as any; } catch {}
+  try { if (originalWatchClearInterval) window.clearInterval = originalWatchClearInterval as any; } catch {}
   try { if (originalWatchRequestIdleCallback) (window as any).requestIdleCallback = originalWatchRequestIdleCallback; } catch {}
   try { if (originalWatchJsonParse) (JSON as any).parse = originalWatchJsonParse; } catch {}
   try { if (originalWatchJsonStringify) (JSON as any).stringify = originalWatchJsonStringify; } catch {}
   try { if (originalWatchStorageSetItem && typeof Storage !== "undefined") Storage.prototype.setItem = originalWatchStorageSetItem; } catch {}
   try { if (originalWatchAtob) window.atob = originalWatchAtob; } catch {}
   try { if (originalWatchBtoa) window.btoa = originalWatchBtoa; } catch {}
+  try { if (originalWatchIdbGet && typeof IDBObjectStore !== "undefined") (IDBObjectStore.prototype as any).get = originalWatchIdbGet; } catch {}
+  try { if (originalWatchIdbGetAll && typeof IDBObjectStore !== "undefined") (IDBObjectStore.prototype as any).getAll = originalWatchIdbGetAll; } catch {}
+  try { if (originalWatchIdbOpenCursor && typeof IDBObjectStore !== "undefined") (IDBObjectStore.prototype as any).openCursor = originalWatchIdbOpenCursor; } catch {}
+  try { if (originalWatchIdbIndexGet && typeof IDBIndex !== "undefined") (IDBIndex.prototype as any).get = originalWatchIdbIndexGet; } catch {}
+  try { if (originalWatchIdbIndexGetAll && typeof IDBIndex !== "undefined") (IDBIndex.prototype as any).getAll = originalWatchIdbIndexGetAll; } catch {}
   runtimeInstrumentationInstalled = false;
   runtimeProbes.clear();
+  timerRegistry.clear();
 }
 
 function installPerformanceEvidenceObservers() {
@@ -566,9 +882,9 @@ let freezeStartedAt=0;
 let freezeSnapshot=null;
 function openDb(){return new Promise((resolve,reject)=>{try{const req=indexedDB.open(DB_NAME,1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(STORE_NAME))db.createObjectStore(STORE_NAME,{keyPath:'key'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);}catch(e){reject(e);}});}
 async function save(report){try{const db=await openDb();await new Promise((resolve)=>{try{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put({key:REPORT_KEY,value:report});tx.oncomplete=()=>resolve();tx.onerror=()=>resolve();tx.onabort=()=>resolve();}catch{resolve();}});try{db.close();}catch{}}catch{}}
-function report(kind,gapMs){const now=Date.now();return {key:REPORT_KEY,kind,sessionId:String(latest?.sessionId||''),detectedAt:freezeStartedAt||now,recoveredAt:kind==='recovered'?now:undefined,gapMs:Math.max(0,Math.round(gapMs||0)),route:String(latest?.route||'/'),visibility:String(latest?.visibility||'unknown'),memory:latest?.memory||null,activeOps:Array.isArray(latest?.activeOps)?latest.activeOps.slice(-8):[],runtimeProbe:latest?.runtimeProbe||null,recentTrace:Array.isArray(latest?.recentTrace)?latest.recentTrace.slice(-14):[],performanceEvidence:latest?.performanceEvidence||null,note:kind==='freeze'?'UI heartbeat missing while app remained visible.':'UI heartbeat resumed after a hard stall.'};}
-self.onmessage=(event)=>{const msg=event?.data||{};if(msg.type==='stop'){latest=null;lastBeat=0;freezeOpen=false;return;}if(msg.type==='beat'||msg.type==='state'){latest=msg.payload||latest;if(msg.type==='beat'){const now=Date.now();if(freezeOpen){const recovered={...(freezeSnapshot||report('freeze',now-freezeStartedAt)),kind:'recovered',recoveredAt:now,gapMs:Math.max(0,now-freezeStartedAt),note:'UI heartbeat resumed after a hard stall.'};void save(recovered);freezeOpen=false;freezeSnapshot=null;}lastBeat=now;}}};
-setInterval(()=>{if(!latest||!lastBeat)return;if(String(latest.visibility||'visible')!=='visible')return;const gap=Date.now()-lastBeat;if(gap>=4000&&!freezeOpen){freezeOpen=true;freezeStartedAt=lastBeat;freezeSnapshot=report('freeze',gap);void save(freezeSnapshot);}},750);
+function report(kind,gapMs){const now=Date.now();return {key:REPORT_KEY,kind,sessionId:String(latest?.sessionId||''),detectedAt:freezeStartedAt||now,recoveredAt:kind==='recovered'?now:undefined,gapMs:Math.max(0,Math.round(gapMs||0)),route:String(latest?.route||'/'),visibility:String(latest?.visibility||'unknown'),memory:latest?.memory||null,activeOps:Array.isArray(latest?.activeOps)?latest.activeOps.slice(-8):[],runtimeProbe:latest?.runtimeProbe||null,recentTrace:Array.isArray(latest?.recentTrace)?latest.recentTrace.slice(-18):[],performanceEvidence:latest?.performanceEvidence||null,lastInteraction:latest?.lastInteraction||null,lastNavigation:latest?.lastNavigation||null,timers:Array.isArray(latest?.timers)?latest.timers.slice(0,14):[],note:kind==='freeze'?'UI heartbeat missing while app remained visible.':'UI heartbeat resumed after a hard stall.'};}
+self.onmessage=(event)=>{const msg=event?.data||{};if(msg.type==='stop'){latest=null;lastBeat=0;freezeOpen=false;return;}if(msg.type==='beat'||msg.type==='state'){latest=msg.payload||latest;if(msg.type==='beat'){const now=Date.now();if(freezeOpen){const recovered={...(freezeSnapshot||report('freeze',now-freezeStartedAt)),kind:'recovered',recoveredAt:now,gapMs:Math.max(0,now-freezeStartedAt),note:'UI heartbeat resumed after a hard stall.'};void save(recovered);try{self.postMessage({type:'recovered',report:recovered});}catch{}freezeOpen=false;freezeSnapshot=null;}lastBeat=now;}}};
+setInterval(()=>{if(!latest||!lastBeat)return;if(String(latest.visibility||'visible')!=='visible')return;const gap=Date.now()-lastBeat;if(gap>=4000&&!freezeOpen){freezeOpen=true;freezeStartedAt=lastBeat;freezeSnapshot=report('freeze',gap);void save(freezeSnapshot);try{self.postMessage({type:'freeze',report:freezeSnapshot});}catch{}}},750);
 `;
 }
 
@@ -580,8 +896,11 @@ function hardFreezePayload() {
     memory: memorySnapshot(),
     activeOps: copyActiveOps(),
     runtimeProbe: currentRuntimeProbe(),
-    recentTrace: runtimeTrace.slice(-14),
+    recentTrace: runtimeTrace.slice(-18),
     performanceEvidence: { ...performanceEvidence },
+    lastInteraction: lastUserInteraction ? { ...lastUserInteraction } : null,
+    lastNavigation: lastNavigationTrace ? { ...lastNavigationTrace, meta: lastNavigationTrace.meta ? { ...lastNavigationTrace.meta } : null } : null,
+    timers: timerInventorySnapshot(),
   };
 }
 
@@ -597,6 +916,14 @@ function startHardFreezeWorker() {
     const blob = new Blob([buildHardFreezeWorkerSource()], { type: "text/javascript" });
     const url = URL.createObjectURL(blob);
     hardFreezeWorker = new Worker(url);
+    hardFreezeWorker.onmessage = (event: MessageEvent<any>) => {
+      const type = String(event?.data?.type || "");
+      const report = event?.data?.report as FreezeWatchHardFreezeReport | undefined;
+      if (type === "recovered" && report && Number(report.gapMs || 0) >= 4000) {
+        activateRuntimePerformanceShield("hard-stall-recovered", Number(report.gapMs || 0));
+        try { window.dispatchEvent(new CustomEvent("msc:hard-stall-recovered", { detail: report })); } catch {}
+      }
+    };
     window.setTimeout(() => { try { URL.revokeObjectURL(url); } catch {} }, 1500);
     postHardFreezeState("beat");
     hardFreezeHeartbeatTimer = window.setInterval(() => postHardFreezeState("beat"), 700);
@@ -724,6 +1051,11 @@ function onWatchTick() {
       meta: { memory: memorySnapshot() },
     };
     appendEvent(event);
+    // V14: a ~1s stall is already a warning sign. Activate the lightweight
+    // shield immediately instead of waiting for the Worker to observe 4s.
+    // This cannot interrupt the synchronous task already running, but it prevents
+    // background jobs/ghost timers from piling on right after the first stall.
+    if (lagMs >= 1200) activateRuntimePerformanceShield("main-thread-stall", Math.round(lagMs));
     // Stall = événement important, heartbeat immédiat.
     persistHeartbeat(lagMs, "main-thread-stall");
     return;
@@ -737,6 +1069,25 @@ function onWatchTick() {
 function installLifecycleHooks() {
   if (!hasWindow() || lifecycleHooksInstalled) return;
   lifecycleHooksInstalled = true;
+
+  const rememberInteraction = (event: Event) => {
+    if (!isFreezeWatchEnabled()) return;
+    const anyEvent: any = event as any;
+    lastUserInteraction = {
+      at: Date.now(),
+      type: String(event.type || "interaction"),
+      route: currentRoute(),
+      target: describeEventTarget(event.target),
+      key: event.type === "keydown" ? String(anyEvent?.key || "").slice(0, 40) : undefined,
+      x: Number.isFinite(Number(anyEvent?.clientX)) ? Math.round(Number(anyEvent.clientX)) : undefined,
+      y: Number.isFinite(Number(anyEvent?.clientY)) ? Math.round(Number(anyEvent.clientY)) : undefined,
+    };
+    pushRuntimeTrace({ at: lastUserInteraction.at, phase: "evidence", label: `interaction.${lastUserInteraction.type}`, route: lastUserInteraction.route, meta: { target: lastUserInteraction.target, key: lastUserInteraction.key } });
+    postHardFreezeState("state");
+  };
+  window.addEventListener("pointerdown", rememberInteraction, { capture: true, passive: true });
+  window.addEventListener("keydown", rememberInteraction, { capture: true });
+
   window.addEventListener("visibilitychange", () => {
     if (!isFreezeWatchEnabled()) return;
     lastTickPerf = (() => { try { return performance.now(); } catch { return Date.now(); } })();
@@ -753,14 +1104,50 @@ function installLifecycleHooks() {
   });
 }
 
+export function recordFreezeNavigation(from: string, to: string, meta?: Record<string, any> | null) {
+  if (!hasWindow() || !isFreezeWatchEnabled()) return;
+  lastNavigationTrace = {
+    at: Date.now(),
+    from: String(from || ""),
+    to: String(to || currentRoute() || ""),
+    meta: meta ? { ...meta } : null,
+  };
+  pushRuntimeTrace({ at: lastNavigationTrace.at, phase: "evidence", label: "navigation.commit", route: String(to || currentRoute()), meta: { from: lastNavigationTrace.from, to: lastNavigationTrace.to, ...(meta || {}) } });
+  postHardFreezeState("state");
+}
+
+export function getFreezeRuntimeInventory() {
+  return {
+    route: currentRoute(),
+    lastInteraction: lastUserInteraction ? { ...lastUserInteraction } : null,
+    lastNavigation: lastNavigationTrace ? { ...lastNavigationTrace, meta: lastNavigationTrace.meta ? { ...lastNavigationTrace.meta } : null } : null,
+    activeOps: copyActiveOps(),
+    runtimeProbe: currentRuntimeProbe(),
+    timers: timerInventorySnapshot(),
+    recentTrace: runtimeTrace.slice(-RUNTIME_TRACE_MAX),
+    performanceEvidence: { ...performanceEvidence },
+    shieldActive: isRuntimePerformanceShieldActive(),
+  };
+}
+
 export function isFreezeWatchEnabled(): boolean {
   if (!hasWindow()) return false;
   try { return window.localStorage.getItem(ENABLED_KEY) === "1"; } catch { return false; }
 }
 
 export function startFreezeWatchIfEnabled(): boolean {
-  if (!hasWindow() || !isFreezeWatchEnabled()) return false;
+  if (!hasWindow()) return false;
+  applyPersistedRuntimePerformanceShield();
+  if (!isFreezeWatchEnabled()) return false;
   if (started) return true;
+  // Si la version précédente a enregistré un hard stall très récent mais n'avait
+  // pas encore le shield automatique, on démarre directement en mode protégé.
+  void getHardFreezeReport().then((report) => {
+    const at = Number(report?.recoveredAt || report?.detectedAt || 0);
+    if (report && Number(report.gapMs || 0) >= 4000 && at > 0 && Date.now() - at <= PERF_SHIELD_DURATION_MS) {
+      if (!isRuntimePerformanceShieldActive()) activateRuntimePerformanceShield("recent-hard-stall", Number(report.gapMs || 0));
+    }
+  }).catch(() => {});
   started = true;
   recoverPreviousInterruptedSession();
   installLifecycleHooks();
@@ -929,6 +1316,11 @@ export function diagnoseHardFreeze(report?: FreezeWatchHardFreezeReport | null) 
       "storage.setItem.large": "écriture localStorage/sessionStorage volumineuse",
       "base64.atob.large": "décodage base64 volumineux",
       "base64.btoa.large": "encodage base64 volumineux",
+      "idb.objectStore.get": "lecture IndexedDB get",
+      "idb.objectStore.getAll": "lecture IndexedDB getAll",
+      "idb.objectStore.openCursor": "parcours IndexedDB cursor",
+      "idb.index.get": "lecture index IndexedDB get",
+      "idb.index.getAll": "lecture index IndexedDB getAll",
     };
     return {
       confidence: "ÉLEVÉE",
@@ -978,6 +1370,34 @@ export function diagnoseHardFreeze(report?: FreezeWatchHardFreezeReport | null) 
     }
   } catch {}
 
+  // V14: correlate the freeze with the timer registry. A timer is only promoted
+  // when it was actually running, or when its callback itself was slow near the
+  // stall. Merely being the last timer tick is not enough (avoids false positives).
+  try {
+    const target = Number(report?.detectedAt || report?.recoveredAt || Date.now());
+    const timers = (Array.isArray(report?.timers) ? report.timers : []) as FreezeTimerDiagnostic[];
+    const candidates = timers
+      .map((timer) => ({
+        timer,
+        distanceMs: timer.running ? 0 : Math.abs(target - Number(timer.lastEndedAt || timer.lastStartedAt || timer.createdAt || 0)),
+      }))
+      .filter(({ timer, distanceMs }) => Boolean(timer.running) || (distanceMs <= 5000 && Number(timer.lastDurationMs || 0) >= 120))
+      .sort((a, b) => Number(b.timer.running) - Number(a.timer.running) || Number(b.timer.lastDurationMs || 0) - Number(a.timer.lastDurationMs || 0) || a.distanceMs - b.distanceMs);
+    const hit = candidates[0];
+    if (hit?.timer) {
+      const t = hit.timer;
+      return {
+        confidence: t.running || Number(t.lastDurationMs || 0) >= 900 ? "ÉLEVÉE" : "MOYENNE/ÉLEVÉE",
+        title: `${t.kind === "interval" ? "setInterval" : "setTimeout"} ${t.handlerName || "anonymous"} — ${Number(t.lastDurationMs || 0)} ms`,
+        detail: t.running
+          ? `Le callback était encore marqué actif au début du gel. Timer créé sur ${t.registeredRoute}, délai ${t.delayMs} ms.`
+          : `Callback timer lent terminé ${hit.distanceMs} ms du gel. Timer créé sur ${t.registeredRoute}, délai ${t.delayMs} ms.`,
+        source: String(t.registrationStack || ""),
+        meta: t,
+      };
+    }
+  } catch {}
+
   const nearest = nearestEvidence(report, snapshotEvidence);
   if (nearest && nearest.distanceMs <= 10_000) {
     const value: any = nearest.value || {};
@@ -992,6 +1412,21 @@ export function diagnoseHardFreeze(report?: FreezeWatchHardFreezeReport | null) 
       source: scriptSource,
       meta: value,
     };
+  }
+
+  const interaction = report?.lastInteraction || null;
+  if (interaction) {
+    const target = Number(report?.detectedAt || report?.recoveredAt || Date.now());
+    const distanceMs = Math.abs(target - Number(interaction.at || 0));
+    if (distanceMs <= 2500) {
+      return {
+        confidence: "MOYENNE",
+        title: `Interaction ${interaction.type}: ${interaction.target || "élément inconnu"}`,
+        detail: `Le gel a commencé ${distanceMs} ms après cette interaction sur la route ${interaction.route || report.route || "?"}. Aucun callback instrumenté plus précis n'était encore actif.`,
+        source: "",
+        meta: { interaction, navigation: report?.lastNavigation || null },
+      };
+    }
   }
 
   const recent = Array.isArray(report.recentTrace) ? report.recentTrace : [];
@@ -1009,9 +1444,9 @@ export function diagnoseHardFreeze(report?: FreezeWatchHardFreezeReport | null) 
   return {
     confidence: "FAIBLE",
     title: "Blocage hors instrumentation JS",
-    detail: "Aucun callback JS instrumenté n'était actif. Suspects restants: rendu/compositing WebView, GC natif, décodage image/audio, plugin Capacitor/JNI ou tâche JS non instrumentée.",
+    detail: `Aucun callback JS instrumenté n'était actif. Suspects restants: rendu/compositing WebView, GC natif, décodage image/audio, plugin Capacitor/JNI ou tâche JS non instrumentée.${report?.lastNavigation ? ` Dernière navigation: ${report.lastNavigation.from} → ${report.lastNavigation.to}.` : ""}${report?.lastInteraction ? ` Dernière interaction: ${report.lastInteraction.type} sur ${report.lastInteraction.target}.` : ""}`,
     source: "",
-    meta: null,
+    meta: { lastInteraction: report?.lastInteraction || null, lastNavigation: report?.lastNavigation || null, timers: report?.timers || [] },
   };
 }
 
@@ -1044,6 +1479,10 @@ export function getFreezeWatchSnapshot() {
     runtimeProbe: currentRuntimeProbe(),
     recentTrace: runtimeTrace.slice(-RUNTIME_TRACE_MAX),
     performanceEvidence: readJson<any>(EVIDENCE_KEY, { ...performanceEvidence }),
+    lastInteraction: lastUserInteraction ? { ...lastUserInteraction } : null,
+    lastNavigation: lastNavigationTrace ? { ...lastNavigationTrace, meta: lastNavigationTrace.meta ? { ...lastNavigationTrace.meta } : null } : null,
+    timers: timerInventorySnapshot(),
+    shieldActive: isRuntimePerformanceShieldActive(),
     device: getDeviceSummary(),
   };
 }

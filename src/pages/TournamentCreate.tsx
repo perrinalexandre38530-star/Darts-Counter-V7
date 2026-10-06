@@ -567,36 +567,6 @@ function readBotsFromLocalStorage(): any[] {
   return [];
 }
 
-// ✅ fingerprint stable: détecte changement localStorage DANS LE MÊME ONGLET (poll)
-function botsFingerprintLS(): string {
-  try {
-    const keys = ["dc_bots_v1", "dc-bots-v1", "dcBotsV1", "darts-counter-bots", "bots"];
-    const chunks: string[] = [];
-    for (const k of keys) {
-      const v = localStorage.getItem(k);
-      if (v) chunks.push(k + ":" + String(v.length));
-    }
-
-    try {
-      let countBotKeys = 0;
-      let sumLen = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k) continue;
-        if (!/bot/i.test(k)) continue;
-        countBotKeys++;
-        const v = localStorage.getItem(k);
-        if (v) sumLen += v.length;
-      }
-      chunks.push("scan:" + countBotKeys + ":" + sumLen);
-    } catch {}
-
-    return chunks.join("|");
-  } catch {
-    return "";
-  }
-}
-
 function getBotsFromStore(store: any) {
   const out: any[] = [];
   const seen = new Set<string>();
@@ -1408,32 +1378,25 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
   const [botsRefresh, setBotsRefresh] = React.useState(0);
 
   React.useEffect(() => {
+    // P0 V13 — aucun polling localStorage haute fréquence sur la création de tournoi.
+    // L'ancien setInterval(700 ms) rescannait les clés BOT et relisait des chaînes
+    // potentiellement volumineuses en permanence. Sur certains WebView Android cela
+    // créait une forte pression mémoire/GC et le timer pouvait survivre assez longtemps
+    // pour apparaître juste avant un hard stall. On passe donc à un rafraîchissement
+    // strictement événementiel.
     const bump = () => setBotsRefresh((x) => x + 1);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") bump();
+    };
     window.addEventListener("focus", bump);
-    document.addEventListener("visibilitychange", bump);
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("storage", bump);
+    window.addEventListener("dc:bots-changed", bump as EventListener);
     return () => {
       window.removeEventListener("focus", bump);
-      document.removeEventListener("visibilitychange", bump);
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("storage", bump);
-    };
-  }, []);
-
-  React.useEffect(() => {
-    let mounted = true;
-    let last = botsFingerprintLS();
-    const tick = () => {
-      if (!mounted) return;
-      const now = botsFingerprintLS();
-      if (now !== last) {
-        last = now;
-        setBotsRefresh((x) => x + 1);
-      }
-    };
-    const t = window.setInterval(tick, 700);
-    return () => {
-      mounted = false;
-      window.clearInterval(t);
+      window.removeEventListener("dc:bots-changed", bump as EventListener);
     };
   }, []);
 

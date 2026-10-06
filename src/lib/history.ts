@@ -5040,6 +5040,23 @@ export async function getX01(id: string): Promise<SavedMatch | null> {
 /* =========================
    Export objet unique History
 ========================= */
+function releaseHistoryRuntimePressure(reason = "performance-shield") {
+  try { __historyGetRecent.clear(); } catch {}
+  try { invalidateHistoryListReadCache(); } catch {}
+  try { invalidateLegacyRowsCache(false); } catch {}
+  try { clearHistoryDbCache(); } catch {}
+  try { destroyHistoryDecodeWorker(new Error(`history runtime pressure release: ${reason}`)); } catch {}
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("msc:performance-shield", () => {
+    // P0 V13 — après un hard stall, libère immédiatement les références lourdes
+    // et ferme le worker/handle IndexedDB. Les prochains écrans reliront seulement
+    // ce dont ils ont réellement besoin.
+    releaseHistoryRuntimePressure("hard-stall");
+  });
+}
+
 export const History = {
   async list() {
     const rows = await list();

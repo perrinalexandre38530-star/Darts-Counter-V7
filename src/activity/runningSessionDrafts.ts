@@ -4,6 +4,7 @@ const DRAFT_DB_NAME = "mss-running-session-drafts-v1";
 const DRAFT_DB_VERSION = 1;
 const DRAFT_STORE = "drafts";
 const FALLBACK_KEY = "mss-running-session-drafts-fallback-v1";
+export const RUNNING_SESSION_DRAFTS_EVENT = "mss:running-session-drafts";
 
 export type RunningSessionDraft = {
   sessionId: string;
@@ -128,6 +129,11 @@ function fallbackWrite(rows: RunningSessionDraft[]) {
   } catch {}
 }
 
+function notifyDraftsChanged(reason: string, sessionId?: string) {
+  if (typeof window === "undefined") return;
+  try { window.dispatchEvent(new CustomEvent(RUNNING_SESSION_DRAFTS_EVENT, { detail: { reason, sessionId: sessionId || null, at: Date.now() } })); } catch {}
+}
+
 export function mergeRunningDraftRoutes(previous: GeoPoint[] | null | undefined, next: GeoPoint[] | null | undefined): GeoPoint[] {
   const a = sanitizeRoute(previous);
   const b = sanitizeRoute(next);
@@ -165,6 +171,7 @@ export async function saveRunningSessionDraft(draft: RunningSessionDraft): Promi
   const rows = fallbackRead().filter((row) => row.sessionId !== clean.sessionId);
   rows.unshift(clean);
   fallbackWrite(rows);
+  notifyDraftsChanged("save", clean.sessionId);
 }
 
 export async function patchRunningSessionDraft(sessionId: string, patch: Partial<RunningSessionDraft>): Promise<RunningSessionDraft | null> {
@@ -225,6 +232,7 @@ export async function deleteRunningSessionDraft(sessionId: string): Promise<void
     db.close();
   } catch {}
   fallbackWrite(fallbackRead().filter((row) => row.sessionId !== sessionId));
+  notifyDraftsChanged("delete", sessionId);
 }
 
 

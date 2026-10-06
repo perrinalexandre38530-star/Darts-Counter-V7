@@ -14,6 +14,7 @@ import {
 import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "./remoteSnapshotRestore";
 import { History } from "./history";
 import LZString from "lz-string";
+import { isConstrainedRuntimeDevice, isRuntimeHidden, isRuntimeNavigationBusy, scheduleRuntimeIdle } from "./runtimePerformance";
 
 const AUTO_RESTORE_PREFIX = "dc_cloud_auto_restore_v2";
 const AUTO_RESTORE_DECLINED_PREFIX = "dc_cloud_auto_restore_declined_v1";
@@ -119,27 +120,47 @@ function ensureCloudHistoryAutoSync(userId: string): void {
   const uid = String(userId || "").trim();
   if (!uid || typeof window === "undefined" || !canAttemptDirectR2FromStoredSession()) return;
   historySyncUserId = uid;
+  const constrained = isConstrainedRuntimeDevice();
 
-  if (historySyncTimer == null) {
-    historySyncTimer = window.setInterval(() => {
+  const runSafely = () => {
+    if (!historySyncUserId) return;
+    // P0 V14: on a phone/PWA, a full R2 history payload must never start while
+    // the user is interacting with the foreground UI. It can run when hidden;
+    // desktop keeps the historical periodic maintenance behaviour.
+    if (constrained && !isRuntimeHidden()) return;
+    if (isRuntimeNavigationBusy()) return;
+    scheduleRuntimeIdle(() => {
       if (!historySyncUserId) return;
+      if (constrained && !isRuntimeHidden()) return;
       void syncLatestCloudHistory(historySyncUserId).catch((error) =>
         console.warn("[cloudAutoRestore] periodic R2 history sync skipped", error)
       );
-    }, 60_000);
+    }, { timeoutMs: 12_000, fallbackDelayMs: constrained ? 1500 : 300 });
+  };
+
+  if (!constrained && historySyncTimer == null) {
+    historySyncTimer = window.setInterval(runSafely, 60_000);
   }
 
   const anyWindow = window as any;
   if (!anyWindow.__dcR2HistoryFocusSyncInstalled) {
     anyWindow.__dcR2HistoryFocusSyncInstalled = true;
-    const run = () => {
-      if (!historySyncUserId) return;
-      void syncLatestCloudHistory(historySyncUserId).catch(() => undefined);
+    const runVisibleDesktop = () => {
+      if (constrained) return;
+      runSafely();
     };
-    window.addEventListener("focus", run);
-    window.addEventListener("online", run);
+    window.addEventListener("focus", runVisibleDesktop);
+    window.addEventListener("online", () => {
+      if (constrained && !isRuntimeHidden()) return;
+      runSafely();
+    });
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") run();
+      // Mobile: hidden is the only automatic window allowed for the heavy sync.
+      if (constrained) {
+        if (document.visibilityState === "hidden") runSafely();
+        return;
+      }
+      if (document.visibilityState === "visible") runSafely();
     });
   }
 }

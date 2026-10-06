@@ -17,7 +17,7 @@ import { startMemoryWatchdog } from "./utils/memoryWatchdog";
 import { installPlayerNameTypography } from "./lib/playerNameTypography";
 import { getRuntimePlatform, isCapacitorNativeRuntime } from "./lib/nativePlatform";
 import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
-import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
+import { isConstrainedRuntimeDevice, isGameplayRuntime, isRuntimeHidden, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
 import { initKeepAwakeRuntime } from "./lib/keepAwake";
 import { installResponsiveLayout } from "./lib/responsiveLayout";
@@ -164,7 +164,13 @@ function startMemoryDiagnosticsSampler() {
   };
 
   update(true);
-  window.setInterval(() => update(false), 10_000);
+  const constrained = isConstrainedRuntimeDevice();
+  window.setInterval(() => {
+    // P0 V14: diagnostics are never allowed to compete with a route transition
+    // or a post-stall protection window on a phone.
+    if (constrained && !isRuntimeHidden() && (isRuntimeNavigationBusy() || isRuntimePerformanceShieldActiveFast())) return;
+    update(false);
+  }, constrained ? 30_000 : 10_000);
 }
 
 startMemoryDiagnosticsSampler();

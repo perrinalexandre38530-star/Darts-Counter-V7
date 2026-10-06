@@ -90,6 +90,8 @@ import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type Organizat
 import { applyOrganizationPlayContext } from "./organizations/organizationPlayContext";
 // MONETIZATION_V1
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
+import { beginRuntimeNavigationQuietPeriod } from "./lib/runtimePerformance";
+import { recordFreezeNavigation } from "./lib/freezeWatch";
 
 import AccountStart from "./pages/AccountStart";
 import AuthV7Login from "./pages/AuthV7Login";
@@ -2330,6 +2332,20 @@ useEffect(() => {
 
     return "gameSelect";
   });
+
+  // P0 V13 — route logique globale pour les garde-fous runtime.
+  // window.location reste souvent sur #/ dans cette app, donc les diagnostics/timers
+  // ne pouvaient pas savoir qu'un callback appartenait à une ancienne page.
+  React.useLayoutEffect(() => {
+    try {
+      const previous = String((window as any).__mscActiveTab || "");
+      const next = String(tab || "");
+      (window as any).__mscActiveTab = next;
+      document.documentElement.dataset.mscActiveTab = next;
+      window.dispatchEvent(new CustomEvent("msc:route-change", { detail: { fromTab: previous, toTab: next, at: Date.now() } }));
+    } catch {}
+  }, [tab]);
+
   const themePageScope = getThemePageScope(tab);
   const themedPageBackground = theme.pageBackground || theme.bg;
   const routedPageBackground = themePageScope === "off"
@@ -2976,6 +2992,10 @@ useEffect(() => {
       (window as any).__mscActiveTab = String(next || "");
       document.documentElement.dataset.mscGameplay = isGameplayRouteName(next) ? "1" : "0";
       document.documentElement.dataset.mscNavigating = "1";
+      // P0 V14: preserve a short quiet window after the visible route commit so
+      // lazy imports/images/background maintenance do not compete with the tap.
+      beginRuntimeNavigationQuietPeriod(1400);
+      recordFreezeNavigation(String(tab || ""), String(next || ""), { source: "App.commitGo" });
     } catch {}
     const commitRouteState = () => {
       setRouteParams(nextParams ?? null);

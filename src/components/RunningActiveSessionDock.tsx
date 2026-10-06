@@ -24,13 +24,14 @@ import {
 import {
   deleteRunningSessionDraft,
   listRecoverableRunningSessionDrafts,
+  RUNNING_SESSION_DRAFTS_EVENT,
   loadRunningSessionDraft,
   mergeRunningDraftRoutes,
   saveRunningSessionDraft,
   type RunningSessionDraft,
 } from "../activity/runningSessionDrafts";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
-import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { isConstrainedRuntimeDevice, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast, scheduleRuntimeIdle } from "../lib/runtimePerformance";
 
 function RunnerIcon({ size = 19 }: { size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -66,10 +67,12 @@ export default function RunningActiveSessionDock({
     let alive = true;
     let cancelIdle: (() => void) | null = null;
     const native = isCapacitorNativeRuntime();
+    const constrained = isConstrainedRuntimeDevice();
 
     const refreshNow = async () => {
       try {
-        if (document.documentElement.dataset.mscNavigating === "1") return;
+        if (isRuntimeNavigationBusy()) return;
+        if (constrained && isRuntimePerformanceShieldActiveFast()) return;
       } catch {}
       const rows = await listRecoverableRunningSessionDrafts(sessions.map((row) => row.id));
       if (alive) setRecoverableDrafts(rows);
@@ -80,17 +83,27 @@ export default function RunningActiveSessionDock({
       cancelIdle = scheduleRuntimeIdle(() => {
         cancelIdle = null;
         void refreshNow();
-      }, { timeoutMs: native ? 7000 : 3000, fallbackDelayMs: native ? 900 : 120 });
+      }, { timeoutMs: native || constrained ? 9000 : 3000, fallbackDelayMs: native || constrained ? 1200 : 120 });
     };
 
-    // listRecoverableRunningSessionDrafts fait un IndexedDB.getAll(). Il ne doit
-    // jamais se battre avec le montage d'une page Android.
+    // V14: this dock is mounted globally. The old web path performed an
+    // IndexedDB.getAll() every 12 seconds even when no Running session existed.
+    // One initial recovery scan + explicit draft/session events is sufficient on
+    // phones. Desktop keeps a slow safety poll.
     refresh();
-    const timer = window.setInterval(refresh, native ? 45000 : 12000);
+    const onDrafts = () => refresh();
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && !constrained) refresh();
+    };
+    window.addEventListener(RUNNING_SESSION_DRAFTS_EVENT, onDrafts as EventListener);
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = constrained ? null : window.setInterval(refresh, native ? 45000 : 30000);
     return () => {
       alive = false;
       cancelIdle?.();
-      window.clearInterval(timer);
+      if (timer != null) window.clearInterval(timer);
+      window.removeEventListener(RUNNING_SESSION_DRAFTS_EVENT, onDrafts as EventListener);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [sessions.map((row) => row.id).join("|")]);
   React.useEffect(() => {

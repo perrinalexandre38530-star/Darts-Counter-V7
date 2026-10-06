@@ -40,3 +40,26 @@
 .read-the-docs {
   color: #888;
 }
+
+/* P0 V13 — hard-stall performance shield.
+   Après un gel récupéré, on coupe temporairement les animations/transitions
+   non essentielles hors gameplay afin de réduire la pression WebView/GPU. */
+html[data-msc-perf-shield="1"]:not([data-msc-gameplay="1"]) *,
+html[data-msc-perf-shield="1"]:not([data-msc-gameplay="1"]) *::before,
+html[data-msc-perf-shield="1"]:not([data-msc-gameplay="1"]) *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* P0 V14 — navigation quiet window.
+   During the first paint of a new lazy route, decorative transitions must not
+   compete with the user's tap on constrained/mobile WebViews. Gameplay is kept
+   untouched. */
+html[data-msc-navigation-quiet="1"]:not([data-msc-gameplay="1"]) *,
+html[data-msc-navigation-quiet="1"]:not([data-msc-gameplay="1"]) *::before,
+html[data-msc-navigation-quiet="1"]:not([data-msc-gameplay="1"]) *::after {
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
