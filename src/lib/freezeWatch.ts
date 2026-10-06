@@ -320,21 +320,16 @@ function isRouteScopedTimerStack(stack: string): boolean {
   return /(?:src\/pages\/|TournamentCreate|(?:Page|Home|Play|Hub|Create)-[A-Za-z0-9_-]+\.js)/i.test(source);
 }
 
-function shouldQuarantineStaleInterval(registeredRoute: string, stack: string, delayMs: number): boolean {
+function shouldQuarantineStaleInterval(registeredRoute: string, stack: string, _delayMs: number): boolean {
   if (!hasWindow()) return false;
   const owner = String(registeredRoute || "").trim();
   const active = currentRoute();
   if (!owner || !active || owner === active) return false;
-  if (!isRouteScopedTimerStack(stack)) return false;
-  // P0 V14: on constrained phones, a timer registered by a page that is no
-  // longer active is a leak by definition. Do not wait for a first 40-second
-  // hard stall before neutralising it.
-  if (isConstrainedFreezeRuntime()) return true;
-  // Le timer TournamentCreate vu dans les hard stalls n'a aucune raison de vivre
-  // après la sortie de la page. On le neutralise même avant activation du shield.
-  if (/TournamentCreate/i.test(stack)) return true;
-  // Desktop: after a hard stall, the shield becomes stricter too.
-  return isRuntimePerformanceShieldActive() && delayMs <= 30_000;
+  // SAFE V14 / ZIP34: the watchdog is passive for generic application timers.
+  // Deferred statistics/profile loaders are legitimate route-scoped callbacks;
+  // auto-killing them caused zero/empty statistics. The one confirmed leak is
+  // TournamentCreate's historical BOT poller, which V13 also removes at source.
+  return /TournamentCreate/i.test(String(stack || ""));
 }
 
 function visibilityState() {
@@ -595,10 +590,8 @@ function installRuntimeInstrumentation() {
         const registrationStack = captureCallsite();
         const registeredRoute = currentRoute();
         return originalWatchRequestIdleCallback((deadline: any) => {
-          if (shouldQuarantineStaleInterval(registeredRoute, registrationStack, Number(options?.timeout || 0))) {
-            pushRuntimeTrace({ at: Date.now(), phase: "evidence", label: "idle.stale-route-quarantined", route: currentRoute(), meta: { registeredRoute, activeRoute: currentRoute(), registrationStack } });
-            postHardFreezeState("state");
-            return;
+          if (registeredRoute && registeredRoute !== currentRoute()) {
+            pushRuntimeTrace({ at: Date.now(), phase: "evidence", label: "idle.route-changed", route: currentRoute(), meta: { registeredRoute, activeRoute: currentRoute(), registrationStack } });
           }
           const token = beginRuntimeProbe("runtime.requestIdleCallback", { handlerName: String(handler?.name || "anonymous"), registeredRoute, registrationStack });
           try { return handler(deadline); }

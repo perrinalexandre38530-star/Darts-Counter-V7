@@ -31,7 +31,7 @@ import {
   type RunningSessionDraft,
 } from "../activity/runningSessionDrafts";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
-import { isConstrainedRuntimeDevice, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast, scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { isConstrainedRuntimeDevice, scheduleRuntimeIdle } from "../lib/runtimePerformance";
 
 function RunnerIcon({ size = 19 }: { size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -70,10 +70,6 @@ export default function RunningActiveSessionDock({
     const constrained = isConstrainedRuntimeDevice();
 
     const refreshNow = async () => {
-      try {
-        if (isRuntimeNavigationBusy()) return;
-        if (constrained && isRuntimePerformanceShieldActiveFast()) return;
-      } catch {}
       const rows = await listRecoverableRunningSessionDrafts(sessions.map((row) => row.id));
       if (alive) setRecoverableDrafts(rows);
     };

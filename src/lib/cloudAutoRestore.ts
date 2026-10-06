@@ -14,7 +14,7 @@ import {
 import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "./remoteSnapshotRestore";
 import { History } from "./history";
 import LZString from "lz-string";
-import { isConstrainedRuntimeDevice, isRuntimeHidden, isRuntimeNavigationBusy, scheduleRuntimeIdle } from "./runtimePerformance";
+import { isConstrainedRuntimeDevice, isRuntimeHidden, scheduleRuntimeIdle } from "./runtimePerformance";
 
 const AUTO_RESTORE_PREFIX = "dc_cloud_auto_restore_v2";
 const AUTO_RESTORE_DECLINED_PREFIX = "dc_cloud_auto_restore_declined_v1";
@@ -128,7 +128,6 @@ function ensureCloudHistoryAutoSync(userId: string): void {
     // the user is interacting with the foreground UI. It can run when hidden;
     // desktop keeps the historical periodic maintenance behaviour.
     if (constrained && !isRuntimeHidden()) return;
-    if (isRuntimeNavigationBusy()) return;
     scheduleRuntimeIdle(() => {
       if (!historySyncUserId) return;
       if (constrained && !isRuntimeHidden()) return;

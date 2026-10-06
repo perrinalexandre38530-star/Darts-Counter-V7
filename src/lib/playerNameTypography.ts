@@ -3,7 +3,7 @@
 // PERF V68: no full IndexedDB/localStorage/document scan every 10 seconds and no
 // characterData observer on every live score update.
 
-import { isConstrainedRuntimeDevice, isGameplayRuntime, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast, scheduleRuntimeIdle } from "./runtimePerformance";
+import { isConstrainedRuntimeDevice, isGameplayRuntime, scheduleRuntimeIdle } from "./runtimePerformance";
 import { getRuntimePlatform } from "./nativePlatform";
 
 const PLAYER_NAME_CLASS = "dc-player-name-jumbo";
@@ -304,7 +304,6 @@ export function installPlayerNameTypography() {
     // runs a whole-document scan during gameplay.
     refreshTimer = window.setInterval(() => {
       if (isGameplayRuntime()) return;
-      if (android && (isRuntimeNavigationBusy() || isRuntimePerformanceShieldActiveFast())) return;
       // On a constrained/mobile runtime never rescan the whole document on a
       // maintenance timer. MutationObserver + explicit profile events already
       // cover visible names.

@@ -7,7 +7,7 @@ import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type
 import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidStoreV1";
 import { dismissBackgroundBackupState, useBackgroundBackupState } from "../lib/backgroundBackup";
 import { dismissBackgroundRestoreState, useBackgroundRestoreState } from "../lib/backgroundRestore";
-import { isConstrainedRuntimeDevice, isRuntimeNavigationBusy, isRuntimePerformanceShieldActiveFast } from "../lib/runtimePerformance";
+import { isConstrainedRuntimeDevice } from "../lib/runtimePerformance";
 
 /**
  * BottomNav
@@ -371,7 +371,6 @@ export default function BottomNav({
     const constrained = isConstrainedRuntimeDevice();
     const run = async (notify = true) => {
       try {
-        if (constrained && (isRuntimeNavigationBusy() || isRuntimePerformanceShieldActiveFast())) return;
         const summary = await pollMessageCenterAndNotify({ notify, updateDocumentTitle: true });
         if (alive) setMessageSummary(summary);
       } catch {

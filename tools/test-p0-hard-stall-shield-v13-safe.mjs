@@ -1,0 +1,15 @@
+import fs from 'node:fs'; import path from 'node:path';
+const root=process.cwd(); const read=f=>fs.readFileSync(path.join(root,f),'utf8'); const assert=(v,m)=>{if(!v)throw new Error(m)};
+const tournament=read('src/pages/TournamentCreate.tsx');
+const watch=read('src/lib/freezeWatch.ts');
+const app=read('src/App.tsx');
+const css=read('src/App.css');
+const bridge=read('src/lib/statsBridge.ts');
+assert(!tournament.includes('setInterval(tick, 700)'), 'TournamentCreate 700ms BOT poller still present');
+assert(tournament.includes('dc:bots-changed'), 'Event-driven BOT refresh missing');
+assert(app.includes('__mscActiveTab'), 'Logical route tracking missing');
+assert(watch.includes('activateRuntimePerformanceShield'), 'Hard-stall shield missing');
+assert(watch.includes('SAFE REBASE ZIP34'), 'Safe quarantine policy missing');
+assert(css.includes('data-msc-perf-shield'), 'Visual performance shield missing');
+assert(bridge.includes('buildStatsIndex'), 'Stats wiring unexpectedly removed');
+console.log('✅ V13 SAFE ZIP34: confirmed poller removed; stats wiring preserved');

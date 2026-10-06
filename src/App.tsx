@@ -90,7 +90,6 @@ import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type Organizat
 import { applyOrganizationPlayContext } from "./organizations/organizationPlayContext";
 // MONETIZATION_V1
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
-import { beginRuntimeNavigationQuietPeriod } from "./lib/runtimePerformance";
 import { recordFreezeNavigation } from "./lib/freezeWatch";
 
 import AccountStart from "./pages/AccountStart";
@@ -2992,9 +2991,8 @@ useEffect(() => {
       (window as any).__mscActiveTab = String(next || "");
       document.documentElement.dataset.mscGameplay = isGameplayRouteName(next) ? "1" : "0";
       document.documentElement.dataset.mscNavigating = "1";
-      // P0 V14: preserve a short quiet window after the visible route commit so
-      // lazy imports/images/background maintenance do not compete with the tap.
-      beginRuntimeNavigationQuietPeriod(1400);
+      // SAFE V14: diagnostic evidence only. Do not defer or cancel background
+      // statistics work from the navigation path.
       recordFreezeNavigation(String(tab || ""), String(next || ""), { source: "App.commitGo" });
     } catch {}
     const commitRouteState = () => {
