@@ -2809,6 +2809,13 @@ useEffect(() => {
         setTab("auth_forgot");
         return;
       }
+      if (h.startsWith("#/competition/")) {
+        const competitionId = decodeURIComponent(h.slice("#/competition/".length).split(/[?#]/)[0] || "").trim();
+        setShowSplash(false);
+        setRouteParams(competitionId ? { id: competitionId, sharedEntry: true } : null);
+        setTab("tournament_view");
+        return;
+      }
       if (h.startsWith("#/online")) {
         setRouteParams(null);
         setTab("online");

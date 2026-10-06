@@ -1,21 +1,39 @@
 type DecodeRequest = {
   id: number;
+  action?: "decode";
   payload: string;
 };
 
+type ReadDecodeRequest = {
+  id: number;
+  action: "read-decode";
+  recordId: string;
+  dbName: string;
+  headerStore: string;
+  detailStore: string;
+  matchIdIndex?: string;
+};
+
+type WorkerRequest = DecodeRequest | ReadDecodeRequest;
+
 type DecodeResponse = {
   id: number;
+  action?: "decode" | "read-decode";
   ok: boolean;
   value: any | null;
+  header?: any | null;
+  found?: boolean;
   stage: string;
   decompressMs: number;
   parseMs: number;
+  idbMs?: number;
   totalMs: number;
+  payloadChars?: number;
   error?: string;
 };
 
 const workerScope = globalThis as unknown as {
-  onmessage: ((event: MessageEvent<DecodeRequest>) => void) | null;
+  onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
   postMessage: (message: DecodeResponse) => void;
 };
 
@@ -329,8 +347,176 @@ function decodePayload(payload: string): Omit<DecodeResponse, "id"> {
   }
 }
 
+
+async function readAndDecodeHistory(request: ReadDecodeRequest): Promise<DecodeResponse> {
+  const totalStart = performance.now();
+  const idbStart = performance.now();
+  let db: IDBDatabase | null = null;
+
+  const reqAsPromise = <T = any>(request: IDBRequest<T>): Promise<T | null> =>
+    new Promise((resolve) => {
+      request.onsuccess = () => resolve((request.result as T) ?? null);
+      request.onerror = () => resolve(null);
+    });
+
+  try {
+    db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(String(request.dbName || ""));
+      const timer = setTimeout(() => reject(new Error("history worker indexedDB.open timeout")), 5000);
+      req.onsuccess = () => {
+        clearTimeout(timer);
+        resolve(req.result);
+      };
+      req.onerror = () => {
+        clearTimeout(timer);
+        reject(req.error || new Error("history worker indexedDB.open failed"));
+      };
+      req.onblocked = () => {
+        clearTimeout(timer);
+        reject(new Error("history worker indexedDB.open blocked"));
+      };
+    });
+
+    if (!db.objectStoreNames.contains(request.headerStore) || !db.objectStoreNames.contains(request.detailStore)) {
+      return {
+        id: request.id,
+        action: "read-decode",
+        ok: false,
+        found: false,
+        value: null,
+        header: null,
+        stage: "idb-stores-missing",
+        decompressMs: 0,
+        parseMs: 0,
+        idbMs: performance.now() - idbStart,
+        totalMs: performance.now() - totalStart,
+      };
+    }
+
+    const tx = db.transaction([request.headerStore, request.detailStore], "readonly");
+    const headers = tx.objectStore(request.headerStore);
+    const details = tx.objectStore(request.detailStore);
+    const recordId = String(request.recordId || "").trim();
+
+    const getByCandidate = async (candidate: string): Promise<any | null> => {
+      if (!candidate) return null;
+      let header = await reqAsPromise<any>(headers.get(candidate));
+      if (header) return header;
+      try {
+        const ixName = String(request.matchIdIndex || "");
+        if (ixName && headers.indexNames.contains(ixName)) {
+          header = await reqAsPromise<any>(headers.index(ixName).get(candidate));
+          if (header) return header;
+        }
+      } catch {}
+      return null;
+    };
+
+    let header = await getByCandidate(recordId);
+    if (!header && recordId.includes(":")) {
+      header = await getByCandidate(recordId.split(":")[0]?.trim() || "");
+    }
+
+    // Legacy safety: only scan when the expected matchId index truly does not exist.
+    if (!header) {
+      let hasMatchIndex = false;
+      try {
+        const ixName = String(request.matchIdIndex || "");
+        hasMatchIndex = !!ixName && headers.indexNames.contains(ixName);
+      } catch {}
+      if (!hasMatchIndex) {
+        header = await new Promise<any | null>((resolve) => {
+          const cursorReq = headers.openCursor();
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (!cursor) return resolve(null);
+            const value: any = cursor.value;
+            if (String(value?.matchId || "") === recordId) return resolve(value);
+            cursor.continue();
+          };
+          cursorReq.onerror = () => resolve(null);
+        });
+      }
+    }
+
+    if (!header) {
+      return {
+        id: request.id,
+        action: "read-decode",
+        ok: false,
+        found: false,
+        value: null,
+        header: null,
+        stage: "idb-not-found",
+        decompressMs: 0,
+        parseMs: 0,
+        idbMs: performance.now() - idbStart,
+        totalMs: performance.now() - totalStart,
+      };
+    }
+
+    const detailKey = String(header?.id ?? recordId);
+    const detail: any = await reqAsPromise<any>(details.get(detailKey));
+    const idbMs = performance.now() - idbStart;
+    const compressed = typeof detail?.payloadCompressed === "string" ? detail.payloadCompressed : "";
+
+    if (!compressed) {
+      return {
+        id: request.id,
+        action: "read-decode",
+        ok: true,
+        found: true,
+        value: null,
+        header,
+        stage: "idb-header-only",
+        decompressMs: 0,
+        parseMs: 0,
+        idbMs,
+        totalMs: performance.now() - totalStart,
+        payloadChars: 0,
+      };
+    }
+
+    const decoded = decodePayload(compressed);
+    return {
+      id: request.id,
+      action: "read-decode",
+      ...decoded,
+      found: true,
+      header,
+      idbMs,
+      payloadChars: compressed.length,
+      totalMs: performance.now() - totalStart,
+    };
+  } catch (error: any) {
+    return {
+      id: request.id,
+      action: "read-decode",
+      ok: false,
+      found: false,
+      value: null,
+      header: null,
+      stage: "idb-worker-error",
+      decompressMs: 0,
+      parseMs: 0,
+      idbMs: performance.now() - idbStart,
+      totalMs: performance.now() - totalStart,
+      error: String(error?.message || error || "history worker read failed"),
+    };
+  } finally {
+    try { db?.close(); } catch {}
+  }
+}
+
 workerScope.onmessage = (event) => {
-  const request = event.data;
-  const decoded = decodePayload(String(request?.payload || ""));
-  workerScope.postMessage({ id: request.id, ...decoded });
+  const request = event.data as WorkerRequest;
+  if ((request as ReadDecodeRequest)?.action === "read-decode") {
+    void readAndDecodeHistory(request as ReadDecodeRequest).then((result) => {
+      workerScope.postMessage(result);
+    });
+    return;
+  }
+
+  const decoded = decodePayload(String((request as DecodeRequest)?.payload || ""));
+  workerScope.postMessage({ id: request.id, action: "decode", ...decoded });
 };

@@ -2047,6 +2047,20 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [challengeAssignment, setChallengeAssignment] = React.useState<"same_for_all"|"rotate"|"random"|"player_choice">("same_for_all");
   const [challengeObjectiveCadence, setChallengeObjectiveCadence] = React.useState<"competition"|"round"|"match">("match");
   const [challengeTieBreak, setChallengeTieBreak] = React.useState<"segment_sum"|"accuracy"|"best_streak">("segment_sum");
+  const [challengeCompetitionFormat, setChallengeCompetitionFormat] = React.useState<"objectives"|"duels"|"free"|"divisions">("objectives");
+  const [challengeAttemptsPerObjective, setChallengeAttemptsPerObjective] = React.useState<1|2|3|4|5>(3);
+  const [challengePointsPreset, setChallengePointsPreset] = React.useState<"standard"|"f1"|"linear">("standard");
+  const [challengeCountBestObjectives, setChallengeCountBestObjectives] = React.useState<number>(0);
+  const [challengeDivisionCount, setChallengeDivisionCount] = React.useState<number>(2);
+  const [challengePromoteCount, setChallengePromoteCount] = React.useState<number>(2);
+  const [challengeRelegateCount, setChallengeRelegateCount] = React.useState<number>(2);
+  const challengePointsTable = React.useMemo(()=>{
+    if(challengePointsPreset==="f1") return [25,18,15,12,10,8,6,4,2,1];
+    if(challengePointsPreset==="linear") return [10,9,8,7,6,5,4,3,2,1];
+    return [25,20,16,13,11,10,9,8,7,6,5,4,3,2,1];
+  },[challengePointsPreset]);
+  const isChallengeCompetition = mode === "challenge";
+  const isChallengePerformanceCompetition = isChallengeCompetition && challengeCompetitionFormat !== "duels";
   const challengeSegmentTargets = React.useMemo(()=>{
     if (challengeObjectiveMode === "fixed") return [challengeTarget];
     if (challengeObjectiveMode === "range") return [];
@@ -2064,9 +2078,10 @@ const petanqueTeamsReady = React.useMemo(() => {
   },[challengeObjectiveMode]);
   React.useEffect(()=>{ if (!challengeCanUseSegmentSum && challengeTieBreak === "segment_sum") setChallengeTieBreak("accuracy"); },[challengeCanUseSegmentSum,challengeTieBreak]);
   const [leagueFormat, setLeagueFormat] = React.useState<"simple" | "return" | "free" | "multi">("simple");
-  const isLeagueMulti = isLeague && leagueFormat === "multi";
-  const isLeagueFree = isLeague && leagueFormat === "free";
+  const isLeagueMulti = isLeague && !isChallengeCompetition && leagueFormat === "multi";
+  const isLeagueFree = isLeague && !isChallengeCompetition && leagueFormat === "free";
   const isParticipantlessLeague = isLeagueMulti || isLeagueFree;
+  const isChallengeParticipantless = isChallengeCompetition && challengeCompetitionFormat === "free";
   const [leagueMultiPaidPlaces, setLeagueMultiPaidPlaces] = React.useState(6);
   const [leagueMultiFirstPoints, setLeagueMultiFirstPoints] = React.useState(10);
   const parsedLeagueMultiPoints = React.useMemo(() => {
@@ -2076,7 +2091,8 @@ const petanqueTeamsReady = React.useMemo(() => {
   }, [leagueMultiPaidPlaces, leagueMultiFirstPoints]);
 
   // ✅ create gate
-  const canCreate = !!name.trim() && !!mode && (isParticipantlessLeague || minPlayersOk) && (!isPetanque || isParticipantlessLeague || (petanqueMultipleOk && petanqueTeamsReady));
+  const challengeParticipantGate = isChallengePerformanceCompetition ? ((registrationCanStartEmpty || isChallengeParticipantless) ? true : (participantKind === "teams" ? (teamsInput || []).length >= 1 : totalSelectedIds.length >= 1)) : minPlayersOk;
+  const canCreate = !!name.trim() && !!mode && (isParticipantlessLeague || (isChallengeCompetition ? challengeParticipantGate : minPlayersOk)) && (!isPetanque || isParticipantlessLeague || (petanqueMultipleOk && petanqueTeamsReady));
 
   const TYPE_INFO: Record<TourFormat, string> = {
     single_ko: "Tableau KO : une défaite = élimination. Rapide et clair.",
@@ -2767,7 +2783,14 @@ async function createTournament() {
       : mode === "challenge"
       ? {
           challenge: true,
-          challengeFormatVersion: 2,
+          challengeFormatVersion: 3,
+          challengeCompetitionFormat,
+          challengeAttemptsPerObjective,
+          challengePointsPreset,
+          challengePointsTable,
+          challengeCountBestObjectives: challengeCountBestObjectives > 0 ? challengeCountBestObjectives : null,
+          challengeDivisions: challengeCompetitionFormat === "divisions" ? { count: challengeDivisionCount, promote: challengePromoteCount, relegate: challengeRelegateCount } : null,
+          allowHistoryLinks: challengeCompetitionFormat === "free",
           target: challengeTarget,
           rule: challengeRule,
           visits: challengeVisits,
@@ -2818,7 +2841,8 @@ async function createTournament() {
         };
 
   const registrationOnly = competitionScope === "online" && enrollmentPolicy !== "fixed" && finalPlayers.length < 2;
-  const stages = registrationOnly ? [] : buildStagesForEngine(format, finalPlayers.length);
+  const challengeNoMatchMode = mode === "challenge" && challengeCompetitionFormat !== "duels";
+  const stages = (registrationOnly || challengeNoMatchMode) ? [] : buildStagesForEngine(format, finalPlayers.length);
   const viewKind = viewKindFromFormat(format);
 
   const tour: Tournament = createTournamentDraft({
@@ -2881,6 +2905,10 @@ async function createTournament() {
       phase: registrationOnly ? "registration" : "competition",
       competitionKind,
       participantKind,
+      challengeCompetitionFormat: mode === "challenge" ? challengeCompetitionFormat : undefined,
+      challengeAttemptsPerObjective: mode === "challenge" ? challengeAttemptsPerObjective : undefined,
+      challengePointsTable: mode === "challenge" ? challengePointsTable : undefined,
+      challengeCountBestObjectives: mode === "challenge" && challengeCountBestObjectives > 0 ? challengeCountBestObjectives : null,
       teamConfrontation: participantKind === "teams" ? teamConfrontation : undefined,
       teams: participantKind === "teams" ? finalPlayers.map((t: any) => ({ id: t.id, name: t.name, memberIds: t.memberIds || [] })) : undefined,
       isPetanque,
@@ -2899,28 +2927,48 @@ async function createTournament() {
   (tour as any).avatarDataUrl = competitionAvatar || null;
   (tour as any).coverDataUrl = competitionCover || null;
   (tour as any).bannerDataUrl = competitionCover || null;
+  (tour as any).shareCode = String((tour as any).shareCode || `MSC-${String((tour as any).id||"").replace(/[^a-z0-9]/gi,"").slice(-8).toUpperCase()}`);
+  if (mode === "challenge") {
+    (tour as any).challengeCompetition = {
+      enabled: true,
+      format: challengeCompetitionFormat,
+      attemptsPerObjective: challengeAttemptsPerObjective,
+      pointsPreset: challengePointsPreset,
+      pointsTable: challengePointsTable,
+      countBestObjectives: challengeCountBestObjectives > 0 ? challengeCountBestObjectives : null,
+      allowHistoryLinks: challengeCompetitionFormat === "free",
+      confrontation: { enabled: challengeCompetitionFormat === "duels", entity: participantKind === "teams" ? "teams" : "players" },
+      divisions: challengeCompetitionFormat === "divisions" ? { enabled: true, count: challengeDivisionCount, promote: challengePromoteCount, relegate: challengeRelegateCount, resetPointsEachCycle: true } : { enabled: false, count: 1, promote: 0, relegate: 0 },
+    };
+  }
 
   // Un tournoi/une ligue créée avec ses affiches doit apparaître directement dans "En cours" / "À reprendre".
   // Le statut "draft" restait caché derrière le filtre Brouillons et donnait l'impression que la création avait échoué.
   (tour as any).status = "running";
 
-  const matches = registrationOnly ? [] : buildInitialMatches(tour);
+  const matches = (registrationOnly || challengeNoMatchMode) ? [] : buildInitialMatches(tour);
 
   try {
     upsertTournamentLocal(tour as any);
     upsertMatchesForTournamentLocal(tour.id, matches as any);
     if (source === "online") {
-      void saveOnlineCompetition({
-        name: tour.name,
-        sport: forceMode || String(mode || "darts"),
-        mode: String(mode || forceMode || "x01"),
-        kind: competitionKind,
-        status: tour.status,
-        tournament: tour,
-        matches: matches as any,
-        participants: (tour as any).players || [],
-        settings: { ...((tour as any).game?.rules || {}), identity: (tour as any).identity || null },
-      }).catch((err) => console.error("[TournamentCreate] online save failed:", err));
+      try {
+        const remote:any = await saveOnlineCompetition({
+          name: tour.name,
+          sport: forceMode || String(mode || "darts"),
+          mode: String(mode || forceMode || "x01"),
+          kind: competitionKind,
+          status: tour.status,
+          tournament: tour,
+          matches: matches as any,
+          participants: (tour as any).players || [],
+          settings: { ...((tour as any).game?.rules || {}), identity: (tour as any).identity || null },
+        });
+        if(remote?.id){
+          (tour as any).onlineCompetitionId=String(remote.id);
+          upsertTournamentLocal(tour as any);
+        }
+      } catch (err) { console.error("[TournamentCreate] online save failed:", err); }
     }
   } catch (e) {
     console.error("[TournamentCreate] persist failed:", e);
@@ -2957,6 +3005,9 @@ const petanqueTeamsUI = React.useMemo(() => {
 
 
   const guidedStepKeys = React.useMemo(() => {
+    if (mode === "challenge") {
+      return ["type", "identity", "participantKind", "participants", "format", "rules", "recap"];
+    }
     if (isLeague && leagueFormat === "multi") {
       return ["type", "identity", "format", "multiRules", "recap"];
     }
@@ -2967,7 +3018,7 @@ const petanqueTeamsUI = React.useMemo(() => {
       return ["type", "identity", "format", "participantKind", "participants", "rules", "recap"];
     }
     return ["type", "identity", "participantKind", "participants", "format", "rules", "recap"];
-  }, [isLeague, leagueFormat]);
+  }, [isLeague, leagueFormat, mode]);
 
   const guidedStepLabels: Record<string, string> = {
     type: "Type",
@@ -4541,6 +4592,10 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
     if (k === "league_return") return { title: "Aller / retour", body: <>Chaque participant rencontre les autres deux fois, une fois à l’aller puis une fois au retour. Idéal pour une vraie saison longue et équilibrée.</> };
     if (k === "league_free") return { title: "Saison libre", body: <>Aucun calendrier figé au départ. Les rencontres sont ajoutées au fil de la saison et alimentent le classement. Pratique pour les clubs où les joueurs ne sont pas toujours présents ensemble.</> };
     if (k === "league_multi") return { title: "Ligue MULTI", body: <>Pensée pour des parties à plusieurs joueurs dans un même match. Le classement distribue des points selon la position finale de chaque participant, au lieu d’un simple duel 1 contre 1.</> };
+    if (k === "challenge_comp_objectives") return { title: "Championnat objectifs", body: <>Chaque participant réalise les mêmes objectifs en solo. Pour chaque objectif, seul le meilleur résultat parmi 1 à 5 essais est retenu. Un classement propre à l’objectif attribue ensuite des points au classement général.</> };
+    if (k === "challenge_comp_duels") return { title: "Confrontations Challenge", body: <>Format classique avec matchs entre joueurs ou entre équipes. Chaque rencontre lance le mode Challenge avec les règles choisies, puis le vainqueur alimente le tableau ou le championnat.</> };
+    if (k === "challenge_comp_free") return { title: "Compétition libre", body: <>Pas de calendrier imposé. Les joueurs disputent leurs parties loisirs quand ils veulent puis l’organisateur rattache les parties Challenge depuis l’historique. Elles alimentent les classements par objectif.</> };
+    if (k === "challenge_comp_divisions") return { title: "Ligues & divisions", body: <>Championnat objectifs organisé en divisions. Les points des classements objectifs forment le classement de chaque division, puis les montées et descentes s’appliquent en fin de cycle.</> };
     if (k === "challenge_fixed") return { title: "Objectif fixe", body: <>Un seul objectif est imposé pour toute la compétition. Exemple : TRIPLES uniquement ou cible 20 uniquement. C’est le format le plus simple à comprendre et à comparer.</> };
     if (k === "challenge_pool") return { title: "Plusieurs objectifs", body: <>Tu définis une liste d’objectifs autorisés. L’application choisit ensuite comment les attribuer selon la règle définie : même objectif, rotation ou aléatoire.</> };
     if (k === "challenge_range") return { title: "Fourchette", body: <>Tu définis une plage numérique continue, par exemple 15 à 20. Les objectifs sont alors pris uniquement dans cette fourchette.</> };
@@ -4709,7 +4764,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           <Section title={guidedStepTitle("participants", "Participants")} subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary} watermark={kindWatermark}>
             <div style={{marginBottom:10,padding:"10px 11px",borderRadius:14,border:`1px solid ${primary}55`,background:"rgba(5,8,13,.96)",boxShadow:"0 8px 24px rgba(0,0,0,.28)"}}>
               <div style={{fontSize:10.5,fontWeight:1000,color:primary}}>👥 C’EST ICI QUE TU AJOUTES LES JOUEURS</div>
-              <div style={{marginTop:4,fontSize:9.5,lineHeight:1.42,opacity:.78}}>{competitionScope === "online" && enrollmentPolicy !== "fixed" ? "Tu peux ajouter des inscrits de départ ou publier sans joueur : les comptes ONLINE pourront ensuite rejoindre selon la politique d’inscription choisie." : isParticipantlessLeague ? "Cette formule accepte aussi une création sans joueur, mais tu pourras ensuite ajouter/inviter les participants depuis la page Administration de la compétition." : "Sélectionne maintenant au moins deux participants. Le créateur pourra ensuite les gérer depuis la page Administration de la compétition."}</div>
+              <div style={{marginTop:4,fontSize:9.5,lineHeight:1.42,opacity:.78}}>{competitionScope === "online" && enrollmentPolicy !== "fixed" ? "Tu peux ajouter des inscrits de départ ou publier sans joueur : les comptes ONLINE pourront ensuite rejoindre selon la politique d’inscription choisie." : (isParticipantlessLeague || isChallengeParticipantless) ? "Cette formule accepte aussi une création sans joueur, mais tu pourras ensuite ajouter/inviter les participants depuis la page Administration de la compétition." : isChallengePerformanceCompetition ? "Ajoute au moins un participant maintenant. Tu pourras compléter le plateau ensuite depuis la page hôte / Administration sans générer de faux matchs." : "Sélectionne maintenant au moins deux participants. Le créateur pourra ensuite les gérer depuis la page Administration de la compétition."}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12.5, opacity: .82 }}>
@@ -4994,9 +5049,26 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         ) : null}
 
         {currentGuidedKey === "format" ? (
-          <Section title={guidedStepTitle("format", "Format")} subtitle={isLeague ? "Choisis le rythme de la ligue." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
+          <Section title={guidedStepTitle("format", "Format")} subtitle={mode === "challenge" ? "Choisis le moteur de compétition Challenge. Les formats de matchs classiques ne sont utilisés que pour Confrontations." : isLeague ? "Choisis le rythme de la ligue." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10 }}>
-              {isLeague ? (
+              {mode === "challenge" ? (
+                <>
+                  <LineOption label="Championnat objectifs" active={challengeCompetitionFormat === "objectives"} onClick={() => { setChallengeCompetitionFormat("objectives"); setFormat("round_robin"); }} onInfo={() => openInfo("challenge_comp_objectives")} primary={primary} />
+                  <LineOption label="Confrontations" active={challengeCompetitionFormat === "duels"} onClick={() => { setChallengeCompetitionFormat("duels"); setFormat(isLeague ? "round_robin" : "single_ko"); }} onInfo={() => openInfo("challenge_comp_duels")} primary={primary} />
+                  <LineOption label="Compétition libre" active={challengeCompetitionFormat === "free"} onClick={() => { setChallengeCompetitionFormat("free"); setFormat("round_robin"); }} onInfo={() => openInfo("challenge_comp_free")} primary={primary} />
+                  <LineOption label="Ligues & divisions" active={challengeCompetitionFormat === "divisions"} onClick={() => { setChallengeCompetitionFormat("divisions"); setFormat("round_robin"); }} onInfo={() => openInfo("challenge_comp_divisions")} primary={primary} />
+                  <div style={{padding:"10px 11px",borderRadius:13,border:`1px solid ${primary}35`,background:"rgba(4,7,12,.94)",fontSize:10.5,lineHeight:1.45}}>
+                    {challengeCompetitionFormat === "objectives" ? "Chaque objectif possède son propre classement. Les points gagnés dans chaque classement sont additionnés pour former le classement général." : challengeCompetitionFormat === "duels" ? "Challenge peut aussi se jouer en confrontations joueur contre joueur ou équipe contre équipe : le moteur de matchs classique reste alors actif." : challengeCompetitionFormat === "free" ? "Aucun calendrier imposé. Les parties Challenge loisirs peuvent être rattachées depuis l’historique et alimenter les classements par objectif." : "Même logique de classements par objectif, répartie en divisions avec montées et descentes à la fin de chaque cycle."}
+                  </div>
+                  {challengeCompetitionFormat !== "duels" ? <div style={{display:"grid",gap:10,padding:"10px 11px",borderRadius:14,border:"1px solid rgba(255,255,255,.09)",background:"rgba(4,7,12,.96)"}}>
+                    <RowTitle label="Essais maximum par objectif"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{([1,2,3,4,5] as const).map(n=><NeonPill key={n} active={challengeAttemptsPerObjective===n} label={`${n} essai${n>1?"s":""}`} onClick={()=>setChallengeAttemptsPerObjective(n)} primary={primary}/>)}</div>
+                    <RowTitle label="Barème du classement général"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengePointsPreset==="standard"} label="STANDARD" onClick={()=>setChallengePointsPreset("standard")} primary={primary}/><NeonPill active={challengePointsPreset==="f1"} label="F1" onClick={()=>setChallengePointsPreset("f1")} primary={primary}/><NeonPill active={challengePointsPreset==="linear"} label="LINÉAIRE" onClick={()=>setChallengePointsPreset("linear")} primary={primary}/></div>
+                    <div style={{fontSize:9.5,opacity:.72}}>Points par position : {challengePointsTable.slice(0,10).map((v,i)=>`${i+1}e=${v}`).join(" · ")}</div>
+                    <RowTitle label="Objectifs comptés au général"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeCountBestObjectives===0} label="TOUS" onClick={()=>setChallengeCountBestObjectives(0)} primary={primary}/>{[3,5,8,10].map(n=><NeonPill key={n} active={challengeCountBestObjectives===n} label={`MEILLEURS ${n}`} onClick={()=>setChallengeCountBestObjectives(n)} primary={primary}/>)}</div>
+                    {challengeCompetitionFormat === "divisions" ? <><RowTitle label="Divisions"/><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}><label style={{fontSize:9}}>NB DIV.<TextInput value={String(challengeDivisionCount)} onChange={(e:any)=>setChallengeDivisionCount(Math.max(1,Math.min(12,Number(e.target.value)||1)))}/></label><label style={{fontSize:9}}>MONTÉES<TextInput value={String(challengePromoteCount)} onChange={(e:any)=>setChallengePromoteCount(Math.max(0,Math.min(10,Number(e.target.value)||0)))}/></label><label style={{fontSize:9}}>DESCENTES<TextInput value={String(challengeRelegateCount)} onChange={(e:any)=>setChallengeRelegateCount(Math.max(0,Math.min(10,Number(e.target.value)||0)))}/></label></div></>:null}
+                  </div>:null}
+                </>
+              ) : isLeague ? (
                 <>
                   <LineOption label="Championnat simple" active={leagueFormat === "simple"} onClick={() => { setLeagueFormat("simple"); setFormat("round_robin"); setRrRounds(1); }} onInfo={() => openInfo("league_simple")} primary={primary} />
                   <LineOption label="Aller / retour" active={leagueFormat === "return"} onClick={() => { setLeagueFormat("return"); setFormat("round_robin"); setRrRounds(2); }} onInfo={() => openInfo("league_return")} primary={primary} />
@@ -5039,12 +5111,12 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                     <LineOption label="Fourchette" active={challengeObjectiveMode==="range"} onClick={()=>setChallengeObjectiveMode("range")} onInfo={()=>openInfo("challenge_range")} primary={primary}/>
                     <LineOption label="Choix du joueur" active={challengeObjectiveMode==="player_choice"} onClick={()=>setChallengeObjectiveMode("player_choice")} onInfo={()=>openInfo("challenge_player")} primary={primary}/>
                   </div>
-                  <div style={{padding:"9px 10px",borderRadius:12,border:`1px solid ${primary}2c`,background:`${primary}0d`,fontSize:10.5,lineHeight:1.4,opacity:.9}}>{challengeObjectiveMode==="fixed"?"Un seul objectif pour toute la compétition.":challengeObjectiveMode==="pool"?"Plusieurs objectifs autorisés, puis attribution automatique selon la règle choisie.":challengeObjectiveMode==="range"?"Une plage continue de numéros autorisés.":"Chaque joueur choisit son objectif parmi la liste proposée avant le match."}</div>
+                  <div style={{padding:"9px 10px",borderRadius:12,border:`1px solid ${primary}2c`,background:`${primary}0d`,fontSize:10.5,lineHeight:1.4,opacity:.9}}>{challengeCompetitionFormat!=="duels" ? (challengeObjectiveMode==="fixed"?"Un seul objectif compose la compétition. Son classement attribue les points du général.":challengeObjectiveMode==="pool"?"Chaque objectif sélectionné possède son propre classement. Les points de tous ces classements sont cumulés au général.":challengeObjectiveMode==="range"?"Tous les numéros de la fourchette deviennent des objectifs distincts avec leur propre classement.":"Chaque joueur choisit les objectifs qu’il souhaite disputer parmi la liste ; le général peut ne compter que ses meilleurs objectifs.") : (challengeObjectiveMode==="fixed"?"Un seul objectif pour toutes les confrontations.":challengeObjectiveMode==="pool"?"Plusieurs objectifs autorisés, attribués selon la règle choisie.":challengeObjectiveMode==="range"?"Une plage continue de numéros autorisés.":"Chaque joueur choisit l’objectif de sa confrontation parmi la liste proposée.")}</div>
                   {challengeObjectiveMode === "fixed" ? <><RowTitle label="Objectif"/><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><NeonPill active={challengeTarget === "any-double"} label="DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); setChallengeObjectives(["any-double"]); }} primary={primary} /><NeonPill active={challengeTarget === "any-triple"} label="TRIPLES" onClick={() => { setChallengeTarget("any-triple"); setChallengeRule("triple"); setChallengeObjectives(["any-triple"]); }} primary={primary} /><NeonPill active={challengeTarget === "bull"} label="BULL" onClick={() => { setChallengeTarget("bull"); setChallengeRule("bull"); setChallengeObjectives(["bull"]); }} primary={primary} />{Array.from({length:20},(_,i)=>20-i).map(n => <NeonPill key={n} active={challengeTarget === String(n)} label={String(n)} onClick={() => { setChallengeTarget(String(n)); setChallengeObjectives([String(n)]); if(challengeRule === "double" || challengeRule === "triple" || challengeRule === "bull" || challengeRule === "bull25" || challengeRule === "bull50") setChallengeRule("all"); }} primary={primary} />)}</div></>:null}
                   {(challengeObjectiveMode === "pool" || challengeObjectiveMode === "player_choice") ? <><RowTitle label="Objectifs autorisés"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{["any-double","any-triple","bull",...Array.from({length:20},(_,i)=>String(20-i))].map(value=>{const on=challengeObjectives.includes(value);const label=value==="any-double"?"DOUBLES":value==="any-triple"?"TRIPLES":value==="bull"?"BULL":value;return <NeonPill key={value} active={on} label={label} onClick={()=>setChallengeObjectives(prev=>on?prev.filter(x=>x!==value):[...prev,value])} primary={primary}/>})}</div></>:null}
                   {challengeObjectiveMode === "range" ? <><RowTitle label="Fourchette de numéros"/><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><label style={{fontSize:11}}>DE <TextInput value={String(challengeRangeFrom)} onChange={(e:any)=>setChallengeRangeFrom(Math.max(1,Math.min(20,Number(e.target.value)||1)))} /></label><label style={{fontSize:11}}>À <TextInput value={String(challengeRangeTo)} onChange={(e:any)=>setChallengeRangeTo(Math.max(1,Math.min(20,Number(e.target.value)||20)))} /></label></div></>:null}
-                  {(challengeObjectiveMode === "pool" || challengeObjectiveMode === "range") ? <><RowTitle label="Attribution"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeAssignment==="same_for_all"} label="MÊME POUR TOUS" onClick={()=>setChallengeAssignment("same_for_all")} primary={primary}/><NeonPill active={challengeAssignment==="rotate"} label="ROTATION" onClick={()=>setChallengeAssignment("rotate")} primary={primary}/><NeonPill active={challengeAssignment==="random"} label="ALÉATOIRE" onClick={()=>setChallengeAssignment("random")} primary={primary}/></div></>:null}
-                  {(challengeObjectiveMode === "pool" || challengeObjectiveMode === "range") ? <><RowTitle label="Quand l’objectif change"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeObjectiveCadence==="competition"} label="COMPÉTITION" onClick={()=>setChallengeObjectiveCadence("competition")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="round"} label="PAR RONDE" onClick={()=>setChallengeObjectiveCadence("round")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="match"} label="PAR MATCH" onClick={()=>setChallengeObjectiveCadence("match")} primary={primary}/></div></>:null}
+                  {challengeCompetitionFormat === "duels" && (challengeObjectiveMode === "pool" || challengeObjectiveMode === "range") ? <><RowTitle label="Attribution"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeAssignment==="same_for_all"} label="MÊME POUR TOUS" onClick={()=>setChallengeAssignment("same_for_all")} primary={primary}/><NeonPill active={challengeAssignment==="rotate"} label="ROTATION" onClick={()=>setChallengeAssignment("rotate")} primary={primary}/><NeonPill active={challengeAssignment==="random"} label="ALÉATOIRE" onClick={()=>setChallengeAssignment("random")} primary={primary}/></div></>:null}
+                  {challengeCompetitionFormat === "duels" && (challengeObjectiveMode === "pool" || challengeObjectiveMode === "range") ? <><RowTitle label="Quand l’objectif change"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeObjectiveCadence==="competition"} label="COMPÉTITION" onClick={()=>setChallengeObjectiveCadence("competition")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="round"} label="PAR RONDE" onClick={()=>setChallengeObjectiveCadence("round")} primary={primary}/><NeonPill active={challengeObjectiveCadence==="match"} label="PAR MATCH" onClick={()=>setChallengeObjectiveCadence("match")} primary={primary}/></div></>:null}
                   <RowTitle label="Nombre de tours"/><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{[5,10,15,20,30,50,100].map(n => <NeonPill key={n} active={challengeVisits === n} label={`${n}`} onClick={() => setChallengeVisits(n)} primary={primary} />)}</div>
                   <RowTitle label="Départage"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeTieBreak==="segment_sum"} label="SOMME SEGMENTS" onClick={()=>setChallengeTieBreak("segment_sum")} disabled={!challengeCanUseSegmentSum} primary={primary}/><NeonPill active={challengeTieBreak==="accuracy"} label="PRÉCISION" onClick={()=>setChallengeTieBreak("accuracy")} primary={primary}/><NeonPill active={challengeTieBreak==="best_streak"} label="MEILLEURE SUITE" onClick={()=>setChallengeTieBreak("best_streak")} primary={primary}/></div>
                   {!challengeCanUseSegmentSum?<div style={{fontSize:9.8,opacity:.58}}>Somme des segments est disponible uniquement quand DOUBLES ou TRIPLES font partie des objectifs.</div>:null}
@@ -5203,7 +5275,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               <div><b style={{ color: primary }}>Source :</b> {source === "online" ? "Online" : "Local"}</div>
               <div><b style={{ color: primary }}>Portée :</b> {competitionScope === "team" ? "ORGANISATION" : competitionScope === "online" ? "ONLINE" : "LOCAL"}</div>
               <div><b style={{ color: primary }}>Participants :</b> {competitionScope === "online" && enrollmentPolicy !== "fixed" ? `Inscriptions ${enrollmentPolicy === "open" ? "ouvertes" : enrollmentPolicy === "approval" ? "sur validation" : "sur invitation"} · ${totalSelectedIds.length} inscrit(s) initial(aux)` : isParticipantlessLeague ? "Dynamiques, ajoutés par les parties" : participantKind === "teams" && !isPetanque ? (teamsInput || []).length : isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
-              <div><b style={{ color: primary }}>Format :</b> {isLeagueMulti ? "Ligue MULTI" : isLeague ? (leagueFormat === "return" ? "Aller / retour" : leagueFormat === "free" ? "Saison libre" : "Championnat simple") : (TYPE_INFO[format] ? format : "—")}</div>
+              <div><b style={{ color: primary }}>Format :</b> {mode === "challenge" ? (challengeCompetitionFormat === "objectives" ? "Championnat objectifs" : challengeCompetitionFormat === "duels" ? "Confrontations" : challengeCompetitionFormat === "free" ? "Compétition libre" : "Ligues & divisions") : isLeagueMulti ? "Ligue MULTI" : isLeague ? (leagueFormat === "return" ? "Aller / retour" : leagueFormat === "free" ? "Saison libre" : "Championnat simple") : (TYPE_INFO[format] ? format : "—")}</div>
               {isLeagueMulti ? <div><b style={{ color: primary }}>Barème :</b> {parsedLeagueMultiPoints.map((p, idx) => `${idx + 1}${idx === 0 ? "er" : "e"}=${p}`).join(" · ")} · puis 0 pt</div> : null}
               <div><b style={{ color: primary }}>Identité :</b> {competitionAvatar ? "Logo OK" : "Sans logo"} · {competitionCover ? "Couverture OK" : "Sans couverture"}</div>
               {selectedNames.length ? <div style={{ opacity: .78 }}>Aperçu : {selectedNames.join(", ")}{selectedNames.length >= 6 ? "…" : ""}</div> : null}
@@ -5942,7 +6014,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
       </Section>
 
       {!isPetanque && mode === "challenge" ? (
-        <Section title="Match — Paramètres Challenge" subtitle="Configuration utilisée pour chaque rencontre de la compétition." accent={primary}>
+        <Section title="Challenge — Programme d’objectifs" subtitle={challengeCompetitionFormat==="duels"?"Configuration utilisée pour les confrontations.":"Objectifs qui alimentent les classements de la compétition."} accent={primary}>
           <RowTitle label="Type de Challenge" />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <NeonPill active={challengeTarget === "any-double"} label="DOUBLES" onClick={() => { setChallengeTarget("any-double"); setChallengeRule("double"); }} primary={primary} />
@@ -5984,8 +6056,18 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         </Section>
       ) : null}
 
+      {mode === "challenge" ? <Section title="Format compétition Challenge" subtitle="Architecture dédiée : performances solo, confrontations, libre ou divisions." accent={primary}>
+        <div style={{display:"grid",gap:9}}>
+          <LineOption label="Championnat objectifs" active={challengeCompetitionFormat==="objectives"} onClick={()=>setChallengeCompetitionFormat("objectives")} onInfo={()=>openInfo("challenge_comp_objectives")} primary={primary}/>
+          <LineOption label="Confrontations" active={challengeCompetitionFormat==="duels"} onClick={()=>setChallengeCompetitionFormat("duels")} onInfo={()=>openInfo("challenge_comp_duels")} primary={primary}/>
+          <LineOption label="Compétition libre" active={challengeCompetitionFormat==="free"} onClick={()=>setChallengeCompetitionFormat("free")} onInfo={()=>openInfo("challenge_comp_free")} primary={primary}/>
+          <LineOption label="Ligues & divisions" active={challengeCompetitionFormat==="divisions"} onClick={()=>setChallengeCompetitionFormat("divisions")} onInfo={()=>openInfo("challenge_comp_divisions")} primary={primary}/>
+          {challengeCompetitionFormat!=="duels"?<><RowTitle label="Essais max / objectif"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{([1,2,3,4,5] as const).map(n=><NeonPill key={n} active={challengeAttemptsPerObjective===n} label={String(n)} onClick={()=>setChallengeAttemptsPerObjective(n)} primary={primary}/>)}</div><RowTitle label="Barème général"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengePointsPreset==="standard"} label="STANDARD" onClick={()=>setChallengePointsPreset("standard")} primary={primary}/><NeonPill active={challengePointsPreset==="f1"} label="F1" onClick={()=>setChallengePointsPreset("f1")} primary={primary}/><NeonPill active={challengePointsPreset==="linear"} label="LINÉAIRE" onClick={()=>setChallengePointsPreset("linear")} primary={primary}/></div></>:null}
+        </div>
+      </Section>:null}
+
       {/* ✅ Format tournoi */}
-      <Section title={isLeague ? "Format de la ligue / championnat" : "Format du tournoi"} subtitle={isPetanque ? "Formats Pétanque (réalistes)." : "Chaque option a son (i) comme TYPE."} accent={primary}>
+      {mode !== "challenge" ? <Section title={isLeague ? "Format de la ligue / championnat" : "Format du tournoi"} subtitle={isPetanque ? "Formats Pétanque (réalistes)." : "Chaque option a son (i) comme TYPE."} accent={primary}>
         <RowTitle label="Type" />
 
         {isPetanque ? (
@@ -6131,7 +6213,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             {format === "round_robin" ? <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>ℹ️ Auto-fill désactivé en Championnat.</div> : null}
           </>
         ) : null}
-      </Section>
+      </Section> : null}
 
       {/* CTA */}
       <div style={{ marginTop: 14 }}>
@@ -6141,7 +6223,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             ⚠️{" "}
             {isPetanque
               ? `Nom + au moins ${petanqueMinPlayers} joueurs + total multiple de ${petanqueTeamSize}.`
-              : "Renseigne un nom, choisis un mode et sélectionne au moins 2 joueurs."}
+              : isChallengePerformanceCompetition ? "Renseigne un nom et ajoute au moins 1 participant (ou utilise un format libre / inscriptions ONLINE)." : "Renseigne un nom, choisis un mode et sélectionne au moins 2 joueurs."}
           </div>
         ) : null}
       </div>

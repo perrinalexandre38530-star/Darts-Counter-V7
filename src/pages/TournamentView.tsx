@@ -53,6 +53,7 @@ import {
 } from "../lib/tournaments/storeLocal";
 
 import { History } from "../lib/history";
+import { getOnlineCompetition, updateOnlineCompetition } from "../lib/tournaments/onlineStore";
 
 type Props = {
   store: Store;
@@ -74,6 +75,7 @@ const TAB_COLORS: Record<string, string> = {
   linked: "#ffd56a",
   stats: "#b6b6ff",
   admin: "#ff6b6b",
+  objectives: "#ffb54a",
 };
 
 function isByeId(x: any) {
@@ -299,6 +301,7 @@ function NeonTopTabsIconsOnly({ tabs, activeKey, onChange }: any) {
     linked: "matches",
     stats: "stats",
     admin: "stats",
+    objectives: "bracket",
   };
 
   return (
@@ -1192,6 +1195,23 @@ function getLinkedPointsAwarded(link: any, tour: any) {
   return Array.isArray(link?.pointsAwarded) ? link.pointsAwarded : [];
 }
 
+function normalizeChallengeObjective(value: any) {
+  const v = String(value || "").trim().toLowerCase();
+  if (v === "bull25" || v === "bull50" || v === "bull") return "bull";
+  if (v === "any-double" || v === "double" || v === "doubles") return "any-double";
+  if (v === "any-triple" || v === "triple" || v === "triples") return "any-triple";
+  return v || "20";
+}
+
+function challengeObjectiveLabel(value: any) {
+  const v = normalizeChallengeObjective(value);
+  return v === "any-double" ? "DOUBLES" : v === "any-triple" ? "TRIPLES" : v === "bull" ? "BULL" : v;
+}
+
+function historyChallengeObjective(rec: any) {
+  return normalizeChallengeObjective(rec?.payload?.config?.target ?? rec?.config?.target ?? rec?.game?.target ?? rec?.summary?.target ?? rec?.payload?.summary?.target ?? rec?.objective ?? "20");
+}
+
 function buildLinkedHistoryEntry(rec: any, tour: any) {
   const historyMatchId = getHistoryRowId(rec);
   const ranking = getHistoryRanking(rec).map((r: any, idx: number) => ({ ...r, rank: Math.max(1, Number(r?.rank || idx + 1) || idx + 1) }));
@@ -1211,6 +1231,7 @@ function buildLinkedHistoryEntry(rec: any, tour: any) {
     players: getHistoryPlayers(rec),
     ranking,
     pointsAwarded,
+    challengeObjective: String(getHistoryMode(rec) || "").toLowerCase() === "challenge" ? historyChallengeObjective(rec) : null,
   };
 }
 
@@ -1795,6 +1816,7 @@ export default function TournamentView({ store, go, id }: Props) {
   const [adminAdminPickerOpen, setAdminAdminPickerOpen] = React.useState(false);
   const [adminDraftName, setAdminDraftName] = React.useState("");
   const [adminNotice, setAdminNotice] = React.useState("");
+  const [shareNotice, setShareNotice] = React.useState("");
 
   // ✅ PÉTANQUE : cache score par historyMatchId
   const [petScoresByHistoryId, setPetScoresByHistoryId] = React.useState<ScoreMap>({});
@@ -1957,6 +1979,69 @@ export default function TournamentView({ store, go, id }: Props) {
     const raw = (tour as any)?.linkedMatches ?? (tour as any)?.meta?.linkedMatches ?? [];
     return Array.isArray(raw) ? raw : [];
   }, [tour]);
+
+  const challengeRules:any = (tour as any)?.game?.rules || {};
+  const challengeCompetition:any = (tour as any)?.challengeCompetition || {};
+  const isChallengeCompetition = String((tour as any)?.game?.mode || "").toLowerCase() === "challenge";
+  const challengeCompetitionFormat = String(challengeCompetition?.format || challengeRules?.challengeCompetitionFormat || "duels");
+  const isChallengePerformanceCompetition = isChallengeCompetition && challengeCompetitionFormat !== "duels";
+  const challengeAttemptsPerObjective = Math.max(1, Math.min(5, Number(challengeCompetition?.attemptsPerObjective || challengeRules?.challengeAttemptsPerObjective || 3) || 3));
+  const challengePointsTable:number[] = Array.isArray(challengeCompetition?.pointsTable) && challengeCompetition.pointsTable.length ? challengeCompetition.pointsTable.map((n:any)=>Math.max(0,Number(n)||0)) : Array.isArray(challengeRules?.challengePointsTable) && challengeRules.challengePointsTable.length ? challengeRules.challengePointsTable.map((n:any)=>Math.max(0,Number(n)||0)) : [25,20,16,13,11,10,9,8,7,6,5,4,3,2,1];
+  const challengeObjectives = React.useMemo(()=>{
+    if(!isChallengeCompetition) return [] as string[];
+    const mode=String(challengeRules?.objectiveMode||"fixed");
+    let values:string[]=[];
+    if(mode==="range"){
+      const a=Math.max(1,Math.min(20,Number(challengeRules?.objectiveRange?.from)||1));
+      const b=Math.max(1,Math.min(20,Number(challengeRules?.objectiveRange?.to)||20));
+      const lo=Math.min(a,b),hi=Math.max(a,b);
+      values=Array.from({length:hi-lo+1},(_,i)=>String(lo+i));
+    }else{
+      const arr=Array.isArray(challengeRules?.objectiveTargets)?challengeRules.objectiveTargets:[];
+      values=arr.length?arr:[challengeRules?.target||"20"];
+    }
+    return Array.from(new Set(values.map(normalizeChallengeObjective).filter(Boolean)));
+  },[isChallengeCompetition,challengeRules]);
+  const challengeObjectiveStandings = React.useMemo(()=>{
+    const out:Record<string,any[]>={};
+    if(!isChallengePerformanceCompetition) return out;
+    for(const objective of challengeObjectives){
+      const attemptsByPlayer=new Map<string,any[]>();
+      const relevant=linkedHistoryMatches.filter((link:any)=>normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective)===objective).slice().sort((a:any,b:any)=>Number(a?.createdAt||0)-Number(b?.createdAt||0));
+      for(const link of relevant){
+        for(const row of Array.isArray(link?.ranking)?link.ranking:[]){
+          const pid=String(row?.playerId||row?.id||""); if(!pid) continue;
+          const score=Number(row?.score??row?.points??row?.bestScore??row?.best??0)||0;
+          const tie=Number(row?.tieBreakPoints??row?.segmentSum??0)||0;
+          const arr=attemptsByPlayer.get(pid)||[];
+          if(arr.length<challengeAttemptsPerObjective){arr.push({score,tie,link});attemptsByPlayer.set(pid,arr);}
+        }
+      }
+      const rows=Array.from(attemptsByPlayer.entries()).map(([playerId,attempts])=>{
+        const best=attempts.slice().sort((a,b)=>b.score-a.score||b.tie-a.tie)[0]||{score:0,tie:0};
+        return {playerId,name:playersById[playerId]?.name||"Joueur",score:best.score,tie:best.tie,attempts:attempts.length};
+      }).sort((a,b)=>b.score-a.score||b.tie-a.tie||a.name.localeCompare(b.name));
+      out[objective]=rows.map((row,index)=>({...row,rank:index+1,championshipPoints:Number(challengePointsTable[index]||0)}));
+    }
+    return out;
+  },[isChallengePerformanceCompetition,challengeObjectives,linkedHistoryMatches,challengeAttemptsPerObjective,challengePointsTable,playersById]);
+  const challengeGeneralStandings = React.useMemo(()=>{
+    const map=new Map<string,any>();
+    for(const objective of challengeObjectives){
+      for(const row of challengeObjectiveStandings[objective]||[]){
+        const prev=map.get(row.playerId)||{playerId:row.playerId,name:row.name,points:0,wins:0,podiums:0,objectives:0};
+        prev.points+=Number(row.championshipPoints||0); prev.objectives++; if(row.rank===1)prev.wins++; if(row.rank<=3)prev.podiums++; map.set(row.playerId,prev);
+      }
+    }
+    const countBest=Math.max(0,Number(challengeCompetition?.countBestObjectives||challengeRules?.challengeCountBestObjectives||0)||0);
+    if(countBest>0){
+      for(const [pid,row] of map){
+        const pts=challengeObjectives.map(o=>(challengeObjectiveStandings[o]||[]).find((r:any)=>r.playerId===pid)?.championshipPoints||0).sort((a,b)=>b-a).slice(0,countBest);
+        row.points=pts.reduce((a:number,b:number)=>a+Number(b||0),0); map.set(pid,row);
+      }
+    }
+    return Array.from(map.values()).sort((a,b)=>b.points-a.points||b.wins-a.wins||b.podiums-a.podiums||a.name.localeCompare(b.name)).map((row,index)=>({...row,rank:index+1}));
+  },[challengeObjectives,challengeObjectiveStandings,challengeCompetition,challengeRules]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
@@ -2372,8 +2457,18 @@ async function createSyntheticHistoryForSimulation(args: any) {
     async function load() {
       setLoading(true);
       try {
-        const t = await getTournamentLocal(id);
-        const ms = await listMatchesForTournamentLocal(id);
+        let t:any = await getTournamentLocal(id);
+        let ms:any = await listMatchesForTournamentLocal(id);
+        if (!t) {
+          try {
+            const remote:any = await getOnlineCompetition(id);
+            if (remote?.id) {
+              t = remote;
+              const remoteMatches = remote?.__onlineRow?.payload?.matches ?? remote?.__onlineRow?.matches ?? remote?.matches ?? [];
+              ms = Array.isArray(remoteMatches) ? remoteMatches : [];
+            }
+          } catch {}
+        }
         if (!alive) return;
 
         setTour((t as any) ?? null);
@@ -2468,6 +2563,10 @@ async function createSyntheticHistoryForSimulation(args: any) {
     try {
       await upsertTournamentLocal(nextTour as any);
       await upsertMatchesForTournamentLocal((nextTour as any).id, stabilized as any);
+      const remoteId=String((nextTour as any).onlineCompetitionId||"");
+      if(remoteId){
+        try{await updateOnlineCompetition(remoteId,{name:(nextTour as any).name,status:(nextTour as any).status,tournament:nextTour as any,matches:stabilized as any,participants:(nextTour as any).players||[],settings:{...((nextTour as any).game?.rules||{}),identity:(nextTour as any).identity||null}} as any)}catch(e){console.error("[TournamentView] online sync failed:",e)}
+      }
     } catch (e) {
       console.error("[TournamentView] persist error:", e);
     }
@@ -2577,7 +2676,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
       }
 
       let nextMatches: any[] = Array.isArray(safeMatches) ? safeMatches.slice() : [];
-      if (!isLeagueMulti) {
+      if (!isLeagueMulti && !isChallengePerformanceCompetition) {
         const existingByHistory = new Set(nextMatches.map((m: any) => String(m?.historyMatchId || "")).filter(Boolean));
         for (const link of entries) {
           const hid = String(link?.historyMatchId || "");
@@ -2635,7 +2734,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     } finally {
       setAttachLoading(false);
     }
-  }, [tour, attachSelected, attachRows, safeMatches, isLeagueMulti, persist]);
+  }, [tour, attachSelected, attachRows, safeMatches, isLeagueMulti, isChallengePerformanceCompetition, persist]);
 
   const onStartMatch = React.useCallback(
     async (matchId: string) => {
@@ -2715,11 +2814,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
   const TABS = React.useMemo(() => {
     const admin = isCompetitionAdmin ? ["admin"] : [];
+    if (isChallengePerformanceCompetition) return ["home", "objectives", "standings", "linked", "stats", ...admin];
     if (viewKind === "single_ko") return ["home", "bracket", "matches", "linked", "stats", ...admin];
     if (viewKind === "double_ko") return ["home", "bracket", "matches", "linked", "repechage", "stats", ...admin];
     if (viewKind === "round_robin") return ["home", "standings", "matches", "linked", "stats", ...admin];
     return ["home", "pools", "standings", "bracket", "matches", "linked", ...(repechageEnabled ? ["repechage"] : []), "stats", ...admin];
-  }, [viewKind, repechageEnabled, isCompetitionAdmin]);
+  }, [viewKind, repechageEnabled, isCompetitionAdmin, isChallengePerformanceCompetition]);
 
   const [tab, setTab] = React.useState<string>("home");
   React.useEffect(() => {
@@ -2737,6 +2837,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     linked: "Liées",
     stats: "Stats",
     admin: "Administration",
+    objectives: "Objectifs",
   };
 
   const [activeGroupIdx, setActiveGroupIdx] = React.useState(0);
@@ -3121,12 +3222,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
   const addCompetitionPlayer = async (profile:any) => {
     if(!tour) return;
     const nextPlayers=[...tournamentPlayers,profileToTournamentPlayer(profile)];
-    await saveTournamentAdmin({players:nextPlayers}, true);
+    await saveTournamentAdmin({players:nextPlayers}, !isChallengePerformanceCompetition);
     setAdminPlayerPickerOpen(false);
   };
   const removeCompetitionPlayer = async (playerId:string) => {
     const nextPlayers=tournamentPlayers.filter((p:any)=>String(p?.id)!==String(playerId));
-    await saveTournamentAdmin({players:nextPlayers}, true);
+    await saveTournamentAdmin({players:nextPlayers}, !isChallengePerformanceCompetition);
   };
   const addCompetitionAdmin = async (profileId:string) => {
     await saveTournamentAdmin({adminProfileIds:Array.from(new Set([...adminProfileIds,String(profileId)]))});
@@ -3134,6 +3235,20 @@ async function createSyntheticHistoryForSimulation(args: any) {
   };
   const removeCompetitionAdmin = async (profileId:string) => {
     await saveTournamentAdmin({adminProfileIds:adminProfileIds.filter(id=>id!==String(profileId))});
+  };
+  const shareCompetition = async () => {
+    if(!tour) return;
+    const directUrl = `${window.location.origin}${window.location.pathname}#/competition/${encodeURIComponent(String((tour as any).onlineCompetitionId || (tour as any).id || id))}`;
+    const shareCode = String((tour as any).shareCode || `MSC-${String((tour as any).id||id).replace(/[^a-z0-9]/gi,"").slice(-8).toUpperCase()}`);
+    const cloudReady = String((tour as any).source||"") === "online" || String((tour as any).competitionScope||"") === "online" || Boolean((tour as any).onlineCompetitionId);
+    const text = `${String((tour as any).name||"Compétition MULTISPORTS SCORING")} · Code ${shareCode}${cloudReady ? ` · ${directUrl}` : ""}`;
+    try {
+      if (cloudReady && navigator.share) await navigator.share({title:String((tour as any).name||"Compétition"),text,url:directUrl});
+      else if (navigator.clipboard) await navigator.clipboard.writeText(cloudReady ? directUrl : text);
+      setShareNotice(cloudReady ? "Lien de consultation copié / partagé." : "Code de compétition copié. Pour un suivi depuis un autre téléphone, publie la compétition en ONLINE.");
+    } catch {
+      try { await navigator.clipboard?.writeText(cloudReady ? directUrl : text); setShareNotice("Accès copié."); } catch {}
+    }
   };
 
   return (
@@ -3218,7 +3333,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button
+          {!isChallengePerformanceCompetition ? <button
             type="button"
             onClick={simulateTournament}
             title="Simuler le tournoi"
@@ -3234,7 +3349,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
             }}
           >
             <Icon name="play" color="#ffcf57" />
-          </button>
+          </button> : null}
 
           <button
             type="button"
@@ -3282,12 +3397,17 @@ async function createSyntheticHistoryForSimulation(args: any) {
       </div>
 
       {tour ? <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7,margin:"10px 0 12px"}}>
-        {[
+        {(isChallengePerformanceCompetition ? [
+          ["PARTICIPANTS",Array.isArray((tour as any)?.players)?(tour as any).players.length:0,"#ffcf57"],
+          ["OBJECTIFS",challengeObjectives.length,"#ffb54a"],
+          ["ESSAIS LIÉS",linkedHistoryMatches.length,"#65e6a2"],
+          ["ESSAIS MAX",challengeAttemptsPerObjective,"#ffe68a"],
+        ] : [
           ["PARTICIPANTS",Array.isArray((tour as any)?.players)?(tour as any).players.length:0,"#ffcf57"],
           ["À JOUER",playableMatches.length,"#4fb4ff"],
           ["TERMINÉS",doneMatches.length,"#65e6a2"],
           ["LIÉS",linkedHistoryMatches.length,"#ffe68a"],
-        ].map(([label,value,accent]:any)=><div key={label} style={{minWidth:0,borderRadius:13,border:`1px solid ${accent}33`,background:`linear-gradient(180deg,${accent}12,rgba(5,8,14,.78))`,padding:"8px 6px",textAlign:"center"}}><b style={{display:"block",fontSize:18,color:accent,lineHeight:1}}>{value}</b><span style={{display:"block",marginTop:4,fontSize:7.4,fontWeight:1000,opacity:.72,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span></div>)}
+        ]).map(([label,value,accent]:any)=><div key={label} style={{minWidth:0,borderRadius:13,border:`1px solid ${accent}33`,background:`linear-gradient(180deg,${accent}12,rgba(5,8,14,.92))`,padding:"8px 6px",textAlign:"center"}}><b style={{display:"block",fontSize:18,color:accent,lineHeight:1}}>{value}</b><span style={{display:"block",marginTop:4,fontSize:7.4,fontWeight:1000,opacity:.82,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span></div>)}
       </div>:null}
 
       {loading ? (
@@ -3307,7 +3427,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 <div style={{marginTop:8,padding:10,borderRadius:14,background:"rgba(4,7,12,.97)",border:"1px solid rgba(255,255,255,.10)"}}>
                   <div style={{fontSize:8,opacity:.62,fontWeight:900}}>ORGANISATEUR</div><div style={{fontSize:11,fontWeight:1000,marginTop:3}}>{(tour as any)?.hostOrganizationName || playersById[ownerProfileId]?.name || "Créateur de la compétition"}</div>
                 </div>
-                {isCompetitionAdmin?<button type="button" onClick={()=>setTab("admin")} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:12,border:"1px solid rgba(255,107,107,.45)",background:"rgba(90,15,20,.92)",color:"#fff",fontWeight:1000,cursor:"pointer"}}>⚙ GÉRER LA COMPÉTITION</button>:null}
+                <div style={{display:"grid",gridTemplateColumns:isCompetitionAdmin?"1fr 1fr":"1fr",gap:7,marginTop:9}}>
+                  {isCompetitionAdmin?<button type="button" onClick={()=>setTab("admin")} style={{minHeight:38,borderRadius:12,border:"1px solid rgba(255,107,107,.45)",background:"rgba(90,15,20,.92)",color:"#fff",fontWeight:1000,cursor:"pointer"}}>⚙ GÉRER</button>:null}
+                  <button type="button" onClick={shareCompetition} style={{minHeight:38,borderRadius:12,border:"1px solid rgba(79,180,255,.42)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000,cursor:"pointer"}}>↗ PARTAGER</button>
+                </div>
+                {shareNotice?<div style={{marginTop:7,fontSize:8.5,lineHeight:1.35,opacity:.72}}>{shareNotice}</div>:null}
               </Card>
               {autoQualified.length ? (
                 <Card
@@ -3344,10 +3468,17 @@ async function createSyntheticHistoryForSimulation(args: any) {
               ) : null}
 
               <div style={{display:"grid",gap:10}}>
-                <div style={{borderRadius:18,border:"1px solid rgba(79,180,255,.24)",background:"linear-gradient(180deg,rgba(12,21,30,.98),rgba(5,8,13,.99))",padding:12}}>
+                {isChallengePerformanceCompetition ? <div style={{borderRadius:18,border:"1px solid rgba(255,181,74,.28)",background:"linear-gradient(180deg,rgba(38,25,8,.98),rgba(5,8,13,.99))",padding:12}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>🎯 CHALLENGE · {challengeCompetitionFormat === "objectives" ? "CHAMPIONNAT OBJECTIFS" : challengeCompetitionFormat === "free" ? "COMPÉTITION LIBRE" : "LIGUES & DIVISIONS"}</b><div style={{fontSize:9,opacity:.72,marginTop:3}}>Pas de faux matchs : chaque objectif possède son classement, puis les points sont cumulés au général.</div></div><MiniBadge label="Essais / objectif" value={challengeAttemptsPerObjective} accent={TAB_COLORS.objectives}/></div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>{challengeObjectives.map(obj=><button key={obj} onClick={()=>setTab("objectives")} style={{borderRadius:999,border:"1px solid rgba(255,181,74,.35)",background:"rgba(255,181,74,.08)",color:"#fff",padding:"7px 9px",fontWeight:1000,fontSize:8.5}}>{challengeObjectiveLabel(obj)}</button>)}</div>
+                  <div style={{display:"grid",gridTemplateColumns:isCompetitionAdmin?"1fr 1fr":"1fr",gap:7,marginTop:10}}>
+                    <button type="button" onClick={loadAttachableHistory} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(255,230,138,.32)",background:"rgba(72,55,12,.92)",color:"#fff",fontWeight:1000}}>＋ AJOUTER UN ESSAI / HISTORIQUE</button>
+                    {isCompetitionAdmin?<button type="button" onClick={()=>{setTab("admin");setAdminPlayerPickerOpen(true)}} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>＋ AJOUTER DES JOUEURS</button>:null}
+                  </div>
+                </div> : <div style={{borderRadius:18,border:"1px solid rgba(79,180,255,.24)",background:"linear-gradient(180deg,rgba(12,21,30,.98),rgba(5,8,13,.99))",padding:12}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:playableMatches.length?9:0}}><div><b style={{fontSize:13,color:TAB_COLORS.home}}>⚡ PROCHAINS MATCHS</b><div style={{fontSize:9,opacity:.65,marginTop:2}}>{playableMatches.length?"Lance directement une rencontre prête à jouer.":"Aucune rencontre jouable actuellement."}</div></div><MiniBadge label="À jouer" value={playableMatches.length} accent={TAB_COLORS.home}/></div>
                   {playableMatches.length?<div style={{display:"grid",gap:8}}>{playableMatches.slice(0,4).map((m:any)=>renderMatchCard(m,TAB_COLORS.home))}</div>:null}
-                </div>
+                </div>}
                 <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10}}>
                   <div style={{borderRadius:18,border:"1px solid rgba(101,230,162,.22)",background:"linear-gradient(180deg,rgba(8,22,17,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.standings}}>✓ RÉSULTATS</b><strong style={{color:TAB_COLORS.standings,fontSize:16}}>{doneMatches.length}</strong></div>
@@ -3398,10 +3529,30 @@ async function createSyntheticHistoryForSimulation(args: any) {
             </Card>
           ) : null}
 
+          {/* CHALLENGE OBJECTIVES */}
+          {tab === "objectives" && isChallengePerformanceCompetition ? (
+            <Card title="Objectifs Challenge" subtitle={`Chaque objectif conserve le meilleur résultat dans la limite de ${challengeAttemptsPerObjective} essai${challengeAttemptsPerObjective>1?"s":""}.`} accent={TAB_COLORS.objectives} icon="🎯">
+              <div style={{display:"grid",gap:10}}>
+                {challengeObjectives.length ? challengeObjectives.map((objective:any)=>{
+                  const rows=challengeObjectiveStandings[objective]||[];
+                  return <section key={objective} style={{borderRadius:15,border:"1px solid rgba(255,181,74,.22)",background:"rgba(4,7,12,.97)",padding:11}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>{challengeObjectiveLabel(objective)}</b><div style={{fontSize:8.5,opacity:.62,marginTop:2}}>Classement de l’objectif · meilleur essai retenu</div></div><MiniBadge label="Classés" value={rows.length} accent={TAB_COLORS.objectives}/></div>
+                    {rows.length?<div style={{display:"grid",gap:6,marginTop:9}}>{rows.slice(0,10).map((row:any)=><div key={row.playerId} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row.rank<=3?TAB_COLORS.objectives:"#fff"}}>#{row.rank}</strong><span style={{fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span style={{fontSize:8,opacity:.62}}>{row.attempts}/{challengeAttemptsPerObjective} essai{row.attempts>1?"s":""}</span><b style={{color:"#65e6a2"}}>{row.score} · +{row.championshipPoints} pts</b></div>)}</div>:<div style={{marginTop:9,fontSize:9.5,opacity:.62}}>Aucun résultat rattaché pour cet objectif.</div>}
+                  </section>
+                }):<div style={{fontSize:10,opacity:.7}}>Aucun objectif configuré.</div>}
+              </div>
+            </Card>
+          ) : null}
+
           {/* STANDINGS */}
           {tab === "standings" ? (
-            <Card title="Classement" subtitle={viewKind === "round_robin" ? (isAveragePointsLeague ? "Classement par moyenne de points par match." : "Classement du championnat.") : "Classement par poule."} accent={TAB_COLORS.standings} icon="🏁">
-              {viewKind === "round_robin" ? (
+            <Card title={isChallengePerformanceCompetition?"Classement général":"Classement"} subtitle={isChallengePerformanceCompetition?"Somme des points obtenus dans les classements de chaque objectif.":viewKind === "round_robin" ? (isAveragePointsLeague ? "Classement par moyenne de points par match." : "Classement du championnat.") : "Classement par poule."} accent={TAB_COLORS.standings} icon="🏁">
+              {isChallengePerformanceCompetition ? (
+                <div style={{display:"grid",gap:7}}>
+                  <div style={{fontSize:9,opacity:.68,marginBottom:2}}>Barème : {challengePointsTable.slice(0,10).map((v,i)=>`${i+1}e=${v}`).join(" · ")}</div>
+                  {challengeGeneralStandings.length?challengeGeneralStandings.map((row:any)=><div key={row.playerId} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"9px 10px",borderRadius:11,border:"1px solid rgba(255,255,255,.08)",background:"#080d14"}}><strong style={{color:row.rank<=3?TAB_COLORS.standings:"#fff"}}>#{row.rank}</strong><div style={{minWidth:0}}><b style={{display:"block",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</b><span style={{display:"block",marginTop:2,fontSize:7.8,opacity:.62}}>{row.wins} victoire{row.wins>1?"s":""} d’objectif · {row.podiums} podium{row.podiums>1?"s":""} · {row.objectives} objectif{row.objectives>1?"s":""} classé{row.objectives>1?"s":""}</span></div><b style={{fontSize:16,color:TAB_COLORS.standings}}>{row.points} pts</b></div>):<div style={{fontSize:10,opacity:.68}}>Le classement général apparaîtra dès qu’un résultat Challenge sera rattaché à un objectif.</div>}
+                </div>
+              ) : viewKind === "round_robin" ? (
                 <>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <MiniBadge label={isLeagueMulti ? "Parties liées" : "Matchs"} value={isLeagueMulti ? linkedHistoryMatches.length : byPhase.groups.length} accent={TAB_COLORS.standings} />
@@ -3639,8 +3790,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   <div style={{display:"grid",gap:6,marginTop:9}}><div style={{padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,207,87,.18)",fontSize:9.5}}><b>PROPRIÉTAIRE</b> · {allProfiles.find((p:any)=>String(p.id)===ownerProfileId)?.name||"Créateur"}</div>{adminProfileIds.map(pid=><div key={pid} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:9.5}}>{allProfiles.find((p:any)=>String(p.id)===pid)?.name||pid}</b><button onClick={()=>removeCompetitionAdmin(pid)} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000}}>RETIRER</button></div>)}</div>
                 </section>
                 <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
-                  <b style={{color:"#b6b6ff",fontSize:11}}>OUTILS DE GESTION</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Les matchs et résultats restent éditables dans l’onglet Matchs. La reconstruction du calendrier est possible uniquement avant le premier résultat.</div>
-                  <button disabled={doneMatches.length>0 || tournamentPlayers.length<2} onClick={()=>saveTournamentAdmin({},true)} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.35)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(doneMatches.length>0||tournamentPlayers.length<2)?.35:1}}>RECONSTRUIRE LE CALENDRIER</button>
+                  <b style={{color:"#b6b6ff",fontSize:11}}>OUTILS DE GESTION</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>{isChallengePerformanceCompetition?"Challenge performances : aucun calendrier de matchs n’est généré. Les essais sont rattachés aux objectifs et alimentent leurs classements.":"Les matchs et résultats restent éditables dans l’onglet Matchs. La reconstruction du calendrier est possible uniquement avant le premier résultat."}</div>
+                  {!isChallengePerformanceCompetition?<button disabled={doneMatches.length>0 || tournamentPlayers.length<2} onClick={()=>saveTournamentAdmin({},true)} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.35)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(doneMatches.length>0||tournamentPlayers.length<2)?.35:1}}>RECONSTRUIRE LE CALENDRIER</button>:<button onClick={loadAttachableHistory} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(255,181,74,.35)",background:"rgba(64,40,9,.94)",color:"#fff",fontWeight:1000}}>＋ RATTACHER DES ESSAIS CHALLENGE</button>}
                 </section>
               </div>
             </Card>

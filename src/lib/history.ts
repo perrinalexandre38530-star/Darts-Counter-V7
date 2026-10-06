@@ -2267,6 +2267,11 @@ type HistoryWorkerDecodeResult = {
   decompressMs: number;
   parseMs: number;
   totalMs: number;
+  action?: "decode" | "read-decode";
+  header?: any | null;
+  found?: boolean;
+  idbMs?: number;
+  payloadChars?: number;
   error?: string;
 };
 
@@ -2329,6 +2334,11 @@ function getHistoryDecodeWorker(): Worker | null {
         decompressMs: Number(event?.data?.decompressMs || 0),
         parseMs: Number(event?.data?.parseMs || 0),
         totalMs: Number(event?.data?.totalMs || 0),
+        action: event?.data?.action === "read-decode" ? "read-decode" : "decode",
+        header: event?.data?.header ?? null,
+        found: typeof event?.data?.found === "boolean" ? event.data.found : undefined,
+        idbMs: Number(event?.data?.idbMs || 0),
+        payloadChars: Number(event?.data?.payloadChars || 0),
         ...(event?.data?.error ? { error: String(event.data.error) } : {}),
       });
 
@@ -2433,6 +2443,77 @@ async function decodePayloadCompressedOffMainThread(
     } finally {
       endFreezeOperation(syncMarker);
     }
+  }
+}
+
+
+async function readHistoryRecordOffMainThread(id: string): Promise<HistoryWorkerDecodeResult | null> {
+  if (!isAndroidHistoryRuntime()) return null;
+
+  const worker = getHistoryDecodeWorker();
+  if (!worker) return null;
+
+  const requestId = ++__historyDecodeWorkerSeq;
+  const dbName = historyDbName();
+  recordFreezeWatchEvent("history-idb-worker-submit", {
+    id: String(id || ""),
+    requestId,
+    dbName,
+  });
+
+  try {
+    const result = await new Promise<HistoryWorkerDecodeResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        __historyDecodeWorkerPending.delete(requestId);
+        reject(new Error("history idb worker timeout"));
+        destroyHistoryDecodeWorker(new Error("history idb worker timeout"));
+      }, 20_000);
+
+      __historyDecodeWorkerPending.set(requestId, {
+        resolve,
+        reject,
+        timer,
+        memBeforeMb: historyHeapMb(),
+      });
+
+      try {
+        worker.postMessage({
+          id: requestId,
+          action: "read-decode",
+          recordId: String(id || ""),
+          dbName,
+          headerStore: STORE_HEADERS,
+          detailStore: STORE_DETAILS,
+          matchIdIndex: "by_matchId",
+        });
+      } catch (error) {
+        __historyDecodeWorkerPending.delete(requestId);
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+
+    recordFreezeWatchEvent("history-idb-worker-complete", {
+      id: String(id || ""),
+      requestId,
+      found: !!result.found,
+      ok: !!result.ok,
+      stage: result.stage,
+      idbMs: Math.round(Number(result.idbMs || 0)),
+      decompressMs: Math.round(Number(result.decompressMs || 0)),
+      parseMs: Math.round(Number(result.parseMs || 0)),
+      totalMs: Math.round(Number(result.totalMs || 0)),
+      payloadChars: Number(result.payloadChars || 0),
+    });
+
+    return result;
+  } catch (error: any) {
+    recordFreezeWatchEvent("history-idb-worker-failed", {
+      id: String(id || ""),
+      requestId,
+      error: String(error?.message || error || "worker read failed"),
+    });
+    return null;
   }
 }
 
@@ -2748,92 +2829,117 @@ async function getUncached(id: string): Promise<SavedMatch | null> {
 
   const __freezeOp = beginFreezeOperation("history.get", { id: String(id || "") });
   try {
-    const __idbFreezeOp = beginFreezeOperation("history.get.idbRead", { id: String(id || "") });
     let rec: any = null;
-    try {
-      rec = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
-      const headers = stores[STORE_HEADERS];
-      const details = stores[STORE_DETAILS];
+    let workerRead: HistoryWorkerDecodeResult | null = null;
 
-      const getHeaderDirect = () =>
-        new Promise<any>((resolve) => {
-          const req = headers.get(id);
+    // P0 V15 SAFE — on Android the IndexedDB read itself is moved to the same
+    // worker as payload decoding. This preserves every Stats/Home/Profile wiring:
+    // callers still receive the exact same SavedMatch shape, but IDBRequest.onsuccess
+    // no longer materializes a large history record on the UI thread.
+    if (isAndroidHistoryRuntime()) {
+      const workerReadMarker = beginFreezeOperation("history.get.workerRead", { id: String(id || "") });
+      try {
+        workerRead = await runHistoryDecodeLane(() => readHistoryRecordOffMainThread(id));
+        if (workerRead?.action === "read-decode") {
+          rec = { header: workerRead.header || null, detail: null };
+        }
+      } finally {
+        endFreezeOperation(workerReadMarker, {
+          found: !!workerRead?.found,
+          idbMs: Math.round(Number(workerRead?.idbMs || 0)),
+          totalMs: Math.round(Number(workerRead?.totalMs || 0)),
+        });
+      }
+    }
+
+    // Desktop / worker-unavailable fallback: unchanged existing IndexedDB path.
+    if (!workerRead) {
+      const __idbFreezeOp = beginFreezeOperation("history.get.idbRead", { id: String(id || "") });
+      try {
+        rec = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
+        const headers = stores[STORE_HEADERS];
+        const details = stores[STORE_DETAILS];
+
+        const getHeaderDirect = () =>
+          new Promise<any>((resolve) => {
+            const req = headers.get(id);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+          });
+
+        const getHeaderByMatchId = () =>
+          new Promise<any>((resolve) => {
+            try {
+              // @ts-ignore
+              const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
+              if (!hasIx) return resolve(null);
+              const req = headers.index("by_matchId").get(id);
+              req.onsuccess = () => resolve(req.result || null);
+              req.onerror = () => resolve(null);
+            } catch {
+              resolve(null);
+            }
+          });
+
+        const scanHeader = () =>
+          new Promise<any>((resolve) => {
+            const req = headers.openCursor();
+            req.onsuccess = () => {
+              const cur = req.result as IDBCursorWithValue | null;
+              if (!cur) return resolve(null);
+              const v: any = cur.value;
+              if (v?.matchId === id) return resolve(v);
+              cur.continue();
+            };
+            req.onerror = () => resolve(null);
+          });
+
+        let header = await getHeaderDirect();
+        if (!header) {
+          let hasMatchIdIndex = false;
+          try { hasMatchIdIndex = !!headers.indexNames?.contains("by_matchId"); } catch {}
+          header = hasMatchIdIndex ? await getHeaderByMatchId() : await scanHeader();
+        }
+
+        // V14 DETAIL FIX: si l’appelant demande un id composite "matchId:playerId",
+        // retenter automatiquement avec la partie avant ':' pour retrouver le vrai match.
+        if (!header && String(id || "").includes(":")) {
+          const baseId = String(id).split(":")[0]?.trim();
+          if (baseId) {
+            header =
+              (await new Promise<any>((resolve) => {
+                const req = headers.get(baseId);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => resolve(null);
+              })) ||
+              (await new Promise<any>((resolve) => {
+                try {
+                  // @ts-ignore
+                  const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
+                  if (!hasIx) return resolve(null);
+                  const req = headers.index("by_matchId").get(baseId);
+                  req.onsuccess = () => resolve(req.result || null);
+                  req.onerror = () => resolve(null);
+                } catch {
+                  resolve(null);
+                }
+              }));
+          }
+        }
+
+        if (!header) return null;
+
+        const detail = await new Promise<any>((resolve) => {
+          const req = details.get(String(header?.id ?? id));
           req.onsuccess = () => resolve(req.result || null);
           req.onerror = () => resolve(null);
         });
 
-      const getHeaderByMatchId = () =>
-        new Promise<any>((resolve) => {
-          try {
-            // @ts-ignore
-            const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
-            if (!hasIx) return resolve(null);
-            const req = headers.index("by_matchId").get(id);
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => resolve(null);
-          } catch {
-            resolve(null);
-          }
+        return { header, detail };
         });
-
-      const scanHeader = () =>
-        new Promise<any>((resolve) => {
-          const req = headers.openCursor();
-          req.onsuccess = () => {
-            const cur = req.result as IDBCursorWithValue | null;
-            if (!cur) return resolve(null);
-            const v: any = cur.value;
-            if (v?.matchId === id) return resolve(v);
-            cur.continue();
-          };
-          req.onerror = () => resolve(null);
-        });
-
-      let header = await getHeaderDirect();
-      if (!header) {
-        let hasMatchIdIndex = false;
-        try { hasMatchIdIndex = !!headers.indexNames?.contains("by_matchId"); } catch {}
-        header = hasMatchIdIndex ? await getHeaderByMatchId() : await scanHeader();
+      } finally {
+        endFreezeOperation(__idbFreezeOp, { found: !!rec?.header });
       }
-
-      // V14 DETAIL FIX: si l’appelant demande un id composite "matchId:playerId",
-      // retenter automatiquement avec la partie avant ':' pour retrouver le vrai match.
-      if (!header && String(id || "").includes(":")) {
-        const baseId = String(id).split(":")[0]?.trim();
-        if (baseId) {
-          header =
-            (await new Promise<any>((resolve) => {
-              const req = headers.get(baseId);
-              req.onsuccess = () => resolve(req.result || null);
-              req.onerror = () => resolve(null);
-            })) ||
-            (await new Promise<any>((resolve) => {
-              try {
-                // @ts-ignore
-                const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
-                if (!hasIx) return resolve(null);
-                const req = headers.index("by_matchId").get(baseId);
-                req.onsuccess = () => resolve(req.result || null);
-                req.onerror = () => resolve(null);
-              } catch {
-                resolve(null);
-              }
-            }));
-        }
-      }
-
-      if (!header) return null;
-
-      const detail = await new Promise<any>((resolve) => {
-        const req = details.get(String(header?.id ?? id));
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => resolve(null);
-      });
-
-      return { header, detail };
-      });
-    } finally {
-      endFreezeOperation(__idbFreezeOp, { found: !!rec?.header });
     }
 
     if (!rec?.header) {
@@ -2844,25 +2950,28 @@ async function getUncached(id: string): Promise<SavedMatch | null> {
     const header = { ...(rec.header || {}) };
     const detail = rec.detail || null;
 
-    let payload: any | null = null;
-    // V7 P0 : la file est globale et le decode LZ + JSON.parse s'execute dans
-    // un Web Worker sur Android. Le marqueur "decode" n'est plus ouvert pendant
-    // l'attente en file, afin que le freezer ne confonde pas une requete en
-    // attente avec le travail qui bloque reellement le thread UI.
-    payload = await runHistoryDecodeLane(() =>
-      decodePayloadCompressedOffMainThread(detail?.payloadCompressed, {
-        id: String(id),
-        stage: "get",
-      })
-    );
+    let payload: any | null = workerRead?.action === "read-decode" && workerRead?.found
+      ? (workerRead.value ?? null)
+      : null;
 
-    if (!payload && typeof detail?.payloadCompressed === "string") {
-      const t = String(detail.payloadCompressed || "").trim();
-      if (t.startsWith("{") || t.startsWith("[")) {
-        payload = safeJsonParse(t, {
+    // Desktop / worker-unavailable fallback keeps the existing decode path.
+    // No Stats wiring is bypassed: the same decoded payload is returned to every caller.
+    if (!workerRead) {
+      payload = await runHistoryDecodeLane(() =>
+        decodePayloadCompressedOffMainThread(detail?.payloadCompressed, {
           id: String(id),
-          stage: "get:payloadCompressed:direct",
-        });
+          stage: "get",
+        })
+      );
+
+      if (!payload && typeof detail?.payloadCompressed === "string") {
+        const t = String(detail.payloadCompressed || "").trim();
+        if (t.startsWith("{") || t.startsWith("[")) {
+          payload = safeJsonParse(t, {
+            id: String(id),
+            stage: "get:payloadCompressed:direct",
+          });
+        }
       }
     }
 

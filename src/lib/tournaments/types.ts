@@ -10,6 +10,30 @@
 export type TournamentSource = "local" | "online";
 export type TournamentCompetitionScope = "local" | "team" | "online";
 
+
+export type ChallengeCompetitionFormat = "objectives" | "duels" | "free" | "divisions";
+
+export type ChallengeCompetitionConfig = {
+  enabled: boolean;
+  format: ChallengeCompetitionFormat;
+  attemptsPerObjective: 1 | 2 | 3 | 4 | 5;
+  pointsPreset: "standard" | "f1" | "linear" | "custom";
+  pointsTable: number[];
+  countBestObjectives?: number | null;
+  allowHistoryLinks?: boolean;
+  confrontation?: {
+    enabled: boolean;
+    entity: "players" | "teams";
+  };
+  divisions?: {
+    enabled: boolean;
+    count: number;
+    promote: number;
+    relegate: number;
+    resetPointsEachCycle?: boolean;
+  };
+};
+
 export type TournamentMode = "x01" | "cricket" | "killer" | "clock" | "shanghai" | "babyfoot" | "petanque" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis" | string;
 
 export type TournamentStatus = "draft" | "running" | "finished";
@@ -92,6 +116,8 @@ export type Tournament = {
   ownerProfileId?: string | null;
   adminProfileIds?: string[];
   invitedProfileIds?: string[];
+  shareCode?: string | null;
+  challengeCompetition?: ChallengeCompetitionConfig;
 
   players: TournamentPlayer[];
 
