@@ -42,7 +42,7 @@ import type { Store } from "../lib/types";
 import type { Tournament, TournamentMatch } from "../lib/tournaments/types";
 import { PageAdBanner } from "../monetization/AdSlot";
 
-import { startMatch, submitResult } from "../lib/tournaments/engine";
+import { startMatch, submitResult, buildInitialMatches } from "../lib/tournaments/engine";
 import {
   getTournamentLocal,
   listMatchesForTournamentLocal,
@@ -73,6 +73,7 @@ const TAB_COLORS: Record<string, string> = {
   repechage: "#ff8f2b",
   linked: "#ffd56a",
   stats: "#b6b6ff",
+  admin: "#ff6b6b",
 };
 
 function isByeId(x: any) {
@@ -297,6 +298,7 @@ function NeonTopTabsIconsOnly({ tabs, activeKey, onChange }: any) {
     repechage: "repechage",
     linked: "matches",
     stats: "stats",
+    admin: "stats",
   };
 
   return (
@@ -1789,6 +1791,10 @@ export default function TournamentView({ store, go, id }: Props) {
   const [attachSelected, setAttachSelected] = React.useState<Record<string, boolean>>({});
   const [attachError, setAttachError] = React.useState<string>("");
   const [attachInfo, setAttachInfo] = React.useState<string>("");
+  const [adminPlayerPickerOpen, setAdminPlayerPickerOpen] = React.useState(false);
+  const [adminAdminPickerOpen, setAdminAdminPickerOpen] = React.useState(false);
+  const [adminDraftName, setAdminDraftName] = React.useState("");
+  const [adminNotice, setAdminNotice] = React.useState("");
 
   // ✅ PÉTANQUE : cache score par historyMatchId
   const [petScoresByHistoryId, setPetScoresByHistoryId] = React.useState<ScoreMap>({});
@@ -1934,6 +1940,18 @@ export default function TournamentView({ store, go, id }: Props) {
 
     return out;
   }, [tour]);
+
+  const activeProfileId = String((store as any)?.activeProfileId || "");
+  const allProfiles = React.useMemo<any[]>(() => Array.isArray((store as any)?.profiles) ? (store as any).profiles : [], [store]);
+  const ownerProfileId = String((tour as any)?.ownerProfileId || "");
+  const adminProfileIds = React.useMemo(() => Array.from(new Set((((tour as any)?.adminProfileIds || []) as any[]).map(String).filter(Boolean))), [tour]);
+  const isCompetitionAdmin = Boolean(tour && (activeProfileId && (activeProfileId === ownerProfileId || adminProfileIds.includes(activeProfileId))));
+  const tournamentPlayers = React.useMemo<any[]>(() => Array.isArray((tour as any)?.players) ? (tour as any).players : [], [tour]);
+  const availableProfiles = React.useMemo(() => {
+    const used = new Set(tournamentPlayers.map((p:any)=>String(p?.id||"")));
+    return allProfiles.filter((p:any)=>p?.id && !used.has(String(p.id)));
+  }, [allProfiles, tournamentPlayers]);
+  const availableAdmins = React.useMemo(() => allProfiles.filter((p:any)=>p?.id && String(p.id)!==ownerProfileId && !adminProfileIds.includes(String(p.id))), [allProfiles, ownerProfileId, adminProfileIds]);
 
   const linkedHistoryMatches = React.useMemo(() => {
     const raw = (tour as any)?.linkedMatches ?? (tour as any)?.meta?.linkedMatches ?? [];
@@ -2696,11 +2714,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
   const groupsMeta = React.useMemo(() => Math.max(1, Number((tour as any)?.stages?.[0]?.groups || 1)), [tour]);
 
   const TABS = React.useMemo(() => {
-    if (viewKind === "single_ko") return ["home", "bracket", "matches", "linked", "stats"];
-    if (viewKind === "double_ko") return ["home", "bracket", "matches", "linked", "repechage", "stats"];
-    if (viewKind === "round_robin") return ["home", "standings", "matches", "linked", "stats"];
-    return ["home", "pools", "standings", "bracket", "matches", "linked", ...(repechageEnabled ? ["repechage"] : []), "stats"];
-  }, [viewKind, repechageEnabled]);
+    const admin = isCompetitionAdmin ? ["admin"] : [];
+    if (viewKind === "single_ko") return ["home", "bracket", "matches", "linked", "stats", ...admin];
+    if (viewKind === "double_ko") return ["home", "bracket", "matches", "linked", "repechage", "stats", ...admin];
+    if (viewKind === "round_robin") return ["home", "standings", "matches", "linked", "stats", ...admin];
+    return ["home", "pools", "standings", "bracket", "matches", "linked", ...(repechageEnabled ? ["repechage"] : []), "stats", ...admin];
+  }, [viewKind, repechageEnabled, isCompetitionAdmin]);
 
   const [tab, setTab] = React.useState<string>("home");
   React.useEffect(() => {
@@ -2717,6 +2736,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     repechage: "Repêchage",
     linked: "Liées",
     stats: "Stats",
+    admin: "Administration",
   };
 
   const [activeGroupIdx, setActiveGroupIdx] = React.useState(0);
@@ -3080,6 +3100,42 @@ async function createSyntheticHistoryForSimulation(args: any) {
     (tour as any)?.coverUrl ||
     null;
 
+  const profileToTournamentPlayer = (profile:any) => ({
+    id:String(profile?.id||""),
+    name:String(profile?.name||profile?.nickname||profile?.displayName||"Joueur"),
+    avatarDataUrl:profile?.avatarDataUrl||profile?.avatarUrl||profile?.avatar||null,
+    countryCode:profile?.countryCode||profile?.country||null,
+    isBot:!!profile?.isBot,
+  });
+  const saveTournamentAdmin = async (patch:any, rebuild=false) => {
+    if(!tour || !isCompetitionAdmin) return;
+    const next:any={...(tour as any),...patch,updatedAt:Date.now()};
+    let nextMatches=safeMatches;
+    if(rebuild){
+      if(doneMatches.length){setAdminNotice("Impossible de reconstruire le calendrier : des matchs sont déjà terminés.");return;}
+      nextMatches=buildInitialMatches(next as any) as any;
+    }
+    await persist(next as any,nextMatches as any);
+    setAdminNotice("Modifications enregistrées.");
+  };
+  const addCompetitionPlayer = async (profile:any) => {
+    if(!tour) return;
+    const nextPlayers=[...tournamentPlayers,profileToTournamentPlayer(profile)];
+    await saveTournamentAdmin({players:nextPlayers}, true);
+    setAdminPlayerPickerOpen(false);
+  };
+  const removeCompetitionPlayer = async (playerId:string) => {
+    const nextPlayers=tournamentPlayers.filter((p:any)=>String(p?.id)!==String(playerId));
+    await saveTournamentAdmin({players:nextPlayers}, true);
+  };
+  const addCompetitionAdmin = async (profileId:string) => {
+    await saveTournamentAdmin({adminProfileIds:Array.from(new Set([...adminProfileIds,String(profileId)]))});
+    setAdminAdminPickerOpen(false);
+  };
+  const removeCompetitionAdmin = async (profileId:string) => {
+    await saveTournamentAdmin({adminProfileIds:adminProfileIds.filter(id=>id!==String(profileId))});
+  };
+
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
       {/* HEADER VISUEL COMPÉTITION */}
@@ -3243,6 +3299,16 @@ async function createSyntheticHistoryForSimulation(args: any) {
           {/* HOME */}
           {tab === "home" ? (
             <>
+              <Card title="Centre de compétition" subtitle="Résumé général, participants, organisateurs et accès rapide." accent={TAB_COLORS.home} icon="⌂">
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>
+                  <div style={{padding:10,borderRadius:14,background:"rgba(4,7,12,.97)",border:"1px solid rgba(255,207,87,.22)"}}><span style={{fontSize:8,opacity:.65,fontWeight:900}}>PARTICIPANTS</span><b style={{display:"block",fontSize:22,color:"#ffcf57",marginTop:3}}>{tournamentPlayers.length}</b></div>
+                  <div style={{padding:10,borderRadius:14,background:"rgba(4,7,12,.97)",border:"1px solid rgba(79,180,255,.22)"}}><span style={{fontSize:8,opacity:.65,fontWeight:900}}>ADMINISTRATEURS</span><b style={{display:"block",fontSize:22,color:"#4fb4ff",marginTop:3}}>{1+adminProfileIds.length}</b></div>
+                </div>
+                <div style={{marginTop:8,padding:10,borderRadius:14,background:"rgba(4,7,12,.97)",border:"1px solid rgba(255,255,255,.10)"}}>
+                  <div style={{fontSize:8,opacity:.62,fontWeight:900}}>ORGANISATEUR</div><div style={{fontSize:11,fontWeight:1000,marginTop:3}}>{(tour as any)?.hostOrganizationName || playersById[ownerProfileId]?.name || "Créateur de la compétition"}</div>
+                </div>
+                {isCompetitionAdmin?<button type="button" onClick={()=>setTab("admin")} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:12,border:"1px solid rgba(255,107,107,.45)",background:"rgba(90,15,20,.92)",color:"#fff",fontWeight:1000,cursor:"pointer"}}>⚙ GÉRER LA COMPÉTITION</button>:null}
+              </Card>
               {autoQualified.length ? (
                 <Card
                   title="Qualifiés d’office"
@@ -3278,16 +3344,16 @@ async function createSyntheticHistoryForSimulation(args: any) {
               ) : null}
 
               <div style={{display:"grid",gap:10}}>
-                <div style={{borderRadius:18,border:"1px solid rgba(79,180,255,.24)",background:"linear-gradient(180deg,rgba(79,180,255,.09),rgba(6,10,16,.84))",padding:12}}>
+                <div style={{borderRadius:18,border:"1px solid rgba(79,180,255,.24)",background:"linear-gradient(180deg,rgba(12,21,30,.98),rgba(5,8,13,.99))",padding:12}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:playableMatches.length?9:0}}><div><b style={{fontSize:13,color:TAB_COLORS.home}}>⚡ PROCHAINS MATCHS</b><div style={{fontSize:9,opacity:.65,marginTop:2}}>{playableMatches.length?"Lance directement une rencontre prête à jouer.":"Aucune rencontre jouable actuellement."}</div></div><MiniBadge label="À jouer" value={playableMatches.length} accent={TAB_COLORS.home}/></div>
                   {playableMatches.length?<div style={{display:"grid",gap:8}}>{playableMatches.slice(0,4).map((m:any)=>renderMatchCard(m,TAB_COLORS.home))}</div>:null}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10}}>
-                  <div style={{borderRadius:18,border:"1px solid rgba(101,230,162,.22)",background:"linear-gradient(180deg,rgba(101,230,162,.075),rgba(6,10,16,.82))",padding:11,minWidth:0}}>
+                  <div style={{borderRadius:18,border:"1px solid rgba(101,230,162,.22)",background:"linear-gradient(180deg,rgba(8,22,17,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.standings}}>✓ RÉSULTATS</b><strong style={{color:TAB_COLORS.standings,fontSize:16}}>{doneMatches.length}</strong></div>
                     <div style={{fontSize:8.5,opacity:.62,marginTop:4}}>{doneMatches.length?"Dernières rencontres terminées":"Aucun résultat pour le moment"}</div>
                   </div>
-                  <div style={{borderRadius:18,border:"1px solid rgba(255,230,138,.22)",background:"linear-gradient(180deg,rgba(255,230,138,.075),rgba(6,10,16,.82))",padding:11,minWidth:0}}>
+                  <div style={{borderRadius:18,border:"1px solid rgba(255,230,138,.22)",background:"linear-gradient(180deg,rgba(27,23,10,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.linked}}>＋ HISTORIQUE</b><strong style={{color:TAB_COLORS.linked,fontSize:16}}>{linkedHistoryMatches.length}</strong></div>
                     <button type="button" onClick={loadAttachableHistory} style={{marginTop:7,width:"100%",border:"1px solid rgba(255,230,138,.25)",borderRadius:10,padding:"7px 8px",fontWeight:950,fontSize:8.5,cursor:"pointer",color:"#ffe68a",background:"rgba(255,230,138,.07)"}}>AJOUTER UNE PARTIE</button>
                   </div>
@@ -3549,6 +3615,34 @@ async function createSyntheticHistoryForSimulation(args: any) {
               ) : (
                 <div style={{ fontSize: 12, opacity: .76 }}>Aucune partie liée pour l’instant.</div>
               )}
+            </Card>
+          ) : null}
+
+          {/* ADMINISTRATION HÔTE */}
+          {tab === "admin" && isCompetitionAdmin ? (
+            <Card title="Administration" subtitle="Gère les participants, les administrateurs et les paramètres essentiels de la compétition." accent={TAB_COLORS.admin} icon="⚙">
+              {adminNotice?<div style={{marginBottom:10,padding:9,borderRadius:11,background:"rgba(101,230,162,.12)",border:"1px solid rgba(101,230,162,.30)",fontSize:9.5}}>{adminNotice}</div>:null}
+              <div style={{display:"grid",gap:10}}>
+                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                  <b style={{color:"#ffcf57",fontSize:11}}>IDENTITÉ & ÉTAT</b>
+                  <label style={{display:"grid",gap:5,marginTop:9,fontSize:8.5,opacity:.8}}>Nom de la compétition<input value={adminDraftName || String((tour as any)?.name||"")} onChange={e=>setAdminDraftName(e.target.value)} style={{height:38,borderRadius:11,border:"1px solid rgba(255,255,255,.14)",background:"#070b11",color:"#fff",padding:"0 10px",fontWeight:900}}/></label>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:8}}><button onClick={()=>saveTournamentAdmin({name:(adminDraftName||String((tour as any)?.name||"")).trim()||String((tour as any)?.name||"")})} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(255,207,87,.35)",background:"rgba(72,52,7,.92)",color:"#fff",fontWeight:1000}}>ENREGISTRER</button><button onClick={()=>saveTournamentAdmin({status:String((tour as any)?.status)==="running"?"draft":"running"})} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>{String((tour as any)?.status)==="running"?"METTRE EN PAUSE":"LANCER"}</button></div>
+                </section>
+                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#4fb4ff",fontSize:11}}>PARTICIPANTS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Ajoute les joueurs avant le lancement, ou reconstruis le calendrier tant qu’aucun match n’est terminé.</div></div><button onClick={()=>setAdminPlayerPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(79,180,255,.4)",background:"rgba(79,180,255,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ AJOUTER</button></div>
+                  {adminPlayerPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:180,overflowY:"auto"}}>{availableProfiles.length?availableProfiles.map((p:any)=><button key={p.id} onClick={()=>addCompetitionPlayer(p)} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Joueur"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun autre profil local disponible.</div>}</div>:null}
+                  <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((p:any)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Joueur"}</b><button disabled={doneMatches.length>0} onClick={()=>removeCompetitionPlayer(String(p.id))} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000,opacity:doneMatches.length>0?.35:1}}>RETIRER</button></div>)}</div>
+                </section>
+                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#ff6b6b",fontSize:11}}>ADMINISTRATEURS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Le créateur reste propriétaire. Les admins peuvent gérer la compétition.</div></div><button onClick={()=>setAdminAdminPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(255,107,107,.4)",background:"rgba(255,107,107,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ NOMMER</button></div>
+                  {adminAdminPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:160,overflowY:"auto"}}>{availableAdmins.length?availableAdmins.map((p:any)=><button key={p.id} onClick={()=>addCompetitionAdmin(String(p.id))} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Profil"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun profil supplémentaire disponible.</div>}</div>:null}
+                  <div style={{display:"grid",gap:6,marginTop:9}}><div style={{padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,207,87,.18)",fontSize:9.5}}><b>PROPRIÉTAIRE</b> · {allProfiles.find((p:any)=>String(p.id)===ownerProfileId)?.name||"Créateur"}</div>{adminProfileIds.map(pid=><div key={pid} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:9.5}}>{allProfiles.find((p:any)=>String(p.id)===pid)?.name||pid}</b><button onClick={()=>removeCompetitionAdmin(pid)} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000}}>RETIRER</button></div>)}</div>
+                </section>
+                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                  <b style={{color:"#b6b6ff",fontSize:11}}>OUTILS DE GESTION</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Les matchs et résultats restent éditables dans l’onglet Matchs. La reconstruction du calendrier est possible uniquement avant le premier résultat.</div>
+                  <button disabled={doneMatches.length>0 || tournamentPlayers.length<2} onClick={()=>saveTournamentAdmin({},true)} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.35)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(doneMatches.length>0||tournamentPlayers.length<2)?.35:1}}>RECONSTRUIRE LE CALENDRIER</button>
+                </section>
+              </div>
             </Card>
           ) : null}
 

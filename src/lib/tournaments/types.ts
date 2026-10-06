@@ -90,6 +90,8 @@ export type Tournament = {
   updatedAt: number;
 
   ownerProfileId?: string | null;
+  adminProfileIds?: string[];
+  invitedProfileIds?: string[];
 
   players: TournamentPlayer[];
 

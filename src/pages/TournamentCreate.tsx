@@ -4707,6 +4707,10 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
 
         {currentGuidedKey === "participants" ? (
           <Section title={guidedStepTitle("participants", "Participants")} subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary} watermark={kindWatermark}>
+            <div style={{marginBottom:10,padding:"10px 11px",borderRadius:14,border:`1px solid ${primary}55`,background:"rgba(5,8,13,.96)",boxShadow:"0 8px 24px rgba(0,0,0,.28)"}}>
+              <div style={{fontSize:10.5,fontWeight:1000,color:primary}}>👥 C’EST ICI QUE TU AJOUTES LES JOUEURS</div>
+              <div style={{marginTop:4,fontSize:9.5,lineHeight:1.42,opacity:.78}}>{competitionScope === "online" && enrollmentPolicy !== "fixed" ? "Tu peux ajouter des inscrits de départ ou publier sans joueur : les comptes ONLINE pourront ensuite rejoindre selon la politique d’inscription choisie." : isParticipantlessLeague ? "Cette formule accepte aussi une création sans joueur, mais tu pourras ensuite ajouter/inviter les participants depuis la page Administration de la compétition." : "Sélectionne maintenant au moins deux participants. Le créateur pourra ensuite les gérer depuis la page Administration de la compétition."}</div>
+            </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12.5, opacity: .82 }}>
                 <b style={{ color: primary }}>{(isPetanque && petanqueEntry === "teams") || (!isPetanque && participantKind === "teams") ? (teamsInput || []).length : totalSelectedIds.length}</b> {(isPetanque && petanqueEntry === "teams") || (!isPetanque && participantKind === "teams") ? "équipe(s)" : "participant(s)"}
