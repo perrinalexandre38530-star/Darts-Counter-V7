@@ -3005,24 +3005,27 @@ const petanqueTeamsUI = React.useMemo(() => {
 
 
   const guidedStepKeys = React.useMemo(() => {
+    // Le mode de jeu DOIT être choisi avant le format : certains modes,
+    // notamment Challenge, disposent de formats de compétition dédiés.
     if (mode === "challenge") {
-      return ["type", "identity", "participantKind", "participants", "format", "rules", "recap"];
+      return ["type", "identity", "mode", "format", "participantKind", "participants", "rules", "recap"];
     }
     if (isLeague && leagueFormat === "multi") {
-      return ["type", "identity", "format", "multiRules", "recap"];
+      return ["type", "identity", "mode", "format", "multiRules", "recap"];
     }
     if (isLeague && leagueFormat === "free") {
-      return ["type", "identity", "format", "rules", "recap"];
+      return ["type", "identity", "mode", "format", "rules", "recap"];
     }
     if (isLeague) {
-      return ["type", "identity", "format", "participantKind", "participants", "rules", "recap"];
+      return ["type", "identity", "mode", "format", "participantKind", "participants", "rules", "recap"];
     }
-    return ["type", "identity", "participantKind", "participants", "format", "rules", "recap"];
+    return ["type", "identity", "mode", "format", "participantKind", "participants", "rules", "recap"];
   }, [isLeague, leagueFormat, mode]);
 
   const guidedStepLabels: Record<string, string> = {
     type: "Type",
     identity: "Identité",
+    mode: "Mode de jeu",
     format: "Format",
     participantKind: "Solo / équipe",
     participants: "Participants",
@@ -5048,6 +5051,49 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </Section>
         ) : null}
 
+        {currentGuidedKey === "mode" ? (
+          <Section title={guidedStepTitle("mode", "Mode de jeu")} subtitle="Choisis d’abord le mode de jeu : le format de compétition proposé à l’étape suivante s’adaptera automatiquement." accent={primary} watermark={kindWatermark}>
+            <div style={{ display: "grid", gap: 12 }}>
+              {!lockedSportMode ? (
+                <>
+                  <RowTitle label="Mode fléchettes" />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                    {availableModes.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setMode(m)}
+                        style={{
+                          minHeight: 48,
+                          borderRadius: 13,
+                          border: mode === m ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.12)",
+                          background: mode === m ? `${primary}1f` : "rgba(5,8,14,.94)",
+                          color: mode === m ? "#fff" : "rgba(255,255,255,.78)",
+                          fontWeight: 1000,
+                          fontSize: 12,
+                          letterSpacing: .35,
+                          boxShadow: mode === m ? `0 0 16px ${primary}35` : "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {MODE_LABEL[m]}
+                      </button>
+                    ))}
+                  </div>
+                  {mode === "challenge" ? (
+                    <div style={{ padding: "10px 11px", borderRadius: 12, border: `1px solid ${primary}38`, background: "rgba(4,7,12,.96)", fontSize: 10.5, lineHeight: 1.45 }}>
+                      <b style={{ color: primary }}>CHALLENGE sélectionné.</b> L’étape suivante proposera ses formats dédiés : championnat d’objectifs, confrontations, compétition libre ou ligues & divisions.
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div style={{ fontSize: 12.5, opacity: .86 }}>Mode verrouillé : <b style={{ color: primary }}>{MODE_LABEL[lockedSportMode]}</b></div>
+              )}
+            </div>
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
         {currentGuidedKey === "format" ? (
           <Section title={guidedStepTitle("format", "Format")} subtitle={mode === "challenge" ? "Choisis le moteur de compétition Challenge. Les formats de matchs classiques ne sont utilisés que pour Confrontations." : isLeague ? "Choisis le rythme de la ligue." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10 }}>
@@ -5089,19 +5135,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         ) : null}
 
         {currentGuidedKey === "rules" ? (
-          <Section title={guidedStepTitle("rules", "Règles")} subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary} watermark={kindWatermark}>
+          <Section title={guidedStepTitle("rules", "Règles")} subtitle={`Réglages du mode ${mode ? MODE_LABEL[mode] : sportLabel}. Le mode et le format sont déjà fixés aux étapes précédentes.`} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 14 }}>
-              {!lockedSportMode ? (
-                <div>
-                  <RowTitle label="Mode fléchettes" />
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {availableModes.map((m) => <NeonPill key={m} active={mode === m} label={MODE_LABEL[m]} onClick={() => setMode(m)} primary={primary} />)}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ fontSize: 12.5, opacity: .8 }}>Mode verrouillé : <b style={{ color: primary }}>{MODE_LABEL[lockedSportMode]}</b></div>
-              )}
-
               {mode === "challenge" ? (
                 <div style={{ display: "grid", gap: 12 }}>
                   <RowTitle label="Challenge · choix des objectifs" />
