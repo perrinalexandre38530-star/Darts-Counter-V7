@@ -29,7 +29,7 @@ type ConfigMode='guided'|'complete';
 type MatchMode='solo'|'duo'|'multi';
 type TeamSelections=Record<string,string[]>;
 
-const targetText=(target:ChallengeTarget)=>target==='any-double'?'DOUBLES':target==='any-triple'?'TRIPLES':target==='bull'?'BULL':target==='bull25'?'BULL 25':target==='bull50'?'BULL 50':target;
+const targetText=(target:ChallengeTarget)=>target==='any-double'?'DOUBLES':target==='any-triple'?'TRIPLES':(target==='bull'||target==='bull25'||target==='bull50')?'BULL':target;
 const teamLogo=(team:any)=>team?.logoDataUrl||resolveTeamLogoSrc(team?.logoLibraryId||team?.logoLibraryFileName||null)||team?.logoUrl||team?.avatarUrl||team?.imageUrl||'';
 const unique=(values:any[])=>Array.from(new Set((values||[]).map(String).filter(Boolean)));
 
@@ -65,11 +65,14 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   ['all','TOUS LES HITS','S = 1 • D = 2 • T = 3'],
   ['single','SEULEMENT SIMPLE','Seuls les simples comptent'],
   ['double','SEULEMENT DOUBLE','Seuls les doubles comptent'],
-  ['triple','SEULEMENT TRIPLE','Seuls les triples comptent'],
-  ['bull','MODE BULL','Bull 25 = 1 • Bull 50 = 2'],
-  ['bull25','BULL 25','Bull extérieur uniquement'],
-  ['bull50','BULL 50','Bull intérieur uniquement']
+  ['triple','SEULEMENT TRIPLE','Seuls les triples comptent']
  ];
+ React.useEffect(()=>{
+  if(target==='bull'||target==='bull25'||target==='bull50'){ if(target!=='bull') setTarget('bull'); if(rule!=='bull') setRule('bull'); return; }
+  if(target==='any-double'){ if(rule!=='double') setRule('double'); return; }
+  if(target==='any-triple'){ if(rule!=='triple') setRule('triple'); return; }
+  if(rule==='bull'||rule==='bull25'||rule==='bull50') setRule('all');
+ },[target,rule]);
 
  const maxPlayers=matchMode==='solo'?1:matchMode==='duo'?2:Number.POSITIVE_INFINITY;
  const minPlayers=matchMode==='solo'?1:matchMode==='duo'?2:matchMode==='multi'?3:0;
@@ -203,9 +206,9 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   </>}
  </Section>;
 
- const targetStage=<Section title="CIBLE" subtitle="Choisissez un secteur précis ou un Challenge sur tous les doubles / triples." key="target"><div className="target-grid"><button type="button" className={'target-btn family '+(target==='any-double'?'on':'')} onClick={()=>{setTarget('any-double');setRule('double')}}>DOUBLES</button><button type="button" className={'target-btn family '+(target==='any-triple'?'on':'')} onClick={()=>{setTarget('any-triple');setRule('triple')}}>TRIPLES</button>{[...Array.from({length:20},(_,i)=>String(i+1)),'bull'].map(x=><button type="button" key={x} className={'target-btn '+(target===x?'on':'')} onClick={()=>setTarget(x as ChallengeTarget)}>{x==='bull'?'BULL':x}</button>)}</div>{familyMode&&<div className="locked-hint">KEYPAD X01 DÉTAILLÉ · chaque D1–D20 / T1–T20 est enregistré · égalité départagée par la somme des numéros touchés.</div>}</Section>;
+ const targetStage=<Section title="CIBLE" subtitle="Choisissez un secteur précis ou un Challenge sur tous les doubles / triples." key="target"><div className="target-grid"><button type="button" className={'target-btn family '+(target==='any-double'?'on':'')} onClick={()=>{setTarget('any-double');setRule('double')}}>DOUBLES</button><button type="button" className={'target-btn family '+(target==='any-triple'?'on':'')} onClick={()=>{setTarget('any-triple');setRule('triple')}}>TRIPLES</button>{[...Array.from({length:20},(_,i)=>String(i+1)),'bull'].map(x=><button type="button" key={x} className={'target-btn '+(target===x?'on':'')} onClick={()=>{setTarget(x as ChallengeTarget);if(x==='bull')setRule('bull')}}>{x==='bull'?'BULL':x}</button>)}</div>{familyMode&&<div className="locked-hint">KEYPAD X01 DÉTAILLÉ · chaque D1–D20 / T1–T20 est enregistré · égalité départagée par la somme des numéros touchés.</div>}</Section>;
  const visitsStage=<Section title="NOMBRE DE TOURS" subtitle="Chaque tour comprend jusqu’à 3 fléchettes par joueur." key="visits"><div className="visit-grid">{[5,10,15,20,30,50,100].map(n=><button type="button" key={n} className={'arcade-choice '+(visits===n?'on':'')} onClick={()=>setVisits(n)}>{n}</button>)}</div><div className="hint">{visits} tours • {visits*3} fléchettes maximum par joueur</div></Section>;
- const ruleStage=<Section title="OBJECTIF" subtitle="Déterminez quels impacts rapportent des points." key="rule"><div className="rule-grid">{rules.map(([id,label,detail])=><button type="button" key={id} className={'rule-btn '+(rule===id?'on':'')} onClick={()=>setRule(id)}><b>{label}</b><span>{detail}</span></button>)}</div></Section>;
+ const ruleStage=<Section title="OBJECTIF" subtitle="Déterminez quels impacts rapportent des points." key="rule">{target==='bull'?<div className="locked-hint"><b>BULL</b> · Bull 25 = 1 point · Bull 50 = 2 points · MISS = 0</div>:familyMode?<div className="locked-hint"><b>{target==='any-double'?'DOUBLES':'TRIPLES'}</b> · chaque touche valide rapporte 1 point, le numéro sert au départage.</div>:<div className="rule-grid">{rules.map(([id,label,detail])=><button type="button" key={id} className={'rule-btn '+(rule===id?'on':'')} onClick={()=>setRule(id)}><b>{label}</b><span>{detail}</span></button>)}</div>}</Section>;
  const audioStage=<Section title="SONS CHALLENGE" subtitle="Jingle d’intro, impacts S / D / T / MISS et musique de fin de partie." key="audio"><div className="audio-toggle-row"><button type="button" className={soundsEnabled?'on':''} onClick={()=>toggleChallengeSounds(true)}><b>SONS ON</b><span>Jingles et impacts activés</span></button><button type="button" className={!soundsEnabled?'on off':''} onClick={()=>toggleChallengeSounds(false)}><b>SONS OFF</b><span>Challenge totalement silencieux</span></button></div></Section>;
  const stages=[formatStage,playersStage,targetStage,visitsStage,ruleStage,audioStage];
  const stepLabels=['FORMAT','JOUEURS','CIBLE','TOURS','OBJECTIF','SONS'];

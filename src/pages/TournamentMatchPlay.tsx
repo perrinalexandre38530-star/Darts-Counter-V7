@@ -246,8 +246,10 @@ function challengeObjectivesFromRules(rules:any): string[] {
     const a=Math.min(from,to),b=Math.max(from,to);
     return Array.from({length:b-a+1},(_,i)=>String(a+i));
   }
-  const arr=Array.isArray(rules?.objectiveTargets)?rules.objectiveTargets.map(String).filter(Boolean):[];
-  return arr.length?arr:[String(rules?.target||"20")];
+  const normalize=(value:any)=>{const v=String(value||'');return v==='bull25'||v==='bull50'?'bull':v;};
+  const arr=Array.isArray(rules?.objectiveTargets)?rules.objectiveTargets.map(normalize).filter(Boolean):[];
+  const unique=Array.from(new Set(arr));
+  return unique.length?unique:[normalize(rules?.target||"20")];
 }
 function resolveChallengeObjective(rules:any, tm:any): string {
   const pool=challengeObjectivesFromRules(rules);
@@ -908,10 +910,11 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
     const objectiveMode=String(rules?.objectiveMode||"fixed");
     const playerChoice=objectiveMode==="player_choice"||String(rules?.objectiveAssignment||"")==="player_choice";
     if(playerChoice&&!chosenChallengeTarget){
-      return <div style={{minHeight:"100vh",padding:18,background:theme.bg,color:theme.text}}><button onClick={()=>go("tournament_view",{id:tournamentId})}>← Retour</button><div style={{maxWidth:760,margin:"28px auto",padding:18,borderRadius:20,border:`1px solid ${theme.borderSoft}`,background:theme.card}}><h2 style={{marginTop:0}}>CHOIX DE L’OBJECTIF CHALLENGE</h2><p style={{opacity:.72}}>Cette compétition autorise les joueurs à choisir l’objectif du match parmi la sélection de l’organisateur.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:9}}>{pool.map(target=><button key={target} onClick={()=>setChosenChallengeTarget(target)} style={{minHeight:64,borderRadius:14,border:"1px solid #ff5058",background:"linear-gradient(180deg,#401116,#16080b)",color:"#fff",fontWeight:1000,fontSize:15}}>{target==="any-double"?"DOUBLES":target==="any-triple"?"TRIPLES":target==="bull25"?"BULL 25":target==="bull50"?"BULL 50":target}</button>)}</div></div></div>;
+      return <div style={{minHeight:"100vh",padding:18,background:theme.bg,color:theme.text}}><button onClick={()=>go("tournament_view",{id:tournamentId})}>← Retour</button><div style={{maxWidth:760,margin:"28px auto",padding:18,borderRadius:20,border:`1px solid ${theme.borderSoft}`,background:theme.card}}><h2 style={{marginTop:0}}>CHOIX DE L’OBJECTIF CHALLENGE</h2><p style={{opacity:.72}}>Cette compétition autorise les joueurs à choisir l’objectif du match parmi la sélection de l’organisateur.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:9}}>{pool.map(target=><button key={target} onClick={()=>setChosenChallengeTarget(target)} style={{minHeight:64,borderRadius:14,border:"1px solid #ff5058",background:"linear-gradient(180deg,#401116,#16080b)",color:"#fff",fontWeight:1000,fontSize:15}}>{target==="any-double"?"DOUBLES":target==="any-triple"?"TRIPLES":target==="bull"?"BULL":target}</button>)}</div></div></div>;
     }
-    const target=chosenChallengeTarget||resolveChallengeObjective(rules,tm);
-    const rule=target==="any-double"?"double":target==="any-triple"?"triple":String(rules?.rule||"all");
+    const resolvedTarget=chosenChallengeTarget||resolveChallengeObjective(rules,tm);
+    const target=(resolvedTarget==="bull25"||resolvedTarget==="bull50")?"bull":resolvedTarget;
+    const rule=target==="any-double"?"double":target==="any-triple"?"triple":target==="bull"?"bull":String(rules?.rule||"all");
     const challengeConfig:any={
       target,
       rule,

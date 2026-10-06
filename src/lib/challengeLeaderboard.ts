@@ -91,6 +91,8 @@ export type ChallengeHistorySyncResult = {
 
 const clean = (value: any, fallback = '') => String(value ?? fallback).trim();
 const lower = (value: any, fallback = '') => clean(value, fallback).toLowerCase();
+const normalizeBullTarget = (value:any, fallback='20') => { const v=lower(value,fallback); return v==='bull25'||v==='bull50'?'bull':v; };
+const normalizeBullRule = (value:any, fallback='all') => { const v=lower(value,fallback); return v==='bull25'||v==='bull50'?'bull':v; };
 const int = (value: any, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n) : fallback;
@@ -106,8 +108,8 @@ const num = (value: any, fallback = 0) => {
  * est individuelle et doit rester comparable entre ces formats.
  */
 export function challengeObjectiveKey(input: ChallengeLeaderboardObjective): string {
-  const target = lower(input.target, '20');
-  const rule = lower(input.rule, 'all');
+  const target = normalizeBullTarget(input.target, '20');
+  const rule = normalizeBullRule(input.rule, 'all');
   const visits = Math.max(1, int(input.visits, 1));
   const setMode = lower(input.setMode, 'none') || 'none';
   const setTarget = Math.max(0, int(input.setTarget, 0));
@@ -117,8 +119,8 @@ export function challengeObjectiveKey(input: ChallengeLeaderboardObjective): str
 }
 
 function v2ChallengeObjectiveKey(input: ChallengeLeaderboardObjective): string {
-  const target = lower(input.target, '20');
-  const rule = lower(input.rule, 'all');
+  const target = normalizeBullTarget(input.target, '20');
+  const rule = normalizeBullRule(input.rule, 'all');
   const visits = Math.max(1, int(input.visits, 1));
   const matchMode = lower(input.matchMode, 'solo') || 'solo';
   const setMode = lower(input.setMode, 'none') || 'none';
@@ -129,7 +131,7 @@ function v2ChallengeObjectiveKey(input: ChallengeLeaderboardObjective): string {
 }
 
 function legacyChallengeObjectiveKey(input: ChallengeLeaderboardObjective): string {
-  return `challenge:v1:${lower(input.target, '20')}:${lower(input.rule, 'all')}:${Math.max(1, int(input.visits, 1))}`;
+  return `challenge:v1:${normalizeBullTarget(input.target, '20')}:${normalizeBullRule(input.rule, 'all')}:${Math.max(1, int(input.visits, 1))}`;
 }
 
 export function challengeTeamKey(team: any): string {
@@ -481,8 +483,8 @@ export async function submitChallengeBestScore(input: ChallengeLeaderboardSubmit
   const objectiveKey = challengeObjectiveKey(input);
   const v3 = await supabase.rpc('ms_submit_challenge_score_v3', {
     p_objective_key: objectiveKey,
-    p_target: clean(input.target, '20'),
-    p_rule: clean(input.rule, 'all'),
+    p_target: normalizeBullTarget(input.target, '20'),
+    p_rule: normalizeBullRule(input.rule, 'all'),
     p_visits: Math.max(1, int(input.visits, 1)),
     p_match_mode: lower(input.matchMode, 'solo') || 'solo',
     p_score: Math.max(0, int(input.score, 0)),
@@ -503,8 +505,8 @@ export async function submitChallengeBestScore(input: ChallengeLeaderboardSubmit
   const teams = (input.teams || []).filter((team) => clean(team?.key));
   const { data, error } = await supabase.rpc('ms_submit_challenge_score_v2', {
     p_objective_key: v2ChallengeObjectiveKey(input),
-    p_target: clean(input.target, '20'),
-    p_rule: clean(input.rule, 'all'),
+    p_target: normalizeBullTarget(input.target, '20'),
+    p_rule: normalizeBullRule(input.rule, 'all'),
     p_visits: Math.max(1, int(input.visits, 1)),
     p_match_mode: lower(input.matchMode, 'solo') || 'solo',
     p_score: Math.max(0, int(input.score, 0)),
@@ -519,8 +521,8 @@ export async function submitChallengeBestScore(input: ChallengeLeaderboardSubmit
     if (isBackendMissing(error, 'ms_submit_challenge_score_v2')) {
       const legacy = await supabase.rpc('ms_submit_challenge_score', {
         p_objective_key: legacyChallengeObjectiveKey(input),
-        p_target: clean(input.target, '20'),
-        p_rule: clean(input.rule, 'all'),
+        p_target: normalizeBullTarget(input.target, '20'),
+        p_rule: normalizeBullRule(input.rule, 'all'),
         p_visits: Math.max(1, int(input.visits, 1)),
         p_score: Math.max(0, int(input.score, 0)),
         p_darts: Math.max(0, int(input.darts, 0)),
@@ -901,7 +903,7 @@ async function exactLocalChallengeDetail(
   const recordMatchId = clean(record?.matchId || record?.id || record?.resumeId);
   if (recordMatchId && recordMatchId !== wantedMatchId) return null;
   const cfg = historyConfig(record);
-  if (clean(cfg.target) !== clean(detail.target) || clean(cfg.rule) !== clean(detail.rule) || int(cfg.visits) !== int(detail.visits)) return null;
+  if (normalizeBullTarget(cfg.target) !== normalizeBullTarget(detail.target) || normalizeBullRule(cfg.rule) !== normalizeBullRule(detail.rule) || int(cfg.visits) !== int(detail.visits)) return null;
 
   const profileIds = new Set(linkedProfileIds(profiles, uid));
   profileIds.add(uid);
