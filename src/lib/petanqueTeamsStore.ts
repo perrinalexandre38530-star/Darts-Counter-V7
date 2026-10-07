@@ -417,8 +417,9 @@ export function upsertTeam(team: TeamEntity) {
   const logoLibraryFileName = normalizeTextField((team as any).logoLibraryFileName || (team as any).logoFileName || libraryFromSrc?.fileName) ?? null;
   const libraryLogoSrc = resolveTeamLogoSrc(logoLibraryId || logoLibraryFileName || null);
   const normalizedLogo = normalizeImageRef(team.logoDataUrl, libraryLogoSrc, (team as any).logoUrl, (team as any).avatarUrl, (team as any).imageUrl);
-  const logoMediaKey = normalizeTextField((team as any).logoMediaKey)
-    || (normalizedLogo && !logoLibraryId ? teamLogoMediaKey(nextId) : null);
+  const logoMediaKey = logoLibraryId
+    ? null
+    : (normalizeTextField((team as any).logoMediaKey) || teamLogoMediaKey(nextId));
 
   const next: TeamEntity = {
     ...team,
@@ -512,7 +513,9 @@ export function updateTeam(
     logoDataUrl: normalizeImageRef(patch.logoDataUrl ?? prev.logoDataUrl, resolveTeamLogoSrc((patch as any).logoLibraryId || (prev as any).logoLibraryId || null), (patch as any).logoUrl ?? (prev as any).logoUrl),
     logoLibraryId: (patch as any).logoLibraryId ?? (prev as any).logoLibraryId ?? getTeamLogoTemplateBySrc(patch.logoDataUrl ?? prev.logoDataUrl)?.id ?? null,
     logoLibraryFileName: (patch as any).logoLibraryFileName ?? (prev as any).logoLibraryFileName ?? getTeamLogoTemplateBySrc(patch.logoDataUrl ?? prev.logoDataUrl)?.fileName ?? null,
-    logoMediaKey: (patch as any).logoMediaKey ?? (prev as any).logoMediaKey ?? null,
+    logoMediaKey: ((patch as any).logoLibraryId ?? (prev as any).logoLibraryId)
+      ? null
+      : ((patch as any).logoMediaKey ?? (prev as any).logoMediaKey ?? teamLogoMediaKey(teamId)),
     updatedAt: now(),
   };
 

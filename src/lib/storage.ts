@@ -26,6 +26,9 @@ import {
   avatarAiGalleryMediaKey,
   dartSetMainMediaKey,
   dartSetThumbMediaKey,
+  teamLogoMediaKey,
+  teamCoverMediaKey,
+  readLocalUserMediaFallback,
 } from "./userMediaFallback";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
@@ -3235,6 +3238,29 @@ async function exportPortableAccountData(): Promise<any> {
   const dartSets = getAllDartSets();
   const bots = loadStoredBots();
   const teams = loadStoredTeams();
+
+  // ÉQUIPES MULTI-APPAREILS : les snapshots cloud rapides retirent volontairement
+  // les data:image du store principal. Les logos/couvertures d'équipe doivent
+  // néanmoins voyager AVEC le profil, quelle que soit la destination choisie
+  // (Google Drive, NAS, fichier, etc.). On capture donc d'abord le média local
+  // puis on embarque un petit bloc dédié dans portableAccountData.
+  try {
+    await captureStoreUserMedia({ teams }, { mirrorR2: false });
+  } catch {}
+  const teamMedia: Record<string, { logoDataUrl?: string; coverDataUrl?: string }> = {};
+  for (const team of Array.isArray(teams) ? teams : []) {
+    const id = String((team as any)?.id || "").trim();
+    if (!id) continue;
+    const logo = await readLocalUserMediaFallback(teamLogoMediaKey(id)).catch(() => "");
+    const cover = await readLocalUserMediaFallback(teamCoverMediaKey(id)).catch(() => "");
+    if (logo || cover) {
+      teamMedia[id] = {
+        ...(logo ? { logoDataUrl: logo } : {}),
+        ...(cover ? { coverDataUrl: cover } : {}),
+      };
+    }
+  }
+
   const tournaments = await exportLocalTournamentsSnapshot().catch(() => null);
   const gallery = exportAvatarGalleryMetadata();
   const sanitizedCollections = sanitizeStoreForCloud({ profiles, dartSets, bots, teams });
@@ -3260,6 +3286,7 @@ async function exportPortableAccountData(): Promise<any> {
     bots: Array.isArray(sanitizedCollections?.bots) ? sanitizedCollections.bots : bots,
     dartSets: portableDartSets,
     teams: Array.isArray(sanitizedCollections?.teams) ? sanitizedCollections.teams : teams,
+    teamMedia,
     avatarGalleries: gallery.galleries,
     legacyAiGallery: gallery.legacyAiGallery,
     criticalLocalStorage: exportCriticalLocalStorageValues(),
@@ -3463,7 +3490,18 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
     };
     if (Array.isArray(portable?.bots)) mergedStore.bots = portable.bots;
     if (Array.isArray(portable?.dartSets)) mergedStore.dartSets = portable.dartSets;
-    if (Array.isArray(portable?.teams)) mergedStore.teams = portable.teams;
+    if (Array.isArray(portable?.teams)) {
+      const teamMedia = portable?.teamMedia && typeof portable.teamMedia === "object" ? portable.teamMedia : {};
+      mergedStore.teams = portable.teams.map((team: any) => {
+        const id = String(team?.id || "").trim();
+        const media = id && teamMedia[id] && typeof teamMedia[id] === "object" ? teamMedia[id] : null;
+        return media ? {
+          ...(team || {}),
+          ...(media.logoDataUrl ? { logoDataUrl: media.logoDataUrl, logoMediaKey: team?.logoMediaKey || teamLogoMediaKey(id) } : {}),
+          ...(media.coverDataUrl ? { coverDataUrl: media.coverDataUrl } : {}),
+        } : team;
+      });
+    }
     const hydrated = await hydrateStoreUserMedia(mergedStore).catch(() => ({ store: mergedStore, changed: false }));
     mergedStore = hydrated?.store || mergedStore;
     restoredDartSetsForRuntime = Array.isArray(mergedStore?.dartSets) ? mergedStore.dartSets : null;
@@ -3481,12 +3519,21 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
   } catch (error) { recordError("portable dartsets restore failed", error); }
   try {
     if (Array.isArray(portable?.teams)) {
-      // `portable.teams` est volontairement allégé : les data:image sont retirées.
-      // Il faut donc sauver la version déjà réhydratée depuis userMediaFallback/R2,
-      // sinon ce second save écrase exactement les logos récupérés quelques lignes plus haut.
-      const hydratedTeams = await hydrateStoreUserMedia({ teams: portable.teams }, { allowRemote: true })
-        .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portable.teams)
-        .catch(() => portable.teams);
+      // Priorité au média embarqué avec le profil : il rend la restauration
+      // indépendante de R2 et fonctionne aussi pour Google Drive / NAS.
+      const teamMedia = portable?.teamMedia && typeof portable.teamMedia === "object" ? portable.teamMedia : {};
+      const portableTeamsWithMedia = portable.teams.map((team: any) => {
+        const id = String(team?.id || "").trim();
+        const media = id && teamMedia[id] && typeof teamMedia[id] === "object" ? teamMedia[id] : null;
+        return media ? {
+          ...(team || {}),
+          ...(media.logoDataUrl ? { logoDataUrl: media.logoDataUrl, logoMediaKey: team?.logoMediaKey || teamLogoMediaKey(id) } : {}),
+          ...(media.coverDataUrl ? { coverDataUrl: media.coverDataUrl } : {}),
+        } : team;
+      });
+      const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: true })
+        .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portableTeamsWithMedia)
+        .catch(() => portableTeamsWithMedia);
       saveStoredTeams(hydratedTeams as any[]);
     }
   } catch (error) { recordError("portable teams restore failed", error); }
