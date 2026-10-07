@@ -45,6 +45,7 @@ import { loadBotPlayers } from "../lib/bots";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { History } from "../lib/history";
 import { buildDartsTelemetry } from "../lib/dartsTelemetry";
+import { playSfx, unlockAudio } from "../lib/sfx";
 import {
   applyCapitalVisit,
   buildCapitalMatchStats,
@@ -62,6 +63,13 @@ const CAPITAL_SCORE_BACKGROUNDS = [
   money1Bg, money2Bg, money3Bg, money4Bg, money5Bg,
   money6Bg, money7Bg, money8Bg, money9Bg, money10Bg,
 ];
+
+const CAPITAL_AUDIO = {
+  intro: "/sounds/capital/jingle-capital.mp3",
+  contractSuccess: "/sounds/capital/contrat-valide.mp3",
+  contractFail: "/sounds/capital/echec-contrat.mp3",
+  end: "/sounds/capital/capital-end.mp3",
+} as const;
 
 const CAPITAL_PLAYER_COLORS = [
   "#2fd8ff",
@@ -910,6 +918,8 @@ export default function CapitalPlay(props: any) {
   function pushDart(d: Dart) {
     setCurrentThrow((prev) => {
       if (prev.length >= 3) return prev;
+      // Impact court à chaque fléchette qui touche la cible. MISS reste silencieux.
+      if (Number(d?.v || 0) > 0) playSfx("hit", { volume: 0.78 });
       return [...prev, d];
     });
   }
@@ -926,6 +936,20 @@ export default function CapitalPlay(props: any) {
     const th = normalizeCapitalDarts((forcedThrow ? [...forcedThrow] : [...currentThrow]) as any) as Dart[];
     const before = Number(scores[playerIdx] || 0);
     const applied = applyCapitalVisit(before, currentContract as any, th as any, cfg?.failDivideBy2 !== false);
+
+    // Ambiance arcade CAPITAL : les bots passent directement par validateTurn(),
+    // donc on restitue aussi leurs impacts ici sans doubler les sons des saisies humaines.
+    if (forcedThrow) {
+      th.forEach((dart: Dart, index: number) => {
+        if (Number(dart?.v || 0) <= 0) return;
+        window.setTimeout(() => playSfx("hit", { volume: 0.72 }), index * 105);
+      });
+    }
+    window.setTimeout(
+      () => playSfx(applied.success ? CAPITAL_AUDIO.contractSuccess : CAPITAL_AUDIO.contractFail, { volume: 0.9 }),
+      forcedThrow ? 340 : 80,
+    );
+
     const nextScores = [...scores];
     nextScores[playerIdx] = applied.scoreAfter;
     setScores(nextScores);
@@ -1077,9 +1101,31 @@ export default function CapitalPlay(props: any) {
     return ranked[0] || null;
   }, [cfg?.participantMode, cfg?.tieBreaker, teamScores, winnerIdx, participants]);
 
+  const capitalIntroPlayedRef = useRef(false);
+  const capitalEndPlayedRef = useRef(false);
+
   useEffect(() => {
-    if (isFinished) setEndModalOpen(true);
+    if (capitalIntroPlayedRef.current) return;
+    capitalIntroPlayedRef.current = true;
+    // Tentative immédiate (desktop/PWA déjà déverrouillée). Le premier geste
+    // utilisateur déverrouille ensuite le pool audio pour les SFX suivants.
+    playSfx(CAPITAL_AUDIO.intro, { volume: 0.82 });
+  }, []);
+
+  useEffect(() => {
+    if (!isFinished) return;
+    setEndModalOpen(true);
+    if (!capitalEndPlayedRef.current) {
+      capitalEndPlayedRef.current = true;
+      window.setTimeout(() => playSfx(CAPITAL_AUDIO.end, { volume: 0.9 }), 1100);
+    }
   }, [isFinished]);
+
+  useEffect(() => {
+    const unlock = () => { void unlockAudio(); };
+    window.addEventListener("pointerdown", unlock, { once: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
 
   const successNow = useMemo(() => {
     if (isFinished) return false;

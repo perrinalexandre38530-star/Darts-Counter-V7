@@ -154,7 +154,7 @@ const card: React.CSSProperties = {
 
 // ---------- Types / helpers ----------
 
-type TimeRange = "all" | "day" | "week" | "month" | "year";
+type TimeRange = "all" | "day" | "week" | "month" | "year" | "current";
 type X01ScoreFilterKey = "all" | X01StartScoreKey;
 type X01VariantFilterKey = "all" | Extract<X01VariantKey, "duo" | "multi" | "team">;
 
@@ -558,8 +558,23 @@ function filterByRange(
   range: TimeRange
 ): X01MultiSession[] {
   if (range === "all") return sessions;
+
   const now = Date.now();
   const ONE_DAY = 24 * 60 * 60 * 1000;
+
+  // "ACTUEL" = niveau récent du joueur :
+  // priorité aux 30 derniers jours ; s'il y a trop peu de matière,
+  // on complète avec les dernières performances disponibles.
+  if (range === "current") {
+    const recent30 = sessions.filter((s) => s.date >= now - 30 * ONE_DAY);
+    if (recent30.length >= 5) return recent30;
+
+    return sessions
+      .slice()
+      .sort((a, b) => b.date - a.date)
+      .slice(0, Math.min(10, Math.max(5, sessions.length)));
+  }
+
   const delta =
     range === "day"
       ? ONE_DAY
@@ -4057,7 +4072,7 @@ return (
             transformOrigin: "center",
           }}
         >
-          {(["day", "week", "month", "year", "all"] as TimeRange[]).map(
+          {(["current", "day", "week", "month", "year", "all"] as TimeRange[]).map(
             (r) => (
               <GoldPill
                 key={r}
@@ -4070,6 +4085,7 @@ return (
                   whiteSpace: "nowrap",
                 }}
               >
+                {r === "current" && "ACTUEL"}
                 {r === "day" && "Jour"}
                 {r === "week" && "Semaine"}
                 {r === "month" && "Mois"}

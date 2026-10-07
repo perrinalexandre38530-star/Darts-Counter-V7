@@ -138,7 +138,20 @@ const CHALLENGE_VIEW_CSS = `
 .chv-page .chv-admin-group{border:1px solid rgba(255,255,255,.075);background:#060b12;border-radius:15px;overflow:hidden;}
 .chv-page .chv-admin-group>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:8.5px;font-weight:1000;letter-spacing:.55px;color:#c8d1dc;background:#08101a;border-bottom:1px solid transparent;}
 .chv-page .chv-admin-group>summary::-webkit-details-marker{display:none}.chv-page .chv-admin-group>summary:after{content:"＋";float:right;color:#7f8b99}.chv-page .chv-admin-group[open]>summary{border-bottom-color:rgba(255,255,255,.06);color:#ffcf73}.chv-page .chv-admin-group[open]>summary:after{content:"−"}.chv-page .chv-admin-group>section{border:0!important;border-radius:0!important;margin:0!important;background:#050a10!important;}
-@media (max-width:780px){.chv-page .chv-grid-main,.chv-page .chv-grid-2{grid-template-columns:1fr}.chv-page .chv-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-grid-3{grid-template-columns:1fr}.chv-page .chv-panel{padding:11px;border-radius:16px}.chv-page .chv-row{grid-template-columns:30px minmax(0,1fr) auto}.chv-page .chv-objective-row{grid-template-columns:28px minmax(0,1fr) auto}.chv-page .chv-objective-row .chv-play{grid-column:2/4;width:100%;min-height:32px}.chv-page .chv-activity{grid-template-columns:58px minmax(0,1fr) auto}}
+.chv-page .chv-main-tabs{display:flex;align-items:stretch;gap:5px;overflow-x:auto;overflow-y:hidden;padding:3px 1px 6px;scrollbar-width:thin;-webkit-overflow-scrolling:touch;width:100%;}
+.chv-page .chv-main-tab{flex:0 0 auto;min-width:58px;height:43px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:#070d15;color:#aeb8c4;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;cursor:pointer;white-space:nowrap;}
+.chv-page .chv-main-tab span{display:grid;place-items:center;flex:0 0 auto}.chv-page .chv-main-tab b{font-size:7.1px;font-weight:1000;letter-spacing:.15px;}
+.chv-page .chv-main-tab[data-active="true"]{color:#fff;border-color:color-mix(in srgb,var(--tab-accent) 62%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--tab-accent) 17%,#09111b),#070d15);box-shadow:0 0 16px color-mix(in srgb,var(--tab-accent) 18%,transparent);}
+.chv-page .chv-main-tab[data-active="true"] b{color:var(--tab-accent)}
+.chv-page .chv-view-context{margin:3px 0 9px;padding:0 3px;display:flex;align-items:baseline;justify-content:center;gap:7px;text-align:center;min-height:18px;}
+.chv-page .chv-view-context b{font-size:11px;font-weight:1000}.chv-page .chv-view-context span{font-size:7.3px;color:#7f8b99;line-height:1.25;}
+.chv-page .chv-help{padding:0!important;overflow:hidden}.chv-page .chv-help>summary{cursor:pointer;list-style:none;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.chv-page .chv-help>summary::-webkit-details-marker{display:none}.chv-page .chv-help>summary:after{content:"＋";color:#7f8b99;font-size:12px}.chv-page .chv-help[open]>summary:after{content:"−"}.chv-page .chv-help-body{padding:0 11px 11px;display:grid;gap:7px;}
+.chv-page .chv-roster-more{margin-top:7px;border:1px solid rgba(255,255,255,.065);background:#060b12;border-radius:11px;overflow:hidden}.chv-page .chv-roster-more>summary{cursor:pointer;list-style:none;padding:8px 10px;font-size:7.7px;font-weight:1000;color:#9ba8b7;text-align:center}.chv-page .chv-roster-more>summary::-webkit-details-marker{display:none}.chv-page .chv-roster-more[open]>summary{color:#ffcf73;border-bottom:1px solid rgba(255,255,255,.05)}
+.chv-page .chv-danger{border-color:rgba(255,79,120,.22)!important;background:linear-gradient(180deg,#13080d,#090609)!important;}
+@media (max-width:780px){.chv-page .chv-grid-main,.chv-page .chv-grid-2{grid-template-columns:1fr}.chv-page .chv-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-grid-3{grid-template-columns:1fr}.chv-page .chv-panel{padding:11px;border-radius:16px}.chv-page .chv-row{grid-template-columns:30px minmax(0,1fr) auto}.chv-page .chv-objective-row{grid-template-columns:28px minmax(0,1fr) auto}.chv-page .chv-objective-row .chv-play{grid-column:2/4;width:100%;min-height:32px}.chv-page .chv-activity{grid-template-columns:58px minmax(0,1fr) auto}.chv-page .chv-main-tabs{overflow:visible;display:grid;grid-template-columns:repeat(auto-fit,minmax(54px,1fr));gap:5px;padding-bottom:4px}.chv-page .chv-main-tab{min-width:0;width:100%;height:42px;padding:0 4px;gap:3px}.chv-page .chv-main-tab b{font-size:6.35px}.chv-page .chv-main-tab.chv-secondary-tab{display:none}.chv-page .chv-more-nav{display:block}.chv-page .chv-view-context{justify-content:flex-start;text-align:left;padding-left:2px}.chv-page .chv-view-context span{display:none}.chv-page .chv-quick-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-personal-focus{grid-template-columns:42px minmax(0,1fr)!important}.chv-page .chv-personal-focus .chv-personal-action{grid-column:1/3;width:100%}}
+
+.chv-page .chv-more-nav{display:none;position:relative;min-width:0}.chv-page .chv-more-nav>summary{list-style:none;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:#070d15;color:#aeb8c4;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 4px;cursor:pointer;font-size:6.35px;font-weight:1000}.chv-page .chv-more-nav>summary::-webkit-details-marker{display:none}.chv-page .chv-more-nav[open]>summary{border-color:rgba(34,230,255,.35);color:#22e6ff}.chv-page .chv-more-menu{position:absolute;right:0;top:47px;z-index:40;width:min(210px,72vw);padding:7px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:#050a11;box-shadow:0 18px 38px rgba(0,0,0,.55);display:grid;gap:5px}.chv-page .chv-more-item{min-height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:#08101a;color:#dce5ef;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:7px;padding:0 9px;text-align:left;cursor:pointer;font-size:8px;font-weight:1000}.chv-page .chv-more-item[data-active="true"]{border-color:rgba(34,230,255,.35);background:rgba(8,35,58,.95);color:#fff}.chv-page .chv-tab-badge{min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#111b27;color:#fff;display:inline-grid;place-items:center;font-size:6px;font-weight:1000;border:1px solid rgba(255,255,255,.09)}.chv-page .chv-quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}.chv-page .chv-quick-action{min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:#070d15;color:#fff;padding:7px 8px;display:grid;grid-template-columns:24px minmax(0,1fr);gap:7px;align-items:center;text-align:left;cursor:pointer}.chv-page .chv-quick-action b{font-size:7.8px;line-height:1.1}.chv-page .chv-quick-action span{display:block;margin-top:2px;font-size:6.4px;color:#84909e;line-height:1.2}.chv-page .chv-personal-focus{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px;border-radius:13px;border:1px solid rgba(34,230,255,.18);background:linear-gradient(180deg,rgba(5,25,32,.96),#060b12);margin-bottom:9px}.chv-page .chv-result-scope{display:grid;grid-template-columns:1fr 1fr;gap:6px}.chv-page .chv-result-scope button{min-height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#070d15;color:#8d9aac;font-size:7.5px;font-weight:1000}.chv-page .chv-result-scope button[data-active="true"]{border-color:rgba(34,230,255,.38);background:rgba(8,35,58,.92);color:#22e6ff}.chv-page .chv-highlight-me{border-color:rgba(34,230,255,.22)!important;background:linear-gradient(180deg,rgba(5,24,31,.97),#070d15)!important}
 @media (min-width:980px){.chv-page{max-width:1180px;margin-left:auto;margin-right:auto}.chv-page .chv-panel{padding:14px}.chv-page .chv-objective-chip{min-width:72px}}
 `;
 
@@ -450,6 +463,42 @@ function NeonTopTabsIconsOnly({ tabs, activeKey, onChange }: any) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function ChallengeTopNav({ tabs, activeKey, onChange, labels, badges = {} }: any) {
+  const iconMap: Record<string, string> = {
+    home: "home", my: "user", objectives: "target", standings: "standings", linked: "results", stats: "stats", admin: "admin",
+  };
+  const short: Record<string, string> = { home: "Accueil", my: "Jouer", objectives: "Objectifs", standings: "Classement", linked: "Résultats", stats: "Stats", admin: "Admin" };
+  const primaryKeys = new Set(["home", "my", "objectives", "standings"]);
+  const primary = (tabs || []).filter((k: string) => primaryKeys.has(k));
+  const secondary = (tabs || []).filter((k: string) => !primaryKeys.has(k));
+  const secondaryActive = secondary.includes(activeKey);
+  const renderDirect = (k: string, secondaryTab = false) => {
+    const accent = TAB_COLORS[k] || THEME;
+    const active = activeKey === k;
+    const badge = Number(badges?.[k] || 0);
+    return <button key={k} type="button" role="tab" aria-selected={active} data-active={active ? "true" : "false"} className={`chv-main-tab${secondaryTab ? " chv-secondary-tab" : ""}`} onClick={() => onChange(k)} style={{"--tab-accent": accent} as React.CSSProperties} title={labels?.[k] || short[k] || k}>
+      <span aria-hidden style={{filter:active?`drop-shadow(0 0 8px ${accent}55)`:"none"}}><Icon name={iconMap[k] || "stats"} color={active ? accent : "#8d9aac"} /></span>
+      <b>{short[k] || labels?.[k] || k}</b>
+      {badge>0?<i className="chv-tab-badge" style={{fontStyle:"normal",color:active?accent:"#aeb8c4"}}>{badge>99?"99+":badge}</i>:null}
+    </button>;
+  };
+  return (
+    <div className="chv-main-tabs dc-scroll-thin" role="tablist" aria-label="Navigation Challenge">
+      {primary.map((k: string) => renderDirect(k, false))}
+      {secondary.map((k: string) => renderDirect(k, true))}
+      {secondary.length ? <details className="chv-more-nav">
+        <summary><Icon name={secondaryActive ? (iconMap[activeKey] || "stats") : "stats"} color={secondaryActive ? (TAB_COLORS[activeKey] || "#22e6ff") : "#8d9aac"}/><b>{secondaryActive ? (short[activeKey] || labels?.[activeKey] || "Plus") : "Plus"}</b></summary>
+        <div className="chv-more-menu">{secondary.map((k: string) => {
+          const active = activeKey === k;
+          const accent = TAB_COLORS[k] || THEME;
+          const badge = Number(badges?.[k] || 0);
+          return <button key={`more-${k}`} type="button" className="chv-more-item" data-active={active ? "true" : "false"} onClick={(event) => { onChange(k); const details=(event.currentTarget.closest("details") as HTMLDetailsElement|null); if(details) details.open=false; }}><Icon name={iconMap[k] || "stats"} color={active ? accent : "#8d9aac"}/><span>{labels?.[k] || short[k] || k}</span>{badge>0?<i className="chv-tab-badge" style={{fontStyle:"normal",color:active?accent:"#aeb8c4"}}>{badge>99?"99+":badge}</i>:null}</button>;
+        })}</div>
+      </details> : null}
     </div>
   );
 }
@@ -1935,6 +1984,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   const [challengeStandingScope, setChallengeStandingScope] = React.useState<"cycle" | "season">("cycle");
   const [challengeObjectiveFocus, setChallengeObjectiveFocus] = React.useState<string>("");
   const [challengeResultsFocus, setChallengeResultsFocus] = React.useState<string>("all");
+  const [challengeResultsOwner, setChallengeResultsOwner] = React.useState<"all" | "mine">("all");
   const [adminSeasonName, setAdminSeasonName] = React.useState("");
   const [adminSeasonMaxCycles, setAdminSeasonMaxCycles] = React.useState("");
   const [adminSeasonEndDate, setAdminSeasonEndDate] = React.useState("");
@@ -2321,6 +2371,11 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     return Array.from(map.values()).sort((a,b)=>b.points-a.points||b.wins-a.wins||b.podiums-a.podiums||a.name.localeCompare(b.name)).map((row,index)=>({...row,rank:index+1}));
   },[tournamentPlayers,playersById,challengeCarryPoints,challengeObjectives,challengeObjectiveStandings,challengeCompetition,challengeRules]);
 
+  const challengeDisplayGeneralStandings = React.useMemo(
+    () => challengeGeneralStandings.filter((row:any) => Number(row?.objectives||0) > 0 || Number(row?.cyclePoints||0) > 0 || Number(row?.carryPoints||0) > 0),
+    [challengeGeneralStandings]
+  );
+
   const challengeAttemptCount = React.useCallback((playerId:string, objective:string)=>{
     const obj=normalizeChallengeObjective(objective);
     let count=0;
@@ -2625,15 +2680,26 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   }, [isChallengeCompetition, linkedHistoryMatches, playersById, tournamentPlayers]);
 
   const challengeFilteredResults = React.useMemo(() => {
-    const sorted = linkedHistoryMatches
+    let sorted = linkedHistoryMatches
       .slice()
       .sort((a: any, b: any) => Number(b?.createdAt || b?.linkedAt || 0) - Number(a?.createdAt || a?.linkedAt || 0));
     const focus = normalizeChallengeObjective(challengeResultsFocus || "");
-    if (!challengeResultsFocus || challengeResultsFocus === "all" || !challengeObjectives.includes(focus)) return sorted;
-    return sorted.filter((link: any) =>
-      normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective || historyChallengeObjective(link)) === focus
-    );
-  }, [linkedHistoryMatches, challengeResultsFocus, challengeObjectives]);
+    if (challengeResultsFocus && challengeResultsFocus !== "all" && challengeObjectives.includes(focus)) {
+      sorted = sorted.filter((link: any) =>
+        normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective || historyChallengeObjective(link)) === focus
+      );
+    }
+    if (challengeResultsOwner === "mine" && currentTournamentPlayer) {
+      const pid = String(currentTournamentPlayer?.id || "");
+      const onlineId = String((currentTournamentPlayer as any)?.onlineUserId || "");
+      sorted = sorted.filter((link: any) => (Array.isArray(link?.ranking) ? link.ranking : []).some((row: any) => {
+        const rowId = String(row?.playerId || row?.id || "");
+        const rowOnlineId = String(row?.onlineUserId || "");
+        return rowId === pid || (onlineId && (rowId === onlineId || rowOnlineId === onlineId));
+      }));
+    }
+    return sorted;
+  }, [linkedHistoryMatches, challengeResultsFocus, challengeResultsOwner, challengeObjectives, currentTournamentPlayer]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
@@ -4395,7 +4461,17 @@ async function createSyntheticHistoryForSimulation(args: any) {
     stats: "Stats",
     admin: "Administration",
     objectives: "Objectifs",
-    my: "Mon espace",
+    my: "Jouer",
+  };
+
+  const challengeViewDescription: Record<string,string> = {
+    home: "Vue d’ensemble et prochain objectif",
+    my: "Tes essais disponibles, tes scores et ta progression",
+    objectives: "Choisir une cible, jouer et consulter son classement",
+    standings: "Points cumulés des classements par objectif",
+    linked: "Historique des essais enregistrés",
+    stats: "Synthèse de la compétition",
+    admin: "Participants, règles, journées et gestion",
   };
 
   const [activeGroupIdx, setActiveGroupIdx] = React.useState(0);
@@ -5168,7 +5244,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
       ) : null}
 
       {/* NAVIGATION PRINCIPALE : titre supprimé, icônes intégrées à la place */}
-      <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0, 1fr) 88px", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isChallengePerformanceCompetition ? "40px minmax(0, 1fr)" : "40px minmax(0, 1fr) 88px", alignItems: "center", gap: 8 }}>
         <button
           type="button"
           onClick={() => sharedEntry ? go("online") : go("tournaments")}
@@ -5188,11 +5264,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
         </button>
 
         <div style={{ minWidth: 0, display: "flex", justifyContent: "center", overflow: "hidden" }}>
-          <NeonTopTabsIconsOnly tabs={TABS} activeKey={tab} onChange={setTab} />
+          {isChallengePerformanceCompetition ? <ChallengeTopNav tabs={TABS} activeKey={tab} onChange={setTab} labels={tabLabel} badges={{my:challengePlayerDashboard?.playable?.length||0,objectives:challengeOpenObjectives.length,linked:linkedHistoryMatches.length}} /> : <NeonTopTabsIconsOnly tabs={TABS} activeKey={tab} onChange={setTab} />}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          {!publicSpectator && isCompetitionAdmin && !isChallengePerformanceCompetition ? <button
+        {!isChallengePerformanceCompetition ? <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          {!publicSpectator && isCompetitionAdmin ? <button
             type="button"
             onClick={simulateTournament}
             title="Simuler le tournoi"
@@ -5239,10 +5315,10 @@ async function createSyntheticHistoryForSimulation(args: any) {
           >
             <Icon name="trash" color="#ff4fd8" />
           </button> : null}
-        </div>
+        </div> : null}
       </div>
 
-      <div
+      {isChallengePerformanceCompetition ? <div className="chv-view-context"><b style={{color:TAB_COLORS[tab]||"#ffcf73"}}>{tabLabel[tab]||"—"}</b><span>{challengeViewDescription[tab]||""}</span></div> : <div
         style={{
           marginTop: 2,
           textAlign: "center",
@@ -5253,7 +5329,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
         }}
       >
         {tabLabel[tab] || "—"}
-      </div>
+      </div>}
 
       {tour && (!isChallengeCompetition || tab === "home") ? <div className={isChallengeCompetition ? "chv-grid-4" : undefined} style={isChallengeCompetition ? {margin:"10px 0 12px"} : {display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7,margin:"10px 0 12px"}}>
         {(isChallengePerformanceCompetition ? [
@@ -5340,8 +5416,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
                     <div className="chv-panel-soft">
                       <div className="chv-section-head" style={{marginBottom:7}}><div><div className="chv-eyebrow">CLASSEMENT GÉNÉRAL</div><div className="chv-title" style={{marginTop:3}}>Top actuel</div></div><button type="button" onClick={()=>setTab("standings")} style={{border:0,background:"transparent",color:"#65e6a2",fontSize:7.5,fontWeight:1000,cursor:"pointer"}}>VOIR TOUT →</button></div>
-                      <div className="chv-rows">{challengeGeneralStandings.slice(0,5).map((row:any)=><div key={`home-rank-${row.playerId}`} className="chv-row"><b style={{color:Number(row.rank)<=3?"#ffcf73":"#8d9aac"}}>#{row.rank}</b><div style={{minWidth:0}}><span className="chv-row-name">{row.name}</span><span className="chv-row-sub">{row.wins||0} victoire{Number(row.wins||0)>1?"s":""} · {row.podiums||0} podium{Number(row.podiums||0)>1?"s":""}</span></div><b style={{fontSize:10,color:"#65e6a2"}}>{row.points} pts</b></div>)}</div>
-                      {!challengeGeneralStandings.length?<div className="chv-sub" style={{padding:"10px 0"}}>Le classement apparaîtra dès le premier résultat.</div>:null}
+                      <div className="chv-rows">{challengeDisplayGeneralStandings.slice(0,5).map((row:any)=><div key={`home-rank-${row.playerId}`} className="chv-row"><b style={{color:Number(row.rank)<=3?"#ffcf73":"#8d9aac"}}>#{row.rank}</b><div style={{minWidth:0}}><span className="chv-row-name">{row.name}</span><span className="chv-row-sub">{row.wins||0} victoire{Number(row.wins||0)>1?"s":""} · {row.podiums||0} podium{Number(row.podiums||0)>1?"s":""}</span></div><b style={{fontSize:10,color:"#65e6a2"}}>{row.points} pts</b></div>)}</div>
+                      {!challengeDisplayGeneralStandings.length?<div style={{padding:"11px 9px",borderRadius:11,border:"1px dashed rgba(101,230,162,.16)",background:"#060b12"}}><b style={{display:"block",fontSize:8.7,color:"#8d9aac"}}>CLASSEMENT EN ATTENTE</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Il apparaîtra automatiquement après le premier essai classé.</span></div>:null}
                     </div>
                   </div>
                 ) : (
@@ -5354,13 +5430,15 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   </div>
                 )}
 
-                <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}>
-                  {isChallengePerformanceCompetition?<button type="button" className="chv-action" onClick={()=>setTab("objectives")} style={{border:"1px solid rgba(255,181,74,.32)",background:"rgba(63,39,8,.88)"}}>OBJECTIFS</button>:null}
-                  {isChallengePerformanceCompetition&&challengeCompetitionFormat==="free"&&!publicSpectator?<button type="button" className="chv-action" onClick={loadAttachableHistory} style={{border:"1px solid rgba(255,213,106,.30)",background:"rgba(60,47,13,.88)",color:"#ffe68a"}}>＋ PARTIE LOISIR</button>:null}
-                  <button type="button" className="chv-action" onClick={shareCompetition} style={{border:"1px solid rgba(79,180,255,.30)",background:"rgba(8,35,58,.88)"}}>↗ PARTAGER</button>
-                  {!publicSpectator&&isCompetitionAdmin?<button type="button" className="chv-action" onClick={()=>setTab("admin")} style={{border:"1px solid rgba(255,107,107,.28)",background:"rgba(71,18,24,.88)"}}>⚙ ADMIN</button>:null}
-                  {!publicSpectator&&isCompetitionAdmin&&isChallengePerformanceCompetition?<button type="button" className="chv-action" onClick={()=>{setTab("admin");setAdminPlayerPickerOpen(true)}} style={{border:"1px solid rgba(101,230,162,.26)",background:"rgba(14,62,43,.84)"}}>＋ JOUEUR</button>:null}
-                </div>
+                {isChallengePerformanceCompetition ? <div className="chv-quick-actions">
+                  {challengePlayerDashboard ? <button type="button" className="chv-quick-action" onClick={()=>setTab("my")} style={{borderColor:"rgba(34,230,255,.20)"}}><Icon name="user" color="#22e6ff"/><div><b>JOUER / MON ESPACE</b><span>{challengePlayerDashboard.playable.length ? `${challengePlayerDashboard.playable.length} objectif${challengePlayerDashboard.playable.length>1?"s":""} disponible${challengePlayerDashboard.playable.length>1?"s":""}` : "Voir ma progression"}</span></div></button> : null}
+                  <button type="button" className="chv-quick-action" onClick={()=>setTab("objectives")} style={{borderColor:"rgba(255,181,74,.20)"}}><Icon name="target" color="#ffb54a"/><div><b>OBJECTIFS</b><span>{challengeOpenObjectives.length} ouvert{challengeOpenObjectives.length>1?"s":""} · classements</span></div></button>
+                  <button type="button" className="chv-quick-action" onClick={()=>setTab("standings")} style={{borderColor:"rgba(101,230,162,.20)"}}><Icon name="standings" color="#65e6a2"/><div><b>CLASSEMENT</b><span>Cycle et saison</span></div></button>
+                  <button type="button" className="chv-quick-action" onClick={()=>setTab("linked")} style={{borderColor:"rgba(79,180,255,.20)"}}><Icon name="results" color="#4fb4ff"/><div><b>RÉSULTATS</b><span>{linkedHistoryMatches.length} essai{linkedHistoryMatches.length>1?"s":""} enregistré{linkedHistoryMatches.length>1?"s":""}</span></div></button>
+                  {challengeCompetitionFormat==="free"&&!publicSpectator?<button type="button" className="chv-quick-action" onClick={loadAttachableHistory} style={{borderColor:"rgba(255,213,106,.20)"}}><Icon name="results" color="#ffe68a"/><div><b>PARTIE LOISIR</b><span>Rattacher depuis l’historique</span></div></button>:null}
+                  <button type="button" className="chv-quick-action" onClick={shareCompetition} style={{borderColor:"rgba(79,180,255,.20)"}}><Icon name="share" color="#4fb4ff"/><div><b>PARTAGER</b><span>Inviter ou faire suivre</span></div></button>
+                  {!publicSpectator&&isCompetitionAdmin?<button type="button" className="chv-quick-action" onClick={()=>setTab("admin")} style={{borderColor:"rgba(255,107,107,.20)"}}><Icon name="admin" color="#ff6b6b"/><div><b>ADMINISTRATION</b><span>Joueurs, règles et programme</span></div></button>:null}
+                </div> : <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}><button type="button" className="chv-action" onClick={shareCompetition} style={{border:"1px solid rgba(79,180,255,.30)",background:"rgba(8,35,58,.88)"}}>↗ PARTAGER</button>{!publicSpectator&&isCompetitionAdmin?<button type="button" className="chv-action" onClick={()=>setTab("admin")} style={{border:"1px solid rgba(255,107,107,.28)",background:"rgba(71,18,24,.88)"}}>⚙ ADMIN</button>:null}</div>}
               </section>
 
               {isChallengePerformanceCompetition && challengeCompetitionFormat === "divisions" && challengeDivisionState.enabled ? (
@@ -5382,22 +5460,19 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 </section>
               ) : null}
 
-              <div className="chv-grid-2">
-                <section className="chv-panel">
-                  <div className="chv-section-head"><div><div className="chv-eyebrow">ACTIVITÉ RÉCENTE</div><div className="chv-title" style={{marginTop:3}}>{isChallengePerformanceCompetition?"Derniers essais":"Derniers résultats"}</div></div>{isChallengePerformanceCompetition?<button type="button" onClick={()=>setTab("linked")} style={{border:0,background:"transparent",color:"#22e6ff",fontSize:7.5,fontWeight:1000,cursor:"pointer"}}>RÉSULTATS →</button>:null}</div>
-                  {isChallengePerformanceCompetition ? (challengeRecentActivity.length?<div>{challengeRecentActivity.slice(0,6).map((row:any)=><div key={row.id} className="chv-activity"><b style={{fontSize:8,color:"#ffb54a"}}>{challengeObjectiveLabel(row.objective)}</b><div style={{minWidth:0}}><span className="chv-row-name">{row.playerName}</span><span className="chv-row-sub">{row.attempt?`Essai ${row.attempt}`:"Partie liée"}{row.round?` · J${row.round}`:""} · {row.createdAt?formatDate(row.createdAt):""}</span></div><b style={{fontSize:11,color:"#65e6a2"}}>{row.score}</b></div>)}</div>:<div className="chv-sub">Aucune performance enregistrée pour le moment.</div>) : (doneMatches.length?<div style={{display:"grid",gap:7}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,"#65e6a2"))}</div>:<div className="chv-sub">Aucun résultat pour le moment.</div>)}
-                </section>
+              {isChallengePerformanceCompetition && challengeRecentActivity.length ? <section className="chv-panel">
+                <div className="chv-section-head"><div><div className="chv-eyebrow">ACTIVITÉ RÉCENTE</div><div className="chv-title" style={{marginTop:3}}>Derniers essais</div></div><button type="button" onClick={()=>setTab("linked")} style={{border:0,background:"transparent",color:"#22e6ff",fontSize:7.5,fontWeight:1000,cursor:"pointer"}}>TOUS LES RÉSULTATS →</button></div>
+                <div>{challengeRecentActivity.slice(0,4).map((row:any)=><div key={row.id} className="chv-activity"><div style={{display:"flex",alignItems:"center",gap:5}}><ChallengeObjectiveThumb objective={row.objective}/><b style={{fontSize:8,color:"#ffb54a"}}>{challengeObjectiveLabel(row.objective)}</b></div><div style={{minWidth:0}}><span className="chv-row-name">{row.playerName}</span><span className="chv-row-sub">{row.attempt?`Essai ${row.attempt}`:"Partie liée"}{row.round?` · J${row.round}`:""} · {row.createdAt?formatDate(row.createdAt):""}</span></div><b style={{fontSize:11,color:"#65e6a2"}}>{row.score}</b></div>)}</div>
+              </section> : !isChallengePerformanceCompetition ? <section className="chv-panel"><div className="chv-section-head"><div><div className="chv-eyebrow">ACTIVITÉ RÉCENTE</div><div className="chv-title" style={{marginTop:3}}>Derniers résultats</div></div></div>{doneMatches.length?<div style={{display:"grid",gap:7}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,"#65e6a2"))}</div>:<div className="chv-sub">Aucun résultat pour le moment.</div>}</section> : null}
 
-                <section className="chv-panel">
-                  <div className="chv-eyebrow">REPÈRES</div>
-                  <div className="chv-title" style={{marginTop:3}}>Comprendre la compétition</div>
-                  <div style={{display:"grid",gap:7,marginTop:9}}>
-                    <div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#ffcf73"}}>FORMAT</b><span className="chv-sub" style={{display:"block",marginTop:3}}>{challengeFormatMeta.description}</span></div>
-                    {isChallengePerformanceCompetition?<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#65e6a2"}}>CLASSEMENT</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Chaque objectif produit son classement. Les points de ces classements sont additionnés au général.</span></div>:<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#4fb4ff"}}>MATCHS</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Chaque confrontation Challenge alimente le calendrier et la progression du tournoi.</span></div>}
-                    {isChallengePerformanceCompetition?<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#22e6ff"}}>ESSAIS</b><span className="chv-sub" style={{display:"block",marginTop:3}}>{challengeAttemptsPerObjective} essai{challengeAttemptsPerObjective>1?"s":""} max par défaut · meilleur essai retenu.</span></div>:null}
-                  </div>
-                </section>
-              </div>
+              <details className="chv-panel chv-help">
+                <summary><div><div className="chv-eyebrow">AIDE</div><div className="chv-title" style={{marginTop:2}}>Comprendre cette compétition</div></div><span className="chv-sub">Règles & fonctionnement</span></summary>
+                <div className="chv-help-body">
+                  <div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#ffcf73"}}>FORMAT</b><span className="chv-sub" style={{display:"block",marginTop:3}}>{challengeFormatMeta.description}</span></div>
+                  {isChallengePerformanceCompetition?<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#65e6a2"}}>CLASSEMENT</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Chaque objectif possède son classement. Les points gagnés sur chaque objectif sont additionnés au classement général.</span></div>:<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#4fb4ff"}}>MATCHS</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Chaque confrontation Challenge alimente le calendrier et la progression du tournoi.</span></div>}
+                  {isChallengePerformanceCompetition?<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#22e6ff"}}>ESSAIS</b><span className="chv-sub" style={{display:"block",marginTop:3}}>{challengeAttemptsPerObjective} essai{challengeAttemptsPerObjective>1?"s":""} max par défaut · seul le meilleur essai est retenu.</span></div>:null}
+                </div>
+              </details>
             </>
             ) : (
             <>
@@ -5597,7 +5672,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     <span style={{fontSize:15,fontWeight:1000,color:"#65e6a2"}}>{challengePlayerDashboard.playable.length}</span>
                   </div>
                   {challengePlayerDashboard.playable.length ? <div style={{display:"grid",gap:6,marginTop:8}}>
-                    {challengePlayerDashboard.playable.map((row:any)=><div key={`my-open-${row.objective}`} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:11,border:"1px solid rgba(101,230,162,.12)",background:"#081019"}}>
+                    {challengePlayerDashboard.playable.map((row:any)=><div key={`my-open-${row.objective}`} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:11,border:"1px solid rgba(101,230,162,.12)",background:"#081019"}}>
+                      <ChallengeObjectiveThumb objective={row.objective}/>
                       <div><b style={{display:"block",fontSize:10}}>{challengeObjectiveLabel(row.objective)}</b><span style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>J{Number(row.round?.round||0)||1} · {row.attempts}/{row.maxAttempts} essais · {challengeObjectiveVisits(row.objective)} tours</span></div>
                       <span style={{fontSize:8,color:row.standing?"#65e6a2":"#8593a3",fontWeight:900}}>{row.standing?`#${row.standing.rank} · ${row.standing.score}`:"PAS DE SCORE"}</span>
                       <button type="button" onClick={()=>launchChallengeAttempt(challengePlayerDashboard.player,row.objective)} style={{minHeight:32,borderRadius:9,border:"1px solid rgba(101,230,162,.34)",background:"rgba(14,62,43,.84)",color:"#fff",padding:"0 10px",fontSize:8,fontWeight:1000}}>JOUER</button>
@@ -5645,7 +5721,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 ) : null}
 
                 <section className="chv-panel" style={{padding:11}}>
-                  <div className="chv-section-head" style={{marginBottom:7}}><div><div className="chv-eyebrow">CHOISIR L’OBJECTIF</div><div className="chv-sub" style={{marginTop:3}}>On n’affiche plus tous les tableaux à la suite : sélectionne celui que tu veux consulter.</div></div><span className="chv-status" style={{color:"#ffb54a"}}>{challengeObjectives.length} OBJECTIF{challengeObjectives.length>1?"S":""}</span></div>
+                  <div className="chv-section-head" style={{marginBottom:7}}><div><div className="chv-eyebrow">CHOISIR L’OBJECTIF</div><div className="chv-sub" style={{marginTop:3}}>Choisis une cible pour voir son classement, tes essais disponibles et jouer.</div></div><span className="chv-status" style={{color:"#ffb54a"}}>{challengeObjectives.length} OBJECTIF{challengeObjectives.length>1?"S":""}</span></div>
                   <div className="chv-objective-strip">
                     {challengeObjectives.map((objective:string)=>{
                       const open=challengeObjectiveIsOpen(objective);
@@ -5673,23 +5749,39 @@ async function createSyntheticHistoryForSimulation(args: any) {
                       <span className="chv-status" style={{color:open?"#65e6a2":status==="closed"?"#7f8a98":"#ffb54a"}}>{open?"● OUVERT":status==="closed"?"CLOS":"À VENIR"}</span>
                     </div>
 
+                    {currentTournamentPlayer ? (()=>{
+                      const meId=String(currentTournamentPlayer?.id||"");
+                      const meRow=(challengeObjectiveStandings[objective]||[]).find((row:any)=>String(row?.playerId||"")===meId)||null;
+                      const used=challengeAttemptCount(meId,objective);
+                      const max=challengeObjectiveAttemptLimit(objective);
+                      const canPlayMine=!publicSpectator&&open&&used<max;
+                      return <div className="chv-personal-focus"><ChallengeObjectiveThumb objective={objective} className="chv-objective-hero-thumb"/><div style={{minWidth:0}}><div className="chv-eyebrow" style={{color:"#22e6ff"}}>MON OBJECTIF</div><b style={{display:"block",fontSize:11,marginTop:2}}>{meRow?`#${meRow.rank} · ${meRow.score} pts`:`Pas encore classé`}</b><span className="chv-sub" style={{display:"block",marginTop:3}}>{used}/{max} essai{max>1?"s":""} utilisé{used>1?"s":""}{meRow?` · +${meRow.championshipPoints} pts championnat`:""}</span></div>{!publicSpectator?<button type="button" className="chv-action chv-personal-action" disabled={!canPlayMine} onClick={()=>launchChallengeAttempt(currentTournamentPlayer,objective)} style={{border:`1px solid ${canPlayMine?"rgba(34,230,255,.38)":"rgba(255,255,255,.07)"}`,background:canPlayMine?"rgba(8,43,57,.92)":"#080d14",color:canPlayMine?"#22e6ff":"#677280"}}>{used>=max?"ESSAIS TERMINÉS":!open?"OBJECTIF FERMÉ":"JOUER UN ESSAI"}</button>:null}</div>;
+                    })() : null}
                     {top3.length ? <div className="chv-podium" style={{marginBottom:10}}>{top3.map((row:any,index:number)=><div key={`pod-${objective}-${row.playerId}`} style={index===0?{order:1}:index===1?{order:0}:{order:2}}><span className="chv-eyebrow">#{row.rank}</span><b style={{display:"block",fontSize:index===0?12:10,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:index===0?"#ffcf73":"#fff"}}>{row.name}</b><strong style={{display:"block",fontSize:index===0?18:15,marginTop:5,color:"#65e6a2"}}>{row.score}</strong><span className="chv-sub">+{row.championshipPoints} pts</span></div>)}</div>:null}
 
-                    <div className="chv-rows">
-                      {tournamentPlayers.map((player:any)=>{
+                    {(()=>{
+                      const orderedPlayers=[...tournamentPlayers].sort((a:any,b:any)=>{
+                        const ar=rows.find((r:any)=>String(r.playerId)===String(a?.id||""));
+                        const br=rows.find((r:any)=>String(r.playerId)===String(b?.id||""));
+                        if(ar&&br)return Number(ar.rank||999)-Number(br.rank||999);
+                        if(ar)return -1;if(br)return 1;return String(a?.name||"").localeCompare(String(b?.name||""));
+                      });
+                      const renderPlayer=(player:any)=>{
                         const pid=String(player?.id||"");
                         const row=rows.find((r:any)=>String(r.playerId)===pid);
                         const attempts=challengeAttemptCount(pid,objective);
                         const maxAttempts=challengeObjectiveAttemptLimit(objective);
                         const canPlay=!publicSpectator&&(isCompetitionAdmin||String(currentTournamentPlayer?.id||"")===pid)&&open&&attempts<maxAttempts;
-                        return <div key={`${objective}-${pid}`} className="chv-row chv-objective-row">
+                        return <div key={`${objective}-${pid}`} className={`chv-row chv-objective-row${String(currentTournamentPlayer?.id||"")===pid?" chv-highlight-me":""}`}>
                           <strong style={{color:row&&Number(row.rank)<=3?"#ffcf73":"#7f8b99"}}>{row?`#${row.rank}`:"—"}</strong>
                           <div style={{minWidth:0}}><span className="chv-row-name">{player?.name||"Joueur"}</span><span className="chv-row-sub">{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""}{row?` · meilleur ${row.score}`:" · aucun score"}</span></div>
                           <b style={{fontSize:9,color:row?"#65e6a2":"#768190"}}>{row?`+${row.championshipPoints} pts`:"—"}</b>
                           {!publicSpectator?<button type="button" className="chv-action chv-play" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:66,border:`1px solid ${canPlay?"rgba(255,181,74,.38)":"rgba(255,255,255,.07)"}`,background:canPlay?"rgba(75,45,8,.92)":"#080d14",color:canPlay?"#ffcf73":"#677280"}}>{attempts>=maxAttempts?"COMPLET":!open?"FERMÉ":"JOUER"}</button>:null}
-                        </div>
-                      })}
-                    </div>
+                        </div>;
+                      };
+                      const first=orderedPlayers.slice(0,6), rest=orderedPlayers.slice(6);
+                      return <><div className="chv-rows">{first.map(renderPlayer)}</div>{rest.length?<details className="chv-roster-more"><summary>VOIR LES {rest.length} AUTRE{rest.length>1?"S":""} PARTICIPANT{rest.length>1?"S":""}</summary><div className="chv-rows" style={{padding:7}}>{rest.map(renderPlayer)}</div></details>:null}</>;
+                    })()}
                     {!tournamentPlayers.length?<div className="chv-sub" style={{padding:"10px 0"}}>Aucun participant inscrit.</div>:null}
                   </section>
                 })() : <section className="chv-panel"><div className="chv-sub">Aucun objectif configuré.</div></section>}
@@ -5701,7 +5793,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
           {tab === "standings" ? (
             <Card title={isChallengePerformanceCompetition?"Classement général":"Classement"} subtitle={isChallengePerformanceCompetition?"Somme des points obtenus dans les classements de chaque objectif.":viewKind === "round_robin" ? (isAveragePointsLeague ? "Classement par moyenne de points par match." : "Classement du championnat.") : "Classement par poule."} accent={TAB_COLORS.standings} icon="🏁">
               {isChallengePerformanceCompetition ? (() => {
-                const standingsRows = challengeStandingScope === "season" ? challengeSeasonStandings : challengeGeneralStandings;
+                const standingsRows = challengeStandingScope === "season" ? (challengeCycleHistory.length ? challengeSeasonStandings : challengeSeasonStandings.filter((row:any)=>Number(row?.points||0)>0||Number(row?.wins||0)>0||Number(row?.podiums||0)>0)) : challengeDisplayGeneralStandings;
                 const podiumRows = standingsRows.slice(0, 3);
                 const otherRows = standingsRows.slice(3);
                 return (
@@ -5716,6 +5808,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
                     {standingsRows.length ? (
                       <>
+                        {currentTournamentPlayer ? (()=>{
+                          const meId=String(currentTournamentPlayer?.id||"");
+                          const me=standingsRows.find((row:any)=>String(row?.playerId||"")===meId)||null;
+                          if(!me)return null;
+                          return <section className="chv-panel chv-highlight-me" style={{padding:10}}><div style={{display:"grid",gridTemplateColumns:"38px minmax(0,1fr) auto",gap:9,alignItems:"center"}}><div style={{width:38,height:38,borderRadius:12,border:"1px solid rgba(34,230,255,.22)",background:"rgba(7,28,36,.92)",display:"grid",placeItems:"center",fontSize:13,fontWeight:1000,color:"#22e6ff"}}>#{me.rank}</div><div style={{minWidth:0}}><div className="chv-eyebrow" style={{color:"#22e6ff"}}>MA POSITION · {challengeStandingScope==="season"?"SAISON":`CYCLE ${challengeCurrentCycle}`}</div><b style={{display:"block",fontSize:10.5,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{me.name}</b><span className="chv-row-sub">{me.wins||0} victoire{Number(me.wins||0)>1?"s":""} · {me.podiums||0} podium{Number(me.podiums||0)>1?"s":""}</span></div><b style={{fontSize:15,color:"#65e6a2"}}>{me.points} pts</b></div></section>;
+                        })() : null}
                         <section className="chv-panel" style={{borderColor:"rgba(101,230,162,.16)"}}>
                           <div className="chv-section-head"><div><div className="chv-eyebrow">PODIUM</div><div className="chv-title" style={{marginTop:3}}>{challengeStandingScope==="season"?"Classement saison":"Classement du cycle"}</div></div><span className="chv-status" style={{color:"#65e6a2"}}>{standingsRows.length} CLASSÉ{standingsRows.length>1?"S":""}</span></div>
                           <div className="chv-podium">{podiumRows.map((row:any,index:number)=><div key={`overall-pod-${challengeStandingScope}-${row.playerId}`} style={index===0?{order:1}:index===1?{order:0}:{order:2}}><span className="chv-eyebrow">#{row.rank}</span><b style={{display:"block",fontSize:index===0?12:10,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:index===0?"#ffcf73":"#fff"}}>{row.name}</b><strong style={{display:"block",fontSize:index===0?19:16,marginTop:5,color:"#65e6a2"}}>{row.points}</strong><span className="chv-sub">POINTS</span>{challengeCompetitionFormat==="divisions"?<span className="chv-row-sub" style={{marginTop:3}}>D{Math.max(1,Number(challengeDivisionState?.assignments?.[String(row.playerId)]||1)||1)}</span>:null}</div>)}</div>
@@ -5898,6 +5996,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     </div>
                     <div className="chv-sub" style={{marginTop:6}}>Les essais lancés directement depuis la compétition sont ajoutés automatiquement. Le rattachement manuel sert surtout à la compétition libre ou aux parties déjà jouées.</div>
                   </div> : null}
+
+                  {currentTournamentPlayer ? <div className="chv-result-scope"><button type="button" data-active={challengeResultsOwner==="all"?"true":"false"} onClick={()=>setChallengeResultsOwner("all")}>TOUS LES JOUEURS</button><button type="button" data-active={challengeResultsOwner==="mine"?"true":"false"} onClick={()=>setChallengeResultsOwner("mine")}>MES ESSAIS</button></div> : null}
 
                   {challengeObjectives.length ? <div className="chv-objective-strip"><button type="button" className="chv-objective-chip" data-active={challengeResultsFocus==="all"?"true":"false"} onClick={()=>setChallengeResultsFocus("all")} style={{paddingRight:9}}><b style={{display:"block",fontSize:8.5}}>TOUS</b><span style={{display:"block",marginTop:2,fontSize:6.5,color:"#8d9aac"}}>{linkedHistoryMatches.length} résultat{linkedHistoryMatches.length>1?"s":""}</span></button>{challengeObjectives.map((objective:string)=>{
                     const count=linkedHistoryMatches.filter((link:any)=>normalizeChallengeObjective(link?.challengeObjective||link?.target||link?.objective||historyChallengeObjective(link))===objective).length;
@@ -6347,6 +6447,14 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   {!isChallengePerformanceCompetition?<button disabled={doneMatches.length>0 || tournamentPlayers.length<2} onClick={()=>saveTournamentAdmin({},true)} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.35)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(doneMatches.length>0||tournamentPlayers.length<2)?.35:1}}>RECONSTRUIRE LE CALENDRIER</button>:<button onClick={loadAttachableHistory} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(255,181,74,.35)",background:"rgba(64,40,9,.94)",color:"#fff",fontWeight:1000}}>＋ RATTACHER DES ESSAIS CHALLENGE</button>}
                 </section>
                 </details>
+                {isChallengePerformanceCompetition && isCompetitionOwner ? <details className="chv-admin-group chv-danger">
+                  <summary>ZONE DANGER<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#9b7782"}}>Suppression définitive de la compétition</span></summary>
+                  <section style={{padding:11}}>
+                    <b style={{display:"block",fontSize:9,color:"#ff718e"}}>SUPPRIMER LA COMPÉTITION</b>
+                    <div className="chv-sub" style={{marginTop:4}}>Cette action supprime la compétition et ses données locales associées. Elle n’est plus exposée dans la navigation principale pour éviter les erreurs.</div>
+                    <button type="button" onClick={async()=>{if(!id)return;const ok=window.confirm("Supprimer définitivement cette compétition et tous ses matchs ?");if(!ok)return;try{await deleteMatchesForTournamentLocal(id);await deleteTournamentLocal(id);}catch(e){console.error("[TournamentView] delete error:",e);}finally{go("tournaments");}}} style={{marginTop:9,width:"100%",minHeight:36,borderRadius:10,border:"1px solid rgba(255,79,120,.38)",background:"rgba(80,13,31,.88)",color:"#fff",fontSize:8,fontWeight:1000}}>SUPPRIMER DÉFINITIVEMENT</button>
+                  </section>
+                </details> : null}
               </div>
             </Card>
           ) : null}
