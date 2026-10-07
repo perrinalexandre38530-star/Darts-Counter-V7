@@ -41,6 +41,7 @@ import MatchDetailCard from "../components/tournament/MatchDetailCard";
 import type { Store } from "../lib/types";
 import type { Tournament, TournamentMatch } from "../lib/tournaments/types";
 import { PageAdBanner } from "../monetization/AdSlot";
+import ChallengePlay from "./ChallengePlay";
 
 import { startMatch, submitResult, buildInitialMatches } from "../lib/tournaments/engine";
 import {
@@ -1817,6 +1818,7 @@ export default function TournamentView({ store, go, id }: Props) {
   const [adminDraftName, setAdminDraftName] = React.useState("");
   const [adminNotice, setAdminNotice] = React.useState("");
   const [shareNotice, setShareNotice] = React.useState("");
+  const [activeChallengeAttempt, setActiveChallengeAttempt] = React.useState<any>(null);
 
   // ✅ PÉTANQUE : cache score par historyMatchId
   const [petScoresByHistoryId, setPetScoresByHistoryId] = React.useState<ScoreMap>({});
@@ -1878,7 +1880,33 @@ export default function TournamentView({ store, go, id }: Props) {
     const map = stableMetaRef.current;
     if (!map.size) return nextMatches;
 
-    return (Array.isArray(nextMatches) ? nextMatches : []).map((m: any) => {
+    const finishDirectChallengeAttempt = React.useCallback(async(result:any)=>{
+    if(!tour||!activeChallengeAttempt) return;
+    try{
+      const rec=result?.record||null;
+      const link=rec?buildLinkedHistoryEntry(rec,tour):null;
+      if(!link) return;
+      link.challengeObjective=normalizeChallengeObjective(activeChallengeAttempt.objective);
+      link.challengeAttemptNumber=Number(activeChallengeAttempt.attemptNumber||1);
+      link.challengeDirect=true;
+      const existing=Array.isArray((tour as any)?.linkedMatches)?(tour as any).linkedMatches.slice():[];
+      const hid=String(link?.historyMatchId||link?.matchId||link?.id||'');
+      const deduped=existing.filter((x:any)=>String(x?.historyMatchId||x?.matchId||x?.id||'')!==hid);
+      const nextLinked=[...deduped,link];
+      const nextTour:any={...(tour as any),linkedMatches:nextLinked,meta:{...((tour as any)?.meta||{}),linkedMatches:nextLinked},updatedAt:Date.now()};
+      await persist(nextTour as any,safeMatches as any);
+      setAdminNotice(`${challengeObjectiveLabel(activeChallengeAttempt.objective)} · essai ${activeChallengeAttempt.attemptNumber}/${challengeAttemptsPerObjective} enregistré automatiquement.`);
+    }catch(e){console.error('[TournamentView] direct challenge attempt persistence failed',e);}
+  },[tour,activeChallengeAttempt,persist,safeMatches,challengeAttemptsPerObjective]);
+
+  if(activeChallengeAttempt){
+    const p=activeChallengeAttempt.player;
+    const close=()=>setActiveChallengeAttempt(null);
+    const attemptGo=(tab:any,params?:any)=>{if(tab==='challenge_config'||tab==='games'||tab==='tournaments'||tab==='tournament_view'){close();return;} go(tab,params);};
+    return <ChallengePlay go={attemptGo} params={{config:activeChallengeAttempt.config,competitionParticipants:[{id:String(p?.id||''),name:p?.name||'Joueur',avatarDataUrl:p?.avatarDataUrl||p?.avatarUrl||null}],competitionAttempt:true}} onCompetitionFinish={finishDirectChallengeAttempt}/>;
+  }
+
+  return (Array.isArray(nextMatches) ? nextMatches : []).map((m: any) => {
       const id = String(m?.id || "");
       if (!id) return m;
       const stable = map.get(id);
@@ -2042,6 +2070,38 @@ export default function TournamentView({ store, go, id }: Props) {
     }
     return Array.from(map.values()).sort((a,b)=>b.points-a.points||b.wins-a.wins||b.podiums-a.podiums||a.name.localeCompare(b.name)).map((row,index)=>({...row,rank:index+1}));
   },[challengeObjectives,challengeObjectiveStandings,challengeCompetition,challengeRules]);
+
+  const challengeAttemptCount = React.useCallback((playerId:string, objective:string)=>{
+    const obj=normalizeChallengeObjective(objective);
+    let count=0;
+    for(const link of linkedHistoryMatches){
+      if(normalizeChallengeObjective((link as any)?.challengeObjective || (link as any)?.target || (link as any)?.objective)!==obj) continue;
+      if((Array.isArray((link as any)?.ranking)?(link as any).ranking:[]).some((row:any)=>String(row?.playerId||row?.id||"")===String(playerId))) count++;
+    }
+    return Math.min(challengeAttemptsPerObjective,count);
+  },[linkedHistoryMatches,challengeAttemptsPerObjective]);
+
+  const launchChallengeAttempt = React.useCallback((player:any, objective:string)=>{
+    if(!tour||!player) return;
+    const pid=String(player?.id||"");
+    const obj=normalizeChallengeObjective(objective);
+    const used=challengeAttemptCount(pid,obj);
+    if(used>=challengeAttemptsPerObjective){setAdminNotice(`Essais épuisés pour ${player?.name||"ce joueur"} sur ${challengeObjectiveLabel(obj)}.`);return;}
+    const rule=obj==='any-double'?'double':obj==='any-triple'?'triple':obj==='bull'?'bull':String(challengeRules?.rule||'all');
+    setActiveChallengeAttempt({player,objective:obj,attemptNumber:used+1,config:{target:obj,visits:Math.max(1,Number(challengeRules?.visits||30)||30),rule,playerIds:[pid],teamIds:[],participantMode:'players',participantSource:'direct',configMode:'complete',matchMode:'solo',soundsEnabled:true,competition:{tournamentId:(tour as any).id,name:(tour as any).name,objective:obj,attemptNumber:used+1,maxAttempts:challengeAttemptsPerObjective,tieBreak:String(challengeRules?.tieBreak||'segment_sum')}}});
+  },[tour,challengeRules,challengeAttemptCount,challengeAttemptsPerObjective]);
+
+  const challengeDivisionState = React.useMemo(()=>{
+    const divCfg:any=challengeCompetition?.divisions||{};
+    const count=Math.max(1,Number(divCfg?.count||1)||1);
+    const cycles=Array.isArray(challengeCompetition?.divisionCycles)?challengeCompetition.divisionCycles:[];
+    const cycle=Math.max(1,Number(challengeCompetition?.currentCycle||1)||1);
+    const current=cycles.find((c:any)=>Number(c?.cycle)===cycle)||cycles[cycles.length-1]||null;
+    const assignments:any={...(current?.assignments||{})};
+    tournamentPlayers.forEach((p:any,index:number)=>{const pid=String(p?.id||'');if(pid&&assignments[pid]==null)assignments[pid]=Math.min(count,1+(index%count));});
+    const byDivision=Array.from({length:count},(_,i)=>{const division=i+1;const ids=tournamentPlayers.filter((p:any)=>Number(assignments[String(p?.id||'')])===division).map((p:any)=>String(p.id));const standings=ids.map(pid=>challengeGeneralStandings.find((r:any)=>String(r.playerId)===pid)||{playerId:pid,name:playersById[pid]?.name||'Joueur',points:0,wins:0,podiums:0,objectives:0,rank:9999}).sort((a:any,b:any)=>b.points-a.points||b.wins-a.wins||b.podiums-a.podiums||String(a.name).localeCompare(String(b.name))).map((r:any,index:number)=>({...r,divisionRank:index+1}));return {division,standings};});
+    return {enabled:Boolean(divCfg?.enabled),count,cycle,assignments,byDivision,promote:Math.max(0,Number(divCfg?.promote||0)||0),relegate:Math.max(0,Number(divCfg?.relegate||0)||0)};
+  },[challengeCompetition,tournamentPlayers,challengeGeneralStandings,playersById]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
@@ -2572,6 +2632,32 @@ async function createSyntheticHistoryForSimulation(args: any) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const applyChallengePromotionCycle = React.useCallback(async()=>{
+    if(!tour||challengeCompetitionFormat!=='divisions'||!challengeDivisionState.enabled) return;
+    const nextAssignments:any={...challengeDivisionState.assignments};
+    const movements:any[]=[];
+    for(const div of challengeDivisionState.byDivision){
+      const rows=div.standings||[];
+      const up=new Set(div.division>1?rows.slice(0,challengeDivisionState.promote).map((r:any)=>String(r.playerId)):[]);
+      const down=new Set(div.division<challengeDivisionState.count?rows.slice(Math.max(0,rows.length-challengeDivisionState.relegate)).map((r:any)=>String(r.playerId)):[]);
+      for(const row of rows){
+        const pid=String(row.playerId);
+        const both=up.has(pid)&&down.has(pid);
+        let to=div.division;
+        if(!both&&up.has(pid))to=Math.max(1,div.division-1);
+        else if(!both&&down.has(pid))to=Math.min(challengeDivisionState.count,div.division+1);
+        nextAssignments[pid]=to;
+        if(to!==div.division)movements.push({playerId:pid,from:div.division,to});
+      }
+    }
+    const nextCycle=challengeDivisionState.cycle+1;
+    const previous=Array.isArray((tour as any)?.challengeCompetition?.divisionCycles)?(tour as any).challengeCompetition.divisionCycles:[];
+    const nextChallenge={...((tour as any).challengeCompetition||{}),currentCycle:nextCycle,divisionCycles:[...previous,{cycle:nextCycle,assignments:nextAssignments,appliedAt:Date.now(),movements}]};
+    const nextTour:any={...(tour as any),challengeCompetition:nextChallenge,updatedAt:Date.now()};
+    await persist(nextTour,safeMatches as any);
+    setAdminNotice(`Cycle ${nextCycle} créé · ${movements.length} mouvement${movements.length>1?'s':''} de division appliqué${movements.length>1?'s':''}.`);
+  },[tour,challengeCompetitionFormat,challengeDivisionState,persist,safeMatches]);
 
   const loadAttachableHistory = React.useCallback(async () => {
     if (!tour) return;
@@ -3533,11 +3619,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
           {tab === "objectives" && isChallengePerformanceCompetition ? (
             <Card title="Objectifs Challenge" subtitle={`Chaque objectif conserve le meilleur résultat dans la limite de ${challengeAttemptsPerObjective} essai${challengeAttemptsPerObjective>1?"s":""}.`} accent={TAB_COLORS.objectives} icon="🎯">
               <div style={{display:"grid",gap:10}}>
+                {challengeCompetitionFormat==="divisions"&&challengeDivisionState.enabled?<section style={{borderRadius:15,border:"1px solid rgba(182,182,255,.24)",background:"#070a11",padding:11}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{color:"#b6b6ff",fontSize:12}}>CYCLE {challengeDivisionState.cycle} · {challengeDivisionState.count} DIVISION{challengeDivisionState.count>1?"S":""}</b><div style={{fontSize:8,opacity:.62,marginTop:2}}>{challengeDivisionState.promote} montée{challengeDivisionState.promote>1?"s":""} · {challengeDivisionState.relegate} descente{challengeDivisionState.relegate>1?"s":""} par cycle</div></div></div><div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(3,challengeDivisionState.count)},minmax(0,1fr))`,gap:7,marginTop:8}}>{challengeDivisionState.byDivision.map((div:any)=><div key={div.division} style={{padding:8,borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"#0a0f17"}}><b style={{fontSize:9,color:"#fff"}}>DIVISION {div.division}</b><div style={{marginTop:5,display:"grid",gap:3}}>{div.standings.slice(0,6).map((r:any)=><span key={r.playerId} style={{fontSize:7.8,opacity:.75,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.divisionRank}. {r.name} · {r.points} pts</span>)}</div></div>)}</div></section>:null}
                 {challengeObjectives.length ? challengeObjectives.map((objective:any)=>{
                   const rows=challengeObjectiveStandings[objective]||[];
                   return <section key={objective} style={{borderRadius:15,border:"1px solid rgba(255,181,74,.22)",background:"rgba(4,7,12,.97)",padding:11}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>{challengeObjectiveLabel(objective)}</b><div style={{fontSize:8.5,opacity:.62,marginTop:2}}>Classement de l’objectif · meilleur essai retenu</div></div><MiniBadge label="Classés" value={rows.length} accent={TAB_COLORS.objectives}/></div>
-                    {rows.length?<div style={{display:"grid",gap:6,marginTop:9}}>{rows.slice(0,10).map((row:any)=><div key={row.playerId} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row.rank<=3?TAB_COLORS.objectives:"#fff"}}>#{row.rank}</strong><span style={{fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span style={{fontSize:8,opacity:.62}}>{row.attempts}/{challengeAttemptsPerObjective} essai{row.attempts>1?"s":""}</span><b style={{color:"#65e6a2"}}>{row.score} · +{row.championshipPoints} pts</b></div>)}</div>:<div style={{marginTop:9,fontSize:9.5,opacity:.62}}>Aucun résultat rattaché pour cet objectif.</div>}
+                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const canPlay=(isCompetitionAdmin||activeProfileId===pid)&&attempts<challengeAttemptsPerObjective;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{challengeAttemptsPerObjective} essai{challengeAttemptsPerObjective>1?"s":""}{attempts>=challengeAttemptsPerObjective?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=challengeAttemptsPerObjective?"COMPLET":"JOUER"}</button></div>})}</div>
                   </section>
                 }):<div style={{fontSize:10,opacity:.7}}>Aucun objectif configuré.</div>}
               </div>
@@ -3789,6 +3876,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   {adminAdminPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:160,overflowY:"auto"}}>{availableAdmins.length?availableAdmins.map((p:any)=><button key={p.id} onClick={()=>addCompetitionAdmin(String(p.id))} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Profil"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun profil supplémentaire disponible.</div>}</div>:null}
                   <div style={{display:"grid",gap:6,marginTop:9}}><div style={{padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,207,87,.18)",fontSize:9.5}}><b>PROPRIÉTAIRE</b> · {allProfiles.find((p:any)=>String(p.id)===ownerProfileId)?.name||"Créateur"}</div>{adminProfileIds.map(pid=><div key={pid} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:9.5}}>{allProfiles.find((p:any)=>String(p.id)===pid)?.name||pid}</b><button onClick={()=>removeCompetitionAdmin(pid)} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000}}>RETIRER</button></div>)}</div>
                 </section>
+                {challengeCompetitionFormat==='divisions'&&challengeDivisionState.enabled?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(182,182,255,.18)"}}><b style={{color:"#b6b6ff",fontSize:11}}>LIGUES & DIVISIONS · CYCLE {challengeDivisionState.cycle}</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>À la clôture du cycle, applique automatiquement les montées et descentes selon le classement général de chaque division.</div><div style={{display:"grid",gap:5,marginTop:8}}>{challengeDivisionState.byDivision.map((div:any)=><div key={div.division} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 9px",borderRadius:9,background:"#080d14",fontSize:8.5}}><b>DIVISION {div.division}</b><span>{div.standings.length} joueur{div.standings.length>1?'s':''}</span></div>)}</div><button type="button" onClick={applyChallengePromotionCycle} disabled={!challengeGeneralStandings.length} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.4)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:challengeGeneralStandings.length?1:.35}}>CLÔTURER LE CYCLE · APPLIQUER MONTÉES / DESCENTES</button></section>:null}
                 <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <b style={{color:"#b6b6ff",fontSize:11}}>OUTILS DE GESTION</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>{isChallengePerformanceCompetition?"Challenge performances : aucun calendrier de matchs n’est généré. Les essais sont rattachés aux objectifs et alimentent leurs classements.":"Les matchs et résultats restent éditables dans l’onglet Matchs. La reconstruction du calendrier est possible uniquement avant le premier résultat."}</div>
                   {!isChallengePerformanceCompetition?<button disabled={doneMatches.length>0 || tournamentPlayers.length<2} onClick={()=>saveTournamentAdmin({},true)} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.35)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(doneMatches.length>0||tournamentPlayers.length<2)?.35:1}}>RECONSTRUIRE LE CALENDRIER</button>:<button onClick={loadAttachableHistory} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(255,181,74,.35)",background:"rgba(64,40,9,.94)",color:"#fff",fontWeight:1000}}>＋ RATTACHER DES ESSAIS CHALLENGE</button>}

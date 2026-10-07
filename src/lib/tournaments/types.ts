@@ -13,6 +13,26 @@ export type TournamentCompetitionScope = "local" | "team" | "online";
 
 export type ChallengeCompetitionFormat = "objectives" | "duels" | "free" | "divisions";
 
+export type ChallengeCompetitionAttempt = {
+  id: string;
+  playerId: string;
+  objective: string;
+  attemptNumber: number;
+  score: number;
+  tieBreak?: number;
+  accuracy?: number;
+  bestStreak?: number;
+  historyMatchId?: string | null;
+  createdAt: number;
+};
+
+export type ChallengeCompetitionDivisionCycle = {
+  cycle: number;
+  assignments: Record<string, number>;
+  appliedAt?: number | null;
+  movements?: Array<{ playerId: string; from: number; to: number }>;
+};
+
 export type ChallengeCompetitionConfig = {
   enabled: boolean;
   format: ChallengeCompetitionFormat;
@@ -21,6 +41,9 @@ export type ChallengeCompetitionConfig = {
   pointsTable: number[];
   countBestObjectives?: number | null;
   allowHistoryLinks?: boolean;
+  attempts?: ChallengeCompetitionAttempt[];
+  currentCycle?: number;
+  divisionCycles?: ChallengeCompetitionDivisionCycle[];
   confrontation?: {
     enabled: boolean;
     entity: "players" | "teams";

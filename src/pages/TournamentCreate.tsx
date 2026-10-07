@@ -2939,6 +2939,8 @@ async function createTournament() {
       allowHistoryLinks: challengeCompetitionFormat === "free",
       confrontation: { enabled: challengeCompetitionFormat === "duels", entity: participantKind === "teams" ? "teams" : "players" },
       divisions: challengeCompetitionFormat === "divisions" ? { enabled: true, count: challengeDivisionCount, promote: challengePromoteCount, relegate: challengeRelegateCount, resetPointsEachCycle: true } : { enabled: false, count: 1, promote: 0, relegate: 0 },
+      currentCycle: 1,
+      divisionCycles: challengeCompetitionFormat === "divisions" ? [{cycle:1,assignments:Object.fromEntries(((tour as any).players||[]).map((p:any,index:number)=>[String(p.id),Math.min(challengeDivisionCount,1+(index%Math.max(1,challengeDivisionCount)))]))}] : [],
     };
   }
 
