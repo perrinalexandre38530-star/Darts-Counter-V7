@@ -3,6 +3,8 @@ import { uploadCloudVaultSnapshotJson } from "./cloudStorageApi";
 import { loadStoragePrefs } from "./storagePlans";
 import { canAttemptDirectR2FromStoredSession, getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
+import { loadTeams as loadStoredTeams } from "./petanqueTeamsStore";
+import { captureStoreUserMedia } from "./userMediaFallback";
 
 const RESTORE_GUARD_KEY = "dc_cloud_restore_in_progress_v2";
 const MIN_INTERVAL_MS = 15_000;
@@ -242,6 +244,15 @@ async function flushQueuedCloudR2AccountBackup(reason: string, allowForeground =
 
   inFlight = (async () => {
     try {
+      // Les logos/couvertures de teams sont des objets R2 dédiés. Ils doivent
+      // être réellement uploadés AVANT le snapshot principal : sinon un nouvel
+      // appareil pouvait restaurer la team avant que son média existe dans R2.
+      // On limite ce préflight aux teams pour ne pas rebloquer tout le backup.
+      const storedTeams = loadStoredTeams();
+      if (storedTeams.length) {
+        await captureStoreUserMedia({ teams: storedTeams }, { mirrorR2: true });
+      }
+
       const fullSnapshot = await exportCloudSnapshot({ mediaMirror: "background", includeEmbeddedMedia: false, includeAvatarFallbacks: false });
       const summary = snapshotSummary(fullSnapshot);
       const portableVersion = Number(fullSnapshot?.portableAccountData?._v || 0);

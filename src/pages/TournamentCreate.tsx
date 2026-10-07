@@ -2975,6 +2975,50 @@ async function createTournament() {
     },
   } as any);
 
+  // Preserve the competition architecture fields at top level. createTournamentDraft
+  // intentionally owns only the generic tournament core, so the competition shell
+  // is completed here after the engine draft has been created.
+  const creatorProfile:any = Array.isArray((store as any)?.profiles)
+    ? (store as any).profiles.find((p:any)=>String(p?.id||"")===String((store as any)?.activeProfileId||""))
+    : null;
+  (tour as any).ownerOnlineUserId = String(
+    creatorProfile?.onlineUserId ||
+    creatorProfile?.privateInfo?.onlineUserId ||
+    creatorProfile?.privateInfo?.accountUserId ||
+    ""
+  ) || null;
+  (tour as any).competitionScope = competitionScope;
+  (tour as any).sport = forceMode || mode || "darts";
+  (tour as any).kind = competitionKind;
+  (tour as any).hostTeamId = null;
+  (tour as any).hostTeamName = null;
+  (tour as any).hostOrganizationId = competitionScope === "team" ? (hostOrganizationId || null) : null;
+  (tour as any).hostOrganizationName = competitionScope === "team"
+    ? (organizations.find((org:any)=>String(org.id)===String(hostOrganizationId))?.name || String(params?.organizationName || "") || null)
+    : null;
+  (tour as any).enrollment = {
+    policy: enrollmentPolicy,
+    minParticipants: Math.max(2, Math.floor(Number(enrollmentMin) || 2)),
+    maxParticipants: Number(enrollmentMax) > 1 ? Math.floor(Number(enrollmentMax)) : null,
+    startMode: enrollmentStartMode,
+  };
+  (tour as any).adminProfileIds = Array.isArray((tour as any).adminProfileIds) ? (tour as any).adminProfileIds : [];
+  (tour as any).adminPermissions = (tour as any).adminPermissions && typeof (tour as any).adminPermissions === "object"
+    ? (tour as any).adminPermissions
+    : {};
+  (tour as any).invitedProfileIds = Array.isArray((tour as any).invitedProfileIds) ? (tour as any).invitedProfileIds : [];
+  (tour as any).invitations = Array.isArray((tour as any).invitations) ? (tour as any).invitations : [];
+  (tour as any).enrollmentRequests = Array.isArray((tour as any).enrollmentRequests) ? (tour as any).enrollmentRequests : [];
+  (tour as any).publicView = {
+    enabled: true,
+    showParticipants: true,
+    showObjectives: true,
+    showStandings: true,
+    showStats: true,
+    liveRefreshSeconds: 15,
+    ...((tour as any).publicView || {}),
+  };
+
   (tour as any).identity = {
     logoDataUrl: competitionAvatar || null,
     logoUrl: competitionAvatar || null,

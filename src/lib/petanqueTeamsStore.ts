@@ -216,8 +216,13 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const normalizedLogo = normalizeImageRef(t.logoDataUrl, libraryLogoSrc, t.logoUrl, t.avatarUrl, t.imageUrl, t.logo);
   const logoUrl = normalizeTextField(libraryLogoSrc || t.logoUrl || t.avatarUrl || t.imageUrl || t.logo);
   const logoAssetId = normalizeTextField(t.logoAssetId || t.logoMediaAssetId || t.teamLogoAssetId || t.avatarAssetId || t.imageAssetId);
-  const logoMediaKey = normalizeTextField(t.logoMediaKey || t.logo_media_key)
-    || (normalizedLogo && !logoLibraryId ? teamLogoMediaKey(id) : null);
+  // Toujours conserver une clé média canonique pour les logos personnalisés.
+  // Sur un nouvel appareil, le snapshot R2 ne contient volontairement plus le
+  // base64 inline : sans cette clé, les sélecteurs ne pouvaient donc jamais
+  // retrouver le logo dédié stocké dans R2.
+  const logoMediaKey = logoLibraryId
+    ? null
+    : (normalizeTextField(t.logoMediaKey || t.logo_media_key) || teamLogoMediaKey(id));
   const regionLogoUrl = normalizeTextField(t.regionLogoUrl);
   const regionLogoAssetId = normalizeTextField(t.regionLogoAssetId);
   const coverUrl = normalizeTextField(t.coverUrl);
@@ -327,8 +332,10 @@ function dedupeById(list: TeamEntity[]) {
 export async function resolveTeamLogo(team: TeamEntity | null | undefined, allowR2 = true): Promise<string> {
   if (!team?.id) return "";
   const primary = String(team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || "").trim();
-  const mediaKey = String(team.logoMediaKey || "").trim();
-  if (!mediaKey) return primary;
+  // Compatibilité avec les équipes créées avant logoMediaKey : la clé R2 est
+  // déterministe à partir de l'id de team. On tente donc toujours cette clé
+  // pour un logo personnalisé, même si le snapshot ancien ne la contenait pas.
+  const mediaKey = String(team.logoMediaKey || teamLogoMediaKey(team.id)).trim();
   try {
     const resolved = await resolveUserMediaFallback(mediaKey, primary, { kind: "team_logo", allowR2 }) || primary;
     // Hydrate aussi l'objet courant : les sélecteurs qui réutilisent cette

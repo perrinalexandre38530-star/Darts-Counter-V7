@@ -74,7 +74,7 @@ function DurableTeamAvatar({ team, size }: { team: any; size: number }) {
   React.useEffect(() => {
     let cancelled = false;
     setLogo(directLogo);
-    if (!team?.id || !team?.logoMediaKey) return () => { cancelled = true; };
+    if (!team?.id) return () => { cancelled = true; };
     void resolveTeamLogo(team, true).then((resolved) => {
       if (!cancelled && resolved) setLogo(resolved);
     }).catch(() => undefined);

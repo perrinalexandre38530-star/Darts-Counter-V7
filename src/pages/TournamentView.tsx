@@ -55,11 +55,14 @@ import {
 
 import { History } from "../lib/history";
 import { getOnlineCompetition, updateOnlineCompetition } from "../lib/tournaments/onlineStore";
+import { listFriends, searchUsers, sendPrivateMessage, type OnlineFriendUser } from "../lib/friendsApi";
+import { useAuthOnline } from "../hooks/useAuthOnline";
 
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
   id: string;
+  sharedEntry?: boolean;
 };
 
 const BYE = "__BYE__";
@@ -78,6 +81,18 @@ const TAB_COLORS: Record<string, string> = {
   admin: "#ff6b6b",
   objectives: "#ffb54a",
 };
+
+const ADMIN_PERMISSION_DEFS = [
+  { key: "identity", label: "Identité & état" },
+  { key: "participants", label: "Participants" },
+  { key: "invitations", label: "Invitations / inscriptions" },
+  { key: "rules", label: "Règles" },
+  { key: "schedule", label: "Calendrier / journées" },
+  { key: "results", label: "Résultats / essais" },
+  { key: "admins", label: "Administrateurs" },
+] as const;
+
+const ALL_ADMIN_PERMISSIONS = ADMIN_PERMISSION_DEFS.map((item) => item.key);
 
 function isByeId(x: any) {
   return String(x || "") === BYE;
@@ -1801,7 +1816,8 @@ function StandingsTable({
 /* -------------------------
    MAIN
 -------------------------- */
-export default function TournamentView({ store, go, id }: Props) {
+export default function TournamentView({ store, go, id, sharedEntry = false }: Props) {
+  const authOnline = useAuthOnline();
   const [tour, setTour] = React.useState<Tournament | null>(null);
   const [matches, setMatches] = React.useState<TournamentMatch[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -1818,6 +1834,12 @@ export default function TournamentView({ store, go, id }: Props) {
   const [adminDraftName, setAdminDraftName] = React.useState("");
   const [adminNotice, setAdminNotice] = React.useState("");
   const [shareNotice, setShareNotice] = React.useState("");
+  const [onlineInviteQuery, setOnlineInviteQuery] = React.useState("");
+  const [onlineInvitePeople, setOnlineInvitePeople] = React.useState<OnlineFriendUser[]>([]);
+  const [onlineInviteLoading, setOnlineInviteLoading] = React.useState(false);
+  const [onlineInviteError, setOnlineInviteError] = React.useState("");
+  const [enrollmentNotice, setEnrollmentNotice] = React.useState("");
+  const [publicRefreshing, setPublicRefreshing] = React.useState(false);
   const [activeChallengeAttempt, setActiveChallengeAttempt] = React.useState<any>(null);
   const [challengeStandingScope, setChallengeStandingScope] = React.useState<"cycle" | "season">("cycle");
   const [adminSeasonName, setAdminSeasonName] = React.useState("");
@@ -1983,15 +2005,60 @@ export default function TournamentView({ store, go, id }: Props) {
 
   const activeProfileId = String((store as any)?.activeProfileId || "");
   const allProfiles = React.useMemo<any[]>(() => Array.isArray((store as any)?.profiles) ? (store as any).profiles : [], [store]);
+  const activeLocalProfile = React.useMemo<any>(() => allProfiles.find((p:any)=>String(p?.id||"")===activeProfileId) || null, [allProfiles, activeProfileId]);
+  const activeOnlineUserId = String((authOnline as any)?.userId || (authOnline as any)?.user?.id || activeLocalProfile?.onlineUserId || activeLocalProfile?.privateInfo?.onlineUserId || activeLocalProfile?.privateInfo?.accountUserId || "");
+  const activeOnlineProfileId = String((authOnline as any)?.profile?.id || "");
   const ownerProfileId = String((tour as any)?.ownerProfileId || "");
+  const ownerOnlineUserId = String((tour as any)?.ownerOnlineUserId || "");
   const adminProfileIds = React.useMemo(() => Array.from(new Set((((tour as any)?.adminProfileIds || []) as any[]).map(String).filter(Boolean))), [tour]);
-  const isCompetitionAdmin = Boolean(tour && (activeProfileId && (activeProfileId === ownerProfileId || adminProfileIds.includes(activeProfileId))));
+  const adminIdentityIds = React.useMemo(() => Array.from(new Set([activeProfileId, activeOnlineProfileId, activeOnlineUserId].filter(Boolean))), [activeProfileId, activeOnlineProfileId, activeOnlineUserId]);
+  const isCompetitionOwner = Boolean(tour && (adminIdentityIds.includes(ownerProfileId) || (!!ownerOnlineUserId && adminIdentityIds.includes(ownerOnlineUserId))));
+  const currentAdminId = React.useMemo(() => adminIdentityIds.find((value)=>adminProfileIds.includes(value)) || "", [adminIdentityIds, adminProfileIds]);
+  const isCompetitionAdmin = Boolean(tour && (isCompetitionOwner || Boolean(currentAdminId)));
+  const adminPermissionMap = React.useMemo<Record<string,string[]>>(() => ((tour as any)?.adminPermissions && typeof (tour as any).adminPermissions === "object") ? (tour as any).adminPermissions : {}, [tour]);
+  const canAdmin = React.useCallback((permission:string) => {
+    if (isCompetitionOwner) return true;
+    if (!currentAdminId) return false;
+    const configured = adminPermissionMap[currentAdminId];
+    // Legacy admins had no permission map: preserve their full access.
+    if (!Array.isArray(configured)) return true;
+    return configured.includes(permission);
+  }, [isCompetitionOwner, currentAdminId, adminPermissionMap]);
   const tournamentPlayers = React.useMemo<any[]>(() => Array.isArray((tour as any)?.players) ? (tour as any).players : [], [tour]);
+  const currentTournamentPlayer = React.useMemo<any>(() => tournamentPlayers.find((p:any)=>{
+    const pid=String(p?.id||"");
+    const uid=String(p?.onlineUserId||"");
+    return adminIdentityIds.includes(pid) || (!!activeOnlineUserId && uid===activeOnlineUserId);
+  }) || null, [tournamentPlayers, adminIdentityIds, activeOnlineUserId]);
   const availableProfiles = React.useMemo(() => {
     const used = new Set(tournamentPlayers.map((p:any)=>String(p?.id||"")));
     return allProfiles.filter((p:any)=>p?.id && !used.has(String(p.id)));
   }, [allProfiles, tournamentPlayers]);
-  const availableAdmins = React.useMemo(() => allProfiles.filter((p:any)=>p?.id && String(p.id)!==ownerProfileId && !adminProfileIds.includes(String(p.id))), [allProfiles, ownerProfileId, adminProfileIds]);
+  const availableAdmins = React.useMemo(() => {
+    const merged = [...allProfiles, ...tournamentPlayers];
+    const seen = new Set<string>();
+    return merged.filter((p:any)=>{
+      const pid=String(p?.id||"");
+      if(!pid || pid===ownerProfileId || adminProfileIds.includes(pid) || seen.has(pid)) return false;
+      seen.add(pid);
+      return true;
+    });
+  }, [allProfiles, tournamentPlayers, ownerProfileId, adminProfileIds]);
+  const publicSpectator = Boolean(sharedEntry && !isCompetitionAdmin);
+  const enrollmentPolicy = String((tour as any)?.enrollment?.policy || (tour as any)?.meta?.enrollmentPolicy || "fixed");
+  const enrollmentMax = Math.max(0, Number((tour as any)?.enrollment?.maxParticipants || (tour as any)?.meta?.enrollmentMax || 0) || 0);
+  const enrollmentRequests = React.useMemo<any[]>(() => Array.isArray((tour as any)?.enrollmentRequests) ? (tour as any).enrollmentRequests : [], [tour]);
+  const competitionInvitations = React.useMemo<any[]>(() => Array.isArray((tour as any)?.invitations) ? (tour as any).invitations : [], [tour]);
+  const currentEnrollmentRequest = React.useMemo<any>(() => {
+    if(!activeOnlineUserId) return null;
+    return enrollmentRequests.find((row:any)=>String(row?.userId||"")===activeOnlineUserId && String(row?.status||"pending")!=="cancelled") || null;
+  }, [enrollmentRequests, activeOnlineUserId]);
+  const currentInvitation = React.useMemo<any>(() => {
+    if(!activeOnlineUserId) return null;
+    return competitionInvitations.find((row:any)=>String(row?.userId||"")===activeOnlineUserId && !["revoked","declined"].includes(String(row?.status||"pending"))) || null;
+  }, [competitionInvitations, activeOnlineUserId]);
+  const competitionIsFull = Boolean(enrollmentMax > 0 && tournamentPlayers.length >= enrollmentMax);
+  const isOnlineCompetition = Boolean(tour && (String((tour as any)?.source||"")==="online" || String((tour as any)?.competitionScope||"")==="online" || (tour as any)?.onlineCompetitionId));
 
   const linkedHistoryMatches = React.useMemo(() => {
     const raw = (tour as any)?.linkedMatches ?? (tour as any)?.meta?.linkedMatches ?? [];
@@ -2800,6 +2867,32 @@ async function createSyntheticHistoryForSimulation(args: any) {
     };
   }, [id]);
 
+  const refreshPublicCompetition = React.useCallback(async () => {
+    if(!tour || !isOnlineCompetition) return;
+    const remoteId=String((tour as any)?.onlineCompetitionId || (tour as any)?.id || id);
+    if(!remoteId) return;
+    setPublicRefreshing(true);
+    try{
+      const remote:any=await getOnlineCompetition(remoteId);
+      if(remote?.id){
+        const remoteMatches=remote?.__onlineRow?.payload?.matches ?? remote?.__onlineRow?.matches ?? remote?.matches ?? [];
+        setTour(remote as any);
+        setMatches(Array.isArray(remoteMatches)?remoteMatches:[]);
+      }
+    }catch(e){
+      console.warn("[TournamentView] public refresh failed:",e);
+    }finally{
+      setPublicRefreshing(false);
+    }
+  }, [tour, id, isOnlineCompetition]);
+
+  React.useEffect(() => {
+    if(!sharedEntry || !tour || !isOnlineCompetition) return;
+    const seconds=Math.max(8,Math.min(60,Number((tour as any)?.publicView?.liveRefreshSeconds||15)||15));
+    const timer=window.setInterval(()=>{ void refreshPublicCompetition(); },seconds*1000);
+    return ()=>window.clearInterval(timer);
+  }, [sharedEntry, tour?.id, (tour as any)?.onlineCompetitionId, (tour as any)?.updatedAt, isOnlineCompetition, refreshPublicCompetition]);
+
   // ------------------------------------------------------------
   // ✅ PÉTANQUE : charge les scores depuis History via historyMatchId
   // ------------------------------------------------------------
@@ -2872,7 +2965,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   }, []);
 
   const updateChallengeRoundStatus = React.useCallback(async(roundId:string,status:"locked"|"open"|"closed")=>{
-    if(!tour||!isCompetitionAdmin) return;
+    if(!tour||!isCompetitionAdmin||!canAdmin("schedule")) return;
     const cfg:any={...((tour as any).challengeCompetition||{})};
     const schedule:any={...(cfg.schedule||{}),rounds:Array.isArray(cfg?.schedule?.rounds)?cfg.schedule.rounds.slice():[]};
     const now=Date.now();
@@ -2892,7 +2985,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   },[tour,isCompetitionAdmin,persist,safeMatches]);
 
   const advanceChallengeRound = React.useCallback(async()=>{
-    if(!tour||!isCompetitionAdmin) return;
+    if(!tour||!isCompetitionAdmin||!canAdmin("schedule")) return;
     const cfg:any={...((tour as any).challengeCompetition||{})};
     const schedule:any={...(cfg.schedule||{}),rounds:Array.isArray(cfg?.schedule?.rounds)?cfg.schedule.rounds.slice():[]};
     const currentRows=schedule.rounds.filter((row:any)=>Number(row?.cycle||1)===challengeCurrentCycle).sort((a:any,b:any)=>Number(a?.round||0)-Number(b?.round||0));
@@ -2915,7 +3008,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   },[tour,isCompetitionAdmin,challengeCurrentCycle,persist,safeMatches]);
 
   const applyChallengePromotionCycle = React.useCallback(async()=>{
-    if(!tour||challengeCompetitionFormat!=='divisions'||!challengeDivisionState.enabled) return;
+    if(!tour||challengeCompetitionFormat!=='divisions'||!challengeDivisionState.enabled||!canAdmin("schedule")) return;
     if(challengeScheduleRounds.some((round:any)=>String(round?.status||"open")!=="closed")){
       setAdminNotice("Clôture d’abord toutes les journées / manches du cycle avant d’appliquer les montées et descentes.");
       return;
@@ -3132,7 +3225,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
 
   const saveChallengeSeasonSettings = React.useCallback(async(statusOverride?: "draft" | "running" | "finished")=>{
-    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition) return;
+    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition||!canAdmin("rules")) return;
     const cfg:any={...((tour as any).challengeCompetition||{})};
     const current:any=cfg.season||{};
     const maxCyclesRaw=String(adminSeasonMaxCycles||"").trim();
@@ -3155,7 +3248,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   },[tour,isCompetitionAdmin,isChallengePerformanceCompetition,adminSeasonName,adminSeasonMaxCycles,adminSeasonEndDate,persist,safeMatches]);
 
   const saveChallengeCompetitionRules = React.useCallback(async()=>{
-    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition) return;
+    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition||!canAdmin("rules")) return;
     const cfg:any={...((tour as any).challengeCompetition||{})};
     const requestedAttempts=Math.max(1,Math.min(5,Number(adminChallengeAttempts)||1));
     let maxAlreadyUsed=0;
@@ -3230,7 +3323,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   },[tour,isCompetitionAdmin,isChallengePerformanceCompetition,adminChallengePointsPreset,adminChallengeAttempts,adminChallengeCountBest,adminChallengeCyclePointsMode,adminChallengeCarryPercent,adminChallengePublicationMode,adminChallengeObjectivesPerRound,linkedHistoryMatches,challengeCurrentCycle,challengeObjectives,tournamentPlayers,persist,safeMatches]);
 
   const saveChallengeObjectiveProgram = React.useCallback(async(nextObjectivesRaw:string[],notice:string)=>{
-    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition) return false;
+    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition||!canAdmin("rules")) return false;
     const nextObjectives=Array.from(new Set(nextObjectivesRaw.map(normalizeChallengeObjective).filter(Boolean)));
     if(!nextObjectives.length){setAdminNotice("La compétition doit conserver au moins un objectif.");return false;}
     const removed=challengeObjectives.filter((objective:string)=>!nextObjectives.includes(objective));
@@ -3318,7 +3411,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   },[challengeObjectives,saveChallengeObjectiveProgram]);
 
   const updateChallengeObjectiveSetting = React.useCallback(async(objective:string,patch:any)=>{
-    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition) return;
+    if(!tour||!isCompetitionAdmin||!isChallengePerformanceCompetition||!canAdmin("rules")) return;
     const key=normalizeChallengeObjective(objective);
     const cfg:any={...((tour as any).challengeCompetition||{})};
     const objectiveSettings:any={...(cfg.objectiveSettings||{})};
@@ -3363,7 +3456,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   },[adminPlayoffObjectiveMode]);
 
   const saveChallengePlayoffSettings = React.useCallback(async()=>{
-    if(!tour||!isCompetitionAdmin||challengeCompetitionFormat!=="divisions") return;
+    if(!tour||!isCompetitionAdmin||challengeCompetitionFormat!=="divisions"||!canAdmin("rules")) return;
     const cfg:any={...((tour as any).challengeCompetition||{})};
     const div:any={...(cfg.divisions||{})};
     const available=challengeObjectives.length?challengeObjectives:["20"];
@@ -3381,7 +3474,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
   },[tour,isCompetitionAdmin,challengeCompetitionFormat,challengeObjectives,adminPlayoffObjectives,adminPlayoffObjectiveMode,adminPlayoffAttempts,adminPlayoffVisits,persist,safeMatches]);
 
   const reassignChallengePlayerDivision = React.useCallback(async(playerId:string,nextDivision:number)=>{
-    if(!tour||!isCompetitionAdmin||challengeCompetitionFormat!=="divisions") return;
+    if(!tour||!isCompetitionAdmin||challengeCompetitionFormat!=="divisions"||!canAdmin("schedule")) return;
     const division=Math.max(1,Math.min(challengeDivisionState.count,Math.floor(Number(nextDivision)||1)));
     const cfg:any={...((tour as any).challengeCompetition||{})};
     const cycles=Array.isArray(cfg?.divisionCycles)?cfg.divisionCycles.slice():[];
@@ -4020,13 +4113,20 @@ async function createSyntheticHistoryForSimulation(args: any) {
   const groupsMeta = React.useMemo(() => Math.max(1, Number((tour as any)?.stages?.[0]?.groups || 1)), [tour]);
 
   const TABS = React.useMemo(() => {
+    if (publicSpectator) {
+      if (isChallengePerformanceCompetition) return ["home", "objectives", "standings", "stats"];
+      if (viewKind === "single_ko") return ["home", "bracket", "matches", "stats"];
+      if (viewKind === "double_ko") return ["home", "bracket", "matches", "repechage", "stats"];
+      if (viewKind === "round_robin") return ["home", "standings", "matches", "stats"];
+      return ["home", "pools", "standings", "bracket", "matches", ...(repechageEnabled ? ["repechage"] : []), "stats"];
+    }
     const admin = isCompetitionAdmin ? ["admin"] : [];
     if (isChallengePerformanceCompetition) return ["home", "objectives", "standings", "linked", "stats", ...admin];
     if (viewKind === "single_ko") return ["home", "bracket", "matches", "linked", "stats", ...admin];
     if (viewKind === "double_ko") return ["home", "bracket", "matches", "linked", "repechage", "stats", ...admin];
     if (viewKind === "round_robin") return ["home", "standings", "matches", "linked", "stats", ...admin];
     return ["home", "pools", "standings", "bracket", "matches", "linked", ...(repechageEnabled ? ["repechage"] : []), "stats", ...admin];
-  }, [viewKind, repechageEnabled, isCompetitionAdmin, isChallengePerformanceCompetition]);
+  }, [viewKind, repechageEnabled, isCompetitionAdmin, isChallengePerformanceCompetition, publicSpectator]);
 
   const [tab, setTab] = React.useState<string>("home");
   React.useEffect(() => {
@@ -4217,7 +4317,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
     const phaseLabel = matchPhaseLabel(m, viewKind, koRoundsCount);
     const clickable = opts?.clickable !== false;
-    const hideActions = !!opts?.hideActions;
+    const hideActions = publicSpectator || !!opts?.hideActions;
 
     return (
       <div
@@ -4415,8 +4515,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
     countryCode:profile?.countryCode||profile?.country||null,
     isBot:!!profile?.isBot,
   });
-  const saveTournamentAdmin = async (patch:any, rebuild=false) => {
+  const saveTournamentAdmin = async (patch:any, rebuild=false, requiredPermission?:string) => {
     if(!tour || !isCompetitionAdmin) return;
+    if(requiredPermission && !canAdmin(requiredPermission)){
+      setAdminNotice("Tu n’as pas l’autorisation nécessaire pour cette action.");
+      return;
+    }
     const next:any={...(tour as any),...patch,updatedAt:Date.now()};
     let nextMatches=safeMatches;
     if(rebuild){
@@ -4427,25 +4531,253 @@ async function createSyntheticHistoryForSimulation(args: any) {
     setAdminNotice("Modifications enregistrées.");
   };
   const addCompetitionPlayer = async (profile:any) => {
-    if(!tour) return;
+    if(!tour || !canAdmin("participants")) return;
     const nextPlayers=[...tournamentPlayers,profileToTournamentPlayer(profile)];
-    await saveTournamentAdmin({players:nextPlayers}, !isChallengePerformanceCompetition);
+    await saveTournamentAdmin({players:nextPlayers}, !isChallengePerformanceCompetition, "participants");
     setAdminPlayerPickerOpen(false);
   };
   const removeCompetitionPlayer = async (playerId:string) => {
+    if(!canAdmin("participants")) return;
     const nextPlayers=tournamentPlayers.filter((p:any)=>String(p?.id)!==String(playerId));
-    await saveTournamentAdmin({players:nextPlayers}, !isChallengePerformanceCompetition);
+    await saveTournamentAdmin({players:nextPlayers}, !isChallengePerformanceCompetition, "participants");
   };
   const addCompetitionAdmin = async (profileId:string) => {
-    await saveTournamentAdmin({adminProfileIds:Array.from(new Set([...adminProfileIds,String(profileId)]))});
+    if(!isCompetitionOwner && !canAdmin("admins")) return;
+    const nextIds=Array.from(new Set([...adminProfileIds,String(profileId)]));
+    const nextPermissions={...adminPermissionMap,[String(profileId)]:ALL_ADMIN_PERMISSIONS.slice()};
+    await saveTournamentAdmin({adminProfileIds:nextIds,adminPermissions:nextPermissions}, false, "admins");
     setAdminAdminPickerOpen(false);
   };
   const removeCompetitionAdmin = async (profileId:string) => {
-    await saveTournamentAdmin({adminProfileIds:adminProfileIds.filter(id=>id!==String(profileId))});
+    if(!isCompetitionOwner && !canAdmin("admins")) return;
+    const nextPermissions={...adminPermissionMap};
+    delete nextPermissions[String(profileId)];
+    await saveTournamentAdmin({adminProfileIds:adminProfileIds.filter(id=>id!==String(profileId)),adminPermissions:nextPermissions}, false, "admins");
   };
+  const toggleAdminPermission = async (profileId:string, permission:string) => {
+    if(!tour || !isCompetitionOwner) return;
+    const current=Array.isArray(adminPermissionMap[String(profileId)]) ? adminPermissionMap[String(profileId)] : ALL_ADMIN_PERMISSIONS.slice();
+    const nextList=current.includes(permission) ? current.filter((item:string)=>item!==permission) : Array.from(new Set([...current,permission]));
+    await saveTournamentAdmin({adminPermissions:{...adminPermissionMap,[String(profileId)]:nextList}},false);
+  };
+  const onlineUserIdOf = (person:any) => String(person?.userId || person?.id || "");
+  const competitionPublicUrl = React.useMemo(() => {
+    if(typeof window==="undefined") return "";
+    const publicId=String((tour as any)?.onlineCompetitionId || (tour as any)?.id || id);
+    return `${window.location.origin}${window.location.pathname}#/competition/${encodeURIComponent(publicId)}`;
+  }, [tour, id]);
+
+  const loadOnlineInviteCandidates = async () => {
+    if(!isOnlineCompetition || !canAdmin("invitations")) return;
+    setOnlineInviteLoading(true);
+    setOnlineInviteError("");
+    try{
+      const rows=await listFriends();
+      const invited=new Set(competitionInvitations.filter((row:any)=>String(row?.status||"pending")!=="revoked").map((row:any)=>String(row?.userId||"")));
+      const participantUsers=new Set(tournamentPlayers.map((row:any)=>String(row?.onlineUserId||"")).filter(Boolean));
+      setOnlineInvitePeople((Array.isArray(rows)?rows:[]).filter((row:any)=>{
+        const uid=onlineUserIdOf(row);
+        return uid && uid!==activeOnlineUserId && !invited.has(uid) && !participantUsers.has(uid);
+      }));
+    }catch(e:any){
+      setOnlineInviteError(String(e?.message||"Impossible de charger les joueurs Online."));
+    }finally{
+      setOnlineInviteLoading(false);
+    }
+  };
+
+  const searchOnlineInviteCandidates = async () => {
+    const query=String(onlineInviteQuery||"").trim();
+    if(query.length<2){ await loadOnlineInviteCandidates(); return; }
+    if(!canAdmin("invitations")) return;
+    setOnlineInviteLoading(true);
+    setOnlineInviteError("");
+    try{
+      const rows=await searchUsers(query);
+      const invited=new Set(competitionInvitations.filter((row:any)=>String(row?.status||"pending")!=="revoked").map((row:any)=>String(row?.userId||"")));
+      const participantUsers=new Set(tournamentPlayers.map((row:any)=>String(row?.onlineUserId||"")).filter(Boolean));
+      setOnlineInvitePeople((Array.isArray(rows)?rows:[]).filter((row:any)=>{
+        const uid=onlineUserIdOf(row);
+        return uid && uid!==activeOnlineUserId && !invited.has(uid) && !participantUsers.has(uid);
+      }));
+    }catch(e:any){
+      setOnlineInviteError(String(e?.message||"Recherche Online impossible."));
+    }finally{
+      setOnlineInviteLoading(false);
+    }
+  };
+
+  const sendCompetitionInvite = async (person:any) => {
+    if(!tour || !isOnlineCompetition || !canAdmin("invitations")) return;
+    const userId=onlineUserIdOf(person);
+    if(!userId) return;
+    const name=String(person?.displayName||person?.nickname||"Joueur");
+    const invitation={
+      id:`invite-${Date.now()}-${userId.slice(-6)}`,
+      userId,
+      profileId:String(person?.id||userId),
+      name,
+      avatarUrl:person?.avatarUrl||null,
+      status:"pending",
+      createdAt:Date.now(),
+    };
+    const nextInvitations=[
+      ...competitionInvitations.filter((row:any)=>String(row?.userId||"")!==userId || String(row?.status||"") === "revoked"),
+      invitation,
+    ];
+    const nextInvited=Array.from(new Set([...(Array.isArray((tour as any)?.invitedProfileIds)?(tour as any).invitedProfileIds:[]).map(String),userId]));
+    await saveTournamentAdmin({invitations:nextInvitations,invitedProfileIds:nextInvited},false,"invitations");
+    try{
+      await sendPrivateMessage(userId,`Invitation à rejoindre ${String((tour as any)?.name||"la compétition")} · ${competitionPublicUrl}`,{
+        type:"mss-competition-invite-v1",
+        competitionId:String((tour as any)?.onlineCompetitionId||(tour as any)?.id||id),
+        competitionName:String((tour as any)?.name||"Compétition"),
+        shareCode:String((tour as any)?.shareCode||""),
+        url:competitionPublicUrl,
+      });
+      setAdminNotice(`Invitation envoyée à ${name}.`);
+    }catch(e:any){
+      setAdminNotice(`Invitation enregistrée. Notification impossible : ${String(e?.message||"erreur Online")}`);
+    }
+    setOnlineInvitePeople((prev)=>prev.filter((row:any)=>onlineUserIdOf(row)!==userId));
+  };
+
+  const revokeCompetitionInvite = async (inviteId:string) => {
+    if(!canAdmin("invitations")) return;
+    const next=competitionInvitations.map((row:any)=>String(row?.id||"")===String(inviteId)?{...row,status:"revoked",respondedAt:Date.now()}:row);
+    await saveTournamentAdmin({invitations:next},false,"invitations");
+  };
+
+  const onlinePlayerFromAuth = () => {
+    const profile:any=(authOnline as any)?.profile||{};
+    const user:any=(authOnline as any)?.user||{};
+    const profileId=String(profile?.id||activeOnlineUserId||activeProfileId);
+    return {
+      id: profileId,
+      onlineUserId: activeOnlineUserId || null,
+      name:String(profile?.displayName||profile?.nickname||user?.user_metadata?.nickname||user?.email?.split?.("@")?.[0]||activeLocalProfile?.name||"Joueur"),
+      avatarDataUrl:profile?.avatarUrl||activeLocalProfile?.avatarDataUrl||activeLocalProfile?.avatarUrl||null,
+      avatarUrl:profile?.avatarUrl||activeLocalProfile?.avatarUrl||null,
+      countryCode:profile?.countryCode||profile?.country||activeLocalProfile?.countryCode||null,
+      isBot:false,
+      source:"online",
+    };
+  };
+
+  const persistPublicTournamentPatch = async (patch:any, rebuildForPlayers=false):Promise<boolean> => {
+    if(!tour) return false;
+    const next:any={...(tour as any),...patch,updatedAt:Date.now()};
+    let nextMatches:any[]=safeMatches as any[];
+    if(rebuildForPlayers && !isChallengePerformanceCompetition && doneMatches.length===0){
+      try{ nextMatches=buildInitialMatches(next as any) as any[]; }catch{}
+    }
+    try{
+      const remoteId=String((tour as any)?.onlineCompetitionId || (tour as any)?.id || id);
+      if(isOnlineCompetition && remoteId){
+        await updateOnlineCompetition(remoteId,{
+          name:next.name,
+          status:next.status,
+          tournament:next,
+          matches:nextMatches,
+          participants:next.players||[],
+          settings:{...((next as any)?.game?.rules||{}),identity:(next as any)?.identity||null},
+        } as any);
+      }
+      await upsertTournamentLocal(next as any);
+      await upsertMatchesForTournamentLocal(next.id,nextMatches as any);
+      setTour(next as any);
+      setMatches(nextMatches as any);
+      return true;
+    }catch(e:any){
+      console.error("[TournamentView] public competition update failed:",e);
+      setEnrollmentNotice(`Impossible d’enregistrer l’inscription en ligne : ${String(e?.message||"erreur serveur")}`);
+      return false;
+    }
+  };
+
+  const requestOrJoinCompetition = async () => {
+    if(!tour || !isOnlineCompetition) return;
+    setEnrollmentNotice("");
+    if(!activeOnlineUserId){
+      setEnrollmentNotice("Connecte-toi à ton compte Online pour rejoindre cette compétition.");
+      return;
+    }
+    if(currentTournamentPlayer){
+      setEnrollmentNotice("Tu participes déjà à cette compétition.");
+      return;
+    }
+    if(competitionIsFull){
+      setEnrollmentNotice("La compétition est complète.");
+      return;
+    }
+    const player=onlinePlayerFromAuth();
+    if(enrollmentPolicy==="open"){
+      if(!await persistPublicTournamentPatch({players:[...tournamentPlayers,player]},true)) return;
+      setEnrollmentNotice("Inscription confirmée. Tu fais maintenant partie de la compétition.");
+      return;
+    }
+    if(enrollmentPolicy==="invite"){
+      if(!currentInvitation || String(currentInvitation?.status||"pending")!=="pending"){
+        setEnrollmentNotice("Cette compétition fonctionne sur invitation.");
+        return;
+      }
+      const nextInvitations=competitionInvitations.map((row:any)=>String(row?.id||"")===String(currentInvitation.id)?{...row,status:"accepted",respondedAt:Date.now()}:row);
+      if(!await persistPublicTournamentPatch({players:[...tournamentPlayers,player],invitations:nextInvitations},true)) return;
+      setEnrollmentNotice("Invitation acceptée. Bienvenue dans la compétition.");
+      return;
+    }
+    if(enrollmentPolicy==="approval"){
+      if(currentEnrollmentRequest?.status==="pending"){
+        setEnrollmentNotice("Ta demande d’inscription est déjà en attente.");
+        return;
+      }
+      const request={
+        id:`request-${Date.now()}-${activeOnlineUserId.slice(-6)}`,
+        userId:activeOnlineUserId,
+        profileId:String((authOnline as any)?.profile?.id||activeOnlineUserId),
+        name:player.name,
+        avatarUrl:player.avatarUrl||player.avatarDataUrl||null,
+        status:"pending",
+        requestedAt:Date.now(),
+      };
+      const next=enrollmentRequests.filter((row:any)=>String(row?.userId||"")!==activeOnlineUserId || String(row?.status||"")!=="pending");
+      if(!await persistPublicTournamentPatch({enrollmentRequests:[...next,request]},false)) return;
+      setEnrollmentNotice("Demande envoyée à l’organisateur.");
+      return;
+    }
+    setEnrollmentNotice("Les inscriptions sont fermées pour cette compétition.");
+  };
+
+  const approveEnrollmentRequest = async (request:any) => {
+    if(!tour || !canAdmin("invitations")) return;
+    if(enrollmentMax>0 && tournamentPlayers.length>=enrollmentMax){setAdminNotice("Impossible : la compétition est complète.");return;}
+    const player={
+      id:String(request?.profileId||request?.userId||request?.id),
+      onlineUserId:String(request?.userId||"")||null,
+      name:String(request?.name||"Joueur"),
+      avatarDataUrl:request?.avatarUrl||null,
+      avatarUrl:request?.avatarUrl||null,
+      isBot:false,
+      source:"online",
+    };
+    const nextRequests=enrollmentRequests.map((row:any)=>String(row?.id||"")===String(request?.id||"")?{...row,status:"approved",respondedAt:Date.now(),respondedBy:activeProfileId||activeOnlineUserId}:row);
+    const nextPlayers=tournamentPlayers.some((row:any)=>String(row?.id||"")===String(player.id)||String(row?.onlineUserId||"")===String(player.onlineUserId||""))
+      ? tournamentPlayers
+      : [...tournamentPlayers,player];
+    await saveTournamentAdmin({players:nextPlayers,enrollmentRequests:nextRequests},!isChallengePerformanceCompetition,"invitations");
+    setAdminNotice(`${player.name} a été accepté.`);
+  };
+
+  const rejectEnrollmentRequest = async (request:any) => {
+    if(!canAdmin("invitations")) return;
+    const nextRequests=enrollmentRequests.map((row:any)=>String(row?.id||"")===String(request?.id||"")?{...row,status:"rejected",respondedAt:Date.now(),respondedBy:activeProfileId||activeOnlineUserId}:row);
+    await saveTournamentAdmin({enrollmentRequests:nextRequests},false,"invitations");
+    setAdminNotice("Demande refusée.");
+  };
+
   const shareCompetition = async () => {
     if(!tour) return;
-    const directUrl = `${window.location.origin}${window.location.pathname}#/competition/${encodeURIComponent(String((tour as any).onlineCompetitionId || (tour as any).id || id))}`;
+    const directUrl = competitionPublicUrl || `${window.location.origin}${window.location.pathname}#/competition/${encodeURIComponent(String((tour as any).onlineCompetitionId || (tour as any).id || id))}`;
     const shareCode = String((tour as any).shareCode || `MSC-${String((tour as any).id||id).replace(/[^a-z0-9]/gi,"").slice(-8).toUpperCase()}`);
     const cloudReady = String((tour as any).source||"") === "online" || String((tour as any).competitionScope||"") === "online" || Boolean((tour as any).onlineCompetitionId);
     const text = `${String((tour as any).name||"Compétition MULTISPORTS SCORING")} · Code ${shareCode}${cloudReady ? ` · ${directUrl}` : ""}`;
@@ -4545,11 +4877,48 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
       <PageAdBanner placement="competitions" slotKey="page-competitions-view-under-header" style={{ marginBottom: 12 }} />
 
+      {sharedEntry && tour ? (
+        <section style={{marginBottom:12,borderRadius:18,border:"1px solid rgba(79,180,255,.26)",background:"linear-gradient(180deg,rgba(4,10,18,.995),rgba(3,6,11,.995))",padding:12,boxShadow:"0 16px 36px rgba(0,0,0,.5)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
+            <div>
+              <span style={{display:"inline-flex",padding:"4px 7px",borderRadius:999,border:"1px solid rgba(79,180,255,.34)",background:"rgba(79,180,255,.08)",color:"#7bc8ff",fontSize:7.2,fontWeight:1000}}>● SUIVI PUBLIC</span>
+              <b style={{display:"block",fontSize:12,marginTop:6}}>Consultation depuis le lien de la compétition</b>
+              <div style={{fontSize:8.2,opacity:.64,marginTop:3}}>Classements, objectifs et résultats se mettent à jour automatiquement.</div>
+            </div>
+            <button type="button" onClick={()=>void refreshPublicCompetition()} disabled={publicRefreshing||!isOnlineCompetition} style={{minWidth:82,minHeight:32,borderRadius:10,border:"1px solid rgba(79,180,255,.28)",background:"rgba(8,35,58,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,opacity:publicRefreshing?.55:1}}>{publicRefreshing?"ACTUALISATION…":"↻ ACTUALISER"}</button>
+          </div>
+
+          {isOnlineCompetition ? (
+            <div style={{marginTop:10,padding:"9px 10px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"#050910"}}>
+              {currentTournamentPlayer ? (
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{fontSize:9.5,color:"#65e6a2"}}>✓ TU ES INSCRIT</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Retrouve la compétition dans ton espace Compétitions pour jouer tes essais ou matchs.</div></div><button type="button" onClick={()=>{ try{window.location.hash="#/competitions";}catch{}; go("tournaments"); }} style={{minHeight:31,borderRadius:9,border:"1px solid rgba(101,230,162,.3)",background:"rgba(14,62,43,.88)",color:"#fff",fontSize:7.2,fontWeight:1000}}>MON ESPACE</button></div>
+              ) : competitionIsFull ? (
+                <div><b style={{fontSize:9.5,color:"#ff7178"}}>COMPÉTITION COMPLÈTE</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Le nombre maximum de participants est atteint.</div></div>
+              ) : enrollmentPolicy==="approval" && currentEnrollmentRequest?.status==="pending" ? (
+                <div><b style={{fontSize:9.5,color:"#ffcf73"}}>DEMANDE EN ATTENTE</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>L’organisateur doit valider ton inscription.</div></div>
+              ) : enrollmentPolicy==="approval" && currentEnrollmentRequest?.status==="rejected" ? (
+                <div><b style={{fontSize:9.5,color:"#ff7178"}}>DEMANDE REFUSÉE</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>L’organisateur n’a pas retenu cette demande d’inscription.</div></div>
+              ) : enrollmentPolicy==="fixed" ? (
+                <div><b style={{fontSize:9.5,color:"#aeb7c3"}}>LISTE DE PARTICIPANTS FERMÉE</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Cette compétition n’accepte pas d’inscription depuis le lien public.</div></div>
+              ) : enrollmentPolicy==="invite" && !currentInvitation ? (
+                <div><b style={{fontSize:9.5,color:"#aeb7c3"}}>SUR INVITATION</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Seuls les joueurs invités par l’organisation peuvent rejoindre la compétition.</div></div>
+              ) : (
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                  <div><b style={{fontSize:9.5,color:"#4fb4ff"}}>{enrollmentPolicy==="invite"?"INVITATION REÇUE":enrollmentPolicy==="approval"?"INSCRIPTIONS SUR VALIDATION":"INSCRIPTIONS OUVERTES"}</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>{activeOnlineUserId?"Ton compte Online sera utilisé pour l’inscription.":"Connexion Online requise pour participer."}</div></div>
+                  <button type="button" onClick={()=>void requestOrJoinCompetition()} style={{minHeight:32,borderRadius:9,border:"1px solid rgba(79,180,255,.36)",background:"rgba(8,35,58,.96)",color:"#fff",padding:"0 10px",fontSize:7.4,fontWeight:1000}}>{enrollmentPolicy==="invite"?"ACCEPTER":enrollmentPolicy==="approval"?"DEMANDER À REJOINDRE":"REJOINDRE"}</button>
+                </div>
+              )}
+              {enrollmentNotice?<div style={{marginTop:7,fontSize:7.6,color:"#dce8f5",opacity:.78}}>{enrollmentNotice}</div>:null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {/* NAVIGATION PRINCIPALE : titre supprimé, icônes intégrées à la place */}
       <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0, 1fr) 88px", alignItems: "center", gap: 10 }}>
         <button
           type="button"
-          onClick={() => go("tournaments")}
+          onClick={() => sharedEntry ? go("online") : go("tournaments")}
           title="Retour"
           style={{
             width: 40,
@@ -4570,7 +4939,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          {!isChallengePerformanceCompetition ? <button
+          {!publicSpectator && isCompetitionAdmin && !isChallengePerformanceCompetition ? <button
             type="button"
             onClick={simulateTournament}
             title="Simuler le tournoi"
@@ -4588,7 +4957,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
             <Icon name="play" color="#ffcf57" />
           </button> : null}
 
-          <button
+          {!publicSpectator && isCompetitionAdmin ? <button
             type="button"
             onClick={async () => {
               if (!id) return;
@@ -4616,7 +4985,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
             }}
           >
             <Icon name="trash" color="#ff4fd8" />
-          </button>
+          </button> : null}
         </div>
       </div>
 
@@ -4709,8 +5078,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>🎯 CHALLENGE · {challengeCompetitionFormat === "objectives" ? "CHAMPIONNAT OBJECTIFS" : challengeCompetitionFormat === "free" ? "COMPÉTITION LIBRE" : "LIGUES & DIVISIONS"}</b><div style={{fontSize:9,opacity:.72,marginTop:3}}>Pas de faux matchs : chaque objectif possède son classement, puis les points sont cumulés au général.</div></div><MiniBadge label="Essais / objectif" value={challengeAttemptsPerObjective} accent={TAB_COLORS.objectives}/></div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>{challengeObjectives.map(obj=><button key={obj} onClick={()=>setTab("objectives")} style={{borderRadius:999,border:"1px solid rgba(255,181,74,.35)",background:"rgba(255,181,74,.08)",color:"#fff",padding:"7px 9px",fontWeight:1000,fontSize:8.5}}>{challengeObjectiveLabel(obj)}</button>)}</div>
                   <div style={{display:"grid",gridTemplateColumns:isCompetitionAdmin?"1fr 1fr":"1fr",gap:7,marginTop:10}}>
-                    <button type="button" onClick={loadAttachableHistory} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(255,230,138,.32)",background:"rgba(72,55,12,.92)",color:"#fff",fontWeight:1000}}>＋ AJOUTER UN ESSAI / HISTORIQUE</button>
-                    {isCompetitionAdmin?<button type="button" onClick={()=>{setTab("admin");setAdminPlayerPickerOpen(true)}} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>＋ AJOUTER DES JOUEURS</button>:null}
+                    {!publicSpectator?<button type="button" onClick={loadAttachableHistory} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(255,230,138,.32)",background:"rgba(72,55,12,.92)",color:"#fff",fontWeight:1000}}>＋ AJOUTER UN ESSAI / HISTORIQUE</button>:<div style={{minHeight:38,borderRadius:11,border:"1px solid rgba(255,255,255,.08)",background:"#060a10",display:"grid",placeItems:"center",fontSize:8,opacity:.62}}>MODE CONSULTATION</div>}
+                    {!publicSpectator&&isCompetitionAdmin?<button type="button" onClick={()=>{setTab("admin");setAdminPlayerPickerOpen(true)}} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>＋ AJOUTER DES JOUEURS</button>:null}
                   </div>
                 </div> : <div style={{borderRadius:18,border:"1px solid rgba(79,180,255,.24)",background:"linear-gradient(180deg,rgba(12,21,30,.98),rgba(5,8,13,.99))",padding:12}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:playableMatches.length?9:0}}><div><b style={{fontSize:13,color:TAB_COLORS.home}}>⚡ PROCHAINS MATCHS</b><div style={{fontSize:9,opacity:.65,marginTop:2}}>{playableMatches.length?"Lance directement une rencontre prête à jouer.":"Aucune rencontre jouable actuellement."}</div></div><MiniBadge label="À jouer" value={playableMatches.length} accent={TAB_COLORS.home}/></div>
@@ -4749,7 +5118,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   </div>
                   <div style={{borderRadius:18,border:"1px solid rgba(255,230,138,.22)",background:"linear-gradient(180deg,rgba(27,23,10,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.linked}}>＋ HISTORIQUE</b><strong style={{color:TAB_COLORS.linked,fontSize:16}}>{linkedHistoryMatches.length}</strong></div>
-                    <button type="button" onClick={loadAttachableHistory} style={{marginTop:7,width:"100%",border:"1px solid rgba(255,230,138,.25)",borderRadius:10,padding:"7px 8px",fontWeight:950,fontSize:8.5,cursor:"pointer",color:"#ffe68a",background:"rgba(255,230,138,.07)"}}>AJOUTER UNE PARTIE</button>
+                    {!publicSpectator?<button type="button" onClick={loadAttachableHistory} style={{marginTop:7,width:"100%",border:"1px solid rgba(255,230,138,.25)",borderRadius:10,padding:"7px 8px",fontWeight:950,fontSize:8.5,cursor:"pointer",color:"#ffe68a",background:"rgba(255,230,138,.07)"}}>AJOUTER UNE PARTIE</button>:null}
                   </div>
                 </div>
                 {doneMatches.length?<div style={{display:"grid",gap:8}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,TAB_COLORS.standings))}</div>:null}
@@ -4818,7 +5187,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   const rows=challengeObjectiveStandings[objective]||[];
                   return <section key={objective} style={{borderRadius:15,border:"1px solid rgba(255,181,74,.22)",background:"rgba(4,7,12,.97)",padding:11}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>{challengeObjectiveLabel(objective)}</b><div style={{fontSize:8.5,opacity:.62,marginTop:2}}>Classement de l’objectif · meilleur essai retenu</div></div><MiniBadge label="Classés" value={rows.length} accent={TAB_COLORS.objectives}/></div>
-                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const maxAttempts=challengeObjectiveAttemptLimit(objective);const objectiveOpen=challengeObjectiveIsOpen(objective);const canPlay=(isCompetitionAdmin||activeProfileId===pid)&&objectiveOpen&&attempts<maxAttempts;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""} · {challengeObjectiveVisits(objective)} tours{attempts>=maxAttempts?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=maxAttempts?"COMPLET":!objectiveOpen?"VERROUILLÉ":"JOUER"}</button></div>})}</div>
+                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const maxAttempts=challengeObjectiveAttemptLimit(objective);const objectiveOpen=challengeObjectiveIsOpen(objective);const canPlay=!publicSpectator&&(isCompetitionAdmin||activeProfileId===pid)&&objectiveOpen&&attempts<maxAttempts;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""} · {challengeObjectiveVisits(objective)} tours{attempts>=maxAttempts?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=maxAttempts?"COMPLET":!objectiveOpen?"VERROUILLÉ":"JOUER"}</button></div>})}</div>
                   </section>
                 }):<div style={{fontSize:10,opacity:.7}}>Aucun objectif configuré.</div>}
               </div>
@@ -5087,18 +5456,70 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <b style={{color:"#ffcf57",fontSize:11}}>IDENTITÉ & ÉTAT</b>
                   <label style={{display:"grid",gap:5,marginTop:9,fontSize:8.5,opacity:.8}}>Nom de la compétition<input value={adminDraftName || String((tour as any)?.name||"")} onChange={e=>setAdminDraftName(e.target.value)} style={{height:38,borderRadius:11,border:"1px solid rgba(255,255,255,.14)",background:"#070b11",color:"#fff",padding:"0 10px",fontWeight:900}}/></label>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:8}}><button onClick={()=>saveTournamentAdmin({name:(adminDraftName||String((tour as any)?.name||"")).trim()||String((tour as any)?.name||"")})} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(255,207,87,.35)",background:"rgba(72,52,7,.92)",color:"#fff",fontWeight:1000}}>ENREGISTRER</button><button onClick={()=>saveTournamentAdmin({status:String((tour as any)?.status)==="running"?"draft":"running"})} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>{String((tour as any)?.status)==="running"?"METTRE EN PAUSE":"LANCER"}</button></div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:8}}><button disabled={!canAdmin("identity")} onClick={()=>saveTournamentAdmin({name:(adminDraftName||String((tour as any)?.name||"")).trim()||String((tour as any)?.name||"")},false,"identity")} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(255,207,87,.35)",background:"rgba(72,52,7,.92)",color:"#fff",fontWeight:1000}}>ENREGISTRER</button><button disabled={!canAdmin("identity")} onClick={()=>saveTournamentAdmin({status:String((tour as any)?.status)==="running"?"draft":"running"},false,"identity")} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>{String((tour as any)?.status)==="running"?"METTRE EN PAUSE":"LANCER"}</button></div>
                 </section>
                 <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#4fb4ff",fontSize:11}}>PARTICIPANTS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Ajoute les joueurs avant le lancement, ou reconstruis le calendrier tant qu’aucun match n’est terminé.</div></div><button onClick={()=>setAdminPlayerPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(79,180,255,.4)",background:"rgba(79,180,255,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ AJOUTER</button></div>
                   {adminPlayerPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:180,overflowY:"auto"}}>{availableProfiles.length?availableProfiles.map((p:any)=><button key={p.id} onClick={()=>addCompetitionPlayer(p)} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Joueur"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun autre profil local disponible.</div>}</div>:null}
                   <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((p:any)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Joueur"}</b><button disabled={doneMatches.length>0} onClick={()=>removeCompetitionPlayer(String(p.id))} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000,opacity:doneMatches.length>0?.35:1}}>RETIRER</button></div>)}</div>
                 </section>
-                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#ff6b6b",fontSize:11}}>ADMINISTRATEURS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Le créateur reste propriétaire. Les admins peuvent gérer la compétition.</div></div><button onClick={()=>setAdminAdminPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(255,107,107,.4)",background:"rgba(255,107,107,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ NOMMER</button></div>
+
+                {isOnlineCompetition && canAdmin("invitations") ? <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(79,180,255,.18)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <div><b style={{color:"#4fb4ff",fontSize:11}}>INVITATIONS & INSCRIPTIONS ONLINE</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Invite des comptes Online et traite les demandes reçues depuis le lien public.</div></div>
+                    <span style={{padding:"4px 7px",borderRadius:999,border:"1px solid rgba(79,180,255,.25)",fontSize:7.2,fontWeight:1000,color:"#7bc8ff"}}>{enrollmentPolicy==="open"?"OUVERT":enrollmentPolicy==="approval"?"VALIDATION":enrollmentPolicy==="invite"?"INVITATION":"FERMÉ"}</span>
+                  </div>
+
+                  {enrollmentRequests.filter((row:any)=>String(row?.status||"pending")==="pending").length ? <div style={{display:"grid",gap:6,marginTop:9}}>
+                    <div style={{fontSize:7.6,fontWeight:1000,color:"#ffcf73"}}>DEMANDES EN ATTENTE</div>
+                    {enrollmentRequests.filter((row:any)=>String(row?.status||"pending")==="pending").map((row:any)=><div key={String(row.id)} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:6,alignItems:"center",padding:"8px 9px",borderRadius:10,border:"1px solid rgba(255,207,87,.13)",background:"#080d14"}}>
+                      <div style={{minWidth:0}}><b style={{display:"block",fontSize:8.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row?.name||"Joueur Online"}</b><span style={{display:"block",fontSize:6.8,opacity:.55,marginTop:2}}>Demande du {formatDate(Number(row?.requestedAt||Date.now()))}</span></div>
+                      <button type="button" onClick={()=>void approveEnrollmentRequest(row)} style={{minHeight:28,borderRadius:8,border:"1px solid rgba(101,230,162,.3)",background:"rgba(14,62,43,.85)",color:"#fff",fontSize:6.9,fontWeight:1000}}>ACCEPTER</button>
+                      <button type="button" onClick={()=>void rejectEnrollmentRequest(row)} style={{minHeight:28,borderRadius:8,border:"1px solid rgba(255,113,120,.25)",background:"rgba(71,19,23,.8)",color:"#fff",fontSize:6.9,fontWeight:1000}}>REFUSER</button>
+                    </div>)}
+                  </div> : null}
+
+                  <div style={{marginTop:10,padding:"9px",borderRadius:11,border:"1px solid rgba(79,180,255,.12)",background:"#080d14"}}>
+                    <div style={{fontSize:7.6,fontWeight:1000,color:"#7bc8ff"}}>INVITER UN JOUEUR ONLINE</div>
+                    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:6,marginTop:7}}>
+                      <input value={onlineInviteQuery} onChange={e=>setOnlineInviteQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter") void searchOnlineInviteCandidates();}} placeholder="Pseudo / nom Online" style={{height:33,borderRadius:9,border:"1px solid rgba(255,255,255,.12)",background:"#070b11",color:"#fff",padding:"0 8px",fontSize:8,fontWeight:800}}/>
+                      <button type="button" onClick={()=>void searchOnlineInviteCandidates()} style={{minWidth:72,borderRadius:9,border:"1px solid rgba(79,180,255,.28)",background:"rgba(8,35,58,.9)",color:"#fff",fontSize:7,fontWeight:1000}}>RECHERCHER</button>
+                      <button type="button" onClick={()=>void loadOnlineInviteCandidates()} style={{minWidth:58,borderRadius:9,border:"1px solid rgba(255,255,255,.11)",background:"#070b11",color:"#fff",fontSize:7,fontWeight:1000}}>AMIS</button>
+                    </div>
+                    {onlineInviteError?<div style={{fontSize:7.2,color:"#ff7178",marginTop:6}}>{onlineInviteError}</div>:null}
+                    {onlineInviteLoading?<div style={{fontSize:7.2,opacity:.58,marginTop:6}}>Chargement…</div>:null}
+                    {!onlineInviteLoading && onlineInvitePeople.length ? <div style={{display:"grid",gap:5,marginTop:7,maxHeight:180,overflowY:"auto"}}>{onlineInvitePeople.map((person:any)=>{
+                      const uid=onlineUserIdOf(person);
+                      const label=String(person?.displayName||person?.nickname||"Joueur Online");
+                      return <div key={uid} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:7,alignItems:"center",padding:"7px 8px",borderRadius:9,border:"1px solid rgba(255,255,255,.07)",background:"#070b11"}}><div style={{minWidth:0}}><b style={{display:"block",fontSize:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</b><span style={{fontSize:6.5,opacity:.52}}>{person?.nickname&&person?.displayName!==person?.nickname?`@${person.nickname}`:"Compte Online"}</span></div><button type="button" onClick={()=>void sendCompetitionInvite(person)} style={{minHeight:28,borderRadius:8,border:"1px solid rgba(79,180,255,.28)",background:"rgba(8,35,58,.88)",color:"#fff",fontSize:6.8,fontWeight:1000}}>INVITER</button></div>
+                    })}</div>:null}
+                  </div>
+
+                  {competitionInvitations.length ? <div style={{display:"grid",gap:5,marginTop:9}}>
+                    <div style={{fontSize:7.6,fontWeight:1000,opacity:.7}}>INVITATIONS</div>
+                    {competitionInvitations.slice().sort((a:any,b:any)=>Number(b?.createdAt||0)-Number(a?.createdAt||0)).map((row:any)=>{
+                      const status=String(row?.status||"pending");
+                      const accent=status==="accepted"?"#65e6a2":status==="pending"?"#ffcf73":"#8b96a5";
+                      return <div key={String(row.id)} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"7px 8px",borderRadius:9,border:"1px solid rgba(255,255,255,.07)",background:"#070b11"}}><b style={{fontSize:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row?.name||"Joueur Online"}</b><span style={{fontSize:6.7,fontWeight:1000,color:accent}}>{status==="accepted"?"ACCEPTÉE":status==="pending"?"EN ATTENTE":status.toUpperCase()}</span>{status==="pending"?<button type="button" onClick={()=>void revokeCompetitionInvite(String(row.id))} style={{border:0,borderRadius:7,background:"rgba(255,70,80,.12)",color:"#ff7178",padding:"5px 7px",fontSize:6.5,fontWeight:1000}}>ANNULER</button>:<span/>}</div>
+                    })}
+                  </div>:null}
+                </section> : null}
+
+                {(isCompetitionOwner || canAdmin("admins")) ? <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#ff6b6b",fontSize:11}}>ADMINISTRATEURS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Le propriétaire peut attribuer des droits différents à chaque administrateur.</div></div><button onClick={()=>setAdminAdminPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(255,107,107,.4)",background:"rgba(255,107,107,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ NOMMER</button></div>
                   {adminAdminPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:160,overflowY:"auto"}}>{availableAdmins.length?availableAdmins.map((p:any)=><button key={p.id} onClick={()=>addCompetitionAdmin(String(p.id))} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Profil"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun profil supplémentaire disponible.</div>}</div>:null}
-                  <div style={{display:"grid",gap:6,marginTop:9}}><div style={{padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,207,87,.18)",fontSize:9.5}}><b>PROPRIÉTAIRE</b> · {allProfiles.find((p:any)=>String(p.id)===ownerProfileId)?.name||"Créateur"}</div>{adminProfileIds.map(pid=><div key={pid} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:9.5}}>{allProfiles.find((p:any)=>String(p.id)===pid)?.name||pid}</b><button onClick={()=>removeCompetitionAdmin(pid)} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000}}>RETIRER</button></div>)}</div>
-                </section>
+                  <div style={{display:"grid",gap:6,marginTop:9}}>
+                    <div style={{padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,207,87,.18)",fontSize:9.5}}><b>PROPRIÉTAIRE</b> · {allProfiles.find((p:any)=>String(p.id)===ownerProfileId)?.name||playersById[ownerProfileId]?.name||"Créateur"}</div>
+                    {adminProfileIds.map(pid=>{
+                      const adminName=allProfiles.find((p:any)=>String(p.id)===pid)?.name||playersById[pid]?.name||pid;
+                      const permissions=Array.isArray(adminPermissionMap[pid])?adminPermissionMap[pid]:ALL_ADMIN_PERMISSIONS;
+                      return <div key={pid} style={{padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center"}}><b style={{fontSize:9.5}}>{adminName}</b><button onClick={()=>void removeCompetitionAdmin(pid)} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000}}>RETIRER</button></div>
+                        {isCompetitionOwner?<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:7}}>{ADMIN_PERMISSION_DEFS.map(item=><button key={`${pid}-${item.key}`} type="button" onClick={()=>void toggleAdminPermission(pid,item.key)} style={{minHeight:24,borderRadius:999,border:`1px solid ${permissions.includes(item.key)?"rgba(101,230,162,.3)":"rgba(255,255,255,.09)"}`,background:permissions.includes(item.key)?"rgba(14,62,43,.65)":"#070b11",color:permissions.includes(item.key)?"#9ef4c2":"#7d8794",padding:"0 7px",fontSize:6.3,fontWeight:1000}}>{item.label}</button>)}</div>:<div style={{fontSize:6.7,opacity:.58,marginTop:5}}>{permissions.length} autorisation{permissions.length>1?"s":""}</div>}
+                      </div>
+                    })}
+                  </div>
+                </section> : null}
                 {isChallengePerformanceCompetition?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(101,230,162,.18)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                     <div><b style={{color:"#65e6a2",fontSize:11}}>SAISON CHALLENGE</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Édite une saison déjà créée sans toucher aux résultats enregistrés.</div></div>
@@ -5367,41 +5788,58 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
           {/* STATS */}
           {tab === "stats" ? (
-            <Card title="Statistiques" subtitle="Synthèse (basée sur scores simples). Les “vraies stats mode” seront branchées ensuite." accent={TAB_COLORS.stats} icon="📊">
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <MiniBadge label="Matchs" value={stats.global.totalMatches} accent={TAB_COLORS.stats} />
-                <MiniBadge label="Terminés" value={stats.global.doneMatches} accent="#7fe2a9" />
-                <MiniBadge label="En cours" value={stats.global.runningMatches} accent="#4fb4ff" />
-                <MiniBadge label="À jouer" value={stats.global.playableMatches} accent="#ffcf57" />
-              </div>
+            isChallengePerformanceCompetition ? (
+              <Card title="Statistiques Challenge" subtitle="Vue synthétique de la progression de la compétition, sans faux indicateurs de matchs." accent={TAB_COLORS.stats} icon="📊">
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7}}>
+                  {[
+                    ["JOUEURS",tournamentPlayers.length,"#ffcf73"],
+                    ["OBJECTIFS",challengeObjectives.length,"#ffb54a"],
+                    ["ESSAIS",linkedHistoryMatches.length,"#65e6a2"],
+                    ["CYCLE",challengeCurrentCycle,"#b6b6ff"],
+                  ].map(([label,value,accent]:any)=><div key={label} style={{padding:"9px 6px",borderRadius:11,border:`1px solid ${accent}28`,background:"#070b11",textAlign:"center"}}><b style={{display:"block",fontSize:16,color:accent}}>{value}</b><span style={{fontSize:6.8,fontWeight:1000,opacity:.62}}>{label}</span></div>)}
+                </div>
+                <div style={{marginTop:11,display:"grid",gap:6}}>
+                  {challengeGeneralStandings.slice(0,10).map((row:any)=><div key={`stats-ch-${row.playerId}`} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:10,border:"1px solid rgba(255,255,255,.07)",background:"#070b11"}}><strong style={{color:Number(row.rank)<=3?"#ffcf73":"#8b96a5"}}>#{row.rank}</strong><div style={{minWidth:0}}><b style={{display:"block",fontSize:8.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</b><span style={{display:"block",fontSize:6.8,opacity:.55,marginTop:2}}>{Number(row.wins||0)} victoire{Number(row.wins||0)>1?"s":""} d’objectif · {Number(row.podiums||0)} podium{Number(row.podiums||0)>1?"s":""}</span></div><b style={{fontSize:10,color:"#b6b6ff"}}>{row.points} pts</b></div>)}
+                  {!challengeGeneralStandings.length?<div style={{padding:12,textAlign:"center",fontSize:8.5,opacity:.62}}>Les statistiques apparaîtront dès les premiers essais classés.</div>:null}
+                </div>
+              </Card>
+            ) : (
+              <Card title="Statistiques" subtitle="Synthèse basée sur les résultats de la compétition." accent={TAB_COLORS.stats} icon="📊">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <MiniBadge label="Matchs" value={stats.global.totalMatches} accent={TAB_COLORS.stats} />
+                  <MiniBadge label="Terminés" value={stats.global.doneMatches} accent="#7fe2a9" />
+                  <MiniBadge label="En cours" value={stats.global.runningMatches} accent="#4fb4ff" />
+                  <MiniBadge label="À jouer" value={stats.global.playableMatches} accent="#ffcf57" />
+                </div>
 
-              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                {stats.list.map((r: any, idx: number) => (
-                  <div
-                    key={r.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "28px 1fr auto",
-                      gap: 10,
-                      alignItems: "center",
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(0,0,0,0.25)",
-                      width: "100%",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div style={{ fontWeight: 950, color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,0.75)" }}>{idx + 1}</div>
-                    <PlayerPill name={r.name} avatarUrl={playersById[String(r.id)]?.avatar} />
-                    <div style={{ textAlign: "right", fontSize: 11.5, opacity: 0.9, whiteSpace: "nowrap" }}>
-                      <b style={{ color: TAB_COLORS.stats }}>{r.points}</b> pts • {r.wins}-{r.losses} • <b style={{ color: "#7fe2a9" }}>{r.winrate}%</b> • Δ {r.diff}
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  {stats.list.map((r: any, idx: number) => (
+                    <div
+                      key={r.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "28px 1fr auto",
+                        gap: 10,
+                        alignItems: "center",
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(0,0,0,0.25)",
+                        width: "100%",
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div style={{ fontWeight: 950, color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,0.75)" }}>{idx + 1}</div>
+                      <PlayerPill name={r.name} avatarUrl={playersById[String(r.id)]?.avatar} />
+                      <div style={{ textAlign: "right", fontSize: 11.5, opacity: 0.9, whiteSpace: "nowrap" }}>
+                        <b style={{ color: TAB_COLORS.stats }}>{r.points}</b> pts • {r.wins}-{r.losses} • <b style={{ color: "#7fe2a9" }}>{r.winrate}%</b> • Δ {r.diff}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+                  ))}
+                </div>
+              </Card>
+            )
           ) : null}
         </>
       )}
@@ -5490,8 +5928,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
           phaseLabel={matchPhaseShortLabel(selectedMatch, viewKind, koRoundsCount)}
           formatLabel={`BO${tournamentBestOf}`}
           onClose={() => setSelectedMatch(null)}
-          onSimulate={() => simulateMatch(selectedMatch)}
-          onPlay={() => {
+          onSimulate={publicSpectator ? undefined : () => simulateMatch(selectedMatch)}
+          onPlay={publicSpectator ? undefined : () => {
             if (!selectedMatch) return;
             if (String(selectedMatch?.status || "") === "done") {
               return;
@@ -5500,7 +5938,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
               onStartMatch(String(selectedMatch.id));
             }
           }}
-          onOpenResult={() => {
+          onOpenResult={publicSpectator ? undefined : () => {
             if (!selectedMatch) return;
             onOpenResult(selectedMatch);
           }}

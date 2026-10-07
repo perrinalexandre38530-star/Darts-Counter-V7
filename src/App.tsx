@@ -5446,7 +5446,7 @@ case "babyfoot_team_edit":
 
       case "tournament_view": {
         const id = String(routeParams?.id ?? routeParams?.tournamentId ?? routeParams?.tid ?? "");
-        page = <TournamentView store={store} go={go} id={id} />;
+        page = <TournamentView store={store} go={go} id={id} sharedEntry={Boolean(routeParams?.sharedEntry)} />;
         break;
       }
 

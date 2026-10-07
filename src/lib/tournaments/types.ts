@@ -11,6 +11,40 @@ export type TournamentSource = "local" | "online";
 export type TournamentCompetitionScope = "local" | "team" | "online";
 
 
+export type TournamentAdminPermission =
+  | "identity"
+  | "participants"
+  | "invitations"
+  | "rules"
+  | "schedule"
+  | "results"
+  | "admins";
+
+export type TournamentEnrollmentRequest = {
+  id: string;
+  userId: string;
+  profileId?: string | null;
+  name: string;
+  avatarUrl?: string | null;
+  message?: string | null;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  requestedAt: number;
+  respondedAt?: number | null;
+  respondedBy?: string | null;
+};
+
+export type TournamentInvitation = {
+  id: string;
+  userId: string;
+  profileId?: string | null;
+  name: string;
+  avatarUrl?: string | null;
+  status: "pending" | "accepted" | "declined" | "revoked";
+  createdAt: number;
+  respondedAt?: number | null;
+};
+
+
 export type ChallengeCompetitionFormat = "objectives" | "duels" | "free" | "divisions";
 
 export type ChallengeCompetitionAttempt = {
@@ -189,6 +223,7 @@ export type TournamentViewKind = "single_ko" | "double_ko" | "round_robin" | "gr
 
 export type TournamentPlayer = {
   id: string; // profileId ou botId ou uuid local
+  onlineUserId?: string | null;
   name: string;
   avatarDataUrl?: string | null;
   avatarUrl?: string | null;
@@ -252,8 +287,20 @@ export type Tournament = {
   updatedAt: number;
 
   ownerProfileId?: string | null;
+  ownerOnlineUserId?: string | null;
   adminProfileIds?: string[];
+  adminPermissions?: Record<string, TournamentAdminPermission[]>;
   invitedProfileIds?: string[];
+  invitations?: TournamentInvitation[];
+  enrollmentRequests?: TournamentEnrollmentRequest[];
+  publicView?: {
+    enabled?: boolean;
+    showParticipants?: boolean;
+    showObjectives?: boolean;
+    showStandings?: boolean;
+    showStats?: boolean;
+    liveRefreshSeconds?: number;
+  };
   shareCode?: string | null;
   challengeCompetition?: ChallengeCompetitionConfig;
 
