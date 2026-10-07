@@ -450,42 +450,34 @@ export default function ProfileAvatar(props: Props) {
   const cachedThumbFresh = !!cachedThumb && (!profileRevision || !cachedRevision || cachedRevision >= profileRevision);
   const propLooksRemote = /^(https?:\/\/|\/media\/|\/assets\/|\/images\/|\.\.?\/)/i.test(propDataUrl);
 
-  const preferProfileAvatarUrl = props.preferProfileAvatarUrl === true;
+  // Une seule politique de résolution pour TOUTE l'application.
+  // HOME, Profils, sélecteurs de jeu et Stats ne doivent jamais choisir des
+  // sources différentes pour le même profileId. `preferProfileAvatarUrl` reste
+  // accepté pour compatibilité mais n'altère plus l'ordre canonique.
   const computedRawImg = React.useMemo(() => {
-    // Une URL explicite distante/packagée doit rester prioritaire (bots, assets, amis liés).
     if (propDataUrl && propLooksRemote) return propDataUrl;
 
-    // HOME doit suivre exactement la logique de "Mon profil" : l'avatarUrl du
-    // profil courant gagne sur l'ancien avatarDataUrl/cache local. Cela supprime
-    // le flash du mauvais portrait au démarrage.
-    if (preferProfileAvatarUrl) {
-      if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
-      if (propDataUrl) return propDataUrl;
-      if (avatarDataUrl) return avatarDataUrl;
-      if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
-      if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
-      if (size <= 180 && cachedThumb) return cachedThumb;
-      return null;
-    }
-
-    // Mode générique : le cache rapide peut éviter un paint coûteux si sa
-    // révision est au moins aussi récente que celle du profil.
     const profileHasOwnMedia = Boolean(avatarDataUrl || legacyAvatar || avatarUrl || avatarPath);
     const cacheIsAuthoritative = Boolean(
       cachedThumb &&
       (
-        (!profileHasOwnMedia) ||
+        !profileHasOwnMedia ||
         (cachedRevision > 0 && profileRevision > 0 && cachedRevision >= profileRevision)
       )
     );
+
+    // Une miniature locale validée est la source la plus stable pour les
+    // médaillons. Elle évite qu'une URL NAS/R2 transitoirement indisponible
+    // fasse disparaître l'avatar quelques secondes après le premier paint.
     if (size <= 180 && cacheIsAuthoritative) return cachedThumb;
     if (propDataUrl) return propDataUrl;
     if (avatarDataUrl) return avatarDataUrl;
     if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
     if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
     if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
+    if (size <= 180 && cachedThumb) return cachedThumb;
     return null;
-  }, [preferProfileAvatarUrl, propDataUrl, propLooksRemote, size, cachedThumb, cachedRevision, profileRevision, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+  }, [propDataUrl, propLooksRemote, size, cachedThumb, cachedRevision, profileRevision, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   // Garde la dernière source valide pendant une réhydratation asynchrone.
   // Un delta/store temporairement "lite" ne doit jamais faire clignoter l'avatar
@@ -501,9 +493,17 @@ export default function ProfileAvatar(props: Props) {
     const remembered = lastKnownGoodAvatarByProfile.get(effectiveProfileId);
     if (remembered) setStickyRawImg(remembered);
   }, [effectiveProfileId]);
-  // On essaie la nouvelle source, mais une source temporairement cassée ne remplace
-  // jamais la dernière image réellement chargée avec succès.
-  const rawImg = computedRawImg || stickyRawImg;
+
+  // Une source distante qui échoue ne doit plus rester prioritaire éternellement
+  // face à la dernière image réellement chargée. C'était la cause du symptôme
+  // "avatar visible puis initiale quelques secondes plus tard".
+  const [failedRawImg, setFailedRawImg] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setFailedRawImg(null);
+  }, [computedRawImg, effectiveProfileId]);
+  const rawImg = (computedRawImg && computedRawImg !== failedRawImg)
+    ? computedRawImg
+    : (stickyRawImg || computedRawImg || null);
 
   // -------------------------------------------------------------------------
   // FAILOVER AVATAR : NAS -> cache local -> Cloudflare R2
@@ -699,6 +699,7 @@ export default function ProfileAvatar(props: Props) {
             decoding="async"
             onLoad={() => {
               setLoaded(true);
+              setFailedRawImg(null);
               if (effectiveProfileId && rawImg) {
                 lastKnownGoodAvatarByProfile.set(effectiveProfileId, rawImg);
                 setStickyRawImg(rawImg);
@@ -713,14 +714,14 @@ export default function ProfileAvatar(props: Props) {
             }}
             onError={() => {
               const remembered = effectiveProfileId ? lastKnownGoodAvatarByProfile.get(effectiveProfileId) : '';
+              setLoaded(false);
+              if (!useFallback && rawImg) setFailedRawImg(rawImg);
               if (remembered && remembered !== rawImg) {
                 setStickyRawImg(remembered);
                 setPrimaryBroken(false);
                 setFallbackBroken(false);
-                setLoaded(false);
                 return;
               }
-              setLoaded(false);
               if (useFallback) setFallbackBroken(true);
               else setPrimaryBroken(true);
             }}

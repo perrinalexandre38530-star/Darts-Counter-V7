@@ -211,19 +211,11 @@ async function uploadProfileAvatar(profile: any) {
   const existingUrl = asString(profile?.avatarUrl || profile?.avatar || cached?.avatarUrl);
   const knownHash = asString(profile?.avatarSha256 || profile?.avatarHash || cached?.avatarSha256 || cached?.avatarHash);
 
-  const stripProfileData = (base: any) => {
-    const out = stripDataImageFields(base || {}, [
-      "avatarDataUrl",
-      "avatarFullDataUrl",
-      "avatarCastDataUrl",
-      "avatarThumbDataUrl",
-      "photoDataUrl",
-      "imageDataUrl",
-    ]);
-    if (typeof out.avatar === "string" && out.avatar.startsWith("data:image/")) delete out.avatar;
-    if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:image/")) delete out.avatarUrl;
-    return out;
-  };
+  // IMPORTANT : ce résultat peut être réinjecté dans le store React après un
+  // upload média. Ne jamais supprimer ici les pixels locaux d'avatar : le store
+  // persistant sait déjà les compacter séparément. Les retirer de l'objet runtime
+  // provoquait la disparition simultanée des portraits dans tous les sélecteurs.
+  const stripProfileData = (base: any) => ({ ...(base || {}) });
 
   if (!dataUrl) {
     if (existingAssetId || existingUrl) {
@@ -287,10 +279,10 @@ async function uploadProfileAvatar(profile: any) {
     try {
       setAvatarCache({
         profileId: String(next.id || ""),
-        avatarDataUrl: null,
-        avatarThumbDataUrl: null,
-        avatarFullDataUrl: null,
-        avatarCastDataUrl: null,
+        avatarDataUrl: next.avatarDataUrl || cached?.avatarDataUrl || cached?.avatarThumbDataUrl || null,
+        avatarThumbDataUrl: next.avatarThumbDataUrl || next.avatarDataUrl || cached?.avatarThumbDataUrl || cached?.avatarDataUrl || null,
+        avatarFullDataUrl: next.avatarFullDataUrl || cached?.avatarFullDataUrl || null,
+        avatarCastDataUrl: next.avatarCastDataUrl || cached?.avatarCastDataUrl || null,
         avatarUrl: next.avatarUrl || null,
         avatarUpdatedAt: updatedAt,
         avatarAssetId: next.avatarAssetId || null,
@@ -668,22 +660,18 @@ export async function hydrateStoreMediaUrls(store: any): Promise<any> {
       const assetId = asString(out.avatarAssetId || out.avatarFullAssetId || out.avatarThumbAssetId || out.avatarCastAssetId);
       const url = assetId ? urls[assetId] : "";
       if (url) {
-        if (out.avatarUrl !== url || out.avatar !== url || out.avatarDataUrl || out.avatarFullDataUrl || out.avatarCastDataUrl || out.avatarThumbDataUrl) {
-          changed = true;
-        }
+        if (out.avatarUrl !== url || out.avatar !== url) changed = true;
         out.avatarUrl = url;
-        out.avatar = url;
-        delete out.avatarDataUrl;
-        delete out.avatarFullDataUrl;
-        delete out.avatarCastDataUrl;
-        delete out.avatarThumbDataUrl;
+        // Ne pas remplacer `avatar` s'il contient encore les pixels locaux.
+        // L'URL distante devient une référence durable, pas un remplacement destructif.
+        if (!(typeof out.avatar === "string" && out.avatar.startsWith("data:image/"))) out.avatar = url;
         try {
           setAvatarCache({
             profileId: String(out.id || ""),
-            avatarDataUrl: null,
-            avatarThumbDataUrl: null,
-            avatarFullDataUrl: null,
-            avatarCastDataUrl: null,
+            avatarDataUrl: out.avatarDataUrl || out.avatarThumbDataUrl || null,
+            avatarThumbDataUrl: out.avatarThumbDataUrl || out.avatarDataUrl || null,
+            avatarFullDataUrl: out.avatarFullDataUrl || null,
+            avatarCastDataUrl: out.avatarCastDataUrl || null,
             avatarUrl: url,
             avatarUpdatedAt: Number(out.avatarUpdatedAt || Date.now()),
             avatarAssetId: asString(out.avatarAssetId || null) || null,

@@ -562,18 +562,10 @@ function filterByRange(
   const now = Date.now();
   const ONE_DAY = 24 * 60 * 60 * 1000;
 
-  // "ACTUEL" = niveau récent du joueur :
-  // priorité aux 30 derniers jours ; s'il y a trop peu de matière,
-  // on complète avec les dernières performances disponibles.
-  if (range === "current") {
-    const recent30 = sessions.filter((s) => s.date >= now - 30 * ONE_DAY);
-    if (recent30.length >= 5) return recent30;
-
-    return sessions
-      .slice()
-      .sort((a, b) => b.date - a.date)
-      .slice(0, Math.min(10, Math.max(5, sessions.length)));
-  }
+  // IMPORTANT : "ACTUEL" doit être calculé APRÈS sélection du profil.
+  // Sinon les lignes les plus récentes d'autres joueurs peuvent évincer
+  // totalement le profil affiché et donner 0 session.
+  if (range === "current") return sessions;
 
   const delta =
     range === "day"
@@ -2512,25 +2504,48 @@ function memoFilteredX01Sessions(
 
 let __memoSelectedInput: X01MultiSession[] | null = null;
 let __memoSelectedProfileId: string | null = null;
+let __memoSelectedRange: TimeRange | null = null;
 let __memoSelectedValue: X01MultiSession[] = [];
+
+function applyCurrentFormWindow(sessions: X01MultiSession[]): X01MultiSession[] {
+  if (!sessions.length) return sessions;
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const recent30 = sessions.filter((s) => Number(s.date || 0) >= now - 30 * ONE_DAY);
+  if (recent30.length >= 5) return recent30;
+
+  // S'il n'y a pas assez de parties sur 30 jours, on prend les dernières
+  // performances DU PROFIL sélectionné uniquement.
+  return sessions
+    .slice()
+    .sort((a, b) => Number(b.date || 0) - Number(a.date || 0))
+    .slice(0, Math.min(10, sessions.length));
+}
 
 function memoSelectedX01Sessions(
   filtered: X01MultiSession[],
-  effectiveProfileId: string | null
+  effectiveProfileId: string | null,
+  range: TimeRange
 ): X01MultiSession[] {
   const normalizedId = effectiveProfileId == null ? null : String(effectiveProfileId);
-  if (__memoSelectedInput === filtered && __memoSelectedProfileId === normalizedId) {
+  if (
+    __memoSelectedInput === filtered &&
+    __memoSelectedProfileId === normalizedId &&
+    __memoSelectedRange === range
+  ) {
     return __memoSelectedValue;
   }
-  const value = normalizedId == null
+  const profileSessions = normalizedId == null
     ? filtered
     : filtered.filter((session: any) =>
         sameId(session?.selectedPlayerId, normalizedId) ||
         sameId(session?.profileId, normalizedId) ||
         sameId(session?.playerId, normalizedId)
       );
+  const value = range === "current" ? applyCurrentFormWindow(profileSessions) : profileSessions;
   __memoSelectedInput = filtered;
   __memoSelectedProfileId = normalizedId;
+  __memoSelectedRange = range;
   __memoSelectedValue = value;
   return value;
 }
@@ -2751,7 +2766,7 @@ export default function X01MultiStatsTabFull({
 
   // Sessions filtrées — mémoïsées hors React pour garantir une liste de hooks fixe.
   const filtered = memoFilteredX01Sessions(sessions, range, scoreFilter, variantFilter);
-  const selectedSessions = memoSelectedX01Sessions(filtered, effectiveProfileId);
+  const selectedSessions = memoSelectedX01Sessions(filtered, effectiveProfileId, range);
   const statsSessions = selectedSessions;
   const x01DartsAll: UIDart[] = memoX01DartsForStats(statsSessions);
 

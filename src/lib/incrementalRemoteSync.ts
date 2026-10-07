@@ -21,6 +21,11 @@ let rerun = false;
 const personalCloudIncrementalSupport = new Map<string, boolean>();
 const runtimeUnsupportedProviders = new Set<string>();
 
+function nasIncrementalKnownSupported(): boolean {
+  try { return localStorage.getItem('dc_incremental_nas_supported_v1') === '1'; } catch { return false; }
+}
+
+
 async function personalCloudSupportsIncremental(provider: 'google_drive' | 'onedrive' | 'dropbox'): Promise<boolean> {
   if (personalCloudIncrementalSupport.has(provider)) return personalCloudIncrementalSupport.get(provider) === true;
   try {
@@ -57,6 +62,10 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
   };
 
   if (provider === 'founder_nas') {
+    // Un NAS ancien répond 404 sur cette route. Ne plus générer une erreur réseau
+    // visible à chaque chargement : le mode incrémental NAS n'est activé que
+    // lorsqu'une version compatible l'a explicitement validé une première fois.
+    if (!nasIncrementalKnownSupported()) return false;
     try {
       await apiPost('/account/incremental-changes', { changes }, { timeoutMs: 15_000 });
       return true;
@@ -161,7 +170,7 @@ export function initIncrementalRemoteSync(): void {
 
 export async function fetchRemoteIncrementalChanges(provider = selectedProvider()): Promise<IncrementalChange[]> {
   if (provider === 'founder_nas') {
-    if (runtimeUnsupportedProviders.has(provider)) return [];
+    if (runtimeUnsupportedProviders.has(provider) || !nasIncrementalKnownSupported()) return [];
     const res: any = await apiGet('/account/incremental-changes?limit=200', { timeoutMs: 15_000 }).catch((error: any) => {
       const msg = String(error?.message || error || '');
       const status = Number(error?.status || error?.statusCode || 0);
