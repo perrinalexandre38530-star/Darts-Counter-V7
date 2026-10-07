@@ -31,8 +31,10 @@ const DB_VERSION = 1;
 const STORE_CHANGES = "changes";
 const STORE_META = "meta";
 const LAST_CHECKPOINT_KEY = "lastCheckpoint";
+const SYNC_META_PREFIX = "synced:";
 const MAX_PENDING_BEFORE_CHECKPOINT = 50;
 const MAX_CHECKPOINT_AGE_MS = 24 * 60 * 60 * 1000;
+let incrementalRecordingSuppressDepth = 0;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -64,6 +66,11 @@ function changeKey(entityType: string, entityId: string): string {
   return `${String(entityType || "generic")}:${String(entityId || "default")}`;
 }
 
+export async function withIncrementalRecordingSuppressed<T>(run: () => Promise<T>): Promise<T> {
+  incrementalRecordingSuppressDepth += 1;
+  try { return await run(); } finally { incrementalRecordingSuppressDepth = Math.max(0, incrementalRecordingSuppressDepth - 1); }
+}
+
 export async function recordIncrementalChange(args: {
   entityType: IncrementalEntityType;
   entityId: string;
@@ -71,7 +78,7 @@ export async function recordIncrementalChange(args: {
   payload?: any;
   updatedAt?: number;
 }): Promise<boolean> {
-  if (typeof indexedDB === "undefined") return false;
+  if (incrementalRecordingSuppressDepth > 0 || typeof indexedDB === "undefined") return false;
   const entityType = args.entityType || "generic";
   const entityId = String(args.entityId || "default").trim() || "default";
   const op = args.op || "upsert";
@@ -111,6 +118,44 @@ export async function listIncrementalChanges(): Promise<IncrementalChange[]> {
       const req = tx.objectStore(STORE_CHANGES).getAll();
       req.onsuccess = () => resolve((Array.isArray(req.result) ? req.result : []).sort((a, b) => Number(a.updatedAt || 0) - Number(b.updatedAt || 0)));
       req.onerror = () => resolve([]);
+    });
+  } finally { db.close(); }
+}
+
+
+export async function listUnsyncedIncrementalChanges(provider: string): Promise<IncrementalChange[]> {
+  const changes = await listIncrementalChanges();
+  if (!changes.length || typeof indexedDB === "undefined") return changes;
+  const db = await openDb();
+  try {
+    const tx = db.transaction(STORE_META, "readonly");
+    const store = tx.objectStore(STORE_META);
+    const out: IncrementalChange[] = [];
+    for (const change of changes) {
+      const key = `${SYNC_META_PREFIX}${provider}:${change.key}`;
+      const row = await new Promise<JournalMeta | null>((resolve) => {
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+      if (String(row?.value?.revision || "") !== String(change.revision || "")) out.push(change);
+    }
+    return out;
+  } finally { db.close(); }
+}
+
+export async function markIncrementalProviderSynced(provider: string, changes: IncrementalChange[]): Promise<void> {
+  if (!changes.length || typeof indexedDB === "undefined") return;
+  const db = await openDb();
+  try {
+    const tx = db.transaction(STORE_META, "readwrite");
+    const store = tx.objectStore(STORE_META);
+    const at = Date.now();
+    for (const change of changes) {
+      store.put({ key: `${SYNC_META_PREFIX}${provider}:${change.key}`, value: { revision: change.revision, at } });
+    }
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); tx.onabort = () => resolve();
     });
   } finally { db.close(); }
 }

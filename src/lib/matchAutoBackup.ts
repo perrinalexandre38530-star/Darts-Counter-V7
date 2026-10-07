@@ -828,7 +828,8 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
   void recordIncrementalChange({ entityType: "match", entityId: item.matchId || item.id, payload: {
     id: item.id, matchId: item.matchId, sport: item.sport, kind: item.kind, title: item.title,
     status: item.status, createdAt: item.createdAt, updatedAt: item.updatedAt, savedAt: item.savedAt,
-    players: item.players, winnerId: item.winnerId ?? null, summary: item.summary || {},
+    players: item.players, winnerId: item.winnerId ?? null, summary: item.summary || {}, game: item.game || null,
+    header: item.header || {}, payloadCompressed: item.payloadCompressed, payloadEncoding: item.payloadEncoding,
     revisionId: item.revisionId || null, payloadFingerprint: item.payloadFingerprint || null,
   }, updatedAt: item.updatedAt || Date.now() });
   const provider = await getActiveStorageProviderCached().catch(() => "local_device");

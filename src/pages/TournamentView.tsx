@@ -95,6 +95,48 @@ const ADMIN_PERMISSION_DEFS = [
 
 const ALL_ADMIN_PERMISSIONS = ADMIN_PERMISSION_DEFS.map((item) => item.key);
 
+
+const CHALLENGE_VIEW_CSS = `
+.chv-page{--chv-surface:#060b12;--chv-surface-2:#08101a;--chv-line:rgba(255,255,255,.085);--chv-muted:#8d9aac;--chv-gold:#ffcf73;--chv-cyan:#22e6ff;--chv-green:#65e6a2;--chv-orange:#ffb54a;}
+.chv-page .chv-panel{border:1px solid var(--chv-line);background:linear-gradient(180deg,rgba(7,12,20,.995),rgba(4,8,14,.995));border-radius:18px;padding:13px;box-shadow:0 14px 34px rgba(0,0,0,.28);min-width:0;}
+.chv-page .chv-panel-soft{border:1px solid rgba(255,255,255,.07);background:#070d15;border-radius:14px;padding:10px;min-width:0;}
+.chv-page .chv-grid-main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr);gap:10px;align-items:start;}
+.chv-page .chv-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+.chv-page .chv-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.chv-page .chv-grid-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;}
+.chv-page .chv-kpi{min-width:0;border:1px solid rgba(255,255,255,.07);background:#070d15;border-radius:13px;padding:9px 7px;text-align:center;}
+.chv-page .chv-kpi b{display:block;font-size:18px;line-height:1.05;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chv-page .chv-kpi span{display:block;margin-top:4px;font-size:7px;font-weight:1000;letter-spacing:.45px;color:#8d9aac;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.chv-page .chv-eyebrow{font-size:7.2px;font-weight:1000;letter-spacing:.8px;color:#8d9aac;text-transform:uppercase;}
+.chv-page .chv-title{font-size:13px;font-weight:1000;color:#f7f9fc;line-height:1.15;}
+.chv-page .chv-sub{font-size:8.2px;line-height:1.45;color:#8d9aac;}
+.chv-page .chv-status{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.10);background:#09111b;font-size:7px;font-weight:1000;white-space:nowrap;}
+.chv-page .chv-action{min-height:35px;border-radius:10px;padding:0 11px;font-size:8px;font-weight:1000;color:#fff;cursor:pointer;}
+.chv-page .chv-action:disabled{opacity:.35;cursor:default;}
+.chv-page .chv-rows{display:grid;gap:5px;}
+.chv-page .chv-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:8px;align-items:center;min-width:0;padding:8px 9px;border:1px solid rgba(255,255,255,.065);background:#070d15;border-radius:10px;}
+.chv-page .chv-row-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:950;}
+.chv-page .chv-row-sub{display:block;margin-top:2px;font-size:7px;color:#7f8b9a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.chv-page .chv-objective-row{grid-template-columns:32px minmax(0,1fr) auto auto;}
+.chv-page .chv-objective-strip{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 6px;scrollbar-width:thin;}
+.chv-page .chv-objective-chip{flex:0 0 auto;min-width:62px;min-height:36px;border-radius:11px;padding:5px 9px;border:1px solid rgba(255,255,255,.09);background:#070d15;color:#dce5ef;font-size:8px;font-weight:1000;cursor:pointer;}
+.chv-page .chv-objective-chip[data-active="true"]{border-color:rgba(255,181,74,.52);background:linear-gradient(180deg,rgba(83,48,8,.96),rgba(36,22,7,.96));color:#ffcf73;box-shadow:0 0 18px rgba(255,181,74,.11);}
+.chv-page .chv-progress{height:6px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden;}
+.chv-page .chv-progress>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#ffb54a,#65e6a2);}
+.chv-page .chv-activity{display:grid;grid-template-columns:68px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 9px;border-bottom:1px solid rgba(255,255,255,.055);}
+.chv-page .chv-activity:last-child{border-bottom:0;}
+.chv-page .chv-podium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;align-items:end;}
+.chv-page .chv-podium>div{min-width:0;border:1px solid rgba(255,255,255,.07);background:#080f18;border-radius:12px;padding:8px;text-align:center;}
+.chv-page .chv-podium>div:first-child{border-color:rgba(255,207,115,.28);background:linear-gradient(180deg,rgba(64,45,9,.90),#080f18);}
+.chv-page .chv-section-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;}
+.chv-page .chv-divider{height:1px;background:rgba(255,255,255,.065);margin:9px 0;}
+.chv-page .chv-admin-group{border:1px solid rgba(255,255,255,.075);background:#060b12;border-radius:15px;overflow:hidden;}
+.chv-page .chv-admin-group>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:8.5px;font-weight:1000;letter-spacing:.55px;color:#c8d1dc;background:#08101a;border-bottom:1px solid transparent;}
+.chv-page .chv-admin-group>summary::-webkit-details-marker{display:none}.chv-page .chv-admin-group>summary:after{content:"＋";float:right;color:#7f8b99}.chv-page .chv-admin-group[open]>summary{border-bottom-color:rgba(255,255,255,.06);color:#ffcf73}.chv-page .chv-admin-group[open]>summary:after{content:"−"}.chv-page .chv-admin-group>section{border:0!important;border-radius:0!important;margin:0!important;background:#050a10!important;}
+@media (max-width:780px){.chv-page .chv-grid-main,.chv-page .chv-grid-2{grid-template-columns:1fr}.chv-page .chv-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-grid-3{grid-template-columns:1fr}.chv-page .chv-panel{padding:11px;border-radius:16px}.chv-page .chv-row{grid-template-columns:30px minmax(0,1fr) auto}.chv-page .chv-objective-row{grid-template-columns:28px minmax(0,1fr) auto}.chv-page .chv-objective-row .chv-play{grid-column:2/4;width:100%;min-height:32px}.chv-page .chv-activity{grid-template-columns:58px minmax(0,1fr) auto}}
+@media (min-width:980px){.chv-page{max-width:1180px;margin-left:auto;margin-right:auto}.chv-page .chv-panel{padding:14px}.chv-page .chv-objective-chip{min-width:72px}}
+`;
+
 function isByeId(x: any) {
   return String(x || "") === BYE;
 }
@@ -294,6 +336,39 @@ function Icon({ name, color = THEME }: any) {
       </svg>
     );
 
+  if (name === "target")
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="7" stroke={stroke} strokeWidth={sw} />
+        <circle cx="12" cy="12" r="2.5" stroke={stroke} strokeWidth={sw} />
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+      </svg>
+    );
+
+  if (name === "user")
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="8" r="3.5" stroke={stroke} strokeWidth={sw} />
+        <path d="M5.5 20c.7-4.2 3-6.3 6.5-6.3s5.8 2.1 6.5 6.3" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+      </svg>
+    );
+
+  if (name === "results")
+    return (
+      <svg {...common}>
+        <path d="M6 5h12v14H6z" stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />
+        <path d="m8.5 10 1.8 1.8 3.2-3.4M9 15h6" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+
+  if (name === "admin")
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="3" stroke={stroke} strokeWidth={sw} />
+        <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+      </svg>
+    );
+
   return (
     <svg {...common}>
       <path d="M5 19V5" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
@@ -315,11 +390,11 @@ function NeonTopTabsIconsOnly({ tabs, activeKey, onChange }: any) {
     bracket: "bracket",
     matches: "matches",
     repechage: "repechage",
-    linked: "matches",
+    linked: "results",
     stats: "stats",
-    admin: "stats",
-    objectives: "bracket",
-    my: "home",
+    admin: "admin",
+    objectives: "target",
+    my: "user",
   };
 
   return (
@@ -1847,6 +1922,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   const liveSnapshotRef = React.useRef<{ updatedAt: number; linkedCount: number; matchCount: number }>({ updatedAt: 0, linkedCount: 0, matchCount: 0 });
   const [activeChallengeAttempt, setActiveChallengeAttempt] = React.useState<any>(null);
   const [challengeStandingScope, setChallengeStandingScope] = React.useState<"cycle" | "season">("cycle");
+  const [challengeObjectiveFocus, setChallengeObjectiveFocus] = React.useState<string>("");
   const [adminSeasonName, setAdminSeasonName] = React.useState("");
   const [adminSeasonMaxCycles, setAdminSeasonMaxCycles] = React.useState("");
   const [adminSeasonEndDate, setAdminSeasonEndDate] = React.useState("");
@@ -2468,6 +2544,73 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     challengeRoundForObjective,
     challengeObjectiveIsOpen,
   ]);
+
+  const challengeFormatMeta = React.useMemo(() => {
+    const key = String(challengeCompetitionFormat || "duels");
+    if (key === "objectives") return { key, title: "CHAMPIONNAT OBJECTIFS", short: "OBJECTIFS", description: "Chaque objectif possède son classement. Les points gagnés sur chaque objectif alimentent le classement général." };
+    if (key === "free") return { key, title: "COMPÉTITION LIBRE", short: "LIBRE", description: "Les performances Challenge compatibles peuvent être jouées ou rattachées librement, puis classées par objectif." };
+    if (key === "divisions") return { key, title: "LIGUES & DIVISIONS", short: "DIVISIONS", description: "Classements par objectifs, cycles, divisions et mouvements de montée / descente." };
+    return { key: "duels", title: "CONFRONTATIONS", short: "DUELS", description: "Challenge joué en confrontations directes entre joueurs ou équipes, avec un calendrier de rencontres." };
+  }, [challengeCompetitionFormat]);
+
+  const challengeOpenObjectives = React.useMemo(
+    () => challengeObjectives.filter((objective: string) => challengeObjectiveIsOpen(objective)),
+    [challengeObjectives, challengeObjectiveIsOpen]
+  );
+
+  const challengeCurrentRound = React.useMemo(() => {
+    const rows = challengeScheduleRounds.slice().sort((a: any, b: any) => Number(a?.round || 0) - Number(b?.round || 0));
+    return rows.find((row: any) => String(row?.status || "open") === "open") || rows.find((row: any) => String(row?.status || "") !== "closed") || rows[rows.length - 1] || null;
+  }, [challengeScheduleRounds]);
+
+  const challengeProgramProgress = React.useMemo(() => {
+    if (!isChallengePerformanceCompetition || !challengeObjectives.length) return 0;
+    const completed = challengeObjectives.filter((objective: string) => {
+      const limit = challengeObjectiveAttemptLimit(objective);
+      return tournamentPlayers.length > 0 && tournamentPlayers.every((player: any) => challengeAttemptCount(String(player?.id || ""), objective) >= limit);
+    }).length;
+    return Math.round((completed / challengeObjectives.length) * 100);
+  }, [isChallengePerformanceCompetition, challengeObjectives, challengeObjectiveAttemptLimit, tournamentPlayers, challengeAttemptCount]);
+
+  React.useEffect(() => {
+    if (!isChallengePerformanceCompetition) return;
+    const normalized = normalizeChallengeObjective(challengeObjectiveFocus || "");
+    if (normalized && challengeObjectives.includes(normalized)) return;
+    setChallengeObjectiveFocus(challengeOpenObjectives[0] || challengeObjectives[0] || "");
+  }, [isChallengePerformanceCompetition, challengeObjectives.join("|"), challengeOpenObjectives.join("|")]);
+
+  const challengeFocusedObjective = React.useMemo(() => {
+    const normalized = normalizeChallengeObjective(challengeObjectiveFocus || "");
+    if (normalized && challengeObjectives.includes(normalized)) return normalized;
+    return challengeOpenObjectives[0] || challengeObjectives[0] || "";
+  }, [challengeObjectiveFocus, challengeObjectives, challengeOpenObjectives]);
+
+  const challengeRecentActivity = React.useMemo(() => {
+    if (!isChallengeCompetition) return [] as any[];
+    return linkedHistoryMatches
+      .slice()
+      .sort((a: any, b: any) => Number(b?.createdAt || b?.linkedAt || 0) - Number(a?.createdAt || a?.linkedAt || 0))
+      .slice(0, 8)
+      .map((link: any) => {
+        const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
+        const row = ranking[0] || {};
+        const pid = String(row?.playerId || row?.id || link?.playerId || "");
+        const player = playersById[pid] || tournamentPlayers.find((p: any) => String(p?.onlineUserId || "") === pid) || null;
+        const objective = normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective || historyChallengeObjective(link));
+        const score = Number(row?.score ?? row?.points ?? row?.bestScore ?? row?.best ?? link?.score ?? 0) || 0;
+        return {
+          id: String(link?.historyMatchId || link?.matchId || link?.id || `${objective}-${pid}-${link?.createdAt || 0}`),
+          objective,
+          score,
+          playerId: pid,
+          playerName: String(row?.name || player?.name || "Joueur"),
+          attempt: Math.max(0, Number(link?.challengeAttemptNumber || 0) || 0),
+          cycle: Math.max(1, Number(link?.challengeCycle || 1) || 1),
+          round: Math.max(0, Number(link?.challengeRoundNumber || 0) || 0),
+          createdAt: Number(link?.createdAt || link?.linkedAt || 0) || 0,
+        };
+      });
+  }, [isChallengeCompetition, linkedHistoryMatches, playersById, tournamentPlayers]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
@@ -4225,7 +4368,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     standings: "Classement",
     pools: "Poules",
     repechage: "Repêchage",
-    linked: "Liées",
+    linked: isChallengePerformanceCompetition ? "Résultats" : "Liées",
     stats: "Stats",
     admin: "Administration",
     objectives: "Objectifs",
@@ -4904,7 +5047,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
   }
 
   return (
-    <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+    <div className={`container ${isChallengeCompetition ? "chv-page" : ""}`} style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+      <style>{CHALLENGE_VIEW_CSS}</style>
       {/* HEADER VISUEL COMPÉTITION */}
       <div
           style={{
@@ -4913,8 +5057,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
             borderRadius: 24,
             border: "1px solid rgba(255,207,87,0.18)",
             background: tournamentCoverSrc
-              ? `linear-gradient(90deg, rgba(0,0,0,.82), rgba(0,0,0,.32), rgba(0,0,0,.82)), url("${tournamentCoverSrc}") center / cover no-repeat`
-              : "linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025))",
+              ? `${isChallengeCompetition ? "linear-gradient(90deg, rgba(0,0,0,.93), rgba(0,0,0,.68), rgba(0,0,0,.93))" : "linear-gradient(90deg, rgba(0,0,0,.82), rgba(0,0,0,.32), rgba(0,0,0,.82))"}, url("${tournamentCoverSrc}") center / cover no-repeat`
+              : isChallengeCompetition ? "linear-gradient(180deg, rgba(9,14,22,.995), rgba(4,8,13,.995))" : "linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025))",
             boxShadow: "0 16px 44px rgba(0,0,0,.42)",
             padding: "12px 14px",
             minHeight: 94,
@@ -5088,18 +5232,23 @@ async function createSyntheticHistoryForSimulation(args: any) {
         {tabLabel[tab] || "—"}
       </div>
 
-      {tour ? <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7,margin:"10px 0 12px"}}>
+      {tour && (!isChallengeCompetition || tab === "home") ? <div className={isChallengeCompetition ? "chv-grid-4" : undefined} style={isChallengeCompetition ? {margin:"10px 0 12px"} : {display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7,margin:"10px 0 12px"}}>
         {(isChallengePerformanceCompetition ? [
-          ["PARTICIPANTS",Array.isArray((tour as any)?.players)?(tour as any).players.length:0,"#ffcf57"],
-          ["OBJECTIFS",challengeObjectives.length,"#ffb54a"],
-          ["ESSAIS LIÉS",linkedHistoryMatches.length,"#65e6a2"],
-          ["ESSAIS MAX",challengeAttemptsPerObjective,"#ffe68a"],
+          ["PARTICIPANTS",tournamentPlayers.length,"#ffcf73"],
+          ["OUVERTS",challengeOpenObjectives.length,"#65e6a2"],
+          ["RÉSULTATS",linkedHistoryMatches.length,"#22e6ff"],
+          [challengeCompetitionFormat==="divisions"?"CYCLE":"PROGRESSION",challengeCompetitionFormat==="divisions"?challengeCurrentCycle:`${challengeProgramProgress}%`,"#b6b6ff"],
+        ] : isChallengeCompetition ? [
+          ["PARTICIPANTS",tournamentPlayers.length,"#ffcf73"],
+          ["À JOUER",playableMatches.length,"#4fb4ff"],
+          ["TERMINÉS",doneMatches.length,"#65e6a2"],
+          ["FORMAT",challengeFormatMeta.short,"#ffb54a"],
         ] : [
           ["PARTICIPANTS",Array.isArray((tour as any)?.players)?(tour as any).players.length:0,"#ffcf57"],
           ["À JOUER",playableMatches.length,"#4fb4ff"],
           ["TERMINÉS",doneMatches.length,"#65e6a2"],
           ["LIÉS",linkedHistoryMatches.length,"#ffe68a"],
-        ]).map(([label,value,accent]:any)=><div key={label} style={{minWidth:0,borderRadius:13,border:`1px solid ${accent}33`,background:`linear-gradient(180deg,${accent}12,rgba(5,8,14,.92))`,padding:"8px 6px",textAlign:"center"}}><b style={{display:"block",fontSize:18,color:accent,lineHeight:1}}>{value}</b><span style={{display:"block",marginTop:4,fontSize:7.4,fontWeight:1000,opacity:.82,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span></div>)}
+        ]).map(([label,value,accent]:any)=> isChallengeCompetition ? <div key={label} className="chv-kpi"><b style={{color:accent}}>{value}</b><span>{label}</span></div> : <div key={label} style={{minWidth:0,borderRadius:13,border:`1px solid ${accent}33`,background:`linear-gradient(180deg,${accent}12,rgba(5,8,14,.92))`,padding:"8px 6px",textAlign:"center"}}><b style={{display:"block",fontSize:18,color:accent,lineHeight:1}}>{value}</b><span style={{display:"block",marginTop:4,fontSize:7.4,fontWeight:1000,opacity:.82,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span></div>)}
       </div>:null}
 
       {loading ? (
@@ -5110,6 +5259,123 @@ async function createSyntheticHistoryForSimulation(args: any) {
         <>
           {/* HOME */}
           {tab === "home" ? (
+            isChallengeCompetition ? (
+            <>
+              <section className="chv-panel" style={{borderColor:"rgba(255,181,74,.22)"}}>
+                <div className="chv-section-head">
+                  <div style={{minWidth:0}}>
+                    <div className="chv-eyebrow">MODE CHALLENGE · {String((tour as any)?.competitionScope||"local").toUpperCase()==="TEAM"?"ORGANISATION":String((tour as any)?.competitionScope||"LOCAL").toUpperCase()}</div>
+                    <div className="chv-title" style={{marginTop:4,color:"#ffcf73"}}>{challengeFormatMeta.title}</div>
+                    <div className="chv-sub" style={{marginTop:4,maxWidth:720}}>{challengeFormatMeta.description}</div>
+                  </div>
+                  <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                    <span className="chv-status" style={{color:String((tour as any)?.status)==="running"?"#65e6a2":"#ffcf73"}}>● {String((tour as any)?.status||"draft").toUpperCase()}</span>
+                    {isChallengePerformanceCompetition?<span className="chv-status" style={{color:"#b6b6ff"}}>CYCLE {challengeCurrentCycle}</span>:null}
+                    {isOnlineCompetition?<span className="chv-status" style={{color:"#22e6ff"}}>ONLINE</span>:null}
+                  </div>
+                </div>
+
+                {isChallengePerformanceCompetition ? (
+                  <div className="chv-grid-main">
+                    <div className="chv-panel-soft">
+                      <div className="chv-section-head" style={{marginBottom:8}}>
+                        <div>
+                          <div className="chv-eyebrow">MAINTENANT</div>
+                          <div className="chv-title" style={{marginTop:3}}>
+                            {challengePlayerDashboard?.playable?.length ? `À jouer · ${challengeObjectiveLabel(challengePlayerDashboard.playable[0].objective)}` : challengeOpenObjectives.length ? `Objectif ouvert · ${challengeObjectiveLabel(challengeOpenObjectives[0])}` : "Aucun objectif ouvert"}
+                          </div>
+                        </div>
+                        {challengeCurrentRound?<span className="chv-status" style={{color:String(challengeCurrentRound?.status)==="open"?"#65e6a2":"#ffb54a"}}>J{Number(challengeCurrentRound?.round||0)||1}</span>:null}
+                      </div>
+
+                      {challengePlayerDashboard?.playable?.length ? (()=>{
+                        const next=challengePlayerDashboard.playable[0];
+                        return <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:10,alignItems:"center",padding:"10px",borderRadius:13,border:"1px solid rgba(101,230,162,.16)",background:"rgba(8,24,19,.88)"}}>
+                          <div style={{minWidth:0}}>
+                            <b style={{display:"block",fontSize:15,color:"#65e6a2"}}>{challengeObjectiveLabel(next.objective)}</b>
+                            <span className="chv-sub" style={{display:"block",marginTop:3}}>{next.attempts}/{next.maxAttempts} essais · {challengeObjectiveVisits(next.objective)} tours{next.standing?` · meilleur ${next.standing.score} · #${next.standing.rank}`:""}</span>
+                          </div>
+                          {!publicSpectator?<button type="button" className="chv-action" onClick={()=>launchChallengeAttempt(challengePlayerDashboard.player,next.objective)} style={{border:"1px solid rgba(101,230,162,.36)",background:"rgba(14,62,43,.92)"}}>JOUER</button>:null}
+                        </div>
+                      })() : challengeOpenObjectives.length ? (
+                        <div style={{padding:"10px",borderRadius:13,border:"1px solid rgba(34,230,255,.14)",background:"rgba(7,20,28,.88)"}}>
+                          <b style={{fontSize:12,color:"#22e6ff"}}>{challengeOpenObjectives.map(challengeObjectiveLabel).join(" · ")}</b>
+                          <div className="chv-sub" style={{marginTop:4}}>{currentTournamentPlayer?"Aucun essai disponible pour ton profil sur les objectifs actuellement ouverts.":"Les participants peuvent enregistrer leurs performances sur les objectifs ouverts."}</div>
+                        </div>
+                      ) : <div style={{padding:"11px",borderRadius:13,border:"1px solid rgba(255,181,74,.12)",background:"#070d15"}}><b style={{fontSize:10,color:"#ffb54a"}}>PROGRAMME EN ATTENTE</b><div className="chv-sub" style={{marginTop:4}}>L’organisateur doit publier une journée ou ouvrir un objectif.</div></div>}
+
+                      {challengeScheduleRounds.length?<div style={{marginTop:10}}>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><span className="chv-eyebrow">PROGRAMME</span><span className="chv-sub">{challengeProgramProgress}% terminé</span></div>
+                        <div className="chv-progress" style={{marginTop:5}}><i style={{width:`${challengeProgramProgress}%`}}/></div>
+                        <div className="chv-objective-strip" style={{marginTop:8}}>{challengeScheduleRounds.map((round:any)=>{
+                          const status=String(round?.status||"open");
+                          const accent=status==="open"?"#65e6a2":status==="closed"?"#6f7a88":"#ffb54a";
+                          return <button key={String(round?.id)} type="button" className="chv-objective-chip" onClick={()=>{const first=(Array.isArray(round?.objectives)?round.objectives:[])[0];if(first){setChallengeObjectiveFocus(normalizeChallengeObjective(first));setTab("objectives");}}} style={{borderColor:`${accent}33`,color:accent}}><span style={{display:"block",fontSize:7,opacity:.72}}>J{Number(round?.round||0)||1}</span><b style={{display:"block",marginTop:2,fontSize:8.5}}>{(Array.isArray(round?.objectives)?round.objectives:[]).map(challengeObjectiveLabel).join(" · ")||"—"}</b></button>})}</div>
+                      </div>:null}
+                    </div>
+
+                    <div className="chv-panel-soft">
+                      <div className="chv-section-head" style={{marginBottom:7}}><div><div className="chv-eyebrow">CLASSEMENT GÉNÉRAL</div><div className="chv-title" style={{marginTop:3}}>Top actuel</div></div><button type="button" onClick={()=>setTab("standings")} style={{border:0,background:"transparent",color:"#65e6a2",fontSize:7.5,fontWeight:1000,cursor:"pointer"}}>VOIR TOUT →</button></div>
+                      <div className="chv-rows">{challengeGeneralStandings.slice(0,5).map((row:any)=><div key={`home-rank-${row.playerId}`} className="chv-row"><b style={{color:Number(row.rank)<=3?"#ffcf73":"#8d9aac"}}>#{row.rank}</b><div style={{minWidth:0}}><span className="chv-row-name">{row.name}</span><span className="chv-row-sub">{row.wins||0} victoire{Number(row.wins||0)>1?"s":""} · {row.podiums||0} podium{Number(row.podiums||0)>1?"s":""}</span></div><b style={{fontSize:10,color:"#65e6a2"}}>{row.points} pts</b></div>)}</div>
+                      {!challengeGeneralStandings.length?<div className="chv-sub" style={{padding:"10px 0"}}>Le classement apparaîtra dès le premier résultat.</div>:null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="chv-grid-main">
+                    <div className="chv-panel-soft">
+                      <div className="chv-section-head"><div><div className="chv-eyebrow">CONFRONTATIONS</div><div className="chv-title" style={{marginTop:3}}>Prochaines rencontres</div></div><span className="chv-status" style={{color:"#4fb4ff"}}>{playableMatches.length} À JOUER</span></div>
+                      {playableMatches.length?<div style={{display:"grid",gap:7}}>{playableMatches.slice(0,3).map((m:any)=>renderMatchCard(m,"#ffb54a"))}</div>:<div className="chv-sub">Aucune confrontation prête à jouer pour le moment.</div>}
+                    </div>
+                    <div className="chv-panel-soft"><div className="chv-eyebrow">ÉTAT DU CALENDRIER</div><div className="chv-grid-3" style={{marginTop:8}}><div className="chv-kpi"><b style={{color:"#4fb4ff"}}>{playableMatches.length}</b><span>À JOUER</span></div><div className="chv-kpi"><b style={{color:"#65e6a2"}}>{doneMatches.length}</b><span>TERMINÉS</span></div><div className="chv-kpi"><b style={{color:"#ffcf73"}}>{runningMatches.length}</b><span>EN COURS</span></div></div></div>
+                  </div>
+                )}
+
+                <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}>
+                  {isChallengePerformanceCompetition?<button type="button" className="chv-action" onClick={()=>setTab("objectives")} style={{border:"1px solid rgba(255,181,74,.32)",background:"rgba(63,39,8,.88)"}}>OBJECTIFS</button>:null}
+                  {isChallengePerformanceCompetition&&challengeCompetitionFormat==="free"&&!publicSpectator?<button type="button" className="chv-action" onClick={loadAttachableHistory} style={{border:"1px solid rgba(255,213,106,.30)",background:"rgba(60,47,13,.88)",color:"#ffe68a"}}>＋ PARTIE LOISIR</button>:null}
+                  <button type="button" className="chv-action" onClick={shareCompetition} style={{border:"1px solid rgba(79,180,255,.30)",background:"rgba(8,35,58,.88)"}}>↗ PARTAGER</button>
+                  {!publicSpectator&&isCompetitionAdmin?<button type="button" className="chv-action" onClick={()=>setTab("admin")} style={{border:"1px solid rgba(255,107,107,.28)",background:"rgba(71,18,24,.88)"}}>⚙ ADMIN</button>:null}
+                  {!publicSpectator&&isCompetitionAdmin&&isChallengePerformanceCompetition?<button type="button" className="chv-action" onClick={()=>{setTab("admin");setAdminPlayerPickerOpen(true)}} style={{border:"1px solid rgba(101,230,162,.26)",background:"rgba(14,62,43,.84)"}}>＋ JOUEUR</button>:null}
+                </div>
+              </section>
+
+              {isChallengePerformanceCompetition && challengeCompetitionFormat === "divisions" && challengeDivisionState.enabled ? (
+                <section className="chv-panel" style={{borderColor:"rgba(182,182,255,.17)"}}>
+                  <div className="chv-section-head">
+                    <div><div className="chv-eyebrow" style={{color:"#b6b6ff"}}>SAISON & DIVISIONS</div><div className="chv-title" style={{marginTop:3}}>{challengeSeasonSummary.name}</div><div className="chv-sub" style={{marginTop:3}}>Cycle {challengeCurrentCycle}{challengeSeasonSummary.maxCycles?` / ${challengeSeasonSummary.maxCycles}`:""} · {challengeDivisionState.count} division{challengeDivisionState.count>1?"s":""}</div></div>
+                    <span className="chv-status" style={{color:challengeSeasonSummary.status==="finished"?"#8d9aac":"#b6b6ff"}}>{challengeSeasonSummary.status==="finished"?"TERMINÉE":challengeSeasonSummary.status==="draft"?"BROUILLON":"EN COURS"}</span>
+                  </div>
+                  <div className="chv-grid-2">
+                    {challengeDivisionState.byDivision.map((div:any)=>{
+                      const leader=div.standings[0]||null;
+                      return <div key={`home-div-${div.division}`} className="chv-panel-soft">
+                        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:10,color:"#d8d8ff"}}>DIVISION {div.division}</b><span className="chv-sub">↑{Number(div.policy?.promote||0)} · ↓{Number(div.policy?.relegate||0)} · B{Number(div.policy?.playoff||0)}</span></div>
+                        <div className="chv-rows" style={{marginTop:7}}>{div.standings.slice(0,4).map((row:any)=><div key={`home-divrow-${div.division}-${row.playerId}`} className="chv-row"><b style={{color:row.divisionRank<=3?"#b6b6ff":"#8d9aac"}}>#{row.divisionRank}</b><div style={{minWidth:0}}><span className="chv-row-name">{row.name}</span></div><b style={{fontSize:9}}>{row.points} pts</b></div>)}</div>
+                        {!leader?<div className="chv-sub" style={{marginTop:7}}>Aucun classement dans cette division.</div>:null}
+                      </div>
+                    })}
+                  </div>
+                </section>
+              ) : null}
+
+              <div className="chv-grid-2">
+                <section className="chv-panel">
+                  <div className="chv-section-head"><div><div className="chv-eyebrow">ACTIVITÉ RÉCENTE</div><div className="chv-title" style={{marginTop:3}}>{isChallengePerformanceCompetition?"Derniers essais":"Derniers résultats"}</div></div>{isChallengePerformanceCompetition?<button type="button" onClick={()=>setTab("linked")} style={{border:0,background:"transparent",color:"#22e6ff",fontSize:7.5,fontWeight:1000,cursor:"pointer"}}>RÉSULTATS →</button>:null}</div>
+                  {isChallengePerformanceCompetition ? (challengeRecentActivity.length?<div>{challengeRecentActivity.slice(0,6).map((row:any)=><div key={row.id} className="chv-activity"><b style={{fontSize:8,color:"#ffb54a"}}>{challengeObjectiveLabel(row.objective)}</b><div style={{minWidth:0}}><span className="chv-row-name">{row.playerName}</span><span className="chv-row-sub">{row.attempt?`Essai ${row.attempt}`:"Partie liée"}{row.round?` · J${row.round}`:""} · {row.createdAt?formatDate(row.createdAt):""}</span></div><b style={{fontSize:11,color:"#65e6a2"}}>{row.score}</b></div>)}</div>:<div className="chv-sub">Aucune performance enregistrée pour le moment.</div>) : (doneMatches.length?<div style={{display:"grid",gap:7}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,"#65e6a2"))}</div>:<div className="chv-sub">Aucun résultat pour le moment.</div>)}
+                </section>
+
+                <section className="chv-panel">
+                  <div className="chv-eyebrow">REPÈRES</div>
+                  <div className="chv-title" style={{marginTop:3}}>Comprendre la compétition</div>
+                  <div style={{display:"grid",gap:7,marginTop:9}}>
+                    <div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#ffcf73"}}>FORMAT</b><span className="chv-sub" style={{display:"block",marginTop:3}}>{challengeFormatMeta.description}</span></div>
+                    {isChallengePerformanceCompetition?<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#65e6a2"}}>CLASSEMENT</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Chaque objectif produit son classement. Les points de ces classements sont additionnés au général.</span></div>:<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#4fb4ff"}}>MATCHS</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Chaque confrontation Challenge alimente le calendrier et la progression du tournoi.</span></div>}
+                    {isChallengePerformanceCompetition?<div className="chv-panel-soft"><b style={{fontSize:8.5,color:"#22e6ff"}}>ESSAIS</b><span className="chv-sub" style={{display:"block",marginTop:3}}>{challengeAttemptsPerObjective} essai{challengeAttemptsPerObjective>1?"s":""} max par défaut · meilleur essai retenu.</span></div>:null}
+                  </div>
+                </section>
+              </div>
+            </>
+            ) : (
             <>
               <Card title="Centre de compétition" subtitle="Résumé général, participants, organisateurs et accès rapide." accent={TAB_COLORS.home} icon="⌂">
                 <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>
@@ -5210,6 +5476,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 {doneMatches.length?<div style={{display:"grid",gap:8}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,TAB_COLORS.standings))}</div>:null}
               </div>
             </>
+            )
           ) : null}
 
           {/* POOLS */}
@@ -5323,33 +5590,73 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
           {/* CHALLENGE OBJECTIVES */}
           {tab === "objectives" && isChallengePerformanceCompetition ? (
-            <Card title="Objectifs Challenge" subtitle="Chaque objectif conserve le meilleur résultat. Le nombre d’essais et de tours peut être personnalisé objectif par objectif." accent={TAB_COLORS.objectives} icon="🎯">
+            <Card title="Objectifs Challenge" subtitle="Un objectif à la fois : programme, classement, essais disponibles et meilleur résultat." accent={TAB_COLORS.objectives} icon="🎯">
               <div style={{display:"grid",gap:10}}>
-                {challengeScheduleRounds.length ? <section style={{borderRadius:15,border:"1px solid rgba(255,181,74,.20)",background:"rgba(4,7,12,.97)",padding:11}}>
-                  <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
-                    <div><b style={{fontSize:11,color:"#ffcf73"}}>PROGRAMME · CYCLE {challengeCurrentCycle}</b><div style={{fontSize:8.2,opacity:.62,marginTop:2}}>{String(challengeCompetition?.schedule?.publicationMode||"round_by_round")==="round_by_round"?"Publication journée par journée":"Tous les objectifs ouverts"}</div></div>
-                    <MiniBadge label="Journées" value={challengeScheduleRounds.length} accent={TAB_COLORS.objectives}/>
-                  </div>
-                  <div style={{display:"grid",gap:6,marginTop:8}}>
-                    {challengeScheduleRounds.map((round:any)=>{
+                {challengeScheduleRounds.length ? (
+                  <section className="chv-panel" style={{padding:11,borderColor:"rgba(255,181,74,.15)"}}>
+                    <div className="chv-section-head" style={{marginBottom:7}}>
+                      <div><div className="chv-eyebrow">PROGRAMME · CYCLE {challengeCurrentCycle}</div><div className="chv-sub" style={{marginTop:3}}>{String(challengeCompetition?.schedule?.publicationMode||"round_by_round")==="round_by_round"?"Publication journée par journée":"Tous les objectifs peuvent être ouverts simultanément"}</div></div>
+                      <span className="chv-status" style={{color:"#ffcf73"}}>{challengeScheduleRounds.length} JOURNÉE{challengeScheduleRounds.length>1?"S":""}</span>
+                    </div>
+                    <div className="chv-objective-strip">
+                      {challengeScheduleRounds.map((round:any)=>{
+                        const status=String(round?.status||"open");
+                        const accent=status==="open"?"#65e6a2":status==="closed"?"#707b88":"#ffb54a";
+                        return <button key={String(round?.id)} type="button" className="chv-objective-chip" onClick={()=>{const first=(Array.isArray(round?.objectives)?round.objectives:[])[0];if(first)setChallengeObjectiveFocus(normalizeChallengeObjective(first));}} style={{borderColor:`${accent}33`,color:accent,minWidth:84}}><span style={{display:"block",fontSize:6.8,opacity:.72}}>J{Number(round?.round||0)||1} · {status==="open"?"OUVERTE":status==="closed"?"CLOSE":"À VENIR"}</span><b style={{display:"block",marginTop:3,fontSize:8.5}}>{(Array.isArray(round?.objectives)?round.objectives:[]).map(challengeObjectiveLabel).join(" · ")||"—"}</b></button>
+                      })}
+                    </div>
+                  </section>
+                ) : null}
+
+                <section className="chv-panel" style={{padding:11}}>
+                  <div className="chv-section-head" style={{marginBottom:7}}><div><div className="chv-eyebrow">CHOISIR L’OBJECTIF</div><div className="chv-sub" style={{marginTop:3}}>On n’affiche plus tous les tableaux à la suite : sélectionne celui que tu veux consulter.</div></div><span className="chv-status" style={{color:"#ffb54a"}}>{challengeObjectives.length} OBJECTIF{challengeObjectives.length>1?"S":""}</span></div>
+                  <div className="chv-objective-strip">
+                    {challengeObjectives.map((objective:string)=>{
+                      const open=challengeObjectiveIsOpen(objective);
+                      const round=challengeRoundForObjective(objective);
                       const status=String(round?.status||"open");
-                      const accent=status==="open"?"#65e6a2":status==="closed"?"#7c8796":"#ffb54a";
-                      return <div key={String(round?.id)} style={{display:"grid",gridTemplateColumns:"64px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:10,border:`1px solid ${accent}22`,background:"#080d14"}}>
-                        <b style={{fontSize:8.5,color:accent}}>J{Number(round?.round||0)||1}</b>
-                        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{(Array.isArray(round?.objectives)?round.objectives:[]).map((objective:any)=><span key={String(objective)} style={{padding:"3px 6px",borderRadius:999,border:"1px solid rgba(255,255,255,.10)",fontSize:7.5,fontWeight:900}}>{challengeObjectiveLabel(objective)}</span>)}</div>
-                        <span style={{fontSize:7.5,fontWeight:1000,color:accent}}>{status==="open"?"OUVERTE":status==="closed"?"CLÔTURÉE":"À VENIR"}</span>
-                      </div>
+                      const active=normalizeChallengeObjective(challengeFocusedObjective)===normalizeChallengeObjective(objective);
+                      const tone=open?"#65e6a2":status==="closed"?"#778391":"#ffb54a";
+                      return <button key={objective} type="button" className="chv-objective-chip" data-active={active?"true":"false"} onClick={()=>setChallengeObjectiveFocus(objective)}><b style={{display:"block",fontSize:9,color:active?"#ffcf73":"#e5ebf2"}}>{challengeObjectiveLabel(objective)}</b><span style={{display:"block",marginTop:2,fontSize:6.6,color:tone}}>{open?"OUVERT":status==="closed"?"CLOS":"À VENIR"}</span></button>
                     })}
                   </div>
-                </section>:null}
-                {challengeCompetitionFormat==="divisions"&&challengeDivisionState.enabled?<section style={{borderRadius:15,border:"1px solid rgba(182,182,255,.24)",background:"#070a11",padding:11}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{color:"#b6b6ff",fontSize:12}}>CYCLE {challengeDivisionState.cycle} · {challengeDivisionState.count} DIVISION{challengeDivisionState.count>1?"S":""}</b><div style={{fontSize:8,opacity:.62,marginTop:2}}>{challengeDivisionState.promote} montée{challengeDivisionState.promote>1?"s":""} · {challengeDivisionState.relegate} descente{challengeDivisionState.relegate>1?"s":""} par cycle</div></div></div><div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(3,challengeDivisionState.count)},minmax(0,1fr))`,gap:7,marginTop:8}}>{challengeDivisionState.byDivision.map((div:any)=><div key={div.division} style={{padding:8,borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"#0a0f17"}}><b style={{fontSize:9,color:"#fff"}}>DIVISION {div.division}</b><div style={{marginTop:5,display:"grid",gap:3}}>{div.standings.slice(0,6).map((r:any)=><span key={r.playerId} style={{fontSize:7.8,opacity:.75,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.divisionRank}. {r.name} · {r.points} pts</span>)}</div></div>)}</div></section>:null}
-                {challengeObjectives.length ? challengeObjectives.map((objective:any)=>{
+                </section>
+
+                {challengeFocusedObjective ? (()=>{
+                  const objective=challengeFocusedObjective;
                   const rows=challengeObjectiveStandings[objective]||[];
-                  return <section key={objective} style={{borderRadius:15,border:"1px solid rgba(255,181,74,.22)",background:"rgba(4,7,12,.97)",padding:11}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>{challengeObjectiveLabel(objective)}</b><div style={{fontSize:8.5,opacity:.62,marginTop:2}}>Classement de l’objectif · meilleur essai retenu</div></div><MiniBadge label="Classés" value={rows.length} accent={TAB_COLORS.objectives}/></div>
-                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const maxAttempts=challengeObjectiveAttemptLimit(objective);const objectiveOpen=challengeObjectiveIsOpen(objective);const canPlay=!publicSpectator&&(isCompetitionAdmin||String(currentTournamentPlayer?.id||"")===pid)&&objectiveOpen&&attempts<maxAttempts;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""} · {challengeObjectiveVisits(objective)} tours{attempts>=maxAttempts?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=maxAttempts?"COMPLET":!objectiveOpen?"VERROUILLÉ":"JOUER"}</button></div>})}</div>
+                  const round:any=challengeRoundForObjective(objective);
+                  const open=challengeObjectiveIsOpen(objective);
+                  const status=String(round?.status||"open");
+                  const attemptLimit=challengeObjectiveAttemptLimit(objective);
+                  const visits=challengeObjectiveVisits(objective);
+                  const top3=rows.slice(0,3);
+                  return <section className="chv-panel" style={{borderColor:"rgba(255,181,74,.20)"}}>
+                    <div className="chv-section-head">
+                      <div style={{minWidth:0}}><div className="chv-eyebrow">OBJECTIF SÉLECTIONNÉ</div><div className="chv-title" style={{fontSize:17,color:"#ffcf73",marginTop:3}}>{challengeObjectiveLabel(objective)}</div><div className="chv-sub" style={{marginTop:4}}>Meilleur essai retenu · {visits} tours · {attemptLimit} essai{attemptLimit>1?"s":""} maximum</div></div>
+                      <span className="chv-status" style={{color:open?"#65e6a2":status==="closed"?"#7f8a98":"#ffb54a"}}>{open?"● OUVERT":status==="closed"?"CLOS":"À VENIR"}</span>
+                    </div>
+
+                    {top3.length ? <div className="chv-podium" style={{marginBottom:10}}>{top3.map((row:any,index:number)=><div key={`pod-${objective}-${row.playerId}`} style={index===0?{order:1}:index===1?{order:0}:{order:2}}><span className="chv-eyebrow">#{row.rank}</span><b style={{display:"block",fontSize:index===0?12:10,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:index===0?"#ffcf73":"#fff"}}>{row.name}</b><strong style={{display:"block",fontSize:index===0?18:15,marginTop:5,color:"#65e6a2"}}>{row.score}</strong><span className="chv-sub">+{row.championshipPoints} pts</span></div>)}</div>:null}
+
+                    <div className="chv-rows">
+                      {tournamentPlayers.map((player:any)=>{
+                        const pid=String(player?.id||"");
+                        const row=rows.find((r:any)=>String(r.playerId)===pid);
+                        const attempts=challengeAttemptCount(pid,objective);
+                        const maxAttempts=challengeObjectiveAttemptLimit(objective);
+                        const canPlay=!publicSpectator&&(isCompetitionAdmin||String(currentTournamentPlayer?.id||"")===pid)&&open&&attempts<maxAttempts;
+                        return <div key={`${objective}-${pid}`} className="chv-row chv-objective-row">
+                          <strong style={{color:row&&Number(row.rank)<=3?"#ffcf73":"#7f8b99"}}>{row?`#${row.rank}`:"—"}</strong>
+                          <div style={{minWidth:0}}><span className="chv-row-name">{player?.name||"Joueur"}</span><span className="chv-row-sub">{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""}{row?` · meilleur ${row.score}`:" · aucun score"}</span></div>
+                          <b style={{fontSize:9,color:row?"#65e6a2":"#768190"}}>{row?`+${row.championshipPoints} pts`:"—"}</b>
+                          {!publicSpectator?<button type="button" className="chv-action chv-play" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:66,border:`1px solid ${canPlay?"rgba(255,181,74,.38)":"rgba(255,255,255,.07)"}`,background:canPlay?"rgba(75,45,8,.92)":"#080d14",color:canPlay?"#ffcf73":"#677280"}}>{attempts>=maxAttempts?"COMPLET":!open?"FERMÉ":"JOUER"}</button>:null}
+                        </div>
+                      })}
+                    </div>
+                    {!tournamentPlayers.length?<div className="chv-sub" style={{padding:"10px 0"}}>Aucun participant inscrit.</div>:null}
                   </section>
-                }):<div style={{fontSize:10,opacity:.7}}>Aucun objectif configuré.</div>}
+                })() : <section className="chv-panel"><div className="chv-sub">Aucun objectif configuré.</div></section>}
               </div>
             </Card>
           ) : null}
@@ -5359,36 +5666,30 @@ async function createSyntheticHistoryForSimulation(args: any) {
             <Card title={isChallengePerformanceCompetition?"Classement général":"Classement"} subtitle={isChallengePerformanceCompetition?"Somme des points obtenus dans les classements de chaque objectif.":viewKind === "round_robin" ? (isAveragePointsLeague ? "Classement par moyenne de points par match." : "Classement du championnat.") : "Classement par poule."} accent={TAB_COLORS.standings} icon="🏁">
               {isChallengePerformanceCompetition ? (() => {
                 const standingsRows = challengeStandingScope === "season" ? challengeSeasonStandings : challengeGeneralStandings;
+                const podiumRows = standingsRows.slice(0, 3);
+                const otherRows = standingsRows.slice(3);
                 return (
-                  <div style={{display:"grid",gap:7}}>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                      <button type="button" onClick={()=>setChallengeStandingScope("cycle")} style={{minHeight:34,borderRadius:10,border:`1px solid ${challengeStandingScope==="cycle"?"rgba(255,207,87,.52)":"rgba(255,255,255,.10)"}`,background:challengeStandingScope==="cycle"?"rgba(74,52,7,.9)":"#080d14",color:"#fff",fontSize:8.5,fontWeight:1000}}>CYCLE {challengeCurrentCycle}</button>
-                      <button type="button" onClick={()=>setChallengeStandingScope("season")} style={{minHeight:34,borderRadius:10,border:`1px solid ${challengeStandingScope==="season"?"rgba(182,182,255,.52)":"rgba(255,255,255,.10)"}`,background:challengeStandingScope==="season"?"rgba(28,28,65,.9)":"#080d14",color:"#fff",fontSize:8.5,fontWeight:1000}}>SAISON</button>
-                    </div>
-                    <div style={{fontSize:9,opacity:.68,marginBottom:2}}>
-                      {challengeStandingScope==="season"
-                        ? `${String(challengeSeasonSettings?.name||"Saison Challenge")} · cumul des points bruts de chaque cycle`
-                        : `Barème : ${challengePointsTable.slice(0,10).map((v,i)=>`${i+1}e=${v}`).join(" · ")}`}
-                    </div>
-                    {standingsRows.length?standingsRows.map((row:any)=><div key={`${challengeStandingScope}-${row.playerId}`} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"9px 10px",borderRadius:11,border:"1px solid rgba(255,255,255,.08)",background:"#080d14"}}>
-                      <strong style={{color:row.rank<=3?TAB_COLORS.standings:"#fff"}}>#{row.rank}</strong>
-                      <div style={{minWidth:0}}>
-                        <b style={{display:"block",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</b>
-                        <span style={{display:"block",marginTop:2,fontSize:7.8,opacity:.62}}>
-                          {challengeStandingScope==="season"
-                            ? `${row.wins||0} victoire${Number(row.wins||0)>1?"s":""} · ${row.podiums||0} podium${Number(row.podiums||0)>1?"s":""} · ${row.cycles||0} cycle${Number(row.cycles||0)>1?"s":""}`
-                            : `${row.wins||0} victoire${Number(row.wins||0)>1?"s":""} d’objectif · ${row.podiums||0} podium${Number(row.podiums||0)>1?"s":""} · ${row.objectives||0} objectif${Number(row.objectives||0)>1?"s":""} classé${Number(row.objectives||0)>1?"s":""}`}
-                        </span>
+                  <div style={{display:"grid",gap:10}}>
+                    <section className="chv-panel" style={{padding:11}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        <button type="button" onClick={()=>setChallengeStandingScope("cycle")} className="chv-action" style={{border:`1px solid ${challengeStandingScope==="cycle"?"rgba(255,207,115,.48)":"rgba(255,255,255,.08)"}`,background:challengeStandingScope==="cycle"?"rgba(63,45,9,.90)":"#070d15",color:challengeStandingScope==="cycle"?"#ffcf73":"#a7b0bb"}}>CYCLE {challengeCurrentCycle}</button>
+                        <button type="button" onClick={()=>setChallengeStandingScope("season")} className="chv-action" style={{border:`1px solid ${challengeStandingScope==="season"?"rgba(182,182,255,.48)":"rgba(255,255,255,.08)"}`,background:challengeStandingScope==="season"?"rgba(28,28,65,.88)":"#070d15",color:challengeStandingScope==="season"?"#d8d8ff":"#a7b0bb"}}>SAISON</button>
                       </div>
-                      <b style={{fontSize:16,color:TAB_COLORS.standings}}>{row.points} pts</b>
-                    </div>):<div style={{fontSize:10,opacity:.68}}>Le classement apparaîtra dès qu’un résultat Challenge sera enregistré.</div>}
-                    {challengeStandingScope==="cycle"&&challengeCycleHistory.length?<div style={{marginTop:10,display:"grid",gap:7}}>
-                      <div style={{fontSize:9,fontWeight:1000,color:"#b6b6ff"}}>HISTORIQUE DES CYCLES</div>
-                      {challengeCycleHistory.map((cycle:any)=><div key={`history-${cycle.cycle}`} style={{padding:"9px 10px",borderRadius:11,border:"1px solid rgba(182,182,255,.14)",background:"#070a11"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:9.5}}>{cycle.name||`CYCLE ${cycle.cycle}`}</b><span style={{fontSize:7.5,opacity:.6}}>{cycle.closedAt?formatDate(Number(cycle.closedAt)):""}</span></div>
-                        <div style={{display:"grid",gap:4,marginTop:6}}>{(Array.isArray(cycle.standingsSnapshot)?cycle.standingsSnapshot:[]).slice(0,10).sort((a:any,b:any)=>Number(a.division||1)-Number(b.division||1)||Number(a.rank||999)-Number(b.rank||999)).map((row:any)=><div key={`${cycle.cycle}-${row.playerId}-${row.division}`} style={{display:"grid",gridTemplateColumns:"52px minmax(0,1fr) auto",gap:6,fontSize:7.8,opacity:.8}}><span>D{Number(row.division||1)} · #{Number(row.rank||0)}</span><b style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name||playersById[String(row.playerId)]?.name||"Joueur"}</b><span>{Number(row.cyclePoints??row.points??0)} pts cycle</span></div>)}</div>
-                      </div>)}
-                    </div>:null}
+                      <div className="chv-sub" style={{marginTop:7}}>{challengeStandingScope==="season" ? `${String(challengeSeasonSettings?.name||"Saison Challenge")} · somme des points acquis sur les cycles` : `Points du cycle obtenus dans les classements de chaque objectif.`}</div>
+                    </section>
+
+                    {standingsRows.length ? (
+                      <>
+                        <section className="chv-panel" style={{borderColor:"rgba(101,230,162,.16)"}}>
+                          <div className="chv-section-head"><div><div className="chv-eyebrow">PODIUM</div><div className="chv-title" style={{marginTop:3}}>{challengeStandingScope==="season"?"Classement saison":"Classement du cycle"}</div></div><span className="chv-status" style={{color:"#65e6a2"}}>{standingsRows.length} CLASSÉ{standingsRows.length>1?"S":""}</span></div>
+                          <div className="chv-podium">{podiumRows.map((row:any,index:number)=><div key={`overall-pod-${challengeStandingScope}-${row.playerId}`} style={index===0?{order:1}:index===1?{order:0}:{order:2}}><span className="chv-eyebrow">#{row.rank}</span><b style={{display:"block",fontSize:index===0?12:10,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:index===0?"#ffcf73":"#fff"}}>{row.name}</b><strong style={{display:"block",fontSize:index===0?19:16,marginTop:5,color:"#65e6a2"}}>{row.points}</strong><span className="chv-sub">POINTS</span>{challengeCompetitionFormat==="divisions"?<span className="chv-row-sub" style={{marginTop:3}}>D{Math.max(1,Number(challengeDivisionState?.assignments?.[String(row.playerId)]||1)||1)}</span>:null}</div>)}</div>
+                        </section>
+
+                        {otherRows.length ? <section className="chv-panel" style={{padding:10}}><div className="chv-rows">{otherRows.map((row:any)=><div key={`${challengeStandingScope}-${row.playerId}`} className="chv-row"><strong style={{color:"#8d9aac"}}>#{row.rank}</strong><div style={{minWidth:0}}><span className="chv-row-name">{row.name}</span><span className="chv-row-sub">{challengeStandingScope==="season"?`${row.wins||0} vic. · ${row.podiums||0} podiums · ${row.cycles||0} cycles`:`${row.wins||0} vic. objectif · ${row.podiums||0} podiums · ${row.objectives||0} classés`}{challengeCompetitionFormat==="divisions"?` · D${Math.max(1,Number(challengeDivisionState?.assignments?.[String(row.playerId)]||1)||1)}`:""}</span></div><b style={{fontSize:12,color:"#65e6a2"}}>{row.points} pts</b></div>)}</div></section>:null}
+                      </>
+                    ) : <section className="chv-panel"><div style={{textAlign:"center",padding:"16px 8px"}}><b style={{fontSize:10,color:"#8d9aac"}}>CLASSEMENT EN ATTENTE</b><div className="chv-sub" style={{marginTop:4}}>Le classement apparaîtra dès le premier résultat classé.</div></div></section>}
+
+                    {challengeStandingScope==="cycle"&&challengeCycleHistory.length?<details className="chv-panel" style={{padding:11}}><summary style={{cursor:"pointer",fontSize:9,fontWeight:1000,color:"#b6b6ff"}}>HISTORIQUE DES CYCLES · {challengeCycleHistory.length}</summary><div style={{display:"grid",gap:7,marginTop:9}}>{challengeCycleHistory.map((cycle:any)=><div key={`history-${cycle.cycle}`} className="chv-panel-soft"><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:9.5}}>{cycle.name||`CYCLE ${cycle.cycle}`}</b><span className="chv-sub">{cycle.closedAt?formatDate(Number(cycle.closedAt)):""}</span></div><div className="chv-rows" style={{marginTop:6}}>{(Array.isArray(cycle.standingsSnapshot)?cycle.standingsSnapshot:[]).slice(0,10).sort((a:any,b:any)=>Number(a.division||1)-Number(b.division||1)||Number(a.rank||999)-Number(b.rank||999)).map((row:any)=><div key={`${cycle.cycle}-${row.playerId}-${row.division}`} className="chv-row"><span style={{fontSize:7.5,color:"#b6b6ff"}}>D{Number(row.division||1)} · #{Number(row.rank||0)}</span><div style={{minWidth:0}}><span className="chv-row-name">{row.name||playersById[String(row.playerId)]?.name||"Joueur"}</span></div><b style={{fontSize:8.5}}>{Number(row.cyclePoints??row.points??0)} pts</b></div>)}</div></div>)}</div></details>:null}
                   </div>
                 );
               })() : viewKind === "round_robin" ? (
@@ -5549,82 +5850,128 @@ async function createSyntheticHistoryForSimulation(args: any) {
             </Card>
           ) : null}
 
-          {/* PARTIES LIÉES */}
+          {/* RÉSULTATS / PARTIES LIÉES */}
           {tab === "linked" ? (
-            <Card title="Parties liées" subtitle="Parties de l’historique rattachées à cette ligue. Le rattachement ne modifie pas l’historique d’origine." accent={TAB_COLORS.linked} icon="↔">
-              <button
-                type="button"
-                onClick={loadAttachableHistory}
-                style={{
-                  width: "100%",
-                  border: "none",
-                  borderRadius: 999,
-                  padding: "12px 14px",
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                  color: "#1b1204",
-                  background: "linear-gradient(180deg,#ffe68a,#ffc447)",
-                  boxShadow: "0 12px 28px rgba(255,207,87,.22)",
-                  marginBottom: 12,
-                }}
-              >
-                + Ajouter des parties déjà jouées
-              </button>
+            isChallengePerformanceCompetition ? (
+              <Card title="Résultats Challenge" subtitle="Tous les essais rattachés à la compétition, triés du plus récent au plus ancien." accent={TAB_COLORS.linked} icon="↔">
+                <div style={{display:"grid",gap:10}}>
+                  {!publicSpectator ? <div className="chv-panel" style={{padding:10,borderColor:"rgba(255,213,106,.16)"}}>
+                    <div style={{display:"grid",gridTemplateColumns:isCompetitionAdmin?"1fr 1fr":"1fr",gap:7}}>
+                      <button type="button" className="chv-action" onClick={loadAttachableHistory} style={{border:"1px solid rgba(255,213,106,.32)",background:"rgba(60,47,13,.92)",color:"#ffe68a"}}>＋ RATTACHER UNE PARTIE DE L’HISTORIQUE</button>
+                      {isCompetitionAdmin?<button type="button" className="chv-action" onClick={()=>setTab("admin")} style={{border:"1px solid rgba(255,107,107,.24)",background:"rgba(65,18,24,.88)"}}>GÉRER LES ESSAIS</button>:null}
+                    </div>
+                    <div className="chv-sub" style={{marginTop:6}}>Les essais lancés directement depuis la compétition sont ajoutés automatiquement. Le rattachement manuel sert surtout à la compétition libre ou aux parties déjà jouées.</div>
+                  </div> : null}
 
-              {linkedHistoryMatches.length ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {linkedHistoryMatches
-                    .slice()
-                    .sort((a: any, b: any) => Number(b?.linkedAt || b?.createdAt || 0) - Number(a?.linkedAt || a?.createdAt || 0))
-                    .map((link: any) => {
-                      const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
-                      const points = getLinkedPointsAwarded(link, tour);
-                      return (
-                        <div key={String(link?.historyMatchId || link?.id)} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", padding: 12 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                            <div style={{ fontWeight: 950, color: TAB_COLORS.linked }}>{String(link?.mode || "MATCH").toUpperCase()}</div>
-                            <div style={{ fontSize: 11, opacity: .75 }}>{formatDate(Number(link?.createdAt || link?.linkedAt || 0))}</div>
-                          </div>
-                          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-                            {ranking.slice(0, 8).map((r: any, idx: number) => {
-                              const pid = String(r?.playerId || r?.id || "");
-                              const pts = points.find((p: any) => String(p?.playerId || "") === pid)?.points ?? 0;
-                              return (
-                                <div key={`${pid}_${idx}`} style={{ display: "grid", gridTemplateColumns: "28px 1fr auto", gap: 8, alignItems: "center", fontSize: 12 }}>
-                                  <b style={{ color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,.72)" }}>{idx + 1}</b>
-                                  <PlayerPill name={r?.name || playersById[pid]?.name || "Joueur"} avatarUrl={r?.avatarDataUrl || r?.avatar || playersById[pid]?.avatar || null} />
-                                  <b style={{ color: TAB_COLORS.linked }}>+{pts}</b>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
+                  {challengeObjectives.length ? <div className="chv-objective-strip">{challengeObjectives.map((objective:string)=>{
+                    const count=linkedHistoryMatches.filter((link:any)=>normalizeChallengeObjective(link?.challengeObjective||link?.target||link?.objective||historyChallengeObjective(link))===objective).length;
+                    return <button key={`result-chip-${objective}`} type="button" className="chv-objective-chip" onClick={()=>{setChallengeObjectiveFocus(objective);setTab("objectives")}}><b style={{display:"block",fontSize:8.5}}>{challengeObjectiveLabel(objective)}</b><span style={{display:"block",marginTop:2,fontSize:6.5,color:"#8d9aac"}}>{count} résultat{count>1?"s":""}</span></button>})}</div>:null}
+
+                  {challengeRecentActivity.length ? <section className="chv-panel" style={{padding:8}}>
+                    {linkedHistoryMatches.slice().sort((a:any,b:any)=>Number(b?.createdAt||b?.linkedAt||0)-Number(a?.createdAt||a?.linkedAt||0)).map((link:any,index:number)=>{
+                      const ranking=Array.isArray(link?.ranking)?link.ranking:[];
+                      const row=ranking[0]||{};
+                      const pid=String(row?.playerId||row?.id||link?.playerId||"");
+                      const player=playersById[pid]||null;
+                      const objective=normalizeChallengeObjective(link?.challengeObjective||link?.target||link?.objective||historyChallengeObjective(link));
+                      const score=Number(row?.score??row?.points??row?.bestScore??row?.best??link?.score??0)||0;
+                      const attempt=Math.max(0,Number(link?.challengeAttemptNumber||0)||0);
+                      const when=Number(link?.createdAt||link?.linkedAt||0)||0;
+                      const cycle=Math.max(1,Number(link?.challengeCycle||1)||1);
+                      const round=Math.max(0,Number(link?.challengeRoundNumber||0)||0);
+                      return <div key={String(link?.historyMatchId||link?.matchId||link?.id||`result-${index}`)} className="chv-activity" style={{gridTemplateColumns:"74px minmax(0,1fr) auto"}}>
+                        <div><b style={{display:"block",fontSize:8.5,color:"#ffb54a"}}>{challengeObjectiveLabel(objective)}</b><span className="chv-row-sub">C{cycle}{round?` · J${round}`:""}</span></div>
+                        <div style={{minWidth:0}}><span className="chv-row-name">{row?.name||player?.name||"Joueur"}</span><span className="chv-row-sub">{attempt?`Essai ${attempt}`:"Partie liée"}{when?` · ${formatDate(when)}`:""}</span></div>
+                        <div style={{textAlign:"right"}}><b style={{display:"block",fontSize:14,color:"#65e6a2"}}>{score}</b><span className="chv-row-sub">SCORE</span></div>
+                      </div>
                     })}
+                  </section> : <section className="chv-panel"><div style={{textAlign:"center",padding:"18px 8px"}}><b style={{fontSize:10,color:"#8d9aac"}}>AUCUN RÉSULTAT</b><div className="chv-sub" style={{marginTop:4}}>Les essais apparaîtront ici dès qu’ils seront joués ou rattachés.</div></div></section>}
                 </div>
-              ) : (
-                <div style={{ fontSize: 12, opacity: .76 }}>Aucune partie liée pour l’instant.</div>
-              )}
-            </Card>
+              </Card>
+            ) : (
+              <Card title="Parties liées" subtitle="Parties de l’historique rattachées à cette ligue. Le rattachement ne modifie pas l’historique d’origine." accent={TAB_COLORS.linked} icon="↔">
+                <button
+                  type="button"
+                  onClick={loadAttachableHistory}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    borderRadius: 999,
+                    padding: "12px 14px",
+                    fontWeight: 1000,
+                    cursor: "pointer",
+                    color: "#1b1204",
+                    background: "linear-gradient(180deg,#ffe68a,#ffc447)",
+                    boxShadow: "0 12px 28px rgba(255,207,87,.22)",
+                    marginBottom: 12,
+                  }}
+                >
+                  + Ajouter des parties déjà jouées
+                </button>
+
+                {linkedHistoryMatches.length ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {linkedHistoryMatches
+                      .slice()
+                      .sort((a: any, b: any) => Number(b?.linkedAt || b?.createdAt || 0) - Number(a?.linkedAt || a?.createdAt || 0))
+                      .map((link: any) => {
+                        const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
+                        const points = getLinkedPointsAwarded(link, tour);
+                        return (
+                          <div key={String(link?.historyMatchId || link?.id)} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", padding: 12 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                              <div style={{ fontWeight: 950, color: TAB_COLORS.linked }}>{String(link?.mode || "MATCH").toUpperCase()}</div>
+                              <div style={{ fontSize: 11, opacity: .75 }}>{formatDate(Number(link?.createdAt || link?.linkedAt || 0))}</div>
+                            </div>
+                            <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                              {ranking.slice(0, 8).map((r: any, idx: number) => {
+                                const pid = String(r?.playerId || r?.id || "");
+                                const pts = points.find((p: any) => String(p?.playerId || "") === pid)?.points ?? 0;
+                                return (
+                                  <div key={`${pid}_${idx}`} style={{ display: "grid", gridTemplateColumns: "28px 1fr auto", gap: 8, alignItems: "center", fontSize: 12 }}>
+                                    <b style={{ color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,.72)" }}>{idx + 1}</b>
+                                    <PlayerPill name={r?.name || playersById[pid]?.name || "Joueur"} avatarUrl={r?.avatarDataUrl || r?.avatar || playersById[pid]?.avatar || null} />
+                                    <b style={{ color: TAB_COLORS.linked }}>+{pts}</b>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, opacity: .76 }}>Aucune partie liée pour l’instant.</div>
+                )}
+              </Card>
+            )
           ) : null}
 
           {/* ADMINISTRATION HÔTE */}
           {tab === "admin" && isCompetitionAdmin ? (
-            <Card title="Administration" subtitle="Gère les participants, les administrateurs et les paramètres essentiels de la compétition." accent={TAB_COLORS.admin} icon="⚙">
+            <Card title="Administration" subtitle={isChallengePerformanceCompetition?"Administration Challenge organisée par rubriques : ouvre uniquement la section que tu veux modifier.":"Gère les participants, les administrateurs et les paramètres essentiels de la compétition."} accent={TAB_COLORS.admin} icon="⚙">
               {adminNotice?<div style={{marginBottom:10,padding:9,borderRadius:11,background:"rgba(101,230,162,.12)",border:"1px solid rgba(101,230,162,.30)",fontSize:9.5}}>{adminNotice}</div>:null}
               <div style={{display:"grid",gap:10}}>
-                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>GÉNÉRAL<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Identité, état et nom de la compétition</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <b style={{color:"#ffcf57",fontSize:11}}>IDENTITÉ & ÉTAT</b>
                   <label style={{display:"grid",gap:5,marginTop:9,fontSize:8.5,opacity:.8}}>Nom de la compétition<input value={adminDraftName || String((tour as any)?.name||"")} onChange={e=>setAdminDraftName(e.target.value)} style={{height:38,borderRadius:11,border:"1px solid rgba(255,255,255,.14)",background:"#070b11",color:"#fff",padding:"0 10px",fontWeight:900}}/></label>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:8}}><button disabled={!canAdmin("identity")} onClick={()=>saveTournamentAdmin({name:(adminDraftName||String((tour as any)?.name||"")).trim()||String((tour as any)?.name||"")},false,"identity")} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(255,207,87,.35)",background:"rgba(72,52,7,.92)",color:"#fff",fontWeight:1000}}>ENREGISTRER</button><button disabled={!canAdmin("identity")} onClick={()=>saveTournamentAdmin({status:String((tour as any)?.status)==="running"?"draft":"running"},false,"identity")} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>{String((tour as any)?.status)==="running"?"METTRE EN PAUSE":"LANCER"}</button></div>
                 </section>
-                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                </details>
+                <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>JOUEURS<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Participants et ajout de joueurs</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#4fb4ff",fontSize:11}}>PARTICIPANTS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Ajoute les joueurs avant le lancement, ou reconstruis le calendrier tant qu’aucun match n’est terminé.</div></div><button onClick={()=>setAdminPlayerPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(79,180,255,.4)",background:"rgba(79,180,255,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ AJOUTER</button></div>
                   {adminPlayerPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:180,overflowY:"auto"}}>{availableProfiles.length?availableProfiles.map((p:any)=><button key={p.id} onClick={()=>addCompetitionPlayer(p)} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Joueur"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun autre profil local disponible.</div>}</div>:null}
                   <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((p:any)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Joueur"}</b><button disabled={doneMatches.length>0} onClick={()=>removeCompetitionPlayer(String(p.id))} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000,opacity:doneMatches.length>0?.35:1}}>RETIRER</button></div>)}</div>
                 </section>
+                </details>
 
-                {isOnlineCompetition && canAdmin("invitations") ? <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(79,180,255,.18)"}}>
+                {isOnlineCompetition && canAdmin("invitations") ? <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>INSCRIPTIONS ONLINE<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Invitations et demandes d’inscription</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(79,180,255,.18)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                     <div><b style={{color:"#4fb4ff",fontSize:11}}>INVITATIONS & INSCRIPTIONS ONLINE</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Invite des comptes Online et traite les demandes reçues depuis le lien public.</div></div>
                     <span style={{padding:"4px 7px",borderRadius:999,border:"1px solid rgba(79,180,255,.25)",fontSize:7.2,fontWeight:1000,color:"#7bc8ff"}}>{enrollmentPolicy==="open"?"OUVERT":enrollmentPolicy==="approval"?"VALIDATION":enrollmentPolicy==="invite"?"INVITATION":"FERMÉ"}</span>
@@ -5663,9 +6010,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
                       return <div key={String(row.id)} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"7px 8px",borderRadius:9,border:"1px solid rgba(255,255,255,.07)",background:"#070b11"}}><b style={{fontSize:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row?.name||"Joueur Online"}</b><span style={{fontSize:6.7,fontWeight:1000,color:accent}}>{status==="accepted"?"ACCEPTÉE":status==="pending"?"EN ATTENTE":status.toUpperCase()}</span>{status==="pending"?<button type="button" onClick={()=>void revokeCompetitionInvite(String(row.id))} style={{border:0,borderRadius:7,background:"rgba(255,70,80,.12)",color:"#ff7178",padding:"5px 7px",fontSize:6.5,fontWeight:1000}}>ANNULER</button>:<span/>}</div>
                     })}
                   </div>:null}
-                </section> : null}
+                </section>
+                </details> : null}
 
-                {(isCompetitionOwner || canAdmin("admins")) ? <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                {(isCompetitionOwner || canAdmin("admins")) ? <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>ADMINISTRATEURS<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Rôles et permissions</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#ff6b6b",fontSize:11}}>ADMINISTRATEURS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Le propriétaire peut attribuer des droits différents à chaque administrateur.</div></div><button onClick={()=>setAdminAdminPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(255,107,107,.4)",background:"rgba(255,107,107,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ NOMMER</button></div>
                   {adminAdminPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:160,overflowY:"auto"}}>{availableAdmins.length?availableAdmins.map((p:any)=><button key={p.id} onClick={()=>addCompetitionAdmin(String(p.id))} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Profil"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun profil supplémentaire disponible.</div>}</div>:null}
                   <div style={{display:"grid",gap:6,marginTop:9}}>
@@ -5679,8 +6029,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
                       </div>
                     })}
                   </div>
-                </section> : null}
-                {isChallengePerformanceCompetition?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(101,230,162,.18)"}}>
+                </section>
+                </details> : null}
+                {isChallengePerformanceCompetition?<details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>SAISON<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>État et durée de la saison Challenge</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(101,230,162,.18)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                     <div><b style={{color:"#65e6a2",fontSize:11}}>SAISON CHALLENGE</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Édite une saison déjà créée sans toucher aux résultats enregistrés.</div></div>
                     <span style={{padding:"4px 7px",borderRadius:999,border:"1px solid rgba(101,230,162,.24)",fontSize:7.5,fontWeight:1000,color:"#65e6a2"}}>{String(challengeSeasonSettings?.status||"running").toUpperCase()}</span>
@@ -5704,8 +6057,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
                         : <button type="button" onClick={()=>saveChallengeSeasonSettings("finished")} style={{minHeight:35,borderRadius:9,border:"1px solid rgba(255,107,107,.28)",background:"rgba(71,19,23,.84)",color:"#fff",fontWeight:1000,fontSize:8}}>CLÔTURER LA SAISON</button>}
                     </div>
                   </div>
-                </section>:null}
-                {isChallengePerformanceCompetition?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(79,180,255,.18)"}}>
+                </section>
+                </details>:null}
+                {isChallengePerformanceCompetition?<details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>RÈGLES<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Barème, essais et paramètres de saison</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(79,180,255,.18)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                     <div><b style={{color:"#4fb4ff",fontSize:11}}>RÈGLES DE LA SAISON</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Modifie les règles générales sans supprimer les résultats déjà enregistrés.</div></div>
                     <span style={{fontSize:7.3,opacity:.62}}>CYCLE {challengeCurrentCycle}</span>
@@ -5744,8 +6100,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     </div>:null}
                     <button type="button" onClick={saveChallengeCompetitionRules} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(79,180,255,.38)",background:"rgba(8,35,58,.94)",color:"#fff",fontSize:8,fontWeight:1000}}>ENREGISTRER LES RÈGLES</button>
                   </div>
-                </section>:null}
-                {isChallengePerformanceCompetition?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,181,74,.18)"}}>
+                </section>
+                </details>:null}
+                {isChallengePerformanceCompetition?<details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>OBJECTIFS<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Programme et paramètres par objectif</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,181,74,.18)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                     <div><b style={{color:"#ffb54a",fontSize:11}}>PROGRAMME D’OBJECTIFS</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Ajoute, retire, ordonne et personnalise chaque objectif de la saison.</div></div>
                     <MiniBadge label="Objectifs" value={challengeObjectives.length} accent="#ffb54a"/>
@@ -5784,8 +6143,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     <button type="button" disabled={!challengeAvailableObjectivesToAdd.length} onClick={addChallengeSeasonObjective} style={{minWidth:92,minHeight:34,borderRadius:9,border:"1px solid rgba(255,181,74,.34)",background:"rgba(74,46,10,.92)",color:"#fff",fontSize:7.5,fontWeight:1000,opacity:challengeAvailableObjectivesToAdd.length?1:.4}}>+ AJOUTER</button>
                   </div>
                   <div style={{fontSize:7,opacity:.55,lineHeight:1.35,marginTop:6}}>Un objectif ayant déjà des résultats ne peut plus être retiré. Son ordre, son nombre de tours et son quota d’essais restent éditables.</div>
-                </section>:null}
-                {isChallengePerformanceCompetition?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,181,74,.18)"}}>
+                </section>
+                </details>:null}
+                {isChallengePerformanceCompetition?<details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>JOURNÉES<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Publication et progression du cycle</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,181,74,.18)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                     <div><b style={{color:"#ffb54a",fontSize:11}}>JOURNÉES / MANCHES · CYCLE {challengeCurrentCycle}</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Publication : {String(challengeCompetition?.schedule?.publicationMode||"round_by_round")==="round_by_round"?"une journée à la fois":"toutes ouvertes"}</div></div>
                     <MiniBadge label="Total" value={challengeScheduleRounds.length} accent="#ffb54a"/>
@@ -5805,8 +6167,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     })}
                   </div>
                   {String(challengeCompetition?.schedule?.publicationMode||"round_by_round")==="round_by_round"?<button type="button" onClick={advanceChallengeRound} style={{marginTop:9,width:"100%",minHeight:36,borderRadius:10,border:"1px solid rgba(255,181,74,.34)",background:"rgba(74,46,10,.92)",color:"#fff",fontWeight:1000}}>CLÔTURER L’ACTUELLE · PUBLIER LA SUIVANTE</button>:null}
-                </section>:null}
-                {challengeCompetitionFormat==='divisions'&&challengeDivisionState.enabled?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(182,182,255,.18)"}}>
+                </section>
+                </details>:null}
+                {challengeCompetitionFormat==='divisions'&&challengeDivisionState.enabled?<details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>DIVISIONS & BARRAGES<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Divisions, mouvements et barrages</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(182,182,255,.18)"}}>
                   <b style={{color:"#b6b6ff",fontSize:11}}>LIGUES & DIVISIONS · CYCLE {challengeDivisionState.cycle}</b>
                   <div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Chaque division possède ses propres règles de montée, descente et barrage. Le classement du cycle est archivé avant de passer au suivant.</div>
                   <div style={{display:"grid",gap:6,marginTop:8}}>
@@ -5937,11 +6302,15 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     Nouveau cycle : {String(challengeCompetition?.cyclePoints?.mode||"reset")==="reset"?"points remis à zéro":String(challengeCompetition?.cyclePoints?.mode)==="carry"?"points intégralement conservés":`${Math.max(0,Math.min(100,Number(challengeCompetition?.cyclePoints?.carryPercent??50)||0))}% des points conservés`}.
                   </div>
                   <button type="button" onClick={applyChallengePromotionCycle} disabled={!challengeGeneralStandings.length || challengeDivisionState.pendingPlayoffs.some((p:any)=>!p?.resolved) || challengeScheduleRounds.some((round:any)=>String(round?.status||"open")!=="closed") || String(challengeSeasonSettings?.status||"running")==="finished"} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.4)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(!challengeGeneralStandings.length||challengeDivisionState.pendingPlayoffs.some((p:any)=>!p?.resolved)||challengeScheduleRounds.some((round:any)=>String(round?.status||"open")!=="closed")||String(challengeSeasonSettings?.status||"running")==="finished")?.35:1}}>CLÔTURER LE CYCLE · APPLIQUER MONTÉES / DESCENTES</button>
-                </section>:null}
-                                                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                </section>
+                </details>:null}
+                                                <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                  <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>OUTILS<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Outils de gestion et rattachements</span></summary>
+                  <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <b style={{color:"#b6b6ff",fontSize:11}}>OUTILS DE GESTION</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>{isChallengePerformanceCompetition?"Challenge performances : aucun calendrier de matchs n’est généré. Les essais sont rattachés aux objectifs et alimentent leurs classements.":"Les matchs et résultats restent éditables dans l’onglet Matchs. La reconstruction du calendrier est possible uniquement avant le premier résultat."}</div>
                   {!isChallengePerformanceCompetition?<button disabled={doneMatches.length>0 || tournamentPlayers.length<2} onClick={()=>saveTournamentAdmin({},true)} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.35)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(doneMatches.length>0||tournamentPlayers.length<2)?.35:1}}>RECONSTRUIRE LE CALENDRIER</button>:<button onClick={loadAttachableHistory} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(255,181,74,.35)",background:"rgba(64,40,9,.94)",color:"#fff",fontWeight:1000}}>＋ RATTACHER DES ESSAIS CHALLENGE</button>}
                 </section>
+                </details>
               </div>
             </Card>
           ) : null}

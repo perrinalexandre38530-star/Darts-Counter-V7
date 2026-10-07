@@ -20,6 +20,7 @@ import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 import { isConstrainedRuntimeDevice, isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
 import { initNativePersonalCloudBridge } from "./lib/personalCloudApi";
+import { initIncrementalRemoteSync } from "./lib/incrementalRemoteSync";
 import { initKeepAwakeRuntime } from "./lib/keepAwake";
 import { installResponsiveLayout } from "./lib/responsiveLayout";
 import { recordReactFreezeCommit, startFreezeWatchIfEnabled } from "./lib/freezeWatch";
@@ -45,6 +46,9 @@ startMemoryWatchdog();
 
 // Écran actif par défaut : natif Android + Screen Wake Lock web/PWA.
 initKeepAwakeRuntime();
+
+// Journal incrémental distant : petits changements uniquement, jamais un snapshot complet.
+initIncrementalRemoteSync();
 
 // Android : AdMob/UMP ne fait plus partie du critical path du boot/auth.
 // Le SDK natif + consentement peuvent déclencher I/O, réseau et callbacks JNI.

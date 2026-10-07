@@ -8204,6 +8204,166 @@ app.post("/account/personal-cloud/:provider/backup", authRequired, async(req,res
 app.get("/account/personal-cloud/:provider/backup", authRequired, async(req,res)=>{try{const provider=String(req.params.provider),token=await refreshPersonalCloudAccess(req.user.id,provider),found=await personalCloudDownload(provider,token);if(!found)return res.status(404).json({error:"Aucune sauvegarde"});const envelope=JSON.parse(found.buffer.toString("utf8"));if(String(envelope.ownerUserId||"")!==String(req.user.id))return res.status(403).json({error:"Sauvegarde d'un autre compte refusée"});res.json(envelope);}catch(e){res.status(Number(e?.statusCode||500)).json({ok:false,error:e?.message||"Lecture cloud personnel impossible"});}});
 app.get("/account/personal-cloud/:provider/backup/meta", authRequired, async(req,res)=>{try{const provider=String(req.params.provider),token=await refreshPersonalCloudAccess(req.user.id,provider),found=await personalCloudDownload(provider,token);if(!found)return res.status(404).json({error:"Aucune sauvegarde"});const envelope=JSON.parse(found.buffer.toString("utf8"));if(String(envelope.ownerUserId||"")!==String(req.user.id))return res.status(403).json({error:"Sauvegarde d'un autre compte refusée"});res.json({ok:true,backup:{updatedAt:envelope.updatedAt,metadata:envelope.metadata||{},provider}});}catch(e){res.status(Number(e?.statusCode||500)).json({ok:false,error:e?.message||"Métadonnées cloud personnel impossibles"});}});
 
+
+
+// -----------------------------------------------------------------------------
+// SYNCHRONISATION INCRÉMENTALE V1
+// Routes séparées du pipeline de sauvegarde manuelle validé.
+// -----------------------------------------------------------------------------
+const PERSONAL_CLOUD_INCREMENTAL_FILE = "multisports_scoring_incremental_v1.json";
+
+function normalizeIncrementalChange(input) {
+  const entityType = String(input?.entityType || "generic").trim().slice(0, 80) || "generic";
+  const entityId = String(input?.entityId || "default").trim().slice(0, 240) || "default";
+  const key = String(input?.key || `${entityType}:${entityId}`).trim().slice(0, 340);
+  const op = String(input?.op || "upsert").toLowerCase() === "delete" ? "delete" : "upsert";
+  const updatedAt = Math.max(0, Number(input?.updatedAt || Date.now()) || Date.now());
+  const revision = String(input?.revision || "").trim().slice(0, 180);
+  if (!key || !revision) return null;
+  return { key, entityType, entityId, op, updatedAt, revision, ...(op === "upsert" ? { payload: input?.payload ?? null } : {}) };
+}
+
+function mergeIncrementalChanges(existing, incoming) {
+  const map = new Map();
+  for (const row of Array.isArray(existing) ? existing : []) {
+    const clean = normalizeIncrementalChange(row); if (clean) map.set(clean.key, clean);
+  }
+  for (const row of Array.isArray(incoming) ? incoming : []) {
+    const clean = normalizeIncrementalChange(row); if (!clean) continue;
+    const prev = map.get(clean.key);
+    if (!prev || Number(clean.updatedAt || 0) >= Number(prev.updatedAt || 0)) map.set(clean.key, clean);
+  }
+  return Array.from(map.values()).sort((a,b)=>Number(a.updatedAt||0)-Number(b.updatedAt||0));
+}
+
+app.post("/account/incremental-changes", authRequired, async (req, res) => {
+  try {
+    const incoming = (Array.isArray(req.body?.changes) ? req.body.changes : []).slice(0, 200).map(normalizeIncrementalChange).filter(Boolean);
+    if (!incoming.length) return res.json({ ok: true, saved: 0 });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const row of incoming) {
+        await client.query(`
+          INSERT INTO account_incremental_changes
+            (user_id, entity_key, entity_type, entity_id, op, updated_at_ms, revision, payload, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,NOW(),NOW())
+          ON CONFLICT (user_id, entity_key) DO UPDATE SET
+            entity_type = EXCLUDED.entity_type,
+            entity_id = EXCLUDED.entity_id,
+            op = EXCLUDED.op,
+            updated_at_ms = EXCLUDED.updated_at_ms,
+            revision = EXCLUDED.revision,
+            payload = EXCLUDED.payload,
+            updated_at = NOW()
+          WHERE account_incremental_changes.updated_at_ms <= EXCLUDED.updated_at_ms
+        `, [req.user.id, row.key, row.entityType, row.entityId, row.op, row.updatedAt, row.revision, JSON.stringify(row.op === "upsert" ? row.payload ?? null : null)]);
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      try { await client.query("ROLLBACK"); } catch {}
+      throw e;
+    } finally { client.release(); }
+    res.json({ ok: true, saved: incoming.length });
+  } catch (e) { sendDatabaseAwareError(res, e, "Sauvegarde incrémentale impossible"); }
+});
+
+app.get("/account/incremental-changes", authRequired, async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit || 200) || 200));
+    const since = Math.max(0, Number(req.query.since || 0) || 0);
+    const rows = await pool.query(`
+      SELECT entity_key, entity_type, entity_id, op, updated_at_ms, revision, payload
+      FROM account_incremental_changes
+      WHERE user_id = $1 AND updated_at_ms > $2
+      ORDER BY updated_at_ms ASC
+      LIMIT $3
+    `, [req.user.id, since, limit]);
+    res.json({ ok: true, changes: (rows.rows || []).map((r) => ({
+      key: r.entity_key, entityType: r.entity_type, entityId: r.entity_id, op: r.op,
+      updatedAt: Number(r.updated_at_ms || 0), revision: r.revision,
+      ...(r.op === "delete" ? {} : { payload: r.payload }),
+    })) });
+  } catch (e) { sendDatabaseAwareError(res, e, "Lecture incrémentale impossible"); }
+});
+
+async function personalCloudUploadIncremental(provider, token, buffer) {
+  const fileName = PERSONAL_CLOUD_INCREMENTAL_FILE;
+  if (provider === "google_drive") {
+    const q = encodeURIComponent(`name='${fileName}' and 'appDataFolder' in parents and trashed=false`);
+    const list = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,name)`, { headers: { authorization: `Bearer ${token}` } }).then(r => r.json());
+    const id = list?.files?.[0]?.id;
+    const meta = { name: fileName, parents: id ? undefined : ["appDataFolder"] };
+    const boundary = "ms_delta_" + Date.now();
+    const pre = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n`);
+    const post = Buffer.from(`\r\n--${boundary}--`);
+    const endpoint = id ? `https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=multipart` : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    const r = await fetch(endpoint, { method: id ? "PATCH" : "POST", headers: { authorization: `Bearer ${token}`, "content-type": `multipart/related; boundary=${boundary}` }, body: Buffer.concat([pre, buffer, post]) });
+    if (!r.ok) throw new Error(`Google Drive incremental upload ${r.status}`);
+    return;
+  }
+  if (provider === "onedrive") {
+    const r = await fetch(`https://graph.microsoft.com/v1.0/me/drive/special/approot:/${fileName}:/content`, { method: "PUT", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: buffer });
+    if (!r.ok) throw new Error(`OneDrive incremental upload ${r.status}`); return;
+  }
+  const r = await fetch("https://content.dropboxapi.com/2/files/upload", { method: "POST", headers: { authorization: `Bearer ${token}`, "Dropbox-API-Arg": JSON.stringify({ path: `/${fileName}`, mode: "overwrite", autorename: false, mute: true }), "content-type": "application/octet-stream" }, body: buffer });
+  if (!r.ok) throw new Error(`Dropbox incremental upload ${r.status}`);
+}
+
+async function personalCloudDownloadIncremental(provider, token) {
+  const fileName = PERSONAL_CLOUD_INCREMENTAL_FILE;
+  if (provider === "google_drive") {
+    const q = encodeURIComponent(`name='${fileName}' and 'appDataFolder' in parents and trashed=false`);
+    const list = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,name,modifiedTime,size)`, { headers: { authorization: `Bearer ${token}` } }).then(r => r.json());
+    const f = list?.files?.[0]; if (!f) return null;
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, { headers: { authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error(`Google Drive incremental download ${r.status}`);
+    return Buffer.from(await r.arrayBuffer());
+  }
+  if (provider === "onedrive") {
+    const r = await fetch(`https://graph.microsoft.com/v1.0/me/drive/special/approot:/${fileName}:/content`, { headers: { authorization: `Bearer ${token}` }, redirect: "follow" });
+    if (r.status === 404) return null; if (!r.ok) throw new Error(`OneDrive incremental download ${r.status}`);
+    return Buffer.from(await r.arrayBuffer());
+  }
+  const r = await fetch("https://content.dropboxapi.com/2/files/download", { method: "POST", headers: { authorization: `Bearer ${token}`, "Dropbox-API-Arg": JSON.stringify({ path: `/${fileName}` }) } });
+  if (r.status === 409) return null; if (!r.ok) throw new Error(`Dropbox incremental download ${r.status}`);
+  return Buffer.from(await r.arrayBuffer());
+}
+
+app.post("/account/personal-cloud/:provider/incremental", authRequired, async (req, res) => {
+  try {
+    const provider = String(req.params.provider || "");
+    if (!PERSONAL_CLOUD_PROVIDERS.has(provider)) return res.status(404).json({ error: "Provider inconnu" });
+    const token = await refreshPersonalCloudAccess(req.user.id, provider);
+    const existingBuffer = await personalCloudDownloadIncremental(provider, token).catch(() => null);
+    let existing = [];
+    if (existingBuffer?.length) {
+      try {
+        const parsed = JSON.parse(existingBuffer.toString("utf8"));
+        if (String(parsed?.ownerUserId || "") === String(req.user.id)) existing = Array.isArray(parsed?.changes) ? parsed.changes : [];
+      } catch {}
+    }
+    const incoming = Array.isArray(req.body?.changes) ? req.body.changes : [];
+    const changes = mergeIncrementalChanges(existing, incoming);
+    const envelope = { version: 1, kind: "multisports_incremental_bundle", ownerUserId: req.user.id, provider, updatedAt: new Date().toISOString(), changes };
+    await personalCloudUploadIncremental(provider, token, Buffer.from(JSON.stringify(envelope), "utf8"));
+    res.json({ ok: true, provider, saved: incoming.length, total: changes.length, updatedAt: envelope.updatedAt });
+  } catch (e) { res.status(Number(e?.statusCode || 500)).json({ ok: false, error: e?.message || "Sauvegarde incrémentale cloud personnel impossible" }); }
+});
+
+app.get("/account/personal-cloud/:provider/incremental", authRequired, async (req, res) => {
+  try {
+    const provider = String(req.params.provider || "");
+    if (!PERSONAL_CLOUD_PROVIDERS.has(provider)) return res.status(404).json({ error: "Provider inconnu" });
+    const token = await refreshPersonalCloudAccess(req.user.id, provider);
+    const buffer = await personalCloudDownloadIncremental(provider, token);
+    if (!buffer?.length) return res.json({ ok: true, provider, changes: [] });
+    const envelope = JSON.parse(buffer.toString("utf8"));
+    if (String(envelope?.ownerUserId || "") !== String(req.user.id)) return res.status(403).json({ error: "Journal d'un autre compte refusé" });
+    res.json({ ok: true, provider, updatedAt: envelope.updatedAt || null, changes: Array.isArray(envelope.changes) ? envelope.changes : [] });
+  } catch (e) { res.status(Number(e?.statusCode || 500)).json({ ok: false, error: e?.message || "Lecture incrémentale cloud personnel impossible" }); }
+});
+
 async function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

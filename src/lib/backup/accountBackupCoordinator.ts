@@ -28,6 +28,8 @@ import { getAutoBackups, type AutoBackupItem } from "./autoBackupService";
 import { downloadPersonalCloudSnapshot, downloadPersonalCloudSnapshotById, getPersonalCloudBackupMeta, isPersonalCloudProvider, personalCloudProviderLabel, type PersonalCloudProvider } from "../personalCloudApi";
 import { getAccountLatestBackup, registerAccountLatestBackup, type AccountLatestBackup } from "../latestBackupApi";
 import { loadStoragePrefs } from "../storagePlans";
+import { fetchRemoteIncrementalChanges } from "../incrementalRemoteSync";
+import { applyIncrementalChanges } from "../incrementalRestore";
 
 export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
 
@@ -816,6 +818,22 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
 
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé avant import : restauration annulée.");
     await importCloudSnapshot(payload, { mode: "replace" });
+
+    // Rejoue uniquement les changements postérieurs au checkpoint complet.
+    // Le transport manuel Google Drive/NAS reste intact : le journal incrémental
+    // utilise ses propres objets/endpoints et ne remplace jamais le snapshot.
+    try {
+      const deltaProvider = candidate.source === "nas" ? "founder_nas"
+        : candidate.source === "r2" ? "cloud_r2"
+        : candidate.source;
+      if (["founder_nas", "cloud_r2", "google_drive", "onedrive", "dropbox"].includes(deltaProvider)) {
+        const deltas = await fetchRemoteIncrementalChanges(deltaProvider);
+        await applyIncrementalChanges(deltas, { since: candidate.updatedAtMs });
+      }
+    } catch (deltaError) {
+      console.warn("[backupCoordinator] incremental replay skipped", deltaError);
+    }
+
     restoreAuth();
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant l'import : rollback.");
     try { setStorageUser(userId); } catch {}
