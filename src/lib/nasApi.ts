@@ -163,6 +163,34 @@ function authToken(): string {
   return readLs(NAS_TOKEN_KEY);
 }
 
+function activePublicSupabaseSession(): boolean {
+  try {
+    const raw = readLs(NAS_AUTH_SESSION_KEY);
+    if (!raw) return false;
+    const session: any = readJson<any>(raw, null);
+    const provider = String(session?.authProvider || session?.auth_provider || "").trim().toLowerCase();
+    return provider === "supabase" || provider === "supabase_failover" || session?.degradedMode === true;
+  } catch {
+    return false;
+  }
+}
+
+function jwtExpiredOrInvalidShape(token: string, skewMs = 15_000): boolean {
+  const raw = String(token || "").trim();
+  if (!raw) return true;
+  const parts = raw.split(".");
+  if (parts.length !== 3) return false; // ancien token opaque : laisser le serveur décider
+  try {
+    const base = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base + "=".repeat((4 - (base.length % 4 || 4)) % 4);
+    const payload = JSON.parse(atob(padded));
+    const expMs = Number(payload?.exp || 0) * 1000;
+    return expMs > 0 && expMs <= Date.now() + skewMs;
+  } catch {
+    return false;
+  }
+}
+
 function isAuthFailureMessage(message: string): boolean {
   return /session invalide|token|unauthorized|401|jwt|expired/i.test(String(message || ""));
 }
@@ -638,7 +666,19 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
 export async function nasRestoreSession(opts?: { timeoutMs?: number; force?: boolean }): Promise<AuthSession | null> {
   const cached = getCachedNasSession();
 
+  // Une session publique Supabase n'a aucune raison de sonder /auth/me en arrière-plan.
+  // Un ancien JWT NAS peut rester quelques secondes en localStorage après un basculement
+  // de provider et produisait le 401 rouge intermittent visible dans DevTools.
+  // Les actions NAS explicites passent par les routes hybrides /sync/* et ne dépendent
+  // pas de ce probe de restauration de session.
+  if (!opts?.force && activePublicSupabaseSession()) return null;
+
   let token = authToken();
+  if (token && jwtExpiredOrInvalidShape(token)) {
+    writeLs(NAS_TOKEN_KEY, null);
+    writeLs(NAS_REFRESH_KEY, null);
+    token = "";
+  }
   if (!token && cached?.token) {
     writeLs(NAS_TOKEN_KEY, cached.token);
     writeLs(NAS_REFRESH_KEY, cached.refreshToken || null);

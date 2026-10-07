@@ -39,6 +39,7 @@ import { listActivities, saveActivity } from "../activity/activityStore";
 import { loadRunningRoutes, saveRunningRoutes } from "../activity/runningRoutes";
 import { listRunningSessionDrafts, saveRunningSessionDraft } from "../activity/runningSessionDrafts";
 import { listOutdoorOfflineRoutePacks, prepareOutdoorOfflineRoutePack } from "../activity/outdoorOfflineCache";
+import { recordIncrementalChange } from "./incrementalBackupJournal";
 
 const STORAGE_DIAG_ENABLED = false; // PERF V2: désactive les logs verbeux par défaut (les slows restent dans runtimeDiag)
 const STORE_WRITE_MODE: "plain" | "gzip" = "plain";
@@ -1745,7 +1746,10 @@ async function importRunningBackupSnapshot(snapshot: any, report: (progress: num
   if (typeof window !== "undefined") {
     for (const key of RUNNING_BACKUP_LOCAL_KEYS) {
       if (!(key in preferences)) continue;
-      try { window.localStorage.setItem(key, String(preferences[key] ?? "")); } catch {}
+      try {
+        const nextValue = String(preferences[key] ?? "");
+        if (window.localStorage.getItem(key) !== nextValue) window.localStorage.setItem(key, nextValue);
+      } catch {}
     }
     // Le propriétaire du service GPS natif est volontairement exclu :
     // restaurer cet identifiant sur un autre appareil lierait la session à un
@@ -1769,10 +1773,12 @@ function importLocalStorageDc(map: Record<string, string>) {
   for (const [k, v] of Object.entries(map)) {
     if (!shouldExportLocalStorageDcKey(k, typeof v === "string" ? v : String(v ?? ""))) continue;
     try {
-      window.localStorage.setItem(k, String(v ?? ""));
-      if (LS_DARTSETS_KEYS.includes(k as any) || LS_ACTIVE_DARTSET_KEYS.includes(k as any)) restoredDartSets = true;
-      if (k === "dc_bots_v1" || k === "dc_bots_avatars_v1") restoredBots = true;
-      if (k === "dc-teams-v1") restoredTeams = true;
+      const nextValue = String(v ?? "");
+      const previousValue = window.localStorage.getItem(k);
+      if (previousValue !== nextValue) window.localStorage.setItem(k, nextValue);
+      if (LS_DARTSETS_KEYS.includes(k as any) || LS_ACTIVE_DARTSET_KEYS.includes(k as any)) restoredDartSets = restoredDartSets || previousValue !== nextValue;
+      if ((k === "dc_bots_v1" || k === "dc_bots_avatars_v1") && previousValue !== nextValue) restoredBots = true;
+      if (k === "dc-teams-v1" && previousValue !== nextValue) restoredTeams = true;
       if (k === "babyfoot_league_store_v1") {
         try { window.dispatchEvent(new Event("babyfoot-leagues-updated")); } catch {}
         try { window.dispatchEvent(new Event("dc:babyfoot-leagues-updated")); } catch {}
@@ -2412,6 +2418,22 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
 
     await idbSet(storeScopeKey, payload);
     lastSavedStoreJsonByScope.set(storeScopeKey, json);
+
+    // Journal incrémental compact : on ne conserve que la dernière révision de
+    // chaque profil + quelques métadonnées de compte. Aucun snapshot complet ici.
+    try {
+      const profiles = Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles : [];
+      for (const profile of profiles) {
+        const id = String((profile as any)?.id || "").trim();
+        if (id) void recordIncrementalChange({ entityType: "profile", entityId: id, payload: profile, updatedAt: Number((profile as any)?.updatedAt || Date.now()) });
+      }
+      void recordIncrementalChange({
+        entityType: "store_meta",
+        entityId: "main",
+        payload: { activeProfileId: (persistedStore as any)?.activeProfileId ?? null },
+        updatedAt: Date.now(),
+      });
+    } catch {}
     const endedAt = storageNowMs();
     const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
     const payloadBytes = typeof payload === "string" ? payload.length : ((payload as Uint8Array)?.byteLength || 0);
@@ -2637,7 +2659,18 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
   }
 
   for (const target of targets) {
-    await idbSet(target, payload);
+    // Restauration différentielle : ne réécrit pas une clé IndexedDB déjà identique.
+    // Sur un second appareil déjà presque à jour, cela évite compression + transaction
+    // IDB pour tous les blocs inchangés sans modifier le format des sauvegardes.
+    let unchanged = false;
+    try {
+      const currentRaw = await idbGet<any>(target);
+      if (currentRaw != null) {
+        const currentJson = await decompressGzip(currentRaw as any);
+        unchanged = currentJson === json;
+      }
+    } catch {}
+    if (!unchanged) await idbSet(target, payload);
   }
 }
 
@@ -4187,8 +4220,10 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
 
     try {
       const payload = await compressGzip(safeJsonStringify(newStore));
-      await idbSet(storeScopeKey, payload);
-    lastSavedStoreJsonByScope.set(storeScopeKey, json);
+      await idbSet(scopedStorageKey(STORE_KEY), payload);
+      lastSavedStoreJsonByScope.delete(scopedStorageKey(STORE_KEY));
+      void recordIncrementalChange({ entityType: "profile", entityId: cleanProfile.id, payload: cleanProfile, updatedAt: Date.now() });
+      void recordIncrementalChange({ entityType: "store_meta", entityId: "main", payload: { activeProfileId: cleanProfile.id }, updatedAt: Date.now() });
     } catch (err) {
       console.warn("[storage] unable to write minimal store after reset", err);
     }

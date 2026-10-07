@@ -417,6 +417,21 @@ function toDetailRecord(id: string, rec: any) {
   };
 }
 
+function historyRowsExactlyEqual(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  try {
+    // Fast path avant le stringify complet.
+    if (String(a?.id || a?.matchId || "") !== String(b?.id || b?.matchId || "")) return false;
+    if (Number(a?.updatedAt || 0) !== Number(b?.updatedAt || 0)) return false;
+    if (String(a?.status || "") !== String(b?.status || "")) return false;
+    if (String(a?.payloadCompressed || "").length !== String(b?.payloadCompressed || "").length) return false;
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
 export async function importHistoryDump(
   dump: HistoryDumpV1,
   opts?: {
@@ -432,12 +447,12 @@ export async function importHistoryDump(
   const db = await openDB();
   const deletedIds = readHistoryDeletedIdsSet();
 
-  // Une restauration explicite en mode replace possède déjà une sauvegarde de
-  // sécurité. Relire et fusionner tout l'ancien historique avant de l'effacer
-  // doublait le coût CPU/mémoire sur Android pour 75 gros matchs.
-  const existingDump = preserveExisting
-    ? await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, SavedMatch> }))
-    : { _v: 1 as const, rows: {} as Record<string, SavedMatch> };
+  // V63 restauration différentielle : même en mode replace, on lit l'état actuel
+  // afin de ne réécrire que les matchs réellement différents. Le coût de lecture
+  // est nettement inférieur au clear + réécriture de dizaines de gros payloads,
+  // surtout lors d'une restauration vers un appareil déjà presque à jour.
+  const existingDump = await exportHistoryDump()
+    .catch(() => ({ _v: 1 as const, rows: {} as Record<string, SavedMatch> }));
   const preparedRows: Record<string, SavedMatch> = {};
   const incomingRows = Object.values(dump.rows || {});
   const totalRows = incomingRows.length;
@@ -469,12 +484,18 @@ export async function importHistoryDump(
       const details = tx.objectStore(STORE_DETAILS);
 
       if (replace) {
-        try { headers.clear(); } catch {}
-        try { details.clear(); } catch {}
+        const nextIds = new Set(Object.keys(preparedRows));
+        for (const existingId of Object.keys(existingDump.rows || {})) {
+          if (nextIds.has(existingId)) continue;
+          try { headers.delete(existingId); } catch {}
+          try { details.delete(existingId); } catch {}
+        }
       }
 
       for (const [id, r] of Object.entries(preparedRows)) {
         try {
+          const existing = (existingDump.rows || {})[id] || null;
+          if (historyRowsExactlyEqual(existing, r)) continue;
           headers.put(toHeaderRecord({ ...(r as any), id, matchId: String((r as any)?.matchId || id) }));
           details.put(toDetailRecord(id, r));
         } catch {}
@@ -496,12 +517,17 @@ export async function importHistoryDump(
       const tx = db.transaction(STORE_LEGACY, "readwrite");
       const store = tx.objectStore(STORE_LEGACY);
       if (replace) {
-        try { store.clear(); } catch {}
+        const nextIds = new Set(Object.keys(preparedRows));
+        for (const existingId of Object.keys(existingDump.rows || {})) {
+          if (!nextIds.has(existingId)) { try { store.delete(existingId); } catch {} }
+        }
       }
       for (const [id, r] of Object.entries(preparedRows)) {
         try {
           const existing = (existingDump.rows || {})[id] || null;
-          store.put(mergeHistorySnapshotRowMonotonic(existing, r) as any);
+          const merged = mergeHistorySnapshotRowMonotonic(existing, r) as any;
+          if (historyRowsExactlyEqual(existing, merged)) continue;
+          store.put(merged);
         } catch {}
       }
       tx.oncomplete = () => {

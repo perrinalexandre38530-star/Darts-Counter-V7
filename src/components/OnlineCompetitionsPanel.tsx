@@ -17,6 +17,12 @@ type InboxShape = {
   error: string;
   lastSyncAt: number;
   refresh: (notify?: boolean) => Promise<any>;
+  actionBusy: string;
+  actionNotice: string;
+  acceptInvitation: (item: OnlineCompetitionInboxItem) => Promise<boolean>;
+  declineInvitation: (item: OnlineCompetitionInboxItem) => Promise<boolean>;
+  cancelRequest: (item: OnlineCompetitionInboxItem) => Promise<boolean>;
+  clearActionNotice: () => void;
   clearAlerts: () => void;
 };
 
@@ -145,6 +151,11 @@ export default function OnlineCompetitionsPanel({ inbox, accent = "#22E6FF", isS
           Dernière synchro : {formatSync(inbox.lastSyncAt)} · actualisation automatique toutes les ~20 s.
         </div>
         {inbox.error ? <div style={{ marginTop: 7, color: "#ff9aa1", fontSize: 10 }}>{inbox.error}</div> : null}
+        {inbox.actionNotice ? (
+          <button type="button" onClick={inbox.clearActionNotice} style={{ width: "100%", marginTop: 8, textAlign: "left", borderRadius: 10, padding: "7px 9px", border: "1px solid rgba(101,230,162,.20)", background: "rgba(20,70,48,.28)", color: "#d9ffea", fontSize: 9, fontWeight: 800 }}>
+            {inbox.actionNotice} <span style={{ opacity: .55 }}>· fermer</span>
+          </button>
+        ) : null}
       </Card>
 
       {inbox.alerts.length ? (
@@ -173,15 +184,22 @@ export default function OnlineCompetitionsPanel({ inbox, accent = "#22E6FF", isS
         <Card accentRgb={accentRgb}>
           <b style={{ color: "#ffcf73", fontSize: 12 }}>INVITATIONS REÇUES</b>
           <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
-            {inbox.invitations.map((item) => (
-              <div key={`invite-${item.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: 10, borderRadius: 13, border: "1px solid rgba(255,207,115,.18)", background: "#080d14" }}>
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ display: "block", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</b>
-                  <span style={{ display: "block", marginTop: 3, fontSize: 8.5, color: "#ffcf73" }}>INVITATION EN ATTENTE · {challengeFormatLabel(item)}</span>
+            {inbox.invitations.map((item) => {
+              const busy = inbox.actionBusy === item.id;
+              return (
+                <div key={`invite-${item.id}`} style={{ display: "grid", gap: 9, padding: 10, borderRadius: 13, border: "1px solid rgba(255,207,115,.18)", background: "#080d14" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <b style={{ display: "block", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</b>
+                    <span style={{ display: "block", marginTop: 3, fontSize: 8.5, color: "#ffcf73" }}>INVITATION EN ATTENTE · {challengeFormatLabel(item)}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 6 }}>
+                    <button type="button" disabled={busy} onClick={() => void inbox.acceptInvitation(item)} style={{ minHeight: 34, borderRadius: 10, border: "1px solid rgba(101,230,162,.34)", background: "rgba(15,68,46,.78)", color: "#fff", fontSize: 8.2, fontWeight: 1000, opacity: busy ? .55 : 1 }}>{busy ? "…" : "ACCEPTER"}</button>
+                    <button type="button" disabled={busy} onClick={() => void inbox.declineInvitation(item)} style={{ minHeight: 34, borderRadius: 10, border: "1px solid rgba(255,113,120,.28)", background: "rgba(70,18,23,.64)", color: "#ffb0b5", fontSize: 8.2, fontWeight: 1000, opacity: busy ? .55 : 1 }}>REFUSER</button>
+                    <button type="button" disabled={busy} onClick={() => onOpen(item.id)} style={{ minHeight: 34, borderRadius: 10, border: "1px solid rgba(255,207,115,.28)", background: "rgba(78,52,7,.48)", color: "#fff", fontSize: 8.2, fontWeight: 1000, padding: "0 10px", opacity: busy ? .55 : 1 }}>VOIR</button>
+                  </div>
                 </div>
-                <button type="button" onClick={() => onOpen(item.id)} style={{ minHeight: 34, borderRadius: 10, border: "1px solid rgba(255,207,115,.34)", background: "rgba(78,52,7,.76)", color: "#fff", fontSize: 8.5, fontWeight: 1000, padding: "0 10px" }}>OUVRIR</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       ) : null}
@@ -193,13 +211,18 @@ export default function OnlineCompetitionsPanel({ inbox, accent = "#22E6FF", isS
             {inbox.requests.map((item) => {
               const status = String(item.request?.status || "pending");
               const tone = statusTone(status);
+              const busy = inbox.actionBusy === item.id;
               return (
-                <button key={`request-${item.id}`} type="button" onClick={() => onOpen(item.id)} style={{ textAlign: "left", padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "#080d14", color: "#fff" }}>
+                <div key={`request-${item.id}`} style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "#080d14", color: "#fff" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                     <b style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10.5 }}>{item.name}</b>
                     <span style={{ color: tone, fontSize: 8, fontWeight: 1000 }}>{requestLabel(item)}</span>
                   </div>
-                </button>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 7 }}>
+                    {status === "pending" ? <button type="button" disabled={busy} onClick={() => void inbox.cancelRequest(item)} style={{ minHeight: 30, borderRadius: 9, border: "1px solid rgba(255,113,120,.24)", background: "rgba(65,18,22,.55)", color: "#ffb0b5", padding: "0 9px", fontSize: 7.8, fontWeight: 1000, opacity: busy ? .55 : 1 }}>{busy ? "…" : "ANNULER"}</button> : null}
+                    <button type="button" disabled={busy} onClick={() => onOpen(item.id)} style={{ minHeight: 30, borderRadius: 9, border: `1px solid rgba(${accentRgb},.24)`, background: `rgba(${accentRgb},.08)`, color: "#fff", padding: "0 9px", fontSize: 7.8, fontWeight: 1000, opacity: busy ? .55 : 1 }}>OUVRIR</button>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -236,6 +259,14 @@ export default function OnlineCompetitionsPanel({ inbox, accent = "#22E6FF", isS
                     CYCLE {item.currentCycle}
                   </span>
                 </div>
+                {item.playerProgress ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8 }}>
+                    <span style={{ borderRadius: 9, padding: "6px 7px", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", fontSize: 7.4, opacity: .78 }}>OBJECTIFS <b style={{ display: "block", marginTop: 2, fontSize: 10, color: "#fff" }}>{item.playerProgress.playedObjectives}/{item.playerProgress.totalObjectives}</b></span>
+                    <span style={{ borderRadius: 9, padding: "6px 7px", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", fontSize: 7.4, opacity: .78 }}>ESSAIS <b style={{ display: "block", marginTop: 2, fontSize: 10, color: "#fff" }}>{item.playerProgress.attemptsUsed}/{item.playerProgress.attemptsMax}</b></span>
+                    <span style={{ borderRadius: 9, padding: "6px 7px", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", fontSize: 7.4, opacity: .78 }}>DIVISION <b style={{ display: "block", marginTop: 2, fontSize: 10, color: "#fff" }}>{item.playerProgress.division ? `D${item.playerProgress.division}` : "—"}</b></span>
+                  </div>
+                ) : null}
+                {item.playerProgress?.nextObjective ? <div style={{ marginTop: 7, padding: "6px 8px", borderRadius: 9, border: "1px solid rgba(101,230,162,.16)", background: "rgba(15,68,46,.20)", color: "#b9f9d5", fontSize: 8, fontWeight: 900 }}>▶ À JOUER · {objectiveLabel(item.playerProgress.nextObjective)}</div> : null}
                 {item.openObjectives.length ? (
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
                     {item.openObjectives.slice(0, 8).map((objective) => (

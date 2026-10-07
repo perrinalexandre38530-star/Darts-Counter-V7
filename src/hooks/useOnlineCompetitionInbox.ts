@@ -1,5 +1,5 @@
 import * as React from "react";
-import { listOnlineCompetitions } from "../lib/tournaments/onlineStore";
+import { getOnlineCompetition, listOnlineCompetitions, updateOnlineCompetition } from "../lib/tournaments/onlineStore";
 import { showMessageCenterNotification } from "../lib/messageCenterNotify";
 
 export type OnlineCompetitionRelation =
@@ -8,6 +8,18 @@ export type OnlineCompetitionRelation =
   | "participant"
   | "invited"
   | "request";
+
+export type OnlineCompetitionPlayerProgress = {
+  participantId: string;
+  division: number | null;
+  totalObjectives: number;
+  playedObjectives: number;
+  completedObjectives: number;
+  attemptsUsed: number;
+  attemptsMax: number;
+  playableObjectives: string[];
+  nextObjective: string | null;
+};
 
 export type OnlineCompetitionInboxItem = {
   id: string;
@@ -21,6 +33,7 @@ export type OnlineCompetitionInboxItem = {
   openObjectives: string[];
   currentCycle: number;
   updatedAt: number;
+  playerProgress: OnlineCompetitionPlayerProgress | null;
 };
 
 export type OnlineCompetitionAlert = {
@@ -109,6 +122,93 @@ function getOpenRounds(row: any) {
   return { cycle, rounds };
 }
 
+
+function challengeObjectivesForCycle(row: any, cycle: number) {
+  const cfg = row?.challengeCompetition || {};
+  const rounds = asArray(cfg?.schedule?.rounds).filter((round: any) => Number(round?.cycle || 1) === cycle);
+  const fromRounds = rounds.flatMap((round: any) => asArray(round?.objectives).map(normalizeObjective)).filter(Boolean);
+  if (fromRounds.length) return Array.from(new Set(fromRounds));
+  const rules = row?.game?.rules || {};
+  const fromRules = asArray(rules?.objectiveTargets).map(normalizeObjective).filter(Boolean);
+  if (fromRules.length) return Array.from(new Set(fromRules));
+  const target = normalizeObjective(rules?.target || row?.target || "");
+  return target ? [target] : [];
+}
+
+function participantIdentitySet(participant: any, identities: Set<string>) {
+  const ids = new Set(identities);
+  [participant?.id, participant?.profileId, participant?.onlineUserId, participant?.userId]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .forEach((id) => ids.add(id));
+  return ids;
+}
+
+function attemptLimitForObjective(row: any, objective: string) {
+  const cfg = row?.challengeCompetition || {};
+  const override = cfg?.objectiveSettings?.[normalizeObjective(objective)]?.attemptsPerObjective;
+  return Math.max(1, Math.min(5, Number(override || cfg?.attemptsPerObjective || row?.game?.rules?.challengeAttemptsPerObjective || 3) || 3));
+}
+
+function buildPlayerProgress(row: any, participant: any, identities: Set<string>, cycle: number, openObjectives: string[]): OnlineCompetitionPlayerProgress | null {
+  if (!participant) return null;
+  const format = String(row?.challengeCompetition?.format || "").toLowerCase();
+  const mode = String(row?.game?.mode || "").toLowerCase();
+  if (mode !== "challenge" || format === "duels") return null;
+
+  const participantId = String(participant?.id || participant?.profileId || participant?.onlineUserId || participant?.userId || "");
+  if (!participantId) return null;
+  const identitySet = participantIdentitySet(participant, identities);
+  const objectives = challengeObjectivesForCycle(row, cycle);
+  const linked = asArray(row?.linkedMatches ?? row?.meta?.linkedMatches).filter((match: any) => Math.max(1, Number(match?.challengeCycle || 1) || 1) === cycle);
+
+  let attemptsUsed = 0;
+  let attemptsMax = 0;
+  let playedObjectives = 0;
+  let completedObjectives = 0;
+  const playableObjectives: string[] = [];
+
+  for (const objective of objectives) {
+    const max = attemptLimitForObjective(row, objective);
+    attemptsMax += max;
+    let used = 0;
+    for (const match of linked) {
+      if (normalizeObjective(match?.challengeObjective || match?.target || match?.objective) !== objective) continue;
+      const ranking = asArray(match?.ranking);
+      if (ranking.some((entry: any) => {
+        const ids = [entry?.playerId, entry?.id, entry?.profileId, entry?.onlineUserId].map((value) => String(value || "")).filter(Boolean);
+        return ids.some((id) => identitySet.has(id));
+      })) used += 1;
+    }
+    used = Math.min(max, used);
+    attemptsUsed += used;
+    if (used > 0) playedObjectives += 1;
+    if (used >= max) completedObjectives += 1;
+    if (openObjectives.includes(objective) && used < max) playableObjectives.push(objective);
+  }
+
+  const cycles = asArray(row?.challengeCompetition?.divisionCycles);
+  const currentCycle = cycles.find((entry: any) => Number(entry?.cycle || 0) === cycle);
+  const assignments = currentCycle?.assignments && typeof currentCycle.assignments === "object" ? currentCycle.assignments : {};
+  let division: number | null = null;
+  for (const id of identitySet) {
+    const n = Number(assignments?.[id] || 0);
+    if (n > 0) { division = n; break; }
+  }
+
+  return {
+    participantId,
+    division,
+    totalObjectives: objectives.length,
+    playedObjectives,
+    completedObjectives,
+    attemptsUsed,
+    attemptsMax,
+    playableObjectives,
+    nextObjective: playableObjectives[0] || null,
+  };
+}
+
 function toInboxItem(row: any, identities: Set<string>, userId: string): OnlineCompetitionInboxItem | null {
   const id = getCompetitionId(row);
   if (!id) return null;
@@ -134,6 +234,8 @@ function toInboxItem(row: any, identities: Set<string>, userId: string): OnlineC
     )
   );
 
+  const playerProgress = buildPlayerProgress(row, participant, identities, cycle, openObjectives);
+
   return {
     id,
     competition: row,
@@ -146,10 +248,11 @@ function toInboxItem(row: any, identities: Set<string>, userId: string): OnlineC
     openObjectives,
     currentCycle: cycle,
     updatedAt: Number(row?.updatedAt || Date.parse(String(row?.updated_at || "")) || 0) || 0,
+    playerProgress,
   };
 }
 
-function readSnapshot(key: string): Record<string, { openRoundIds: string[]; updatedAt: number }> | null {
+function readSnapshot(key: string): Record<string, { openRoundIds: string[]; updatedAt: number; invitationStatus?: string; requestStatus?: string; linkedCount?: number }> | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(key);
@@ -161,7 +264,7 @@ function readSnapshot(key: string): Record<string, { openRoundIds: string[]; upd
   }
 }
 
-function writeSnapshot(key: string, value: Record<string, { openRoundIds: string[]; updatedAt: number }>) {
+function writeSnapshot(key: string, value: Record<string, { openRoundIds: string[]; updatedAt: number; invitationStatus?: string; requestStatus?: string; linkedCount?: number }>) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
@@ -181,6 +284,8 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [lastSyncAt, setLastSyncAt] = React.useState<number>(0);
+  const [actionBusy, setActionBusy] = React.useState<string>("");
+  const [actionNotice, setActionNotice] = React.useState<string>("");
   const aliveRef = React.useRef(true);
 
   React.useEffect(() => {
@@ -214,14 +319,37 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
 
       const snapshotKey = `${SNAPSHOT_PREFIX}${normalizedUserId}`;
       const previous = readSnapshot(snapshotKey);
-      const freshSnapshot: Record<string, { openRoundIds: string[]; updatedAt: number }> = {};
+      const freshSnapshot: Record<string, { openRoundIds: string[]; updatedAt: number; invitationStatus?: string; requestStatus?: string; linkedCount?: number }> = {};
       const newAlerts: OnlineCompetitionAlert[] = [];
 
       for (const item of next) {
         const roundIds = item.openRounds.map((round: any) => String(round?.id || `c${item.currentCycle}-r${round?.round || 0}`));
-        freshSnapshot[item.id] = { openRoundIds: roundIds, updatedAt: item.updatedAt };
+        const invitationStatus = String(item.invitation?.status || "");
+        const requestStatus = String(item.request?.status || "");
+        const linkedCount = asArray(item.competition?.linkedMatches ?? item.competition?.meta?.linkedMatches).length;
+        freshSnapshot[item.id] = { openRoundIds: roundIds, updatedAt: item.updatedAt, invitationStatus, requestStatus, linkedCount };
 
-        // Ne notifier que les joueurs/admins déjà engagés dans la compétition.
+        const previousItem = previous?.[item.id];
+        if (previous) {
+          if (invitationStatus === "pending" && previousItem?.invitationStatus !== "pending") {
+            const label = "Nouvelle invitation à rejoindre la compétition";
+            newAlerts.push({ id: `${item.id}:invite:${item.invitation?.id || Date.now()}`, competitionId: item.id, competitionName: item.name, label, createdAt: Date.now() });
+            if (notify) void showMessageCenterNotification("Invitation compétition", `${item.name} · ${label}`, { tag: `competition-invite-${item.id}`, data: { url: publicCompetitionUrl(item.id) } } as NotificationOptions);
+          }
+          if (previousItem?.requestStatus === "pending" && requestStatus && requestStatus !== "pending") {
+            const accepted = requestStatus === "approved" || requestStatus === "accepted";
+            const label = accepted ? "Ta demande d’inscription a été acceptée" : requestStatus === "rejected" ? "Ta demande d’inscription a été refusée" : "Ta demande d’inscription a changé";
+            newAlerts.push({ id: `${item.id}:request:${requestStatus}:${Date.now()}`, competitionId: item.id, competitionName: item.name, label, createdAt: Date.now() });
+            if (notify) void showMessageCenterNotification("Inscription compétition", `${item.name} · ${label}`, { tag: `competition-request-${item.id}`, data: { url: publicCompetitionUrl(item.id) } } as NotificationOptions);
+          }
+          if (["owner", "admin", "participant"].includes(item.relation) && previousItem && linkedCount > Number(previousItem.linkedCount || 0)) {
+            const delta = linkedCount - Number(previousItem.linkedCount || 0);
+            const label = `${delta} nouveau${delta > 1 ? "x" : ""} résultat${delta > 1 ? "s" : ""} enregistré${delta > 1 ? "s" : ""}`;
+            newAlerts.push({ id: `${item.id}:result:${linkedCount}`, competitionId: item.id, competitionName: item.name, label, createdAt: Date.now() });
+          }
+        }
+
+        // Ne notifier l'ouverture des journées qu'aux joueurs/admins déjà engagés dans la compétition.
         if (!previous || !["owner", "admin", "participant"].includes(item.relation)) continue;
         const seen = new Set(previous[item.id]?.openRoundIds || []);
         const newlyOpened = item.openRounds.filter((round: any) => {
@@ -290,6 +418,78 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
     [items]
   );
 
+  const mutateCompetition = React.useCallback(async (item: OnlineCompetitionInboxItem, mutate: (latest: any) => any, successMessage: string) => {
+    if (!normalizedUserId || !item?.id) return false;
+    setActionBusy(item.id);
+    setActionNotice("");
+    try {
+      const latest = await getOnlineCompetition(item.id);
+      const next = mutate(latest);
+      if (!next) return false;
+      await updateOnlineCompetition(item.id, {
+        name: next?.name,
+        status: next?.status,
+        tournament: next,
+        matches: asArray(next?.matches ?? next?.__onlineRow?.payload?.matches),
+        participants: asArray(next?.players?.length ? next.players : next?.participants),
+        settings: { ...(next?.game?.rules || {}), identity: next?.identity || null },
+      } as any);
+      setActionNotice(successMessage);
+      await refresh(false);
+      return true;
+    } catch (err: any) {
+      setActionNotice(String(err?.message || "Action Online impossible."));
+      return false;
+    } finally {
+      setActionBusy("");
+    }
+  }, [normalizedUserId, refresh]);
+
+  const acceptInvitation = React.useCallback(async (item: OnlineCompetitionInboxItem) => {
+    return mutateCompetition(item, (latest: any) => {
+      const invitations = asArray(latest?.invitations);
+      const invitation = invitations.find((row: any) => String(row?.userId || "") === normalizedUserId && String(row?.status || "pending") === "pending");
+      if (!invitation) throw new Error("Cette invitation n’est plus disponible.");
+      const players = asArray(latest?.players?.length ? latest.players : latest?.participants);
+      const max = Math.max(0, Number(latest?.enrollment?.maxParticipants || latest?.meta?.enrollmentMax || 0) || 0);
+      if (max > 0 && players.length >= max) throw new Error("La compétition est complète.");
+      const already = players.some((row: any) => [row?.onlineUserId, row?.userId, row?.profileId, row?.id].map((value) => String(value || "")).includes(normalizedUserId) || (normalizedProfileId && [row?.profileId, row?.id].map((value) => String(value || "")).includes(normalizedProfileId)));
+      const participant = {
+        id: String(invitation?.profileId || normalizedProfileId || normalizedUserId),
+        profileId: String(invitation?.profileId || normalizedProfileId || normalizedUserId),
+        onlineUserId: normalizedUserId,
+        userId: normalizedUserId,
+        name: String(invitation?.name || "Joueur"),
+        avatarDataUrl: invitation?.avatarUrl || null,
+        avatarUrl: invitation?.avatarUrl || null,
+        isBot: false,
+        source: "online",
+      };
+      return {
+        ...latest,
+        players: already ? players : [...players, participant],
+        invitations: invitations.map((row: any) => String(row?.id || "") === String(invitation?.id || "") ? { ...row, status: "accepted", respondedAt: Date.now() } : row),
+        updatedAt: Date.now(),
+      };
+    }, `Invitation acceptée · ${item.name}`);
+  }, [mutateCompetition, normalizedUserId, normalizedProfileId]);
+
+  const declineInvitation = React.useCallback(async (item: OnlineCompetitionInboxItem) => {
+    return mutateCompetition(item, (latest: any) => ({
+      ...latest,
+      invitations: asArray(latest?.invitations).map((row: any) => String(row?.userId || "") === normalizedUserId && String(row?.status || "pending") === "pending" ? { ...row, status: "declined", respondedAt: Date.now() } : row),
+      updatedAt: Date.now(),
+    }), `Invitation refusée · ${item.name}`);
+  }, [mutateCompetition, normalizedUserId]);
+
+  const cancelRequest = React.useCallback(async (item: OnlineCompetitionInboxItem) => {
+    return mutateCompetition(item, (latest: any) => ({
+      ...latest,
+      enrollmentRequests: asArray(latest?.enrollmentRequests).map((row: any) => String(row?.userId || "") === normalizedUserId && String(row?.status || "pending") === "pending" ? { ...row, status: "cancelled", respondedAt: Date.now() } : row),
+      updatedAt: Date.now(),
+    }), `Demande annulée · ${item.name}`);
+  }, [mutateCompetition, normalizedUserId]);
+
   return {
     items,
     invitations,
@@ -300,6 +500,12 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
     error,
     lastSyncAt,
     refresh,
+    actionBusy,
+    actionNotice,
+    acceptInvitation,
+    declineInvitation,
+    cancelRequest,
+    clearActionNotice: () => setActionNotice(""),
     clearAlerts: () => setAlerts([]),
   };
 }

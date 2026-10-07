@@ -12,6 +12,7 @@ import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import { getTeamLogoTemplateBySrc, resolveTeamLogoSrc } from "../assets/teamLogoLibrary";
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
 import { captureUserMediaFallback, resolveUserMediaFallback, teamCoverMediaKey, teamLogoMediaKey } from "./userMediaFallback";
+import { recordIncrementalChange } from "./incrementalBackupJournal";
 import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
 
@@ -377,6 +378,7 @@ export function loadTeams(): TeamEntity[] {
 }
 
 export function saveTeams(list: TeamEntity[]) {
+  const previous = loadTeams();
   const clean = dedupeById((list ?? []).map((x) => normalizeTeamEntity(x)).filter(Boolean) as TeamEntity[]);
   setJsonWithQuotaRecovery(STORAGE_KEY, clean, (teams: TeamEntity[]) =>
     (teams || []).map((t: any) => ({
@@ -402,6 +404,19 @@ export function saveTeams(list: TeamEntity[]) {
     if (cover) void captureUserMediaFallback(teamCoverMediaKey(team.id), cover, { kind: "team_cover", updatedAt: Number(team.updatedAt || Date.now()) })
       .catch((error) => console.warn("[teams] R2 cover mirror failed", error));
   }
+  // Auto-sauvegarde incrémentale : une modification d'équipe n'entraîne plus
+  // la reconstruction du compte complet. Le journal compacte automatiquement
+  // plusieurs éditions successives de la même équipe en une seule révision.
+  try {
+    const nextIds = new Set(clean.map((team) => String(team.id)));
+    for (const team of clean) {
+      void recordIncrementalChange({ entityType: "team", entityId: String(team.id), payload: team, updatedAt: Number(team.updatedAt || Date.now()) });
+    }
+    for (const team of previous) {
+      const id = String(team?.id || "").trim();
+      if (id && !nextIds.has(id)) void recordIncrementalChange({ entityType: "team", entityId: id, op: "delete", updatedAt: Date.now() });
+    }
+  } catch {}
   try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
   try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
 }

@@ -6,6 +6,7 @@ import { queueExternalBackup } from "./externalBackupTarget";
 import { uploadPersonalCloudSnapshot, isPersonalCloudProvider, type PersonalCloudProvider } from "./personalCloudApi";
 import { getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
+import { recordIncrementalChange, shouldCreateIncrementalCheckpoint, markIncrementalCheckpoint } from "./incrementalBackupJournal";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
   deleteCloudObjectRemote,
@@ -46,6 +47,7 @@ async function runPersonalCloudFullSnapshot(job: DeferredPersonalCloudSnapshot):
   deferredPersonalCloudRunning = (async () => {
     const snapshot = await exportCloudSnapshot({ mediaMirror: "skip", includeEmbeddedMedia: false });
     await uploadPersonalCloudSnapshot(job.provider, JSON.stringify(snapshot), job.metadata);
+    await markIncrementalCheckpoint({ provider: job.provider, reason: job.metadata?.reason || "auto-checkpoint" }).catch(() => undefined);
   })().catch((error) => {
     try {
       localStorage.setItem("dc_personal_cloud_last_error_v1", JSON.stringify({
@@ -732,6 +734,7 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
       rawSizeBytes: json.length,
     },
   });
+  await markIncrementalCheckpoint({ provider: "cloud_r2", reason }).catch(() => undefined);
 }
 
 export async function pushMatchBackupToNas(item: MatchBackupItem): Promise<void> {
@@ -822,6 +825,12 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
   if (!item) return;
   // La copie locale reste le filet de sécurité, quelle que soit la destination choisie.
   await saveLocalMatchBackup(item).catch(() => undefined);
+  void recordIncrementalChange({ entityType: "match", entityId: item.matchId || item.id, payload: {
+    id: item.id, matchId: item.matchId, sport: item.sport, kind: item.kind, title: item.title,
+    status: item.status, createdAt: item.createdAt, updatedAt: item.updatedAt, savedAt: item.savedAt,
+    players: item.players, winnerId: item.winnerId ?? null, summary: item.summary || {},
+    revisionId: item.revisionId || null, payloadFingerprint: item.payloadFingerprint || null,
+  }, updatedAt: item.updatedAt || Date.now() });
   const provider = await getActiveStorageProviderCached().catch(() => "local_device");
 
   if (provider === "external_file") {
@@ -834,9 +843,9 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
     // La révision PRECEDENTE reste protégée localement, mais elle ne doit pas
     // déclencher à elle seule un export complet du compte. Le snapshot personnel
     // est coalescé sur l'état courant et, sur mobile, reporté hors navigation.
-    if (args.source !== "history-prewrite-revision") {
+    if (args.source !== "history-prewrite-revision" && await shouldCreateIncrementalCheckpoint().catch(() => false)) {
       queuePersonalCloudFullSnapshot(provider, {
-        reason: "history-upsert",
+        reason: "incremental-checkpoint",
         exportedAt: new Date().toISOString(),
         matchId: item.matchId,
         sport: item.sport,
@@ -852,8 +861,8 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
         localStorage.setItem("dc_match_backup_last_cloud_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
       } catch {}
     });
-    if (args.source !== "history-prewrite-revision") {
-      void pushLatestSnapshotToCloud("history-upsert").catch((error) => {
+    if (args.source !== "history-prewrite-revision" && await shouldCreateIncrementalCheckpoint().catch(() => false)) {
+      void pushLatestSnapshotToCloud("incremental-checkpoint").catch((error) => {
         try {
           localStorage.setItem("dc_cloud_auto_full_backup_last_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
         } catch {}
