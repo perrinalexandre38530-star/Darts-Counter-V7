@@ -500,6 +500,33 @@ function readAccountAccessToken(): string {
     safeReadSessionStorage("dc_online_auth_supabase_v1")
   ).trim();
   if (!raw) return "";
+
+  // IMPORTANT : les routes /account/personal-cloud/* savent authentifier aussi
+  // une session publique Supabase. Une session `supabase_failover` contient
+  // justement le JWT Supabase dans `token` / `accessToken`, même si elle est
+  // marquée degradedMode=true parce que le NAS est indisponible.
+  //
+  // tokenFromStoredValue() exclut volontairement ce type de session afin de ne
+  // JAMAIS envoyer un JWT Supabase aux anciennes routes NAS. Ici, au contraire,
+  // on est sur une route de compte hybride qui l'accepte explicitement : il faut
+  // donc extraire le token public avant ce filtre NAS. Sans cela Google Drive
+  // reçoit "Token manquant", puis le client tente inutilement de réveiller le
+  // NAS et la connexion OAuth ne démarre jamais.
+  if (raw.startsWith("{") || raw.startsWith("[")) {
+    const parsed = safeParseJson<any>(raw, null);
+    const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
+    const isPublicAccountSession =
+      provider === "supabase" ||
+      provider === "supabase_failover" ||
+      parsed?.degradedMode === true ||
+      !!parsed?.supabaseUserId;
+
+    if (isPublicAccountSession) {
+      const publicToken = extractAuthTokenFromObject(parsed);
+      if (publicToken && looksLikeBearerToken(publicToken)) return publicToken;
+    }
+  }
+
   return tokenFromStoredValue(raw);
 }
 
