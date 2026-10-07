@@ -666,6 +666,14 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
 export async function nasRestoreSession(opts?: { timeoutMs?: number; force?: boolean }): Promise<AuthSession | null> {
   const cached = getCachedNasSession();
 
+  // STABILITÉ AUTH : le probe /auth/me n'est plus exécuté en arrière-plan lorsqu'une
+  // session NAS valide est déjà en cache. Les opérations réellement protégées sont de
+  // toute façon validées par le serveur au moment de l'action. Cela supprime les 401
+  // intermittents provoqués par les micro-fenêtres de bascule Supabase/NAS au boot.
+  if (!opts?.force && cached?.token && !jwtExpiredOrInvalidShape(String(cached.token))) {
+    return cached;
+  }
+
   // Une session publique Supabase n'a aucune raison de sonder /auth/me en arrière-plan.
   // Un ancien JWT NAS peut rester quelques secondes en localStorage après un basculement
   // de provider et produisait le 401 rouge intermittent visible dans DevTools.

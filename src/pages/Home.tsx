@@ -157,6 +157,38 @@ function getActiveProfile(store: Store): Profile | null {
   return (!activeProfileId ? profiles[0] : (profiles.find((p) => p.id === activeProfileId) ?? profiles[0])) as any;
 }
 
+
+function historyMatchTimestamp(match: any): number {
+  const values = [
+    match?.updatedAt, match?.updated_at, match?.finishedAt, match?.finished_at,
+    match?.playedAt, match?.played_at, match?.createdAt, match?.created_at,
+    match?.ts, match?.timestamp, match?.date, match?.summary?.updatedAt,
+    match?.summary?.finishedAt, match?.summary?.createdAt,
+  ];
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value < 10_000_000_000 ? value * 1000 : value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+    }
+  }
+  return 0;
+}
+
+function selectCurrentFormMatches(matches: any[], now = Date.now()): { matches: any[]; mode: "30d" | "recent" } {
+  const sorted = [...matches].sort((a, b) => historyMatchTimestamp(b) - historyMatchTimestamp(a));
+  const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+  const last30 = sorted.filter((m) => historyMatchTimestamp(m) >= cutoff);
+  // 5 matchs donnent déjà un indicateur de forme suffisamment stable. En dessous,
+  // on complète avec les dernières performances pour éviter qu'un seul vieux match
+  // ou une longue période d'inactivité ne fige le niveau affiché.
+  if (last30.length >= 5) return { matches: last30, mode: "30d" };
+  if (last30.length > 0) return { matches: sorted.slice(0, Math.max(5, Math.min(10, sorted.length))), mode: "recent" };
+  return { matches: sorted.slice(0, Math.min(10, sorted.length)), mode: "recent" };
+}
+
 function emptyActiveProfileStats(): ActiveProfileStats {
   return {
     ratingGlobal: 0,
@@ -748,11 +780,19 @@ async function buildStatsForProfile(
     // ✅ HOME doit suivre le même périmètre que le dashboard StatsHub :
     // pour les métriques X01, on ne garde QUE les parties X01 terminées présentes dans l'historique.
     // Avant, Home additionnait tous les modes dans "x01 multi" => 41 sessions / 42.24 / best visit faux.
-    const multiMatches: any[] = allHistoryMatches.filter((m: any) => {
+    const lifetimeX01Matches: any[] = allHistoryMatches.filter((m: any) => {
       try { return isX01Match(m as any); } catch { return false; }
     });
+    // FORM ACTUELLE : les KPI de niveau ne sont plus plombés par des années d'historique.
+    // Priorité aux 30 derniers jours ; si l'échantillon est trop petit, on prend les
+    // 5 à 10 dernières performances X01. Les records restent calculés sur le lifetime.
+    const currentFormScope = selectCurrentFormMatches(lifetimeX01Matches);
+    const multiMatches: any[] = currentFormScope.matches;
     const x01AggForHome: any = (() => {
       try { return computeX01MultiAgg(multiMatches as any[], profileId, profileName); } catch { return null; }
+    })();
+    const x01AggLifetime: any = (() => {
+      try { return computeX01MultiAgg(lifetimeX01Matches as any[], profileId, profileName); } catch { return null; }
     })();
 
     const x01AggSessions = Number(x01AggForHome?.sessions || 0) || 0;
@@ -1160,12 +1200,12 @@ async function buildStatsForProfile(
     }
 
     const recordBestVisitX01 = Math.max(
-      Number(x01AggForHome?.bestVisit ?? 0) || 0,
+      Number(x01AggLifetime?.bestVisit ?? 0) || 0,
       multiBestVisit,
       bestVisitBase
     );
     const recordBestCOX01 = Math.max(
-      Number(x01AggForHome?.bestCheckout ?? 0) || 0,
+      Number(x01AggLifetime?.bestCheckout ?? 0) || 0,
       multiBestCheckout,
       bestCheckoutBase
     );
@@ -1173,7 +1213,7 @@ async function buildStatsForProfile(
     const recordMinDartsGlobal = multiMinDarts !== Infinity ? multiMinDarts : 0;
     const recordMinDarts501 = recordMinDartsGlobal || minDartsRecordBase || 0;
 
-    const recordBestAvg3DX01 = Math.max(x01AggBestAvg3D, x01MultiAvg3D, avg3Base);
+    const recordBestAvg3DX01 = Math.max(Number(x01AggLifetime?.bestAvg3D || 0) || 0, x01MultiAvg3D, avg3Base);
 
     const tAgg = loadTrainingAggForProfile(profileId);
     const trainingAvg3D = tAgg.sessions > 0 ? tAgg.sumAvg3D / tAgg.sessions : 0;

@@ -153,6 +153,7 @@ function normalizeSrc(raw: any): string | null {
 const resolvedProfileMemory = new Map<string, { at: number; value: ProfileLike | null }>();
 const resolvedProfilePending = new Map<string, Promise<ProfileLike | null>>();
 const avatarMirrorScheduled = new Set<string>();
+const lastKnownGoodAvatarByProfile = new Map<string, string>();
 const PROFILE_RESOLVE_CACHE_MS = 15_000;
 
 function clearProfileAvatarResolverCache() {
@@ -489,13 +490,19 @@ export default function ProfileAvatar(props: Props) {
   // Garde la dernière source valide pendant une réhydratation asynchrone.
   // Un delta/store temporairement "lite" ne doit jamais faire clignoter l'avatar
   // puis le remplacer par l'initiale du joueur.
-  const [stickyRawImg, setStickyRawImg] = React.useState<string | null>(() => computedRawImg || null);
+  const [stickyRawImg, setStickyRawImg] = React.useState<string | null>(() =>
+    (inputProfileId && lastKnownGoodAvatarByProfile.get(inputProfileId)) || computedRawImg || null
+  );
   React.useEffect(() => {
-    if (computedRawImg) setStickyRawImg(computedRawImg);
-  }, [computedRawImg]);
-  React.useEffect(() => {
-    if (!effectiveProfileId) setStickyRawImg(null);
+    if (!effectiveProfileId) {
+      setStickyRawImg(null);
+      return;
+    }
+    const remembered = lastKnownGoodAvatarByProfile.get(effectiveProfileId);
+    if (remembered) setStickyRawImg(remembered);
   }, [effectiveProfileId]);
+  // On essaie la nouvelle source, mais une source temporairement cassée ne remplace
+  // jamais la dernière image réellement chargée avec succès.
   const rawImg = computedRawImg || stickyRawImg;
 
   // -------------------------------------------------------------------------
@@ -692,6 +699,10 @@ export default function ProfileAvatar(props: Props) {
             decoding="async"
             onLoad={() => {
               setLoaded(true);
+              if (effectiveProfileId && rawImg) {
+                lastKnownGoodAvatarByProfile.set(effectiveProfileId, rawImg);
+                setStickyRawImg(rawImg);
+              }
               const displayingFreshCachedThumb = cachedThumbFresh && !!cachedThumb && rawImg === cachedThumb;
               if (!useFallback && effectiveProfileId && primaryImg && !displayingFreshCachedThumb) {
                 scheduleAvatarSafetyMirror(effectiveProfileId, primaryImg, {
@@ -701,6 +712,14 @@ export default function ProfileAvatar(props: Props) {
               }
             }}
             onError={() => {
+              const remembered = effectiveProfileId ? lastKnownGoodAvatarByProfile.get(effectiveProfileId) : '';
+              if (remembered && remembered !== rawImg) {
+                setStickyRawImg(remembered);
+                setPrimaryBroken(false);
+                setFallbackBroken(false);
+                setLoaded(false);
+                return;
+              }
               setLoaded(false);
               if (useFallback) setFallbackBroken(true);
               else setPrimaryBroken(true);

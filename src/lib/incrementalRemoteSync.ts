@@ -19,6 +19,7 @@ let inFlight: Promise<void> | null = null;
 let rerun = false;
 
 const personalCloudIncrementalSupport = new Map<string, boolean>();
+const runtimeUnsupportedProviders = new Set<string>();
 
 async function personalCloudSupportsIncremental(provider: 'google_drive' | 'onedrive' | 'dropbox'): Promise<boolean> {
   if (personalCloudIncrementalSupport.has(provider)) return personalCloudIncrementalSupport.get(provider) === true;
@@ -46,6 +47,7 @@ function isRemoteProvider(provider: string): boolean {
 
 async function uploadBundle(provider: string, changes: IncrementalChange[]): Promise<boolean> {
   if (!changes.length) return true;
+  if (runtimeUnsupportedProviders.has(provider)) return false;
   const bundle = {
     version: 1,
     kind: 'multisports_incremental_bundle',
@@ -55,8 +57,19 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
   };
 
   if (provider === 'founder_nas') {
-    await apiPost('/account/incremental-changes', { changes }, { timeoutMs: 15_000 });
-    return true;
+    try {
+      await apiPost('/account/incremental-changes', { changes }, { timeoutMs: 15_000 });
+      return true;
+    } catch (error: any) {
+      const msg = String(error?.message || error || '');
+      const status = Number(error?.status || error?.statusCode || 0);
+      if (status === 404 || /404|not found|cannot post \/account\/incremental-changes/i.test(msg)) {
+        runtimeUnsupportedProviders.add(provider);
+        try { localStorage.setItem('dc_incremental_nas_unsupported_v1', '1'); } catch {}
+        return false;
+      }
+      throw error;
+    }
   }
 
   if (provider === 'cloud_r2') {
@@ -148,7 +161,15 @@ export function initIncrementalRemoteSync(): void {
 
 export async function fetchRemoteIncrementalChanges(provider = selectedProvider()): Promise<IncrementalChange[]> {
   if (provider === 'founder_nas') {
-    const res: any = await apiGet('/account/incremental-changes?limit=200', { timeoutMs: 15_000 }).catch(() => null);
+    if (runtimeUnsupportedProviders.has(provider)) return [];
+    const res: any = await apiGet('/account/incremental-changes?limit=200', { timeoutMs: 15_000 }).catch((error: any) => {
+      const msg = String(error?.message || error || '');
+      const status = Number(error?.status || error?.statusCode || 0);
+      if (status === 404 || /404|not found|cannot get \/account\/incremental-changes/i.test(msg)) {
+        runtimeUnsupportedProviders.add(provider);
+      }
+      return null;
+    });
     return Array.isArray(res?.changes) ? res.changes : [];
   }
 
