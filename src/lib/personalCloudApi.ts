@@ -22,7 +22,18 @@ type NativeOAuthBridge = {
   consumeLaunchUrl(options?: { prefix?: string }): Promise<{ url?: string | null }>;
 };
 
-const NativeOAuth = registerPlugin<NativeOAuthBridge>("SocialAuth");
+let nativeOAuthBridge: NativeOAuthBridge | null = null;
+
+function getNativeOAuthBridge(): NativeOAuthBridge {
+  // PERF/CONSOLE V70: ne pas enregistrer SocialAuth au chargement du bundle web.
+  // socialAuth.ts possède déjà ce plugin et Capacitor avertissait "already registered".
+  // Ici on ne crée le proxy qu'au moment où Android natif en a réellement besoin.
+  if (!isAndroidNativeCloudRuntime()) {
+    throw new Error("Le pont OAuth natif n'est disponible que dans l'application Android.");
+  }
+  if (!nativeOAuthBridge) nativeOAuthBridge = registerPlugin<NativeOAuthBridge>("SocialAuth");
+  return nativeOAuthBridge;
+}
 
 type PersonalCloudPending = {
   provider: PersonalCloudProvider;
@@ -112,7 +123,7 @@ async function pollNativePersonalCloudCallback(): Promise<void> {
 
   nativeCloudPollBusy = true;
   try {
-    const { url } = await NativeOAuth.consumeLaunchUrl({ prefix: NATIVE_CLOUD_CALLBACK_PREFIX });
+    const { url } = await getNativeOAuthBridge().consumeLaunchUrl({ prefix: NATIVE_CLOUD_CALLBACK_PREFIX });
     if (!url) return;
 
     const parsed = new URL(String(url));
@@ -184,7 +195,7 @@ export async function connectPersonalCloud(provider: PersonalCloudProvider): Pro
 
   if (nativeAndroid) {
     rememberPersonalCloudPending(provider);
-    await NativeOAuth.openExternal({ url: String(res.url) });
+    await getNativeOAuthBridge().openExternal({ url: String(res.url) });
     await waitForNativePersonalCloudCallback(provider);
     return;
   }

@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from './apiClient';
+import { getPersonalCloudStatus } from './personalCloudApi';
 import { downloadCloudObject, listCloudObjects, uploadCloudObject } from './cloudStorageApi';
 import { loadStoragePrefs } from './storagePlans';
 import {
@@ -16,6 +17,24 @@ let started = false;
 let timer: number | null = null;
 let inFlight: Promise<void> | null = null;
 let rerun = false;
+
+const personalCloudIncrementalSupport = new Map<string, boolean>();
+
+async function personalCloudSupportsIncremental(provider: 'google_drive' | 'onedrive' | 'dropbox'): Promise<boolean> {
+  if (personalCloudIncrementalSupport.has(provider)) return personalCloudIncrementalSupport.get(provider) === true;
+  try {
+    const status: any = await getPersonalCloudStatus(provider);
+    // Un backend ancien sait gérer les sauvegardes complètes mais ne connaît pas
+    // encore /incremental. Dans ce cas on n'envoie surtout pas une requête vouée
+    // au 404 : le checkpoint manuel/automatique reste le filet de sécurité.
+    const supported = status?.capabilities?.incremental === true || status?.incrementalSupported === true;
+    personalCloudIncrementalSupport.set(provider, supported);
+    return supported;
+  } catch {
+    return false;
+  }
+}
+
 
 function selectedProvider(): string {
   try { return String(loadStoragePrefs().selectedDestination || 'app_local'); } catch { return 'app_local'; }
@@ -55,6 +74,7 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
   }
 
   if (provider === 'google_drive' || provider === 'onedrive' || provider === 'dropbox') {
+    if (!(await personalCloudSupportsIncremental(provider))) return;
     await apiPost(`/account/personal-cloud/${provider}/incremental`, { changes }, { timeoutMs: 30_000, manual: true });
   }
 }
@@ -123,6 +143,7 @@ export async function fetchRemoteIncrementalChanges(provider = selectedProvider(
   }
 
   if (provider === 'google_drive' || provider === 'onedrive' || provider === 'dropbox') {
+    if (!(await personalCloudSupportsIncremental(provider))) return [];
     const res: any = await apiGet(`/account/personal-cloud/${provider}/incremental`, { timeoutMs: 30_000, manual: true }).catch(() => null);
     return Array.isArray(res?.changes) ? res.changes : [];
   }

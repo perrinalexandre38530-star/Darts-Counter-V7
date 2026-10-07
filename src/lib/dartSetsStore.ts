@@ -1350,13 +1350,34 @@ function loadPrimaryAuthoritative(): DartSet[] {
 function stripHeavyInlineImagesForFallback(list: DartSet[]): DartSet[] {
   return (Array.isArray(list) ? list : []).map((item: any) => {
     const next: any = { ...(item || {}) };
-    for (const key of ["mainImageUrl", "thumbImageUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "photoThumbDataUrl", "thumbDataUrl", "thumbImageDataUrl"]) {
-      if (typeof next[key] === "string" && next[key].startsWith("data:image/") && next[key].length > MAX_DARTSET_IMAGE_DATA_URL_CHARS) {
+    const imageKeys = ["mainImageUrl", "thumbImageUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "photoThumbDataUrl", "thumbDataUrl", "thumbImageDataUrl"];
+    const hasDurableAsset = !!(next.mainImageAssetId || next.thumbImageAssetId || next.photoAssetId || next.mediaAssetId || next.assetId);
+
+    if (hasDurableAsset) {
+      // Les octets sont déjà en IndexedDB/R2 : localStorage ne doit conserver que
+      // les références. Même une dataURL de 100 Ko répétée sur 20 sets suffit à
+      // saturer WebView/Chrome et déclencher les freezes observés.
+      for (const key of imageKeys) {
+        if (typeof next[key] === "string" && next[key].startsWith("data:image/")) {
+          if (key === "mainImageUrl") next[key] = "";
+          else delete next[key];
+        }
+      }
+    } else {
+      // Legacy sans asset : ne jamais dupliquer la même photo dans plusieurs champs.
+      let keptInline = false;
+      for (const key of imageKeys) {
+        const value = next[key];
+        if (typeof value !== "string" || !value.startsWith("data:image/")) continue;
+        if (!keptInline && value.length <= MAX_DARTSET_IMAGE_DATA_URL_CHARS) {
+          keptInline = true;
+          continue;
+        }
         if (key === "mainImageUrl") next[key] = "";
         else delete next[key];
       }
     }
-    if (next.kind === "photo" && !next.mainImageUrl && !next.photoDataUrl && !next.photoAssetId) next.kind = next.presetId ? "preset" : "plain";
+    if (next.kind === "photo" && !next.mainImageUrl && !next.photoDataUrl && !next.photoAssetId && !next.mainImageAssetId) next.kind = next.presetId ? "preset" : "plain";
     return next;
   }) as DartSet[];
 }
@@ -1388,35 +1409,21 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
   rememberImagesForSets(cleanInput);
   releaseDisposableDartSetLocalStorageSpace(cleanInput);
   const sanitized = mergePrimaryDuplicates(cleanInput).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
+  // PERF/QUOTA V70 : localStorage n'est plus un dépôt média. On compacte AVANT
+  // le premier setItem au lieu d'essayer d'abord la version lourde puis d'attendre
+  // un QuotaExceededError. Les images durables restent dans IndexedDB/R2.
+  const localStoragePayload = stripHeavyInlineImagesForFallback(sanitized);
   let saved = false;
 
   try {
-    // Les visuels originaux sont déjà protégés dans IndexedDB/R2 par DartSetsPanel.
-    // localStorage ne garde qu'une version bornée : une dataURL multi-Mo ne doit
-    // jamais pouvoir saturer le quota et bloquer la navigation.
-    saved = !!safeLocalStorageSetJson(STORAGE_KEY, sanitized, {
+    saved = !!safeLocalStorageSetJson(STORAGE_KEY, localStoragePayload, {
       sanitizeImages: true,
       imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
-      compressAboveChars: 8_000,
+      compressAboveChars: 4_000,
     });
   } catch (err) {
     console.warn("[dartSetsStore] save compact error", err);
     saved = false;
-  }
-
-  if (!saved) {
-    try {
-      const stripped = stripHeavyInlineImagesForFallback(sanitized);
-      saved = !!safeLocalStorageSetJson(STORAGE_KEY, stripped, {
-        sanitizeImages: true,
-        imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
-        compressAboveChars: 4_000,
-      });
-      if (saved) diag("save:fallback-stripped", { reason, count: stripped.length });
-    } catch (fallbackErr) {
-      console.warn("[dartSetsStore] fallback save error", fallbackErr);
-      saved = false;
-    }
   }
 
   if (!saved) {
