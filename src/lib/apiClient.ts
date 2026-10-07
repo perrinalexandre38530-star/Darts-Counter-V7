@@ -494,7 +494,7 @@ async function parseJsonSafe(
   }
 }
 
-function readAccountAccessToken(): string {
+export function readAccountAccessToken(): string {
   const raw = (
     safeReadLocalStorage("dc_online_auth_supabase_v1") ||
     safeReadSessionStorage("dc_online_auth_supabase_v1")
@@ -538,7 +538,15 @@ function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   // au provider NAS courant. Quand la session active est Supabase, envoyer son
   // access token au backend permet au middleware hybride de retrouver le même
   // compte canonique. Cela supprime la dépendance aléatoire à un ancien JWT NAS.
-  const token = normalizedPath.startsWith("/account/personal-cloud/")
+  const acceptsAccountSession =
+    normalizedPath.startsWith("/account/personal-cloud/") ||
+    normalizedPath.startsWith("/account/backups/") ||
+    normalizedPath.startsWith("/sync/");
+
+  // /sync/* accepte désormais le bridge Supabase -> NAS pour les comptes NAS
+  // autorisés. Cela permet de sauvegarder sur le NAS depuis une session publique
+  // valide sans exiger qu'un ancien JWT NAS soit encore présent sur cet appareil.
+  const token = acceptsAccountSession
     ? (readAccountAccessToken() || readNasAccessToken())
     : readNasAccessToken();
 

@@ -10,7 +10,7 @@ import { useLang } from "../contexts/LangContext";
 import tickerStorageBackupFr from "../assets/tickers/ticker_storage_backup_fr.webp";
 import tickerStorageBackupEn from "../assets/tickers/ticker_storage_backup_en.webp";
 import { useAuthOnline } from "../hooks/useAuthOnline";
-import { apiPost, buildApiUrl, readNasAccessToken } from "../lib/apiClient";
+import { apiPost, buildApiUrl, readAccountAccessToken, readNasAccessToken } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot, loadStore, setStorageUser } from "../lib/storage";
 import {
   createLocalMemorySlot,
@@ -430,13 +430,26 @@ function persistNasAuthForVault(authLike?: any): string {
 async function ensureNasTokenFromOnlineRuntime(authLike?: any): Promise<string> {
   let token = persistNasAuthForVault(authLike);
   if (token) return token;
+
+  // Un compte Supabase public autorisé au NAS n'a volontairement pas de JWT NAS
+  // local. Le backend /sync/* sait maintenant valider son token Supabase puis
+  // résoudre le bridge canonique vers le compte NAS fondateur.
+  if (isPublicSupabaseVaultAuth(authLike)) {
+    const accountToken = readAuthTokenFromObject(authLike || {}) || readAccountAccessToken();
+    if (accountToken) return accountToken;
+  }
+
   try {
     const mod: any = await import("../lib/onlineApi");
     const session = await mod?.onlineApi?.getCurrentSession?.();
     token = persistNasAuthForVault(session);
     if (token) return token;
+    if (isPublicSupabaseVaultAuth(session)) {
+      const accountToken = readAuthTokenFromObject(session || {}) || readAccountAccessToken();
+      if (accountToken) return accountToken;
+    }
   } catch {}
-  return persistNasAuthForVault(authLike);
+  return readAccountAccessToken() || persistNasAuthForVault(authLike);
 }
 
 function rememberAuthKeys() {

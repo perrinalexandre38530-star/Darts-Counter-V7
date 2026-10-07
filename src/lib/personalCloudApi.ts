@@ -249,7 +249,7 @@ export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvide
       // Une sauvegarde complète peut dépasser 10 s : compression côté client,
       // tunnel NAS puis upload Google Drive. Le timeout générique des POST était
       // trop court et produisait le comportement « une fois sur quinze ».
-      timeoutMs: 120_000,
+      timeoutMs: 45_000,
       manual: true,
     }) as any;
   }
