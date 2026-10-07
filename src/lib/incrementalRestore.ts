@@ -28,8 +28,30 @@ export async function applyIncrementalChanges(changes: IncrementalChange[], opts
           if (change.op === 'delete') {
             if (idx >= 0) profiles.splice(idx, 1);
           } else if (change.payload && typeof change.payload === 'object') {
-            if (idx >= 0) profiles[idx] = change.payload;
-            else profiles.push(change.payload);
+            const incoming: any = change.payload;
+            const current: any = idx >= 0 ? profiles[idx] : null;
+            const meaningful = (value: any) => {
+              if (value == null) return false;
+              if (typeof value === 'string') return value.trim().length > 0;
+              if (Array.isArray(value)) return value.length > 0;
+              if (typeof value === 'object') return Object.keys(value).length > 0;
+              return true;
+            };
+            const merged: any = { ...(current || {}) };
+            for (const [key, value] of Object.entries(incoming)) {
+              if (meaningful(value) || !meaningful(merged[key])) merged[key] = value;
+            }
+            merged.privateInfo = { ...((current as any)?.privateInfo || {}), ...((incoming as any)?.privateInfo || {}) };
+            merged.preferences = { ...((current as any)?.preferences || {}), ...((incoming as any)?.preferences || {}) };
+            const localUpdatedAt = Number((current as any)?.updatedAt || (current as any)?.avatarUpdatedAt || 0) || 0;
+            const remoteUpdatedAt = Number(change.updatedAt || (incoming as any)?.updatedAt || 0) || 0;
+            if (current && localUpdatedAt > remoteUpdatedAt && remoteUpdatedAt > 0) {
+              for (const [key, value] of Object.entries(incoming)) {
+                if (!meaningful((current as any)[key]) && meaningful(value)) merged[key] = value;
+              }
+            }
+            if (idx >= 0) profiles[idx] = merged;
+            else profiles.push(merged);
           }
           await saveStore({ ...store, profiles } as any, { skipAsyncNormalize: true });
           applied += 1;

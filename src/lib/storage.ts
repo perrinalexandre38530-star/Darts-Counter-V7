@@ -2422,8 +2422,10 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     // Journal incrémental compact : on ne conserve que la dernière révision de
     // chaque profil + quelques métadonnées de compte. Aucun snapshot complet ici.
     try {
-      const profiles = Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles : [];
-      for (const profile of profiles) {
+      const journalProfiles = Array.isArray((compat.store as any)?.profiles)
+        ? (compat.store as any).profiles
+        : (Array.isArray((guardedInput as any)?.profiles) ? (guardedInput as any).profiles : []);
+      for (const profile of journalProfiles) {
         const id = String((profile as any)?.id || "").trim();
         if (id) void recordIncrementalChange({ entityType: "profile", entityId: id, payload: profile, updatedAt: Number((profile as any)?.updatedAt || Date.now()) });
       }
@@ -3403,13 +3405,13 @@ export type PortableAccountRestoreReport = {
 };
 
 export type CloudSnapshotImportReport = {
-  mode: "replace" | "merge";
+  mode: "replace" | "merge" | "smart-replace";
   portable: PortableAccountRestoreReport | null;
   runtimeRefreshed: boolean;
 };
 
 export type CloudSnapshotImportOptions = {
-  mode?: "replace" | "merge";
+  mode?: "replace" | "merge" | "smart-replace";
   onProgress?: (progress: number, message: string) => void;
 };
 
@@ -3899,16 +3901,16 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       report(1, "Nettoyage sécurisé de l’ancien état local…");
       await nukeAll();
       clearLocalStorageDc();
-      // Les miniatures avatar existent aussi en RAM/session. Sans purge explicite,
-      // un ancien avatar peut survivre au remplacement complet du compte et gagner
-      // temporairement sur l'avatar restauré du profil actif.
       resetAvatarCacheRuntime({ clearPersistent: true });
+      await yieldIfNeeded(true);
+    } else if (mode === "smart-replace") {
+      report(1, "Comparaison avec l’état déjà présent sur cet appareil…");
       await yieldIfNeeded(true);
     }
 
     report(4, "Restauration du stockage et de l’historique…");
     await importAll(dump, {
-      historyReplace: mode === "replace",
+      historyReplace: mode !== "merge",
       onProgress: (progress, message) => report(4 + Math.round(progress * 0.56), message),
     });
     await yieldIfNeeded(true);

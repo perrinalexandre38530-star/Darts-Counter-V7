@@ -44,8 +44,8 @@ function isRemoteProvider(provider: string): boolean {
   return ['founder_nas', 'cloud_r2', 'google_drive', 'onedrive', 'dropbox'].includes(provider);
 }
 
-async function uploadBundle(provider: string, changes: IncrementalChange[]): Promise<void> {
-  if (!changes.length) return;
+async function uploadBundle(provider: string, changes: IncrementalChange[]): Promise<boolean> {
+  if (!changes.length) return true;
   const bundle = {
     version: 1,
     kind: 'multisports_incremental_bundle',
@@ -56,7 +56,7 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
 
   if (provider === 'founder_nas') {
     await apiPost('/account/incremental-changes', { changes }, { timeoutMs: 15_000 });
-    return;
+    return true;
   }
 
   if (provider === 'cloud_r2') {
@@ -70,31 +70,49 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
       gzip: true,
       metadata: { backupKind: 'incremental_journal', updatedAt: bundle.updatedAt },
     });
-    return;
+    return true;
   }
 
   if (provider === 'google_drive' || provider === 'onedrive' || provider === 'dropbox') {
-    if (!(await personalCloudSupportsIncremental(provider))) return;
+    if (!(await personalCloudSupportsIncremental(provider))) return false;
     await apiPost(`/account/personal-cloud/${provider}/incremental`, { changes }, { timeoutMs: 30_000, manual: true });
+    return true;
   }
+  return false;
 }
 
-export async function flushIncrementalRemoteSync(): Promise<void> {
+export type IncrementalSyncResult = {
+  provider: string;
+  attempted: number;
+  synced: number;
+  supported: boolean;
+  error?: string | null;
+};
+
+export async function flushIncrementalRemoteSync(): Promise<IncrementalSyncResult> {
   if (inFlight) {
     rerun = true;
-    return inFlight;
+    await inFlight;
+    return { provider: selectedProvider(), attempted: 0, synced: 0, supported: true };
   }
+  let result: IncrementalSyncResult = { provider: selectedProvider(), attempted: 0, synced: 0, supported: true };
   inFlight = (async () => {
     const provider = selectedProvider();
+    result.provider = provider;
     if (!isRemoteProvider(provider)) return;
     const changes = await listUnsyncedIncrementalChanges(provider);
+    result.attempted = changes.length;
     if (!changes.length) return;
-    await uploadBundle(provider, changes);
+    const uploaded = await uploadBundle(provider, changes);
+    result.supported = uploaded;
+    if (!uploaded) return;
     await markIncrementalProviderSynced(provider, changes);
+    result.synced = changes.length;
   })().catch((error) => {
+    result.error = error?.message || String(error);
     try {
       localStorage.setItem('dc_incremental_remote_last_error_v1', JSON.stringify({
-        at: new Date().toISOString(), provider: selectedProvider(), message: error?.message || String(error),
+        at: new Date().toISOString(), provider: selectedProvider(), message: result.error,
       }));
     } catch {}
   }).finally(() => {
@@ -104,7 +122,8 @@ export async function flushIncrementalRemoteSync(): Promise<void> {
       scheduleIncrementalRemoteSync();
     }
   });
-  return inFlight;
+  await inFlight;
+  return result;
 }
 
 export function scheduleIncrementalRemoteSync(): void {

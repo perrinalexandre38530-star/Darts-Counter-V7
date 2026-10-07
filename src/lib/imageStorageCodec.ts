@@ -50,10 +50,14 @@ function noteLocalStorageFailure(key: string, err: any) {
   const previous = storageFailureState.get(key);
   const sameBurst = previous && now - previous.firstAt <= STORAGE_FAILURE_WINDOW_MS;
   const count = sameBurst ? previous!.count + 1 : 1;
-  const blockedUntil = isQuotaExceededError(err) && count >= 3 ? now + STORAGE_QUOTA_COOLDOWN_MS : 0;
+  const quotaExceeded = isQuotaExceededError(err);
+  // Quota plein = échec déterministe : ne pas répéter trois fois les coûteux
+  // sanitize -> stringify -> LZString -> setItem sur le thread principal.
+  const blockedUntil = quotaExceeded ? now + STORAGE_QUOTA_COOLDOWN_MS : 0;
   const lastWarnAt = previous?.lastWarnAt || 0;
   storageFailureState.set(key, { count, firstAt: sameBurst ? previous!.firstAt : now, blockedUntil, lastWarnAt: now });
-  if (now - lastWarnAt >= STORAGE_WARN_COOLDOWN_MS) {
+  const debugQuota = typeof window !== "undefined" && (window as any).__STORAGE_QUOTA_DEBUG === true;
+  if ((!quotaExceeded || debugQuota) && now - lastWarnAt >= STORAGE_WARN_COOLDOWN_MS) {
     console.warn("[imageStorageCodec] set failed", key, err);
     if (blockedUntil) console.warn("[imageStorageCodec] write circuit open", key, `${STORAGE_QUOTA_COOLDOWN_MS / 1000}s`);
   }

@@ -95,6 +95,9 @@ import {
 } from "../lib/externalBackupTarget";
 import { connectPersonalCloud, downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
 import { registerAccountLatestBackup } from "../lib/latestBackupApi";
+import { fetchRemoteIncrementalChanges, flushIncrementalRemoteSync } from "../lib/incrementalRemoteSync";
+import { applyIncrementalChanges } from "../lib/incrementalRestore";
+import { listUnsyncedIncrementalChanges } from "../lib/incrementalBackupJournal";
 import {
   isBackgroundBackupRunning,
   startBackgroundBackupJob,
@@ -2650,7 +2653,7 @@ export default function StorageVaultPage({ go }: Props) {
       if (!restored.ok) throw new Error(restored.error || "Restauration CloudBackup impossible.");
     } else {
       importReport = await importCloudSnapshot(snapshot, {
-        mode: "replace",
+        mode: "smart-replace",
         onProgress: (progress, message) => {
           // L'import local occupe la plage 64 → 90 du ticker global. Les étapes
           // internes remontent désormais réellement au lieu de rester figées à 64 %.
@@ -2659,6 +2662,18 @@ export default function StorageVaultPage({ go }: Props) {
       });
     }
     restoreAuth();
+
+    try {
+      const manifestTime = Date.parse(String((snapshot as any)?.backupManifest?.createdAt || (snapshot as any)?.exportedAt || "")) || 0;
+      const deltaProvider = provider === "nas" ? "founder_nas" : provider === "cloud" ? "cloud_r2" : provider;
+      const deltas = await fetchRemoteIncrementalChanges(deltaProvider).catch(() => []);
+      if (Array.isArray(deltas) && deltas.length) {
+        report(89, `Application de ${deltas.length} changement(s) plus récent(s)…`, "import");
+        await applyIncrementalChanges(deltas, { since: manifestTime });
+      }
+    } catch (deltaError) {
+      console.warn("[StorageVault] incremental replay skipped", deltaError);
+    }
 
     report(91, "Contrôle final des profils restaurés…", "finalize");
     try {
@@ -3378,6 +3393,48 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         setBusy(false);
       }
       return;
+    }
+
+    // SAUVEGARDE MANUELLE INCRÉMENTALE : si un checkpoint complet existe déjà,
+    // le bouton Sauvegarder n'a plus besoin de reconstruire/recompresser/réenvoyer
+    // tout le compte pour une poignée de changements. Le pipeline complet validé
+    // reste intact et sert automatiquement lorsqu'aucun checkpoint n'existe ou
+    // lorsque le provider ne supporte pas les deltas.
+    if (destination === "founder_nas" || destination === "cloud_r2" || isPersonalCloudProvider(destination)) {
+      try {
+        const deltaProvider = destination;
+        const pending = await listUnsyncedIncrementalChanges(deltaProvider);
+        let hasCheckpoint = false;
+        if (destination === "founder_nas") {
+          const slots = await withFastFallback(listNasMemorySlots(), [], 2_500);
+          hasCheckpoint = Array.isArray(slots) && slots.some((slot: any) => slot?.latest || slot?.id === "latest");
+        } else if (destination === "cloud_r2") {
+          const slots = await withFastFallback(listCloudVaultBackups(1, false), [], 2_500);
+          hasCheckpoint = Array.isArray(slots) && slots.length > 0;
+        } else {
+          const meta = await withFastFallback(getPersonalCloudBackupMeta(destination), null as any, 2_500);
+          hasCheckpoint = !!meta;
+        }
+
+        if (hasCheckpoint && pending.length === 0) {
+          setMessage(`Sauvegarde ${destinationLabel} déjà à jour : aucun changement à envoyer.`);
+          return;
+        }
+
+        if (hasCheckpoint && pending.length > 0) {
+          setMessage(`Synchronisation rapide de ${pending.length} changement(s) vers ${destinationLabel}…`);
+          const startedAt = performance.now();
+          const syncResult = await flushIncrementalRemoteSync();
+          if (syncResult.supported && syncResult.synced > 0 && !syncResult.error) {
+            setMessage(`Sauvegarde incrémentale terminée en ${Math.max(1, Math.round(performance.now() - startedAt))} ms · ${syncResult.synced} changement(s) envoyé(s) · checkpoint complet conservé.`);
+            return;
+          }
+          // Provider ancien / endpoint indisponible : on retombe sur le chemin
+          // complet éprouvé ci-dessous, sans perdre la sauvegarde manuelle.
+        }
+      } catch {
+        // Toute incertitude => chemin complet existant.
+      }
     }
 
     setMessage(`Sauvegarde vers ${destinationLabel} lancée en arrière-plan. Tu peux changer de page et continuer à utiliser l'application.`);

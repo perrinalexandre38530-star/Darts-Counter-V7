@@ -42,6 +42,7 @@ import type { Store } from "../lib/types";
 import type { Tournament, TournamentMatch } from "../lib/tournaments/types";
 import { PageAdBanner } from "../monetization/AdSlot";
 import ChallengePlay from "./ChallengePlay";
+import { getChallengeObjectiveImage } from "../lib/challengeObjectiveVisuals";
 
 import { startMatch, submitResult, buildInitialMatches } from "../lib/tournaments/engine";
 import {
@@ -119,7 +120,11 @@ const CHALLENGE_VIEW_CSS = `
 .chv-page .chv-row-sub{display:block;margin-top:2px;font-size:7px;color:#7f8b9a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .chv-page .chv-objective-row{grid-template-columns:32px minmax(0,1fr) auto auto;}
 .chv-page .chv-objective-strip{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 6px;scrollbar-width:thin;}
-.chv-page .chv-objective-chip{flex:0 0 auto;min-width:62px;min-height:36px;border-radius:11px;padding:5px 9px;border:1px solid rgba(255,255,255,.09);background:#070d15;color:#dce5ef;font-size:8px;font-weight:1000;cursor:pointer;}
+.chv-page .chv-objective-chip{position:relative;flex:0 0 auto;min-width:62px;min-height:36px;border-radius:11px;padding:5px 28px 5px 9px;border:1px solid rgba(255,255,255,.09);background:#070d15;color:#dce5ef;font-size:8px;font-weight:1000;cursor:pointer;overflow:hidden;}
+.chv-page .chv-objective-chip .chv-objective-thumb{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:23px;height:22px;opacity:.9;pointer-events:none;}
+.chv-page .chv-objective-thumb{display:inline-flex;align-items:center;justify-content:center;width:28px;height:26px;flex:0 0 auto;overflow:hidden;}
+.chv-page .chv-objective-thumb img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 2px 5px rgba(0,0,0,.72));}
+.chv-page .chv-objective-hero-thumb{width:54px;height:48px;padding:3px;border-radius:11px;border:1px solid rgba(255,181,74,.16);background:#050a10;}
 .chv-page .chv-objective-chip[data-active="true"]{border-color:rgba(255,181,74,.52);background:linear-gradient(180deg,rgba(83,48,8,.96),rgba(36,22,7,.96));color:#ffcf73;box-shadow:0 0 18px rgba(255,181,74,.11);}
 .chv-page .chv-progress{height:6px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden;}
 .chv-page .chv-progress>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#ffb54a,#65e6a2);}
@@ -1301,6 +1306,12 @@ function challengeObjectiveLabel(value: any) {
   return v === "any-double" ? "DOUBLES" : v === "any-triple" ? "TRIPLES" : v === "bull" ? "BULL" : v;
 }
 
+function ChallengeObjectiveThumb({ objective, className = "", title = "" }: { objective: any; className?: string; title?: string }) {
+  return <span className={`chv-objective-thumb ${className}`.trim()} aria-hidden="true" title={title || challengeObjectiveLabel(objective)}>
+    <img src={getChallengeObjectiveImage(objective)} alt="" />
+  </span>;
+}
+
 function historyChallengeObjective(rec: any) {
   return normalizeChallengeObjective(rec?.payload?.config?.target ?? rec?.config?.target ?? rec?.game?.target ?? rec?.summary?.target ?? rec?.payload?.summary?.target ?? rec?.objective ?? "20");
 }
@@ -1923,6 +1934,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   const [activeChallengeAttempt, setActiveChallengeAttempt] = React.useState<any>(null);
   const [challengeStandingScope, setChallengeStandingScope] = React.useState<"cycle" | "season">("cycle");
   const [challengeObjectiveFocus, setChallengeObjectiveFocus] = React.useState<string>("");
+  const [challengeResultsFocus, setChallengeResultsFocus] = React.useState<string>("all");
   const [adminSeasonName, setAdminSeasonName] = React.useState("");
   const [adminSeasonMaxCycles, setAdminSeasonMaxCycles] = React.useState("");
   const [adminSeasonEndDate, setAdminSeasonEndDate] = React.useState("");
@@ -2611,6 +2623,17 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
         };
       });
   }, [isChallengeCompetition, linkedHistoryMatches, playersById, tournamentPlayers]);
+
+  const challengeFilteredResults = React.useMemo(() => {
+    const sorted = linkedHistoryMatches
+      .slice()
+      .sort((a: any, b: any) => Number(b?.createdAt || b?.linkedAt || 0) - Number(a?.createdAt || a?.linkedAt || 0));
+    const focus = normalizeChallengeObjective(challengeResultsFocus || "");
+    if (!challengeResultsFocus || challengeResultsFocus === "all" || !challengeObjectives.includes(focus)) return sorted;
+    return sorted.filter((link: any) =>
+      normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective || historyChallengeObjective(link)) === focus
+    );
+  }, [linkedHistoryMatches, challengeResultsFocus, challengeObjectives]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
@@ -5290,7 +5313,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
                       {challengePlayerDashboard?.playable?.length ? (()=>{
                         const next=challengePlayerDashboard.playable[0];
-                        return <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:10,alignItems:"center",padding:"10px",borderRadius:13,border:"1px solid rgba(101,230,162,.16)",background:"rgba(8,24,19,.88)"}}>
+                        return <div style={{display:"grid",gridTemplateColumns:"54px minmax(0,1fr) auto",gap:9,alignItems:"center",padding:"10px",borderRadius:13,border:"1px solid rgba(101,230,162,.16)",background:"rgba(8,24,19,.88)"}}>
+                          <ChallengeObjectiveThumb objective={next.objective} className="chv-objective-hero-thumb" />
                           <div style={{minWidth:0}}>
                             <b style={{display:"block",fontSize:15,color:"#65e6a2"}}>{challengeObjectiveLabel(next.objective)}</b>
                             <span className="chv-sub" style={{display:"block",marginTop:3}}>{next.attempts}/{next.maxAttempts} essais · {challengeObjectiveVisits(next.objective)} tours{next.standing?` · meilleur ${next.standing.score} · #${next.standing.rank}`:""}</span>
@@ -5428,7 +5452,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
               <div style={{display:"grid",gap:10}}>
                 {isChallengePerformanceCompetition ? <div style={{borderRadius:18,border:"1px solid rgba(255,181,74,.28)",background:"linear-gradient(180deg,rgba(38,25,8,.98),rgba(5,8,13,.99))",padding:12}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>🎯 CHALLENGE · {challengeCompetitionFormat === "objectives" ? "CHAMPIONNAT OBJECTIFS" : challengeCompetitionFormat === "free" ? "COMPÉTITION LIBRE" : "LIGUES & DIVISIONS"}</b><div style={{fontSize:9,opacity:.72,marginTop:3}}>Pas de faux matchs : chaque objectif possède son classement, puis les points sont cumulés au général.</div></div><MiniBadge label="Essais / objectif" value={challengeAttemptsPerObjective} accent={TAB_COLORS.objectives}/></div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>{challengeObjectives.map(obj=><button key={obj} onClick={()=>setTab("objectives")} style={{borderRadius:999,border:"1px solid rgba(255,181,74,.35)",background:"rgba(255,181,74,.08)",color:"#fff",padding:"7px 9px",fontWeight:1000,fontSize:8.5}}>{challengeObjectiveLabel(obj)}</button>)}</div>
+                  <div className="chv-objective-strip" style={{marginTop:9}}>{challengeObjectives.map(obj=><button key={obj} type="button" className="chv-objective-chip" onClick={()=>{setChallengeObjectiveFocus(obj);setTab("objectives")}}><ChallengeObjectiveThumb objective={obj}/><b style={{display:"block",fontSize:8.5}}>{challengeObjectiveLabel(obj)}</b><span style={{display:"block",marginTop:2,fontSize:6.4,color:challengeObjectiveIsOpen(obj)?"#65e6a2":"#8d9aac"}}>{challengeObjectiveIsOpen(obj)?"OUVERT":"VOIR"}</span></button>)}</div>
                   <div style={{display:"grid",gridTemplateColumns:isCompetitionAdmin?"1fr 1fr":"1fr",gap:7,marginTop:10}}>
                     {!publicSpectator?<button type="button" onClick={loadAttachableHistory} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(255,230,138,.32)",background:"rgba(72,55,12,.92)",color:"#fff",fontWeight:1000}}>＋ AJOUTER UN ESSAI / HISTORIQUE</button>:<div style={{minHeight:38,borderRadius:11,border:"1px solid rgba(255,255,255,.08)",background:"#060a10",display:"grid",placeItems:"center",fontSize:8,opacity:.62}}>MODE CONSULTATION</div>}
                     {!publicSpectator&&isCompetitionAdmin?<button type="button" onClick={()=>{setTab("admin");setAdminPlayerPickerOpen(true)}} style={{minHeight:38,borderRadius:11,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>＋ AJOUTER DES JOUEURS</button>:null}
@@ -5463,17 +5487,28 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     })}
                   </div>
                 </div>:null}
-                <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10}}>
+                {isChallengePerformanceCompetition ? <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10}}>
                   <div style={{borderRadius:18,border:"1px solid rgba(101,230,162,.22)",background:"linear-gradient(180deg,rgba(8,22,17,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.standings}}>✓ RÉSULTATS</b><strong style={{color:TAB_COLORS.standings,fontSize:16}}>{doneMatches.length}</strong></div>
-                    <div style={{fontSize:8.5,opacity:.62,marginTop:4}}>{doneMatches.length?"Dernières rencontres terminées":"Aucun résultat pour le moment"}</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.standings}}>✓ ESSAIS ENREGISTRÉS</b><strong style={{color:TAB_COLORS.standings,fontSize:16}}>{linkedHistoryMatches.length}</strong></div>
+                    <div style={{fontSize:8.5,opacity:.62,marginTop:4}}>{linkedHistoryMatches.length?"Les derniers essais alimentent immédiatement les classements.":"Aucun essai pour le moment."}</div>
                   </div>
-                  <div style={{borderRadius:18,border:"1px solid rgba(255,230,138,.22)",background:"linear-gradient(180deg,rgba(27,23,10,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.linked}}>＋ HISTORIQUE</b><strong style={{color:TAB_COLORS.linked,fontSize:16}}>{linkedHistoryMatches.length}</strong></div>
-                    {!publicSpectator?<button type="button" onClick={loadAttachableHistory} style={{marginTop:7,width:"100%",border:"1px solid rgba(255,230,138,.25)",borderRadius:10,padding:"7px 8px",fontWeight:950,fontSize:8.5,cursor:"pointer",color:"#ffe68a",background:"rgba(255,230,138,.07)"}}>AJOUTER UNE PARTIE</button>:null}
+                  <div style={{borderRadius:18,border:"1px solid rgba(255,181,74,.22)",background:"linear-gradient(180deg,rgba(35,23,8,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.objectives}}>🎯 OBJECTIFS CLASSÉS</b><strong style={{color:TAB_COLORS.objectives,fontSize:16}}>{challengeObjectives.filter((objective:string)=>(challengeObjectiveStandings[objective]||[]).length>0).length}/{challengeObjectives.length}</strong></div>
+                    <div style={{fontSize:8.5,opacity:.62,marginTop:4}}>Chaque objectif conserve son classement, puis attribue ses points au général.</div>
                   </div>
-                </div>
-                {doneMatches.length?<div style={{display:"grid",gap:8}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,TAB_COLORS.standings))}</div>:null}
+                </div> : <>
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10}}>
+                    <div style={{borderRadius:18,border:"1px solid rgba(101,230,162,.22)",background:"linear-gradient(180deg,rgba(8,22,17,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.standings}}>✓ RÉSULTATS</b><strong style={{color:TAB_COLORS.standings,fontSize:16}}>{doneMatches.length}</strong></div>
+                      <div style={{fontSize:8.5,opacity:.62,marginTop:4}}>{doneMatches.length?"Dernières rencontres terminées":"Aucun résultat pour le moment"}</div>
+                    </div>
+                    <div style={{borderRadius:18,border:"1px solid rgba(255,230,138,.22)",background:"linear-gradient(180deg,rgba(27,23,10,.98),rgba(5,8,13,.99))",padding:11,minWidth:0}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:7}}><b style={{fontSize:11,color:TAB_COLORS.linked}}>＋ HISTORIQUE</b><strong style={{color:TAB_COLORS.linked,fontSize:16}}>{linkedHistoryMatches.length}</strong></div>
+                      {!publicSpectator?<button type="button" onClick={loadAttachableHistory} style={{marginTop:7,width:"100%",border:"1px solid rgba(255,230,138,.25)",borderRadius:10,padding:"7px 8px",fontWeight:950,fontSize:8.5,cursor:"pointer",color:"#ffe68a",background:"rgba(255,230,138,.07)"}}>AJOUTER UNE PARTIE</button>:null}
+                    </div>
+                  </div>
+                  {doneMatches.length?<div style={{display:"grid",gap:8}}>{doneMatches.slice().sort((a:any,b:any)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,3).map((m:any)=>renderMatchCard(m,TAB_COLORS.standings))}</div>:null}
+                </>}
               </div>
             </>
             )
@@ -5576,11 +5611,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     {challengePlayerDashboard.objectives.map((row:any)=>{
                       const state=row.completed?"TERMINÉ":row.open?"OUVERT":String(row.status)==="closed"?"CLOS":"À VENIR";
                       const tone=row.completed?"#65e6a2":row.open?"#22e6ff":String(row.status)==="closed"?"#7c8796":"#ffb54a";
-                      return <div key={`my-program-${row.objective}`} style={{display:"grid",gridTemplateColumns:"76px minmax(0,1fr) auto",gap:7,alignItems:"center",padding:"7px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"#060b12"}}>
+                      return <button type="button" key={`my-program-${row.objective}`} onClick={()=>{setChallengeObjectiveFocus(row.objective);setTab("objectives")}} style={{display:"grid",gridTemplateColumns:"28px 64px minmax(0,1fr) auto",gap:7,alignItems:"center",padding:"7px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"#060b12",color:"#fff",textAlign:"left",cursor:"pointer",width:"100%"}}>
+                        <ChallengeObjectiveThumb objective={row.objective}/>
                         <b style={{fontSize:8.5,color:tone}}>{challengeObjectiveLabel(row.objective)}</b>
-                        <div style={{minWidth:0,fontSize:7.7,opacity:.68}}>{row.attempts}/{row.maxAttempts} essais{row.standing?` · meilleur ${row.standing.score} · #${row.standing.rank}`:" · aucun score"}</div>
+                        <div style={{minWidth:0,fontSize:7.7,opacity:.68,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.attempts}/{row.maxAttempts} essais{row.standing?` · meilleur ${row.standing.score} · #${row.standing.rank}`:" · aucun score"}</div>
                         <span style={{fontSize:7.2,fontWeight:1000,color:tone}}>{state}</span>
-                      </div>
+                      </button>
                     })}
                   </div>
                 </section>
@@ -5617,7 +5653,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                       const status=String(round?.status||"open");
                       const active=normalizeChallengeObjective(challengeFocusedObjective)===normalizeChallengeObjective(objective);
                       const tone=open?"#65e6a2":status==="closed"?"#778391":"#ffb54a";
-                      return <button key={objective} type="button" className="chv-objective-chip" data-active={active?"true":"false"} onClick={()=>setChallengeObjectiveFocus(objective)}><b style={{display:"block",fontSize:9,color:active?"#ffcf73":"#e5ebf2"}}>{challengeObjectiveLabel(objective)}</b><span style={{display:"block",marginTop:2,fontSize:6.6,color:tone}}>{open?"OUVERT":status==="closed"?"CLOS":"À VENIR"}</span></button>
+                      return <button key={objective} type="button" className="chv-objective-chip" data-active={active?"true":"false"} onClick={()=>setChallengeObjectiveFocus(objective)}><ChallengeObjectiveThumb objective={objective}/><b style={{display:"block",fontSize:9,color:active?"#ffcf73":"#e5ebf2"}}>{challengeObjectiveLabel(objective)}</b><span style={{display:"block",marginTop:2,fontSize:6.6,color:tone}}>{open?"OUVERT":status==="closed"?"CLOS":"À VENIR"}</span></button>
                     })}
                   </div>
                 </section>
@@ -5633,7 +5669,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   const top3=rows.slice(0,3);
                   return <section className="chv-panel" style={{borderColor:"rgba(255,181,74,.20)"}}>
                     <div className="chv-section-head">
-                      <div style={{minWidth:0}}><div className="chv-eyebrow">OBJECTIF SÉLECTIONNÉ</div><div className="chv-title" style={{fontSize:17,color:"#ffcf73",marginTop:3}}>{challengeObjectiveLabel(objective)}</div><div className="chv-sub" style={{marginTop:4}}>Meilleur essai retenu · {visits} tours · {attemptLimit} essai{attemptLimit>1?"s":""} maximum</div></div>
+                      <div style={{display:"flex",alignItems:"center",gap:9,minWidth:0}}><ChallengeObjectiveThumb objective={objective} className="chv-objective-hero-thumb"/><div style={{minWidth:0}}><div className="chv-eyebrow">OBJECTIF SÉLECTIONNÉ</div><div className="chv-title" style={{fontSize:17,color:"#ffcf73",marginTop:3}}>{challengeObjectiveLabel(objective)}</div><div className="chv-sub" style={{marginTop:4}}>Meilleur essai retenu · {visits} tours · {attemptLimit} essai{attemptLimit>1?"s":""} maximum</div></div></div>
                       <span className="chv-status" style={{color:open?"#65e6a2":status==="closed"?"#7f8a98":"#ffb54a"}}>{open?"● OUVERT":status==="closed"?"CLOS":"À VENIR"}</span>
                     </div>
 
@@ -5863,12 +5899,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     <div className="chv-sub" style={{marginTop:6}}>Les essais lancés directement depuis la compétition sont ajoutés automatiquement. Le rattachement manuel sert surtout à la compétition libre ou aux parties déjà jouées.</div>
                   </div> : null}
 
-                  {challengeObjectives.length ? <div className="chv-objective-strip">{challengeObjectives.map((objective:string)=>{
+                  {challengeObjectives.length ? <div className="chv-objective-strip"><button type="button" className="chv-objective-chip" data-active={challengeResultsFocus==="all"?"true":"false"} onClick={()=>setChallengeResultsFocus("all")} style={{paddingRight:9}}><b style={{display:"block",fontSize:8.5}}>TOUS</b><span style={{display:"block",marginTop:2,fontSize:6.5,color:"#8d9aac"}}>{linkedHistoryMatches.length} résultat{linkedHistoryMatches.length>1?"s":""}</span></button>{challengeObjectives.map((objective:string)=>{
                     const count=linkedHistoryMatches.filter((link:any)=>normalizeChallengeObjective(link?.challengeObjective||link?.target||link?.objective||historyChallengeObjective(link))===objective).length;
-                    return <button key={`result-chip-${objective}`} type="button" className="chv-objective-chip" onClick={()=>{setChallengeObjectiveFocus(objective);setTab("objectives")}}><b style={{display:"block",fontSize:8.5}}>{challengeObjectiveLabel(objective)}</b><span style={{display:"block",marginTop:2,fontSize:6.5,color:"#8d9aac"}}>{count} résultat{count>1?"s":""}</span></button>})}</div>:null}
+                    return <button key={`result-chip-${objective}`} type="button" className="chv-objective-chip" data-active={normalizeChallengeObjective(challengeResultsFocus)===objective?"true":"false"} onClick={()=>setChallengeResultsFocus(objective)}><ChallengeObjectiveThumb objective={objective}/><b style={{display:"block",fontSize:8.5}}>{challengeObjectiveLabel(objective)}</b><span style={{display:"block",marginTop:2,fontSize:6.5,color:"#8d9aac"}}>{count} résultat{count>1?"s":""}</span></button>})}</div>:null}
 
-                  {challengeRecentActivity.length ? <section className="chv-panel" style={{padding:8}}>
-                    {linkedHistoryMatches.slice().sort((a:any,b:any)=>Number(b?.createdAt||b?.linkedAt||0)-Number(a?.createdAt||a?.linkedAt||0)).map((link:any,index:number)=>{
+                  {challengeFilteredResults.length ? <section className="chv-panel" style={{padding:8}}>
+                    {challengeFilteredResults.map((link:any,index:number)=>{
                       const ranking=Array.isArray(link?.ranking)?link.ranking:[];
                       const row=ranking[0]||{};
                       const pid=String(row?.playerId||row?.id||link?.playerId||"");
@@ -5880,7 +5916,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                       const cycle=Math.max(1,Number(link?.challengeCycle||1)||1);
                       const round=Math.max(0,Number(link?.challengeRoundNumber||0)||0);
                       return <div key={String(link?.historyMatchId||link?.matchId||link?.id||`result-${index}`)} className="chv-activity" style={{gridTemplateColumns:"74px minmax(0,1fr) auto"}}>
-                        <div><b style={{display:"block",fontSize:8.5,color:"#ffb54a"}}>{challengeObjectiveLabel(objective)}</b><span className="chv-row-sub">C{cycle}{round?` · J${round}`:""}</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}><ChallengeObjectiveThumb objective={objective}/><div style={{minWidth:0}}><b style={{display:"block",fontSize:8.5,color:"#ffb54a"}}>{challengeObjectiveLabel(objective)}</b><span className="chv-row-sub">C{cycle}{round?` · J${round}`:""}</span></div></div>
                         <div style={{minWidth:0}}><span className="chv-row-name">{row?.name||player?.name||"Joueur"}</span><span className="chv-row-sub">{attempt?`Essai ${attempt}`:"Partie liée"}{when?` · ${formatDate(when)}`:""}</span></div>
                         <div style={{textAlign:"right"}}><b style={{display:"block",fontSize:14,color:"#65e6a2"}}>{score}</b><span className="chv-row-sub">SCORE</span></div>
                       </div>
@@ -6117,7 +6153,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                       const hasResults=linkedHistoryMatches.some((row:any)=>normalizeChallengeObjective(row?.challengeObjective||row?.target||row?.objective)===objective);
                       return <div key={`program-${objective}`} style={{display:"grid",gridTemplateColumns:"minmax(80px,1fr) 64px 64px auto",gap:6,alignItems:"end",padding:"8px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"#080d14"}}>
                         <div style={{minWidth:0}}>
-                          <b style={{display:"block",fontSize:8.6,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{index+1}. {challengeObjectiveLabel(objective)}</b>
+                          <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}><ChallengeObjectiveThumb objective={objective}/><b style={{display:"block",fontSize:8.6,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{index+1}. {challengeObjectiveLabel(objective)}</b></div>
                           <div style={{display:"flex",gap:4,marginTop:5}}>
                             <button type="button" disabled={index===0} onClick={()=>moveChallengeSeasonObjective(objective,-1)} style={{width:25,height:25,borderRadius:7,border:"1px solid rgba(255,255,255,.10)",background:"#070b11",color:"#fff",opacity:index===0?.3:1}}>↑</button>
                             <button type="button" disabled={index===challengeObjectives.length-1} onClick={()=>moveChallengeSeasonObjective(objective,1)} style={{width:25,height:25,borderRadius:7,border:"1px solid rgba(255,255,255,.10)",background:"#070b11",color:"#fff",opacity:index===challengeObjectives.length-1?.3:1}}>↓</button>

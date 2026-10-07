@@ -450,7 +450,7 @@ export default function ProfileAvatar(props: Props) {
   const propLooksRemote = /^(https?:\/\/|\/media\/|\/assets\/|\/images\/|\.\.?\/)/i.test(propDataUrl);
 
   const preferProfileAvatarUrl = props.preferProfileAvatarUrl === true;
-  const rawImg = React.useMemo(() => {
+  const computedRawImg = React.useMemo(() => {
     // Une URL explicite distante/packagée doit rester prioritaire (bots, assets, amis liés).
     if (propDataUrl && propLooksRemote) return propDataUrl;
 
@@ -485,6 +485,18 @@ export default function ProfileAvatar(props: Props) {
     if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     return null;
   }, [preferProfileAvatarUrl, propDataUrl, propLooksRemote, size, cachedThumb, cachedRevision, profileRevision, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+
+  // Garde la dernière source valide pendant une réhydratation asynchrone.
+  // Un delta/store temporairement "lite" ne doit jamais faire clignoter l'avatar
+  // puis le remplacer par l'initiale du joueur.
+  const [stickyRawImg, setStickyRawImg] = React.useState<string | null>(() => computedRawImg || null);
+  React.useEffect(() => {
+    if (computedRawImg) setStickyRawImg(computedRawImg);
+  }, [computedRawImg]);
+  React.useEffect(() => {
+    if (!effectiveProfileId) setStickyRawImg(null);
+  }, [effectiveProfileId]);
+  const rawImg = computedRawImg || stickyRawImg;
 
   // -------------------------------------------------------------------------
   // FAILOVER AVATAR : NAS -> cache local -> Cloudflare R2
