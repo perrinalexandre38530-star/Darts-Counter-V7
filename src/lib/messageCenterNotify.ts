@@ -274,7 +274,16 @@ export async function showMessageCenterNotification(title: string, body: string,
   try {
     const n = new Notification(title, options);
     n.onclick = () => {
-      try { window.focus(); window.location.hash = "#/messages"; } catch {}
+      try {
+        window.focus();
+        const targetUrl = String((options as any)?.data?.url || "/#/messages");
+        if (targetUrl.includes("#")) {
+          const hash = targetUrl.slice(targetUrl.indexOf("#"));
+          window.location.hash = hash;
+        } else {
+          window.location.href = targetUrl;
+        }
+      } catch {}
       n.close();
     };
   } catch {}

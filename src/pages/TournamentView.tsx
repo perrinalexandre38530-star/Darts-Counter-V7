@@ -80,6 +80,7 @@ const TAB_COLORS: Record<string, string> = {
   stats: "#b6b6ff",
   admin: "#ff6b6b",
   objectives: "#ffb54a",
+  my: "#22e6ff",
 };
 
 const ADMIN_PERMISSION_DEFS = [
@@ -318,6 +319,7 @@ function NeonTopTabsIconsOnly({ tabs, activeKey, onChange }: any) {
     stats: "stats",
     admin: "stats",
     objectives: "bracket",
+    my: "home",
   };
 
   return (
@@ -1840,6 +1842,9 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   const [onlineInviteError, setOnlineInviteError] = React.useState("");
   const [enrollmentNotice, setEnrollmentNotice] = React.useState("");
   const [publicRefreshing, setPublicRefreshing] = React.useState(false);
+  const [liveLastUpdatedAt, setLiveLastUpdatedAt] = React.useState(0);
+  const [livePulseText, setLivePulseText] = React.useState("");
+  const liveSnapshotRef = React.useRef<{ updatedAt: number; linkedCount: number; matchCount: number }>({ updatedAt: 0, linkedCount: 0, matchCount: 0 });
   const [activeChallengeAttempt, setActiveChallengeAttempt] = React.useState<any>(null);
   const [challengeStandingScope, setChallengeStandingScope] = React.useState<"cycle" | "season">("cycle");
   const [adminSeasonName, setAdminSeasonName] = React.useState("");
@@ -2044,7 +2049,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
       return true;
     });
   }, [allProfiles, tournamentPlayers, ownerProfileId, adminProfileIds]);
-  const publicSpectator = Boolean(sharedEntry && !isCompetitionAdmin);
+  const publicSpectator = Boolean(sharedEntry && !isCompetitionAdmin && !currentTournamentPlayer);
   const enrollmentPolicy = String((tour as any)?.enrollment?.policy || (tour as any)?.meta?.enrollmentPolicy || "fixed");
   const enrollmentMax = Math.max(0, Number((tour as any)?.enrollment?.maxParticipants || (tour as any)?.meta?.enrollmentMax || 0) || 0);
   const enrollmentRequests = React.useMemo<any[]>(() => Array.isArray((tour as any)?.enrollmentRequests) ? (tour as any).enrollmentRequests : [], [tour]);
@@ -2407,6 +2412,62 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
       movementCount:challengeMovementHistory.length,
     };
   },[challengeCompetition,challengeSeasonStandings,challengeMovementHistory,tour]);
+
+  const challengePlayerDashboard = React.useMemo(() => {
+    if (!isChallengePerformanceCompetition || !currentTournamentPlayer) return null;
+    const playerId = String(currentTournamentPlayer?.id || "");
+    if (!playerId) return null;
+    const cycleStanding = challengeGeneralStandings.find((row: any) => String(row?.playerId || "") === playerId) || null;
+    const seasonStanding = challengeSeasonStandings.find((row: any) => String(row?.playerId || "") === playerId) || null;
+    const division = Math.max(1, Number(challengeDivisionState?.assignments?.[playerId] || 1) || 1);
+    const objectives = challengeObjectives.map((objective: string) => {
+      const standings = challengeObjectiveStandings[objective] || [];
+      const standing = standings.find((row: any) => String(row?.playerId || "") === playerId) || null;
+      const attempts = challengeAttemptCount(playerId, objective);
+      const maxAttempts = challengeObjectiveAttemptLimit(objective);
+      const round: any = challengeRoundForObjective(objective);
+      const status = String(round?.status || "open");
+      const open = challengeObjectiveIsOpen(objective);
+      return {
+        objective,
+        standing,
+        attempts,
+        maxAttempts,
+        round,
+        status,
+        open,
+        playable: open && attempts < maxAttempts,
+        completed: attempts >= maxAttempts,
+      };
+    });
+    const playable = objectives.filter((row: any) => row.playable);
+    const scored = objectives.filter((row: any) => Boolean(row.standing));
+    const completed = objectives.filter((row: any) => row.completed);
+    return {
+      playerId,
+      player: currentTournamentPlayer,
+      cycleStanding,
+      seasonStanding,
+      division,
+      objectives,
+      playable,
+      scored,
+      completed,
+      progress: objectives.length ? Math.round((completed.length / objectives.length) * 100) : 0,
+    };
+  }, [
+    isChallengePerformanceCompetition,
+    currentTournamentPlayer,
+    challengeGeneralStandings,
+    challengeSeasonStandings,
+    challengeDivisionState,
+    challengeObjectives,
+    challengeObjectiveStandings,
+    challengeAttemptCount,
+    challengeObjectiveAttemptLimit,
+    challengeRoundForObjective,
+    challengeObjectiveIsOpen,
+  ]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
@@ -2876,22 +2937,44 @@ async function createSyntheticHistoryForSimulation(args: any) {
       const remote:any=await getOnlineCompetition(remoteId);
       if(remote?.id){
         const remoteMatches=remote?.__onlineRow?.payload?.matches ?? remote?.__onlineRow?.matches ?? remote?.matches ?? [];
+        const remoteLinked=Array.isArray(remote?.linkedMatches)
+          ? remote.linkedMatches
+          : Array.isArray(remote?.meta?.linkedMatches)
+          ? remote.meta.linkedMatches
+          : [];
+        const updatedAt=Number(remote?.updatedAt||0)||0;
+        const snapshot={updatedAt,linkedCount:remoteLinked.length,matchCount:Array.isArray(remoteMatches)?remoteMatches.length:0};
+        const previous=liveSnapshotRef.current;
+        if(previous.updatedAt>0 && (
+          snapshot.updatedAt>previous.updatedAt ||
+          snapshot.linkedCount!==previous.linkedCount ||
+          snapshot.matchCount!==previous.matchCount
+        )){
+          const delta=Math.max(0,snapshot.linkedCount-previous.linkedCount);
+          setLivePulseText(delta>0?`${delta} nouveau${delta>1?"x":""} résultat${delta>1?"s":""} reçu${delta>1?"s":""}`:"Classements actualisés");
+        }
+        liveSnapshotRef.current=snapshot;
+        setLiveLastUpdatedAt(Date.now());
         setTour(remote as any);
         setMatches(Array.isArray(remoteMatches)?remoteMatches:[]);
       }
     }catch(e){
-      console.warn("[TournamentView] public refresh failed:",e);
+      console.warn("[TournamentView] live refresh failed:",e);
     }finally{
       setPublicRefreshing(false);
     }
   }, [tour, id, isOnlineCompetition]);
 
   React.useEffect(() => {
-    if(!sharedEntry || !tour || !isOnlineCompetition) return;
-    const seconds=Math.max(8,Math.min(60,Number((tour as any)?.publicView?.liveRefreshSeconds||15)||15));
+    const liveViewer=Boolean(sharedEntry || isCompetitionAdmin || currentTournamentPlayer);
+    if(!liveViewer || !tour || !isOnlineCompetition) return;
+    const seconds=currentTournamentPlayer
+      ? 8
+      : Math.max(8,Math.min(60,Number((tour as any)?.publicView?.liveRefreshSeconds||15)||15));
+    void refreshPublicCompetition();
     const timer=window.setInterval(()=>{ void refreshPublicCompetition(); },seconds*1000);
     return ()=>window.clearInterval(timer);
-  }, [sharedEntry, tour?.id, (tour as any)?.onlineCompetitionId, (tour as any)?.updatedAt, isOnlineCompetition, refreshPublicCompetition]);
+  }, [sharedEntry, isCompetitionAdmin, Boolean(currentTournamentPlayer), tour?.id, (tour as any)?.onlineCompetitionId, isOnlineCompetition]);
 
   // ------------------------------------------------------------
   // ✅ PÉTANQUE : charge les scores depuis History via historyMatchId
@@ -4121,12 +4204,13 @@ async function createSyntheticHistoryForSimulation(args: any) {
       return ["home", "pools", "standings", "bracket", "matches", ...(repechageEnabled ? ["repechage"] : []), "stats"];
     }
     const admin = isCompetitionAdmin ? ["admin"] : [];
-    if (isChallengePerformanceCompetition) return ["home", "objectives", "standings", "linked", "stats", ...admin];
+    const playerSpace = isChallengePerformanceCompetition && currentTournamentPlayer ? ["my"] : [];
+    if (isChallengePerformanceCompetition) return ["home", ...playerSpace, "objectives", "standings", "linked", "stats", ...admin];
     if (viewKind === "single_ko") return ["home", "bracket", "matches", "linked", "stats", ...admin];
     if (viewKind === "double_ko") return ["home", "bracket", "matches", "linked", "repechage", "stats", ...admin];
     if (viewKind === "round_robin") return ["home", "standings", "matches", "linked", "stats", ...admin];
     return ["home", "pools", "standings", "bracket", "matches", "linked", ...(repechageEnabled ? ["repechage"] : []), "stats", ...admin];
-  }, [viewKind, repechageEnabled, isCompetitionAdmin, isChallengePerformanceCompetition, publicSpectator]);
+  }, [viewKind, repechageEnabled, isCompetitionAdmin, isChallengePerformanceCompetition, publicSpectator, currentTournamentPlayer]);
 
   const [tab, setTab] = React.useState<string>("home");
   React.useEffect(() => {
@@ -4145,6 +4229,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     stats: "Stats",
     admin: "Administration",
     objectives: "Objectifs",
+    my: "Mon espace",
   };
 
   const [activeGroupIdx, setActiveGroupIdx] = React.useState(0);
@@ -4870,6 +4955,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 <span style={{padding:"4px 8px",borderRadius:999,border:"1px solid rgba(255,207,87,.35)",background:"rgba(255,207,87,.09)",fontSize:8.5,fontWeight:1000,color:"#ffcf57"}}>{String((tour as any)?.kind||"COMPÉTITION").toUpperCase()}</span>
                 <span style={{padding:"4px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.14)",background:"rgba(0,0,0,.26)",fontSize:8.5,fontWeight:1000}}>{String((tour as any)?.competitionScope||"local").toUpperCase()==="TEAM"?"ORGANISATION":String((tour as any)?.competitionScope||"LOCAL").toUpperCase()}</span>
                 <span style={{padding:"4px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.14)",background:"rgba(0,0,0,.26)",fontSize:8.5,fontWeight:1000}}>{String((tour as any)?.game?.mode||"—").toUpperCase()}</span>
+                {isOnlineCompetition && (sharedEntry || isCompetitionAdmin || currentTournamentPlayer) ? <span style={{padding:"4px 8px",borderRadius:999,border:"1px solid rgba(101,230,162,.28)",background:"rgba(14,62,43,.42)",fontSize:8.2,fontWeight:1000,color:"#8bf0b9"}}>● LIVE · {publicRefreshing?"SYNC…":livePulseText || (liveLastUpdatedAt?"À JOUR":"CONNEXION")}</span> : null}
               </div>
             </div>
           </div>
@@ -4891,7 +4977,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
           {isOnlineCompetition ? (
             <div style={{marginTop:10,padding:"9px 10px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"#050910"}}>
               {currentTournamentPlayer ? (
-                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{fontSize:9.5,color:"#65e6a2"}}>✓ TU ES INSCRIT</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Retrouve la compétition dans ton espace Compétitions pour jouer tes essais ou matchs.</div></div><button type="button" onClick={()=>{ try{window.location.hash="#/competitions";}catch{}; go("tournaments"); }} style={{minHeight:31,borderRadius:9,border:"1px solid rgba(101,230,162,.3)",background:"rgba(14,62,43,.88)",color:"#fff",fontSize:7.2,fontWeight:1000}}>MON ESPACE</button></div>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{fontSize:9.5,color:"#65e6a2"}}>✓ TU ES INSCRIT</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Retrouve la compétition dans ton espace Compétitions pour jouer tes essais ou matchs.</div></div><button type="button" onClick={()=>{ if(isChallengePerformanceCompetition){setTab("my");return;} try{window.location.hash="#/competitions";}catch{}; go("tournaments"); }} style={{minHeight:31,borderRadius:9,border:"1px solid rgba(101,230,162,.3)",background:"rgba(14,62,43,.88)",color:"#fff",fontSize:7.2,fontWeight:1000}}>MON ESPACE</button></div>
               ) : competitionIsFull ? (
                 <div><b style={{fontSize:9.5,color:"#ff7178"}}>COMPÉTITION COMPLÈTE</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Le nombre maximum de participants est atteint.</div></div>
               ) : enrollmentPolicy==="approval" && currentEnrollmentRequest?.status==="pending" ? (
@@ -5161,6 +5247,80 @@ async function createSyntheticHistoryForSimulation(args: any) {
             </Card>
           ) : null}
 
+          {/* MON ESPACE JOUEUR — CHALLENGE ONLINE */}
+          {tab === "my" && isChallengePerformanceCompetition && challengePlayerDashboard ? (
+            <Card
+              title="Mon espace joueur"
+              subtitle="Ta progression personnelle, les objectifs ouverts et tes classements sont synchronisés avec la compétition Online."
+              accent={TAB_COLORS.my}
+              icon="⚡"
+            >
+              <div style={{display:"grid",gap:10}}>
+                <section style={{borderRadius:17,border:"1px solid rgba(34,230,255,.24)",background:"linear-gradient(180deg,#07141c,#04090f)",padding:12}}>
+                  <div style={{display:"grid",gridTemplateColumns:"52px minmax(0,1fr) auto",gap:10,alignItems:"center"}}>
+                    <div style={{width:52,height:52,borderRadius:999,overflow:"hidden",display:"grid",placeItems:"center",border:"1px solid rgba(34,230,255,.42)",background:"rgba(34,230,255,.10)",color:"#bff8ff",fontWeight:1000,fontSize:18}}>
+                      {(challengePlayerDashboard.player?.avatarDataUrl||challengePlayerDashboard.player?.avatarUrl||challengePlayerDashboard.player?.avatar)
+                        ? <img src={challengePlayerDashboard.player?.avatarDataUrl||challengePlayerDashboard.player?.avatarUrl||challengePlayerDashboard.player?.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                        : String(challengePlayerDashboard.player?.name||"J").slice(0,1).toUpperCase()}
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <b style={{display:"block",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{challengePlayerDashboard.player?.name||"Joueur"}</b>
+                      <span style={{display:"block",marginTop:3,fontSize:8.5,color:"#8fdfee",fontWeight:900}}>CYCLE {challengeCurrentCycle}{challengeCompetitionFormat==="divisions"?` · DIVISION ${challengePlayerDashboard.division}`:""}</span>
+                      <span style={{display:"block",marginTop:3,fontSize:8,opacity:.58}}>{liveLastUpdatedAt?`Synchronisé ${Math.max(0,Math.floor((Date.now()-liveLastUpdatedAt)/1000))<12?"à l’instant":`il y a ${Math.max(1,Math.floor((Date.now()-liveLastUpdatedAt)/60000))} min`}`:"Synchronisation Online en cours…"}</span>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <b style={{display:"block",fontSize:22,color:TAB_COLORS.my}}>#{challengePlayerDashboard.cycleStanding?.rank||"—"}</b>
+                      <span style={{display:"block",fontSize:7.5,opacity:.58}}>CLASSEMENT CYCLE</span>
+                    </div>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6,marginTop:11}}>
+                    {[
+                      ["POINTS",challengePlayerDashboard.cycleStanding?.points||0,"#65e6a2"],
+                      ["SAISON",challengePlayerDashboard.seasonStanding?.rank?`#${challengePlayerDashboard.seasonStanding.rank}`:"—","#b6b6ff"],
+                      ["JOUÉS",`${challengePlayerDashboard.scored.length}/${challengePlayerDashboard.objectives.length}`,"#ffcf73"],
+                      ["TERMINÉS",`${challengePlayerDashboard.completed.length}/${challengePlayerDashboard.objectives.length}`,"#ffb54a"],
+                    ].map(([label,value,color])=><div key={String(label)} style={{padding:"8px 6px",borderRadius:11,border:"1px solid rgba(255,255,255,.07)",background:"#080d14",textAlign:"center"}}><b style={{display:"block",fontSize:14,color:String(color)}}>{String(value)}</b><span style={{display:"block",marginTop:2,fontSize:6.8,opacity:.55,fontWeight:1000}}>{label}</span></div>)}
+                  </div>
+
+                  <div style={{marginTop:9}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:7.5,fontWeight:900,opacity:.68}}><span>PROGRESSION PROGRAMME</span><span>{challengePlayerDashboard.progress}%</span></div>
+                    <div style={{height:6,borderRadius:999,background:"rgba(255,255,255,.07)",overflow:"hidden",marginTop:4}}><div style={{height:"100%",width:`${challengePlayerDashboard.progress}%`,background:"linear-gradient(90deg,#22e6ff,#65e6a2)",boxShadow:"0 0 12px rgba(34,230,255,.45)"}}/></div>
+                  </div>
+                </section>
+
+                <section style={{borderRadius:16,border:"1px solid rgba(101,230,162,.20)",background:"#060d11",padding:11}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                    <div><b style={{fontSize:11,color:"#65e6a2"}}>À JOUER MAINTENANT</b><div style={{fontSize:8,opacity:.58,marginTop:2}}>Objectifs actuellement ouverts avec des essais disponibles.</div></div>
+                    <span style={{fontSize:15,fontWeight:1000,color:"#65e6a2"}}>{challengePlayerDashboard.playable.length}</span>
+                  </div>
+                  {challengePlayerDashboard.playable.length ? <div style={{display:"grid",gap:6,marginTop:8}}>
+                    {challengePlayerDashboard.playable.map((row:any)=><div key={`my-open-${row.objective}`} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:11,border:"1px solid rgba(101,230,162,.12)",background:"#081019"}}>
+                      <div><b style={{display:"block",fontSize:10}}>{challengeObjectiveLabel(row.objective)}</b><span style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>J{Number(row.round?.round||0)||1} · {row.attempts}/{row.maxAttempts} essais · {challengeObjectiveVisits(row.objective)} tours</span></div>
+                      <span style={{fontSize:8,color:row.standing?"#65e6a2":"#8593a3",fontWeight:900}}>{row.standing?`#${row.standing.rank} · ${row.standing.score}`:"PAS DE SCORE"}</span>
+                      <button type="button" onClick={()=>launchChallengeAttempt(challengePlayerDashboard.player,row.objective)} style={{minHeight:32,borderRadius:9,border:"1px solid rgba(101,230,162,.34)",background:"rgba(14,62,43,.84)",color:"#fff",padding:"0 10px",fontSize:8,fontWeight:1000}}>JOUER</button>
+                    </div>)}
+                  </div>:<div style={{marginTop:8,padding:10,borderRadius:11,background:"rgba(255,255,255,.025)",fontSize:9,opacity:.65}}>Aucun objectif jouable pour le moment. Une nouvelle journée peut être publiée par l’organisation.</div>}
+                </section>
+
+                <section style={{borderRadius:16,border:"1px solid rgba(255,181,74,.18)",background:"#080c12",padding:11}}>
+                  <b style={{fontSize:11,color:"#ffcf73"}}>MON PROGRAMME</b>
+                  <div style={{display:"grid",gap:5,marginTop:8}}>
+                    {challengePlayerDashboard.objectives.map((row:any)=>{
+                      const state=row.completed?"TERMINÉ":row.open?"OUVERT":String(row.status)==="closed"?"CLOS":"À VENIR";
+                      const tone=row.completed?"#65e6a2":row.open?"#22e6ff":String(row.status)==="closed"?"#7c8796":"#ffb54a";
+                      return <div key={`my-program-${row.objective}`} style={{display:"grid",gridTemplateColumns:"76px minmax(0,1fr) auto",gap:7,alignItems:"center",padding:"7px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.06)",background:"#060b12"}}>
+                        <b style={{fontSize:8.5,color:tone}}>{challengeObjectiveLabel(row.objective)}</b>
+                        <div style={{minWidth:0,fontSize:7.7,opacity:.68}}>{row.attempts}/{row.maxAttempts} essais{row.standing?` · meilleur ${row.standing.score} · #${row.standing.rank}`:" · aucun score"}</div>
+                        <span style={{fontSize:7.2,fontWeight:1000,color:tone}}>{state}</span>
+                      </div>
+                    })}
+                  </div>
+                </section>
+              </div>
+            </Card>
+          ) : null}
+
           {/* CHALLENGE OBJECTIVES */}
           {tab === "objectives" && isChallengePerformanceCompetition ? (
             <Card title="Objectifs Challenge" subtitle="Chaque objectif conserve le meilleur résultat. Le nombre d’essais et de tours peut être personnalisé objectif par objectif." accent={TAB_COLORS.objectives} icon="🎯">
@@ -5187,7 +5347,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   const rows=challengeObjectiveStandings[objective]||[];
                   return <section key={objective} style={{borderRadius:15,border:"1px solid rgba(255,181,74,.22)",background:"rgba(4,7,12,.97)",padding:11}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>{challengeObjectiveLabel(objective)}</b><div style={{fontSize:8.5,opacity:.62,marginTop:2}}>Classement de l’objectif · meilleur essai retenu</div></div><MiniBadge label="Classés" value={rows.length} accent={TAB_COLORS.objectives}/></div>
-                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const maxAttempts=challengeObjectiveAttemptLimit(objective);const objectiveOpen=challengeObjectiveIsOpen(objective);const canPlay=!publicSpectator&&(isCompetitionAdmin||activeProfileId===pid)&&objectiveOpen&&attempts<maxAttempts;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""} · {challengeObjectiveVisits(objective)} tours{attempts>=maxAttempts?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=maxAttempts?"COMPLET":!objectiveOpen?"VERROUILLÉ":"JOUER"}</button></div>})}</div>
+                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const maxAttempts=challengeObjectiveAttemptLimit(objective);const objectiveOpen=challengeObjectiveIsOpen(objective);const canPlay=!publicSpectator&&(isCompetitionAdmin||String(currentTournamentPlayer?.id||"")===pid)&&objectiveOpen&&attempts<maxAttempts;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""} · {challengeObjectiveVisits(objective)} tours{attempts>=maxAttempts?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=maxAttempts?"COMPLET":!objectiveOpen?"VERROUILLÉ":"JOUER"}</button></div>})}</div>
                   </section>
                 }):<div style={{fontSize:10,opacity:.7}}>Aucun objectif configuré.</div>}
               </div>

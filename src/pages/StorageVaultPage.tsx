@@ -1717,12 +1717,13 @@ async function gzipSnapshotJson(json: string): Promise<Uint8Array> {
   return gzipSync(strToU8(json), { level: 1 });
 }
 
-async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedInput?: Uint8Array): Promise<{ payload: any; rawBytes: number; compressedBytes: number }> {
+async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedInput?: Uint8Array): Promise<{ payload: any; rawBytes: number; compressedBytes: number; compressed: Uint8Array }> {
   const rawBytes = new TextEncoder().encode(snapshotJson).byteLength;
   const compressed = compressedInput || await gzipSnapshotJson(snapshotJson);
   return {
     rawBytes,
     compressedBytes: compressed.byteLength,
+    compressed,
     payload: {
       _format: "gzip+store-v2",
       compressed: true,
@@ -1733,27 +1734,21 @@ async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedIn
   };
 }
 
-const NAS_PUSH_TIMEOUT_MS = 30_000;
+const NAS_PUSH_TIMEOUT_MS = 45_000;
+const NAS_DIRECT_PUSH_MAX_COMPRESSED_BYTES = 4 * 1024 * 1024;
+const NAS_CHUNK_CLIENT_BYTES = 1536 * 1024;
 
-async function pushSnapshotToNasFast(snapshotJson: string, version: number, reason: string, token: string, summary?: any, compressedInput?: Uint8Array): Promise<any> {
-  const transport = await encodeNasTransportSnapshotJson(snapshotJson, compressedInput);
+async function fetchNasJson(path: string, body: any, token: string, timeoutMs = NAS_PUSH_TIMEOUT_MS): Promise<any> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), NAS_PUSH_TIMEOUT_MS);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(buildApiUrl("/sync/push"), {
+    const response = await fetch(buildApiUrl(path), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        payload: transport.payload,
-        version,
-        reason,
-        transport: "gzip+store-v2",
-        transportStats: { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes },
-        summary: summary || undefined,
-      }),
+      body: JSON.stringify(body ?? {}),
       signal: controller.signal,
       cache: "no-store",
     });
@@ -1761,23 +1756,101 @@ async function pushSnapshotToNasFast(snapshotJson: string, version: number, reas
     let data: any = null;
     try { data = text ? JSON.parse(text) : null; } catch {}
     if (!response.ok) {
-      if (response.status === 413) {
-        throw new Error("Le proxy/NAS refuse encore le paquet malgré la compression. Déploie aussi le backend NAS corrigé : l'app ne restera plus bloquée et la copie locale est conservée.");
-      }
       const readable = /<!doctype|<html/i.test(text)
         ? `NAS HTTP ${response.status} (réponse HTML du proxy)`
         : String(data?.message || data?.error || text || `NAS HTTP ${response.status}`);
-      throw new Error(readable);
+      const error: any = new Error(readable);
+      error.status = response.status;
+      error.payload = data;
+      throw error;
     }
-    return { ...data, transportStats: data?.transportStats || { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes } };
+    return data;
   } catch (error: any) {
-    if (error?.name === "AbortError") throw new Error(`Le NAS n’a pas confirmé la sauvegarde après ${Math.round(NAS_PUSH_TIMEOUT_MS / 1000)} secondes. La copie locale de sécurité est conservée ; vérifie le NAS puis relance sans supprimer les données locales.`);
+    if (error?.name === "AbortError") {
+      throw new Error(`Le NAS n’a pas répondu après ${Math.round(timeoutMs / 1000)} secondes.`);
+    }
     throw error;
   } finally {
     window.clearTimeout(timer);
   }
 }
 
+async function pushSnapshotToNasChunked(
+  transport: { rawBytes: number; compressedBytes: number; compressed: Uint8Array },
+  version: number,
+  reason: string,
+  token: string,
+  summary?: any,
+): Promise<any> {
+  const chunkBytes = NAS_CHUNK_CLIENT_BYTES;
+  const totalChunks = Math.ceil(transport.compressed.byteLength / chunkBytes);
+  const started = await fetchNasJson("/sync/push/chunked/start", {
+    version,
+    reason,
+    summary: summary || {},
+    rawBytes: transport.rawBytes,
+    compressedBytes: transport.compressedBytes,
+    totalChunks,
+  }, token, 30_000);
+
+  const uploadId = String(started?.uploadId || "").trim();
+  if (!uploadId) throw new Error("Le NAS n'a pas fourni d'identifiant pour l'envoi découpé.");
+
+  const serverMax = Math.max(256 * 1024, Number(started?.maxChunkBytes || chunkBytes));
+  if (serverMax < chunkBytes) {
+    throw new Error(`Le NAS annonce des blocs maximum de ${serverMax} octets, inférieurs au protocole client. Mets à jour le backend NAS avec le même patch.`);
+  }
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    const slice = transport.compressed.subarray(
+      index * chunkBytes,
+      Math.min(transport.compressed.byteLength, (index + 1) * chunkBytes),
+    );
+    await fetchNasJson(
+      `/sync/push/chunked/${encodeURIComponent(uploadId)}/${index}`,
+      { data: bytesToBase64(slice) },
+      token,
+      30_000,
+    );
+  }
+
+  return fetchNasJson(
+    `/sync/push/chunked/${encodeURIComponent(uploadId)}/finalize`,
+    {},
+    token,
+    120_000,
+  );
+}
+
+async function pushSnapshotToNasFast(snapshotJson: string, version: number, reason: string, token: string, summary?: any, compressedInput?: Uint8Array): Promise<any> {
+  const transport = await encodeNasTransportSnapshotJson(snapshotJson, compressedInput);
+
+  // Au-delà de quelques Mo, on ne traverse plus Cloudflare/Express avec un seul
+  // gros JSON base64. Le gzip est découpé puis réassemblé côté NAS. Le contenu
+  // du backup reste strictement identique : aucune image/donnée n'est retirée.
+  if (transport.compressedBytes > NAS_DIRECT_PUSH_MAX_COMPRESSED_BYTES) {
+    return pushSnapshotToNasChunked(transport, version, reason, token, summary);
+  }
+
+  try {
+    const data = await fetchNasJson("/sync/push", {
+      payload: transport.payload,
+      version,
+      reason,
+      transport: "gzip+store-v2",
+      transportStats: { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes },
+      summary: summary || undefined,
+    }, token, NAS_PUSH_TIMEOUT_MS);
+    return { ...data, transportStats: data?.transportStats || { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes } };
+  } catch (error: any) {
+    // Si un intermédiaire impose une limite plus basse, bascule automatique vers
+    // le protocole découpé sans demander à l'utilisateur de relancer l'opération.
+    if (Number(error?.status || 0) === 413) {
+      return pushSnapshotToNasChunked(transport, version, reason, token, summary);
+    }
+    throw error;
+  }
+}
 
 type VaultGlyphName =
   | "restore" | "matches" | "save" | "expert" | "refresh"
@@ -3373,7 +3446,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           report(42, `Envoi vers ${personalCloudProviderLabel(destination)}…`);
           const uploadResult = await uploadPersonalCloudSnapshot(destination, prepared.snapshotJson, {
             summary: prepared.summary, exportedAt: new Date().toISOString(), rawSizeBytes: prepared.bytes, engine: "personal-cloud-v2",
-          });
+          }, (percent, message) => report(percent, message));
           if (uploadResult?.ok === false) throw new Error(uploadResult?.error || `Échec de l'envoi ${personalCloudProviderLabel(destination)}.`);
           report(92, "Vérification du cloud personnel…");
           const verifiedMeta = await getPersonalCloudBackupMeta(destination);

@@ -69,6 +69,8 @@ import { History } from "../lib/history";
 import { loadOnlineX01SamplesForActiveProfile, loadAllOnlineX01Samples, aggregateX01Samples } from "../lib/x01StatsSource";
 import { getTicker } from "../lib/tickers";
 import OnlineClubsPanel from "../components/OnlineClubsPanel";
+import OnlineCompetitionsPanel from "../components/OnlineCompetitionsPanel";
+import { useOnlineCompetitionInbox } from "../hooks/useOnlineCompetitionInbox";
 import NearbyPlayersPanel from "../components/NearbyPlayersPanel";
 import {
   filterOnlineStatsHardDeleted,
@@ -968,7 +970,7 @@ function ShareDetailsModal({
    Objectif: conserver la page historique et restructurer l'affichage
    sans supprimer les blocs existants.
 --------------------------------------------------*/
-type OnlineMainTab = "hub" | "friends" | "nearby" | "requests" | "shares" | "play" | "activity" | "official" | "clubs" | "challenge";
+type OnlineMainTab = "hub" | "friends" | "nearby" | "requests" | "shares" | "play" | "activity" | "official" | "clubs" | "challenge" | "competitions";
 
 type OnlineTabSpec = {
   id: OnlineMainTab;
@@ -2315,6 +2317,17 @@ export default function FriendsPage({ store, update, go, initialOnlineTab }: Pro
   const countryRaw = privateInfo.country || "";
   const countryFlag = getCountryFlag(countryRaw);
   const activeProfileId = String((activeProfile as any)?.id || "guest");
+  const competitionInbox = useOnlineCompetitionInbox({
+    userId: sessionUserId,
+    profileId: activeProfileId,
+    enabled: isSignedIn,
+    pollMs: 20_000,
+  });
+  const openOnlineCompetition = React.useCallback((competitionId: string) => {
+    const cid = String(competitionId || "").trim();
+    if (!cid || typeof window === "undefined") return;
+    window.location.hash = `#/competition/${encodeURIComponent(cid)}`;
+  }, []);
   const officialRegistrationKey = `dc_online_official_registration_${activeProfileId}`;
   const profileOfficialRegistration = (activeProfile as any)?.onlineOfficialLeague || null;
   const [officialRegistered, setOfficialRegistered] = React.useState<boolean>(() => {
@@ -3527,6 +3540,14 @@ const doLogout = React.useCallback(async () => {
         tone: "gold",
       },
       {
+        id: "competitions",
+        label: "Compétitions",
+        icon: "🏁",
+        hint: "",
+        badge: competitionInbox.invitations.length || competitionInbox.active.length || "LIVE",
+        tone: competitionInbox.invitations.length > 0 ? "gold" : "blue",
+      },
+      {
         id: "official",
         label: "Officiel",
         icon: "🏆",
@@ -3583,7 +3604,7 @@ const doLogout = React.useCallback(async () => {
         tone: "orange",
       },
     ],
-    [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, selectedOnlineModeSpec.shortLabel, sortedMatches.length]
+    [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, selectedOnlineModeSpec.shortLabel, sortedMatches.length, competitionInbox.invitations.length, competitionInbox.active.length]
   );
   React.useEffect(() => {
     if (activeSportId === "babyfoot") {
@@ -3604,6 +3625,7 @@ const doLogout = React.useCallback(async () => {
   const showActivityTab = activeOnlineTab === "activity";
   const showOfficialTab = activeOnlineTab === "official";
   const showClubsTab = activeOnlineTab === "clubs";
+  const showCompetitionsTab = activeOnlineTab === "competitions";
 
   if (showOfficialLeaguePage) {
     return (
@@ -3981,23 +4003,31 @@ const doLogout = React.useCallback(async () => {
                   <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15.5, lineHeight: 1.15 }}>
                     {!isSignedIn
                       ? "Connecte ton compte"
+                      : competitionInbox.invitations.length > 0
+                      ? "Invitation compétition reçue"
                       : incomingRequests.length > 0
                       ? "Répondre aux demandes"
                       : unreadSharesCount > 0
                       ? "Voir les partages reçus"
                       : lobby?.code
                       ? `Salon ${String((lobby as any).code).toUpperCase()} prêt`
+                      : competitionInbox.active.length > 0
+                      ? "Reprendre une compétition"
                       : "Créer ou rejoindre un salon"}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.78, lineHeight: 1.3 }}>
                     {!isSignedIn
                       ? "Le online social nécessite une session active."
+                      : competitionInbox.invitations.length > 0
+                      ? `${competitionInbox.invitations.length} invitation(s) de compétition t’attendent.`
                       : incomingRequests.length > 0
                       ? `${incomingRequests.length} demande(s) en attente de réponse.`
                       : unreadSharesCount > 0
                       ? `${unreadSharesCount} partage(s) non lu(s).`
                       : lobby?.code
                       ? "Invite un ami avec le code ou lance la partie."
+                      : competitionInbox.active.length > 0
+                      ? `${competitionInbox.active.length} compétition(s) suivie(s) · progression et résultats synchronisés.`
                       : "Le plus utile ici : lancer un salon ou rejoindre un ami."}
                   </div>
                 </div>
@@ -4014,10 +4044,18 @@ const doLogout = React.useCallback(async () => {
                     <GhostButton label="🏆 Classements Challenge" onClick={() => go("challenge_leaderboard" as any, { from: "online" })} />
                   ) : null}
                   {isSignedIn ? (
+                    <GhostButton
+                      label={`🏁 Mes compétitions${competitionInbox.invitations.length ? ` · ${competitionInbox.invitations.length} invitation${competitionInbox.invitations.length > 1 ? "s" : ""}` : ""}`}
+                      onClick={() => setActiveOnlineTab("competitions")}
+                    />
+                  ) : null}
+                  {isSignedIn ? (
                     <GhostButton label="📍 Trouver des joueurs proches" onClick={() => setActiveOnlineTab("nearby")} />
                   ) : null}
                   {!isSignedIn ? (
                     <GhostButton label="Connexion / profil" onClick={() => go("profiles")} />
+                  ) : competitionInbox.invitations.length > 0 ? (
+                    <GhostButton label="🏁 Voir mes invitations" onClick={() => setActiveOnlineTab("competitions")} />
                   ) : incomingRequests.length > 0 ? (
                     <GhostButton label="📨 Ouvrir les demandes" onClick={() => setActiveOnlineTab("requests")} />
                   ) : unreadSharesCount > 0 ? (
@@ -4038,8 +4076,8 @@ const doLogout = React.useCallback(async () => {
                   <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: incomingRequests.length ? "var(--online-accent)" : "#f5f5f7" }}>{incomingRequests.length}</div>
                 </NeonCard>
                 <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
-                  <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>PARTAGES</div>
-                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: unreadSharesCount ? "var(--online-accent)" : "#4fb4ff" }}>{unreadSharesCount}</div>
+                  <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>COMPÉT.</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: competitionInbox.invitations.length ? "#ffcf73" : "#4fb4ff" }}>{competitionInbox.active.length + competitionInbox.invitations.length}</div>
                 </NeonCard>
                 <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
                   <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>MATCHS</div>
@@ -4064,6 +4102,22 @@ const doLogout = React.useCallback(async () => {
               </div>
             </div>
           </NeonCard>
+        </>
+      ) : null}
+
+      {showCompetitionsTab ? (
+        <>
+          <SectionTitle
+            title="Mes compétitions"
+            subtitle="Invitations, demandes d’inscription, progression et compétitions suivies sur tous tes appareils."
+          />
+          <OnlineCompetitionsPanel
+            inbox={competitionInbox as any}
+            accent={onlineAccent}
+            isSignedIn={isSignedIn}
+            onOpen={openOnlineCompetition}
+            onLogin={() => go("profiles")}
+          />
         </>
       ) : null}
 
