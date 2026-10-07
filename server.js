@@ -8147,9 +8147,53 @@ async function refreshPersonalCloudAccess(userId, provider) {
   await savePersonalCloudToken(userId,provider,{...data,refresh_token:data.refresh_token||row.refresh_token},row.account_label); return data.access_token;
 }
 function personalCloudState(userId,provider,returnTo){return jwt.sign({sub:userId,provider,returnTo:String(returnTo||"").slice(0,1200),purpose:"personal-cloud-oauth"},JWT_SECRET,{expiresIn:"10m"});}
+function personalCloudCallbackTarget(decoded,provider,status,errorMessage){
+  const requested=String(decoded?.returnTo||"").trim();
+  if(requested.toLowerCase().startsWith("multisportsscoring://cloud/callback")){
+    const target=new URL("multisportsscoring://cloud/callback");
+    target.searchParams.set("provider",provider);
+    target.searchParams.set("status",status);
+    if(errorMessage)target.searchParams.set("error",String(errorMessage).slice(0,300));
+    return target.toString();
+  }
+  const fallback=String(process.env.PUBLIC_APP_URL||"https://multisports-scoring.pages.dev/#/");
+  if(requested){
+    try{
+      const wanted=new URL(requested),allowed=new URL(fallback);
+      if((wanted.protocol==="https:"||wanted.protocol==="http:")&&wanted.origin===allowed.origin)return requested;
+    }catch{}
+  }
+  return fallback;
+}
 app.get("/account/personal-cloud/:provider/status", authRequired, async(req,res)=>{try{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);const row=await personalCloudTokenRow(req.user.id,provider);res.json({provider,configured:personalCloudConfigured(provider),connected:!!(row?.refresh_token||row?.access_token),accountLabel:row?.account_label||null,updatedAt:row?.updated_at||null});}catch(e){sendDatabaseAwareError(res,e,"Erreur statut cloud personnel");}});
-app.get("/account/personal-cloud/:provider/connect-url", authRequired, async(req,res)=>{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);if(!personalCloudConfigured(provider))return res.status(503).json({error:`${provider} n'est pas configuré côté serveur (client ID / secret manquant).`});const redirect=personalCloudRedirectUri(req,provider);const state=personalCloudState(req.user.id,provider,req.query.returnTo);let url="";if(provider==="google_drive")url=`https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"https://www.googleapis.com/auth/drive.appdata",access_type:"offline",prompt:"consent",state}).toString()}`;if(provider==="onedrive")url=`https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"offline_access Files.ReadWrite.AppFolder",state}).toString()}`;if(provider==="dropbox")url=`https://www.dropbox.com/oauth2/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",token_access_type:"offline",state}).toString()}`;res.json({ok:true,url});});
-app.get("/account/personal-cloud/:provider/callback", async(req,res)=>{try{const provider=String(req.params.provider);const decoded=jwt.verify(String(req.query.state||""),JWT_SECRET);if(decoded?.purpose!=="personal-cloud-oauth"||decoded?.provider!==provider)throw new Error("État OAuth invalide");const cfg=personalCloudConfig(provider),redirect=personalCloudRedirectUri(req,provider),code=String(req.query.code||"");if(!personalCloudConfigured(provider))throw new Error("Fournisseur OAuth non configuré côté serveur");if(!code)throw new Error("Code OAuth Google absent");let url="",body=new URLSearchParams({code,grant_type:"authorization_code",redirect_uri:redirect,client_id:cfg.clientId});if(cfg.clientSecret)body.set("client_secret",cfg.clientSecret);if(provider==="google_drive")url="https://oauth2.googleapis.com/token";if(provider==="onedrive"){url="https://login.microsoftonline.com/common/oauth2/v2.0/token";body.set("scope","offline_access Files.ReadWrite.AppFolder");}if(provider==="dropbox")url="https://api.dropboxapi.com/oauth2/token";const r=await fetch(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});const token=await r.json();if(!r.ok||!token.access_token)throw new Error(token.error_description||token.error||"OAuth impossible");await savePersonalCloudToken(decoded.sub,provider,token,null);const target=String(process.env.PUBLIC_APP_URL||"https://multisports-scoring.pages.dev/#/");res.redirect(302,target);}catch(e){res.status(400).send("Connexion cloud impossible. Retourne dans MULTISPORTS SCORING et réessaie.");}});
+app.get("/account/personal-cloud/:provider/connect-url", authRequired, async(req,res)=>{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);if(!personalCloudConfigured(provider))return res.status(503).json({error:`${provider} n'est pas configuré côté serveur (client ID / secret manquant).`});const redirect=personalCloudRedirectUri(req,provider);const state=personalCloudState(req.user.id,provider,req.query.returnTo);let url="";if(provider==="google_drive")url=`https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"https://www.googleapis.com/auth/drive.appdata",access_type:"offline",include_granted_scopes:"true",prompt:"consent",state}).toString()}`;if(provider==="onedrive")url=`https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"offline_access Files.ReadWrite.AppFolder",state}).toString()}`;if(provider==="dropbox")url=`https://www.dropbox.com/oauth2/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",token_access_type:"offline",state}).toString()}`;res.json({ok:true,url});});
+app.get("/account/personal-cloud/:provider/callback", async(req,res)=>{
+ let decoded=null; const provider=String(req.params.provider);
+ try{
+  decoded=jwt.verify(String(req.query.state||""),JWT_SECRET);
+  if(decoded?.purpose!=="personal-cloud-oauth"||decoded?.provider!==provider)throw new Error("État OAuth invalide");
+  const cfg=personalCloudConfig(provider),redirect=personalCloudRedirectUri(req,provider),code=String(req.query.code||"");
+  const oauthError=String(req.query.error_description||req.query.error||"").trim();
+  if(!personalCloudConfigured(provider))throw new Error("Fournisseur OAuth non configuré côté serveur");
+  if(oauthError)throw new Error(oauthError);
+  if(!code)throw new Error("Code OAuth Google absent");
+  let url="",body=new URLSearchParams({code,grant_type:"authorization_code",redirect_uri:redirect,client_id:cfg.clientId});
+  if(cfg.clientSecret)body.set("client_secret",cfg.clientSecret);
+  if(provider==="google_drive")url="https://oauth2.googleapis.com/token";
+  if(provider==="onedrive"){url="https://login.microsoftonline.com/common/oauth2/v2.0/token";body.set("scope","offline_access Files.ReadWrite.AppFolder");}
+  if(provider==="dropbox")url="https://api.dropboxapi.com/oauth2/token";
+  const r=await fetch(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});
+  const token=await r.json();
+  if(!r.ok||!token.access_token)throw new Error(token.error_description||token.error||"OAuth impossible");
+  await savePersonalCloudToken(decoded.sub,provider,token,null);
+  return res.redirect(302,personalCloudCallbackTarget(decoded,provider,"connected"));
+ }catch(e){
+  if(decoded?.purpose==="personal-cloud-oauth"&&decoded?.provider===provider){
+    return res.redirect(302,personalCloudCallbackTarget(decoded,provider,"error",e?.message||"Connexion cloud impossible"));
+  }
+  res.status(400).send("Connexion cloud impossible. Retourne dans MULTISPORTS SCORING et réessaie.");
+ }
+});
 async function personalCloudUpload(provider,token,buffer){
  if(provider==="google_drive"){const q=encodeURIComponent(`name='${PERSONAL_CLOUD_FILE}' and 'appDataFolder' in parents and trashed=false`);const list=await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,name)`,{headers:{authorization:`Bearer ${token}`}}).then(r=>r.json());const id=list?.files?.[0]?.id;const meta={name:PERSONAL_CLOUD_FILE,parents:id?undefined:["appDataFolder"]};const boundary="ms_"+Date.now();const pre=Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n`);const post=Buffer.from(`\r\n--${boundary}--`);const endpoint=id?`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=multipart`:`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;const r=await fetch(endpoint,{method:id?"PATCH":"POST",headers:{authorization:`Bearer ${token}`,"content-type":`multipart/related; boundary=${boundary}`},body:Buffer.concat([pre,buffer,post])});if(!r.ok)throw new Error(`Google Drive upload ${r.status}`);return;}
  if(provider==="onedrive"){const r=await fetch(`https://graph.microsoft.com/v1.0/me/drive/special/approot:/${PERSONAL_CLOUD_FILE}:/content`,{method:"PUT",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:buffer});if(!r.ok)throw new Error(`OneDrive upload ${r.status}`);return;}

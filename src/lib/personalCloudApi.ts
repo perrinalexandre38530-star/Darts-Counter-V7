@@ -1,4 +1,6 @@
+import { registerPlugin } from "@capacitor/core";
 import { apiDelete, apiGet, apiPost, buildApiUrl } from "./apiClient";
+import { getRuntimePlatform } from "./nativePlatform";
 
 export type PersonalCloudProvider = "google_drive" | "onedrive" | "dropbox";
 export type PersonalCloudStatus = { provider: PersonalCloudProvider; configured: boolean; connected: boolean; accountLabel?: string | null; updatedAt?: string | null; error?: string };
@@ -10,11 +12,187 @@ export async function getPersonalCloudStatus(provider: PersonalCloudProvider): P
   return apiGet(`/account/personal-cloud/${provider}/status`) as any;
 }
 
+const NATIVE_CLOUD_CALLBACK_URL = "multisportsscoring://cloud/callback";
+const NATIVE_CLOUD_CALLBACK_PREFIX = "multisportsscoring://cloud/callback";
+const PERSONAL_CLOUD_PENDING_KEY = "msc_personal_cloud_pending_v1";
+const PERSONAL_CLOUD_CALLBACK_KEY = "msc_personal_cloud_callback_v1";
+
+type NativeOAuthBridge = {
+  openExternal(options: { url: string }): Promise<void>;
+  consumeLaunchUrl(options?: { prefix?: string }): Promise<{ url?: string | null }>;
+};
+
+const NativeOAuth = registerPlugin<NativeOAuthBridge>("SocialAuth");
+
+type PersonalCloudPending = {
+  provider: PersonalCloudProvider;
+  startedAt: number;
+  returnHash: string;
+};
+
+type PersonalCloudCallbackResult = {
+  provider: PersonalCloudProvider;
+  ok: boolean;
+  message?: string;
+  at: number;
+};
+
+function isAndroidNativeCloudRuntime(): boolean {
+  return getRuntimePlatform() === "android";
+}
+
+function rememberPersonalCloudPending(provider: PersonalCloudProvider): void {
+  if (typeof window === "undefined") return;
+  try {
+    const pending: PersonalCloudPending = {
+      provider,
+      startedAt: Date.now(),
+      returnHash: String(window.location.hash || "#/settings/storage"),
+    };
+    localStorage.setItem(PERSONAL_CLOUD_PENDING_KEY, JSON.stringify(pending));
+    localStorage.removeItem(PERSONAL_CLOUD_CALLBACK_KEY);
+  } catch {}
+}
+
+function readPersonalCloudPending(): PersonalCloudPending | null {
+  try {
+    const raw = localStorage.getItem(PERSONAL_CLOUD_PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!isPersonalCloudProvider(parsed?.provider)) return null;
+    const startedAt = Number(parsed?.startedAt || 0);
+    if (!startedAt || Date.now() - startedAt > 10 * 60 * 1000) {
+      localStorage.removeItem(PERSONAL_CLOUD_PENDING_KEY);
+      return null;
+    }
+    return {
+      provider: parsed.provider,
+      startedAt,
+      returnHash: String(parsed?.returnHash || "#/settings/storage"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readPersonalCloudCallbackResult(): PersonalCloudCallbackResult | null {
+  try {
+    const raw = localStorage.getItem(PERSONAL_CLOUD_CALLBACK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!isPersonalCloudProvider(parsed?.provider)) return null;
+    if (Date.now() - Number(parsed?.at || 0) > 10 * 60 * 1000) {
+      localStorage.removeItem(PERSONAL_CLOUD_CALLBACK_KEY);
+      return null;
+    }
+    return parsed as PersonalCloudCallbackResult;
+  } catch {
+    return null;
+  }
+}
+
+function savePersonalCloudCallbackResult(result: PersonalCloudCallbackResult): void {
+  try {
+    localStorage.setItem(PERSONAL_CLOUD_CALLBACK_KEY, JSON.stringify(result));
+    localStorage.removeItem(PERSONAL_CLOUD_PENDING_KEY);
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent("msc-personal-cloud-callback", { detail: result }));
+  } catch {}
+}
+
+let nativeCloudBridgeStarted = false;
+let nativeCloudPollBusy = false;
+let nativeCloudPollTimer: number | null = null;
+
+async function pollNativePersonalCloudCallback(): Promise<void> {
+  if (!isAndroidNativeCloudRuntime() || nativeCloudPollBusy) return;
+  const pending = readPersonalCloudPending();
+  if (!pending) return;
+
+  nativeCloudPollBusy = true;
+  try {
+    const { url } = await NativeOAuth.consumeLaunchUrl({ prefix: NATIVE_CLOUD_CALLBACK_PREFIX });
+    if (!url) return;
+
+    const parsed = new URL(String(url));
+    const providerRaw = parsed.searchParams.get("provider") || pending.provider;
+    const provider = isPersonalCloudProvider(providerRaw) ? providerRaw : pending.provider;
+    const status = String(parsed.searchParams.get("status") || "").toLowerCase();
+    const message = parsed.searchParams.get("error") || undefined;
+    const ok = status === "connected" || status === "ok" || status === "success";
+    const result: PersonalCloudCallbackResult = { provider, ok, message, at: Date.now() };
+    savePersonalCloudCallbackResult(result);
+
+    // En cold start, restaure l'écran qui avait lancé l'autorisation.
+    if (pending.returnHash && typeof window !== "undefined" && window.location.hash !== pending.returnHash) {
+      window.location.hash = pending.returnHash;
+    }
+  } catch (error) {
+    console.warn("[personalCloud] native callback poll failed", error);
+  } finally {
+    nativeCloudPollBusy = false;
+  }
+}
+
+/**
+ * Installe le pont global Android pour récupérer le retour du navigateur système,
+ * y compris après un cold start de l'application.
+ */
+export function initNativePersonalCloudBridge(): void {
+  if (nativeCloudBridgeStarted || !isAndroidNativeCloudRuntime() || typeof window === "undefined") return;
+  nativeCloudBridgeStarted = true;
+
+  const poll = () => { void pollNativePersonalCloudCallback(); };
+  window.addEventListener("focus", poll);
+  window.addEventListener("pageshow", poll);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") poll();
+  });
+  nativeCloudPollTimer = window.setInterval(() => {
+    if (readPersonalCloudPending()) poll();
+  }, 1200);
+  poll();
+}
+
+async function waitForNativePersonalCloudCallback(provider: PersonalCloudProvider): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < 4 * 60 * 1000) {
+    await pollNativePersonalCloudCallback();
+    const result = readPersonalCloudCallbackResult();
+    if (result?.provider === provider) {
+      try { localStorage.removeItem(PERSONAL_CLOUD_CALLBACK_KEY); } catch {}
+      if (!result.ok) throw new Error(result.message || "Autorisation Google Drive refusée ou interrompue.");
+      const status = await getPersonalCloudStatus(provider);
+      if (!status.connected) throw new Error("Le retour OAuth a été reçu, mais Google Drive n'est pas encore connecté.");
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+  }
+  throw new Error("La connexion Google Drive a expiré. Réessaie depuis les réglages.");
+}
+
 export async function connectPersonalCloud(provider: PersonalCloudProvider): Promise<void> {
-  const returnTo = typeof window !== "undefined" ? window.location.href.split("#")[0] + "#/settings/storage" : "";
+  const nativeAndroid = isAndroidNativeCloudRuntime();
+  const returnTo = nativeAndroid
+    ? NATIVE_CLOUD_CALLBACK_URL
+    : typeof window !== "undefined"
+      ? window.location.href.split("#")[0] + "#/settings/storage"
+      : "";
   const res: any = await apiGet(`/account/personal-cloud/${provider}/connect-url?returnTo=${encodeURIComponent(returnTo)}`);
   if (!res?.url) throw new Error(res?.error || "Connexion cloud indisponible.");
+
+  if (nativeAndroid) {
+    rememberPersonalCloudPending(provider);
+    await NativeOAuth.openExternal({ url: String(res.url) });
+    await waitForNativePersonalCloudCallback(provider);
+    return;
+  }
+
   window.location.assign(String(res.url));
+  // La page va être remplacée par le flux OAuth. Ne laisse pas l'appelant
+  // continuer comme si la connexion était déjà terminée avant la navigation.
+  await new Promise<void>(() => undefined);
 }
 
 export async function disconnectPersonalCloud(provider: PersonalCloudProvider): Promise<void> {

@@ -41,10 +41,15 @@ public class SocialAuthPlugin extends Plugin {
         try {
             Intent intent = getActivity().getIntent();
             Uri data = intent != null ? intent.getData() : null;
-            result.put("url", data != null ? data.toString() : null);
+            String raw = data != null ? data.toString() : null;
+            String prefix = call.getString("prefix");
+            boolean matches = raw != null && (prefix == null || prefix.trim().isEmpty() || raw.startsWith(prefix));
+            result.put("url", matches ? raw : null);
 
-            // Le code OAuth ne doit être consommé qu'une fois.
-            if (intent != null && data != null) {
+            // Le deep link ne doit être consommé qu'une fois. Quand un préfixe
+            // est fourni (Google Drive, OAuth social...), ne jamais avaler un
+            // callback appartenant à un autre flux.
+            if (intent != null && matches) {
                 intent.setData(null);
                 getActivity().setIntent(intent);
             }

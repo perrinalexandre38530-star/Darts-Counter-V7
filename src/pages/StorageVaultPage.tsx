@@ -2807,7 +2807,6 @@ ${label}`)) return;
       if (!status.connected) {
         setMessage("Connexion à Google Drive…");
         await connectPersonalCloud("google_drive");
-        return;
       }
       const meta = await getPersonalCloudBackupMeta("google_drive");
       if (!meta) {

@@ -126,7 +126,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     tab: "challenge_config",
     popularityRank: 2,
     ready: true,
-    supportsTeams: false,
+    supportsTeams: true,
     supportsBots: false,
     statsKey: "game:challenge",
     infoTitle: "CHALLENGE",

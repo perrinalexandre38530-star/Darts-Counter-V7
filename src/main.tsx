@@ -19,6 +19,7 @@ import { getRuntimePlatform, isCapacitorNativeRuntime } from "./lib/nativePlatfo
 import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 import { isConstrainedRuntimeDevice, isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
+import { initNativePersonalCloudBridge } from "./lib/personalCloudApi";
 import { initKeepAwakeRuntime } from "./lib/keepAwake";
 import { installResponsiveLayout } from "./lib/responsiveLayout";
 import { recordReactFreezeCommit, startFreezeWatchIfEnabled } from "./lib/freezeWatch";
@@ -79,6 +80,7 @@ if (isCapacitorNativeRuntime()) {
 // OAuth Google/Facebook/X/Discord : écoute le deep link de retour Android.
 if (isCapacitorNativeRuntime()) {
   initNativeSocialAuthBridge();
+  initNativePersonalCloudBridge();
 }
 
 // Police dédiée aux noms des joueurs, appliquée globalement sur tous les écrans.

@@ -2474,8 +2474,11 @@ function AccountPages({
     try {
       setMessage("Ouverture de Google Drive…");
       await connectPersonalCloud("google_drive");
+      await refreshGoogleDriveStatus();
+      setMessage("Google Drive connecté à MULTISPORTS SCORING.");
     } catch (e: any) {
       setMessage(`Connexion Google Drive impossible : ${e?.message || e}`);
+    } finally {
       setGoogleDriveBusy(false);
     }
   }

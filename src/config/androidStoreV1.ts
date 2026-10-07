@@ -29,6 +29,8 @@ export const ANDROID_STORE_V1_DARTS_GAME_IDS = [
   "killer_progressive",
   "baseball",
   "darts_firefighter",
+  "challenge",
+  "crados",
 ] as const;
 
 const SPORT_IDS = new Set<string>(ANDROID_STORE_V1_SPORT_IDS);
@@ -74,6 +76,11 @@ export function filterDartsGamesForCurrentRuntime<T extends { id: unknown }>(gam
   return games.filter((game) => isAndroidStoreV1DartsGameAllowed(game.id));
 }
 
+/**
+ * Online + Messagerie sont désormais suffisamment stabilisés pour la diffusion
+ * Android publique. Le filtrage par discipline reste géré dans BottomNav
+ * (Running/FIT/Pétanque, etc. ne montrent pas un hub qui ne leur est pas dédié).
+ */
 export function shouldHideOnlineMessagingForCurrentRuntime(): boolean {
-  return isAndroidStoreV1Runtime();
+  return false;
 }
