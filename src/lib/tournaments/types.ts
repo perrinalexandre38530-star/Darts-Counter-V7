@@ -26,11 +26,49 @@ export type ChallengeCompetitionAttempt = {
   createdAt: number;
 };
 
+export type ChallengeCompetitionRound = {
+  id: string;
+  cycle: number;
+  round: number;
+  objectives: string[];
+  status: "locked" | "open" | "closed";
+  openedAt?: number | null;
+  closedAt?: number | null;
+};
+
+export type ChallengeCompetitionStandingSnapshot = {
+  playerId: string;
+  name?: string;
+  division?: number;
+  rank: number;
+  points: number;
+  wins?: number;
+  podiums?: number;
+  objectives?: number;
+};
+
+export type ChallengeCompetitionPlayoff = {
+  id: string;
+  cycle: number;
+  boundary: number;
+  upperPlayerId: string;
+  lowerPlayerId: string;
+  upperDivision: number;
+  lowerDivision: number;
+  resolved?: boolean;
+  winnerPlayerId?: string | null;
+  resolvedAt?: number | null;
+};
+
 export type ChallengeCompetitionDivisionCycle = {
   cycle: number;
   assignments: Record<string, number>;
   appliedAt?: number | null;
+  closedAt?: number | null;
   movements?: Array<{ playerId: string; from: number; to: number }>;
+  standingsSnapshot?: ChallengeCompetitionStandingSnapshot[];
+  carryPoints?: Record<string, number>;
+  pendingPlayoffs?: ChallengeCompetitionPlayoff[];
 };
 
 export type ChallengeCompetitionConfig = {
@@ -44,6 +82,15 @@ export type ChallengeCompetitionConfig = {
   attempts?: ChallengeCompetitionAttempt[];
   currentCycle?: number;
   divisionCycles?: ChallengeCompetitionDivisionCycle[];
+  schedule?: {
+    publicationMode: "all" | "round_by_round";
+    objectivesPerRound: number;
+    rounds: ChallengeCompetitionRound[];
+  };
+  cyclePoints?: {
+    mode: "reset" | "carry" | "carry_percent";
+    carryPercent?: number;
+  };
   confrontation?: {
     enabled: boolean;
     entity: "players" | "teams";
@@ -54,6 +101,9 @@ export type ChallengeCompetitionConfig = {
     promote: number;
     relegate: number;
     resetPointsEachCycle?: boolean;
+    policies?: Record<string, { promote: number; relegate: number; playoff: number }>;
+    playoffEnabled?: boolean;
+    playoffSlots?: number;
   };
 };
 

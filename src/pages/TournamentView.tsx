@@ -1888,6 +1888,9 @@ export default function TournamentView({ store, go, id }: Props) {
       if(!link) return;
       link.challengeObjective=normalizeChallengeObjective(activeChallengeAttempt.objective);
       link.challengeAttemptNumber=Number(activeChallengeAttempt.attemptNumber||1);
+      link.challengeCycle=Math.max(1,Number(activeChallengeAttempt.cycle||1)||1);
+      link.challengeRoundId=String(activeChallengeAttempt.roundId||"");
+      link.challengeRoundNumber=activeChallengeAttempt.roundNumber==null?null:Number(activeChallengeAttempt.roundNumber||0);
       link.challengeDirect=true;
       const existing=Array.isArray((tour as any)?.linkedMatches)?(tour as any).linkedMatches.slice():[];
       const hid=String(link?.historyMatchId||link?.matchId||link?.id||'');
@@ -2015,6 +2018,8 @@ export default function TournamentView({ store, go, id }: Props) {
   const isChallengePerformanceCompetition = isChallengeCompetition && challengeCompetitionFormat !== "duels";
   const challengeAttemptsPerObjective = Math.max(1, Math.min(5, Number(challengeCompetition?.attemptsPerObjective || challengeRules?.challengeAttemptsPerObjective || 3) || 3));
   const challengePointsTable:number[] = Array.isArray(challengeCompetition?.pointsTable) && challengeCompetition.pointsTable.length ? challengeCompetition.pointsTable.map((n:any)=>Math.max(0,Number(n)||0)) : Array.isArray(challengeRules?.challengePointsTable) && challengeRules.challengePointsTable.length ? challengeRules.challengePointsTable.map((n:any)=>Math.max(0,Number(n)||0)) : [25,20,16,13,11,10,9,8,7,6,5,4,3,2,1];
+  const challengeCurrentCycle = Math.max(1, Number(challengeCompetition?.currentCycle || 1) || 1);
+
   const challengeObjectives = React.useMemo(()=>{
     if(!isChallengeCompetition) return [] as string[];
     const mode=String(challengeRules?.objectiveMode||"fixed");
@@ -2030,12 +2035,45 @@ export default function TournamentView({ store, go, id }: Props) {
     }
     return Array.from(new Set(values.map(normalizeChallengeObjective).filter(Boolean)));
   },[isChallengeCompetition,challengeRules]);
+
+  const challengeScheduleRounds = React.useMemo(()=>{
+    const configured=Array.isArray(challengeCompetition?.schedule?.rounds)?challengeCompetition.schedule.rounds:[];
+    const current=configured.filter((row:any)=>Number(row?.cycle||1)===challengeCurrentCycle);
+    if(current.length) return current.slice().sort((a:any,b:any)=>Number(a?.round||0)-Number(b?.round||0));
+    return challengeObjectives.map((objective,index)=>({
+      id:`cycle-${challengeCurrentCycle}-round-${index+1}`,
+      cycle:challengeCurrentCycle,
+      round:index+1,
+      objectives:[objective],
+      status:"open",
+      openedAt:null,
+      closedAt:null,
+    }));
+  },[challengeCompetition,challengeCurrentCycle,challengeObjectives]);
+
+  const challengeRoundForObjective = React.useCallback((objective:string)=>{
+    const obj=normalizeChallengeObjective(objective);
+    return challengeScheduleRounds.find((round:any)=>(Array.isArray(round?.objectives)?round.objectives:[]).map(normalizeChallengeObjective).includes(obj))||null;
+  },[challengeScheduleRounds]);
+
+  const challengeObjectiveIsOpen = React.useCallback((objective:string)=>{
+    const round:any=challengeRoundForObjective(objective);
+    return !round || String(round?.status||"open")==="open";
+  },[challengeRoundForObjective]);
+
+  const challengeLinkedMatchesCurrentCycle = React.useMemo(()=>{
+    return linkedHistoryMatches.filter((link:any)=>{
+      const cycle=Math.max(1,Number(link?.challengeCycle||1)||1);
+      return cycle===challengeCurrentCycle;
+    });
+  },[linkedHistoryMatches,challengeCurrentCycle]);
+
   const challengeObjectiveStandings = React.useMemo(()=>{
     const out:Record<string,any[]>={};
     if(!isChallengePerformanceCompetition) return out;
     for(const objective of challengeObjectives){
       const attemptsByPlayer=new Map<string,any[]>();
-      const relevant=linkedHistoryMatches.filter((link:any)=>normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective)===objective).slice().sort((a:any,b:any)=>Number(a?.createdAt||0)-Number(b?.createdAt||0));
+      const relevant=challengeLinkedMatchesCurrentCycle.filter((link:any)=>normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective)===objective).slice().sort((a:any,b:any)=>Number(a?.createdAt||0)-Number(b?.createdAt||0));
       for(const link of relevant){
         for(const row of Array.isArray(link?.ranking)?link.ranking:[]){
           const pid=String(row?.playerId||row?.id||""); if(!pid) continue;
@@ -2052,56 +2090,138 @@ export default function TournamentView({ store, go, id }: Props) {
       out[objective]=rows.map((row,index)=>({...row,rank:index+1,championshipPoints:Number(challengePointsTable[index]||0)}));
     }
     return out;
-  },[isChallengePerformanceCompetition,challengeObjectives,linkedHistoryMatches,challengeAttemptsPerObjective,challengePointsTable,playersById]);
+  },[isChallengePerformanceCompetition,challengeObjectives,challengeLinkedMatchesCurrentCycle,challengeAttemptsPerObjective,challengePointsTable,playersById]);
+
+  const challengeCarryPoints = React.useMemo(()=>{
+    const cycles=Array.isArray(challengeCompetition?.divisionCycles)?challengeCompetition.divisionCycles:[];
+    const current=cycles.find((row:any)=>Number(row?.cycle)===challengeCurrentCycle);
+    return current?.carryPoints && typeof current.carryPoints==="object" ? current.carryPoints : {};
+  },[challengeCompetition,challengeCurrentCycle]);
+
   const challengeGeneralStandings = React.useMemo(()=>{
     const map=new Map<string,any>();
+    for(const player of tournamentPlayers){
+      const playerId=String(player?.id||""); if(!playerId) continue;
+      map.set(playerId,{playerId,name:player?.name||playersById[playerId]?.name||"Joueur",points:Number(challengeCarryPoints?.[playerId]||0),cyclePoints:0,carryPoints:Number(challengeCarryPoints?.[playerId]||0),wins:0,podiums:0,objectives:0});
+    }
     for(const objective of challengeObjectives){
       for(const row of challengeObjectiveStandings[objective]||[]){
-        const prev=map.get(row.playerId)||{playerId:row.playerId,name:row.name,points:0,wins:0,podiums:0,objectives:0};
-        prev.points+=Number(row.championshipPoints||0); prev.objectives++; if(row.rank===1)prev.wins++; if(row.rank<=3)prev.podiums++; map.set(row.playerId,prev);
+        const prev=map.get(row.playerId)||{playerId:row.playerId,name:row.name,points:Number(challengeCarryPoints?.[row.playerId]||0),cyclePoints:0,carryPoints:Number(challengeCarryPoints?.[row.playerId]||0),wins:0,podiums:0,objectives:0};
+        prev.points+=Number(row.championshipPoints||0);
+        prev.cyclePoints+=Number(row.championshipPoints||0);
+        prev.objectives++;
+        if(row.rank===1)prev.wins++;
+        if(row.rank<=3)prev.podiums++;
+        map.set(row.playerId,prev);
       }
     }
     const countBest=Math.max(0,Number(challengeCompetition?.countBestObjectives||challengeRules?.challengeCountBestObjectives||0)||0);
     if(countBest>0){
       for(const [pid,row] of map){
         const pts=challengeObjectives.map(o=>(challengeObjectiveStandings[o]||[]).find((r:any)=>r.playerId===pid)?.championshipPoints||0).sort((a,b)=>b-a).slice(0,countBest);
-        row.points=pts.reduce((a:number,b:number)=>a+Number(b||0),0); map.set(pid,row);
+        row.cyclePoints=pts.reduce((a:number,b:number)=>a+Number(b||0),0);
+        row.points=Number(row.carryPoints||0)+row.cyclePoints;
+        map.set(pid,row);
       }
     }
     return Array.from(map.values()).sort((a,b)=>b.points-a.points||b.wins-a.wins||b.podiums-a.podiums||a.name.localeCompare(b.name)).map((row,index)=>({...row,rank:index+1}));
-  },[challengeObjectives,challengeObjectiveStandings,challengeCompetition,challengeRules]);
+  },[tournamentPlayers,playersById,challengeCarryPoints,challengeObjectives,challengeObjectiveStandings,challengeCompetition,challengeRules]);
 
   const challengeAttemptCount = React.useCallback((playerId:string, objective:string)=>{
     const obj=normalizeChallengeObjective(objective);
     let count=0;
-    for(const link of linkedHistoryMatches){
+    for(const link of challengeLinkedMatchesCurrentCycle){
       if(normalizeChallengeObjective((link as any)?.challengeObjective || (link as any)?.target || (link as any)?.objective)!==obj) continue;
       if((Array.isArray((link as any)?.ranking)?(link as any).ranking:[]).some((row:any)=>String(row?.playerId||row?.id||"")===String(playerId))) count++;
     }
     return Math.min(challengeAttemptsPerObjective,count);
-  },[linkedHistoryMatches,challengeAttemptsPerObjective]);
+  },[challengeLinkedMatchesCurrentCycle,challengeAttemptsPerObjective]);
 
   const launchChallengeAttempt = React.useCallback((player:any, objective:string)=>{
     if(!tour||!player) return;
     const pid=String(player?.id||"");
     const obj=normalizeChallengeObjective(objective);
+    const round:any=challengeRoundForObjective(obj);
+    if(round && String(round?.status||"open")!=="open"){
+      setAdminNotice(`${challengeObjectiveLabel(obj)} n’est pas encore ouvert pour le cycle ${challengeCurrentCycle}.`);
+      return;
+    }
     const used=challengeAttemptCount(pid,obj);
     if(used>=challengeAttemptsPerObjective){setAdminNotice(`Essais épuisés pour ${player?.name||"ce joueur"} sur ${challengeObjectiveLabel(obj)}.`);return;}
     const rule=obj==='any-double'?'double':obj==='any-triple'?'triple':obj==='bull'?'bull':String(challengeRules?.rule||'all');
-    setActiveChallengeAttempt({player,objective:obj,attemptNumber:used+1,config:{target:obj,visits:Math.max(1,Number(challengeRules?.visits||30)||30),rule,playerIds:[pid],teamIds:[],participantMode:'players',participantSource:'direct',configMode:'complete',matchMode:'solo',soundsEnabled:true,competition:{tournamentId:(tour as any).id,name:(tour as any).name,objective:obj,attemptNumber:used+1,maxAttempts:challengeAttemptsPerObjective,tieBreak:String(challengeRules?.tieBreak||'segment_sum')}}});
-  },[tour,challengeRules,challengeAttemptCount,challengeAttemptsPerObjective]);
+    setActiveChallengeAttempt({
+      player,
+      objective:obj,
+      attemptNumber:used+1,
+      cycle:challengeCurrentCycle,
+      roundId:String(round?.id||""),
+      roundNumber:Number(round?.round||0)||null,
+      config:{
+        target:obj,
+        visits:Math.max(1,Number(challengeRules?.visits||30)||30),
+        rule,
+        playerIds:[pid],
+        teamIds:[],
+        participantMode:'players',
+        participantSource:'direct',
+        configMode:'complete',
+        matchMode:'solo',
+        soundsEnabled:true,
+        competition:{
+          tournamentId:(tour as any).id,
+          name:(tour as any).name,
+          objective:obj,
+          attemptNumber:used+1,
+          maxAttempts:challengeAttemptsPerObjective,
+          tieBreak:String(challengeRules?.tieBreak||'segment_sum'),
+          cycle:challengeCurrentCycle,
+          roundId:String(round?.id||""),
+          roundNumber:Number(round?.round||0)||null,
+        }
+      }
+    });
+  },[tour,challengeRules,challengeAttemptCount,challengeAttemptsPerObjective,challengeRoundForObjective,challengeCurrentCycle]);
 
   const challengeDivisionState = React.useMemo(()=>{
     const divCfg:any=challengeCompetition?.divisions||{};
     const count=Math.max(1,Number(divCfg?.count||1)||1);
     const cycles=Array.isArray(challengeCompetition?.divisionCycles)?challengeCompetition.divisionCycles:[];
-    const cycle=Math.max(1,Number(challengeCompetition?.currentCycle||1)||1);
+    const cycle=challengeCurrentCycle;
     const current=cycles.find((c:any)=>Number(c?.cycle)===cycle)||cycles[cycles.length-1]||null;
     const assignments:any={...(current?.assignments||{})};
     tournamentPlayers.forEach((p:any,index:number)=>{const pid=String(p?.id||'');if(pid&&assignments[pid]==null)assignments[pid]=Math.min(count,1+(index%count));});
-    const byDivision=Array.from({length:count},(_,i)=>{const division=i+1;const ids=tournamentPlayers.filter((p:any)=>Number(assignments[String(p?.id||'')])===division).map((p:any)=>String(p.id));const standings=ids.map(pid=>challengeGeneralStandings.find((r:any)=>String(r.playerId)===pid)||{playerId:pid,name:playersById[pid]?.name||'Joueur',points:0,wins:0,podiums:0,objectives:0,rank:9999}).sort((a:any,b:any)=>b.points-a.points||b.wins-a.wins||b.podiums-a.podiums||String(a.name).localeCompare(String(b.name))).map((r:any,index:number)=>({...r,divisionRank:index+1}));return {division,standings};});
-    return {enabled:Boolean(divCfg?.enabled),count,cycle,assignments,byDivision,promote:Math.max(0,Number(divCfg?.promote||0)||0),relegate:Math.max(0,Number(divCfg?.relegate||0)||0)};
-  },[challengeCompetition,tournamentPlayers,challengeGeneralStandings,playersById]);
+    const policies:any=divCfg?.policies||{};
+    const policyFor=(division:number)=>{
+      const saved=policies[String(division)]||policies[division]||{};
+      return {
+        promote:division<=1?0:Math.max(0,Number(saved?.promote??divCfg?.promote??0)||0),
+        relegate:division>=count?0:Math.max(0,Number(saved?.relegate??divCfg?.relegate??0)||0),
+        playoff:Math.max(0,Number(saved?.playoff??divCfg?.playoffSlots??0)||0),
+      };
+    };
+    const byDivision=Array.from({length:count},(_,i)=>{
+      const division=i+1;
+      const ids=tournamentPlayers.filter((p:any)=>Number(assignments[String(p?.id||'')])===division).map((p:any)=>String(p.id));
+      const standings=ids.map(pid=>challengeGeneralStandings.find((r:any)=>String(r.playerId)===pid)||{playerId:pid,name:playersById[pid]?.name||'Joueur',points:0,wins:0,podiums:0,objectives:0,rank:9999}).sort((a:any,b:any)=>b.points-a.points||b.wins-a.wins||b.podiums-a.podiums||String(a.name).localeCompare(String(b.name))).map((r:any,index:number)=>({...r,divisionRank:index+1}));
+      return {division,standings,policy:policyFor(division)};
+    });
+    return {
+      enabled:Boolean(divCfg?.enabled),
+      count,
+      cycle,
+      assignments,
+      byDivision,
+      policies,
+      promote:Math.max(0,Number(divCfg?.promote||0)||0),
+      relegate:Math.max(0,Number(divCfg?.relegate||0)||0),
+      pendingPlayoffs:Array.isArray(current?.pendingPlayoffs)?current.pendingPlayoffs:[],
+    };
+  },[challengeCompetition,challengeCurrentCycle,tournamentPlayers,challengeGeneralStandings,playersById]);
+
+  const challengeCycleHistory = React.useMemo(()=>{
+    const cycles=Array.isArray(challengeCompetition?.divisionCycles)?challengeCompetition.divisionCycles:[];
+    return cycles.filter((row:any)=>Array.isArray(row?.standingsSnapshot)&&row.standingsSnapshot.length).slice().sort((a:any,b:any)=>Number(b?.cycle||0)-Number(a?.cycle||0));
+  },[challengeCompetition]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
@@ -2633,14 +2753,76 @@ async function createSyntheticHistoryForSimulation(args: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const updateChallengeRoundStatus = React.useCallback(async(roundId:string,status:"locked"|"open"|"closed")=>{
+    if(!tour||!isCompetitionAdmin) return;
+    const cfg:any={...((tour as any).challengeCompetition||{})};
+    const schedule:any={...(cfg.schedule||{}),rounds:Array.isArray(cfg?.schedule?.rounds)?cfg.schedule.rounds.slice():[]};
+    const now=Date.now();
+    schedule.rounds=schedule.rounds.map((row:any)=>{
+      if(String(row?.id)!==String(roundId)) return row;
+      return {
+        ...row,
+        status,
+        openedAt:status==="open"?(row?.openedAt||now):row?.openedAt||null,
+        closedAt:status==="closed"?now:(status==="open"?null:row?.closedAt||null),
+      };
+    });
+    cfg.schedule=schedule;
+    const nextTour:any={...(tour as any),challengeCompetition:cfg,updatedAt:now};
+    await persist(nextTour,safeMatches as any);
+    setAdminNotice(status==="open"?"Journée publiée.":status==="closed"?"Journée clôturée.":"Journée verrouillée.");
+  },[tour,isCompetitionAdmin,persist,safeMatches]);
+
+  const advanceChallengeRound = React.useCallback(async()=>{
+    if(!tour||!isCompetitionAdmin) return;
+    const cfg:any={...((tour as any).challengeCompetition||{})};
+    const schedule:any={...(cfg.schedule||{}),rounds:Array.isArray(cfg?.schedule?.rounds)?cfg.schedule.rounds.slice():[]};
+    const currentRows=schedule.rounds.filter((row:any)=>Number(row?.cycle||1)===challengeCurrentCycle).sort((a:any,b:any)=>Number(a?.round||0)-Number(b?.round||0));
+    if(!currentRows.length){setAdminNotice("Aucune journée configurée.");return;}
+    const now=Date.now();
+    const open=currentRows.find((row:any)=>String(row?.status)==="open");
+    const nextLocked=currentRows.find((row:any)=>String(row?.status)==="locked");
+    if(!open && !nextLocked){setAdminNotice("Toutes les journées de ce cycle sont clôturées.");return;}
+    const openId=String(open?.id||"");
+    const nextId=String(nextLocked?.id||"");
+    schedule.rounds=schedule.rounds.map((row:any)=>{
+      if(openId && String(row?.id)===openId) return {...row,status:"closed",closedAt:now};
+      if(nextId && String(row?.id)===nextId) return {...row,status:"open",openedAt:now,closedAt:null};
+      return row;
+    });
+    cfg.schedule=schedule;
+    const nextTour:any={...(tour as any),challengeCompetition:cfg,updatedAt:now};
+    await persist(nextTour,safeMatches as any);
+    setAdminNotice(nextId?`Journée ${Number(nextLocked?.round||0)} publiée. La précédente est clôturée.`:"Dernière journée clôturée. Le cycle peut maintenant être terminé.");
+  },[tour,isCompetitionAdmin,challengeCurrentCycle,persist,safeMatches]);
+
   const applyChallengePromotionCycle = React.useCallback(async()=>{
     if(!tour||challengeCompetitionFormat!=='divisions'||!challengeDivisionState.enabled) return;
+    if(challengeScheduleRounds.some((round:any)=>String(round?.status||"open")!=="closed")){
+      setAdminNotice("Clôture d’abord toutes les journées / manches du cycle avant d’appliquer les montées et descentes.");
+      return;
+    }
+    const now=Date.now();
     const nextAssignments:any={...challengeDivisionState.assignments};
     const movements:any[]=[];
+    const standingsSnapshot:any[]=[];
+
     for(const div of challengeDivisionState.byDivision){
       const rows=div.standings||[];
-      const up=new Set(div.division>1?rows.slice(0,challengeDivisionState.promote).map((r:any)=>String(r.playerId)):[]);
-      const down=new Set(div.division<challengeDivisionState.count?rows.slice(Math.max(0,rows.length-challengeDivisionState.relegate)).map((r:any)=>String(r.playerId)):[]);
+      const policy=div.policy||{promote:0,relegate:0,playoff:0};
+      rows.forEach((row:any)=>standingsSnapshot.push({
+        playerId:String(row.playerId),
+        name:String(row.name||playersById[String(row.playerId)]?.name||"Joueur"),
+        division:div.division,
+        rank:Number(row.divisionRank||row.rank||0)||0,
+        points:Number(row.points||0)||0,
+        wins:Number(row.wins||0)||0,
+        podiums:Number(row.podiums||0)||0,
+        objectives:Number(row.objectives||0)||0,
+      }));
+      const up=new Set(div.division>1?rows.slice(0,Math.max(0,Number(policy.promote)||0)).map((r:any)=>String(r.playerId)):[]);
+      const downCount=Math.max(0,Number(policy.relegate)||0);
+      const down=new Set(div.division<challengeDivisionState.count&&downCount>0?rows.slice(Math.max(0,rows.length-downCount)).map((r:any)=>String(r.playerId)):[]);
       for(const row of rows){
         const pid=String(row.playerId);
         const both=up.has(pid)&&down.has(pid);
@@ -2651,13 +2833,128 @@ async function createSyntheticHistoryForSimulation(args: any) {
         if(to!==div.division)movements.push({playerId:pid,from:div.division,to});
       }
     }
+
+    const pendingPlayoffs:any[]=[];
+    for(let boundary=1;boundary<challengeDivisionState.count;boundary++){
+      const upper=challengeDivisionState.byDivision.find((d:any)=>Number(d.division)===boundary);
+      const lower=challengeDivisionState.byDivision.find((d:any)=>Number(d.division)===boundary+1);
+      if(!upper||!lower) continue;
+      const upperPolicy=upper.policy||{promote:0,relegate:0,playoff:0};
+      const lowerPolicy=lower.policy||{promote:0,relegate:0,playoff:0};
+      const slots=Math.max(0,Number(upperPolicy.playoff||0),Number(lowerPolicy.playoff||0));
+      for(let index=0;index<slots;index++){
+        const upperIndex=(upper.standings?.length||0)-Math.max(0,Number(upperPolicy.relegate)||0)-1-index;
+        const lowerIndex=Math.max(0,Number(lowerPolicy.promote)||0)+index;
+        const upperRow=upperIndex>=0?upper.standings?.[upperIndex]:null;
+        const lowerRow=lower.standings?.[lowerIndex]||null;
+        if(!upperRow||!lowerRow) continue;
+        pendingPlayoffs.push({
+          id:`cycle-${challengeDivisionState.cycle}-boundary-${boundary}-playoff-${index+1}`,
+          cycle:challengeDivisionState.cycle,
+          boundary,
+          upperPlayerId:String(upperRow.playerId),
+          lowerPlayerId:String(lowerRow.playerId),
+          upperDivision:boundary,
+          lowerDivision:boundary+1,
+          resolved:false,
+          winnerPlayerId:null,
+        });
+      }
+    }
+
+    const pointsMode=String(challengeCompetition?.cyclePoints?.mode||((challengeCompetition?.divisions?.resetPointsEachCycle??true)?"reset":"carry"));
+    const carryPercent=Math.max(0,Math.min(100,Number(challengeCompetition?.cyclePoints?.carryPercent??50)||0));
+    const nextCarry:any={};
+    for(const row of challengeGeneralStandings){
+      const total=Number(row?.points||0)||0;
+      nextCarry[String(row.playerId)]=pointsMode==="carry"?total:pointsMode==="carry_percent"?Math.round(total*carryPercent/100):0;
+    }
+
     const nextCycle=challengeDivisionState.cycle+1;
-    const previous=Array.isArray((tour as any)?.challengeCompetition?.divisionCycles)?(tour as any).challengeCompetition.divisionCycles:[];
-    const nextChallenge={...((tour as any).challengeCompetition||{}),currentCycle:nextCycle,divisionCycles:[...previous,{cycle:nextCycle,assignments:nextAssignments,appliedAt:Date.now(),movements}]};
-    const nextTour:any={...(tour as any),challengeCompetition:nextChallenge,updatedAt:Date.now()};
+    const previous=Array.isArray((tour as any)?.challengeCompetition?.divisionCycles)?(tour as any).challengeCompetition.divisionCycles.slice():[];
+    const currentIndex=previous.findIndex((row:any)=>Number(row?.cycle)===challengeDivisionState.cycle);
+    const currentRecord:any=currentIndex>=0?previous[currentIndex]:{cycle:challengeDivisionState.cycle,assignments:{...challengeDivisionState.assignments}};
+    const closedRecord:any={...currentRecord,closedAt:now,standingsSnapshot};
+    if(currentIndex>=0) previous[currentIndex]=closedRecord; else previous.push(closedRecord);
+
+    const nextRecord:any={
+      cycle:nextCycle,
+      assignments:nextAssignments,
+      appliedAt:now,
+      movements,
+      carryPoints:nextCarry,
+      pendingPlayoffs,
+    };
+    previous.push(nextRecord);
+
+    const cfg:any={...((tour as any).challengeCompetition||{}),currentCycle:nextCycle,divisionCycles:previous};
+    const schedule:any={...(cfg.schedule||{}),rounds:Array.isArray(cfg?.schedule?.rounds)?cfg.schedule.rounds.slice():[]};
+    const templateRows=challengeScheduleRounds.length?challengeScheduleRounds:[{objectives:challengeObjectives}];
+    const sequential=String(schedule?.publicationMode||"round_by_round")==="round_by_round";
+    const waitForPlayoffs=pendingPlayoffs.length>0;
+    const nextRounds=templateRows.map((row:any,index:number)=>({
+      id:`cycle-${nextCycle}-round-${index+1}`,
+      cycle:nextCycle,
+      round:index+1,
+      objectives:Array.isArray(row?.objectives)?row.objectives.slice():[],
+      status:waitForPlayoffs?"locked":(!sequential||index===0?"open":"locked"),
+      openedAt:waitForPlayoffs?null:(!sequential||index===0?now:null),
+      closedAt:null,
+    }));
+    schedule.rounds=[...schedule.rounds.filter((row:any)=>Number(row?.cycle||1)!==nextCycle),...nextRounds];
+    cfg.schedule=schedule;
+
+    const nextTour:any={...(tour as any),challengeCompetition:cfg,updatedAt:now};
     await persist(nextTour,safeMatches as any);
-    setAdminNotice(`Cycle ${nextCycle} créé · ${movements.length} mouvement${movements.length>1?'s':''} de division appliqué${movements.length>1?'s':''}.`);
-  },[tour,challengeCompetitionFormat,challengeDivisionState,persist,safeMatches]);
+    setAdminNotice(pendingPlayoffs.length
+      ? `Cycle ${challengeDivisionState.cycle} clôturé · cycle ${nextCycle} préparé avec ${pendingPlayoffs.length} barrage${pendingPlayoffs.length>1?'s':''} à résoudre.`
+      : `Cycle ${challengeDivisionState.cycle} clôturé · cycle ${nextCycle} ouvert · ${movements.length} mouvement${movements.length>1?'s':''} appliqué${movements.length>1?'s':''}.`);
+  },[tour,challengeCompetitionFormat,challengeDivisionState,challengeCompetition,challengeGeneralStandings,challengeScheduleRounds,challengeObjectives,playersById,persist,safeMatches]);
+
+  const resolveChallengePlayoff = React.useCallback(async(playoffId:string,winner:"upper"|"lower")=>{
+    if(!tour||!isCompetitionAdmin) return;
+    const cfg:any={...((tour as any).challengeCompetition||{})};
+    const cycles=Array.isArray(cfg?.divisionCycles)?cfg.divisionCycles.slice():[];
+    const cycleIndex=cycles.findIndex((row:any)=>Number(row?.cycle)===challengeCurrentCycle);
+    if(cycleIndex<0) return;
+    const cycle:any={...cycles[cycleIndex],assignments:{...(cycles[cycleIndex]?.assignments||{})}};
+    const playoffs=Array.isArray(cycle?.pendingPlayoffs)?cycle.pendingPlayoffs.slice():[];
+    const idx=playoffs.findIndex((row:any)=>String(row?.id)===String(playoffId));
+    if(idx<0) return;
+    const p:any={...playoffs[idx]};
+    if(p.resolved) return;
+    const winnerId=winner==="lower"?String(p.lowerPlayerId):String(p.upperPlayerId);
+    const now=Date.now();
+    const movements=Array.isArray(cycle?.movements)?cycle.movements.slice():[];
+    if(winner==="lower"){
+      cycle.assignments[String(p.upperPlayerId)]=Number(p.lowerDivision);
+      cycle.assignments[String(p.lowerPlayerId)]=Number(p.upperDivision);
+      movements.push({playerId:String(p.upperPlayerId),from:Number(p.upperDivision),to:Number(p.lowerDivision)});
+      movements.push({playerId:String(p.lowerPlayerId),from:Number(p.lowerDivision),to:Number(p.upperDivision)});
+    }
+    playoffs[idx]={...p,resolved:true,winnerPlayerId:winnerId,resolvedAt:now};
+    cycle.pendingPlayoffs=playoffs;
+    cycle.movements=movements;
+    cycles[cycleIndex]=cycle;
+    cfg.divisionCycles=cycles;
+
+    const unresolved=playoffs.some((row:any)=>!row?.resolved);
+    if(!unresolved){
+      const schedule:any={...(cfg.schedule||{}),rounds:Array.isArray(cfg?.schedule?.rounds)?cfg.schedule.rounds.slice():[]};
+      const sequential=String(schedule?.publicationMode||"round_by_round")==="round_by_round";
+      const currentRows=schedule.rounds.filter((row:any)=>Number(row?.cycle||1)===challengeCurrentCycle).sort((a:any,b:any)=>Number(a?.round||0)-Number(b?.round||0));
+      const firstId=String(currentRows[0]?.id||"");
+      schedule.rounds=schedule.rounds.map((row:any)=>{
+        if(Number(row?.cycle||1)!==challengeCurrentCycle) return row;
+        if(!sequential || String(row?.id)===firstId) return {...row,status:"open",openedAt:row?.openedAt||now,closedAt:null};
+        return {...row,status:"locked",openedAt:null,closedAt:null};
+      });
+      cfg.schedule=schedule;
+    }
+    const nextTour:any={...(tour as any),challengeCompetition:cfg,updatedAt:now};
+    await persist(nextTour,safeMatches as any);
+    setAdminNotice(unresolved?"Barrage enregistré. D’autres barrages restent à résoudre.":`Barrages terminés · cycle ${challengeCurrentCycle} ouvert.`);
+  },[tour,isCompetitionAdmin,challengeCurrentCycle,persist,safeMatches]);
 
   const loadAttachableHistory = React.useCallback(async () => {
     if (!tour) return;
@@ -2721,7 +3018,16 @@ async function createSyntheticHistoryForSimulation(args: any) {
         const lite = attachRows.find((r: any) => String(r.__historyId || getHistoryRowId(r)) === hid) || null;
         const full = typeof api.get === "function" ? ((await api.get(hid).catch(() => null)) || lite) : lite;
         if (!full) continue;
-        entries.push(buildLinkedHistoryEntry(full, tour));
+        const built:any=buildLinkedHistoryEntry(full, tour);
+        if(isChallengePerformanceCompetition){
+          const objective=normalizeChallengeObjective(built?.challengeObjective || built?.target || built?.objective || full?.target || full?.config?.target || full?.settings?.target || "");
+          const round:any=objective?challengeRoundForObjective(objective):null;
+          built.challengeCycle=challengeCurrentCycle;
+          if(objective) built.challengeObjective=objective;
+          built.challengeRoundId=String(round?.id||"");
+          built.challengeRoundNumber=round?.round==null?null:Number(round.round||0);
+        }
+        entries.push(built);
       }
 
       if (!entries.length) {
@@ -2820,7 +3126,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     } finally {
       setAttachLoading(false);
     }
-  }, [tour, attachSelected, attachRows, safeMatches, isLeagueMulti, isChallengePerformanceCompetition, persist]);
+  }, [tour, attachSelected, attachRows, safeMatches, isLeagueMulti, isChallengePerformanceCompetition, persist, challengeCurrentCycle, challengeRoundForObjective]);
 
   const onStartMatch = React.useCallback(
     async (matchId: string) => {
@@ -3619,12 +3925,29 @@ async function createSyntheticHistoryForSimulation(args: any) {
           {tab === "objectives" && isChallengePerformanceCompetition ? (
             <Card title="Objectifs Challenge" subtitle={`Chaque objectif conserve le meilleur résultat dans la limite de ${challengeAttemptsPerObjective} essai${challengeAttemptsPerObjective>1?"s":""}.`} accent={TAB_COLORS.objectives} icon="🎯">
               <div style={{display:"grid",gap:10}}>
+                {challengeScheduleRounds.length ? <section style={{borderRadius:15,border:"1px solid rgba(255,181,74,.20)",background:"rgba(4,7,12,.97)",padding:11}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                    <div><b style={{fontSize:11,color:"#ffcf73"}}>PROGRAMME · CYCLE {challengeCurrentCycle}</b><div style={{fontSize:8.2,opacity:.62,marginTop:2}}>{String(challengeCompetition?.schedule?.publicationMode||"round_by_round")==="round_by_round"?"Publication journée par journée":"Tous les objectifs ouverts"}</div></div>
+                    <MiniBadge label="Journées" value={challengeScheduleRounds.length} accent={TAB_COLORS.objectives}/>
+                  </div>
+                  <div style={{display:"grid",gap:6,marginTop:8}}>
+                    {challengeScheduleRounds.map((round:any)=>{
+                      const status=String(round?.status||"open");
+                      const accent=status==="open"?"#65e6a2":status==="closed"?"#7c8796":"#ffb54a";
+                      return <div key={String(round?.id)} style={{display:"grid",gridTemplateColumns:"64px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:10,border:`1px solid ${accent}22`,background:"#080d14"}}>
+                        <b style={{fontSize:8.5,color:accent}}>J{Number(round?.round||0)||1}</b>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{(Array.isArray(round?.objectives)?round.objectives:[]).map((objective:any)=><span key={String(objective)} style={{padding:"3px 6px",borderRadius:999,border:"1px solid rgba(255,255,255,.10)",fontSize:7.5,fontWeight:900}}>{challengeObjectiveLabel(objective)}</span>)}</div>
+                        <span style={{fontSize:7.5,fontWeight:1000,color:accent}}>{status==="open"?"OUVERTE":status==="closed"?"CLÔTURÉE":"À VENIR"}</span>
+                      </div>
+                    })}
+                  </div>
+                </section>:null}
                 {challengeCompetitionFormat==="divisions"&&challengeDivisionState.enabled?<section style={{borderRadius:15,border:"1px solid rgba(182,182,255,.24)",background:"#070a11",padding:11}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{color:"#b6b6ff",fontSize:12}}>CYCLE {challengeDivisionState.cycle} · {challengeDivisionState.count} DIVISION{challengeDivisionState.count>1?"S":""}</b><div style={{fontSize:8,opacity:.62,marginTop:2}}>{challengeDivisionState.promote} montée{challengeDivisionState.promote>1?"s":""} · {challengeDivisionState.relegate} descente{challengeDivisionState.relegate>1?"s":""} par cycle</div></div></div><div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(3,challengeDivisionState.count)},minmax(0,1fr))`,gap:7,marginTop:8}}>{challengeDivisionState.byDivision.map((div:any)=><div key={div.division} style={{padding:8,borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"#0a0f17"}}><b style={{fontSize:9,color:"#fff"}}>DIVISION {div.division}</b><div style={{marginTop:5,display:"grid",gap:3}}>{div.standings.slice(0,6).map((r:any)=><span key={r.playerId} style={{fontSize:7.8,opacity:.75,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.divisionRank}. {r.name} · {r.points} pts</span>)}</div></div>)}</div></section>:null}
                 {challengeObjectives.length ? challengeObjectives.map((objective:any)=>{
                   const rows=challengeObjectiveStandings[objective]||[];
                   return <section key={objective} style={{borderRadius:15,border:"1px solid rgba(255,181,74,.22)",background:"rgba(4,7,12,.97)",padding:11}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><b style={{fontSize:13,color:TAB_COLORS.objectives}}>{challengeObjectiveLabel(objective)}</b><div style={{fontSize:8.5,opacity:.62,marginTop:2}}>Classement de l’objectif · meilleur essai retenu</div></div><MiniBadge label="Classés" value={rows.length} accent={TAB_COLORS.objectives}/></div>
-                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const canPlay=(isCompetitionAdmin||activeProfileId===pid)&&attempts<challengeAttemptsPerObjective;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{challengeAttemptsPerObjective} essai{challengeAttemptsPerObjective>1?"s":""}{attempts>=challengeAttemptsPerObjective?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=challengeAttemptsPerObjective?"COMPLET":"JOUER"}</button></div>})}</div>
+                    <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((player:any)=>{const pid=String(player?.id||"");const row=rows.find((r:any)=>String(r.playerId)===pid);const attempts=challengeAttemptCount(pid,objective);const objectiveOpen=challengeObjectiveIsOpen(objective);const canPlay=(isCompetitionAdmin||activeProfileId===pid)&&objectiveOpen&&attempts<challengeAttemptsPerObjective;return <div key={pid} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,255,255,.07)"}}><strong style={{color:row&&row.rank<=3?TAB_COLORS.objectives:"#fff"}}>{row?`#${row.rank}`:"—"}</strong><div style={{minWidth:0}}><span style={{display:"block",fontSize:9.5,fontWeight:950,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{player?.name||"Joueur"}</span><small style={{display:"block",marginTop:2,fontSize:7.5,opacity:.58}}>{attempts}/{challengeAttemptsPerObjective} essai{challengeAttemptsPerObjective>1?"s":""}{attempts>=challengeAttemptsPerObjective?" · terminé":""}</small></div><b style={{color:row?"#65e6a2":"#7c8796",fontSize:10}}>{row?`${row.score} · +${row.championshipPoints} pts`:"Pas de score"}</b><button type="button" disabled={!canPlay} onClick={()=>launchChallengeAttempt(player,objective)} style={{minWidth:62,minHeight:31,borderRadius:9,border:`1px solid ${canPlay?"rgba(255,181,74,.5)":"rgba(255,255,255,.08)"}`,background:canPlay?"rgba(92,52,8,.95)":"rgba(255,255,255,.03)",color:canPlay?"#ffcf73":"#66717f",fontSize:8,fontWeight:1000,cursor:canPlay?"pointer":"default"}}>{attempts>=challengeAttemptsPerObjective?"COMPLET":!objectiveOpen?"VERROUILLÉ":"JOUER"}</button></div>})}</div>
                   </section>
                 }):<div style={{fontSize:10,opacity:.7}}>Aucun objectif configuré.</div>}
               </div>
@@ -3638,6 +3961,13 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 <div style={{display:"grid",gap:7}}>
                   <div style={{fontSize:9,opacity:.68,marginBottom:2}}>Barème : {challengePointsTable.slice(0,10).map((v,i)=>`${i+1}e=${v}`).join(" · ")}</div>
                   {challengeGeneralStandings.length?challengeGeneralStandings.map((row:any)=><div key={row.playerId} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"9px 10px",borderRadius:11,border:"1px solid rgba(255,255,255,.08)",background:"#080d14"}}><strong style={{color:row.rank<=3?TAB_COLORS.standings:"#fff"}}>#{row.rank}</strong><div style={{minWidth:0}}><b style={{display:"block",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</b><span style={{display:"block",marginTop:2,fontSize:7.8,opacity:.62}}>{row.wins} victoire{row.wins>1?"s":""} d’objectif · {row.podiums} podium{row.podiums>1?"s":""} · {row.objectives} objectif{row.objectives>1?"s":""} classé{row.objectives>1?"s":""}</span></div><b style={{fontSize:16,color:TAB_COLORS.standings}}>{row.points} pts</b></div>):<div style={{fontSize:10,opacity:.68}}>Le classement général apparaîtra dès qu’un résultat Challenge sera rattaché à un objectif.</div>}
+                  {challengeCycleHistory.length?<div style={{marginTop:10,display:"grid",gap:7}}>
+                    <div style={{fontSize:9,fontWeight:1000,color:"#b6b6ff"}}>HISTORIQUE DES CYCLES</div>
+                    {challengeCycleHistory.map((cycle:any)=><div key={`history-${cycle.cycle}`} style={{padding:"9px 10px",borderRadius:11,border:"1px solid rgba(182,182,255,.14)",background:"#070a11"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:9.5}}>CYCLE {cycle.cycle}</b><span style={{fontSize:7.5,opacity:.6}}>{cycle.closedAt?formatDate(Number(cycle.closedAt)):""}</span></div>
+                      <div style={{display:"grid",gap:4,marginTop:6}}>{(Array.isArray(cycle.standingsSnapshot)?cycle.standingsSnapshot:[]).slice(0,10).sort((a:any,b:any)=>Number(a.division||1)-Number(b.division||1)||Number(a.rank||999)-Number(b.rank||999)).map((row:any)=><div key={`${cycle.cycle}-${row.playerId}-${row.division}`} style={{display:"grid",gridTemplateColumns:"52px minmax(0,1fr) auto",gap:6,fontSize:7.8,opacity:.8}}><span>D{Number(row.division||1)} · #{Number(row.rank||0)}</span><b style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name||playersById[String(row.playerId)]?.name||"Joueur"}</b><span>{Number(row.points||0)} pts</span></div>)}</div>
+                    </div>)}
+                  </div>:null}
                 </div>
               ) : viewKind === "round_robin" ? (
                 <>
@@ -3876,8 +4206,57 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   {adminAdminPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:160,overflowY:"auto"}}>{availableAdmins.length?availableAdmins.map((p:any)=><button key={p.id} onClick={()=>addCompetitionAdmin(String(p.id))} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Profil"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun profil supplémentaire disponible.</div>}</div>:null}
                   <div style={{display:"grid",gap:6,marginTop:9}}><div style={{padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,207,87,.18)",fontSize:9.5}}><b>PROPRIÉTAIRE</b> · {allProfiles.find((p:any)=>String(p.id)===ownerProfileId)?.name||"Créateur"}</div>{adminProfileIds.map(pid=><div key={pid} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:9.5}}>{allProfiles.find((p:any)=>String(p.id)===pid)?.name||pid}</b><button onClick={()=>removeCompetitionAdmin(pid)} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000}}>RETIRER</button></div>)}</div>
                 </section>
-                {challengeCompetitionFormat==='divisions'&&challengeDivisionState.enabled?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(182,182,255,.18)"}}><b style={{color:"#b6b6ff",fontSize:11}}>LIGUES & DIVISIONS · CYCLE {challengeDivisionState.cycle}</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>À la clôture du cycle, applique automatiquement les montées et descentes selon le classement général de chaque division.</div><div style={{display:"grid",gap:5,marginTop:8}}>{challengeDivisionState.byDivision.map((div:any)=><div key={div.division} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 9px",borderRadius:9,background:"#080d14",fontSize:8.5}}><b>DIVISION {div.division}</b><span>{div.standings.length} joueur{div.standings.length>1?'s':''}</span></div>)}</div><button type="button" onClick={applyChallengePromotionCycle} disabled={!challengeGeneralStandings.length} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.4)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:challengeGeneralStandings.length?1:.35}}>CLÔTURER LE CYCLE · APPLIQUER MONTÉES / DESCENTES</button></section>:null}
-                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
+                {isChallengePerformanceCompetition?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,181,74,.18)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                    <div><b style={{color:"#ffb54a",fontSize:11}}>JOURNÉES / MANCHES · CYCLE {challengeCurrentCycle}</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Publication : {String(challengeCompetition?.schedule?.publicationMode||"round_by_round")==="round_by_round"?"une journée à la fois":"toutes ouvertes"}</div></div>
+                    <MiniBadge label="Total" value={challengeScheduleRounds.length} accent="#ffb54a"/>
+                  </div>
+                  <div style={{display:"grid",gap:6,marginTop:8}}>
+                    {challengeScheduleRounds.map((round:any)=>{
+                      const status=String(round?.status||"open");
+                      const accent=status==="open"?"#65e6a2":status==="closed"?"#7c8796":"#ffb54a";
+                      return <div key={String(round?.id)} style={{display:"grid",gridTemplateColumns:"54px minmax(0,1fr) auto",gap:7,alignItems:"center",padding:"8px 9px",borderRadius:10,background:"#080d14",border:`1px solid ${accent}22`}}>
+                        <b style={{fontSize:8.5,color:accent}}>J{Number(round?.round||0)||1}</b>
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{(Array.isArray(round?.objectives)?round.objectives:[]).map((objective:any)=><span key={String(objective)} style={{fontSize:7.4,padding:"3px 6px",borderRadius:999,border:"1px solid rgba(255,255,255,.09)"}}>{challengeObjectiveLabel(objective)}</span>)}</div>
+                        <div style={{display:"flex",gap:4}}>
+                          {status!=="open"?<button type="button" onClick={()=>updateChallengeRoundStatus(String(round.id),"open")} style={{border:0,borderRadius:7,padding:"5px 7px",background:"rgba(40,120,74,.24)",color:"#65e6a2",fontSize:7,fontWeight:1000}}>OUVRIR</button>:null}
+                          {status!=="closed"?<button type="button" onClick={()=>updateChallengeRoundStatus(String(round.id),"closed")} style={{border:0,borderRadius:7,padding:"5px 7px",background:"rgba(255,255,255,.08)",color:"#d7dde6",fontSize:7,fontWeight:1000}}>FERMER</button>:null}
+                        </div>
+                      </div>
+                    })}
+                  </div>
+                  {String(challengeCompetition?.schedule?.publicationMode||"round_by_round")==="round_by_round"?<button type="button" onClick={advanceChallengeRound} style={{marginTop:9,width:"100%",minHeight:36,borderRadius:10,border:"1px solid rgba(255,181,74,.34)",background:"rgba(74,46,10,.92)",color:"#fff",fontWeight:1000}}>CLÔTURER L’ACTUELLE · PUBLIER LA SUIVANTE</button>:null}
+                </section>:null}
+                {challengeCompetitionFormat==='divisions'&&challengeDivisionState.enabled?<section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(182,182,255,.18)"}}>
+                  <b style={{color:"#b6b6ff",fontSize:11}}>LIGUES & DIVISIONS · CYCLE {challengeDivisionState.cycle}</b>
+                  <div style={{fontSize:8.5,opacity:.65,marginTop:3}}>Chaque division possède ses propres règles de montée, descente et barrage. Le classement du cycle est archivé avant de passer au suivant.</div>
+                  <div style={{display:"grid",gap:6,marginTop:8}}>
+                    {challengeDivisionState.byDivision.map((div:any)=><div key={div.division} style={{display:"grid",gridTemplateColumns:"74px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:9,background:"#080d14",fontSize:8.2}}>
+                      <b>DIVISION {div.division}</b>
+                      <span>{div.standings.length} joueur{div.standings.length>1?'s':''}</span>
+                      <span style={{opacity:.72}}>↑{Number(div.policy?.promote||0)} · ↓{Number(div.policy?.relegate||0)} · B{Number(div.policy?.playoff||0)}</span>
+                    </div>)}
+                  </div>
+                  {challengeDivisionState.pendingPlayoffs.length?<div style={{display:"grid",gap:7,marginTop:10}}>
+                    <b style={{fontSize:9,color:"#ffcf73"}}>BARRAGES À RÉSOUDRE</b>
+                    {challengeDivisionState.pendingPlayoffs.map((p:any)=>{
+                      const upper=playersById[String(p.upperPlayerId)]?.name||"Joueur haut";
+                      const lower=playersById[String(p.lowerPlayerId)]?.name||"Joueur bas";
+                      return <div key={String(p.id)} style={{padding:"8px 9px",borderRadius:10,background:"#080d14",border:"1px solid rgba(255,207,87,.14)"}}>
+                        <div style={{fontSize:8.2,fontWeight:900}}>D{p.upperDivision} {upper} ↔ D{p.lowerDivision} {lower}</div>
+                        {p.resolved?<div style={{marginTop:4,fontSize:7.5,color:"#65e6a2"}}>RÉSOLU · {playersById[String(p.winnerPlayerId)]?.name||"vainqueur"} conserve/gagne la place haute.</div>:<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
+                          <button type="button" onClick={()=>resolveChallengePlayoff(String(p.id),"upper")} style={{minHeight:31,borderRadius:8,border:"1px solid rgba(182,182,255,.28)",background:"rgba(28,28,65,.85)",color:"#fff",fontSize:7.5,fontWeight:1000}}>MAINTENIR {upper}</button>
+                          <button type="button" onClick={()=>resolveChallengePlayoff(String(p.id),"lower")} style={{minHeight:31,borderRadius:8,border:"1px solid rgba(101,230,162,.28)",background:"rgba(14,62,43,.85)",color:"#fff",fontSize:7.5,fontWeight:1000}}>PROMOUVOIR {lower}</button>
+                        </div>}
+                      </div>
+                    })}
+                  </div>:null}
+                  <div style={{marginTop:9,padding:"8px 9px",borderRadius:9,background:"rgba(182,182,255,.06)",fontSize:8.2,lineHeight:1.4}}>
+                    Nouveau cycle : {String(challengeCompetition?.cyclePoints?.mode||"reset")==="reset"?"points remis à zéro":String(challengeCompetition?.cyclePoints?.mode)==="carry"?"points intégralement conservés":`${Math.max(0,Math.min(100,Number(challengeCompetition?.cyclePoints?.carryPercent??50)||0))}% des points conservés`}.
+                  </div>
+                  <button type="button" onClick={applyChallengePromotionCycle} disabled={!challengeGeneralStandings.length || challengeDivisionState.pendingPlayoffs.some((p:any)=>!p?.resolved) || challengeScheduleRounds.some((round:any)=>String(round?.status||"open")!=="closed")} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.4)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(!challengeGeneralStandings.length||challengeDivisionState.pendingPlayoffs.some((p:any)=>!p?.resolved)||challengeScheduleRounds.some((round:any)=>String(round?.status||"open")!=="closed"))?.35:1}}>CLÔTURER LE CYCLE · APPLIQUER MONTÉES / DESCENTES</button>
+                </section>:null}
+                                <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <b style={{color:"#b6b6ff",fontSize:11}}>OUTILS DE GESTION</b><div style={{fontSize:8.5,opacity:.65,marginTop:3}}>{isChallengePerformanceCompetition?"Challenge performances : aucun calendrier de matchs n’est généré. Les essais sont rattachés aux objectifs et alimentent leurs classements.":"Les matchs et résultats restent éditables dans l’onglet Matchs. La reconstruction du calendrier est possible uniquement avant le premier résultat."}</div>
                   {!isChallengePerformanceCompetition?<button disabled={doneMatches.length>0 || tournamentPlayers.length<2} onClick={()=>saveTournamentAdmin({},true)} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(182,182,255,.35)",background:"rgba(28,28,65,.94)",color:"#fff",fontWeight:1000,opacity:(doneMatches.length>0||tournamentPlayers.length<2)?.35:1}}>RECONSTRUIRE LE CALENDRIER</button>:<button onClick={loadAttachableHistory} style={{marginTop:9,width:"100%",minHeight:38,borderRadius:11,border:"1px solid rgba(255,181,74,.35)",background:"rgba(64,40,9,.94)",color:"#fff",fontWeight:1000}}>＋ RATTACHER DES ESSAIS CHALLENGE</button>}
                 </section>

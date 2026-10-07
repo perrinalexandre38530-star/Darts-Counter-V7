@@ -2054,11 +2054,35 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [challengeDivisionCount, setChallengeDivisionCount] = React.useState<number>(2);
   const [challengePromoteCount, setChallengePromoteCount] = React.useState<number>(2);
   const [challengeRelegateCount, setChallengeRelegateCount] = React.useState<number>(2);
+  const [challengePublicationMode, setChallengePublicationMode] = React.useState<"all"|"round_by_round">("round_by_round");
+  const [challengeObjectivesPerRound, setChallengeObjectivesPerRound] = React.useState<number>(1);
+  const [challengeCyclePointsMode, setChallengeCyclePointsMode] = React.useState<"reset"|"carry"|"carry_percent">("reset");
+  const [challengeCarryPercent, setChallengeCarryPercent] = React.useState<number>(50);
+  const [challengePlayoffSlots, setChallengePlayoffSlots] = React.useState<number>(0);
+  const [challengeDivisionPolicies, setChallengeDivisionPolicies] = React.useState<Record<number,{promote:number;relegate:number;playoff:number}>>({});
   const challengePointsTable = React.useMemo(()=>{
     if(challengePointsPreset==="f1") return [25,18,15,12,10,8,6,4,2,1];
     if(challengePointsPreset==="linear") return [10,9,8,7,6,5,4,3,2,1];
     return [25,20,16,13,11,10,9,8,7,6,5,4,3,2,1];
   },[challengePointsPreset]);
+  const challengeProgramObjectives = React.useMemo(()=>{
+    if(challengeObjectiveMode==="fixed") return [challengeTarget];
+    if(challengeObjectiveMode==="range"){
+      const lo=Math.min(challengeRangeFrom,challengeRangeTo),hi=Math.max(challengeRangeFrom,challengeRangeTo);
+      return Array.from({length:Math.max(0,hi-lo+1)},(_,i)=>String(lo+i));
+    }
+    return Array.from(new Set(challengeObjectives));
+  },[challengeObjectiveMode,challengeTarget,challengeRangeFrom,challengeRangeTo,challengeObjectives]);
+  const effectiveChallengeDivisionPolicy = React.useCallback((division:number)=>{
+    const edgePromote=division<=1?0:challengePromoteCount;
+    const edgeRelegate=division>=challengeDivisionCount?0:challengeRelegateCount;
+    const saved=challengeDivisionPolicies[division];
+    return {
+      promote: Math.max(0, Number(saved?.promote ?? edgePromote) || 0),
+      relegate: Math.max(0, Number(saved?.relegate ?? edgeRelegate) || 0),
+      playoff: Math.max(0, Number(saved?.playoff ?? challengePlayoffSlots) || 0),
+    };
+  },[challengeDivisionPolicies,challengePromoteCount,challengeRelegateCount,challengeDivisionCount,challengePlayoffSlots]);
   const isChallengeCompetition = mode === "challenge";
   const isChallengePerformanceCompetition = isChallengeCompetition && challengeCompetitionFormat !== "duels";
   const challengeSegmentTargets = React.useMemo(()=>{
@@ -2789,7 +2813,17 @@ async function createTournament() {
           challengePointsPreset,
           challengePointsTable,
           challengeCountBestObjectives: challengeCountBestObjectives > 0 ? challengeCountBestObjectives : null,
-          challengeDivisions: challengeCompetitionFormat === "divisions" ? { count: challengeDivisionCount, promote: challengePromoteCount, relegate: challengeRelegateCount } : null,
+          challengePublicationMode,
+          challengeObjectivesPerRound,
+          challengeCyclePointsMode,
+          challengeCarryPercent,
+          challengePlayoffSlots,
+          challengeDivisions: challengeCompetitionFormat === "divisions" ? {
+            count: challengeDivisionCount,
+            promote: challengePromoteCount,
+            relegate: challengeRelegateCount,
+            policies: Object.fromEntries(Array.from({length:Math.max(1,challengeDivisionCount)},(_,idx)=>[String(idx+1),effectiveChallengeDivisionPolicy(idx+1)])),
+          } : null,
           allowHistoryLinks: challengeCompetitionFormat === "free",
           target: challengeTarget,
           rule: challengeRule,
@@ -2929,6 +2963,26 @@ async function createTournament() {
   (tour as any).bannerDataUrl = competitionCover || null;
   (tour as any).shareCode = String((tour as any).shareCode || `MSC-${String((tour as any).id||"").replace(/[^a-z0-9]/gi,"").slice(-8).toUpperCase()}`);
   if (mode === "challenge") {
+    const programObjectives = challengeProgramObjectives.map((value)=>String(value)).filter(Boolean);
+    const perRound = Math.max(1, Math.min(5, Number(challengeObjectivesPerRound)||1));
+    const initialRounds = Array.from({length:Math.max(1,Math.ceil(programObjectives.length/perRound))},(_,index)=>{
+      const objectives=programObjectives.slice(index*perRound,index*perRound+perRound);
+      return {
+        id:`cycle-1-round-${index+1}`,
+        cycle:1,
+        round:index+1,
+        objectives,
+        status: challengePublicationMode==="all" || index===0 ? "open" : "locked",
+        openedAt: challengePublicationMode==="all" || index===0 ? Date.now() : null,
+        closedAt:null,
+      };
+    });
+    const divisionPolicies = challengeCompetitionFormat === "divisions"
+      ? Object.fromEntries(Array.from({length:Math.max(1,challengeDivisionCount)},(_,idx)=>{
+          const division=idx+1;
+          return [String(division), effectiveChallengeDivisionPolicy(division)];
+        }))
+      : {};
     (tour as any).challengeCompetition = {
       enabled: true,
       format: challengeCompetitionFormat,
@@ -2937,10 +2991,32 @@ async function createTournament() {
       pointsTable: challengePointsTable,
       countBestObjectives: challengeCountBestObjectives > 0 ? challengeCountBestObjectives : null,
       allowHistoryLinks: challengeCompetitionFormat === "free",
+      schedule: challengeCompetitionFormat === "duels" ? undefined : {
+        publicationMode: challengePublicationMode,
+        objectivesPerRound: perRound,
+        rounds: initialRounds,
+      },
+      cyclePoints: {
+        mode: challengeCyclePointsMode,
+        carryPercent: challengeCyclePointsMode==="carry_percent" ? Math.max(0,Math.min(100,Number(challengeCarryPercent)||0)) : undefined,
+      },
       confrontation: { enabled: challengeCompetitionFormat === "duels", entity: participantKind === "teams" ? "teams" : "players" },
-      divisions: challengeCompetitionFormat === "divisions" ? { enabled: true, count: challengeDivisionCount, promote: challengePromoteCount, relegate: challengeRelegateCount, resetPointsEachCycle: true } : { enabled: false, count: 1, promote: 0, relegate: 0 },
+      divisions: challengeCompetitionFormat === "divisions" ? {
+        enabled: true,
+        count: challengeDivisionCount,
+        promote: challengePromoteCount,
+        relegate: challengeRelegateCount,
+        resetPointsEachCycle: challengeCyclePointsMode==="reset",
+        policies: divisionPolicies,
+        playoffEnabled: challengePlayoffSlots>0,
+        playoffSlots: challengePlayoffSlots,
+      } : { enabled: false, count: 1, promote: 0, relegate: 0 },
       currentCycle: 1,
-      divisionCycles: challengeCompetitionFormat === "divisions" ? [{cycle:1,assignments:Object.fromEntries(((tour as any).players||[]).map((p:any,index:number)=>[String(p.id),Math.min(challengeDivisionCount,1+(index%Math.max(1,challengeDivisionCount)))]))}] : [],
+      divisionCycles: challengeCompetitionFormat === "divisions" ? [{
+        cycle:1,
+        assignments:Object.fromEntries(((tour as any).players||[]).map((p:any,index:number)=>[String(p.id),Math.min(challengeDivisionCount,1+(index%Math.max(1,challengeDivisionCount)))])),
+        carryPoints:{},
+      }] : [],
     };
   }
 
@@ -5113,7 +5189,40 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                     <RowTitle label="Barème du classement général"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengePointsPreset==="standard"} label="STANDARD" onClick={()=>setChallengePointsPreset("standard")} primary={primary}/><NeonPill active={challengePointsPreset==="f1"} label="F1" onClick={()=>setChallengePointsPreset("f1")} primary={primary}/><NeonPill active={challengePointsPreset==="linear"} label="LINÉAIRE" onClick={()=>setChallengePointsPreset("linear")} primary={primary}/></div>
                     <div style={{fontSize:9.5,opacity:.72}}>Points par position : {challengePointsTable.slice(0,10).map((v,i)=>`${i+1}e=${v}`).join(" · ")}</div>
                     <RowTitle label="Objectifs comptés au général"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeCountBestObjectives===0} label="TOUS" onClick={()=>setChallengeCountBestObjectives(0)} primary={primary}/>{[3,5,8,10].map(n=><NeonPill key={n} active={challengeCountBestObjectives===n} label={`MEILLEURS ${n}`} onClick={()=>setChallengeCountBestObjectives(n)} primary={primary}/>)}</div>
-                    {challengeCompetitionFormat === "divisions" ? <><RowTitle label="Divisions"/><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}><label style={{fontSize:9}}>NB DIV.<TextInput value={String(challengeDivisionCount)} onChange={(e:any)=>setChallengeDivisionCount(Math.max(1,Math.min(12,Number(e.target.value)||1)))}/></label><label style={{fontSize:9}}>MONTÉES<TextInput value={String(challengePromoteCount)} onChange={(e:any)=>setChallengePromoteCount(Math.max(0,Math.min(10,Number(e.target.value)||0)))}/></label><label style={{fontSize:9}}>DESCENTES<TextInput value={String(challengeRelegateCount)} onChange={(e:any)=>setChallengeRelegateCount(Math.max(0,Math.min(10,Number(e.target.value)||0)))}/></label></div></>:null}
+                    <RowTitle label="Publication des journées / manches"/>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:7}}>
+                      <NeonPill active={challengePublicationMode==="round_by_round"} label="UNE PAR UNE" onClick={()=>setChallengePublicationMode("round_by_round")} primary={primary}/>
+                      <NeonPill active={challengePublicationMode==="all"} label="TOUT OUVRIR" onClick={()=>setChallengePublicationMode("all")} primary={primary}/>
+                    </div>
+                    <div style={{fontSize:9.2,opacity:.68,lineHeight:1.4}}>{challengePublicationMode==="round_by_round"?"Une seule journée est jouable à la fois. L’admin clôture la journée puis publie la suivante.":"Tous les objectifs sont ouverts immédiatement."}</div>
+                    <RowTitle label="Objectifs par journée / manche"/>
+                    <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{[1,2,3,4,5].map(n=><NeonPill key={n} active={challengeObjectivesPerRound===n} label={String(n)} onClick={()=>setChallengeObjectivesPerRound(n)} primary={primary}/>)}</div>
+                    {challengeCompetitionFormat === "divisions" ? <>
+                      <RowTitle label="Divisions"/>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>
+                        <label style={{fontSize:9}}>NB DIV.<TextInput value={String(challengeDivisionCount)} onChange={(e:any)=>setChallengeDivisionCount(Math.max(1,Math.min(12,Number(e.target.value)||1)))}/></label>
+                        <label style={{fontSize:9}}>MONTÉES PAR DÉFAUT<TextInput value={String(challengePromoteCount)} onChange={(e:any)=>setChallengePromoteCount(Math.max(0,Math.min(10,Number(e.target.value)||0)))}/></label>
+                        <label style={{fontSize:9}}>DESCENTES PAR DÉFAUT<TextInput value={String(challengeRelegateCount)} onChange={(e:any)=>setChallengeRelegateCount(Math.max(0,Math.min(10,Number(e.target.value)||0)))}/></label>
+                      </div>
+                      <RowTitle label="Points au nouveau cycle"/>
+                      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                        <NeonPill active={challengeCyclePointsMode==="reset"} label="REMISE À ZÉRO" onClick={()=>setChallengeCyclePointsMode("reset")} primary={primary}/>
+                        <NeonPill active={challengeCyclePointsMode==="carry"} label="CONSERVER" onClick={()=>setChallengeCyclePointsMode("carry")} primary={primary}/>
+                        <NeonPill active={challengeCyclePointsMode==="carry_percent"} label={`${challengeCarryPercent}% CONSERVÉS`} onClick={()=>setChallengeCyclePointsMode("carry_percent")} primary={primary}/>
+                      </div>
+                      {challengeCyclePointsMode==="carry_percent"?<label style={{fontSize:9}}>POURCENTAGE CONSERVÉ<TextInput value={String(challengeCarryPercent)} onChange={(e:any)=>setChallengeCarryPercent(Math.max(0,Math.min(100,Number(e.target.value)||0)))}/></label>:null}
+                      <RowTitle label="Barrages par frontière de division"/>
+                      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{[0,1,2].map(n=><NeonPill key={n} active={challengePlayoffSlots===n} label={n===0?"AUCUN":`${n} BARRAGE${n>1?"S":""}`} onClick={()=>setChallengePlayoffSlots(n)} primary={primary}/>)}</div>
+                      <RowTitle label="Règles par division"/>
+                      <div style={{display:"grid",gap:7}}>
+                        {Array.from({length:challengeDivisionCount},(_,idx)=>idx+1).map(division=>{const policy=effectiveChallengeDivisionPolicy(division);return <div key={division} style={{display:"grid",gridTemplateColumns:"70px repeat(3,minmax(0,1fr))",gap:6,alignItems:"end",padding:"8px 9px",borderRadius:11,background:"rgba(0,0,0,.22)",border:"1px solid rgba(255,255,255,.07)"}}>
+                          <b style={{fontSize:9}}>DIV. {division}</b>
+                          <label style={{fontSize:7.5,opacity:division===1 ? .45 : 1}}>MONTÉES<TextInput disabled={division===1} value={String(policy.promote)} onChange={(e:any)=>setChallengeDivisionPolicies(prev=>({...prev,[division]:{...policy,promote:Math.max(0,Math.min(10,Number(e.target.value)||0))}}))}/></label>
+                          <label style={{fontSize:7.5,opacity:division===challengeDivisionCount ? .45 : 1}}>DESCENTES<TextInput disabled={division===challengeDivisionCount} value={String(policy.relegate)} onChange={(e:any)=>setChallengeDivisionPolicies(prev=>({...prev,[division]:{...policy,relegate:Math.max(0,Math.min(10,Number(e.target.value)||0))}}))}/></label>
+                          <label style={{fontSize:7.5}}>BARRAGES<TextInput value={String(policy.playoff)} onChange={(e:any)=>setChallengeDivisionPolicies(prev=>({...prev,[division]:{...policy,playoff:Math.max(0,Math.min(3,Number(e.target.value)||0))}}))}/></label>
+                        </div>})}
+                      </div>
+                    </>:null}
                   </div>:null}
                 </>
               ) : isLeague ? (
