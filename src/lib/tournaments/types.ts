@@ -42,9 +42,22 @@ export type ChallengeCompetitionStandingSnapshot = {
   division?: number;
   rank: number;
   points: number;
+  cyclePoints?: number;
   wins?: number;
   podiums?: number;
   objectives?: number;
+};
+
+export type ChallengeCompetitionPlayoffResult = {
+  id: string;
+  playerId: string;
+  side: "upper" | "lower";
+  objective: string;
+  attemptNumber: number;
+  score: number;
+  tieBreak?: number;
+  historyMatchId?: string | null;
+  createdAt: number;
 };
 
 export type ChallengeCompetitionPlayoff = {
@@ -55,6 +68,28 @@ export type ChallengeCompetitionPlayoff = {
   lowerPlayerId: string;
   upperDivision: number;
   lowerDivision: number;
+  objective?: string;
+  objectiveMode?: "fixed" | "random" | "multiple";
+  objectivePool?: string[];
+  objectives?: string[];
+  attemptsPerObjective?: 1 | 2 | 3 | 4 | 5;
+  results?: ChallengeCompetitionPlayoffResult[];
+  objectiveResults?: Array<{
+    objective: string;
+    upperScore: number;
+    lowerScore: number;
+    upperTieBreak?: number;
+    lowerTieBreak?: number;
+    winner: "upper" | "lower" | "tie";
+  }>;
+  visits?: number;
+  status?: "pending" | "playing" | "tied" | "resolved";
+  upperScore?: number | null;
+  lowerScore?: number | null;
+  upperTieBreak?: number | null;
+  lowerTieBreak?: number | null;
+  upperHistoryMatchId?: string | null;
+  lowerHistoryMatchId?: string | null;
   resolved?: boolean;
   winnerPlayerId?: string | null;
   resolvedAt?: number | null;
@@ -62,10 +97,24 @@ export type ChallengeCompetitionPlayoff = {
 
 export type ChallengeCompetitionDivisionCycle = {
   cycle: number;
+  name?: string;
+  status?: "draft" | "active" | "closed";
+  createdAt?: number | null;
   assignments: Record<string, number>;
   appliedAt?: number | null;
   closedAt?: number | null;
-  movements?: Array<{ playerId: string; from: number; to: number }>;
+  movements?: Array<{
+    id?: string;
+    playerId: string;
+    from: number;
+    to: number;
+    manual?: boolean;
+    reason?: "promotion" | "relegation" | "playoff" | "manual";
+    cycle?: number;
+    at?: number;
+    playoffId?: string | null;
+    note?: string | null;
+  }>;
   standingsSnapshot?: ChallengeCompetitionStandingSnapshot[];
   carryPoints?: Record<string, number>;
   pendingPlayoffs?: ChallengeCompetitionPlayoff[];
@@ -80,6 +129,10 @@ export type ChallengeCompetitionConfig = {
   countBestObjectives?: number | null;
   allowHistoryLinks?: boolean;
   attempts?: ChallengeCompetitionAttempt[];
+  objectiveSettings?: Record<string, {
+    visits?: number;
+    attemptsPerObjective?: 1 | 2 | 3 | 4 | 5;
+  }>;
   currentCycle?: number;
   divisionCycles?: ChallengeCompetitionDivisionCycle[];
   schedule?: {
@@ -90,6 +143,13 @@ export type ChallengeCompetitionConfig = {
   cyclePoints?: {
     mode: "reset" | "carry" | "carry_percent";
     carryPercent?: number;
+  };
+  season?: {
+    name?: string;
+    status?: "draft" | "running" | "finished";
+    maxCycles?: number | null;
+    endsAt?: number | null;
+    startedAt?: number | null;
   };
   confrontation?: {
     enabled: boolean;
@@ -104,6 +164,11 @@ export type ChallengeCompetitionConfig = {
     policies?: Record<string, { promote: number; relegate: number; playoff: number }>;
     playoffEnabled?: boolean;
     playoffSlots?: number;
+    playoffObjective?: string;
+    playoffObjectiveMode?: "fixed" | "random" | "multiple";
+    playoffObjectives?: string[];
+    playoffAttemptsPerObjective?: 1 | 2 | 3 | 4 | 5;
+    playoffVisits?: number;
   };
 };
 

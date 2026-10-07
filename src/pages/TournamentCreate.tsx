@@ -2059,6 +2059,10 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [challengeCyclePointsMode, setChallengeCyclePointsMode] = React.useState<"reset"|"carry"|"carry_percent">("reset");
   const [challengeCarryPercent, setChallengeCarryPercent] = React.useState<number>(50);
   const [challengePlayoffSlots, setChallengePlayoffSlots] = React.useState<number>(0);
+  const [challengePlayoffObjectiveMode, setChallengePlayoffObjectiveMode] = React.useState<"fixed"|"random"|"multiple">("fixed");
+  const [challengePlayoffObjectives, setChallengePlayoffObjectives] = React.useState<string[]>(["20"]);
+  const [challengePlayoffAttemptsPerObjective, setChallengePlayoffAttemptsPerObjective] = React.useState<1|2|3|4|5>(1);
+  const [challengePlayoffVisits, setChallengePlayoffVisits] = React.useState<number>(30);
   const [challengeDivisionPolicies, setChallengeDivisionPolicies] = React.useState<Record<number,{promote:number;relegate:number;playoff:number}>>({});
   const challengePointsTable = React.useMemo(()=>{
     if(challengePointsPreset==="f1") return [25,18,15,12,10,8,6,4,2,1];
@@ -2073,6 +2077,27 @@ const petanqueTeamsReady = React.useMemo(() => {
     }
     return Array.from(new Set(challengeObjectives));
   },[challengeObjectiveMode,challengeTarget,challengeRangeFrom,challengeRangeTo,challengeObjectives]);
+  React.useEffect(()=>{
+    const available=(challengeProgramObjectives.length?challengeProgramObjectives:["20"]).map(String);
+    setChallengePlayoffObjectives(prev=>{
+      const kept=prev.filter(value=>available.includes(value));
+      if(challengePlayoffObjectiveMode==="fixed") return [kept[0]||available[0]];
+      return kept.length?kept:[available[0]];
+    });
+  },[challengeProgramObjectives,challengePlayoffObjectiveMode]);
+
+  const toggleChallengePlayoffObjective = React.useCallback((objective:string)=>{
+    const value=String(objective);
+    setChallengePlayoffObjectives(prev=>{
+      if(challengePlayoffObjectiveMode==="fixed") return [value];
+      if(prev.includes(value)){
+        const next=prev.filter(item=>item!==value);
+        return next.length?next:[value];
+      }
+      return [...prev,value];
+    });
+  },[challengePlayoffObjectiveMode]);
+
   const effectiveChallengeDivisionPolicy = React.useCallback((division:number)=>{
     const edgePromote=division<=1?0:challengePromoteCount;
     const edgeRelegate=division>=challengeDivisionCount?0:challengeRelegateCount;
@@ -3000,6 +3025,13 @@ async function createTournament() {
         mode: challengeCyclePointsMode,
         carryPercent: challengeCyclePointsMode==="carry_percent" ? Math.max(0,Math.min(100,Number(challengeCarryPercent)||0)) : undefined,
       },
+      season: {
+        name: String((tour as any).name || "Saison Challenge"),
+        status: "running",
+        maxCycles: null,
+        endsAt: null,
+        startedAt: Date.now(),
+      },
       confrontation: { enabled: challengeCompetitionFormat === "duels", entity: participantKind === "teams" ? "teams" : "players" },
       divisions: challengeCompetitionFormat === "divisions" ? {
         enabled: true,
@@ -3010,10 +3042,18 @@ async function createTournament() {
         policies: divisionPolicies,
         playoffEnabled: challengePlayoffSlots>0,
         playoffSlots: challengePlayoffSlots,
+        playoffObjective: (challengePlayoffObjectives[0] || programObjectives[0] || "20"),
+        playoffObjectiveMode: challengePlayoffObjectiveMode,
+        playoffObjectives: (challengePlayoffObjectives.length ? challengePlayoffObjectives : [programObjectives[0] || "20"]).slice(),
+        playoffAttemptsPerObjective: challengePlayoffAttemptsPerObjective,
+        playoffVisits: Math.max(1, Number(challengePlayoffVisits) || Number(challengeVisits) || 30),
       } : { enabled: false, count: 1, promote: 0, relegate: 0 },
       currentCycle: 1,
       divisionCycles: challengeCompetitionFormat === "divisions" ? [{
         cycle:1,
+        name:"Cycle 1",
+        status:"active",
+        createdAt:Date.now(),
         assignments:Object.fromEntries(((tour as any).players||[]).map((p:any,index:number)=>[String(p.id),Math.min(challengeDivisionCount,1+(index%Math.max(1,challengeDivisionCount)))])),
         carryPoints:{},
       }] : [],
@@ -5213,6 +5253,24 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                       {challengeCyclePointsMode==="carry_percent"?<label style={{fontSize:9}}>POURCENTAGE CONSERVÉ<TextInput value={String(challengeCarryPercent)} onChange={(e:any)=>setChallengeCarryPercent(Math.max(0,Math.min(100,Number(e.target.value)||0)))}/></label>:null}
                       <RowTitle label="Barrages par frontière de division"/>
                       <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{[0,1,2].map(n=><NeonPill key={n} active={challengePlayoffSlots===n} label={n===0?"AUCUN":`${n} BARRAGE${n>1?"S":""}`} onClick={()=>setChallengePlayoffSlots(n)} primary={primary}/>)}</div>
+                      {challengePlayoffSlots>0 ? <div style={{display:"grid",gap:9,padding:"9px",borderRadius:11,border:"1px solid rgba(255,207,87,.14)",background:"rgba(65,39,5,.25)"}}>
+                        <RowTitle label="Format du barrage"/>
+                        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                          <NeonPill active={challengePlayoffObjectiveMode==="fixed"} label="OBJECTIF FIXE" onClick={()=>setChallengePlayoffObjectiveMode("fixed")} primary={primary}/>
+                          <NeonPill active={challengePlayoffObjectiveMode==="random"} label="ALÉATOIRE" onClick={()=>setChallengePlayoffObjectiveMode("random")} primary={primary}/>
+                          <NeonPill active={challengePlayoffObjectiveMode==="multiple"} label="MULTI-OBJECTIFS" onClick={()=>setChallengePlayoffObjectiveMode("multiple")} primary={primary}/>
+                        </div>
+                        <div style={{fontSize:8.4,opacity:.68,lineHeight:1.4}}>
+                          {challengePlayoffObjectiveMode==="fixed"?"Un seul objectif identique pour les deux joueurs.":challengePlayoffObjectiveMode==="random"?"Un objectif est tiré au sort dans la liste au moment de créer le barrage.":"Tous les objectifs sélectionnés sont joués ; chaque objectif donne un mini-duel dans le barrage."}
+                        </div>
+                        <RowTitle label={challengePlayoffObjectiveMode==="fixed"?"Objectif du barrage":"Objectifs autorisés"}/>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          {(challengeProgramObjectives.length?challengeProgramObjectives:["20"]).map(objective=><NeonPill key={`playoff-${objective}`} active={challengePlayoffObjectives.includes(objective)} label={objective==="any-double"?"DOUBLES":objective==="any-triple"?"TRIPLES":objective==="bull"?"BULL":String(objective)} onClick={()=>toggleChallengePlayoffObjective(objective)} primary={primary}/>)}
+                        </div>
+                        <RowTitle label="Essais maximum par joueur / objectif"/>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{([1,2,3,4,5] as const).map(n=><NeonPill key={`po-att-${n}`} active={challengePlayoffAttemptsPerObjective===n} label={String(n)} onClick={()=>setChallengePlayoffAttemptsPerObjective(n)} primary={primary}/>)}</div>
+                        <label style={{fontSize:8}}>TOURS DU BARRAGE<TextInput value={String(challengePlayoffVisits)} onChange={(e:any)=>setChallengePlayoffVisits(Math.max(1,Math.min(200,Number(e.target.value)||1)))}/></label>
+                      </div>:null}
                       <RowTitle label="Règles par division"/>
                       <div style={{display:"grid",gap:7}}>
                         {Array.from({length:challengeDivisionCount},(_,idx)=>idx+1).map(division=>{const policy=effectiveChallengeDivisionPolicy(division);return <div key={division} style={{display:"grid",gridTemplateColumns:"70px repeat(3,minmax(0,1fr))",gap:6,alignItems:"end",padding:"8px 9px",borderRadius:11,background:"rgba(0,0,0,.22)",border:"1px solid rgba(255,255,255,.07)"}}>
