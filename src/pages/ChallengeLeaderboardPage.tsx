@@ -30,9 +30,10 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
  const theme=useTheme();
  const {store}=useStore();
  const profiles=store?.profiles||[];
- const [target,setTarget]=React.useState(String(params?.target||'20'));
- const [rule,setRule]=React.useState(String(params?.rule||'all'));
- const [visits,setVisits]=React.useState(Math.max(1,Number(params?.visits||20)));
+ const usePrefilter=params?.prefilter===true;
+ const [target,setTarget]=React.useState(String(usePrefilter&&params?.target?params.target:'20'));
+ const [rule,setRule]=React.useState(String(usePrefilter&&params?.rule?params.rule:'all'));
+ const [visits,setVisits]=React.useState(Math.max(1,Number(usePrefilter&&params?.visits?params.visits:20)));
  const [scope,setScope]=React.useState<'public'|'team'>('public');
  const [teams,setTeams]=React.useState<ChallengeLeaderboardTeam[]>([]);
  const [teamKey,setTeamKey]=React.useState('');
@@ -177,7 +178,7 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    },
    initialDetailTab:'global',
    returnTab:'challenge_leaderboard',
-   returnParams:{from:params?.from||'online',target,rule,visits},
+   returnParams:{from:params?.from||'online',prefilter:true,target,rule,visits},
    rec,
   });
   return true;
