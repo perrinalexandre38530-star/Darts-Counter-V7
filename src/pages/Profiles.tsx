@@ -82,6 +82,7 @@ import {
 } from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, getAvatarCacheFast, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
+import { getCanonicalAccountProfileId } from "../lib/canonicalAccountProfile";
 import { mirrorAvatarFallbackToR2, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams } from "../lib/petanqueTeamsStore";
@@ -885,7 +886,9 @@ function readProfileMiniStatsSync(playerId: string | undefined | null, sportKey?
 
   if (isBabyFootSportKey(sportKey)) return EMPTY_PROFILE_MINI_STATS;
 
-  const linkedOverride = readLinkedProfileStatsOverride(key);
+  let canonicalId = "";
+  try { canonicalId = getCanonicalAccountProfileId((window as any)?.__appStore?.store); } catch {}
+  const linkedOverride = canonicalId && canonicalId === key ? null : readLinkedProfileStatsOverride(key);
   if (linkedOverride) {
     profileMiniStatsCache.set(cacheKey, linkedOverride);
     return linkedOverride;
@@ -1403,8 +1406,10 @@ export default function Profiles({
   }, [view, stableProfilesBase.length]);
 
   const stableProfiles = React.useMemo(
-    () => mergeLinkedProfiles(stableProfilesBase as any[], linkedProfileProjection?.profiles || []) as any[],
-    [stableProfilesBase, linkedProfileProjection?.profiles]
+    () => view === "friends"
+      ? mergeLinkedProfiles(stableProfilesBase as any[], linkedProfileProjection?.profiles || []) as any[]
+      : stableProfilesBase as any[],
+    [view, stableProfilesBase, linkedProfileProjection?.profiles]
   );
 
   const persistTimerRef = React.useRef<number | null>(null);
@@ -2917,8 +2922,8 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
       ...(owner as any),
       // garde le nom local en priorité (modifiable offline), sinon fallback online
       name: (owner as any)?.name || onlineName,
-      // dans l'UI "Mon profil", on privilégie l'avatar online si dispo
-      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl || (getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarUrl || getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarDataUrl || ""),
+      // MON PROFIL est la source canonique : online/cache ne sont que des fallbacks.
+      avatarUrl: (owner as any)?.avatarUrl || (owner as any)?.avatarDataUrl || onlineAvatarUrl || (getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarUrl || getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarDataUrl || ""),
       source: "online",
       isOnlineMirror: false,
     } as any;
@@ -3119,101 +3124,38 @@ React.useEffect(() => {
     alert("Statistiques locales de ce profil réinitialisées.");
   }
 
-    // 🔁 Hydrate les infos privées (email / pays / surnom) depuis le compte online
+    // 🔁 Initialisation compte -> MON PROFIL (champs manquants uniquement).
+    // Une fois renseigné dans MON PROFIL, aucun refresh auth / projection online
+    // n'a le droit de remplacer identité, avatar ou préférences du joueur.
     React.useEffect(() => {
-      if (!active) return;
-      if (auth.status !== "signed_in") return;
-  
+      if (!active || auth.status !== "signed_in") return;
+
       const pi = ((active as any).privateInfo || {}) as PrivateInfo;
       const patch: Partial<PrivateInfo> = {};
-  
-      // Email online → privateInfo.email (si différent)
       const emailOnline = auth.user?.email?.trim().toLowerCase();
-      if (emailOnline) {
-        const emailLocal = (pi.email || "").trim().toLowerCase();
-        if (emailLocal !== emailOnline) {
-          patch.email = emailOnline;
+      if (emailOnline && !String(pi.email || "").trim()) patch.email = emailOnline;
+
+      const remote: any = auth.profile || {};
+      const fillIfMissing = (key: keyof PrivateInfo, value: any) => {
+        if (value === undefined || value === null || String(value).trim() === "") return;
+        const current = (pi as any)?.[key];
+        if (current === undefined || current === null || String(current).trim() === "") {
+          (patch as any)[key] = value;
         }
-      }
-  
-      // Pseudo online → privateInfo.nickname (si différent)
-      const nicknameOnline =
-        (auth.profile as any)?.surname ||
-        (auth.profile as any)?.nickname ||
-        auth.profile?.displayName ||
-        "";
-      if (nicknameOnline) {
-        const nicknameLocal = pi.nickname || active.name || "";
-        if (nicknameLocal !== nicknameOnline) {
-          patch.nickname = nicknameOnline;
-        }
-      }
-  
-      // Pays online → privateInfo.country (si différent)
-      const countryOnline = auth.profile?.country || "";
-      if (countryOnline) {
-        const countryLocal = pi.country || "";
-        if (countryLocal !== countryOnline) {
-          patch.country = countryOnline;
-        }
-      }
+      };
 
-      const firstNameOnline = (auth.profile as any)?.firstName || "";
-      if (firstNameOnline && (pi.firstName || "") !== firstNameOnline) {
-        patch.firstName = firstNameOnline;
-      }
+      fillIfMissing("nickname", remote?.surname || remote?.nickname || remote?.displayName);
+      fillIfMissing("country", remote?.country);
+      fillIfMissing("firstName", remote?.firstName || remote?.first_name);
+      fillIfMissing("lastName", remote?.lastName || remote?.last_name);
+      fillIfMissing("birthDate", remote?.birthDate || remote?.birth_date);
+      fillIfMissing("city", remote?.city);
+      fillIfMissing("phone", remote?.phone);
 
-      const lastNameOnline = (auth.profile as any)?.lastName || "";
-      if (lastNameOnline && (pi.lastName || "") !== lastNameOnline) {
-        patch.lastName = lastNameOnline;
-      }
-
-      const birthDateOnline = (auth.profile as any)?.birthDate || "";
-      if (birthDateOnline && (pi.birthDate || "") !== birthDateOnline) {
-        patch.birthDate = birthDateOnline;
-      }
-
-      const cityOnline = (auth.profile as any)?.city || "";
-      if (cityOnline && (pi.city || "") !== cityOnline) {
-        patch.city = cityOnline;
-      }
-
-      const phoneOnline = (auth.profile as any)?.phone || "";
-      if (phoneOnline && (pi.phone || "") !== phoneOnline) {
-        patch.phone = phoneOnline;
-      }
-
-      const prefsOnline = ((auth.profile as any)?.preferences || {}) as Partial<PrivateInfo>;
-      const privateInfoOnline = ((auth.profile as any)?.privateInfo || {}) as Partial<PrivateInfo>;
-      const prefKeys: (keyof PrivateInfo)[] = [
-        "appLang",
-        "appTheme",
-        "favX01",
-        "favDoubleOut",
-        "ttsVoice",
-        "sfxVolume",
-      ];
-      for (const key of prefKeys) {
-        const nextVal = (privateInfoOnline as any)?.[key] ?? (prefsOnline as any)?.[key];
-
-        // Langue/thème : la préférence locale explicite de cet appareil reste prioritaire.
-        // On importe la valeur distante uniquement si le profil local n'en possède pas encore.
-        // Cela empêche un profil cloud ancien (FR) d'annuler immédiatement un choix EN/ES
-        // effectué dans Réglages.
-        if ((key === "appLang" || key === "appTheme") && (pi as any)?.[key] !== undefined && (pi as any)?.[key] !== null && String((pi as any)?.[key]).trim() !== "") {
-          continue;
-        }
-
-        if (nextVal !== undefined && (pi as any)?.[key] !== nextVal) {
-          (patch as any)[key] = nextVal;
-        }
-      }
-  
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
-        patchActivePrefs(patch);
       }
-    }, [active?.id, auth.status, auth.profile, auth.user]);  
+    }, [active?.id, auth.status, auth.user?.id, auth.user?.email]);
 
   // La langue/le thème déjà actifs dans l'application sont la source de vérité
   // pendant la session. Ouvrir simplement l'onglet PROFILS ne doit jamais faire

@@ -15,6 +15,7 @@ import { hydrateLinkedHistoryRow, linkedHistoryRowQuality } from "./linkedProfil
 import { createCooperativeYielder } from "./mainThreadYield";
 import { isGameplayRuntime, scheduleRuntimeIdle } from "./runtimePerformance";
 import type { Profile } from "./types";
+import { getCanonicalAccountProfileId } from "./canonicalAccountProfile";
 
 export type LinkedProfileSnapshot = {
   link: any;
@@ -785,7 +786,15 @@ function isIncomingLinkedHistoryRow(row: any): boolean {
 
 export async function materializeLinkedProfileProjection(projection: LinkedProfileProjection): Promise<number> {
   try {
-    const rows = Array.isArray(projection?.history) ? projection.history.filter(isIncomingLinkedHistoryRow) : [];
+    let canonicalId = "";
+    try { canonicalId = getCanonicalAccountProfileId((window as any)?.__appStore?.store); } catch {}
+    const rows = Array.isArray(projection?.history)
+      ? projection.history.filter((row: any) => {
+          if (!isIncomingLinkedHistoryRow(row)) return false;
+          const linkedLocalId = s(row?.linkedLocalProfileId || row?.linkedSourceLocalProfileId);
+          return !(canonicalId && linkedLocalId === canonicalId);
+        })
+      : [];
     let written = 0;
     const yieldIfNeeded = createCooperativeYielder(8);
     await yieldIfNeeded(true);

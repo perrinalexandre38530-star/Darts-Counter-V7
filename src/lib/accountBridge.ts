@@ -11,6 +11,7 @@
 // ============================================
 
 import type { Profile } from "./types";
+import { loadStatsQuickMirrorSync } from "./stats/rebuildStatsFromHistory";
 
 // ------------------------------------------------------------
 // Helpers privateInfo
@@ -161,10 +162,9 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
       preferences: nextPrefs,
       createdAt: previous?.createdAt || Date.now(),
       updatedAt: Date.now(),
-      stats: {
-        ...(previous?.stats || {}),
-        ...(onlineProfile?.stats || {}),
-      },
+      // Compat legacy uniquement. Les écrans de statistiques ne lisent pas ce champ :
+      // History/statsBridge reste la source de vérité.
+      stats: { ...(previous?.stats || {}) },
     },
     nextPI
   );
@@ -341,14 +341,25 @@ function writeLockedAccountProfileId(accountIds: string[], profileId: string): v
 }
 
 function profileGameplayScore(profile: any): number {
-  const stats = profile?.stats || {};
-  const nums = [
-    stats?.totalMatches, stats?.matches, stats?.sessions, stats?.sessionsX01, stats?.x01Sessions,
-    stats?.wins, stats?.victories, stats?.avg3D, stats?.avg3, stats?.bestVisit, stats?.bestCheckout,
-  ].map((v) => Number(v || 0)).filter((v) => Number.isFinite(v));
-  const countLike = nums.slice(0, 7).reduce((a, b) => a + Math.max(0, b), 0);
-  const performance = nums.slice(7).reduce((a, b) => a + Math.max(0, b), 0);
-  return countLike * 100 + performance + scoreProfileCompleteness(profile) * 10;
+  // Le choix d'un doublon doit refléter l'activité réellement présente dans
+  // HISTORIQUE, jamais un vieux profile.stats embarqué dans un snapshot.
+  const ids = Array.from(new Set([
+    String(profile?.id || "").trim(),
+    ...profileAliasIds(profile),
+  ].filter(Boolean)));
+  const mirror = loadStatsQuickMirrorSync();
+  let activity = 0;
+  for (const id of ids) {
+    const row: any = mirror?.byPlayer?.[id];
+    if (!row) continue;
+    activity = Math.max(activity,
+      Number(row.matches || 0) * 100000 +
+      Number(row.dartsThrown || 0) * 10 +
+      Number(row.pointsScored || 0) +
+      Number(row.lastMatchAt || 0) / 1e9
+    );
+  }
+  return activity + scoreProfileCompleteness(profile);
 }
 
 function hasOnlineBindingToAny(profile: any, accountIds: string[]): boolean {
@@ -369,9 +380,11 @@ function hasOnlineBindingTo(profile: any, uid: string): boolean {
 }
 
 function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, activeId: string, accountIds: string[] = [uid]): any | null {
+  const accountIdSet = new Set(accountIds.map((id) => String(id || "").trim()).filter(Boolean));
+  const mirrorIdSet = new Set(Array.from(accountIdSet).map((id) => `online:${id}`));
   const locals = profiles.filter((profile) => {
     const id = String(profile?.id || "").trim();
-    return !!id && id !== uid && id !== `online:${uid}` && !profile?.isBot;
+    return !!id && !accountIdSet.has(id) && !mirrorIdSet.has(id) && !profile?.isBot;
   });
   if (!locals.length) return null;
 
@@ -465,18 +478,17 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
       ...(((onlineProfile as any)?.preferences || {}) as Record<string, any>),
       ...(local?.preferences || {}),
     },
-    stats: {
-      ...(account?.stats || {}),
-      ...(local?.stats || {}),
-    },
+    // Conservé seulement pour compat de schéma. Les KPI affichés sont dérivés de History.
+    stats: { ...(local?.stats || {}) },
     createdAt: local?.createdAt || account?.createdAt || Date.now(),
     updatedAt: Date.now(),
   };
 
   return writePrivateInfo(merged, {
+    // Remote/account = initialisation/fallback ; MON PROFIL local gagne toujours.
+    ...buildPrivateInfoPatch(user, onlineProfile),
     ...accountPI,
     ...localPI,
-    ...buildPrivateInfoPatch(user, onlineProfile),
     onlineUserId: uid,
     onlineEmail: safeLower(user?.email) || localPI?.onlineEmail || accountPI?.onlineEmail || "",
     accountUserId: uid,

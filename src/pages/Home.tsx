@@ -39,6 +39,7 @@ import { computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
 import { buildHomeModeSlides } from "../lib/homeModeStats";
 import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
 import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
+import { getCanonicalAccountProfileFromStore } from "../lib/canonicalAccountProfile";
 
 type Props = {
   store: Store;
@@ -150,11 +151,7 @@ function getMeaningfulProfileName(profile: any): string {
 }
 
 function getActiveProfile(store: Store): Profile | null {
-  const anyStore = store as any;
-  const profiles: Profile[] = anyStore.profiles ?? [];
-  const activeProfileId: string | null = anyStore.activeProfileId ?? null;
-  if (!profiles.length) return null;
-  return (!activeProfileId ? profiles[0] : (profiles.find((p) => p.id === activeProfileId) ?? profiles[0])) as any;
+  return getCanonicalAccountProfileFromStore(store);
 }
 
 

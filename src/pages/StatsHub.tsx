@@ -251,6 +251,7 @@ import StatsTrainingModesLocal from "../components/stats/StatsTrainingModesLocal
 import StatsTrainingLeaderboards from "../components/stats/StatsTrainingLeaderboards";
 import TrainingProfileCard from "../components/profile/TrainingProfileCard";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
+import { withoutCanonicalProfileProjection } from "../lib/canonicalAccountProfile";
 import { useDevMode } from "../contexts/DevModeContext";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
 import StatsClockDashboard from "../components/StatsClockDashboard";
@@ -5497,7 +5498,7 @@ function isBotPlayer(p: PlayerLite): boolean {
 
 // -- 0 bis) PROFIL ACTUEL (via hook, safe) --
 const cp = useCurrentProfile();
-const profile = cp?.profile ?? null;
+const profile = cp ?? null;
 
 // -- 1) Carrousel des modes --
 const modeDefs = React.useMemo(
@@ -5778,10 +5779,13 @@ React.useEffect(() => {
   };
 }, [storeProfiles.length, needsStatsHistory]);
 
-const effectiveStoreProfiles = React.useMemo(
-  () => mergeLinkedProfiles(storeProfiles as any[], linkedProfileProjection?.profiles || []) as any[],
-  [storeProfiles, linkedProfileProjection?.profiles]
-);
+const effectiveStoreProfiles = React.useMemo(() => {
+  const linked = withoutCanonicalProfileProjection(
+    linkedProfileProjection?.profiles || [],
+    (profile as any)?.id || null
+  );
+  return mergeLinkedProfiles(storeProfiles as any[], linked) as any[];
+}, [storeProfiles, linkedProfileProjection?.profiles, (profile as any)?.id]);
 
 // Mini-store pour le comparateur X01 (StatsX01Compare)
 const pseudoStoreForCompare = React.useMemo(

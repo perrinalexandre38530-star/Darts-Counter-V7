@@ -28,6 +28,7 @@ import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarS
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
 import { getAvatarCacheFast, setAvatarCache } from "../lib/avatarCache";
 import { isConstrainedRuntimeDevice, scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { getCanonicalAccountProfileFromStore } from "../lib/canonicalAccountProfile";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { captureUserMediaFallback, profileAvatarMediaKey, readLocalUserMediaFallback, resolveUserMediaFallback } from "../lib/userMediaFallback";
 import DartSetImage from "./DartSetImage";
@@ -357,20 +358,31 @@ export default function ProfileAvatar(props: Props) {
         return;
       }
 
-      const full = await getProfileByIdFromStore(id);
+      const runtimeStore = (() => {
+        try { return (window as any)?.__appStore?.store ?? null; } catch { return null; }
+      })();
+      const canonical = getCanonicalAccountProfileFromStore(runtimeStore) as any;
+      const runtimeFull = String(canonical?.id || "") === id ? canonical : null;
+      const full = runtimeFull || await getProfileByIdFromStore(id);
       if (!mounted) return;
 
       if (full) {
         setResolvedProfile({
           ...full,
-          ...p,
-          avatarUrl: normalizeImport(p?.avatarUrl) ? p?.avatarUrl : full.avatarUrl,
-          avatarPath: normalizeImport(p?.avatarPath) ? p?.avatarPath : full.avatarPath,
-          avatarDataUrl: normalizeImport(p?.avatarDataUrl)
-            ? p?.avatarDataUrl
-            : full.avatarDataUrl,
-          stats: p?.stats ?? full.stats ?? null,
-          name: p?.name ?? full.name,
+          ...(runtimeFull ? {} : p),
+          // MON PROFIL runtime est canonique pour le compte actif. Les props/cache
+          // ne peuvent plus réinjecter un ancien avatar sur cet identifiant.
+          avatarUrl: runtimeFull
+            ? full.avatarUrl
+            : (normalizeImport(p?.avatarUrl) ? p?.avatarUrl : full.avatarUrl),
+          avatarPath: runtimeFull
+            ? full.avatarPath
+            : (normalizeImport(p?.avatarPath) ? p?.avatarPath : full.avatarPath),
+          avatarDataUrl: runtimeFull
+            ? full.avatarDataUrl
+            : (normalizeImport(p?.avatarDataUrl) ? p?.avatarDataUrl : full.avatarDataUrl),
+          stats: runtimeFull ? full.stats ?? null : (p?.stats ?? full.stats ?? null),
+          name: runtimeFull ? full.name : (p?.name ?? full.name),
         });
       } else {
         setResolvedProfile(null);

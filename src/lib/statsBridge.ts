@@ -63,6 +63,7 @@ import {
 import { getOrRebuildStatsIndex, loadStatsQuickMirrorSync, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
 import { getX01StatsContext, x01ContextMatchesFilter, type X01StatsContextFilter } from "./x01StatsContext";
 import { writeDerivedStatsCacheRaw } from "./statsRenderCacheStorage";
+import { getCanonicalAccountProfileId } from "./canonicalAccountProfile";
 
 /* ============================================================
    Types publics
@@ -625,8 +626,14 @@ function readLinkedProfileHistoryRowsForStatsBridge(): SavedMatch[] {
     const parsed = JSON.parse(raw);
     const rows = parsed?.projection?.history;
     if (!Array.isArray(rows)) return [];
+    let canonicalId = "";
+    try { canonicalId = getCanonicalAccountProfileId((window as any)?.__appStore?.store); } catch {}
     return rows
-      .filter((r: any) => r && typeof r === "object")
+      .filter((r: any) => {
+        if (!r || typeof r !== "object") return false;
+        const linkedLocalId = String(r?.linkedLocalProfileId || r?.linkedSourceLocalProfileId || "").trim();
+        return !(canonicalId && linkedLocalId === canonicalId);
+      })
       .map((r: any, idx: number) => ({
         ...r,
         id: String(r.id || r.matchId || r.resumeId || `linked-stats-${idx}`),
