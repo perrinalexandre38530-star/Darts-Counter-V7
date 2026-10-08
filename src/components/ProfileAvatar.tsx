@@ -26,7 +26,7 @@ import {
 import { loadStore, getCachedLocalProfilesForSafety } from "../lib/storage";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
-import { getAvatarCacheFast } from "../lib/avatarCache";
+import { getAvatarCacheFast, setAvatarCache } from "../lib/avatarCache";
 import { isConstrainedRuntimeDevice, scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { captureUserMediaFallback, profileAvatarMediaKey, readLocalUserMediaFallback, resolveUserMediaFallback } from "../lib/userMediaFallback";
@@ -455,21 +455,9 @@ export default function ProfileAvatar(props: Props) {
   // sources différentes pour le même profileId. `preferProfileAvatarUrl` reste
   // accepté pour compatibilité mais n'altère plus l'ordre canonique.
   const computedRawImg = React.useMemo(() => {
-    if (propDataUrl && propLooksRemote) return propDataUrl;
-
-    const profileHasOwnMedia = Boolean(avatarDataUrl || legacyAvatar || avatarUrl || avatarPath);
-    const cacheIsAuthoritative = Boolean(
-      cachedThumb &&
-      (
-        !profileHasOwnMedia ||
-        (cachedRevision > 0 && profileRevision > 0 && cachedRevision >= profileRevision)
-      )
-    );
-
-    // Une miniature locale validée est la source la plus stable pour les
-    // médaillons. Elle évite qu'une URL NAS/R2 transitoirement indisponible
-    // fasse disparaître l'avatar quelques secondes après le premier paint.
-    if (size <= 180 && cacheIsAuthoritative) return cachedThumb;
+    // RÈGLE CANONIQUE : l'objet profil courant est toujours prioritaire.
+    // Le cache n'est qu'un fallback d'affichage. Une ancienne miniature d'un
+    // autre avatar ne doit JAMAIS écraser l'avatar explicitement porté par le profil.
     if (propDataUrl) return propDataUrl;
     if (avatarDataUrl) return avatarDataUrl;
     if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
@@ -477,7 +465,7 @@ export default function ProfileAvatar(props: Props) {
     if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     if (size <= 180 && cachedThumb) return cachedThumb;
     return null;
-  }, [propDataUrl, propLooksRemote, size, cachedThumb, cachedRevision, profileRevision, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+  }, [propDataUrl, size, cachedThumb, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   // Garde la dernière source valide pendant une réhydratation asynchrone.
   // Un delta/store temporairement "lite" ne doit jamais faire clignoter l'avatar
@@ -703,6 +691,21 @@ export default function ProfileAvatar(props: Props) {
               if (effectiveProfileId && rawImg) {
                 lastKnownGoodAvatarByProfile.set(effectiveProfileId, rawImg);
                 setStickyRawImg(rawImg);
+                // Auto-réparation du cache : si un ancien build avait associé
+                // la miniature d'un autre profil au même id, la source canonique
+                // réellement chargée remplace immédiatement ce cache parasite.
+                try {
+                  setAvatarCache({
+                    profileId: effectiveProfileId,
+                    avatarDataUrl: avatarDataUrl && avatarDataUrl.startsWith("data:image/") ? avatarDataUrl : null,
+                    avatarThumbDataUrl: avatarDataUrl && avatarDataUrl.startsWith("data:image/") ? avatarDataUrl : null,
+                    avatarUrl: avatarUrl || null,
+                    avatarPath: avatarPath || null,
+                    avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
+                    avatarAssetId: String((p as any)?.avatarAssetId || "") || null,
+                    avatarThumbAssetId: String((p as any)?.avatarThumbAssetId || "") || null,
+                  });
+                } catch {}
               }
               const displayingFreshCachedThumb = cachedThumbFresh && !!cachedThumb && rawImg === cachedThumb;
               if (!useFallback && effectiveProfileId && primaryImg && !displayingFreshCachedThumb) {

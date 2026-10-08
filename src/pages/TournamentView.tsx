@@ -37,6 +37,7 @@
 // ============================================
 
 import React from "react";
+import QRCode from "qrcode";
 import MatchDetailCard from "../components/tournament/MatchDetailCard";
 import type { Store } from "../lib/types";
 import type { Tournament, TournamentMatch } from "../lib/tournaments/types";
@@ -1971,6 +1972,9 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   const [adminDraftName, setAdminDraftName] = React.useState("");
   const [adminNotice, setAdminNotice] = React.useState("");
   const [shareNotice, setShareNotice] = React.useState("");
+  const [shareQrOpen, setShareQrOpen] = React.useState(false);
+  const [shareQrDataUrl, setShareQrDataUrl] = React.useState("");
+  const [shareQrBusy, setShareQrBusy] = React.useState(false);
   const [onlineInviteQuery, setOnlineInviteQuery] = React.useState("");
   const [onlineInvitePeople, setOnlineInvitePeople] = React.useState<OnlineFriendUser[]>([]);
   const [onlineInviteLoading, setOnlineInviteLoading] = React.useState(false);
@@ -2200,6 +2204,11 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     if(!activeOnlineUserId) return null;
     return competitionInvitations.find((row:any)=>String(row?.userId||"")===activeOnlineUserId && !["revoked","declined"].includes(String(row?.status||"pending"))) || null;
   }, [competitionInvitations, activeOnlineUserId]);
+  const competitionFollowers = React.useMemo<any[]>(() => Array.isArray((tour as any)?.followers) ? (tour as any).followers : [], [tour]);
+  const currentFollower = React.useMemo<any>(() => {
+    if(!activeOnlineUserId) return null;
+    return competitionFollowers.find((row:any)=>String(row?.userId||"")===activeOnlineUserId) || null;
+  }, [competitionFollowers, activeOnlineUserId]);
   const competitionIsFull = Boolean(enrollmentMax > 0 && tournamentPlayers.length >= enrollmentMax);
   const isOnlineCompetition = Boolean(tour && (String((tour as any)?.source||"")==="online" || String((tour as any)?.competitionScope||"")==="online" || (tour as any)?.onlineCompetitionId));
 
@@ -5075,6 +5084,39 @@ async function createSyntheticHistoryForSimulation(args: any) {
     setEnrollmentNotice("Les inscriptions sont fermées pour cette compétition.");
   };
 
+  const togglePublicFollow = async () => {
+    if(!tour || !isOnlineCompetition) return;
+    setEnrollmentNotice("");
+    if(!activeOnlineUserId){
+      setEnrollmentNotice("Connecte-toi à ton compte Online pour suivre cette compétition.");
+      return;
+    }
+    if(currentTournamentPlayer){
+      setEnrollmentNotice("Tu participes déjà à cette compétition : son suivi est inclus dans ton espace joueur.");
+      return;
+    }
+    if(currentFollower){
+      const nextFollowers=competitionFollowers.filter((row:any)=>String(row?.userId||"")!==activeOnlineUserId);
+      if(!await persistPublicTournamentPatch({followers:nextFollowers},false)) return;
+      setEnrollmentNotice("Suivi désactivé. La compétition reste consultable depuis son lien.");
+      return;
+    }
+    const player=onlinePlayerFromAuth();
+    const follower={
+      userId:activeOnlineUserId,
+      profileId:String((authOnline as any)?.profile?.id||activeOnlineUserId),
+      name:player.name,
+      avatarUrl:player.avatarUrl||player.avatarDataUrl||null,
+      followedAt:Date.now(),
+    };
+    const nextFollowers=[
+      ...competitionFollowers.filter((row:any)=>String(row?.userId||"")!==activeOnlineUserId),
+      follower,
+    ];
+    if(!await persistPublicTournamentPatch({followers:nextFollowers},false)) return;
+    setEnrollmentNotice("Suivi activé. Cette compétition apparaît maintenant dans En ligne → Compétitions.");
+  };
+
   const approveEnrollmentRequest = async (request:any) => {
     if(!tour || !canAdmin("invitations")) return;
     if(enrollmentMax>0 && tournamentPlayers.length>=enrollmentMax){setAdminNotice("Impossible : la compétition est complète.");return;}
@@ -5114,6 +5156,26 @@ async function createSyntheticHistoryForSimulation(args: any) {
       setShareNotice(cloudReady ? "Lien de consultation copié / partagé." : "Code de compétition copié. Pour un suivi depuis un autre téléphone, publie la compétition en ONLINE.");
     } catch {
       try { await navigator.clipboard?.writeText(cloudReady ? directUrl : text); setShareNotice("Accès copié."); } catch {}
+    }
+  };
+
+  const openCompetitionQr = async () => {
+    if(!tour) return;
+    const cloudReady = String((tour as any).source||"") === "online" || String((tour as any).competitionScope||"") === "online" || Boolean((tour as any).onlineCompetitionId);
+    if(!cloudReady){
+      setShareNotice("Le QR de suivi nécessite une compétition publiée en ONLINE.");
+      return;
+    }
+    const directUrl = competitionPublicUrl || `${window.location.origin}${window.location.pathname}#/competition/${encodeURIComponent(String((tour as any).onlineCompetitionId || (tour as any).id || id))}`;
+    setShareQrBusy(true);
+    try{
+      const dataUrl=await QRCode.toDataURL(directUrl,{margin:1,width:280,errorCorrectionLevel:"M"});
+      setShareQrDataUrl(dataUrl);
+      setShareQrOpen(true);
+    }catch(e:any){
+      setShareNotice(`Impossible de générer le QR : ${String(e?.message||"erreur")}`);
+    }finally{
+      setShareQrBusy(false);
     }
   };
 
@@ -5206,6 +5268,23 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
       <PageAdBanner placement="competitions" slotKey="page-competitions-view-under-header" style={{ marginBottom: 12 }} />
 
+      {shareQrOpen && shareQrDataUrl ? (
+        <div onClick={()=>setShareQrOpen(false)} style={{position:"fixed",inset:0,zIndex:9999,display:"grid",placeItems:"center",padding:18,background:"rgba(0,0,0,.82)",backdropFilter:"blur(8px)"}}>
+          <div onClick={(event)=>event.stopPropagation()} style={{width:"min(360px,92vw)",borderRadius:20,border:"1px solid rgba(79,180,255,.28)",background:"linear-gradient(180deg,#08111b,#03070c)",padding:16,boxShadow:"0 22px 70px rgba(0,0,0,.65)",textAlign:"center"}}>
+            <div style={{fontSize:8,fontWeight:1000,letterSpacing:.8,color:"#4fb4ff"}}>ACCÈS COMPÉTITION</div>
+            <b style={{display:"block",marginTop:4,fontSize:15}}>{String((tour as any)?.name||"Compétition")}</b>
+            <div style={{fontSize:8.2,opacity:.62,marginTop:4}}>Scanne ce QR avec un autre téléphone pour ouvrir directement le suivi public.</div>
+            <div style={{margin:"14px auto 10px",width:292,maxWidth:"100%",padding:6,borderRadius:16,background:"#fff",display:"grid",placeItems:"center"}}>
+              <img src={shareQrDataUrl} alt="QR compétition" style={{width:"100%",height:"auto",display:"block",borderRadius:10}}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+              <button type="button" onClick={()=>void shareCompetition()} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(79,180,255,.28)",background:"rgba(8,35,58,.92)",color:"#fff",fontSize:8,fontWeight:1000}}>PARTAGER LE LIEN</button>
+              <button type="button" onClick={()=>setShareQrOpen(false)} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#070c13",color:"#c9d2dc",fontSize:8,fontWeight:1000}}>FERMER</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {sharedEntry && tour ? (
         <section style={{marginBottom:12,borderRadius:18,border:"1px solid rgba(79,180,255,.26)",background:"linear-gradient(180deg,rgba(4,10,18,.995),rgba(3,6,11,.995))",padding:12,boxShadow:"0 16px 36px rgba(0,0,0,.5)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
@@ -5214,7 +5293,11 @@ async function createSyntheticHistoryForSimulation(args: any) {
               <b style={{display:"block",fontSize:12,marginTop:6}}>Consultation depuis le lien de la compétition</b>
               <div style={{fontSize:8.2,opacity:.64,marginTop:3}}>Classements, objectifs et résultats se mettent à jour automatiquement.</div>
             </div>
-            <button type="button" onClick={()=>void refreshPublicCompetition()} disabled={publicRefreshing||!isOnlineCompetition} style={{minWidth:82,minHeight:32,borderRadius:10,border:"1px solid rgba(79,180,255,.28)",background:"rgba(8,35,58,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,opacity:publicRefreshing?.55:1}}>{publicRefreshing?"ACTUALISATION…":"↻ ACTUALISER"}</button>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,auto)",gap:5}}>
+              <button type="button" onClick={()=>void refreshPublicCompetition()} disabled={publicRefreshing||!isOnlineCompetition} style={{minWidth:74,minHeight:32,borderRadius:10,border:"1px solid rgba(79,180,255,.28)",background:"rgba(8,35,58,.92)",color:"#fff",fontSize:7.1,fontWeight:1000,opacity:publicRefreshing?.55:1}}>{publicRefreshing?"SYNC…":"↻ ACTUALISER"}</button>
+              <button type="button" onClick={()=>void openCompetitionQr()} disabled={shareQrBusy||!isOnlineCompetition} style={{minWidth:42,minHeight:32,borderRadius:10,border:"1px solid rgba(255,207,115,.24)",background:"rgba(72,49,8,.48)",color:"#ffcf73",fontSize:7.1,fontWeight:1000,opacity:shareQrBusy?.55:1}}>{shareQrBusy?"…":"QR"}</button>
+              {!currentTournamentPlayer ? <button type="button" onClick={()=>void togglePublicFollow()} disabled={!isOnlineCompetition} style={{minWidth:68,minHeight:32,borderRadius:10,border:`1px solid ${currentFollower?"rgba(101,230,162,.28)":"rgba(79,180,255,.28)"}`,background:currentFollower?"rgba(14,62,43,.72)":"rgba(8,35,58,.72)",color:currentFollower?"#9cf1c0":"#9fd8ff",fontSize:7.1,fontWeight:1000}}>{currentFollower?"✓ SUIVIE":"☆ SUIVRE"}</button> : null}
+            </div>
           </div>
 
           {isOnlineCompetition ? (
@@ -5437,6 +5520,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   <button type="button" className="chv-quick-action" onClick={()=>setTab("linked")} style={{borderColor:"rgba(79,180,255,.20)"}}><Icon name="results" color="#4fb4ff"/><div><b>RÉSULTATS</b><span>{linkedHistoryMatches.length} essai{linkedHistoryMatches.length>1?"s":""} enregistré{linkedHistoryMatches.length>1?"s":""}</span></div></button>
                   {challengeCompetitionFormat==="free"&&!publicSpectator?<button type="button" className="chv-quick-action" onClick={loadAttachableHistory} style={{borderColor:"rgba(255,213,106,.20)"}}><Icon name="results" color="#ffe68a"/><div><b>PARTIE LOISIR</b><span>Rattacher depuis l’historique</span></div></button>:null}
                   <button type="button" className="chv-quick-action" onClick={shareCompetition} style={{borderColor:"rgba(79,180,255,.20)"}}><Icon name="share" color="#4fb4ff"/><div><b>PARTAGER</b><span>Inviter ou faire suivre</span></div></button>
+                  {isOnlineCompetition?<button type="button" className="chv-quick-action" onClick={()=>void openCompetitionQr()} style={{borderColor:"rgba(255,207,115,.20)"}}><span style={{fontSize:17,color:"#ffcf73",lineHeight:1}}>▦</span><div><b>QR D’ACCÈS</b><span>Suivre depuis un autre téléphone</span></div></button>:null}
                   {!publicSpectator&&isCompetitionAdmin?<button type="button" className="chv-quick-action" onClick={()=>setTab("admin")} style={{borderColor:"rgba(255,107,107,.20)"}}><Icon name="admin" color="#ff6b6b"/><div><b>ADMINISTRATION</b><span>Joueurs, règles et programme</span></div></button>:null}
                 </div> : <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}><button type="button" className="chv-action" onClick={shareCompetition} style={{border:"1px solid rgba(79,180,255,.30)",background:"rgba(8,35,58,.88)"}}>↗ PARTAGER</button>{!publicSpectator&&isCompetitionAdmin?<button type="button" className="chv-action" onClick={()=>setTab("admin")} style={{border:"1px solid rgba(255,107,107,.28)",background:"rgba(71,18,24,.88)"}}>⚙ ADMIN</button>:null}</div>}
               </section>
@@ -5484,9 +5568,10 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 <div style={{marginTop:8,padding:10,borderRadius:14,background:"rgba(4,7,12,.97)",border:"1px solid rgba(255,255,255,.10)"}}>
                   <div style={{fontSize:8,opacity:.62,fontWeight:900}}>ORGANISATEUR</div><div style={{fontSize:11,fontWeight:1000,marginTop:3}}>{(tour as any)?.hostOrganizationName || playersById[ownerProfileId]?.name || "Créateur de la compétition"}</div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:isCompetitionAdmin?"1fr 1fr":"1fr",gap:7,marginTop:9}}>
+                <div style={{display:"grid",gridTemplateColumns:isCompetitionAdmin?"1fr 1fr 1fr":"1fr 1fr",gap:7,marginTop:9}}>
                   {isCompetitionAdmin?<button type="button" onClick={()=>setTab("admin")} style={{minHeight:38,borderRadius:12,border:"1px solid rgba(255,107,107,.45)",background:"rgba(90,15,20,.92)",color:"#fff",fontWeight:1000,cursor:"pointer"}}>⚙ GÉRER</button>:null}
                   <button type="button" onClick={shareCompetition} style={{minHeight:38,borderRadius:12,border:"1px solid rgba(79,180,255,.42)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000,cursor:"pointer"}}>↗ PARTAGER</button>
+                  <button type="button" onClick={()=>void openCompetitionQr()} disabled={shareQrBusy||!isOnlineCompetition} style={{minHeight:38,borderRadius:12,border:"1px solid rgba(255,207,115,.32)",background:"rgba(72,49,8,.62)",color:"#ffcf73",fontWeight:1000,cursor:"pointer",opacity:!isOnlineCompetition?.4:1}}>{shareQrBusy?"…":"▦ QR"}</button>
                 </div>
                 {shareNotice?<div style={{marginTop:7,fontSize:8.5,lineHeight:1.35,opacity:.72}}>{shareNotice}</div>:null}
               </Card>

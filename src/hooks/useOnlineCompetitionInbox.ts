@@ -7,7 +7,8 @@ export type OnlineCompetitionRelation =
   | "admin"
   | "participant"
   | "invited"
-  | "request";
+  | "request"
+  | "following";
 
 export type OnlineCompetitionPlayerProgress = {
   participantId: string;
@@ -34,6 +35,20 @@ export type OnlineCompetitionInboxItem = {
   currentCycle: number;
   updatedAt: number;
   playerProgress: OnlineCompetitionPlayerProgress | null;
+  follower: any | null;
+};
+
+export type OnlineCompetitionDiscoveryItem = {
+  id: string;
+  competition: any;
+  name: string;
+  enrollmentPolicy: "open" | "approval";
+  participantsCount: number;
+  maxParticipants: number | null;
+  competitionIsFull: boolean;
+  openObjectives: string[];
+  currentCycle: number;
+  updatedAt: number;
 };
 
 export type OnlineCompetitionAlert = {
@@ -47,6 +62,8 @@ export type OnlineCompetitionAlert = {
 type Args = {
   userId?: string | null;
   profileId?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
   enabled?: boolean;
   pollMs?: number;
 };
@@ -111,6 +128,10 @@ function getInvitation(row: any, userId: string) {
 function getRequest(row: any, userId: string) {
   const requests = asArray(row?.enrollmentRequests).filter((request: any) => String(request?.userId || "") === userId);
   return requests.sort((a: any, b: any) => Number(b?.requestedAt || 0) - Number(a?.requestedAt || 0))[0] || null;
+}
+
+function getFollower(row: any, userId: string) {
+  return asArray(row?.followers).find((follower: any) => String(follower?.userId || "") === userId) || null;
 }
 
 function getOpenRounds(row: any) {
@@ -216,6 +237,7 @@ function toInboxItem(row: any, identities: Set<string>, userId: string): OnlineC
   const participant = findParticipant(row, identities);
   const invitation = userId ? getInvitation(row, userId) : null;
   const request = userId ? getRequest(row, userId) : null;
+  const follower = userId ? getFollower(row, userId) : null;
   const owner = isOwner(row, identities);
   const admin = isAdmin(row, identities);
 
@@ -225,6 +247,7 @@ function toInboxItem(row: any, identities: Set<string>, userId: string): OnlineC
   else if (participant) relation = "participant";
   else if (invitation) relation = "invited";
   else if (request) relation = "request";
+  else if (follower) relation = "following";
   if (!relation) return null;
 
   const { cycle, rounds } = getOpenRounds(row);
@@ -249,6 +272,34 @@ function toInboxItem(row: any, identities: Set<string>, userId: string): OnlineC
     currentCycle: cycle,
     updatedAt: Number(row?.updatedAt || Date.parse(String(row?.updated_at || "")) || 0) || 0,
     playerProgress,
+    follower,
+  };
+}
+
+function toDiscoveryItem(row: any, identities: Set<string>, userId: string): OnlineCompetitionDiscoveryItem | null {
+  const id = getCompetitionId(row);
+  if (!id) return null;
+  if (toInboxItem(row, identities, userId)) return null;
+  if (String(row?.competitionScope || row?.meta?.competitionScope || row?.source || "online").toLowerCase() !== "online") return null;
+  const status = String(row?.status || "draft").toLowerCase();
+  if (["finished", "completed", "archived", "deleted"].includes(status)) return null;
+  const policy = String(row?.enrollment?.policy || row?.meta?.enrollmentPolicy || "fixed").toLowerCase();
+  if (policy !== "open" && policy !== "approval") return null;
+  const players = asArray(row?.players?.length ? row.players : row?.participants);
+  const max = Math.max(0, Number(row?.enrollment?.maxParticipants || row?.meta?.enrollmentMax || 0) || 0);
+  const { cycle, rounds } = getOpenRounds(row);
+  const openObjectives = Array.from(new Set(rounds.flatMap((round: any) => asArray(round?.objectives).map(normalizeObjective)).filter(Boolean)));
+  return {
+    id,
+    competition: row,
+    name: String(row?.name || "Compétition Online"),
+    enrollmentPolicy: policy as "open" | "approval",
+    participantsCount: players.length,
+    maxParticipants: max > 0 ? max : null,
+    competitionIsFull: max > 0 && players.length >= max,
+    openObjectives,
+    currentCycle: cycle,
+    updatedAt: Number(row?.updatedAt || Date.parse(String(row?.updated_at || "")) || 0) || 0,
   };
 }
 
@@ -276,10 +327,13 @@ function publicCompetitionUrl(id: string) {
   return `${window.location.origin}${window.location.pathname}#/competition/${encodeURIComponent(id)}`;
 }
 
-export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, pollMs = 20_000 }: Args) {
+export function useOnlineCompetitionInbox({ userId, profileId, displayName, avatarUrl, enabled = true, pollMs = 20_000 }: Args) {
   const normalizedUserId = String(userId || "").trim();
   const normalizedProfileId = String(profileId || "").trim();
+  const normalizedDisplayName = String(displayName || "Joueur Online").trim() || "Joueur Online";
+  const normalizedAvatarUrl = String(avatarUrl || "").trim() || null;
   const [items, setItems] = React.useState<OnlineCompetitionInboxItem[]>([]);
+  const [discoverable, setDiscoverable] = React.useState<OnlineCompetitionDiscoveryItem[]>([]);
   const [alerts, setAlerts] = React.useState<OnlineCompetitionAlert[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -298,6 +352,7 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
   const refresh = React.useCallback(async (notify = true) => {
     if (!enabled || !normalizedUserId) {
       setItems([]);
+      setDiscoverable([]);
       setAlerts([]);
       setError("");
       return [] as OnlineCompetitionInboxItem[];
@@ -307,9 +362,14 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
     try {
       const rows = await listOnlineCompetitions({ limit: 100 });
       const identities = getIdentities(normalizedUserId, normalizedProfileId);
-      const next = asArray(rows)
+      const allRows = asArray(rows);
+      const next = allRows
         .map((row: any) => toInboxItem(row, identities, normalizedUserId))
         .filter(Boolean) as OnlineCompetitionInboxItem[];
+      const nextDiscoverable = allRows
+        .map((row: any) => toDiscoveryItem(row, identities, normalizedUserId))
+        .filter(Boolean) as OnlineCompetitionDiscoveryItem[];
+      nextDiscoverable.sort((a, b) => Number(a.competitionIsFull) - Number(b.competitionIsFull) || b.updatedAt - a.updatedAt || a.name.localeCompare(b.name));
 
       next.sort((a, b) => {
         const aPending = a.invitation?.status === "pending" ? 1 : a.request?.status === "pending" ? 1 : 0;
@@ -342,15 +402,15 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
             newAlerts.push({ id: `${item.id}:request:${requestStatus}:${Date.now()}`, competitionId: item.id, competitionName: item.name, label, createdAt: Date.now() });
             if (notify) void showMessageCenterNotification("Inscription compétition", `${item.name} · ${label}`, { tag: `competition-request-${item.id}`, data: { url: publicCompetitionUrl(item.id) } } as NotificationOptions);
           }
-          if (["owner", "admin", "participant"].includes(item.relation) && previousItem && linkedCount > Number(previousItem.linkedCount || 0)) {
+          if (["owner", "admin", "participant", "following"].includes(item.relation) && previousItem && linkedCount > Number(previousItem.linkedCount || 0)) {
             const delta = linkedCount - Number(previousItem.linkedCount || 0);
             const label = `${delta} nouveau${delta > 1 ? "x" : ""} résultat${delta > 1 ? "s" : ""} enregistré${delta > 1 ? "s" : ""}`;
             newAlerts.push({ id: `${item.id}:result:${linkedCount}`, competitionId: item.id, competitionName: item.name, label, createdAt: Date.now() });
           }
         }
 
-        // Ne notifier l'ouverture des journées qu'aux joueurs/admins déjà engagés dans la compétition.
-        if (!previous || !["owner", "admin", "participant"].includes(item.relation)) continue;
+        // Joueurs, admins et spectateurs qui suivent la compétition peuvent recevoir l'ouverture des journées.
+        if (!previous || !["owner", "admin", "participant", "following"].includes(item.relation)) continue;
         const seen = new Set(previous[item.id]?.openRoundIds || []);
         const newlyOpened = item.openRounds.filter((round: any) => {
           const rid = String(round?.id || `c${item.currentCycle}-r${round?.round || 0}`);
@@ -382,6 +442,7 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
       writeSnapshot(snapshotKey, freshSnapshot);
       if (!aliveRef.current) return next;
       setItems(next);
+      setDiscoverable(nextDiscoverable);
       if (newAlerts.length) {
         setAlerts((prev) => [...newAlerts, ...prev].slice(0, 8));
       }
@@ -394,7 +455,7 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
     } finally {
       if (aliveRef.current) setLoading(false);
     }
-  }, [enabled, normalizedUserId, normalizedProfileId, pollMs]);
+  }, [enabled, normalizedUserId, normalizedProfileId, normalizedDisplayName, normalizedAvatarUrl, pollMs]);
 
   React.useEffect(() => {
     if (!enabled || !normalizedUserId) return;
@@ -415,6 +476,10 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
   );
   const active = React.useMemo(
     () => items.filter((item) => ["owner", "admin", "participant"].includes(item.relation)),
+    [items]
+  );
+  const followed = React.useMemo(
+    () => items.filter((item) => item.relation === "following"),
     [items]
   );
 
@@ -490,11 +555,108 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
     }), `Demande annulée · ${item.name}`);
   }, [mutateCompetition, normalizedUserId]);
 
+  const mutateDiscoveryCompetition = React.useCallback(async (item: OnlineCompetitionDiscoveryItem, mutate: (latest: any) => any, successMessage: string) => {
+    if (!normalizedUserId || !item?.id) return false;
+    setActionBusy(item.id);
+    setActionNotice("");
+    try {
+      const latest = await getOnlineCompetition(item.id);
+      const next = mutate(latest);
+      await updateOnlineCompetition(item.id, {
+        name: next?.name,
+        status: next?.status,
+        tournament: next,
+        matches: asArray(next?.matches ?? next?.__onlineRow?.payload?.matches),
+        participants: asArray(next?.players?.length ? next.players : next?.participants),
+        settings: { ...(next?.game?.rules || {}), identity: next?.identity || null },
+      } as any);
+      setActionNotice(successMessage);
+      await refresh(false);
+      return true;
+    } catch (err: any) {
+      setActionNotice(String(err?.message || "Action Online impossible."));
+      return false;
+    } finally {
+      setActionBusy("");
+    }
+  }, [normalizedUserId, refresh]);
+
+  const joinOpenCompetition = React.useCallback(async (item: OnlineCompetitionDiscoveryItem) => {
+    return mutateDiscoveryCompetition(item, (latest: any) => {
+      const policy = String(latest?.enrollment?.policy || latest?.meta?.enrollmentPolicy || "fixed").toLowerCase();
+      if (policy !== "open") throw new Error("Cette compétition n’accepte plus les inscriptions immédiates.");
+      const players = asArray(latest?.players?.length ? latest.players : latest?.participants);
+      const max = Math.max(0, Number(latest?.enrollment?.maxParticipants || latest?.meta?.enrollmentMax || 0) || 0);
+      if (max > 0 && players.length >= max) throw new Error("La compétition est complète.");
+      const already = players.some((row: any) => [row?.onlineUserId, row?.userId, row?.profileId, row?.id].map((value) => String(value || "")).includes(normalizedUserId) || (normalizedProfileId && [row?.profileId, row?.id].map((value) => String(value || "")).includes(normalizedProfileId)));
+      if (already) return latest;
+      const participant = {
+        id: normalizedProfileId || normalizedUserId,
+        profileId: normalizedProfileId || normalizedUserId,
+        onlineUserId: normalizedUserId,
+        userId: normalizedUserId,
+        name: normalizedDisplayName,
+        avatarDataUrl: normalizedAvatarUrl,
+        avatarUrl: normalizedAvatarUrl,
+        isBot: false,
+        source: "online",
+      };
+      return { ...latest, players: [...players, participant], updatedAt: Date.now() };
+    }, `Inscription confirmée · ${item.name}`);
+  }, [mutateDiscoveryCompetition, normalizedUserId, normalizedProfileId, normalizedDisplayName, normalizedAvatarUrl]);
+
+  const requestCompetitionAccess = React.useCallback(async (item: OnlineCompetitionDiscoveryItem) => {
+    return mutateDiscoveryCompetition(item, (latest: any) => {
+      const policy = String(latest?.enrollment?.policy || latest?.meta?.enrollmentPolicy || "fixed").toLowerCase();
+      if (policy !== "approval") throw new Error("Cette compétition n’accepte plus les demandes d’inscription.");
+      const players = asArray(latest?.players?.length ? latest.players : latest?.participants);
+      const max = Math.max(0, Number(latest?.enrollment?.maxParticipants || latest?.meta?.enrollmentMax || 0) || 0);
+      if (max > 0 && players.length >= max) throw new Error("La compétition est complète.");
+      const requests = asArray(latest?.enrollmentRequests);
+      if (requests.some((row: any) => String(row?.userId || "") === normalizedUserId && String(row?.status || "pending") === "pending")) return latest;
+      const request = {
+        id: `request-${Date.now()}-${normalizedUserId.slice(-6)}`,
+        userId: normalizedUserId,
+        profileId: normalizedProfileId || normalizedUserId,
+        name: normalizedDisplayName,
+        avatarUrl: normalizedAvatarUrl,
+        status: "pending",
+        requestedAt: Date.now(),
+      };
+      return { ...latest, enrollmentRequests: [...requests, request], updatedAt: Date.now() };
+    }, `Demande envoyée · ${item.name}`);
+  }, [mutateDiscoveryCompetition, normalizedUserId, normalizedProfileId, normalizedDisplayName, normalizedAvatarUrl]);
+
+  const followCompetition = React.useCallback(async (item: OnlineCompetitionDiscoveryItem) => {
+    return mutateDiscoveryCompetition(item, (latest: any) => {
+      const followers = asArray(latest?.followers);
+      if (followers.some((row: any) => String(row?.userId || "") === normalizedUserId)) return latest;
+      const follower = {
+        userId: normalizedUserId,
+        profileId: normalizedProfileId || normalizedUserId,
+        name: normalizedDisplayName,
+        avatarUrl: normalizedAvatarUrl,
+        followedAt: Date.now(),
+      };
+      return { ...latest, followers: [...followers, follower], updatedAt: Date.now() };
+    }, `Suivi activé · ${item.name}`);
+  }, [mutateDiscoveryCompetition, normalizedUserId, normalizedProfileId, normalizedDisplayName, normalizedAvatarUrl]);
+
+  const unfollowCompetition = React.useCallback(async (item: OnlineCompetitionInboxItem) => {
+    return mutateCompetition(item, (latest: any) => ({
+      ...latest,
+      followers: asArray(latest?.followers).filter((row: any) => String(row?.userId || "") !== normalizedUserId),
+      updatedAt: Date.now(),
+    }), `Suivi arrêté · ${item.name}`);
+  }, [mutateCompetition, normalizedUserId]);
+
   return {
     items,
     invitations,
     requests,
     active,
+    followed,
+    discoverable,
     alerts,
     loading,
     error,
@@ -505,6 +667,10 @@ export function useOnlineCompetitionInbox({ userId, profileId, enabled = true, p
     acceptInvitation,
     declineInvitation,
     cancelRequest,
+    joinOpenCompetition,
+    requestCompetitionAccess,
+    followCompetition,
+    unfollowCompetition,
     clearActionNotice: () => setActionNotice(""),
     clearAlerts: () => setAlerts([]),
   };

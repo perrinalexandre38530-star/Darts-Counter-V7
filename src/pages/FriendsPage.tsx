@@ -2320,6 +2320,8 @@ export default function FriendsPage({ store, update, go, initialOnlineTab }: Pro
   const competitionInbox = useOnlineCompetitionInbox({
     userId: sessionUserId,
     profileId: activeProfileId,
+    displayName,
+    avatarUrl: (activeProfile as any)?.avatarDataUrl || (activeProfile as any)?.avatarUrl || (activeProfile as any)?.avatar || null,
     enabled: isSignedIn,
     pollMs: 20_000,
   });
