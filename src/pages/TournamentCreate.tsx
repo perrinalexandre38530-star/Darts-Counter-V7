@@ -3041,8 +3041,9 @@ async function createTournament() {
         cycle:1,
         round:index+1,
         objectives,
-        status: challengePublicationMode==="all" || index===0 ? "open" : "locked",
-        openedAt: challengePublicationMode==="all" || index===0 ? Date.now() : null,
+        // La création prépare le programme mais ne l'ouvre pas avant le vrai démarrage.
+        status: "locked",
+        openedAt: null,
         closedAt:null,
       };
     });
@@ -3071,10 +3072,10 @@ async function createTournament() {
       },
       season: {
         name: String((tour as any).name || "Saison Challenge"),
-        status: "running",
+        status: "draft",
         maxCycles: null,
         endsAt: null,
-        startedAt: Date.now(),
+        startedAt: null,
       },
       confrontation: { enabled: challengeCompetitionFormat === "duels", entity: participantKind === "teams" ? "teams" : "players" },
       divisions: challengeCompetitionFormat === "divisions" ? {
@@ -3104,9 +3105,20 @@ async function createTournament() {
     };
   }
 
-  // Un tournoi/une ligue créée avec ses affiches doit apparaître directement dans "En cours" / "À reprendre".
-  // Le statut "draft" restait caché derrière le filtre Brouillons et donnait l'impression que la création avait échoué.
+  // Le statut moteur reste compatible avec les listes existantes, tandis que le cycle de vie
+  // métier distingue clairement préparation / inscriptions / jeu / clôture.
   (tour as any).status = "running";
+  const initialLifecycleStatus = source === "online" ? "registration" : "draft";
+  (tour as any).lifecycleStatus = initialLifecycleStatus;
+  (tour as any).lifecycle = {
+    ...((tour as any).lifecycle || {}),
+    status: initialLifecycleStatus,
+    registrationOpenedAt: initialLifecycleStatus === "registration" ? Date.now() : null,
+    startedAt: null,
+    pausedAt: null,
+    finishedAt: null,
+    archivedAt: null,
+  };
 
   const matches = (registrationOnly || challengeNoMatchMode) ? [] : buildInitialMatches(tour);
 

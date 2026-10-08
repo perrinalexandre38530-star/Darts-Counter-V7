@@ -2211,6 +2211,22 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   }, [competitionFollowers, activeOnlineUserId]);
   const competitionIsFull = Boolean(enrollmentMax > 0 && tournamentPlayers.length >= enrollmentMax);
   const isOnlineCompetition = Boolean(tour && (String((tour as any)?.source||"")==="online" || String((tour as any)?.competitionScope||"")==="online" || (tour as any)?.onlineCompetitionId));
+  const competitionLifecycleStatus = React.useMemo(() => {
+    const explicit = String((tour as any)?.lifecycleStatus || (tour as any)?.lifecycle?.status || "").toLowerCase();
+    if (["draft","registration","running","paused","finished","archived"].includes(explicit)) return explicit;
+    const legacy = String((tour as any)?.status || "draft").toLowerCase();
+    if (legacy === "finished") return "finished";
+    if (legacy === "draft") return isOnlineCompetition ? "registration" : "draft";
+    return "running";
+  }, [tour, isOnlineCompetition]);
+  const competitionLifecycleLabel = React.useMemo(() => ({
+    draft:"PRÉPARATION", registration:"INSCRIPTIONS", running:"EN COURS", paused:"EN PAUSE", finished:"TERMINÉE", archived:"ARCHIVÉE",
+  } as Record<string,string>)[competitionLifecycleStatus] || "PRÉPARATION", [competitionLifecycleStatus]);
+  const competitionLifecycleColor = React.useMemo(() => ({
+    draft:"#ffcf73", registration:"#4fb4ff", running:"#65e6a2", paused:"#ffb54a", finished:"#b6b6ff", archived:"#8b96a5",
+  } as Record<string,string>)[competitionLifecycleStatus] || "#ffcf73", [competitionLifecycleStatus]);
+  const competitionAllowsPlay = competitionLifecycleStatus === "running";
+  const competitionAllowsEnrollment = competitionLifecycleStatus === "registration" || competitionLifecycleStatus === "running";
 
   const linkedHistoryMatches = React.useMemo(() => {
     const raw = (tour as any)?.linkedMatches ?? (tour as any)?.meta?.linkedMatches ?? [];
@@ -2397,6 +2413,10 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
 
   const launchChallengeAttempt = React.useCallback((player:any, objective:string)=>{
     if(!tour||!player) return;
+    if(!competitionAllowsPlay){
+      setAdminNotice(`La compétition est ${competitionLifecycleLabel.toLowerCase()} : les essais sont verrouillés.`);
+      return;
+    }
     const pid=String(player?.id||"");
     const obj=normalizeChallengeObjective(objective);
     const round:any=challengeRoundForObjective(obj);
@@ -2588,7 +2608,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
         round,
         status,
         open,
-        playable: open && attempts < maxAttempts,
+        playable: competitionAllowsPlay && open && attempts < maxAttempts,
         completed: attempts >= maxAttempts,
       };
     });
@@ -2619,6 +2639,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     challengeObjectiveAttemptLimit,
     challengeRoundForObjective,
     challengeObjectiveIsOpen,
+    competitionAllowsPlay,
   ]);
 
   const challengeFormatMeta = React.useMemo(() => {
@@ -2647,6 +2668,26 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     }).length;
     return Math.round((completed / challengeObjectives.length) * 100);
   }, [isChallengePerformanceCompetition, challengeObjectives, challengeObjectiveAttemptLimit, tournamentPlayers, challengeAttemptCount]);
+
+  const competitionReadiness = React.useMemo(() => {
+    const configuredMin = Math.max(1, Number((tour as any)?.enrollment?.minParticipants || (isChallengePerformanceCompetition ? 1 : 2)) || 1);
+    const checks:any[] = [
+      { key:"participants", label:`Participants minimum (${configuredMin})`, ok:tournamentPlayers.length >= configuredMin, detail:`${tournamentPlayers.length}/${configuredMin}` },
+    ];
+    if(isChallengePerformanceCompetition){
+      checks.push({ key:"objectives", label:"Programme d’objectifs", ok:challengeObjectives.length > 0, detail:`${challengeObjectives.length} objectif${challengeObjectives.length>1?"s":""}` });
+      checks.push({ key:"schedule", label:"Journées préparées", ok:challengeScheduleRounds.length > 0, detail:`${challengeScheduleRounds.length} journée${challengeScheduleRounds.length>1?"s":""}` });
+      if(challengeCompetitionFormat === "divisions"){
+        const assignments=(challengeCompetition?.divisionCycles||[]).find((row:any)=>Number(row?.cycle||0)===challengeCurrentCycle)?.assignments || {};
+        const assigned=tournamentPlayers.filter((player:any)=>Number(assignments?.[String(player?.id||"")]||0)>0).length;
+        checks.push({ key:"divisions", label:"Affectations aux divisions", ok:assigned===tournamentPlayers.length && tournamentPlayers.length>0, detail:`${assigned}/${tournamentPlayers.length}` });
+      }
+    }else if(isChallengeCompetition){
+      checks.push({ key:"duels", label:"Confrontations prêtes", ok:safeMatches.length > 0 || tournamentPlayers.length >= 2, detail:safeMatches.length?`${safeMatches.length} rencontre${safeMatches.length>1?"s":""}`:`${tournamentPlayers.length} participants` });
+    }
+    const missing=checks.filter((row:any)=>!row.ok);
+    return { ready:missing.length===0, checks, missing, configuredMin };
+  }, [tour,isChallengePerformanceCompetition,isChallengeCompetition,challengeCompetitionFormat,challengeCompetition,challengeCurrentCycle,challengeObjectives,challengeScheduleRounds,tournamentPlayers,safeMatches]);
 
   React.useEffect(() => {
     if (!isChallengePerformanceCompetition) return;
@@ -4363,6 +4404,10 @@ async function createSyntheticHistoryForSimulation(args: any) {
   const onStartMatch = React.useCallback(
     async (matchId: string) => {
       if (!tour) return;
+      if(!competitionAllowsPlay){
+        setAdminNotice(`La compétition est ${competitionLifecycleLabel.toLowerCase()} : les rencontres sont verrouillées.`);
+        return;
+      }
       try {
         const r = startMatch({ tournament: tour as any, matches: safeMatches as any, matchId });
         await persist(r.tournament as any, r.matches as any);
@@ -4371,7 +4416,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
         console.error("[TournamentView] startMatch error:", e);
       }
     },
-    [tour, safeMatches, persist, go]
+    [tour, safeMatches, persist, go, competitionAllowsPlay, competitionLifecycleLabel]
   );
 
   const onOpenMatchDetails = React.useCallback((m: any) => setSelectedMatch(m), []);
@@ -4866,6 +4911,59 @@ async function createSyntheticHistoryForSimulation(args: any) {
     await persist(next as any,nextMatches as any);
     setAdminNotice("Modifications enregistrées.");
   };
+  const transitionCompetitionLifecycle = async (nextStatus:"draft"|"registration"|"running"|"paused"|"finished"|"archived") => {
+    if(!tour || !isCompetitionAdmin || !canAdmin("identity")) return;
+    if(nextStatus === "running" && !competitionReadiness.ready){
+      setAdminNotice(`Impossible de lancer : ${competitionReadiness.missing.map((row:any)=>row.label).join(" · ")}.`);
+      return;
+    }
+    const now=Date.now();
+    const currentLifecycle:any=(tour as any)?.lifecycle || {};
+    const lifecycle:any={...currentLifecycle,status:nextStatus};
+    if(nextStatus === "registration" && !lifecycle.registrationOpenedAt) lifecycle.registrationOpenedAt=now;
+    if(nextStatus === "running" && !lifecycle.startedAt) lifecycle.startedAt=now;
+    if(nextStatus === "paused") lifecycle.pausedAt=now;
+    if(nextStatus === "finished") lifecycle.finishedAt=now;
+    if(nextStatus === "archived") lifecycle.archivedAt=now;
+
+    let nextChallenge:any=(tour as any)?.challengeCompetition ? {...((tour as any).challengeCompetition)} : null;
+    if(nextChallenge){
+      const season:any={...(nextChallenge.season||{})};
+      season.status = nextStatus === "finished" || nextStatus === "archived" ? "finished" : nextStatus === "running" || nextStatus === "paused" ? "running" : "draft";
+      if(nextStatus === "running" && !season.startedAt) season.startedAt=now;
+      nextChallenge.season=season;
+      if(isChallengePerformanceCompetition && nextChallenge.schedule && Array.isArray(nextChallenge.schedule.rounds)){
+        const rounds=nextChallenge.schedule.rounds.map((row:any)=>({...row}));
+        const currentRows=rounds.filter((row:any)=>Number(row?.cycle||1)===challengeCurrentCycle);
+        if(nextStatus === "running" && !currentRows.some((row:any)=>String(row?.status||"")==="open")){
+          const publication=String(nextChallenge.schedule.publicationMode||"round_by_round");
+          let firstOpened=false;
+          for(const row of rounds){
+            if(Number(row?.cycle||1)!==challengeCurrentCycle || String(row?.status||"")==="closed") continue;
+            if(publication === "all" || !firstOpened){ row.status="open"; row.openedAt=row.openedAt||now; firstOpened=true; }
+            else row.status="locked";
+          }
+        }
+        if(nextStatus === "finished" || nextStatus === "archived"){
+          for(const row of rounds){
+            if(Number(row?.cycle||1)!==challengeCurrentCycle) continue;
+            if(String(row?.status||"")!=="closed"){ row.status="closed"; row.closedAt=row.closedAt||now; }
+          }
+        }
+        nextChallenge.schedule={...nextChallenge.schedule,rounds};
+      }
+      if(nextStatus === "finished"){
+        const finalRows=(challengeCompetitionFormat === "divisions" ? challengeSeasonStandings : challengeGeneralStandings).map((row:any)=>({
+          playerId:String(row?.playerId||""),name:String(row?.name||"Joueur"),division:Number(row?.division||challengeDivisionState?.assignments?.[String(row?.playerId||"")]||0)||undefined,rank:Number(row?.rank||0)||0,points:Number(row?.points||0)||0,cyclePoints:Number(row?.cyclePoints||0)||0,wins:Number(row?.wins||0)||0,podiums:Number(row?.podiums||0)||0,objectives:Number(row?.objectives||0)||0,
+        }));
+        nextChallenge.finalizedAt=now;
+        nextChallenge.finalStandings=finalRows;
+        lifecycle.finalStandings=finalRows;
+      }
+    }
+    const legacyStatus = (nextStatus === "finished" || nextStatus === "archived") ? "finished" : "running";
+    await saveTournamentAdmin({status:legacyStatus,lifecycleStatus:nextStatus,lifecycle,...(nextChallenge?{challengeCompetition:nextChallenge}:{})},false,"identity");
+  };
   const addCompetitionPlayer = async (profile:any) => {
     if(!tour || !canAdmin("participants")) return;
     const nextPlayers=[...tournamentPlayers,profileToTournamentPlayer(profile)];
@@ -5034,6 +5132,10 @@ async function createSyntheticHistoryForSimulation(args: any) {
   const requestOrJoinCompetition = async () => {
     if(!tour || !isOnlineCompetition) return;
     setEnrollmentNotice("");
+    if(!competitionAllowsEnrollment){
+      setEnrollmentNotice(`Les inscriptions sont fermées : compétition ${competitionLifecycleLabel.toLowerCase()}.`);
+      return;
+    }
     if(!activeOnlineUserId){
       setEnrollmentNotice("Connecte-toi à ton compte Online pour rejoindre cette compétition.");
       return;
@@ -5253,7 +5355,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
               </div>
               <div style={{ marginTop: 3, fontSize: 11.5, opacity: 0.88, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 2px 12px rgba(0,0,0,.75)" }}>
                 {isChallengePerformanceCompetition
-                  ? `${String((tour as any)?.status||"—").toUpperCase()} • CYCLE ${challengeCurrentCycle} • ${challengeObjectives.length} OBJECTIF${challengeObjectives.length>1?"S":""}`
+                  ? `${competitionLifecycleLabel} • CYCLE ${challengeCurrentCycle} • ${challengeObjectives.length} OBJECTIF${challengeObjectives.length>1?"S":""}`
                   : <>{(tour as any)?.status ? String((tour as any).status).toUpperCase() : "—"} • {playableMatches.length} à jouer • {doneMatches.length} terminé{doneMatches.length>1?"s":""}</>}
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
@@ -5302,7 +5404,9 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
           {isOnlineCompetition ? (
             <div style={{marginTop:10,padding:"9px 10px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"#050910"}}>
-              {currentTournamentPlayer ? (
+              {!competitionAllowsEnrollment && !currentTournamentPlayer ? (
+                <div><b style={{fontSize:9.5,color:competitionLifecycleColor}}>{competitionLifecycleLabel}</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Les inscriptions ne sont pas ouvertes dans cet état. La compétition reste consultable.</div></div>
+              ) : currentTournamentPlayer ? (
                 <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{fontSize:9.5,color:"#65e6a2"}}>✓ TU ES INSCRIT</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Retrouve la compétition dans ton espace Compétitions pour jouer tes essais ou matchs.</div></div><button type="button" onClick={()=>{ if(isChallengePerformanceCompetition){setTab("my");return;} try{window.location.hash="#/competitions";}catch{}; go("tournaments"); }} style={{minHeight:31,borderRadius:9,border:"1px solid rgba(101,230,162,.3)",background:"rgba(14,62,43,.88)",color:"#fff",fontSize:7.2,fontWeight:1000}}>MON ESPACE</button></div>
               ) : competitionIsFull ? (
                 <div><b style={{fontSize:9.5,color:"#ff7178"}}>COMPÉTITION COMPLÈTE</b><div style={{fontSize:7.8,opacity:.62,marginTop:2}}>Le nombre maximum de participants est atteint.</div></div>
@@ -5451,11 +5555,28 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     <div className="chv-sub" style={{marginTop:4,maxWidth:720}}>{challengeFormatMeta.description}</div>
                   </div>
                   <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                    <span className="chv-status" style={{color:String((tour as any)?.status)==="running"?"#65e6a2":"#ffcf73"}}>● {String((tour as any)?.status||"draft").toUpperCase()}</span>
+                    <span className="chv-status" style={{color:competitionLifecycleColor}}>● {competitionLifecycleLabel}</span>
                     {isChallengePerformanceCompetition?<span className="chv-status" style={{color:"#b6b6ff"}}>CYCLE {challengeCurrentCycle}</span>:null}
                     {isOnlineCompetition?<span className="chv-status" style={{color:"#22e6ff"}}>ONLINE</span>:null}
                   </div>
                 </div>
+
+                {!publicSpectator && isCompetitionAdmin ? <div className="chv-panel-soft" style={{marginTop:10,borderColor:`${competitionLifecycleColor}2e`}}>
+                  <div className="chv-section-head">
+                    <div><div className="chv-eyebrow">PILOTAGE HÔTE</div><div className="chv-title" style={{marginTop:3,color:competitionLifecycleColor}}>{competitionLifecycleLabel}</div></div>
+                    <span className="chv-status" style={{color:competitionReadiness.ready?"#65e6a2":"#ffb54a"}}>{competitionReadiness.ready?"PRÊTE":"À COMPLÉTER"}</span>
+                  </div>
+                  {!competitionReadiness.ready?<div style={{marginTop:7,fontSize:7.8,color:"#ffcf73"}}>Avant lancement : {competitionReadiness.missing.map((row:any)=>`${row.label} (${row.detail})`).join(" · ")}</div>:null}
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>
+                    {competitionLifecycleStatus==="draft"?<><button type="button" className="chv-action" onClick={()=>void transitionCompetitionLifecycle("registration")} style={{border:"1px solid rgba(79,180,255,.30)",background:"rgba(8,35,58,.90)"}}>OUVRIR LES INSCRIPTIONS</button><button type="button" className="chv-action" disabled={!competitionReadiness.ready} onClick={()=>void transitionCompetitionLifecycle("running")} style={{border:"1px solid rgba(101,230,162,.30)",background:"rgba(14,62,43,.90)",opacity:competitionReadiness.ready?1:.4}}>LANCER</button></>:null}
+                    {competitionLifecycleStatus==="registration"?<button type="button" className="chv-action" disabled={!competitionReadiness.ready} onClick={()=>void transitionCompetitionLifecycle("running")} style={{border:"1px solid rgba(101,230,162,.30)",background:"rgba(14,62,43,.90)",opacity:competitionReadiness.ready?1:.4}}>LANCER LA COMPÉTITION</button>:null}
+                    {competitionLifecycleStatus==="running"?<><button type="button" className="chv-action" onClick={()=>void transitionCompetitionLifecycle("paused")} style={{border:"1px solid rgba(255,181,74,.30)",background:"rgba(72,45,8,.90)"}}>METTRE EN PAUSE</button><button type="button" className="chv-action" onClick={()=>void transitionCompetitionLifecycle("finished")} style={{border:"1px solid rgba(182,182,255,.30)",background:"rgba(35,35,72,.90)"}}>CLÔTURER</button></>:null}
+                    {competitionLifecycleStatus==="paused"?<><button type="button" className="chv-action" onClick={()=>void transitionCompetitionLifecycle("running")} style={{border:"1px solid rgba(101,230,162,.30)",background:"rgba(14,62,43,.90)"}}>REPRENDRE</button><button type="button" className="chv-action" onClick={()=>void transitionCompetitionLifecycle("finished")} style={{border:"1px solid rgba(182,182,255,.30)",background:"rgba(35,35,72,.90)"}}>CLÔTURER</button></>:null}
+                    {competitionLifecycleStatus==="finished"?<button type="button" className="chv-action" onClick={()=>void transitionCompetitionLifecycle("archived")} style={{border:"1px solid rgba(139,150,165,.30)",background:"rgba(30,35,42,.92)"}}>ARCHIVER</button>:null}
+                    <button type="button" className="chv-action" onClick={()=>{setTab("admin");setAdminPlayerPickerOpen(true)}} style={{border:"1px solid rgba(79,180,255,.22)",background:"#08111b"}}>＋ JOUEURS</button>
+                    {isOnlineCompetition && enrollmentRequests.filter((row:any)=>String(row?.status||"pending")==="pending").length?<button type="button" className="chv-action" onClick={()=>setTab("admin")} style={{border:"1px solid rgba(255,207,115,.25)",background:"rgba(72,49,8,.62)"}}>{enrollmentRequests.filter((row:any)=>String(row?.status||"pending")==="pending").length} DEMANDE(S)</button>:null}
+                  </div>
+                </div>:null}
 
                 {isChallengePerformanceCompetition ? (
                   <div className="chv-grid-main">
@@ -5464,13 +5585,13 @@ async function createSyntheticHistoryForSimulation(args: any) {
                         <div>
                           <div className="chv-eyebrow">MAINTENANT</div>
                           <div className="chv-title" style={{marginTop:3}}>
-                            {challengePlayerDashboard?.playable?.length ? `À jouer · ${challengeObjectiveLabel(challengePlayerDashboard.playable[0].objective)}` : challengeOpenObjectives.length ? `Objectif ouvert · ${challengeObjectiveLabel(challengeOpenObjectives[0])}` : "Aucun objectif ouvert"}
+                            {!competitionAllowsPlay ? competitionLifecycleLabel : challengePlayerDashboard?.playable?.length ? `À jouer · ${challengeObjectiveLabel(challengePlayerDashboard.playable[0].objective)}` : challengeOpenObjectives.length ? `Objectif ouvert · ${challengeObjectiveLabel(challengeOpenObjectives[0])}` : "Aucun objectif ouvert"}
                           </div>
                         </div>
                         {challengeCurrentRound?<span className="chv-status" style={{color:String(challengeCurrentRound?.status)==="open"?"#65e6a2":"#ffb54a"}}>J{Number(challengeCurrentRound?.round||0)||1}</span>:null}
                       </div>
 
-                      {challengePlayerDashboard?.playable?.length ? (()=>{
+                      {!competitionAllowsPlay ? <div style={{padding:"11px",borderRadius:13,border:`1px solid ${competitionLifecycleColor}24`,background:"#070d15"}}><b style={{fontSize:10,color:competitionLifecycleColor}}>{competitionLifecycleLabel}</b><div className="chv-sub" style={{marginTop:4}}>{competitionLifecycleStatus==="registration"?"Les joueurs peuvent rejoindre la compétition. Les essais seront disponibles dès le lancement.":competitionLifecycleStatus==="paused"?"Les essais sont temporairement suspendus par l’organisateur.":competitionLifecycleStatus==="finished"||competitionLifecycleStatus==="archived"?"La compétition est clôturée : les résultats et classements restent consultables.":"L’organisateur termine la préparation avant le lancement."}</div></div> : challengePlayerDashboard?.playable?.length ? (()=>{
                         const next=challengePlayerDashboard.playable[0];
                         return <div style={{display:"grid",gridTemplateColumns:"54px minmax(0,1fr) auto",gap:9,alignItems:"center",padding:"10px",borderRadius:13,border:"1px solid rgba(101,230,162,.16)",background:"rgba(8,24,19,.88)"}}>
                           <ChallengeObjectiveThumb objective={next.objective} className="chv-objective-hero-thumb" />
@@ -5856,7 +5977,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                         const row=rows.find((r:any)=>String(r.playerId)===pid);
                         const attempts=challengeAttemptCount(pid,objective);
                         const maxAttempts=challengeObjectiveAttemptLimit(objective);
-                        const canPlay=!publicSpectator&&(isCompetitionAdmin||String(currentTournamentPlayer?.id||"")===pid)&&open&&attempts<maxAttempts;
+                        const canPlay=competitionAllowsPlay&&!publicSpectator&&(isCompetitionAdmin||String(currentTournamentPlayer?.id||"")===pid)&&open&&attempts<maxAttempts;
                         return <div key={`${objective}-${pid}`} className={`chv-row chv-objective-row${String(currentTournamentPlayer?.id||"")===pid?" chv-highlight-me":""}`}>
                           <strong style={{color:row&&Number(row.rank)<=3?"#ffcf73":"#7f8b99"}}>{row?`#${row.rank}`:"—"}</strong>
                           <div style={{minWidth:0}}><span className="chv-row-name">{player?.name||"Joueur"}</span><span className="chv-row-sub">{attempts}/{maxAttempts} essai{maxAttempts>1?"s":""}{row?` · meilleur ${row.score}`:" · aucun score"}</span></div>
@@ -6172,21 +6293,32 @@ async function createSyntheticHistoryForSimulation(args: any) {
           {tab === "admin" && isCompetitionAdmin ? (
             <Card title="Administration" subtitle={isChallengePerformanceCompetition?"Administration Challenge organisée par rubriques : ouvre uniquement la section que tu veux modifier.":"Gère les participants, les administrateurs et les paramètres essentiels de la compétition."} accent={TAB_COLORS.admin} icon="⚙">
               {adminNotice?<div style={{marginBottom:10,padding:9,borderRadius:11,background:"rgba(101,230,162,.12)",border:"1px solid rgba(101,230,162,.30)",fontSize:9.5}}>{adminNotice}</div>:null}
+              <section style={{marginBottom:10,padding:11,borderRadius:15,background:"rgba(4,7,12,.99)",border:`1px solid ${competitionLifecycleColor}2f`}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}><div><b style={{color:competitionLifecycleColor,fontSize:11}}>CYCLE DE VIE</b><div style={{fontSize:8.2,opacity:.62,marginTop:2}}>Préparation → inscriptions → en cours → pause → terminée → archivée.</div></div><span className="chv-status" style={{color:competitionLifecycleColor}}>{competitionLifecycleLabel}</span></div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6,marginTop:9}}>{competitionReadiness.checks.map((row:any)=><div key={row.key} style={{padding:"7px 8px",borderRadius:10,border:`1px solid ${row.ok?"rgba(101,230,162,.18)":"rgba(255,181,74,.18)"}`,background:"#070b11",minWidth:0}}><b style={{display:"block",fontSize:7.4,color:row.ok?"#65e6a2":"#ffb54a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.ok?"✓ ":"• "}{row.label}</b><span style={{display:"block",fontSize:6.8,opacity:.55,marginTop:2}}>{row.detail}</span></div>)}</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>
+                  {competitionLifecycleStatus==="draft"?<><button type="button" onClick={()=>void transitionCompetitionLifecycle("registration")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(79,180,255,.28)",background:"rgba(8,35,58,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px"}}>OUVRIR INSCRIPTIONS</button><button type="button" disabled={!competitionReadiness.ready} onClick={()=>void transitionCompetitionLifecycle("running")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(101,230,162,.28)",background:"rgba(14,62,43,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px",opacity:competitionReadiness.ready?1:.4}}>LANCER</button></>:null}
+                  {competitionLifecycleStatus==="registration"?<button type="button" disabled={!competitionReadiness.ready} onClick={()=>void transitionCompetitionLifecycle("running")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(101,230,162,.28)",background:"rgba(14,62,43,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px",opacity:competitionReadiness.ready?1:.4}}>LANCER</button>:null}
+                  {competitionLifecycleStatus==="running"?<><button type="button" onClick={()=>void transitionCompetitionLifecycle("paused")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(255,181,74,.28)",background:"rgba(72,45,8,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px"}}>PAUSE</button><button type="button" onClick={()=>void transitionCompetitionLifecycle("finished")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(182,182,255,.28)",background:"rgba(35,35,72,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px"}}>TERMINER</button></>:null}
+                  {competitionLifecycleStatus==="paused"?<><button type="button" onClick={()=>void transitionCompetitionLifecycle("running")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(101,230,162,.28)",background:"rgba(14,62,43,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px"}}>REPRENDRE</button><button type="button" onClick={()=>void transitionCompetitionLifecycle("finished")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(182,182,255,.28)",background:"rgba(35,35,72,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px"}}>TERMINER</button></>:null}
+                  {competitionLifecycleStatus==="finished"?<button type="button" onClick={()=>void transitionCompetitionLifecycle("archived")} style={{minHeight:34,borderRadius:9,border:"1px solid rgba(139,150,165,.28)",background:"rgba(30,35,42,.92)",color:"#fff",fontSize:7.3,fontWeight:1000,padding:"0 10px"}}>ARCHIVER</button>:null}
+                </div>
+              </section>
               <div style={{display:"grid",gap:10}}>
                 <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
                   <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>GÉNÉRAL<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Identité, état et nom de la compétition</span></summary>
                   <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
                   <b style={{color:"#ffcf57",fontSize:11}}>IDENTITÉ & ÉTAT</b>
                   <label style={{display:"grid",gap:5,marginTop:9,fontSize:8.5,opacity:.8}}>Nom de la compétition<input value={adminDraftName || String((tour as any)?.name||"")} onChange={e=>setAdminDraftName(e.target.value)} style={{height:38,borderRadius:11,border:"1px solid rgba(255,255,255,.14)",background:"#070b11",color:"#fff",padding:"0 10px",fontWeight:900}}/></label>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:8}}><button disabled={!canAdmin("identity")} onClick={()=>saveTournamentAdmin({name:(adminDraftName||String((tour as any)?.name||"")).trim()||String((tour as any)?.name||"")},false,"identity")} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(255,207,87,.35)",background:"rgba(72,52,7,.92)",color:"#fff",fontWeight:1000}}>ENREGISTRER</button><button disabled={!canAdmin("identity")} onClick={()=>saveTournamentAdmin({status:String((tour as any)?.status)==="running"?"draft":"running"},false,"identity")} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(79,180,255,.35)",background:"rgba(8,35,58,.94)",color:"#fff",fontWeight:1000}}>{String((tour as any)?.status)==="running"?"METTRE EN PAUSE":"LANCER"}</button></div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr",gap:7,marginTop:8}}><button disabled={!canAdmin("identity")} onClick={()=>saveTournamentAdmin({name:(adminDraftName||String((tour as any)?.name||"")).trim()||String((tour as any)?.name||"")},false,"identity")} style={{minHeight:36,borderRadius:10,border:"1px solid rgba(255,207,87,.35)",background:"rgba(72,52,7,.92)",color:"#fff",fontWeight:1000}}>ENREGISTRER LE NOM</button></div>
                 </section>
                 </details>
-                <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={!isChallengePerformanceCompetition ? true : undefined}>
+                <details className={isChallengePerformanceCompetition ? "chv-admin-group" : ""} open={adminPlayerPickerOpen || !isChallengePerformanceCompetition ? true : undefined}>
                   <summary style={{display:isChallengePerformanceCompetition?"list-item":"none"}}>JOUEURS<span style={{display:"block",marginTop:2,fontSize:6.8,fontWeight:700,letterSpacing:0,color:"#7f8b99"}}>Participants et ajout de joueurs</span></summary>
                   <section style={{padding:11,borderRadius:15,background:"rgba(4,7,12,.98)",border:"1px solid rgba(255,255,255,.11)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#4fb4ff",fontSize:11}}>PARTICIPANTS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>Ajoute les joueurs avant le lancement, ou reconstruis le calendrier tant qu’aucun match n’est terminé.</div></div><button onClick={()=>setAdminPlayerPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(79,180,255,.4)",background:"rgba(79,180,255,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ AJOUTER</button></div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:"#4fb4ff",fontSize:11}}>PARTICIPANTS</b><div style={{fontSize:8.5,opacity:.65,marginTop:2}}>{isChallengePerformanceCompetition?"Ajoute les participants au championnat. Ils apparaissent immédiatement dans les objectifs et classements.":"Ajoute les joueurs avant le lancement, ou reconstruis le calendrier tant qu’aucun match n’est terminé."}</div></div><button onClick={()=>setAdminPlayerPickerOpen(v=>!v)} style={{borderRadius:999,border:"1px solid rgba(79,180,255,.4)",background:"rgba(79,180,255,.10)",color:"#fff",padding:"7px 10px",fontWeight:1000}}>+ AJOUTER</button></div>
                   {adminPlayerPickerOpen?<div style={{display:"grid",gap:6,marginTop:9,maxHeight:180,overflowY:"auto"}}>{availableProfiles.length?availableProfiles.map((p:any)=><button key={p.id} onClick={()=>addCompetitionPlayer(p)} style={{textAlign:"left",padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"#080d14",color:"#fff",fontWeight:900}}>{p.name||p.nickname||p.displayName||"Joueur"}</button>):<div style={{fontSize:9,opacity:.65}}>Aucun autre profil local disponible.</div>}</div>:null}
-                  <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((p:any)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Joueur"}</b><button disabled={doneMatches.length>0} onClick={()=>removeCompetitionPlayer(String(p.id))} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000,opacity:doneMatches.length>0?.35:1}}>RETIRER</button></div>)}</div>
+                  <div style={{display:"grid",gap:6,marginTop:9}}>{tournamentPlayers.map((p:any)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"#080d14",border:"1px solid rgba(255,255,255,.08)"}}><b style={{fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Joueur"}</b><button disabled={!isChallengePerformanceCompetition&&doneMatches.length>0} onClick={()=>removeCompetitionPlayer(String(p.id))} style={{border:0,borderRadius:8,background:"rgba(255,70,80,.15)",color:"#ff7178",padding:"5px 8px",fontWeight:1000,opacity:(!isChallengePerformanceCompetition&&doneMatches.length>0)?.35:1}}>RETIRER</button></div>)}</div>
                 </section>
                 </details>
 

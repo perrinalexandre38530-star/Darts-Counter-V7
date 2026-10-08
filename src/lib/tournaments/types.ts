@@ -9,6 +9,7 @@
 
 export type TournamentSource = "local" | "online";
 export type TournamentCompetitionScope = "local" | "team" | "online";
+export type TournamentLifecycleStatus = "draft" | "registration" | "running" | "paused" | "finished" | "archived";
 
 
 export type TournamentAdminPermission =
@@ -185,6 +186,8 @@ export type ChallengeCompetitionConfig = {
     endsAt?: number | null;
     startedAt?: number | null;
   };
+  finalizedAt?: number | null;
+  finalStandings?: ChallengeCompetitionStandingSnapshot[];
   confrontation?: {
     enabled: boolean;
     entity: "players" | "teams";
@@ -282,6 +285,16 @@ export type Tournament = {
   };
   name: string;
   status: TournamentStatus;
+  lifecycleStatus?: TournamentLifecycleStatus;
+  lifecycle?: {
+    status: TournamentLifecycleStatus;
+    registrationOpenedAt?: number | null;
+    startedAt?: number | null;
+    pausedAt?: number | null;
+    finishedAt?: number | null;
+    archivedAt?: number | null;
+    finalStandings?: ChallengeCompetitionStandingSnapshot[];
+  };
 
   createdAt: number;
   updatedAt: number;
