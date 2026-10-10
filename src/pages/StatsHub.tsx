@@ -947,11 +947,19 @@ function pickPlayerName(p: any): string {
 function pickPlayerAvatar(p: any): string | null {
   return (
     p?.avatarDataUrl ??
+    p?.avatarThumbDataUrl ??
+    p?.photoDataUrl ??
     p?.avatarUrl ??
+    p?.photoUrl ??
     p?.avatar_url ??
+    p?.photo_url ??
     p?.avatar ??
+    p?.photo ??
     p?.profile?.avatarDataUrl ??
+    p?.profile?.avatarThumbDataUrl ??
+    p?.profile?.photoDataUrl ??
     p?.profile?.avatarUrl ??
+    p?.profile?.photoUrl ??
     null
   );
 }
@@ -5562,6 +5570,17 @@ go,
 const { enabled: devModeEnabled } = useDevMode();
   const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
   const STATS_DEBUG = devModeEnabled && showRuntimeDebug;
+  const [showStatsDiagnostic, setShowStatsDiagnostic] = React.useState(false);
+  const [dartSetDiagnostic, setDartSetDiagnostic] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    const onDiag = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || null;
+      setDartSetDiagnostic(detail);
+    };
+    window.addEventListener("dc-stats-dartsets-diagnostic", onDiag as EventListener);
+    return () => window.removeEventListener("dc-stats-dartsets-diagnostic", onDiag as EventListener);
+  }, []);
 
   React.useEffect(() => {
     if (!devModeEnabled) {
@@ -6373,17 +6392,22 @@ const detailRecords = React.useMemo(() => {
 }, [records, selectedPlayer, effectiveProfileId]);
 
 const { cachedDashboard, cachedIdentity } = useFastDashboardCache(effectiveProfileId || null);
+const directAvatarCache = React.useMemo(() => {
+  try { return effectiveProfileId ? (getAvatarCacheFast(effectiveProfileId) as any) : null; } catch { return null; }
+}, [effectiveProfileId]);
 
 // Identité visuelle instantanée : même si loadStore()/IndexedDB n'a pas encore fini,
 // le nom et la miniature du médaillon peuvent être peints dès la première frame.
 const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
   const live: any = selectedPlayer;
   const cached: any = cachedIdentity;
+  const avatarCache: any = directAvatarCache;
   const current: any = String((profile as any)?.id || "") === String(effectiveProfileId || "")
     ? profile
     : null;
-  if (!live && !cached?.id && !current?.id) return null;
+  if (!live && !cached?.id && !current?.id && !effectiveProfileId) return null;
   return {
+    ...(avatarCache || {}),
     ...(cached || {}),
     ...(current || {}),
     ...(live || {}),
@@ -6392,16 +6416,17 @@ const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
     avatarDataUrl:
       pickPlayerAvatar(live) ||
       pickPlayerAvatar(current) ||
+      pickPlayerAvatar(avatarCache) ||
       cached?.avatarThumbDataUrl ||
       cached?.avatarDataUrl ||
       cached?.photoDataUrl ||
       cached?.avatarUrl ||
       cached?.photoUrl ||
       null,
-    avatarUrl: live?.avatarUrl || current?.avatarUrl || cached?.avatarUrl || cached?.photoUrl || null,
-    avatar: live?.avatar || current?.avatar || cached?.avatar || null,
+    avatarUrl: live?.avatarUrl || current?.avatarUrl || avatarCache?.avatarUrl || avatarCache?.photoUrl || cached?.avatarUrl || cached?.photoUrl || null,
+    avatar: live?.avatar || current?.avatar || avatarCache?.avatar || cached?.avatar || null,
   } as PlayerLite;
-}, [selectedPlayer, cachedIdentity, effectiveProfileId, profile]);
+}, [selectedPlayer, cachedIdentity, directAvatarCache, effectiveProfileId, profile]);
 
 // Couronne de niveau : elle doit rester indépendante de l'onglet affiché.
 // On récupère ici la même AVG3D canonique que la page Profils, indépendamment
@@ -6481,6 +6506,43 @@ const dbg = React.useMemo(() => {
     matchCount,
   };
 }, [effectiveProfileId, selectedPlayerId, activePlayerId, nmEffective]);
+
+const statsDiagnostic = React.useMemo(() => {
+  const avatarSrc = pickPlayerAvatar(selectedPlayerVisual);
+  let localProfiles = 0;
+  try { localProfiles = getCachedLocalProfilesForSafety()?.profiles?.length || 0; } catch {}
+  const selectedMatchCount = Array.isArray(nmEffective)
+    ? nmEffective.filter((m: any) => toArrLoc<any>(m?.players).some((p: any) => {
+        const ids = [p?.id, p?.playerId, p?.profileId].filter(Boolean).map(String);
+        return ids.includes(String(effectiveProfileId || ""));
+      })).length
+    : 0;
+  return {
+    profileId: String(effectiveProfileId || ""),
+    profileName: String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || ""),
+    avatarOk: Boolean(avatarSrc),
+    avatarSource: avatarSrc ? (String(avatarSrc).startsWith("data:image/") ? "data" : String(avatarSrc).startsWith("http") ? "remote" : "local") : "absent",
+    localProfiles,
+    playersFound: allPlayers.length,
+    selectedPlayerOk: Boolean(selectedPlayer),
+    normalizedLoaded: normalizedHistoryLoaded,
+    normalizedMatches: nmEffective.length,
+    selectedMatches: selectedMatchCount,
+    cacheOk: Boolean(cachedDashboard),
+    heavyStatsReady,
+    currentMode,
+    dartSets: dartSetDiagnostic,
+  };
+}, [effectiveProfileId, selectedPlayerVisual, selectedPlayer, activeProfileName, allPlayers.length, normalizedHistoryLoaded, nmEffective, cachedDashboard, heavyStatsReady, currentMode, dartSetDiagnostic]);
+
+const relaunchStatsSources = React.useCallback(() => {
+  try { clearStatsIndexCache(); } catch {}
+  try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { source: "stats-diagnostic" } })); } catch {}
+  try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { source: "stats-diagnostic" } })); } catch {}
+  try { window.dispatchEvent(new CustomEvent("dc-dartsets-updated", { detail: { source: "stats-diagnostic" } })); } catch {}
+  try { window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: effectiveProfileId, source: "stats-diagnostic" } })); } catch {}
+  try { scheduleStatsIndexRefresh(); } catch {}
+}, [effectiveProfileId]);
 
 
 // ============================================================
@@ -11068,6 +11130,58 @@ return (
         </div>
       </div>
     </div>
+      <button
+        type="button"
+        onClick={() => setShowStatsDiagnostic((v) => !v)}
+        style={{
+          position: "fixed",
+          right: 14,
+          bottom: devModeEnabled ? 132 : 84,
+          zIndex: 9998,
+          width: 42,
+          height: 42,
+          borderRadius: 999,
+          border: `1px solid ${statsDiagnostic.avatarOk && statsDiagnostic.selectedPlayerOk ? "rgba(72,255,174,.45)" : "rgba(255,180,70,.65)"}`,
+          background: showStatsDiagnostic ? "rgba(15,23,30,.96)" : "rgba(0,0,0,.42)",
+          color: "#fff",
+          display: "grid",
+          placeItems: "center",
+          fontSize: 20,
+          boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+        }}
+        aria-label="Diagnostic statistiques"
+        title="Diagnostic statistiques"
+      >
+        🩺
+      </button>
+
+      {showStatsDiagnostic && (
+        <div style={{ position: "fixed", left: 10, right: 10, bottom: 136, zIndex: 9997, maxHeight: "55vh", overflow: "auto", background: "rgba(5,9,14,.96)", border: "1px solid rgba(72,220,255,.35)", borderRadius: 14, padding: 12, color: "#fff", fontSize: 11, boxShadow: "0 14px 40px rgba(0,0,0,.6)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+            <b style={{ color: "#66e8ff", fontSize: 13 }}>DIAGNOSTIC STATS</b>
+            <button type="button" onClick={relaunchStatsSources} style={{ borderRadius: 999, border: "1px solid rgba(255,255,255,.2)", background: "rgba(255,255,255,.08)", color: "#fff", padding: "5px 9px", fontWeight: 800 }}>RELANCER</button>
+          </div>
+          <div>Profil : <b>{statsDiagnostic.profileName || "—"}</b></div>
+          <div style={{ wordBreak: "break-all", opacity: .75 }}>{statsDiagnostic.profileId || "ID absent"}</div>
+          <div style={{ marginTop: 6 }}>Avatar : <b style={{ color: statsDiagnostic.avatarOk ? "#72ffad" : "#ffb14a" }}>{statsDiagnostic.avatarOk ? `OK (${statsDiagnostic.avatarSource})` : "ABSENT"}</b></div>
+          <div>Profils locaux : <b>{statsDiagnostic.localProfiles}</b> · joueurs reconnus : <b>{statsDiagnostic.playersFound}</b></div>
+          <div>Historique normalisé : <b>{statsDiagnostic.normalizedMatches}</b> · matchs du profil : <b>{statsDiagnostic.selectedMatches}</b></div>
+          <div>Hydratation : <b>{statsDiagnostic.normalizedLoaded ? "OK" : "EN COURS"}</b> · moteur lourd : <b>{statsDiagnostic.heavyStatsReady ? "PRÊT" : "ATTENTE"}</b></div>
+          <div>Cache dashboard : <b>{statsDiagnostic.cacheOk ? "OK" : "VIDE"}</b> · onglet : <b>{statsDiagnostic.currentMode}</b></div>
+          {statsDiagnostic.dartSets && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)" }}>
+              <b style={{ color: "#ffd36a" }}>DART SETS</b>
+              <div>Bibliothèque profil : <b>{Number(statsDiagnostic.dartSets.sets || 0)}</b> · lignes stats : <b>{Number(statsDiagnostic.dartSets.rows || 0)}</b></div>
+              <div>Historique lu : <b>{Number(statsDiagnostic.dartSets.history || 0)}</b> · X01 : <b>{Number(statsDiagnostic.dartSets.x01 || 0)}</b></div>
+              <div>État : <b>{String(statsDiagnostic.dartSets.phase || "—")}</b>{statsDiagnostic.dartSets.error ? ` · ${String(statsDiagnostic.dartSets.error)}` : ""}</div>
+            </div>
+          )}
+          <div style={{ marginTop: 8, opacity: .65 }}>Ce diagnostic ne supprime aucune donnée. « RELANCER » invalide seulement les caches runtime et redemande les sources officielles.</div>
+        </div>
+      )}
+
       {devModeEnabled && (
         <button
           type="button"

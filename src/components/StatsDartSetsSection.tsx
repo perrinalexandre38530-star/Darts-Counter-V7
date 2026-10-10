@@ -47,6 +47,34 @@ function isConstrainedDartSetDevice(): boolean {
   }
 }
 
+function withDartSetTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve(fallback);
+    }, Math.max(250, ms));
+    promise.then((value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(value);
+    }).catch(() => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(fallback);
+    });
+  });
+}
+
+function emitDartSetStatsDiagnostic(detail: Record<string, any>) {
+  try {
+    window.dispatchEvent(new CustomEvent("dc-stats-dartsets-diagnostic", { detail: { at: Date.now(), ...detail } }));
+  } catch {}
+}
+
 async function yieldDartSetFrame(force = false): Promise<void> {
   if (!force && !isConstrainedDartSetDevice()) {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -2150,6 +2178,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
   const [manageOpen, setManageOpen] = React.useState(false);
   const [hiddenPanelOpen, setHiddenPanelOpen] = React.useState(false);
   const [refreshTick, setRefreshTick] = React.useState(0);
+  const [loadPhase, setLoadPhase] = React.useState("initial");
 
   React.useEffect(() => {
     const cache = readDartSetStatsRenderCache(activeProfileId);
@@ -2160,6 +2189,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
     setLoading(!(cache?.rows?.length));
     setRefreshing(false);
     setErr(null);
+    setLoadPhase("profile-change");
     setSelectedIdx(0);
     setManageOpen(false);
     setHiddenPanelOpen(false);
@@ -2215,22 +2245,27 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
       if (cacheAtStart) setRefreshing(true);
       else setLoading(true);
       setErr(null);
+      setLoadPhase("library");
 
       try {
         let setsNow: DartSet[] = [];
         try { setsNow = getDartSetsForProfile(activeProfileId) || []; } catch { setsNow = []; }
         if (mounted) setMySets(setsNow);
+        emitDartSetStatsDiagnostic({ profileId: activeProfileId, phase: "library", sets: setsNow.length, rows: rows.length, history: 0, x01: 0 });
 
-        // Une seule lecture légère de l'historique, puis une seule hydratation des
-        // payloads X01. L'ancien composant relisait 120 matchs deux fois.
-        const apiList = await History.list?.().catch(() => []);
+        // Une lecture IndexedDB qui se bloque ne doit jamais laisser la carte sur
+        // "Chargement..." indéfiniment. Le timeout conserve la bibliothèque de sets
+        // et le diagnostic signale clairement la source fautive.
+        setLoadPhase("history-list");
+        const apiList = await withDartSetTimeout(Promise.resolve(History.list?.()).then((v: any) => Array.isArray(v) ? v : []), 6000, [] as any[]);
         if (cancelled) return;
 
         // History.list est la source normale. Le vieux store complet (souvent très
         // volumineux) n'est décompressé qu'en secours si IndexedDB est vide.
         let memList: any[] = [];
         if (!Array.isArray(apiList) || apiList.length === 0) {
-          const storeAny = await loadStore<any>().catch(() => null);
+          setLoadPhase("store-fallback");
+          const storeAny = await withDartSetTimeout(loadStore<any>(), 5000, null as any);
           memList = Array.isArray(storeAny?.history) ? storeAny.history : [];
         }
         const merged = [...(apiList || []), ...memList];
@@ -2250,6 +2285,8 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         // Mes fléchettes ne dépend que des matchs X01 : filtrer les headers
         // AVANT tri/hydratation évite de parcourir tous les autres modes.
         const all = Array.from(byId.values()).filter((rec: any) => isX01Record(rec));
+        setLoadPhase("hydrate-x01");
+        emitDartSetStatsDiagnostic({ profileId: activeProfileId, phase: "hydrate-x01", sets: setsNow.length, rows: rows.length, history: byId.size, x01: all.length });
         const sortedForEnrich = all.slice().sort((a: any, b: any) => {
           const ta = N(a?.endedAt, 0) || N(a?.finishedAt, 0) || N(a?.updatedAt, 0) || N(a?.createdAt, 0) || 0;
           const tb = N(b?.endedAt, 0) || N(b?.finishedAt, 0) || N(b?.updatedAt, 0) || N(b?.createdAt, 0) || 0;
@@ -2273,7 +2310,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
           const batch = candidates.slice(i, i + batchSize);
           const hydrated = await Promise.all(batch.map(async ({ rec, id }: any) => {
             try {
-              const full = await History.get(id);
+              const full = await withDartSetTimeout(Promise.resolve(History.get(id)), 2500, null as any);
               return [id, full || rec] as const;
             } catch {
               return [id, rec] as const;
@@ -2298,7 +2335,8 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         // anciennes parties portent parfois seulement "darts" dans le header et
         // ne deviennent identifiables comme X01 qu'après lecture du payload.
         if (derived.outRows.length === 0 && byId.size > 0) {
-          const fullHistory = await loadAllHistoryRecords().catch(() => []);
+          setLoadPhase("canonical-fallback");
+          const fullHistory = await withDartSetTimeout(loadAllHistoryRecords(), 7000, [] as any[]);
           if (cancelled) return;
           const fallbackX01 = (Array.isArray(fullHistory) ? fullHistory : [])
             .filter((rec: any) => isCanonicalX01Record(rec) && isFinishedX01StatsRecord(rec));
@@ -2319,6 +2357,8 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         writeDartSetStatsRenderCache(activeProfileId, outRows, recMap, visuals);
 
         if (mounted && !cancelled) {
+          setLoadPhase("ready");
+          emitDartSetStatsDiagnostic({ profileId: activeProfileId, phase: "ready", sets: setsNow.length, rows: outRows.length, history: byId.size, x01: all.length });
           React.startTransition(() => {
             setRows(outRows);
             setRecentBySet(recMap);
@@ -2329,7 +2369,10 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
       } catch (e: any) {
         // Si un cache existe, on garde son affichage au lieu de remplacer toute la
         // carte par une erreur ou un écran vide.
-        if (mounted && !cacheAtStart) setErr(e?.message || "failed");
+        const message = e?.message || "failed";
+        if (mounted && !cacheAtStart) setErr(message);
+        if (mounted) setLoadPhase("error");
+        emitDartSetStatsDiagnostic({ profileId: activeProfileId, phase: "error", sets: mySets.length, rows: rows.length, history: 0, x01: 0, error: message });
       } finally {
         if (mounted) {
           setLoading(false);
@@ -2380,22 +2423,48 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
     };
   }, [activeProfileId, activePlayerName, refreshTick]);
 
+  // Watchdog UX : même si IndexedDB / un payload ancien ne répond jamais, la page
+  // doit sortir de l'état de chargement et afficher au minimum les sets connus.
+  React.useEffect(() => {
+    if (!loading || rows.length) return;
+    const timer = window.setTimeout(() => {
+      setLoading(false);
+      setRefreshing(false);
+      setLoadPhase((phase) => phase === "ready" ? phase : "watchdog");
+      emitDartSetStatsDiagnostic({ profileId: activeProfileId, phase: "watchdog", sets: mySets.length, rows: rows.length, history: 0, x01: 0, error: "timeout de chargement" });
+    }, 9000);
+    return () => window.clearTimeout(timer);
+  }, [loading, rows.length, mySets.length, activeProfileId]);
+
   const displaySets = React.useMemo(
     () => syntheticDartSetsFromVisuals(cachedVisuals, mySets),
     [cachedVisuals, mySets]
   );
 
-  const visibleRows = React.useMemo(() => (rows || []).filter((row: any) => {
+  const effectiveRows = React.useMemo(() => {
+    const statsRows = Array.isArray(rows) ? rows.slice() : [];
+    const seen = new Set(statsRows.map((row: any) => canonicalDartSetIdForStats(row?.dartSetId, activeProfileId)).filter(Boolean));
+    for (const set of mySets || []) {
+      const id = canonicalDartSetIdForStats((set as any)?.id, activeProfileId);
+      if (!id || seen.has(id)) continue;
+      // Un set existant doit rester visible même s'il n'a encore aucune partie.
+      statsRows.push({ dartSetId: id, matches: 0, darts: 0, avg3: 0, first9: 0, bestVisit: 0, bestCheckout: 0, checkoutPct: 0, doublesPct: 0, hitsS: 0, hitsD: 0, hitsT: 0, bull: 0, dBull: 0, miss: 0, bust: 0, n180: 0, n140: 0, n100: 0, __libraryOnly: true });
+      seen.add(id);
+    }
+    return statsRows;
+  }, [rows, mySets, activeProfileId]);
+
+  const visibleRows = React.useMemo(() => effectiveRows.filter((row: any) => {
     const rawId = String(row?.dartSetId || "").trim();
     const id = canonicalDartSetIdForStats(rawId, activeProfileId);
     return !hiddenStatsIds[id] && !hiddenStatsIds[rawId];
-  }), [rows, hiddenStatsIds, activeProfileId]);
+  }), [effectiveRows, hiddenStatsIds, activeProfileId]);
 
-  const hiddenRows = React.useMemo(() => (rows || []).filter((row: any) => {
+  const hiddenRows = React.useMemo(() => effectiveRows.filter((row: any) => {
     const rawId = String(row?.dartSetId || "").trim();
     const id = canonicalDartSetIdForStats(rawId, activeProfileId);
     return !!hiddenStatsIds[id] || !!hiddenStatsIds[rawId];
-  }), [rows, hiddenStatsIds, activeProfileId]);
+  }), [effectiveRows, hiddenStatsIds, activeProfileId]);
 
   React.useEffect(() => {
     setSelectedIdx((i) => {
@@ -2631,7 +2700,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
       )}
 
       {loading && !rows.length ? (
-        <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 8 }}>{t("common.loading", "Chargement...")}</div>
+        <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 8 }}>{t("common.loading", "Chargement...")} · {loadPhase}</div>
       ) : err && !rows.length ? (
         <div style={{ color: "#ff8a8a", fontSize: 12, padding: 8 }}>
           {t("common.error", "Erreur")} : {String(err)}
