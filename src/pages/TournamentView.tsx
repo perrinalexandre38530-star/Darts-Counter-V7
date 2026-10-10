@@ -81,6 +81,7 @@ const TAB_COLORS: Record<string, string> = {
   linked: "#ffd56a",
   stats: "#b6b6ff",
   admin: "#ff6b6b",
+  archive: "#d8d8ff",
   objectives: "#ffb54a",
   my: "#22e6ff",
 };
@@ -139,20 +140,43 @@ const CHALLENGE_VIEW_CSS = `
 .chv-page .chv-admin-group{border:1px solid rgba(255,255,255,.075);background:#060b12;border-radius:15px;overflow:hidden;}
 .chv-page .chv-admin-group>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:8.5px;font-weight:1000;letter-spacing:.55px;color:#c8d1dc;background:#08101a;border-bottom:1px solid transparent;}
 .chv-page .chv-admin-group>summary::-webkit-details-marker{display:none}.chv-page .chv-admin-group>summary:after{content:"＋";float:right;color:#7f8b99}.chv-page .chv-admin-group[open]>summary{border-bottom-color:rgba(255,255,255,.06);color:#ffcf73}.chv-page .chv-admin-group[open]>summary:after{content:"−"}.chv-page .chv-admin-group>section{border:0!important;border-radius:0!important;margin:0!important;background:#050a10!important;}
-.chv-page .chv-main-tabs{display:flex;align-items:stretch;gap:5px;overflow-x:auto;overflow-y:hidden;padding:3px 1px 6px;scrollbar-width:thin;-webkit-overflow-scrolling:touch;width:100%;}
-.chv-page .chv-main-tab{flex:0 0 auto;min-width:58px;height:43px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:#070d15;color:#aeb8c4;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;cursor:pointer;white-space:nowrap;}
-.chv-page .chv-main-tab span{display:grid;place-items:center;flex:0 0 auto}.chv-page .chv-main-tab b{font-size:7.1px;font-weight:1000;letter-spacing:.15px;}
-.chv-page .chv-main-tab[data-active="true"]{color:#fff;border-color:color-mix(in srgb,var(--tab-accent) 62%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--tab-accent) 17%,#09111b),#070d15);box-shadow:0 0 16px color-mix(in srgb,var(--tab-accent) 18%,transparent);}
-.chv-page .chv-main-tab[data-active="true"] b{color:var(--tab-accent)}
+.chv-page .chv-main-tabs{display:flex;align-items:stretch;justify-content:center;gap:7px;overflow-x:auto;overflow-y:hidden;padding:4px 2px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;width:100%;scroll-snap-type:x proximity;}
+.chv-page .chv-main-tabs::-webkit-scrollbar{display:none;}
+.chv-page .chv-main-tab{position:relative;flex:0 0 50px;width:50px;min-width:50px;height:56px;border:0;background:transparent;padding:0;color:#fff;cursor:pointer;scroll-snap-align:center;transition:flex-basis .16s ease,width .16s ease;}
+.chv-page .chv-main-tab[data-active="true"]{flex-basis:82px;width:82px;}
+.chv-page .chv-main-tab-inner{position:relative;width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:7px 6px;border-radius:16px;background:transparent;border:1px solid transparent;box-shadow:none;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease,transform .12s ease;}
+.chv-page .chv-main-tab:hover .chv-main-tab-inner,.chv-page .chv-main-tab:focus-visible .chv-main-tab-inner{background:rgba(255,255,255,.045);}
+.chv-page .chv-main-tab[data-active="true"] .chv-main-tab-inner{background:linear-gradient(180deg,color-mix(in srgb,var(--tab-accent) 16%,rgba(0,0,0,.22)),rgba(0,0,0,.24));border-color:color-mix(in srgb,var(--tab-accent) 55%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--tab-accent) 28%,transparent),0 8px 22px rgba(0,0,0,.24),0 0 22px color-mix(in srgb,var(--tab-accent) 20%,transparent);}
+.chv-page .chv-main-tab:active .chv-main-tab-inner{transform:translateY(1px) scale(.98);}
+.chv-page .chv-main-tab-icon{display:grid;place-items:center;line-height:0;color:#fff;opacity:.96;}
+.chv-page .chv-main-tab-icon svg{width:22px;height:22px;}
+.chv-page .chv-main-tab-label{max-width:100%;font-size:7.1px;font-weight:1000;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;}
+.chv-page .chv-tab-badge{position:absolute;top:-5px;right:-4px;z-index:3;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:linear-gradient(135deg,#ff3bbd,#ffd44d);color:#12040f!important;display:inline-grid;place-items:center;font-size:6px;font-weight:1000;border:1px solid rgba(255,255,255,.65);box-shadow:0 0 10px rgba(255,59,189,.48);}
 .chv-page .chv-view-context{margin:3px 0 9px;padding:0 3px;display:flex;align-items:baseline;justify-content:center;gap:7px;text-align:center;min-height:18px;}
 .chv-page .chv-view-context b{font-size:11px;font-weight:1000}.chv-page .chv-view-context span{font-size:7.3px;color:#7f8b99;line-height:1.25;}
 .chv-page .chv-help{padding:0!important;overflow:hidden}.chv-page .chv-help>summary{cursor:pointer;list-style:none;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .chv-page .chv-help>summary::-webkit-details-marker{display:none}.chv-page .chv-help>summary:after{content:"＋";color:#7f8b99;font-size:12px}.chv-page .chv-help[open]>summary:after{content:"−"}.chv-page .chv-help-body{padding:0 11px 11px;display:grid;gap:7px;}
 .chv-page .chv-roster-more{margin-top:7px;border:1px solid rgba(255,255,255,.065);background:#060b12;border-radius:11px;overflow:hidden}.chv-page .chv-roster-more>summary{cursor:pointer;list-style:none;padding:8px 10px;font-size:7.7px;font-weight:1000;color:#9ba8b7;text-align:center}.chv-page .chv-roster-more>summary::-webkit-details-marker{display:none}.chv-page .chv-roster-more[open]>summary{color:#ffcf73;border-bottom:1px solid rgba(255,255,255,.05)}
 .chv-page .chv-danger{border-color:rgba(255,79,120,.22)!important;background:linear-gradient(180deg,#13080d,#090609)!important;}
-@media (max-width:780px){.chv-page .chv-grid-main,.chv-page .chv-grid-2{grid-template-columns:1fr}.chv-page .chv-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-grid-3{grid-template-columns:1fr}.chv-page .chv-panel{padding:11px;border-radius:16px}.chv-page .chv-row{grid-template-columns:30px minmax(0,1fr) auto}.chv-page .chv-objective-row{grid-template-columns:28px minmax(0,1fr) auto}.chv-page .chv-objective-row .chv-play{grid-column:2/4;width:100%;min-height:32px}.chv-page .chv-activity{grid-template-columns:58px minmax(0,1fr) auto}.chv-page .chv-main-tabs{overflow:visible;display:grid;grid-template-columns:repeat(auto-fit,minmax(54px,1fr));gap:5px;padding-bottom:4px}.chv-page .chv-main-tab{min-width:0;width:100%;height:42px;padding:0 4px;gap:3px}.chv-page .chv-main-tab b{font-size:6.35px}.chv-page .chv-main-tab.chv-secondary-tab{display:none}.chv-page .chv-more-nav{display:block}.chv-page .chv-view-context{justify-content:flex-start;text-align:left;padding-left:2px}.chv-page .chv-view-context span{display:none}.chv-page .chv-quick-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-personal-focus{grid-template-columns:42px minmax(0,1fr)!important}.chv-page .chv-personal-focus .chv-personal-action{grid-column:1/3;width:100%}}
+.chv-page .chv-archive-hero{border-color:rgba(182,182,255,.20)!important;background:linear-gradient(180deg,rgba(16,18,37,.985),rgba(6,9,16,.995))!important;}
+.chv-page .chv-archive-banner{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(250px,.82fr);gap:10px;align-items:start;}
+.chv-page .chv-archive-card{border:1px solid rgba(255,255,255,.075);background:#070d15;border-radius:14px;padding:10px;min-width:0;}
+.chv-page .chv-archive-records{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
+.chv-page .chv-archive-record{border:1px solid rgba(255,255,255,.07);background:#08101a;border-radius:12px;padding:8px;min-width:0;}
+.chv-page .chv-archive-record strong{display:block;font-size:10.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.chv-page .chv-archive-record span{display:block;margin-top:3px;font-size:7px;color:#8d9aac;}
+.chv-page .chv-archive-objectives{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;}
+.chv-page .chv-archive-objective{border:1px solid rgba(255,181,74,.16);background:linear-gradient(180deg,rgba(36,24,8,.95),rgba(9,12,18,.98));border-radius:14px;padding:9px;min-width:0;}
+.chv-page .chv-archive-mini-list{display:grid;gap:4px;margin-top:7px;}
+.chv-page .chv-archive-mini-list>div{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:5px;align-items:center;font-size:7.2px;}
+.chv-page .chv-archive-divisions{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;}
+.chv-page .chv-archive-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center;}
+.chv-page .chv-award{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px;align-items:center;padding:9px;border:1px solid rgba(255,255,255,.07);background:#08101a;border-radius:12px;min-width:0;}
+.chv-page .chv-award-icon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.08);background:#050a10;font-size:16px;}
 
-.chv-page .chv-more-nav{display:none;position:relative;min-width:0}.chv-page .chv-more-nav>summary{list-style:none;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:#070d15;color:#aeb8c4;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 4px;cursor:pointer;font-size:6.35px;font-weight:1000}.chv-page .chv-more-nav>summary::-webkit-details-marker{display:none}.chv-page .chv-more-nav[open]>summary{border-color:rgba(34,230,255,.35);color:#22e6ff}.chv-page .chv-more-menu{position:absolute;right:0;top:47px;z-index:40;width:min(210px,72vw);padding:7px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:#050a11;box-shadow:0 18px 38px rgba(0,0,0,.55);display:grid;gap:5px}.chv-page .chv-more-item{min-height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:#08101a;color:#dce5ef;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:7px;padding:0 9px;text-align:left;cursor:pointer;font-size:8px;font-weight:1000}.chv-page .chv-more-item[data-active="true"]{border-color:rgba(34,230,255,.35);background:rgba(8,35,58,.95);color:#fff}.chv-page .chv-tab-badge{min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#111b27;color:#fff;display:inline-grid;place-items:center;font-size:6px;font-weight:1000;border:1px solid rgba(255,255,255,.09)}.chv-page .chv-quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}.chv-page .chv-quick-action{min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:#070d15;color:#fff;padding:7px 8px;display:grid;grid-template-columns:24px minmax(0,1fr);gap:7px;align-items:center;text-align:left;cursor:pointer}.chv-page .chv-quick-action b{font-size:7.8px;line-height:1.1}.chv-page .chv-quick-action span{display:block;margin-top:2px;font-size:6.4px;color:#84909e;line-height:1.2}.chv-page .chv-personal-focus{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px;border-radius:13px;border:1px solid rgba(34,230,255,.18);background:linear-gradient(180deg,rgba(5,25,32,.96),#060b12);margin-bottom:9px}.chv-page .chv-result-scope{display:grid;grid-template-columns:1fr 1fr;gap:6px}.chv-page .chv-result-scope button{min-height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#070d15;color:#8d9aac;font-size:7.5px;font-weight:1000}.chv-page .chv-result-scope button[data-active="true"]{border-color:rgba(34,230,255,.38);background:rgba(8,35,58,.92);color:#22e6ff}.chv-page .chv-highlight-me{border-color:rgba(34,230,255,.22)!important;background:linear-gradient(180deg,rgba(5,24,31,.97),#070d15)!important}
+@media (max-width:780px){.chv-page .chv-grid-main,.chv-page .chv-grid-2,.chv-page .chv-archive-banner{grid-template-columns:1fr}.chv-page .chv-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-grid-3{grid-template-columns:1fr}.chv-page .chv-panel{padding:11px;border-radius:16px}.chv-page .chv-row{grid-template-columns:30px minmax(0,1fr) auto}.chv-page .chv-objective-row{grid-template-columns:28px minmax(0,1fr) auto}.chv-page .chv-objective-row .chv-play{grid-column:2/4;width:100%;min-height:32px}.chv-page .chv-activity{grid-template-columns:58px minmax(0,1fr) auto}.chv-page .chv-main-tabs{justify-content:flex-start;overflow-x:auto;display:flex;gap:6px;padding:4px 1px 7px}.chv-page .chv-main-tab{flex:0 0 47px;width:47px;min-width:47px;height:53px}.chv-page .chv-main-tab[data-active="true"]{flex-basis:78px;width:78px}.chv-page .chv-main-tab-inner{border-radius:15px;padding:6px 5px}.chv-page .chv-main-tab-icon svg{width:21px;height:21px}.chv-page .chv-main-tab-label{font-size:6.7px}.chv-page .chv-view-context{justify-content:flex-start;text-align:left;padding-left:2px}.chv-page .chv-view-context span{display:none}.chv-page .chv-quick-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.chv-page .chv-personal-focus{grid-template-columns:42px minmax(0,1fr)!important}.chv-page .chv-personal-focus .chv-personal-action{grid-column:1/3;width:100%}}
+
+.chv-page .chv-more-nav{display:none}.chv-page .chv-quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}.chv-page .chv-quick-action{min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:#070d15;color:#fff;padding:7px 8px;display:grid;grid-template-columns:24px minmax(0,1fr);gap:7px;align-items:center;text-align:left;cursor:pointer}.chv-page .chv-quick-action b{font-size:7.8px;line-height:1.1}.chv-page .chv-quick-action span{display:block;margin-top:2px;font-size:6.4px;color:#84909e;line-height:1.2}.chv-page .chv-personal-focus{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px;border-radius:13px;border:1px solid rgba(34,230,255,.18);background:linear-gradient(180deg,rgba(5,25,32,.96),#060b12);margin-bottom:9px}.chv-page .chv-result-scope{display:grid;grid-template-columns:1fr 1fr;gap:6px}.chv-page .chv-result-scope button{min-height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#070d15;color:#8d9aac;font-size:7.5px;font-weight:1000}.chv-page .chv-result-scope button[data-active="true"]{border-color:rgba(34,230,255,.38);background:rgba(8,35,58,.92);color:#22e6ff}.chv-page .chv-highlight-me{border-color:rgba(34,230,255,.22)!important;background:linear-gradient(180deg,rgba(5,24,31,.97),#070d15)!important}
 @media (min-width:980px){.chv-page{max-width:1180px;margin-left:auto;margin-right:auto}.chv-page .chv-panel{padding:14px}.chv-page .chv-objective-chip{min-width:72px}}
 `;
 
@@ -380,6 +404,15 @@ function Icon({ name, color = THEME }: any) {
       </svg>
     );
 
+  if (name === "archive")
+    return (
+      <svg {...common}>
+        <path d="M5 7h14v13H5z" stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />
+        <path d="M4 4h16v4H4z" stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />
+        <path d="M9 12h6" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+      </svg>
+    );
+
   if (name === "admin")
     return (
       <svg {...common}>
@@ -470,36 +503,56 @@ function NeonTopTabsIconsOnly({ tabs, activeKey, onChange }: any) {
 
 function ChallengeTopNav({ tabs, activeKey, onChange, labels, badges = {} }: any) {
   const iconMap: Record<string, string> = {
-    home: "home", my: "user", objectives: "target", standings: "standings", linked: "results", stats: "stats", admin: "admin",
+    home: "home",
+    my: "user",
+    objectives: "target",
+    standings: "standings",
+    linked: "results",
+    stats: "stats",
+    archive: "archive",
+    admin: "admin",
   };
-  const short: Record<string, string> = { home: "Accueil", my: "Jouer", objectives: "Objectifs", standings: "Classement", linked: "Résultats", stats: "Stats", admin: "Admin" };
-  const primaryKeys = new Set(["home", "my", "objectives", "standings"]);
-  const primary = (tabs || []).filter((k: string) => primaryKeys.has(k));
-  const secondary = (tabs || []).filter((k: string) => !primaryKeys.has(k));
-  const secondaryActive = secondary.includes(activeKey);
-  const renderDirect = (k: string, secondaryTab = false) => {
-    const accent = TAB_COLORS[k] || THEME;
-    const active = activeKey === k;
-    const badge = Number(badges?.[k] || 0);
-    return <button key={k} type="button" role="tab" aria-selected={active} data-active={active ? "true" : "false"} className={`chv-main-tab${secondaryTab ? " chv-secondary-tab" : ""}`} onClick={() => onChange(k)} style={{"--tab-accent": accent} as React.CSSProperties} title={labels?.[k] || short[k] || k}>
-      <span aria-hidden style={{filter:active?`drop-shadow(0 0 8px ${accent}55)`:"none"}}><Icon name={iconMap[k] || "stats"} color={active ? accent : "#8d9aac"} /></span>
-      <b>{short[k] || labels?.[k] || k}</b>
-      {badge>0?<i className="chv-tab-badge" style={{fontStyle:"normal",color:active?accent:"#aeb8c4"}}>{badge>99?"99+":badge}</i>:null}
-    </button>;
+  const short: Record<string, string> = {
+    home: "Accueil",
+    my: "Jouer",
+    objectives: "Objectifs",
+    standings: "Classement",
+    linked: "Résultats",
+    stats: "Stats",
+    archive: "Archive",
+    admin: "Admin",
   };
+
   return (
     <div className="chv-main-tabs dc-scroll-thin" role="tablist" aria-label="Navigation Challenge">
-      {primary.map((k: string) => renderDirect(k, false))}
-      {secondary.map((k: string) => renderDirect(k, true))}
-      {secondary.length ? <details className="chv-more-nav">
-        <summary><Icon name={secondaryActive ? (iconMap[activeKey] || "stats") : "stats"} color={secondaryActive ? (TAB_COLORS[activeKey] || "#22e6ff") : "#8d9aac"}/><b>{secondaryActive ? (short[activeKey] || labels?.[activeKey] || "Plus") : "Plus"}</b></summary>
-        <div className="chv-more-menu">{secondary.map((k: string) => {
-          const active = activeKey === k;
-          const accent = TAB_COLORS[k] || THEME;
-          const badge = Number(badges?.[k] || 0);
-          return <button key={`more-${k}`} type="button" className="chv-more-item" data-active={active ? "true" : "false"} onClick={(event) => { onChange(k); const details=(event.currentTarget.closest("details") as HTMLDetailsElement|null); if(details) details.open=false; }}><Icon name={iconMap[k] || "stats"} color={active ? accent : "#8d9aac"}/><span>{labels?.[k] || short[k] || k}</span>{badge>0?<i className="chv-tab-badge" style={{fontStyle:"normal",color:active?accent:"#aeb8c4"}}>{badge>99?"99+":badge}</i>:null}</button>;
-        })}</div>
-      </details> : null}
+      {(tabs || []).map((k: string) => {
+        const accent = TAB_COLORS[k] || THEME;
+        const active = activeKey === k;
+        const badge = Number(badges?.[k] || 0);
+        const label = labels?.[k] || short[k] || k;
+        return (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-label={label}
+            title={label}
+            data-active={active ? "true" : "false"}
+            className="chv-main-tab"
+            onClick={() => onChange(k)}
+            style={{ "--tab-accent": accent } as React.CSSProperties}
+          >
+            <span className="chv-main-tab-inner">
+              {badge > 0 ? <i className="chv-tab-badge" style={{ fontStyle: "normal", color: active ? accent : "#fff" }}>{badge > 99 ? "99+" : badge}</i> : null}
+              <span className="chv-main-tab-icon" aria-hidden style={{ filter: active ? `drop-shadow(0 0 7px ${accent}88)` : "none" }}>
+                <Icon name={iconMap[k] || "stats"} color={active ? accent : "#ffffff"} />
+              </span>
+              {active ? <b className="chv-main-tab-label">{short[k] || label}</b> : null}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -2585,6 +2638,142 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     };
   },[challengeCompetition,challengeSeasonStandings,challengeMovementHistory,tour]);
 
+
+  const challengeArchiveSheet = React.useMemo(()=>{
+    if(!isChallengePerformanceCompetition) return null;
+    const stored:any=(tour as any)?.challengeCompetition?.archiveSummary || (tour as any)?.lifecycle?.archiveSummary || null;
+    const fallbackStandings=(challengeCompetitionFormat === "divisions" ? challengeSeasonStandings : challengeGeneralStandings);
+    const rawStandings=Array.isArray(stored?.generalStandings)&&stored.generalStandings.length
+      ? stored.generalStandings
+      : Array.isArray(challengeCompetition?.finalStandings)&&challengeCompetition.finalStandings.length
+        ? challengeCompetition.finalStandings
+        : fallbackStandings;
+    const standings=(Array.isArray(rawStandings)?rawStandings:[]).map((row:any,index:number)=>({
+      ...row,
+      playerId:String(row?.playerId||""),
+      name:String(row?.name||playersById[String(row?.playerId||"")]?.name||"Joueur"),
+      rank:Number(row?.rank||index+1)||index+1,
+      points:Number(row?.points||0)||0,
+      cyclePoints:Number(row?.cyclePoints ?? row?.points ?? 0)||0,
+      wins:Number(row?.wins||0)||0,
+      podiums:Number(row?.podiums||0)||0,
+      objectives:Number(row?.objectives||0)||0,
+      division:Number(row?.division||0)||0,
+    }));
+    const objectiveSummaries=(Array.isArray(stored?.objectiveSummaries)&&stored.objectiveSummaries.length ? stored.objectiveSummaries : challengeObjectives.map((objective:string)=>{
+      const rows=(challengeObjectiveStandings[objective]||[]).slice(0,3).map((row:any,index:number)=>({
+        playerId:String(row?.playerId||""),
+        name:String(row?.name||playersById[String(row?.playerId||"")]?.name||"Joueur"),
+        rank:Number(row?.rank||index+1)||index+1,
+        points:Number(row?.championshipPoints||row?.points||0)||0,
+        score:Number(row?.score ?? row?.bestScore ?? 0)||0,
+      }));
+      const leader=rows[0]||null;
+      const attempts=tournamentPlayers.reduce((sum:number,p:any)=>sum+challengeAttemptCount(String(p?.id||""),objective),0);
+      return {objective,label:challengeObjectiveLabel(objective),participants:(challengeObjectiveStandings[objective]||[]).length,attempts,leaderId:leader?.playerId||null,leaderName:leader?.name||null,leaderScore:leader?.score||0,podium:rows};
+    }));
+    const champion=standings[0]||null;
+    const mostWins=standings.slice().sort((a:any,b:any)=>b.wins-a.wins||b.points-a.points||a.name.localeCompare(b.name))[0]||null;
+    const mostPodiums=standings.slice().sort((a:any,b:any)=>b.podiums-a.podiums||b.points-a.points||a.name.localeCompare(b.name))[0]||null;
+    const mostObjectives=standings.slice().sort((a:any,b:any)=>b.objectives-a.objectives||b.points-a.points||a.name.localeCompare(b.name))[0]||null;
+    const bestObjective=objectiveSummaries.slice().sort((a:any,b:any)=>Number(b?.leaderScore||0)-Number(a?.leaderScore||0)||String(a?.label||"").localeCompare(String(b?.label||"")))[0]||null;
+    const cycles=Array.isArray(challengeCompetition?.divisionCycles)?challengeCompetition.divisionCycles:[];
+    const cycleCards=cycles.filter((cycle:any)=>Array.isArray(cycle?.standingsSnapshot)&&cycle.standingsSnapshot.length).map((cycle:any)=>{
+      const rows=cycle.standingsSnapshot.slice().sort((a:any,b:any)=>Number(a?.rank||999)-Number(b?.rank||999));
+      return {cycle:Number(cycle?.cycle||0)||1,name:String(cycle?.name||`Cycle ${Number(cycle?.cycle||1)}`),closedAt:Number(cycle?.closedAt||0)||0,leader:rows[0]||null,players:rows.length};
+    });
+    const divisionCards=challengeDivisionState.enabled ? challengeDivisionState.byDivision.map((div:any)=>({division:Number(div?.division||0)||0,leader:div?.standings?.[0]||null,size:Array.isArray(div?.playerIds)?div.playerIds.length:0,promote:Number(div?.policy?.promote||0)||0,relegate:Number(div?.policy?.relegate||0)||0,playoff:Number(div?.policy?.playoff||0)||0})) : [];
+    const records=(Array.isArray(stored?.records)&&stored.records.length ? stored.records : [
+      champion?{key:"champion",label:"Champion",value:`${champion.points} pts`,playerId:champion.playerId,playerName:champion.name,accent:"#ffcf73",extra:`#${champion.rank}`} : null,
+      mostWins?{key:"wins",label:"Victoires d’objectif",value:mostWins.wins,playerId:mostWins.playerId,playerName:mostWins.name,accent:"#65e6a2"} : null,
+      mostPodiums?{key:"podiums",label:"Podiums",value:mostPodiums.podiums,playerId:mostPodiums.playerId,playerName:mostPodiums.name,accent:"#4fb4ff"} : null,
+      mostObjectives?{key:"objectives",label:"Objectifs scorés",value:mostObjectives.objectives,playerId:mostObjectives.playerId,playerName:mostObjectives.name,accent:"#22e6ff"} : null,
+      bestObjective?{key:"best_objective",label:`Top score · ${bestObjective.label||challengeObjectiveLabel(bestObjective.objective)}`,value:Number(bestObjective.leaderScore||0)||0,playerId:bestObjective.leaderId||null,playerName:bestObjective.leaderName||null,accent:"#ffb54a"} : null,
+      {key:"cycles",label:"Cycles clôturés",value:challengeSeasonSummary.closedCycles,accent:"#b6b6ff"},
+    ].filter(Boolean));
+    return {
+      title:String(stored?.title||challengeSeasonSummary.name||tour?.name||"Compétition Challenge"),
+      status:String(stored?.status || (competitionLifecycleStatus === "archived" ? "archived" : "finished")),
+      finishedAt:Number(stored?.finishedAt || challengeCompetition?.finalizedAt || challengeCompetition?.season?.finishedAt || (tour as any)?.lifecycle?.finishedAt || 0) || 0,
+      totalParticipants:Number(stored?.totalParticipants || tournamentPlayers.length || 0) || 0,
+      totalObjectives:Number(stored?.totalObjectives || challengeObjectives.length || 0) || 0,
+      cycleCount:Number(stored?.cycleCount || challengeCurrentCycle || 0) || 0,
+      closedCycles:Number(stored?.closedCycles || challengeSeasonSummary.closedCycles || 0) || 0,
+      movementCount:Number(stored?.movementCount || challengeMovementHistory.length || 0) || 0,
+      divisionCount:Number(stored?.divisionCount || (challengeDivisionState.enabled ? challengeDivisionState.count : 0) || 0) || 0,
+      championId:champion?.playerId||null,championName:champion?.name||null,standings,podium:standings.slice(0,3),objectiveSummaries,records,divisionCards,cycleCards,
+      awards:{champion,mostWins,mostPodiums,mostObjectives,bestObjective},
+    };
+  },[isChallengePerformanceCompetition,tour,challengeCompetition,challengeCompetitionFormat,challengeSeasonStandings,challengeGeneralStandings,playersById,challengeObjectives,challengeObjectiveStandings,tournamentPlayers,challengeAttemptCount,challengeDivisionState,challengeSeasonSummary,challengeMovementHistory,competitionLifecycleStatus,challengeCurrentCycle]);
+
+
+  const buildChallengeArchivePosterBlob = React.useCallback(async()=>{
+    if(!challengeArchiveSheet || typeof document==="undefined") return null;
+    const canvas=document.createElement("canvas");
+    canvas.width=1080; canvas.height=1350;
+    const ctx=canvas.getContext("2d");
+    if(!ctx) return null;
+    const W=canvas.width,H=canvas.height;
+    const roundRect=(x:number,y:number,w:number,h:number,r:number)=>{ctx.beginPath();const rr=Math.min(r,w/2,h/2);if(typeof (ctx as any).roundRect==="function"){(ctx as any).roundRect(x,y,w,h,rr);return;}ctx.moveTo(x+rr,y);ctx.lineTo(x+w-rr,y);ctx.quadraticCurveTo(x+w,y,x+w,y+rr);ctx.lineTo(x+w,y+h-rr);ctx.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);ctx.lineTo(x+rr,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-rr);ctx.lineTo(x,y+rr);ctx.quadraticCurveTo(x,y,x+rr,y);ctx.closePath();};
+    const fillTextFit=(value:any,x:number,y:number,maxWidth:number,size:number,color:string,weight=800,align:CanvasTextAlign="left")=>{
+      let fontSize=size; const text=String(value??""); ctx.textAlign=align; ctx.textBaseline="alphabetic";
+      do{ctx.font=`${weight} ${fontSize}px Arial, sans-serif`; if(ctx.measureText(text).width<=maxWidth||fontSize<=18)break;fontSize-=2;}while(fontSize>18);
+      ctx.fillStyle=color;ctx.fillText(text,x,y,maxWidth);
+    };
+    const panel=(x:number,y:number,w:number,h:number,stroke="rgba(255,255,255,.10)",fill="#08101a")=>{roundRect(x,y,w,h,26);ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke();};
+    const bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,"#11162a");bg.addColorStop(.42,"#070b13");bg.addColorStop(1,"#03060b");ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+    const glow=ctx.createRadialGradient(160,80,0,160,80,540);glow.addColorStop(0,"rgba(255,207,115,.24)");glow.addColorStop(1,"rgba(255,207,115,0)");ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle="rgba(255,207,115,.48)";ctx.lineWidth=3;roundRect(28,28,W-56,H-56,34);ctx.stroke();
+    fillTextFit("MULTISPORTS SCORING",60,86,700,26,"#8d9aac",900);
+    fillTextFit("PALMARÈS CHALLENGE",60,142,760,46,"#ffcf73",1000);
+    fillTextFit(challengeArchiveSheet.title,60,194,940,34,"#ffffff",1000);
+    if(challengeArchiveSheet.finishedAt) fillTextFit(`Clôturée le ${formatDate(challengeArchiveSheet.finishedAt)}`,60,230,940,20,"#8d9aac",700);
+    panel(60,270,960,190,"rgba(255,207,115,.30)","rgba(57,39,8,.78)");
+    fillTextFit("CHAMPION",92,315,420,20,"#ffcf73",1000);
+    fillTextFit(challengeArchiveSheet.championName||"—",92,374,620,46,"#ffffff",1000);
+    const champ=challengeArchiveSheet.podium?.[0];
+    if(champ) fillTextFit(`${champ.points} pts  ·  ${champ.wins} victoire${Number(champ.wins)>1?"s":""} d’objectif`,92,414,660,22,"#d7deea",800);
+    fillTextFit(`#1`,910,380,90,58,"#ffcf73",1000,"right");
+    const podium=challengeArchiveSheet.podium||[];
+    panel(60,486,960,160,"rgba(182,182,255,.18)","#08101a");
+    fillTextFit("PODIUM FINAL",92,526,300,19,"#b6b6ff",1000);
+    const podiumX=[92,382,672];
+    [0,1,2].forEach((i)=>{const r=podium[i];const x=podiumX[i];fillTextFit(`#${i+1}`,x,568,60,20,i===0?"#ffcf73":"#8d9aac",1000);fillTextFit(r?.name||"—",x,604,250,28,"#fff",1000);fillTextFit(r?`${r.points} pts · ${r.wins} V`:"",x,630,250,18,"#8d9aac",800);});
+    panel(60,672,960,230,"rgba(255,255,255,.10)","#070d15");
+    fillTextFit("RECORDS DE SAISON",92,712,400,19,"#22e6ff",1000);
+    const recs=(challengeArchiveSheet.records||[]).slice(0,6); const cols=2,cellW=430,cellH=58;
+    recs.forEach((r:any,i:number)=>{const col=i%cols,row=Math.floor(i/cols),x=92+col*454,y=754+row*cellH;fillTextFit(r.label,x,y,390,16,r.accent||"#8d9aac",900);fillTextFit(r.playerName?`${r.playerName} · ${r.value}`:r.value,x,y+25,390,19,"#fff",1000);});
+    panel(60,928,960,290,"rgba(255,181,74,.16)","#070d15");
+    fillTextFit("LEADERS PAR OBJECTIF",92,968,420,19,"#ffb54a",1000);
+    const objs=(challengeArchiveSheet.objectiveSummaries||[]).slice(0,10);
+    objs.forEach((o:any,i:number)=>{const col=i%2,row=Math.floor(i/2),x=92+col*454,y=1008+row*38;fillTextFit(o.label||challengeObjectiveLabel(o.objective),x,y,120,17,"#ffcf73",1000);fillTextFit(o.leaderName||"—",x+128,y,210,17,"#fff",900);fillTextFit(String(Number(o.leaderScore||0)),x+405,y,40,17,"#65e6a2",1000,"right");});
+    fillTextFit(`${challengeArchiveSheet.totalParticipants} participants  ·  ${challengeArchiveSheet.totalObjectives} objectifs  ·  ${challengeArchiveSheet.cycleCount} cycle${challengeArchiveSheet.cycleCount>1?"s":""}`,60,1280,960,20,"#8d9aac",800,"center");
+    fillTextFit("MULTISPORTS SCORING · CHALLENGE",60,1320,960,17,"#596574",900,"center");
+    const blob=await new Promise<Blob|null>((resolve)=>canvas.toBlob(resolve,"image/png",.96));
+    if(!blob)return null;
+    const safe=String(challengeArchiveSheet.title||"challenge").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9_-]+/g,"_").replace(/^_+|_+$/g,"").slice(0,60)||"challenge";
+    return {blob,fileName:`PALMARES_${safe}.png`};
+  },[challengeArchiveSheet]);
+
+  const exportChallengeArchivePoster = React.useCallback(async()=>{
+    const built=await buildChallengeArchivePosterBlob();
+    if(!built)return;
+    const url=URL.createObjectURL(built.blob);const a=document.createElement("a");a.href=url;a.download=built.fileName;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1200);
+  },[buildChallengeArchivePosterBlob]);
+
+  const shareChallengeArchive = React.useCallback(async()=>{
+    if(!challengeArchiveSheet)return;
+    const built=await buildChallengeArchivePosterBlob();
+    const champion=challengeArchiveSheet.podium?.[0];
+    const text=`${challengeArchiveSheet.title} · Champion : ${challengeArchiveSheet.championName||"—"}${champion?` · ${champion.points} pts`:""}`;
+    try{
+      if(built && typeof File!=="undefined" && navigator?.share){const file=new File([built.blob],built.fileName,{type:"image/png"});if(!navigator.canShare || navigator.canShare({files:[file]})){await navigator.share({title:challengeArchiveSheet.title,text,files:[file]});return;}}
+      const publicUrl=typeof window!=="undefined"?`${window.location.origin}${window.location.pathname}#/competition/${encodeURIComponent(String((tour as any)?.onlineCompetitionId || (tour as any)?.id || id))}`:"";
+      if(navigator?.share){await navigator.share({title:challengeArchiveSheet.title,text,url:publicUrl||undefined});return;}
+      if(navigator?.clipboard){await navigator.clipboard.writeText(`${text}${publicUrl?`\n${publicUrl}`:""}`);setAdminNotice("Palmarès copié dans le presse-papiers.");}
+    }catch(e:any){if(String(e?.name||"")!=="AbortError")setAdminNotice("Partage indisponible sur cet appareil.");}
+  },[challengeArchiveSheet,buildChallengeArchivePosterBlob,tour,id]);
+
   const challengePlayerDashboard = React.useMemo(() => {
     if (!isChallengePerformanceCompetition || !currentTournamentPlayer) return null;
     const playerId = String(currentTournamentPlayer?.id || "");
@@ -4483,7 +4672,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
   const TABS = React.useMemo(() => {
     if (publicSpectator) {
-      if (isChallengePerformanceCompetition) return ["home", "objectives", "standings", "stats"];
+      if (isChallengePerformanceCompetition) return ["home", "objectives", "standings", "stats", ...((competitionLifecycleStatus==="finished"||competitionLifecycleStatus==="archived")?["archive"]:[])];
       if (viewKind === "single_ko") return ["home", "bracket", "matches", "stats"];
       if (viewKind === "double_ko") return ["home", "bracket", "matches", "repechage", "stats"];
       if (viewKind === "round_robin") return ["home", "standings", "matches", "stats"];
@@ -4491,12 +4680,12 @@ async function createSyntheticHistoryForSimulation(args: any) {
     }
     const admin = isCompetitionAdmin ? ["admin"] : [];
     const playerSpace = isChallengePerformanceCompetition && currentTournamentPlayer ? ["my"] : [];
-    if (isChallengePerformanceCompetition) return ["home", ...playerSpace, "objectives", "standings", "linked", "stats", ...admin];
+    if (isChallengePerformanceCompetition) return ["home", ...playerSpace, "objectives", "standings", "linked", "stats", ...((competitionLifecycleStatus==="finished"||competitionLifecycleStatus==="archived")?["archive"]:[]), ...admin];
     if (viewKind === "single_ko") return ["home", "bracket", "matches", "linked", "stats", ...admin];
     if (viewKind === "double_ko") return ["home", "bracket", "matches", "linked", "repechage", "stats", ...admin];
     if (viewKind === "round_robin") return ["home", "standings", "matches", "linked", "stats", ...admin];
     return ["home", "pools", "standings", "bracket", "matches", "linked", ...(repechageEnabled ? ["repechage"] : []), "stats", ...admin];
-  }, [viewKind, repechageEnabled, isCompetitionAdmin, isChallengePerformanceCompetition, publicSpectator, currentTournamentPlayer]);
+  }, [viewKind, repechageEnabled, isCompetitionAdmin, isChallengePerformanceCompetition, publicSpectator, currentTournamentPlayer, competitionLifecycleStatus]);
 
   const [tab, setTab] = React.useState<string>("home");
   React.useEffect(() => {
@@ -4514,6 +4703,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     linked: isChallengePerformanceCompetition ? "Résultats" : "Liées",
     stats: "Stats",
     admin: "Administration",
+    archive: "Archive",
     objectives: "Objectifs",
     my: "Jouer",
   };
@@ -4525,6 +4715,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     standings: "Points cumulés des classements par objectif",
     linked: "Historique des essais enregistrés",
     stats: "Synthèse de la compétition",
+    archive: "Palmarès final, records, podiums et poster de fin",
     admin: "Participants, règles, journées et gestion",
   };
 
@@ -4953,12 +5144,37 @@ async function createSyntheticHistoryForSimulation(args: any) {
         nextChallenge.schedule={...nextChallenge.schedule,rounds};
       }
       if(nextStatus === "finished"){
-        const finalRows=(challengeCompetitionFormat === "divisions" ? challengeSeasonStandings : challengeGeneralStandings).map((row:any)=>({
-          playerId:String(row?.playerId||""),name:String(row?.name||"Joueur"),division:Number(row?.division||challengeDivisionState?.assignments?.[String(row?.playerId||"")]||0)||undefined,rank:Number(row?.rank||0)||0,points:Number(row?.points||0)||0,cyclePoints:Number(row?.cyclePoints||0)||0,wins:Number(row?.wins||0)||0,podiums:Number(row?.podiums||0)||0,objectives:Number(row?.objectives||0)||0,
+        const finalRows=(challengeCompetitionFormat === "divisions" ? challengeSeasonStandings : challengeGeneralStandings).map((row:any,index:number)=>({
+          playerId:String(row?.playerId||""),name:String(row?.name||playersById[String(row?.playerId||"")]?.name||"Joueur"),division:Number(row?.division||challengeDivisionState?.assignments?.[String(row?.playerId||"")]||0)||undefined,rank:Number(row?.rank||index+1)||index+1,points:Number(row?.points||0)||0,cyclePoints:Number(row?.cyclePoints||0)||0,wins:Number(row?.wins||0)||0,podiums:Number(row?.podiums||0)||0,objectives:Number(row?.objectives||0)||0,
         }));
+        const objectiveSummaries=challengeObjectives.map((objective:string)=>{
+          const rows=(challengeObjectiveStandings[objective]||[]).slice(0,3).map((row:any,index:number)=>({playerId:String(row?.playerId||""),name:String(row?.name||playersById[String(row?.playerId||"")]?.name||"Joueur"),rank:Number(row?.rank||index+1)||index+1,points:Number(row?.championshipPoints||row?.points||0)||0,score:Number(row?.score ?? row?.bestScore ?? 0)||0}));
+          const leader=rows[0]||null;
+          const attempts=tournamentPlayers.reduce((sum:number,p:any)=>sum+challengeAttemptCount(String(p?.id||""),objective),0);
+          return {objective,label:challengeObjectiveLabel(objective),participants:(challengeObjectiveStandings[objective]||[]).length,attempts,leaderId:leader?.playerId||null,leaderName:leader?.name||null,leaderScore:leader?.score||0,podium:rows};
+        });
+        const champion=finalRows[0]||null;
+        const mostWins=finalRows.slice().sort((a:any,b:any)=>b.wins-a.wins||b.points-a.points||String(a.name).localeCompare(String(b.name)))[0]||null;
+        const mostPodiums=finalRows.slice().sort((a:any,b:any)=>b.podiums-a.podiums||b.points-a.points||String(a.name).localeCompare(String(b.name)))[0]||null;
+        const mostObjectives=finalRows.slice().sort((a:any,b:any)=>b.objectives-a.objectives||b.points-a.points||String(a.name).localeCompare(String(b.name)))[0]||null;
+        const bestObjective=objectiveSummaries.slice().sort((a:any,b:any)=>Number(b?.leaderScore||0)-Number(a?.leaderScore||0)||String(a?.label||"").localeCompare(String(b?.label||"")))[0]||null;
+        const archiveSummary={title:String(challengeCompetition?.season?.name||tour?.name||"Compétition Challenge"),status:"finished",finishedAt:now,totalParticipants:tournamentPlayers.length,totalObjectives:challengeObjectives.length,cycleCount:challengeCurrentCycle,closedCycles:challengeSeasonSummary.closedCycles,movementCount:challengeMovementHistory.length,divisionCount:challengeDivisionState.enabled?challengeDivisionState.count:0,championId:champion?.playerId||null,championName:champion?.name||null,generalStandings:finalRows,objectiveSummaries,records:[
+          champion?{key:"champion",label:"Champion",value:`${champion.points} pts`,playerId:champion.playerId,playerName:champion.name,accent:"#ffcf73",extra:`#${champion.rank}`} : null,
+          mostWins?{key:"wins",label:"Victoires d’objectif",value:mostWins.wins,playerId:mostWins.playerId,playerName:mostWins.name,accent:"#65e6a2"} : null,
+          mostPodiums?{key:"podiums",label:"Podiums",value:mostPodiums.podiums,playerId:mostPodiums.playerId,playerName:mostPodiums.name,accent:"#4fb4ff"} : null,
+          mostObjectives?{key:"objectives",label:"Objectifs scorés",value:mostObjectives.objectives,playerId:mostObjectives.playerId,playerName:mostObjectives.name,accent:"#22e6ff"} : null,
+          bestObjective?{key:"best_objective",label:`Top score · ${bestObjective.label||challengeObjectiveLabel(bestObjective.objective)}`,value:Number(bestObjective.leaderScore||0)||0,playerId:bestObjective.leaderId||null,playerName:bestObjective.leaderName||null,accent:"#ffb54a"} : null,
+          {key:"cycles",label:"Cycles clôturés",value:challengeSeasonSummary.closedCycles,accent:"#b6b6ff"},
+        ].filter(Boolean)};
         nextChallenge.finalizedAt=now;
         nextChallenge.finalStandings=finalRows;
+        nextChallenge.archiveSummary=archiveSummary;
         lifecycle.finalStandings=finalRows;
+        lifecycle.archiveSummary=archiveSummary;
+      }
+      if(nextStatus === "archived" && nextChallenge.archiveSummary){
+        nextChallenge.archiveSummary={...nextChallenge.archiveSummary,status:"archived"};
+        lifecycle.archiveSummary={...nextChallenge.archiveSummary,status:"archived"};
       }
     }
     const legacyStatus = (nextStatus === "finished" || nextStatus === "archived") ? "finished" : "running";
@@ -5505,7 +5721,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
         </div> : null}
       </div>
 
-      {isChallengePerformanceCompetition ? <div className="chv-view-context"><b style={{color:TAB_COLORS[tab]||"#ffcf73"}}>{tabLabel[tab]||"—"}</b><span>{challengeViewDescription[tab]||""}</span></div> : <div
+      {isChallengePerformanceCompetition ? <div className="chv-view-context"><span>{challengeViewDescription[tab]||""}</span></div> : <div
         style={{
           marginTop: 2,
           textAlign: "center",
@@ -5577,6 +5793,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     {isOnlineCompetition && enrollmentRequests.filter((row:any)=>String(row?.status||"pending")==="pending").length?<button type="button" className="chv-action" onClick={()=>setTab("admin")} style={{border:"1px solid rgba(255,207,115,.25)",background:"rgba(72,49,8,.62)"}}>{enrollmentRequests.filter((row:any)=>String(row?.status||"pending")==="pending").length} DEMANDE(S)</button>:null}
                   </div>
                 </div>:null}
+
+                {isChallengePerformanceCompetition && challengeArchiveSheet && (competitionLifecycleStatus==="finished"||competitionLifecycleStatus==="archived") ? <button type="button" onClick={()=>setTab("archive")} className="chv-panel-soft" style={{width:"100%",marginTop:10,border:"1px solid rgba(216,216,255,.20)",background:"linear-gradient(180deg,rgba(22,23,48,.92),rgba(7,12,20,.98))",color:"#fff",display:"grid",gridTemplateColumns:"42px minmax(0,1fr) auto",gap:9,alignItems:"center",textAlign:"left",cursor:"pointer"}}><span style={{width:42,height:42,borderRadius:13,border:"1px solid rgba(255,207,115,.20)",background:"rgba(255,207,115,.07)",display:"grid",placeItems:"center",color:"#ffcf73"}}><Icon name="archive" color="#ffcf73"/></span><span style={{minWidth:0}}><b style={{display:"block",fontSize:10,color:"#d8d8ff"}}>PALMARÈS FINAL DISPONIBLE</b><span className="chv-sub" style={{display:"block",marginTop:3}}>Podium, classement figé, trophées, objectifs et poster de fin.</span></span><span style={{fontSize:18,color:"#d8d8ff"}}>›</span></button> : null}
 
                 {isChallengePerformanceCompetition ? (
                   <div className="chv-grid-main">
@@ -6287,6 +6505,77 @@ async function createSyntheticHistoryForSimulation(args: any) {
                 )}
               </Card>
             )
+          ) : null}
+
+
+          {/* ARCHIVE / PALMARÈS FINAL */}
+          {tab === "archive" && isChallengePerformanceCompetition && challengeArchiveSheet ? (
+            <div style={{display:"grid",gap:10}}>
+              <section className="chv-panel chv-archive-hero">
+                <div className="chv-section-head">
+                  <div style={{minWidth:0}}>
+                    <div className="chv-eyebrow" style={{color:competitionLifecycleStatus==="archived"?"#8d9aac":"#d8d8ff"}}>{competitionLifecycleStatus==="archived"?"ARCHIVE OFFICIELLE":"PALMARÈS FINAL"}</div>
+                    <div className="chv-title" style={{marginTop:4,fontSize:19,color:"#fff"}}>{challengeArchiveSheet.title}</div>
+                    <div className="chv-sub" style={{marginTop:4}}>Classement figé, récompenses, podiums par objectif, cycles et divisions.</div>
+                  </div>
+                  <div className="chv-archive-actions">
+                    <button type="button" className="chv-action" onClick={()=>void exportChallengeArchivePoster()} style={{border:"1px solid rgba(255,207,115,.30)",background:"rgba(65,47,8,.90)",color:"#ffcf73"}}>POSTER PNG</button>
+                    <button type="button" className="chv-action" onClick={()=>void shareChallengeArchive()} style={{border:"1px solid rgba(34,230,255,.26)",background:"rgba(5,35,46,.92)",color:"#22e6ff"}}>PARTAGER</button>
+                  </div>
+                </div>
+
+                <div className="chv-archive-banner">
+                  <div className="chv-archive-card" style={{borderColor:"rgba(255,207,115,.22)",background:"linear-gradient(180deg,rgba(65,45,8,.82),rgba(8,13,21,.98))"}}>
+                    <div className="chv-eyebrow" style={{color:"#ffcf73"}}>CHAMPION DE LA COMPÉTITION</div>
+                    <div className="chv-title" style={{marginTop:5,fontSize:22,color:"#fff"}}>{challengeArchiveSheet.championName||"—"}</div>
+                    {challengeArchiveSheet.podium?.[0]?<div className="chv-sub" style={{marginTop:5}}>{challengeArchiveSheet.podium[0].points} pts · {challengeArchiveSheet.podium[0].wins} victoire{Number(challengeArchiveSheet.podium[0].wins)>1?"s":""} d’objectif · {challengeArchiveSheet.podium[0].podiums} podium{Number(challengeArchiveSheet.podium[0].podiums)>1?"s":""}</div>:null}
+                    <div className="chv-grid-4" style={{marginTop:10}}>
+                      {[["Participants",challengeArchiveSheet.totalParticipants,"#ffcf73"],["Objectifs",challengeArchiveSheet.totalObjectives,"#ffb54a"],[challengeArchiveSheet.divisionCount?"Divisions":"Cycles",challengeArchiveSheet.divisionCount||challengeArchiveSheet.cycleCount,"#b6b6ff"],["Mouvements",challengeArchiveSheet.movementCount,"#22e6ff"]].map(([label,value,accent]:any)=><div key={`arch-kpi-${label}`} className="chv-kpi"><b style={{color:accent}}>{value}</b><span>{label}</span></div>)}
+                    </div>
+                  </div>
+                  <div className="chv-archive-card">
+                    <div className="chv-eyebrow">PODIUM FINAL</div>
+                    <div className="chv-podium" style={{marginTop:8}}>
+                      {[1,0,2].map((index:number)=>{const row=challengeArchiveSheet.podium?.[index]||null;return <div key={`final-podium-${index}`} style={!row?{opacity:.42}:{}}><div style={{fontSize:7,color:index===0?"#ffcf73":"#8d9aac",fontWeight:1000}}>#{row?.rank||index+1}</div><b style={{display:"block",marginTop:4,fontSize:index===0?10.5:9.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{row?.name||"—"}</b><span style={{display:"block",marginTop:3,fontSize:7,color:"#8d9aac"}}>{row?`${row.points} pts · ${row.wins} V`:"Aucun"}</span></div>})}
+                    </div>
+                    {challengeArchiveSheet.finishedAt?<div className="chv-sub" style={{marginTop:8,textAlign:"center"}}>Clôturée le {formatDate(challengeArchiveSheet.finishedAt)}</div>:null}
+                  </div>
+                </div>
+              </section>
+
+              <section className="chv-panel">
+                <div className="chv-section-head"><div><div className="chv-eyebrow">TROPHÉES DE SAISON</div><div className="chv-title" style={{marginTop:3}}>Les performances qui ont marqué la compétition</div></div></div>
+                <div className="chv-grid-3">
+                  {[
+                    ["🏆","CHAMPION",challengeArchiveSheet.awards?.champion?.name||"—",challengeArchiveSheet.awards?.champion?`${challengeArchiveSheet.awards.champion.points} pts`:"","#ffcf73"],
+                    ["⚡","MVP OBJECTIFS",challengeArchiveSheet.awards?.mostWins?.name||"—",challengeArchiveSheet.awards?.mostWins?`${challengeArchiveSheet.awards.mostWins.wins} victoire${Number(challengeArchiveSheet.awards.mostWins.wins)>1?"s":""}`:"","#65e6a2"],
+                    ["🎯","MEILLEUR OBJECTIF",challengeArchiveSheet.awards?.bestObjective?.leaderName||"—",challengeArchiveSheet.awards?.bestObjective?`${challengeArchiveSheet.awards.bestObjective.label} · ${Number(challengeArchiveSheet.awards.bestObjective.leaderScore||0)} pts`:"","#ffb54a"],
+                  ].map(([icon,label,name,detail,accent]:any)=><div key={label} className="chv-award"><div className="chv-award-icon" style={{color:accent}}>{icon}</div><div style={{minWidth:0}}><span className="chv-eyebrow" style={{color:accent}}>{label}</span><b style={{display:"block",marginTop:2,fontSize:9.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</b><span className="chv-row-sub">{detail}</span></div></div>)}
+                </div>
+              </section>
+
+              <div className="chv-grid-main">
+                <section className="chv-panel">
+                  <div className="chv-section-head"><div><div className="chv-eyebrow">CLASSEMENT GÉNÉRAL FIGÉ</div><div className="chv-sub" style={{marginTop:3}}>Le palmarès reste identique après clôture et archivage.</div></div><span className="chv-status" style={{color:"#ffcf73"}}>{challengeArchiveSheet.standings.length} JOUEUR{challengeArchiveSheet.standings.length>1?"S":""}</span></div>
+                  <div className="chv-rows">{challengeArchiveSheet.standings.map((row:any)=><div key={`archive-ranking-${row.playerId}`} className="chv-row" style={{gridTemplateColumns:"32px minmax(0,1fr) auto auto"}}><strong style={{color:Number(row.rank)<=3?"#ffcf73":"#8d9aac"}}>#{row.rank}</strong><div style={{minWidth:0}}><span className="chv-row-name">{row.name}</span><span className="chv-row-sub">{row.wins} V objectif · {row.podiums} podium{Number(row.podiums)>1?"s":""}{row.division?` · D${row.division}`:""}</span></div><b style={{fontSize:10,color:"#d8d8ff"}}>{row.points} pts</b><span style={{fontSize:7,color:"#8d9aac"}}>{row.objectives||0} obj.</span></div>)}</div>
+                </section>
+                <section className="chv-panel">
+                  <div className="chv-section-head"><div><div className="chv-eyebrow">RECORDS</div><div className="chv-sub" style={{marginTop:3}}>Synthèse officielle de la compétition.</div></div></div>
+                  <div className="chv-archive-records">{challengeArchiveSheet.records.map((record:any)=><div key={`final-record-${record.key}`} className="chv-archive-record"><div className="chv-eyebrow" style={{color:record?.accent||"#d8d8ff"}}>{record.label}</div><strong style={{color:record?.accent||"#fff"}}>{record.playerName||record.value}</strong><span>{record.playerName?`${record.value}${record.extra?` · ${record.extra}`:""}`:(record.extra||"")}</span></div>)}</div>
+                </section>
+              </div>
+
+              <section className="chv-panel">
+                <div className="chv-section-head"><div><div className="chv-eyebrow">PODIUMS PAR OBJECTIF</div><div className="chv-sub" style={{marginTop:3}}>Leader, meilleur score et top 3 de chaque cible.</div></div><span className="chv-status" style={{color:"#ffb54a"}}>{challengeArchiveSheet.objectiveSummaries.length} OBJECTIF{challengeArchiveSheet.objectiveSummaries.length>1?"S":""}</span></div>
+                <div className="chv-archive-objectives">{challengeArchiveSheet.objectiveSummaries.map((item:any)=><div key={`final-objective-${item.objective}`} className="chv-archive-objective"><div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}><ChallengeObjectiveThumb objective={item.objective}/><div style={{minWidth:0}}><b style={{display:"block",fontSize:9.3,color:"#ffcf73"}}>{item.label||challengeObjectiveLabel(item.objective)}</b><span className="chv-row-sub">{item.participants||0} joueur{Number(item.participants||0)>1?"s":""} · {item.attempts||0} essai{Number(item.attempts||0)>1?"s":""}</span></div></div><div style={{marginTop:7,padding:"7px 8px",borderRadius:10,background:"rgba(5,9,15,.62)",border:"1px solid rgba(255,255,255,.055)"}}><span className="chv-eyebrow">LEADER</span><b style={{display:"block",marginTop:2,fontSize:9.5}}>{item.leaderName||"—"}</b><span style={{display:"block",marginTop:3,fontSize:7,color:"#ffb54a"}}>{Number(item.leaderScore||0)} point{Number(item.leaderScore||0)>1?"s":""}</span></div><div className="chv-archive-mini-list">{(Array.isArray(item.podium)?item.podium:[]).slice(0,3).map((row:any,index:number)=><div key={`${item.objective}-${row.playerId||index}`}><span style={{color:index===0?"#ffcf73":"#8d9aac"}}>#{row.rank||index+1}</span><b>{row.name||"—"}</b><span>{Number(row.score ?? row.points ?? 0)||0}</span></div>)}</div></div>)}</div>
+              </section>
+
+              {challengeArchiveSheet.cycleCards.length || challengeArchiveSheet.divisionCards.length ? <section className="chv-panel">
+                <div className="chv-section-head"><div><div className="chv-eyebrow">SAISON · CYCLES · DIVISIONS</div><div className="chv-sub" style={{marginTop:3}}>Historique final de la structure de championnat.</div></div></div>
+                {challengeArchiveSheet.cycleCards.length?<div className="chv-archive-divisions">{challengeArchiveSheet.cycleCards.map((cycle:any)=><div key={`final-cycle-${cycle.cycle}`} className="chv-archive-record"><div className="chv-eyebrow" style={{color:"#b6b6ff"}}>CYCLE {cycle.cycle}</div><strong>{cycle.leader?.name||"Aucun leader"}</strong><span>{cycle.leader?`${Number(cycle.leader.points||0)} pts · ${cycle.players} joueur${cycle.players>1?"s":""}`:`${cycle.players} joueur${cycle.players>1?"s":""}`}</span>{cycle.closedAt?<span>{formatDate(cycle.closedAt)}</span>:null}</div>)}</div>:null}
+                {challengeArchiveSheet.divisionCards.length?<div className="chv-archive-divisions" style={{marginTop:8}}>{challengeArchiveSheet.divisionCards.map((div:any)=><div key={`final-div-${div.division}`} className="chv-archive-record"><div className="chv-eyebrow" style={{color:"#b6b6ff"}}>DIVISION {div.division}</div><strong>{div.leader?.name||"Aucun leader"}</strong><span>{div.leader?`${div.leader.points} pts · ${div.size} joueur${div.size>1?"s":""}`:`${div.size} joueur${div.size>1?"s":""}`}</span><span>↑ {div.promote} · ↓ {div.relegate} · B {div.playoff}</span></div>)}</div>:null}
+              </section>:null}
+            </div>
           ) : null}
 
           {/* ADMINISTRATION HÔTE */}

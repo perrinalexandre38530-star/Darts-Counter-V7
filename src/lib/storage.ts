@@ -30,7 +30,7 @@ import {
   teamCoverMediaKey,
   readLocalUserMediaFallback,
 } from "./userMediaFallback";
-import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
+import { getAllDartSets, replaceAllDartSets, restoreDartSetsFromBackup } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
 import { exportLocalTournamentsSnapshot, importLocalTournamentsSnapshot } from "./tournaments/storeLocal";
@@ -3086,7 +3086,7 @@ function writeDartSetsToLocalStorage(dartSets: any) {
     // ✅ NAS RESTORE FIX: passer par le store officiel des DartSets.
     // Il sait relire/écrire le format compressé et garde la même clé que l'UI.
     if (Array.isArray(dartSets)) {
-      replaceAllDartSets(dartSets as any);
+      restoreDartSetsFromBackup(dartSets as any);
       return;
     }
   } catch (e) {
@@ -3144,12 +3144,20 @@ function extractDartSetsFromSnapshot(snap: any) {
   if (!isRecord(snap)) return { dartSets: null as any, activeId: null as any };
 
   const { store, data } = extractStoreObjectFromSnapshot(snap);
+  const portable = isRecord((snap as any).portableAccountData)
+    ? (snap as any).portableAccountData
+    : (isRecord((snap as any).portable_account_data) ? (snap as any).portable_account_data : null);
 
+  // Le bloc portable est la source canonique des données de compte d'une
+  // sauvegarde. Il doit être lu avant les anciens stores/idb afin qu'une
+  // collection locale vide ou obsolète ne masque jamais les vrais Dart Sets.
   const dartSets =
-    pickFirst(store?.dartSets, store?.dartsets, data?.dartSets, data?.dartsets, snap.dartSets, snap.dartsets) ?? null;
+    pickFirst(portable?.dartSets, portable?.dartsets, store?.dartSets, store?.dartsets, data?.dartSets, data?.dartsets, snap.dartSets, snap.dartsets) ?? null;
 
   const activeId =
     pickFirst(
+      portable?.activeDartSetId,
+      portable?.active_dartset_id,
       store?.activeDartSetId,
       store?.active_dartset_id,
       data?.activeDartSetId,
@@ -3568,8 +3576,8 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
     if (Array.isArray(portable?.bots)) restoreBotsFromSnapshot(portable.bots as any[]);
   } catch (error) { recordError("portable bots restore failed", error); }
   try {
-    if (Array.isArray(restoredDartSetsForRuntime)) replaceAllDartSets(restoredDartSetsForRuntime as any[]);
-    else if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
+    if (Array.isArray(restoredDartSetsForRuntime)) restoreDartSetsFromBackup(restoredDartSetsForRuntime as any[]);
+    else if (Array.isArray(portable?.dartSets)) restoreDartSetsFromBackup(portable.dartSets as any[]);
   } catch (error) { recordError("portable dartsets restore failed", error); }
   try {
     if (Array.isArray(portable?.teams)) {

@@ -22,6 +22,7 @@ import type { Dart as UIDart } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { idbGet, idbSet } from "../lib/indexedDb";
 import { removeDerivedStatsCache, writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
+import { useLang } from "../contexts/LangContext";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
 
@@ -217,15 +218,15 @@ export type X01MultiSession = {
 };
 
 
-const X01_MULTI_CACHE_VERSION = 4;
-const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v4:";
-const X01_MULTI_QUICK_CACHE_PREFIX = "dc_x01_multi_quick_v4:";
+const X01_MULTI_CACHE_VERSION = 5;
+const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v5:";
+const X01_MULTI_QUICK_CACHE_PREFIX = "dc_x01_multi_quick_v5:";
 const X01_MULTI_CACHE_MAX_SYNC_CHARS = 1_250_000;
 const X01_MULTI_QUICK_MAX_SYNC_CHARS = 360_000;
 const __x01MultiMemoryCache = new Map<string, X01MultiSessionsCache>();
 
 type X01MultiSessionsCache = {
-  version: 4;
+  version: 5;
   profileId: string;
   fingerprint: string;
   updatedAt: number;
@@ -2000,6 +2001,32 @@ function buildSessionFromSummary(
  * - Si profileId fourni : ne garder que ce profil
  *   (match.players[].profileId === profileId OU player.id === profileId)
  */
+function historyHeaderContainsProfile(row: any, profileId?: string | null, profileName?: string | null): boolean {
+  if (!profileId && !profileName) return true;
+  const pid = String(profileId || "").trim();
+  const wantedName = normalizedX01PlayerName(profileName);
+  const candidates: any[] = [];
+  const pushRows = (value: any) => {
+    if (Array.isArray(value)) candidates.push(...value);
+    else if (value && typeof value === "object") candidates.push(...Object.values(value));
+  };
+  pushRows(row?.players);
+  pushRows(row?.summary?.players);
+  pushRows(row?.payload?.players);
+  pushRows(row?.payload?.config?.players);
+  pushRows(row?.payload?.summary?.players);
+  pushRows(row?.payload?.payload?.players);
+  pushRows(row?.payload?.payload?.config?.players);
+
+  if (!candidates.length) return false;
+  return candidates.some((player: any) => {
+    if (!player || typeof player !== "object") return false;
+    if (pid && (sameId(player?.id, pid) || sameId(player?.profileId, pid) || sameId(player?.playerId, pid) || sameId(player?.pid, pid))) return true;
+    if (!wantedName) return false;
+    return normalizedX01PlayerName(player?.name || player?.displayName || player?.nickname || player?.nick || player?.label) === wantedName;
+  });
+}
+
 async function loadX01MultiSessionsInternal(
   profileId?: string | null,
   profileName?: string | null
@@ -2017,9 +2044,24 @@ async function loadX01MultiSessionsInternal(
   // doivent aussi invalider le cache lorsqu'ils sont ajoutés/supprimés.
   const fingerprint = historyFingerprint(list);
   const cached = await readX01MultiSessionsCache(profileId, fingerprint);
-  // Un cache vide ne doit jamais devenir une vérité durable pour un profil :
-  // l'identité (compte/local) peut avoir été réconciliée depuis sa création.
-  if (cached && (cached.sessions.length > 0 || !profileId)) {
+  // Un cache partiel ne doit jamais devenir une vérité durable. Une ancienne
+  // passe pouvait matérialiser seulement une partie des X01 puis conserver cette
+  // vue partielle tant que l'empreinte globale de l'Historique ne changeait pas.
+  // On compare désormais le nombre de matchIds distincts du cache aux headers
+  // X01 qui identifient explicitement le profil courant.
+  const expectedKnownMatches = profileId || profileName
+    ? new Set(
+        x01Candidates
+          .filter((row: any) => historyHeaderContainsProfile(row, profileId, profileName))
+          .map((row: any) => String(row?.id ?? row?.matchId ?? "").trim())
+          .filter(Boolean)
+      ).size
+    : x01Candidates.length;
+  const cachedKnownMatches = cached
+    ? new Set((cached.sessions || []).map((row: any) => String(row?.matchId || row?.id || "").trim()).filter(Boolean)).size
+    : 0;
+  const cacheLooksComplete = expectedKnownMatches <= 0 || cachedKnownMatches >= expectedKnownMatches;
+  if (cached && cacheLooksComplete && (cached.sessions.length > 0 || !profileId)) {
     return cached.sessions.slice().sort((a, b) => a.date - b.date);
   }
 
@@ -2780,6 +2822,12 @@ export default function X01MultiStatsTabFull({
   //    - priorité au playerId (venant de StatsHub / carrousel)
   //    - fallback sur profileId (anciens appels)
   const effectiveProfileId = playerId ?? profileId ?? null;
+  const { lang } = useLang();
+
+  const periodLabels = React.useMemo(() => {
+    if (lang === "fr") return { current: "★", day: "J", week: "S", month: "M", year: "A", all: "All" } as const;
+    return { current: "★", day: "D", week: "W", month: "M", year: "Y", all: "All" } as const;
+  }, [lang]);
 
   const [sessions, setSessions] = React.useState<X01MultiSession[]>(
     () => readX01MultiSessionsCacheSync(effectiveProfileId)?.sessions || []
@@ -4245,12 +4293,7 @@ return (
                   whiteSpace: "nowrap",
                 }}
               >
-                {r === "current" && "ACTUEL"}
-                {r === "day" && "Jour"}
-                {r === "week" && "Semaine"}
-                {r === "month" && "Mois"}
-                {r === "year" && "Année"}
-                {r === "all" && "All"}
+                {periodLabels[r]}
               </GoldPill>
             )
           )}

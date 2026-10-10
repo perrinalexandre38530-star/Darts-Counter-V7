@@ -155,6 +155,44 @@ export type ChallengeCompetitionDivisionCycle = {
   pendingPlayoffs?: ChallengeCompetitionPlayoff[];
 };
 
+export type ChallengeCompetitionArchiveRecord = {
+  key: string;
+  label: string;
+  value: number | string;
+  accent?: string;
+  playerId?: string | null;
+  playerName?: string | null;
+  extra?: string | null;
+};
+
+export type ChallengeCompetitionObjectiveArchive = {
+  objective: string;
+  label?: string;
+  participants?: number;
+  attempts?: number;
+  leaderId?: string | null;
+  leaderName?: string | null;
+  leaderScore?: number | null;
+  podium?: ChallengeCompetitionStandingSnapshot[];
+};
+
+export type ChallengeCompetitionArchiveSummary = {
+  title?: string;
+  status?: "finished" | "archived";
+  finishedAt?: number | null;
+  totalParticipants?: number;
+  totalObjectives?: number;
+  cycleCount?: number;
+  closedCycles?: number;
+  movementCount?: number;
+  divisionCount?: number;
+  championId?: string | null;
+  championName?: string | null;
+  generalStandings?: ChallengeCompetitionStandingSnapshot[];
+  objectiveSummaries?: ChallengeCompetitionObjectiveArchive[];
+  records?: ChallengeCompetitionArchiveRecord[];
+};
+
 export type ChallengeCompetitionConfig = {
   enabled: boolean;
   format: ChallengeCompetitionFormat;
@@ -188,6 +226,7 @@ export type ChallengeCompetitionConfig = {
   };
   finalizedAt?: number | null;
   finalStandings?: ChallengeCompetitionStandingSnapshot[];
+  archiveSummary?: ChallengeCompetitionArchiveSummary;
   confrontation?: {
     enabled: boolean;
     entity: "players" | "teams";
@@ -294,6 +333,7 @@ export type Tournament = {
     finishedAt?: number | null;
     archivedAt?: number | null;
     finalStandings?: ChallengeCompetitionStandingSnapshot[];
+    archiveSummary?: ChallengeCompetitionArchiveSummary;
   };
 
   createdAt: number;

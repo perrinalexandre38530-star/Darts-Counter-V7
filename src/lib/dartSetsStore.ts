@@ -2592,3 +2592,56 @@ export function getFavoriteDartSetForProfile(profileId: string): DartSet | undef
 export function replaceAllDartSets(list: DartSet[]) {
   return replacePrimaryWith(Array.isArray(list) ? list : [], "replaceAll");
 }
+
+/**
+ * Restauration depuis une sauvegarde utilisateur.
+ *
+ * Contrairement à replaceAllDartSets(), une restauration doit pouvoir
+ * réintroduire un set absent/supprimé localement. Les métadonnées sauvegardées
+ * (nom, propriétaire, favori, visibilité, preset, médias, etc.) restent
+ * prioritaires ; les médias locaux servent uniquement de secours.
+ */
+export function restoreDartSetsFromBackup(list: DartSet[]): boolean {
+  const rawIncoming = Array.isArray(list) ? list : [];
+  if (!rawIncoming.length) return false;
+
+  // Un tombstone ou mutation lock de cet appareil ne doit jamais annuler une
+  // restauration explicite. On ne nettoie que les identités réellement
+  // présentes dans la sauvegarde.
+  const meta = cleanupDeletedKeys(readMeta());
+  const deletedKeys = { ...(meta.deletedKeys || {}) };
+  const mutationLocks = { ...(meta.mutationLocks || {}) };
+  for (const raw of rawIncoming) {
+    const normalized = normalizeDartSetForRuntime(raw, { allowDeleted: true });
+    if (!normalized) continue;
+    for (const key of deletionKeysForSet(normalized)) delete deletedKeys[key];
+    for (const key of mutationLockKeysForSet(normalized)) delete mutationLocks[key];
+  }
+  writeMeta({ ...meta, deletedKeys, mutationLocks });
+
+  const incoming = mergePrimaryDuplicates(filterOutPollutedDartSets(rawIncoming));
+  if (!incoming.length) return false;
+
+  const current = loadPrimaryAuthoritative();
+  const merged: DartSet[] = current.slice();
+
+  for (const restored of incoming) {
+    const same = findSameIdentitySet(merged, restored);
+    if (same) {
+      const idx = merged.findIndex((set) => String(set.id) === String(same.id));
+      const authoritative = mergeImageFieldsKeepMetadata(restored, same);
+      if (idx >= 0) merged[idx] = authoritative;
+      else merged.push(authoritative);
+    } else {
+      merged.push(restored);
+    }
+  }
+
+  const canonical = mergePrimaryDuplicates(merged);
+  const enriched = enrichImagesFromRecovery(
+    canonical,
+    [...current, ...readImageRecoveryRaw(), ...rawIncoming]
+  );
+  return savePrimary(enriched, "restoreBackup");
+}
+
