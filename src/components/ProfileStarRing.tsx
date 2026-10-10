@@ -87,7 +87,19 @@ export default function ProfileStarRing({
   glow,
 }: Props) {
   const resolvedAnchorSize = Math.max(1, Number(anchorSize ?? size ?? 64) || 64);
-  const profileBotLevel = profile?.botLevel ?? profile?.level ?? botLevel;
+  const isBotProfile = Boolean(
+    botLevel != null ||
+    profile?.isBot ||
+    profile?.bot ||
+    profile?.cpu ||
+    profile?.type === "bot" ||
+    profile?.kind === "bot" ||
+    String(profile?.id || "").startsWith("bot_") ||
+    profile?.botLevel != null
+  );
+  // `profile.level` existe aussi sur des profils humains pour d'autres usages.
+  // Il ne doit JAMAIS devenir artificiellement un niveau d'étoiles darts.
+  const profileBotLevel = isBotProfile ? (botLevel ?? profile?.botLevel ?? profile?.level) : null;
 
   // L'AVG3D explicite est toujours prioritaire. C'est la valeur affichée par
   // les écrans Home / Profils / Statistics Center et donc la seule qui doit

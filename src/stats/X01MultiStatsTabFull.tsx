@@ -16,7 +16,7 @@ import SparklinePro from "../components/SparklinePro";
 import TrainingRadar from "../components/TrainingRadar";
 import GoldPill from "../components/GoldPill";
 import { History } from "../lib/history";
-import { buildX01SamplesForProfileFromRecords } from "../lib/x01StatsSource";
+import { buildX01SamplesForProfileFromRecords, loadX01SamplesForProfile } from "../lib/x01StatsSource";
 import { getX01StatsContext, type X01StartScoreKey, type X01VariantKey } from "../lib/x01StatsContext";
 import type { Dart as UIDart } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
@@ -217,15 +217,15 @@ export type X01MultiSession = {
 };
 
 
-const X01_MULTI_CACHE_VERSION = 1;
-const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v1:";
-const X01_MULTI_QUICK_CACHE_PREFIX = "dc_x01_multi_quick_v3:";
+const X01_MULTI_CACHE_VERSION = 4;
+const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v4:";
+const X01_MULTI_QUICK_CACHE_PREFIX = "dc_x01_multi_quick_v4:";
 const X01_MULTI_CACHE_MAX_SYNC_CHARS = 1_250_000;
 const X01_MULTI_QUICK_MAX_SYNC_CHARS = 360_000;
 const __x01MultiMemoryCache = new Map<string, X01MultiSessionsCache>();
 
 type X01MultiSessionsCache = {
-  version: 1 | 2 | 3;
+  version: 4;
   profileId: string;
   fingerprint: string;
   updatedAt: number;
@@ -310,10 +310,10 @@ function encodeX01QuickRow(row: any): any[] {
 }
 
 function restoreCachedX01Sessions(cache: X01MultiSessionsCache | null): X01MultiSessionsCache | null {
-  if (!cache || ![1, 2, 3].includes(Number(cache.version))) return null;
+  if (!cache || Number(cache.version) !== X01_MULTI_CACHE_VERSION) return null;
   const rawSessions = Array.isArray(cache.sessions)
     ? cache.sessions
-    : (Number(cache.version) === 3 && Array.isArray(cache.rows) ? cache.rows.map(decodeX01QuickRow) : null);
+    : (Array.isArray(cache.rows) ? cache.rows.map(decodeX01QuickRow) : null);
   if (!Array.isArray(rawSessions)) return null;
   const avatars = cache.avatars && typeof cache.avatars === "object" ? cache.avatars : {};
   return {
@@ -446,7 +446,7 @@ async function writeX01MultiSessionsCache(
     removeDerivedStatsCache(key);
 
     const quickPayload: X01MultiSessionsCache = {
-      version: 3,
+      version: X01_MULTI_CACHE_VERSION,
       profileId: payload.profileId,
       fingerprint,
       updatedAt: payload.updatedAt,
@@ -600,6 +600,16 @@ function sameId(a: any, b: any): boolean {
   if (aa === bb) return true;
   if (aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa))) return true;
   return false;
+}
+
+function normalizedX01PlayerName(value: any): string {
+  return String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function formatShortDate(ts: number) {
@@ -1991,7 +2001,8 @@ function buildSessionFromSummary(
  *   (match.players[].profileId === profileId OU player.id === profileId)
  */
 async function loadX01MultiSessionsInternal(
-  profileId?: string | null
+  profileId?: string | null,
+  profileName?: string | null
 ): Promise<X01MultiSession[]> {
   let list: any[] = [];
   try {
@@ -2002,9 +2013,15 @@ async function loadX01MultiSessionsInternal(
   }
 
   const x01Candidates = list.filter(isLikelyX01HistoryRow);
-  const fingerprint = historyFingerprint(x01Candidates);
+  // Empreinte globale : les anciens X01 parfois indexés sous un header "darts"
+  // doivent aussi invalider le cache lorsqu'ils sont ajoutés/supprimés.
+  const fingerprint = historyFingerprint(list);
   const cached = await readX01MultiSessionsCache(profileId, fingerprint);
-  if (cached) return cached.sessions.slice().sort((a, b) => a.date - b.date);
+  // Un cache vide ne doit jamais devenir une vérité durable pour un profil :
+  // l'identité (compte/local) peut avoir été réconciliée depuis sa création.
+  if (cached && (cached.sessions.length > 0 || !profileId)) {
+    return cached.sessions.slice().sort((a, b) => a.date - b.date);
+  }
 
   // Même source qu'avant, mais lectures IndexedDB parallélisées par petits lots.
   // On hydrate uniquement les headers susceptibles d'être X01 au lieu de relire
@@ -2026,6 +2043,7 @@ async function loadX01MultiSessionsInternal(
   }
 
   const out: X01MultiSession[] = [];
+  const wantedPlayerName = normalizedX01PlayerName(profileName);
 
   for (const match of hydratedList) {
 
@@ -2097,9 +2115,12 @@ async function loadX01MultiSessionsInternal(
 
     // --------- 4) si profileId fourni → on ne garde que les matchs où il joue ----------
     if (profileId) {
-      const playsThisMatch = players.some(
-        (p) => sameId(p?.profileId, profileId) || sameId(p?.id, profileId) || sameId(p?.playerId, profileId)
-      );
+      const playsThisMatch = players.some((p) => {
+        const byId = sameId(p?.profileId, profileId) || sameId(p?.id, profileId) || sameId(p?.playerId, profileId);
+        if (byId) return true;
+        if (!wantedPlayerName) return false;
+        return normalizedX01PlayerName(p?.name || p?.displayName || p?.nickname || p?.nick || p?.label) === wantedPlayerName;
+      });
       if (!playsThisMatch) continue;
     }
 
@@ -2129,6 +2150,13 @@ async function loadX01MultiSessionsInternal(
         player.label ||
         "Player";
 
+      const isRequestedProfileLine = !!profileId && (
+        sameId(player?.profileId, profileId) ||
+        sameId(player?.id, profileId) ||
+        sameId(player?.playerId, profileId) ||
+        (!!wantedPlayerName && normalizedX01PlayerName(playerName) === wantedPlayerName)
+      );
+
       const scorePatch = x01ScorePatchForPlayer(match, player, pid);
       const teamPatch = isTeam ? x01DeriveTeamScore(match) : null;
       const myTeamScore = teamPatch && teamId ? Number(teamPatch.scores[String(teamId)] || 0) : 0;
@@ -2150,7 +2178,9 @@ async function loadX01MultiSessionsInternal(
         x01Variant: x01Ctx.variant,
         matchVictoryMode: x01Ctx.victoryMode,
         // 🔥 profileId pour lier aux profils / bots
-        profileId: player.profileId ?? player.id ?? null,
+        // Si une ancienne partie porte encore l'ancien playerId, le nom permet
+        // de rattacher uniquement la ligne du joueur au profil actif.
+        profileId: isRequestedProfileLine ? String(profileId) : (player.profileId ?? player.id ?? null),
         // 🔥 avatar qui vient directement de History.players[].avatarDataUrl
         avatarDataUrl: player.avatarDataUrl ?? null,
         isTeam,
@@ -2179,7 +2209,7 @@ async function loadX01MultiSessionsInternal(
   // Home / Profils / Leaderboards. On fusionne sans dupliquer les lignes déjà lues.
   if (profileId) {
     try {
-      const samples = buildX01SamplesForProfileFromRecords(hydratedList, { id: profileId, profileId });
+      const samples = buildX01SamplesForProfileFromRecords(hydratedList, { id: profileId, profileId, name: profileName || undefined });
       const existing = new Set(out.map((x) => `${x.matchId}|${x.selectedPlayerId}`));
       for (const smp of samples as any[]) {
         const key = `${smp.matchId || smp.id}|${smp.playerId || profileId}`;
@@ -2223,6 +2253,54 @@ async function loadX01MultiSessionsInternal(
     }
   }
 
+  // Dernier filet de sécurité : certaines très anciennes entrées ont un header
+  // léger générique et ne sont identifiables comme X01 qu'après hydratation.
+  // Le scan complet reste exceptionnel : uniquement si le chemin rapide vaut 0.
+  if (profileId && out.length === 0) {
+    try {
+      const samples = await loadX01SamplesForProfile(
+        { id: profileId, profileId, name: profileName || undefined },
+        { scope: "all" }
+      );
+      for (const smp of samples as any[]) {
+        out.push({
+          id: `${smp.id || smp.matchId || profileId}::canonical`,
+          matchId: String(smp.matchId || smp.id || profileId),
+          date: Number(smp.createdAt || Date.now()),
+          selectedPlayerId: String(smp.playerId || profileId),
+          playerName: String(smp.playerName || profileName || "Joueur"),
+          x01StartScore: smp.x01StartScore ?? null,
+          x01Variant: smp.x01Variant ?? "unknown",
+          matchVictoryMode: smp.matchVictoryMode ?? "best_of",
+          profileId: String(profileId),
+          avatarDataUrl: null,
+          darts: Number(smp.darts || 0),
+          avg3D: Number(smp.avg3 || 0),
+          avg1D: Number(smp.avg3 || 0) / 3,
+          bestVisit: Number(smp.bestVisit || 0),
+          bestCheckout: Number(smp.bestCheckout || 0) || null,
+          hitsS: Number(smp.singleHits || 0),
+          hitsD: Number(smp.doubleHits || 0),
+          hitsT: Number(smp.tripleHits || 0),
+          miss: Number(smp.miss || 0),
+          bull: Number(smp.bull25 || 0),
+          dBull: Number(smp.bull50 || 0),
+          bust: Number(smp.bust || 0),
+          isWin: Number(smp.matchesWon || 0) > 0,
+          legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
+          legsWon: Number(smp.legsWon || smp.matchesWon || 0),
+          setsPlayed: Number(smp.setsWon || 0) > 0 ? Number(smp.setsWon || 0) : 0,
+          setsWon: Number(smp.setsWon || 0),
+          finishes: Number(smp.coSuccess || 0),
+          isTeam: smp.x01Variant === "team",
+          rank: smp.rank ?? null,
+        });
+      }
+    } catch (e) {
+      console.warn("[X01MultiStatsTabFull] canonical history fallback failed", e);
+    }
+  }
+
   // Tri chronologique + matérialisation locale. Les ouvertures suivantes ne
   // relisent plus les payloads tant que l'empreinte de l'Historique est identique.
   const sorted = out.sort((a, b) => a.date - b.date);
@@ -2233,20 +2311,21 @@ async function loadX01MultiSessionsInternal(
 const __x01MultiLoadJobs = new Map<string, Promise<X01MultiSession[]>>();
 
 export async function loadX01MultiSessions(
-  profileId?: string | null
+  profileId?: string | null,
+  profileName?: string | null
 ): Promise<X01MultiSession[]> {
-  const key = x01MultiCacheProfileKey(profileId);
+  const key = `${x01MultiCacheProfileKey(profileId)}::${normalizedX01PlayerName(profileName)}`;
   const running = __x01MultiLoadJobs.get(key);
   if (running) return running;
-  const job = loadX01MultiSessionsInternal(profileId).finally(() => {
+  const job = loadX01MultiSessionsInternal(profileId, profileName).finally(() => {
     if (__x01MultiLoadJobs.get(key) === job) __x01MultiLoadJobs.delete(key);
   });
   __x01MultiLoadJobs.set(key, job);
   return job;
 }
 
-export async function prewarmX01MultiSessions(profileId?: string | null): Promise<void> {
-  await loadX01MultiSessions(profileId).then(() => undefined).catch(() => undefined);
+export async function prewarmX01MultiSessions(profileId?: string | null, profileName?: string | null): Promise<void> {
+  await loadX01MultiSessions(profileId, profileName).then(() => undefined).catch(() => undefined);
 }
 
 // Normalisation d’un dart pour le radar
@@ -2653,9 +2732,11 @@ function memoMultiRanks(
 export default function X01MultiStatsTabFull({
   profileId,
   playerId,
+  playerName,
 }: {
   profileId?: string | null;
   playerId?: string | null;
+  playerName?: string | null;
 }) {
   // 👉 ID effectivement utilisé pour filtrer les sessions :
   //    - priorité au playerId (venant de StatsHub / carrousel)
@@ -2719,7 +2800,7 @@ export default function X01MultiStatsTabFull({
     setSessions(instant?.sessions || []);
 
     const refresh = async () => {
-      const data = await loadX01MultiSessions(effectiveProfileId);
+      const data = await loadX01MultiSessions(effectiveProfileId, playerName);
       if (!cancelled) React.startTransition(() => setSessions(data));
     };
 
@@ -2740,7 +2821,7 @@ export default function X01MultiStatsTabFull({
       if (rafA) window.cancelAnimationFrame(rafA);
       if (rafB) window.cancelAnimationFrame(rafB);
     };
-  }, [effectiveProfileId, historyVersion]);
+  }, [effectiveProfileId, playerName, historyVersion]);
 
   // Auto-défilement métriques
   React.useEffect(() => {
