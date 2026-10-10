@@ -58,6 +58,7 @@ import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 import { loadStoragePrefs } from "./storagePlans";
 import { buildMissingSocialProfilePatch, buildSocialProfileCreatePayload, extractSocialProfileSeed } from "./socialProfileImport";
 import { scheduleRuntimeIdle } from "./runtimePerformance";
+import { purgeObsoleteDerivedStatsCaches, reclaimDerivedStatsStorageForCriticalWrite } from "./statsRenderCacheStorage";
 
 export const CLOUD_STORE_KEY = "main";
 
@@ -406,8 +407,72 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 
 function loadAuthFromLS(): AuthSession | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(LS_AUTH_KEY);
-  return safeParse<AuthSession | null>(raw, null);
+
+  // En cas de quota localStorage, la session critique peut basculer
+  // temporairement dans sessionStorage. On la lit en priorité afin qu'une
+  // ancienne copie locale ne fasse pas croire à un changement de compte.
+  try {
+    const sessionRaw = window.sessionStorage.getItem(LS_AUTH_KEY);
+    const sessionValue = safeParse<AuthSession | null>(sessionRaw, null);
+    if (sessionValue?.user?.id) return sessionValue;
+  } catch {}
+
+  try {
+    const raw = window.localStorage.getItem(LS_AUTH_KEY);
+    return safeParse<AuthSession | null>(raw, null);
+  } catch {
+    return null;
+  }
+}
+
+function isAuthStorageQuotaError(error: any): boolean {
+  const name = String(error?.name || "");
+  const code = Number(error?.code || 0);
+  return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED" || code === 22 || code === 1014;
+}
+
+function persistAuthSessionCritical(session: AuthSession | null): void {
+  if (typeof window === "undefined") return;
+
+  if (!session) {
+    try { window.localStorage.removeItem(LS_AUTH_KEY); } catch {}
+    try { window.sessionStorage.removeItem(LS_AUTH_KEY); } catch {}
+    return;
+  }
+
+  const raw = JSON.stringify(session);
+  const tryLocal = (): boolean => {
+    try {
+      window.localStorage.setItem(LS_AUTH_KEY, raw);
+      try { window.sessionStorage.removeItem(LS_AUTH_KEY); } catch {}
+      return true;
+    } catch (error) {
+      if (!isAuthStorageQuotaError(error)) return false;
+      return false;
+    }
+  };
+
+  if (tryLocal()) return;
+
+  // Les caches Stats sont entièrement dérivés et recalculables. Ils ne doivent
+  // jamais prendre la place de la session du compte. On commence par les anciennes
+  // versions laissées par les migrations de cache, puis seulement si nécessaire
+  // par les caches dérivés courants.
+  try { purgeObsoleteDerivedStatsCaches(); } catch {}
+  if (tryLocal()) return;
+  try { reclaimDerivedStatsStorageForCriticalWrite(); } catch {}
+  if (tryLocal()) return;
+
+  // Dernier filet : garder la session dans l'onglet courant plutôt que casser
+  // l'identité UI. On retire l'éventuelle copie locale obsolète afin que la lecture
+  // prioritaire sessionStorage reste non ambiguë.
+  try { window.localStorage.removeItem(LS_AUTH_KEY); } catch {}
+  try {
+    window.sessionStorage.setItem(LS_AUTH_KEY, raw);
+    console.warn("[onlineApi] localStorage plein : session conservée dans sessionStorage après purge des caches dérivés.");
+  } catch (error) {
+    console.warn("[onlineApi] impossible de persister la session navigateur", error);
+  }
 }
 
 function authIdentitySignature(session: AuthSession | null | undefined): string {
@@ -430,8 +495,7 @@ function saveAuthToLS(session: AuthSession | null) {
   const previousSignature = authIdentitySignature(previous);
   const nextSignature = authIdentitySignature(session);
 
-  if (!session) window.localStorage.removeItem(LS_AUTH_KEY);
-  else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
+  persistAuthSessionCritical(session);
 
   if (previousSignature === nextSignature) return;
 
