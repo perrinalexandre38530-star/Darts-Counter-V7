@@ -265,6 +265,12 @@ function profileStarData(profile: any, statsById: Record<string, any> = {}): Pro
     .filter((avg3d) => Number.isFinite(avg3d) && avg3d > 0 && avg3d <= 180);
   if (avgValues.length) return { kind: "avg3d", value: Math.max(...avgValues) };
 
+  const isBotProfile = Boolean(
+    profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
+    String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
+  );
+  if (!isBotProfile) return null;
+
   const levelCandidates = [
     profile?.profileStarring,
     profile?.profileStars,

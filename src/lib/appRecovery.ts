@@ -120,3 +120,58 @@ export async function safeModeReload() {
     window.location.reload();
   } catch {}
 }
+
+
+const CHUNK_RECOVERY_KEY = "dc_chunk_boundary_recovery_v1";
+
+export function isRecoverableChunkLoadError(error: any): boolean {
+  const msg = String(error?.message || error?.reason?.message || error || "").toLowerCase();
+  return (
+    msg.includes("failed to fetch dynamically imported module") ||
+    msg.includes("importing a module script failed") ||
+    msg.includes("chunkloaderror") ||
+    msg.includes("loading chunk")
+  );
+}
+
+/**
+ * Récupération ciblée d'un chunk Vite obsolète après déploiement.
+ * IMPORTANT : ne touche PAS au localStorage métier ni à IndexedDB.
+ * On purge seulement Service Workers + CacheStorage, puis recharge le shell
+ * courant avec un cache-buster. Le compte, MON PROFIL et HISTORIQUE restent intacts.
+ */
+export async function recoverStaleChunkWithoutDataLoss(error?: any): Promise<boolean> {
+  if (typeof window === "undefined" || !isRecoverableChunkLoadError(error)) return false;
+
+  const now = Date.now();
+  let previous = 0;
+  try { previous = Number(sessionStorage.getItem(CHUNK_RECOVERY_KEY) || "0") || 0; } catch {}
+
+  // Une seule récupération automatique dans une fenêtre courte pour éviter une
+  // boucle si le déploiement lui-même est incomplet.
+  if (previous && now - previous < 20_000) return false;
+  try { sessionStorage.setItem(CHUNK_RECOVERY_KEY, String(now)); } catch {}
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((reg) => reg.unregister().catch(() => false)));
+    }
+  } catch {}
+
+  try {
+    if (typeof caches !== "undefined" && (caches as any).keys) {
+      const names = await (caches as any).keys();
+      await Promise.all(names.map((name: string) => caches.delete(name).catch(() => false)));
+    }
+  } catch {}
+
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("chunk", String(now));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+  return true;
+}

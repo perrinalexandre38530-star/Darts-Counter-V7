@@ -6,7 +6,7 @@ import {
   getLastCrashReport,
   type CrashReport,
 } from "../lib/crashReporter";
-import { repairApplication, safeModeReload } from "../lib/appRecovery";
+import { isRecoverableChunkLoadError, recoverStaleChunkWithoutDataLoss, repairApplication, safeModeReload } from "../lib/appRecovery";
 
 type CrashState = { report: CrashReport | null; copied: boolean };
 
@@ -27,6 +27,23 @@ export default class CrashCatcher extends React.Component<
 
   componentDidCatch(error: any, info: any) {
     console.error("[CRASH CAPTURED]", error, info);
+
+    // Un chunk Vite supprimé après un nouveau déploiement n'est pas un crash
+    // métier. On purge uniquement SW/CacheStorage puis on recharge la version
+    // courante, sans toucher aux profils, à l'historique ni à la session.
+    if (isRecoverableChunkLoadError(error)) {
+      void recoverStaleChunkWithoutDataLoss(error).then((reloading) => {
+        if (reloading) return;
+        const report = captureCrash("react-render", error, {
+          stack:
+            [error?.stack || "", info?.componentStack || ""].filter(Boolean).join("\n\n") || undefined,
+          raw: info?.componentStack ? String(info.componentStack) : undefined,
+        });
+        this.setState({ report, copied: false });
+      });
+      return;
+    }
+
     const report = captureCrash("react-render", error, {
       stack:
         [error?.stack || "", info?.componentStack || ""].filter(Boolean).join("\n\n") || undefined,

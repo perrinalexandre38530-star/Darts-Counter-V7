@@ -343,6 +343,15 @@ function isSoftOnlineEndpoint(path: string): boolean {
   return normalized.startsWith("/online/");
 }
 
+function isAccountBackendEndpoint(path: string): boolean {
+  const normalized = String(path || "");
+  return (
+    normalized.startsWith("/account/personal-cloud/") ||
+    normalized.startsWith("/account/backups/") ||
+    normalized.startsWith("/sync/")
+  );
+}
+
 function dispatchSignedOut(reason: "401" | "missing_token", sourcePath = "") {
   if (typeof window === "undefined") return;
   const now = Date.now();
@@ -373,11 +382,109 @@ function clearNasAuthBecauseUnauthorized(sourcePath = "") {
     // sinon Google Drive et toutes les sauvegardes compte tombent en cascade.
   } catch {}
   setApiAccessToken("");
+
+  // Google Drive / NAS / sync utilisent un credential technique du backend.
+  // Son expiration ne signifie PAS que le compte Supabase est déconnecté.
+  if (isAccountBackendEndpoint(sourcePath)) {
+    console.warn("[apiClient] 401 backend sauvegarde — compte Supabase conservé", sourcePath);
+    return;
+  }
+
   dispatchSignedOut("401", sourcePath);
 }
 
+function readPublicAccountSessionForNasBridge(): { accessToken: string; nickname: string } | null {
+  const raw = (
+    safeReadLocalStorage("dc_online_auth_supabase_v1") ||
+    safeReadSessionStorage("dc_online_auth_supabase_v1")
+  ).trim();
+  if (!raw || !(raw.startsWith("{") || raw.startsWith("["))) return null;
+
+  const parsed = safeParseJson<any>(raw, null);
+  if (!parsed) return null;
+
+  const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
+  const isPublicAccountSession =
+    provider === "supabase" ||
+    provider === "supabase_failover" ||
+    parsed?.degradedMode === true ||
+    !!parsed?.supabaseUserId;
+
+  if (!isPublicAccountSession) return null;
+
+  const accessToken = extractAuthTokenFromObject(parsed);
+  if (!accessToken || !looksLikeBearerToken(accessToken)) return null;
+
+  const nickname = String(
+    parsed?.user?.nickname ||
+      parsed?.profile?.displayName ||
+      parsed?.profile?.nickname ||
+      parsed?.user?.email ||
+      "Player"
+  ).trim();
+
+  return { accessToken, nickname: nickname || "Player" };
+}
+
+async function exchangePublicAccountForNasToken(timeoutMs = 8_000): Promise<string> {
+  const publicSession = readPublicAccountSessionForNasBridge();
+  if (!publicSession) return "";
+
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl && typeof window !== "undefined"
+    ? window.setTimeout(() => {
+        try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
+      }, timeoutMs)
+    : null;
+
+  try {
+    const res = await fetch(`${currentApiUrl()}/auth/supabase/bridge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken: publicSession.accessToken,
+        nickname: publicSession.nickname,
+      }),
+      signal: ctrl?.signal,
+    });
+
+    const payload = await res.clone().json().catch(() => null);
+    if (!res.ok) {
+      const message = String(payload?.message || payload?.error || `HTTP ${res.status}`);
+      console.warn("[apiClient] Supabase→NAS service bridge refused", message);
+      return "";
+    }
+
+    const token = String(payload?.token || payload?.accessToken || payload?.access_token || "").trim();
+    if (!token || !looksLikeBearerToken(token)) {
+      console.warn("[apiClient] Supabase→NAS service bridge returned no usable token");
+      return "";
+    }
+
+    const refreshToken = String(payload?.refreshToken || payload?.refresh_token || "").trim();
+    try {
+      window.localStorage.setItem("dc_nas_access_token_v1", token);
+      if (refreshToken) window.localStorage.setItem("dc_nas_refresh_token_v1", refreshToken);
+      else window.localStorage.removeItem("dc_nas_refresh_token_v1");
+    } catch {}
+
+    // IMPORTANT : le compte principal reste Supabase. Ce jeton NAS n'est qu'un
+    // credential de service pour Google Drive / sauvegardes NAS / sync legacy.
+    setApiAccessToken(token);
+    return token;
+  } catch (error) {
+    console.warn("[apiClient] Supabase→NAS service bridge unavailable", error);
+    return "";
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
 async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<string> {
-  if (!isNasDataSyncEnabled()) return "";
+  // Les routes Google Drive / compte peuvent avoir besoin du JWT technique NAS
+  // même dans une build publique où VITE_NAS_DATA_SYNC n'est pas activé.
+  // La présence d'une session Supabase permet alors un échange serveur sécurisé.
+  if (!isNasDataSyncEnabled() && !readPublicAccountSessionForNasBridge()) return "";
 
   const existing = readNasAccessToken();
   if (existing && reason === "missing_token") return existing;
@@ -389,17 +496,30 @@ async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<str
         force: reason === "401",
         timeoutMs: reason === "401" ? 3500 : 2500,
       });
-      const token = String(session?.token || readNasAccessToken() || "").trim();
-      setApiAccessToken(token);
-      return token;
+      const restored = String(session?.token || readNasAccessToken() || "").trim();
+      if (restored) {
+        setApiAccessToken(restored);
+        return restored;
+      }
+
+      // Après un "Clear site data", le compte Supabase peut être parfaitement
+      // reconnecté alors que le jeton technique NAS n'existe plus sur l'appareil.
+      // On le recrée depuis la session publique SANS changer l'identité du compte.
+      return await exchangePublicAccountForNasToken(reason === "401" ? 10_000 : 8_000);
     } catch (e) {
       console.warn(`[apiClient] NAS auth recovery failed (${reason})`, e);
-      return "";
+      return await exchangePublicAccountForNasToken(reason === "401" ? 10_000 : 8_000);
     } finally {
       nasAuthRecoveryInFlight = null;
     }
   })();
   return nasAuthRecoveryInFlight;
+}
+
+export async function ensureAccountBackendAccessToken(): Promise<string> {
+  const existing = readNasAccessToken();
+  if (existing) return existing;
+  return recoverNasAuthToken("missing_token");
 }
 
 async function readResponseText(
@@ -547,7 +667,10 @@ function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   // autorisés. Cela permet de sauvegarder sur le NAS depuis une session publique
   // valide sans exiger qu'un ancien JWT NAS soit encore présent sur cet appareil.
   const token = acceptsAccountSession
-    ? (readAccountAccessToken() || readNasAccessToken())
+    // Le backend NAS historique vérifie son propre JWT. Le token Supabase reste
+    // un fallback de compatibilité, mais dès qu'un jeton de service NAS existe
+    // il doit être prioritaire.
+    ? (readNasAccessToken() || readAccountAccessToken())
     : readNasAccessToken();
 
   if (token && !baseHeaders.has("Authorization")) {
@@ -590,6 +713,19 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
     ? clampRequestTimeout(Number(options.timeoutMs))
     : requestTimeoutFor(normalizedPath, requestMethod);
   const proxyBase = sameOriginApiProxyBase();
+
+  const isAccountBackendRoute =
+    normalizedPath.startsWith("/account/personal-cloud/") ||
+    normalizedPath.startsWith("/account/backups/") ||
+    normalizedPath.startsWith("/sync/");
+
+  // Après un nettoyage complet du navigateur, la session Supabase revient avant
+  // le JWT technique NAS. Les routes de sauvegarde historiques utilisent encore
+  // ce JWT côté serveur : on le recrée AVANT la première requête pour éviter le
+  // faux 401 visible dans la console et garder le compte principal sur Supabase.
+  if (isAccountBackendRoute && !readNasAccessToken()) {
+    await recoverNasAuthToken("missing_token").catch(() => "");
+  }
 
   // Invariant d'architecture : en mode public/hybride, AUCUNE route /online/*
   // ne doit retomber sur l'API NAS. Les fonctions publiques migrées parlent

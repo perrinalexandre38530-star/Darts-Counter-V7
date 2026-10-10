@@ -10,7 +10,7 @@ import { useLang } from "../contexts/LangContext";
 import tickerStorageBackupFr from "../assets/tickers/ticker_storage_backup_fr.webp";
 import tickerStorageBackupEn from "../assets/tickers/ticker_storage_backup_en.webp";
 import { useAuthOnline } from "../hooks/useAuthOnline";
-import { apiPost, buildApiUrl, readAccountAccessToken, readNasAccessToken } from "../lib/apiClient";
+import { apiPost, buildApiUrl, ensureAccountBackendAccessToken, readNasAccessToken } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot, loadStore, setStorageUser } from "../lib/storage";
 import {
   createLocalMemorySlot,
@@ -431,28 +431,19 @@ function persistNasAuthForVault(authLike?: any): string {
 }
 
 async function ensureNasTokenFromOnlineRuntime(authLike?: any): Promise<string> {
-  let token = persistNasAuthForVault(authLike);
+  let token = persistNasAuthForVault(authLike) || readNasAccessToken();
   if (token) return token;
 
-  // Un compte Supabase public autorisé au NAS n'a volontairement pas de JWT NAS
-  // local. Le backend /sync/* sait maintenant valider son token Supabase puis
-  // résoudre le bridge canonique vers le compte NAS fondateur.
-  if (isPublicSupabaseVaultAuth(authLike)) {
-    const accountToken = readAuthTokenFromObject(authLike || {}) || readAccountAccessToken();
-    if (accountToken) return accountToken;
-  }
-
+  // Le compte principal reste Supabase. Pour les routes NAS historiques (/sync,
+  // Google Drive servi par le backend privé), on recrée uniquement le JWT NAS
+  // technique via le bridge serveur. Ne jamais renvoyer le JWT Supabase comme
+  // s'il s'agissait d'un JWT NAS : authRequired côté serveur le refuse en 401.
   try {
-    const mod: any = await import("../lib/onlineApi");
-    const session = await mod?.onlineApi?.getCurrentSession?.();
-    token = persistNasAuthForVault(session);
+    token = await ensureAccountBackendAccessToken();
     if (token) return token;
-    if (isPublicSupabaseVaultAuth(session)) {
-      const accountToken = readAuthTokenFromObject(session || {}) || readAccountAccessToken();
-      if (accountToken) return accountToken;
-    }
   } catch {}
-  return readAccountAccessToken() || persistNasAuthForVault(authLike);
+
+  return "";
 }
 
 function rememberAuthKeys() {
@@ -2112,13 +2103,13 @@ export default function StorageVaultPage({ go }: Props) {
       const capability = await mod?.onlineApi?.getPrivateNasCapability?.({ force: true });
       if (!alive) return;
       setPrivateNasCapability({ checked: capability?.checked !== false, authorized: capability?.authorized === true });
-      // Un timeout du pré-contrôle ne doit pas condamner le NAS. La bascule
-      // explicite tente le bridge serveur, qui est l'autorité finale.
+      // On ne bascule plus l'identité du compte vers "nas". Le compte reste
+      // Supabase et on récupère seulement le jeton technique nécessaire aux
+      // sauvegardes privées.
       if (capability?.authorized === true || capability?.checked === false || founderNasSelected) {
-        const bridged = await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
-        if (alive && (bridged?.token || readNasAccessToken())) {
+        const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+        if (alive && token) {
           setPrivateNasCapability({ checked: true, authorized: true });
-          await auth.refresh?.();
         }
       }
     }).catch(() => undefined);
@@ -2868,12 +2859,11 @@ ${label}`)) return;
           return;
         }
 
-        const bridged = await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
-        if (!bridged?.token && !readNasAccessToken()) {
+        const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+        if (!token && !readNasAccessToken()) {
           throw new Error("Le bridge NAS n’a retourné aucun jeton d’accès.");
         }
         setPrivateNasCapability({ checked: true, authorized: true });
-        await auth.refresh?.();
       } catch (error: any) {
         setMessage(`Connexion au NAS privé impossible : ${error?.message || error}. Aucune sauvegarde NAS n’a été supprimée.`);
         return;

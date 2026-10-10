@@ -1,6 +1,6 @@
 import React from "react";
 import { captureCrash, copyCrashReport, formatCrashReportText, type CrashReport } from "../lib/crashReporter";
-import { repairApplication, safeModeReload } from "../lib/appRecovery";
+import { isRecoverableChunkLoadError, recoverStaleChunkWithoutDataLoss, repairApplication, safeModeReload } from "../lib/appRecovery";
 
 type State = {
   hasError: boolean;
@@ -20,6 +20,19 @@ export default class ErrorBoundary extends React.Component<any, State> {
 
   componentDidCatch(error: any, info: any) {
     console.error("React crash:", error, info);
+
+    if (isRecoverableChunkLoadError(error)) {
+      void recoverStaleChunkWithoutDataLoss(error).then((reloading) => {
+        if (reloading) return;
+        const report = captureCrash("react-boundary", error, {
+          stack: [error?.stack || "", info?.componentStack || ""].filter(Boolean).join("\n\n") || undefined,
+          raw: info?.componentStack ? String(info.componentStack) : undefined,
+        });
+        this.setState({ report, copied: false });
+      });
+      return;
+    }
+
     const report = captureCrash("react-boundary", error, {
       stack: [error?.stack || "", info?.componentStack || ""].filter(Boolean).join("\n\n") || undefined,
       raw: info?.componentStack ? String(info.componentStack) : undefined,
