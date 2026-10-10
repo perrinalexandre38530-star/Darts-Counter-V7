@@ -473,7 +473,19 @@ function hasRecoverableNasAuth(): boolean {
 
 function authSessionToPseudoSupabaseSession(s: any): Session | null {
   try {
-    const uid = String(s?.user?.id || s?.userId || "").trim();
+    const canonicalUid = String(s?.user?.id || s?.userId || "").trim();
+    const supabaseUid = String(
+      s?.supabaseUserId ||
+      s?.user?.user_metadata?.supabase_user_id ||
+      s?.session?.user?.id ||
+      ""
+    ).trim();
+    // IMPORTANT — identité UI / stockage STABLE :
+    // dès qu'un UID Supabase existe, il reste l'identité exposée à React.
+    // Le bridge NAS peut posséder un identifiant canonique usr_* séparé, mais il
+    // ne doit JAMAIS remplacer user.id après coup : ce swap faisait recharger un
+    // autre namespace IndexedDB et remettait avatar/stats à une ancienne version.
+    const uid = supabaseUid || canonicalUid;
     if (!uid) return null;
     const degraded = s?.degradedMode === true || String(s?.authProvider || "") === "supabase_failover";
     return {
@@ -488,7 +500,9 @@ function authSessionToPseudoSupabaseSession(s: any): Session | null {
           nickname: s?.user?.nickname || s?.profile?.displayName || s?.profile?.nickname || "Player",
           auth_provider: s?.authProvider || (degraded ? "supabase_failover" : "nas"),
           degraded_mode: degraded,
-          supabase_user_id: s?.supabaseUserId || null,
+          supabase_user_id: supabaseUid || null,
+          canonical_user_id: canonicalUid || null,
+          nas_user_id: canonicalUid && canonicalUid !== uid ? canonicalUid : null,
         },
       },
     } as any;

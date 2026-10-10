@@ -2585,7 +2585,14 @@ export default function Profiles({
       const raw = localStorage.getItem("dc_online_auth_supabase_v1");
       const parsed = raw ? JSON.parse(raw) : null;
       return {
-        id: String(parsed?.user?.id || parsed?.userId || "").trim(),
+        id: String(
+          parsed?.supabaseUserId ||
+          parsed?.user?.user_metadata?.supabase_user_id ||
+          parsed?.session?.user?.id ||
+          parsed?.user?.id ||
+          parsed?.userId ||
+          ""
+        ).trim(),
         email: String(parsed?.user?.email || "").trim(),
       };
     } catch {
@@ -2597,19 +2604,45 @@ export default function Profiles({
     return String((auth?.user as any)?.id || readCachedAuthUser().id || "").trim();
   }
 
+  function currentAuthIdentityIds(): string[] {
+    const out = new Set<string>();
+    const add = (value: any) => {
+      const id = String(value || "").trim();
+      if (id) out.add(id);
+    };
+    const liveUser: any = auth?.user || null;
+    add(liveUser?.id);
+    add(liveUser?.user_metadata?.supabase_user_id);
+    add(liveUser?.user_metadata?.canonical_user_id);
+    add(liveUser?.user_metadata?.nas_user_id);
+    try {
+      const raw = localStorage.getItem("dc_online_auth_supabase_v1");
+      const parsed = raw ? JSON.parse(raw) : null;
+      add(parsed?.supabaseUserId);
+      add(parsed?.user?.id);
+      add(parsed?.userId);
+      add(parsed?.canonicalUserId);
+      add(parsed?.user?.user_metadata?.supabase_user_id);
+      add(parsed?.user?.user_metadata?.canonical_user_id);
+    } catch {}
+    return Array.from(out);
+  }
+
   function isLinkedOnlineProfile(profile: any): boolean {
-    const authUid = currentAuthUserId();
-    if (!profile || !authUid) return false;
+    const authIds = new Set(currentAuthIdentityIds());
+    if (!profile || authIds.size === 0) return false;
     const pid = String(profile?.id || "").trim();
     const pi = ((profile as any)?.privateInfo || {}) as any;
-    return [
+    const candidates = [
       pid,
       pi?.onlineUserId,
       pi?.online_user_id,
       pi?.accountUserId,
+      ...(Array.isArray(pi?.linkedAccountIds) ? pi.linkedAccountIds : []),
       (profile as any)?.onlineUserId,
       (profile as any)?.accountUserId,
-    ].some((value) => String(value || "").trim() === authUid);
+    ];
+    return candidates.some((value) => authIds.has(String(value || "").trim()));
   }
 
   async function changeAvatar(id: string, file: File) {
@@ -2739,12 +2772,17 @@ export default function Profiles({
           });
         }
 
-        try {
-          await (auth as any)?.refresh?.();
-          logProfileStabilityAudit("avatar-auth-refresh-done", undefined, { source: "profiles.changeAvatar", profileId: id, avatarUpdatedAt: now });
-        } catch (refreshError) {
-          logProfileStabilityAudit("avatar-auth-refresh-error", undefined, { source: "profiles.changeAvatar", profileId: id, error: String((refreshError as any)?.message || refreshError) });
-        }
+        // NE PAS rafraîchir toute l'authentification après un changement
+        // d'avatar. Le profil local vient d'être validé et l'upload distant a
+        // déjà mis à jour le compte. Un auth.refresh() relançait le bridge
+        // Supabase/NAS, pouvait changer user.id quelques secondes plus tard et
+        // provoquer un reload de namespace IndexedDB — exactement le symptôme
+        // "nouvel avatar puis retour à l'ancien + stats à zéro".
+        logProfileStabilityAudit("avatar-auth-refresh-skipped-local-authority", undefined, {
+          source: "profiles.changeAvatar",
+          profileId: id,
+          avatarUpdatedAt: now,
+        });
       } catch (e) {
         logProfileStabilityAudit("avatar-online-upload-error", undefined, { source: "profiles.changeAvatar", profileId: id, error: String((e as any)?.message || e) });
         console.warn("[avatars] upload active profile failed", e);

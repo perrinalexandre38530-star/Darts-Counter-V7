@@ -309,15 +309,70 @@ function hasOnlineBindingTo(profile: any, uid: string): boolean {
   ].some((value) => String(value || "").trim() === uid);
 }
 
-function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, activeId: string): any | null {
+
+function accountIdentityIds(user: any): string[] {
+  const meta = (user?.user_metadata || {}) as Record<string, any>;
+  return Array.from(new Set([
+    user?.id,
+    meta?.supabase_user_id,
+    meta?.canonical_user_id,
+    meta?.nas_user_id,
+    meta?.multisports_user_id,
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function hasOnlineBindingToAny(profile: any, ids: string[]): boolean {
+  return ids.some((id) => hasOnlineBindingTo(profile, id));
+}
+
+function avatarTimestamp(profile: any): number {
+  const raw = Number(
+    profile?.avatarUpdatedAt ??
+    profile?.avatar_updated_at ??
+    profile?.updatedAvatarAt ??
+    0
+  );
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+function hasAvatarMedia(profile: any): boolean {
+  return [
+    profile?.avatarDataUrl,
+    profile?.avatarThumbDataUrl,
+    profile?.avatarFullDataUrl,
+    profile?.avatarCastDataUrl,
+    profile?.avatarUrl,
+    profile?.avatarPath,
+  ].some((value) => typeof value === "string" && value.trim().length > 0);
+}
+
+function pickFreshestAvatarProfile(localProfile: any, accountProfile: any): any {
+  const localHas = hasAvatarMedia(localProfile);
+  const accountHas = hasAvatarMedia(accountProfile);
+  if (!localHas) return accountHas ? accountProfile : localProfile;
+  if (!accountHas) return localProfile;
+
+  const localTs = avatarTimestamp(localProfile);
+  const accountTs = avatarTimestamp(accountProfile);
+  // La modification utilisateur la plus récente gagne. C'est indispensable
+  // pendant la migration d'un ancien profil compte usr_* vers le profil local :
+  // sans ce test l'ancien avatar du profil local pouvait écraser la photo que
+  // l'utilisateur venait juste de sélectionner sur le clone compte.
+  if (accountTs > localTs) return accountProfile;
+  return localProfile;
+}
+
+function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, activeId: string, accountIdsInput?: string[]): any | null {
+  const accountIds = new Set((accountIdsInput?.length ? accountIdsInput : [uid]).map((id) => String(id || "").trim()).filter(Boolean));
+  const mirrorIds = new Set(Array.from(accountIds).map((id) => `online:${id}`));
   const locals = profiles.filter((profile) => {
     const id = String(profile?.id || "").trim();
-    return !!id && id !== uid && id !== `online:${uid}` && !profile?.isBot;
+    return !!id && !accountIds.has(id) && !mirrorIds.has(id) && !profile?.isBot;
   });
   if (!locals.length) return null;
 
   // 1) Binding explicite : preuve la plus forte.
-  const explicitlyLinked = locals.find((profile) => hasOnlineBindingTo(profile, uid));
+  const explicitlyLinked = locals.find((profile) => hasOnlineBindingToAny(profile, Array.from(accountIds)));
   if (explicitlyLinked) return explicitlyLinked;
 
   // 2) Alias écrit par les correctifs précédents.
@@ -362,17 +417,21 @@ function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, 
 
 function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, user: any, onlineProfile?: any): any {
   const uid = String(user?.id || "").trim();
+  const accountIds = accountIdentityIds(user);
   const local = localProfile || {};
   const account = accountProfile || {};
   const localPI = readPrivateInfo(local);
   const accountPI = readPrivateInfo(account);
   const onlineAvatar = getOnlineAvatar(onlineProfile);
+  const avatarSource = pickFreshestAvatarProfile(local, account);
+  const avatarSourceHasMedia = hasAvatarMedia(avatarSource);
+  const avatarUpdatedAt = Math.max(avatarTimestamp(local), avatarTimestamp(account));
 
   const aliasIds = Array.from(new Set([
     ...profileAliasIds(local),
     ...profileAliasIds(account),
     String(account?.id || "").trim(),
-    uid,
+    ...accountIds,
   ].filter(Boolean))).filter((id) => id !== String(local?.id || "").trim());
 
   const merged: any = {
@@ -387,8 +446,27 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
     city: local?.city ?? account?.city ?? onlineProfile?.city ?? "",
     phone: local?.phone ?? account?.phone ?? onlineProfile?.phone ?? "",
     country: local?.country || account?.country || onlineProfile?.country || localPI?.country || accountPI?.country || "FR",
-    avatarDataUrl: local?.avatarDataUrl || local?.avatarUrl || account?.avatarDataUrl || account?.avatarUrl || onlineAvatar,
-    avatarUrl: local?.avatarUrl || local?.avatarDataUrl || account?.avatarUrl || account?.avatarDataUrl || onlineAvatar,
+    // L'avatar est le seul champ où la fraîcheur doit primer sur "local gagne".
+    // Pendant les migrations historiques, le profil compte usr_* peut contenir
+    // la photo sélectionnée il y a 2 secondes et le profil local canonique une
+    // photo vieille de plusieurs mois. On conserve donc la source la plus récente.
+    avatarDataUrl: avatarSourceHasMedia
+      ? (avatarSource?.avatarDataUrl || avatarSource?.avatarThumbDataUrl || avatarSource?.avatarUrl || undefined)
+      : (onlineAvatar || undefined),
+    avatarThumbDataUrl: avatarSourceHasMedia
+      ? (avatarSource?.avatarThumbDataUrl || avatarSource?.avatarDataUrl || undefined)
+      : undefined,
+    avatarFullDataUrl: avatarSourceHasMedia
+      ? (avatarSource?.avatarFullDataUrl || avatarSource?.avatarDataUrl || undefined)
+      : undefined,
+    avatarCastDataUrl: avatarSourceHasMedia
+      ? (avatarSource?.avatarCastDataUrl || avatarSource?.avatarFullDataUrl || avatarSource?.avatarDataUrl || undefined)
+      : undefined,
+    avatarUrl: avatarSourceHasMedia
+      ? (avatarSource?.avatarUrl || undefined)
+      : (onlineAvatar || undefined),
+    avatarPath: avatarSourceHasMedia ? (avatarSource?.avatarPath || undefined) : undefined,
+    avatarUpdatedAt: avatarUpdatedAt || avatarSource?.avatarUpdatedAt || undefined,
     favoriteDartSetId: local?.favoriteDartSetId ?? account?.favoriteDartSetId ?? null,
     preferences: {
       ...(account?.preferences || {}),
@@ -410,6 +488,7 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
     onlineEmail: safeLower(user?.email) || localPI?.onlineEmail || accountPI?.onlineEmail || "",
     accountUserId: uid,
     linkedLocalProfileIds: aliasIds,
+    linkedAccountIds: accountIds,
     password: "",
   });
 }
@@ -418,15 +497,31 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   if (!store || !user?.id) return store;
 
   const uid = String(user.id).trim();
-  const mirrorId = `online:${uid}`;
+  const accountIds = accountIdentityIds(user);
+  const accountIdSet = new Set(accountIds);
+  const mirrorIds = new Set(accountIds.map((id) => `online:${id}`));
   const inputProfiles: any[] = Array.isArray(store.profiles) ? store.profiles.filter(Boolean) : [];
   const activeId = String(store.activeProfileId || inputProfiles[0]?.id || "").trim();
 
-  const dedicated = inputProfiles.find((profile) => String(profile?.id || "").trim() === uid) || null;
-  const legacyMirror = inputProfiles.find((profile) => String(profile?.id || "").trim() === mirrorId) || null;
+  const accountProfiles = inputProfiles.filter((profile) => {
+    const id = String(profile?.id || "").trim();
+    return accountIdSet.has(id) || mirrorIds.has(id);
+  });
+
+  // Si plusieurs anciens profils compte coexistent (UUID Supabase + usr_* +
+  // online:<id>), on prend comme source celui qui porte l'avatar le plus récent,
+  // puis le profil le plus complet. Les autres seront supprimés après fusion.
+  const dedicated = accountProfiles
+    .slice()
+    .sort((a, b) => {
+      const avatarDelta = avatarTimestamp(b) - avatarTimestamp(a);
+      if (avatarDelta) return avatarDelta;
+      return scoreProfileCompleteness(b) - scoreProfileCompleteness(a);
+    })[0] || null;
+
   const explicitlyLinked = inputProfiles.find((profile) => {
     const id = String(profile?.id || "").trim();
-    return id !== uid && id !== mirrorId && hasOnlineBindingTo(profile, uid);
+    return !accountIdSet.has(id) && !mirrorIds.has(id) && hasOnlineBindingToAny(profile, accountIds);
   }) || null;
 
   // Aucun profil joueur sur cet appareil : le compte devient naturellement le
@@ -437,22 +532,20 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   }
 
   // Le profil à conserver est d'abord celui déjà explicitement lié. Sinon on
-  // retrouve le profil local ayant servi de source au clone id==uid. Pour une
-  // première connexion, on lie simplement le profil actif au compte.
-  const originalLocal = explicitlyLinked || pickOriginalLocalProfile(inputProfiles, uid, dedicated, activeId);
+  // retrouve le profil local ayant servi de source à un ancien clone compte.
+  const originalLocal = explicitlyLinked || pickOriginalLocalProfile(inputProfiles, uid, dedicated, activeId, accountIds);
 
   if (originalLocal) {
-    // Le clone compte et l'ancien mirror sont uniquement des sources de données;
-    // ils ne doivent plus rester comme joueurs séparés.
-    const accountSource = dedicated || legacyMirror || null;
-    const merged = mergeAccountIntoLocalProfile(originalLocal, accountSource, user, onlineProfile);
+    const merged = mergeAccountIntoLocalProfile(originalLocal, dedicated, user, onlineProfile);
     const canonicalId = String(merged?.id || originalLocal?.id || "").trim();
 
     const nextProfiles: any[] = [];
     let inserted = false;
     for (const profile of inputProfiles) {
       const id = String(profile?.id || "").trim();
-      if (id === uid || id === mirrorId) continue;
+      // Tous les anciens profils techniques du compte sont absorbés dans le
+      // profil local canonique. Ils ne doivent plus redevenir profil actif.
+      if ((accountIdSet.has(id) || mirrorIds.has(id)) && id !== canonicalId) continue;
       if (id === canonicalId) {
         if (!inserted) nextProfiles.push(merged);
         inserted = true;
@@ -469,18 +562,34 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     };
   }
 
-  // Pas de doublon détectable : si le seul profil compte id==uid existe déjà,
-  // on le rafraîchit sans créer une nouvelle ligne.
+  // Pas de profil local distinct détectable : on conserve le meilleur profil
+  // compte existant, mais on stabilise son id sur l'identité Supabase exposée à
+  // l'application. Les alias usr_* restent seulement dans privateInfo.
   if (dedicated) {
     const next = buildDedicatedAccountProfile(user, onlineProfile, dedicated);
-    const aliases = Array.from(new Set([...profileAliasIds(dedicated), uid].filter(Boolean)));
-    const pi = { ...readPrivateInfo(next), accountUserId: uid, linkedLocalProfileIds: aliases, password: "" };
-    const refreshed = writePrivateInfo(next, pi);
+    const aliases = Array.from(new Set([
+      ...profileAliasIds(dedicated),
+      ...accountIds,
+    ].filter(Boolean)));
+    const pi = {
+      ...readPrivateInfo(next),
+      onlineUserId: uid,
+      accountUserId: uid,
+      linkedLocalProfileIds: aliases,
+      linkedAccountIds: accountIds,
+      password: "",
+    };
+    const refreshed = writePrivateInfo({ ...next, id: uid }, pi);
+
+    const nextProfiles = inputProfiles.filter((profile) => {
+      const id = String(profile?.id || "").trim();
+      return !accountIdSet.has(id) && !mirrorIds.has(id);
+    });
+    nextProfiles.push(refreshed);
+
     return {
       ...store,
-      profiles: inputProfiles
-        .filter((profile) => String(profile?.id || "").trim() !== mirrorId)
-        .map((profile) => String(profile?.id || "").trim() === uid ? refreshed : profile),
+      profiles: nextProfiles,
       activeProfileId: uid,
     };
   }
@@ -492,12 +601,15 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   const active = inputProfiles.find((profile) => String(profile?.id || "").trim() === activeId && !profile?.isBot)
     || inputProfiles.find((profile) => !profile?.isBot)
     || inputProfiles[0];
-  const merged = mergeAccountIntoLocalProfile(active, legacyMirror, user, onlineProfile);
+  const merged = mergeAccountIntoLocalProfile(active, null, user, onlineProfile);
   const canonicalId = String(merged?.id || active?.id || "").trim();
   return {
     ...store,
     profiles: inputProfiles.map((profile) => String(profile?.id || "").trim() === canonicalId ? merged : profile)
-      .filter((profile) => String(profile?.id || "").trim() !== mirrorId),
+      .filter((profile) => {
+        const id = String(profile?.id || "").trim();
+        return id === canonicalId || (!accountIdSet.has(id) && !mirrorIds.has(id));
+      }),
     activeProfileId: canonicalId,
   };
 }
