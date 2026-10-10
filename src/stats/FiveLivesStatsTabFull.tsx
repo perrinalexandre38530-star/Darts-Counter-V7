@@ -12,6 +12,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 type Props = {
   records: any[];
   playerId?: string | null;
+  playerName?: string | null;
 };
 
 type TimeRange = "all" | "day" | "week" | "month" | "year";
@@ -127,6 +128,10 @@ function lc(value: any) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normPlayerName(value: any) {
+  return String(value ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function isFiveLivesRecord(rec: any): boolean {
   const blob = [
     rec?.kind,
@@ -159,8 +164,11 @@ function playerIdOf(row: any) {
   return String(row?.id ?? row?.playerId ?? row?.profileId ?? row?.selectedPlayerId ?? "");
 }
 
-function rowMatchesPlayer(row: any, playerId: string): boolean {
-  return sameId(playerIdOf(row), playerId);
+function rowMatchesPlayer(row: any, playerId: string, playerName?: string | null): boolean {
+  if (sameId(playerIdOf(row), playerId)) return true;
+  const wanted = normPlayerName(playerName);
+  const rowName = normPlayerName(row?.name ?? row?.playerName ?? row?.displayName ?? row?.nickname ?? row?.profileName);
+  return !!wanted && !!rowName && wanted === rowName;
 }
 
 function isCompetitiveFiveLivesRow(row: any): boolean {
@@ -230,7 +238,7 @@ function detailedMapRows(rec: any): any[] {
   return out;
 }
 
-function findPlayerRow(rec: any, playerId: string): any | null {
+function findPlayerRow(rec: any, playerId: string, playerName?: string | null): any | null {
   const pools = [
     detailedMapRows(rec),
     ...arrays(
@@ -241,7 +249,7 @@ function findPlayerRow(rec: any, playerId: string): any | null {
   ];
   const hits: any[] = [];
   for (const rows of pools) {
-    const hit = rows.find((row: any) => rowMatchesPlayer(row, playerId));
+    const hit = rows.find((row: any) => rowMatchesPlayer(row, playerId, playerName));
     if (hit) hits.push(hit);
   }
   const compact = compactFiveLivesPlayerRow(rec, playerId);
@@ -329,14 +337,14 @@ function dartLabel(d: any) {
   return `${mult === 3 ? "T" : mult === 2 ? "D" : "S"}${v}`;
 }
 
-function sessionFromRecord(rec: any, playerId: string): FiveLivesSession | null {
+function sessionFromRecord(rec: any, playerId: string, playerName?: string | null): FiveLivesSession | null {
   if (!isFiveLivesRecord(rec)) return null;
-  const row = findPlayerRow(rec, playerId);
+  const row = findPlayerRow(rec, playerId, playerName);
   if (!row) return null;
 
   const rankings = rankingsForRecord(rec);
   const explicitRank = n(row?.rank, row?.position, row?.place);
-  const orderedIndex = rankings.findIndex((r) => rowMatchesPlayer(r, playerId));
+  const orderedIndex = rankings.findIndex((r) => rowMatchesPlayer(r, playerId, playerName));
   const rank = explicitRank > 0 ? explicitRank : orderedIndex >= 0 ? orderedIndex + 1 : null;
   const winnerId = String(rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? "");
   const explicitResult = typeof row?.isWinner === "boolean" ? row.isWinner : typeof row?.win === "boolean" ? row.win : typeof row?.winner === "boolean" ? row.winner : null;
@@ -482,7 +490,7 @@ function HitTile({ label, value, total, tone }: { label: string; value: number; 
   );
 }
 
-export default function FiveLivesStatsTabFull({ records, playerId }: Props) {
+export default function FiveLivesStatsTabFull({ records, playerId, playerName }: Props) {
   const [range, setRange] = React.useState<TimeRange>("month");
   const [metric, setMetric] = React.useState<EvolutionMetric>("average");
   const [selectedSession, setSelectedSession] = React.useState<FiveLivesSession | null>(null);
@@ -490,10 +498,10 @@ export default function FiveLivesStatsTabFull({ records, playerId }: Props) {
   const allSessions = React.useMemo(() => {
     if (!playerId) return [];
     return (Array.isArray(records) ? records : [])
-      .map((rec) => sessionFromRecord(rec, String(playerId)))
+      .map((rec) => sessionFromRecord(rec, String(playerId), playerName))
       .filter(Boolean)
       .sort((a: FiveLivesSession, b: FiveLivesSession) => b.date - a.date) as FiveLivesSession[];
-  }, [records, playerId]);
+  }, [records, playerId, playerName]);
 
   const sessions = React.useMemo(() => {
     const start = rangeStart(range);

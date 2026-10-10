@@ -23,6 +23,7 @@ type Props = {
   profiles: Profile[];
   memHistory: any[];
   playerId?: string | null;
+  playerName?: string | null;
   title?: string;
 };
 
@@ -46,6 +47,7 @@ const fmt1 = (n: any) => `${num(n, 0).toFixed(1)}`;
 const fmt2 = (n: any) => `${num(n, 0).toFixed(2)}`;
 const fmtPct = (n: any) => `${num(n, 0).toFixed(1)}%`;
 const safeStr = (v: any) => (v === undefined || v === null ? "" : String(v));
+const normPlayerName = (v: any) => String(v ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 const fmtDate = (ts: any) => {
   const n = Number(ts);
@@ -149,12 +151,16 @@ function inPeriod(ts: number, period: string) {
   return true;
 }
 
-function recordHasPlayer(rec: any, playerId: string) {
+function recordHasPlayer(rec: any, playerId: string, playerName?: string | null) {
   const pid = String(playerId);
+  const wantedName = normPlayerName(playerName);
   if (
-    getPlayers(rec).some(
-      (p: any) => String(p?.id ?? p?.playerId ?? p?.profileId ?? "") === pid
-    )
+    getPlayers(rec).some((p: any) => {
+      const id = String(p?.id ?? p?.playerId ?? p?.profileId ?? "");
+      if (id === pid) return true;
+      const rowName = normPlayerName(p?.name ?? p?.playerName ?? p?.displayName ?? p?.nickname);
+      return !!wantedName && !!rowName && rowName === wantedName;
+    })
   ) {
     return true;
   }
@@ -190,7 +196,7 @@ function rankOfRecord(rec: any, playerId: string) {
   return 0;
 }
 
-export default function StatsKiller({ profiles, memHistory, playerId = null, title = "KILLER" }: Props) {
+export default function StatsKiller({ profiles, memHistory, playerId = null, playerName = null, title = "KILLER" }: Props) {
   const { theme } = useTheme();
   const [period, setPeriod] = React.useState<string>("ARV");
   const [activeTab, setActiveTab] = React.useState<KillerTab>("overview");
@@ -198,13 +204,13 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
   const data = React.useMemo(() => {
     const killer = (Array.isArray(memHistory) ? memHistory : []).filter(isKillerRecord);
     const scoped = killer.filter((r: any) => inPeriod(recTs(r), period));
-    const filtered = playerId ? scoped.filter((r) => recordHasPlayer(r, String(playerId))) : scoped;
+    const filtered = playerId ? scoped.filter((r) => recordHasPlayer(r, String(playerId), playerName)) : scoped;
     const agg = playerId ? computeKillerStatsAggForProfile(filtered, String(playerId)) : null;
 
     // Records personnels : toujours calculés sur TOUT l'historique Killer du joueur,
     // indépendamment du filtre de période affiché dans le dashboard.
     const allPlayerRecords = playerId
-      ? killer.filter((r: any) => recordHasPlayer(r, String(playerId)))
+      ? killer.filter((r: any) => recordHasPlayer(r, String(playerId), playerName))
       : [];
     const recordMatches = allPlayerRecords.map((r: any) => {
       const matchAgg = computeKillerStatsAggForProfile([r], String(playerId));
@@ -373,7 +379,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
       placements: agg?.placements || {},
       records,
     };
-  }, [memHistory, period, playerId, profiles]);
+  }, [memHistory, period, playerId, playerName, profiles]);
 
   const agg = data.agg || {};
   const placementRows = Object.keys(data.placements || {})

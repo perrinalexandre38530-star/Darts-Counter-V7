@@ -2724,6 +2724,42 @@ function memoMultiRanks(
   return value;
 }
 
+function x01SessionsFromSamples(samples: any[], profileId?: string | null, profileName?: string | null): X01MultiSession[] {
+  const pid = String(profileId || "").trim();
+  return (Array.isArray(samples) ? samples : []).map((smp: any) => ({
+    id: `${smp.id || smp.matchId || pid}::hub`,
+    matchId: String(smp.matchId || smp.id || pid),
+    date: Number(smp.createdAt || Date.now()),
+    selectedPlayerId: String(pid || smp.playerId || ""),
+    playerName: String(smp.playerName || profileName || "Joueur"),
+    x01StartScore: smp.x01StartScore ?? null,
+    x01Variant: smp.x01Variant ?? "unknown",
+    matchVictoryMode: smp.matchVictoryMode ?? "best_of",
+    profileId: pid || String(smp.playerId || ""),
+    avatarDataUrl: null,
+    darts: Number(smp.darts || 0),
+    avg3D: Number(smp.avg3 || 0),
+    avg1D: Number(smp.avg3 || 0) / 3,
+    bestVisit: Number(smp.bestVisit || 0),
+    bestCheckout: Number(smp.bestCheckout || 0) || null,
+    hitsS: Number(smp.singleHits || 0),
+    hitsD: Number(smp.doubleHits || 0),
+    hitsT: Number(smp.tripleHits || 0),
+    miss: Number(smp.miss || 0),
+    bull: Number(smp.bull25 || 0),
+    dBull: Number(smp.bull50 || 0),
+    bust: Number(smp.bust || 0),
+    isWin: Number(smp.matchesWon || 0) > 0,
+    legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
+    legsWon: Number(smp.legsWon || smp.matchesWon || 0),
+    setsPlayed: Number(smp.setsWon || 0) > 0 ? Number(smp.setsWon || 0) : 0,
+    setsWon: Number(smp.setsWon || 0),
+    finishes: Number(smp.coSuccess || 0),
+    isTeam: smp.x01Variant === "team",
+    rank: smp.rank ?? null,
+  })).filter((row: any) => !!row.matchId);
+}
+
 // ===========================================================
 // Composant principal
 // ===========================================================
@@ -2733,10 +2769,12 @@ export default function X01MultiStatsTabFull({
   profileId,
   playerId,
   playerName,
+  records,
 }: {
   profileId?: string | null;
   playerId?: string | null;
   playerName?: string | null;
+  records?: any[];
 }) {
   // 👉 ID effectivement utilisé pour filtrer les sessions :
   //    - priorité au playerId (venant de StatsHub / carrousel)
@@ -2800,8 +2838,34 @@ export default function X01MultiStatsTabFull({
     setSessions(instant?.sessions || []);
 
     const refresh = async () => {
-      const data = await loadX01MultiSessions(effectiveProfileId, playerName);
-      if (!cancelled) React.startTransition(() => setSessions(data));
+      let data = await loadX01MultiSessions(effectiveProfileId, playerName);
+
+      // StatsHub possède déjà les payloads History.get(id) du mode X01 courant.
+      // Si le lecteur autonome n'a rien trouvé (ancien header générique / ancien ID),
+      // on reconstruit les sessions depuis CETTE MÊME source canonique. Cela évite
+      // qu'un onglet affiche 0 alors que le Dashboard et le Comparateur voient les matchs.
+      if (effectiveProfileId && Array.isArray(records) && records.length) {
+        try {
+          const samples = buildX01SamplesForProfileFromRecords(
+            records,
+            { id: effectiveProfileId, profileId: effectiveProfileId, name: playerName || undefined },
+            { scope: "all" }
+          );
+          const canonicalRows = x01SessionsFromSamples(samples, effectiveProfileId, playerName);
+          if (canonicalRows.length) {
+            const merged = new Map<string, X01MultiSession>();
+            for (const row of canonicalRows) merged.set(String(row.matchId || row.id), row);
+            // Les lignes du lecteur X01 dédié sont plus riches : elles remplacent
+            // le fallback quand les deux parlent du même match.
+            for (const row of Array.isArray(data) ? data : []) merged.set(String(row.matchId || row.id), row);
+            data = Array.from(merged.values()).sort((a, b) => a.date - b.date);
+          }
+        } catch (e) {
+          console.warn("[X01MultiStatsTabFull] StatsHub canonical fallback failed", e);
+        }
+      }
+
+      if (!cancelled) React.startTransition(() => setSessions(Array.isArray(data) ? data : []));
     };
 
     // Si un snapshot synchrone existe, le premier paint ne doit pas concurrencer
@@ -2821,7 +2885,7 @@ export default function X01MultiStatsTabFull({
       if (rafA) window.cancelAnimationFrame(rafA);
       if (rafB) window.cancelAnimationFrame(rafB);
     };
-  }, [effectiveProfileId, playerName, historyVersion]);
+  }, [effectiveProfileId, playerName, historyVersion, records]);
 
   // Auto-défilement métriques
   React.useEffect(() => {

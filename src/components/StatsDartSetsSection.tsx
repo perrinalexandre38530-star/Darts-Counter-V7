@@ -30,6 +30,9 @@ import TrainingRadar from "./TrainingRadar";
 
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+// Anciennes parties X01 ne stockaient pas toujours le set de fléchettes utilisé.
+// Elles doivent tout de même apparaître dans MES FLÉCHETTES au lieu de disparaître.
+const X01_UNASSIGNED_DARTSET_ID = "__x01_history_unassigned__";
 
 function isConstrainedDartSetDevice(): boolean {
   try {
@@ -686,8 +689,7 @@ async function buildRecentMatchesMap(allHistory: any[], profileId: string, playe
     if (!mine) continue;
 
     const dsidRaw = resolveDartSetIdFromRecord(r, profileId, mine);
-    const dsid = canonicalDartSetIdForStats(dsidRaw, profileId);
-    if (!dsid) continue;
+    const dsid = canonicalDartSetIdForStats(dsidRaw || X01_UNASSIGNED_DARTSET_ID, profileId);
 
     const at =
       N(r?.endedAt, 0) ||
@@ -1069,6 +1071,7 @@ function canonicalizeRecentMap(map: Record<string, MiniMatch[]>, profileId?: str
 
 function resolveSetName(id: string, mySets: DartSet[], t: any) {
   const sid = String(id ?? "");
+  if (sid === X01_UNASSIGNED_DARTSET_ID) return "Historique X01";
   const mine = findSetByAnyId(sid, mySets);
   if (mine?.name) return String(mine.name);
 
@@ -1424,8 +1427,10 @@ async function computeAggFromHistory(allHistory: any[], profileId: string, playe
     const mine = resolvePlayerStatsRowFromRecord(r, profileId, playerName);
     if (!mine) continue;
 
-    const dsid = canonicalDartSetIdForStats(resolveDartSetIdFromRecord(r, profileId, mine), profileId);
-    if (!dsid) continue;
+    const dsid = canonicalDartSetIdForStats(
+      resolveDartSetIdFromRecord(r, profileId, mine) || X01_UNASSIGNED_DARTSET_ID,
+      profileId
+    );
 
     const row = (out[dsid] ||= {
       dartSetId: dsid,
@@ -2130,7 +2135,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
 
   // Le cache est lu pendant le render initial : aucune carte "Chargement..." si un
   // snapshot existe déjà, même avant le premier useEffect React.
-  const [loading, setLoading] = React.useState(() => !initialCache);
+  const [loading, setLoading] = React.useState(() => !(initialCache?.rows?.length));
   const [refreshing, setRefreshing] = React.useState(false);
   const [rows, setRows] = React.useState<any[]>(() => initialCache?.rows || []);
   const [err, setErr] = React.useState<string | null>(null);
@@ -2152,7 +2157,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
     setRecentBySet(cache?.recentBySet || {});
     setCachedVisuals(cache?.setVisuals || {});
     setHiddenStatsIds(readHiddenDartSetStats(activeProfileId));
-    setLoading(!cache);
+    setLoading(!(cache?.rows?.length));
     setRefreshing(false);
     setErr(null);
     setSelectedIdx(0);
@@ -2176,7 +2181,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
       const eventProfileId = String(event?.detail?.profileId || "").trim();
       if (eventProfileId && eventProfileId !== String(activeProfileId)) return;
       const cache = readDartSetStatsRenderCache(activeProfileId);
-      if (!cache) return;
+      if (!cache?.rows?.length) return;
       setRows(cache.rows || []);
       setRecentBySet(cache.recentBySet || {});
       setCachedVisuals(cache.setVisuals || {});
@@ -2202,7 +2207,8 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
     let cancelled = false;
     let idleId: any = null;
     let timerId: number | null = null;
-    const cacheAtStart = readDartSetStatsRenderCache(activeProfileId);
+    const cachedAtStartRaw = readDartSetStatsRenderCache(activeProfileId);
+    const cacheAtStart = cachedAtStartRaw?.rows?.length ? cachedAtStartRaw : null;
 
     async function run() {
       if (!activeProfileId || cancelled) return;

@@ -1009,6 +1009,154 @@ function normalizeRecordPlayers(
 }
 
 
+// ---------------------------------------------------------------------------
+// Stats détaillées : réconciliation d'identité joueur
+// ---------------------------------------------------------------------------
+// Le Dashboard sait déjà rattacher les anciennes parties par ID *ou par nom*.
+// Les anciens onglets détaillés, eux, lisent souvent des maps indexées par l'ancien
+// playerId. On crée ici une vue dérivée NON PERSISTÉE de l'historique où les alias
+// historiques du joueur sélectionné pointent aussi vers son ID canonique actuel.
+// Ainsi tous les onglets lisent exactement les mêmes parties que le Dashboard sans
+// réécrire History/IndexedDB ni toucher aux sauvegardes.
+function statsDetailNormName(value: any): string {
+  return String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function statsDetailNormId(value: any): string {
+  return String(value ?? "").replace(/^online:/, "").trim();
+}
+
+function statsDetailSameId(a: any, b: any): boolean {
+  const aa = statsDetailNormId(a);
+  const bb = statsDetailNormId(b);
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
+
+const STATS_DETAIL_PLAYER_ID_KEYS = [
+  "id", "playerId", "profileId", "selectedPlayerId", "pid", "uid", "userId",
+] as const;
+
+function collectStatsDetailAliases(root: any, targetId: string, targetName: string): Set<string> {
+  const aliases = new Set<string>();
+  if (targetId) aliases.add(statsDetailNormId(targetId));
+  const seen = new WeakSet<object>();
+
+  const walk = (value: any, depth: number) => {
+    if (!value || typeof value !== "object" || depth > 10) return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, depth + 1);
+      return;
+    }
+
+    const rowName = statsDetailNormName(
+      value?.name ?? value?.playerName ?? value?.displayName ?? value?.nickname ?? value?.profileName
+    );
+    const rowIds = STATS_DETAIL_PLAYER_ID_KEYS
+      .map((key) => value?.[key])
+      .filter((v) => v !== undefined && v !== null && String(v).trim());
+
+    // Un ID déjà canonique permet aussi de récupérer les autres alias présents
+    // sur la même ligne. Sinon le nom affiché sert de pont pour les vieux matchs.
+    const belongsToTarget =
+      rowIds.some((v) => statsDetailSameId(v, targetId)) ||
+      (!!targetName && !!rowName && rowName === targetName);
+    if (belongsToTarget) {
+      for (const id of rowIds) aliases.add(statsDetailNormId(id));
+    }
+
+    for (const child of Object.values(value)) walk(child, depth + 1);
+  };
+
+  walk(root, 0);
+  return aliases;
+}
+
+function canonicalizeStatsDetailRecord(rec: any, target: any): any {
+  if (!rec || !target) return rec;
+  const targetId = statsDetailNormId(target?.id ?? target?.profileId ?? target?.playerId);
+  const targetName = statsDetailNormName(
+    target?.name ?? target?.displayName ?? target?.nickname ?? target?.playerName
+  );
+  if (!targetId) return rec;
+
+  const aliases = collectStatsDetailAliases(rec, targetId, targetName);
+  const aliasList = Array.from(aliases).filter(Boolean);
+  const hasHistoricalAlias = aliasList.some((id) => !statsDetailSameId(id, targetId));
+
+  // Si le record porte déjà l'identité canonique et aucun ancien alias, on évite
+  // tout clone inutile (important sur mobile).
+  if (!hasHistoricalAlias) return rec;
+
+  const isAlias = (value: any) => aliasList.some((id) => statsDetailSameId(value, id));
+  const seen = new WeakMap<object, any>();
+  const idLikeKey = (key: string) =>
+    /^(playerId|profileId|selectedPlayerId|pid|uid|userId|winnerId|winnerPlayerId|winnerProfileId)$/i.test(key);
+
+  const clone = (value: any, depth: number, parentKey = ""): any => {
+    if (value === null || value === undefined || typeof value !== "object") {
+      if (idLikeKey(parentKey) && isAlias(value)) return targetId;
+      return value;
+    }
+    if (depth > 14) return value;
+    if (seen.has(value)) return seen.get(value);
+
+    if (Array.isArray(value)) {
+      const out: any[] = [];
+      seen.set(value, out);
+      for (let i = 0; i < value.length; i += 1) out.push(clone(value[i], depth + 1, parentKey));
+      return out;
+    }
+
+    const out: any = {};
+    seen.set(value, out);
+    const rowName = statsDetailNormName(
+      value?.name ?? value?.playerName ?? value?.displayName ?? value?.nickname ?? value?.profileName
+    );
+    const rowIds = STATS_DETAIL_PLAYER_ID_KEYS
+      .map((key) => value?.[key])
+      .filter((v) => v !== undefined && v !== null && String(v).trim());
+    const playerLike =
+      (!!targetName && !!rowName && rowName === targetName) ||
+      rowIds.some((v) => isAlias(v)) ||
+      ["playerId", "profileId", "selectedPlayerId", "pid"].some((key) => key in value);
+
+    for (const [key, child] of Object.entries(value)) {
+      if ((idLikeKey(key) || (key === "id" && playerLike)) && isAlias(child)) out[key] = targetId;
+      else out[key] = clone(child, depth + 1, key);
+    }
+
+    // Les stats détaillées sont souvent des objets { oldPlayerId: stats }.
+    // On conserve la clé historique ET on expose la même ligne sous l'ID actuel.
+    // Cela rend les composants legacy exact-ID compatibles sans modifier History.
+    for (const [key, child] of Object.entries(value)) {
+      if (!isAlias(key) || statsDetailSameId(key, targetId)) continue;
+      if (out[targetId] === undefined) out[targetId] = clone(child, depth + 1, targetId);
+    }
+
+    return out;
+  };
+
+  return clone(rec, 0);
+}
+
+function canonicalizeStatsDetailRecords(records: any[], target: any): any[] {
+  const source = Array.isArray(records) ? records : [];
+  if (!target) return source;
+  return source.map((rec) => canonicalizeStatsDetailRecord(rec, target));
+}
+
+
 /* ========== TRAINING X01 : SESSIONS LOCALSTORAGE ========== */
 
 type TimeRange = "all" | "day" | "week" | "month" | "year";
@@ -1240,7 +1388,7 @@ function safePercent(num: number, den: number) {
 }
 
 /* ---------- Hooks Historique ---------- */
-function useHistoryAPI(enabled = true): SavedMatch[] {
+function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] {
   const [rows, setRows] = React.useState<SavedMatch[]>([]);
 
   React.useEffect(() => {
@@ -1261,10 +1409,17 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
 
       // Keep fast: only hydrate records likely used by the dashboard.
       const NEED = new Set(["x01", "cricket", "killer", "challenge", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const focusedMode = (() => {
+        const key = String(focusMode || "").trim();
+        if (key === "x01_multi" || key === "x01_compare") return "x01";
+        if (key === "tour_de_l_horloge") return "clock";
+        return key;
+      })();
       const toHydrate: string[] = [];
       for (const r of arr) {
         const mode = classifyRecordMode(r);
         if (!NEED.has(mode)) continue;
+        const forceFullForFocusedMode = !!focusedMode && focusedMode !== "dashboard" && mode === focusedMode;
 
         const payload: any = (r as any)?.payload;
         const asRows = (src: any): any[] => Array.isArray(src)
@@ -1320,7 +1475,11 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
             hasEventArray([payload?.cricketEvents, payload?.cricketDartLog, payload?.dartLog]) ||
             compactHasPrefix(["cr_", "mk_"]);
         }
-        if (hasDashboardPayload) continue;
+        // Les onglets détaillés ont besoin du payload COMPLET, pas seulement du
+        // header suffisant pour le dashboard. Pour le mode actuellement ouvert,
+        // on hydrate donc toujours History.get(id). C'est la source de vérité
+        // qui contient les stats joueur détaillées.
+        if (hasDashboardPayload && !forceFullForFocusedMode) continue;
 
         const id = (r as any)?.id;
         if (typeof id === "string" && id) toHydrate.push(id);
@@ -1392,7 +1551,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
       mounted = false;
       window.removeEventListener("dc-history-updated", onUpd as any);
     };
-  }, [enabled]);
+  }, [enabled, focusMode]);
 
   return rows;
 }
@@ -5617,7 +5776,7 @@ React.useEffect(() => {
 const needsStatsHistory = heavyStatsReady && (
   (isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
     ? currentMode === "dashboard"
-    : !["dartsets", "history", "leaderboards", "x01_multi"].includes(currentMode)
+    : !["dartsets", "history", "leaderboards"].includes(currentMode)
 );
 
 // ==========================
@@ -5672,7 +5831,7 @@ React.useEffect(() => {
 // History/IndexedDB est désormais l'unique source lourde. On ne décompresse plus
 // le store complet une seconde fois pour récupérer une copie legacy de history.
 const storeHistory: SavedMatch[] = [];
-const apiHistory = useHistoryAPI(needsStatsHistory);
+const apiHistory = useHistoryAPI(needsStatsHistory, currentMode);
 
 const [storeProfiles, setStoreProfiles] = React.useState<PlayerLite[]>(() => {
   const src = Array.isArray(initialProfileSafety?.profiles) ? initialProfileSafety!.profiles : [];
@@ -6202,6 +6361,17 @@ const effectiveProfileId = String(
 // canonique pour éviter tout ReferenceError pendant le render.
 const activeProfileId = effectiveProfileId || null;
 
+// Vue canonique réservée aux onglets détaillés. Le Dashboard conserve son pipeline
+// rapide actuel ; les détails reçoivent les mêmes matchs mais avec les anciens
+// playerId du joueur sélectionné réconciliés vers son profil courant.
+const detailRecords = React.useMemo(() => {
+  if (!selectedPlayer) return records as any[];
+  return canonicalizeStatsDetailRecords(records as any[], {
+    ...selectedPlayer,
+    id: effectiveProfileId || selectedPlayer.id,
+  });
+}, [records, selectedPlayer, effectiveProfileId]);
+
 const { cachedDashboard, cachedIdentity } = useFastDashboardCache(effectiveProfileId || null);
 
 // Identité visuelle instantanée : même si loadStore()/IndexedDB n'a pas encore fini,
@@ -6234,8 +6404,8 @@ const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
 }, [selectedPlayer, cachedIdentity, effectiveProfileId, profile]);
 
 // Couronne de niveau : elle doit rester indépendante de l'onglet affiché.
-// X01 Multi / Mes fléchettes n'activent volontairement pas le gros pipeline
-// StatsHub, donc on récupère ici la même AVG3D canonique que la page Profils,
+// On récupère ici la même AVG3D canonique que la page Profils, indépendamment
+// du pipeline utilisé par l'onglet détaillé actuellement affiché,
 // avec réconciliation par nom si un ancien historique porte un autre playerId.
 const [canonicalStarAvg3D, setCanonicalStarAvg3D] = React.useState(0);
 React.useEffect(() => {
@@ -6703,7 +6873,7 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
   const hitsByNumber: Record<string, number> = {};
 
   const Nn = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
-  for (const r of records || []) {
+  for (const r of detailRecords || []) {
     const modeKey = classifyRecordMode(r);
     if (modeKey !== "killer") continue;
 
@@ -6789,7 +6959,7 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
     favNumber,
     favHits,
   };
-}, [currentMode, selectedPlayer?.id, records]);
+}, [currentMode, selectedPlayer?.id, detailRecords]);
 
 // ============================================================
 // ✅ SHANGHAI — période + stats agrégées (pour StatsShanghaiDashboard v2)
@@ -6987,8 +7157,8 @@ function buildShanghaiStatsFromRecords(
 
 const shanghaiStats = React.useMemo(() => {
   if (currentMode !== "shanghai") return buildShanghaiStatsFromRecords([], null, shPeriod);
-  return buildShanghaiStatsFromRecords(records, selectedPlayer?.id ?? null, shPeriod);
-}, [currentMode, records, selectedPlayer?.id, shPeriod]);
+  return buildShanghaiStatsFromRecords(detailRecords, selectedPlayer?.id ?? null, shPeriod);
+}, [currentMode, detailRecords, selectedPlayer?.id, shPeriod]);
 
 const [cricketStats, setCricketStats] =
   React.useState<CricketProfileStats | null>(() =>
@@ -9573,7 +9743,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement X01 multi…" />}>
                     <X01MultiStatsTabFull
-                      records={records}
+                      records={detailRecords}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name || selectedPlayer.displayName || selectedPlayer.nickname || null}
                     />
@@ -9634,7 +9804,8 @@ return (
                 <React.Suspense fallback={<LazyFallback label="Chargement Killer…" />}>
                   <StatsKiller
                     profiles={effectiveStoreProfiles as any}
-                    memHistory={records as any}
+                    memHistory={detailRecords as any}
+                    playerName={selectedPlayer?.name || selectedPlayer?.displayName || selectedPlayer?.nickname || null}
                     playerId={
                       mode === "active"
                         ? (activePlayerId ?? null)
@@ -9650,7 +9821,7 @@ return (
             {currentMode === "challenge" && (
               <div style={card}>
                 <ChallengeStatsPanel
-                  records={records as any[]}
+                  records={detailRecords as any[]}
                   playerId={selectedPlayer?.id || null}
                   playerName={selectedPlayer?.name || null}
                 />
@@ -9665,7 +9836,7 @@ return (
                   </div>
 
                   {(() => {
-            const golfMatchesRaw = records.filter((r) => classifyRecordMode(r) === "golf");
+            const golfMatchesRaw = detailRecords.filter((r) => classifyRecordMode(r) === "golf");
             const golfMatches = Array.from(
               new Map(
                 golfMatchesRaw.map((m: any) => {
@@ -9811,6 +9982,7 @@ return (
               const playerIdxInMatch = getPlayerIndexInMatch(m, currentPid);
 
               const byPlayer =
+                getByPidOrIndex(state?.statsByPlayerById, currentPid, playerIdxInMatch) ||
                 getByPidOrIndex(state?.statsByPlayer, currentPid, playerIdxInMatch) ||
                 getByPidOrIndex(s?.playerStats, currentPid, playerIdxInMatch) ||
                 getByPidOrIndex(s?.perPlayer, currentPid, playerIdxInMatch) ||
@@ -9836,7 +10008,9 @@ return (
 
               const darts =
                 pick(src, ["darts", "thrown", "throws"]) ||
-                pick(rankingPlayer, ["darts", "thrown", "throws"]);
+                readNum(src?.darts?.thrown) ||
+                pick(rankingPlayer, ["darts", "thrown", "throws"]) ||
+                readNum(rankingPlayer?.darts?.thrown);
 
               const rank =
                 readNum(rankingPlayer?.rank) ||
@@ -9857,12 +10031,12 @@ return (
               const holes3rdFinal = holes3rdRaw || (rank === 3 ? 1 : 0);
 
               return {
-                s: pick(src, ["s", "simple", "singles", "par"]),
-                d: pick(src, ["d", "double", "doubles", "bogey"]),
-                t: pick(src, ["t", "triple", "triples", "doubleBogey"]),
-                miss: pick(src, ["miss", "m", "misses"]),
-                bull: pick(src, ["bull", "b"]),
-                dbull: pick(src, ["dbull", "dBull", "doubleBull", "db"]),
+                s: pick(src, ["s", "simple", "singles", "par"]) || pick(src?.special, ["s", "simple", "singles", "par"]),
+                d: pick(src, ["d", "double", "doubles", "bogey"]) || pick(src?.special, ["d", "double", "doubles", "bogey"]),
+                t: pick(src, ["t", "triple", "triples", "doubleBogey"]) || pick(src?.special, ["t", "triple", "triples", "doubleBogey"]),
+                miss: pick(src, ["miss", "m", "misses"]) || pick(src?.special, ["miss", "m", "misses"]),
+                bull: pick(src, ["bull", "b"]) || pick(src?.special, ["bull", "b"]),
+                dbull: pick(src, ["dbull", "dBull", "doubleBull", "db"]) || pick(src?.special, ["dbull", "dBull", "doubleBull", "db"]),
                 turns: pick(src, ["turns", "tours"]),
                 hit1: pick(src, ["hit1", "hits1", "firstHits", "p1"]),
                 hit2: pick(src, ["hit2", "hits2", "secondHits", "p2"]),
@@ -10039,7 +10213,7 @@ return (
               <div style={card}>
                 <div style={{ padding: 12 }}>
                   <React.Suspense fallback={<div style={{ color: T.text70, padding: 18 }}>Chargement des statistiques CARGO…</div>}>
-                    <CargoStatsTabFull records={records} playerId={selectedPlayer.id} playerName={selectedPlayer.name} />
+                    <CargoStatsTabFull records={detailRecords} playerId={selectedPlayer.id} playerName={selectedPlayer.name} />
                   </React.Suspense>
                 </div>
               </div>
@@ -10049,7 +10223,7 @@ return (
               <div style={card}>
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement OCEAN CONTROL…" />}>
-                    <OceanControlStatsTabFull records={records as any[]} playerId={selectedPlayer.id} playerName={selectedPlayer.name} />
+                    <OceanControlStatsTabFull records={detailRecords as any[]} playerId={selectedPlayer.id} playerName={selectedPlayer.name} />
                   </React.Suspense>
                 ) : (
                   <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher ses statistiques OCEAN CONTROL.</div>
@@ -10061,7 +10235,7 @@ return (
               <div style={card}>
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement DARTS FOOTBALL…" />}>
-                    <FootballStatsTabFull records={records as any[]} playerId={selectedPlayer.id} playerName={selectedPlayer.name} />
+                    <FootballStatsTabFull records={detailRecords as any[]} playerId={selectedPlayer.id} playerName={selectedPlayer.name} />
                   </React.Suspense>
                 ) : (
                   <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher ses statistiques DARTS FOOTBALL.</div>
@@ -10178,8 +10352,9 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement Les 5 vies…" />}>
                     <FiveLivesStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
+                      playerName={selectedPlayer.name || selectedPlayer.displayName || selectedPlayer.nickname || null}
                     />
                   </React.Suspense>
                 ) : (
@@ -10194,7 +10369,7 @@ return (
               <div style={card}>
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement GROS 6…" />}>
-                    <Gros6StatsTabFull records={records as any[]} playerId={selectedPlayer.id} />
+                    <Gros6StatsTabFull records={detailRecords as any[]} playerId={selectedPlayer.id} />
                   </React.Suspense>
                 ) : (
                   <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher les statistiques GROS 6.</div>
@@ -10207,7 +10382,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement BOB’S 27…" />}>
                     <Bobs27StatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10225,7 +10400,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement BOWLING…" />}>
                     <BowlingStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10243,7 +10418,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement HALVE-IT…" />}>
                     <HalveItStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10261,7 +10436,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement SHOOTER…" />}>
                     <ShooterStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10279,7 +10454,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement DARTS RACER…" />}>
                     <DartsRacerStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10297,7 +10472,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement DARTS POKER…" />}>
                     <DartsPokerStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10315,7 +10490,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement PRISONER…" />}>
                     <PrisonerStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10333,7 +10508,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement LOTERIE…" />}>
                     <LoterieStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10351,7 +10526,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement CAPITAL…" />}>
                     <CapitalStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
                     />
@@ -10368,7 +10543,7 @@ return (
               <div style={card}>
                 {selectedPlayer ? (
                   <CradosStatsTabFull
-                    records={records as any[]}
+                    records={detailRecords as any[]}
                     playerId={selectedPlayer.id}
                     playerName={selectedPlayer.name}
                   />
@@ -10385,7 +10560,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement SCRAM…" />}>
                     <ScramStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                     />
                   </React.Suspense>
@@ -10402,7 +10577,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement ATTRAPE-MOI…" />}>
                     <AttrapeMoiStatsTabFull
-                      records={records as any[]}
+                      records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                     />
                   </React.Suspense>
@@ -10455,7 +10630,7 @@ return (
                     };
                     const pid = String(selectedPlayer.id);
                     const modeAliases = aliases[String(currentMode)] || [String(currentMode)];
-                    const rows = (records || []).filter((r: any) => {
+                    const rows = (detailRecords || []).filter((r: any) => {
                       const blob = [r?.kind, r?.mode, r?.game, r?.variantId, r?.summary?.mode, r?.payload?.kind, r?.payload?.mode, r?.payload?.originalMode, r?.payload?.variantId, r?.payload?.summary?.mode]
                         .filter(Boolean).map((x: any) => lc(x)).join(" ");
                       if (!modeAliases.some((a) => blob.includes(a))) return false;
@@ -10843,7 +11018,7 @@ return (
             {currentMode === "tour_de_l_horloge" && (
               <div style={card}>
                 <StatsClockDashboard
-                  records={records as any[]}
+                  records={detailRecords as any[]}
                   playerId={selectedPlayer?.id ?? null}
                   playerName={selectedPlayer?.name ?? null}
                 />

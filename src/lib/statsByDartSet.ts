@@ -53,6 +53,8 @@ export type DartSetAggOut = DartSetAgg & {
 
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 
+const X01_UNASSIGNED_DARTSET_ID = "__x01_history_unassigned__";
+
 function isConstrainedDartStatsDevice(): boolean {
   try {
     const nav: any = navigator;
@@ -813,8 +815,7 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
           // summary existe mais pas de dartSetId → fallback raw
           if (!profileId && !pid) continue;
           const raw = computeFromRaw(r, String(pid || profileId));
-          const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp);
-          if (!fallbackSetId) continue;
+          const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp) || X01_UNASSIGNED_DARTSET_ID;
           const sid = canonicalDartSetId(fallbackSetId, String(pid || profileId || ""));
           const a = (agg[sid] ||= {
             dartSetId: sid,
@@ -966,8 +967,7 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
     // ✅ cas 2 : pas de summary du tout → raw obligatoire
     if (profileId) {
       const raw = computeFromRaw(r, String(profileId));
-      const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(profileId), null);
-      if (!fallbackSetId) continue;
+      const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(profileId), null) || X01_UNASSIGNED_DARTSET_ID;
       const sid = canonicalDartSetId(fallbackSetId, String(profileId || ""));
 
       const a = (agg[sid] ||= {

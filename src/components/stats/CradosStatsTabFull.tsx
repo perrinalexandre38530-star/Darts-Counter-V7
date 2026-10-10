@@ -35,7 +35,23 @@ function isFinished(r: any) {
   if (status === "finished" || r?.summary?.finished === true || r?.winnerId || r?.summary?.winnerId || r?.payload?.stateSnapshot?.phase === "finished") return true;
   return true;
 }
-function playerStat(r: any, pid: string) {
+function normPlayerName(v: any) { return String(v ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+function playerAliases(r: any, pid: string, playerName?: string) {
+  const aliases = new Set<string>([String(pid || "")].filter(Boolean));
+  const wanted = normPlayerName(playerName);
+  const pools = [r?.players, r?.payload?.players, r?.payload?.stateSnapshot?.players, r?.resume?.state?.players, r?.summary?.players, r?.summary?.rankings, r?.payload?.summary?.players, r?.payload?.summary?.rankings];
+  for (const pool of pools) {
+    const rows = Array.isArray(pool) ? pool : pool && typeof pool === "object" ? Object.values(pool) : [];
+    for (const row of rows as any[]) {
+      const ids = [row?.id, row?.playerId, row?.profileId, row?.pid, row?.uid].filter((x) => x !== undefined && x !== null).map(String);
+      const name = normPlayerName(row?.name ?? row?.playerName ?? row?.displayName ?? row?.nickname);
+      if (ids.includes(String(pid)) || (!!wanted && !!name && wanted === name)) ids.forEach((id) => aliases.add(id));
+    }
+  }
+  return aliases;
+}
+function playerStat(r: any, pid: string, playerName?: string) {
+  const aliases = playerAliases(r, pid, playerName);
   const pools = [
     r?.payload?.stats?.players,
     r?.summary?.perPlayer,
@@ -44,18 +60,21 @@ function playerStat(r: any, pid: string) {
     r?.resume?.state?.statsByPlayer,
   ];
   for (const pool of pools) {
-    if (pool && !Array.isArray(pool) && typeof pool === "object" && pool[pid]) return obj(pool[pid]);
+    if (pool && !Array.isArray(pool) && typeof pool === "object") {
+      for (const alias of aliases) if ((pool as any)[alias]) return obj((pool as any)[alias]);
+    }
     if (Array.isArray(pool)) {
-      const hit = pool.find((x: any) => String(x?.id || x?.playerId || x?.profileId || "") === pid);
+      const hit = pool.find((x: any) => aliases.has(String(x?.id || x?.playerId || x?.profileId || x?.pid || "")) || (!!playerName && normPlayerName(x?.name ?? x?.playerName ?? x?.displayName) === normPlayerName(playerName)));
       if (hit) return obj(hit);
     }
   }
   return {};
 }
-function recordHasPlayer(r: any, pid: string) {
-  if (Object.keys(playerStat(r, pid)).length) return true;
+function recordHasPlayer(r: any, pid: string, playerName?: string) {
+  if (Object.keys(playerStat(r, pid, playerName)).length) return true;
+  const aliases = playerAliases(r, pid, playerName);
   const pools = [r?.players, r?.payload?.players, r?.payload?.stateSnapshot?.players, r?.resume?.state?.players];
-  return pools.some((pool: any) => Array.isArray(pool) && pool.some((p: any) => String(p?.id || p?.playerId || p?.profileId || "") === pid));
+  return pools.some((pool: any) => Array.isArray(pool) && pool.some((p: any) => aliases.has(String(p?.id || p?.playerId || p?.profileId || p?.pid || "")) || (!!playerName && normPlayerName(p?.name ?? p?.playerName ?? p?.displayName) === normPlayerName(playerName))));
 }
 function winnerId(r: any) { return String(r?.winnerId || r?.summary?.winnerId || r?.payload?.stateSnapshot?.winnerId || r?.resume?.state?.winnerId || ""); }
 function playedAt(r: any) { return n(r?.finishedAt || r?.updatedAt || r?.createdAt || r?.summary?.finishedAt); }
@@ -83,11 +102,11 @@ function SectionTitle({ children, sub }: any) {
 export default function CradosStatsTabFull({ records, playerId, playerName }: { records: any[]; playerId: string; playerName?: string }) {
   const pid = String(playerId || "");
   const rows = React.useMemo(() => (Array.isArray(records) ? records : [])
-    .filter((r: any) => modeOf(r).includes("crados") && recordHasPlayer(r, pid) && isFinished(r))
-    .sort((a: any, b: any) => playedAt(a) - playedAt(b)), [records, pid]);
+    .filter((r: any) => modeOf(r).includes("crados") && recordHasPlayer(r, pid, playerName) && isFinished(r))
+    .sort((a: any, b: any) => playedAt(a) - playedAt(b)), [records, pid, playerName]);
 
   const matchRows = React.useMemo(() => rows.map((rec: any, index: number) => {
-    const st = playerStat(rec, pid);
+    const st = playerStat(rec, pid, playerName);
     const won = winnerId(rec) === pid;
     return {
       id: String(rec?.id || rec?.matchId || `${index}`),
@@ -102,7 +121,7 @@ export default function CradosStatsTabFull({ records, playerId, playerName }: { 
       bestImpact: n(st.bestVisitImpact), maxDirt: n(st.maxDirt), eliminations: n(st.eliminationsCaused), legs: n(st.legsWon),
       duration: n(rec?.summary?.durationMs || (rec?.finishedAt && rec?.createdAt ? rec.finishedAt - rec.createdAt : 0)),
     };
-  }), [rows, pid]);
+  }), [rows, pid, playerName]);
 
   const agg = React.useMemo(() => matchRows.reduce((a: any, r: any) => {
     a.matches += 1; a.wins += r.won ? 1 : 0;

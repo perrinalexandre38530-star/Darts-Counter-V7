@@ -1840,7 +1840,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         let x01MultiTabMatches = emptyX01CompareMatchBreakdown();
         try {
           if (!hasX01ContextFilters) {
-            const tabSessions = await loadX01MultiSessions(String(targetProfile.id));
+            const tabSessions = await loadX01MultiSessions(String(targetProfile.id), targetProfile.name);
             x01MultiTabMatches = computeX01CompareMatchBreakdownFromMultiTabSessions(tabSessions as any[], String(targetProfile.id), byPeriod);
           }
         } catch (e) {
