@@ -367,6 +367,12 @@ export function getX01ProfileStarData(profile: any, statsById: Record<string, an
     return { kind: "avg3d", value: Math.max(...avgValues) };
   }
 
+  const isBotProfile = Boolean(
+    profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
+    String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
+  );
+  if (!isBotProfile) return null;
+
   const levelCandidates: any[] = collectNumbersByKeys(profile, levelKeys, 5);
   for (const id of x01ProfileIdentityKeys(profile)) {
     const s = statsById?.[id] || {};

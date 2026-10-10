@@ -394,46 +394,23 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
   return task;
 }
 
-
-function stablePublicUserIdFromSession(session: Session | null): string {
-  try {
-    const user: any = session?.user || null;
-    const meta: any = user?.user_metadata || {};
-    // Une pseudo-session issue du bridge NAS transporte l'UUID Supabase ici.
-    // C'est cet UUID qui doit servir de scope local unique sur TOUS les boots.
-    return String(
-      meta?.supabase_user_id ||
-      meta?.supabaseUserId ||
-      user?.id ||
-      ""
-    ).trim();
-  } catch {
-    return String((session as any)?.user?.id || "").trim();
-  }
-}
-
-function canonicalNasUserIdFromCachedSession(s: any): string {
-  return String(s?.user?.id || s?.userId || "").trim();
-}
-
 function applyAuthFromSession(
   setState: React.Dispatch<React.SetStateAction<AuthState>>,
   session: Session | null,
   opts?: { ready?: boolean }
 ) {
   const user = session?.user ?? null;
-  const stableUserId = stablePublicUserIdFromSession(session);
   setApiAccessToken((session as any)?.access_token || "");
 
   if (user) {
     // IMPORTANT: une session résiduelle ne doit jamais annuler un logout explicite.
     // Le verrou est retiré uniquement par une action volontaire de connexion/signup/OAuth.
     try {
-      setStorageUser(stableUserId || String(user.id || ""));
-      localStorage.setItem("dc_user_id", stableUserId || String(user.id || ""));
+      setStorageUser(String(user.id || ""));
+      localStorage.setItem("dc_user_id", String(user.id || ""));
     } catch {}
     try {
-      (window as any).__dc_last_signed_in_user_id = stableUserId || String(user.id || "");
+      (window as any).__dc_last_signed_in_user_id = String(user.id || "");
     } catch {}
     setState((s) => ({
       ...s,
@@ -496,12 +473,7 @@ function hasRecoverableNasAuth(): boolean {
 
 function authSessionToPseudoSupabaseSession(s: any): Session | null {
   try {
-    const canonicalNasUserId = canonicalNasUserIdFromCachedSession(s);
-    const supabaseUserId = String(s?.supabaseUserId || "").trim();
-    // IMPORTANT : le hook Auth représente l'identité publique Supabase.
-    // Le bridge NAS reste un alias technique dans user_metadata. Sans ceci,
-    // le même compte alternait entre store:<usr_nas> et store:<uuid_supabase>.
-    const uid = supabaseUserId || canonicalNasUserId;
+    const uid = String(s?.user?.id || s?.userId || "").trim();
     if (!uid) return null;
     const degraded = s?.degradedMode === true || String(s?.authProvider || "") === "supabase_failover";
     return {
@@ -516,9 +488,7 @@ function authSessionToPseudoSupabaseSession(s: any): Session | null {
           nickname: s?.user?.nickname || s?.profile?.displayName || s?.profile?.nickname || "Player",
           auth_provider: s?.authProvider || (degraded ? "supabase_failover" : "nas"),
           degraded_mode: degraded,
-          supabase_user_id: supabaseUserId || null,
-          canonical_user_id: canonicalNasUserId || null,
-          nas_user_id: canonicalNasUserId || null,
+          supabase_user_id: s?.supabaseUserId || null,
         },
       },
     } as any;

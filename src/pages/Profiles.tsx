@@ -2498,13 +2498,23 @@ export default function Profiles({
     }
   }
 
+  function currentAuthUserId(): string {
+    return String((auth?.user as any)?.id || readCachedAuthUser().id || "").trim();
+  }
+
   function isLinkedOnlineProfile(profile: any): boolean {
-    const authUid = String(auth?.user?.id || "").trim();
+    const authUid = currentAuthUserId();
     if (!profile || !authUid) return false;
     const pid = String(profile?.id || "").trim();
     const pi = ((profile as any)?.privateInfo || {}) as any;
-    const linkedUid = String(pi?.onlineUserId || "").trim();
-    return pid === authUid || linkedUid === authUid;
+    return [
+      pid,
+      pi?.onlineUserId,
+      pi?.online_user_id,
+      pi?.accountUserId,
+      (profile as any)?.onlineUserId,
+      (profile as any)?.accountUserId,
+    ].some((value) => String(value || "").trim() === authUid);
   }
 
   async function changeAvatar(id: string, file: File) {
@@ -2851,6 +2861,54 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
   }
   
   const active = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
+
+  // AUTO-RÉPARATION COMPTE -> PROFIL ACTIF.
+  // Le compte courant possède une identité canonique unique (auth.user.id).
+  // Si activeProfileId a été cassé par un ancien build, on rattache uniquement
+  // le profil explicitement lié à CET id, puis l'email en secours.
+  React.useEffect(() => {
+    if (active || auth.status !== "signed_in") return;
+    const list = (Array.isArray(stableProfiles) ? stableProfiles : []).filter((profile: any) => profile && !profile?.isBot);
+    if (!list.length) return;
+
+    const authUid = currentAuthUserId();
+    const cachedAuth = readCachedAuthUser();
+    const authEmail = String((auth.user as any)?.email || cachedAuth.email || "").trim().toLowerCase();
+
+    const linked = authUid ? list.find((profile: any) => {
+      const pi: any = profile?.privateInfo || {};
+      return [
+        profile?.id,
+        profile?.onlineUserId,
+        profile?.accountUserId,
+        pi?.onlineUserId,
+        pi?.online_user_id,
+        pi?.accountUserId,
+      ].some((value) => String(value || "").trim() === authUid);
+    }) : null;
+
+    const byEmail = !linked && authEmail
+      ? list.find((profile: any) => {
+          const pi: any = profile?.privateInfo || {};
+          const emails = [pi?.onlineEmail, pi?.email, profile?.email]
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean);
+          return emails.includes(authEmail);
+        })
+      : null;
+
+    const target = linked || byEmail || (list.length === 1 ? list[0] : null);
+    const targetId = String(target?.id || "").trim();
+    if (!targetId) return;
+
+    setActiveProfile(targetId);
+    try {
+      window.dispatchEvent(new CustomEvent("dc-profile-active-repaired", {
+        detail: { profileId: targetId, reason: linked ? "auth_id" : byEmail ? "auth_email" : "single_local_profile" },
+      }));
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, auth.status, (auth.user as any)?.id, (auth.user as any)?.email, activeProfileId, (stableProfiles as any[])?.length]);
 
   // Rattrapage onboarding : si le compte vient d'être créé et que le hook auth
   // n'était pas encore prêt au moment du clic, on lie quand même le profil local
@@ -3788,6 +3846,18 @@ React.useEffect(() => {
         setToast({ type: "success", message: "Profil local déjà chargé" });
       }}
     />
+  ) : auth.status === "signed_in" && !forceAuth ? (
+    <div style={{ display: "grid", gap: 10, padding: 14 }}>
+      <div style={{ fontWeight: 900, color: theme.primary, fontSize: 16 }}>
+        {t("profiles.account.recovering.title", "Récupération de ton profil connecté")}
+      </div>
+      <div className="subtitle" style={{ color: theme.textSoft, lineHeight: 1.45 }}>
+        {t(
+          "profiles.account.recovering.subtitle",
+          "Ton compte est bien connecté. MULTISPORTS SCORING rattache automatiquement le bon profil joueur et ses données locales."
+        )}
+      </div>
+    </div>
   ) : (
     <UnifiedAuthBlock
       profiles={stableProfiles as any}

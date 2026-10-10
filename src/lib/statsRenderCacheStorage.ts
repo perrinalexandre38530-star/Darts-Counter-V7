@@ -6,7 +6,14 @@
 
 const OBSOLETE_DERIVED_PREFIXES = [
   "dc_stats_dartsets_render_cache_v1:",
+  "dc_stats_dartsets_render_cache_v2:",
+  "dc_stats_dartsets_render_cache_v3:",
   "dc_stats_dartsets_quick_v2:",
+  "dc_stats_dartsets_quick_v3:",
+  "dc_stats_dartsets_quick_v4:",
+  "dc_x01_multi_quick_v1:",
+  "dc_x01_multi_quick_v2:",
+  "dc_x01_multi_quick_v3:",
   "dc_stats_render_profile_v3:",
   "dc_stats_render_cache_v1",
   "dc_stats_render_cache_v2",
@@ -16,10 +23,9 @@ const OBSOLETE_DERIVED_PREFIXES = [
 ];
 
 const CURRENT_LIGHT_PREFIXES = [
-  "dc_stats_dartsets_render_cache_v3:",
-  "dc_stats_dartsets_quick_v4:",
-  "dc_x01_multi_quick_v2:",
-  "dc_x01_multi_quick_v3:",
+  "dc_stats_dartsets_render_cache_v4:",
+  "dc_stats_dartsets_quick_v5:",
+  "dc_x01_multi_quick_v4:",
   "dc_stats_x01_compare_samples_v2:",
   "dc_stats_x01_compare_samples_v3:",
   "dc_stats_cricket_profile_v2:",
@@ -27,10 +33,16 @@ const CURRENT_LIGHT_PREFIXES = [
   "dc_stats_render_profile_v4:",
 ];
 
-// Le cache complet X01 Multi existe déjà dans IndexedDB. Sa copie localStorage
-// peut dépasser 1 Mo et empêcher tous les petits snapshots synchrones de s'écrire.
-const REDUNDANT_LARGE_PREFIXES = ["dc_x01_multi_sessions_v1:"];
+// Le cache complet X01 Multi existe déjà dans IndexedDB. Toute copie
+// localStorage de ses anciennes versions est donc strictement redondante.
+const REDUNDANT_LARGE_PREFIXES = [
+  "dc_x01_multi_sessions_v1:",
+  "dc_x01_multi_sessions_v2:",
+  "dc_x01_multi_sessions_v3:",
+  "dc_x01_multi_sessions_v4:",
+];
 const LAST_RESORT_DERIVED_PREFIXES = ["dc-history-ui-cache-v1"];
+let __obsoleteDerivedCachesPurged = false;
 
 function isQuotaError(error: any): boolean {
   const name = String(error?.name || "");
@@ -58,6 +70,32 @@ function removeByPrefixes(prefixes: string[], exceptKey = ""): number {
       removed += 1;
     } catch {}
   }
+  return removed;
+}
+
+
+export function purgeObsoleteDerivedStatsCaches(): number {
+  if (typeof localStorage === "undefined") return 0;
+  const removed = removeByPrefixes([...OBSOLETE_DERIVED_PREFIXES, ...REDUNDANT_LARGE_PREFIXES]);
+  __obsoleteDerivedCachesPurged = true;
+  return removed;
+}
+
+function ensureObsoleteDerivedStatsCachesPurged(): void {
+  if (__obsoleteDerivedCachesPurged) return;
+  try { purgeObsoleteDerivedStatsCaches(); } catch {}
+}
+
+/**
+ * Réserve d'urgence pour les écritures critiques (auth/session).
+ * Ne supprime QUE des caches recalculables. Historique, profils, auth et
+ * sauvegardes ne font jamais partie de ces préfixes.
+ */
+export function reclaimDerivedStatsStorageForCriticalWrite(): number {
+  if (typeof localStorage === "undefined") return 0;
+  let removed = purgeObsoleteDerivedStatsCaches();
+  removed += removeByPrefixes(CURRENT_LIGHT_PREFIXES);
+  removed += removeByPrefixes(LAST_RESORT_DERIVED_PREFIXES);
   return removed;
 }
 
@@ -115,6 +153,7 @@ export function removeDerivedStatsCache(key: string): void {
 }
 
 export function writeDerivedStatsCacheRaw(key: string, raw: string, maxChars: number): boolean {
+  ensureObsoleteDerivedStatsCachesPurged();
   const cacheKey = String(key || "");
   const payload = String(raw || "");
   if (!cacheKey || typeof localStorage === "undefined") return false;
