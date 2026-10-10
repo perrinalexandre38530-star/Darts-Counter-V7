@@ -1987,11 +1987,10 @@ function toDetailRecord(id: string, payloadCompressed: string, rec: any) {
   };
 }
 
-const legacyIdbMigrDoneScopes = new Set<string>();
+let legacyIdbMigrDone = false;
 async function migrateLegacyIdbOnce() {
-  const scope = historyDbName();
-  if (legacyIdbMigrDoneScopes.has(scope)) return;
-  legacyIdbMigrDoneScopes.add(scope);
+  if (legacyIdbMigrDone) return;
+  legacyIdbMigrDone = true;
 
   try {
     const db = await openDB();
@@ -2040,12 +2039,11 @@ async function migrateLegacyIdbOnce() {
 /* =========================
    Migration depuis localStorage (une seule fois)
 ========================= */
-const migrDoneScopes = new Set<string>();
+let migrDone = false;
 
 async function migrateFromLocalStorageOnce() {
-  const scope = historyDbName();
-  if (migrDoneScopes.has(scope)) return;
-  migrDoneScopes.add(scope);
+  if (migrDone) return;
+  migrDone = true;
 
   await migrateLegacyIdbOnce().catch(() => {});
 

@@ -93,15 +93,6 @@ export function resolveProfileStarScore(profile: any, extraCandidates: any[] = [
     if (Number.isFinite(n) && n > 0 && n <= 180) return n;
   }
 
-  const isBotProfile = Boolean(
-    profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
-    String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
-  );
-
-  // Les niveaux/starring enregistrés ne sont un fallback valide que pour les bots.
-  // Pour un humain la couronne est exclusivement issue de son AVG3D X01.
-  if (!isBotProfile) return 0;
-
   const levelCandidates = [
     profile?.profileStarring,
     profile?.profileStars,

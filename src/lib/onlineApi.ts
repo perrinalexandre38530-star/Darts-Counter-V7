@@ -58,7 +58,6 @@ import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 import { loadStoragePrefs } from "./storagePlans";
 import { buildMissingSocialProfilePatch, buildSocialProfileCreatePayload, extractSocialProfileSeed } from "./socialProfileImport";
 import { scheduleRuntimeIdle } from "./runtimePerformance";
-import { purgeObsoleteDerivedStatsCaches, reclaimDerivedStatsStorageForCriticalWrite } from "./statsRenderCacheStorage";
 
 export const CLOUD_STORE_KEY = "main";
 
@@ -407,56 +406,8 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 
 function loadAuthFromLS(): AuthSession | null {
   if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(LS_AUTH_KEY);
-    return safeParse<AuthSession | null>(raw, null);
-  } catch {
-    return null;
-  }
-}
-
-function isAuthStorageQuotaError(error: any): boolean {
-  const name = String(error?.name || "");
-  const code = Number(error?.code || 0);
-  return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED" || code === 22 || code === 1014;
-}
-
-/**
- * La session de compte possède UNE source navigateur : localStorage.
- * On ne la bascule jamais dans sessionStorage, car cela créait deux identités
- * concurrentes et pouvait faire charger un autre namespace de profil/historique.
- */
-function persistAuthSessionCritical(session: AuthSession | null): void {
-  if (typeof window === "undefined") return;
-
-  if (!session) {
-    try { window.localStorage.removeItem(LS_AUTH_KEY); } catch {}
-    try { window.sessionStorage.removeItem(LS_AUTH_KEY); } catch {}
-    return;
-  }
-
-  const raw = JSON.stringify(session);
-  const tryLocal = (): boolean => {
-    try {
-      window.localStorage.setItem(LS_AUTH_KEY, raw);
-      // Nettoyage d’un éventuel fallback créé par les builds V5/V6.
-      try { window.sessionStorage.removeItem(LS_AUTH_KEY); } catch {}
-      return true;
-    } catch (error) {
-      return false;
-    }
-  };
-
-  if (tryLocal()) return;
-  try { purgeObsoleteDerivedStatsCaches(); } catch {}
-  if (tryLocal()) return;
-  try { reclaimDerivedStatsStorageForCriticalWrite(); } catch {}
-  if (tryLocal()) return;
-
-  // Ne jamais supprimer une session locale existante pour créer une seconde
-  // session dans sessionStorage. Si l’écriture reste impossible, on garde la
-  // dernière session locale valide et la session courante reste en mémoire.
-  console.warn("[onlineApi] stockage local saturé : session existante conservée après purge des caches dérivés.");
+  const raw = window.localStorage.getItem(LS_AUTH_KEY);
+  return safeParse<AuthSession | null>(raw, null);
 }
 
 function authIdentitySignature(session: AuthSession | null | undefined): string {
@@ -479,7 +430,8 @@ function saveAuthToLS(session: AuthSession | null) {
   const previousSignature = authIdentitySignature(previous);
   const nextSignature = authIdentitySignature(session);
 
-  persistAuthSessionCritical(session);
+  if (!session) window.localStorage.removeItem(LS_AUTH_KEY);
+  else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
 
   if (previousSignature === nextSignature) return;
 

@@ -1253,34 +1253,15 @@ function normalizeUserId(value: unknown): string | null {
 function detectUserIdFromAuthLS(): string | null {
   if (typeof localStorage === "undefined") return null;
   try {
-    const explicitScope = normalizeUserId(localStorage.getItem("dc_storage_user_id_v1"));
-    const raw = localStorage.getItem("dc_online_auth_supabase_v1") || "";
-
-    if (raw) {
-      if (raw.startsWith("{") || raw.startsWith("[")) {
-        const parsed = safeJsonParse<any>(raw, null);
-        // UNE identité de stockage : l'id canonique porté par la session compte.
-        // supabaseUserId reste un alias réseau et ne doit jamais créer un second
-        // namespace local de profil/historique.
-        const canonical = normalizeUserId(
-          parsed?.userId ||
-          parsed?.user?.id ||
-          parsed?.session?.user?.id ||
-          parsed?.canonicalUserId
-        );
-        if (canonical) {
-          if (explicitScope !== canonical) {
-            try { localStorage.setItem("dc_storage_user_id_v1", canonical); } catch {}
-          }
-          return canonical;
-        }
-      } else {
-        const canonical = normalizeUserId(raw);
-        if (canonical) return canonical;
-      }
+    // Littéraux volontaires : cette fonction peut être appelée très tôt pendant
+    // un cycle ESM, avant l'initialisation des constantes du module.
+    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_online_auth_supabase_v1");
+    if (!raw) return null;
+    if (raw.startsWith("{") || raw.startsWith("[")) {
+      const parsed = safeJsonParse<any>(raw, null);
+      return normalizeUserId(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id);
     }
-
-    return explicitScope;
+    return normalizeUserId(raw);
   } catch {
     return null;
   }

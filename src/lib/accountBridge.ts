@@ -11,6 +11,7 @@
 // ============================================
 
 import type { Profile } from "./types";
+import { loadStatsQuickMirrorSync } from "./stats/rebuildStatsFromHistory";
 
 // ------------------------------------------------------------
 // Helpers privateInfo
@@ -95,6 +96,7 @@ function buildPrivateInfoPatch(user: any, onlineProfile?: any): PrivateInfoRaw {
   const patch = withDefinedEntries({
     ...pi,
     onlineUserId: String(user?.id || ""),
+    accountIdentityAliases: accountIdentityAliases(user),
     onlineEmail: email || String(pi?.onlineEmail || pi?.email || "").trim().toLowerCase(),
     nickname: pi?.nickname ?? getOnlineNickname(user, onlineProfile),
     firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? pi?.firstName,
@@ -160,7 +162,8 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
       preferences: nextPrefs,
       createdAt: previous?.createdAt || Date.now(),
       updatedAt: Date.now(),
-      // Compat legacy uniquement : les statistiques affichées sont dérivées de History.
+      // Compat legacy uniquement. Les écrans de statistiques ne lisent pas ce champ :
+      // History/statsBridge reste la source de vérité.
       stats: { ...(previous?.stats || {}) },
     },
     nextPI
@@ -290,10 +293,77 @@ function profileAliasIds(profile: any): string[] {
     ...(Array.isArray((pi as any)?.legacyProfileIds) ? (pi as any).legacyProfileIds : []),
     ...(Array.isArray((profile as any)?.linkedLocalProfileIds) ? (profile as any).linkedLocalProfileIds : []),
     ...(Array.isArray((profile as any)?.legacyProfileIds) ? (profile as any).legacyProfileIds : []),
+    ...(Array.isArray((pi as any)?.accountIdentityAliases) ? (pi as any).accountIdentityAliases : []),
     (pi as any)?.legacyProfileId,
     (profile as any)?.legacyProfileId,
   ];
   return Array.from(new Set(values.map((v) => String(v || "").trim()).filter(Boolean)));
+}
+
+const ACCOUNT_PROFILE_BINDINGS_KEY = "dc_account_profile_bindings_v1";
+
+function accountIdentityAliases(user: any): string[] {
+  const meta = (user as any)?.user_metadata || {};
+  return Array.from(new Set([
+    user?.id,
+    meta?.supabase_user_id,
+    meta?.supabaseUserId,
+    meta?.canonical_user_id,
+    meta?.canonicalUserId,
+    meta?.nas_user_id,
+    meta?.nasUserId,
+    meta?.multisports_user_id,
+  ].map((v) => String(v || "").trim()).filter(Boolean)));
+}
+
+function readLockedAccountProfileId(accountIds: string[]): string {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_PROFILE_BINDINGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    for (const id of accountIds) {
+      const value = String(parsed?.[id] || "").trim();
+      if (value) return value;
+    }
+  } catch {}
+  return "";
+}
+
+function writeLockedAccountProfileId(accountIds: string[], profileId: string): void {
+  const pid = String(profileId || "").trim();
+  if (!pid) return;
+  try {
+    const raw = localStorage.getItem(ACCOUNT_PROFILE_BINDINGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const next = parsed && typeof parsed === "object" ? { ...parsed } : {};
+    for (const id of accountIds) if (id) next[id] = pid;
+    localStorage.setItem(ACCOUNT_PROFILE_BINDINGS_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+function profileGameplayScore(profile: any): number {
+  // Le choix d'un doublon doit refléter l'activité réellement présente dans
+  // HISTORIQUE, jamais un vieux profile.stats embarqué dans un snapshot.
+  const ids = Array.from(new Set([
+    String(profile?.id || "").trim(),
+    ...profileAliasIds(profile),
+  ].filter(Boolean)));
+  const mirror = loadStatsQuickMirrorSync();
+  let activity = 0;
+  for (const id of ids) {
+    const row: any = mirror?.byPlayer?.[id];
+    if (!row) continue;
+    activity = Math.max(activity,
+      Number(row.matches || 0) * 100000 +
+      Number(row.dartsThrown || 0) * 10 +
+      Number(row.pointsScored || 0) +
+      Number(row.lastMatchAt || 0) / 1e9
+    );
+  }
+  return activity + scoreProfileCompleteness(profile);
+}
+
+function hasOnlineBindingToAny(profile: any, accountIds: string[]): boolean {
+  return accountIds.some((id) => hasOnlineBindingTo(profile, id));
 }
 
 function hasOnlineBindingTo(profile: any, uid: string): boolean {
@@ -309,15 +379,28 @@ function hasOnlineBindingTo(profile: any, uid: string): boolean {
   ].some((value) => String(value || "").trim() === uid);
 }
 
-function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, activeId: string): any | null {
+function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, activeId: string, accountIds: string[] = [uid]): any | null {
+  const accountIdSet = new Set(accountIds.map((id) => String(id || "").trim()).filter(Boolean));
+  const mirrorIdSet = new Set(Array.from(accountIdSet).map((id) => `online:${id}`));
   const locals = profiles.filter((profile) => {
     const id = String(profile?.id || "").trim();
-    return !!id && id !== uid && id !== `online:${uid}` && !profile?.isBot;
+    return !!id && !accountIdSet.has(id) && !mirrorIdSet.has(id) && !profile?.isBot;
   });
   if (!locals.length) return null;
 
-  // 1) Binding explicite : preuve la plus forte.
-  const explicitlyLinked = locals.find((profile) => hasOnlineBindingTo(profile, uid));
+  // 1) Verrou explicite du compte : une fois le bon profil joueur identifié,
+  // aucun refresh auth / bridge NAS ne doit pouvoir basculer vers un autre profil.
+  const lockedId = readLockedAccountProfileId(accountIds);
+  if (lockedId) {
+    const locked = locals.find((profile) => String(profile?.id || "").trim() === lockedId);
+    if (locked) return locked;
+  }
+
+  // 2) Binding explicite. S'il y en a plusieurs à cause d'anciens bugs, on garde
+  // celui qui possède le plus de traces de jeu/stats au lieu du premier arbitraire.
+  const explicitlyLinked = locals
+    .filter((profile) => hasOnlineBindingToAny(profile, accountIds))
+    .sort((a, b) => profileGameplayScore(b) - profileGameplayScore(a))[0];
   if (explicitlyLinked) return explicitlyLinked;
 
   // 2) Alias écrit par les correctifs précédents.
@@ -395,14 +478,14 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
       ...(((onlineProfile as any)?.preferences || {}) as Record<string, any>),
       ...(local?.preferences || {}),
     },
-    // MON PROFIL reste l’identité locale ; History reste la source des statistiques.
+    // Conservé seulement pour compat de schéma. Les KPI affichés sont dérivés de History.
     stats: { ...(local?.stats || {}) },
     createdAt: local?.createdAt || account?.createdAt || Date.now(),
     updatedAt: Date.now(),
   };
 
   return writePrivateInfo(merged, {
-    // Le compte distant initialise les champs manquants ; MON PROFIL local gagne ensuite.
+    // Remote/account = initialisation/fallback ; MON PROFIL local gagne toujours.
     ...buildPrivateInfoPatch(user, onlineProfile),
     ...accountPI,
     ...localPI,
@@ -418,16 +501,20 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   if (!store || !user?.id) return store;
 
   const uid = String(user.id).trim();
-  const mirrorId = `online:${uid}`;
+  const accountIds = accountIdentityAliases(user);
+  if (!accountIds.includes(uid)) accountIds.unshift(uid);
+  const mirrorIds = new Set(accountIds.map((id) => `online:${id}`));
   const inputProfiles: any[] = Array.isArray(store.profiles) ? store.profiles.filter(Boolean) : [];
   const activeId = String(store.activeProfileId || inputProfiles[0]?.id || "").trim();
 
-  const dedicated = inputProfiles.find((profile) => String(profile?.id || "").trim() === uid) || null;
-  const legacyMirror = inputProfiles.find((profile) => String(profile?.id || "").trim() === mirrorId) || null;
-  const explicitlyLinked = inputProfiles.find((profile) => {
-    const id = String(profile?.id || "").trim();
-    return id !== uid && id !== mirrorId && hasOnlineBindingTo(profile, uid);
-  }) || null;
+  const dedicated = inputProfiles.find((profile) => accountIds.includes(String(profile?.id || "").trim())) || null;
+  const legacyMirror = inputProfiles.find((profile) => mirrorIds.has(String(profile?.id || "").trim())) || null;
+  const explicitlyLinked = inputProfiles
+    .filter((profile) => {
+      const id = String(profile?.id || "").trim();
+      return !accountIds.includes(id) && !mirrorIds.has(id) && hasOnlineBindingToAny(profile, accountIds);
+    })
+    .sort((a, b) => profileGameplayScore(b) - profileGameplayScore(a))[0] || null;
 
   // Aucun profil joueur sur cet appareil : le compte devient naturellement le
   // premier profil joueur. Il n'y a donc pas de doublon.
@@ -439,7 +526,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   // Le profil à conserver est d'abord celui déjà explicitement lié. Sinon on
   // retrouve le profil local ayant servi de source au clone id==uid. Pour une
   // première connexion, on lie simplement le profil actif au compte.
-  const originalLocal = explicitlyLinked || pickOriginalLocalProfile(inputProfiles, uid, dedicated, activeId);
+  const originalLocal = explicitlyLinked || pickOriginalLocalProfile(inputProfiles, uid, dedicated, activeId, accountIds);
 
   if (originalLocal) {
     // Le clone compte et l'ancien mirror sont uniquement des sources de données;
@@ -447,12 +534,13 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     const accountSource = dedicated || legacyMirror || null;
     const merged = mergeAccountIntoLocalProfile(originalLocal, accountSource, user, onlineProfile);
     const canonicalId = String(merged?.id || originalLocal?.id || "").trim();
+    writeLockedAccountProfileId(accountIds, canonicalId);
 
     const nextProfiles: any[] = [];
     let inserted = false;
     for (const profile of inputProfiles) {
       const id = String(profile?.id || "").trim();
-      if (id === uid || id === mirrorId) continue;
+      if (accountIds.includes(id) || mirrorIds.has(id)) continue;
       if (id === canonicalId) {
         if (!inserted) nextProfiles.push(merged);
         inserted = true;
@@ -479,7 +567,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     return {
       ...store,
       profiles: inputProfiles
-        .filter((profile) => String(profile?.id || "").trim() !== mirrorId)
+        .filter((profile) => !mirrorIds.has(String(profile?.id || "").trim()))
         .map((profile) => String(profile?.id || "").trim() === uid ? refreshed : profile),
       activeProfileId: uid,
     };
@@ -497,7 +585,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   return {
     ...store,
     profiles: inputProfiles.map((profile) => String(profile?.id || "").trim() === canonicalId ? merged : profile)
-      .filter((profile) => String(profile?.id || "").trim() !== mirrorId),
+      .filter((profile) => !mirrorIds.has(String(profile?.id || "").trim())),
     activeProfileId: canonicalId,
   };
 }
