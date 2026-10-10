@@ -74,11 +74,17 @@ function pickThumb(entry: AvatarCacheEntry | null | undefined, maxChars = SESSIO
 function metadataOnly(entry: AvatarCacheEntry | null | undefined): AvatarCacheEntry | null {
   if (!entry?.profileId) return null;
   const avatarUrl =
-    typeof entry.avatarUrl === "string" && entry.avatarUrl.trim() && !entry.avatarUrl.startsWith("data:image/")
+    typeof entry.avatarUrl === "string" &&
+    entry.avatarUrl.trim() &&
+    !entry.avatarUrl.startsWith("data:image/") &&
+    !entry.avatarUrl.startsWith("blob:")
       ? entry.avatarUrl.trim()
       : null;
   const avatarPath =
-    typeof entry.avatarPath === "string" && entry.avatarPath.trim() && !entry.avatarPath.startsWith("data:image/")
+    typeof entry.avatarPath === "string" &&
+    entry.avatarPath.trim() &&
+    !entry.avatarPath.startsWith("data:image/") &&
+    !entry.avatarPath.startsWith("blob:")
       ? entry.avatarPath.trim()
       : null;
 

@@ -486,6 +486,23 @@ const EMPTY_PROFILE_MINI_STATS: ProfileMiniStats = {
 };
 
 const profileMiniStatsCache = new Map<string, ProfileMiniStats>();
+// Dernière valeur réellement exploitable vue pour un profil pendant la session.
+// Elle ne sert pas de source de vérité : elle empêche seulement un refresh/cache
+// transitoirement vide de faire clignoter la fiche à 0 avant le rebuild profond.
+const stableProfileMiniStatsCache = new Map<string, ProfileMiniStats>();
+
+function profileMiniStatsHasData(stats: ProfileMiniStats | null | undefined): boolean {
+  if (!stats) return false;
+  if (stats.fit && (stats.fit.sessions > 0 || stats.fit.score > 0 || stats.fit.volumeKg > 0)) return true;
+  if (stats.babyfoot && (stats.babyfoot.matches > 0 || stats.babyfoot.rating > 0)) return true;
+  return [stats.games, stats.darts, stats.avg3, stats.bestVisit, stats.bestCheckout, stats.wins]
+    .some((value) => Number(value || 0) > 0);
+}
+
+function rememberStableProfileMiniStats(cacheKey: string, stats: ProfileMiniStats): ProfileMiniStats {
+  if (cacheKey && profileMiniStatsHasData(stats)) stableProfileMiniStatsCache.set(cacheKey, stats);
+  return stats;
+}
 
 function normalizeProfileMiniStats(basic: any): ProfileMiniStats {
   const games = Number(basic?.games ?? 0) || 0;
@@ -877,6 +894,7 @@ function readProfileMiniStatsSync(playerId: string | undefined | null, sportKey?
   const cacheKey = profileMiniStatsCacheKey(key, sportKey);
   const cached = profileMiniStatsCache.get(cacheKey);
   if (cached) return cached;
+  const stable = stableProfileMiniStatsCache.get(cacheKey);
 
   if (isFitSportKey(sportKey)) {
     const fitStats = getFitProfileMiniStats(key);
@@ -896,32 +914,63 @@ function readProfileMiniStatsSync(playerId: string | undefined | null, sportKey?
 
   try {
     const syncStats = normalizeProfileMiniStats(getBasicProfileStats(key));
-    profileMiniStatsCache.set(cacheKey, syncStats);
-    return syncStats;
+    if (profileMiniStatsHasData(syncStats)) {
+      profileMiniStatsCache.set(cacheKey, syncStats);
+      return rememberStableProfileMiniStats(cacheKey, syncStats);
+    }
+    // Le bridge sync peut être vide pendant quelques centaines de ms après un
+    // invalidate/rebuild. Ne jamais remplacer une valeur déjà confirmée par ce 0 transitoire.
+    return stable || syncStats;
   } catch {
-    return EMPTY_PROFILE_MINI_STATS;
+    return stable || EMPTY_PROFILE_MINI_STATS;
   }
 }
 
 function useBasicStats(playerId: string | undefined | null, enabled: boolean = true, playerName?: string | null, sportKey?: string | null) {
   const key = playerId ? String(playerId) : "";
+  const cacheKey = profileMiniStatsCacheKey(key, sportKey);
   const [stats, setStats] = React.useState<ProfileMiniStats>(() =>
-    enabled && key ? readProfileMiniStatsSync(key, sportKey) : EMPTY_PROFILE_MINI_STATS
+    enabled && key ? readProfileMiniStatsSync(key, sportKey) : (stableProfileMiniStatsCache.get(cacheKey) || EMPTY_PROFILE_MINI_STATS)
   );
+  const renderedKeyRef = React.useRef(cacheKey);
 
   React.useEffect(() => {
-    if (!enabled || !key) {
+    // Si on change réellement de joueur/sport, on repart de SA dernière valeur connue.
+    if (renderedKeyRef.current !== cacheKey) {
+      renderedKeyRef.current = cacheKey;
+      const initial = key ? readProfileMiniStatsSync(key, sportKey) : EMPTY_PROFILE_MINI_STATS;
+      setStats(initial);
+    }
+
+    if (!key) {
       setStats(EMPTY_PROFILE_MINI_STATS);
       return;
     }
+    // `enabled` est volontairement ignoré pour l'affichage courant : il sert
+    // seulement à suspendre les recalculs lourds. Un changement de vue/defer ne
+    // doit plus faire tomber la carte à zéro.
+    if (!enabled) return;
 
     let cancelled = false;
     let cancelDeepStats: (() => void) | null = null;
 
+    const commit = (next: ProfileMiniStats) => {
+      if (cancelled) return;
+      setStats((previous) => {
+        if (profileMiniStatsHasData(next)) {
+          rememberStableProfileMiniStats(cacheKey, next);
+          return next;
+        }
+        const stable = stableProfileMiniStatsCache.get(cacheKey);
+        if (profileMiniStatsHasData(previous)) return previous;
+        if (stable) return stable;
+        return next;
+      });
+    };
+
     const refresh = () => {
-      const cacheKey = profileMiniStatsCacheKey(key, sportKey);
       const syncStats = readProfileMiniStatsSync(key, sportKey);
-      if (!cancelled) setStats(syncStats);
+      commit(syncStats);
 
       cancelDeepStats?.();
       // La page et les photos peignent d'abord. Les statistiques exactes/hydratées
@@ -931,8 +980,11 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
           getStatsHubAlignedProfileMiniStats(key, playerName, sportKey)
         )
           .then((asyncStats) => {
-            profileMiniStatsCache.set(cacheKey, asyncStats);
-            if (!cancelled) setStats(asyncStats);
+            if (profileMiniStatsHasData(asyncStats)) {
+              profileMiniStatsCache.set(cacheKey, asyncStats);
+              rememberStableProfileMiniStats(cacheKey, asyncStats);
+            }
+            commit(asyncStats);
           })
           .catch((err) => console.warn("[Profiles] stats profil centralisées indisponibles", err));
       }, { timeoutMs: 5_000, fallbackDelayMs: 650 });
@@ -941,6 +993,8 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
     refresh();
 
     const onStatsUpdated = () => {
+      // On invalide uniquement le cache recalculable. La dernière valeur confirmée
+      // reste affichée jusqu'à ce que la nouvelle agrégation soit prête.
       deleteProfileMiniStatsCache(key);
       refresh();
     };
@@ -957,7 +1011,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
       window.removeEventListener("dc:fit-session-saved", onStatsUpdated as EventListener);
       window.removeEventListener("storage", onStatsUpdated as EventListener);
     };
-  }, [key, enabled, playerName, sportKey]);
+  }, [key, cacheKey, enabled, playerName, sportKey]);
 
   return stats;
 }
@@ -1060,8 +1114,8 @@ function toLightweightCachedProfiles(profiles: Profile[]): LightweightCachedProf
     id: String(p?.id || ""),
     name: typeof p?.name === "string" ? p.name : "",
     avatarUpdatedAt: Number(p?.avatarUpdatedAt || 0) || undefined,
-    avatarUrl: typeof p?.avatarUrl === "string" && !String(p.avatarUrl).startsWith("data:image/") ? p.avatarUrl : undefined,
-    avatarPath: typeof p?.avatarPath === "string" ? p.avatarPath : undefined,
+    avatarUrl: typeof p?.avatarUrl === "string" && !String(p.avatarUrl).startsWith("data:image/") && !String(p.avatarUrl).startsWith("blob:") ? p.avatarUrl : undefined,
+    avatarPath: typeof p?.avatarPath === "string" && !String(p.avatarPath).startsWith("blob:") ? p.avatarPath : undefined,
     country: typeof p?.country === "string" ? p.country : undefined,
     lastPlayedAt: Number(p?.lastPlayedAt || 0) || undefined,
     createdAt: Number(p?.createdAt || 0) || undefined,
@@ -1114,13 +1168,16 @@ function writeAvatarCache(
   try {
     const current = getAvatarCacheLib(profileId) || {};
     const next = { ...current, ...patch } as any;
+    const durableUrl = typeof next.avatarUrl === "string" && !next.avatarUrl.startsWith("blob:")
+      ? next.avatarUrl
+      : null;
     setAvatarCacheLib({
       profileId,
       avatarDataUrl: next.avatarDataUrl ?? null,
       avatarThumbDataUrl: next.avatarThumbDataUrl ?? next.avatarDataUrl ?? null,
       avatarFullDataUrl: next.avatarFullDataUrl ?? next.avatarDataUrl ?? null,
       avatarCastDataUrl: next.avatarCastDataUrl ?? next.avatarFullDataUrl ?? next.avatarDataUrl ?? null,
-      avatarUrl: next.avatarUrl ?? null,
+      avatarUrl: durableUrl,
       avatarUpdatedAt: Number(next.avatarUpdatedAt || Date.now()),
     });
   } catch {
@@ -1237,16 +1294,17 @@ function buildAvatarSrc(opts: {
   const safeFullDataUrl = sanitizeAvatarDataUrl(opts.avatarFullDataUrl ?? null, 280_000);
   const safeDataUrl = sanitizeAvatarDataUrl(opts.avatarDataUrl);
 
-  const safeUrl = opts.avatarUrl && String(opts.avatarUrl).trim();
+  const safeUrlRaw = opts.avatarUrl && String(opts.avatarUrl).trim();
+  const safeUrl = safeUrlRaw && !safeUrlRaw.startsWith("blob:") ? safeUrlRaw : "";
 
   // Après restauration NAS, l'URL/asset NAS doit gagner contre une ancienne dataUrl
   // encore présente dans le cache local du navigateur. Sinon deux appareils peuvent
   // afficher deux images différentes pour le même profil.
   const baseSrc =
     safePreview ||
-    safeUrl ||
     safeFullDataUrl ||
     safeDataUrl ||
+    safeUrl ||
     "";
 
   if (!baseSrc) return "";
@@ -1374,6 +1432,8 @@ export default function Profiles({
   const [localsSectionLandscape, setLocalsSectionLandscape] = React.useState<LocalProfilesSection>(
     params?.view === "locals" ? "list" : "list"
   );
+  const avatarGalleryEntryRef = React.useRef<View>("menu");
+  const avatarGallerySectionRef = React.useRef<"cards" | "avatars">("cards");
 
   React.useEffect(() => {
     if (view === "locals") {
@@ -1411,6 +1471,26 @@ export default function Profiles({
       : stableProfilesBase as any[],
     [view, stableProfilesBase, linkedProfileProjection?.profiles]
   );
+
+  // Migration anti-blob : d'anciennes previews URL.createObjectURL ont pu être
+  // persistées comme avatarUrl. Une URL blob n'est valable que dans le document
+  // qui l'a créée ; après navigation/reload elle génère ERR_FILE_NOT_FOUND en boucle.
+  // On la retire du profil canonique sans toucher à avatarDataUrl / aux médias IDB.
+  React.useEffect(() => {
+    const hasTransientAvatar = (profiles as any[]).some((profile: any) =>
+      String(profile?.avatarUrl || "").startsWith("blob:") ||
+      String(profile?.avatarPath || "").startsWith("blob:")
+    );
+    if (!hasTransientAvatar) return;
+    update((state: any) => ({
+      ...(state || {}),
+      profiles: (Array.isArray(state?.profiles) ? state.profiles : []).map((profile: any) => ({
+        ...(profile || {}),
+        ...(String(profile?.avatarUrl || "").startsWith("blob:") ? { avatarUrl: undefined } : {}),
+        ...(String(profile?.avatarPath || "").startsWith("blob:") ? { avatarPath: undefined } : {}),
+      })),
+    }));
+  }, [profiles, update]);
 
   const persistTimerRef = React.useRef<number | null>(null);
   const pendingPersistRef = React.useRef<{ reason: string; snapshot: any; cloud: boolean } | null>(null);
@@ -2279,6 +2359,20 @@ export default function Profiles({
       return;
     }
 
+    // Pour le PROFIL ACTIF, la galerie emprunte exactement le même pipeline que
+    // l'appareil photo/import : compression -> store canonique immédiat -> cache ->
+    // éventuel upload compte. Plus aucun second chemin susceptible de diverger.
+    if (String(id) === String(activeProfileId || "")) {
+      try {
+        const file = await avatarUrlToFile(src);
+        await changeAvatar(id, file);
+        setToast({ type: "success", message: "Avatar du profil actif mis à jour." });
+        return;
+      } catch (error) {
+        console.warn("[Profiles] gallery -> active avatar canonical pipeline failed", error);
+      }
+    }
+
     const nowTs = Date.now();
     const isData = src.startsWith("data:image/");
     const targetProfile = (stableProfiles as any[]).find((p: any) => String(p?.id || "") === id) || null;
@@ -2303,7 +2397,7 @@ export default function Profiles({
         ...(p0 || {}),
         avatarUrl: isData ? undefined : src,
         avatarPath: undefined,
-        avatarDataUrl: isData ? src : p0?.avatarDataUrl,
+        avatarDataUrl: isData ? src : undefined,
         avatarUpdatedAt: nowTs,
       } : p0);
       nextStoreSnapshot = { ...(s || {}), profiles: nextProfiles };
@@ -2546,6 +2640,26 @@ export default function Profiles({
     void mirrorAvatarFallbackToR2(id, thumbDataUrl, { avatarUpdatedAt: now })
       .catch((error) => console.warn("[Profiles] avatar R2 mirror skipped", error));
 
+    // Commit LOCAL IMMÉDIAT dans le store canonique avant tout upload réseau.
+    // Home / Stats / sélecteurs lisent ce store : ils doivent voir la nouvelle
+    // image dès que l'utilisateur l'a choisie, même si Supabase/R2 est lent ou indisponible.
+    let immediateStoreSnapshot: any = null;
+    update((s: any) => {
+      const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) =>
+        String(p?.id || "") === String(id || "")
+          ? {
+              ...(p || {}),
+              avatarUrl: undefined,
+              avatarPath: undefined,
+              avatarDataUrl: thumbDataUrl,
+              avatarUpdatedAt: now,
+            }
+          : p
+      );
+      immediateStoreSnapshot = { ...(s || {}), profiles: nextProfiles };
+      return immediateStoreSnapshot;
+    });
+
     setProfilesSafe((arr) =>
       arr.map((p) =>
         p.id === id
@@ -2559,6 +2673,13 @@ export default function Profiles({
           : p
       )
     );
+
+    if (immediateStoreSnapshot) {
+      scheduleProfilesPersist("profiles_avatar_local_commit", immediateStoreSnapshot, { cloud: false, delayMs: 250 });
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: now, phase: "local" } }));
+    } catch {}
 
     if (isOnlineLinked && auth.status === "signed_in") {
       try {
@@ -3059,7 +3180,8 @@ React.useEffect(() => {
     const cached = getAvatarCacheLib(active.id);
     if (!cached) return;
   
-    const cUrl = String(cached.avatarUrl || "").trim();
+    const rawCachedUrl = String(cached.avatarUrl || "").trim();
+    const cUrl = rawCachedUrl.startsWith("blob:") ? "" : rawCachedUrl;
     const cData = String(cached.avatarDataUrl || "").trim();
     const cUpdated =
       typeof cached.avatarUpdatedAt === "number" ? cached.avatarUpdatedAt : undefined;
@@ -3120,7 +3242,8 @@ React.useEffect(() => {
           if (hasAny) return p;
 
           const cached = getAvatarCacheLib(String((p as any)?.id || ""));
-          const cUrl = String((cached as any)?.avatarUrl || "").trim();
+          const rawCachedUrl = String((cached as any)?.avatarUrl || "").trim();
+          const cUrl = rawCachedUrl.startsWith("blob:") ? "" : rawCachedUrl;
           const cData = String((cached as any)?.avatarDataUrl || "").trim();
           if (!cUrl && !cData) return p;
 
@@ -3622,7 +3745,11 @@ React.useEffect(() => {
     onSelectMe={() => openView("me")}
     onSelectLocals={() => openView("locals")}
     onSelectFriends={() => openView("friends")}
-    onSelectAvatarGallery={() => openView("avatarGallery")}
+    onSelectAvatarGallery={() => {
+      avatarGalleryEntryRef.current = "menu";
+      avatarGallerySectionRef.current = "cards";
+      openView("avatarGallery");
+    }}
             onSelectDartSets={() => openView("dartsets")}
           />
         ) : (
@@ -3658,6 +3785,10 @@ React.useEffect(() => {
                       onClick={() => {
                         if (returnTo?.tab && go) {
                           go(returnTo.tab, returnTo.params);
+                          return;
+                        }
+                        if (view === "avatarGallery" && avatarGalleryEntryRef.current === "me") {
+                          openView("me");
                           return;
                         }
                         openView("menu");
@@ -3823,6 +3954,11 @@ React.useEffect(() => {
           await changeAvatar(active.id, f);
         }
       }}
+      onOpenAvatarGallery={() => {
+        avatarGalleryEntryRef.current = "me";
+        avatarGallerySectionRef.current = "avatars";
+        openView("avatarGallery");
+      }}
       onOpenStats={() => {
         if (!active?.id) return;
         go?.("statsHub", {
@@ -3970,6 +4106,7 @@ React.useEffect(() => {
                     onApplyToBot={applyGalleryAvatarToBot}
                     onDeleteItem={deleteGalleryItem}
                     onPersistCollectibleUnlocks={persistCollectibleUnlocks}
+                    initialSection={avatarGallerySectionRef.current}
                   />
                 ) : (
                   <HeavySectionPlaceholder minHeight={360} />
@@ -4302,7 +4439,7 @@ const AVATAR_GALLERY_TABS: Array<{ id: "all" | AvatarGalleryCategory; label: str
   { id: "ia", label: "AVATAR IA" },
 ];
 
-function GalleryHubPanel({ items, profiles, bots, activeProfileId, onRefresh, onApplyToActive, onApplyToProfile, onApplyToBot, onDeleteItem, onPersistCollectibleUnlocks }: {
+function GalleryHubPanel({ items, profiles, bots, activeProfileId, onRefresh, onApplyToActive, onApplyToProfile, onApplyToBot, onDeleteItem, onPersistCollectibleUnlocks, initialSection = "cards" }: {
   items: AvatarGalleryItem[]; profiles: any[]; bots: any[]; activeProfileId?: string;
   onRefresh: () => void;
   onApplyToActive: (item: AvatarGalleryItem) => void | Promise<void>;
@@ -4310,10 +4447,12 @@ function GalleryHubPanel({ items, profiles, bots, activeProfileId, onRefresh, on
   onApplyToBot: (botId: string, item: AvatarGalleryItem) => void | Promise<void>;
   onDeleteItem: (item: AvatarGalleryItem) => void;
   onPersistCollectibleUnlocks?: (profileId: string, unlocks: CollectibleUnlockMap) => void | Promise<void>;
+  initialSection?: "cards" | "avatars";
 }) {
   const { theme } = useTheme();
   const { lang } = useLang();
-  const [section, setSection] = React.useState<"cards" | "avatars">("cards");
+  const [section, setSection] = React.useState<"cards" | "avatars">(initialSection);
+  React.useEffect(() => setSection(initialSection), [initialSection]);
   const activeProfile = React.useMemo(() => (profiles || []).find((profile: any) => String(profile?.id || "") === String(activeProfileId || "")) || null, [profiles, activeProfileId]);
   const unlocks = ((activeProfile as any)?.collectibleCards?.unlocks || {}) as CollectibleUnlockMap;
   const labels = pickLegacyLocalizedValue(
@@ -4818,6 +4957,7 @@ function ActiveProfileBlock({
   onToggleAway,
   onQuit, // gardé pour compat mais pas utilisé ici
   onEdit,
+  onOpenAvatarGallery,
   onOpenStats,
   onResetStats,
   onSyncProfile,
@@ -4830,6 +4970,7 @@ function ActiveProfileBlock({
   onToggleAway: () => void;
   onQuit: () => void;
   onEdit: (name: string, avatar?: File | null) => void | Promise<void>;
+  onOpenAvatarGallery?: () => void;
   onOpenStats?: () => void;
   onResetStats?: () => void;
   onSyncProfile?: () => void | Promise<void>;
@@ -5021,6 +5162,10 @@ function ActiveProfileBlock({
         open={avatarPickerOpen}
         title={t("profiles.avatarPicker.title", "Choisir un avatar")}
         onClose={() => setAvatarPickerOpen(false)}
+        onOpenGallery={() => {
+          setAvatarPickerOpen(false);
+          onOpenAvatarGallery?.();
+        }}
         onSelectFile={async (file) => {
           const localPreview = URL.createObjectURL(file);
           setEditPreview(localPreview);
@@ -8639,11 +8784,13 @@ function AvatarChoiceModal({
   open,
   title,
   onClose,
+  onOpenGallery,
   onSelectFile,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
+  onOpenGallery?: () => void;
   onSelectFile: (file: File) => void | Promise<void>;
 }) {
   const { theme } = useTheme();
@@ -8752,20 +8899,39 @@ function AvatarChoiceModal({
               onClose();
             }}
           />
-          <button
-            type="button"
-            className="btn primary sm"
-            onClick={() => importRef.current?.click()}
-            style={{
-              width: "100%",
-              justifyContent: "center",
-              background: `linear-gradient(180deg, ${primary}, ${primary}AA)`,
-              color: "#000",
-              fontWeight: 900,
-            }}
-          >
-            {t("profiles.avatarPicker.import", "Importer une image")}
-          </button>
+          <div style={{ display: "grid", gridTemplateColumns: onOpenGallery ? "1fr 1fr" : "1fr", gap: 8 }}>
+            <button
+              type="button"
+              className="btn primary sm"
+              onClick={() => importRef.current?.click()}
+              style={{
+                width: "100%",
+                justifyContent: "center",
+                background: `linear-gradient(180deg, ${primary}, ${primary}AA)`,
+                color: "#000",
+                fontWeight: 900,
+              }}
+            >
+              {t("profiles.avatarPicker.import", "Importer une image")}
+            </button>
+            {onOpenGallery ? (
+              <button
+                type="button"
+                className="btn sm"
+                onClick={onOpenGallery}
+                style={{
+                  width: "100%",
+                  justifyContent: "center",
+                  border: `1px solid ${primary}99`,
+                  color: primary,
+                  background: `${primary}14`,
+                  fontWeight: 900,
+                }}
+              >
+                {t("profiles.avatarPicker.gallery", "Galerie")}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div

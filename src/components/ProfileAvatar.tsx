@@ -130,6 +130,8 @@ function normalizeSrc(raw: any): string | null {
 
   if (s.startsWith("data:image/")) return sanitizeAvatarDataUrl(s, MAX_AVATAR_DATA_URL_CHARS);
   if (s.startsWith("data:")) return null;
+  // Une blob URL reste autorisée uniquement comme preview directe passée au composant.
+  // Les sources profil/cache sont filtrées plus bas et ne peuvent jamais la persister.
   if (s.startsWith("blob:")) return s;
 
   if (s.startsWith("http://") || s.startsWith("https://"))
@@ -167,6 +169,12 @@ try {
   if (typeof window !== "undefined") {
     window.addEventListener("dc-store-updated", clearProfileAvatarResolverCache as EventListener);
     window.addEventListener("dc:bots-changed", clearProfileAvatarResolverCache as EventListener);
+    window.addEventListener("dc:profile-avatar-updated", ((event: Event) => {
+      const profileId = String((event as CustomEvent)?.detail?.profileId || "").trim();
+      clearProfileAvatarResolverCache();
+      if (profileId) lastKnownGoodAvatarByProfile.delete(profileId);
+      else lastKnownGoodAvatarByProfile.clear();
+    }) as EventListener);
   }
 } catch {}
 
@@ -177,7 +185,7 @@ function scheduleAvatarSafetyMirror(
 ) {
   const pid = String(profileId || "").trim();
   const src = String(source || "").trim();
-  if (!pid || !src) return;
+  if (!pid || !src || src.startsWith("blob:")) return;
 
   const revision = Number(meta.avatarUpdatedAt || 0) || 0;
   const key = `${pid}:${revision}:${src.length}:${src.slice(0, 24)}:${src.slice(-24)}`;
@@ -472,9 +480,9 @@ export default function ProfileAvatar(props: Props) {
     // autre avatar ne doit JAMAIS écraser l'avatar explicitement porté par le profil.
     if (propDataUrl) return propDataUrl;
     if (avatarDataUrl) return avatarDataUrl;
-    if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
-    if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
-    if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
+    if (legacyAvatar && !legacyAvatar.startsWith("blob:") && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
+    if (avatarUrl && !avatarUrl.startsWith("blob:") && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
+    if (avatarPath && !avatarPath.startsWith("blob:") && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     if (size <= 180 && cachedThumb) return cachedThumb;
     return null;
   }, [propDataUrl, size, cachedThumb, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
@@ -700,7 +708,7 @@ export default function ProfileAvatar(props: Props) {
             onLoad={() => {
               setLoaded(true);
               setFailedRawImg(null);
-              if (effectiveProfileId && rawImg) {
+              if (effectiveProfileId && rawImg && !String(rawImg).startsWith("blob:")) {
                 lastKnownGoodAvatarByProfile.set(effectiveProfileId, rawImg);
                 setStickyRawImg(rawImg);
                 // Auto-réparation du cache : si un ancien build avait associé
@@ -711,8 +719,8 @@ export default function ProfileAvatar(props: Props) {
                     profileId: effectiveProfileId,
                     avatarDataUrl: avatarDataUrl && avatarDataUrl.startsWith("data:image/") ? avatarDataUrl : null,
                     avatarThumbDataUrl: avatarDataUrl && avatarDataUrl.startsWith("data:image/") ? avatarDataUrl : null,
-                    avatarUrl: avatarUrl || null,
-                    avatarPath: avatarPath || null,
+                    avatarUrl: avatarUrl && !avatarUrl.startsWith("blob:") ? avatarUrl : null,
+                    avatarPath: avatarPath && !avatarPath.startsWith("blob:") ? avatarPath : null,
                     avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
                     avatarAssetId: String((p as any)?.avatarAssetId || "") || null,
                     avatarThumbAssetId: String((p as any)?.avatarThumbAssetId || "") || null,
