@@ -90,7 +90,7 @@ import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
    - évite “tout a disparu après clear site data”
 ========================= */
 import type { Store } from "./types";
-import { exportCloudSnapshot, getStorageUser, getStorageUserAliases, loadStore, scopedStorageKey } from "./storage";
+import { exportCloudSnapshot, getStorageUser, loadStore, scopedStorageKey } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
@@ -1987,148 +1987,10 @@ function toDetailRecord(id: string, payloadCompressed: string, rec: any) {
   };
 }
 
-async function openExistingHistoryDbRaw(name: string): Promise<IDBDatabase | null> {
-  try {
-    const idbAny: any = indexedDB as any;
-    if (typeof idbAny?.databases !== "function") return null;
-    const dbs = await idbAny.databases();
-    const exists = (Array.isArray(dbs) ? dbs : []).some((row: any) => String(row?.name || "") === name);
-    if (!exists) return null;
-    return await new Promise<IDBDatabase | null>((resolve) => {
-      const req = indexedDB.open(name);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-      req.onblocked = () => resolve(null);
-    });
-  } catch {
-    return null;
-  }
-}
-
-function countStoreRaw(db: IDBDatabase, storeName: string): Promise<number> {
-  return new Promise<number>((resolve) => {
-    try {
-      if (!db.objectStoreNames.contains(storeName)) return resolve(0);
-      const tx = db.transaction(storeName, "readonly");
-      const req = tx.objectStore(storeName).count();
-      req.onsuccess = () => resolve(Number(req.result || 0));
-      req.onerror = () => resolve(0);
-    } catch {
-      resolve(0);
-    }
-  });
-}
-
-function readAllStoreRaw(db: IDBDatabase, storeName: string): Promise<any[]> {
-  return new Promise<any[]>((resolve) => {
-    try {
-      if (!db.objectStoreNames.contains(storeName)) return resolve([]);
-      const tx = db.transaction(storeName, "readonly");
-      const req = tx.objectStore(storeName).getAll();
-      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
-      req.onerror = () => resolve([]);
-    } catch {
-      resolve([]);
-    }
-  });
-}
-
-const historyAliasRecoveryScopes = new Set<string>();
-async function maybeRecoverHistoryFromAliasDb(): Promise<void> {
-  const currentName = historyDbName();
-  if (!currentName || historyAliasRecoveryScopes.has(currentName)) return;
-  historyAliasRecoveryScopes.add(currentName);
-
-  try {
-    const currentDb = await openDB();
-    const currentCount = await countStoreRaw(currentDb, STORE_HEADERS);
-    if (currentCount > 0) return;
-
-    const aliases = getStorageUserAliases()
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
-    if (!aliases.length) return;
-
-    const candidateNames = Array.from(new Set(aliases.map((alias) => `${HISTORY_DB_BASE}:${alias}`)))
-      .filter((name) => name !== currentName);
-
-    let bestDb: IDBDatabase | null = null;
-    let bestName = "";
-    let bestCount = 0;
-    let bestLegacyCount = 0;
-
-    for (const name of candidateNames) {
-      const db = await openExistingHistoryDbRaw(name);
-      if (!db) continue;
-      const headersCount = await countStoreRaw(db, STORE_HEADERS);
-      const legacyCount = headersCount > 0 ? 0 : await countStoreRaw(db, STORE_LEGACY);
-      const effectiveCount = Math.max(headersCount, legacyCount);
-      if (effectiveCount > bestCount) {
-        try { bestDb?.close(); } catch {}
-        bestDb = db;
-        bestName = name;
-        bestCount = effectiveCount;
-        bestLegacyCount = legacyCount;
-      } else {
-        try { db.close(); } catch {}
-      }
-    }
-
-    if (!bestDb || bestCount <= 0) return;
-
-    try {
-      if (bestDb.objectStoreNames.contains(STORE_HEADERS)) {
-        const [headers, details] = await Promise.all([
-          readAllStoreRaw(bestDb, STORE_HEADERS),
-          readAllStoreRaw(bestDb, STORE_DETAILS),
-        ]);
-        if (headers.length) {
-          await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", async (stores) => {
-            for (const row of headers) {
-              if (!row?.id) continue;
-              try { stores[STORE_HEADERS].put(row); } catch {}
-            }
-            for (const row of details) {
-              if (!row?.id) continue;
-              try { stores[STORE_DETAILS].put(row); } catch {}
-            }
-          });
-        }
-      } else if (bestLegacyCount > 0 && bestDb.objectStoreNames.contains(STORE_LEGACY)) {
-        const rows = await readAllStoreRaw(bestDb, STORE_LEGACY);
-        if (rows.length) {
-          await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", async (stores) => {
-            for (const row of rows) {
-              const id = String(row?.id ?? row?.matchId ?? "").trim();
-              if (!id) continue;
-              const header = toHeaderRecord({ ...row, id, matchId: String(row?.matchId ?? id) });
-              const detail = toDetailRecord(id, String(row?.payloadCompressed || ""), row);
-              try { stores[STORE_HEADERS].put(header); } catch {}
-              try { stores[STORE_DETAILS].put(detail); } catch {}
-            }
-          });
-        }
-      }
-
-      console.warn("[history] historique récupéré depuis un alias de compte", {
-        from: bestName,
-        to: currentName,
-        rows: bestCount,
-      });
-      try { window.dispatchEvent(new Event("dc-stats-index-updated")); } catch {}
-    } finally {
-      try { bestDb.close(); } catch {}
-    }
-  } catch (error) {
-    console.warn("[history] récupération alias ignorée", error);
-  }
-}
-
-const legacyIdbMigrDoneScopes = new Set<string>();
+let legacyIdbMigrDone = false;
 async function migrateLegacyIdbOnce() {
-  const scope = historyDbName();
-  if (legacyIdbMigrDoneScopes.has(scope)) return;
-  legacyIdbMigrDoneScopes.add(scope);
+  if (legacyIdbMigrDone) return;
+  legacyIdbMigrDone = true;
 
   try {
     const db = await openDB();
@@ -2177,17 +2039,12 @@ async function migrateLegacyIdbOnce() {
 /* =========================
    Migration depuis localStorage (une seule fois)
 ========================= */
-const migrDoneScopes = new Set<string>();
+let migrDone = false;
 
 async function migrateFromLocalStorageOnce() {
-  const scope = historyDbName();
-  if (migrDoneScopes.has(scope)) return;
-  migrDoneScopes.add(scope);
+  if (migrDone) return;
+  migrDone = true;
 
-  // Avant toute migration legacy, rattache l'historique d'un ancien alias
-  // (id NAS / UUID Supabase) au scope public courant. Cela évite le compte
-  // "connecté mais statistiques à zéro" après un changement d'identité technique.
-  await maybeRecoverHistoryFromAliasDb().catch(() => {});
   await migrateLegacyIdbOnce().catch(() => {});
 
   try {

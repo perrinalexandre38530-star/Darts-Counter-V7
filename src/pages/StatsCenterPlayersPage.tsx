@@ -338,7 +338,7 @@ export default function StatsCenterPlayersPage({ go }: Props) {
                     starSize={10}
                     gapPx={-1}
                     stepDeg={10}
-                    avg3d={resolveProfileStarScore(selected)}
+                    avg3d={resolveProfileStarScore(selected, [stats?.avgScore, stats?.bestScore])}
                     animateGlow={false}
                   />
                 </div>

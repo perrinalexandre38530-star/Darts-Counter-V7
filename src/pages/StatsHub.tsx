@@ -25,7 +25,6 @@ import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
-import { loadX01ProfileStatsForStarring } from "../lib/x01ProfileStarring";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 import BackDot from "../components/BackDot";
 import { PageAdBanner } from "../monetization/AdSlot";
@@ -6233,31 +6232,6 @@ const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
   } as PlayerLite;
 }, [selectedPlayer, cachedIdentity, effectiveProfileId, profile]);
 
-// Couronne de niveau : elle doit rester indépendante de l'onglet affiché.
-// X01 Multi / Mes fléchettes n'activent volontairement pas le gros pipeline
-// StatsHub, donc on récupère ici la même AVG3D canonique que la page Profils,
-// avec réconciliation par nom si un ancien historique porte un autre playerId.
-const [canonicalStarAvg3D, setCanonicalStarAvg3D] = React.useState(0);
-React.useEffect(() => {
-  const pid = String(effectiveProfileId || "").trim();
-  const visual: any = selectedPlayerVisual || selectedPlayer || null;
-  let cancelled = false;
-  setCanonicalStarAvg3D(0);
-  if (!pid || !visual) return () => { cancelled = true; };
-
-  void loadX01ProfileStatsForStarring(pid, visual)
-    .then((stats: any) => {
-      if (cancelled) return;
-      const avg = Number(stats?.avg3 ?? stats?.avg3d ?? stats?.avg3D ?? stats?.average3Darts ?? 0);
-      setCanonicalStarAvg3D(Number.isFinite(avg) && avg > 0 ? avg : 0);
-    })
-    .catch(() => {
-      if (!cancelled) setCanonicalStarAvg3D(0);
-    });
-
-  return () => { cancelled = true; };
-}, [effectiveProfileId, selectedPlayerVisual?.name]);
-
 // ============================================================
 // 🧪 RUNTIME DEBUG (visible sur téléphone)
 // - Montre quel profileId StatsHub utilise réellement
@@ -9126,7 +9100,6 @@ return (
 
                         const avg3d = pickPositive(
                           dashAvg3,
-                          canonicalStarAvg3D,
                           q?.byId?.[pid]?.avg3d,
                           q?.byId?.[pid]?.avg3,
                           q?.[pid]?.avg3d,
@@ -9179,7 +9152,6 @@ return (
                                 <ProfileStarRing
                                   anchorSize={MEDALLION}
                                   avg3d={avg3dForRing}
-                                  profile={selectedPlayerVisual}
                                   gapPx={-1}
                                   starSize={STAR}
                                   stepDeg={10}
@@ -9575,7 +9547,6 @@ return (
                     <X01MultiStatsTabFull
                       records={records}
                       playerId={selectedPlayer.id}
-                      playerName={selectedPlayer.name || selectedPlayer.displayName || selectedPlayer.nickname || null}
                     />
                   </React.Suspense>
                 ) : (

@@ -23,7 +23,6 @@ import { getDartSetsForProfile, getDartSetById, getCanonicalDartSetId, getDartSe
 import { dartPresets } from "../lib/dartPresets";
 import { getX01StatsByDartSetForProfile } from "../lib/statsByDartSet";
 import { History } from "../lib/history";
-import { isX01Record as isCanonicalX01Record, loadAllHistoryRecords } from "../lib/x01StatsSource";
 import { loadStore } from "../lib/storage";
 import { writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
 import TrainingRadar from "./TrainingRadar";
@@ -78,9 +77,6 @@ function compareColor(index: number, accent?: string) {
 }
 
 function isX01Record(r: any): boolean {
-  try {
-    if (isCanonicalX01Record(r)) return true;
-  } catch {}
   const kind = safeLower(r?.kind);
   const game = safeLower(r?.game);
   const mode = safeLower(r?.mode);
@@ -1724,8 +1720,8 @@ function normalizedRadarValue(metric: CompareMetricKey, item: CompareItem, visib
 /* -------- Cache local instantané — stats MES FLÉCHETTES ------- */
 /* ============================================================= */
 
-const DART_SET_STATS_RENDER_CACHE_PREFIX = "dc_stats_dartsets_render_cache_v4:";
-const DART_SET_STATS_QUICK_CACHE_PREFIX = "dc_stats_dartsets_quick_v5:";
+const DART_SET_STATS_RENDER_CACHE_PREFIX = "dc_stats_dartsets_render_cache_v3:";
+const DART_SET_STATS_QUICK_CACHE_PREFIX = "dc_stats_dartsets_quick_v4:";
 const DART_SET_STATS_HIDDEN_PREFIX = "dc_stats_dartsets_hidden_v1:";
 const DART_SET_STATS_CACHE_MAX_CHARS = 260_000;
 const DART_SET_STATS_QUICK_MAX_CHARS = 96_000;
@@ -2022,52 +2018,6 @@ function syntheticDartSetsFromVisuals(visuals: Record<string, CachedDartSetVisua
 
 const __dartSetStatsPrewarmJobs = new Map<string, Promise<void>>();
 
-async function deriveDartSetStatsFromHistoryRows(
-  sourceRows: any[],
-  profileId: string,
-  playerName = ""
-): Promise<{ outRows: any[]; recMap: Record<string, MiniMatch[]> }> {
-  const statsA = await getX01StatsByDartSetForProfile(profileId, sourceRows).catch(() => []);
-  const rowsA = Array.isArray(statsA) ? statsA : [];
-
-  const recMap = canonicalizeRecentMap(
-    await buildRecentMatchesMap(sourceRows || [], profileId, playerName || ""),
-    profileId
-  );
-
-  const aggMapRaw = await computeAggFromHistory(sourceRows || [], profileId, playerName || "");
-  const aggMap: Record<string, any> = {};
-  for (const [rawId, row] of Object.entries(aggMapRaw || {})) {
-    const id = canonicalDartSetIdForStats(rawId, profileId);
-    if (!id) continue;
-    aggMap[id] = mergeRowPreferNonZero(aggMap[id] || { dartSetId: id }, { ...(row as any), dartSetId: id });
-  }
-
-  const rowsAByCanonical = new Map<string, any>();
-  for (const row of rowsA) {
-    const id = canonicalDartSetIdForStats(row?.dartSetId || row?.dartPresetId || "", profileId);
-    if (!id) continue;
-    rowsAByCanonical.set(id, mergeRowPreferNonZero(rowsAByCanonical.get(id) || { dartSetId: id }, { ...(row as any), dartSetId: id }));
-  }
-
-  const ids = new Set<string>();
-  for (const id of rowsAByCanonical.keys()) ids.add(String(id));
-  for (const id of Object.keys(aggMap)) ids.add(String(id));
-
-  const outRows = Array.from(ids)
-    .filter(Boolean)
-    .map((id) => {
-      const a = rowsAByCanonical.get(String(id)) || { dartSetId: id };
-      const b = aggMap[String(id)] || { dartSetId: id };
-      const mergedRow = mergeRowPreferNonZero(a, b);
-      mergedRow.dartSetId = String(id);
-      return mergedRow;
-    })
-    .sort((x: any, y: any) => N(pickNum(y, "avg3") ?? 0, 0) - N(pickNum(x, "avg3") ?? 0, 0));
-
-  return { outRows, recMap };
-}
-
 /**
  * Amorçage léger lancé par App.tsx avant que l'utilisateur n'ouvre Stats.
  * Il suffit à supprimer l'écran vide dès la toute première visite ; la section
@@ -2280,34 +2230,45 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         const allEnriched = Array.from(enrichedMap.values());
         if (cancelled) return;
 
-        // Chemin rapide : les headers X01 déjà identifiés sont hydratés en priorité.
-        let derived = await deriveDartSetStatsFromHistoryRows(
-          allEnriched,
-          activeProfileId,
-          activePlayerName || ""
+        // L'agrégateur central reçoit les lignes déjà hydratées : aucune seconde
+        // série de History.get(), mais on conserve tous ses fallbacks historiques.
+        const statsA = await getX01StatsByDartSetForProfile(activeProfileId, allEnriched).catch(() => []);
+        const rowsA = Array.isArray(statsA) ? statsA : [];
+
+        const recMap = canonicalizeRecentMap(
+          await buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || ""),
+          activeProfileId
         );
 
-        // Compat historique : si le chemin optimisé retourne 0 alors qu'il existe
-        // de l'historique, on hydrate une fois la source canonique complète. Des
-        // anciennes parties portent parfois seulement "darts" dans le header et
-        // ne deviennent identifiables comme X01 qu'après lecture du payload.
-        if (derived.outRows.length === 0 && byId.size > 0) {
-          const fullHistory = await loadAllHistoryRecords().catch(() => []);
-          if (cancelled) return;
-          const fallbackX01 = (Array.isArray(fullHistory) ? fullHistory : [])
-            .filter((rec: any) => isCanonicalX01Record(rec) && isFinishedX01StatsRecord(rec));
-          if (fallbackX01.length) {
-            const fallbackDerived = await deriveDartSetStatsFromHistoryRows(
-              fallbackX01,
-              activeProfileId,
-              activePlayerName || ""
-            );
-            if (fallbackDerived.outRows.length > 0) derived = fallbackDerived;
-          }
+        const aggMapRaw = await computeAggFromHistory(allEnriched || [], activeProfileId, activePlayerName || "");
+        const aggMap: Record<string, any> = {};
+        for (const [rawId, row] of Object.entries(aggMapRaw || {})) {
+          const id = canonicalDartSetIdForStats(rawId, activeProfileId);
+          if (!id) continue;
+          aggMap[id] = mergeRowPreferNonZero(aggMap[id] || { dartSetId: id }, { ...(row as any), dartSetId: id });
         }
 
-        const outRows = derived.outRows;
-        const recMap = derived.recMap;
+        const rowsAByCanonical = new Map<string, any>();
+        for (const row of rowsA) {
+          const id = canonicalDartSetIdForStats(row?.dartSetId || row?.dartPresetId || "", activeProfileId);
+          if (!id) continue;
+          rowsAByCanonical.set(id, mergeRowPreferNonZero(rowsAByCanonical.get(id) || { dartSetId: id }, { ...(row as any), dartSetId: id }));
+        }
+
+        const ids = new Set<string>();
+        for (const id of rowsAByCanonical.keys()) ids.add(String(id));
+        for (const id of Object.keys(aggMap)) ids.add(String(id));
+
+        const outRows = Array.from(ids)
+          .filter(Boolean)
+          .map((id) => {
+            const a = rowsAByCanonical.get(String(id)) || { dartSetId: id };
+            const b = aggMap[String(id)] || { dartSetId: id };
+            const mergedRow = mergeRowPreferNonZero(a, b);
+            mergedRow.dartSetId = String(id);
+            return mergedRow;
+          })
+          .sort((x: any, y: any) => N(pickNum(y, "avg3") ?? 0, 0) - N(pickNum(x, "avg3") ?? 0, 0));
 
         const visuals = buildCachedDartSetVisuals(outRows, setsNow, t);
         writeDartSetStatsRenderCache(activeProfileId, outRows, recMap, visuals);
