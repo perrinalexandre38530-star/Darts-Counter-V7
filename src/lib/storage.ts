@@ -610,6 +610,24 @@ async function readStoreFromRawPayload(raw: any): Promise<any | null> {
   }
 }
 
+function readAuthSessionsFromBrowserStorage(): any[] {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  const read = (storage: Storage | null | undefined) => {
+    if (!storage) return;
+    try {
+      const raw = storage.getItem(AUTH_SESSION_LS_KEY) || "";
+      if (!raw || seen.has(raw)) return;
+      seen.add(raw);
+      const parsed = safeJsonParse<any>(raw, null);
+      if (parsed && typeof parsed === "object") out.push(parsed);
+    } catch {}
+  };
+  try { read(typeof localStorage !== "undefined" ? localStorage : null); } catch {}
+  try { read(typeof sessionStorage !== "undefined" ? sessionStorage : null); } catch {}
+  return out;
+}
+
 function currentAccountStoreAliases(): Set<string> {
   const aliases = new Set<string>();
   const add = (value: any) => {
@@ -618,15 +636,19 @@ function currentAccountStoreAliases(): Set<string> {
   };
 
   add(getStorageUser());
-  try {
-    const raw = localStorage.getItem(AUTH_SESSION_LS_KEY) || "";
-    const session = raw ? safeJsonParse<any>(raw, null) : null;
+  for (const session of readAuthSessionsFromBrowserStorage()) {
     add(session?.userId);
     add(session?.user?.id);
     add(session?.session?.user?.id);
     add(session?.canonicalUserId);
     add(session?.supabaseUserId);
-  } catch {}
+    add(session?.user?.user_metadata?.canonical_user_id);
+    add(session?.user?.user_metadata?.canonicalUserId);
+    add(session?.user?.user_metadata?.nas_user_id);
+    add(session?.user?.user_metadata?.nasUserId);
+    add(session?.user?.user_metadata?.supabase_user_id);
+    add(session?.user?.user_metadata?.supabaseUserId);
+  }
 
   // Compatibilité du pont Supabase <-> identifiant canonique NAS.
   try {
@@ -647,14 +669,82 @@ function currentAccountStoreAliases(): Set<string> {
   return aliases;
 }
 
+export function getStorageUserAliases(): string[] {
+  return Array.from(currentAccountStoreAliases());
+}
+
+function profileAccountAliasValues(profile: any): string[] {
+  const pi = profile?.privateInfo || profile?.private_info || {};
+  const arrays = [
+    pi?.accountIdentityAliases,
+    pi?.linkedLocalProfileIds,
+    pi?.legacyProfileIds,
+    profile?.accountIdentityAliases,
+    profile?.linkedLocalProfileIds,
+    profile?.legacyProfileIds,
+  ];
+  const values: any[] = [
+    profile?.id,
+    profile?.userId,
+    profile?.user_id,
+    profile?.onlineUserId,
+    profile?.online_user_id,
+    profile?.accountUserId,
+    profile?.account_user_id,
+    profile?.ownerUserId,
+    profile?.owner_user_id,
+    pi?.onlineUserId,
+    pi?.online_user_id,
+    pi?.userId,
+    pi?.user_id,
+    pi?.accountUserId,
+    pi?.account_user_id,
+  ];
+  for (const arr of arrays) if (Array.isArray(arr)) values.push(...arr);
+  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function profileBelongsToCurrentAliasFamily(profile: any, aliases: Set<string>): boolean {
+  if (!aliases.size) return false;
+  return profileAccountAliasValues(profile).some((id) => aliases.has(id));
+}
+
 function storeBelongsToCurrentAliasFamily(store: any, aliases: Set<string>): boolean {
   if (!aliases.size) return true;
   const active = String(store?.activeProfileId || "").trim();
   if (active && aliases.has(active)) return true;
-  return validProfileList(store?.profiles).some((profile) => aliases.has(String(profile?.id || "").trim()));
+  return validProfileList(store?.profiles).some((profile) => profileBelongsToCurrentAliasFamily(profile, aliases));
 }
 
-async function findBestPersistedStoreAcrossKeys(): Promise<{ key: string; store: any; profiles: any[] } | null> {
+function persistedStoreRecoveryScore(store: any, profiles: any[], aliases: Set<string>, key: string): number {
+  const active = String(store?.activeProfileId || "").trim();
+  const activeValid = !!active && profiles.some((p) => String(p?.id || "").trim() === active);
+  const completeness = profiles.reduce((sum, profile) => sum + canonicalProfileCompleteness(profile), 0);
+  const boundProfiles = profiles.filter((profile) => profileBelongsToCurrentAliasFamily(profile, aliases)).length;
+  const simpleScope = String(key || "").match(/^store:([^:]+)$/)?.[1] || "";
+  const scopeMatches = !!simpleScope && aliases.has(simpleScope);
+  const currentScope = key === scopedStorageKey(STORE_KEY);
+  const only = profiles.length === 1 ? profiles[0] : null;
+  const onlyAvatar = String(only?.avatarUrl || only?.avatarDataUrl || only?.photoUrl || "").trim();
+  const looksLikeFreshAccountPlaceholder = !!only && aliases.has(String(only?.id || "").trim()) && !onlyAvatar && canonicalProfileCompleteness(only) < 4.25;
+
+  // Le nombre de profils reste le critère principal. À égalité, on privilégie
+  // les profils réellement renseignés et liés au compte, pas simplement la clé
+  // du scope courant. C'est essentiel après un boot où un profil compte minimal
+  // a pu être recréé pendant que l'ancien store complet existait encore sous
+  // l'alias NAS/Supabase historique.
+  return (
+    profiles.length * 10_000 +
+    Math.round(completeness * 300) +
+    boundProfiles * 600 +
+    (activeValid ? 140 : 0) +
+    (scopeMatches ? 90 : 0) +
+    (currentScope ? 35 : key === STORE_KEY ? 20 : 0) -
+    (looksLikeFreshAccountPlaceholder ? 900 : 0)
+  );
+}
+
+async function findBestPersistedStoreAcrossKeys(): Promise<{ key: string; store: any; profiles: any[]; score: number } | null> {
   try {
     const keys = await idbKeys();
     const aliases = currentAccountStoreAliases();
@@ -665,21 +755,25 @@ async function findBestPersistedStoreAcrossKeys(): Promise<{ key: string; store:
       // Ignore les anciennes clés récursives store:a:b:c : elles appartiennent
       // au bug de re-scoping et ne doivent plus participer au choix canonique.
       if (key !== STORE_KEY && !simpleScope) continue;
-      if (simpleScope && aliases.size > 0 && !aliases.has(simpleScope)) continue;
+
       const raw = await idbGet<any>(rawKey);
       const store = await readStoreFromRawPayload(raw);
       const profiles = validProfileList(store?.profiles);
       if (!store || profiles.length <= 0) continue;
+
+      // Une clé scopée d'un autre compte n'est jamais candidate. On autorise
+      // toutefois un ancien scope inconnu si le contenu porte un binding fort
+      // vers l'identité courante (privateInfo.onlineUserId/account aliases).
+      if (simpleScope && aliases.size > 0 && !aliases.has(simpleScope) && !storeBelongsToCurrentAliasFamily(store, aliases)) continue;
       if (key === STORE_KEY && !storeBelongsToCurrentAliasFamily(store, aliases)) continue;
-      const active = String(store?.activeProfileId || "");
-      const activeBonus = active && profiles.some((p) => String(p?.id || "") === active) ? 25 : 0;
-      const scopedBonus = key === scopedStorageKey(STORE_KEY) ? 100 : key === STORE_KEY ? 50 : 0;
-      candidates.push({ key, store, profiles, score: profiles.length * 100 + scopedBonus + activeBonus });
+
+      const score = persistedStoreRecoveryScore(store, profiles, aliases, key);
+      candidates.push({ key, store, profiles, score });
     }
     if (!candidates.length) return null;
     candidates.sort((a, b) => b.score - a.score);
     const best = candidates[0];
-    return { key: best.key, store: best.store, profiles: best.profiles };
+    return { key: best.key, store: best.store, profiles: best.profiles, score: best.score };
   } catch {
     return null;
   }
@@ -1253,15 +1347,44 @@ function normalizeUserId(value: unknown): string | null {
 function detectUserIdFromAuthLS(): string | null {
   if (typeof localStorage === "undefined") return null;
   try {
-    // Littéraux volontaires : cette fonction peut être appelée très tôt pendant
-    // un cycle ESM, avant l'initialisation des constantes du module.
-    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_online_auth_supabase_v1");
-    if (!raw) return null;
-    if (raw.startsWith("{") || raw.startsWith("[")) {
-      const parsed = safeJsonParse<any>(raw, null);
-      return normalizeUserId(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id);
+    // Le scope explicite reste prioritaire. En revanche, depuis le fallback
+    // quota Auth, la session peut vivre uniquement dans sessionStorage : si on
+    // l'ignore ici, l'app charge le store non scopé alors que Réglages voit bien
+    // le compte connecté.
+    const explicitScope = localStorage.getItem("dc_storage_user_id_v1");
+    if (explicitScope) return normalizeUserId(explicitScope);
+
+    const raws: string[] = [];
+    try {
+      const localAuth = localStorage.getItem("dc_online_auth_supabase_v1");
+      if (localAuth) raws.push(localAuth);
+    } catch {}
+    try {
+      const sessionAuth = typeof sessionStorage !== "undefined"
+        ? sessionStorage.getItem("dc_online_auth_supabase_v1")
+        : null;
+      if (sessionAuth) raws.push(sessionAuth);
+    } catch {}
+
+    for (const raw of raws) {
+      if (!raw) continue;
+      if (raw.startsWith("{") || raw.startsWith("[")) {
+        const parsed = safeJsonParse<any>(raw, null);
+        const id = normalizeUserId(
+          parsed?.supabaseUserId ||
+          parsed?.user?.user_metadata?.supabase_user_id ||
+          parsed?.user?.user_metadata?.supabaseUserId ||
+          parsed?.user?.id ||
+          parsed?.userId ||
+          parsed?.session?.user?.id
+        );
+        if (id) return id;
+      } else {
+        const id = normalizeUserId(raw);
+        if (id) return id;
+      }
     }
-    return normalizeUserId(raw);
+    return null;
   } catch {
     return null;
   }
@@ -2224,26 +2347,48 @@ async function loadStoreInternal<T extends Store>(scopeKey: string, runId: numbe
             () => findBestPersistedStoreAcrossKeys(),
             { scope: scopeKey, runId, currentProfiles: currentProfiles.length },
           );
-          if (best?.store && best.profiles.length > currentProfiles.length) {
-            const targetKey = scopeKey;
-            const repaired = guardStoreShape({
-              ...(best.store || {}),
-              activeProfileId: (parsed as any)?.activeProfileId || best.store?.activeProfileId || best.profiles[0]?.id || null,
-              profiles: mergeCanonicalProfileLists(best.profiles, currentProfiles),
-            } as any);
-            const repairedJson = safeJsonStringify(repaired);
-            await idbSet(targetKey, await persistPayloadForKey(targetKey, repairedJson));
-            try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, repairedJson)); } catch {}
-            lastSavedStoreJsonByScope.set(targetKey, repairedJson);
-            lastSavedStoreJsonByScope.set(STORE_KEY, repairedJson);
-            writeProfilesSafetyCache(repaired);
-            parsed = repaired as T;
-            console.warn("[storage] store scopé enrichi depuis la source locale canonique", {
-              from: best.key,
-              to: targetKey,
-              beforeProfiles: currentProfiles.length,
-              afterProfiles: repaired.profiles.length,
-            });
+          if (best?.store) {
+            const aliases = currentAccountStoreAliases();
+            const currentScore = persistedStoreRecoveryScore(parsed, currentProfiles, aliases, scopeKey);
+            const currentActive = String((parsed as any)?.activeProfileId || "").trim();
+            const currentActiveValid = !!currentActive && currentProfiles.some((profile) => String(profile?.id || "").trim() === currentActive);
+            const materiallyRicher = best.profiles.length > currentProfiles.length || best.score > currentScore + 180;
+
+            if (materiallyRicher) {
+              const targetKey = scopeKey;
+              const sameCountReplacement = best.profiles.length === currentProfiles.length && best.score > currentScore + 180;
+              const repairedProfiles = sameCountReplacement
+                ? mergeCanonicalProfileLists(best.profiles, currentProfiles)
+                : mergeCanonicalProfileLists(best.profiles, currentProfiles);
+              const bestActive = String(best.store?.activeProfileId || "").trim();
+              const repairedActive =
+                (sameCountReplacement && bestActive && repairedProfiles.some((profile) => String(profile?.id || "") === bestActive) ? bestActive : "") ||
+                (currentActiveValid ? currentActive : "") ||
+                (bestActive && repairedProfiles.some((profile) => String(profile?.id || "") === bestActive) ? bestActive : "") ||
+                String(repairedProfiles[0]?.id || "") ||
+                null;
+
+              const repaired = guardStoreShape({
+                ...(best.store || {}),
+                activeProfileId: repairedActive,
+                profiles: repairedProfiles,
+              } as any);
+              const repairedJson = safeJsonStringify(repaired);
+              await idbSet(targetKey, await persistPayloadForKey(targetKey, repairedJson));
+              try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, repairedJson)); } catch {}
+              lastSavedStoreJsonByScope.set(targetKey, repairedJson);
+              lastSavedStoreJsonByScope.set(STORE_KEY, repairedJson);
+              writeProfilesSafetyCache(repaired);
+              parsed = repaired as T;
+              console.warn("[storage] store scopé enrichi depuis la source locale canonique", {
+                from: best.key,
+                to: targetKey,
+                beforeProfiles: currentProfiles.length,
+                afterProfiles: repaired.profiles.length,
+                currentScore,
+                recoveredScore: best.score,
+              });
+            }
           }
         }
       } catch (repairError) {

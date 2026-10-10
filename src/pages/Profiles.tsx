@@ -2485,26 +2485,72 @@ export default function Profiles({
     }
   }
 
-  function readCachedAuthUser(): { id: string; email: string } {
-    try {
-      const raw = localStorage.getItem("dc_online_auth_supabase_v1");
-      const parsed = raw ? JSON.parse(raw) : null;
-      return {
-        id: String(parsed?.user?.id || parsed?.userId || "").trim(),
-        email: String(parsed?.user?.email || "").trim(),
-      };
-    } catch {
-      return { id: "", email: "" };
-    }
+  function readCachedAuthUser(): { id: string; email: string; aliases: string[] } {
+    const aliases = new Set<string>();
+    let id = "";
+    let email = "";
+    const read = (storage: Storage | null | undefined) => {
+      if (!storage) return;
+      try {
+        const raw = storage.getItem("dc_online_auth_supabase_v1");
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (!parsed) return;
+        const values = [
+          parsed?.user?.id,
+          parsed?.userId,
+          parsed?.canonicalUserId,
+          parsed?.supabaseUserId,
+          parsed?.session?.user?.id,
+          parsed?.user?.user_metadata?.canonical_user_id,
+          parsed?.user?.user_metadata?.nas_user_id,
+          parsed?.user?.user_metadata?.supabase_user_id,
+        ];
+        for (const value of values) {
+          const normalized = String(value || "").trim();
+          if (normalized) aliases.add(normalized);
+        }
+        if (!id) id = String(parsed?.supabaseUserId || parsed?.user?.id || parsed?.userId || "").trim();
+        if (!email) email = String(parsed?.user?.email || parsed?.session?.user?.email || "").trim();
+      } catch {}
+    };
+    try { read(typeof localStorage !== "undefined" ? localStorage : null); } catch {}
+    try { read(typeof sessionStorage !== "undefined" ? sessionStorage : null); } catch {}
+    return { id, email, aliases: Array.from(aliases) };
+  }
+
+  function currentAuthIdentityAliases(): string[] {
+    const cached = readCachedAuthUser();
+    const user: any = auth?.user || {};
+    const meta: any = user?.user_metadata || {};
+    return Array.from(new Set([
+      user?.id,
+      meta?.canonical_user_id,
+      meta?.canonicalUserId,
+      meta?.nas_user_id,
+      meta?.nasUserId,
+      meta?.supabase_user_id,
+      meta?.supabaseUserId,
+      ...cached.aliases,
+    ].map((value) => String(value || "").trim()).filter(Boolean)));
   }
 
   function isLinkedOnlineProfile(profile: any): boolean {
-    const authUid = String(auth?.user?.id || "").trim();
-    if (!profile || !authUid) return false;
-    const pid = String(profile?.id || "").trim();
+    if (!profile) return false;
+    const aliases = new Set(currentAuthIdentityAliases());
+    if (!aliases.size) return false;
     const pi = ((profile as any)?.privateInfo || {}) as any;
-    const linkedUid = String(pi?.onlineUserId || "").trim();
-    return pid === authUid || linkedUid === authUid;
+    const values = [
+      profile?.id,
+      profile?.userId,
+      profile?.onlineUserId,
+      profile?.accountUserId,
+      pi?.onlineUserId,
+      pi?.online_user_id,
+      pi?.userId,
+      pi?.accountUserId,
+      ...(Array.isArray(pi?.accountIdentityAliases) ? pi.accountIdentityAliases : []),
+    ];
+    return values.some((value) => aliases.has(String(value || "").trim()));
   }
 
   async function changeAvatar(id: string, file: File) {
@@ -2851,6 +2897,58 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
   }
   
   const active = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
+
+  // AUTO-RÉPARATION COMPTE -> PROFIL ACTIF.
+  // Une session peut rester parfaitement authentifiée alors que activeProfileId
+  // pointe encore vers un ancien scope (UUID Supabase / id NAS / profil supprimé).
+  // Dans ce cas MON PROFIL ne doit surtout pas afficher le formulaire de connexion.
+  React.useEffect(() => {
+    if (active || auth.status !== "signed_in") return;
+    const list = (Array.isArray(stableProfiles) ? stableProfiles : []).filter((profile: any) => profile && !profile?.isBot);
+    if (!list.length) return;
+
+    const aliases = new Set(currentAuthIdentityAliases());
+    const cachedAuth = readCachedAuthUser();
+    const authEmail = String((auth.user as any)?.email || cachedAuth.email || "").trim().toLowerCase();
+
+    const linked = list.find((profile: any) => {
+      const pi: any = profile?.privateInfo || {};
+      const values = [
+        profile?.id,
+        profile?.userId,
+        profile?.onlineUserId,
+        profile?.accountUserId,
+        pi?.onlineUserId,
+        pi?.online_user_id,
+        pi?.userId,
+        pi?.accountUserId,
+        ...(Array.isArray(pi?.accountIdentityAliases) ? pi.accountIdentityAliases : []),
+      ];
+      return values.some((value) => aliases.has(String(value || "").trim()));
+    });
+
+    const byEmail = !linked && authEmail
+      ? list.find((profile: any) => {
+          const pi: any = profile?.privateInfo || {};
+          const emails = [pi?.onlineEmail, pi?.email, profile?.email]
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean);
+          return emails.includes(authEmail);
+        })
+      : null;
+
+    const target = linked || byEmail || (list.length === 1 ? list[0] : null);
+    const targetId = String(target?.id || "").trim();
+    if (!targetId) return;
+
+    setActiveProfile(targetId);
+    try {
+      window.dispatchEvent(new CustomEvent("dc-profile-active-repaired", {
+        detail: { profileId: targetId, reason: linked ? "auth_alias" : byEmail ? "auth_email" : "single_local_profile" },
+      }));
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, auth.status, (auth.user as any)?.id, (auth.user as any)?.email, activeProfileId, (stableProfiles as any[])?.length]);
 
   // Rattrapage onboarding : si le compte vient d'être créé et que le hook auth
   // n'était pas encore prêt au moment du clic, on lie quand même le profil local
@@ -3788,6 +3886,18 @@ React.useEffect(() => {
         setToast({ type: "success", message: "Profil local déjà chargé" });
       }}
     />
+  ) : auth.status === "signed_in" && !forceAuth ? (
+    <div style={{ display: "grid", gap: 10, padding: 14 }}>
+      <div style={{ fontWeight: 900, color: theme.primary, fontSize: 16 }}>
+        {t("profiles.account.recovering.title", "Récupération de ton profil connecté")}
+      </div>
+      <div className="subtitle" style={{ color: theme.textSoft, lineHeight: 1.45 }}>
+        {t(
+          "profiles.account.recovering.subtitle",
+          "Ton compte est bien connecté. MULTISPORTS SCORING rattache automatiquement le bon profil joueur et ses données locales."
+        )}
+      </div>
+    </div>
   ) : (
     <UnifiedAuthBlock
       profiles={stableProfiles as any}
