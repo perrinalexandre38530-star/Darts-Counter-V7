@@ -79,6 +79,7 @@ import { setAvatarCache } from "./lib/avatarCache";
 import { mirrorAvatarFallbackToR2 } from "./lib/avatarR2Fallback";
 import { hydrateStoreMediaUrls } from "./lib/mediaSync";
 import { botAvatarMediaKey, captureUserMediaFallback, hydrateStoreUserMedia, profileAvatarMediaKey } from "./lib/userMediaFallback";
+import { logProfileStabilityAudit, profileStabilityFingerprint } from "./lib/profileStabilityAudit";
 import BottomNav from "./components/BottomNav";
 import NavigationBackgroundMusic from "./components/NavigationBackgroundMusic";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
@@ -772,6 +773,80 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
   }
 
   return Array.from(map.values());
+}
+
+
+// =============================================================
+// ✅ ASYNC MEDIA HYDRATION — merge non destructif
+// hydrateStoreUserMedia() travaille sur un snapshot capturé avant ses lectures
+// IndexedDB/R2. S'il se termine après une modification de profil, il ne doit
+// JAMAIS réinjecter ce vieux snapshot dans React. On complète uniquement les
+// médias réellement manquants du store vivant ; identité, stats et avatar plus
+// récent restent intacts.
+// =============================================================
+function mergeHydratedMediaFallbacksIntoLiveStore<T extends any>(liveStore: T, hydratedStore: any): T {
+  if (!liveStore || typeof liveStore !== "object" || !hydratedStore || typeof hydratedStore !== "object") return liveStore;
+
+  const hasMedia = (obj: any, keys: string[]) => keys.some((key) => {
+    const value = obj?.[key];
+    return typeof value === "string" && value.trim().length > 0;
+  });
+  const fillMediaOnly = (live: any, hydrated: any, keys: string[]) => {
+    const out = { ...(live || {}) };
+    for (const key of keys) {
+      const current = out?.[key];
+      const fallback = hydrated?.[key];
+      const currentMissing = !(typeof current === "string" && current.trim());
+      if (currentMissing && typeof fallback === "string" && fallback.trim()) out[key] = fallback;
+    }
+    return out;
+  };
+  const mergeById = (liveList: any[], hydratedList: any[], idKeys: string[], mediaKeys: string[]) => {
+    const current = Array.isArray(liveList) ? liveList : [];
+    const fallback = Array.isArray(hydratedList) ? hydratedList : [];
+    const byId = new Map<string, any>();
+    for (const row of fallback) {
+      const id = idKeys.map((key) => String(row?.[key] || "").trim()).find(Boolean) || "";
+      if (id) byId.set(id, row);
+    }
+    return current.map((row: any) => {
+      const id = idKeys.map((key) => String(row?.[key] || "").trim()).find(Boolean) || "";
+      const h = id ? byId.get(id) : null;
+      if (!h) return row;
+      // Un fallback média est autorisé seulement pour compléter une absence.
+      // Il ne peut pas remplacer un média déjà présent dans le store vivant.
+      if (hasMedia(row, mediaKeys)) return row;
+      return fillMediaOnly(row, h, mediaKeys);
+    });
+  };
+
+  return {
+    ...(liveStore as any),
+    profiles: mergeById(
+      (liveStore as any)?.profiles,
+      hydratedStore?.profiles,
+      ["id"],
+      ["avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "avatarUrl", "avatarPath"]
+    ),
+    bots: mergeById(
+      (liveStore as any)?.bots,
+      hydratedStore?.bots,
+      ["id", "botId"],
+      ["avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarUrl", "avatar"]
+    ),
+    dartSets: mergeById(
+      (liveStore as any)?.dartSets,
+      hydratedStore?.dartSets,
+      ["id", "dartSetId"],
+      ["mainImageUrl", "thumbImageUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "thumbDataUrl"]
+    ),
+    teams: mergeById(
+      (liveStore as any)?.teams,
+      hydratedStore?.teams,
+      ["id", "teamId"],
+      ["logoDataUrl", "logoUrl", "coverDataUrl", "coverUrl"]
+    ),
+  } as T;
 }
 
 // =============================================================
@@ -2409,6 +2484,30 @@ useEffect(() => {
   });
   const loadedStoreScopeRef = React.useRef<string | null>(null);
   const bootStoreLoadedRef = React.useRef(false);
+  const stabilityPrevActiveRef = React.useRef<any>(null);
+  React.useEffect(() => {
+    const activeId = String((store as any)?.activeProfileId || "");
+    const active = (store as any)?.profiles?.find((p: any) => String(p?.id || "") === activeId) || null;
+    const nextFp = profileStabilityFingerprint(active);
+    const prevFp = stabilityPrevActiveRef.current;
+    if (prevFp && nextFp) {
+      const prevAvatar = prevFp?.avatar || {};
+      const nextAvatar = nextFp?.avatar || {};
+      const prevStats = prevFp?.stats || {};
+      const nextStats = nextFp?.stats || {};
+      const prevStatsSignal = Number(prevStats.avg3 || 0) + Number(prevStats.bestVisit || 0) + Number(prevStats.bestCheckout || 0) + Number(prevStats.games || 0) + Number(prevStats.wins || 0);
+      const nextStatsSignal = Number(nextStats.avg3 || 0) + Number(nextStats.bestVisit || 0) + Number(nextStats.bestCheckout || 0) + Number(nextStats.games || 0) + Number(nextStats.wins || 0);
+      if (prevAvatar.present && !nextAvatar.present) {
+        logProfileStabilityAudit("avatar-lost-regression", store, { source: "app-store-watch", before: prevFp, after: nextFp });
+      } else if (Number(prevAvatar.avatarUpdatedAt || 0) > Number(nextAvatar.avatarUpdatedAt || 0)) {
+        logProfileStabilityAudit("avatar-stale-overwrite-regression", store, { source: "app-store-watch", before: prevFp, after: nextFp });
+      }
+      if (prevStatsSignal > 0 && nextStatsSignal === 0) {
+        logProfileStabilityAudit("stats-zero-regression", store, { source: "app-store-watch", before: prevFp, after: nextFp });
+      }
+    }
+    stabilityPrevActiveRef.current = nextFp;
+  }, [store]);
 
 
   // ✅ ONLINE→LOCAL BRIDGE (COMPTE UTILISATEUR UNIQUE)
@@ -2447,7 +2546,18 @@ useEffect(() => {
 
     try {
       setStore((prev) => {
+        const beforeId = String((prev as any)?.activeProfileId || "");
+        const beforeProfile = (prev as any)?.profiles?.find((p: any) => String(p?.id || "") === beforeId) || null;
         const next = ensureLocalProfileForOnlineUser(prev as any, user as any, (online as any)?.profile ?? null) as any;
+        const afterId = String((next as any)?.activeProfileId || "");
+        const afterProfile = (next as any)?.profiles?.find((p: any) => String(p?.id || "") === afterId) || null;
+        const beforeFp = profileStabilityFingerprint(beforeProfile);
+        const afterFp = profileStabilityFingerprint(afterProfile);
+        if (beforeId !== afterId) {
+          logProfileStabilityAudit("identity-change-online-bridge", next, { source: "online-local-bridge", beforeId, afterId, onlineUid: uid });
+        } else if (JSON.stringify(beforeFp) !== JSON.stringify(afterFp)) {
+          logProfileStabilityAudit("profile-change-online-bridge", next, { source: "online-local-bridge", onlineUid: uid, before: beforeFp, after: afterFp });
+        }
         return next;
       });
 
@@ -3255,6 +3365,7 @@ useEffect(() => {
     bootStoreLoadedRef.current = false;
 
     try { setStorageUser(nextScope); } catch {}
+    logProfileStabilityAudit("storage-scope-reload-start", store, { source: "auth-scope-reload", previousScope, nextScope, accountChanged });
     setCloudHydrated(false);
     setCloudCanSync(false);
     // Ne jamais laisser les données visuelles de l'ancien compte pendant que le
@@ -3277,14 +3388,25 @@ useEffect(() => {
             }
           : { ...initialStore };
 
+        logProfileStabilityAudit("storage-scope-reload-loaded", next, { source: "auth-scope-reload", scope: nextScope });
         setStore(next);
         // MEDIA FAILOVER : réhydrate en arrière-plan les pixels depuis IndexedDB,
         // cache navigateur puis R2 direct, sans attendre le NAS.
         void hydrateStoreUserMedia(next).then(({ store: hydrated, changed }) => {
           if (cancelled || !changed) return;
-          setStore(hydrated as Store);
-          try { if (Array.isArray((hydrated as any)?.dartSets)) replaceAllDartSets((hydrated as any).dartSets); } catch {}
-        }).catch(() => undefined);
+          logProfileStabilityAudit("media-hydration-finished", undefined, { source: "auth-scope-reload", snapshotProfile: profileStabilityFingerprint((hydrated as any)?.profiles?.find((p: any) => String(p?.id || "") === String((hydrated as any)?.activeProfileId || ""))) });
+          setStore((live) => {
+            const merged = mergeHydratedMediaFallbacksIntoLiveStore(live as Store, hydrated as Store);
+            logProfileStabilityAudit("media-hydration-merged-nondestructive", merged, { source: "auth-scope-reload" });
+            return merged;
+          });
+          // IMPORTANT : ne pas appeler replaceAllDartSets() avec le snapshot
+          // asynchrone hydraté. Cette opération déclenchait un flush global et
+          // pouvait persister un vieux profil/anciennes stats quelques secondes
+          // après un changement d'avatar.
+        }).catch((error) => {
+          logProfileStabilityAudit("media-hydration-error", undefined, { source: "auth-scope-reload", error: String((error as any)?.message || error) });
+        });
         bootStoreLoadedRef.current = true;
       } catch (e) {
         console.warn("[auth-store] reload failed", e);
@@ -3405,6 +3527,7 @@ useEffect(() => {
         }
 
         if (mounted) {
+          logProfileStabilityAudit("boot-store-loaded", base, { source: "boot" });
           setStore((prev) => ({
             ...base,
             profiles: mergeProfilesSafe(prev.profiles ?? [], base.profiles ?? []),
@@ -3412,12 +3535,14 @@ useEffect(() => {
 
           void hydrateStoreUserMedia(base).then(({ store: hydrated, changed }) => {
             if (!mounted || !changed) return;
-            setStore((prev) => ({
-              ...(hydrated as Store),
-              profiles: mergeProfilesSafe(prev.profiles ?? [], (hydrated as any)?.profiles ?? []),
-            }));
-            try { if (Array.isArray((hydrated as any)?.dartSets)) replaceAllDartSets((hydrated as any).dartSets); } catch {}
-          }).catch(() => undefined);
+            setStore((live) => {
+              const merged = mergeHydratedMediaFallbacksIntoLiveStore(live as Store, hydrated as Store);
+              logProfileStabilityAudit("media-hydration-merged-nondestructive", merged, { source: "boot" });
+              return merged;
+            });
+          }).catch((error) => {
+            logProfileStabilityAudit("media-hydration-error", undefined, { source: "boot", error: String((error as any)?.message || error) });
+          });
 
           const hasProfiles = (base.profiles ?? []).length > 0;
           const hasActive = !!base.activeProfileId;

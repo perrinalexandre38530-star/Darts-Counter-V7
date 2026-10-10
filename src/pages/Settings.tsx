@@ -47,6 +47,7 @@ import { getApiUrl } from "../lib/apiClient";
 import { onlineApi } from "../lib/onlineApi";
 import { exportCloudBackupAsJson, restoreCloudBackupFromJson } from "../lib/cloudBackup";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
+import { buildProfileStabilityAuditReport, clearProfileStabilityAuditEvents, getProfileStabilityAuditEvents, isProfileStabilityAuditEnabled, setProfileStabilityAuditEnabled } from "../lib/profileStabilityAudit";
 import { auditHistoryDecodePerformance, auditHistoryStorageFootprint } from "../lib/history";
 import {
   activateRuntimePerformanceShield,
@@ -5395,6 +5396,10 @@ export function Settings({ go, params }: Props) {
     const runningTimers = runtimeTimers.filter((row: any) => row?.running);
     const staleTimers = runtimeTimers.filter((row: any) => row?.registeredRoute && row.registeredRoute !== liveFreezeInventory?.route && /src\/pages\/|Page|Home|Play|Hub|Create/i.test(String(row?.registrationStack || "")));
     const perfShieldActive = isRuntimePerformanceShieldActive();
+    const profileStabilityAudit = buildProfileStabilityAuditReport();
+    const profileStabilityEnabled = isProfileStabilityAuditEnabled();
+    const profileStabilityEvents = getProfileStabilityAuditEvents();
+    const lastProfileStabilityRegression = [...profileStabilityEvents].reverse().find((event: any) => /regression|wipe|stale|overwrite|identity-change|avatar-lost|stats-zero/i.test(String(event?.kind || ""))) || null;
 
     const rowStyle: React.CSSProperties = {
       display: "grid",
@@ -5433,6 +5438,7 @@ export function Settings({ go, params }: Props) {
       freezeDiagnosis,
       freezeRuntimeInventory: liveFreezeInventory,
       performanceShieldActive: perfShieldActive,
+      profileStabilityAudit,
       historyDeepAudit: deepAuditResult,
       href: (() => {
         try { return location.href; } catch { return ""; }
@@ -5517,6 +5523,30 @@ export function Settings({ go, params }: Props) {
       safeAlert(state ? "Protection anti-freeze activée pendant 30 minutes hors gameplay." : "Protection impossible sur ce runtime.");
     }
 
+    function toggleProfileStabilityAudit() {
+      const next = !isProfileStabilityAuditEnabled();
+      setProfileStabilityAuditEnabled(next);
+      setTick((v) => v + 1);
+      safeAlert(next
+        ? "Audit Profil / Avatar / Stats activé. Utilise normalement l'application, change l'avatar et navigue. Les changements de profil, les réhydratations et les régressions restent enregistrés ici."
+        : "Audit Profil / Avatar / Stats désactivé. Les événements déjà capturés restent disponibles jusqu'à effacement.");
+    }
+
+    function clearProfileStabilityAudit() {
+      clearProfileStabilityAuditEvents();
+      setTick((v) => v + 1);
+    }
+
+    async function copyProfileStabilityAudit() {
+      const txt = JSON.stringify(buildProfileStabilityAuditReport(), null, 2);
+      try {
+        await navigator.clipboard.writeText(txt);
+        safeAlert("Audit Profil / Avatar / Stats copié.");
+      } catch {
+        safeAlert(txt);
+      }
+    }
+
     const copyReport = async () => {
       const txt = JSON.stringify({ snapshot: snapshotReport, pro: report }, null, 2);
       try {
@@ -5550,6 +5580,7 @@ export function Settings({ go, params }: Props) {
         try { localStorage.removeItem(k); } catch {}
       }
       clearFreezeWatchData({ keepEnabled: true });
+      clearProfileStabilityAuditEvents();
       setTick((v) => v + 1);
     };
 
@@ -5581,6 +5612,55 @@ export function Settings({ go, params }: Props) {
             "settings.diagnostics.help",
             "Ces informations servent à identifier les crashs PWA / mémoire sur mobile et les erreurs de chargement."
           )}
+        </div>
+
+        <div
+          style={{
+            marginBottom: 12,
+            padding: 12,
+            borderRadius: 14,
+            border: `1px solid ${profileStabilityEnabled ? "#4de6ff" : theme.borderSoft}`,
+            background: profileStabilityEnabled ? "rgba(30,180,220,.08)" : "rgba(255,255,255,0.025)",
+          }}
+        >
+          <div style={{ color: profileStabilityEnabled ? "#78efff" : theme.text, fontWeight: 950, textTransform: "uppercase", letterSpacing: .7 }}>
+            AUDIT INTERNE — PROFIL / AVATAR / STATS {profileStabilityEnabled ? "ON" : "OFF"}
+          </div>
+          <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 11.5, lineHeight: 1.45 }}>
+            Trace uniquement des empreintes techniques (jamais les octets des images) : profil actif, changement d'identité, avatar, niveau de fraîcheur, stats, réhydratation média et source du remplacement. À utiliser précisément pour le bug « avatar/stats corrects puis remplacés quelques secondes après ».
+          </div>
+          <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button type="button" onClick={toggleProfileStabilityAudit} style={{ borderRadius: 12, border: `1px solid ${profileStabilityEnabled ? "rgba(255,120,120,.65)" : "#4de6ff"}`, padding: "9px 12px", background: "rgba(0,0,0,.32)", color: profileStabilityEnabled ? "#ffb7b7" : "#78efff", fontWeight: 950, cursor: "pointer" }}>
+              {profileStabilityEnabled ? "Arrêter l'audit" : "Démarrer l'audit Profil/Avatar/Stats"}
+            </button>
+            <button type="button" onClick={copyProfileStabilityAudit} style={{ borderRadius: 12, border: `1px solid ${theme.borderSoft}`, padding: "9px 12px", background: "rgba(0,0,0,.32)", color: theme.text, fontWeight: 850, cursor: "pointer" }}>
+              Copier l'audit
+            </button>
+            <button type="button" onClick={clearProfileStabilityAudit} style={{ borderRadius: 12, border: `1px solid rgba(255,120,120,.45)`, padding: "9px 12px", background: "rgba(90,0,0,.18)", color: "#ffb7b7", fontWeight: 850, cursor: "pointer" }}>
+              Effacer l'audit
+            </button>
+          </div>
+          <div style={{ ...monoBox, marginTop: 10, borderColor: lastProfileStabilityRegression ? "rgba(255,120,120,.65)" : "rgba(77,230,255,.35)" }}>
+            <div><strong>Événements capturés:</strong> {profileStabilityEvents.length}</div>
+            <div><strong>Profil actif:</strong> {profileStabilityAudit?.current?.activeProfileId || "—"}</div>
+            <div><strong>Avatar actuel:</strong> {profileStabilityAudit?.current?.profile?.avatar?.kind || "none"} · updatedAt={profileStabilityAudit?.current?.profile?.avatar?.avatarUpdatedAt || 0}</div>
+            <div><strong>Stats profil:</strong> AVG3={profileStabilityAudit?.current?.profile?.stats?.avg3 ?? 0} · BV={profileStabilityAudit?.current?.profile?.stats?.bestVisit ?? 0} · CO={profileStabilityAudit?.current?.profile?.stats?.bestCheckout ?? 0} · games={profileStabilityAudit?.current?.profile?.stats?.games ?? 0}</div>
+            <div style={{ marginTop: 5, color: lastProfileStabilityRegression ? "#ffb7b7" : "#9fffd0" }}>
+              <strong>Dernière régression:</strong> {lastProfileStabilityRegression ? `${new Date(lastProfileStabilityRegression.at).toLocaleTimeString()} — ${lastProfileStabilityRegression.kind} — ${lastProfileStabilityRegression.source || "?"}` : "aucune détectée"}
+            </div>
+            {profileStabilityEvents.length ? (
+              <details style={{ marginTop: 7 }}>
+                <summary style={{ cursor: "pointer", color: "#78efff", fontWeight: 850 }}>Voir les 20 derniers événements</summary>
+                <div style={{ marginTop: 6 }}>
+                  {profileStabilityEvents.slice(-20).reverse().map((event: any) => (
+                    <div key={event.id} style={{ padding: "4px 0", borderBottom: `1px solid ${theme.borderSoft}` }}>
+                      {new Date(event.at).toLocaleTimeString()} · <strong>{event.kind}</strong> · {event.source || "?"} · profil={event.activeProfileId || "—"} · avatar={event.profile?.avatar?.kind || "none"} · avg3={event.profile?.stats?.avg3 ?? 0}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </div>
         </div>
 
         <div

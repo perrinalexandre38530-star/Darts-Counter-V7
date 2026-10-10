@@ -54,6 +54,7 @@ import tickerGalerie from "../assets/tickers/ticker_galerie.png";
 import tickerGallery from "../assets/tickers/ticker_gallery.png";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
+import { logProfileStabilityAudit, profileStabilityFingerprint } from "../lib/profileStabilityAudit";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
 import {
   getFavoriteDartSetForProfile,
@@ -2626,6 +2627,14 @@ export default function Profiles({
     let finalAvatarPath: string | undefined = undefined;
     const targetProfile = (stableProfiles as any[] || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
     const isOnlineLinked = isLinkedOnlineProfile(targetProfile);
+    logProfileStabilityAudit("avatar-change-start", store, {
+      source: "profiles.changeAvatar",
+      profileId: id,
+      onlineLinked: isOnlineLinked,
+      before: profileStabilityFingerprint(targetProfile),
+      fileType: String(file?.type || ""),
+      fileSize: Number(file?.size || 0),
+    });
 
     writeAvatarCache(id, {
       avatarUrl: undefined,
@@ -2680,6 +2689,12 @@ export default function Profiles({
     try {
       window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: now, phase: "local" } }));
     } catch {}
+    logProfileStabilityAudit("avatar-local-commit", immediateStoreSnapshot || store, {
+      source: "profiles.changeAvatar",
+      profileId: id,
+      avatarUpdatedAt: now,
+      thumbChars: thumbDataUrl.length,
+    });
 
     if (isOnlineLinked && auth.status === "signed_in") {
       try {
@@ -2716,10 +2731,22 @@ export default function Profiles({
             avatarPath: String(uploaded?.path || "") || undefined,
             avatarUpdatedAt: now,
           });
+          logProfileStabilityAudit("avatar-online-upload-ok", undefined, {
+            source: "profiles.changeAvatar",
+            profileId: id,
+            avatarUpdatedAt: now,
+            hasPublicUrl: true,
+          });
         }
 
-        try { await (auth as any)?.refresh?.(); } catch {}
+        try {
+          await (auth as any)?.refresh?.();
+          logProfileStabilityAudit("avatar-auth-refresh-done", undefined, { source: "profiles.changeAvatar", profileId: id, avatarUpdatedAt: now });
+        } catch (refreshError) {
+          logProfileStabilityAudit("avatar-auth-refresh-error", undefined, { source: "profiles.changeAvatar", profileId: id, error: String((refreshError as any)?.message || refreshError) });
+        }
       } catch (e) {
+        logProfileStabilityAudit("avatar-online-upload-error", undefined, { source: "profiles.changeAvatar", profileId: id, error: String((e as any)?.message || e) });
         console.warn("[avatars] upload active profile failed", e);
       }
     }
@@ -2778,6 +2805,12 @@ export default function Profiles({
     try {
       window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: now } }));
     } catch {}
+    logProfileStabilityAudit("avatar-change-finished", nextStoreSnapshot || store, {
+      source: "profiles.changeAvatar",
+      profileId: id,
+      avatarUpdatedAt: now,
+      finalHasRemoteUrl: !!finalAvatarUrl,
+    });
   }
 
   async function delProfile(id: string) {

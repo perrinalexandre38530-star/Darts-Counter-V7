@@ -1464,7 +1464,12 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
       // Évite le cas constaté : l'utilisateur modifie un set puis rafraîchit
       // immédiatement avant que l'auto-save React/IDB n'ait persisté le store.
       try {
-        if (typeof w?.__flushLocalStoreNow === "function") {
+        // replaceAll est un bridge interne de réconciliation/hydratation, pas une
+        // mutation utilisateur. Forcer ici un flush du store global pouvait
+        // persister un snapshot React capturé AVANT un changement d'avatar/stats.
+        // Les vraies mutations (create/update/delete/...) gardent le flush immédiat.
+        const forceGlobalFlush = String(reason || "") !== "replaceAll";
+        if (forceGlobalFlush && typeof w?.__flushLocalStoreNow === "function") {
           setTimeout(() => {
             try { w.__flushLocalStoreNow(`dartsets_${reason}`); } catch {}
           }, 0);
