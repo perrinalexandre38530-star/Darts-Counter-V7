@@ -757,6 +757,11 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
       continue;
     }
     const next: any = p;
+    const prevAvatarRevision = Number(prev?.avatarUpdatedAt || 0) || 0;
+    const nextAvatarRevision = Number(next?.avatarUpdatedAt || 0) || 0;
+    const incomingAvatarIsStale = prevAvatarRevision > 0 && nextAvatarRevision < prevAvatarRevision;
+    const pickNewestAvatarField = (key: string) =>
+      incomingAvatarIsStale ? prev?.[key] : pickField(prev, next, key);
     map.set(
       p.id,
       {
@@ -764,10 +769,14 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
         ...next,
         privateInfo: mergeDefined(prev?.privateInfo, next?.privateInfo),
         preferences: mergeDefined(prev?.preferences, next?.preferences),
-        avatarUrl: pickField(prev, next, "avatarUrl"),
-        avatarDataUrl: pickField(prev, next, "avatarDataUrl"),
-        avatarPath: pickField(prev, next, "avatarPath"),
-        avatarUpdatedAt: pickField(prev, next, "avatarUpdatedAt"),
+        // Un snapshot/bridge ancien ne peut jamais faire revenir l'avatar en
+        // arrière après que l'utilisateur vient d'enregistrer une nouvelle photo.
+        avatarUrl: pickNewestAvatarField("avatarUrl"),
+        avatarDataUrl: pickNewestAvatarField("avatarDataUrl"),
+        avatarPath: pickNewestAvatarField("avatarPath"),
+        avatarUpdatedAt: incomingAvatarIsStale
+          ? prevAvatarRevision
+          : pickNewestAvatarField("avatarUpdatedAt"),
       } as T
     );
   }

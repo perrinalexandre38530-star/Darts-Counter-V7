@@ -1216,22 +1216,29 @@ function mergeProfilesSafe(
     const old = prevById.get(p.id);
     if (!old) return p;
 
+    // Un bridge / rehydrate peut arriver avec quelques secondes de retard.
+    // Pour l'avatar, le timestamp est la seule autorité : une révision plus
+    // ancienne (ou sans timestamp alors qu'une révision existe déjà) ne doit
+    // JAMAIS réinjecter l'ancienne photo sur MON PROFIL.
+    const oldAvatarRevision = Number((old as any)?.avatarUpdatedAt || 0) || 0;
+    const nextAvatarRevision = Number((p as any)?.avatarUpdatedAt || 0) || 0;
+    const incomingAvatarIsStale = oldAvatarRevision > 0 && nextAvatarRevision < oldAvatarRevision;
+    const pickAvatarField = (key: string) => {
+      if (incomingAvatarIsStale) return (old as any)?.[key];
+      return Object.prototype.hasOwnProperty.call((p as any), key)
+        ? (p as any)[key]
+        : (old as any)?.[key];
+    };
+
     return {
       ...old,
       ...p,
-      // 🔒 champs protégés (jamais écrasés par undefined / null)
-      avatarUrl: Object.prototype.hasOwnProperty.call((p as any), "avatarUrl")
-        ? (p as any).avatarUrl
-        : (old as any).avatarUrl,
-      avatarDataUrl: Object.prototype.hasOwnProperty.call((p as any), "avatarDataUrl")
-        ? (p as any).avatarDataUrl
-        : (old as any).avatarDataUrl,
-      avatarPath: Object.prototype.hasOwnProperty.call((p as any), "avatarPath")
-        ? (p as any).avatarPath
-        : (old as any).avatarPath,
-      avatarUpdatedAt: Object.prototype.hasOwnProperty.call((p as any), "avatarUpdatedAt")
-        ? (p as any).avatarUpdatedAt
-        : (old as any).avatarUpdatedAt,
+      avatarUrl: pickAvatarField("avatarUrl"),
+      avatarDataUrl: pickAvatarField("avatarDataUrl"),
+      avatarPath: pickAvatarField("avatarPath"),
+      avatarUpdatedAt: incomingAvatarIsStale
+        ? oldAvatarRevision
+        : pickAvatarField("avatarUpdatedAt"),
     };
   });
 
@@ -5168,12 +5175,33 @@ function ActiveProfileBlock({
   // =========================
   const activeAvatarCache = getAvatarCacheLib(String((active as any)?.id || ""));
   const activeAvatarUrl = String((active as any)?.avatarUrl || "");
+  const activeAvatarRevision = Number((active as any)?.avatarUpdatedAt || 0) || 0;
+  const cachedAvatarRevision = Number((activeAvatarCache as any)?.avatarUpdatedAt || 0) || 0;
+  const cachedAvatarDataUrl = String(
+    (activeAvatarCache as any)?.avatarThumbDataUrl ||
+    (activeAvatarCache as any)?.avatarDataUrl ||
+    (activeAvatarCache as any)?.avatarFullDataUrl ||
+    ""
+  );
+  // L'utilisateur vient de valider une nouvelle photo : writeAvatarCache() est
+  // volontairement le premier commit effectué par changeAvatar(). Le composant
+  // doit donc afficher ce cache récent immédiatement, sans attendre que le parent
+  // ait propagé le nouvel objet `active` au render suivant.
+  const cachedAvatarIsAtLeastAsFresh = !!cachedAvatarDataUrl &&
+    cachedAvatarRevision > 0 &&
+    cachedAvatarRevision >= activeAvatarRevision;
   const avatarSrc = buildAvatarSrc({
-    preview: editPreview,
-    avatarUrl: activeAvatarUrl,
-    avatarDataUrl: String((active as any)?.avatarDataUrl || ""),
-    avatarFullDataUrl: activeAvatarUrl ? "" : String((activeAvatarCache as any)?.avatarFullDataUrl || ""),
-    avatarUpdatedAt: (active as any)?.avatarUpdatedAt ?? null,
+    preview: editPreview || (cachedAvatarIsAtLeastAsFresh ? cachedAvatarDataUrl : null),
+    avatarUrl: cachedAvatarIsAtLeastAsFresh
+      ? String((activeAvatarCache as any)?.avatarUrl || activeAvatarUrl || "")
+      : activeAvatarUrl,
+    avatarDataUrl: cachedAvatarIsAtLeastAsFresh
+      ? cachedAvatarDataUrl
+      : String((active as any)?.avatarDataUrl || ""),
+    avatarFullDataUrl: cachedAvatarIsAtLeastAsFresh
+      ? cachedAvatarDataUrl
+      : (activeAvatarUrl ? "" : String((activeAvatarCache as any)?.avatarFullDataUrl || "")),
+    avatarUpdatedAt: Math.max(activeAvatarRevision, cachedAvatarRevision) || null,
   });
 
   // Logs debug avatar désactivés : les data URLs énormes faisaient exploser la console et la mémoire.

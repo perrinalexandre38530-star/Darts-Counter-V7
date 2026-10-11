@@ -2287,6 +2287,28 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         const all = Array.from(byId.values()).filter((rec: any) => isX01Record(rec));
         setLoadPhase("hydrate-x01");
         emitDartSetStatsDiagnostic({ profileId: activeProfileId, phase: "hydrate-x01", sets: setsNow.length, rows: rows.length, history: byId.size, x01: all.length });
+
+        // AFFICHAGE IMMÉDIAT : History.list() contient déjà suffisamment de données
+        // dans la majorité des sauvegardes récentes. On calcule donc une première
+        // passe AVANT les History.get() lourds. L'UI ne reste plus vide pendant
+        // l'hydratation détaillée de dizaines de matchs.
+        let derived = await deriveDartSetStatsFromHistoryRows(
+          all,
+          activeProfileId,
+          activePlayerName || ""
+        );
+        if (mounted && !cancelled && derived.outRows.length > 0) {
+          const quickVisuals = buildCachedDartSetVisuals(derived.outRows, setsNow, t);
+          writeDartSetStatsRenderCache(activeProfileId, derived.outRows, derived.recMap, quickVisuals);
+          setLoadPhase("quick-ready");
+          emitDartSetStatsDiagnostic({ profileId: activeProfileId, phase: "quick-ready", sets: setsNow.length, rows: derived.outRows.length, history: byId.size, x01: all.length });
+          setRows(derived.outRows);
+          setRecentBySet(derived.recMap);
+          setCachedVisuals(quickVisuals);
+          setLoading(false);
+          setRefreshing(true);
+        }
+
         const sortedForEnrich = all.slice().sort((a: any, b: any) => {
           const ta = N(a?.endedAt, 0) || N(a?.finishedAt, 0) || N(a?.updatedAt, 0) || N(a?.createdAt, 0) || 0;
           const tb = N(b?.endedAt, 0) || N(b?.finishedAt, 0) || N(b?.updatedAt, 0) || N(b?.createdAt, 0) || 0;
@@ -2323,12 +2345,16 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         const allEnriched = Array.from(enrichedMap.values());
         if (cancelled) return;
 
-        // Chemin rapide : les headers X01 déjà identifiés sont hydratés en priorité.
-        let derived = await deriveDartSetStatsFromHistoryRows(
+        // Enrichissement final : remplace la première passe uniquement si la
+        // version hydratée apporte réellement des lignes exploitables.
+        const enrichedDerived = await deriveDartSetStatsFromHistoryRows(
           allEnriched,
           activeProfileId,
           activePlayerName || ""
         );
+        if (enrichedDerived.outRows.length > 0 || derived.outRows.length === 0) {
+          derived = enrichedDerived;
+        }
 
         // Compat historique : si le chemin optimisé retourne 0 alors qu'il existe
         // de l'historique, on hydrate une fois la source canonique complète. Des
@@ -2699,13 +2725,13 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         </div>
       )}
 
-      {loading && !rows.length ? (
+      {loading && !effectiveRows.length ? (
         <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 8 }}>{t("common.loading", "Chargement...")} · {loadPhase}</div>
-      ) : err && !rows.length ? (
+      ) : err && !effectiveRows.length ? (
         <div style={{ color: "#ff8a8a", fontSize: 12, padding: 8 }}>
           {t("common.error", "Erreur")} : {String(err)}
         </div>
-      ) : !rows.length ? (
+      ) : !effectiveRows.length ? (
         <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 8 }}>
           {t("stats.dartSets.empty", "Aucune partie X01 trouvée pour ce profil.")}
         </div>

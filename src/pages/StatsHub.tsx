@@ -6048,7 +6048,14 @@ const normalizedMatchesClean = React.useMemo(() => {
     const players = Array.isArray(m?.players) ? m.players : [];
     const fixedPlayers = players.map((pp: any) => {
       const pid = String(pp?.id ?? pp?.playerId ?? pp?.profileId ?? "");
-      const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), effectiveStoreProfiles);
+      const historicalName = pickPlayerName(pp);
+      const currentProfileByName = profile && normPlayerName(pickPlayerName(profile)) === normPlayerName(historicalName)
+        ? (profile as any)
+        : null;
+      // Le compte utilisateur courant est l'identité canonique de ses anciennes parties.
+      // Important quand un ancien profil local homonyme (ex. "Ninja") existe encore :
+      // on ne doit surtout pas rattacher l'historique au doublon local par simple .find(name).
+      const sp = currentProfileByName ?? findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, historicalName, effectiveStoreProfiles);
       const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
       const name = pickPlayerName(sp) || pickPlayerName(pp) || "";
       const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(pp);
@@ -6133,7 +6140,11 @@ const linkedNormalizedMatches = React.useMemo(() => {
       players: Array.isArray(m?.players)
         ? m.players.map((p: any) => {
             const pid = String(p?.id ?? p?.playerId ?? p?.profileId ?? "");
-            const sp = findProfileByIdOrName(p?.profileId ?? p?.playerId ?? pid, pickPlayerName(p), effectiveStoreProfiles);
+            const historicalName = pickPlayerName(p);
+            const currentProfileByName = profile && normPlayerName(pickPlayerName(profile)) === normPlayerName(historicalName)
+              ? (profile as any)
+              : null;
+            const sp = currentProfileByName ?? findProfileByIdOrName(p?.profileId ?? p?.playerId ?? pid, historicalName, effectiveStoreProfiles);
             const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
             const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(p);
             return {
@@ -6168,7 +6179,11 @@ const nmFromRecordsFallback = React.useMemo(() => {
       ...m,
       players: players.map((pp: any) => {
         const pid = String(pp?.id ?? pp?.playerId ?? pp?.profileId ?? "");
-        const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), effectiveStoreProfiles);
+        const historicalName = pickPlayerName(pp);
+        const currentProfileByName = profile && normPlayerName(pickPlayerName(profile)) === normPlayerName(historicalName)
+          ? (profile as any)
+          : null;
+        const sp = currentProfileByName ?? findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, historicalName, effectiveStoreProfiles);
         const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
         const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(pp);
         return {
@@ -6511,10 +6526,13 @@ const statsDiagnostic = React.useMemo(() => {
   const avatarSrc = pickPlayerAvatar(selectedPlayerVisual);
   let localProfiles = 0;
   try { localProfiles = getCachedLocalProfilesForSafety()?.profiles?.length || 0; } catch {}
+  const selectedDiagnosticName = statHubNormName(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "");
   const selectedMatchCount = Array.isArray(nmEffective)
     ? nmEffective.filter((m: any) => toArrLoc<any>(m?.players).some((p: any) => {
-        const ids = [p?.id, p?.playerId, p?.profileId].filter(Boolean).map(String);
-        return ids.includes(String(effectiveProfileId || ""));
+        const ids = statHubPlayerIds(p);
+        const byId = ids.some((id) => statHubIdMatches(id, effectiveProfileId));
+        const byName = !!selectedDiagnosticName && statHubNormName(pickPlayerName(p)) === selectedDiagnosticName;
+        return byId || byName;
       })).length
     : 0;
   return {

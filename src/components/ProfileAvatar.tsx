@@ -339,9 +339,23 @@ export default function ProfileAvatar(props: Props) {
   const inputProfile: ProfileLike | null =
     ("profile" in props ? props.profile : null) ?? null;
   const inputProfileId = String(props.profileId || inputProfile?.id || "").trim();
+  // Un changement d'avatar doit repeindre tous les médaillons du profil sans
+  // attendre un rerender de leur parent (Home, Mon Profil, sélecteurs, Stats).
+  const [avatarSignalRevision, setAvatarSignalRevision] = React.useState(0);
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !inputProfileId) return;
+    const onAvatarUpdated = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      if (String(detail?.profileId || "") !== inputProfileId) return;
+      setAvatarSignalRevision(Number(detail?.avatarUpdatedAt || Date.now()) || Date.now());
+    };
+    window.addEventListener("dc:profile-avatar-updated", onAvatarUpdated as EventListener);
+    return () => window.removeEventListener("dc:profile-avatar-updated", onAvatarUpdated as EventListener);
+  }, [inputProfileId]);
+
   const inputFastCache = React.useMemo(
     () => (inputProfileId ? (getAvatarCacheFast(inputProfileId) as any) : null),
-    [inputProfileId, (inputProfile as any)?.avatarUpdatedAt],
+    [inputProfileId, (inputProfile as any)?.avatarUpdatedAt, avatarSignalRevision],
   );
   const inputHasFastMedia = Boolean(
     normalizeImport(inputFastCache?.avatarThumbDataUrl) || normalizeImport(inputFastCache?.avatarDataUrl)
@@ -475,9 +489,16 @@ export default function ProfileAvatar(props: Props) {
   // sources différentes pour le même profileId. `preferProfileAvatarUrl` reste
   // accepté pour compatibilité mais n'altère plus l'ordre canonique.
   const computedRawImg = React.useMemo(() => {
-    // RÈGLE CANONIQUE : l'objet profil courant est toujours prioritaire.
-    // Le cache n'est qu'un fallback d'affichage. Une ancienne miniature d'un
-    // autre avatar ne doit JAMAIS écraser l'avatar explicitement porté par le profil.
+    // Après l'événement de validation d'un nouvel avatar, le cache écrit par
+    // changeAvatar() est la source la plus fraîche connue. Il doit gagner même
+    // si le parent tient encore pendant un render l'ancien objet profil.
+    const eventCacheIsFresh = avatarSignalRevision > 0 &&
+      cachedRevision >= avatarSignalRevision &&
+      !!cachedThumb;
+    if (eventCacheIsFresh) return cachedThumb;
+
+    // RÈGLE CANONIQUE hors remplacement en cours : l'objet profil courant est
+    // prioritaire et le cache reste un fallback d'affichage.
     if (propDataUrl) return propDataUrl;
     if (avatarDataUrl) return avatarDataUrl;
     if (legacyAvatar && !legacyAvatar.startsWith("blob:") && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
@@ -485,7 +506,7 @@ export default function ProfileAvatar(props: Props) {
     if (avatarPath && !avatarPath.startsWith("blob:") && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     if (size <= 180 && cachedThumb) return cachedThumb;
     return null;
-  }, [propDataUrl, size, cachedThumb, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+  }, [avatarSignalRevision, cachedRevision, propDataUrl, size, cachedThumb, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   // Garde la dernière source valide pendant une réhydratation asynchrone.
   // Un delta/store temporairement "lite" ne doit jamais faire clignoter l'avatar
