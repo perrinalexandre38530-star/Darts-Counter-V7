@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
-import { buildFootballHeadToHead } from "../../lib/footballInsights";
+import { buildFootballCareerProgress, buildFootballHeadToHead, footballPerformanceRating } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa", BLUE = "#35d0ff", RED = "#ff5b77", GOLD = "#ffd36b", SOFT = "#aeb8c9", WHITE = "#f7fbff";
 const n = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0;
@@ -91,6 +91,8 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const recentPoints = recentFive.reduce((total: number, { record, row }: any) => total + (wonMatch(record, row, playerId) ? 3 : drawMatch(record) ? 1 : 0), 0);
   const favoriteVariant = Object.entries(variants).sort((a: any, b: any) => b[1].games - a[1].games)[0];
   const headToHead = buildFootballHeadToHead(footballRecords, playerId, playerName).slice(0, 6);
+  const career = buildFootballCareerProgress(footballRecords, playerId, playerName);
+  const averageRating = rows.length ? Math.round((rows.reduce((total: number, row: any) => total + footballPerformanceRating(row), 0) / rows.length) * 10) / 10 : 0;
 
   return <div style={{ width: "100%", maxWidth: 980, margin: "0 auto", overflowX: "hidden" }}>
     <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{[["all", "Tout"], ["day", "24 h"], ["week", "7 j"], ["month", "30 j"], ["year", "1 an"]].map(([key, label]) => <button key={key} onClick={() => setRange(key)} style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${range === key ? GREEN : "rgba(255,255,255,.10)"}`, background: range === key ? `${GREEN}18` : "rgba(255,255,255,.03)", color: range === key ? GREEN : SOFT, fontWeight: 1000, fontSize: 8 }}>{label}</button>)}</div>
@@ -101,6 +103,7 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
         <Kpi label="Victoires" value={`${pct(wins, games)}%`} detail={`${bestStreak} victoire${bestStreak > 1 ? "s" : ""} de suite`} color={GREEN} />
         <Kpi label="Buts" value={goals} detail={`${avgGoals}/match · ${conversion}% conversion`} color={GOLD} />
         <Kpi label="Précision" value={`${accuracy}%`} detail={`${actions}/${darts} actions`} color={BLUE} />
+        <Kpi label="Note moyenne" value={averageRating.toFixed(1)} detail="performance / 10" color={GOLD} />
         <Kpi label="Tirs cadrés" value={onTarget} detail={`${onTargetRate}% des tirs`} color={GOLD} />
         <Kpi label="Interceptions" value={interceptions} detail={`${avgInterceptions}/match · ${tackles} tacles`} color={RED} />
         <Kpi label="Arrêts" value={saves} detail={`${saveRate}% estimé`} color={BLUE} />
@@ -138,6 +141,11 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
         </div>
       </Section>
 
+      <Section title="Progression carrière" accent={GOLD} right={<span style={{ color: SOFT, fontSize: 7 }}>{career.snapshot.games} matchs · {career.snapshot.wins} victoires</span>}>
+        <div style={{ display: "grid", gap: 7 }}>{career.next.map((milestone: any) => <div key={`${milestone.key}-${milestone.target}`} style={{ display: "grid", gridTemplateColumns: "105px minmax(0,1fr) 62px", gap: 7, alignItems: "center" }}><div style={{ color: WHITE, fontSize: 7.2, fontWeight: 950, whiteSpace: "nowrap" }}>{milestone.icon} {milestone.label}</div><div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${milestone.progress}%`, height: "100%", borderRadius: 999, background: GOLD }} /></div><div style={{ textAlign: "right", color: GOLD, fontSize: 7.4, fontWeight: 1050 }}>{milestone.value}/{milestone.target}</div></div>)}</div>
+        {career.achieved.length ? <div style={{ marginTop: 8, display: "flex", gap: 5, flexWrap: "wrap" }}>{career.achieved.map((milestone: any) => <span key={`${milestone.key}-${milestone.target}`} style={{ borderRadius: 999, padding: "5px 7px", border: `1px solid ${GREEN}44`, background: `${GREEN}0b`, color: GREEN, fontSize: 6.2, fontWeight: 1000 }}>{milestone.icon} {milestone.target} {milestone.label}</span>)}</div> : null}
+      </Section>
+
       <Section title="Forme récente" accent={GREEN} right={<span style={{ color: SOFT, fontSize: 7 }}>{recentFive.length ? `${recentPoints}/${recentFive.length * 3} pts sur les 5 derniers` : "12 derniers matchs"}</span>}>
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, trend.length)},minmax(22px,1fr))`, gap: 4, overflowX: "auto" }}>{trend.map(({ record, row }: any, index: number) => { const won = wonMatch(record, row, playerId), draw = drawMatch(record); const color = won ? GREEN : draw ? GOLD : RED; return <div key={record?.id || index} title={scoreLineOf(record)} style={{ minWidth: 22, height: 34, borderRadius: 9, display: "grid", placeItems: "center", border: `1px solid ${color}66`, background: `${color}12`, color, fontSize: 8, fontWeight: 1100 }}>{won ? "V" : draw ? "N" : "D"}</div>; })}</div>
       </Section>
@@ -165,7 +173,7 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
       </Section>
 
       <Section title="Parties récentes" accent={GOLD}>
-        <div style={{ display: "grid", gap: 6 }}>{matches.slice(0, 15).map(({ record, row }: any, index: number) => { const won = wonMatch(record, row, playerId), draw = drawMatch(record), variant = variantOf(record), resultColor = won ? GREEN : draw ? GOLD : RED; return <div key={record?.id || index} style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: 8, borderRadius: 13, border: `1px solid ${resultColor}45`, background: `${resultColor}08` }}><div style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: `${resultColor}22`, color: resultColor, fontSize: 8, fontWeight: 1150 }}>{won ? "V" : draw ? "N" : "D"}</div><div style={{ minWidth: 0 }}><div style={{ color: WHITE, fontWeight: 1000, fontSize: 8.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{scoreLineOf(record) || footballVariantLabel(variant)}</div><div style={{ color: SOFT, fontSize: 6.8 }}>{new Date(playedAt(record) || Date.now()).toLocaleDateString("fr-FR")} · {footballVariantLabel(variant)} · {n(row?.darts)} fléchettes</div></div><div style={{ textAlign: "right" }}><strong style={{ color: GOLD, fontSize: 14 }}>{n(row?.goals)}⚽</strong><div style={{ color: GREEN, fontSize: 6.5 }}>{Math.round(rowAccuracy(row) * 10) / 10}%</div></div></div>; })}</div>
+        <div style={{ display: "grid", gap: 6 }}>{matches.slice(0, 15).map(({ record, row }: any, index: number) => { const won = wonMatch(record, row, playerId), draw = drawMatch(record), variant = variantOf(record), resultColor = won ? GREEN : draw ? GOLD : RED; return <div key={record?.id || index} style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: 8, borderRadius: 13, border: `1px solid ${resultColor}45`, background: `${resultColor}08` }}><div style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: `${resultColor}22`, color: resultColor, fontSize: 8, fontWeight: 1150 }}>{won ? "V" : draw ? "N" : "D"}</div><div style={{ minWidth: 0 }}><div style={{ color: WHITE, fontWeight: 1000, fontSize: 8.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{scoreLineOf(record) || footballVariantLabel(variant)}</div><div style={{ color: SOFT, fontSize: 6.8 }}>{new Date(playedAt(record) || Date.now()).toLocaleDateString("fr-FR")} · {footballVariantLabel(variant)} · {n(row?.darts)} fléchettes</div></div><div style={{ textAlign: "right" }}><strong style={{ color: GOLD, fontSize: 14 }}>{footballPerformanceRating(row).toFixed(1)}</strong><div style={{ color: GREEN, fontSize: 6.5 }}>{n(row?.goals)}⚽ · {Math.round(rowAccuracy(row) * 10) / 10}%</div></div></div>; })}</div>
       </Section>
     </>}
   </div>;

@@ -5,6 +5,7 @@
 // =============================================================
 
 import type { GameDart, Player } from "../types-game";
+import type { PremiumBotBrain } from "../premiumPartyBotAI";
 
 export type MenteurBotLevel = "easy" | "normal" | "hard";
 export type MenteurCondition = "none" | "double" | "triple" | "bull" | "distinct";
@@ -210,30 +211,56 @@ export function playMenteurVisit(input: MenteurState, dartsRaw: GameDart[]): Men
   return resetAuction(s, s.eliminated[loser.id] ? nextAliveIndex(s, loserIdx) : loserIdx);
 }
 
-function skill(level: MenteurBotLevel) { return level === "hard" ? .81 : level === "easy" ? .38 : .61; }
-function randomDart(): GameDart { const n = 1 + Math.floor(Math.random() * 20), r = Math.random(); return { bed: r < .72 ? "S" : r < .91 ? "D" : "T", number: n } as GameDart; }
-export function pickMenteurBotAction(s: MenteurState, level: MenteurBotLevel = "normal"): { type: "raise"; amount: number } | { type: "liar" } {
+function skill(level: MenteurBotLevel, brain?: PremiumBotBrain) {
+  const base = level === "hard" ? .81 : level === "easy" ? .38 : .61;
+  return Math.max(.18, Math.min(.97, Number(brain?.precision ?? base)));
+}
+function randomDart(brain?: PremiumBotBrain): GameDart {
+  const n = 1 + Math.floor(Math.random() * 20), r = Math.random(), risk = Number(brain?.risk ?? .5);
+  const dCut = .74 - (risk - .5) * .07, tCut = .91 - (risk - .5) * .14;
+  return { bed: r < dCut ? "S" : r < tCut ? "D" : "T", number: n } as GameDart;
+}
+export function pickMenteurBotAction(s: MenteurState, level: MenteurBotLevel = "normal", brain?: PremiumBotBrain): { type: "raise"; amount: number } | { type: "liar" } {
   const step = s.config.rules.raiseStep;
   const me = s.players[s.activePlayerIndex];
   const myLives = Number(s.lives?.[me?.id] || s.config.rules.lives), maxLives = Math.max(1, Number(s.config.rules.lives));
   const danger = 1 - myLives / maxLives;
-  if (!s.lastBidderId) return { type: "raise", amount: Math.max(30, step * (level === "hard" ? 8 : level === "easy" ? 5 : 6)) };
+  const risk = Number(brain?.risk ?? .5), bluff = Number(brain?.bluffBias || 0), call = Number(brain?.callBias || 0);
+
+  if (!s.lastBidderId) {
+    const baseMult = level === "hard" ? 8 : level === "easy" ? 5 : 6;
+    const personaMult = brain?.key === "trickster" ? 2 : brain?.key === "aggressive" ? 1 : brain?.key === "steady" ? -1 : 0;
+    return { type: "raise", amount: Math.max(30, step * Math.max(3, baseMult + personaMult)) };
+  }
+
   const base = level === "hard" ? 119 : level === "easy" ? 68 : 94;
   const conditionPenalty = s.condition === "none" ? 0 : s.condition === "distinct" ? 18 : s.condition === "bull" ? 16 : 10;
-  const riskAdjustment = danger * (level === "hard" ? 14 : 6);
-  const threshold = base - conditionPenalty - riskAdjustment + (Math.random() - .5) * 24;
+  // callBias fait appeler plus tôt ; bluffBias pousse au contraire à continuer l'escalade.
+  const threshold = base - conditionPenalty - danger * (8 + Number(brain?.composure || .5) * 10) - call * 30 + bluff * 24 + (Math.random() - .5) * 20;
   if (s.bid >= threshold || s.bid >= 175) return { type: "liar" };
-  const r = Math.random(), mult = r < .18 ? 3 : r < .55 ? 2 : 1;
+
+  const r = Math.random();
+  const highRaise = Math.max(.08, Math.min(.42, .15 + (risk - .5) * .25 + bluff * .20));
+  const midRaise = Math.max(.25, Math.min(.70, .48 + (risk - .5) * .16));
+  const mult = r < highRaise ? 3 : r < midRaise ? 2 : 1;
   return { type: "raise", amount: step * mult };
 }
-export function pickMenteurBotDarts(s: MenteurState, level: MenteurBotLevel = "normal"): GameDart[] {
+export function pickMenteurBotDarts(s: MenteurState, level: MenteurBotLevel = "normal", brain?: PremiumBotBrain): GameDart[] {
   const challenged = s.players.find((p) => p.id === s.challengedId);
   const lives = Number(s.lives?.[challenged?.id] || s.config.rules.lives), danger = 1 - lives / Math.max(1, s.config.rules.lives);
-  const ok = Math.random() < Math.min(.95, skill(level) + danger * .12);
-  if (!ok) return [randomDart(), { bed: "MISS" }, randomDart()];
-  if (s.condition === "double") return [{ bed: "D", number: 20 }, { bed: "T", number: 20 }, { bed: "T", number: 20 }];
+  const pressure = danger * (.06 + Number(brain?.composure || .5) * .09);
+  const ok = Math.random() < Math.min(.97, skill(level, brain) + pressure);
+  if (!ok) return [randomDart(brain), { bed: "MISS" }, randomDart(brain)];
+
+  if (s.condition === "double") {
+    return Number(brain?.risk || .5) < .42
+      ? [{ bed: "D", number: 20 }, { bed: "D", number: 20 }, { bed: "T", number: 20 }]
+      : [{ bed: "D", number: 20 }, { bed: "T", number: 20 }, { bed: "T", number: 20 }];
+  }
   if (s.condition === "triple") return [{ bed: "T", number: 20 }, { bed: "T", number: 20 }, { bed: "T", number: 20 }];
   if (s.condition === "bull") return [{ bed: "IB" }, { bed: "T", number: 20 }, { bed: "T", number: 20 }];
   if (s.condition === "distinct") return [{ bed: "T", number: 20 }, { bed: "T", number: 19 }, { bed: "T", number: 18 }];
-  return [{ bed: "T", number: 20 }, { bed: "T", number: 20 }, { bed: "T", number: 20 }];
+  return Number(brain?.risk || .5) > .72
+    ? [{ bed: "T", number: 20 }, { bed: "T", number: 20 }, { bed: "T", number: 20 }]
+    : [{ bed: "T", number: 20 }, { bed: "T", number: 19 }, { bed: "T", number: 18 }];
 }

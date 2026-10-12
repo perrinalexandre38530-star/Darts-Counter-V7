@@ -5,6 +5,7 @@
 // =============================================================
 
 import type { GameDart, Player } from "../types-game";
+import type { PremiumBotBrain } from "../premiumPartyBotAI";
 
 export type PenduBotLevel = "easy" | "normal" | "hard";
 export type PenduChallenge =
@@ -328,13 +329,19 @@ export function playPenduVisit(input: PenduState, dartsRaw: GameDart[]): PenduSt
   return startCycle(state, nextAliveIndex(state, state.callerPlayerIndex));
 }
 
-function skill(level: PenduBotLevel) { return level === "hard" ? .79 : level === "easy" ? .37 : .59; }
-function randomDart(): GameDart {
-  const n = 1 + Math.floor(Math.random() * 20);
-  const r = Math.random();
-  return { bed: r < .72 ? "S" : r < .90 ? "D" : "T", number: n } as GameDart;
+function skill(level: PenduBotLevel, brain?: PremiumBotBrain) {
+  const base = level === "hard" ? .79 : level === "easy" ? .37 : .59;
+  return Math.max(.18, Math.min(.96, Number(brain?.precision ?? base)));
 }
-function scorePlan(target: number): GameDart[] {
+function randomDart(brain?: PremiumBotBrain): GameDart {
+  const n = 1 + Math.floor(Math.random() * 20);
+  const risk = Number(brain?.risk ?? .5);
+  const r = Math.random();
+  const doubleAt = .74 - (risk - .5) * .08;
+  const tripleAt = .91 - (risk - .5) * .14;
+  return { bed: r < doubleAt ? "S" : r < tripleAt ? "D" : "T", number: n } as GameDart;
+}
+function scorePlan(target: number, brain?: PremiumBotBrain): GameDart[] {
   let rem = Math.max(0, Math.min(180, Math.round(target)));
   const out: GameDart[] = [];
   for (let i = 0; i < 3; i++) {
@@ -343,29 +350,37 @@ function scorePlan(target: number): GameDart[] {
     if (rem === 50) { out.push({ bed: "IB" }); rem = 0; continue; }
     if (rem === 25) { out.push({ bed: "OB" }); rem = 0; continue; }
     if (rem <= 20) { out.push({ bed: "S", number: rem }); rem = 0; continue; }
-    if (rem % 3 === 0 && rem / 3 <= 20) { out.push({ bed: "T", number: rem / 3 }); rem = 0; continue; }
+    if (rem % 3 === 0 && rem / 3 <= 20 && Number(brain?.risk ?? .5) >= .42) { out.push({ bed: "T", number: rem / 3 }); rem = 0; continue; }
     if (rem % 2 === 0 && rem / 2 <= 20) { out.push({ bed: "D", number: rem / 2 }); rem = 0; continue; }
     const n = Math.min(20, rem); out.push({ bed: "S", number: n }); rem -= n;
   }
   while (out.length < 3) out.push({ bed: "MISS" });
   return out.slice(0, 3);
 }
-export function pickPenduBotDarts(state: PenduState, level: PenduBotLevel = "normal"): GameDart[] {
-  const danger = Number(state.errors?.[state.players[state.activePlayerIndex]?.id] || 0) / Math.max(1, state.config.rules.partsToLose);
-  const adjusted = Math.min(.94, skill(level) + Math.max(0, danger - .5) * .18);
+export function pickPenduBotDarts(state: PenduState, level: PenduBotLevel = "normal", brain?: PremiumBotBrain): GameDart[] {
+  const current = state.players[state.activePlayerIndex];
+  const danger = Number(state.errors?.[current?.id] || 0) / Math.max(1, state.config.rules.partsToLose);
+  const pressureBoost = Math.max(0, danger - .45) * (.10 + Number(brain?.composure || .5) * .14);
+  const adjusted = Math.min(.97, skill(level, brain) + pressureBoost);
   const ok = Math.random() < adjusted;
   const c = state.challenge;
   if (c.kind === "segment") {
-    if (ok) return [{ bed: c.bed, number: c.number }, randomDart(), randomDart()];
+    if (ok) {
+      const filler = Number(brain?.risk || .5) > .72 ? randomDart(brain) : { bed: "S", number: c.number } as GameDart;
+      return [{ bed: c.bed, number: c.number }, filler, randomDart(brain)];
+    }
     return Array.from({ length: 3 }, () => {
-      let d = randomDart();
+      let d = randomDart(brain);
       if (Number(d.number) === c.number && d.bed === c.bed) d = { bed: "S", number: (c.number % 20) + 1 } as GameDart;
       return d;
     });
   }
   if (ok) {
-    const target = state.config.rules.executionMode === "flex" ? Math.min(170, c.target + Math.floor(Math.random() * 20)) : c.target;
-    return scorePlan(target);
+    const flexBonus = state.config.rules.executionMode === "flex"
+      ? Math.floor(Math.random() * (Number(brain?.risk || .5) > .70 ? 28 : 14))
+      : 0;
+    return scorePlan(Math.min(180, c.target + flexBonus), brain);
   }
-  return scorePlan(Math.max(0, c.target - 10 - Math.floor(Math.random() * 25)));
+  const missGap = 8 + Math.floor(Math.random() * (Number(brain?.composure || .5) > .8 ? 14 : 28));
+  return scorePlan(Math.max(0, c.target - missGap), brain);
 }

@@ -4,6 +4,7 @@
 // Poursuite sur l'ordre physique des secteurs du dartboard.
 // =============================================================
 import type { GameDart, Player } from "../types-game";
+import type { PremiumBotBrain } from "../premiumPartyBotAI";
 export type HareBotLevel="easy"|"normal"|"hard";
 export type HareConfigPayload={mode:"hare_hounds";selectedIds:string[];players:number;playersList?:any[];botIds?:string[];botsEnabled?:boolean;botLevel:HareBotLevel;randomOrder?:boolean;scoreInputMethod?:"keypad"|"dartboard";seriesWins:1|2|3;sfxEnabled?:boolean;awenaEnabled?:boolean;coachEnabled?:boolean;rules:{houndStart:5|12;targetZone:"any"|"double"|"triple";roleMode:"first"|"random"|"rotate";direction:"clockwise"|"counter";hareStart:20}};
 export type HareStats={darts:number;visits:number;validHits:number;misses:number;singles:number;doubles:number;triples:number;bulls:number;dbulls:number;steps:number;catches:number;escapes:number;legsWon:number;bestVisitSteps:number;bestHitStreak:number;currentHitStreak:number;};
@@ -41,5 +42,30 @@ export function playHareVisit(input:HareState,dartsRaw:GameDart[]):HareState{
 }
 
 export function hareDartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.bed==="IB")return"DBULL";if(d.bed==="OB")return"BULL";return`${d.bed}${d.number||""}`;}
-function chance(level:HareBotLevel){return level==="hard"?.88:level==="easy"?.50:.70;}
-export function pickHareBotDarts(input:HareState,level:HareBotLevel="normal"):GameDart[]{const s=cloneHareState(input);const p=s.players[s.activePlayerIndex];if(!p)return[];const out:GameDart[]=[];for(let i=0;i<3;i++){const target=hareCurrentSegment(s,p.id);const hit=Math.random()<chance(level);if(!hit){out.push(Math.random()<.15?{bed:"MISS"}:{bed:"S",number:((target+Math.floor(Math.random()*7)+19)%20)+1});continue;}const bed=s.config.rules.targetZone==="double"?"D":s.config.rules.targetZone==="triple"?"T":level==="hard"&&Math.random()<.34?"T":Math.random()<.28?"D":"S";const d={bed,number:target} as GameDart;out.push(d);s.progressByPlayer[p.id]=Number(s.progressByPlayer[p.id]||0)+1;if(p.id===s.harePlayerId&&s.progressByPlayer[p.id]>=20)break;if(p.id!==s.harePlayerId&&hareCurrentIndex(s,p.id)===hareCurrentIndex(s,s.harePlayerId))break;}return out;}
+function chance(level:HareBotLevel,brain?:PremiumBotBrain){const base=level==="hard"?.88:level==="easy"?.50:.70;return Math.max(.20,Math.min(.97,Number(brain?.precision??base)));}
+export function pickHareBotDarts(input:HareState,level:HareBotLevel="normal",brain?:PremiumBotBrain):GameDart[]{
+  const s=cloneHareState(input);const p=s.players[s.activePlayerIndex];if(!p)return[];
+  const out:GameDart[]=[];const role=p.id===s.harePlayerId?"hare":"hound";
+  for(let i=0;i<3;i++){
+    const target=hareCurrentSegment(s,p.id);
+    const progress=Number(s.progressByPlayer[p.id]||0);
+    const pressure=(role==="hare"&&progress>=16)?Number(brain?.composure||0)*.035:0;
+    const hit=Math.random()<Math.min(.98,chance(level,brain)+pressure);
+    if(!hit){out.push(Math.random()<.15?{bed:"MISS"}:{bed:"S",number:((target+Math.floor(Math.random()*7)+19)%20)+1});continue;}
+    let bed:"S"|"D"|"T";
+    if(s.config.rules.targetZone==="double")bed="D";
+    else if(s.config.rules.targetZone==="triple")bed="T";
+    else {
+      const risk=Number(brain?.risk??.5),r=Math.random();
+      const tChance=Math.max(.05,Math.min(.50,(level==="hard"?.27:.14)+(risk-.5)*.25));
+      const dChance=Math.max(.10,Math.min(.42,.22+(risk-.5)*.08));
+      bed=r<tChance?"T":r<tChance+dChance?"D":"S";
+      if(progress>=17&&Number(brain?.composure||0)>.82&&Math.random()<.55)bed="S";
+    }
+    const d={bed,number:target} as GameDart;out.push(d);
+    s.progressByPlayer[p.id]=Number(s.progressByPlayer[p.id]||0)+1;
+    if(p.id===s.harePlayerId&&s.progressByPlayer[p.id]>=20)break;
+    if(p.id!==s.harePlayerId&&hareCurrentIndex(s,p.id)===hareCurrentIndex(s,s.harePlayerId))break;
+  }
+  return out;
+}

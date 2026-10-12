@@ -144,6 +144,13 @@ export default function OceanControlConfig(props: any) {
     : selectedIds.length >= minimum && selectedIds.length <= 8;
   const fleet = oceanControlFleetTemplate(fleetPreset);
   const totalCells = fleet.reduce((sum, ship) => sum + ship.length, 0);
+  const readinessItems = [
+    { label: "COMMANDANTS", ready: valid, color: BLUE },
+    { label: "FLOTTE", ready: totalCells > 0, color: CYAN },
+    { label: "ARMEMENT", ready: Boolean(variant), color: GREEN },
+    { label: "FORMAT", ready: winsNeeded >= 1, color: GOLD },
+  ];
+  const readinessScore = Math.round((readinessItems.filter((item) => item.ready).length / readinessItems.length) * 100);
 
   function start() {
     if (!valid) return;
@@ -267,6 +274,13 @@ export default function OceanControlConfig(props: any) {
           <button type="button" onClick={() => applyMissionPreset("quick")} style={{ minHeight: 58, borderRadius: 14, border: `1px solid ${GREEN}44`, background: `linear-gradient(180deg,${GREEN}12,rgba(255,255,255,.02))`, color: "#fff", padding: 9, textAlign: "left", cursor: "pointer" }}><div style={{ color: GREEN, fontSize: 8.4, fontWeight: 1100 }}>⚡ MISSION RAPIDE</div><div style={{ marginTop: 4, color: SOFT, fontSize: 7.2, lineHeight: 1.35 }}>Escarmouche · Classique · 1 manche · lecture simple.</div></button>
           <button type="button" onClick={() => applyMissionPreset("tactical")} style={{ minHeight: 58, borderRadius: 14, border: `1px solid ${BLUE}55`, background: `linear-gradient(180deg,${BLUE}16,rgba(255,255,255,.02))`, color: "#fff", padding: 9, textAlign: "left", cursor: "pointer" }}><div style={{ color: CYAN, fontSize: 8.4, fontWeight: 1100 }}>📡 MISSION TACTIQUE</div><div style={{ marginTop: 4, color: SOFT, fontSize: 7.2, lineHeight: 1.35 }}>Standard · Tactique · BO3 · sonar + grille aléatoire.</div></button>
           <button type="button" onClick={() => applyMissionPreset("admiral")} style={{ minHeight: 58, borderRadius: 14, border: `1px solid ${GOLD}55`, background: `linear-gradient(180deg,${GOLD}14,rgba(255,255,255,.02))`, color: "#fff", padding: 9, textAlign: "left", cursor: "pointer" }}><div style={{ color: GOLD, fontSize: 8.4, fontWeight: 1100 }}>🎖️ MISSION AMIRAL</div><div style={{ marginTop: 4, color: SOFT, fontSize: 7.2, lineHeight: 1.35 }}>Armada · Amiral · placement manuel · BO5.</div></button>
+        </div>
+        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.08)" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: readinessScore === 100 ? GREEN : GOLD, fontSize: 8.2, letterSpacing: .5 }}>PRÉPARATION DE MISSION</strong><span style={{ color: readinessScore === 100 ? GREEN : GOLD, fontSize: 8.2, fontWeight: 1100 }}>{readinessScore}%</span></div>
+            <div style={{ marginTop: 6, height: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${readinessScore}%`, height: "100%", background: `linear-gradient(90deg,${BLUE},${readinessScore === 100 ? GREEN : GOLD})` }} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>{readinessItems.map((item) => <span key={item.label} style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${item.ready ? item.color + "44" : "rgba(255,255,255,.08)"}`, background: item.ready ? `${item.color}0d` : "rgba(255,255,255,.02)", color: item.ready ? item.color : SOFT, fontSize: 6.3, fontWeight: 1000 }}>{item.ready ? "✓" : "○"} {item.label}</span>)}</div>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginBottom: 10 }}>

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
-import { footballKeyMomentsFromRecord } from "../../lib/footballInsights";
+import { footballKeyMomentsFromRecord, footballPerformanceRating } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#53c9ff";
@@ -66,9 +66,10 @@ export default function FootballHistoryScoreBlock({ record }: any) {
       {[["TIRS", n(matchStats?.shots) || sum(rows, "shots"), GOLD], ["CADRÉS", n(matchStats?.shotsOnTarget) || sum(rows, "shotsOnTarget"), BLUE], ["ARRÊTS", n(matchStats?.saves) || sum(rows, "saves"), GREEN], ["INTERCEPT.", n(matchStats?.interceptions) || sum(rows, "interceptions"), RED]].map(([label, value, color]: any) => <div key={label} style={{ padding: 5, borderRadius: 9, textAlign: "center", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}><strong style={{ color, fontSize: 9.5 }}>{value}</strong><div style={{ marginTop: 1, color: SOFT, fontSize: 5.4 }}>{label}</div></div>)}
     </div>
 
-    {finished && (mvp || records?.topScorer || records?.topKeeper) ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4 }}>
+    {finished && (mvp || records?.topScorer || records?.topKeeper) ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
       {[
         ["★ MVP", mvp?.name || mvp?.playerName, GOLD],
+        ["📈 NOTE", mvp ? `${footballPerformanceRating(mvp).toFixed(1)}/10` : "", GOLD],
         ["⚽ BUTEUR", records?.topScorer?.name || records?.topScorer?.playerName, GREEN],
         ["🧤 GARDIEN", records?.topKeeper?.name || records?.topKeeper?.playerName, BLUE],
       ].filter((item: any) => item[1]).map(([label, value, color]: any) => <div key={label} style={{ minWidth: 0, padding: "5px 6px", borderRadius: 9, border: `1px solid ${color}30`, background: `${color}08` }}><div style={{ color, fontSize: 5.4, fontWeight: 1050 }}>{label}</div><div style={{ marginTop: 2, color: WHITE, fontSize: 6.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>)}
@@ -89,7 +90,7 @@ export default function FootballHistoryScoreBlock({ record }: any) {
     </div>
 
     {Array.isArray(rows) && rows.length ? <div style={{ display: "grid", gap: 4 }}>
-      {rows.slice().sort((a: any, b: any) => n(a?.rank) - n(b?.rank)).slice(0, 4).map((row: any, index: number) => <div key={row?.id || index} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) repeat(4,34px)", gap: 3, alignItems: "center", padding: "4px 6px", borderRadius: 9, background: "rgba(255,255,255,.025)" }}><strong style={{ minWidth: 0, color: row?.win ? GOLD : WHITE, fontSize: 6.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row?.name || "Joueur"}{mvp && String(mvp?.id || mvp?.playerId) === String(row?.id || row?.playerId) ? " ★" : ""}</strong><span style={{ color: GOLD, fontSize: 6.5, textAlign: "center" }}>{n(row?.goals)}B</span><span style={{ color: BLUE, fontSize: 6.5, textAlign: "center" }}>{n(row?.saves)}A</span><span style={{ color: RED, fontSize: 6.5, textAlign: "center" }}>{n(row?.interceptions)}I</span><span style={{ color: GREEN, fontSize: 6.5, textAlign: "center" }}>{Math.round(n(row?.accuracy) * 10) / 10}%</span></div>)}
+      {rows.slice().sort((a: any, b: any) => n(a?.rank) - n(b?.rank)).slice(0, 4).map((row: any, index: number) => <div key={row?.id || index} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) repeat(5,34px)", gap: 3, alignItems: "center", padding: "4px 6px", borderRadius: 9, background: "rgba(255,255,255,.025)" }}><strong style={{ minWidth: 0, color: row?.win ? GOLD : WHITE, fontSize: 6.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row?.name || "Joueur"}{mvp && String(mvp?.id || mvp?.playerId) === String(row?.id || row?.playerId) ? " ★" : ""}</strong><span style={{ color: GOLD, fontSize: 6.5, textAlign: "center" }}>{n(row?.goals)}B</span><span style={{ color: BLUE, fontSize: 6.5, textAlign: "center" }}>{n(row?.saves)}A</span><span style={{ color: RED, fontSize: 6.5, textAlign: "center" }}>{n(row?.interceptions)}I</span><span style={{ color: GREEN, fontSize: 6.5, textAlign: "center" }}>{Math.round(n(row?.accuracy) * 10) / 10}%</span><strong style={{ color: GOLD, fontSize: 6.7, textAlign: "center" }}>{footballPerformanceRating(row).toFixed(1)}</strong></div>)}
     </div> : null}
   </div>;
 }

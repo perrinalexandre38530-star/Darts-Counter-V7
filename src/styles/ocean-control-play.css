@@ -164,7 +164,7 @@
 
 .ocean-live-command-strip{
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:5px;
   padding:4px 6px;
   border-top:1px solid rgba(255,255,255,.05);
@@ -172,7 +172,8 @@
 }
 
 .ocean-live-command-phase,
-.ocean-live-command-reco{
+.ocean-live-command-reco,
+.ocean-live-command-momentum{
   min-width:0;
   min-height:29px;
   display:grid;
@@ -188,13 +189,17 @@
 }
 
 .ocean-live-command-phase>span,
-.ocean-live-command-reco>span{grid-row:1/3;font-size:12px}
+.ocean-live-command-reco>span,
+.ocean-live-command-momentum>span{grid-row:1/3;font-size:12px}
 .ocean-live-command-phase strong,
-.ocean-live-command-reco strong{min-width:0;font-size:6.9px;font-weight:1100;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-live-command-reco strong,
+.ocean-live-command-momentum strong{min-width:0;font-size:6.9px;font-weight:1100;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ocean-live-command-phase small,
-.ocean-live-command-reco small{min-width:0;color:#8497a9;font-size:5.8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-live-command-reco small,
+.ocean-live-command-momentum small{min-width:0;color:#8497a9;font-size:5.8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ocean-live-command-reco{color:#f5ca68;cursor:pointer}
 .ocean-live-command-reco:disabled{opacity:.5;cursor:default}
+.ocean-live-command-momentum{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.22))}
 
 .ocean-fleet-score-strip{
   display:flex;
@@ -701,6 +706,69 @@
 
 .ocean-intel-section>strong{display:block;margin-bottom:8px;color:#65e9ff;font-size:8px;letter-spacing:.55px}
 .ocean-intel-empty{padding:10px;border-radius:12px;background:rgba(255,255,255,.025);color:#8f9bad;font-size:8.5px;line-height:1.4;text-align:center}
+
+
+.ocean-command-radar{
+  display:grid;
+  gap:7px;
+}
+
+.ocean-command-radar-row{
+  display:grid;
+  grid-template-columns:74px minmax(0,1fr) 30px;
+  gap:7px;
+  align-items:center;
+}
+
+.ocean-command-radar-row>span{
+  color:#c8d6e4;
+  font-size:7px;
+  font-weight:1000;
+  letter-spacing:.35px;
+}
+
+.ocean-command-radar-row>div{
+  height:7px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.06);
+}
+
+.ocean-command-radar-row i{
+  display:block;
+  height:100%;
+  min-width:2px;
+  border-radius:inherit;
+  box-shadow:0 0 12px rgba(101,233,255,.12);
+}
+
+.ocean-command-radar-row>strong{
+  text-align:right;
+  font-size:7.4px;
+}
+
+.ocean-command-radar-footer{
+  margin-top:8px;
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  align-items:center;
+  padding-top:7px;
+  border-top:1px solid rgba(255,255,255,.06);
+}
+
+.ocean-command-radar-footer span{
+  font-size:7.4px;
+  font-weight:1100;
+  letter-spacing:.35px;
+}
+
+.ocean-command-radar-footer small{
+  min-width:0;
+  color:#8193a5;
+  font-size:6.6px;
+  text-align:right;
+}
 
 .ocean-sonar-history{
   display:grid;
@@ -1217,8 +1285,8 @@
   .ocean-mini-kpi span{font-size:5.1px}
   .ocean-mini-kpi strong{font-size:11px}
   .ocean-live-command-strip{gap:3px;padding:3px 5px}
-  .ocean-live-command-phase,.ocean-live-command-reco{min-height:26px;padding:3px 5px}
-  .ocean-live-command-phase small,.ocean-live-command-reco small{display:none}
+  .ocean-live-command-phase,.ocean-live-command-reco,.ocean-live-command-momentum{min-height:26px;padding:3px 5px}
+  .ocean-live-command-phase small,.ocean-live-command-reco small,.ocean-live-command-momentum small{display:none}
   .ocean-fleet-score-strip{padding:2px 5px 4px}
   .ocean-fleet-score-chip{flex-basis:72px;min-width:72px;min-height:21px;padding:2px 5px}
   .ocean-map-command-card{padding:8px;gap:7px}
@@ -1259,8 +1327,8 @@
   .ocean-float-action{height:37px}
   .ocean-match-scoreline{min-height:14px;padding-bottom:2px}
   .ocean-live-command-strip{padding:2px 5px}
-  .ocean-live-command-phase,.ocean-live-command-reco{min-height:23px;padding:2px 5px}
-  .ocean-live-command-phase small,.ocean-live-command-reco small{display:none}
+  .ocean-live-command-phase,.ocean-live-command-reco,.ocean-live-command-momentum{min-height:23px;padding:2px 5px}
+  .ocean-live-command-phase small,.ocean-live-command-reco small,.ocean-live-command-momentum small{display:none}
   .ocean-fleet-score-strip{display:none}
   .ocean-pad-statusline{min-height:21px}
   .ocean-pad-preview-chip{height:20px}

@@ -211,4 +211,12 @@ assert.equal(decoded?.players?.[0]?.bestVisitScore, 80);
 assert.equal(decoded?.players?.[0]?.firstDartAccuracy, undefined); // dérivé à l'affichage via compteurs compacts
 assert.ok(numeric(decoded?.players?.[0]?.productiveVisits) >= 1);
 
+// LONG HAUL : verrou de régression — le dernier tour doit atteindre la dernière étape.
+let longHaul = createCargoState(players as any, normalizeCargoConfig({ variant: "long_haul", rounds: 10, minSeries: 2, maxSeries: 2 } as any));
+while (longHaul.phase === "playing") {
+  longHaul = playCargoVisit(longHaul, [{ bed: "MISS" } as any, { bed: "MISS" } as any, { bed: "MISS" } as any]);
+}
+assert.equal(longHaul.routeStage, longHaul.routeStages.length - 1);
+assert.equal(longHaul.routeStages[longHaul.routeStage], "Centre de livraison");
+
 console.log("✅ CARGO REGRESSION OK");

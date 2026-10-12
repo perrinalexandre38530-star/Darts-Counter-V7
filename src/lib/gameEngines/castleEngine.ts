@@ -5,6 +5,7 @@
 // =============================================================
 
 import type { GameDart, Player } from "../types-game";
+import type { PremiumBotBrain } from "../premiumPartyBotAI";
 
 export type CastleBotLevel = "easy" | "normal" | "hard";
 export type CastleConfigPayload = {
@@ -312,29 +313,58 @@ export function castleDartLabel(d: GameDart): string {
   return `${d.bed}${d.number || ""}`;
 }
 
-function hitChance(level: CastleBotLevel) { return level === "hard" ? .84 : level === "easy" ? .48 : .67; }
+function hitChance(level: CastleBotLevel, brain?: PremiumBotBrain) {
+  const base = level === "hard" ? .84 : level === "easy" ? .48 : .67;
+  return Math.max(.20, Math.min(.97, brain?.precision ?? base));
+}
 function missDart(target: number): GameDart {
   const offset = 1 + Math.floor(Math.random() * 5);
   const n = ((target - 1 + (Math.random() < .5 ? offset : -offset) + 20) % 20) + 1;
   return { bed: "S", number: n };
 }
-export function pickCastleBotDarts(state: CastleState, level: CastleBotLevel = "normal"): GameDart[] {
+function castleBotBed(level: CastleBotLevel, brain?: PremiumBotBrain): "S" | "D" | "T" {
+  const risk = Number(brain?.risk ?? (level === "hard" ? .70 : level === "easy" ? .28 : .50));
+  const roll = Math.random();
+  const triple = Math.max(.06, Math.min(.56, (level === "hard" ? .31 : level === "easy" ? .08 : .19) + (risk - .5) * .26));
+  const dbl = Math.max(.12, Math.min(.50, (level === "hard" ? .27 : level === "easy" ? .16 : .23) + (risk - .5) * .10));
+  return roll < triple ? "T" : roll < triple + dbl ? "D" : "S";
+}
+export function pickCastleBotDarts(state: CastleState, level: CastleBotLevel = "normal", brain?: PremiumBotBrain): GameDart[] {
   if (state.phase === "assignment") {
-    const free = firstFreeTarget(state, 1 + Math.floor(Math.random() * 20));
+    const seed = 1 + Math.floor(Math.random() * 20);
+    const free = firstFreeTarget(state, seed);
     return [{ bed: "S", number: free }];
   }
   const p = state.players[state.activePlayerIndex];
   if (!p) return [];
+
+  const ownBricks = Number(state.bricks[p.id] || 0);
+  const targetBricks = Number(state.config.rules.targetBricks || 15);
+  const closing = ownBricks >= targetBricks - 3;
   let target = Number(state.targets[p.id] || 20);
-  if (state.config.rules.attacksEnabled && Math.random() < (level === "hard" ? .34 : level === "normal" ? .22 : .10)) {
-    const rivals = state.players.filter((q) => q.id !== p.id).sort((a, b) => Number(state.bricks[b.id] || 0) - Number(state.bricks[a.id] || 0));
-    if (rivals[0]) target = Number(state.targets[rivals[0].id] || target);
+  let attacking = false;
+
+  if (state.config.rules.attacksEnabled && !closing) {
+    const rivals = state.players
+      .filter((q) => q.id !== p.id)
+      .sort((a, b) => Number(state.bricks[b.id] || 0) - Number(state.bricks[a.id] || 0));
+    const leader = rivals[0];
+    const leaderBricks = Number(state.bricks[leader?.id] || 0);
+    const gapPressure = Math.max(0, (leaderBricks - ownBricks) / Math.max(1, targetBricks));
+    const baseAttack = level === "hard" ? .30 : level === "normal" ? .19 : .09;
+    const attackChance = Math.max(.02, Math.min(.88, baseAttack + Number(brain?.attackBias || 0) + gapPressure * .44));
+    if (leader && Math.random() < attackChance) {
+      target = Number(state.targets[leader.id] || target);
+      attacking = true;
+    }
   }
-  const chance = hitChance(level);
+
+  const chance = Math.min(.98, hitChance(level, brain) + (closing && Number(brain?.composure || 0) > .75 ? .025 : 0));
   return Array.from({ length: 3 }, () => {
     if (Math.random() > chance) return Math.random() < .12 ? { bed: "MISS" } : missDart(target);
-    const roll = Math.random();
-    const bed = level === "hard" ? (roll < .34 ? "T" : roll < .60 ? "D" : "S") : level === "easy" ? (roll < .08 ? "T" : roll < .22 ? "D" : "S") : (roll < .20 ? "T" : roll < .43 ? "D" : "S");
+    let bed = castleBotBed(level, brain);
+    // Les profils réguliers sécurisent davantage la construction finale.
+    if (!attacking && closing && Number(brain?.risk ?? .5) < .42 && Math.random() < .55) bed = "S";
     return { bed, number: target } as GameDart;
   });
 }

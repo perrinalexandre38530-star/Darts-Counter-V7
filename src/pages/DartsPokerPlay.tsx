@@ -39,6 +39,7 @@ import {
 } from "../lib/gameEngines/dartsPokerEngine";
 import { History } from "../lib/history";
 import { deriveDartsPokerMatchMetrics, deriveDartsPokerPlayerMetrics } from "../lib/dartsPokerAnalytics";
+import { commitDartsPokerProgress, type DartsPokerProgressResult, type DartsPokerProgressUnlock } from "../lib/dartsPokerProgress";
 import tickerDartsPoker from "../assets/tickers/ticker_darts_poker.png";
 import DartsPokerEnd from "./DartsPokerEnd";
 
@@ -135,8 +136,10 @@ export default function DartsPokerPlay(props: any) {
   const [wonCardPopup, setWonCardPopup] = React.useState<WonCardPopup | null>(null);
   const [quickPanel, setQuickPanel] = React.useState<null | "active" | "market" | "deck" | "table" | "stats" | "objectives" | "dartboard">(null);
   const [botThinking, setBotThinking] = React.useState(false);
+  const [newBadgeUnlocks, setNewBadgeUnlocks] = React.useState<DartsPokerProgressUnlock[]>([]);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
+  const pokerProgressRef = React.useRef<DartsPokerProgressResult | null>(null);
 
   const activePlayer = getDartsPokerActivePlayer(state);
   const activeHand = getDartsPokerActiveHand(state);
@@ -225,7 +228,7 @@ export default function DartsPokerPlay(props: any) {
   }
   function resetMatch() {
     matchIdRef.current = `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    autoSavedRef.current = ""; setState(createDartsPokerState(players, config)); setThrowDarts([]); setUndoStack([]); setShowRound(false); setShowEnd(false); setWonCardPopup(null); setNotice("Nouvelle table ouverte.");
+    autoSavedRef.current = ""; pokerProgressRef.current = null; setNewBadgeUnlocks([]); setState(createDartsPokerState(players, config)); setThrowDarts([]); setUndoStack([]); setShowRound(false); setShowEnd(false); setWonCardPopup(null); setNotice("Nouvelle table ouverte.");
   }
 
   React.useEffect(() => {
@@ -309,6 +312,7 @@ export default function DartsPokerPlay(props: any) {
       contractsEnabled: config.contractsEnabled !== false,
       players: playerRows, perPlayer: playerRows, rankings: finished ? playerRows.slice().sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999)) : [],
       rounds: state.rounds, visits: state.visits, matchStats, config,
+      ...(finished && pokerProgressRef.current ? { dartsPokerProgress: pokerProgressRef.current, newBadgeUnlocks: pokerProgressRef.current.unlocks } : {}),
       scoreLine: `${state.rounds.length}/${config.rounds} manches · ${matchStats.totalPoints} points · ${matchStats.contractsCompleted} contrats`,
       game: { mode: "darts_poker", rounds: config.rounds, dartsPerHand: config.dartsPerHand },
     };
@@ -320,6 +324,7 @@ export default function DartsPokerPlay(props: any) {
       payload: {
         kind: "darts_poker", mode: "darts_poker", sport: "darts", statisticsVersion: 3, telemetryVersion: 3,
         config, players: playerRows, summary, rounds: state.rounds, visits: state.visits, visitHistory: state.visits, stateSnapshot: cloneDartsPokerState(state),
+        ...(finished && pokerProgressRef.current ? { dartsPokerProgress: pokerProgressRef.current, newBadgeUnlocks: pokerProgressRef.current.unlocks } : {}),
         stats: { sport: "darts", mode: "darts_poker", players: playerRows, match: matchStats, global: matchStats },
       },
     };
@@ -335,7 +340,29 @@ export default function DartsPokerPlay(props: any) {
     setShowEnd(true);
     if (autoSavedRef.current === matchIdRef.current) return;
     autoSavedRef.current = matchIdRef.current;
-    try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {}
+    try {
+      const baseRecord = buildHistoryRecord("finished");
+      const perPlayer = Array.isArray(baseRecord?.summary?.perPlayer) ? baseRecord.summary.perPlayer : [];
+      const progress = commitDartsPokerProgress({
+        matchId: matchIdRef.current,
+        winnerIds: Array.isArray(state.winnerIds) ? state.winnerIds.map(String) : [],
+        participants: perPlayer.map((row: any) => {
+          const profile = profilesById.get(String(row?.id || row?.playerId)) || row;
+          return {
+            id: String(row?.id || row?.playerId || ""),
+            name: playerName(profile),
+            stats: row,
+            isBot: isBot(profile, botIds),
+          };
+        }).filter((row: any) => row.id),
+      });
+      pokerProgressRef.current = progress;
+      setNewBadgeUnlocks(progress.unlocks || []);
+      const finalRecord = buildHistoryRecord("finished");
+      onFinish?.(finalRecord, { navigate: false });
+    } catch {
+      try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {}
+    }
   }, [state.phase]);
 
   const selectedHitLabel = throwDarts[0] ? dartsPokerDartLabel(uiToGameDart(throwDarts[0])) : "—";
@@ -423,7 +450,7 @@ export default function DartsPokerPlay(props: any) {
     {quickPanel === "stats" ? <LiveStatsModal state={state} profilesById={profilesById} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "objectives" ? <ObjectivesModal objective={objective} contract={state.roundContract} suggestions={marketTargets} marketIntel={marketIntel} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 1 || remainingDarts <= 0 || Boolean(wonCardPopup)} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
-    {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+    {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} newBadgeUnlocks={newBadgeUnlocks} progressByPlayer={pokerProgressRef.current?.byPlayer || {}} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
 }
 

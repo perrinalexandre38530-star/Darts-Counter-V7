@@ -49,6 +49,14 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
  const variants:any={};matches.forEach(({record}:any)=>{const v=record?.summary?.variant||record?.payload?.config?.variant||"tactical";variants[v]=(variants[v]||0)+1;});
  const recentAccuracy=matches.slice(0,8).map(({row}:any)=>n(row?.validShots)>0?Math.round(n(row?.shipHits)/n(row?.validShots)*100):0);
  const trendMax=Math.max(1,...recentAccuracy);
+ const commandDna=[
+  {label:"PRÉCISION",value:Math.max(0,Math.min(100,accuracyValue)),color:GREEN},
+  {label:"PUISSANCE",value:Math.min(100,Math.round((ships/Math.max(1,games))*24+(hits/Math.max(1,valid))*45)),color:RED},
+  {label:"SONAR",value:sonars>0?Math.min(100,Math.round((contacts/Math.max(1,sonars*3))*100)):0,color:CYAN},
+  {label:"TEMPO",value:visits>0?Math.min(100,Math.round((successfulVisits/Math.max(1,visits))*100)):0,color:BLUE},
+  {label:"SÉRIE",value:Math.min(100,bestStreak*20),color:GOLD},
+ ];
+ const commandSpecialty=commandDna.slice().sort((a:any,b:any)=>b.value-a.value)[0]||commandDna[0];
  return <div style={{width:"100%",maxWidth:980,margin:"0 auto"}}>
   <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{[["all","Tout"],["day","24 h"],["week","7 j"],["month","30 j"],["year","1 an"]].map(([key,label])=><button key={key} onClick={()=>setRange(key)} style={{borderRadius:999,padding:"6px 10px",border:`1px solid ${range===key?BLUE:"rgba(255,255,255,.10)"}`,background:range===key?`${BLUE}18`:"rgba(255,255,255,.03)",color:range===key?CYAN:SOFT,fontWeight:1000,fontSize:9}}>{label}</button>)}</div>
   {!games?<div style={{marginTop:16,borderRadius:18,padding:18,textAlign:"center",color:SOFT,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}>Aucune partie OCEAN CONTROL exploitable pour ce joueur.</div>:<>
@@ -70,6 +78,12 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
          <Kpi label="Précision" value={`${accuracyValue}%`} detail={`${hits}/${valid} tirs`} color={GREEN} />
          <Kpi label="Navires coulés" value={ships} color={RED} />
        </div>
+     </div>
+   </Section>
+   <Section title="ADN de commandement" accent={commandSpecialty.color} subtitle={`Spécialité dominante · ${commandSpecialty.label}`}>
+     <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 160px",gap:10,alignItems:"stretch"}}>
+       <div style={{display:"grid",gap:8}}>{commandDna.map((metric:any)=><div key={metric.label} style={{display:"grid",gridTemplateColumns:"82px minmax(0,1fr) 34px",gap:8,alignItems:"center"}}><span style={{color:"#c7d4df",fontSize:7.4,fontWeight:1000}}>{metric.label}</span><div style={{height:8,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.06)"}}><div style={{height:"100%",width:`${metric.value}%`,background:`linear-gradient(90deg,${metric.color}88,${metric.color})`}}/></div><strong style={{textAlign:"right",color:metric.color,fontSize:8}}>{metric.value}</strong></div>)}</div>
+       <div style={{borderRadius:15,padding:11,display:"grid",placeItems:"center",alignContent:"center",textAlign:"center",background:`linear-gradient(180deg,${commandSpecialty.color}12,rgba(255,255,255,.02))`,border:`1px solid ${commandSpecialty.color}40`}}><div style={{color:SOFT,fontSize:6.8,fontWeight:1000}}>SPÉCIALITÉ</div><div style={{marginTop:5,color:commandSpecialty.color,fontSize:13,fontWeight:1100}}>{commandSpecialty.label}</div><div style={{marginTop:4,color:"#eef8ff",fontSize:8.2}}>{commandSpecialty.value}/100</div><div style={{marginTop:5,color:SOFT,fontSize:7,lineHeight:1.35}}>Profil calculé sur la période sélectionnée.</div></div>
      </div>
    </Section>
    <div style={{marginTop:10,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7}}>

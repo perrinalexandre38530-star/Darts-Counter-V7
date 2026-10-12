@@ -418,6 +418,37 @@ export default function OceanControlPlay(props: any) {
     const best = sorted[0];
     return best ? { ...best, source: sonarCandidates.length ? "sonar" : "exploration", heat: Number(targetHeatmap?.counts?.[String(best.number)] || 0) } : null;
   }, [state.gridNumbers, targetOwner?.id, targetOwner?.attackedCells, latestSonar?.id, latestSonar?.contactCount, targetHeatmap]);
+  const combatMomentum = React.useMemo(() => {
+    const visits = (state.visits || []).filter((visit: any) => String(visit?.playerId || "") === String(activePlayer?.id || "")).slice(-3);
+    let score = 0;
+    visits.forEach((visit: any) => (visit?.events || []).forEach((event: any) => {
+      if (event?.type === "battle_win") score += 6;
+      else if (event?.type === "sunk") score += 4;
+      else if (event?.type === "strike") score += 3;
+      else if (event?.type === "hit") score += 2;
+      else if (event?.type === "sonar" && Number(event?.contactCount || 0) > 0) score += 1;
+      else if (["water", "duplicate", "miss"].includes(String(event?.type || ""))) score -= 1;
+    }));
+    if (!visits.length) return { label: "EN ATTENTE", detail: "Première volée à jouer", color: SOFT, icon: "◌", score: 0 };
+    if (score >= 8) return { label: "DOMINATION", detail: "Pression maximale", color: GREEN, icon: "▲", score };
+    if (score >= 4) return { label: "PRESSION", detail: "Avantage tactique", color: GOLD, icon: "↗", score };
+    if (score >= 0) return { label: "ÉQUILIBRE", detail: "Bataille ouverte", color: CYAN, icon: "◆", score };
+    return { label: "REPLI", detail: "Reprendre l’initiative", color: RED, icon: "▼", score };
+  }, [state.visits, activePlayer?.id]);
+  const commandRadar = React.useMemo(() => {
+    const precision = Math.max(0, Math.min(100, oceanControlAccuracy(activeStats)));
+    const damage = Math.max(0, Math.min(100, targetDamagePercent));
+    const sonarEfficiency = Number(activeStats?.sonarUses || 0) > 0 ? Math.min(100, Math.round((Number(activeStats?.sonarContacts || 0) / Math.max(1, Number(activeStats?.sonarUses || 0) * 3)) * 100)) : 0;
+    const tempo = Number(activeStats?.visits || 0) > 0 ? Math.min(100, Math.round((Number(activeStats?.successfulVisits || 0) / Math.max(1, Number(activeStats?.visits || 0))) * 100)) : 0;
+    const streak = Math.min(100, Number(activeStats?.bestHitStreak || 0) * 20);
+    return [
+      { label: "PRÉCISION", value: precision, color: GREEN },
+      { label: "DÉGÂTS", value: damage, color: RED },
+      { label: "SONAR", value: sonarEfficiency, color: CYAN },
+      { label: "TEMPO", value: tempo, color: BLUE },
+      { label: "SÉRIE", value: streak, color: GOLD },
+    ];
+  }, [activeStats, targetDamagePercent]);
   const scoreLine = state.owners.map((owner) => `${owner.name} ${state.scoreByOwner[owner.id] || 0}`).join(" · ");
   const targetColor = ownerColorMap.get(String(targetOwner?.id || "")) || RED;
   const ownColor = ownerColorMap.get(String(ownOwner?.id || "")) || activeColor;
@@ -445,6 +476,7 @@ export default function OceanControlPlay(props: any) {
         <div className="ocean-live-command-strip">
           <div className="ocean-live-command-phase" style={{ borderColor: `${battlePhase.color}55`, color: battlePhase.color }}><span>{battlePhase.icon}</span><strong>{battlePhase.label}</strong><small>{battlePhase.detail}</small></div>
           <button type="button" className="ocean-live-command-reco" disabled={!tacticalRecommendation} onClick={() => tacticalRecommendation && chooseFocus(tacticalRecommendation.number)} style={{ borderColor: `${GOLD}55` }}><span>🧭</span><strong>ZONE CONSEILLÉE {tacticalRecommendation?.number || "—"}</strong><small>{tacticalRecommendation?.source === "sonar" ? "Contact sonar à exploiter" : "Zone encore peu travaillée"}</small></button>
+          <div className="ocean-live-command-momentum" style={{ borderColor: `${combatMomentum.color}55`, color: combatMomentum.color }}><span>{combatMomentum.icon}</span><strong>{combatMomentum.label}</strong><small>{combatMomentum.detail}</small></div>
         </div>
         <div className="ocean-fleet-score-strip" aria-label="État des flottes">
           {state.owners.map((owner: any, index: number) => {
@@ -532,6 +564,7 @@ export default function OceanControlPlay(props: any) {
       <div className="ocean-intel-mission"><span>🧭</span><div><strong>RECOMMANDATION DU COMMANDANT</strong><p>{oceanControlTacticalHint(state)}</p></div></div>
       <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><Kpi label="DÉGÂTS" value={`${targetDamagePercent}%`} color={RED} detail={`${totalTargetCells - remainingCells}/${totalTargetCells} zones`} /><Kpi label="DERNIER SONAR" value={latestSonar ? latestSonar.contactCount : "—"} color={CYAN} detail={latestSonar ? `autour du ${latestSonar.focusNumber}` : "aucun balayage"} /><Kpi label="SÉRIE D’IMPACTS" value={activeStats.currentHitStreak || 0} color={GOLD} detail={`record ${activeStats.bestHitStreak || 0}`} /></div>
       <div className="ocean-intel-section"><strong>HISTORIQUE SONAR</strong>{sonarScansForTarget.length ? <div className="ocean-sonar-history">{sonarScansForTarget.map((scan) => <button key={scan.id} type="button" onClick={() => { setState((prev) => selectOceanControlFocus(prev, scan.focusNumber)); setOverlay(null); }} className={`ocean-sonar-card ${scan.contactCount ? "has-contact" : "is-clear"}`}><span>📡 {scan.focusNumber}</span><strong>{scan.contactCount}</strong><small>{scan.contactCount ? `contact${scan.contactCount > 1 ? "s" : ""}` : "zone claire"}</small></button>)}</div> : <div className="ocean-intel-empty">Aucun balayage enregistré sur cette flotte. Sélectionne une zone puis touche le Bull.</div>}</div>
+      <div className="ocean-intel-section"><strong>RADAR DE COMMANDEMENT</strong><div className="ocean-command-radar">{commandRadar.map((metric: any) => <div key={metric.label} className="ocean-command-radar-row"><span>{metric.label}</span><div><i style={{ width: `${metric.value}%`, background: `linear-gradient(90deg,${metric.color}88,${metric.color})` }} /></div><strong style={{ color: metric.color }}>{metric.value}</strong></div>)}</div><div className="ocean-command-radar-footer"><span style={{ color: combatMomentum.color }}>{combatMomentum.icon} {combatMomentum.label}</span><small>Lecture calculée sur les dernières volées et l’état de la flotte ciblée.</small></div></div>
       <div className="ocean-intel-section"><strong>ARSENAL TACTIQUE</strong><div className="ocean-weapon-grid"><div><b>S</b><span>1 zone</span></div><div><b>D</b><span>2 zones</span></div><div><b>T</b><span>ligne de 3</span></div><div><b>BULL</b><span>sonar</span></div><div><b>DB</b><span>frappe ciblée</span></div></div></div>
       {(state.battleHistory || []).length ? <div className="ocean-intel-section"><strong>MANCHES TERMINÉES</strong><div style={{ display: "grid", gap: 6 }}>{[...(state.battleHistory || [])].reverse().map((battle) => { const winner = state.owners.find((owner) => owner.id === battle.winnerOwnerId); return <div key={`${battle.battle}-${battle.finishedAt}`} className="ocean-battle-row"><span>B{battle.battle}</span><strong>{winner?.name || "Flotte"}</strong><small>{battle.hits} impacts · {battle.shipsSunk} navires · {battle.darts} fléchettes</small></div>; })}</div></div> : null}
     </OverlayShell> : null}

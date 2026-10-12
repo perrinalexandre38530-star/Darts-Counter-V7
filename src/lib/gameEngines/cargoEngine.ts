@@ -988,8 +988,12 @@ function expireUrgentContracts(state: CargoState, events: CargoVisitEvent[]): vo
 
 function maybeAdvanceLongHaulStage(state: CargoState, playerId: string, events: CargoVisitEvent[]): void {
   if (state.config.variant !== "long_haul") return;
-  const stageSize = Math.max(1, Math.ceil(state.config.rounds / state.routeStages.length));
-  const nextStage = Math.min(state.routeStages.length - 1, Math.floor((state.roundIndex - 1) / stageSize));
+  const lastStage = Math.max(0, state.routeStages.length - 1);
+  const roundSpan = Math.max(1, state.config.rounds - 1);
+  // Répartit l'itinéraire sur toute la durée de la mission : le premier tour
+  // reste à l'entrepôt et le dernier tour atteint toujours le centre de livraison.
+  const progress = Math.max(0, Math.min(1, (state.roundIndex - 1) / roundSpan));
+  const nextStage = Math.min(lastStage, Math.floor(progress * lastStage + 1e-9));
   if (nextStage > state.routeStage) {
     state.routeStage = nextStage;
     state.statsByPlayer[playerId].routeStagesCompleted = Math.max(state.statsByPlayer[playerId].routeStagesCompleted, nextStage);

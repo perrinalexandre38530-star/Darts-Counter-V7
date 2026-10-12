@@ -3,7 +3,7 @@ import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { footballAccuracy, footballVariantLabel } from "../lib/gameEngines/footballEngine";
 import { History } from "../lib/history";
-import { buildFootballEndInsights, footballKeyMomentsFromState } from "../lib/footballInsights";
+import { buildFootballEndInsights, footballKeyMomentsFromState, footballPerformanceRating } from "../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#35d0ff";
@@ -68,7 +68,7 @@ function momentIcon(moment: any) {
 }
 
 export default function FootballEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: any) {
-  const [insights, setInsights] = React.useState<any>({ breakthroughs: [], rivalry: null, moments: [] });
+  const [insights, setInsights] = React.useState<any>({ breakthroughs: [], rivalry: null, moments: [], milestones: [], ratings: [] });
 
   React.useEffect(() => {
     let alive = true;
@@ -93,7 +93,7 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
     const stats = state.statsByPlayer[player.id] || {};
     const sideIndex = state.sideByPlayer[player.id] ?? 0;
     const impact = n(stats.goals) * 12 + n(stats.saves) * 6 + n(stats.interceptions) * 4 + n(stats.successfulActions) + n(stats.counterAttacks) * 2;
-    return { player, profile, stats, side: state.sides[sideIndex], sideIndex, winner: state.winnerPlayerIds.includes(player.id), impact, accuracy: footballAccuracy(stats) };
+    return { player, profile, stats, side: state.sides[sideIndex], sideIndex, winner: state.winnerPlayerIds.includes(player.id), impact, accuracy: footballAccuracy(stats), rating: footballPerformanceRating(stats) };
   }).sort((a: any, b: any) => Number(b.winner) - Number(a.winner) || b.impact - a.impact);
 
   const by = (fn: any) => [...playerRows].sort((a, b) => fn(b) - fn(a))[0] || null;
@@ -155,10 +155,15 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
         <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5 }}>{insights.breakthroughs.map((record: any, index: number) => { const color = recordColor(record.metric); const suffix = record.suffix || ""; return <div key={`${record.playerId}-${record.metric}-${index}`} style={{ minWidth: 0, borderRadius: 11, padding: 7, border: `1px solid ${color}44`, background: `${color}0b` }}><div style={{ color, fontSize: 6.2, fontWeight: 1100 }}>{record.icon} {record.label}</div><div style={{ marginTop: 3, display: "flex", justifyContent: "space-between", gap: 6, alignItems: "baseline" }}><strong style={{ minWidth: 0, color: WHITE, fontSize: 7.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.playerName}</strong><strong style={{ color, fontSize: 13 }}>{record.value}{suffix}</strong></div><div style={{ marginTop: 2, color: SOFT, fontSize: 5.8 }}>Ancien record : {record.previous}{suffix}</div></div>; })}</div>
       </section> : null}
 
+      {insights?.milestones?.length ? <section style={{ marginTop: 7, borderRadius: 16, padding: 9, border: `1px solid ${GREEN}55`, background: "linear-gradient(135deg,rgba(101,229,170,.11),rgba(53,208,255,.035))" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: GREEN, fontSize: 8.2, letterSpacing: .7 }}>🎖️ PALIERS DE CARRIÈRE</strong><span style={{ color: SOFT, fontSize: 6.2 }}>{insights.milestones.length} palier{insights.milestones.length > 1 ? "s" : ""} atteint{insights.milestones.length > 1 ? "s" : ""}</span></div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5 }}>{insights.milestones.map((milestone: any, index: number) => <div key={`${milestone.playerId}-${milestone.key}-${milestone.target}-${index}`} style={{ minWidth: 0, borderRadius: 11, padding: 7, border: `1px solid ${GREEN}3d`, background: `${GREEN}09` }}><div style={{ color: GREEN, fontSize: 6.2, fontWeight: 1100 }}>{milestone.icon} {milestone.label.toUpperCase()}</div><div style={{ marginTop: 3, display: "flex", justifyContent: "space-between", gap: 6, alignItems: "baseline" }}><strong style={{ minWidth: 0, color: WHITE, fontSize: 7.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{milestone.playerName}</strong><strong style={{ color: GOLD, fontSize: 13 }}>{milestone.target}</strong></div><div style={{ marginTop: 2, color: SOFT, fontSize: 5.8 }}>Nouveau palier débloqué</div></div>)}</div>
+      </section> : null}
+
       {mvp ? <section style={{ marginTop: 7, borderRadius: 16, padding: 8, display: "grid", gridTemplateColumns: "39px minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${GOLD}55`, background: `${GOLD}0c` }}>
         <ProfileAvatar profile={mvp.profile} size={37} />
         <div style={{ minWidth: 0 }}><div style={{ color: GOLD, fontSize: 6.5, fontWeight: 1100, letterSpacing: .8 }}>JOUEUR DU MATCH</div><div style={{ marginTop: 2, color: WHITE, fontSize: 11, fontWeight: 1150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(mvp.profile)}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 6.8 }}>{n(mvp.stats.goals)} but · {n(mvp.stats.saves)} arrêt · {n(mvp.stats.interceptions)} interception · {n(mvp.stats.counterAttacks)} contre</div></div>
-        <div style={{ color: GREEN, fontSize: 17, fontWeight: 1200 }}>{mvp.accuracy}%</div>
+        <div style={{ textAlign: "right" }}><div style={{ color: GOLD, fontSize: 17, fontWeight: 1200 }}>{mvp.rating.toFixed(1)}</div><div style={{ color: SOFT, fontSize: 5.7 }}>NOTE · {mvp.accuracy}% précis.</div></div>
       </section> : null}
 
       <section style={{ marginTop: 7, borderRadius: 16, padding: 9, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.025)", display: "grid", gap: 7 }}>
@@ -187,7 +192,7 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
         <div style={{ color: row.winner ? GOLD : SOFT, fontSize: 12, fontWeight: 1100, textAlign: "center" }}>#{rank + 1}</div>
         <ProfileAvatar profile={row.profile} size={34} />
         <div style={{ minWidth: 0 }}><div style={{ color: row.side?.color || WHITE, fontSize: 9, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(row.profile)}{row.winner ? " · VAINQUEUR" : ""}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 6.5 }}>{n(row.stats.goals)}B · {n(row.stats.shotsOnTarget)}TC · {n(row.stats.saves)}A · {n(row.stats.interceptions)}INT · {n(row.stats.advances)}PROG</div></div>
-        <div style={{ textAlign: "right" }}><div style={{ color: GREEN, fontSize: 14, fontWeight: 1150 }}>{row.accuracy}%</div><div style={{ color: SOFT, fontSize: 5.8 }}>{n(row.stats.darts)} fl.</div></div>
+        <div style={{ textAlign: "right" }}><div style={{ color: GOLD, fontSize: 14, fontWeight: 1150 }}>{row.rating.toFixed(1)}</div><div style={{ color: GREEN, fontSize: 5.8 }}>{row.accuracy}% · {n(row.stats.darts)} fl.</div></div>
       </div>)}</section>
 
       {moments.length ? <section style={{ marginTop: 7, borderRadius: 15, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.02)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: GOLD, fontSize: 7 }}>MOMENTS CLÉS</strong><span style={{ color: SOFT, fontSize: 6 }}>buts · arrêts · interceptions · contres</span></div><div style={{ marginTop: 5, display: "grid", gap: 4 }}>{moments.map((moment: any, index: number) => <div key={moment.id || index} style={{ display: "grid", gridTemplateColumns: "22px 50px minmax(0,1fr) auto", gap: 5, alignItems: "center", padding: "4px 5px", borderRadius: 8, background: "rgba(255,255,255,.022)", color: SOFT, fontSize: 6.8 }}><span style={{ textAlign: "center" }}>{momentIcon(moment)}</span><strong style={{ color: GREEN }}>P{moment.period} · T{moment.round}</strong><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{moment.label}</span>{moment.scoreLine ? <strong style={{ color: WHITE }}>{moment.scoreLine}</strong> : null}</div>)}</div></section> : null}

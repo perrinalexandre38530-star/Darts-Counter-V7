@@ -24,7 +24,7 @@ function awardWinner(rows: any[], metric: (row: any) => number) { return [...row
 const th: React.CSSProperties = { padding: "7px 8px", borderBottom: "1px solid rgba(255,255,255,.12)", whiteSpace: "nowrap", fontSize: 7.5, textTransform: "uppercase", letterSpacing: .25 };
 const td: React.CSSProperties = { padding: "7px 8px", borderBottom: "1px solid rgba(255,255,255,.055)", whiteSpace: "nowrap", fontSize: 8.7, color: "#e6e9ef" };
 
-export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: { state: DartsPokerState; profilesById: Map<string, any>; onClose: () => void; onReplay: () => void; onStats: () => void; onHistory: () => void; }) {
+export default function DartsPokerEnd({ state, profilesById, newBadgeUnlocks = [], progressByPlayer = {}, onClose, onReplay, onStats, onHistory }: { state: DartsPokerState; profilesById: Map<string, any>; newBadgeUnlocks?: any[]; progressByPlayer?: Record<string, any>; onClose: () => void; onReplay: () => void; onStats: () => void; onHistory: () => void; }) {
   const standings = state.standings || [];
   const analyticsRows = state.players.map((player: any) => {
     const standing = standings.find((row: any) => String(row.id) === String(player.id)) || {};
@@ -67,6 +67,20 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
       </div>
 
       {best ? <div style={{ marginTop: 11, padding: 10, borderRadius: 18, border: `1px solid ${GOLD}66`, background: `linear-gradient(135deg,${GOLD}14,${RED}10)`, display: "grid", gridTemplateColumns: "52px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}><ProfileAvatar profile={winnerProfile} size={48} /><div style={{ minWidth: 0 }}><div style={{ color: GOLD, fontSize: 7.5, fontWeight: 1100, letterSpacing: .8 }}>TABLE CHAMPION</div><div style={{ color: "#fff", fontSize: 15, fontWeight: 1200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(winnerProfile)}</div><div style={{ color: SOFT, fontSize: 8.3, marginTop: 2 }}>{best.bestHandLabel || "—"} · {pct(best.accuracy)} précision · {fmt(best.handsWon)} manche{Number(best.handsWon) > 1 ? "s" : ""} gagnée{Number(best.handsWon) > 1 ? "s" : ""}</div></div><div style={{ textAlign: "right" }}><div style={{ color: GOLD, fontSize: 25, fontWeight: 1200, lineHeight: 1 }}>{fmt(best.points)}</div><div style={{ color: SOFT, fontSize: 6.5 }}>POINTS</div></div></div> : null}
+
+      {newBadgeUnlocks.length ? <div style={{ marginTop: 11, padding: 10, borderRadius: 18, border: `1px solid ${GOLD}88`, background: `radial-gradient(circle at 50% 0%,${GOLD}18,rgba(255,255,255,.025) 55%)`, boxShadow: `0 0 28px ${GOLD}20` }}>
+        <div style={{ textAlign: "center", color: GOLD, fontSize: 9, fontWeight: 1200, letterSpacing: 1.2 }}>🏆 NOUVEAU{newBadgeUnlocks.length > 1 ? "X" : ""} BADGE{newBadgeUnlocks.length > 1 ? "S" : ""} DÉBLOQUÉ{newBadgeUnlocks.length > 1 ? "S" : ""}</div>
+        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>
+          {newBadgeUnlocks.map((unlock: any, index: number) => {
+            const profile = profilesById.get(String(unlock?.playerId)) || { name: unlock?.playerName };
+            const career = progressByPlayer?.[String(unlock?.playerId)] || null;
+            return <div key={`${unlock?.playerId}-${unlock?.badgeId}-${index}`} style={{ padding: 8, borderRadius: 14, border: `1px solid ${GOLD}55`, background: "rgba(0,0,0,.22)", display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 8, alignItems: "center" }}>
+              <div style={{ width: 72, height: 72, borderRadius: 15, display: "grid", placeItems: "center", overflow: "hidden", background: "rgba(255,255,255,.025)", boxShadow: `0 0 16px ${GOLD}22` }}><DartsPokerBadge id={unlock.badgeId} size="100%" /></div>
+              <div style={{ minWidth: 0 }}><div style={{ color: GOLD, fontSize: 8.5, fontWeight: 1200 }}>{unlock?.detail || "Badge Darts Poker débloqué"}</div><div style={{ color: "#fff", fontSize: 10, fontWeight: 1100, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(profile)}</div><div style={{ color: SOFT, fontSize: 7.3, marginTop: 3 }}>{Number(unlock?.current || 0).toFixed(unlock?.target === 75 ? 1 : 0)} / {unlock?.target}{unlock?.target === 75 ? "%" : ""}{career ? ` · ${Object.keys(career.badges || {}).length}/12 badges` : ""}</div></div>
+            </div>;
+          })}
+        </div>
+      </div> : null}
 
       <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
         <Kpi label="Manches" value={match.roundsPlayed} color={GOLD} />

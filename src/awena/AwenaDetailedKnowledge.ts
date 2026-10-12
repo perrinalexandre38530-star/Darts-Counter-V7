@@ -1338,6 +1338,77 @@ const DEEP: Record<string, ModeDeepDetail> = {
       ] },
     ],
   },
+  fifty_one_by_five: {
+    rules: [
+      { title: "OBJECTIF", body: "Être le premier à atteindre **exactement** le score cible : 31, 51, 71 ou 101 selon la configuration." },
+      { title: "VOLÉE ET DIVISION", body: "Chaque tour utilise jusqu’à **3 fléchettes**. On additionne leur score brut. La volée ne marque que si le total est divisible par **5** ; le quotient est alors ajouté au compteur du joueur." },
+      { title: "EXEMPLE", body: "20 + 4 + 1 = **25**. Comme 25 ÷ 5 = **5**, le joueur ajoute 5 points à son compteur." },
+      { title: "3 FLÉCHETTES SCORANTES", body: "Quand l’option classique est active, les **3 fléchettes doivent toutes marquer**. Un MISS ou une fléchette à zéro invalide la volée, même si le total restant serait divisible par 5." },
+      { title: "BUST", body: "Si le quotient ferait dépasser la cible exacte, la volée est un bust. Selon la configuration, le joueur **conserve son score** ou **revient à 0**." },
+      { title: "MANCHE ET MATCH", body: "Atteindre exactement la cible gagne la manche. Le match se joue en BO1, BO3 ou BO5 selon le nombre de manches à gagner configuré." },
+    ],
+    configuration: [
+      { title: "OBJECTIF", bullets: ["31", "51 — classique", "71", "101"] },
+      { title: "RÈGLE DE VOLÉE", bullets: ["3 fléchettes scorantes obligatoires ON / OFF", "diviseur fixe : 5", "fin exacte obligatoire"] },
+      { title: "BUST", bullets: ["score conservé", "retour à 0"] },
+      { title: "FORMAT", bullets: ["BO1 — 1 manche à gagner", "BO3 — 2 manches à gagner", "BO5 — 3 manches à gagner"] },
+      { title: "SAISIE", bullets: ["KEYPAD", "CIBLE INTERACTIVE"] },
+    ],
+  },
+  looper: {
+    rules: [
+      { title: "OBJECTIF", body: "Survivre plus longtemps que les autres joueurs en validant la **cible exacte** imposée à chaque tour." },
+      { title: "CIBLE ACTIVE", body: "Le joueur dispose de sa volée pour toucher la cible en cours. En mode exact, la cible peut distinguer le lit précis : simple intérieur, simple extérieur, double, triple, Bull ou DBull lorsque la méthode de saisie fournit cette information." },
+      { title: "POSER LA CIBLE SUIVANTE", body: "Dès que le joueur a validé la cible active, les fléchettes restantes peuvent servir à fixer la cible suivante. La dernière zone exploitable de la volée devient la nouvelle cible selon les règles du mode." },
+      { title: "VIES", body: "Une volée qui ne valide pas la cible fait perdre **1 vie**. À 0 vie, le joueur est éliminé de la manche." },
+      { title: "BOUCLIER DU POSEUR", body: "Si l’option est active, une réussite peut donner un bouclier. Lors d’un prochain échec, le bouclier est consommé avant de retirer une vie." },
+      { title: "VICTOIRE", body: "Le dernier joueur encore vivant remporte la manche. Le nombre de manches à gagner dépend du format BO1 / BO3 / BO5." },
+    ],
+    configuration: [
+      { title: "VIES", bullets: ["3 vies", "4 vies", "5 vies"] },
+      { title: "CIBLE DE DÉPART", bullets: ["lancer de départ", "aléatoire"] },
+      { title: "CIBLE EXACTE", bullets: ["distinction des zones exactes lorsque disponible", "gestion simple intérieur / extérieur avec la cible interactive"] },
+      { title: "VARIANTES", bullets: ["boucles numériques ON / OFF", "bouclier du poseur ON / OFF"] },
+      { title: "FORMAT", bullets: ["BO1", "BO3", "BO5"] },
+      { title: "SAISIE", bullets: ["KEYPAD", "CIBLE INTERACTIVE"] },
+    ],
+  },
+  call_three: {
+    rules: [
+      { title: "PHASE CALLER", body: "Avant chaque volée, un **caller** fixe trois cibles. Selon la configuration, il s’agit du joueur suivant ou d’un caller choisi aléatoirement." },
+      { title: "TROIS APPELS", body: "Le tireur doit répondre aux trois cibles. En ordre strict, la fléchette 1 correspond à la cible 1, la fléchette 2 à la cible 2 et la fléchette 3 à la cible 3. En ordre libre, les trois appels peuvent être validés dans n’importe quel ordre." },
+      { title: "BARÈME", body: "Sur une cible numérotée : **Simple = 1 point, Double = 2, Triple = 3**. Le Bull et le DBull appliquent leur barème prévu par le moteur lorsque le Bull est autorisé." },
+      { title: "FULL CALL", body: "Réussir les trois cibles de la même volée enregistre un **Full Call** et alimente les statistiques de précision / séries du joueur." },
+      { title: "ROUNDS", body: "Tous les joueurs jouent le nombre de rounds prévu. Le meilleur total de points remporte la manche." },
+      { title: "ÉGALITÉ", body: "Si plusieurs joueurs sont encore à égalité en tête à la fin des rounds, CALL THREE déclenche un **round supplémentaire** avec une nouvelle phase d’appel jusqu’au départage." },
+    ],
+    configuration: [
+      { title: "ROUNDS", bullets: ["5 rounds", "10 rounds", "15 rounds"] },
+      { title: "CALLER", bullets: ["joueur suivant", "caller aléatoire"] },
+      { title: "ORDRE DES APPELS", bullets: ["ordre strict", "ordre libre"] },
+      { title: "CIBLES", bullets: ["Bull autorisé ON / OFF", "multiplicateurs scorés ON / OFF"] },
+      { title: "FORMAT", bullets: ["BO1", "BO3", "BO5"] },
+      { title: "SAISIE", bullets: ["KEYPAD", "CIBLE INTERACTIVE"] },
+    ],
+  },
+  steeplechase: {
+    rules: [
+      { title: "OBJECTIF", body: "Être le premier à terminer une course qui suit l’ordre physique des secteurs du dartboard puis l’arrivée au Bull." },
+      { title: "PARCOURS CLASSIQUE", body: "En sens horaire, le parcours part du **20** puis suit 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12 et 5 avant le Bull final." },
+      { title: "ÉTAPES NORMALES", body: "Une étape normale demande un **Simple** du secteur. Si l’option Petit Simple est active, la cible interactive distingue le simple intérieur du simple extérieur." },
+      { title: "HAIES", body: "Avec les haies actives, les secteurs **13, 17, 8 et 5** ne se franchissent qu’en touchant respectivement **T13, T17, T8 et T5**." },
+      { title: "ARRIVÉE", body: "Après le dernier secteur, il faut toucher le Bull. La configuration peut accepter Bull ou DBull, ou exiger uniquement le **DBull**." },
+      { title: "VICTOIRE", body: "Le premier joueur qui franchit toutes les étapes et valide l’arrivée gagne la manche. Le match suit ensuite le format BO1 / BO3 / BO5." },
+    ],
+    configuration: [
+      { title: "SENS", bullets: ["horaire — classique", "anti-horaire — variante"] },
+      { title: "ZONE NORMALE", bullets: ["petit simple intérieur", "simple libre"] },
+      { title: "HAIES", bullets: ["T13 / T17 / T8 / T5 ON", "haies désactivées"] },
+      { title: "ARRIVÉE", bullets: ["Bull ou DBull", "DBull uniquement"] },
+      { title: "FORMAT", bullets: ["BO1", "BO3", "BO5"] },
+      { title: "SAISIE", bullets: ["KEYPAD", "CIBLE INTERACTIVE"] },
+    ],
+  },
 
 };
 

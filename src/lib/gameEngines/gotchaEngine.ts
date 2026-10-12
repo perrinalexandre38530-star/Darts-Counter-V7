@@ -4,6 +4,7 @@
 // Course depuis 0, GOTCHA adverse, bust et sorties S/D/M.
 // =============================================================
 import type { GameDart, Player } from "../types-game";
+import type { PremiumBotBrain } from "../premiumPartyBotAI";
 
 export type GotchaBotLevel = "easy" | "normal" | "hard";
 export type GotchaConfigPayload = {
@@ -73,19 +74,39 @@ export function playGotchaVisit(input:GotchaState,dartsRaw:GameDart[]):GotchaSta
 
 export function gotchaDartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.bed==="IB")return"DBULL";if(d.bed==="OB")return"BULL";return`${d.bed}${d.number||""}`;}
 function targetDart(points:number,outMode:GotchaConfigPayload["rules"]["outMode"]):GameDart|null { if(points<=0)return null; if(points===50&&(outMode!=="straight"||Math.random()<.65))return{bed:"IB"}; if(points===25&&outMode==="straight")return{bed:"OB"}; if(points<=20&&(outMode==="straight"))return{bed:"S",number:points}; if(points<=40&&points%2===0&&(outMode==="double"||outMode==="master"))return{bed:"D",number:points/2}; if(points<=60&&points%3===0&&outMode==="master")return{bed:"T",number:points/3}; for(let n=20;n>=1;n--){if(points>=n*3)return{bed:"T",number:n};} return {bed:"S",number:Math.max(1,Math.min(20,points))}; }
-function noisy(d:GameDart,hit:boolean):GameDart { if(hit)return d; if(Math.random()<.12)return{bed:"MISS"}; const base=Number(d.number||20);return{bed:"S",number:((base+Math.floor(Math.random()*7)-3+19)%20)+1}; }
-export function pickGotchaBotDarts(s:GotchaState,level:GotchaBotLevel="normal"):GameDart[]{
-  const p=s.players[s.activePlayerIndex];if(!p)return[];const chance=level==="hard"?.88:level==="easy"?.52:.70;let score=Number(s.scores[p.id]||0);const out:GameDart[]=[];
+function noisy(d:GameDart,hit:boolean,brain?:PremiumBotBrain):GameDart {
+  if(hit)return d;
+  if(Math.random()<(.10 + (Number(brain?.risk||.5)>.75?.05:0)))return{bed:"MISS"};
+  const base=Number(d.number||20);
+  return{bed:"S",number:((base+Math.floor(Math.random()*7)-3+19)%20)+1};
+}
+export function pickGotchaBotDarts(s:GotchaState,level:GotchaBotLevel="normal",brain?:PremiumBotBrain):GameDart[]{
+  const p=s.players[s.activePlayerIndex];if(!p)return[];
+  const baseChance=level==="hard"?.88:level==="easy"?.52:.70;
+  const chance=Math.max(.22,Math.min(.97,Number(brain?.precision??baseChance)));
+  let score=Number(s.scores[p.id]||0);const out:GameDart[]=[];
   for(let i=0;i<3;i++){
     const remaining=s.config.rules.targetScore-score;
     let desired=targetDart(remaining,s.config.rules.outMode)||{bed:"S",number:20};
-    const candidates=s.players.filter(q=>q.id!==p.id).map(q=>({id:q.id,delta:Number(s.scores[q.id]||0)-score,target:Number(s.scores[q.id]||0)})).filter(x=>x.delta>0&&x.delta<=180&&x.target<s.config.rules.targetScore).sort((a,b)=>a.delta-b.delta);
-    const gotchaChance=level==="hard"?.58:level==="normal"?.30:.12;
-    if(remaining>60&&candidates.length&&Math.random()<gotchaChance){
-      const tactical=candidates.find(x=>x.delta<=60)||candidates[0];desired=targetDart(tactical.delta,"straight")||desired;
+    const candidates=s.players
+      .filter(q=>q.id!==p.id)
+      .map(q=>({id:q.id,delta:Number(s.scores[q.id]||0)-score,target:Number(s.scores[q.id]||0)}))
+      .filter(x=>x.delta>0&&x.delta<=180&&x.target<s.config.rules.targetScore);
+    // Un tacticien / bluffeur préfère remettre à zéro le rival le plus avancé,
+    // tandis qu'un profil régulier reste davantage sur sa propre course.
+    candidates.sort((a,b)=>Number(brain?.gotchaBias||0)>.15 ? b.target-a.target : a.delta-b.delta);
+    const baseGotcha=level==="hard"?.48:level==="normal"?.26:.10;
+    const gotchaChance=Math.max(.02,Math.min(.90,baseGotcha+Number(brain?.gotchaBias||0)));
+    const finishPriority=remaining<=170 && (Number(brain?.composure||0)>=.72 || Number(brain?.risk||.5)<.72);
+    if(!finishPriority&&remaining>60&&candidates.length&&Math.random()<gotchaChance){
+      const tactical=candidates.find(x=>x.delta<=60)||candidates[0];
+      desired=targetDart(tactical.delta,"straight")||desired;
     }
-    const actual=noisy(desired,Math.random()<chance);out.push(actual);const nextScore=score+dartScore(actual);
-    if(nextScore>s.config.rules.targetScore)break;score=nextScore;if(score>=s.config.rules.targetScore)break;
+    const actual=noisy(desired,Math.random()<chance,brain);out.push(actual);
+    const nextScore=score+dartScore(actual);
+    if(nextScore>s.config.rules.targetScore)break;
+    score=nextScore;
+    if(score>=s.config.rules.targetScore)break;
   }
   return out;
 }

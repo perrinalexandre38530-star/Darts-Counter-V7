@@ -55,6 +55,10 @@ const TICKER_KEYS: Record<string, string> = {
   darts_firefighter: "darts_firefighter",
   loterie: "loterie",
   crados: "crados",
+  fifty_one_by_five: "51_by_5",
+  looper: "looper",
+  call_three: "call_three",
+  steeplechase: "steeplechase",
   prisoner: "prisoner",
   tic_tac_toe: "tic_tac_toe",
   bastard: "batard_players",
@@ -109,6 +113,10 @@ const ALIAS_OVERRIDES: Record<string, string[]> = {
   training_super_bull: ["super bull training", "training super bull"],
   ocean_control: ["ocean control", "ocean's control", "bataille navale"],
   crados: ["crados", "crado", "crasse", "crasses", "contamination", "secteur sale", "zone crado", "zones crado", "douche", "bull douche", "blocage crados", "vol crados", "course au secteur", "course crados", "prise en main", "bull propre contagieux", "carte des zones", "radar crados", "journal crados", "filtres crados", "liste joueurs crados"],
+  fifty_one_by_five: ["51 by 5", "51 par 5", "fifty one by five", "cinquante et un par cinq", "division par 5", "divisible par 5", "quotient", "bust 51 by 5"],
+  looper: ["looper", "loop", "boucle", "boucles", "cible exacte", "segment exact", "simple interieur", "simple exterieur", "bouclier looper", "vies looper"],
+  call_three: ["call three", "call 3", "appel trois", "appelle trois", "trois cibles", "full call", "caller", "phase d appel"],
+  steeplechase: ["steeplechase", "steeple chase", "course obstacles", "course autour de la cible", "haies", "t13", "t17", "t8", "t5", "petit simple", "bull final"],
 };
 
 const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" | "tip" | "howToPlayInApp">>> = {
@@ -139,6 +147,26 @@ const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" 
     summary: "CRADOS est un jeu de territoire et de survie. Les simples, doubles et triples déposent respectivement 1, 2 ou 3 couches. Une zone devient possédée quand le seuil configuré est atteint. Un MISS ajoute toujours +2 crasses. Quand la Douche est active, un DOUBLE retire 2 crasses, un BULL en retire 1 et un DBULL en retire 3, tout en conservant l’effet normal du Double sur le secteur. Pour un secteur encore libre, la variante Prise en main fait repartir la progression au dernier camp qui touche, tandis que la variante Course conserve les touches de chaque camp : le premier au seuil remporte le secteur et les touches adverses déjà accumulées sont converties en crasse. Toucher une zone possédée par un adversaire applique la règle Blocage ou Vol. Par défaut, l’option « Jauge pleine = fin de manche » arrête immédiatement la manche lorsqu’un camp atteint la limite de crasse : le camp restant le plus propre gagne la manche. Si cette option est désactivée, le camp à 100 % est éliminé et la manche continue jusqu’au dernier camp encore propre.",
     tip: "Surveille à la fois ta jauge de crasse, le numéro du tour, les zones proches du seuil et l'ordre de jeu. Awena peut annoncer en quelques mots une cible conseillée au début de ton tour : elle privilégie une zone déjà avancée, un secteur libre, une zone adverse fragile en mode Vol, ou le Bull si ta jauge devient dangereuse. En Blocage, protège ta jauge. En Vol, attaque lorsque le gain territorial compense le +1 crasse par contact. En Course, un secteur à 2/3 pour un adversaire devient urgent. Avec Bull propre contagieux, un Bull ou DBull joué à 0 crasse peut répandre respectivement 1 ou 3 crasses sur tous les autres camps.",
     howToPlayInApp: "Ouvre Jeux > Fléchettes > CRADOS. Choisis Joueurs ou Équipes, profils/bots, ordre, limite de crasse, couches pour posséder une zone, Prise en main ou Course sur secteur vierge, Blocage ou Vol sur secteur adverse, Douche au Bull, Bull propre contagieux, l’option Jauge pleine = fin de manche, le format et la méthode de saisie. En partie : le bloc joueur actif montre le score de crasse, sa jauge, la manche, le TOUR et la VOLÉE en cours ; Awena donne aussi un conseil vocal bref sur la cible à viser. Le mini-radar ouvre la CARTE DES ZONES, les deux lignes de KPI résument la partie, le bandeau joueurs ouvre l'ordre complet et le bouton journal affiche les dernières actions. Dans la carte, TOUT affiche tous les propriétaires, LIBRES isole les zones vierges et chaque médaillon filtre le joueur correspondant. Les parties en cours sont enregistrées dans Historique et peuvent être reprises avec leur état, leur volée en cours et leur multiplicateur.",
+  },
+  fifty_one_by_five: {
+    summary: "51 BY 5 est un jeu de calcul et de régularité. Chaque volée utilise jusqu’à 3 fléchettes : on additionne leur valeur brute, puis la volée ne marque que si ce total est divisible par 5. Le quotient est ajouté au score. En règle classique, les 3 fléchettes doivent toutes scorer. Il faut atteindre exactement l’objectif choisi — 31, 51, 71 ou 101 — et un dépassement applique la règle de bust configurée : score conservé ou retour à zéro.",
+    tip: "Raisonne en quotient avant de lancer. Si tu dois ajouter 5 points au compteur, cherche 25 points bruts ; pour +10, cherche 50. En fin de partie, multiplie exactement le reste par 5 et construis une volée réalisable en gardant trois fléchettes marquantes si cette option est active.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > 51 BY 5. Choisis les participants ou bots, l’objectif 31/51/71/101, l’obligation éventuelle de scorer avec les 3 fléchettes, la règle de bust, le format BO1/BO3/BO5 et la méthode de saisie. Pendant la partie, la prévisualisation indique le total brut, sa divisibilité par 5, le quotient potentiel et le risque de bust. Les parties sont sauvegardées dans Historique et les records détaillent notamment volées valides, busts, meilleur quotient et meilleure série valide.",
+  },
+  looper: {
+    summary: "LOOPER est un jeu de survie à cible imposée. Chaque joueur doit toucher la cible exacte en cours. Quand la règle exacte est active, la distinction peut aller jusqu’au lit précis : simple intérieur, simple extérieur, double, triple, Bull ou DBull. Une réussite permet de survivre et de poser la cible suivante ; un échec coûte une vie, sauf si un bouclier disponible absorbe la pénalité. Le dernier survivant remporte la manche.",
+    tip: "Touche d’abord la cible imposée le plus tôt possible dans la volée. Une fois sécurisé, utilise les fléchettes restantes pour poser une cible suivante difficile pour l’adversaire. Les doubles, triples et Bulls sont généralement plus risqués mais plus agressifs lorsqu’ils peuvent devenir la prochaine cible.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > LOOPER. Configure le nombre de vies, la cible de départ aléatoire ou au lancer, la cible exacte, les boucles numériques, le bouclier du poseur, les bots, le format et la saisie. En jeu, la cible active et sa zone exacte sont affichées en permanence ; le journal indique les vies, boucliers, touches et cibles posées. Historique conserve la reprise complète de la partie et de la volée en cours.",
+  },
+  call_three: {
+    summary: "CALL THREE alterne une phase d’appel et une phase de tir. Avant la volée, le caller définit trois cibles. Le tireur dispose ensuite d’une fléchette par cible lorsque l’ordre strict est actif. Un Simple vaut 1 point, un Double 2, un Triple 3 ; Bull et DBull utilisent leur barème spécifique. Réussir les trois appels constitue un Full Call. Après le nombre de rounds prévu, le meilleur total gagne ; une égalité déclenche un round supplémentaire.",
+    tip: "Comme caller, mélange une cible fiable avec une ou deux cibles plus exigeantes pour mettre la pression. Comme tireur, ne sacrifie pas la première cible pour viser un multiplicateur trop ambitieux : en ordre strict, chaque fléchette correspond à son appel. En overtime, privilégie la régularité.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > CALL THREE. Choisis le nombre de rounds, le mode de caller, l’ordre strict ou libre, l’autorisation du Bull, le scoring des multiplicateurs, les participants/bots et le format. En partie, la phase CALLER permet de choisir les trois cibles avant de passer automatiquement à la phase de jeu. Les stats suivent points, hits, Full Calls, meilleures volées, séries et multiplicateurs réussis.",
+  },
+  steeplechase: {
+    summary: "STEEPLECHASE est une course autour de la cible. Le parcours suit l’ordre physique des secteurs en partant du 20. Les étapes normales demandent un simple — le petit simple intérieur lorsque cette règle est activée. Les haies 13, 17, 8 et 5 doivent être franchies en Triple si les haies sont actives. Après le dernier secteur, l’arrivée se fait au Bull ou uniquement au DBull selon la configuration. Le premier à terminer le parcours gagne la manche.",
+    tip: "Sur les étapes normales, cherche surtout la précision pour avancer vite. Garde ton agressivité pour les quatre haies : un T13/T17/T8/T5 réussi économise beaucoup de fléchettes. À l’approche de l’arrivée, adapte ton risque selon que le Bull simple suffit ou que le DBull est obligatoire.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > STEEPLECHASE. Choisis le sens horaire ou anti-horaire, petit simple intérieur ou simple libre, activation des haies, Bull ou DBull à l’arrivée, les participants/bots, le format et la méthode de saisie. En jeu, la piste affiche la progression, les haies, la cible active et les statistiques de course. Historique permet la reprise avec la volée courante.",
   },
 };
 

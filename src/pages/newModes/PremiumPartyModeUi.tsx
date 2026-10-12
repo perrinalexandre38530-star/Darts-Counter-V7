@@ -192,14 +192,19 @@ export function PremiumMomentOverlay({ moment, accent = "#4fe4ff", profile, play
   </div>;
 }
 
-export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel }: any) {
+export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel, persona, personaIcon, objectiveDetail, reaction }: any) {
   const conf = Number.isFinite(Number(confidence)) ? Math.max(0, Math.min(100, Number(confidence))) : null;
   return <div className="party-mode__bot" style={{ borderColor: `${accent}55`, boxShadow: `inset 0 0 34px ${accent}0d` }}>
     <ProfileAvatar profile={profile} size={58} showStars={false} ringColor={accent} />
     <div className="party-mode__bot-copy">
       <div className="party-mode__bot-head"><b style={{ color: accent }}>{name || "BOT"}</b>{phaseLabel ? <em>{phaseLabel}</em> : null}</div>
+      <div className="party-mode__bot-meta">
+        {persona ? <strong style={{ borderColor: `${accent}55`, color: accent }}>{personaIcon || "🤖"} {persona}</strong> : null}
+        {conf != null ? <span>{Math.round(conf)}% confiance</span> : null}
+      </div>
       <span>{text || "prépare sa volée…"}</span>
-      {intent ? <div className="party-mode__bot-intent"><small>INTENTION IA</small><strong style={{ color: accent }}>{intent}</strong></div> : null}
+      {intent ? <div className="party-mode__bot-intent"><small>OBJECTIF TACTIQUE</small><strong style={{ color: accent }}>{intent}</strong>{objectiveDetail ? <p>{objectiveDetail}</p> : null}</div> : null}
+      {reaction ? <div className="party-mode__bot-reaction"><small>RÉACTION IA</small><b>{reaction}</b></div> : null}
       {conf != null ? <div className="party-mode__bot-confidence"><i style={{ width: `${conf}%`, background: accent }} /><small>{Math.round(conf)}% confiance</small></div> : null}
     </div><i className="party-mode__bot-icon">{icon}</i>
   </div>;

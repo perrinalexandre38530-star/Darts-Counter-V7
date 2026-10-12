@@ -1242,6 +1242,7 @@ function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
   }).filter((entry: any) => entry.best);
   const sectorMaps = pokerRows.map((row: any) => ({ row, sectors: deriveDartsPokerSectorHeatmap(row.raw || {}) }));
   const matchStory = deriveDartsPokerMatchStory(rounds);
+  const savedBadgeUnlocks = asArray(pick(summary?.newBadgeUnlocks, summary?.dartsPokerProgress?.unlocks, rec?.payload?.newBadgeUnlocks, rec?.payload?.dartsPokerProgress?.unlocks, []));
   return <>
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Table de poker · statistiques complètes</div>
@@ -1275,6 +1276,19 @@ function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
         <Kpi label="Manche décisive" value={num(matchStory?.decisiveRound) || "—"} accent="#e83a43" />
       </div>
     </section>
+    {savedBadgeUnlocks.length ? <section style={card(accent)}>
+      <div style={sectionTitle("#f6c256")}>Badges débloqués pendant cette partie</div>
+      <div style={{ color: "#9097a8", fontSize: 9, marginBottom: 8 }}>Ces badges ont été réellement débloqués lors de cette partie et sont conservés dans son historique.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 8 }}>
+        {savedBadgeUnlocks.map((unlock: any, index: number) => {
+          const row = pokerRows.find((item: any) => String(item.id) === String(unlock?.playerId));
+          return <div key={`${unlock?.playerId}-${unlock?.badgeId}-${index}`} style={{ padding: 8, borderRadius: 14, display: "grid", gridTemplateColumns: "70px minmax(0,1fr)", gap: 9, alignItems: "center", background: "rgba(246,194,86,.055)", border: "1px solid rgba(246,194,86,.30)" }}>
+            <div style={{ width: 70, height: 70, borderRadius: 14, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(255,255,255,.025)" }}><DartsPokerBadge id={unlock?.badgeId as DartsPokerBadgeId} size="100%" /></div>
+            <div style={{ minWidth: 0 }}><div style={{ color: "#f6c256", fontSize: 8.5, fontWeight: 1100 }}>{unlock?.detail || "Badge Darts Poker débloqué"}</div><div style={{ color: "#fff", fontSize: 11, fontWeight: 1000, marginTop: 2 }}>{row?.name || unlock?.playerName || "Joueur"}</div><div style={{ color: "#8f96a8", fontSize: 8, marginTop: 3 }}>{num(unlock?.current).toFixed(num(unlock?.target) === 75 ? 1 : 0)} / {num(unlock?.target)}{num(unlock?.target) === 75 ? "%" : ""}</div></div>
+          </div>;
+        })}
+      </div>
+    </section> : null}
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Distinctions de la partie</div>
       <div style={{ color: "#9097a8", fontSize: 9, marginBottom: 8 }}>Les trophées visuels reprennent les performances marquantes de cette partie Darts Poker.</div>

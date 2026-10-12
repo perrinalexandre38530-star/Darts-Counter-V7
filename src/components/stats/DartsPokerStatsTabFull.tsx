@@ -4,6 +4,7 @@ import DartsPokerCard from "../darts-poker/DartsPokerCard";
 import DartsPokerBadge from "../darts-poker/DartsPokerBadge";
 import type { DartsPokerBadgeId } from "../darts-poker/DartsPokerBadge";
 import { deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerNum as n, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../../lib/dartsPokerAnalytics";
+import { readDartsPokerProgress } from "../../lib/dartsPokerProgress";
 
 const GOLD = "#f6c256";
 const RED = "#e83a43";
@@ -121,7 +122,10 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
     { badgeId: "closer", icon: "↗", label: "CLOSER", detail: "Gagner la dernière manche de 5 parties", value: closingWins, target: 5, color: ORANGE },
     { badgeId: "royal", icon: "♚", label: "ROYAL", detail: "Obtenir une quinte flush royale", value: sum("royalFlushes"), target: 1, color: GOLD },
   ];
-  const unlockedAchievements = achievements.filter((badge: any) => n(badge.value) >= n(badge.target) && !badge.lockedReason).length;
+  const persistentProgress = readDartsPokerProgress(String(playerId));
+  const persistedBadgeIds = new Set(Object.keys(persistentProgress?.badges || {}));
+  const isBadgeUnlocked = (badge: any) => persistedBadgeIds.has(String(badge.badgeId)) || (n(badge.value) >= n(badge.target) && !badge.lockedReason);
+  const unlockedAchievements = achievements.filter(isBadgeUnlocked).length;
 
   const recordsRows = [
     ["Meilleur score de partie", matches.slice().sort((a:any,b:any)=>n(b.row.points)-n(a.row.points))[0], (m:any)=>`${fmt(m?.row?.points)} pts`, GOLD],
@@ -197,7 +201,7 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
       <Section title={`Badges Darts Poker · ${unlockedAchievements}/${achievements.length}`} accent={GOLD} subtitle="Progression permanente du joueur">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 7 }}>
           {achievements.map((badge: any) => {
-            const unlocked = n(badge.value) >= n(badge.target) && !badge.lockedReason;
+            const unlocked = isBadgeUnlocked(badge);
             const progress = badge.lockedReason ? Math.min(100, darts / 60 * 100) : Math.min(100, n(badge.value) / Math.max(1, n(badge.target)) * 100);
             return <div key={badge.label} style={{ padding: 10, borderRadius: 14, border: `1px solid ${unlocked ? badge.color : "rgba(255,255,255,.09)"}55`, background: unlocked ? `${badge.color}0d` : "rgba(255,255,255,.022)", opacity: unlocked ? 1 : .72 }}>
               <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
@@ -211,7 +215,7 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
                 <div style={{ color: unlocked ? GREEN : SOFT, fontSize: 8, fontWeight: 1100 }}>{unlocked ? "DÉBLOQUÉ" : "EN COURS"}</div>
               </div>
               <div style={{ marginTop: 7, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${progress}%`, height: "100%", background: unlocked ? badge.color : `${badge.color}99`, borderRadius: 999 }} /></div>
-              <div style={{ marginTop: 3, color: "#737b8e", fontSize: 6.8, textAlign: "right" }}>{badge.lockedReason || `${fmt(Math.min(n(badge.value), n(badge.target)), badge.target === 75 ? 1 : 0)} / ${badge.target}${badge.target === 75 ? "%" : ""}`}</div>
+              <div style={{ marginTop: 3, color: "#737b8e", fontSize: 6.8, textAlign: "right" }}>{unlocked ? `VALIDÉ · ${badge.target}${badge.target === 75 ? "%" : ""}` : (badge.lockedReason || `${fmt(Math.min(n(badge.value), n(badge.target)), badge.target === 75 ? 1 : 0)} / ${badge.target}${badge.target === 75 ? "%" : ""}`)}</div>
             </div>;
           })}
         </div>

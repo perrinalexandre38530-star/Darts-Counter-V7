@@ -32,3 +32,22 @@
 .party-mode-end__career b{font-size:13px;font-weight:1100;}
 @media(max-width:680px){.party-mode-end__career{grid-template-columns:1fr 1fr}.party-mode-end__career>div:not(:first-child){border-left:0}.party-mode-end__progress-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:440px){.party-mode-end__progress-grid{grid-template-columns:1fr}.party-mode-end__career{grid-template-columns:1fr 1fr}}
+
+
+/* V9 — personnalités IA / objectifs tactiques / réactions */
+.party-mode__bot-meta{display:flex!important;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px}
+.party-mode__bot-meta strong{padding:2px 6px;border:1px solid rgba(255,255,255,.1);border-radius:999px;background:rgba(255,255,255,.035);font-size:5.8px!important;font-weight:1100;letter-spacing:.5px;white-space:nowrap}
+.party-mode__bot-meta span{padding:2px 5px;border-radius:999px;background:rgba(255,255,255,.035);color:#7f8998!important;font-size:5.6px!important;font-weight:1000}
+.party-mode__bot-intent{display:grid!important;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:6px;row-gap:1px;margin-top:3px}
+.party-mode__bot-intent small{grid-column:1;color:#687283;font-size:5.7px;font-weight:1000;letter-spacing:.55px}
+.party-mode__bot-intent strong{grid-column:2;font-size:7px;font-weight:1100;letter-spacing:.35px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.party-mode__bot-intent p{grid-column:1/-1;margin:1px 0 0;color:#8993a3;font-size:6px;line-height:1.3;font-weight:750}
+.party-mode__bot-reaction{display:grid!important;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:start;margin-top:2px;padding:4px 6px;border-radius:8px;background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.05)}
+.party-mode__bot-reaction small{color:#687283;font-size:5.4px;font-weight:1000;letter-spacing:.45px;white-space:nowrap}
+.party-mode__bot-reaction b{color:#aeb7c5!important;font-size:6px!important;line-height:1.28;font-weight:850!important}
+@media (orientation:landscape) and (max-height:620px){
+  .party-mode__bot{min-height:112px;padding:8px;gap:9px}
+  .party-mode__bot-reaction{display:none!important}
+  .party-mode__bot-intent p{font-size:5.5px}
+  .party-mode__bot-meta strong,.party-mode__bot-meta span{font-size:5.2px!important}
+}

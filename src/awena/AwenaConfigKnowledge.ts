@@ -8,6 +8,63 @@ export type AwenaModeConfigDetail = {
 };
 
 const DETAILS: Record<string, AwenaModeConfigDetail> = {
+  fifty_one_by_five: {
+    options: [
+      "1 à 12 participants, avec bots IA possibles",
+      "objectif : 31, 51, 71 ou 101",
+      "diviseur fixe 5",
+      "obligation ou non de faire scorer les 3 fléchettes",
+      "bust au dépassement : score conservé ou retour à zéro",
+      "arrivée exacte obligatoire",
+      "BO1, BO3 ou BO5",
+      "saisie keypad ou cible interactive",
+    ],
+    victory: "atteindre exactement l’objectif configuré en ajoutant uniquement les quotients de volées valides divisibles par 5",
+    variants: ["31 BY 5", "51 BY 5", "71 BY 5", "101 BY 5", "3 fléchettes scorantes ON/OFF", "bust maintien / retour à 0"],
+  },
+  looper: {
+    options: [
+      "2 à 12 participants, avec bots IA possibles",
+      "3, 4 ou 5 vies",
+      "cible de départ au lancer ou aléatoire",
+      "cible exacte avec distinction des lits lorsque la cible interactive fournit la zone",
+      "boucles numériques activées ou désactivées",
+      "bouclier du poseur activé ou désactivé",
+      "BO1, BO3 ou BO5",
+      "saisie keypad ou cible interactive",
+    ],
+    victory: "être le dernier joueur encore en vie dans la manche ; le premier à atteindre le nombre de manches configuré gagne le match",
+    variants: ["cible exacte", "bouclier du poseur", "boucles numériques", "3 / 4 / 5 vies"],
+    notes: ["La cible interactive permet de distinguer simple intérieur et simple extérieur ; au keypad, la précision de zone dépend des informations fournies par la saisie."],
+  },
+  call_three: {
+    options: [
+      "1 à 12 participants, avec bots IA possibles",
+      "5, 10 ou 15 rounds",
+      "caller = joueur suivant ou caller aléatoire",
+      "ordre des trois appels strict ou libre",
+      "Bull autorisé ou non",
+      "multiplicateurs scorés : Simple 1, Double 2, Triple 3",
+      "BO1, BO3 ou BO5",
+      "saisie keypad ou cible interactive",
+    ],
+    victory: "terminer les rounds avec le meilleur total de points ; en cas d’égalité en tête, un round supplémentaire départage les joueurs",
+    variants: ["ordre strict", "ordre libre", "caller suivant", "caller aléatoire", "Bull ON/OFF"],
+    notes: ["Le jeu possède une vraie phase CALLER avant chaque volée : les trois cibles sont fixées avant que le tireur ne joue."],
+  },
+  steeplechase: {
+    options: [
+      "1 à 12 participants, avec bots IA possibles",
+      "sens horaire ou anti-horaire",
+      "petit simple intérieur obligatoire ou simple libre sur les étapes normales",
+      "haies T13, T17, T8 et T5 activées ou désactivées",
+      "arrivée au Bull quelconque ou DBull uniquement",
+      "BO1, BO3 ou BO5",
+      "saisie keypad ou cible interactive",
+    ],
+    victory: "être le premier à parcourir tous les secteurs dans l’ordre, franchir les haies configurées et valider le Bull final",
+    variants: ["horaire", "anti-horaire", "petit simple", "haies ON/OFF", "Bull", "DBull final"],
+  },
   crados: {
     options: [
       "mode Joueurs ou Équipes, jusqu'à 10 participants au total",

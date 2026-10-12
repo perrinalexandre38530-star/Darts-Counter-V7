@@ -185,6 +185,96 @@ export function footballKeyMomentsFromRecord(record: any, limit = 6) {
   return footballKeyMomentsFromState({ ...state, visits }, limit);
 }
 
+
+export function footballPerformanceRating(stats: any): number {
+  const darts = n(stats?.darts);
+  const involvement = darts + n(stats?.goals) + n(stats?.saves) + n(stats?.interceptions);
+  if (involvement <= 0) return 0;
+  const accuracy = pct(n(stats?.successfulActions), Math.max(1, darts));
+  const raw = 4.2
+    + Math.min(2.2, accuracy * 0.022)
+    + Math.min(2.4, n(stats?.goals) * 0.85)
+    + Math.min(1.2, n(stats?.saves) * 0.24)
+    + Math.min(1.1, n(stats?.interceptions) * 0.20)
+    + Math.min(0.7, n(stats?.counterAttacks) * 0.16)
+    + Math.min(0.5, n(stats?.shotsOnTarget) * 0.08)
+    - Math.min(0.8, n(stats?.misses) * 0.04);
+  return Math.round(Math.max(1, Math.min(10, raw)) * 10) / 10;
+}
+
+type FootballCareerSnapshot = {
+  games: number; wins: number; draws: number; losses: number; goals: number; saves: number; interceptions: number;
+};
+
+const careerMilestones = [
+  { key: "games", values: [1, 10, 25, 50, 100, 250], icon: "🏟️", label: "Matchs joués" },
+  { key: "wins", values: [1, 10, 25, 50, 100], icon: "🏆", label: "Victoires" },
+  { key: "goals", values: [1, 10, 25, 50, 100, 250], icon: "⚽", label: "Buts" },
+  { key: "saves", values: [10, 25, 50, 100, 250], icon: "🧤", label: "Arrêts" },
+  { key: "interceptions", values: [10, 25, 50, 100, 250], icon: "🛡️", label: "Interceptions" },
+] as const;
+
+export function buildFootballCareerSnapshot(records: any[] = [], playerId?: string, playerName?: string): FootballCareerSnapshot {
+  const snapshot: FootballCareerSnapshot = { games: 0, wins: 0, draws: 0, losses: 0, goals: 0, saves: 0, interceptions: 0 };
+  for (const record of records || []) {
+    if (!isFootballHistoryRecord(record)) continue;
+    const row = footballFindHistoryRow(record, playerId, playerName);
+    if (!row) continue;
+    snapshot.games += 1;
+    const result = footballHistoryResult(record, row, playerId);
+    snapshot.wins += result === "W" ? 1 : 0;
+    snapshot.draws += result === "D" ? 1 : 0;
+    snapshot.losses += result === "L" ? 1 : 0;
+    snapshot.goals += n(row?.goals);
+    snapshot.saves += n(row?.saves);
+    snapshot.interceptions += n(row?.interceptions);
+  }
+  return snapshot;
+}
+
+export function buildFootballCareerProgress(records: any[] = [], playerId?: string, playerName?: string) {
+  const snapshot = buildFootballCareerSnapshot(records, playerId, playerName);
+  const next: any[] = [];
+  const achieved: any[] = [];
+  for (const definition of careerMilestones) {
+    const value = n((snapshot as any)[definition.key]);
+    const reached = definition.values.filter((target) => value >= target);
+    if (reached.length) {
+      const target = reached[reached.length - 1];
+      achieved.push({ ...definition, target, value });
+    }
+    const target = definition.values.find((goal) => value < goal);
+    if (target != null) next.push({ ...definition, target, value, progress: Math.min(100, Math.round((value / target) * 100)) });
+  }
+  return { snapshot, achieved, next };
+}
+
+function currentPlayerCareerValue(state: any, player: any, key: string): number {
+  const stats = state?.statsByPlayer?.[player?.id] || {};
+  if (key === "games") return 1;
+  if (key === "wins") return state?.draw ? 0 : (Array.isArray(state?.winnerPlayerIds) && state.winnerPlayerIds.includes(player?.id) ? 1 : 0);
+  return n(stats?.[key]);
+}
+
+export function footballCareerMilestonesUnlocked(records: any[] = [], state: any, profilesById?: Map<string, any>) {
+  const unlocked: any[] = [];
+  const prior = (records || []).filter((record: any) => isFootballHistoryRecord(record) && footballHistoryPlayedAt(record) > 0 && footballHistoryPlayedAt(record) < (n(state?.startedAt) || Date.now()));
+  for (const player of Array.isArray(state?.players) ? state.players : []) {
+    const pid = txt(player?.id);
+    const profile = profilesById?.get?.(pid) || player;
+    const pname = txt(profile?.name || profile?.displayName || profile?.display_name || player?.name || "Joueur");
+    const before = buildFootballCareerSnapshot(prior, pid, pname);
+    for (const definition of careerMilestones) {
+      const previous = n((before as any)[definition.key]);
+      const current = previous + currentPlayerCareerValue(state, player, definition.key);
+      for (const target of definition.values) {
+        if (previous < target && current >= target) unlocked.push({ playerId: pid, playerName: pname, key: definition.key, icon: definition.icon, label: definition.label, target, value: current });
+      }
+    }
+  }
+  return unlocked.slice(0, 12);
+}
+
 const recordMetrics = [
   { key: "goals", label: "Buts sur un match", icon: "⚽", min: 1 },
   { key: "saves", label: "Arrêts sur un match", icon: "🧤", min: 1 },
@@ -245,5 +335,11 @@ export function buildFootballEndInsights(records: any[] = [], state: any, profil
     breakthroughs: breakthroughs.sort((a, b) => n(b.value) - n(a.value)).slice(0, 12),
     rivalry: rivalry.games ? rivalry : null,
     moments: footballKeyMomentsFromState(state, 12),
+    milestones: footballCareerMilestonesUnlocked(records, state, profilesById),
+    ratings: (Array.isArray(state?.players) ? state.players : []).map((player: any) => {
+      const pid = txt(player?.id);
+      const profile = profilesById?.get?.(pid) || player;
+      return { playerId: pid, playerName: txt(profile?.name || profile?.displayName || profile?.display_name || player?.name || "Joueur"), rating: footballPerformanceRating(state?.statsByPlayer?.[pid] || {}) };
+    }).sort((a: any, b: any) => b.rating - a.rating),
   };
 }
