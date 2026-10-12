@@ -50,6 +50,13 @@ function withDefinedEntries<T extends Record<string, any>>(input: T): Partial<T>
   return out as Partial<T>;
 }
 
+function firstMeaningful(...values: any[]): any {
+  for (const value of values) {
+    if (hasMeaningfulValue(value)) return value;
+  }
+  return "";
+}
+
 function scoreProfileCompleteness(p: any): number {
   let s = 0;
   const keys = ["name", "country", "avatarUrl", "avatarDataUrl", "surname", "firstName", "birthDate", "city", "phone"];
@@ -198,11 +205,18 @@ function stripOnlineBinding(p: any): any {
 function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?: any): any {
   const uid = String(user?.id || "");
   const prevPI = readPrivateInfo(previous);
+  const onlineNickname = getOnlineNickname(user, onlineProfile);
   const nickname =
-    String(prevPI?.nickname || previous?.surname || "").trim() ||
-    getOnlineNickname(user, onlineProfile) ||
+    onlineNickname ||
+    String(prevPI?.nickname || previous?.surname || previous?.name || "").trim() ||
     "";
   const avatar = getOnlineAvatar(onlineProfile);
+  const onlineAvatarTs = avatar ? explicitAvatarTimestamp(onlineProfile) : 0;
+  const previousAvatarTs = avatarTimestamp(previous);
+  const remoteAvatarWins = !!avatar && (!hasAvatarMedia(previous) || (onlineAvatarTs > 0 && onlineAvatarTs > previousAvatarTs));
+  const chosenAvatar = remoteAvatarWins
+    ? avatar
+    : (previous?.avatarDataUrl || previous?.avatarUrl || avatar || undefined);
   const nextPI = {
     ...prevPI,
     ...buildPrivateInfoPatch(user, onlineProfile),
@@ -216,19 +230,22 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
     {
       ...(previous || {}),
       id: uid,
+      // Sur un autre appareil, l'identité Supabase doit remplacer le placeholder
+      // local / ancien alias NAS (Perrin, Joueur, etc.).
       name: nickname || previous?.name || "",
-      surname: onlineProfile?.surname ?? previous?.surname ?? nickname ?? "",
-      firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? previous?.firstName ?? prevPI?.firstName ?? "",
-      lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? previous?.lastName ?? prevPI?.lastName ?? "",
-      birthDate: onlineProfile?.birthDate ?? onlineProfile?.birth_date ?? previous?.birthDate ?? prevPI?.birthDate ?? "",
-      city: onlineProfile?.city ?? previous?.city ?? prevPI?.city ?? "",
-      phone: onlineProfile?.phone ?? previous?.phone ?? prevPI?.phone ?? "",
-      country: onlineProfile?.country || previous?.country || prevPI?.country || "FR",
-      avatarDataUrl: previous?.avatarDataUrl || avatar || previous?.avatarUrl,
-      avatarUrl: previous?.avatarUrl || avatar || previous?.avatarDataUrl,
+      surname: firstMeaningful(onlineProfile?.surname, onlineNickname, previous?.surname, nickname),
+      firstName: firstMeaningful(onlineProfile?.firstName, onlineProfile?.first_name, prevPI?.firstName, previous?.firstName),
+      lastName: firstMeaningful(onlineProfile?.lastName, onlineProfile?.last_name, prevPI?.lastName, previous?.lastName),
+      birthDate: firstMeaningful(onlineProfile?.birthDate, onlineProfile?.birth_date, prevPI?.birthDate, previous?.birthDate),
+      city: firstMeaningful(onlineProfile?.city, prevPI?.city, previous?.city),
+      phone: firstMeaningful(onlineProfile?.phone, prevPI?.phone, previous?.phone),
+      country: firstMeaningful(onlineProfile?.country, (nextPI as any)?.country, previous?.country, prevPI?.country, "FR"),
+      avatarDataUrl: chosenAvatar,
+      avatarUrl: remoteAvatarWins ? avatar : (previous?.avatarUrl || avatar || previous?.avatarDataUrl),
+      avatarUpdatedAt: Math.max(previousAvatarTs, onlineAvatarTs) || undefined,
       preferences: nextPrefs,
       createdAt: previous?.createdAt || Date.now(),
-      updatedAt: Date.now(),
+      updatedAt: previous?.updatedAt || Date.now(),
       // Compat legacy uniquement : les statistiques affichées sont dérivées de History.
       stats: { ...(previous?.stats || {}) },
     },
@@ -600,22 +617,26 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
     ...accountIds,
   ].filter(Boolean))).filter((id) => id !== String(local?.id || "").trim());
 
+  const remoteIdentity = buildPrivateInfoPatch(user, onlineProfile);
+  const onlineNickname = getOnlineNickname(user, onlineProfile);
+
   const merged: any = {
     ...account,
     ...local,
     id: String(local?.id || uid),
-    name: local?.name || account?.name || getOnlineNickname(user, onlineProfile) || "",
-    surname: local?.surname ?? account?.surname ?? onlineProfile?.surname ?? "",
-    firstName: local?.firstName ?? account?.firstName ?? onlineProfile?.firstName ?? onlineProfile?.first_name ?? "",
-    lastName: local?.lastName ?? account?.lastName ?? onlineProfile?.lastName ?? onlineProfile?.last_name ?? "",
-    birthDate: local?.birthDate ?? account?.birthDate ?? onlineProfile?.birthDate ?? onlineProfile?.birth_date ?? "",
-    city: local?.city ?? account?.city ?? onlineProfile?.city ?? "",
-    phone: local?.phone ?? account?.phone ?? onlineProfile?.phone ?? "",
-    country: local?.country || account?.country || onlineProfile?.country || localPI?.country || accountPI?.country || "FR",
-    // L'avatar est le seul champ où la fraîcheur doit primer sur "local gagne".
-    // Pendant les migrations historiques, le profil compte usr_* peut contenir
-    // la photo sélectionnée il y a 2 secondes et le profil local canonique une
-    // photo vieille de plusieurs mois. On conserve donc la source la plus récente.
+    // Le COMPTE Supabase est l'autorité de l'identité légère multi-appareils.
+    // Les données de jeu/statistiques restent locales et ne sont jamais remplacées.
+    name: firstMeaningful(onlineNickname, account?.name, local?.name),
+    surname: firstMeaningful(onlineProfile?.surname, onlineNickname, account?.surname, local?.surname),
+    firstName: firstMeaningful(onlineProfile?.firstName, onlineProfile?.first_name, (remoteIdentity as any)?.firstName, account?.firstName, local?.firstName),
+    lastName: firstMeaningful(onlineProfile?.lastName, onlineProfile?.last_name, (remoteIdentity as any)?.lastName, account?.lastName, local?.lastName),
+    birthDate: firstMeaningful(onlineProfile?.birthDate, onlineProfile?.birth_date, (remoteIdentity as any)?.birthDate, account?.birthDate, local?.birthDate),
+    city: firstMeaningful(onlineProfile?.city, (remoteIdentity as any)?.city, account?.city, local?.city),
+    phone: firstMeaningful(onlineProfile?.phone, (remoteIdentity as any)?.phone, account?.phone, local?.phone),
+    country: firstMeaningful(onlineProfile?.country, (remoteIdentity as any)?.country, account?.country, local?.country, accountPI?.country, localPI?.country, "FR"),
+    // La révision d'avatar distante permet à un nouvel appareil de récupérer
+    // immédiatement le dernier fichier Supabase sans écraser une preview locale
+    // qui vient juste d'être choisie et pas encore uploadée.
     avatarDataUrl: avatarSourceHasMedia
       ? (avatarSource?.avatarDataUrl || avatarSource?.avatarThumbDataUrl || avatarSource?.avatarUrl || undefined)
       : (onlineAvatar || undefined),
@@ -628,18 +649,19 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
     avatarCastDataUrl: avatarSourceHasMedia
       ? (avatarSource?.avatarCastDataUrl || avatarSource?.avatarFullDataUrl || avatarSource?.avatarDataUrl || undefined)
       : undefined,
-    avatarUrl: avatarSourceHasMedia
-      ? (avatarSource?.avatarUrl || undefined)
-      : (onlineAvatar || undefined),
+    avatarUrl: onlineAvatarIsFresher
+      ? onlineAvatar
+      : (avatarSource?.avatarUrl || onlineAvatar || undefined),
     avatarPath: avatarSourceHasMedia ? (avatarSource?.avatarPath || undefined) : undefined,
     avatarUpdatedAt: avatarUpdatedAt || avatarSource?.avatarUpdatedAt || undefined,
     favoriteDartSetId: local?.favoriteDartSetId ?? account?.favoriteDartSetId ?? null,
     preferences: {
       ...(account?.preferences || {}),
-      ...(((onlineProfile as any)?.preferences || {}) as Record<string, any>),
       ...(local?.preferences || {}),
+      ...(((onlineProfile as any)?.preferences || {}) as Record<string, any>),
     },
-    // MON PROFIL reste l’identité locale ; History reste la source des statistiques.
+    // History reste l'unique source des statistiques : aucune stat Online/NAS
+    // n'est injectée ici.
     stats: { ...(local?.stats || {}) },
     createdAt: local?.createdAt || account?.createdAt || Date.now(),
     // Le bridge d'identité doit être idempotent : il ne doit pas modifier
@@ -649,12 +671,13 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
   };
 
   return writePrivateInfo(merged, {
-    // Le compte distant initialise les champs manquants ; MON PROFIL local gagne ensuite.
-    ...buildPrivateInfoPatch(user, onlineProfile),
     ...accountPI,
     ...localPI,
+    // Les champs distants définis gagnent sur les anciennes valeurs de cet
+    // appareil ; les champs absents ne détruisent rien.
+    ...remoteIdentity,
     onlineUserId: uid,
-    onlineEmail: safeLower(user?.email) || localPI?.onlineEmail || accountPI?.onlineEmail || "",
+    onlineEmail: safeLower(user?.email) || (remoteIdentity as any)?.onlineEmail || localPI?.onlineEmail || accountPI?.onlineEmail || "",
     accountUserId: uid,
     canonicalLocalProfileId: String(merged?.id || local?.id || uid),
     linkedLocalProfileIds: aliasIds,
@@ -768,36 +791,43 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   // compte existant, mais on stabilise son id sur l'identité Supabase exposée à
   // l'application. Les alias usr_* restent seulement dans privateInfo.
   if (dedicated) {
+    const remoteCanonicalId = getRemoteCanonicalLocalProfileId(onlineProfile);
+    const canonicalId = remoteCanonicalId || uid;
     const next = buildDedicatedAccountProfile(user, onlineProfile, dedicated);
     const aliases = Array.from(new Set([
       ...profileAliasIds(dedicated),
+      String(dedicated?.id || "").trim(),
       ...accountIds,
-    ].filter(Boolean)));
+    ].filter(Boolean))).filter((id) => id !== canonicalId);
     const pi = {
       ...readPrivateInfo(next),
       onlineUserId: uid,
       accountUserId: uid,
-      canonicalLocalProfileId: uid,
+      canonicalLocalProfileId: canonicalId,
       linkedLocalProfileIds: aliases,
       linkedAccountIds: accountIds,
       password: "",
     };
-    const refreshed = writePrivateInfo({ ...next, id: uid }, pi);
-    bindCanonicalAccountProfileId(uid, uid);
+    // Cas typique d'un second appareil : un ancien build a créé un profil
+    // technique id==UID. Si Supabase connaît déjà le vrai profileId canonique,
+    // on répare ce clone vers cet id au lieu de publier l'UID comme nouveau
+    // canonicalLocalProfileId et de casser l'alignement PC/téléphone.
+    const refreshed = writePrivateInfo({ ...next, id: canonicalId }, pi);
+    bindCanonicalAccountProfileId(uid, canonicalId);
 
     const nextProfiles = inputProfiles.filter((profile) => {
       const id = String(profile?.id || "").trim();
-      return !accountIdSet.has(id) && !mirrorIds.has(id);
+      return !accountIdSet.has(id) && !mirrorIds.has(id) && id !== canonicalId;
     });
     nextProfiles.push(refreshed);
 
-    if (String(store?.activeProfileId || "") === uid && profilesEquivalentForBridge(inputProfiles, nextProfiles)) {
+    if (String(store?.activeProfileId || "") === canonicalId && profilesEquivalentForBridge(inputProfiles, nextProfiles)) {
       return store;
     }
     return {
       ...store,
       profiles: nextProfiles,
-      activeProfileId: uid,
+      activeProfileId: canonicalId,
     };
   }
 

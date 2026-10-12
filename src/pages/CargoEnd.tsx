@@ -6,6 +6,7 @@
 
 import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
+import { cargoArtLibrary } from "../components/cargo/cargoArt";
 import {
   buildCargoMatchStats,
   buildCargoPlayerAdvancedStats,
@@ -113,6 +114,10 @@ export default function CargoEnd({ state, profilesById, onClose, onReplay, onSta
   const eventCounts = eventRows.reduce((acc: Record<string, number>, item: any) => { acc[item.event.type] = n(acc[item.event.type]) + 1; return acc; }, {});
   const lossTotal = n(match.lostWeight) + n(match.rejectedWeight);
   const scoreUnit = parcel ? "COLIS" : "KG";
+  const heroArt = parcel ? cargoArtLibrary.colisCargo : cargoArtLibrary.chargementComplet;
+  const logisticsArt = parcel ? cargoArtLibrary.colisCargo : cargoArtLibrary.paletteLogistique;
+  const endContracts = parcel ? n(match.totalParcelDeliveries) : n(match.totalContracts);
+  const endLosses = parcel ? n(match.misses) : lossTotal;
 
   const tabs: { id: EndTab; label: string; icon: string }[] = [
     { id: "summary", label: "BILAN", icon: "🚚" },
@@ -126,6 +131,7 @@ export default function CargoEnd({ state, profilesById, onClose, onReplay, onSta
     <section className="cargo-end-shell" style={{ "--grade": gradeAccent, "--score": parcel ? BLUE : ORANGE } as React.CSSProperties}>
       <header className="cargo-end-hero">
         <button type="button" className="cargo-end-close" onClick={onClose} aria-label="Fermer">×</button>
+        <div className="cargo-end-hero-art" aria-hidden><img src={heroArt} alt="" /></div>
         <div className="cargo-end-result-pill">✓ MISSION TERMINÉE · {teamMode ? "MULTI ÉQUIPES" : state.players.length > 1 ? "MULTI" : "SOLO"}</div>
         <div className="cargo-end-hero-grid">
           <div className="cargo-end-grade"><span>GRADE</span><strong>{grade.grade}</strong><small>{grade.rating}/100</small></div>
@@ -134,6 +140,13 @@ export default function CargoEnd({ state, profilesById, onClose, onReplay, onSta
             <p>{cargoVariantLabel(state.config.variant)} · {state.config.rounds} tours · {state.players.length} joueur{state.players.length > 1 ? "s" : ""}</p>
             <div className="cargo-end-score"><strong>{shortScore(winnerScore)}</strong><span>{scoreUnit} · SCORE GAGNANT</span></div>
           </div>
+        </div>
+        <div className="cargo-end-logistics-strip">
+          <div className="cargo-end-logistics-art"><img src={logisticsArt} alt="" /></div>
+          <div><span>{parcel ? "LIVRAISONS" : "PALETTES"}</span><strong>{parcel ? n(match.totalParcelDeliveries) : n(match.totalPallets)}</strong></div>
+          <div><span>{parcel ? "BONUS COLIS" : "CONTRATS"}</span><strong>{parcel ? n(match.totalParcelBonuses) : endContracts}</strong></div>
+          <div><span>{parcel ? "BEST VOLÉE" : "BEST PALETTE"}</span><strong>{parcel ? n(match.bestVisitScore) : n(match.bestPalletWeight)}</strong></div>
+          <div><span>{parcel ? "MISS" : "PERTES"}</span><strong>{endLosses}</strong></div>
         </div>
       </header>
 

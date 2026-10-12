@@ -36,6 +36,7 @@ import tickerCargo from "../assets/tickers/ticker_cargo.png";
 import CargoLoadStatus from "../components/cargo/CargoLoadStatus";
 import CargoManifestStrip from "../components/cargo/CargoManifestStrip";
 import CargoTeamStrip from "../components/cargo/CargoTeamStrip";
+import CargoParcelRoutePanel from "../components/cargo/CargoParcelRoutePanel";
 import { buildCargoVisualSnapshot } from "../lib/gameEngines/cargoVisuals";
 import { getCargoContractArt, getCargoHeroArt, getCargoStageBadge, getCargoSupportArt } from "../components/cargo/cargoArt";
 import CargoEnd from "./CargoEnd";
@@ -519,6 +520,13 @@ export default function CargoPlay(props: any) {
 
     <style>{`
       @keyframes cargo-toast-in{from{opacity:0;transform:translate(-50%,-12px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+      @keyframes cargo-float{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-4px) rotate(1deg)}}
+      @keyframes cargo-reached{0%{transform:scale(.96);box-shadow:0 0 0 rgba(98,230,167,0)}45%{transform:scale(1.035);box-shadow:0 0 18px rgba(98,230,167,.28)}100%{transform:scale(1);box-shadow:0 0 14px rgba(98,230,167,.08)}}
+      @keyframes cargo-status-pulse{0%,100%{filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}50%{filter:drop-shadow(0 10px 24px rgba(255,155,66,.28))}}
+      .cargo-float-art{animation:cargo-float 2.8s ease-in-out infinite}
+      .cargo-route-step.is-reached{animation:cargo-reached .36s ease-out both}
+      .cargo-load-badge{animation:cargo-status-pulse 2.6s ease-in-out infinite}
+      @media (prefers-reduced-motion:reduce){.cargo-float-art,.cargo-route-step.is-reached,.cargo-load-badge{animation:none!important}}
       @media (max-height:720px){
         .cargo-play-main{grid-template-rows:112px 48px 118px minmax(0,1fr)!important;gap:7px!important}
         .cargo-airy-keypad{grid-template-rows:32px 44px minmax(12px,auto) minmax(132px,1fr) 48px!important;gap:7px!important;padding:9px!important}
@@ -582,10 +590,11 @@ function ManifestModal({ state, activeStats, activeContract, onClose }: any) {
   if (parcel) {
     const bonuses = state.config.parcelBonuses || { 1: 0, 2: 1, 3: 2, 4: 4, 5: 7 };
     return <OverlayShell title="TOURNÉE DE LIVRAISON" subtitle={activeSeries ? `Adresse ${activeSeries.number} · série ${activeSeries.count}/5` : "Aucune adresse en cours"} color={BLUE} onClose={onClose}>
-      <div style={{ ...panel(`${BLUE}44`), padding: 12, marginBottom: 10 }}><div style={{ color: BLUE, fontSize: 10, fontWeight: 1100 }}>LIVRAISON ACTIVE</div><div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}><div><div style={{ color: "#fff", fontSize: 18, fontWeight: 1100 }}>{activeSeries ? `Adresse ${activeSeries.number}` : "Choisis une adresse"}</div><div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>{activeSeries ? `${activeSeries.count} colis dans la série` : "Le premier numéro touché ouvre une livraison."}</div></div><div style={{ color: GREEN, fontSize: 28, fontWeight: 1200 }}>{activeSeries?.count || 0}<span style={{ fontSize: 11, opacity: .6 }}>/5</span></div></div></div>
-      <div style={{ color: GOLD, fontSize: 9.5, fontWeight: 1100, letterSpacing: .7, marginBottom: 7 }}>PALIERS DE BONUS</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 6 }}>{[1,2,3,4,5].map((count) => { const total = count + Number(bonuses[count] || 0); const reached = Number(activeSeries?.count || 0) >= count; return <div key={count} style={{ padding: "9px 3px", borderRadius: 13, textAlign: "center", background: reached ? `${GREEN}16` : "rgba(255,255,255,.025)", border: `1px solid ${reached ? GREEN : "rgba(255,255,255,.08)"}` }}><div style={{ color: SOFT, fontSize: 7 }}>{count} TOUCHE{count > 1 ? "S" : ""}</div><div style={{ marginTop: 4, color: reached ? GREEN : "#fff", fontSize: 18, fontWeight: 1100 }}>{total}</div><div style={{ color: GOLD, fontSize: 7 }}>+{Number(bonuses[count] || 0)} bonus</div></div>; })}</div>
-      <div style={{ ...panel(), marginTop: 10, padding: 11, color: SOFT, fontSize: 9, lineHeight: 1.5 }}>Une série est limitée à cinq touches. À cinq, la livraison est automatiquement validée. Une sixième touche sur le même numéro commence une nouvelle livraison.</div>
+      <CargoParcelRoutePanel activeSeries={activeSeries} bonuses={bonuses} delivered={Number(activeStats?.parcelsDelivered || 0)} deliveries={Number(activeStats?.parcelDeliveries || 0)} />
+      <div style={{ ...panel(), marginTop: 10, padding: 11 }}>
+        <div style={{ color: GOLD, fontSize: 9.5, fontWeight: 1100, letterSpacing: .7 }}>RÈGLE DE TOURNÉE</div>
+        <div style={{ marginTop: 5, color: SOFT, fontSize: 9, lineHeight: 1.5 }}>Une série est limitée à cinq touches. À cinq, la livraison est automatiquement validée. Une sixième touche sur le même numéro commence une nouvelle livraison. Un MISS interrompt la dynamique et oblige à reconstruire la chaîne.</div>
+      </div>
     </OverlayShell>;
   }
   return <OverlayShell title="MANIFESTE DE CHARGEMENT" subtitle={`${state.contracts.length} contrat${state.contracts.length > 1 ? "s" : ""} disponible${state.contracts.length > 1 ? "s" : ""}`} color={GOLD} onClose={onClose}>

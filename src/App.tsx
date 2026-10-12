@@ -128,7 +128,7 @@ import { warmAggOnce } from "./boot/warmAgg";
 import { onlineApi } from "./lib/onlineApi";
 import { isNasProviderEnabled } from "./lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
-import { getCanonicalAccountProfileFromStore } from "./lib/canonicalAccountProfile";
+import { bindCanonicalAccountProfileId, getCanonicalAccountProfileFromStore } from "./lib/canonicalAccountProfile";
 
 
 // ✅ Supabase client
@@ -2717,9 +2717,21 @@ useEffect(() => {
     if (!onlineProfile) return;
     const remotePrivate = { ...(onlineProfile?.privateInfo || onlineProfile?.private_info || {}) };
     const remoteCanonicalId = String(remotePrivate?.canonicalLocalProfileId || remotePrivate?.canonicalProfileId || "").trim();
-    if (remoteCanonicalId === canonicalId) return;
 
-    const signature = `${uid}:${canonicalId}:${remoteCanonicalId}`;
+    // Un mapping déjà présent dans Supabase accompagne le compte sur tous les
+    // appareils : un téléphone avec un vieux store local n'a JAMAIS le droit de
+    // le remplacer par son activeProfileId du moment. On répare seulement le
+    // binding local ; accountBridge se charge ensuite de réhydrater/rekeyer le
+    // profil technique éventuel.
+    if (remoteCanonicalId) {
+      if (remoteCanonicalId !== canonicalId) {
+        bindCanonicalAccountProfileId(uid, remoteCanonicalId);
+      }
+      return;
+    }
+
+    // Premier appareil / ancien compte sans mapping : seed unique côté Supabase.
+    const signature = `${uid}:${canonicalId}:seed`;
     if (canonicalProfileRemoteSyncRef.current === signature) return;
     canonicalProfileRemoteSyncRef.current = signature;
 
@@ -2732,7 +2744,7 @@ useEffect(() => {
       },
     }).catch((error: any) => {
       canonicalProfileRemoteSyncRef.current = "";
-      console.warn("[account-profile] canonical profile id sync skipped", error);
+      console.warn("[account-profile] canonical profile id seed skipped", error);
     });
   }, [
     loading,

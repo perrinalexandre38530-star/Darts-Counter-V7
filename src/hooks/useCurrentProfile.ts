@@ -10,6 +10,7 @@
 import * as React from "react";
 import type { Profile } from "../lib/types";
 import { useStore } from "../contexts/StoreContext";
+import { getCanonicalAccountProfileFromStore } from "../lib/canonicalAccountProfile";
 
 function readStoreBestEffort(): any | null {
   try {
@@ -30,7 +31,9 @@ export function useCurrentProfile(): Profile | null {
   const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
 
   return React.useMemo(() => {
+    const canonical = getCanonicalAccountProfileFromStore(store);
+    if (canonical) return canonical as Profile;
     if (!activeId) return null;
     return (profiles.find((p: any) => String(p?.id || "") === String(activeId)) as Profile) ?? null;
-  }, [activeId, profiles]);
+  }, [store, activeId, profiles]);
 }

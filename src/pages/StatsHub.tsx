@@ -19,6 +19,7 @@ import { loadStatsIndex, scheduleStatsIndexRefresh } from "../lib/stats/rebuildS
 import StatsCricketDashboard from "../components/StatsCricketDashboard";
 import AttrapeMoiStatsTabFull from "../components/stats/AttrapeMoiStatsTabFull";
 import CradosStatsTabFull from "../components/stats/CradosStatsTabFull";
+import PartyModesStatsTabFull from "../components/stats/PartyModesStatsTabFull";
 import HistoryPage from "./HistoryPage";
 import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 
@@ -337,6 +338,9 @@ const LoterieStatsTabFull = React.lazy(
 );
 const ScramStatsTabFull = React.lazy(
   () => import("../components/stats/ScramStatsTabFull")
+);
+const NewFourDartsStatsTabFull = React.lazy(
+  () => import("../components/stats/NewFourDartsStatsTabFull")
 );
 const StatsLeaderboardsTab = React.lazy(
   () => import("../components/stats/StatsLeaderboardsTab")
@@ -900,6 +904,9 @@ type Props = {
     | "darts_firefighter"
     | "gros_6"
     | "darts_poker"
+    | "castle"
+    | "gotcha"
+    | "hare_hounds"
     | "pendu"
     | "menteur"
     | "crados"
@@ -1416,7 +1423,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "challenge", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "challenge", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const focusedMode = (() => {
         const key = String(focusMode || "").trim();
         if (key === "x01_multi" || key === "x01_compare") return "x01";
@@ -1736,6 +1743,9 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("bowling")) return "bowling";
   if (tag.includes("halve_it") || tag.includes("halve-it") || tag.includes("halve it") || tag.includes("half-it")) return "halve_it";
   if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
+  if (tag.includes("castle")) return "castle";
+  if (tag.includes("gotcha")) return "gotcha";
+  if (tag.includes("hare_hounds") || tag.includes("hare hounds") || tag.includes("hare & hounds") || tag.includes("hare-hounds")) return "hare_hounds";
   if (tag.includes("pendu") || tag.includes("hangman")) return "pendu";
   if (tag.includes("menteur") || tag.includes("liar") || tag.includes("bluff")) return "menteur";
   if (tag.includes("crados") || tag.includes("crado") || tag.includes("slime")) return "crados";
@@ -5719,6 +5729,9 @@ const modeDefs = React.useMemo(
               { key: "shooter", label: "SHOOTER" },
               { key: "darts_racer", label: "DARTS RACER" },
               { key: "darts_poker", label: "DARTS POKER" },
+              { key: "castle", label: "CASTLE" },
+              { key: "gotcha", label: "GOTCHA" },
+              { key: "hare_hounds", label: "HARE & HOUNDS" },
               { key: "pendu", label: "PENDU" },
               { key: "menteur", label: "MENTEUR" },
               { key: "crados", label: "CRADOS" },
@@ -7366,6 +7379,15 @@ type ModeDashboardCard = {
   challengesFailed?: number;
   errorsTaken?: number;
   eliminations?: number;
+  castleBuilds?: number;
+  castleDamage?: number;
+  castleUsefulHits?: number;
+  gotchas?: number;
+  gotchaVictims?: number;
+  gotchaBusts?: number;
+  hareSteps?: number;
+  hareCatches?: number;
+  hareEscapes?: number;
   raises?: number;
   liarCalls?: number;
   contractsProven?: number;
@@ -7425,6 +7447,9 @@ const modeThemeColor: Record<string, string> = {
   shooter: "#42d6ff",
   darts_racer: "#42d6ff",
   darts_poker: "#f6c256",
+  castle: "#f6b84d",
+  gotcha: "#ff5b57",
+  hare_hounds: "#61d9ff",
   pendu: "#ffb33f",
   menteur: "#ffbf37",
   crados: "#b7f247",
@@ -7481,6 +7506,9 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     shooter: "SHOOTER",
     darts_racer: "DARTS RACER",
     darts_poker: "DARTS POKER",
+    castle: "CASTLE",
+    gotcha: "GOTCHA",
+    hare_hounds: "HARE & HOUNDS",
     pendu: "PENDU",
     menteur: "MENTEUR",
     crados: "CRADOS",
@@ -7499,7 +7527,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "challenge", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "challenge", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -7996,6 +8024,15 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       challengesFailed: 0,
       errorsTaken: 0,
       eliminations: 0,
+      castleBuilds: 0,
+      castleDamage: 0,
+      castleUsefulHits: 0,
+      gotchas: 0,
+      gotchaVictims: 0,
+      gotchaBusts: 0,
+      hareSteps: 0,
+      hareCatches: 0,
+      hareEscapes: 0,
       raises: 0,
       liarCalls: 0,
       contractsProven: 0,
@@ -8026,7 +8063,20 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       favMap: {},
     } as any);
     const pl: any = findP(r) || {};
-    const stats: any = pl?.special || pl?.stats || pl;
+    const stateStatsPool: any =
+      r?.payload?.stateSnapshot?.statsByPlayer ||
+      r?.resume?.state?.statsByPlayer ||
+      r?.summary?.statsByPlayer ||
+      r?.payload?.summary?.statsByPlayer ||
+      {};
+    const playerStatIds = [
+      pid,
+      String(pl?.id || ""),
+      String(pl?.playerId || ""),
+      String(pl?.profileId || ""),
+    ].filter(Boolean);
+    const stateStatsPlayer: any = playerStatIds.map((id) => stateStatsPool?.[id]).find(Boolean) || {};
+    const stats: any = Object.keys(stateStatsPlayer || {}).length ? stateStatsPlayer : (pl?.special || pl?.stats || pl);
     const modeStatsPlayer: any =
       findPlayerIn(r?.payload?.stats?.players) ||
       findPlayerIn(r?.payload?.statsIndex?.players) ||
@@ -8560,6 +8610,38 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     if (mode !== "cricket") {
       a.extra += n(stats?.marksTotal) || n(stats?.marks) || n(stats?.advances) || n(stats?.lostLives) || n(stats?.damageTaken);
     }
+    if (mode === "castle") {
+      const useful = n(stats?.usefulHits);
+      const builds = n(stats?.builds);
+      const damageDone = n(stats?.damage);
+      a.castleUsefulHits = Number(a.castleUsefulHits || 0) + useful;
+      a.castleBuilds = Number(a.castleBuilds || 0) + builds;
+      a.castleDamage = Number(a.castleDamage || 0) + damageDone;
+      if (!hits && useful > 0) a.hits += useful;
+      a.best = Math.max(Number(a.best || 0), n(stats?.bestImpactVisit), n(stats?.bestBuildVisit), n(stats?.bestDamageVisit));
+    }
+    if (mode === "gotcha") {
+      const gotchas = n(stats?.gotchas);
+      const victims = n(stats?.victims);
+      const busts = n(stats?.busts);
+      a.gotchas = Number(a.gotchas || 0) + gotchas;
+      a.gotchaVictims = Number(a.gotchaVictims || 0) + victims;
+      a.gotchaBusts = Number(a.gotchaBusts || 0) + busts;
+      a.points += n(stats?.points);
+      if (!hits && darts > 0) a.hits += Math.max(0, darts - n(stats?.misses));
+      a.best = Math.max(Number(a.best || 0), n(stats?.bestVisit), n(stats?.bestGotchaVisit), n(stats?.highestScore));
+    }
+    if (mode === "hare_hounds") {
+      const valid = n(stats?.validHits);
+      const steps = n(stats?.steps);
+      const catches = n(stats?.catches);
+      const escapes = n(stats?.escapes);
+      a.hareSteps = Number(a.hareSteps || 0) + steps;
+      a.hareCatches = Number(a.hareCatches || 0) + catches;
+      a.hareEscapes = Number(a.hareEscapes || 0) + escapes;
+      if (!hits && valid > 0) a.hits += valid;
+      a.best = Math.max(Number(a.best || 0), n(stats?.bestVisitSteps), n(stats?.bestHitStreak));
+    }
     if (mode === "pendu") {
       const set = n(stats?.challengesSet);
       const passed = n(stats?.challengesPassed);
@@ -8946,6 +9028,33 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Touches", value: fmtStatValue(a.hits || 0), tone: "green" },
           { label: "Précision", value: (a.hits + a.miss) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
           { label: "Fléchettes", value: fmtStatValue(a.darts || 0), tone: "blue" },
+        ]
+      : a.key === "castle"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Constructions", value: fmtStatValue(a.castleBuilds || 0), tone: "gold" },
+          { label: "Dégâts", value: fmtStatValue(a.castleDamage || 0), tone: "red" },
+          { label: "Touches utiles", value: fmtStatValue(a.castleUsefulHits || 0), tone: "green" },
+          { label: "Best impact", value: fmtStatValue(a.best || 0), tone: "blue" },
+        ]
+      : a.key === "gotcha"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "GOTCHA", value: fmtStatValue(a.gotchas || 0), tone: "red" },
+          { label: "Victimes", value: fmtStatValue(a.gotchaVictims || 0), tone: "red" },
+          { label: "BUST", value: fmtStatValue(a.gotchaBusts || 0), tone: "gold" },
+          { label: "Best", value: fmtStatValue(a.best || 0), tone: "blue" },
+        ]
+      : a.key === "hare_hounds"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Étapes", value: fmtStatValue(a.hareSteps || 0), tone: "blue" },
+          { label: "Captures", value: fmtStatValue(a.hareCatches || 0), tone: "red" },
+          { label: "Évasions", value: fmtStatValue(a.hareEscapes || 0), tone: "green" },
+          { label: "Best", value: fmtStatValue(a.best || 0), tone: "blue" },
         ]
       : a.key === "pendu"
       ? [
@@ -10635,6 +10744,42 @@ return (
               </div>
             )}
 
+{["fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(String(currentMode)) && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label={`Chargement ${currentModeLabel}…`} />}>
+                    <NewFourDartsStatsTabFull
+                      records={detailRecords as any[]}
+                      playerId={selectedPlayer.id}
+                      playerName={selectedPlayer.name}
+                      mode={currentMode as any}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher les statistiques {currentModeLabel} détaillées.
+                  </div>
+                )}
+              </div>
+            )}
+
+{["castle", "gotcha", "hare_hounds", "pendu", "menteur"].includes(String(currentMode)) && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <PartyModesStatsTabFull
+                    records={detailRecords as any[]}
+                    playerId={selectedPlayer.id}
+                    playerName={selectedPlayer.name}
+                    mode={currentMode as any}
+                  />
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques {currentModeLabel} détaillées.
+                  </div>
+                )}
+              </div>
+            )}
+
 {currentMode === "scram" && (
               <div style={card}>
                 {selectedPlayer ? (
@@ -10669,7 +10814,7 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "baseball", "president", "pendu", "menteur", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(String(currentMode)) && (
+            {["battle_royale", "warfare", "baseball", "president"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>

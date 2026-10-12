@@ -3209,15 +3209,19 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
 
     const authUid = currentAuthUserId();
     if (!authUid) return;
-    const boundId = getBoundAccountProfileId(authUid);
-    const bound = boundId ? list.find((profile: any) => String(profile?.id || "").trim() === boundId) : null;
+    const remotePrivate: any = (auth as any)?.profile?.privateInfo || (auth as any)?.profile?.private_info || {};
+    const remoteCanonicalId = String(remotePrivate?.canonicalLocalProfileId || remotePrivate?.canonicalProfileId || "").trim();
+    if (remoteCanonicalId) bindCanonicalAccountProfileId(authUid, remoteCanonicalId);
 
-    // Le Store actif est désormais l'autorité d'affichage. Si V15/V16 a laissé
-    // un binding historique sur un autre profil, on répare le mapping vers le
-    // profil déjà actif au lieu de faire basculer l'UI vers l'ancien doublon.
-    let target: any = rawActive || bound || null;
-    let reason = rawActive ? "store_active" : (bound ? "account_binding" : "");
-    if (rawActive?.id && String(boundId || "") !== String(rawActive.id)) {
+    const effectiveBoundId = remoteCanonicalId || getBoundAccountProfileId(authUid);
+    const bound = effectiveBoundId ? list.find((profile: any) => String(profile?.id || "").trim() === effectiveBoundId) : null;
+
+    // Un canonicalLocalProfileId déjà publié dans Supabase gagne sur le profil
+    // actif local d'un ancien téléphone. Sans ce garde, ouvrir MON PROFIL sur ce
+    // téléphone pouvait réécrire le binding vers "Perrin" et relancer la divergence.
+    let target: any = bound || rawActive || null;
+    let reason = bound ? (remoteCanonicalId ? "remote_canonical" : "account_binding") : (rawActive ? "store_active" : "");
+    if (!remoteCanonicalId && rawActive?.id && String(effectiveBoundId || "") !== String(rawActive.id)) {
       bindCanonicalAccountProfileId(authUid, rawActive.id);
     }
 
@@ -3253,7 +3257,15 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
       }));
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.status, (auth.user as any)?.id, activeProfileId, rawActive?.id, (stableProfiles as any[])?.length]);
+  }, [
+    auth.status,
+    (auth.user as any)?.id,
+    (auth as any)?.profile?.privateInfo?.canonicalLocalProfileId,
+    (auth as any)?.profile?.private_info?.canonicalLocalProfileId,
+    activeProfileId,
+    rawActive?.id,
+    (stableProfiles as any[])?.length,
+  ]);
 
   // Rattrapage onboarding : si le compte vient d'être créé et que le hook auth
   // n'était pas encore prêt au moment du clic, on lie quand même le profil local
@@ -3782,6 +3794,21 @@ React.useEffect(() => {
 
     if (auth.status === "signed_in") {
       try {
+        const remotePrivateInfo = {
+          ...(((auth as any)?.profile?.privateInfo || (auth as any)?.profile?.private_info || {}) as Record<string, any>),
+        };
+        const remotePreferences = {
+          ...(((auth as any)?.profile?.preferences || {}) as Record<string, any>),
+        };
+        const accountUid = currentAuthUserId();
+        const canonicalLocalProfileId = String(
+          remotePrivateInfo?.canonicalLocalProfileId ||
+          remotePrivateInfo?.canonicalProfileId ||
+          active?.id ||
+          ""
+        ).trim();
+        const identityUpdatedAt = Date.now();
+
         const savedProfile = await (await getOnlineApi()).updateProfile({
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,
@@ -3794,6 +3821,7 @@ React.useEffect(() => {
           email: patch.email?.trim() || undefined,
           phone: patch.phone?.trim() || undefined,
           preferences: {
+            ...remotePreferences,
             appLang: patch.appLang,
             appTheme: patch.appTheme,
             favX01: patch.favX01,
@@ -3802,6 +3830,9 @@ React.useEffect(() => {
             sfxVolume: patch.sfxVolume,
           },
           privateInfo: {
+            // Ne jamais détruire les métadonnées techniques du compte lorsqu'on
+            // enregistre simplement le formulaire MON PROFIL.
+            ...remotePrivateInfo,
             nickname: patch.nickname?.trim() || undefined,
             firstName: patch.firstName?.trim() || undefined,
             lastName: patch.lastName?.trim() || undefined,
@@ -3816,6 +3847,10 @@ React.useEffect(() => {
             favDoubleOut: patch.favDoubleOut,
             ttsVoice: patch.ttsVoice,
             sfxVolume: patch.sfxVolume,
+            identityUpdatedAt,
+            canonicalLocalProfileId: canonicalLocalProfileId || undefined,
+            onlineUserId: accountUid || remotePrivateInfo?.onlineUserId || undefined,
+            accountUserId: accountUid || remotePrivateInfo?.accountUserId || undefined,
           },
         });
 

@@ -69,8 +69,12 @@ for (const page of ['CastlePlay.tsx','GotchaPlay.tsx','HareHoundsPlay.tsx']) {
   mustContain(text, 'History.upsert', `${page} autosave`);
   mustContain(text, 'onFinish', `${page} finished match integration`);
   mustContain(text, 'NewModeInput', `${page} score input`);
-  mustContain(text, 'ModeEndPanel', `${page} end screen`);
-  mustContain(text, 'UNDO', `${page} undo`);
+  if (!text.includes('PremiumEndPanel') && !text.includes('ModeEndPanel')) {
+    throw new Error(`${page} end screen: missing PremiumEndPanel/ModeEndPanel`);
+  }
+  if (!text.includes('doUndo') && !text.includes('handleCancel')) {
+    throw new Error(`${page} undo: missing undo/cancel state rollback`);
+  }
 }
 
 console.log('CASTLE / GOTCHA / HARE & HOUNDS integration: OK');

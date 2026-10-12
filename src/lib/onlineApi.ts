@@ -1058,6 +1058,14 @@ function mergeOnlineProfiles(primary: OnlineProfile | null, fallback: OnlineProf
   return merged as OnlineProfile;
 }
 
+function mergeDefinedRecord(base: Record<string, any> | null | undefined, patch: Record<string, any> | null | undefined): Record<string, any> {
+  const out: Record<string, any> = { ...(base || {}) };
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
 async function probePrivateNasCapabilityForSession(
   session: any,
   nickname: string,
@@ -1372,7 +1380,11 @@ async function buildAuthSessionFromSupabaseUncoalesced(opts?: { allowNasFailure?
   try {
     privateNasCapability = await probePrivateNasCapabilityForSession(session, nickname, { bootstrapProfile: true });
     if (privateNasCapability.authorized && privateNasCapability.profile) {
-      profile = mergeOnlineProfiles(privateNasCapability.profile, profile);
+      // Identité compte multi-appareils : Supabase est la source canonique.
+      // Le profil NAS reste uniquement un fallback pour compléter les champs
+      // absents ; il ne doit jamais réinjecter un ancien nom/avatar sur un
+      // téléphone quelques secondes après la réhydratation Supabase.
+      profile = mergeOnlineProfiles(profile, privateNasCapability.profile);
     }
   } catch (capabilityError) {
     console.warn("[onlineApi] private NAS capability probe ignored", capabilityError);
@@ -1716,7 +1728,8 @@ async function switchAccountInfrastructure(target: "public" | "nas"): Promise<Au
   const meta = (user.user_metadata || {}) as any; const nickname = meta?.nickname || meta?.displayName || user.email || "Player";
   const capability = await probePrivateNasCapabilityForSession(session, nickname, { force: true, bootstrapProfile: true });
   const userAuth: UserAuth = { id: String(user.id), email: user.email ?? undefined, nickname, createdAt: user.created_at ? Date.parse(user.created_at) : now() };
-  const profile = mergeOnlineProfiles(capability.profile || null, await getOrCreateProfile(String(user.id), nickname, user));
+  const supabaseProfile = await getOrCreateProfile(String(user.id), nickname, user);
+  const profile = mergeOnlineProfiles(supabaseProfile, capability.profile || null);
 
   // IMPORTANT : /nas-capability est un pré-contrôle UX, pas l'autorité finale.
   // Sur Android/NAS au réveil il peut expirer ou être momentanément indisponible.
@@ -1976,10 +1989,21 @@ async function getCurrentSession(): Promise<AuthSession | null> {
 }
 
 async function getProfile(): Promise<OnlineProfile | null> {
+  // L'identité visuelle du compte (nom, avatar, préférences légères) vit dans
+  // Supabase. Le provider NAS peut être actif pour les routes privées / backups,
+  // mais il ne doit pas redevenir l'autorité du profil lorsqu'une session
+  // Supabase publique existe encore.
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.user?.id) {
+      const s = await restoreSession();
+      return s?.profile ?? null;
+    }
+  } catch {}
+
   if (shouldUseNasForCurrentSession()) {
     const cached = loadAuthFromLS();
-    // Le profil présent dans la session permet d’ouvrir immédiatement l’app,
-    // même si le NAS est momentanément lent. On rafraîchit seulement si possible.
+    // Compatibilité anciens comptes réellement NAS-only.
     try {
       const live = await nasGetProfile();
       return live || cached?.profile || null;
@@ -2115,15 +2139,59 @@ async function deleteAccount(): Promise<void> {
 // Profil
 // ============================================================
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
-  if (shouldUseNasForCurrentSession()) {
+  // Le profil léger du compte est canonique dans Supabase, indépendamment de la
+  // destination NAS/R2/Drive choisie pour les sauvegardes. C'était la source du
+  // bug multi-appareils : un téléphone pouvait relire/écrire le vieux profil NAS
+  // "Perrin" alors que le PC affichait déjà "Ninja".
+  let publicUser: any = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    publicUser = data?.session?.user || null;
+  } catch {}
+
+  if (!publicUser && shouldUseNasForCurrentSession()) {
+    // Compatibilité anciens comptes réellement NAS-only.
     await ensureNasSession();
     return await nasUpdateProfile(patch);
   }
 
-  const { user } = await ensureAuthedUser();
-  const userId = user.id;
+  const user = publicUser || (await ensureAuthedUser()).user;
+  const userId = String(user?.id || "").trim();
+  if (!userId) throw new Error("Utilisateur Supabase absent.");
 
   const PROFILES_TABLE = await resolveProfilesTable();
+
+  // JSONB non destructif : conserver canonicalLocalProfileId, avatarUpdatedAt,
+  // linkedAccountIds, etc. Un simple formulaire MON PROFIL ne doit jamais
+  // remplacer tout private_info/preferences.
+  let existingPreferences: Record<string, any> = {};
+  let existingPrivateInfo: Record<string, any> = {};
+  try {
+    const cachedProfile: any = (loadAuthFromLS() as any)?.profile || null;
+    if (cachedProfile?.preferences && typeof cachedProfile.preferences === "object") {
+      existingPreferences = { ...cachedProfile.preferences };
+    }
+    if (cachedProfile?.privateInfo && typeof cachedProfile.privateInfo === "object") {
+      existingPrivateInfo = { ...cachedProfile.privateInfo };
+    }
+  } catch {}
+
+  try {
+    const { data: currentRow, error: currentRowError } = await supabase
+      .from(PROFILES_TABLE)
+      .select("preferences,private_info")
+      .eq("id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (!currentRowError && currentRow) {
+      if ((currentRow as any)?.preferences && typeof (currentRow as any).preferences === "object") {
+        existingPreferences = { ...existingPreferences, ...(currentRow as any).preferences };
+      }
+      if ((currentRow as any)?.private_info && typeof (currentRow as any).private_info === "object") {
+        existingPrivateInfo = { ...existingPrivateInfo, ...(currentRow as any).private_info };
+      }
+    }
+  } catch {}
 
   const dbPatch: any = { updated_at: new Date().toISOString() };
 
@@ -2139,8 +2207,8 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   if (patch.city !== undefined) dbPatch.city = patch.city;
   if (patch.email !== undefined) dbPatch.email = patch.email;
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
-  if (patch.preferences !== undefined) dbPatch.preferences = patch.preferences;
-  if (patch.privateInfo !== undefined) dbPatch.private_info = patch.privateInfo;
+  if (patch.preferences !== undefined) dbPatch.preferences = mergeDefinedRecord(existingPreferences, patch.preferences as any);
+  if (patch.privateInfo !== undefined) dbPatch.private_info = mergeDefinedRecord(existingPrivateInfo, patch.privateInfo);
 
   const upsertPayload: any = { id: userId, user_id: userId, ...dbPatch };
 
@@ -2163,7 +2231,7 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
 
   const current = loadAuthFromLS();
   if (current?.user?.id === userId || current?.supabaseUserId === userId) {
-    saveAuthToLS({ ...current, profile });
+    saveAuthToLS({ ...current, profile, supabaseUserId: userId });
   }
 
   return profile;

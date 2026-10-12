@@ -45,6 +45,7 @@ import OnlineStatsCleanupPanel from "../components/OnlineStatsCleanupPanel";
 import { pushNasAccountSnapshot, pullNasAccountSnapshot, getNasSyncState, computeNasSyncSummary } from "../lib/manualNasSync";
 import { getApiUrl } from "../lib/apiClient";
 import { onlineApi } from "../lib/onlineApi";
+import { getCanonicalAccountProfileFromStore } from "../lib/canonicalAccountProfile";
 import { exportCloudBackupAsJson, restoreCloudBackupFromJson } from "../lib/cloudBackup";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { buildProfileStabilityAuditReport, clearProfileStabilityAuditEvents, getProfileStabilityAuditEvents, isProfileStabilityAuditEnabled, setProfileStabilityAuditEnabled } from "../lib/profileStabilityAudit";
@@ -2245,10 +2246,12 @@ function AccountPages({
   const userIdLabel = (user as any)?.id ? `#${String((user as any).id).slice(0, 8)}` : "—";
   const activeLocalProfile = React.useMemo(() => {
     const s: any = store ?? (typeof window !== "undefined" ? (window as any)?.__appStore?.store : null) ?? null;
+    const canonical = getCanonicalAccountProfileFromStore(s, (user as any)?.id);
+    if (canonical) return canonical as any;
     const list = Array.isArray(s?.profiles) ? s.profiles : [];
     const activeId = String(s?.activeProfileId || "");
     return list.find((row: any) => String(row?.id || "") === activeId) || list[0] || null;
-  }, [store]);
+  }, [store, (user as any)?.id]);
   const presenceState: "online" | "away" | "offline" = !isSignedIn
     ? "offline"
     : String((store as any)?.selfStatus || "online") === "away"
