@@ -19,6 +19,7 @@ import {
   readImageFileAsDataUrl,
 } from "../lib/userMediaFallback";
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
+import { uploadOrganizationPublicMedia } from "../lib/organizationSupabaseMedia";
 
 type Props = {
   organization: OrganizationRecord;
@@ -210,15 +211,41 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
       });
       const prefs = loadStoragePrefs();
       const mirrorR2 = prefs.selectedDestination === "cloud_r2";
-      let logoKey = organization.profile.logoMediaKey;
-      let coverKey = organization.profile.coverMediaKey;
+      let logoKey = organization.profile.logoMediaKey || organizationLogoMediaKey(organization.id);
+      let coverKey = organization.profile.coverMediaKey || organizationCoverMediaKey(organization.id);
+      let logoPublicUrl = organization.profile.logoUrl || "";
+      let coverPublicUrl = organization.profile.coverUrl || "";
+      let mediaCloudWarning = "";
       if (logoPreview) {
         const nextLogoKey = organizationLogoMediaKey(organization.id);
         try {
-          const savedLogo = await captureUserMediaFallback(nextLogoKey, logoPreview, { kind: "club_logo", mirrorR2, updatedAt: Date.now() });
+          const revision = Date.now();
+          const savedLogo = await captureUserMediaFallback(nextLogoKey, logoPreview, { kind: "club_logo", mirrorR2, updatedAt: revision });
           if (!savedLogo) throw new Error("logo_capture_failed");
           logoKey = nextLogoKey;
           setSavedLogoUrl(savedLogo);
+          if (organization.source === "cloud" && userId) {
+            try {
+              const uploaded = await uploadOrganizationPublicMedia({
+                organizationId: organization.id,
+                kind: "logo",
+                dataUrl: savedLogo,
+                userId,
+                updatedAt: revision,
+              });
+              if (uploaded.publicUrl) {
+                logoPublicUrl = uploaded.publicUrl;
+                setSavedLogoUrl(uploaded.publicUrl);
+              }
+            } catch (mediaError) {
+              console.warn("[organizations] Supabase logo upload unavailable, local fallback kept", mediaError);
+              mediaCloudWarning = L(
+                "Le logo reste enregistré localement, mais sa copie multi-appareils n’a pas pu être envoyée.",
+                "The logo remains saved locally, but its multi-device copy could not be uploaded.",
+                "El logotipo permanece guardado localmente, pero no se pudo subir su copia multidispositivo.",
+              );
+            }
+          }
         } catch {
           throw new Error(L("Le logo n’a pas pu être enregistré. Réessaie avec une image PNG, JPG ou WebP.", "The logo could not be saved. Try again with a PNG, JPG or WebP image.", "No se pudo guardar el logotipo. Inténtalo de nuevo con PNG, JPG o WebP."));
         }
@@ -226,10 +253,33 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
       if (coverPreview) {
         const nextCoverKey = organizationCoverMediaKey(organization.id);
         try {
-          const savedCover = await captureUserMediaFallback(nextCoverKey, coverPreview, { kind: "club_cover", mirrorR2, updatedAt: Date.now() });
+          const revision = Date.now();
+          const savedCover = await captureUserMediaFallback(nextCoverKey, coverPreview, { kind: "club_cover", mirrorR2, updatedAt: revision });
           if (!savedCover) throw new Error("cover_capture_failed");
           coverKey = nextCoverKey;
           setSavedCoverUrl(savedCover);
+          if (organization.source === "cloud" && userId) {
+            try {
+              const uploaded = await uploadOrganizationPublicMedia({
+                organizationId: organization.id,
+                kind: "cover",
+                dataUrl: savedCover,
+                userId,
+                updatedAt: revision,
+              });
+              if (uploaded.publicUrl) {
+                coverPublicUrl = uploaded.publicUrl;
+                setSavedCoverUrl(uploaded.publicUrl);
+              }
+            } catch (mediaError) {
+              console.warn("[organizations] Supabase cover upload unavailable, local fallback kept", mediaError);
+              mediaCloudWarning = mediaCloudWarning || L(
+                "La couverture reste enregistrée localement, mais sa copie multi-appareils n’a pas pu être envoyée.",
+                "The cover remains saved locally, but its multi-device copy could not be uploaded.",
+                "La portada permanece guardada localmente, pero no se pudo subir su copia multidispositivo.",
+              );
+            }
+          }
         } catch {
           throw new Error(L("La photo de couverture n’a pas pu être enregistrée. Réessaie avec une image PNG, JPG ou WebP.", "The cover photo could not be saved. Try again with a PNG, JPG or WebP image.", "No se pudo guardar la foto de portada. Inténtalo de nuevo con PNG, JPG o WebP."));
         }
@@ -250,10 +300,12 @@ export default function OrganizationProfilePanel({ organization, userId, logoUrl
         website: normalizeWebsite(form.website),
         logoMediaKey: logoKey,
         coverMediaKey: coverKey,
+        logoUrl: logoPublicUrl,
+        coverUrl: coverPublicUrl,
         profileCompleted: true,
       });
       const profileResult = await updateOrganizationProfile(userId, organization.id, profile);
-      setNotice([identity.warning, profileResult.warning, L("Fiche organisme mise à jour.", "Organization profile updated.", "Ficha de organización actualizada.")].filter(Boolean).join(" "));
+      setNotice([identity.warning, profileResult.warning, mediaCloudWarning, L("Fiche organisme mise à jour.", "Organization profile updated.", "Ficha de organización actualizada.")].filter(Boolean).join(" "));
       setEditing(false);
       setLogoPreview("");
       setCoverPreview("");

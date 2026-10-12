@@ -85,6 +85,8 @@ export type OrganizationProfile = {
   foundedYear: string;
   logoMediaKey: string;
   coverMediaKey: string;
+  logoUrl: string;
+  coverUrl: string;
   profileCompleted: boolean;
   adminSettings: OrganizationAdminSettings;
 };
@@ -582,6 +584,8 @@ export function normalizeOrganizationProfile(input: any = {}): OrganizationProfi
     foundedYear: yearRaw,
     logoMediaKey: String(input?.logoMediaKey || input?.logo_media_key || "").trim().slice(0, 220),
     coverMediaKey: String(input?.coverMediaKey || input?.cover_media_key || "").trim().slice(0, 220),
+    logoUrl: String(input?.logoUrl || input?.logo_url || "").trim().slice(0, 1200),
+    coverUrl: String(input?.coverUrl || input?.cover_url || "").trim().slice(0, 1200),
     profileCompleted: input?.profileCompleted === true || input?.profile_completed === true,
     adminSettings: {
       defaultLanguage,
@@ -593,10 +597,37 @@ export function normalizeOrganizationProfile(input: any = {}): OrganizationProfi
   };
 }
 
+function canonicalOrganizationMediaKey(organizationId: string, kind: "logo" | "cover"): string {
+  const id = String(organizationId || "").trim();
+  return id ? `club_${kind}:${id}` : "";
+}
+
+function normalizeOrganizationMediaKey(organizationId: string, kind: "logo" | "cover", value: unknown): string {
+  const canonical = canonicalOrganizationMediaKey(organizationId, kind);
+  const raw = String(value || "").trim();
+  if (!raw) return canonical;
+  const prefix = `club_${kind}:`;
+  // Une clé appartenant à une autre organisation ne doit jamais être réutilisée.
+  if (raw.startsWith(prefix) && raw !== canonical) return canonical;
+  return raw;
+}
+
 function parseOrganizationRow(row: any, source: OrganizationSource): OrganizationRecord {
   const createdAt = String(row?.createdAt || row?.created_at || nowIso());
+  const id = String(row?.id || row?.organizationId || row?.organization_id || localId("org"));
+  const rawProfile = row?.profile && typeof row.profile === "object" ? row.profile : {};
+  const logoMediaKey = normalizeOrganizationMediaKey(
+    id,
+    "logo",
+    row?.logoMediaKey || row?.logo_media_key || rawProfile?.logoMediaKey || rawProfile?.logo_media_key,
+  );
+  const coverMediaKey = normalizeOrganizationMediaKey(
+    id,
+    "cover",
+    row?.coverMediaKey || row?.cover_media_key || rawProfile?.coverMediaKey || rawProfile?.cover_media_key,
+  );
   return {
-    id: String(row?.id || row?.organizationId || row?.organization_id || localId("org")),
+    id,
     name: String(row?.name || "Organisation").trim() || "Organisation",
     kind: coerceKind(row?.kind),
     plan: coercePlan(row?.plan),
@@ -606,9 +637,9 @@ function parseOrganizationRow(row: any, source: OrganizationSource): Organizatio
     countryCode: String(row?.countryCode || row?.country_code || "FR").trim().toUpperCase().slice(0, 2),
     description: String(row?.description || "").trim(),
     profile: normalizeOrganizationProfile({
-      ...(row?.profile && typeof row.profile === "object" ? row.profile : {}),
-      logoMediaKey: row?.logoMediaKey || row?.logo_media_key || row?.profile?.logoMediaKey || row?.profile?.logo_media_key,
-      coverMediaKey: row?.coverMediaKey || row?.cover_media_key || row?.profile?.coverMediaKey || row?.profile?.cover_media_key,
+      ...rawProfile,
+      logoMediaKey,
+      coverMediaKey,
     }),
     memberCount: Math.max(1, Number(row?.memberCount ?? row?.member_count ?? 1) || 1),
     groupCount: Math.max(0, Number(row?.groupCount ?? row?.group_count ?? 0) || 0),
@@ -621,8 +652,33 @@ function parseOrganizationRow(row: any, source: OrganizationSource): Organizatio
 
 function mergeCloudIntoLocal(userId: string | null | undefined, cloudRows: OrganizationRecord[]): OrganizationRecord[] {
   const state = loadOrganizationLocalState(userId);
+  const localById = new Map(state.organizations.map((org) => [String(org.id), org] as const));
+  const cloudMerged = cloudRows.map((cloud) => {
+    const local = localById.get(String(cloud.id));
+    const logoMediaKey = normalizeOrganizationMediaKey(
+      cloud.id,
+      "logo",
+      cloud.profile.logoMediaKey || local?.profile?.logoMediaKey,
+    );
+    const coverMediaKey = normalizeOrganizationMediaKey(
+      cloud.id,
+      "cover",
+      cloud.profile.coverMediaKey || local?.profile?.coverMediaKey,
+    );
+    return {
+      ...cloud,
+      profile: normalizeOrganizationProfile({
+        ...(local?.profile || {}),
+        ...(cloud.profile || {}),
+        logoMediaKey,
+        coverMediaKey,
+        logoUrl: cloud.profile.logoUrl || local?.profile?.logoUrl || "",
+        coverUrl: cloud.profile.coverUrl || local?.profile?.coverUrl || "",
+      }),
+    };
+  });
   const localOnly = state.organizations.filter((org) => org.source === "local" && !cloudRows.some((cloud) => cloud.id === org.id));
-  const merged = [...cloudRows, ...localOnly];
+  const merged = [...cloudMerged, ...localOnly];
   const active = state.activeOrganizationId && merged.some((org) => org.id === state.activeOrganizationId)
     ? state.activeOrganizationId
     : merged[0]?.id ?? null;
@@ -733,6 +789,8 @@ export async function updateOrganizationProfile(
   if (!current) throw new Error("Organisation introuvable.");
 
   const profile = normalizeOrganizationProfile({ ...current.profile, ...profileInput });
+  profile.logoMediaKey = normalizeOrganizationMediaKey(organizationId, "logo", profile.logoMediaKey);
+  profile.coverMediaKey = normalizeOrganizationMediaKey(organizationId, "cover", profile.coverMediaKey);
   const localOrganization: OrganizationRecord = { ...current, profile, updatedAt: nowIso() };
   cacheOrganization(userId, localOrganization);
 

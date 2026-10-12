@@ -4,7 +4,10 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import ResilientUserImage from "./ResilientUserImage";
-import { onlineAvatarMediaKey, resolveUserMediaFallback } from "../lib/userMediaFallback";
+import ProfileAvatar from "./ProfileAvatar";
+import { useStore } from "../contexts/StoreContext";
+import { canonicalProfileAvatar, getCanonicalAccountProfileFromStore } from "../lib/canonicalAccountProfile";
+import { onlineAvatarMediaKey, organizationLogoMediaKey, resolveUserMediaFallback } from "../lib/userMediaFallback";
 import OrganizationTypeIcon from "./OrganizationTypeIcon";
 import { clearOrganizationPlayContext, loadOrganizationPlayContext } from "../organizations/organizationPlayContext";
 import { useFloatingCornerAvoidance } from "./useFloatingCornerAvoidance";
@@ -39,15 +42,21 @@ function OrganizationWorkspaceAvatar({
   const [logoUrl, setLogoUrl] = React.useState("");
   React.useEffect(() => {
     let cancelled = false;
-    if (!organization?.profile?.logoMediaKey) {
-      setLogoUrl("");
-      return;
+    const remoteUrl = String(organization?.profile?.logoUrl || "").trim();
+    const mediaKey = String(organization?.profile?.logoMediaKey || organizationLogoMediaKey(organization?.id)).trim();
+    if (remoteUrl) {
+      setLogoUrl(remoteUrl);
+      return () => { cancelled = true; };
     }
-    void resolveUserMediaFallback(organization.profile.logoMediaKey, "", { kind: "team_logo", allowR2: true })
+    if (!mediaKey) {
+      setLogoUrl("");
+      return () => { cancelled = true; };
+    }
+    void resolveUserMediaFallback(mediaKey, "", { kind: "club_logo", allowR2: true })
       .then((next) => { if (!cancelled) setLogoUrl(next || ""); })
       .catch(() => { if (!cancelled) setLogoUrl(""); });
     return () => { cancelled = true; };
-  }, [organization?.id, organization?.profile?.logoMediaKey]);
+  }, [organization?.id, organization?.profile?.logoMediaKey, organization?.profile?.logoUrl]);
 
   const fallbackLabel = String(organization?.profile?.acronym || organization?.name || "MS").trim().slice(0, 3).toUpperCase();
 
@@ -70,6 +79,7 @@ export default function OrganizationWorkspaceSwitcher({
   currentTab?: string;
 }) {
   const auth = useAuthOnline() as any;
+  const { store } = useStore();
   const { theme } = useTheme();
   const { lang } = useLang();
   const userId = String(auth?.userId || auth?.user?.id || "") || null;
@@ -112,7 +122,13 @@ export default function OrganizationWorkspaceSwitcher({
     ? organizations.find((org) => org.id === workspace.organizationId) || null
     : null;
 
+  const canonicalProfile = React.useMemo(
+    () => getCanonicalAccountProfileFromStore(store, userId),
+    [store, userId],
+  );
   const userLabel = String(
+    canonicalProfile?.privateInfo?.nickname ||
+    canonicalProfile?.name ||
     auth?.profile?.displayName ||
     auth?.profile?.nickname ||
     auth?.user?.user_metadata?.full_name ||
@@ -122,6 +138,7 @@ export default function OrganizationWorkspaceSwitcher({
   ).trim();
   const userInitials = userLabel.split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join("").toUpperCase() || "ME";
   const avatarPrimary = String(
+    canonicalProfileAvatar(canonicalProfile) ||
     auth?.profile?.avatarUrl ||
     auth?.user?.user_metadata?.avatar_url ||
     auth?.user?.user_metadata?.picture ||
@@ -185,6 +202,8 @@ export default function OrganizationWorkspaceSwitcher({
         <span style={{ width: 48, height: 48, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: "#050914" }}>
           {active ? (
             <OrganizationWorkspaceAvatar organization={active} theme={theme} size={48} active />
+          ) : canonicalProfile ? (
+            <ProfileAvatar profile={canonicalProfile as any} size={48} showStars={false} preferProfileAvatarUrl />
           ) : (
             <ResilientUserImage
               mediaKey={onlineAvatarMediaKey(userId || "account")}
@@ -248,7 +267,11 @@ export default function OrganizationWorkspaceSwitcher({
           <button type="button" onClick={choosePersonal} style={{ width: "100%", minHeight: 54, borderRadius: 12, border: `1px solid ${workspace.kind === "personal" ? theme.primary : theme.borderSoft}`, background: workspace.kind === "personal" ? `${theme.primary}12` : "rgba(255,255,255,.025)", color: theme.text, padding: "8px 10px", textAlign: "left", display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 9, alignItems: "center", cursor: "pointer" }}>
             <span style={{ width: 38, height: 38, position: "relative", display: "inline-block" }}>
               <span style={{ width: 38, height: 38, borderRadius: 999, overflow: "hidden", border: `1px solid ${theme.borderSoft}`, display: "grid", placeItems: "center" }}>
-                <ResilientUserImage mediaKey={onlineAvatarMediaKey(userId || "account")} kind="online_avatar" primarySrc={avatarPrimary} mirrorR2={false} fallbackNode={avatarFallback} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                {canonicalProfile ? (
+                  <ProfileAvatar profile={canonicalProfile as any} size={38} showStars={false} preferProfileAvatarUrl />
+                ) : (
+                  <ResilientUserImage mediaKey={onlineAvatarMediaKey(userId || "account")} kind="online_avatar" primarySrc={avatarPrimary} mirrorR2={false} fallbackNode={avatarFallback} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                )}
               </span>
               <span style={{ position: "absolute", right: -2, bottom: -2, width: 15, height: 15, borderRadius: 999, border: `2px solid rgba(6,10,18,.96)`, background: "#132033", display: "grid", placeItems: "center", boxShadow: "0 3px 8px rgba(0,0,0,.45)" }}>
                 <OrganizationTypeIcon kind="personal" size={8.5} color={theme.text} strokeWidth={2.1} />

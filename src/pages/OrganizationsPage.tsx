@@ -52,6 +52,7 @@ import {
   resolveUserMediaFallback,
 } from "../lib/userMediaFallback";
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
+import { uploadOrganizationPublicMedia } from "../lib/organizationSupabaseMedia";
 
 type Props = { go?: (tab: any, params?: any) => void; params?: any };
 type View = "home" | "more" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "venue" | "admin" | "offers";
@@ -283,16 +284,22 @@ export default function OrganizationsPage({ go, params }: Props) {
     setActiveLogo("");
     setActiveCover("");
     if (!active) return () => { cancelled = true; };
-    const prefs = loadStoragePrefs();
-    const allowR2 = prefs.selectedDestination === "cloud_r2";
-    if (active.profile.logoMediaKey) {
-      void resolveUserMediaFallback(active.profile.logoMediaKey, "", { kind: "club_logo", allowR2 }).then((url) => { if (!cancelled) setActiveLogo(url); });
+    const logoRemote = String(active.profile.logoUrl || "").trim();
+    const coverRemote = String(active.profile.coverUrl || "").trim();
+    const logoKey = String(active.profile.logoMediaKey || organizationLogoMediaKey(active.id)).trim();
+    const coverKey = String(active.profile.coverMediaKey || organizationCoverMediaKey(active.id)).trim();
+
+    if (logoRemote) setActiveLogo(logoRemote);
+    else if (logoKey) {
+      void resolveUserMediaFallback(logoKey, "", { kind: "club_logo", allowR2: true }).then((url) => { if (!cancelled) setActiveLogo(url); });
     }
-    if (active.profile.coverMediaKey) {
-      void resolveUserMediaFallback(active.profile.coverMediaKey, "", { kind: "club_cover", allowR2 }).then((url) => { if (!cancelled) setActiveCover(url); });
+
+    if (coverRemote) setActiveCover(coverRemote);
+    else if (coverKey) {
+      void resolveUserMediaFallback(coverKey, "", { kind: "club_cover", allowR2: true }).then((url) => { if (!cancelled) setActiveCover(url); });
     }
     return () => { cancelled = true; };
-  }, [active?.id, active?.profile.logoMediaKey, active?.profile.coverMediaKey]);
+  }, [active?.id, active?.profile.logoMediaKey, active?.profile.coverMediaKey, active?.profile.logoUrl, active?.profile.coverUrl]);
 
   const pageBg = theme.pageBackground || "radial-gradient(circle at 50% -10%, rgba(34,230,255,.12), transparent 45%), #050812";
   const cardBg = theme.cardBackground || theme.card;
@@ -421,26 +428,71 @@ export default function OrganizationsPage({ go, params }: Props) {
       let organization = { ...created.organization, profile: normalizeOrganizationProfile({ ...created.organization.profile, ...profile }) };
       const prefs = loadStoragePrefs();
       const mirrorR2 = prefs.selectedDestination === "cloud_r2";
-      let logoKey = "";
-      let coverKey = "";
+      let logoKey = organizationLogoMediaKey(organization.id);
+      let coverKey = organizationCoverMediaKey(organization.id);
+      let logoPublicUrl = "";
+      let coverPublicUrl = "";
+      let mediaCloudWarning = "";
 
       if (logoPreview) {
         const nextLogoKey = organizationLogoMediaKey(organization.id);
-        const savedLogo = await captureUserMediaFallback(nextLogoKey, logoPreview, { kind: "club_logo", mirrorR2, updatedAt: Date.now() });
+        const revision = Date.now();
+        const savedLogo = await captureUserMediaFallback(nextLogoKey, logoPreview, { kind: "club_logo", mirrorR2, updatedAt: revision });
         if (!savedLogo) throw new Error(L("Le logo n’a pas pu être enregistré.", "The logo could not be saved.", "No se pudo guardar el logotipo."));
         logoKey = nextLogoKey;
+        if (organization.source === "cloud" && userId) {
+          try {
+            const uploaded = await uploadOrganizationPublicMedia({
+              organizationId: organization.id,
+              kind: "logo",
+              dataUrl: savedLogo,
+              userId,
+              updatedAt: revision,
+            });
+            logoPublicUrl = uploaded.publicUrl || "";
+          } catch (mediaError) {
+            console.warn("[organizations] Supabase logo upload unavailable during create", mediaError);
+            mediaCloudWarning = L(
+              "Le logo est conservé localement, mais sa copie multi-appareils n’a pas pu être envoyée.",
+              "The logo is kept locally, but its multi-device copy could not be uploaded.",
+              "El logotipo se conserva localmente, pero no se pudo subir su copia multidispositivo.",
+            );
+          }
+        }
       }
       if (coverPreview) {
         const nextCoverKey = organizationCoverMediaKey(organization.id);
-        const savedCover = await captureUserMediaFallback(nextCoverKey, coverPreview, { kind: "club_cover", mirrorR2, updatedAt: Date.now() });
+        const revision = Date.now();
+        const savedCover = await captureUserMediaFallback(nextCoverKey, coverPreview, { kind: "club_cover", mirrorR2, updatedAt: revision });
         if (!savedCover) throw new Error(L("La photo de couverture n’a pas pu être enregistrée.", "The cover photo could not be saved.", "No se pudo guardar la foto de portada."));
         coverKey = nextCoverKey;
+        if (organization.source === "cloud" && userId) {
+          try {
+            const uploaded = await uploadOrganizationPublicMedia({
+              organizationId: organization.id,
+              kind: "cover",
+              dataUrl: savedCover,
+              userId,
+              updatedAt: revision,
+            });
+            coverPublicUrl = uploaded.publicUrl || "";
+          } catch (mediaError) {
+            console.warn("[organizations] Supabase cover upload unavailable during create", mediaError);
+            mediaCloudWarning = mediaCloudWarning || L(
+              "La couverture est conservée localement, mais sa copie multi-appareils n’a pas pu être envoyée.",
+              "The cover is kept locally, but its multi-device copy could not be uploaded.",
+              "La portada se conserva localmente, pero no se pudo subir su copia multidispositivo.",
+            );
+          }
+        }
       }
 
       const profileResult = await updateOrganizationProfile(userId, organization.id, {
         ...profile,
         logoMediaKey: logoKey,
         coverMediaKey: coverKey,
+        logoUrl: logoPublicUrl,
+        coverUrl: coverPublicUrl,
         profileCompleted: true,
       });
       organization = profileResult.organization;
@@ -452,7 +504,7 @@ export default function OrganizationsPage({ go, params }: Props) {
       setEntryMode("none");
       setView("home");
       const baseNotice = L("Organisation créée : la fiche organisme est prête.", "Organization created: the organization profile is ready.", "Organización creada: la ficha de la organización está lista.");
-      setNotice([baseNotice, profileResult.warning].filter(Boolean).join(" "));
+      setNotice([baseNotice, profileResult.warning, mediaCloudWarning].filter(Boolean).join(" "));
       resetWizard();
       go?.("organization_home", { organizationId: organization.id, workspaceMode: true, view: "home" });
     } catch (e: any) {
