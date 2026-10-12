@@ -214,7 +214,7 @@ export function FloatingAdvice({ text, accent, kicker = "CONSEIL CIBLE" }: any) 
 
 function medal(index: number) { return index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`; }
 
-export function PremiumEndPanel({ title, accent, winnerId, rankingRows, durationMs, totalDarts, awards, onReplay, onStats, onHistory, onConfig, onGames }: any) {
+export function PremiumEndPanel({ title, accent, winnerId, rankingRows, durationMs, totalDarts, awards, progression, onReplay, onStats, onHistory, onConfig, onGames }: any) {
   const rows = rankingRows || [];
   const winner = rows.find((r: any) => String(r.id) === String(winnerId || "")) || rows[0];
   const mins = Math.floor(Math.max(0, Number(durationMs || 0)) / 60000);
@@ -227,6 +227,21 @@ export function PremiumEndPanel({ title, accent, winnerId, rankingRows, duration
     </section>
     <section className="party-mode-end__podium">{rows.slice(0, 3).map((row: any, index: number) => <div key={row.id} className={`is-rank-${index + 1}`} style={{ borderColor: `${row.color}66` }}><span>{medal(index)}</span><ProfileAvatar profile={row.profile} size={58} showStars={false} ringColor={row.color} noFrame /><b style={{ color: row.color }}>{String(row.name || "—").toUpperCase()}</b><small>{row.subtitle || ""}</small><strong style={{ color: row.color }}>{row.value}{row.suffix || ""}</strong></div>)}</section>
     {awards?.length ? <section className="party-mode-end__awards">{awards.slice(0, 4).map((a: any) => <div key={a.label}><span>{a.icon || "★"}</span><small>{a.label}</small><b style={{ color: a.color || accent }}>{a.name}</b><em>{a.value}</em></div>)}</section> : null}
+    {progression?.unlocks?.length ? <section className="party-mode-end__progress">
+      <header><div><small>PROGRESSION CARRIÈRE</small><b>NOUVEAUX BADGES & RECORDS</b></div><strong style={{ color: accent }}>{progression.unlocks.length}</strong></header>
+      <div className="party-mode-end__progress-grid">
+        {progression.unlocks.slice(0, 8).map((u: any, index: number) => <div key={`${u.type}-${u.playerId}-${u.key}-${index}`} className={`is-${u.type || "record"}`}>
+          <span aria-hidden>{u.icon || (u.type === "badge" ? "🏅" : "📈")}</span>
+          <div><small>{u.type === "badge" ? "BADGE DÉBLOQUÉ" : "NOUVEAU RECORD"}</small><b>{u.label}</b><em>{String(u.playerName || "").toUpperCase()}</em><p>{u.detail || (u.value != null ? String(u.value) : "")}</p></div>
+        </div>)}
+      </div>
+    </section> : null}
+    {progression?.winnerCareer ? <section className="party-mode-end__career" style={{ borderColor: `${accent}44` }}>
+      <div><small>CARRIÈRE · {title}</small><b style={{ color: accent }}>{progression.winnerCareer.matches || 0} PARTIES</b></div>
+      <div><small>VICTOIRES</small><b>{progression.winnerCareer.wins || 0}</b></div>
+      <div><small>BADGES</small><b>{progression.winnerCareer.badges?.length || 0}</b></div>
+      <div><small>RECORDS</small><b>{progression.winnerCareer.records?.length || 0}</b></div>
+    </section> : null}
     <section className="party-mode-end__ranking">{rows.map((row: any, index: number) => <div key={row.id} style={{ borderColor: `${row.color}4c` }}><strong style={{ color: row.color }}>#{index + 1}</strong><ProfileAvatar profile={row.profile} size={39} showStars={false} ringColor={row.color} noFrame /><div><b style={{ color: row.color }}>{String(row.name || "—").toUpperCase()}</b><span>{row.subtitle || ""}</span></div><em style={{ color: row.color }}>{row.value}<small>{row.suffix || ""}</small></em></div>)}</section>
     <section className="party-mode-end__actions">
       <button type="button" onClick={onStats} style={actionStyle(accent)}>📊 STATS</button>

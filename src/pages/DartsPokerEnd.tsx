@@ -2,6 +2,8 @@
 import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
+import DartsPokerBadge from "../components/darts-poker/DartsPokerBadge";
+import type { DartsPokerBadgeId } from "../components/darts-poker/DartsPokerBadge";
 import type { DartsPokerState } from "../lib/gameEngines/dartsPokerEngine";
 import { deriveDartsPokerMatchMetrics, deriveDartsPokerMatchStory, deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerRound1 } from "../lib/dartsPokerAnalytics";
 
@@ -35,15 +37,15 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
   const story = deriveDartsPokerMatchStory(state.rounds);
   const best = analyticsRows[0];
   const winnerProfile = best ? profilesById.get(String(best.id)) || best : null;
-  const awards = [
-    { label: "SHARK DE LA TABLE", icon: "♠", color: GOLD, row: awardWinner(analyticsRows, (r) => Number(r.points || 0)), value: (r: any) => `${fmt(r?.points)} pts` },
-    { label: "TIREUR D'ÉLITE", icon: "◎", color: GREEN, row: awardWinner(analyticsRows, (r) => Number(r.accuracy || 0)), value: (r: any) => pct(r?.accuracy) },
-    { label: "CHASSEUR DE CONTRATS", icon: "◆", color: RED, row: awardWinner(analyticsRows, (r) => Number(r.contractHits || 0)), value: (r: any) => `${fmt(r?.contractHits)} / ${fmt(r?.contractsAttempted)}` },
-    { label: "MAÎTRE DES POUVOIRS", icon: "✦", color: PINK, row: awardWinner(analyticsRows, (r) => Number(r.powerUseRate || 0)), value: (r: any) => pct(r?.powerUseRate) },
-    { label: "LUCKY JOKER", icon: "★", color: BLUE, row: awardWinner(analyticsRows, (r) => Number(r.jokers || 0)), value: (r: any) => `${fmt(r?.jokers)} joker${Number(r?.jokers || 0) > 1 ? "s" : ""}` },
-    { label: "SÉRIE DE FEU", icon: "↗", color: "#ff9b52", row: awardWinner(analyticsRows, (r) => Number(r.bestHitStreak || 0)), value: (r: any) => `${fmt(r?.bestHitStreak)} hits` },
-    { label: "MAÎTRE DE LA TABLE", icon: "♛", color: BLUE, row: awardWinner(analyticsRows, (r) => Number(r.leadRounds || 0)), value: (r: any) => `${fmt(r?.leadRounds)} manche${Number(r?.leadRounds || 0) > 1 ? "s" : ""}` },
-    { label: "CLOSER", icon: "◆", color: GREEN, row: awardWinner(analyticsRows, (r) => Number(Boolean(r.closingRoundWin)) * 1000 + Number(r.lastThreePoints || 0)), value: (r: any) => `${fmt(r?.lastThreePoints)} pts · fin` },
+  const awards: Array<{ label: string; badgeId: DartsPokerBadgeId; color: string; row: any; value: (row: any) => string }> = [
+    { label: "SHARK DE LA TABLE", badgeId: "shark", color: GOLD, row: awardWinner(analyticsRows, (r) => Number(r.points || 0)), value: (r: any) => `${fmt(r?.points)} pts` },
+    { label: "TIREUR D'ÉLITE", badgeId: "sniper", color: GREEN, row: awardWinner(analyticsRows, (r) => Number(r.accuracy || 0)), value: (r: any) => pct(r?.accuracy) },
+    { label: "CHASSEUR DE CONTRATS", badgeId: "contract_master", color: RED, row: awardWinner(analyticsRows, (r) => Number(r.contractHits || 0)), value: (r: any) => `${fmt(r?.contractHits)} / ${fmt(r?.contractsAttempted)}` },
+    { label: "MAÎTRE DES POUVOIRS", badgeId: "power_player", color: PINK, row: awardWinner(analyticsRows, (r) => Number(r.powerUseRate || 0)), value: (r: any) => pct(r?.powerUseRate) },
+    { label: "LUCKY JOKER", badgeId: "joker_master", color: BLUE, row: awardWinner(analyticsRows, (r) => Number(r.jokers || 0)), value: (r: any) => `${fmt(r?.jokers)} joker${Number(r?.jokers || 0) > 1 ? "s" : ""}` },
+    { label: "SÉRIE DE FEU", badgeId: "power_player", color: "#ff9b52", row: awardWinner(analyticsRows, (r) => Number(r.bestHitStreak || 0)), value: (r: any) => `${fmt(r?.bestHitStreak)} hits` },
+    { label: "MAÎTRE DE LA TABLE", badgeId: "table_leader", color: BLUE, row: awardWinner(analyticsRows, (r) => Number(r.leadRounds || 0)), value: (r: any) => `${fmt(r?.leadRounds)} manche${Number(r?.leadRounds || 0) > 1 ? "s" : ""}` },
+    { label: "CLOSER", badgeId: "closer", color: GREEN, row: awardWinner(analyticsRows, (r) => Number(Boolean(r.closingRoundWin)) * 1000 + Number(r.lastThreePoints || 0)), value: (r: any) => `${fmt(r?.lastThreePoints)} pts · fin` },
   ];
   const signatureHands = analyticsRows.map((row: any) => {
     const roundRows = (state.rounds || []).flatMap((round: any) => (round?.rows || []).filter((item: any) => String(item?.playerId) === String(row.id)));
@@ -188,7 +190,7 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
       <div style={{ marginTop: 5, color: "#6f7687", fontSize: 7.5, textAlign: "center" }}>← Fais glisser le tableau horizontalement pour consulter toutes les statistiques →</div>
 
       <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-        {awards.map((award) => { const row = award.row; const profile = row ? profilesById.get(String(row.id)) || row : null; return <div key={award.label} style={{ padding: 8, borderRadius: 13, background: `${award.color}0c`, border: `1px solid ${award.color}44`, display: "grid", gridTemplateColumns: "28px minmax(0,1fr) auto", gap: 6, alignItems: "center" }}><div style={{ width: 27, height: 27, borderRadius: 9, display: "grid", placeItems: "center", color: award.color, border: `1px solid ${award.color}55` }}>{award.icon}</div><div style={{ minWidth: 0 }}><div style={{ color: award.color, fontSize: 6.8, fontWeight: 1100 }}>{award.label}</div><div style={{ color: "#fff", fontSize: 8.8, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile ? playerName(profile) : "—"}</div></div><div style={{ color: SOFT, fontSize: 7.8 }}>{award.value(row)}</div></div>; })}
+        {awards.map((award) => { const row = award.row; const profile = row ? profilesById.get(String(row.id)) || row : null; return <div key={award.label} style={{ padding: 8, borderRadius: 13, background: `${award.color}0c`, border: `1px solid ${award.color}44`, display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div style={{ width: 54, height: 54, borderRadius: 12, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(255,255,255,.025)", border: `1px solid ${award.color}44`, boxShadow: `0 0 14px ${award.color}22` }}><DartsPokerBadge id={award.badgeId} size="100%" /></div><div style={{ minWidth: 0 }}><div style={{ color: award.color, fontSize: 6.8, fontWeight: 1100 }}>{award.label}</div><div style={{ color: "#fff", fontSize: 8.8, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile ? playerName(profile) : "—"}</div></div><div style={{ color: SOFT, fontSize: 7.8 }}>{award.value(row)}</div></div>; })}
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>

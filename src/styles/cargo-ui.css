@@ -1,0 +1,101 @@
+/* ============================================================
+   CARGO — UI FINAL POLISH
+   Responsive phone / tablet / desktop, focus, motion & density.
+   ============================================================ */
+
+:root{
+  --cargo-orange:#ff9b42;
+  --cargo-gold:#f6c256;
+  --cargo-green:#62e6a7;
+  --cargo-blue:#56c9ff;
+  --cargo-red:#ef5261;
+  --cargo-soft:#aab1bf;
+  --cargo-line:rgba(255,255,255,.08);
+  --cargo-panel:linear-gradient(180deg,rgba(255,255,255,.05),rgba(0,0,0,.27));
+}
+
+.cargo-config-page,.cargo-play-page,.cargo-history-detail,.cargo-stats-root{color:#fff}
+.cargo-config-page button,.cargo-play-page button,.cargo-end-overlay button,.cargo-history-detail button,.cargo-stats-root button{font-family:inherit}
+.cargo-config-page button:focus-visible,.cargo-play-page button:focus-visible,.cargo-end-overlay button:focus-visible,.cargo-history-detail button:focus-visible,.cargo-stats-root button:focus-visible{outline:2px solid var(--cargo-gold);outline-offset:2px}
+
+/* CONFIG */
+.cargo-config-main{width:min(980px,100%);margin:0 auto;padding:8px;box-sizing:border-box}
+.cargo-config-mode-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:9px;position:sticky;top:0;z-index:3;padding-top:2px;background:linear-gradient(180deg,rgba(4,5,8,.94),rgba(4,5,8,.68),transparent)}
+.cargo-config-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-bottom:8px}
+.cargo-config-complete{display:grid;grid-template-columns:1fr;gap:0}
+.cargo-config-actions{display:grid;gap:8px}
+
+/* PLAY */
+.cargo-play-main{container-type:inline-size}
+.cargo-play-hero,.cargo-play-quickbar,.cargo-play-input,.cargo-load-status{min-width:0;min-height:0}
+.cargo-load-status{isolation:isolate}
+.cargo-play-quickbar button{transition:transform .14s ease,border-color .14s ease,background-color .14s ease}
+.cargo-play-quickbar button:active{transform:scale(.975)}
+
+/* HISTORY DETAIL */
+.cargo-history-detail-shell{width:min(900px,100%);max-height:94dvh;overflow:hidden;border-radius:22px;background:linear-gradient(180deg,#171a20,#080a0e);border:1px solid rgba(255,155,66,.34);box-shadow:0 30px 100px rgba(0,0,0,.78)}
+.cargo-history-detail-head{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px;border-bottom:1px solid var(--cargo-line);background:radial-gradient(circle at 12% 0%,rgba(255,155,66,.16),transparent 38%),rgba(15,17,22,.98)}
+.cargo-history-detail-scroll{max-height:calc(94dvh - 82px);overflow-y:auto;padding:12px;overscroll-behavior:contain}
+.cargo-history-detail-summary{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;align-items:stretch;margin-bottom:10px}
+.cargo-history-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+
+/* STATS */
+.cargo-stats-root{width:100%;max-width:1080px;margin:0 auto;padding:4px;box-sizing:border-box}
+.cargo-stats-tabs{position:sticky;top:0;z-index:2;padding:6px 0;background:linear-gradient(180deg,rgba(8,10,14,.96),rgba(8,10,14,.84),transparent)}
+
+@media (min-width:900px){
+  .cargo-config-main{padding:10px 12px 18px}
+  .cargo-config-complete{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+  .cargo-config-complete>section{margin-bottom:0!important;align-self:start}
+  .cargo-config-complete>.cargo-config-summary,.cargo-config-complete>.cargo-config-launch{grid-column:1/-1}
+
+  .cargo-history-detail-summary{grid-template-columns:150px minmax(0,1fr)}
+  .cargo-history-detail-summary>div:first-child img{max-height:128px!important}
+}
+
+/* App-wide horizontal rule: left status / right scoring surface. */
+@media (min-width:900px) and (max-height:900px){
+  .cargo-play-main{
+    max-width:1280px!important;
+    grid-template-columns:minmax(330px,.78fr) minmax(520px,1.22fr)!important;
+    grid-template-rows:132px 58px minmax(0,1fr)!important;
+    grid-template-areas:"hero input" "quick input" "load input"!important;
+    column-gap:10px!important;
+    row-gap:8px!important;
+  }
+  .cargo-play-hero{grid-area:hero}
+  .cargo-play-quickbar{grid-area:quick}
+  .cargo-load-status{grid-area:load;grid-template-columns:1fr!important;overflow:auto;padding-right:2px}
+  .cargo-play-input{grid-area:input}
+  .cargo-play-input>.cargo-airy-keypad{height:100%!important}
+}
+
+@media (max-width:640px){
+  .cargo-config-main{padding:6px}
+  .cargo-config-mode-switch{gap:5px}
+  .cargo-config-steps{gap:3px}
+  .cargo-config-steps button{font-size:7px!important;min-height:34px!important}
+  .cargo-load-status{grid-template-columns:minmax(0,1.18fr) minmax(0,.82fr)!important;gap:6px!important}
+  .cargo-load-status>button{padding:7px!important}
+  .cargo-load-status>div{padding:7px!important}
+  .cargo-history-detail{padding:4px!important}
+  .cargo-history-detail-shell{border-radius:18px;max-height:97dvh}
+  .cargo-history-detail-head{grid-template-columns:54px minmax(0,1fr) 34px;gap:7px;padding:8px}
+  .cargo-history-detail-head>div:first-child{width:52px!important;height:48px!important}
+  .cargo-history-detail-head button{width:34px!important;height:34px!important}
+  .cargo-history-detail-scroll{max-height:calc(97dvh - 66px);padding:8px}
+  .cargo-history-detail-summary{grid-template-columns:76px minmax(0,1fr);gap:7px}
+  .cargo-history-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .cargo-stats-tabs{overflow-x:auto;display:flex!important;gap:5px!important;scrollbar-width:none}
+  .cargo-stats-tabs::-webkit-scrollbar{display:none}
+  .cargo-stats-tabs>button{flex:0 0 104px;min-height:43px!important}
+}
+
+@media (max-height:720px) and (max-width:899px){
+  .cargo-load-status{display:none!important}
+  .cargo-play-main{grid-template-rows:112px 48px minmax(0,1fr)!important}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .cargo-config-page *, .cargo-play-page *, .cargo-end-overlay *, .cargo-history-detail *, .cargo-stats-root *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}

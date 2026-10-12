@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
+import { buildFootballHeadToHead } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa", BLUE = "#35d0ff", RED = "#ff5b77", GOLD = "#ffd36b", SOFT = "#aeb8c9", WHITE = "#f7fbff";
 const n = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0;
@@ -50,7 +51,8 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const [range, setRange] = React.useState("all");
   const now = Date.now();
   const ranges: any = { day: 86400000, week: 7 * 86400000, month: 31 * 86400000, year: 366 * 86400000 };
-  const matches = (records || []).filter(isFootball).map((record: any) => ({ record, row: findRow(record, playerId, playerName) })).filter((x: any) => x.row).filter((x: any) => range === "all" || playedAt(x.record) >= now - ranges[range]).sort((a: any, b: any) => playedAt(b.record) - playedAt(a.record));
+  const footballRecords = (records || []).filter(isFootball);
+  const matches = footballRecords.map((record: any) => ({ record, row: findRow(record, playerId, playerName) })).filter((x: any) => x.row).filter((x: any) => range === "all" || playedAt(x.record) >= now - ranges[range]).sort((a: any, b: any) => playedAt(b.record) - playedAt(a.record));
   const rows = matches.map((x: any) => x.row);
   const games = matches.length;
   const wins = matches.filter(({ record, row }: any) => wonMatch(record, row, playerId)).length;
@@ -72,8 +74,12 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const bestAccuracy = matches.reduce((acc: any, item: any) => rowAccuracy(item.row) > rowAccuracy(acc?.row) ? item : acc, null);
   const bestGoals = best("goals"), bestSaves = best("saves"), bestInterceptions = best("interceptions"), bestProgress = best("bestProgress"), bestShots = best("shotsOnTarget");
   const chronological = [...matches].sort((a, b) => playedAt(a.record) - playedAt(b.record));
-  let currentStreak = 0, bestStreak = 0;
-  chronological.forEach(({ record, row }: any) => { if (wonMatch(record, row, playerId)) { currentStreak += 1; bestStreak = Math.max(bestStreak, currentStreak); } else if (!drawMatch(record)) currentStreak = 0; });
+  let currentStreak = 0, bestStreak = 0, currentUnbeaten = 0, bestUnbeaten = 0;
+  chronological.forEach(({ record, row }: any) => {
+    const won = wonMatch(record, row, playerId), draw = drawMatch(record);
+    if (won) { currentStreak += 1; bestStreak = Math.max(bestStreak, currentStreak); } else if (!draw) currentStreak = 0;
+    if (won || draw) { currentUnbeaten += 1; bestUnbeaten = Math.max(bestUnbeaten, currentUnbeaten); } else currentUnbeaten = 0;
+  });
 
   const variants: any = {};
   matches.forEach(({ record, row }: any) => { const v = variantOf(record); const item = variants[v] || (variants[v] = { games: 0, wins: 0, goals: 0 }); item.games += 1; item.goals += n(row?.goals); if (wonMatch(record, row, playerId)) item.wins += 1; });
@@ -81,7 +87,10 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const maxImpact = Math.max(1, ...Object.values(impacts).map(n));
 
   const trend = matches.slice(0, 12).reverse();
+  const recentFive = matches.slice(0, 5);
+  const recentPoints = recentFive.reduce((total: number, { record, row }: any) => total + (wonMatch(record, row, playerId) ? 3 : drawMatch(record) ? 1 : 0), 0);
   const favoriteVariant = Object.entries(variants).sort((a: any, b: any) => b[1].games - a[1].games)[0];
+  const headToHead = buildFootballHeadToHead(footballRecords, playerId, playerName).slice(0, 6);
 
   return <div style={{ width: "100%", maxWidth: 980, margin: "0 auto", overflowX: "hidden" }}>
     <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{[["all", "Tout"], ["day", "24 h"], ["week", "7 j"], ["month", "30 j"], ["year", "1 an"]].map(([key, label]) => <button key={key} onClick={() => setRange(key)} style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${range === key ? GREEN : "rgba(255,255,255,.10)"}`, background: range === key ? `${GREEN}18` : "rgba(255,255,255,.03)", color: range === key ? GREEN : SOFT, fontWeight: 1000, fontSize: 8 }}>{label}</button>)}</div>
@@ -124,13 +133,22 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
           <RecordCard icon="🚀" label="PROGRESSION MAX" value={`+${n(bestProgress?.row?.bestProgress)}`} detail="zones sur une volée" color={GREEN} />
           <RecordCard icon="🥅" label="CADRÉS / MATCH" value={n(bestShots?.row?.shotsOnTarget)} detail={bestShots ? new Date(playedAt(bestShots.record)).toLocaleDateString("fr-FR") : "—"} color={GOLD} />
           <RecordCard icon="🔥" label="SÉRIE DE VICTOIRES" value={bestStreak} detail="record consécutif" color={RED} />
+          <RecordCard icon="🧱" label="SÉRIE SANS DÉFAITE" value={bestUnbeaten} detail="victoires + nuls" color={BLUE} />
           <RecordCard icon="🏟️" label="FORMAT FAVORI" value={favoriteVariant ? footballVariantLabel(favoriteVariant[0] as any) : "—"} detail={favoriteVariant ? `${favoriteVariant[1].games} partie${favoriteVariant[1].games > 1 ? "s" : ""}` : "—"} color={BLUE} />
         </div>
       </Section>
 
-      <Section title="Forme récente" accent={GREEN} right={<span style={{ color: SOFT, fontSize: 7 }}>12 derniers matchs</span>}>
+      <Section title="Forme récente" accent={GREEN} right={<span style={{ color: SOFT, fontSize: 7 }}>{recentFive.length ? `${recentPoints}/${recentFive.length * 3} pts sur les 5 derniers` : "12 derniers matchs"}</span>}>
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, trend.length)},minmax(22px,1fr))`, gap: 4, overflowX: "auto" }}>{trend.map(({ record, row }: any, index: number) => { const won = wonMatch(record, row, playerId), draw = drawMatch(record); const color = won ? GREEN : draw ? GOLD : RED; return <div key={record?.id || index} title={scoreLineOf(record)} style={{ minWidth: 22, height: 34, borderRadius: 9, display: "grid", placeItems: "center", border: `1px solid ${color}66`, background: `${color}12`, color, fontSize: 8, fontWeight: 1100 }}>{won ? "V" : draw ? "N" : "D"}</div>; })}</div>
       </Section>
+
+      {headToHead.length ? <Section title="Confrontations directes" accent={RED} right={<span style={{ color: SOFT, fontSize: 7 }}>adversaires les plus rencontrés</span>}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>{headToHead.map((duel: any) => <div key={duel.opponent} style={{ minWidth: 0, borderRadius: 13, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(135deg,rgba(255,91,119,.055),rgba(53,208,255,.035))" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 7, alignItems: "center" }}><strong style={{ minWidth: 0, color: WHITE, fontSize: 8.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>⚔️ {duel.opponent}</strong><span style={{ color: SOFT, fontSize: 6.2 }}>{duel.games} match{duel.games > 1 ? "s" : ""}</span></div>
+          <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 4, textAlign: "center" }}><div><strong style={{ color: GREEN, fontSize: 12 }}>{duel.wins}</strong><div style={{ color: SOFT, fontSize: 5.5 }}>V</div></div><div><strong style={{ color: GOLD, fontSize: 12 }}>{duel.draws}</strong><div style={{ color: SOFT, fontSize: 5.5 }}>N</div></div><div><strong style={{ color: RED, fontSize: 12 }}>{duel.losses}</strong><div style={{ color: SOFT, fontSize: 5.5 }}>D</div></div><div><strong style={{ color: BLUE, fontSize: 12 }}>{pct(duel.wins, duel.games)}%</strong><div style={{ color: SOFT, fontSize: 5.5 }}>WIN</div></div></div>
+          <div style={{ marginTop: 5, display: "flex", justifyContent: "space-between", gap: 8, color: SOFT, fontSize: 6.1 }}><span>{duel.goals} buts marqués</span><span>{duel.lastPlayedAt ? new Date(duel.lastPlayedAt).toLocaleDateString("fr-FR") : ""}</span></div>
+        </div>)}</div>
+      </Section> : null}
 
       <Section title="Variantes" accent={BLUE}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{Object.entries(variants).map(([key, value]: any) => <div key={key} style={{ borderRadius: 12, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)" }}><div style={{ color: WHITE, fontSize: 8.5, fontWeight: 1050 }}>{footballVariantLabel(key as any)}</div><div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 3, textAlign: "center" }}><div><strong style={{ color: BLUE }}>{value.games}</strong><div style={{ color: SOFT, fontSize: 5.8 }}>MATCHS</div></div><div><strong style={{ color: GREEN }}>{pct(value.wins, value.games)}%</strong><div style={{ color: SOFT, fontSize: 5.8 }}>WIN</div></div><div><strong style={{ color: GOLD }}>{value.goals}</strong><div style={{ color: SOFT, fontSize: 5.8 }}>BUTS</div></div></div></div>)}</div>

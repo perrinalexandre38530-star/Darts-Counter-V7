@@ -23,6 +23,7 @@ import {
   Tooltip,
 } from "recharts";
 import { cargoVariantLabel } from "../../lib/gameEngines/cargoEngine";
+import "../../styles/cargo-ui.css";
 
 const ORANGE = "#ff9b42";
 const GOLD = "#f6c256";
@@ -387,13 +388,13 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
     { id: "records", label: "RECORDS", icon: "🏆", color: PURPLE },
   ];
 
-  return <div style={{ width: "100%", maxWidth: 1040, margin: "0 auto", padding: 4, boxSizing: "border-box" }}>
+  return <div className="cargo-stats-root">
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
       <div><div style={{ color: ORANGE, fontWeight: 1150, letterSpacing: 1, textTransform: "uppercase" }}>CARGO — CENTRE DE PERFORMANCES V5</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9.5 }}>Dashboard longitudinal, tendances, cible, logistique, comparaisons joueurs/équipes et records massifs.</div></div>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{[["all", "TOUT"], ["day", "24 H"], ["week", "7 J"], ["month", "30 J"], ["year", "1 AN"]].map(([key, label]) => <button key={key} onClick={() => setRange(key as any)} style={pill(range === key, ORANGE)}>{label}</button>)}</div>
     </div>
 
-    <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(88px,1fr))", gap: 5 }}>{tabs.map((item) => <button key={item.id} onClick={() => setTab(item.id)} style={{ minWidth: 0, minHeight: 47, borderRadius: 13, border: `1px solid ${tab === item.id ? item.color : "rgba(255,255,255,.08)"}`, background: tab === item.id ? `${item.color}15` : "rgba(255,255,255,.025)", color: tab === item.id ? item.color : SOFT, fontSize: 7.5, fontWeight: 1050, cursor: "pointer", overflow: "hidden" }}><span style={{ display: "block", fontSize: 13 }}>{item.icon}</span><span>{item.label}</span></button>)}</div>
+    <div className="cargo-stats-tabs" style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(88px,1fr))", gap: 5 }}>{tabs.map((item) => <button key={item.id} onClick={() => setTab(item.id)} style={{ minWidth: 0, minHeight: 47, borderRadius: 13, border: `1px solid ${tab === item.id ? item.color : "rgba(255,255,255,.08)"}`, background: tab === item.id ? `${item.color}15` : "rgba(255,255,255,.025)", color: tab === item.id ? item.color : SOFT, fontSize: 7.5, fontWeight: 1050, cursor: "pointer", overflow: "hidden" }}><span style={{ display: "block", fontSize: 13 }}>{item.icon}</span><span>{item.label}</span></button>)}</div>
 
     {!games ? <div style={{ ...panel(), marginTop: 10, textAlign: "center", color: SOFT }}>Aucune partie CARGO terminée sur cette période.</div> : <>
       {tab === "overview" ? <>

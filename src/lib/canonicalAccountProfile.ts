@@ -121,17 +121,25 @@ export function getCanonicalAccountProfileFromStore(store: any, accountUserId?: 
       const bound = list.find((profile: any) => cleanId(profile?.id) === boundId && isHumanProfile(profile));
       if (bound) return bound as Profile;
     }
+
+    // Une liaison explicite compte -> profil est une preuve plus forte qu'un
+    // simple `activeProfileId`. Sur un nouvel appareil/restauration, le profil
+    // actif peut encore être un ancien profil local alors que MON PROFIL porte
+    // déjà le vrai UID Supabase dans privateInfo.
+    const exactBindings = list.filter((profile: any) => isHumanProfile(profile) && profileHasExactAccountBinding(profile, uid));
+    if (exactBindings.length === 1) return exactBindings[0] as Profile;
+
+    const activeId = cleanId(store?.activeProfileId);
+    if (activeId && exactBindings.length > 1) {
+      const activeBound = exactBindings.find((profile: any) => cleanId(profile?.id) === activeId);
+      if (activeBound) return activeBound as Profile;
+    }
   }
 
   const activeId = cleanId(store?.activeProfileId);
   if (activeId) {
     const exact = list.find((profile: any) => cleanId(profile?.id) === activeId && isHumanProfile(profile));
     if (exact) return exact as Profile;
-  }
-
-  if (uid) {
-    const exactBindings = list.filter((profile: any) => isHumanProfile(profile) && profileHasExactAccountBinding(profile, uid));
-    if (exactBindings.length === 1) return exactBindings[0] as Profile;
   }
 
   const firstHuman = list.find(isHumanProfile);
@@ -164,13 +172,16 @@ export function lockCanonicalAccountProfileForStore(
     return bindCanonicalAccountProfileId(uid, preferred);
   }
 
-  const activeId = cleanId(store?.activeProfileId);
-  if (activeId && list.some((profile: any) => cleanId(profile?.id) === activeId)) {
-    return bindCanonicalAccountProfileId(uid, activeId);
-  }
-
   const exactBindings = list.filter((profile: any) => profileHasExactAccountBinding(profile, uid));
   if (exactBindings.length === 1) return bindCanonicalAccountProfileId(uid, exactBindings[0]?.id);
+
+  const activeId = cleanId(store?.activeProfileId);
+  if (activeId && exactBindings.length > 1 && exactBindings.some((profile: any) => cleanId(profile?.id) === activeId)) {
+    return bindCanonicalAccountProfileId(uid, activeId);
+  }
+  if (activeId && exactBindings.length === 0 && list.some((profile: any) => cleanId(profile?.id) === activeId)) {
+    return bindCanonicalAccountProfileId(uid, activeId);
+  }
 
   if (list.length === 1) return bindCanonicalAccountProfileId(uid, list[0]?.id);
   return "";

@@ -147,13 +147,16 @@ export type CargoVisitEvent = {
     | "overload"
     | "perfect_load"
     | "contract_expired"
-    | "route_stage";
+    | "route_stage"
+    | "convoy_handoff";
   label: string;
   playerId: string;
   contractId?: string | null;
   weight?: number;
   parcels?: number;
   seriesCount?: number;
+  sourcePlayerId?: string;
+  teamId?: string;
 };
 
 export type CargoVisit = {
@@ -508,6 +511,12 @@ function computeTeamStandings(state: CargoState): CargoTeamStanding[] {
   rows.forEach((row) => {
     row.score = parcel ? row.parcelsDelivered : row.totalWeight;
     row.accuracy = cargoPercent(row.hits, row.darts);
+    const contributors = row.playerIds.map((playerId) => {
+      const stats = state.statsByPlayer[playerId] || emptyPlayerStats();
+      return { id: playerId, score: parcel ? Number(stats.parcelsDelivered || 0) : Number(stats.totalWeight || 0) };
+    }).sort((a, b) => b.score - a.score);
+    row.topContributorId = contributors[0]?.id || null;
+    row.topContributorScore = contributors[0]?.score || 0;
   });
   rows.sort((a, b) => b.score - a.score || b.completedContracts - a.completedContracts || b.longestSeries - a.longestSeries || a.name.localeCompare(b.name));
   let rank = 0;
@@ -1032,6 +1041,8 @@ export function playCargoVisit(source: CargoState, darts: GameDart[]): CargoStat
   // CONVOI collectif : un coéquipier peut poursuivre la palette commencée
   // par le joueur précédent. La série change de porteur, mais le score final
   // reste agrégé par équipe dans le classement.
+  let convoyHandoffFrom: Player | null = null;
+  let convoyHandoffTeamId: string | null = null;
   if (state.config.variant === "convoy" && state.config.participantMode === "teams" && !stats.currentSeries) {
     const teamId = state.config.teamByPlayer?.[playerId] || null;
     if (teamId) {
@@ -1042,12 +1053,25 @@ export function playCargoVisit(source: CargoState, darts: GameDart[]): CargoStat
       if (teammate) {
         stats.currentSeries = clone(state.statsByPlayer[String(teammate.id)].currentSeries);
         state.statsByPlayer[String(teammate.id)].currentSeries = null;
+        convoyHandoffFrom = teammate;
+        convoyHandoffTeamId = String(teamId);
       }
     }
   }
 
   const before = clone(stats);
   const events: CargoVisitEvent[] = [];
+  if (convoyHandoffFrom && stats.currentSeries) {
+    events.push({
+      type: "convoy_handoff",
+      label: `Relais convoi : ${playerName(convoyHandoffFrom)} → ${playerName(player)} · série ${stats.currentSeries.count}`,
+      playerId,
+      sourcePlayerId: String(convoyHandoffFrom.id),
+      teamId: convoyHandoffTeamId || undefined,
+      seriesCount: stats.currentSeries.count,
+      contractId: stats.currentSeries.contractId || null,
+    });
+  }
   const labels = darts.map(cargoDartLabel);
 
   stats.visits += 1;
@@ -1316,6 +1340,7 @@ export function buildCargoPlayerAdvancedStats(state: CargoState, playerIdRaw: st
     overloadEvents: Number(eventCounts.overload || 0),
     perfectLoadEvents: Number(eventCounts.perfect_load || 0),
     routeStageEvents: Number(eventCounts.route_stage || 0),
+    convoyHandoffs: Number(eventCounts.convoy_handoff || 0),
     roundScores,
     visitScores,
   };
@@ -1377,6 +1402,7 @@ export function cargoEventPresentation(event: CargoVisitEvent | null | undefined
     case "free_load_complete": return { icon: "▤", title: "PALETTE CHARGÉE", color: "#ff9b42", priority: 4 };
     case "parcel_delivery": return { icon: "⌂", title: "LIVRAISON EFFECTUÉE", color: "#56c9ff", priority: 4 };
     case "route_stage": return { icon: "➜", title: "NOUVELLE ÉTAPE", color: "#56c9ff", priority: 4 };
+    case "convoy_handoff": return { icon: "⇄", title: "RELAIS CONVOI", color: "#d98cff", priority: 4 };
     case "overload": return { icon: "⚠", title: "SURCHARGE", color: "#ef5261", priority: 5 };
     case "series_lost": return { icon: "×", title: "CHARGEMENT PERDU", color: "#ef5261", priority: 4 };
     case "contract_expired": return { icon: "⌛", title: "CONTRAT EXPIRÉ", color: "#ef5261", priority: 4 };

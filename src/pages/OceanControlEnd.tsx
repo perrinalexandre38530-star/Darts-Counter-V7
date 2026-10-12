@@ -79,6 +79,22 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
   const totalDbulls = rows.reduce((sum: number, row: any) => sum + Number(row.stats?.dbulls || 0), 0);
   const totalStrikes = rows.reduce((sum: number, row: any) => sum + Number(row.stats?.precisionStrikes || 0), 0);
   const dbullEfficiency = totalDbulls > 0 ? Math.round((totalStrikes / totalDbulls) * 100) : 0;
+  const winnerRow = rows.find((row: any) => row.won) || rows[0] || null;
+  const commandScore = winnerRow ? Math.round(
+    oceanControlAccuracy(winnerRow.stats) * .5
+    + Math.min(25, Number(winnerRow.stats?.shipsSunk || 0) * 7)
+    + Math.min(12, Number(winnerRow.stats?.perfectVisits || 0) * 4)
+    + Math.min(8, Number(winnerRow.stats?.sonarContacts || 0))
+    + 10
+  ) : 0;
+  const commandGrade = commandScore >= 86 ? "S" : commandScore >= 72 ? "A" : commandScore >= 58 ? "B" : commandScore >= 44 ? "C" : "D";
+  const commandGradeColor = commandGrade === "S" ? GOLD : commandGrade === "A" ? GREEN : commandGrade === "B" ? BLUE : commandGrade === "C" ? CYAN : SOFT;
+  const battleSignature = winnerRow
+    ? Number(winnerRow.stats?.sonarUses || 0) >= Math.max(2, Number(winnerRow.stats?.visits || 0) * .35) ? "TACTICIEN SONAR"
+      : oceanControlAccuracy(winnerRow.stats) >= 55 ? "TIREUR DE PRÉCISION"
+      : Number(winnerRow.stats?.shipsSunk || 0) >= 3 ? "CHASSEUR DE FLOTTE"
+      : "COMMANDANT POLYVALENT"
+    : "COMMANDANT";
 
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10000, background: "radial-gradient(circle at 50% -5%,rgba(48,185,255,.30),rgba(0,7,13,.96) 42%,#000 100%)", overflowY: "auto", padding: "max(10px,env(safe-area-inset-top)) 9px max(12px,env(safe-area-inset-bottom))", boxSizing: "border-box" }}>
     <div style={{ width: "min(840px,100%)", margin: "0 auto" }}>
@@ -107,6 +123,11 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
         {sonarMaster ? <Award icon="📡" title="MAÎTRE SONAR" value={playerName(sonarMaster.profile)} detail={`${sonarMaster.stats?.sonarContacts || 0} contacts détectés`} color={CYAN} /> : null}
         {tactician ? <Award icon="🧭" title="TACTICIEN" value={playerName(tactician.profile)} detail={`série ${tactician.stats?.bestHitStreak || 0} · ${tactician.stats?.multiHitVisits || 0} multi-impacts`} color={GOLD} /> : null}
       </div>
+
+      {winnerRow ? <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "86px minmax(0,1fr)", gap: 10, alignItems: "stretch", borderRadius: 18, padding: 11, background: `linear-gradient(135deg,${commandGradeColor}12,rgba(0,0,0,.24))`, border: `1px solid ${commandGradeColor}44` }}>
+        <div style={{ borderRadius: 15, display: "grid", placeItems: "center", alignContent: "center", background: `${commandGradeColor}12`, border: `1px solid ${commandGradeColor}44` }}><div style={{ color: SOFT, fontSize: 6.7, fontWeight: 1000, letterSpacing: .7 }}>GRADE</div><strong style={{ color: commandGradeColor, fontSize: 34, lineHeight: 1, marginTop: 3 }}>{commandGrade}</strong><span style={{ color: SOFT, fontSize: 6.2, marginTop: 3 }}>{commandScore} pts</span></div>
+        <div style={{ minWidth: 0 }}><div style={{ color: commandGradeColor, fontSize: 9.3, fontWeight: 1100, letterSpacing: .65 }}>SIGNATURE DE COMMANDEMENT · {battleSignature}</div><div style={{ marginTop: 5, color: "#edf7ff", fontSize: 9.2, lineHeight: 1.45 }}>{playerName(winnerRow.profile)} termine la bataille avec {oceanControlAccuracy(winnerRow.stats)}% de précision, {winnerRow.stats?.shipsSunk || 0} navire{Number(winnerRow.stats?.shipsSunk || 0) > 1 ? "s" : ""} coulé{Number(winnerRow.stats?.shipsSunk || 0) > 1 ? "s" : ""}, {winnerRow.stats?.sonarContacts || 0} contact{Number(winnerRow.stats?.sonarContacts || 0) > 1 ? "s" : ""} sonar et une meilleure série de {winnerRow.stats?.bestHitStreak || 0} impacts.</div><div style={{ marginTop: 7, display: "flex", gap: 5, flexWrap: "wrap" }}><span style={{ borderRadius: 999, padding: "3px 7px", color: GREEN, border: `1px solid ${GREEN}44`, background: `${GREEN}10`, fontSize: 6.7, fontWeight: 1000 }}>Précision {oceanControlAccuracy(winnerRow.stats)}%</span><span style={{ borderRadius: 999, padding: "3px 7px", color: CYAN, border: `1px solid ${CYAN}44`, background: `${CYAN}10`, fontSize: 6.7, fontWeight: 1000 }}>Sonar {winnerRow.stats?.sonarContacts || 0}</span><span style={{ borderRadius: 999, padding: "3px 7px", color: GOLD, border: `1px solid ${GOLD}44`, background: `${GOLD}10`, fontSize: 6.7, fontWeight: 1000 }}>Série {winnerRow.stats?.bestHitStreak || 0}</span></div></div>
+      </div> : null}
 
       <div style={{ marginTop: 10, borderRadius: 18, padding: 11, background: "linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.20))", border: "1px solid rgba(255,255,255,.08)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

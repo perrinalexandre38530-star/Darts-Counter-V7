@@ -3814,7 +3814,10 @@ React.useEffect(() => {
         const savedProfile = await (await getOnlineApi()).updateProfile({
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,
-          surname: patch.nickname?.trim() || undefined,
+          // `surname` est un champ nom de famille legacy. Il ne doit surtout
+          // pas recevoir le pseudo public : cette confusion pouvait recréer
+          // Perrin/Ninja différemment suivant l'appareil.
+          surname: patch.lastName?.trim() || undefined,
           country: patch.country?.trim() || undefined,
           city: patch.city?.trim() || undefined,
           firstName: patch.firstName?.trim() || undefined,

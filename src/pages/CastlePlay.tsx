@@ -9,6 +9,7 @@ import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
+import { commitPremiumPartyProgress } from "../lib/premiumPartyProgress";
 import {
   assignCastleNumber, castleDartLabel, cloneCastleState, createCastleState, normalizeCastleConfig,
   pickCastleBotDarts, playCastleVisit, type CastleState,
@@ -64,7 +65,7 @@ export default function CastlePlay(props: any) {
   const [state,setState] = React.useState<CastleState>(()=>restored?.mode==="castle"?cloneCastleState(restored):createCastleState(players,config));
   const [currentThrow,setCurrentThrow] = React.useState<UIDart[]>(()=>Array.isArray(recoveredThrow)?recoveredThrow.slice(0,3):[]);
   const [multiplier,setMultiplier] = React.useState<1|2|3>(()=>{const v=resumeRecord?.resume?.multiplier??resumeRecord?.payload?.multiplier;return v===2||v===3?v:1;});
-  const [undo,setUndo] = React.useState<CastleState[]>([]); const [notice,setNotice] = React.useState(""); const [moment,setMoment] = React.useState<any>(null);
+  const [undo,setUndo] = React.useState<CastleState[]>([]); const [notice,setNotice] = React.useState(""); const [moment,setMoment] = React.useState<any>(null); const [progression,setProgression] = React.useState<any>(()=>resumeRecord?.summary?.progression||resumeRecord?.payload?.summary?.progression||null);
   const [playersOpen,setPlayersOpen]=React.useState(false); const [statsOpen,setStatsOpen]=React.useState(false); const [logOpen,setLogOpen]=React.useState(false); const [rankingOpen,setRankingOpen]=React.useState(false);
   const botBusy=React.useRef(false); const finishedRef=React.useRef(false); const introPlayedRef=React.useRef(false); const initialCheckpointRef=React.useRef(false); const historyHydratedRef=React.useRef(false);
   const matchIdRef=React.useRef(String(resumeRecord?.id||resumeRecord?.matchId||`castle-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
@@ -82,7 +83,29 @@ export default function CastlePlay(props: any) {
       resume:{mode:"castle",config:s.config,state:cloneCastleState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,updatedAt:Date.now()},payload:{kind:"castle",mode:"castle",sport:"darts",config:s.config,stateSnapshot:cloneCastleState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,visits:s.visits,visitHistory:s.visits,stats:{mode:"castle",players:s.statsByPlayer,legWins:s.legWins}}};
   },[profiles,currentThrow,multiplier]);
   const saveInProgress=React.useCallback(async(s:CastleState,draft:UIDart[]=currentThrow,m:1|2|3=multiplier)=>{try{await History.upsert(buildRecord(s,"in_progress",draft,m));}catch(e){console.warn("[CASTLE] checkpoint failed",e);}},[buildRecord,currentThrow,multiplier]);
-  const persist=React.useCallback((s:CastleState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished",[],1);if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec).catch(()=>{});}else void saveInProgress(s,[],1);},[buildRecord,onFinish,saveInProgress]);
+  const persist = React.useCallback((s: CastleState) => {
+    if (s.phase === "finished") {
+      if (finishedRef.current) return;
+      finishedRef.current = true;
+      const progress = commitPremiumPartyProgress({
+        mode: "castle",
+        matchId: matchIdRef.current,
+        winnerId: s.winnerId,
+        participants: (s.players || []).map((p: any) => ({
+          id: String(p.id),
+          name: p.name,
+          stats: s.statsByPlayer?.[p.id] || {},
+          isBot: isBotProfile(profileById.get(String(p.id)) || p, botIds),
+        })),
+      });
+      setProgression(progress);
+      const rec: any = buildRecord(s, "finished", [], 1);
+      rec.summary = { ...(rec.summary || {}), progression: progress };
+      rec.payload = { ...(rec.payload || {}), summary: { ...(rec.payload?.summary || {}), progression: progress } };
+      if (typeof onFinish === "function") onFinish(rec, { navigate: false });
+      else void History.upsert(rec).catch(() => {});
+    } else void saveInProgress(s, [], 1);
+  }, [buildRecord, onFinish, saveInProgress, profileById, botIds]);
 
   React.useEffect(()=>{if(initialCheckpointRef.current)return;initialCheckpointRef.current=true;if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier);},[saveInProgress,state,currentThrow,multiplier]);
   React.useEffect(()=>{if(state.phase==="finished")return;const t=window.setTimeout(()=>void saveInProgress(state,currentThrow,multiplier),190);return()=>window.clearTimeout(t);},[state,currentThrow,multiplier,saveInProgress]);
@@ -109,7 +132,7 @@ export default function CastlePlay(props: any) {
   const awards=React.useMemo(()=>{const rows=rankingRows.map((r:any)=>({...r,st:state.statsByPlayer[r.id]||{}}));const builder=bestBy(rows,r=>Number(r.st.builds||0));const destroyer=bestBy(rows,r=>Number(r.st.damage||0));const sniper=bestBy(rows,r=>percent(r.st.usefulHits,r.st.darts));const wall=bestBy(rows,r=>Number(r.st.bestUsefulStreak||0));return[{icon:"🏗️",label:"BÂTISSEUR",name:builder?.name||"—",value:`${builder?.st?.builds||0} briques`,color:builder?.color},{icon:"⚔️",label:"ASSAILLANT",name:destroyer?.name||"—",value:`${destroyer?.st?.damage||0} dégâts`,color:destroyer?.color},{icon:"🎯",label:"PRÉCISION",name:sniper?.name||"—",value:`${percent(sniper?.st?.usefulHits,sniper?.st?.darts)}%`,color:sniper?.color},{icon:"🛡️",label:"MURAILLE",name:wall?.name||"—",value:`${wall?.st?.bestUsefulStreak||0} touches`,color:wall?.color}];},[rankingRows,state.statsByPlayer]);
   const totalDarts=Object.values(state.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0); const durationMs=Math.max(0,Number((state.finishedAt||Date.now()))-Number(state.startedAt||Date.now()));
 
-  if(state.phase==="finished") return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PremiumMomentOverlay moment={moment} accent={moment?.playerId ? (colorById.get(String(moment.playerId)) || ACCENT) : activeColor} profile={moment?.playerId ? profileById.get(String(moment.playerId)) : activeProfile} playerName={moment?.playerId ? nameById(moment.playerId) : activePlayer?.name} /><PageHeader tickerSrc={tickerCastle} tickerAlt="CASTLE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("castle_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="castle_play" mode="castle" screenLabel="CASTLE · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="CASTLE" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={() => go?.("statsHub", { mode: "active", initialStatsSubTab: "castle", playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={() => go?.("statsHub", { tab: "history", mode: "active", initialStatsSubTab: "history", focusMatchId:matchIdRef.current})} onConfig={()=>go?.("castle_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
+  if(state.phase==="finished") return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PremiumMomentOverlay moment={moment} accent={moment?.playerId ? (colorById.get(String(moment.playerId)) || ACCENT) : activeColor} profile={moment?.playerId ? profileById.get(String(moment.playerId)) : activeProfile} playerName={moment?.playerId ? nameById(moment.playerId) : activePlayer?.name} /><PageHeader tickerSrc={tickerCastle} tickerAlt="CASTLE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("castle_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="castle_play" mode="castle" screenLabel="CASTLE · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="CASTLE" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} progression={progression ? {...progression, winnerCareer: progression.byPlayer?.[String(state.winnerId || "")] || null} : null} onReplay={replay} onStats={() => go?.("statsHub", { mode: "active", initialStatsSubTab: "castle", playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={() => go?.("statsHub", { tab: "history", mode: "active", initialStatsSubTab: "history", focusMatchId:matchIdRef.current})} onConfig={()=>go?.("castle_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
 
   return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PremiumMomentOverlay moment={moment} accent={moment?.playerId ? (colorById.get(String(moment.playerId)) || ACCENT) : activeColor} profile={moment?.playerId ? profileById.get(String(moment.playerId)) : activeProfile} playerName={moment?.playerId ? nameById(moment.playerId) : activePlayer?.name} />
     <PageHeader tickerSrc={tickerCastle} tickerAlt="CASTLE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("castle_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="castle_play" mode="castle" screenLabel="CASTLE · Partie" accent={ACCENT}/></div>:null}/>

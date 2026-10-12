@@ -398,6 +398,26 @@ export default function OceanControlPlay(props: any) {
     });
     return { counts, max: Math.max(1, ...Object.values(counts).map(Number)) };
   }, [state.visits, targetOwner?.id]);
+  const battlePhase = React.useMemo(() => {
+    if (targetDamagePercent >= 72) return { label: "FINITION", detail: "Flotte adverse proche de la rupture", color: RED, icon: "🔥" };
+    if (targetDamagePercent >= 30) return { label: "ENGAGEMENT", detail: "La bataille est pleinement engagée", color: GOLD, icon: "⚔️" };
+    return { label: "RECONNAISSANCE", detail: "Cartographie et recherche des premiers contacts", color: CYAN, icon: "📡" };
+  }, [targetDamagePercent]);
+  const tacticalRecommendation = React.useMemo(() => {
+    if (!targetOwner) return null;
+    const unknown = (state.gridNumbers || []).map((number: number, cell: number) => ({ number, cell })).filter((row: any) => !targetOwner?.attackedCells?.[String(row.cell)]);
+    if (!unknown.length) return null;
+    const sonarCandidates = latestSonar?.contactCount > 0 ? unknown.filter((row: any) => latestSonar?.cells?.includes(row.cell)) : [];
+    const pool = sonarCandidates.length ? sonarCandidates : unknown;
+    const sorted = pool.slice().sort((a: any, b: any) => {
+      const heatA = Number(targetHeatmap?.counts?.[String(a.number)] || 0);
+      const heatB = Number(targetHeatmap?.counts?.[String(b.number)] || 0);
+      if (sonarCandidates.length) return heatB - heatA || a.number - b.number;
+      return heatA - heatB || a.number - b.number;
+    });
+    const best = sorted[0];
+    return best ? { ...best, source: sonarCandidates.length ? "sonar" : "exploration", heat: Number(targetHeatmap?.counts?.[String(best.number)] || 0) } : null;
+  }, [state.gridNumbers, targetOwner?.id, targetOwner?.attackedCells, latestSonar?.id, latestSonar?.contactCount, targetHeatmap]);
   const scoreLine = state.owners.map((owner) => `${owner.name} ${state.scoreByOwner[owner.id] || 0}`).join(" · ");
   const targetColor = ownerColorMap.get(String(targetOwner?.id || "")) || RED;
   const ownColor = ownerColorMap.get(String(ownOwner?.id || "")) || activeColor;
@@ -422,6 +442,19 @@ export default function OceanControlPlay(props: any) {
           </div>
         </div>
         <div className="ocean-match-scoreline"><span>BO{config.winsNeeded * 2 - 1}</span><strong>{scoreLine}</strong><span>{oceanControlDifficultyLabel(config.difficulty)}</span></div>
+        <div className="ocean-live-command-strip">
+          <div className="ocean-live-command-phase" style={{ borderColor: `${battlePhase.color}55`, color: battlePhase.color }}><span>{battlePhase.icon}</span><strong>{battlePhase.label}</strong><small>{battlePhase.detail}</small></div>
+          <button type="button" className="ocean-live-command-reco" disabled={!tacticalRecommendation} onClick={() => tacticalRecommendation && chooseFocus(tacticalRecommendation.number)} style={{ borderColor: `${GOLD}55` }}><span>🧭</span><strong>ZONE CONSEILLÉE {tacticalRecommendation?.number || "—"}</strong><small>{tacticalRecommendation?.source === "sonar" ? "Contact sonar à exploiter" : "Zone encore peu travaillée"}</small></button>
+        </div>
+        <div className="ocean-fleet-score-strip" aria-label="État des flottes">
+          {state.owners.map((owner: any, index: number) => {
+            const color = ownerColorMap.get(String(owner.id)) || PLAYER_COLORS[index % PLAYER_COLORS.length];
+            const isTarget = String(owner.id) === String(targetOwner?.id || "");
+            const isOwn = String(owner.id) === String(ownOwner?.id || "");
+            const ships = oceanControlRemainingDecks(owner);
+            return <button key={owner.id} type="button" disabled={isOwn || owner.eliminated} onClick={() => !isOwn && !owner.eliminated && chooseTarget(owner.id)} className={`ocean-fleet-score-chip ${isTarget ? "is-target" : ""} ${owner.eliminated ? "is-eliminated" : ""}`} style={{ ["--fleet-color" as any]: color }}><span className="ocean-fleet-score-chip__dot" /><strong>{owner.name}</strong><span>{state.scoreByOwner[owner.id] || 0} pts · {ships} nav.</span></button>;
+          })}
+        </div>
       </section>
 
       <section className="ocean-grid-panel">
@@ -437,7 +470,7 @@ export default function OceanControlPlay(props: any) {
           <div className="ocean-map-launcher__hero">
             <div>
               <strong>OUVRIR LA CARTE ENNEMIE</strong>
-              <span>Appuie sur la carte ou sur une case pour ouvrir le bloc flottant et jouer plus confortablement.</span>
+              <span>{battlePhase.icon} {battlePhase.label} · {tacticalRecommendation ? `zone conseillée ${tacticalRecommendation.number}` : "analyse en cours"}</span>
             </div>
             <button type="button" className="ocean-map-launcher__cta" onClick={(event) => { event.stopPropagation(); setOverlay("map"); }}>OUVRIR</button>
           </div>
@@ -492,7 +525,7 @@ export default function OceanControlPlay(props: any) {
       </section>
     </main>
 
-    {overlay === "map" ? <OverlayShell title="CARTE ENNEMIE" subtitle={`${targetOwner?.name || "Aucune cible"} · Focus ${state.focusNumber || "—"}`} color={targetColor} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 10 }}><Kpi label="NAVIRES RESTANTS" value={remainingShips} color={RED} /><Kpi label="ZONES INTACTES" value={remainingCells} color={CYAN} /><Kpi label="DÉGÂTS" value={`${targetDamagePercent}%`} color={GOLD} /></div><div className="ocean-map-overlay-toolbar"><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("intel")}>📡 Centre tactique</button><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("targets")}>🎯 Changer de cible</button><button type="button" className="ocean-map-overlay-tool" onClick={cancelOrUndo}>↶ Annuler</button></div><div className="ocean-map-overlay-grid"><OceanGrid state={state} owner={targetOwner} onFocus={chooseFocus} sonarScan={latestSonar} recentCells={recentCells} shipColor={targetColor} heatmap={targetHeatmap} /></div><div className="ocean-map-legend-row"><StatusLegend /><span className="ocean-heat-legend"><i /> Pression de tir</span></div><div className="ocean-map-overlay-footnote">Sélectionne une case pour définir le focus du sonar ou de la DBULL. Les contacts sonar pulsés te guident vers les zones chaudes et la chaleur indique les secteurs les plus travaillés.</div></OverlayShell> : null}
+    {overlay === "map" ? <OverlayShell title="CARTE ENNEMIE" subtitle={`${targetOwner?.name || "Aucune cible"} · Focus ${state.focusNumber || "—"}`} color={targetColor} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 10 }}><Kpi label="NAVIRES RESTANTS" value={remainingShips} color={RED} /><Kpi label="ZONES INTACTES" value={remainingCells} color={CYAN} /><Kpi label="DÉGÂTS" value={`${targetDamagePercent}%`} color={GOLD} /></div><div className="ocean-map-command-card" style={{ borderColor: `${battlePhase.color}44` }}><div><span style={{ color: battlePhase.color }}>{battlePhase.icon} {battlePhase.label}</span><strong>{tacticalRecommendation ? `Priorité zone ${tacticalRecommendation.number}` : "Aucune zone disponible"}</strong><small>{tacticalRecommendation?.source === "sonar" ? `Le dernier sonar a détecté ${latestSonar?.contactCount || 0} contact(s) dans ce secteur.` : "Le système recommande une zone encore peu explorée pour élargir la couverture."}</small></div><button type="button" disabled={!tacticalRecommendation} onClick={() => tacticalRecommendation && chooseFocus(tacticalRecommendation.number)}>FOCUS {tacticalRecommendation?.number || "—"}</button></div><div className="ocean-map-overlay-toolbar"><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("intel")}>📡 Centre tactique</button><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("targets")}>🎯 Changer de cible</button><button type="button" className="ocean-map-overlay-tool" onClick={cancelOrUndo}>↶ Annuler</button></div><div className="ocean-map-overlay-grid"><OceanGrid state={state} owner={targetOwner} onFocus={chooseFocus} sonarScan={latestSonar} recentCells={recentCells} shipColor={targetColor} heatmap={targetHeatmap} /></div><div className="ocean-map-legend-row"><StatusLegend /><span className="ocean-heat-legend"><i /> Pression de tir</span></div><div className="ocean-map-overlay-footnote">Sélectionne une case pour définir le focus du sonar ou de la DBULL. Les contacts sonar pulsés te guident vers les zones chaudes et la chaleur indique les secteurs les plus travaillés.</div></OverlayShell> : null}
     {overlay === "fleet" ? <OverlayShell title="MA FLOTTE" subtitle={`${ownOwner?.name} · ${scoreLine}`} color={GREEN} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 10 }}><Kpi label="NAVIRES ACTIFS" value={oceanControlRemainingDecks(ownOwner)} color={GREEN} /><Kpi label="ZONES INTACTES" value={oceanControlRemainingCells(ownOwner)} color={CYAN} /><Kpi label="MANCHES" value={state.scoreByOwner[ownOwner?.id || ""] || 0} color={GOLD} /></div><ShipStrip owner={ownOwner} reveal color={ownColor} /><div style={{ marginTop: 10 }}><OceanGrid state={state} owner={ownOwner} own onFocus={() => {}} shipColor={ownColor} /></div></OverlayShell> : null}
     {overlay === "targets" ? <OverlayShell title="CHOISIR UNE FLOTTE ENNEMIE" subtitle="Change la cible de la prochaine volée" color={RED} onClose={() => setOverlay(null)}><div style={{ display: "grid", gap: 8 }}>{state.owners.filter((owner) => owner.id !== ownOwner?.id).map((owner) => { const total = owner.ships.reduce((sum, ship) => sum + ship.length, 0) || 1; const left = oceanControlRemainingCells(owner); const damage = Math.round(((total - left) / total) * 100); return <button key={owner.id} disabled={owner.eliminated} onClick={() => chooseTarget(owner.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 11, borderRadius: 15, border: `1px solid ${state.targetOwnerId === owner.id ? RED : "rgba(255,255,255,.09)"}`, background: state.targetOwnerId === owner.id ? `${RED}14` : "rgba(255,255,255,.03)", color: owner.eliminated ? "rgba(255,255,255,.3)" : "#fff", textAlign: "left" }}><div><div style={{ fontWeight: 1100 }}>{owner.name}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{oceanControlRemainingDecks(owner)} navires · {left} zones · {damage}% détruit</div><div style={{ marginTop: 6, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${damage}%`, height: "100%", background: `linear-gradient(90deg,${GOLD},${RED})` }} /></div></div><strong style={{ color: owner.eliminated ? RED : CYAN }}>{owner.eliminated ? "COULÉE" : state.targetOwnerId === owner.id ? "CIBLE" : "VISER"}</strong></button>; })}</div></OverlayShell> : null}
     {overlay === "intel" ? <OverlayShell title="CENTRE TACTIQUE" subtitle={`${targetOwner?.name || "Aucune cible"} · ${remainingCells} zones intactes`} color={CYAN} onClose={() => setOverlay(null)}>

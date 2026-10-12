@@ -58,7 +58,7 @@ export default function CargoLoadStatus({ state, stats, playerId, onOpenTruck, o
   const badgeArt = getCargoStageBadge(snapshot.stage);
   const supportArt = getCargoSupportArt({ parcel: snapshot.unit === 'COLIS', stage: snapshot.stage });
 
-  return <section style={{ minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1.25fr) minmax(0,.9fr)', gap: 8 }}>
+  return <section className="cargo-load-status" style={{ minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1.25fr) minmax(0,.9fr)', gap: 8 }}>
     <button type="button" onClick={onOpenTruck} style={{ ...panelStyle(accent), cursor: 'pointer', textAlign: 'left' }}>
       <div style={{ position: 'absolute', right: -16, top: -8, width: 110, height: 110, opacity: .09, pointerEvents: 'none' }}><img src={supportArt} alt="" style={artTile(supportArt, 110)} /></div>
       <div style={{ display: 'grid', gridTemplateColumns: '96px minmax(0,1fr)', gap: 10, alignItems: 'center', height: '100%' }}>

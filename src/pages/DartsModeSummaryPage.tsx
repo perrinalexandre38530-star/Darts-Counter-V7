@@ -1,8 +1,11 @@
 import * as React from "react";
 import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
+import DartsPokerBadge from "../components/darts-poker/DartsPokerBadge";
+import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
+import type { DartsPokerBadgeId } from "../components/darts-poker/DartsPokerBadge";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
-import { deriveDartsPokerPlayerMetrics, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../lib/dartsPokerAnalytics";
+import { deriveDartsPokerMatchStory, deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../lib/dartsPokerAnalytics";
 
 type Props = {
   store?: any;
@@ -1222,6 +1225,23 @@ function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
   const categories = [
     ["Carte haute","highCardHands"],["Paire","pairs"],["Double paire","twoPairs"],["Brelan","threeOfAKinds"],["Suite","straights"],["Couleur","flushes"],["Full","fullHouses"],["Carré","fourOfAKinds"],["Quinte flush","straightFlushes"],["Royale","royalFlushes"],
   ];
+  const pokerAwardWinner = (metric: (row: any) => number) => [...pokerRows].sort((a: any, b: any) => metric(b) - metric(a))[0] || null;
+  const matchAwards: Array<{ label: string; badgeId: DartsPokerBadgeId; color: string; row: any; value: (row: any) => string }> = [
+    { label: "SHARK DE LA TABLE", badgeId: "shark", color: "#f6c256", row: pokerAwardWinner((r) => num(r?.raw?.points)), value: (r) => `${fmt(r?.raw?.points)} pts` },
+    { label: "TIREUR D'ÉLITE", badgeId: "sniper", color: "#5ce6a8", row: pokerAwardWinner((r) => num(r?.raw?.accuracy)), value: (r) => pctText(r?.raw?.accuracy) },
+    { label: "CHASSEUR DE CONTRATS", badgeId: "contract_master", color: "#e83a43", row: pokerAwardWinner((r) => num(r?.raw?.contractHits)), value: (r) => `${fmt(r?.raw?.contractHits)}/${fmt(r?.raw?.contractsAttempted)}` },
+    { label: "MAÎTRE DES POUVOIRS", badgeId: "power_player", color: "#ff63b8", row: pokerAwardWinner((r) => num(r?.raw?.powerUseRate)), value: (r) => pctText(r?.raw?.powerUseRate) },
+    { label: "LUCKY JOKER", badgeId: "joker_master", color: "#55c7ff", row: pokerAwardWinner((r) => num(r?.raw?.jokers)), value: (r) => `${fmt(r?.raw?.jokers)} joker(s)` },
+    { label: "MAÎTRE DE LA TABLE", badgeId: "table_leader", color: "#55c7ff", row: pokerAwardWinner((r) => num(r?.raw?.leadRounds)), value: (r) => `${fmt(r?.raw?.leadRounds)} manche(s)` },
+    { label: "CLOSER", badgeId: "closer", color: "#5ce6a8", row: pokerAwardWinner((r) => Number(Boolean(r?.raw?.closingRoundWin)) * 1000 + num(r?.raw?.lastThreePoints)), value: (r) => `${fmt(r?.raw?.lastThreePoints)} pts · fin` },
+  ];
+  const bestHands = pokerRows.map((row: any) => {
+    const roundRows = rounds.flatMap((round: any) => asArray(round?.rows).filter((item: any) => String(item?.playerId) === String(row.id)).map((item: any) => ({ round, item })));
+    const best = roundRows.sort((a: any, b: any) => num(b?.item?.evaluation?.score) - num(a?.item?.evaluation?.score))[0] || null;
+    return { row, best };
+  }).filter((entry: any) => entry.best);
+  const sectorMaps = pokerRows.map((row: any) => ({ row, sectors: deriveDartsPokerSectorHeatmap(row.raw || {}) }));
+  const matchStory = deriveDartsPokerMatchStory(rounds);
   return <>
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Table de poker · statistiques complètes</div>
@@ -1242,6 +1262,46 @@ function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
         <Kpi label="Points distribués" value={points || num(match?.totalPoints)} accent="#f6c256" />
         <Kpi label="Contrats" value={`${contracts}/${contractAttempts}`} accent="#5ce6a8" />
         <Kpi label="Bonus contrats" value={`+${contractBonus}`} accent="#f6c256" />
+      </div>
+    </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Lecture du match · leadership & comeback</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
+        <Kpi label="Changements leader" value={num(matchStory?.leadChanges)} accent="#55c7ff" />
+        <Kpi label="Leaders différents" value={num(matchStory?.uniqueLeaders)} accent="#f6c256" />
+        <Kpi label="Plus grosse avance" value={`${num(matchStory?.largestLead)} pt`} accent="#5ce6a8" />
+        <Kpi label="Marge finale" value={`${num(matchStory?.finalMargin)} pt`} accent="#f6c256" />
+        <Kpi label="Comeback vainqueur" value={`${num(matchStory?.winnerMaxDeficit)} pt`} accent="#ff9b52" />
+        <Kpi label="Manche décisive" value={num(matchStory?.decisiveRound) || "—"} accent="#e83a43" />
+      </div>
+    </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Distinctions de la partie</div>
+      <div style={{ color: "#9097a8", fontSize: 9, marginBottom: 8 }}>Les trophées visuels reprennent les performances marquantes de cette partie Darts Poker.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>
+        {matchAwards.map((award) => { const row = award.row; return <div key={award.label} style={{ padding: 8, borderRadius: 14, display: "grid", gridTemplateColumns: "66px minmax(0,1fr)", gap: 8, alignItems: "center", background: `${award.color}0b`, border: `1px solid ${award.color}3d` }}>
+          <div style={{ width: 66, height: 66, borderRadius: 13, display: "grid", placeItems: "center", overflow: "hidden", background: "rgba(255,255,255,.025)", border: `1px solid ${award.color}33` }}><DartsPokerBadge id={award.badgeId} size="100%" /></div>
+          <div style={{ minWidth: 0 }}><div style={{ color: award.color, fontSize: 8, fontWeight: 1000 }}>{award.label}</div><div style={{ color: "#fff", fontSize: 11, fontWeight: 1000, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row?.name || "—"}</div><div style={{ color: "#9ca3b5", fontSize: 8.5, marginTop: 2 }}>{award.value(row)}</div></div>
+        </div>; })}
+      </div>
+    </section>
+    {bestHands.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Meilleures mains · deck MSS Signature</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 }}>
+        {bestHands.map(({ row, best }: any) => <div key={`best-${row.id}`} style={{ padding: 9, borderRadius: 14, background: "rgba(255,255,255,.025)", border: `1px solid ${accent}33` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}><strong style={{ color: "#fff" }}>{row.name}</strong><span style={{ color: accent, fontSize: 9, fontWeight: 1000 }}>{best?.item?.evaluation?.label || "—"}</span></div>
+          <div style={{ color: "#8f96a8", fontSize: 8, marginTop: 2 }}>Manche {num(best?.round?.round, 1)} · +{num(best?.item?.pointsAwarded)} pt</div>
+          <div style={{ display: "flex", gap: 4, overflowX: "auto", marginTop: 7, paddingBottom: 2 }}>{asArray(best?.item?.bestFive).map((cardValue: any, index: number) => <DartsPokerCard key={`${cardValue?.id || index}-${index}`} card={cardValue} size="mini" />)}</div>
+        </div>)}
+      </div>
+    </section> : null}
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Cartographie des secteurs · 1 à 20</div>
+      <div style={{ display: "grid", gap: 9 }}>
+        {sectorMaps.map(({ row, sectors }: any) => { const maxHits = Math.max(1, ...sectors.map((sector: any) => num(sector.total))); return <div key={`sector-map-${row.id}`}>
+          <div style={{ color: "#fff", fontWeight: 1000, marginBottom: 5 }}>{row.name}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(10,minmax(0,1fr))", gap: 4 }}>{sectors.map((sector: any) => { const intensity = Math.min(1, num(sector.total) / maxHits); return <div key={sector.sector} style={{ padding: "5px 2px", textAlign: "center", borderRadius: 9, border: `1px solid ${num(sector.total) ? accent : "rgba(255,255,255,.08)"}44`, background: num(sector.total) ? `rgba(246,194,86,${.04 + intensity * .16})` : "rgba(255,255,255,.02)" }}><div style={{ color: "#fff", fontSize: 8, fontWeight: 1000 }}>{sector.sector}</div><div style={{ color: accent, fontSize: 8 }}>{num(sector.total)}</div><div style={{ color: "#7f8799", fontSize: 6 }}>S{num(sector.singles)} D{num(sector.doubles)} T{num(sector.triples)}</div></div>; })}</div>
+        </div>; })}
       </div>
     </section>
     <section style={card(accent)}>

@@ -162,6 +162,74 @@
   text-overflow:ellipsis;
 }
 
+.ocean-live-command-strip{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:5px;
+  padding:4px 6px;
+  border-top:1px solid rgba(255,255,255,.05);
+  background:rgba(0,0,0,.16);
+}
+
+.ocean-live-command-phase,
+.ocean-live-command-reco{
+  min-width:0;
+  min-height:29px;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  grid-template-rows:auto auto;
+  column-gap:5px;
+  align-items:center;
+  padding:4px 7px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.18));
+  text-align:left;
+}
+
+.ocean-live-command-phase>span,
+.ocean-live-command-reco>span{grid-row:1/3;font-size:12px}
+.ocean-live-command-phase strong,
+.ocean-live-command-reco strong{min-width:0;font-size:6.9px;font-weight:1100;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-live-command-phase small,
+.ocean-live-command-reco small{min-width:0;color:#8497a9;font-size:5.8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-live-command-reco{color:#f5ca68;cursor:pointer}
+.ocean-live-command-reco:disabled{opacity:.5;cursor:default}
+
+.ocean-fleet-score-strip{
+  display:flex;
+  gap:4px;
+  padding:3px 6px 5px;
+  overflow-x:auto;
+  scrollbar-width:none;
+  border-top:1px solid rgba(255,255,255,.04);
+}
+.ocean-fleet-score-strip::-webkit-scrollbar{display:none}
+
+.ocean-fleet-score-chip{
+  --fleet-color:#30b9ff;
+  flex:1 0 84px;
+  min-width:84px;
+  max-width:150px;
+  min-height:24px;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  grid-template-rows:auto auto;
+  column-gap:5px;
+  align-items:center;
+  padding:3px 6px;
+  border-radius:9px;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.025);
+  color:#fff;
+  text-align:left;
+}
+.ocean-fleet-score-chip__dot{grid-row:1/3;width:6px;height:6px;border-radius:50%;background:var(--fleet-color);box-shadow:0 0 8px var(--fleet-color)}
+.ocean-fleet-score-chip strong{min-width:0;font-size:6.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-fleet-score-chip>span:last-child{min-width:0;color:#8da1b4;font-size:5.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-fleet-score-chip.is-target{border-color:color-mix(in srgb,var(--fleet-color) 58%,transparent);background:color-mix(in srgb,var(--fleet-color) 10%,rgba(0,0,0,.2))}
+.ocean-fleet-score-chip.is-eliminated{opacity:.42;filter:grayscale(.45)}
+
 .ocean-grid-panel{
   position:relative;
   min-height:0;
@@ -1098,6 +1166,24 @@
   margin-bottom:10px;
 }
 
+.ocean-map-command-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  margin-bottom:9px;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid rgba(101,233,255,.18);
+  background:linear-gradient(135deg,rgba(48,185,255,.09),rgba(0,0,0,.22));
+}
+.ocean-map-command-card>div{min-width:0;display:grid;gap:3px}
+.ocean-map-command-card span{font-size:7.2px;font-weight:1100;letter-spacing:.45px}
+.ocean-map-command-card strong{color:#fff;font-size:10px;font-weight:1100}
+.ocean-map-command-card small{color:#91a5b7;font-size:7.3px;line-height:1.35}
+.ocean-map-command-card button{min-width:82px;min-height:36px;border-radius:11px;border:1px solid rgba(245,202,104,.48);background:rgba(245,202,104,.12);color:#f5ca68;font-size:8px;font-weight:1100}
+.ocean-map-command-card button:disabled{opacity:.45}
+
 .ocean-map-overlay-tool{
   min-height:34px;
   padding:0 8px;
@@ -1130,6 +1216,14 @@
   .ocean-mini-kpi{min-height:32px;padding:3px 2px}
   .ocean-mini-kpi span{font-size:5.1px}
   .ocean-mini-kpi strong{font-size:11px}
+  .ocean-live-command-strip{gap:3px;padding:3px 5px}
+  .ocean-live-command-phase,.ocean-live-command-reco{min-height:26px;padding:3px 5px}
+  .ocean-live-command-phase small,.ocean-live-command-reco small{display:none}
+  .ocean-fleet-score-strip{padding:2px 5px 4px}
+  .ocean-fleet-score-chip{flex-basis:72px;min-width:72px;min-height:21px;padding:2px 5px}
+  .ocean-map-command-card{padding:8px;gap:7px}
+  .ocean-map-command-card small{font-size:6.7px}
+  .ocean-map-command-card button{min-width:72px;min-height:32px;font-size:7.2px}
   .ocean-grid-panel{padding:4px 5px 24px}
   .ocean-control-grid{gap:3px}
   .ocean-control-cell{border-radius:8px}
@@ -1164,6 +1258,10 @@
   .ocean-floating-dock{bottom:-17px}
   .ocean-float-action{height:37px}
   .ocean-match-scoreline{min-height:14px;padding-bottom:2px}
+  .ocean-live-command-strip{padding:2px 5px}
+  .ocean-live-command-phase,.ocean-live-command-reco{min-height:23px;padding:2px 5px}
+  .ocean-live-command-phase small,.ocean-live-command-reco small{display:none}
+  .ocean-fleet-score-strip{display:none}
   .ocean-pad-statusline{min-height:21px}
   .ocean-pad-preview-chip{height:20px}
   .ocean-pad-mode,.ocean-pad-undo,.ocean-pad-bull,.ocean-pad-backspace,.ocean-pad-validate,.ocean-pad-cell{min-height:24px}

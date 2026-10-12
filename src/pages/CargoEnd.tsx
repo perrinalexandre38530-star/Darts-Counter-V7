@@ -31,6 +31,7 @@ import {
   Tooltip,
 } from "recharts";
 import "../styles/cargo-end.css";
+import "../styles/cargo-ui.css";
 
 const ORANGE = "#ff9b42";
 const GOLD = "#f6c256";
@@ -114,6 +115,11 @@ function CargoFlowBar({ label, value, total, color, suffix = "" }: any) {
 
 export default function CargoEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: { state: CargoState; profilesById: Map<string, any>; onClose: () => void; onReplay: () => void; onStats: () => void; onHistory: () => void; }) {
   const [tab, setTab] = React.useState<EndTab>("summary");
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
   const parcel = state.config.variant === "parcel_delivery";
   const teamMode = state.config.participantMode === "teams";
   const match = React.useMemo(() => buildCargoMatchStats(state), [state]);

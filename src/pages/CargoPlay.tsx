@@ -40,6 +40,7 @@ import CargoParcelRoutePanel from "../components/cargo/CargoParcelRoutePanel";
 import { buildCargoVisualSnapshot } from "../lib/gameEngines/cargoVisuals";
 import { getCargoContractArt, getCargoHeroArt, getCargoStageBadge, getCargoSupportArt } from "../components/cargo/cargoArt";
 import CargoEnd from "./CargoEnd";
+import "../styles/cargo-ui.css";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 type CargoOverlay = null | "truck" | "manifest" | "standings" | "stats" | "timeline";
@@ -214,6 +215,11 @@ function notableToast(events: any[]): CargoToast {
 }
 
 function OverlayShell({ title, subtitle, color, onClose, children }: any) {
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.84)", backdropFilter: "blur(9px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "8px 8px max(8px,env(safe-area-inset-bottom))" }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div style={{ width: "min(820px,100%)", maxHeight: "88dvh", overflow: "hidden", borderRadius: "23px 23px 15px 15px", background: "linear-gradient(180deg,#171a20,#080a0e)", border: `1px solid ${color}55`, boxShadow: "0 28px 90px rgba(0,0,0,.72)" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "12px 13px", background: "linear-gradient(180deg,rgba(20,23,29,.99),rgba(14,16,20,.96))", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
@@ -466,11 +472,11 @@ export default function CargoPlay(props: any) {
   const cargoFill = Math.max(0, Math.min(100, activeScore / Math.max(1, cargoTarget) * 100));
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
 
-  return <div style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+  return <div className="cargo-play-page" style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
     <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
 
     <main className="cargo-play-main" style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 980, margin: "0 auto", padding: "7px 8px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "132px 58px 132px minmax(0,1fr)", gap: 9, overflow: "hidden" }}>
-      <section style={{ minHeight: 0, borderRadius: 20, overflow: "hidden", border: `1px solid ${activeColor}78`, background: "linear-gradient(180deg,rgba(18,20,27,.93),rgba(6,8,12,.96))", boxShadow: `0 0 24px ${activeColor}1c,0 12px 30px rgba(0,0,0,.26)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 34px" }}>
+      <section className="cargo-play-hero" style={{ minHeight: 0, borderRadius: 20, overflow: "hidden", border: `1px solid ${activeColor}78`, background: "linear-gradient(180deg,rgba(18,20,27,.93),rgba(6,8,12,.96))", boxShadow: `0 0 24px ${activeColor}1c,0 12px 30px rgba(0,0,0,.26)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 34px" }}>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 126px", alignItems: "stretch", position: "relative" }}>
           <div style={{ minWidth: 0, position: "relative", overflow: "hidden", padding: "9px 9px 7px 10px", display: "grid", gridTemplateColumns: "58px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
             <div aria-hidden style={{ position: "absolute", right: -26, top: -32, width: 150, height: 150, opacity: .13, transform: "scale(1.45)", pointerEvents: "none", filter: "saturate(.9)" }}><ProfileAvatar profile={activeProfile} size={104} /></div>
@@ -480,7 +486,7 @@ export default function CargoPlay(props: any) {
               <div style={{ color: activeColor, fontSize: 16, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${activeColor}44` }}>{playerName(activeProfile)}</div>
               <div style={{ marginTop: 6, color: "rgba(255,255,255,.58)", fontSize: 8.4, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds}{activeTeamName ? ` · ${activeTeamName}` : ""}</div>
               <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 9px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: activeSeries ? GREEN : GOLD, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `Série ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`}` : "Nouvelle série disponible"}</span></div>
-              <CargoTeamStrip activeTeam={activeTeam} activeTeamName={activeTeamName} profilesById={profilesById} scoreUnit={scoreUnit} activeColor={activeColor} />
+              <CargoTeamStrip activeTeam={activeTeam} activeTeamName={activeTeamName} profilesById={profilesById} scoreUnit={scoreUnit} activeColor={activeColor} activeScore={activeScore} activePlayerId={activePlayer?.id} />
             </div>
             <div style={{ minWidth: 58, textAlign: "center", position: "relative", zIndex: 1 }}>
               <div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 33, lineHeight: .9, fontWeight: 1200, textShadow: `0 0 14px ${(isParcel ? BLUE : ORANGE)}42` }}>{activeScore}</div>
@@ -502,7 +508,7 @@ export default function CargoPlay(props: any) {
         <CargoManifestStrip objectiveNow={objectiveNow} activeContract={activeContract} activeSeries={activeSeries} throwCount={throwDarts.length} isParcel={isParcel} onOpenManifest={() => setOverlay("manifest")} />
       </section>
 
-      <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+      <section className="cargo-play-quickbar" style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
         <QuickButton icon="▦" label={isParcel ? "TOURNÉE" : "MANIFESTE"} value={`${state.contracts.length} contrat${state.contracts.length > 1 ? "s" : ""}`} color={GOLD} onClick={() => setOverlay("manifest")} />
         <QuickButton icon="≡" label="CLASSEMENT" value={`#${activeStanding?.rank || 1}/${state.standings.length}`} color={ORANGE} onClick={() => setOverlay("standings")} />
         <QuickButton icon="⌁" label="STATS" value={`${activeAccuracy}% précision`} color={GREEN} onClick={() => setOverlay("stats")} />
@@ -511,7 +517,7 @@ export default function CargoPlay(props: any) {
 
       <CargoLoadStatus state={state} stats={activeStats} playerId={activePlayer?.id} onOpenTruck={() => setOverlay("truck")} onOpenManifest={() => setOverlay("manifest")} />
 
-      {state.phase === "playing" ? <section style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "stretch", borderRadius: 20, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)", padding: 7, boxShadow: "0 12px 32px rgba(0,0,0,.24)" }}>
+      {state.phase === "playing" ? <section className="cargo-play-input" style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "stretch", borderRadius: 20, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)", padding: 7, boxShadow: "0 12px 32px rgba(0,0,0,.24)" }}>
         {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 18, background: "linear-gradient(180deg,rgba(20,20,23,.82),rgba(8,8,11,.93))", padding: 10, display: "grid", gridTemplateRows: "minmax(0,1fr) 56px", gap: 12 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(330, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .39)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "minmax(88px,.8fr) minmax(64px,.44fr) minmax(120px,1fr)", gap: 10 }}><button type="button" onClick={cancelOrUndo} style={{ borderRadius: 16, border: "1px solid rgba(255,180,0,.3)", background: "linear-gradient(180deg,#ffc63a,#ffaf00)", color: "#1a1a1a", fontWeight: 1050, cursor: "pointer", boxShadow: "0 9px 20px rgba(255,170,0,.20)" }}>ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} disabled={!throwDarts.length} style={{ borderRadius: 16, border: throwDarts.length ? "1px solid rgba(255,180,0,.3)" : "1px solid rgba(255,255,255,.06)", color: throwDarts.length ? "#171008" : "rgba(255,255,255,.24)", background: throwDarts.length ? "linear-gradient(180deg,#ffc63a,#ffad00)" : "rgba(255,255,255,.035)", fontWeight: 1100, cursor: throwDarts.length ? "pointer" : "default" }}>VALIDER</button></div></div> : <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
           <CargoAiryKeypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onBackspace={() => { setThrowDarts((prev) => prev.slice(0,-1)); setMultiplier(1); }} onCancel={cancelOrUndo} onNumber={(number: number) => addDart(number)} onBull={() => addDart(25, multiplier === 2 ? 2 : 1)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3} disabled={botThinking} />
         </div>}
@@ -527,11 +533,11 @@ export default function CargoPlay(props: any) {
       .cargo-route-step.is-reached{animation:cargo-reached .36s ease-out both}
       .cargo-load-badge{animation:cargo-status-pulse 2.6s ease-in-out infinite}
       @media (prefers-reduced-motion:reduce){.cargo-float-art,.cargo-route-step.is-reached,.cargo-load-badge{animation:none!important}}
-      @media (max-height:720px){
-        .cargo-play-main{grid-template-rows:112px 48px 118px minmax(0,1fr)!important;gap:7px!important}
+      @media (max-height:720px) and (max-width:899px){
+        .cargo-play-main{grid-template-rows:112px 48px minmax(0,1fr)!important;gap:7px!important}
         .cargo-airy-keypad{grid-template-rows:32px 44px minmax(12px,auto) minmax(132px,1fr) 48px!important;gap:7px!important;padding:9px!important}
       }
-      @media (min-height:930px){
+      @media (min-height:930px) and (max-width:899px){
         .cargo-play-main{grid-template-rows:140px 62px 146px minmax(0,1fr)!important;gap:11px!important}
         .cargo-airy-keypad{grid-template-rows:46px 56px minmax(18px,auto) minmax(250px,1fr) 62px!important;gap:13px!important;padding:14px!important}
       }
@@ -613,9 +619,12 @@ function StandingsModal({ state, profilesById, onClose }: any) {
         const activeId = String(state.players[state.activePlayerIndex]?.id || "");
         const active = team.playerIds?.includes(activeId);
         const names = (team.playerIds || []).map((id: string) => playerName(profilesById.get(String(id)) || state.players.find((player: any) => String(player.id) === String(id)))).join(" · ");
+        const topId = String(team.topContributorId || "");
+        const topName = topId ? playerName(profilesById.get(topId) || state.players.find((player: any) => String(player.id) === topId)) : null;
+        const topShare = team.score > 0 ? Math.round((Number(team.topContributorScore || 0) / Number(team.score || 1)) * 100) : 0;
         return <div key={team.id} style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 10, borderRadius: 16, background: active ? `${color}10` : "rgba(255,255,255,.025)", border: `1px solid ${team.rank === 1 ? GOLD : active ? color : "rgba(255,255,255,.08)"}66` }}>
           <div style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: `${color}11`, border: `1px solid ${color}44`, color: team.rank === 1 ? GOLD : color, fontSize: 15, fontWeight: 1100 }}>#{team.rank}</div>
-          <div style={{ minWidth: 0 }}><div style={{ color: team.rank === 1 ? GOLD : color, fontSize: 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.name}{active ? " · EN JEU" : ""}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names}</div><div style={{ marginTop: 3, color: "#8c94a4", fontSize: 7.5 }}>{team.completedContracts || 0} contrats · {team.pallets || 0} palettes · {team.accuracy || 0}% précision</div></div>
+          <div style={{ minWidth: 0 }}><div style={{ color: team.rank === 1 ? GOLD : color, fontSize: 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.name}{active ? " · EN JEU" : ""}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names}</div><div style={{ marginTop: 3, color: "#8c94a4", fontSize: 7.5 }}>{team.completedContracts || 0} contrats · {team.pallets || 0} palettes · {team.accuracy || 0}% précision</div>{topName ? <div style={{ marginTop: 3, color: GOLD, fontSize: 7.2, fontWeight: 950 }}>TOP · {topName} · {team.topContributorScore || 0} {parcel ? "colis" : "kg"} · {topShare}%</div> : null}</div>
           <div style={{ textAlign: "right" }}><div style={{ color: parcel ? BLUE : ORANGE, fontSize: 22, fontWeight: 1150 }}>{team.score || 0}</div><div style={{ color: SOFT, fontSize: 7 }}>{parcel ? "COLIS" : "KG"}</div></div>
         </div>;
       })}</div>
@@ -649,7 +658,7 @@ function StatsModal({ state, stats, profile, onClose }: any) {
     <div style={{ ...panel(), marginTop: 10, padding: 11 }}>
       <div style={{ color: BLUE, fontSize: 9.5, fontWeight: 1100, marginBottom: 9 }}>TÉLÉMÉTRIE AVANCÉE</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
-        {[["1re flèche", `${adv.firstDartAccuracy}%`],["Dernière flèche", `${adv.lastDartAccuracy}%`],["Power darts", `${adv.powerDartRate}%`],["Bull rate", `${adv.bullRate}%`],["Volées parfaites", adv.perfectAccuracyVisits],["Segments uniques", adv.uniqueSegmentsHit],["Séries démarrées", adv.seriesStarts],["Séries perdues", adv.seriesLostEvents]].map(([label,value]: any) => <div key={label} style={{ padding: "7px 8px", borderRadius: 11, background: "rgba(0,0,0,.24)", border: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: SOFT, fontSize: 7.5 }}>{label}</span><strong style={{ color: "#fff", fontSize: 8.5 }}>{value}</strong></div>)}
+        {[["1re flèche", `${adv.firstDartAccuracy}%`],["Dernière flèche", `${adv.lastDartAccuracy}%`],["Power darts", `${adv.powerDartRate}%`],["Bull rate", `${adv.bullRate}%`],["Volées parfaites", adv.perfectAccuracyVisits],["Segments uniques", adv.uniqueSegmentsHit],["Séries démarrées", adv.seriesStarts],[state.config.variant === "convoy" ? "Relais convoi" : "Séries perdues", state.config.variant === "convoy" ? adv.convoyHandoffs : adv.seriesLostEvents]].map(([label,value]: any) => <div key={label} style={{ padding: "7px 8px", borderRadius: 11, background: "rgba(0,0,0,.24)", border: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: SOFT, fontSize: 7.5 }}>{label}</span><strong style={{ color: "#fff", fontSize: 8.5 }}>{value}</strong></div>)}
       </div>
     </div>
   </OverlayShell>;

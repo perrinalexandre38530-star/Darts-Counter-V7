@@ -2,6 +2,8 @@
 import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { footballAccuracy, footballVariantLabel } from "../lib/gameEngines/footballEngine";
+import { History } from "../lib/history";
+import { buildFootballEndInsights, footballKeyMomentsFromState } from "../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#35d0ff";
@@ -48,7 +50,40 @@ function MatchRecord({ icon, label, row, value, color }: any) {
   </div>;
 }
 
+function recordColor(metric: string) {
+  if (metric === "goals" || metric === "shotsOnTarget") return GOLD;
+  if (metric === "saves") return BLUE;
+  if (metric === "interceptions") return RED;
+  return GREEN;
+}
+
+function momentIcon(moment: any) {
+  const value = `${String(moment?.type || "")} ${String(moment?.label || "")}`.toLowerCase();
+  if (value.includes("goal") || value.includes("but")) return "⚽";
+  if (value.includes("save") || value.includes("arrêt") || value.includes("arret")) return "🧤";
+  if (value.includes("intercept") || value.includes("tacle")) return "🛡️";
+  if (value.includes("counter") || value.includes("contre")) return "🚀";
+  if (value.includes("penalt")) return "🥅";
+  return "•";
+}
+
 export default function FootballEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: any) {
+  const [insights, setInsights] = React.useState<any>({ breakthroughs: [], rivalry: null, moments: [] });
+
+  React.useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const records = await (History as any).list();
+        if (!alive) return;
+        setInsights(buildFootballEndInsights(Array.isArray(records) ? records : [], state, profilesById));
+      } catch {
+        if (alive) setInsights((prev: any) => ({ ...prev, moments: footballKeyMomentsFromState(state, 12) }));
+      }
+    })();
+    return () => { alive = false; };
+  }, [state?.startedAt, state?.finishedAt]);
+
   const sideRows = state.sides.map((side: any, index: number) => ({
     side, index, score: n(state.scoreBySide[side.id]), winner: state.winnerSideIds.includes(side.id),
   })).sort((a: any, b: any) => Number(b.winner) - Number(a.winner) || b.score - a.score);
@@ -97,7 +132,7 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
     Math.abs(leftGoals - rightGoals) >= 3 ? { icon: "🔥", label: "LARGE VICTOIRE", color: RED } : null,
     state.visits?.some((visit: any) => (visit.events || []).some((event: any) => event.type === "counter")) ? { icon: "🚀", label: "CONTRE-ATTAQUE", color: BLUE } : null,
   ].filter(Boolean);
-  const goalEvents = (state.visits || []).flatMap((visit: any) => (visit.events || []).filter((event: any) => String(event.type).includes("goal")).map((event: any) => ({ visit, event }))).slice(-8);
+  const moments = insights?.moments?.length ? insights.moments : footballKeyMomentsFromState(state, 12);
 
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", padding: "max(8px,env(safe-area-inset-top)) 8px max(12px,env(safe-area-inset-bottom))", boxSizing: "border-box", background: "radial-gradient(circle at 50% 0%,rgba(101,229,170,.28),rgba(0,8,4,.96) 48%,#000 100%)" }}>
     <div style={{ width: "min(720px,100%)", margin: "0 auto" }}>
@@ -115,6 +150,11 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
         {matchBadges.map((badge: any) => <span key={badge.label} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${badge.color}55`, background: `${badge.color}0d`, color: badge.color, fontSize: 6.4, fontWeight: 1100 }}>{badge.icon} {badge.label}</span>)}
       </section> : null}
 
+      {insights?.breakthroughs?.length ? <section style={{ marginTop: 7, borderRadius: 16, padding: 9, border: `1px solid ${GOLD}66`, background: "linear-gradient(135deg,rgba(255,211,107,.12),rgba(101,229,170,.04))" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><strong style={{ color: GOLD, fontSize: 8.2, letterSpacing: .7 }}>🏆 NOUVEAUX RECORDS</strong><span style={{ color: SOFT, fontSize: 6.2 }}>{insights.breakthroughs.length} record{insights.breakthroughs.length > 1 ? "s" : ""} battu{insights.breakthroughs.length > 1 ? "s" : ""}</span></div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5 }}>{insights.breakthroughs.map((record: any, index: number) => { const color = recordColor(record.metric); const suffix = record.suffix || ""; return <div key={`${record.playerId}-${record.metric}-${index}`} style={{ minWidth: 0, borderRadius: 11, padding: 7, border: `1px solid ${color}44`, background: `${color}0b` }}><div style={{ color, fontSize: 6.2, fontWeight: 1100 }}>{record.icon} {record.label}</div><div style={{ marginTop: 3, display: "flex", justifyContent: "space-between", gap: 6, alignItems: "baseline" }}><strong style={{ minWidth: 0, color: WHITE, fontSize: 7.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.playerName}</strong><strong style={{ color, fontSize: 13 }}>{record.value}{suffix}</strong></div><div style={{ marginTop: 2, color: SOFT, fontSize: 5.8 }}>Ancien record : {record.previous}{suffix}</div></div>; })}</div>
+      </section> : null}
+
       {mvp ? <section style={{ marginTop: 7, borderRadius: 16, padding: 8, display: "grid", gridTemplateColumns: "39px minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${GOLD}55`, background: `${GOLD}0c` }}>
         <ProfileAvatar profile={mvp.profile} size={37} />
         <div style={{ minWidth: 0 }}><div style={{ color: GOLD, fontSize: 6.5, fontWeight: 1100, letterSpacing: .8 }}>JOUEUR DU MATCH</div><div style={{ marginTop: 2, color: WHITE, fontSize: 11, fontWeight: 1150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(mvp.profile)}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 6.8 }}>{n(mvp.stats.goals)} but · {n(mvp.stats.saves)} arrêt · {n(mvp.stats.interceptions)} interception · {n(mvp.stats.counterAttacks)} contre</div></div>
@@ -125,6 +165,11 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
         <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 1fr", gap: 6, alignItems: "center" }}><strong style={{ color: leftColor, fontSize: 8, textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.sides[0]?.name}</strong><span style={{ color: GOLD, fontSize: 7, fontWeight: 1100, textAlign: "center" }}>STATS MATCH</span><strong style={{ color: rightColor, fontSize: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.sides[1]?.name}</strong></div>
         {comparison.map(([label, left, right, suffix]: any) => <ComparisonRow key={label} label={label} left={left} right={right} suffix={suffix} leftColor={leftColor} rightColor={rightColor} />)}
       </section>
+
+      {insights?.rivalry ? <section style={{ marginTop: 7, borderRadius: 15, padding: 8, border: `1px solid ${BLUE}3d`, background: `${BLUE}08` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: BLUE, fontSize: 7, letterSpacing: .6 }}>⚔️ FACE-À-FACE HISTORIQUE</strong><span style={{ color: SOFT, fontSize: 6.2 }}>{insights.rivalry.games} précédent{insights.rivalry.games > 1 ? "s" : ""}</span></div>
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}><div style={{ textAlign: "right" }}><div style={{ color: leftColor, fontSize: 7, fontWeight: 1000 }}>{insights.rivalry.sideAName}</div><strong style={{ color: WHITE, fontSize: 18 }}>{insights.rivalry.winsA}</strong></div><div style={{ color: GOLD, fontSize: 7, fontWeight: 1100 }}>{insights.rivalry.draws} NUL</div><div><div style={{ color: rightColor, fontSize: 7, fontWeight: 1000 }}>{insights.rivalry.sideBName}</div><strong style={{ color: WHITE, fontSize: 18 }}>{insights.rivalry.winsB}</strong></div></div>
+      </section> : null}
 
       <section style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
         <MatchRecord icon="⚽" label="MEILLEUR BUTEUR" row={topScorer} value={`${n(topScorer?.stats.goals)} but${n(topScorer?.stats.goals) > 1 ? "s" : ""}`} color={GOLD} />
@@ -145,7 +190,7 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
         <div style={{ textAlign: "right" }}><div style={{ color: GREEN, fontSize: 14, fontWeight: 1150 }}>{row.accuracy}%</div><div style={{ color: SOFT, fontSize: 5.8 }}>{n(row.stats.darts)} fl.</div></div>
       </div>)}</section>
 
-      {goalEvents.length ? <section style={{ marginTop: 7, borderRadius: 15, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.02)" }}><div style={{ color: GOLD, fontSize: 7, fontWeight: 1100 }}>CHRONOLOGIE DES BUTS</div><div style={{ marginTop: 5, display: "grid", gap: 4 }}>{goalEvents.map(({ visit, event }: any, index: number) => <div key={`${visit.id}-${index}`} style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 6, color: SOFT, fontSize: 7 }}><strong style={{ color: GREEN }}>P{visit.period} · T{visit.round}</strong><span>{event.label}</span></div>)}</div></section> : null}
+      {moments.length ? <section style={{ marginTop: 7, borderRadius: 15, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.02)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: GOLD, fontSize: 7 }}>MOMENTS CLÉS</strong><span style={{ color: SOFT, fontSize: 6 }}>buts · arrêts · interceptions · contres</span></div><div style={{ marginTop: 5, display: "grid", gap: 4 }}>{moments.map((moment: any, index: number) => <div key={moment.id || index} style={{ display: "grid", gridTemplateColumns: "22px 50px minmax(0,1fr) auto", gap: 5, alignItems: "center", padding: "4px 5px", borderRadius: 8, background: "rgba(255,255,255,.022)", color: SOFT, fontSize: 6.8 }}><span style={{ textAlign: "center" }}>{momentIcon(moment)}</span><strong style={{ color: GREEN }}>P{moment.period} · T{moment.round}</strong><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{moment.label}</span>{moment.scoreLine ? <strong style={{ color: WHITE }}>{moment.scoreLine}</strong> : null}</div>)}</div></section> : null}
 
       <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
         <button onClick={onReplay} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${GREEN}88`, background: `${GREEN}18`, color: GREEN, fontWeight: 1100 }}>↻ REVANCHE</button>

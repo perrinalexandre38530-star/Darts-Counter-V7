@@ -29,6 +29,7 @@ import {
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { SelectedParticipantsCompactBlock, x01MostUsedDartSetIdForProfile } from "./X01ConfigV3";
 import tickerCargo from "../assets/tickers/ticker_cargo.png";
+import "../styles/cargo-ui.css";
 
 const LS_KEY = "dc_modecfg_cargo_v1";
 const ORANGE = "#ff9b42";
@@ -39,6 +40,7 @@ const RED = "#ef5261";
 const SOFT = "#aab1bf";
 const TEAM_IDS = ["TEAM_A", "TEAM_B", "TEAM_C", "TEAM_D"] as const;
 const TEAM_COLORS = ["#ff9b42", "#56c9ff", "#62e6a7", "#d98cff"];
+type CargoParticipantFormat = "solo" | "duel" | "multi" | "teams";
 
 function interleaveTeams(ids: string[], assignments: Record<string,string>, teamIds: string[], random = false) {
   const groups = teamIds.map((teamId) => {
@@ -89,6 +91,12 @@ export default function CargoConfig(props: any) {
   const [step, setStep] = React.useState(0);
   const steps = ["Participants", "Mission", "Séries", "Camion", "Résumé"];
   const [selectedIds, setSelectedIds] = React.useState<string[]>(unique(saved.selectedIds || []).slice(0, 12));
+  const [participantFormat, setParticipantFormat] = React.useState<CargoParticipantFormat>(() => {
+    if (["solo", "duel", "multi", "teams"].includes(String(saved.participantFormat || ""))) return saved.participantFormat as CargoParticipantFormat;
+    if (initial.participantMode === "teams") return "teams";
+    const count = unique(saved.selectedIds || []).length;
+    return count <= 1 ? "solo" : count === 2 ? "duel" : "multi";
+  });
   const [botsPanel, setBotsPanel] = React.useState(Boolean(saved.botsPanel));
   const [botLevel, setBotLevel] = React.useState<CargoBotLevel>(initial.botLevel);
   const [variant, setVariant] = React.useState<CargoVariant>(initial.variant);
@@ -120,9 +128,18 @@ export default function CargoConfig(props: any) {
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(initial.scoreInputMethod);
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets || {});
 
+  function maxParticipantsForFormat(format = participantFormat) { return format === "solo" ? 1 : format === "duel" ? 2 : 12; }
+  function minParticipantsForFormat(format = participantFormat) { return format === "solo" ? 1 : format === "duel" ? 2 : format === "multi" ? 3 : 2; }
+  function chooseParticipantFormat(next: CargoParticipantFormat) {
+    setParticipantFormat(next);
+    setParticipantMode(next === "teams" ? "teams" : "players");
+    const max = maxParticipantsForFormat(next);
+    setSelectedIds((prev) => prev.slice(0, max));
+  }
   function togglePlayer(idRaw: string) {
     const id = String(idRaw || "");
-    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= 12 ? prev : [...prev, id]);
+    const max = maxParticipantsForFormat();
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= max ? prev : [...prev, id]);
     setPlayerDartSets((prev) => Object.prototype.hasOwnProperty.call(prev, id) ? prev : ({ ...prev, [id]: x01MostUsedDartSetIdForProfile(id) || null }));
   }
   function handleDartSet(id: string, dartSetId: string | null) { setPlayerDartSets((prev) => ({ ...prev, [String(id)]: dartSetId || null })); }
@@ -142,7 +159,12 @@ export default function CargoConfig(props: any) {
   }, [selectedIds, teamAssignments, teamCount]);
   const teamSizes = activeTeamIds.map((teamId) => selectedIds.filter((id) => effectiveTeamAssignments[id] === teamId).length);
   const validTeams = participantMode !== "teams" || (selectedIds.length >= 2 && activeTeamIds.length >= 2 && teamSizes.every((size) => size > 0));
-  const valid = selectedIds.length >= 1 && selectedIds.length <= 12 && validTeams;
+  const balancedTeams = participantMode !== "teams" || !teamSizes.length || Math.max(...teamSizes) - Math.min(...teamSizes) <= 1;
+  const formatValid = selectedIds.length >= minParticipantsForFormat() && selectedIds.length <= maxParticipantsForFormat();
+  const valid = formatValid && selectedIds.length <= 12 && validTeams;
+  const turnOrderPreview = participantMode === "teams"
+    ? interleaveTeams(selectedIds, effectiveTeamAssignments, activeTeamIds, false)
+    : [...selectedIds];
   const isParcel = variant === "parcel_delivery";
   const usesContracts = !["free_load", "full_pallet", "parcel_delivery"].includes(variant);
   const usesCapacity = ["exact_load", "cargo_classic", "fragile_cargo", "cargo_rush", "convoy", "long_haul"].includes(variant);
@@ -156,6 +178,16 @@ export default function CargoConfig(props: any) {
       selectedIds.forEach((id, index) => { next[id] = activeTeamIds[index % activeTeamIds.length]; });
       return next;
     });
+  }
+  function moveTeamMember(teamId: string, playerId: string, delta: -1 | 1) {
+    const members = selectedIds.filter((id) => effectiveTeamAssignments[id] === teamId);
+    const index = members.indexOf(playerId);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= members.length) return;
+    const reordered = [...members];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    let cursor = 0;
+    setSelectedIds((prev) => prev.map((id) => effectiveTeamAssignments[id] === teamId ? reordered[cursor++] : id));
   }
 
   function start() {
@@ -176,7 +208,7 @@ export default function CargoConfig(props: any) {
       truckCapacity, targetWeight, overloadRule, bullRule, dbullRule, fragileRate, urgentRate,
       randomOrder, scoreInputMethod,
     });
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ ...payload, botsPanel })); } catch {}
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ ...payload, botsPanel, participantFormat })); } catch {}
     try { recordProfileUsageForMode("cargo", ids); } catch {}
     if (typeof go === "function") go("cargo_play", payload);
   }
@@ -191,10 +223,17 @@ export default function CargoConfig(props: any) {
     </div>
     {botsPanel ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={customBots} selectedIds={selectedIds} onToggle={togglePlayer} accent={RED} label="CHAUFFEURS BOTS" showCheckbox={false} showSelectedSummary={false} /></div> : null}
     {selectedBots.length ? <OptionRow label="Niveau des Bots"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Apprenti" }, { value: "normal", label: "Routier" }, { value: "hard", label: "Expert logistique" }]} onChange={setBotLevel} /></OptionRow> : null}
-    <OptionRow label="Participants"><OptionSelect value={participantMode} options={[{ value: "players", label: selectedIds.length > 1 ? "Multi · chacun pour soi" : "Solo" }, { value: "teams", label: "Équipes / Convoi" }]} onChange={setParticipantMode} /></OptionRow>
-    <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 13, background: "rgba(0,0,0,.24)", border: "1px solid rgba(255,255,255,.07)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-      <div><div style={{ color: GOLD, fontSize: 8, fontWeight: 1100 }}>MULTI CARGO</div><div style={{ color: SOFT, fontSize: 7.5, marginTop: 2 }}>1 à 12 joueurs · humains et bots mélangés</div></div>
-      <strong style={{ color: GREEN, fontSize: 11 }}>{selectedIds.length}/12</strong>
+    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+      {[
+        ["solo", "SOLO", "1 joueur", ORANGE],
+        ["duel", "DUEL", "2 joueurs", GOLD],
+        ["multi", "MULTI", "3 à 12", GREEN],
+        ["teams", "ÉQUIPES", "2 à 4 teams", BLUE],
+      ].map(([value, label, hint, color]: any) => <button key={value} type="button" onClick={() => chooseParticipantFormat(value)} style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${participantFormat === value ? color : "rgba(255,255,255,.08)"}`, background: participantFormat === value ? `${color}18` : "rgba(255,255,255,.025)", color: participantFormat === value ? color : SOFT, display: "grid", placeItems: "center", alignContent: "center", gap: 3, fontWeight: 1050, cursor: "pointer" }}><span style={{ fontSize: 9 }}>{label}</span><small style={{ color: participantFormat === value ? "rgba(255,255,255,.72)" : "#777f8e", fontSize: 6.8 }}>{hint}</small></button>)}
+    </div>
+    <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 13, background: "rgba(0,0,0,.24)", border: `1px solid ${formatValid ? "rgba(255,255,255,.07)" : RED + "55"}`, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+      <div><div style={{ color: GOLD, fontSize: 8, fontWeight: 1100 }}>FORMAT CARGO</div><div style={{ color: SOFT, fontSize: 7.5, marginTop: 2 }}>{participantFormat === "solo" ? "1 joueur exactement" : participantFormat === "duel" ? "2 joueurs exactement" : participantFormat === "multi" ? "3 à 12 joueurs · chacun pour soi" : "2 à 12 joueurs répartis en équipes"}</div></div>
+      <strong style={{ color: formatValid ? GREEN : RED, fontSize: 11 }}>{selectedIds.length}/{maxParticipantsForFormat()}</strong>
     </div>
     {participantMode === "teams" ? <div style={{ marginTop: 9, borderRadius: 16, padding: 10, background: "linear-gradient(180deg,rgba(255,155,66,.07),rgba(0,0,0,.24))", border: `1px solid ${ORANGE}38` }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
@@ -220,10 +259,15 @@ export default function CargoConfig(props: any) {
                 return <button key={`${teamId}-${playerId}`} type="button" onClick={() => setPlayerTeam(playerId, teamId)} style={{ minHeight: 29, maxWidth: 150, padding: "0 8px", borderRadius: 999, border: `1px solid ${active ? teamColor : "rgba(255,255,255,.08)"}`, background: active ? `${teamColor}18` : "rgba(255,255,255,.025)", color: active ? teamColor : "#8d94a3", fontSize: 7.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile?.name || profile?.displayName || "Joueur"}</button>;
               })}
             </div>
+            {members.length > 1 ? <div style={{ marginTop: 8, display: "grid", gap: 4 }}>{members.map((profile: any, memberIndex: number) => { const playerId = String(profile?.id || ""); return <div key={`order-${teamId}-${playerId}`} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) 28px 28px", gap: 4, alignItems: "center", padding: "4px 6px", borderRadius: 9, background: "rgba(0,0,0,.20)" }}><span style={{ color: teamColor, fontSize: 7.5, fontWeight: 1100 }}>P{memberIndex + 1}</span><span style={{ color: "#dfe4ec", fontSize: 7.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile?.name || profile?.displayName || "Joueur"}</span><button type="button" disabled={memberIndex === 0} onClick={() => moveTeamMember(teamId, playerId, -1)} style={{ height: 24, borderRadius: 7, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: memberIndex === 0 ? "#4e5560" : teamColor }}>↑</button><button type="button" disabled={memberIndex === members.length - 1} onClick={() => moveTeamMember(teamId, playerId, 1)} style={{ height: 24, borderRadius: 7, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: memberIndex === members.length - 1 ? "#4e5560" : teamColor }}>↓</button></div>; })}</div> : null}
           </div>;
         })}
       </div>
-      {!validTeams ? <div style={{ marginTop: 8, color: "#ff9aa8", fontSize: 8, fontWeight: 950 }}>Chaque équipe doit contenir au moins un joueur.</div> : <div style={{ marginTop: 8, color: GREEN, fontSize: 8, fontWeight: 950 }}>✓ Équipes prêtes · les coéquipiers seront alternés dans l’ordre de jeu.</div>}
+      {!validTeams ? <div style={{ marginTop: 8, color: "#ff9aa8", fontSize: 8, fontWeight: 950 }}>Chaque équipe doit contenir au moins un joueur.</div> : <div style={{ marginTop: 8, color: balancedTeams ? GREEN : GOLD, fontSize: 8, fontWeight: 950 }}>{balancedTeams ? "✓ Équipes équilibrées" : "⚠ Équipes valides mais déséquilibrées"} · ordre alterné automatiquement.</div>}
+      <div style={{ marginTop: 8, padding: 8, borderRadius: 12, background: "rgba(0,0,0,.24)", border: "1px solid rgba(255,255,255,.07)" }}>
+        <div style={{ color: BLUE, fontSize: 8, fontWeight: 1100, marginBottom: 6 }}>ORDRE DE PASSAGE</div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{turnOrderPreview.map((id, index) => { const profile: any = byId.get(String(id)); const teamId = effectiveTeamAssignments[String(id)]; const teamIndex = activeTeamIds.indexOf(teamId); const color = TEAM_COLORS[Math.max(0, teamIndex) % TEAM_COLORS.length] || ORANGE; return <span key={`turn-${id}-${index}`} style={{ padding: "5px 7px", borderRadius: 999, border: `1px solid ${color}44`, background: `${color}0f`, color, fontSize: 7.2, fontWeight: 1000 }}>{index + 1}. {profile?.name || profile?.displayName || "Joueur"}</span>; })}</div>
+      </div>
     </div> : null}
   </section>;
 
@@ -262,30 +306,30 @@ export default function CargoConfig(props: any) {
     <div style={{ textAlign: "center", color: "#fff", fontSize: 16, fontWeight: 1100 }}>CARGAISON PRÊTE</div>
     <div style={{ textAlign: "center", color: ORANGE, fontSize: 11, fontWeight: 1000, marginTop: 4 }}>{CARGO_VARIANT_LABELS[variant]} · {rounds} tours · {seriesRule === "exact_segment" ? "Série stricte" : "Même numéro"}</div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-      {[[participantMode === "teams" ? "ÉQUIPES" : "PARTICIPANTS", participantMode === "teams" ? teamCount : selectedIds.length], [isParcel ? "OBJECTIF" : "CAPACITÉ", isParcel ? "COLIS" : `${truckCapacity} KG`], ["SÉRIE MAX", isParcel ? 5 : maxSeries]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "CAPACITÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
+      {[[participantMode === "teams" ? "ÉQUIPES" : participantFormat.toUpperCase(), participantMode === "teams" ? teamCount : selectedIds.length], [isParcel ? "OBJECTIF" : "CAPACITÉ", isParcel ? "COLIS" : `${truckCapacity} KG`], ["SÉRIE MAX", isParcel ? 5 : maxSeries]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "CAPACITÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
     </div>
   </section>;
 
   const contentByStep = [participantsBlock, missionBlock, seriesBlock, truckBlock, summaryBlock];
 
-  return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -10%,${ORANGE}28 0,${theme?.bg || "#07090d"} 43%,#020203 100%)`, paddingBottom: 18 }}>
+  return <div className="cargo-config-page" style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -10%,${ORANGE}28 0,${theme?.bg || "#07090d"} 43%,#020203 100%)`, paddingBottom: 18 }}>
     <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" left={<BackDot onClick={back} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules />} />} />
-    <main style={{ width: "min(900px,100%)", margin: "0 auto", padding: "8px", boxSizing: "border-box" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginBottom: 9 }}>
+    <main className="cargo-config-main">
+      <div className="cargo-config-mode-switch">
         <button onClick={() => chooseView("guided")} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${viewMode === "guided" ? ORANGE : "rgba(255,255,255,.10)"}`, background: viewMode === "guided" ? `${ORANGE}18` : "rgba(255,255,255,.03)", color: viewMode === "guided" ? ORANGE : SOFT, fontWeight: 1000 }}>CONFIGURATION GUIDÉE</button>
         <button onClick={() => chooseView("complete")} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${viewMode === "complete" ? GOLD : "rgba(255,255,255,.10)"}`, background: viewMode === "complete" ? `${GOLD}18` : "rgba(255,255,255,.03)", color: viewMode === "complete" ? GOLD : SOFT, fontWeight: 1000 }}>CONFIGURATION COMPLÈTE</button>
       </div>
 
       {viewMode === "guided" ? <>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${steps.length},minmax(0,1fr))`, gap: 4, marginBottom: 8 }}>{steps.map((label, index) => <button key={label} onClick={() => setStep(index)} style={{ minHeight: 36, padding: "3px", borderRadius: 10, border: `1px solid ${step === index ? ORANGE : "rgba(255,255,255,.08)"}`, background: step === index ? `${ORANGE}18` : "rgba(255,255,255,.025)", color: step === index ? ORANGE : SOFT, fontSize: 8, fontWeight: 1000 }}>{index + 1}<br />{label}</button>)}</div>
+        <div className="cargo-config-steps">{steps.map((label, index) => <button key={label} onClick={() => setStep(index)} style={{ minHeight: 36, padding: "3px", borderRadius: 10, border: `1px solid ${step === index ? ORANGE : "rgba(255,255,255,.08)"}`, background: step === index ? `${ORANGE}18` : "rgba(255,255,255,.025)", color: step === index ? ORANGE : SOFT, fontSize: 8, fontWeight: 1000 }}>{index + 1}<br />{label}</button>)}</div>
         {contentByStep[step]}
         <div style={{ display: "grid", gridTemplateColumns: step > 0 ? "1fr 1fr" : "1fr", gap: 8 }}>
           {step > 0 ? <button onClick={() => setStep((s) => Math.max(0, s - 1))} style={{ minHeight: 46, borderRadius: 14, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 1000 }}>PRÉCÉDENT</button> : null}
           {step < steps.length - 1 ? <button onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))} style={{ minHeight: 46, borderRadius: 14, border: `1px solid ${ORANGE}88`, background: `${ORANGE}18`, color: ORANGE, fontWeight: 1100 }}>SUIVANT</button> : <button disabled={!valid} onClick={start} style={{ minHeight: 48, borderRadius: 14, border: `1px solid ${GREEN}99`, background: `${GREEN}1d`, color: GREEN, opacity: valid ? 1 : .4, fontWeight: 1100 }}>LANCER CARGO</button>}
         </div>
       </> : <>
-        {participantsBlock}{missionBlock}{seriesBlock}{truckBlock}{summaryBlock}
-        <button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 50, borderRadius: 15, border: `1px solid ${GREEN}99`, background: `${GREEN}1d`, color: GREEN, opacity: valid ? 1 : .4, fontWeight: 1150, fontSize: 14 }}>LANCER CARGO</button>
+        <div className="cargo-config-complete">{participantsBlock}{missionBlock}{seriesBlock}{truckBlock}<div className="cargo-config-summary">{summaryBlock}</div>
+        <button className="cargo-config-launch" disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 50, borderRadius: 15, border: `1px solid ${GREEN}99`, background: `${GREEN}1d`, color: GREEN, opacity: valid ? 1 : .4, fontWeight: 1150, fontSize: 14 }}>LANCER CARGO</button></div>
       </>}
     </main>
   </div>;

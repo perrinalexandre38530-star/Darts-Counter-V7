@@ -366,6 +366,99 @@ async function safeEnsureSession(): Promise<Session | null> {
 
 const profileLoadInFlight = new Map<string, Promise<OnlineProfile | null>>();
 
+function parseProfileTimestamp(value: any): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  const parsed = value ? Date.parse(String(value)) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function mapSupabaseAccountProfileRow(row: any, user: User): OnlineProfile {
+  const privateInfo = row?.private_info && typeof row.private_info === "object"
+    ? { ...row.private_info }
+    : {};
+  const rawAvatarRevision =
+    privateInfo?.avatarUpdatedAt ??
+    privateInfo?.avatar_updated_at ??
+    0;
+  const avatarUpdatedAt = Number(rawAvatarRevision || 0) || parseProfileTimestamp(rawAvatarRevision) || undefined;
+  const displayName = String(row?.display_name || row?.nickname || "").trim();
+  const nickname = String(row?.nickname || row?.display_name || "").trim();
+
+  return {
+    id: String(row?.id || user.id || ""),
+    userId: String(user.id || row?.user_id || row?.id || ""),
+    displayName: displayName || nickname || "Player",
+    nickname: nickname || displayName || undefined,
+    avatarUrl: String(row?.avatar_url || "").trim() || undefined,
+    avatarUpdatedAt,
+    country: row?.country ?? undefined,
+    countryCode: row?.country_code ?? null,
+    surname: row?.surname ?? null,
+    firstName: row?.first_name ?? null,
+    lastName: row?.last_name ?? null,
+    birthDate: row?.birth_date ?? null,
+    city: row?.city ?? null,
+    email: row?.email ?? user.email ?? null,
+    phone: row?.phone ?? null,
+    preferences: row?.preferences && typeof row.preferences === "object" ? { ...row.preferences } : {},
+    privateInfo,
+    bio: row?.bio ?? "",
+    stats: row?.stats && typeof row.stats === "object"
+      ? row.stats
+      : { totalMatches: 0, totalLegs: 0, avg3: 0, bestVisit: 0, bestCheckout: 0 },
+    updatedAt: parseProfileTimestamp(row?.updated_at) || Date.now(),
+  } as OnlineProfile;
+}
+
+/**
+ * Source de vérité multi-appareils pour l'identité légère du compte.
+ *
+ * IMPORTANT : cette lecture contourne volontairement les caches NAS/legacy de
+ * onlineApi. Un autre appareil doit toujours relire la ligne `public.profiles`
+ * du compte Supabase courant (pseudo, avatar, coordonnées et préférences), puis
+ * seulement utiliser les anciens bridges comme fallback si cette lecture échoue.
+ */
+async function loadSupabaseAccountProfile(user: User): Promise<OnlineProfile | null> {
+  const userId = String(user?.id || "").trim();
+  if (!userId || isSupabaseHardDisabledInNasMode()) return null;
+
+  try {
+    let result = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!result.error && result.data) {
+      return mapSupabaseAccountProfileRow(result.data, user);
+    }
+
+    // Ancien compte sans ligne profiles : on laisse le helper historique créer
+    // la ligne, puis on la relit immédiatement. Ce chemin n'écrase jamais une
+    // ligne existante et ne dépend pas du NAS.
+    if (!result.data && !result.error) {
+      await ensureOnlineProfileRow(user);
+      result = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .limit(1)
+        .maybeSingle();
+      if (!result.error && result.data) {
+        return mapSupabaseAccountProfileRow(result.data, user);
+      }
+    }
+
+    if (result.error) {
+      console.warn("[useAuthOnline] direct Supabase profile read failed", result.error);
+    }
+  } catch (error) {
+    console.warn("[useAuthOnline] direct Supabase profile read failed", error);
+  }
+  return null;
+}
+
 async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | null> {
   const userId = String(user?.id || "").trim();
   if (!userId) return null;
@@ -374,6 +467,12 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
 
   const task = (async () => {
     try {
+      // PRIORITÉ ABSOLUE : ligne Supabase publique du compte courant.
+      // C'est elle qui rend le pseudo/avatar identiques sur PC, téléphone et
+      // tout nouvel appareil, même si le cache local/NAS est ancien ou vide.
+      const direct = await loadSupabaseAccountProfile(user);
+      if (direct) return direct;
+
       const api: any = onlineApi as any;
 
       if (typeof api.getProfile === "function") {
@@ -417,15 +516,21 @@ function applyAuthFromSession(
       setStorageUser(String(user.id || ""));
       localStorage.setItem("dc_user_id", String(user.id || ""));
     } catch {}
-    setState((s) => ({
-      ...s,
-      status: "signed_in",
-      session,
-      user,
-      loading: false,
-      ready: opts?.ready ?? true,
-      error: null,
-    }));
+    setState((s) => {
+      const sameUser = String(s.user?.id || "") === String(user.id || "");
+      return {
+        ...s,
+        status: "signed_in",
+        session,
+        user,
+        // Ne jamais laisser le profil du compte précédent traverser un changement
+        // de session. Pour le même compte (TOKEN_REFRESHED), on le conserve.
+        profile: sameUser ? s.profile : null,
+        loading: false,
+        ready: opts?.ready ?? true,
+        error: null,
+      };
+    });
   } else {
     try {
       try { delete (window as any).__dc_primary_auth_user_id; } catch {}
@@ -725,7 +830,12 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     if (nowTs - previous < PROFILE_HYDRATION_COOLDOWN_MS) return;
     lastProfileHydrationRef.current.set(userId, nowTs);
 
-    scheduleOutsideNavigation(() => {
+    // Le profil compte est une lecture réseau minuscule et CRITIQUE pour
+    // l'identité visuelle. Il ne doit plus attendre 3,6 s + requestIdleCallback
+    // sur Android : c'est précisément ce délai qui faisait apparaître Perrin/
+    // l'avatar par défaut avant Ninja. Les sauvegardes lourdes restent, elles,
+    // hors navigation via bootstrapSignedInAccount().
+    window.setTimeout(() => {
       void safeLoadProfileBestEffort(user).then((profile) => {
         setState((current) => {
           // Le bridge différé peut avoir remplacé l'id Supabase par l'id canonique.
@@ -743,7 +853,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         // Il ne doit plus être réappliqué comme session React après hydratation du
         // profil, sinon user.id pouvait basculer quelques secondes après le login.
       });
-    }, isCapacitorNativeRuntime() ? 3600 : 120);
+    }, 0);
   }, []);
 
   React.useEffect(() => {
@@ -914,6 +1024,100 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       } catch {}
     };
   }, [bootstrapSignedInAccount, hydrateProfileAndBackups]);
+
+  // ============================================================
+  // PROFIL COMPTE MULTI-APPAREILS — synchro légère continue
+  // ============================================================
+  // `public.profiles` est l'autorité pour l'identité légère du compte. Une
+  // modification effectuée sur PC doit donc remonter sur le téléphone sans
+  // nettoyage de cookies ni restauration de sauvegarde. On combine :
+  // - un refresh immédiat après connexion,
+  // - un refresh au focus / retour au premier plan,
+  // - un événement local après updateProfile(),
+  // - Supabase Realtime quand la publication est disponible,
+  // - un polling visible de secours toutes les 30 s.
+  React.useEffect(() => {
+    if (state.status !== "signed_in" || !state.user?.id) return;
+
+    const user = state.user;
+    const userId = String(user.id || "").trim();
+    if (!userId) return;
+
+    let disposed = false;
+    let channel: any = null;
+
+    const commit = (profile: OnlineProfile | null) => {
+      if (disposed || !profile) return;
+      setState((current) => {
+        if (String(current.user?.id || "") !== userId) return current;
+        return { ...current, profile };
+      });
+    };
+
+    const refreshProfile = () => {
+      if (disposed) return;
+      void safeLoadProfileBestEffort(user).then(commit).catch((error) => {
+        console.warn("[useAuthOnline] account profile refresh skipped", error);
+      });
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshProfile();
+    };
+    const onFocus = () => refreshProfile();
+    const onOnline = () => refreshProfile();
+    const onCloudProfileUpdated = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const eventUserId = String(detail?.userId || detail?.profile?.userId || detail?.profile?.id || "").trim();
+      if (eventUserId && eventUserId !== userId) return;
+      if (detail?.profile) commit(detail.profile as OnlineProfile);
+      else refreshProfile();
+    };
+
+    refreshProfile();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("dc:account-profile-cloud-updated", onCloudProfileUpdated as EventListener);
+    document.addEventListener("visibilitychange", onVisible);
+
+    const pollTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshProfile();
+    }, 30_000);
+
+    try {
+      channel = supabase
+        .channel(`account-profile-${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+          (payload: any) => {
+            if (disposed) return;
+            const row = payload?.new;
+            if (row && String(row?.id || "") === userId) {
+              commit(mapSupabaseAccountProfileRow(row, user));
+            } else {
+              refreshProfile();
+            }
+          },
+        )
+        .subscribe();
+    } catch (error) {
+      // Le polling/focus reste le fallback fiable si Realtime n'est pas publié.
+      console.warn("[useAuthOnline] account profile realtime unavailable", error);
+    }
+
+    return () => {
+      disposed = true;
+      window.clearInterval(pollTimer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("dc:account-profile-cloud-updated", onCloudProfileUpdated as EventListener);
+      document.removeEventListener("visibilitychange", onVisible);
+      try {
+        if (channel) void supabase.removeChannel(channel);
+      } catch {}
+    };
+  }, [state.status, state.user?.id]);
 
   // Présence communautaire globale : un compte authentifié compte comme actif même
   // s'il n'ouvre jamais la page ONLINE. Le RPC ne publie aucune donnée de profil :

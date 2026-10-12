@@ -122,6 +122,17 @@ export default function OceanControlConfig(props: any) {
   function handleDartSet(id: string, dartSetId: string | null) { setPlayerDartSets((prev) => ({ ...prev, [String(id)]: dartSetId || null })); }
   function chooseView(next: "guided" | "complete") { setViewMode(next); try { localStorage.setItem(VIEW_KEY, next); } catch {} }
   function back() { if (typeof go === "function") go("games"); }
+  function applyMissionPreset(kind: "quick" | "tactical" | "admiral") {
+    if (kind === "quick") {
+      setFleetPreset("quick"); setVariant("classic"); setDifficulty("recruit"); setPlacement("automatic"); setGridOrder("sequential"); setWinsNeeded(1); setSonarEnabled(true); setDbullStrikeEnabled(true); setDuplicateConsumesDart(true); setRandomOrder(false);
+      return;
+    }
+    if (kind === "tactical") {
+      setFleetPreset("standard"); setVariant("tactical"); setDifficulty("captain"); setPlacement("automatic"); setGridOrder("random"); setWinsNeeded(2); setSonarEnabled(true); setDbullStrikeEnabled(true); setDuplicateConsumesDart(true); setRandomOrder(false);
+      return;
+    }
+    setFleetPreset("armada"); setVariant("tactical"); setDifficulty("admiral"); setPlacement("manual"); setGridOrder("random"); setWinsNeeded(3); setSonarEnabled(true); setDbullStrikeEnabled(true); setDuplicateConsumesDart(true); setRandomOrder(true);
+  }
 
   const teamMemberIds = React.useMemo(() => unique(selectedTeams.flatMap((team: any) => Array.isArray(team?.playerIds) ? team.playerIds : [])).slice(0, 12), [selectedTeams]);
   const effectiveSelectedIds = participantMode === "teams" ? teamMemberIds : selectedIds;
@@ -251,6 +262,11 @@ export default function OceanControlConfig(props: any) {
             <div style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: GOLD, fontSize: 8.4, fontWeight: 1000 }}>{oceanControlVariantLabel(variant)}</div>
             <div style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: CYAN, fontSize: 8.4, fontWeight: 1000 }}>BO{winsNeeded * 2 - 1}</div>
           </div>
+        </div>
+        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+          <button type="button" onClick={() => applyMissionPreset("quick")} style={{ minHeight: 58, borderRadius: 14, border: `1px solid ${GREEN}44`, background: `linear-gradient(180deg,${GREEN}12,rgba(255,255,255,.02))`, color: "#fff", padding: 9, textAlign: "left", cursor: "pointer" }}><div style={{ color: GREEN, fontSize: 8.4, fontWeight: 1100 }}>⚡ MISSION RAPIDE</div><div style={{ marginTop: 4, color: SOFT, fontSize: 7.2, lineHeight: 1.35 }}>Escarmouche · Classique · 1 manche · lecture simple.</div></button>
+          <button type="button" onClick={() => applyMissionPreset("tactical")} style={{ minHeight: 58, borderRadius: 14, border: `1px solid ${BLUE}55`, background: `linear-gradient(180deg,${BLUE}16,rgba(255,255,255,.02))`, color: "#fff", padding: 9, textAlign: "left", cursor: "pointer" }}><div style={{ color: CYAN, fontSize: 8.4, fontWeight: 1100 }}>📡 MISSION TACTIQUE</div><div style={{ marginTop: 4, color: SOFT, fontSize: 7.2, lineHeight: 1.35 }}>Standard · Tactique · BO3 · sonar + grille aléatoire.</div></button>
+          <button type="button" onClick={() => applyMissionPreset("admiral")} style={{ minHeight: 58, borderRadius: 14, border: `1px solid ${GOLD}55`, background: `linear-gradient(180deg,${GOLD}14,rgba(255,255,255,.02))`, color: "#fff", padding: 9, textAlign: "left", cursor: "pointer" }}><div style={{ color: GOLD, fontSize: 8.4, fontWeight: 1100 }}>🎖️ MISSION AMIRAL</div><div style={{ marginTop: 4, color: SOFT, fontSize: 7.2, lineHeight: 1.35 }}>Armada · Amiral · placement manuel · BO5.</div></button>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginBottom: 10 }}>

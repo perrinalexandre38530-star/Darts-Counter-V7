@@ -2260,6 +2260,18 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
     saveAuthToLS({ ...current, profile, supabaseUserId: userId });
   }
 
+  // Propagation immédiate dans la SPA : useAuthOnline écoute cet événement et
+  // met à jour son profil sans relancer toute l'authentification. Cela aligne
+  // instantanément Home / Online / Réglages / Organisations après une modif
+  // de MON PROFIL, tout en conservant Supabase comme autorité cross-device.
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc:account-profile-cloud-updated", {
+        detail: { userId, profile, source: "onlineApi.updateProfile" },
+      }));
+    }
+  } catch {}
+
   return profile;
 }
 

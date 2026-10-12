@@ -32,6 +32,9 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
  const rows=matches.map((x:any)=>x.row),games=matches.length,wins=matches.filter(({record,row}:any)=>row?.win===true||winnerIds(record).includes(String(playerId))).length;
  const darts=rows.reduce((s:number,r:any)=>s+n(r?.darts),0),valid=rows.reduce((s:number,r:any)=>s+n(r?.validShots),0),hits=rows.reduce((s:number,r:any)=>s+n(r?.shipHits),0),ships=rows.reduce((s:number,r:any)=>s+n(r?.shipsSunk),0),sonars=rows.reduce((s:number,r:any)=>s+n(r?.sonarUses),0),contacts=rows.reduce((s:number,r:any)=>s+n(r?.sonarContacts),0),strikes=rows.reduce((s:number,r:any)=>s+n(r?.precisionStrikes),0),water=rows.reduce((s:number,r:any)=>s+n(r?.waterShots),0),duplicates=rows.reduce((s:number,r:any)=>s+n(r?.duplicateShots),0),successfulVisits=rows.reduce((s:number,r:any)=>s+n(r?.successfulVisits),0),perfectVisits=rows.reduce((s:number,r:any)=>s+n(r?.perfectVisits),0),multiHitVisits=rows.reduce((s:number,r:any)=>s+n(r?.multiHitVisits),0),bestStreak=rows.reduce((best:number,r:any)=>Math.max(best,n(r?.bestHitStreak)),0),bestVisitHits=rows.reduce((best:number,r:any)=>Math.max(best,n(r?.bestVisitHits)),0),visits=rows.reduce((s:number,r:any)=>s+n(r?.visits),0);
  const accuracyValue=valid>0?Math.round(hits/valid*1000)/10:0; const winRate=games>0?Math.round(wins/games*1000)/10:0; const sonarRate=games>0?Math.round(sonars/games*10)/10:0; const strikeRate=valid>0?Math.round(strikes/valid*1000)/1000:0;
+ const commandScore=Math.round(accuracyValue*.5+winRate*.15+Math.min(20,(ships/Math.max(1,games))*7)+Math.min(10,(perfectVisits/Math.max(1,games))*4)+Math.min(5,contacts/Math.max(1,games)));
+ const commandGrade=commandScore>=86?"S":commandScore>=72?"A":commandScore>=58?"B":commandScore>=44?"C":"D";
+ const commandGradeColor=commandGrade==="S"?GOLD:commandGrade==="A"?GREEN:commandGrade==="B"?BLUE:commandGrade==="C"?CYAN:SOFT;
  const profile=tacticalProfile({ accuracy: accuracyValue, sonarRate, strikeRate, ships, wins });
  const impacts:any={Simple:rows.reduce((s:number,r:any)=>s+n(r?.singles),0),Double:rows.reduce((s:number,r:any)=>s+n(r?.doubles),0),Triple:rows.reduce((s:number,r:any)=>s+n(r?.triples),0),Bull:rows.reduce((s:number,r:any)=>s+n(r?.bulls),0),DBull:rows.reduce((s:number,r:any)=>s+n(r?.dbulls),0),Miss:rows.reduce((s:number,r:any)=>s+n(r?.misses),0)};
  const maxImpact=Math.max(1,...Object.values(impacts).map(n));
@@ -56,6 +59,7 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
          <div style={{marginTop:5,color:"#eef8ff",fontSize:9.2,lineHeight:1.45}}>{profile.text}</div>
          <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
            <Chip label="Winrate" value={`${winRate}%`} color={GREEN} />
+           <Chip label="Grade commandement" value={`${commandGrade} · ${commandScore} pts`} color={commandGradeColor} />
            <Chip label="Arme favorite" value={favWeapon} color={BLUE} />
            <Chip label="Sonar / partie" value={sonarRate} color={CYAN} />
          </div>

@@ -111,6 +111,9 @@ assert.equal(p1Advanced.longestHitStreak, 3 * teamsState.config.rounds);
 const teamStats = buildCargoTeamStats(teamsState);
 assert.equal(teamStats.length, 2);
 assert.equal(teamStats[0].topContributorScore, 60 * teamsState.config.rounds);
+assert.ok(teamStats[0].topContributorId);
+assert.equal(teamsState.teamStandings[0].topContributorScore, 60 * teamsState.config.rounds);
+assert.ok(teamsState.teamStandings[0].topContributorId);
 assert.ok(Array.isArray(teamStats[0].contributions));
 const teamMatchStats = buildCargoMatchStats(teamsState);
 assert.equal(teamMatchStats.analyticsVersion, 4);
@@ -148,6 +151,41 @@ assert.ok(numeric(decodedTeam?.players?.[0]?.thirdDarts) >= 1);
 assert.ok(numeric(decodedTeam?.players?.[0]?.threeHitVisits) >= 1);
 assert.equal(numeric(decodedTeam?.players?.[0]?.avgHitMultiplier), 1);
 
+
+
+// CONVOY équipes : la série passe réellement au coéquipier suivant et produit une télémétrie dédiée.
+const convoyPlayers = [{ id: "c1", name: "Alpha" }, { id: "c2", name: "Bravo" }, { id: "c3", name: "Charlie" }];
+let convoy = createCargoState(convoyPlayers as any, normalizeCargoConfig({
+  variant: "convoy",
+  rounds: 3,
+  participantMode: "teams",
+  teamCount: 2,
+  carrySeriesBetweenTurns: true,
+  teamByPlayer: { c1: "TEAM_A", c2: "TEAM_A", c3: "TEAM_B" },
+  teamNames: { TEAM_A: "ORANGE", TEAM_B: "BLEUE" },
+} as any));
+const convoyContract = convoy.contracts[0];
+const convoyBed = convoyContract.bed === "ANY" ? "S" : convoyContract.bed;
+const convoyHit = dart(convoyBed as "S"|"D"|"T", convoyContract.sector);
+convoy.statsByPlayer.c1.currentSeries = {
+  key: `${convoyBed}${convoyContract.sector}`,
+  number: convoyContract.sector,
+  bed: convoyBed as any,
+  count: 1,
+  rawWeight: convoyContract.sector * (convoyBed === "T" ? 3 : convoyBed === "D" ? 2 : 1),
+  contractId: convoyContract.id,
+  protected: false,
+  startedRound: 1,
+  labels: [`${convoyBed}${convoyContract.sector}`],
+};
+convoy.activePlayerIndex = 1;
+convoy = playCargoVisit(convoy, [convoyHit]);
+const handoff = convoy.visits.at(-1)?.events.find((event) => event.type === "convoy_handoff");
+assert.ok(handoff, "le relais convoi doit être journalisé");
+assert.equal(handoff?.sourcePlayerId, "c1");
+assert.equal(handoff?.playerId, "c2");
+assert.equal(cargoEventPresentation(handoff).title, "RELAIS CONVOI");
+assert.equal(buildCargoPlayerAdvancedStats(convoy, "c2").convoyHandoffs, 1);
 
 // Détection et codec : CARGO V4 analytics doit rester conservé dans tous les pipelines.
 const cargoRecord: any = {

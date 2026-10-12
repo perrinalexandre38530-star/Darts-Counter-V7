@@ -3,6 +3,7 @@ import React from "react";
 import { History } from "../../lib/history";
 import { cargoArtLibrary } from "../cargo/cargoArt";
 import { cargoVariantLabel } from "../../lib/gameEngines/cargoEngine";
+import "../../styles/cargo-ui.css";
 
 const ORANGE = "#ff9b42";
 const GOLD = "#f6c256";
@@ -67,6 +68,12 @@ export default function CargoHistoryDetail({ record, onClose }: any) {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  React.useEffect(() => {
     let alive = true;
     const id = String(record?.id || record?.matchId || record?.resumeId || "");
     (async () => {
@@ -101,18 +108,18 @@ export default function CargoHistoryDetail({ record, onClose }: any) {
   const hero = full?.status === "finished" ? cargoArtLibrary.chargementComplet : cargoArtLibrary.chargementEnCours;
   const support = parcel ? cargoArtLibrary.colisCargo : cargoArtLibrary.paletteLogistique;
 
-  return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(0,0,0,.88)", backdropFilter: "blur(10px)", padding: "max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))", display: "grid", placeItems: "center" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
-    <div style={{ width: "min(860px,100%)", maxHeight: "94dvh", overflow: "hidden", borderRadius: 22, background: "linear-gradient(180deg,#171a20,#080a0e)", border: `1px solid ${ORANGE}55`, boxShadow: "0 30px 100px rgba(0,0,0,.78)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 11, borderBottom: "1px solid rgba(255,255,255,.08)", background: "radial-gradient(circle at 12% 0%,rgba(255,155,66,.16),transparent 38%),rgba(15,17,22,.98)" }}>
+  return <div className="cargo-history-detail" role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(0,0,0,.88)", backdropFilter: "blur(10px)", padding: "max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))", display: "grid", placeItems: "center" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
+    <div className="cargo-history-detail-shell">
+      <div className="cargo-history-detail-head">
         <div style={{ width: 70, height: 58, display: "grid", placeItems: "center" }}><img src={hero} alt="CARGO" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /></div>
         <div style={{ minWidth: 0 }}><div style={{ color: ORANGE, fontSize: 11.5, fontWeight: 1150, letterSpacing: .7 }}>DÉTAIL DE LA MISSION · {cargoVariantLabel(variant).toUpperCase()}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{formatDate(full?.finishedAt || full?.endedAt || full?.updatedAt || full?.createdAt)} · {teamMode ? "ÉQUIPES" : rows.length > 1 ? "MULTI" : "SOLO"}{loading ? " · chargement…" : ""}</div></div>
         <button type="button" onClick={onClose} style={{ width: 38, height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18, cursor: "pointer" }}>×</button>
       </div>
 
-      <div className="dc-scroll-thin" style={{ maxHeight: "calc(94dvh - 82px)", overflowY: "auto", padding: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "110px minmax(0,1fr)", gap: 10, alignItems: "stretch", marginBottom: 10 }}>
+      <div className="dc-scroll-thin cargo-history-detail-scroll">
+        <div className="cargo-history-detail-summary">
           <div style={{ borderRadius: 16, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)", display: "grid", placeItems: "center", padding: 8 }}><img src={support} alt="Logistique CARGO" style={{ maxWidth: "100%", maxHeight: 100, objectFit: "contain" }} /></div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+          <div className="cargo-history-kpis">
             <Kpi label={parcel ? "COLIS" : "POIDS TOTAL"} value={totalScore} detail={parcel ? "livrés" : "kg transportés"} color={parcel ? BLUE : ORANGE} />
             <Kpi label="PRÉCISION" value={`${pct(totalHits,totalDarts)}%`} detail={`${totalHits}/${totalDarts} touches`} color={GREEN} />
             <Kpi label={parcel ? "LIVRAISONS" : "PALETTES"} value={parcel ? n(match?.totalParcelDeliveries) : pallets} color={GOLD} />
@@ -120,7 +127,7 @@ export default function CargoHistoryDetail({ record, onClose }: any) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginBottom: 10 }}>
+        <div className="cargo-history-kpis" style={{ marginBottom: 10 }}>
           <Kpi label="MEILLEURE VOLÉE" value={bestVisit} detail={parcel ? "colis" : "kg"} color={GOLD} />
           <Kpi label="MEILLEURE PALETTE" value={bestPallet} detail="kg" color={ORANGE} />
           <Kpi label="PLUS LONGUE SÉRIE" value={longestSeries} color={PURPLE} />
@@ -139,7 +146,7 @@ export default function CargoHistoryDetail({ record, onClose }: any) {
           </div>)}</div> : <div style={{ padding: 12, borderRadius: 12, border: "1px dashed rgba(255,255,255,.10)", color: SOFT, textAlign: "center", fontSize: 8 }}>Journal non disponible dans cette ancienne sauvegarde.</div>}
         </section>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+        <div className="cargo-history-kpis">
           <Kpi label="SURCHARGES" value={overloads} color={overloads ? RED : GREEN} />
           <Kpi label="FRAGILE OK" value={n(match?.fragileCompleted) || rows.reduce((s:number,r:any)=>s+n(r?.fragileCompleted),0)} color={GREEN} />
           <Kpi label="FRAGILE CASSÉ" value={n(match?.fragileBroken) || rows.reduce((s:number,r:any)=>s+n(r?.fragileBroken),0)} color={RED} />

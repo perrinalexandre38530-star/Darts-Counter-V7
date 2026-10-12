@@ -2609,7 +2609,6 @@ useEffect(() => {
   // ============================================================
   React.useEffect(() => {
     if (loading) return;
-    if (!cloudHydrated) return;
     if (!online?.ready) return;
     if (online.status !== "signed_in") return;
 
@@ -2624,7 +2623,10 @@ useEffect(() => {
 
     // ISOLATION COMPTE : le bridge profil n'a le droit de toucher le store qu'APRÈS
     // que le namespace de ce même utilisateur a réellement fini de charger.
-    // Sans ce garde, une connexion B pouvait lier/copier le store encore affiché de A.
+    // IMPORTANT : il ne dépend PAS de `cloudHydrated`. L'identité légère du
+    // compte (pseudo/avatar/préférences) vient de Supabase `profiles` et doit se
+    // synchroniser même si la restauration lourde NAS/R2/Drive est encore en
+    // arrière-plan ou indisponible.
     if (String(getStorageUser() || "").trim() !== uid) return;
     if (!bootStoreLoadedRef.current || loadedStoreScopeRef.current !== uid) return;
 
@@ -2680,8 +2682,6 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     loading,
-    cloudHydrated,
-    cloudCanSync,
     online?.ready,
     online?.status,
     (online as any)?.user?.id,
@@ -2704,10 +2704,11 @@ useEffect(() => {
   // même profile.id au lieu d'inventer un identifiant local différent.
   const canonicalProfileRemoteSyncRef = React.useRef<string>("");
   React.useEffect(() => {
-    if (loading || !cloudHydrated || !online?.ready || online?.status !== "signed_in") return;
+    if (loading || !online?.ready || online?.status !== "signed_in") return;
     const user = (online as any)?.user || null;
     const uid = String(user?.user_metadata?.supabase_user_id || user?.id || "").trim();
     if (!uid || String(getStorageUser() || "").trim() !== uid) return;
+    if (!bootStoreLoadedRef.current || loadedStoreScopeRef.current !== uid) return;
 
     const canonical = getCanonicalAccountProfileFromStore(store as any, uid) as any;
     const canonicalId = String(canonical?.id || "").trim();
@@ -2748,7 +2749,6 @@ useEffect(() => {
     });
   }, [
     loading,
-    cloudHydrated,
     online?.ready,
     online?.status,
     (online as any)?.user?.id,
