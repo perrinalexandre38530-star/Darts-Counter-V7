@@ -728,6 +728,41 @@ export function footballAccuracy(stats: Partial<FootballPlayerStats> | undefined
 export function buildFootballMatchStats(state: FootballState) {
   const rows = Object.values(state.statsByPlayer || {});
   const total = (key: keyof FootballPlayerStats) => rows.reduce((sum, stats) => sum + Number(stats?.[key] || 0), 0);
+  const perSide = state.sides.map((side, sideIndex) => {
+    const sideRows = (side.playerIds || []).map((id) => state.statsByPlayer[id]).filter(Boolean);
+    const sideTotal = (key: keyof FootballPlayerStats) => sideRows.reduce((sum, stats) => sum + Number(stats?.[key] || 0), 0);
+    const possessionVisits = (state.visits || []).filter((visit) => visit.possessionSideIdBefore === side.id).length;
+    const darts = sideTotal("darts");
+    const successfulActions = sideTotal("successfulActions");
+    const shots = sideTotal("shots");
+    const goals = Number(state.scoreBySide[side.id] || 0);
+    const defenseVisits = sideTotal("defenseVisits");
+    const goalkeeperVisits = sideTotal("goalkeeperVisits");
+    const pct = (value: number, denominator: number) => denominator > 0 ? Math.round((value / denominator) * 1000) / 10 : 0;
+    return {
+      sideId: side.id,
+      sideName: side.name,
+      sideIndex,
+      score: goals,
+      darts,
+      visits: sideTotal("visits"),
+      goals,
+      shots,
+      shotsOnTarget: sideTotal("shotsOnTarget"),
+      saves: sideTotal("saves"),
+      tackles: sideTotal("tackles"),
+      interceptions: sideTotal("interceptions"),
+      advances: sideTotal("advances"),
+      clearances: sideTotal("clearances"),
+      counterAttacks: sideTotal("counterAttacks"),
+      possessionVisits,
+      possessionPct: state.visits.length ? Math.round((possessionVisits / state.visits.length) * 1000) / 10 : 50,
+      accuracyPct: pct(successfulActions, darts),
+      conversionPct: pct(goals, shots),
+      defenseEfficiencyPct: pct(sideTotal("interceptions"), defenseVisits),
+      goalkeeperEfficiencyPct: pct(sideTotal("saves"), goalkeeperVisits),
+    };
+  });
   return {
     durationMs: Math.max(0, Number((state.finishedAt || Date.now()) - state.startedAt)),
     totalDarts: total("darts"), totalVisits: total("visits"), goals: total("goals"),
@@ -738,6 +773,7 @@ export function buildFootballMatchStats(state: FootballState) {
     successfulActions: total("successfulActions"), misses: total("misses"),
     scoreBySide: { ...state.scoreBySide }, periodsPlayed: state.period, stage: state.stage,
     goalTarget: state.config.goalTarget, penaltyShots: state.config.penaltyShots,
+    perSide,
   };
 }
 

@@ -10,5 +10,5 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
 </div>;
 
 export default function CastleConfig(props: any) {
-  return <NewDartsModeConfig {...props} mode="castle" definition={{ id: "castle", title: "CASTLE", ticker: tickerCastle, accent: "#ffb33f", accent2: "#ff6d2d", minPlayers: 2, maxPlayers: 12, playTab: "castle_play", guidedSteps: ["Participants", "Château", "Format", "Saisie", "Résumé"], rulesContent: rules }} />;
+  return <NewDartsModeConfig {...props} mode="castle" definition={{ id: "castle", title: "CASTLE", ticker: tickerCastle, accent: "#ffb33f", accent2: "#ff6d2d", minPlayers: 2, maxPlayers: 12, playTab: "castle_play", guidedSteps: ["Participants", "Château", "Format", "Saisie", "Aide", "Résumé"], rulesContent: rules }} />;
 }

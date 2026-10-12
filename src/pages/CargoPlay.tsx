@@ -33,6 +33,9 @@ import {
 } from "../lib/gameEngines/cargoEngine";
 import { History } from "../lib/history";
 import tickerCargo from "../assets/tickers/ticker_cargo.png";
+import CargoLoadStatus from "../components/cargo/CargoLoadStatus";
+import CargoManifestStrip from "../components/cargo/CargoManifestStrip";
+import CargoTeamStrip from "../components/cargo/CargoTeamStrip";
 import CargoEnd from "./CargoEnd";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
@@ -508,7 +511,7 @@ export default function CargoPlay(props: any) {
   return <div style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
     <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
 
-    <main className="cargo-play-main" style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 980, margin: "0 auto", padding: "7px 8px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "132px 58px minmax(0,1fr)", gap: 9, overflow: "hidden" }}>
+    <main className="cargo-play-main" style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 980, margin: "0 auto", padding: "7px 8px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "132px 58px 132px minmax(0,1fr)", gap: 9, overflow: "hidden" }}>
       <section style={{ minHeight: 0, borderRadius: 20, overflow: "hidden", border: `1px solid ${activeColor}78`, background: "linear-gradient(180deg,rgba(18,20,27,.93),rgba(6,8,12,.96))", boxShadow: `0 0 24px ${activeColor}1c,0 12px 30px rgba(0,0,0,.26)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 34px" }}>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 126px", alignItems: "stretch", position: "relative" }}>
           <div style={{ minWidth: 0, position: "relative", overflow: "hidden", padding: "9px 9px 7px 10px", display: "grid", gridTemplateColumns: "58px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
@@ -519,6 +522,7 @@ export default function CargoPlay(props: any) {
               <div style={{ color: activeColor, fontSize: 16, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${activeColor}44` }}>{playerName(activeProfile)}</div>
               <div style={{ marginTop: 6, color: "rgba(255,255,255,.58)", fontSize: 8.4, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds}{activeTeamName ? ` · ${activeTeamName}` : ""}</div>
               <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 9px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: activeSeries ? GREEN : GOLD, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `Série ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`}` : "Nouvelle série disponible"}</span></div>
+              <CargoTeamStrip activeTeam={activeTeam} activeTeamName={activeTeamName} profilesById={profilesById} scoreUnit={scoreUnit} activeColor={activeColor} />
             </div>
             <div style={{ minWidth: 58, textAlign: "center", position: "relative", zIndex: 1 }}>
               <div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 33, lineHeight: .9, fontWeight: 1200, textShadow: `0 0 14px ${(isParcel ? BLUE : ORANGE)}42` }}>{activeScore}</div>
@@ -537,11 +541,7 @@ export default function CargoPlay(props: any) {
             </div>
           </button>
         </div>
-
-        <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "5px 10px", background: "rgba(0,0,0,.28)", borderTop: "1px solid rgba(255,255,255,.05)" }}>
-          <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: GOLD, boxShadow: `0 0 8px ${GOLD}88` }} /><span style={{ color: "rgba(255,255,255,.82)", fontSize: 8.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{objectiveNow}</span></div>
-          <span style={{ color: throwDarts.length === 3 ? GOLD : SOFT, fontSize: 7.7, fontWeight: 950 }}>{throwDarts.length}/3</span>
-        </div>
+        <CargoManifestStrip objectiveNow={objectiveNow} activeContract={activeContract} activeSeries={activeSeries} throwCount={throwDarts.length} isParcel={isParcel} onOpenManifest={() => setOverlay("manifest")} />
       </section>
 
       <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
@@ -550,6 +550,8 @@ export default function CargoPlay(props: any) {
         <QuickButton icon="⌁" label="STATS" value={`${activeAccuracy}% précision`} color={GREEN} onClick={() => setOverlay("stats")} />
         <QuickButton icon="↺" label="JOURNAL" value={`${state.visits.length} volée${state.visits.length > 1 ? "s" : ""}`} color={BLUE} onClick={() => setOverlay("timeline")} disabled={!state.visits.length} />
       </section>
+
+      <CargoLoadStatus state={state} stats={activeStats} playerId={activePlayer?.id} onOpenTruck={() => setOverlay("truck")} onOpenManifest={() => setOverlay("manifest")} />
 
       {state.phase === "playing" ? <section style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "stretch", borderRadius: 20, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)", padding: 7, boxShadow: "0 12px 32px rgba(0,0,0,.24)" }}>
         {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 18, background: "linear-gradient(180deg,rgba(20,20,23,.82),rgba(8,8,11,.93))", padding: 10, display: "grid", gridTemplateRows: "minmax(0,1fr) 56px", gap: 12 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(330, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .39)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "minmax(88px,.8fr) minmax(64px,.44fr) minmax(120px,1fr)", gap: 10 }}><button type="button" onClick={cancelOrUndo} style={{ borderRadius: 16, border: "1px solid rgba(255,180,0,.3)", background: "linear-gradient(180deg,#ffc63a,#ffaf00)", color: "#1a1a1a", fontWeight: 1050, cursor: "pointer", boxShadow: "0 9px 20px rgba(255,170,0,.20)" }}>ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} disabled={!throwDarts.length} style={{ borderRadius: 16, border: throwDarts.length ? "1px solid rgba(255,180,0,.3)" : "1px solid rgba(255,255,255,.06)", color: throwDarts.length ? "#171008" : "rgba(255,255,255,.24)", background: throwDarts.length ? "linear-gradient(180deg,#ffc63a,#ffad00)" : "rgba(255,255,255,.035)", fontWeight: 1100, cursor: throwDarts.length ? "pointer" : "default" }}>VALIDER</button></div></div> : <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
@@ -561,11 +563,11 @@ export default function CargoPlay(props: any) {
     <style>{`
       @keyframes cargo-toast-in{from{opacity:0;transform:translate(-50%,-12px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
       @media (max-height:720px){
-        .cargo-play-main{grid-template-rows:112px 48px minmax(0,1fr)!important;gap:7px!important}
+        .cargo-play-main{grid-template-rows:112px 48px 118px minmax(0,1fr)!important;gap:7px!important}
         .cargo-airy-keypad{grid-template-rows:32px 44px minmax(12px,auto) minmax(132px,1fr) 48px!important;gap:7px!important;padding:9px!important}
       }
       @media (min-height:930px){
-        .cargo-play-main{grid-template-rows:140px 62px minmax(0,1fr)!important;gap:11px!important}
+        .cargo-play-main{grid-template-rows:140px 62px 146px minmax(0,1fr)!important;gap:11px!important}
         .cargo-airy-keypad{grid-template-rows:46px 56px minmax(18px,auto) minmax(250px,1fr) 62px!important;gap:13px!important;padding:14px!important}
       }
     `}</style>

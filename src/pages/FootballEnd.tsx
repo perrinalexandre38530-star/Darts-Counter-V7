@@ -11,6 +11,7 @@ const SOFT = "#aeb8c9";
 const WHITE = "#f7fbff";
 
 const n = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0;
+const pct = (value: any, total: any) => n(total) > 0 ? Math.round((n(value) / n(total)) * 100) : 0;
 const playerName = (profile: any) => profile?.name || profile?.displayName || profile?.display_name || "Joueur";
 
 function sumSide(state: any, sideIndex: number, key: string) {
@@ -70,15 +71,32 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
   const rightColor = state.sides[1]?.color || RED;
   const leftPoss = possessionPct(state, 0);
   const rightPoss = 100 - leftPoss;
+  const leftShots = sumSide(state, 0, "shots");
+  const rightShots = sumSide(state, 1, "shots");
+  const leftGoals = n(state.scoreBySide[state.sides[0]?.id]);
+  const rightGoals = n(state.scoreBySide[state.sides[1]?.id]);
+  const leftDarts = sumSide(state, 0, "darts");
+  const rightDarts = sumSide(state, 1, "darts");
+  const leftSuccess = sumSide(state, 0, "successfulActions");
+  const rightSuccess = sumSide(state, 1, "successfulActions");
   const title = state.draw ? "MATCH NUL" : (sideRows[0]?.side?.name || "VICTOIRE");
   const comparison = [
     ["POSSESSION", leftPoss, rightPoss, "%"],
-    ["TIRS", sumSide(state, 0, "shots"), sumSide(state, 1, "shots"), ""],
+    ["TIRS", leftShots, rightShots, ""],
     ["CADRÉS", sumSide(state, 0, "shotsOnTarget"), sumSide(state, 1, "shotsOnTarget"), ""],
     ["ARRÊTS", sumSide(state, 0, "saves"), sumSide(state, 1, "saves"), ""],
     ["INTERCEPT.", sumSide(state, 0, "interceptions"), sumSide(state, 1, "interceptions"), ""],
     ["PROGRESSION", sumSide(state, 0, "advances"), sumSide(state, 1, "advances"), ""],
+    ["CONVERSION", pct(leftGoals, leftShots), pct(rightGoals, rightShots), "%"],
+    ["PRÉCISION", pct(leftSuccess, leftDarts), pct(rightSuccess, rightDarts), "%"],
   ];
+  const matchBadges = [
+    state.config.variant === "golden_goal" ? { icon: "⚡", label: "GOLDEN GOAL", color: GOLD } : null,
+    state.stage === "penalties" || state.config.variant === "penalties" ? { icon: "🥅", label: "TIRS AU BUT", color: BLUE } : null,
+    !state.draw && Math.min(leftGoals, rightGoals) === 0 ? { icon: "🧱", label: "CLEAN SHEET", color: GREEN } : null,
+    Math.abs(leftGoals - rightGoals) >= 3 ? { icon: "🔥", label: "LARGE VICTOIRE", color: RED } : null,
+    state.visits?.some((visit: any) => (visit.events || []).some((event: any) => event.type === "counter")) ? { icon: "🚀", label: "CONTRE-ATTAQUE", color: BLUE } : null,
+  ].filter(Boolean);
   const goalEvents = (state.visits || []).flatMap((visit: any) => (visit.events || []).filter((event: any) => String(event.type).includes("goal")).map((event: any) => ({ visit, event }))).slice(-8);
 
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", padding: "max(8px,env(safe-area-inset-top)) 8px max(12px,env(safe-area-inset-bottom))", boxSizing: "border-box", background: "radial-gradient(circle at 50% 0%,rgba(101,229,170,.28),rgba(0,8,4,.96) 48%,#000 100%)" }}>
@@ -92,6 +110,10 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
         <div style={{ marginTop: 3, color: WHITE, fontSize: 19, fontWeight: 1200 }}>{title}</div>
         <div style={{ marginTop: 4, color: SOFT, fontSize: 7.5 }}>{footballVariantLabel(state.config.variant)} · {state.visits.length} volées · {Math.max(1, Math.round(((state.finishedAt || Date.now()) - state.startedAt) / 60000))} min</div>
       </section>
+
+      {matchBadges.length ? <section style={{ marginTop: 7, display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "center" }}>
+        {matchBadges.map((badge: any) => <span key={badge.label} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${badge.color}55`, background: `${badge.color}0d`, color: badge.color, fontSize: 6.4, fontWeight: 1100 }}>{badge.icon} {badge.label}</span>)}
+      </section> : null}
 
       {mvp ? <section style={{ marginTop: 7, borderRadius: 16, padding: 8, display: "grid", gridTemplateColumns: "39px minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${GOLD}55`, background: `${GOLD}0c` }}>
         <ProfileAvatar profile={mvp.profile} size={37} />

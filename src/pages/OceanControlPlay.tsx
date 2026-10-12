@@ -93,9 +93,14 @@ function ShipStrip({ owner, reveal = false, color = BLUE }: any) {
   return <div className="ocean-ship-strip">{(owner?.ships || []).map((ship: any) => {
     const meta = shipVisualMeta(ship);
     return <div key={ship.id} title={ship.name} className={`ocean-ship-card ${ship.sunk ? "is-sunk" : ""}`} style={{ ["--ship-accent" as any]: color }}>
-      <div className={`ocean-ship-card__art is-${meta.kind}`}>{ship.sunk ? "💥" : meta.emoji}</div>
-      <div className="ocean-ship-card__name">{ship.name || meta.label}</div>
-      <div className="ocean-ship-card__hp">{ship.hits.length}/{ship.length} zones</div>
+      <div className={`ocean-ship-card__art is-${meta.kind}`}>
+        {ship.sunk ? <span className="ocean-ship-card__wreck">💥</span> : <span className={`ocean-ship-silhouette is-${meta.kind}`} aria-hidden="true"><span className="hull" /><span className="bridge" /><span className="wake" /></span>}
+      </div>
+      <div className="ocean-ship-card__meta">
+        <div className="ocean-ship-card__name">{ship.name || meta.label}</div>
+        <div className="ocean-ship-card__type">{meta.label}</div>
+        <div className="ocean-ship-card__hp">{ship.hits.length}/{ship.length} zones</div>
+      </div>
       {!reveal && !ship.sunk ? <div className="ocean-ship-card__fog">SECRET</div> : null}
     </div>;
   })}</div>;

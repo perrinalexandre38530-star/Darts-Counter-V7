@@ -182,3 +182,52 @@ export function DartsPokerDeckPreview() {
     {samples.map((card, index) => <div key={card.id} style={{ transform: `translateY(${Math.abs(2 - index) * 2}px) rotate(${(index - 2) * 2.5}deg)`, transformOrigin: "50% 100%" }}><DartsPokerCard card={card} size="medium" /></div>)}
   </div>;
 }
+
+
+export function buildDartsPokerDisplayDeck(): PokerCard[] {
+  const suits: Array<"S" | "H" | "D" | "C"> = ["S", "H", "D", "C"];
+  const deck: PokerCard[] = [];
+  suits.forEach((suit) => {
+    for (let rank = 2; rank <= 14; rank += 1) deck.push({ id: `${suit}${rank}`, suit, rank });
+  });
+  deck.push({ id: "MSS_JOKER", suit: null, rank: 15, joker: true });
+  return deck;
+}
+
+export function DartsPokerDeckGallery({ compact = false, showLegend = true }: { compact?: boolean; showLegend?: boolean }) {
+  const suits: Array<{ key: "S" | "H" | "D" | "C"; label: string; symbol: string; color: string }> = [
+    { key: "S", label: "PIQUES", symbol: "♠", color: "#d4d8e5" },
+    { key: "H", label: "CŒURS", symbol: "♥", color: RED },
+    { key: "D", label: "CARREAUX", symbol: "♦", color: RED },
+    { key: "C", label: "TRÈFLES", symbol: "♣", color: "#d4d8e5" },
+  ];
+  const deck = buildDartsPokerDisplayDeck();
+  const cardSize: CardSize = compact ? "mini" : "small";
+  return <div style={{ display: "grid", gap: compact ? 7 : 10 }}>
+    {showLegend ? <div style={{ padding: compact ? "7px 8px" : "9px 10px", borderRadius: 12, background: "linear-gradient(135deg,rgba(246,194,86,.08),rgba(232,58,67,.07))", border: "1px solid rgba(246,194,86,.24)", color: "#d8dce6", fontSize: compact ? 7.5 : 9, lineHeight: 1.45 }}>
+      <b style={{ color: GOLD }}>DECK MSS SIGNATURE</b> · 52 cartes + Joker Awena. Les figures J / Q / K utilisent les personnages MULTISPORTS SCORING ; les valeurs et couleurs restent celles d’un vrai jeu de poker.
+    </div> : null}
+    {suits.map((suit) => {
+      const cards = deck.filter((card) => card.suit === suit.key);
+      return <section key={suit.key} style={{ padding: compact ? 6 : 8, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.022)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: compact ? 5 : 7 }}>
+          <span style={{ color: suit.color, fontSize: compact ? 12 : 15 }}>{suit.symbol}</span>
+          <b style={{ color: suit.color, fontSize: compact ? 7.5 : 9, letterSpacing: .65 }}>{suit.label}</b>
+          <span style={{ marginLeft: "auto", color: "#747b8d", fontSize: compact ? 6.5 : 7.5 }}>13 CARTES</span>
+        </div>
+        <div style={{ display: "flex", gap: compact ? 3 : 5, overflowX: "auto", paddingBottom: 3 }}>
+          {cards.map((card) => <DartsPokerCard key={card.id} card={card} size={cardSize} />)}
+        </div>
+      </section>;
+    })}
+    <section style={{ padding: compact ? 6 : 8, borderRadius: 13, border: `1px solid ${GOLD}44`, background: `${GOLD}08` }}>
+      <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 9, alignItems: "center" }}>
+        <DartsPokerCard card={deck[deck.length - 1]} size={compact ? "small" : "medium"} />
+        <div>
+          <div style={{ color: GOLD, fontSize: compact ? 8 : 10, fontWeight: 1100 }}>AWENA · JOKER MSS</div>
+          <div style={{ color: "#9aa1b2", fontSize: compact ? 7 : 8.5, lineHeight: 1.4, marginTop: 3 }}>Le Double Bull déclenche le Joker spécial Darts Poker. Une seule carte Joker peut entrer dans une main.</div>
+        </div>
+      </div>
+    </section>
+  </div>;
+}

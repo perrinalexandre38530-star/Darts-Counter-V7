@@ -670,6 +670,42 @@
   letter-spacing: .7px;
 }
 
+
+
+/* V4 — fil live toujours visible sans alourdir le clavier */
+.football-match-ticker {
+  min-width: 0;
+  min-height: 28px;
+  padding: 5px 8px;
+  display: grid;
+  grid-template-columns: 8px auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  border-radius: 11px;
+}
+
+.football-match-ticker__pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.football-match-ticker strong {
+  font-size: 6.4px;
+  font-weight: 1150;
+  white-space: nowrap;
+}
+
+.football-match-ticker span:last-child {
+  min-width: 0;
+  color: #d6deea;
+  font-size: 6.5px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 520px) {
   .football-live-strip { padding-inline: 5px; gap: 3px; grid-template-columns: minmax(0,1fr) 22px minmax(0,1fr); }
   .football-live-side { gap: 2px; }

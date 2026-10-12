@@ -10,5 +10,5 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
 </div>;
 
 export default function HareHoundsConfig(props: any) {
-  return <NewDartsModeConfig {...props} mode="hare_hounds" definition={{ id: "hare_hounds", title: "HARE & HOUNDS", ticker: tickerHareHounds, accent: "#f6b63b", accent2: "#ff7b2f", minPlayers: 2, maxPlayers: 8, playTab: "hare_hounds_play", guidedSteps: ["Participants", "Poursuite", "Format", "Saisie", "Résumé"], rulesContent: rules }} />;
+  return <NewDartsModeConfig {...props} mode="hare_hounds" definition={{ id: "hare_hounds", title: "HARE & HOUNDS", ticker: tickerHareHounds, accent: "#f6b63b", accent2: "#ff7b2f", minPlayers: 2, maxPlayers: 8, playTab: "hare_hounds_play", guidedSteps: ["Participants", "Poursuite", "Format", "Saisie", "Aide", "Résumé"], rulesContent: rules }} />;
 }

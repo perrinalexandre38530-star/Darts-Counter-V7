@@ -18,7 +18,7 @@ import type { DartsPokerConfigPayload, DartsPokerBotLevel } from "../lib/gameEng
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { PillButton, SelectedParticipantsCompactBlock, x01MostUsedDartSetIdForProfile } from "./X01ConfigV3";
 import tickerDartsPoker from "../assets/tickers/ticker_darts_poker.png";
-import { DartsPokerDeckPreview } from "../components/darts-poker/DartsPokerCard";
+import { DartsPokerDeckGallery, DartsPokerDeckPreview } from "../components/darts-poker/DartsPokerCard";
 
 const LS_KEY = "dc_modecfg_darts_poker_v1";
 const RED = "#e83a43";
@@ -76,6 +76,7 @@ export default function DartsPokerConfig(props: any) {
   const [randomOrder, setRandomOrder] = React.useState(Boolean(saved.randomOrder));
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets || {});
+  const [showDeckGallery, setShowDeckGallery] = React.useState(false);
 
   function togglePlayer(idRaw: string) {
     const id = String(idRaw || "");
@@ -155,6 +156,7 @@ export default function DartsPokerConfig(props: any) {
     <div style={{ marginTop: 8, padding: "7px 8px 5px", borderRadius: 14, border: "1px solid rgba(246,194,86,.26)", background: "radial-gradient(circle at 50% 0%,rgba(246,194,86,.08),rgba(255,255,255,.015) 70%)" }}>
       <div style={{ textAlign: "center", color: GOLD, fontSize: 7.5, fontWeight: 1100, letterSpacing: .8 }}>DECK MSS SIGNATURE · FIGURES DE L'APPLICATION</div>
       <DartsPokerDeckPreview />
+      <button type="button" onClick={() => setShowDeckGallery(true)} style={{ width: "100%", minHeight: 34, marginTop: 4, borderRadius: 10, border: `1px solid ${GOLD}55`, background: `${GOLD}0d`, color: GOLD, fontSize: 8, fontWeight: 1050, letterSpacing: .5 }}>VOIR LES 52 CARTES + JOKER</button>
     </div>
     <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
       {[["JOUEURS", selectedIds.length], ["MARCHÉ", "20 CARTES"], ["AIDE", assistanceEnabled ? "ON" : "OFF"]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: soft, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "MARCHÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
@@ -176,5 +178,6 @@ export default function DartsPokerConfig(props: any) {
         </div>
       </> : <>{playersBlock}{formatBlock}{powersBlock}{inputBlock}{summaryBlock}<button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 16, border: `1px solid ${valid ? GOLD : "#555"}`, background: valid ? `linear-gradient(135deg,${RED},#8e121d)` : "#282a30", color: "#fff", fontWeight: 1100, boxShadow: valid ? `0 0 24px ${RED}55` : "none" }}>♠ DÉMARRER DARTS POKER</button></>}
     </main>
+    {showDeckGallery ? <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.90)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ width: "min(920px,100%)", maxHeight: "94dvh", overflow: "auto", borderRadius: 20, padding: 12, background: "linear-gradient(180deg,#14151b,#050609)", border: `1px solid ${GOLD}66`, boxShadow: "0 24px 70px rgba(0,0,0,.65)" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 9 }}><div><div style={{ color: GOLD, fontSize: 11, fontWeight: 1100 }}>DECK MSS SIGNATURE</div><div style={{ color: soft, fontSize: 8, marginTop: 2 }}>Toutes les cartes utilisées par Darts Poker</div></div><button type="button" onClick={() => setShowDeckGallery(false)} style={{ minHeight: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.05)", color: "#fff", padding: "0 12px", fontWeight: 1000 }}>FERMER</button></div><DartsPokerDeckGallery /></div></div> : null}
   </div>;
 }

@@ -10,5 +10,5 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
 </div>;
 
 export default function GotchaConfig(props: any) {
-  return <NewDartsModeConfig {...props} mode="gotcha" definition={{ id: "gotcha", title: "GOTCHA", ticker: tickerGotcha, accent: "#ff9b31", accent2: "#ff482b", minPlayers: 2, maxPlayers: 12, playTab: "gotcha_play", guidedSteps: ["Participants", "Gotcha", "Format", "Saisie", "Résumé"], rulesContent: rules }} />;
+  return <NewDartsModeConfig {...props} mode="gotcha" definition={{ id: "gotcha", title: "GOTCHA", ticker: tickerGotcha, accent: "#ff9b31", accent2: "#ff482b", minPlayers: 2, maxPlayers: 12, playTab: "gotcha_play", guidedSteps: ["Participants", "Gotcha", "Format", "Saisie", "Aide", "Résumé"], rulesContent: rules }} />;
 }

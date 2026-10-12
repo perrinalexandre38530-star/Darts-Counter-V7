@@ -60,14 +60,23 @@ assert.ok(play.includes("roundContract"), "contrat de manche non affiché");
 assert.ok(play.includes("dealerIndex"), "rotation du dealer absente");
 assert.ok(play.includes("contractHits"), "statistiques de contrats absentes");
 assert.ok(play.includes("DartsPokerCard"), "deck visuel MSS non utilisé dans Play");
+assert.ok(play.includes('quickPanel === "deck"'), "panneau Deck MSS absent de Play");
+assert.ok(play.includes('label="DECK"'), "raccourci Deck MSS absent de Play");
+assert.ok(play.includes('label="MARCHÉ" value="20"'), "le raccourci Marché doit afficher les 20 secteurs et non la taille de la pioche");
 const configPage = read("src/pages/DartsPokerConfig.tsx");
 assert.ok(configPage.includes("DartsPokerDeckPreview"), "aperçu du deck MSS absent de la configuration");
+assert.ok(configPage.includes("DartsPokerDeckGallery"), "galerie complète du deck MSS absente de la configuration");
 
 const deck = read("src/components/darts-poker/DartsPokerCard.tsx");
 assert.ok(deck.includes("AWENA"), "Awena absente du deck MSS");
 assert.ok(deck.includes("killer-noz.webp"), "figures Killer absentes du deck MSS");
 assert.ok(deck.includes("loterie-midas.webp"), "figures Loterie absentes du deck MSS");
 assert.ok(deck.includes("firefighter-lyna.webp"), "figures Firefighter absentes du deck MSS");
+assert.ok(deck.includes("buildDartsPokerDisplayDeck"), "construction du deck visuel complet absente");
+assert.ok(deck.includes("DartsPokerDeckGallery"), "galerie des 52 cartes + Joker absente");
+
+const endPage = read("src/pages/DartsPokerEnd.tsx");
+assert.ok(endPage.includes("FIL DU MATCH · MANCHE PAR MANCHE"), "timeline visuelle des manches absente de la fin de partie");
 
 const history = read("src/pages/HistoryPage.tsx");
 assert.ok(history.includes('go("darts_poker_play"'), "reprise Historique absente");

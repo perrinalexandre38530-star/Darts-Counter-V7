@@ -2,8 +2,7 @@ import * as React from "react";
 import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
-import { deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../lib/dartsPokerAnalytics";
-import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
+import { deriveDartsPokerPlayerMetrics, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../lib/dartsPokerAnalytics";
 
 type Props = {
   store?: any;
@@ -1036,6 +1035,8 @@ function CastleSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
   const totalBuilds = rows.reduce((sum, row) => sum + num(row?.raw?.builds), 0);
   const totalDamage = rows.reduce((sum, row) => sum + num(row?.raw?.damage), 0);
   const accuracy = totalDarts > 0 ? (totalUseful / totalDarts) * 100 : 0;
+  const bestImpact = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestImpactVisit)), 0);
+  const bestStreak = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestUsefulStreak)), 0);
   const targetBricks = num(pick(summary?.targetBricks, config?.rules?.targetBricks), 15);
   const attacks = pick(config?.rules?.attacksEnabled, true) !== false;
   const assignment = String(pick(config?.rules?.numberAssignment, "random")) === "offhand" ? "Main opposée" : "Aléatoire";
@@ -1048,6 +1049,8 @@ function CastleSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
         <Kpi label="Dégâts infligés" value={totalDamage} accent="#ff6b55" />
         <Kpi label="Touches utiles" value={`${totalUseful}/${totalDarts}`} accent="#5ce6a8" />
         <Kpi label="Précision utile" value={`${Math.round(accuracy * 10) / 10}%`} accent="#5ce6a8" />
+        <Kpi label="Best impact / volée" value={bestImpact} accent="#ffd166" />
+        <Kpi label="Meilleure série utile" value={bestStreak} accent="#55c7ff" />
         <Kpi label="Attaques" value={attacks ? "ACTIVES" : "OFF"} accent={attacks ? "#ff6b55" : "#aeb2c3"} />
         <Kpi label="Attribution" value={assignment} accent="#55c7ff" />
         <Kpi label="Manches à gagner" value={num(config?.seriesWins, 1)} accent="#f5f7fb" />
@@ -1056,9 +1059,9 @@ function CastleSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
 
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Bâtisseurs & assaillants</div>
-      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 820, borderCollapse: "collapse", fontSize: 11.5 }}>
-        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Secteur</th><th style={th}>Manches</th><th style={th}>Briques</th><th style={th}>Dégâts</th><th style={th}>Touches utiles</th><th style={th}>MISS</th><th style={th}>BULL</th><th style={th}>Flèches</th><th style={th}>Préc.</th></tr></thead>
-        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const useful = num(p.usefulHits); const pct = darts > 0 ? useful / darts * 100 : 0; return <tr key={`castle-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.target) || "—"}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.builds)}</td><td style={td}>{num(p.damage)}</td><td style={td}>{useful}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bulls)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td></tr>; })}</tbody>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1030, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Secteur</th><th style={th}>Manches</th><th style={th}>Briques</th><th style={th}>Dégâts</th><th style={th}>Touches utiles</th><th style={th}>Best impact</th><th style={th}>Série</th><th style={th}>S/D/T</th><th style={th}>MISS</th><th style={th}>BULL/DBULL</th><th style={th}>Flèches</th><th style={th}>Préc.</th></tr></thead>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const useful = num(p.usefulHits); const pct = darts > 0 ? useful / darts * 100 : 0; return <tr key={`castle-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.target) || "—"}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.builds)}</td><td style={td}>{num(p.damage)}</td><td style={td}>{useful}</td><td style={td}>{num(p.bestImpactVisit)}</td><td style={td}>{num(p.bestUsefulStreak)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td></tr>; })}</tbody>
       </table></div>
     </section>
 
@@ -1083,6 +1086,8 @@ function GotchaSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
   const victims = rows.reduce((sum, row) => sum + num(row?.raw?.victims), 0);
   const busts = rows.reduce((sum, row) => sum + num(row?.raw?.busts), 0);
   const bestVisit = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestVisit)), 0);
+  const highestScore = rows.reduce((best, row) => Math.max(best, num(row?.raw?.highestScore)), 0);
+  const exactFinishes = rows.reduce((sum, row) => sum + num(row?.raw?.exactFinishes), 0);
   const outMode = ({ straight: "STRAIGHT OUT", double: "DOUBLE OUT", master: "MASTER OUT" } as any)[String(config?.rules?.outMode)] || "STRAIGHT OUT";
   const bustRule = String(config?.rules?.bustRule || "turn") === "zero" ? "Retour à 0" : "Volée annulée";
   return <>
@@ -1094,6 +1099,8 @@ function GotchaSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
         <Kpi label="Victimes remises à 0" value={victims} accent="#ff5b55" />
         <Kpi label="BUST" value={busts} accent="#ff5b55" />
         <Kpi label="Best volée" value={bestVisit} accent="#5ce6a8" />
+        <Kpi label="Plus haut score" value={highestScore} accent="#ffd166" />
+        <Kpi label="Finishes exacts" value={exactFinishes} accent="#5ce6a8" />
         <Kpi label="Total flèches" value={totalDarts} accent="#55c7ff" />
         <Kpi label="Sortie" value={outMode} accent="#ffd166" />
         <Kpi label="Règle BUST" value={bustRule} accent="#f5f7fb" />
@@ -1102,9 +1109,9 @@ function GotchaSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
 
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Statistiques joueurs</div>
-      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse", fontSize: 11.5 }}>
-        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Score final</th><th style={th}>Manches</th><th style={th}>GOTCHA</th><th style={th}>Victimes</th><th style={th}>BUST</th><th style={th}>Points</th><th style={th}>Best</th><th style={th}>D/T/Bull</th><th style={th}>MISS</th><th style={th}>Flèches</th></tr></thead>
-        <tbody>{rows.map((row: any) => { const p = row.raw || {}; return <tr key={`gotcha-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.score)}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.gotchas)}</td><td style={td}>{num(p.victims)}</td><td style={td}>{num(p.busts)}</td><td style={td}>{num(p.points)}</td><td style={td}>{num(p.bestVisit)}</td><td style={td}>{num(p.doubles)}/{num(p.triples)}/{num(p.bulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.darts)}</td></tr>; })}</tbody>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1050, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Score final</th><th style={th}>Manches</th><th style={th}>GOTCHA</th><th style={th}>Victimes</th><th style={th}>BUST</th><th style={th}>Points</th><th style={th}>Best</th><th style={th}>Max score</th><th style={th}>Finishes</th><th style={th}>S/D/T</th><th style={th}>Bull/DBull</th><th style={th}>MISS</th><th style={th}>Flèches</th></tr></thead>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; return <tr key={`gotcha-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.score)}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.gotchas)}</td><td style={td}>{num(p.victims)}</td><td style={td}>{num(p.busts)}</td><td style={td}>{num(p.points)}</td><td style={td}>{num(p.bestVisit)}</td><td style={td}>{num(p.highestScore)}</td><td style={td}>{num(p.exactFinishes)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.darts)}</td></tr>; })}</tbody>
       </table></div>
     </section>
 
@@ -1129,6 +1136,8 @@ function HareHoundsSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
   const catches = rows.reduce((sum, row) => sum + num(row?.raw?.catches), 0);
   const escapes = rows.reduce((sum, row) => sum + num(row?.raw?.escapes), 0);
   const accuracy = totalDarts > 0 ? validHits / totalDarts * 100 : 0;
+  const bestVisitSteps = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestVisitSteps)), 0);
+  const bestHitStreak = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestHitStreak)), 0);
   const direction = String(config?.rules?.direction || "clockwise") === "counter" ? "ANTI-HORAIRE" : "HORAIRE";
   const zone = String(config?.rules?.targetZone || "any") === "double" ? "DOUBLES" : String(config?.rules?.targetZone || "any") === "triple" ? "TRIPLES" : "S / D / T";
   return <>
@@ -1141,6 +1150,8 @@ function HareHoundsSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
         <Kpi label="Captures" value={catches} accent="#55c7ff" />
         <Kpi label="Évasions" value={escapes} accent="#ffd166" />
         <Kpi label="Précision" value={`${Math.round(accuracy * 10) / 10}%`} accent="#5ce6a8" />
+        <Kpi label="Best volée" value={`${bestVisitSteps} étape${bestVisitSteps > 1 ? "s" : ""}`} accent="#ffd166" />
+        <Kpi label="Meilleure série" value={bestHitStreak} accent="#55c7ff" />
         <Kpi label="Sens" value={direction} accent="#f5f7fb" />
         <Kpi label="Zone valide" value={zone} accent="#f5f7fb" />
       </div>
@@ -1148,9 +1159,9 @@ function HareHoundsSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
 
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Lièvres & limiers</div>
-      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 820, borderCollapse: "collapse", fontSize: 11.5 }}>
-        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Manches</th><th style={th}>Étapes</th><th style={th}>Captures</th><th style={th}>Évasions</th><th style={th}>Touches</th><th style={th}>MISS</th><th style={th}>Flèches</th><th style={th}>Préc.</th><th style={th}>Secteur final</th></tr></thead>
-        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const hits = num(p.validHits); const pct = darts > 0 ? hits / darts * 100 : 0; return <tr key={`hare-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.steps)}</td><td style={td}>{num(p.catches)}</td><td style={td}>{num(p.escapes)}</td><td style={td}>{hits}</td><td style={td}>{num(p.misses)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td><td style={td}>{num(p.currentSegment) || "—"}</td></tr>; })}</tbody>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1010, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Manches</th><th style={th}>Étapes</th><th style={th}>Captures</th><th style={th}>Évasions</th><th style={th}>Touches</th><th style={th}>Best volée</th><th style={th}>Série</th><th style={th}>S/D/T</th><th style={th}>MISS</th><th style={th}>Flèches</th><th style={th}>Préc.</th><th style={th}>Secteur final</th></tr></thead>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const hits = num(p.validHits); const pct = darts > 0 ? hits / darts * 100 : 0; return <tr key={`hare-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.steps)}</td><td style={td}>{num(p.catches)}</td><td style={td}>{num(p.escapes)}</td><td style={td}>{hits}</td><td style={td}>{num(p.bestVisitSteps)}</td><td style={td}>{num(p.bestHitStreak)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td><td style={td}>{num(p.currentSegment) || "—"}</td></tr>; })}</tbody>
       </table></div>
     </section>
 
@@ -1191,11 +1202,6 @@ function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
   const categories = [
     ["Carte haute","highCardHands"],["Paire","pairs"],["Double paire","twoPairs"],["Brelan","threeOfAKinds"],["Suite","straights"],["Couleur","flushes"],["Full","fullHouses"],["Carré","fourOfAKinds"],["Quinte flush","straightFlushes"],["Royale","royalFlushes"],
   ];
-  const signatureHands = pokerRows.map((row: any) => {
-    const roundRows = rounds.flatMap((round: any) => asArray(round?.rows).filter((item: any) => String(item?.playerId) === String(row.id)));
-    const bestRound = roundRows.slice().sort((a: any, b: any) => num(b?.evaluation?.score) - num(a?.evaluation?.score))[0] || null;
-    return { row, bestRound };
-  }).filter((item: any) => item.bestRound);
   return <>
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Table de poker · statistiques complètes</div>
@@ -1220,12 +1226,12 @@ function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
     </section>
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Tableau complet des joueurs</div>
-      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 3650, borderCollapse: "collapse", fontSize: 10 }}>
-        <thead><tr style={{ color: accent, textAlign: "left" }}>{["Joueur","Rang","Points","Base","Mains","V","Égal.","Win %","Podiums","Rang moy.","Rang σ","Best/Worst","Série V","Contrats","Contrat %","Bonus","Bonus %","Série C","Contrat→V","Darts","Hits","Préc.","S","D","T","Bull","DB","MISS","Série hit","Série miss","Zones","Couv. cible","Segment fav.","Cartes","Marché","Capture %","Auto","Pouvoir","Joker","Cartes/dart","Choix E/U","Choix %","Éch. E/U","Éch. %","Pouvoir %","Best","Force moy.","Médiane","Pire main","Constance","Fortes","Premium","Rang carte","Couleur","Pts/main","Pts/dart"].map((label)=><th key={label} style={th}>{label}</th>)}</tr></thead>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 2600, borderCollapse: "collapse", fontSize: 10 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}>{["Joueur","Rang","Points","Mains","V","Égal.","Win %","Podiums","Rang moy.","Contrats","Contrat %","Bonus","Darts","Hits","Préc.","S","D","T","Bull","DB","MISS","Série hit","Segment fav.","Cartes","Marché","Auto","Pouvoir","Joker","Choix E/U","Éch. E/U","Pouvoir %","Best","Force moy.","Fortes","Premium","Rang carte","Couleur","Pts/main","Pts/dart"].map((label)=><th key={label} style={th}>{label}</th>)}</tr></thead>
         <tbody>{pokerRows.map((row: any) => { const p=row.raw||{}; return <tr key={`poker-${row.id}`}>
-          <td style={td}><b>{row.name}</b></td><td style={td}>#{row.rank||"—"}</td><td style={{...td,color:"#f6c256",fontWeight:900}}>{fmt(p.points)}</td><td style={td}>{fmt(p.basePoints)}</td><td style={td}>{fmt(p.handsPlayed)}</td><td style={td}>{fmt(p.handsWon)}</td><td style={td}>{fmt(p.handsTied)}</td><td style={td}>{pctText(p.handWinRate)}</td><td style={td}>{fmt(p.podiums)}</td><td style={td}>{p.averageRoundRank?fmt(p.averageRoundRank):"—"}</td><td style={td}>{fmt(p.roundRankStdDev,2)}</td><td style={td}>{p.bestRoundRank||"—"}/{p.worstRoundRank||"—"}</td><td style={td}>{fmt(p.bestRoundWinStreak)}</td>
-          <td style={td}>{fmt(p.contractHits)}/{fmt(p.contractsAttempted)}</td><td style={td}>{pctText(p.contractSuccessRate)}</td><td style={td}>+{fmt(p.contractBonusPoints)}</td><td style={td}>{pctText(p.contractPointShare)}</td><td style={td}>{fmt(p.bestContractStreak)}</td><td style={td}>{fmt(p.contractWinRounds)} ({pctText(p.contractWinRate)})</td><td style={td}>{fmt(p.darts)}</td><td style={td}>{fmt(p.hits)}</td><td style={{...td,color:"#5ce6a8"}}>{pctText(p.accuracy)}</td><td style={td}>{fmt(p.singles)}</td><td style={td}>{fmt(p.doubles)}</td><td style={td}>{fmt(p.triples)}</td><td style={td}>{fmt(p.bulls)}</td><td style={td}>{fmt(p.dbulls)}</td><td style={td}>{fmt(p.misses)}</td><td style={td}>{fmt(p.bestHitStreak)}</td><td style={td}>{fmt(p.bestMissStreak)}</td><td style={td}>{fmt(p.physicalSectorsTouched)}/20</td><td style={td}>{pctText(p.physicalSectorCoverageRate)}</td><td style={td}>{p.favoriteSegment} ×{fmt(p.favoriteSegmentHits)}</td>
-          <td style={td}>{fmt(p.cardsCollected)}</td><td style={td}>{fmt(p.marketCards)}</td><td style={td}>{pctText(p.marketCaptureRate)}</td><td style={td}>{fmt(p.autoDraws)}</td><td style={td}>{fmt(p.powerCards)}</td><td style={td}>{fmt(p.jokers)}</td><td style={td}>{fmt(p.cardsPerDart,2)}</td><td style={td}>{fmt(p.choicesEarned)}/{fmt(p.choicesUsed)}</td><td style={td}>{pctText(p.choiceUseRate)}</td><td style={td}>{fmt(p.exchangesEarned)}/{fmt(p.exchangesUsed)}</td><td style={td}>{pctText(p.exchangeUseRate)}</td><td style={td}>{pctText(p.powerUseRate)}</td><td style={{...td,color:"#f6c256"}}>{String(p.bestHandLabel||"—")}</td><td style={td}>{fmt(p.averageCategoryRank)}/9</td><td style={td}>{fmt(p.medianHandScore)}</td><td style={td}>{fmt(p.worstHandScore)}</td><td style={td}>{pctText(p.handConsistencyIndex)}</td><td style={td}>{fmt(p.strongHands)} ({pctText(p.strongHandRate)})</td><td style={td}>{fmt(p.premiumHands)} ({pctText(p.premiumHandRate)})</td><td style={td}>{p.favoriteCardRank} ×{fmt(p.favoriteCardRankCount)}</td><td style={td}>{p.favoriteCardSuit} ×{fmt(p.favoriteCardSuitCount)}</td><td style={td}>{fmt(p.pointsPerHand,2)}</td><td style={td}>{fmt(p.pointsPerDart,3)}</td>
+          <td style={td}><b>{row.name}</b></td><td style={td}>#{row.rank||"—"}</td><td style={{...td,color:"#f6c256",fontWeight:900}}>{fmt(p.points)}</td><td style={td}>{fmt(p.handsPlayed)}</td><td style={td}>{fmt(p.handsWon)}</td><td style={td}>{fmt(p.handsTied)}</td><td style={td}>{pctText(p.handWinRate)}</td><td style={td}>{fmt(p.podiums)}</td><td style={td}>{p.averageRoundRank?fmt(p.averageRoundRank):"—"}</td>
+          <td style={td}>{fmt(p.contractHits)}/{fmt(p.contractsAttempted)}</td><td style={td}>{pctText(p.contractSuccessRate)}</td><td style={td}>+{fmt(p.contractBonusPoints)}</td><td style={td}>{fmt(p.darts)}</td><td style={td}>{fmt(p.hits)}</td><td style={{...td,color:"#5ce6a8"}}>{pctText(p.accuracy)}</td><td style={td}>{fmt(p.singles)}</td><td style={td}>{fmt(p.doubles)}</td><td style={td}>{fmt(p.triples)}</td><td style={td}>{fmt(p.bulls)}</td><td style={td}>{fmt(p.dbulls)}</td><td style={td}>{fmt(p.misses)}</td><td style={td}>{fmt(p.bestHitStreak)}</td><td style={td}>{p.favoriteSegment} ×{fmt(p.favoriteSegmentHits)}</td>
+          <td style={td}>{fmt(p.cardsCollected)}</td><td style={td}>{fmt(p.marketCards)}</td><td style={td}>{fmt(p.autoDraws)}</td><td style={td}>{fmt(p.powerCards)}</td><td style={td}>{fmt(p.jokers)}</td><td style={td}>{fmt(p.choicesEarned)}/{fmt(p.choicesUsed)}</td><td style={td}>{fmt(p.exchangesEarned)}/{fmt(p.exchangesUsed)}</td><td style={td}>{pctText(p.powerUseRate)}</td><td style={{...td,color:"#f6c256"}}>{String(p.bestHandLabel||"—")}</td><td style={td}>{fmt(p.averageCategoryRank)}/9</td><td style={td}>{fmt(p.strongHands)} ({pctText(p.strongHandRate)})</td><td style={td}>{fmt(p.premiumHands)} ({pctText(p.premiumHandRate)})</td><td style={td}>{p.favoriteCardRank} ×{fmt(p.favoriteCardRankCount)}</td><td style={td}>{p.favoriteCardSuit} ×{fmt(p.favoriteCardSuitCount)}</td><td style={td}>{fmt(p.pointsPerHand,2)}</td><td style={td}>{fmt(p.pointsPerDart,3)}</td>
         </tr>; })}</tbody>
       </table></div>
     </section>
@@ -1233,18 +1239,9 @@ function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
       <div style={sectionTitle(accent)}>Répartition des combinaisons par joueur</div>
       <div style={{ overflowX:"auto" }}><table style={{ width:"100%", minWidth:1050, borderCollapse:"collapse", fontSize:10 }}><thead><tr style={{color:accent,textAlign:"left"}}><th style={th}>Joueur</th>{categories.map(([label])=><th key={label} style={th}>{label}</th>)}</tr></thead><tbody>{pokerRows.map((row:any)=><tr key={`cats-${row.id}`}><td style={td}><b>{row.name}</b></td>{categories.map(([label,key])=><td key={key} style={td}>{num(row.raw?.[key])}</td>)}</tr>)}</tbody></table></div>
     </section>
-    <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Cartographie des secteurs · hits 1 à 20</div>
-      <div style={{ overflowX:"auto" }}><table style={{ width:"100%", minWidth:1450, borderCollapse:"collapse", fontSize:9 }}><thead><tr style={{color:accent,textAlign:"center"}}><th style={{...th,textAlign:"left"}}>Joueur</th>{Array.from({length:20},(_,i)=><th key={i+1} style={th}>{i+1}</th>)}<th style={th}>Bull</th><th style={th}>DB</th><th style={th}>MISS</th></tr></thead><tbody>{pokerRows.map((row:any)=>{ const sectors=deriveDartsPokerSectorHeatmap(row.raw||{}); return <tr key={`sectors-${row.id}`}><td style={td}><b>{row.name}</b></td>{sectors.map((sector:any)=><td key={sector.sector} style={{...td,textAlign:"center",color:sector.total?"#55c7ff":"#6f7687"}} title={`S${sector.singles} · D${sector.doubles} · T${sector.triples}`}>{sector.total}</td>)}<td style={{...td,textAlign:"center"}}>{num(row.raw?.bulls)}</td><td style={{...td,textAlign:"center"}}>{num(row.raw?.dbulls)}</td><td style={{...td,textAlign:"center",color:num(row.raw?.misses)?"#e83a43":"#5ce6a8"}}>{num(row.raw?.misses)}</td></tr>;})}</tbody></table></div>
-      <div style={{ marginTop:6,color:"#7f8797",fontSize:8 }}>Chaque cellule additionne les simples, doubles et triples du secteur. Survol : détail S / D / T.</div>
-    </section>
-    {signatureHands.length ? <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Meilleures mains · deck MSS Signature</div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:8 }}>{signatureHands.map(({row,bestRound}:any)=><div key={`signature-${row.id}`} style={{ padding:9,borderRadius:14,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.09)" }}><div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center" }}><div><b>{row.name}</b><div style={{ color:"#f6c256",fontSize:9,marginTop:2 }}>{bestRound?.evaluation?.label||row.raw?.bestHandLabel||"—"}</div></div><span style={{ color:"#8f96a5",fontSize:8 }}>M{bestRound?.round||"—"}</span></div><div style={{ display:"flex",gap:4,overflowX:"auto",marginTop:7,paddingBottom:2 }}>{asArray(bestRound?.bestFive).map((pokerCard:any,index:number)=><DartsPokerCard key={`${pokerCard?.id||index}-${index}`} card={pokerCard} size="small" />)}</div></div>)}</div>
-    </section> : null}
     {rounds.length ? <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Showdowns manche par manche</div>
-      <div style={{ display: "grid", gap: 7 }}>{rounds.map((round: any, index: number) => <div key={String(round?.round || index)} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.09)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: accent }}>MANCHE {num(round?.round, index + 1)}</strong>{round?.contract ? <div style={{ color: "#f6c256", fontSize: 9, marginTop: 2 }}>CONTRAT · {round.contract.label}</div> : null}</div><strong>{asArray(round?.winnerNames).join(" / ") || asArray(round?.winnerIds).map((id:any) => pokerRows.find((r:any)=>String(r.id)===String(id))?.name || id).join(" / ") || "—"}</strong></div><div style={{ marginTop: 7, display: "grid", gap: 5 }}>{asArray(round?.rows).map((r:any) => <div key={String(r?.playerId)} style={{ display: "grid", gridTemplateColumns: "28px minmax(100px,1fr) minmax(125px,1.5fr) minmax(150px,2fr)", gap: 6, fontSize: 10, alignItems: "center" }}><b style={{ color: r?.win ? accent : "#aeb2bf" }}>#{num(r?.rank)}</b><span>{pokerRows.find((x:any)=>String(x.id)===String(r?.playerId))?.name || r?.playerName || r?.playerId}</span><div><strong style={{ color: r?.win ? "#5ce6a8" : "#fff" }}>{r?.evaluation?.label || "—"}</strong><div style={{ color: r?.contractCompleted ? "#f6c256" : "#8d94a2", fontSize: 8 }}>{r?.contractCompleted ? `CONTRAT ✓ · +${num(r?.pointsAwarded)} pt` : `+${num(r?.pointsAwarded)} pt`}</div></div><div style={{ display:"flex",gap:3,overflowX:"auto",padding:"2px 0" }}>{asArray(r?.bestFive).map((pokerCard:any,cardIndex:number)=><DartsPokerCard key={`${pokerCard?.id||cardIndex}-${cardIndex}`} card={pokerCard} size="mini" />)}</div></div>)}</div></div>)}</div>
+      <div style={{ display: "grid", gap: 7 }}>{rounds.map((round: any, index: number) => <div key={String(round?.round || index)} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.09)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: accent }}>MANCHE {num(round?.round, index + 1)}</strong>{round?.contract ? <div style={{ color: "#f6c256", fontSize: 9, marginTop: 2 }}>CONTRAT · {round.contract.label}</div> : null}</div><strong>{asArray(round?.winnerNames).join(" / ") || asArray(round?.winnerIds).map((id:any) => pokerRows.find((r:any)=>String(r.id)===String(id))?.name || id).join(" / ") || "—"}</strong></div><div style={{ marginTop: 7, display: "grid", gap: 5 }}>{asArray(round?.rows).map((r:any) => <div key={String(r?.playerId)} style={{ display: "grid", gridTemplateColumns: "28px minmax(100px,1fr) minmax(125px,1.5fr) minmax(150px,2fr)", gap: 6, fontSize: 10, alignItems: "center" }}><b style={{ color: r?.win ? accent : "#aeb2bf" }}>#{num(r?.rank)}</b><span>{pokerRows.find((x:any)=>String(x.id)===String(r?.playerId))?.name || r?.playerName || r?.playerId}</span><div><strong style={{ color: r?.win ? "#5ce6a8" : "#fff" }}>{r?.evaluation?.label || "—"}</strong><div style={{ color: r?.contractCompleted ? "#f6c256" : "#8d94a2", fontSize: 8 }}>{r?.contractCompleted ? `CONTRAT ✓ · +${num(r?.pointsAwarded)} pt` : `+${num(r?.pointsAwarded)} pt`}</div></div><span style={{ color: "#c5cad5", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asArray(r?.bestFive).map(cardLabel).join(" ")}</span></div>)}</div></div>)}</div>
     </section> : null}
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Journal complet des lancers</div>

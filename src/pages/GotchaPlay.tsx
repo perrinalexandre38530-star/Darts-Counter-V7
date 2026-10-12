@@ -1,231 +1,76 @@
 // @ts-nocheck
 import React from "react";
 import BackDot from "../components/BackDot";
-import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerGotcha from "../assets/tickers/ticker_gotcha.webp";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
-import {
-  cloneGotchaState,
-  createGotchaState,
-  dartScore,
-  normalizeGotchaConfig,
-  pickGotchaBotDarts,
-  playGotchaVisit,
-  type GotchaState,
-} from "../lib/gameEngines/gotchaEngine";
-import {
-  NewModeInput,
-  PlayerCard,
-  ModeEndPanel,
-  actionStyle,
-  isBotProfile,
-  lastEvents,
-  panelStyle,
-  playerName,
-  resolveModeProfiles,
-  SOFT,
-  uiToGameDart,
-} from "./newModes/newModePlayShared";
+import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
+import { cloneGotchaState, createGotchaState, dartScore, gotchaDartLabel, normalizeGotchaConfig, pickGotchaBotDarts, playGotchaVisit, type GotchaState } from "../lib/gameEngines/gotchaEngine";
+import { NewModeInput, isBotProfile, lastEvents, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
+import { ActiveHero, BotTurn, FloatingAdvice, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton, PremiumEndPanel, QuickRow, RankingModal, StatsModal, SummaryStrip, bestBy, modePlayerColors, percent } from "./newModes/PremiumPartyModeUi";
+import "./newModes/PremiumPartyModeUi.css";
 
-const ACCENT = "#ff9b31";
-const RED = "#ff4d45";
-const BLUE = "#58c9ff";
-const GREEN = "#6ee7a8";
+const ACCENT="#ff9b31", RED="#ff4d45", BLUE="#58c9ff", GREEN="#6ee7a8";
 
-function Rules({ config }: any) {
-  return <div style={{ display: "grid", gap: 10, fontSize: 12.5, lineHeight: 1.5 }}>
-    <div><b style={{ color: ACCENT }}>OBJECTIF</b><br />Pars de 0 et atteins exactement {config.rules.targetScore}.</div>
-    <div><b style={{ color: RED }}>GOTCHA !</b><br />Si ton score final de volée est exactement égal au score d’un ou plusieurs adversaires, ils repartent à 0.</div>
-    <div><b style={{ color: BLUE }}>SORTIE</b><br />{config.rules.outMode === "double" ? "Le dernier dart doit être un Double / DBULL." : config.rules.outMode === "master" ? "Le dernier dart doit être un Double, Triple ou DBULL." : "Straight out : n’importe quelle zone termine la manche."}</div>
-    <div><b style={{ color: GREEN }}>BUST</b><br />{config.rules.bustRule === "zero" ? "Dépassement ou sortie invalide : retour à 0." : "Dépassement ou sortie invalide : retour au score du début de la volée."}</div>
-  </div>;
+function finishHint(remaining:number,outMode:string){
+  if(remaining<=0)return"";
+  if(outMode==="double"&&remaining<=40&&remaining%2===0)return`D${remaining/2} pour finir`;
+  if(outMode==="master"&&remaining<=60&&remaining%3===0)return`T${remaining/3} peut finir`;
+  if((outMode==="double"||outMode==="master")&&remaining===50)return"DBULL pour finir";
+  if(outMode==="straight"&&remaining<=20)return`S${remaining} pour finir`;
+  if(remaining<=60)return`${remaining} points restants`;
+  return"Construis ton score sans dépasser la cible";
+}
+function coachText(state:GotchaState,active:any){
+  if(!active)return"";const score=Number(state.scores[active.id]||0);const remaining=state.config.rules.targetScore-score;
+  const gotchas=state.players.filter((p:any)=>p.id!==active.id&&Number(state.scores[p.id]||0)>score).map((p:any)=>({p,delta:Number(state.scores[p.id]||0)-score})).filter((x:any)=>x.delta>0&&x.delta<=180).sort((a:any,b:any)=>a.delta-b.delta);
+  if(remaining<=60)return finishHint(remaining,state.config.rules.outMode);
+  if(gotchas.length){const g=gotchas[0];return`GOTCHA possible sur ${g.p.name} avec +${g.delta}.`;}
+  return`Il reste ${remaining}. Un score régulier vaut mieux qu’un BUST.`;
 }
 
-export default function GotchaPlay(props: any) {
-  useFullscreenPlay({ enabled: true, lockBodyScroll: false });
-  const go = props?.go ?? props?.setTab;
-  const store = props?.store;
-  const onFinish = props?.onFinish;
-  const resumeRecord = props?.params?.rec || props?.params?.record || props?.params?.match || null;
-  const config = React.useMemo(() => normalizeGotchaConfig(props?.params?.config || resumeRecord?.resume?.config || resumeRecord?.payload?.config || {}), []);
-  const profiles = React.useMemo(() => resolveModeProfiles(config, store), [config, store]);
-  const players = React.useMemo(() => profiles.map((p: any, i: number) => ({ id: String(p.id || `p${i + 1}`), name: playerName(p, i) })), [profiles]);
-  const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
-  const restored = resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot || resumeRecord?.payload?.state || null;
-  const [state, setState] = React.useState<GotchaState>(() => restored?.mode === "gotcha" ? cloneGotchaState(restored) : createGotchaState(players, config));
-  const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
-  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
-  const [undo, setUndo] = React.useState<GotchaState[]>([]);
-  const [notice, setNotice] = React.useState("");
-  const botBusy = React.useRef(false);
-  const finishedRef = React.useRef(false);
-  const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `gotcha-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
-  const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
-  const activePlayer = state.players[state.activePlayerIndex];
-  const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
-  const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
-  const nameById = React.useCallback((id: string | null | undefined) => state.players.find((p: any) => String(p.id) === String(id))?.name || "Joueur", [state.players]);
+export default function GotchaPlay(props:any){
+  useFullscreenPlay({enabled:true,lockBodyScroll: true});
+  const awena=useAwenaOptional();const go=props?.go??props?.setTab;const store=props?.store;const onFinish=props?.onFinish;const resumeRecord=props?.params?.rec||props?.params?.record||props?.params?.match||null;
+  const config=React.useMemo(()=>normalizeGotchaConfig(props?.params?.config||resumeRecord?.resume?.config||resumeRecord?.payload?.config||{}),[]);
+  const profiles=React.useMemo(()=>resolveModeProfiles(config,store),[config,store]);const players=React.useMemo(()=>profiles.map((p:any,i:number)=>({id:String(p.id||`p${i+1}`),name:playerName(p,i)})),[profiles]);const botIds=React.useMemo(()=>new Set((config.botIds||[]).map(String)),[config.botIds]);
+  const restored=resumeRecord?.resume?.state||resumeRecord?.payload?.stateSnapshot||resumeRecord?.payload?.state||null;const recoveredThrow=resumeRecord?.resume?.currentThrow??resumeRecord?.payload?.currentThrow;
+  const [state,setState]=React.useState<GotchaState>(()=>restored?.mode==="gotcha"?cloneGotchaState(restored):createGotchaState(players,config));const [currentThrow,setCurrentThrow]=React.useState<UIDart[]>(()=>Array.isArray(recoveredThrow)?recoveredThrow.slice(0,3):[]);const [multiplier,setMultiplier]=React.useState<1|2|3>(()=>{const v=resumeRecord?.resume?.multiplier??resumeRecord?.payload?.multiplier;return v===2||v===3?v:1;});const [undo,setUndo]=React.useState<GotchaState[]>([]);const [notice,setNotice]=React.useState("");
+  const [playersOpen,setPlayersOpen]=React.useState(false),[statsOpen,setStatsOpen]=React.useState(false),[logOpen,setLogOpen]=React.useState(false),[rankingOpen,setRankingOpen]=React.useState(false);
+  const botBusy=React.useRef(false),finishedRef=React.useRef(false),introPlayedRef=React.useRef(false),initialCheckpointRef=React.useRef(false),historyHydratedRef=React.useRef(false);const matchIdRef=React.useRef(String(resumeRecord?.id||resumeRecord?.matchId||`gotcha-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
+  const profileById=React.useMemo(()=>new Map(profiles.map((p:any)=>[String(p.id),p])),[profiles]);const colorById=React.useMemo(()=>modePlayerColors(state.players,ACCENT),[state.players]);const activePlayer=state.players[state.activePlayerIndex];const activeProfile=activePlayer?profileById.get(String(activePlayer.id))||activePlayer:null;const activeColor=activePlayer?colorById.get(String(activePlayer.id))||ACCENT:ACCENT;const activeIsBot=!!activeProfile&&isBotProfile(activeProfile,botIds);
+  const sfxEnabled=(config as any).sfxEnabled!==false,awenaEnabled=(config as any).awenaEnabled!==false,coachEnabled=(config as any).coachEnabled!==false;const nameById=React.useCallback((id:any)=>state.players.find((p:any)=>String(p.id)===String(id))?.name||"Joueur",[state.players]);
 
-  const buildRecord = React.useCallback((s: GotchaState, status: "in_progress" | "finished") => {
-    const rows = profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null }));
-    return {
-      id: matchIdRef.current,
-      matchId: matchIdRef.current,
-      resumeId: matchIdRef.current,
-      kind: "gotcha",
-      mode: "gotcha",
-      sport: "darts",
-      status,
-      createdAt: s.startedAt,
-      updatedAt: Date.now(),
-      finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined,
-      winnerId: s.winnerId,
-      players: rows,
-      game: { mode: "gotcha", targetScore: s.config.rules.targetScore, seriesWins: s.config.seriesWins },
-      summary: {
-        mode: "gotcha",
-        finished: status === "finished",
-        winnerId: s.winnerId,
-        legWins: s.legWins,
-        targetScore: s.config.rules.targetScore,
-        config: s.config,
-        finalScores: s.scores,
-        perPlayer: Object.fromEntries(Object.entries(s.statsByPlayer).map(([id, st]: any) => [id, { ...st, score: Number(s.scores[id] || 0), wins: Number(s.legWins[id] || 0) }])),
-      },
-      resume: { mode: "gotcha", config: s.config, state: cloneGotchaState(s), updatedAt: Date.now() },
-      payload: { kind: "gotcha", mode: "gotcha", sport: "darts", config: s.config, stateSnapshot: cloneGotchaState(s), visits: s.visits, visitHistory: s.visits, stats: { mode: "gotcha", players: s.statsByPlayer, legWins: s.legWins } },
-    };
-  }, [profiles]);
+  const buildRecord=React.useCallback((s:GotchaState,status:"in_progress"|"finished",draft:UIDart[]=currentThrow,m:1|2|3=multiplier)=>{const rows=profiles.map((p:any)=>({id:String(p.id),name:playerName(p),avatarDataUrl:p.avatarDataUrl??null}));const perPlayer=Object.fromEntries(Object.entries(s.statsByPlayer).map(([id,st]:any)=>[id,{...st,score:Number(s.scores[id]||0),wins:Number(s.legWins[id]||0),accuracy:percent(Number(st.darts||0)-Number(st.misses||0),st.darts)}]));const ranking=[...s.players].map((p:any,i:number)=>({id:p.id,name:p.name,wins:Number(s.legWins[p.id]||0),score:Number(s.scores[p.id]||0),gotchas:Number(s.statsByPlayer[p.id]?.gotchas||0),victims:Number(s.statsByPlayer[p.id]?.victims||0),busts:Number(s.statsByPlayer[p.id]?.busts||0),order:i})).sort((a,b)=>b.wins-a.wins||b.score-a.score||b.gotchas-a.gotchas||b.victims-a.victims||a.busts-b.busts||a.order-b.order);return{id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:"gotcha",mode:"gotcha",sport:"darts",status,createdAt:s.startedAt,updatedAt:Date.now(),finishedAt:status==="finished"?(s.finishedAt||Date.now()):undefined,winnerId:s.winnerId,players:rows,game:{mode:"gotcha",targetScore:s.config.rules.targetScore,seriesWins:s.config.seriesWins},summary:{mode:"gotcha",finished:status==="finished",winnerId:s.winnerId,legWins:s.legWins,targetScore:s.config.rules.targetScore,config:s.config,finalScores:s.scores,perPlayer,ranking,durationMs:Math.max(0,Number((status==="finished"?(s.finishedAt||Date.now()):Date.now()))-Number(s.startedAt||Date.now())),totalDarts:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),totalGotchas:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.gotchas||0),0),totalBusts:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.busts||0),0)},resume:{mode:"gotcha",config:s.config,state:cloneGotchaState(s),currentThrow:draft.slice(0,3),multiplier:m,updatedAt:Date.now()},payload:{kind:"gotcha",mode:"gotcha",sport:"darts",config:s.config,stateSnapshot:cloneGotchaState(s),currentThrow:draft.slice(0,3),multiplier:m,visits:s.visits,visitHistory:s.visits,stats:{mode:"gotcha",players:s.statsByPlayer,legWins:s.legWins}}};},[profiles,currentThrow,multiplier]);
+  const saveInProgress=React.useCallback(async(s:GotchaState,draft:UIDart[]=currentThrow,m:1|2|3=multiplier)=>{try{await History.upsert(buildRecord(s,"in_progress",draft,m));}catch(e){console.warn("[GOTCHA] checkpoint failed",e);}},[buildRecord,currentThrow,multiplier]);
+  const persist=React.useCallback((s:GotchaState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished",[],1);if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec).catch(()=>{});}else void saveInProgress(s,[],1);},[buildRecord,onFinish,saveInProgress]);
+  React.useEffect(()=>{if(initialCheckpointRef.current)return;initialCheckpointRef.current=true;if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier);},[saveInProgress,state,currentThrow,multiplier]);React.useEffect(()=>{if(state.phase==="finished")return;const t=window.setTimeout(()=>void saveInProgress(state,currentThrow,multiplier),190);return()=>window.clearTimeout(t);},[state,currentThrow,multiplier,saveInProgress]);
+  React.useEffect(()=>{if(historyHydratedRef.current)return;const resumeId=String(props?.params?.resumeId||resumeRecord?.id||resumeRecord?.matchId||"").trim();if(!resumeId)return;let cancelled=false;void History.get(resumeId).then((full:any)=>{if(cancelled||!full)return;const r=full?.resume?.state||full?.payload?.stateSnapshot||full?.payload?.state;if(!r||r.mode!=="gotcha")return;historyHydratedRef.current=true;matchIdRef.current=String(full.id||full.matchId||resumeId);setState(cloneGotchaState(r));const d=full?.resume?.currentThrow??full?.payload?.currentThrow;setCurrentThrow(Array.isArray(d)?d.slice(0,3):[]);const m=full?.resume?.multiplier??full?.payload?.multiplier;setMultiplier(m===2||m===3?m:1);setUndo([]);setNotice("Partie GOTCHA reprise depuis l’historique");initialCheckpointRef.current=true;}).catch(()=>{});return()=>{cancelled=true};},[props?.params?.resumeId,resumeRecord]);
+  React.useEffect(()=>{const flush=()=>{if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier)};const vis=()=>{if(document.visibilityState==="hidden")flush()};window.addEventListener("pagehide",flush);document.addEventListener("visibilitychange",vis);return()=>{window.removeEventListener("pagehide",flush);document.removeEventListener("visibilitychange",vis)};},[state,currentThrow,multiplier,saveInProgress]);
+  React.useEffect(()=>{if(restored?.mode==="gotcha"||resumeRecord)return;const start=()=>{if(!sfxEnabled||introPlayedRef.current)return;introPlayedRef.current=true;void unlockNewModeAudio();playNewModeSfx("intro",true)};try{if((navigator as any)?.userActivation?.hasBeenActive){start();return;}}catch{}window.addEventListener("pointerdown",start,{once:true,capture:true} as any);return()=>window.removeEventListener("pointerdown",start,true);},[sfxEnabled]);
+  React.useEffect(()=>{awena?.setRuntime?.({route:"gotcha_play",sport:"darts",mode:"gotcha",phase:state.phase==="finished"?"summary":"play",inGame:state.phase!=="finished",screenLabel:"GOTCHA · Partie",playerName:activePlayer?.name,extra:{score:state.scores?.[activePlayer?.id],targetScore:state.config.rules.targetScore,remaining:state.config.rules.targetScore-Number(state.scores?.[activePlayer?.id]||0),outMode:state.config.rules.outMode,bustRule:state.config.rules.bustRule,leg:Number(state.legIndex||0)+1,round:Number(state.roundIndex||0)+1,awenaRememberedMode:"gotcha",awenaKnowledgeTopic:"screen:gotcha_play"}});},[awena,state.phase,state.legIndex,state.roundIndex,state.turnIndex,state.scores,activePlayer?.id]);
 
-  const persist = React.useCallback((s: GotchaState) => {
-    if (s.phase === "finished") {
-      if (finishedRef.current) return;
-      finishedRef.current = true;
-      const rec = buildRecord(s, "finished");
-      if (typeof onFinish === "function") onFinish(rec, { navigate: false });
-      else void History.upsert(rec);
-    } else void History.upsert(buildRecord(s, "in_progress")).catch(() => {});
-  }, [buildRecord, onFinish]);
+  const commit=React.useCallback((next:GotchaState,previous=state)=>{setUndo(u=>[...u.slice(-39),cloneGotchaState(previous)]);setState(next);setCurrentThrow([]);setMultiplier(1);let msg="";if(next.phase==="finished"&&next.winnerId){msg=`🏆 ${nameById(next.winnerId)} atteint ${config.rules.targetScore} et remporte GOTCHA !`;playNewModeSfx("victory",sfxEnabled);}else if(next.legIndex>previous.legIndex&&next.lastLegWinnerId)msg=`🎯 ${nameById(next.lastLegWinnerId)} remporte la manche ${previous.legIndex+1}`;else msg=lastEvents(next.visits).join(" · ");setNotice(msg);persist(next);},[state,nameById,config.rules.targetScore,persist,sfxEnabled]);
+  const validate=()=>{if(!currentThrow.length||state.phase==="finished"||activeIsBot)return;commit(playGotchaVisit(state,currentThrow.map(uiToGameDart)));};const doUndo=()=>setUndo(u=>{if(!u.length)return u;const prev=u[u.length-1];setState(cloneGotchaState(prev));setCurrentThrow([]);setMultiplier(1);setNotice("Dernière volée annulée");finishedRef.current=false;void saveInProgress(prev,[],1);return u.slice(0,-1)});const handleCancel=()=>{if(currentThrow.length){setCurrentThrow([]);setMultiplier(1);setNotice("Saisie annulée")}else doUndo();};
+  const setThrowWithSfx=React.useCallback((update:any)=>setCurrentThrow((prev:UIDart[])=>{const next=(typeof update==="function"?update(prev):update)||prev;const out=Array.isArray(next)?next.slice(0,3):prev;if(out.length>prev.length)out.slice(prev.length).forEach((d:any,i:number)=>window.setTimeout(()=>playNewModeDartSfx(d,sfxEnabled),i*120));return out;}),[sfxEnabled]);
+  React.useEffect(()=>{if(!activeIsBot||state.phase==="finished"||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{try{const darts=pickGotchaBotDarts(state,config.botLevel);const span=playNewModeDartSequence(darts,sfxEnabled);window.setTimeout(()=>{try{commit(playGotchaVisit(state,darts));}finally{botBusy.current=false;}},span+100);}catch{botBusy.current=false;}},620);return()=>window.clearTimeout(t);},[state,activeIsBot,activePlayer?.id]);
+  function replay(){matchIdRef.current=`gotcha-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setCurrentThrow([]);setMultiplier(1);const next=createGotchaState(players,config);setState(next);initialCheckpointRef.current=true;void saveInProgress(next,[],1);if(sfxEnabled)playNewModeSfx("intro",true);}
 
-  const commit = (next: GotchaState, previous = state) => {
-    setUndo((u) => [...u.slice(-39), cloneGotchaState(previous)]);
-    setState(next);
-    setCurrentThrow([]);
-    setMultiplier(1);
-    let message = "";
-    if (next.phase === "finished" && next.winnerId) message = `🏆 ${nameById(next.winnerId)} atteint ${config.rules.targetScore} et remporte le match !`;
-    else if (next.legIndex > previous.legIndex && next.lastLegWinnerId) message = `🎯 ${nameById(next.lastLegWinnerId)} remporte la manche ${previous.legIndex + 1} · scores remis à 0`;
-    else message = lastEvents(next.visits).join(" · ");
-    setNotice(message);
-    persist(next);
-  };
+  const currentScore=activePlayer?Number(state.scores[activePlayer.id]||0):0;const remaining=Math.max(0,config.rules.targetScore-currentScore);const legTarget=config.seriesWins*2-1;const provisional=currentThrow.reduce((sum,d)=>sum+dartScore(uiToGameDart(d)),0);const projected=currentScore+provisional;const projectedVictims=activePlayer?state.players.filter((p:any)=>p.id!==activePlayer.id&&Number(state.scores[p.id]||0)>0&&Number(state.scores[p.id]||0)===projected):[];const previewBust=projected>config.rules.targetScore;const activeStats=activePlayer?state.statsByPlayer[activePlayer.id]||{}:{};const coach=coachEnabled&&!activeIsBot?coachText(state,activePlayer):"";
+  const rankingRows=React.useMemo(()=>[...state.players].map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:String(p.id),name:p.name,profile:profileById.get(String(p.id))||p,color,wins:Number(state.legWins[p.id]||0),score:Number(state.scores[p.id]||0),gotchas:Number(st.gotchas||0),victims:Number(st.victims||0),busts:Number(st.busts||0),subtitle:`${state.scores[p.id]||0}/${config.rules.targetScore} · ${st.gotchas||0} GOTCHA · ${st.busts||0} bust`,value:Number(state.legWins[p.id]||0),suffix:" M",order:i};}).sort((a,b)=>b.wins-a.wins||b.score-a.score||b.gotchas-a.gotchas||b.victims-a.victims||a.busts-b.busts||a.order-b.order),[state.players,state.legWins,state.scores,state.statsByPlayer,profileById,colorById]);
+  const playersRows=state.players.map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:p.id,name:p.name,profile:profileById.get(String(p.id))||p,color,active:i===state.activePlayerIndex,status:`RESTE ${Math.max(0,config.rules.targetScore-Number(state.scores[p.id]||0))}`,progress:Number(state.scores[p.id]||0),progressMax:config.rules.targetScore,metrics:[{label:"SCORE",value:state.scores[p.id]||0},{label:"GOTCHA",value:st.gotchas||0},{label:"BUST",value:st.busts||0},{label:"M",value:state.legWins[p.id]||0}]};});
+  const statsItems=[{label:"SCORE",value:`${currentScore}/${config.rules.targetScore}`},{label:"POINTS MARQUÉS",value:activeStats.points||0},{label:"GOTCHA",value:activeStats.gotchas||0,color:RED},{label:"VICTIMES",value:activeStats.victims||0,color:RED},{label:"BUST",value:activeStats.busts||0},{label:"BEST VISIT",value:activeStats.bestVisit||0},{label:"PLUS HAUT SCORE",value:activeStats.highestScore||0},{label:"FINISH",value:activeStats.exactFinishes||0},{label:"S / D / T",value:`${activeStats.singles||0}/${activeStats.doubles||0}/${activeStats.triples||0}`},{label:"BULL / DBULL",value:`${activeStats.bulls||0}/${activeStats.dbulls||0}`},{label:"PRÉCISION",value:`${percent(Number(activeStats.darts||0)-Number(activeStats.misses||0),activeStats.darts)}%`},{label:"DARTS",value:activeStats.darts||0}];
+  const awards=React.useMemo(()=>{const rows=rankingRows.map((r:any)=>({...r,st:state.statsByPlayer[r.id]||{}}));const hunter=bestBy(rows,r=>Number(r.st.victims||0));const scorer=bestBy(rows,r=>Number(r.st.bestVisit||0));const safe=bestBy(rows,r=>-Number(r.st.busts||0)+Number(r.st.visits||0)*.001);return[{icon:"💥",label:"CHASSEUR",name:hunter?.name||"—",value:`${hunter?.st?.victims||0} victimes`,color:hunter?.color},{icon:"🎯",label:"BEST VISIT",name:scorer?.name||"—",value:`${scorer?.st?.bestVisit||0} pts`,color:scorer?.color},{icon:"🛡️",label:"ANTI-BUST",name:safe?.name||"—",value:`${safe?.st?.busts||0} bust`,color:safe?.color}];},[rankingRows,state.statsByPlayer]);
+  const totalDarts=Object.values(state.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs=Math.max(0,Number((state.finishedAt||Date.now()))-Number(state.startedAt||Date.now()));
+  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerGotcha} tickerAlt="GOTCHA" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("gotcha_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="gotcha_play" mode="gotcha" screenLabel="GOTCHA · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="GOTCHA" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"gotcha",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"gotcha",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("gotcha_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
 
-  const validate = () => {
-    if (!currentThrow.length || state.phase === "finished" || activeIsBot) return;
-    commit(playGotchaVisit(state, currentThrow.map(uiToGameDart)));
-  };
-
-  const doUndo = () => setUndo((u) => {
-    if (!u.length) return u;
-    const prev = u[u.length - 1];
-    setState(cloneGotchaState(prev));
-    setCurrentThrow([]);
-    setMultiplier(1);
-    setNotice("Dernière volée annulée");
-    finishedRef.current = false;
-    persist(prev);
-    return u.slice(0, -1);
-  });
-
-  React.useEffect(() => {
-    if (!activeIsBot || state.phase === "finished" || botBusy.current) return;
-    botBusy.current = true;
-    const t = window.setTimeout(() => {
-      try { commit(playGotchaVisit(state, pickGotchaBotDarts(state, config.botLevel))); }
-      finally { botBusy.current = false; }
-    }, 650);
-    return () => window.clearTimeout(t);
-  }, [state, activeIsBot, activePlayer?.id]);
-
-  function replay() {
-    matchIdRef.current = `gotcha-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    finishedRef.current = false;
-    setUndo([]);
-    setNotice("");
-    setCurrentThrow([]);
-    setState(createGotchaState(players, config));
-  }
-
-  const currentScore = activePlayer ? Number(state.scores[activePlayer.id] || 0) : 0;
-  const remaining = Math.max(0, config.rules.targetScore - currentScore);
-  const legTarget = config.seriesWins * 2 - 1;
-  const provisionalVisit = currentThrow.reduce((sum, d) => sum + dartScore(uiToGameDart(d)), 0);
-  const projectedScore = currentScore + provisionalVisit;
-  const projectedVictims = activePlayer ? state.players.filter((p: any) => p.id !== activePlayer.id && Number(state.scores[p.id] || 0) > 0 && Number(state.scores[p.id] || 0) === projectedScore) : [];
-  const nearestTargets = activePlayer ? state.players
-    .filter((p: any) => p.id !== activePlayer.id && Number(state.scores[p.id] || 0) > currentScore)
-    .map((p: any) => ({ ...p, delta: Number(state.scores[p.id] || 0) - currentScore }))
-    .filter((p: any) => p.delta > 0 && p.delta <= 180)
-    .sort((a: any, b: any) => a.delta - b.delta)
-    .slice(0, 5) : [];
-  const previewBust = projectedScore > config.rules.targetScore;
-
-  return <div style={{ minHeight: "calc(var(--vh, 1vh) * 100)", paddingBottom: 18, background: "radial-gradient(circle at 50% 0%,rgba(255,99,55,.10),transparent 35%)" }}>
-    <PageHeader tickerSrc={tickerGotcha} tickerAlt="GOTCHA" left={<BackDot onClick={() => go?.("gotcha_config")} color={ACCENT} glow={`${ACCENT}88`} />} right={<InfoDot title="Règles GOTCHA" color={ACCENT} glow={`${ACCENT}77`} content={<Rules config={config} />} />} />
-    <div style={{ padding: "7px 8px 18px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 8 }}>
-      <div style={{ ...panelStyle(ACCENT + "50"), padding: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 9, alignItems: "center" }}>
-        <div>
-          <div style={{ color: ACCENT, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>MANCHE {state.legIndex + 1} · BO{legTarget}{config.rules.maxRounds ? ` · ROUND ${Math.min(state.roundIndex + 1, config.rules.maxRounds)}/${config.rules.maxRounds}` : ""}</div>
-          <div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Match terminé" : `${activePlayer?.name || "—"} joue`}</div>
-        </div>
-        <button type="button" onClick={doUndo} disabled={!undo.length} style={actionStyle(ACCENT, !undo.length)}>↶ UNDO</button>
-      </div>
-
-      {notice ? <div style={{ borderRadius: 12, padding: "7px 10px", background: notice.includes("GOTCHA") ? "rgba(255,77,69,.15)" : notice.includes("🏆") ? "rgba(110,231,168,.12)" : "rgba(255,155,49,.10)", border: `1px solid ${notice.includes("GOTCHA") ? "rgba(255,77,69,.36)" : notice.includes("🏆") ? "rgba(110,231,168,.35)" : "rgba(255,155,49,.24)"}`, color: notice.includes("GOTCHA") ? "#ff9e98" : notice.includes("🏆") ? "#baffdb" : "#ffd39d", fontSize: 10.5, fontWeight: 900 }}>{notice}</div> : null}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>
-        {state.players.map((p: any, i: number) => {
-          const prof = profileById.get(String(p.id)) || p;
-          const score = Number(state.scores[p.id] || 0);
-          const st = state.statsByPlayer[p.id] || {};
-          const pct = Math.min(100, (score / config.rules.targetScore) * 100);
-          return <div key={p.id} style={{ display: "grid", gap: 5 }}>
-            <PlayerCard profile={prof} active={state.phase !== "finished" && state.activePlayerIndex === i} accent={ACCENT} value={score} subValue={`${Math.max(0, config.rules.targetScore - score)} restant · ${st.gotchas || 0} GOTCHA`} badge={st.gotchas ? `🎯 ${st.gotchas}` : null} wins={state.legWins[p.id] || 0} />
-            <div style={{ height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg,${BLUE},${ACCENT},${RED})` }} /></div>
-          </div>;
-        })}
-      </div>
-
-      {state.phase !== "finished" ? <>
-        <div style={{ ...panelStyle("rgba(255,255,255,.10)"), padding: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
-            <div>
-              <div style={{ color: ACCENT, fontSize: 10, fontWeight: 1100 }}>COURSE VERS {config.rules.targetScore}</div>
-              <div style={{ marginTop: 3, color: "#fff", fontSize: 24, fontWeight: 1100 }}>{remaining} <span style={{ fontSize: 11, color: SOFT }}>RESTANT</span></div>
-              <div style={{ marginTop: 4, color: SOFT, fontSize: 9.5 }}>{config.rules.outMode === "straight" ? "Straight out" : config.rules.outMode === "double" ? "Double Out" : "Master Out"} · GOTCHA actif · {config.rules.bustRule === "zero" ? "bust → 0" : "bust → début de volée"}</div>
-            </div>
-            <div style={{ width: 82, height: 82, borderRadius: 999, border: `3px solid ${RED}`, boxShadow: `0 0 20px ${RED}55`, display: "grid", placeItems: "center", background: "radial-gradient(circle,#541616,#16090b)", color: "#fff", fontWeight: 1100, fontSize: 17 }}>🎯<br /><span style={{ fontSize: 11 }}>{config.rules.targetScore}</span></div>
-          </div>
-          <div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", marginTop: 8 }}><div style={{ height: "100%", width: `${Math.min(100, (currentScore / config.rules.targetScore) * 100)}%`, background: `linear-gradient(90deg,${BLUE},${ACCENT},${RED})` }} /></div>
-
-          {currentThrow.length ? <div style={{ marginTop: 9, padding: "8px 10px", borderRadius: 12, border: `1px solid ${previewBust ? RED + "66" : projectedVictims.length ? RED + "88" : ACCENT + "44"}`, background: previewBust ? `${RED}10` : projectedVictims.length ? `${RED}16` : `${ACCENT}0c`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <div><div style={{ color: previewBust ? RED : projectedVictims.length ? "#ff8f88" : ACCENT, fontSize: 9.5, fontWeight: 1100 }}>{previewBust ? "BUST SI VALIDÉ" : projectedVictims.length ? "GOTCHA ARMÉ" : "APERÇU VOLÉE"}</div><div style={{ marginTop: 2, color: "#fff", fontSize: 15, fontWeight: 1000 }}>{currentScore} + {provisionalVisit} = {projectedScore}</div></div>
-            {projectedVictims.length ? <div style={{ color: "#ffaaa4", fontSize: 10, fontWeight: 950 }}>{projectedVictims.map((p: any) => p.name).join(" · ")} → 0</div> : null}
-          </div> : null}
-
-          <div style={{ marginTop: 9 }}>
-            <div style={{ color: RED, fontSize: 9.5, fontWeight: 1100, letterSpacing: .5 }}>CIBLES GOTCHA À PORTÉE</div>
-            <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: 5 }}>
-              {nearestTargets.length ? nearestTargets.map((p: any) => <span key={p.id} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${RED}55`, background: `${RED}0e`, color: "#ffb0aa", fontSize: 9.5, fontWeight: 1000 }}>{p.name} · +{p.delta}</span>) : <span style={{ color: SOFT, fontSize: 9.5 }}>Aucun score adverse supérieur à portée d’une volée de 180.</span>}
-            </div>
-          </div>
-        </div>
-
-        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={ACCENT} /> : <div style={{ ...panelStyle(ACCENT + "33"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: ACCENT }}>{activePlayer?.name}</b> vise sa cible…</div>}
-      </> : <ModeEndPanel title="GOTCHA" winner={state.winnerId} profiles={profiles} legWins={state.legWins} accent={ACCENT} onReplay={replay} onConfig={() => go?.("gotcha_config")} onGames={() => go?.("games", { gamesView: "all" })} extra={<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>{profiles.map((p: any) => { const st = state.statsByPlayer[p.id] || {}; return <div key={p.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 9.5, color: SOFT }}><b style={{ color: "#fff" }}>{playerName(p)}</b><br />{st.gotchas || 0} GOTCHA · {st.busts || 0} busts · best {st.bestVisit || 0}</div>; })}</div>} />}
-    </div>
-  </div>;
+  return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerGotcha} tickerAlt="GOTCHA" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("gotcha_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="gotcha_play" mode="gotcha" screenLabel="GOTCHA · Partie" accent={ACCENT}/></div>:null}/>{coach?<FloatingAdvice text={coach} accent={activeColor} kicker="CONSEIL TACTIQUE"/>:null}<main className="party-mode__body"><div className="party-mode__stage"><div className="party-mode__left">
+    <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={state.legWins} primaryById={(id:string)=>state.scores[id]||0} secondaryById={(id:string)=>`reste ${Math.max(0,config.rules.targetScore-Number(state.scores[id]||0))} · ${state.statsByPlayer[id]?.gotchas||0} GOTCHA`}/>
+    <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={previewBust?RED:activeColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget}${config.rules.maxRounds?` · ROUND ${Math.min(state.roundIndex+1,config.rules.maxRounds)}/${config.rules.maxRounds}`:""}`} primary={currentScore} primarySuffix={`/${config.rules.targetScore}`} secondary={currentThrow.length?`PROJECTION ${projected}${previewBust?" · BUST SI VALIDÉ":projectedVictims.length?` · GOTCHA ×${projectedVictims.length}`:""}`:`RESTE ${remaining} · ${finishHint(remaining,config.rules.outMode)}`} tertiary={`${activeStats.gotchas||0} GOTCHA · ${activeStats.victims||0} victimes · best ${activeStats.bestVisit||0}`} progress={currentScore} progressMax={config.rules.targetScore} notice={notice} noticeTone={notice.includes("🏆")?"win":notice.includes("BUST")?"danger":"normal"} icon={previewBust?"💥":projectedVictims.length?"🎯":"⚡"}/>
+    <KpiStrip accent={activeColor} onClick={()=>setStatsOpen(true)} items={[["GOTCHA",activeStats.gotchas||0],["VICT.",activeStats.victims||0],["BUST",activeStats.busts||0],["BEST",activeStats.bestVisit||0]]}/><QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerGotcha} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>
+  </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel={previewBust?"VALIDER LE BUST":"VALIDER"} accent={previewBust?RED:activeColor} fitMinScale={0.16}/>:<BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text="cherche le finish ou le GOTCHA…" icon="🎯"/>}</div></div></main>
+  {playersOpen?<PlayersModal rows={playersRows} onClose={()=>setPlayersOpen(false)}/>:null}{statsOpen?<StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={()=>setStatsOpen(false)}/>:null}{logOpen?<LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={gotchaDartLabel} title="JOURNAL GOTCHA" onClose={()=>setLogOpen(false)}/>:null}{rankingOpen?<RankingModal rows={rankingRows} title="CLASSEMENT GOTCHA" onClose={()=>setRankingOpen(false)}/>:null}</div>;
 }

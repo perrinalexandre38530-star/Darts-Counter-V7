@@ -58,10 +58,13 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const losses = Math.max(0, games - wins - draws);
   const sum = (key: string) => rows.reduce((s: number, r: any) => s + n(r?.[key]), 0);
   const darts = sum("darts"), actions = sum("successfulActions"), goals = sum("goals"), shots = sum("shots"), onTarget = sum("shotsOnTarget"), saves = sum("saves"), tackles = sum("tackles"), interceptions = sum("interceptions"), advances = sum("advances"), posWins = sum("possessionWins"), clearances = sum("clearances"), counters = sum("counterAttacks"), penaltiesScored = sum("penaltiesScored"), penaltiesMissed = sum("penaltiesMissed");
+  const attackVisits = sum("attackVisits"), defenseVisits = sum("defenseVisits"), goalkeeperVisits = sum("goalkeeperVisits"), penaltyVisits = sum("penaltyVisits");
   const accuracy = pct(actions, darts);
   const conversion = pct(goals, shots);
   const onTargetRate = pct(onTarget, shots);
-  const saveRate = pct(saves, Math.max(0, onTarget + saves));
+  const saveRate = pct(saves, Math.max(1, goalkeeperVisits));
+  const defenseEfficiency = pct(interceptions, Math.max(1, defenseVisits));
+  const possessionEfficiency = pct(posWins, Math.max(1, defenseVisits));
   const avgGoals = games ? Math.round(goals / games * 100) / 100 : 0;
   const avgInterceptions = games ? Math.round(interceptions / games * 100) / 100 : 0;
 
@@ -94,6 +97,23 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
         <Kpi label="Arrêts" value={saves} detail={`${saveRate}% estimé`} color={BLUE} />
         <Kpi label="Progression" value={advances} detail={`${posWins} possessions · ${counters} contres`} color={GREEN} />
       </div>
+
+      <Section title="Efficacité par phase" accent={GREEN}>
+        <div style={{ display: "grid", gap: 7 }}>
+          <Bar label="Actions réussies" value={accuracy} max={100} color={GREEN} detail="%" />
+          <Bar label="Conversion tirs" value={conversion} max={100} color={GOLD} detail="%" />
+          <Bar label="Tirs cadrés" value={onTargetRate} max={100} color={BLUE} detail="%" />
+          <Bar label="Défense / interceptions" value={defenseEfficiency} max={100} color={RED} detail="%" />
+          <Bar label="Possessions gagnées" value={possessionEfficiency} max={100} color={GREEN} detail="%" />
+          <Bar label="Gardien / arrêts" value={saveRate} max={100} color={BLUE} detail="%" />
+        </div>
+        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+          <Kpi label="Volées attaque" value={attackVisits} color={GREEN} />
+          <Kpi label="Volées défense" value={defenseVisits} color={RED} />
+          <Kpi label="Volées gardien" value={goalkeeperVisits} color={BLUE} />
+          <Kpi label="Volées penalty" value={penaltyVisits} color={GOLD} />
+        </div>
+      </Section>
 
       <Section title="Records personnels Darts Football" accent={GOLD}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>

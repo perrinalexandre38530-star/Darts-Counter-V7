@@ -395,6 +395,16 @@
 .ocean-cell-vessel.vessel-2{width:32%;height:16%;top:58%}
 .ocean-cell-vessel.vessel-3{width:40%;height:20%}
 .ocean-cell-vessel.vessel-4{width:48%;height:24%;top:55%}
+.ocean-cell-vessel.is-carrier{border-radius:18% 18% 22% 22%/58% 58% 18% 18%}
+.ocean-cell-vessel.is-carrier:before{left:56%;right:10%;top:-42%;height:52%}
+.ocean-cell-vessel.is-cruiser:before{left:30%;right:22%}
+.ocean-cell-vessel.is-destroyer{height:18%;top:57%}
+.ocean-cell-vessel.is-destroyer:before{left:32%;right:30%;height:34%}
+.ocean-cell-vessel.is-submarine{height:16%;top:58%;border-radius:999px}
+.ocean-cell-vessel.is-submarine:before{left:56%;right:24%;top:-26%;height:26%;border-radius:999px 999px 2px 2px}
+.ocean-cell-vessel.is-submarine:after{bottom:-26%;height:42%}
+.ocean-cell-vessel.is-patrol{width:28%;height:14%;top:59%}
+.ocean-cell-vessel.is-patrol:before{left:32%;right:34%;height:28%}
 
 .ocean-control-cell.is-focused{border-color:#f5ca68;box-shadow:0 0 11px rgba(245,202,104,.3),inset 0 0 12px rgba(245,202,104,.07)}
 .ocean-control-cell.is-miss{background:linear-gradient(160deg,rgba(93,174,213,.16),rgba(7,23,35,.95));color:#65e9ff}
@@ -852,19 +862,64 @@
   z-index:1;
   display:grid;
   place-items:center;
-  height:34px;
-  margin-bottom:4px;
-  font-size:24px;
-  text-shadow:0 6px 14px rgba(0,0,0,.35);
+  height:38px;
+  margin-bottom:6px;
 }
 
-.ocean-ship-card__name,
-.ocean-ship-card__hp,
+.ocean-ship-card__meta,
 .ocean-ship-card__fog{position:relative;z-index:1}
 .ocean-ship-card__name{color:#eef8ff;font-size:7.2px;font-weight:1050;line-height:1.2}
+.ocean-ship-card__type{margin-top:3px;color:#bfd4e6;font-size:5.8px;font-weight:1000;letter-spacing:.35px;text-transform:uppercase}
 .ocean-ship-card__hp{margin-top:4px;color:#8fb2cb;font-size:6.1px}
 .ocean-ship-card__fog{margin-top:6px;display:inline-block;padding:2px 5px;border-radius:999px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.07);color:#f5ca68;font-size:5.7px;font-weight:1100}
 .ocean-ship-card.is-sunk{opacity:.72;filter:saturate(.85)}
+.ocean-ship-card__wreck{font-size:24px;text-shadow:0 8px 18px rgba(0,0,0,.35)}
+
+.ocean-ship-silhouette{
+  --silhouette-color:var(--ship-accent);
+  position:relative;
+  width:56px;
+  height:28px;
+  filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));
+}
+
+.ocean-ship-silhouette .hull,
+.ocean-ship-silhouette .bridge,
+.ocean-ship-silhouette .wake{position:absolute;display:block}
+.ocean-ship-silhouette .hull{
+  left:6px;right:4px;bottom:5px;height:10px;
+  background:linear-gradient(180deg,color-mix(in srgb, var(--ship-accent) 72%, white 28%),color-mix(in srgb, var(--ship-accent) 82%, #0a2437 18%));
+  clip-path:polygon(4% 100%,92% 100%,100% 24%,20% 0);
+  border-radius:3px;
+}
+.ocean-ship-silhouette .bridge{
+  left:22px;bottom:13px;width:16px;height:7px;border-radius:3px 3px 1px 1px;
+  background:linear-gradient(180deg,#f2fbff,color-mix(in srgb, var(--ship-accent) 72%, white 28%));
+}
+.ocean-ship-silhouette .wake{
+  left:4px;right:18px;bottom:0;height:7px;
+  background:radial-gradient(ellipse at 35% 0,rgba(255,255,255,.34),transparent 58%);
+}
+
+.ocean-ship-silhouette.is-carrier{width:60px}
+.ocean-ship-silhouette.is-carrier .hull{left:2px;right:2px;height:11px;clip-path:polygon(2% 100%,96% 100%,100% 10%,10% 0)}
+.ocean-ship-silhouette.is-carrier .bridge{left:36px;width:11px;height:8px}
+
+.ocean-ship-silhouette.is-cruiser .hull{left:5px;right:5px;height:10px;clip-path:polygon(6% 100%,94% 100%,100% 18%,18% 0)}
+.ocean-ship-silhouette.is-cruiser .bridge{left:25px;width:14px}
+
+.ocean-ship-silhouette.is-destroyer{width:52px}
+.ocean-ship-silhouette.is-destroyer .hull{left:7px;right:5px;height:9px;clip-path:polygon(6% 100%,90% 100%,100% 18%,25% 0)}
+.ocean-ship-silhouette.is-destroyer .bridge{left:22px;bottom:12px;width:12px;height:6px}
+
+.ocean-ship-silhouette.is-submarine{width:56px}
+.ocean-ship-silhouette.is-submarine .hull{left:5px;right:5px;height:8px;border-radius:999px;clip-path:none}
+.ocean-ship-silhouette.is-submarine .bridge{left:28px;bottom:11px;width:8px;height:5px;border-radius:4px 4px 0 0}
+.ocean-ship-silhouette.is-submarine .wake{left:8px;right:10px;height:6px}
+
+.ocean-ship-silhouette.is-patrol{width:42px}
+.ocean-ship-silhouette.is-patrol .hull{left:6px;right:4px;height:8px;clip-path:polygon(8% 100%,88% 100%,100% 20%,30% 0)}
+.ocean-ship-silhouette.is-patrol .bridge{left:17px;bottom:11px;width:8px;height:5px}
 
 .ocean-ship-card__art.is-carrier{filter:drop-shadow(0 0 12px rgba(101,233,255,.16))}
 .ocean-ship-card__art.is-cruiser{filter:drop-shadow(0 0 12px rgba(245,202,104,.16))}

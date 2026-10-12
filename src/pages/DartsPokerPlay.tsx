@@ -11,7 +11,7 @@ import InfoDot from "../components/InfoDot";
 import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
-import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
+import DartsPokerCard, { DartsPokerDeckGallery } from "../components/darts-poker/DartsPokerCard";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
 import {
@@ -133,7 +133,7 @@ export default function DartsPokerPlay(props: any) {
   const [showEnd, setShowEnd] = React.useState(state.phase === "finished");
   const [showTimeline, setShowTimeline] = React.useState(false);
   const [wonCardPopup, setWonCardPopup] = React.useState<WonCardPopup | null>(null);
-  const [quickPanel, setQuickPanel] = React.useState<null | "active" | "market" | "table" | "stats" | "objectives" | "dartboard">(null);
+  const [quickPanel, setQuickPanel] = React.useState<null | "active" | "market" | "deck" | "table" | "stats" | "objectives" | "dartboard">(null);
   const [botThinking, setBotThinking] = React.useState(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
@@ -348,7 +348,7 @@ export default function DartsPokerPlay(props: any) {
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
   const handSnapshot = describeHandSnapshot(activeHand?.cards || []);
   const contractLive = describeContractLiveState(state.roundContract, activeHand?.cards || []);
-  const quickColumns = config.scoreInputMethod === "dartboard" ? 4 : 3;
+  const quickColumns = config.scoreInputMethod === "dartboard" ? 5 : 4;
 
   return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", overflowX: "hidden" }}>
     <PageHeader tickerSrc={tickerDartsPoker} tickerAlt="DARTS POKER" tickerHeight={84} tickerBottomGap={8} left={<BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`} />} right={<InfoDot title="Règles DARTS POKER" color={RED} glow={`${RED}88`} content={<Rules config={config} />} />} />
@@ -401,7 +401,8 @@ export default function DartsPokerPlay(props: any) {
       </section>
 
       <section style={{ display: "grid", gridTemplateColumns: `repeat(${quickColumns},minmax(0,1fr))`, gap: 5 }}>
-        <QuickLauncher label="MARCHÉ" value={`${state.deck.length}`} accent={GOLD} icon={<IconGrid />} onClick={() => setQuickPanel("market")} />
+        <QuickLauncher label="MARCHÉ" value="20" accent={GOLD} icon={<IconGrid />} onClick={() => setQuickPanel("market")} />
+        <QuickLauncher label="DECK" value={`${state.deck.length}`} accent={BLUE} icon={<IconDeck />} onClick={() => setQuickPanel("deck")} />
         <QuickLauncher label="TABLE" value={`${state.players.length}`} accent={RED} icon={<IconTable />} onClick={() => setQuickPanel("table")} />
         <QuickLauncher label="STATS" value={`${state.visits.length}`} accent={GREEN} icon={<IconStats />} onClick={() => setQuickPanel("stats")} />
         {config.scoreInputMethod === "dartboard" ? <QuickLauncher label="CIBLE" value="OUVRIR" accent={BLUE} icon={<IconTarget />} onClick={() => setQuickPanel("dartboard")} /> : null}
@@ -416,6 +417,7 @@ export default function DartsPokerPlay(props: any) {
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {quickPanel === "active" ? <ActivePlayerModal state={state} activeProfile={activeProfile} activePlayer={activePlayer} activeHand={activeHand} activeColor={activeColor} activeStats={activeStats} liveEvaluation={liveEvaluation} onClose={() => setQuickPanel(null)} onExchange={exchangeCard} onChoice={useChoice} onValidate={validateHand} /> : null}
     {quickPanel === "market" ? <MarketModal state={state} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "deck" ? <DeckModal state={state} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "table" ? <TableModal state={state} profilesById={profilesById} config={config} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "stats" ? <LiveStatsModal state={state} profilesById={profilesById} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "objectives" ? <ObjectivesModal objective={objective} contract={state.roundContract} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
@@ -441,6 +443,7 @@ function MiniStat({ label, value, color, compact = false }: any) {
 }
 
 function IconShell({ children }: any) { return <span style={{ width: 17, height: 17, display: "inline-grid", placeItems: "center" }}>{children}</span>; }
+function IconDeck() { return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="6.5" y="4" width="11" height="15" rx="2"/><path d="M4.5 7.5v10a2 2 0 0 0 2 2h7.5"/><path d="M10 8.5h4M10 12h4M10 15.5h2.5"/></svg>; }
 function IconGrid() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></IconShell>; }
 function IconTarget() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></IconShell>; }
 function IconTable() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/><path d="M8 4v16"/><path d="M16 4v16"/></svg></IconShell>; }
@@ -499,6 +502,22 @@ function MarketModal({ state, suggestions, assistanceEnabled, onClose }: any) {
   return <FloatingPanel title="Marché des 20 cartes" subtitle={assistanceEnabled ? "Lecture stratégique du marché en temps réel" : "20 cartes visibles · une carte remplacée après chaque prise"} accent={GOLD} onClose={onClose} width="min(880px,100%)">
     {assistanceEnabled && suggestions?.length ? <div style={{ marginBottom: 11 }}><div style={{ color: SOFT, fontSize: 8, fontWeight: 1000, marginBottom: 6 }}>TOP CIBLES</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{suggestions.map((item: any, index: number) => <div key={item.sector} style={{ padding: 8, borderRadius: 13, border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.10)"}`, background: index === 0 ? `${GOLD}10` : "rgba(255,255,255,.025)", display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 7, alignItems: "center" }}><CardView card={item.card} small /><div style={{ minWidth: 0 }}><div style={{ color: index === 0 ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>S{item.sector} · {pokerCardLabel(item.card)}</div><div style={{ color: item.contractMatch ? GREEN : SOFT, fontSize: 7.5, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.contractMatch ? "Priorité contrat" : item.reason}</div></div></div>)}</div></div> : null}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>{Array.from({ length: 20 }, (_, i) => i + 1).map((sector) => { const hot = assistanceEnabled && bestSectors.has(sector); const rank = (suggestions || []).findIndex((item: any) => Number(item.sector) === sector); return <div key={sector} style={{ minWidth: 0, textAlign: "center", padding: "6px 2px", borderRadius: 12, background: hot ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${hot ? GOLD : "rgba(255,255,255,.08)"}`, position: "relative" }}>{hot ? <div style={{ position: "absolute", right: 4, top: 4, width: 17, height: 17, borderRadius: 999, display: "grid", placeItems: "center", background: GOLD, color: "#111", fontSize: 7.5, fontWeight: 1200 }}>{rank + 1}</div> : null}<div style={{ color: hot ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>{sector}</div><div style={{ display: "flex", justifyContent: "center", marginTop: 5 }}><CardView card={state.market[sector]} small /></div></div>; })}</div>
+  </FloatingPanel>;
+}
+
+function DeckModal({ state, onClose }: any) {
+  const marketCount = Object.values(state?.market || {}).filter(Boolean).length;
+  const handCount = Object.values(state?.handsByPlayer || {}).reduce((sum: number, hand: any) => sum + Number(hand?.cards?.length || 0), 0);
+  const discardCount = Number(state?.discard?.length || 0);
+  const remaining = Number(state?.deck?.length || 0);
+  return <FloatingPanel title="Deck MSS Signature" subtitle="État du paquet + galerie complète" accent={BLUE} onClose={onClose} width="min(920px,100%)">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 10 }}>
+      <MiniStat label="PIOCHE" value={`${remaining}`} color={BLUE} />
+      <MiniStat label="MARCHÉ" value={`${marketCount}`} color={GOLD} />
+      <MiniStat label="EN MAINS" value={`${handCount}`} color={GREEN} />
+      <MiniStat label="DÉFAUSSE" value={`${discardCount}`} color={RED} />
+    </div>
+    <DartsPokerDeckGallery compact />
   </FloatingPanel>;
 }
 

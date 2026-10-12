@@ -111,6 +111,31 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
         })}</div>
       </div>
 
+
+      {(state.rounds || []).length ? <div style={{ marginTop: 12 }}>
+        <div style={{ color: RED, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>FIL DU MATCH · MANCHE PAR MANCHE</div>
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 7 }}>
+          {(state.rounds || []).map((round: any, roundIndex: number) => {
+            const rows = [...(round?.rows || [])].sort((a: any, b: any) => Number(a?.rank || 999) - Number(b?.rank || 999));
+            const winnerRows = rows.filter((row: any) => Number(row?.rank) === 1 || row?.win);
+            const lead = winnerRows[0] || rows[0] || null;
+            const profile = lead ? profilesById.get(String(lead.playerId)) || lead : null;
+            return <div key={`round-${round?.round || roundIndex}`} style={{ padding: 9, borderRadius: 15, border: `1px solid ${winnerRows.length > 1 ? BLUE : GOLD}33`, background: "rgba(255,255,255,.022)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 7 }}>
+                <div><div style={{ color: GOLD, fontSize: 8, fontWeight: 1100 }}>MANCHE {round?.round || roundIndex + 1}</div><div style={{ color: SOFT, fontSize: 6.8, marginTop: 1 }}>{round?.contract?.label ? `Contrat · ${round.contract.label}` : "Sans contrat"}</div></div>
+                <div style={{ color: winnerRows.length > 1 ? BLUE : GREEN, fontSize: 7.5, fontWeight: 1100 }}>{winnerRows.length > 1 ? "ÉGALITÉ" : "GAGNANT"}</div>
+              </div>
+              {lead ? <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "30px minmax(0,1fr) auto", gap: 6, alignItems: "center" }}><ProfileAvatar profile={profile} size={28} /><div style={{ minWidth: 0 }}><div style={{ color: "#fff", fontSize: 8.8, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{winnerRows.length > 1 ? winnerRows.map((row: any) => playerName(profilesById.get(String(row.playerId)) || row)).join(" / ") : playerName(profile)}</div><div style={{ color: GOLD, fontSize: 7.2, marginTop: 1 }}>{lead?.evaluation?.label || "—"}</div></div><div style={{ color: GOLD, fontSize: 11, fontWeight: 1100 }}>+{fmt(lead?.pointsAwarded || 0)}</div></div> : null}
+              {lead?.bestFive?.length ? <div style={{ marginTop: 7, display: "flex", gap: 3, overflowX: "auto" }}>{lead.bestFive.map((card: any, index: number) => <DartsPokerCard key={`${card?.id || index}-${index}`} card={card} size="mini" />)}</div> : null}
+              <div style={{ marginTop: 7, display: "grid", gap: 3 }}>{rows.map((row: any) => {
+                const rowProfile = profilesById.get(String(row.playerId)) || row;
+                return <div key={`${round?.round}-${row?.playerId}`} style={{ display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto auto", gap: 5, alignItems: "center", color: SOFT, fontSize: 6.9 }}><span style={{ color: Number(row?.rank) === 1 ? GOLD : SOFT, fontWeight: 1100 }}>#{row?.rank || "—"}</span><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(rowProfile)}</span><span>{row?.evaluation?.label || "—"}</span><span style={{ color: row?.contractCompleted ? GREEN : "#777" }}>{row?.contractCompleted ? "◆" : "·"}</span></div>;
+              })}</div>
+            </div>;
+          })}
+        </div>
+      </div> : null}
+
       <div style={{ marginTop: 12, color: GOLD, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>TABLEAU COMPLET DES STATISTIQUES</div>
       <div style={{ marginTop: 6, overflowX: "auto", borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.02)" }}>
         <table style={{ width: "100%", minWidth: 3650, borderCollapse: "collapse" }}>

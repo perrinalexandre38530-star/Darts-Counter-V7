@@ -160,7 +160,9 @@ export default function NewDartsModeConfig(props: Props) {
     try { return localStorage.getItem(`dc_${mode}_config_view_mode`) === "complete" ? "complete" : "guided"; } catch { return "guided"; }
   });
   const [guidedStep, setGuidedStep] = React.useState(0);
-  const [viewModeChosen, setViewModeChosen] = React.useState(() => mode !== "crados");
+  const premiumPartyMode = mode === "castle" || mode === "gotcha" || mode === "hare_hounds";
+  const needsInitialViewChoice = mode === "crados" || premiumPartyMode;
+  const [viewModeChosen, setViewModeChosen] = React.useState(() => !needsInitialViewChoice);
   const configScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, definition.maxPlayers) : []);
   const [botsOpen, setBotsOpen] = React.useState(saved.botsOpen === true);
@@ -168,6 +170,9 @@ export default function NewDartsModeConfig(props: Props) {
   const [randomOrder, setRandomOrder] = React.useState(saved.randomOrder !== false);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [seriesWins, setSeriesWins] = React.useState<1 | 2 | 3>(saved.seriesWins === 2 || saved.seriesWins === 3 ? saved.seriesWins : 1);
+  const [modeSfxEnabled, setModeSfxEnabled] = React.useState(saved.modeSfxEnabled !== false);
+  const [modeAwenaEnabled, setModeAwenaEnabled] = React.useState(saved.modeAwenaEnabled !== false);
+  const [modeCoachEnabled, setModeCoachEnabled] = React.useState(saved.modeCoachEnabled !== false);
 
   // CASTLE
   const [castleBricks, setCastleBricks] = React.useState(saved.castleBricks === 10 || saved.castleBricks === 20 ? saved.castleBricks : 15);
@@ -511,6 +516,7 @@ export default function NewDartsModeConfig(props: Props) {
   React.useEffect(() => {
     const snapshot = {
       selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins,
+      modeSfxEnabled, modeAwenaEnabled, modeCoachEnabled,
       castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg,
       gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust,
       houndStart, hareTargetZone, hareRoleMode, hareDirection,
@@ -525,11 +531,11 @@ export default function NewDartsModeConfig(props: Props) {
       steepleDirection, steepleFences, steepleFinishBull, steepleZone,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, modeSfxEnabled, modeAwenaEnabled, modeCoachEnabled, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
-    if (mode === "crados") setViewModeChosen(true);
+    if (needsInitialViewChoice) setViewModeChosen(true);
     try { localStorage.setItem(`dc_${mode}_config_view_mode`, value); } catch {}
   }
 
@@ -589,6 +595,7 @@ export default function NewDartsModeConfig(props: Props) {
       scoreInputMethod,
       seriesWins,
       rules: modeRulesPayload(),
+      ...(premiumPartyMode ? { sfxEnabled: modeSfxEnabled, awenaEnabled: modeAwenaEnabled, coachEnabled: modeCoachEnabled } : {}),
       ...(mode === "crados" ? {
         sfxEnabled: cradosSfxEnabled,
         awenaEnabled: cradosAwenaEnabled,
@@ -601,7 +608,8 @@ export default function NewDartsModeConfig(props: Props) {
           ? teams.filter((team: any) => team.isCradosFamily || String(team.id).startsWith("bot_team_crados_")).map((team: any) => String(team.id))
           : [],
       } : {}),
-      menuVersion: 3,
+      menuVersion: premiumPartyMode ? 4 : 3,
+      ...(premiumPartyMode ? { premiumGameplayVersion: 4 } : {}),
     };
     try { recordProfileUsageForMode(mode, orderedIds); } catch {}
     go(definition.playTab, { config: payload });
@@ -837,6 +845,15 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section> : null;
 
+  const premiumAssistanceBlock = premiumPartyMode ? <section style={{ ...selectorCard, padding: "11px 10px" }}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 11.2, fontWeight: 950, marginBottom: 7 }}>Ambiance & assistance</div>
+    <div style={{ ...panel, padding: 7, display: "grid", gap: 5 }}>
+      <OptionRow compact label={`Bruitages ${definition.title}`} hint="Active les impacts, l’intro et le son de victoire de ce mode."><OptionToggle compact value={modeSfxEnabled} onChange={setModeSfxEnabled} /></OptionRow>
+      <OptionRow compact label="Awena" hint="Affiche le bouton Awena et autorise son contexte de partie pour ce mode."><OptionToggle compact value={modeAwenaEnabled} onChange={setModeAwenaEnabled} /></OptionRow>
+      <OptionRow compact label="Conseil tactique" hint="Affiche pendant le tour la cible ou l’action recommandée, adaptée à l’état de la partie."><OptionToggle compact value={modeCoachEnabled} onChange={setModeCoachEnabled} /></OptionRow>
+    </div>
+  </section> : null;
+
   const fiftyOneBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles 51 BY 5</div>
     <div style={panel}>
@@ -895,6 +912,7 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "castle" ? <><SummaryLine label="Objectif" value={`${castleBricks} briques`} /><SummaryLine label="Combat" value={castleAttacks ? "Construction + attaque" : "Construction seule"} /></> : null}
       {mode === "gotcha" ? <><SummaryLine label="Cible" value={gotchaTarget} /><SummaryLine label="Sortie" value={gotchaOut === "straight" ? "Straight" : gotchaOut === "double" ? "Double" : "Master"} /></> : null}
       {mode === "hare_hounds" ? <><SummaryLine label="Départs" value={`Lièvre 20 · Limier ${houndStart}`} /><SummaryLine label="Zone" value={hareTargetZone === "any" ? "S/D/T" : hareTargetZone === "double" ? "Doubles" : "Triples"} /></> : null}
+      {premiumPartyMode ? <><SummaryLine label="Bruitages" value={modeSfxEnabled ? "ON" : "OFF"} /><SummaryLine label="Awena" value={modeAwenaEnabled ? "ON" : "OFF"} /><SummaryLine label="Conseil tactique" value={modeCoachEnabled ? "ON" : "OFF"} /></> : null}
       {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Défis" value={penduTargetFamily === "segments" ? "Segments" : penduTargetFamily === "scores" ? "Scores" : "Mixte"} /></> : null}
       {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
       {mode === "crados" ? <><SummaryLine label="Type de partie" value={cradosTeamMode ? "Équipes" : "Joueurs"} />{cradosTeamMode ? <SummaryLine label="Composition" value={cradosTeamsSourceMode === "saved" ? "Équipes créées / familles IA" : cradosTeamsSourceMode === "auto" ? "Brassage automatique" : "Manuelle"} /> : null}<SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /><SummaryLine label="Secteur vierge" value={cradosSectorRaceMode === "race" ? "Course — toutes les touches comptent" : "Prise en main — le dernier efface l’autre"} /><SummaryLine label="Bull spécial" value={cradosCleanBullSplash ? "Bull propre contagieux" : "Standard"} /><SummaryLine label="Fin de manche" value={cradosEndOnFirstMaxDirt ? "Première jauge pleine" : "Dernier camp encore propre"} /><SummaryLine label="Bruitages" value={cradosSfxEnabled ? "ON" : "OFF"} /><SummaryLine label="Awena" value={cradosAwenaEnabled ? "ON" : "OFF"} /><SummaryLine label="Conseil cible" value={cradosCoachEnabled ? "ON" : "OFF"} /></> : null}
@@ -918,7 +936,9 @@ export default function NewDartsModeConfig(props: Props) {
     : steeplechaseBlock;
   const steps = mode === "crados"
     ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Zones", "Format", "Saisie", "Aide", "Résumé"]
-    : definition.guidedSteps;
+    : premiumPartyMode
+      ? definition.guidedSteps
+      : definition.guidedSteps;
   const maxStep = steps.length - 1;
   React.useEffect(() => {
     setGuidedStep((step) => Math.max(0, Math.min(step, maxStep)));
@@ -944,24 +964,24 @@ export default function NewDartsModeConfig(props: Props) {
         .msc-new-darts-guided-nav { position: sticky !important; bottom: max(6px, env(safe-area-inset-bottom)) !important; z-index: 50 !important; background: rgba(3,5,10,.92) !important; backdrop-filter: blur(14px); padding: 6px !important; border-radius: 14px; box-shadow: 0 -8px 24px rgba(0,0,0,.45); }
       }
     `}</style>
-    <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={mode === "crados" ? 68 : 92} tickerBottomGap={mode === "crados" ? 4 : 10} tickerFit={mode === "crados" ? "cover" : "cover"} left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={<InfoDot title={`Règles ${definition.title}`} color={accent} glow={`${accent}77`} content={definition.rulesContent} />} />
+    <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={needsInitialViewChoice ? 68 : 92} tickerBottomGap={needsInitialViewChoice ? 4 : 10} tickerFit={mode === "crados" ? "cover" : "cover"} left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={<InfoDot title={`Règles ${definition.title}`} color={accent} glow={`${accent}77`} content={definition.rulesContent} />} />
     <div className="msc-new-darts-config-content" style={{ padding: "8px 8px 0", maxWidth: 980, margin: "0 auto", minWidth: 0, boxSizing: "border-box" }}>
-      {mode === "crados" && !viewModeChosen ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)`, padding: "14px 12px" }}>
-        <div style={{ color: accent, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>Choisis ton affichage</div>
-        <div style={{ marginTop: 5, color: soft, fontSize: 9.8, textAlign: "center" }}>Tu pourras revenir ici en quittant la configuration.</div>
+      {needsInitialViewChoice && !viewModeChosen ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)`, padding: "14px 12px" }}>
+        <div style={{ color: accent, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>Configuration {definition.title}</div>
+        <div style={{ marginTop: 5, color: soft, fontSize: 9.8, textAlign: "center" }}>Choisis une configuration guidée ou tous les réglages sur une seule page.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 12 }}>
           <button type="button" onClick={() => selectView("guided")} style={{ minHeight: 86, borderRadius: 17, border: `1px solid ${accent}`, background: `${accent}16`, color: "#fff", padding: 10, fontWeight: 1000 }}><span style={{ display: "block", color: accent, fontSize: 18 }}>GUIDÉE</span><small style={{ display: "block", marginTop: 5, color: soft, fontSize: 9, fontWeight: 800 }}>Étapes courtes · idéal mobile</small></button>
           <button type="button" onClick={() => selectView("complete")} style={{ minHeight: 86, borderRadius: 17, border: "1px solid rgba(255,255,255,.13)", background: "rgba(255,255,255,.04)", color: "#fff", padding: 10, fontWeight: 1000 }}><span style={{ display: "block", fontSize: 18 }}>COMPLÈTE</span><small style={{ display: "block", marginTop: 5, color: soft, fontSize: 9, fontWeight: 800 }}>Tous les réglages sur une page</small></button>
         </div>
       </section> : null}
 
-      {mode !== "crados" ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)` }}>
+      {mode !== "crados" && !premiumPartyMode ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)` }}>
         <div style={{ color: accent, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration {definition.title}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Pill active={viewMode === "guided"} onClick={() => selectView("guided")} accent={accent}>Guidée</Pill><Pill active={viewMode === "complete"} onClick={() => selectView("complete")} accent={accent}>Complète</Pill></div>
         <div style={{ marginTop: 8, color: soft, fontSize: 11 }}>Le moteur de jeu est intégré : participants, règles, format, saisie, sauvegarde et reprise sont prêts.</div>
       </section> : null}
 
-      {(mode !== "crados" || viewModeChosen) && (viewMode === "guided" ? <>
+      {(!needsInitialViewChoice || viewModeChosen) && (viewMode === "guided" ? <>
         <section className={mode === "crados" ? "msc-crados-guided-head" : undefined} style={selectorCard}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9, minWidth: 0 }}><div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div><div style={{ marginTop: 3, color: soft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{steps.length} · {steps[guidedStep]}</div></div><div className={mode === "crados" ? "msc-crados-step-dots" : undefined} style={{ display: "flex", gap: 4, flexShrink: 0 }}>{steps.map((label, idx) => <button key={label} type="button" onClick={() => goGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? accent : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? `${accent}20` : "rgba(255,255,255,.03)", color: idx === guidedStep ? accent : "#aeb2d3", fontSize: 9.5, fontWeight: 950 }}>{idx + 1}</button>)}</div></div>
           <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / steps.length) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${accent}, ${accent2})` }} /></div>
@@ -975,6 +995,13 @@ export default function NewDartsModeConfig(props: Props) {
           {guidedStep === 5 ? inputBlock : null}
           {guidedStep === 6 ? cradosAssistanceBlock : null}
           {guidedStep === 7 ? summaryBlock : null}
+        </> : premiumPartyMode ? <>
+          {guidedStep === 0 ? participantsBlock : null}
+          {guidedStep === 1 ? modeBlock : null}
+          {guidedStep === 2 ? matchBlock : null}
+          {guidedStep === 3 ? inputBlock : null}
+          {guidedStep === 4 ? premiumAssistanceBlock : null}
+          {guidedStep === 5 ? summaryBlock : null}
         </> : <>
           {guidedStep === 0 ? participantsBlock : null}
           {guidedStep === 1 ? modeBlock : null}
@@ -983,9 +1010,9 @@ export default function NewDartsModeConfig(props: Props) {
           {guidedStep === 4 ? summaryBlock : null}
         </>}
         <div className="msc-new-darts-guided-nav" style={{ display: "flex", gap: 9, marginBottom: 12 }}><button type="button" disabled={guidedStep === 0} onClick={() => goGuidedStep(guidedStep - 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button>{guidedStep < maxStep ? <button type="button" onClick={() => goGuidedStep(guidedStep + 1)} style={{ flex: 1, minHeight: 42, borderRadius: 999, border: `1px solid ${accent}`, background: `${accent}18`, color: accent, fontWeight: 950 }}>Suivant →</button> : null}</div>
-      </> : <>{mode === "crados" ? cradosCompleteModeChoiceBlock : null}{participantsBlock}{mode === "crados" ? cradosOrderBlock : null}{modeBlock}{mode === "crados" ? cradosAssistanceBlock : null}{matchBlock}{inputBlock}{summaryBlock}</>)}
+      </> : <>{mode === "crados" ? cradosCompleteModeChoiceBlock : null}{participantsBlock}{mode === "crados" ? cradosOrderBlock : null}{modeBlock}{mode === "crados" ? cradosAssistanceBlock : null}{premiumPartyMode ? premiumAssistanceBlock : null}{matchBlock}{inputBlock}{summaryBlock}</>)}
 
-      {(mode !== "crados" || viewModeChosen) && (viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>La partie démarre avec le moteur complet, les BOTS, l’UNDO, la sauvegarde en cours et les statistiques de fin.</div></div> : null}
+      {(!needsInitialViewChoice || viewModeChosen) && (viewMode === "complete" || guidedStep === maxStep) ? <div style={{ padding: "4px 4px 16px" }}><button type="button" disabled={!validSelection} onClick={start} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${accent}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${accent}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${accent}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {definition.title}</button><div style={{ marginTop: 8, color: soft, fontSize: 10.5, textAlign: "center" }}>La partie démarre avec le moteur complet, les BOTS, l’UNDO, la sauvegarde en cours et les statistiques de fin.</div></div> : null}
     </div>
   </div>;
 }

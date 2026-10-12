@@ -25,11 +25,12 @@ export default function FootballHistoryScoreBlock({ record }: any) {
   const scoreB = n(scoreBySide?.[sideB.id]);
   const rows = summary?.rankings || summary?.perPlayer || record?.payload?.stats?.players || record?.players || [];
   const matchStats = summary?.matchStats || record?.payload?.stats?.match || {};
+  const records = summary?.records || record?.payload?.summary?.records || {};
   const finished = record?.status === "finished" || summary?.finished === true || Boolean(record?.finishedAt || record?.endedAt);
   const draw = Boolean(summary?.draw);
   const winnerSideIds = summary?.winnerSideIds || state?.winnerSideIds || [];
   const winnerName = summary?.winnerName || "";
-  const mvp = summary?.records?.mvp || summary?.records?.topScorer || [...(Array.isArray(rows) ? rows : [])].sort((a: any, b: any) => (n(b?.goals) * 10 + n(b?.saves) * 5 + n(b?.interceptions) * 3) - (n(a?.goals) * 10 + n(a?.saves) * 5 + n(a?.interceptions) * 3))[0];
+  const mvp = records?.mvp || records?.topScorer || [...(Array.isArray(rows) ? rows : [])].sort((a: any, b: any) => (n(b?.goals) * 10 + n(b?.saves) * 5 + n(b?.interceptions) * 3) - (n(a?.goals) * 10 + n(a?.saves) * 5 + n(a?.interceptions) * 3))[0];
   const durationMs = n(matchStats?.durationMs) || Math.max(0, n(record?.finishedAt || record?.endedAt) - n(record?.startedAt || record?.createdAt));
   const durationMin = durationMs ? Math.max(1, Math.round(durationMs / 60000)) : 0;
   const penaltyA = state?.penaltyAttemptsBySide?.[sideA.id] || [];
@@ -52,6 +53,14 @@ export default function FootballHistoryScoreBlock({ record }: any) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
       {[["TIRS", n(matchStats?.shots) || sum(rows, "shots"), GOLD], ["CADRÉS", n(matchStats?.shotsOnTarget) || sum(rows, "shotsOnTarget"), BLUE], ["ARRÊTS", n(matchStats?.saves) || sum(rows, "saves"), GREEN], ["INTERCEPT.", n(matchStats?.interceptions) || sum(rows, "interceptions"), RED]].map(([label, value, color]: any) => <div key={label} style={{ padding: 5, borderRadius: 9, textAlign: "center", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}><strong style={{ color, fontSize: 9.5 }}>{value}</strong><div style={{ marginTop: 1, color: SOFT, fontSize: 5.4 }}>{label}</div></div>)}
     </div>
+
+    {finished && (mvp || records?.topScorer || records?.topKeeper) ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4 }}>
+      {[
+        ["★ MVP", mvp?.name || mvp?.playerName, GOLD],
+        ["⚽ BUTEUR", records?.topScorer?.name || records?.topScorer?.playerName, GREEN],
+        ["🧤 GARDIEN", records?.topKeeper?.name || records?.topKeeper?.playerName, BLUE],
+      ].filter((item: any) => item[1]).map(([label, value, color]: any) => <div key={label} style={{ minWidth: 0, padding: "5px 6px", borderRadius: 9, border: `1px solid ${color}30`, background: `${color}08` }}><div style={{ color, fontSize: 5.4, fontWeight: 1050 }}>{label}</div><div style={{ marginTop: 2, color: WHITE, fontSize: 6.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>)}
+    </div> : null}
 
     {(penaltyA.length || penaltyB.length) ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 6, borderRadius: 10, border: `1px solid ${GOLD}33`, background: `${GOLD}08` }}>
       {[{ side: sideA, attempts: penaltyA }, { side: sideB, attempts: penaltyB }].map(({ side, attempts }: any) => <div key={side.id}><div style={{ color: side.color, fontSize: 5.8, fontWeight: 1000 }}>{side.name}</div><div style={{ marginTop: 3, display: "flex", gap: 3, flexWrap: "wrap" }}>{attempts.map((ok: boolean, index: number) => <span key={index} style={{ width: 14, height: 14, borderRadius: "50%", display: "grid", placeItems: "center", background: ok ? GREEN : RED, color: ok ? "#03110b" : "#fff", fontSize: 6.5, fontWeight: 1100 }}>{ok ? "✓" : "×"}</span>)}</div></div>)}

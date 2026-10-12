@@ -184,6 +184,11 @@ function fresh(overrides: Partial<FootballConfigPayload> = {}): FootballState {
   assert.ok(stats.totalDarts >= 1);
   assert.equal(typeof stats.scoreBySide, "object");
   assert.equal(typeof stats.clearances, "number");
+  assert.equal(Array.isArray(stats.perSide), true);
+  assert.equal(stats.perSide.length, 2);
+  assert.equal(typeof stats.perSide[0].accuracyPct, "number");
+  assert.equal(typeof stats.perSide[0].conversionPct, "number");
+  assert.equal(typeof stats.perSide[0].possessionPct, "number");
 }
 
 console.log("DARTS FOOTBALL engine regression V3: OK");

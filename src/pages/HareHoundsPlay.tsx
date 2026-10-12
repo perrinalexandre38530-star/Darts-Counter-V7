@@ -1,234 +1,50 @@
 // @ts-nocheck
 import React from "react";
 import BackDot from "../components/BackDot";
-import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerHareHounds from "../assets/tickers/ticker_hare_hounds.webp";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
-import {
-  cloneHareState,
-  createHareState,
-  hareCurrentSegment,
-  hareSequence,
-  normalizeHareConfig,
-  pickHareBotDarts,
-  playHareVisit,
-  type HareState,
-} from "../lib/gameEngines/hareHoundsEngine";
-import {
-  NewModeInput,
-  PlayerCard,
-  ModeEndPanel,
-  actionStyle,
-  isBotProfile,
-  lastEvents,
-  panelStyle,
-  playerName,
-  resolveModeProfiles,
-  SOFT,
-  uiToGameDart,
-} from "./newModes/newModePlayShared";
+import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
+import { cloneHareState, createHareState, hareCurrentIndex, hareCurrentSegment, hareDartLabel, hareSequence, normalizeHareConfig, pickHareBotDarts, playHareVisit, type HareState } from "../lib/gameEngines/hareHoundsEngine";
+import { NewModeInput, isBotProfile, lastEvents, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
+import { ActiveHero, BotTurn, FloatingAdvice, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton, PremiumEndPanel, QuickRow, RankingModal, StatsModal, SummaryStrip, bestBy, modePlayerColors, percent } from "./newModes/PremiumPartyModeUi";
+import "./newModes/PremiumPartyModeUi.css";
 
-const ACCENT = "#f6b63b";
-const HARE = "#ffb33f";
-const HOUND = "#58c9ff";
-const RED = "#ff6464";
+const ACCENT="#f6b63b", HARE="#ffbd3d", HOUND="#58c9ff";
+function gapToHare(seq:number[],houndSeg:number,hareSeg:number){const hi=seq.indexOf(houndSeg),ri=seq.indexOf(hareSeg);if(hi<0||ri<0)return 0;return(ri-hi+20)%20;}
+function coachText(state:HareState,active:any){if(!active)return"";const role=active.id===state.harePlayerId?"hare":"hound";const target=hareCurrentSegment(state,active.id);const zone=state.config.rules.targetZone==="double"?"Double":state.config.rules.targetZone==="triple"?"Triple":"secteur";if(role==="hare"){const remaining=Math.max(0,20-Number(state.progressByPlayer[active.id]||0));return`${zone} ${target} · encore ${remaining} étape${remaining>1?"s":""} avant la fuite.`;}const hareSeg=hareCurrentSegment(state,state.harePlayerId);const seq=hareSequence(state.config.rules.direction);const gap=gapToHare(seq,target,hareSeg);return`${zone} ${target} · le Lièvre est à ${gap} étape${gap>1?"s":""}.`;}
 
-function Rules({ config }: any) {
-  return <div style={{ display: "grid", gap: 10, fontSize: 12.5, lineHeight: 1.5 }}>
-    <div><b style={{ color: HARE }}>LIÈVRE</b><br />Il part sur 20 et avance dans l’ordre physique des secteurs.</div>
-    <div><b style={{ color: HOUND }}>LIMIER(S)</b><br />Ils partent sur {config.rules.houndStart} et avancent sur le même parcours pour rejoindre le Lièvre.</div>
-    <div><b style={{ color: ACCENT }}>ZONE</b><br />{config.rules.targetZone === "double" ? "Doubles uniquement." : config.rules.targetZone === "triple" ? "Triples uniquement." : "Simple, Double ou Triple du secteur demandé."}</div>
-    <div><b style={{ color: RED }}>VICTOIRE</b><br />Le Lièvre gagne s’il boucle 20 étapes. Un Limier gagne dès qu’il rejoint la position du Lièvre.</div>
-  </div>;
-}
+function TrackMini({state,activeId,color}:any){const seq=hareSequence(state.config.rules.direction);const activeSeg=hareCurrentSegment(state,activeId);const hareSeg=hareCurrentSegment(state,state.harePlayerId);return <div style={{width:"100%",height:"100%",padding:7,display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3,alignContent:"center"}}>{seq.map((n:number)=>{const isActive=n===activeSeg,isHare=n===hareSeg;return <span key={n} style={{height:18,borderRadius:6,display:"grid",placeItems:"center",fontSize:7,fontWeight:1000,border:`1px solid ${isActive?color:isHare?HARE+"99":"rgba(255,255,255,.08)"}`,background:isActive?`${color}28`:isHare?`${HARE}18`:"rgba(255,255,255,.025)",color:isActive?color:isHare?HARE:"#8e97a7"}}>{n}</span>;})}</div>}
 
-function gapToHare(seq: number[], houndSegment: number, hareSegment: number) {
-  const hi = Math.max(0, seq.indexOf(houndSegment));
-  const ai = Math.max(0, seq.indexOf(hareSegment));
-  return (ai - hi + seq.length) % seq.length;
-}
-
-export default function HareHoundsPlay(props: any) {
-  useFullscreenPlay({ enabled: true, lockBodyScroll: false });
-  const go = props?.go ?? props?.setTab;
-  const store = props?.store;
-  const onFinish = props?.onFinish;
-  const resumeRecord = props?.params?.rec || props?.params?.record || props?.params?.match || null;
-  const config = React.useMemo(() => normalizeHareConfig(props?.params?.config || resumeRecord?.resume?.config || resumeRecord?.payload?.config || {}), []);
-  const profiles = React.useMemo(() => resolveModeProfiles(config, store), [config, store]);
-  const players = React.useMemo(() => profiles.map((p: any, i: number) => ({ id: String(p.id || `p${i + 1}`), name: playerName(p, i) })), [profiles]);
-  const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
-  const restored = resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot || resumeRecord?.payload?.state || null;
-  const [state, setState] = React.useState<HareState>(() => restored?.mode === "hare_hounds" ? cloneHareState(restored) : createHareState(players, config));
-  const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
-  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
-  const [undo, setUndo] = React.useState<HareState[]>([]);
-  const [notice, setNotice] = React.useState("");
-  const botBusy = React.useRef(false);
-  const finishedRef = React.useRef(false);
-  const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `hare-hounds-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
-  const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
-  const activePlayer = state.players[state.activePlayerIndex];
-  const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
-  const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
-  const nameById = React.useCallback((id: string | null | undefined) => state.players.find((p: any) => String(p.id) === String(id))?.name || "Joueur", [state.players]);
-
-  const buildRecord = React.useCallback((s: HareState, status: "in_progress" | "finished") => {
-    const rows = profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null }));
-    return {
-      id: matchIdRef.current,
-      matchId: matchIdRef.current,
-      resumeId: matchIdRef.current,
-      kind: "hare_hounds",
-      mode: "hare_hounds",
-      sport: "darts",
-      status,
-      createdAt: s.startedAt,
-      updatedAt: Date.now(),
-      finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined,
-      winnerId: s.winnerId,
-      players: rows,
-      game: { mode: "hare_hounds", houndStart: s.config.rules.houndStart, seriesWins: s.config.seriesWins },
-      summary: {
-        mode: "hare_hounds",
-        finished: status === "finished",
-        winnerId: s.winnerId,
-        legWins: s.legWins,
-        harePlayerId: s.harePlayerId,
-        config: s.config,
-        perPlayer: Object.fromEntries(Object.entries(s.statsByPlayer).map(([id, st]: any) => [id, { ...st, currentSegment: hareCurrentSegment(s, id), wins: Number(s.legWins[id] || 0) }])),
-      },
-      resume: { mode: "hare_hounds", config: s.config, state: cloneHareState(s), updatedAt: Date.now() },
-      payload: { kind: "hare_hounds", mode: "hare_hounds", sport: "darts", config: s.config, stateSnapshot: cloneHareState(s), visits: s.visits, visitHistory: s.visits, stats: { mode: "hare_hounds", players: s.statsByPlayer, legWins: s.legWins } },
-    };
-  }, [profiles]);
-
-  const persist = React.useCallback((s: HareState) => {
-    if (s.phase === "finished") {
-      if (finishedRef.current) return;
-      finishedRef.current = true;
-      const rec = buildRecord(s, "finished");
-      if (typeof onFinish === "function") onFinish(rec, { navigate: false });
-      else void History.upsert(rec);
-    } else void History.upsert(buildRecord(s, "in_progress")).catch(() => {});
-  }, [buildRecord, onFinish]);
-
-  const commit = (next: HareState, previous = state) => {
-    setUndo((u) => [...u.slice(-39), cloneHareState(previous)]);
-    setState(next);
-    setCurrentThrow([]);
-    setMultiplier(1);
-    let message = "";
-    if (next.phase === "finished" && next.winnerId) message = `🏆 ${nameById(next.winnerId)} remporte HARE & HOUNDS !`;
-    else if (next.legIndex > previous.legIndex && next.lastLegWinnerId) message = `${String(next.lastLegWinnerId) === String(previous.harePlayerId) ? "🐇" : "🐕"} ${nameById(next.lastLegWinnerId)} remporte la manche ${previous.legIndex + 1} · nouveaux rôles en place`;
-    else message = lastEvents(next.visits).join(" · ");
-    setNotice(message);
-    persist(next);
-  };
-
-  const validate = () => {
-    if (!currentThrow.length || state.phase === "finished" || activeIsBot) return;
-    commit(playHareVisit(state, currentThrow.map(uiToGameDart)));
-  };
-
-  const doUndo = () => setUndo((u) => {
-    if (!u.length) return u;
-    const prev = u[u.length - 1];
-    setState(cloneHareState(prev));
-    setCurrentThrow([]);
-    setMultiplier(1);
-    setNotice("Dernière volée annulée");
-    finishedRef.current = false;
-    persist(prev);
-    return u.slice(0, -1);
-  });
-
-  React.useEffect(() => {
-    if (!activeIsBot || state.phase === "finished" || botBusy.current) return;
-    botBusy.current = true;
-    const t = window.setTimeout(() => {
-      try { commit(playHareVisit(state, pickHareBotDarts(state, config.botLevel))); }
-      finally { botBusy.current = false; }
-    }, 650);
-    return () => window.clearTimeout(t);
-  }, [state, activeIsBot, activePlayer?.id]);
-
-  function replay() {
-    matchIdRef.current = `hare-hounds-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    finishedRef.current = false;
-    setUndo([]);
-    setNotice("");
-    setCurrentThrow([]);
-    setState(createHareState(players, config));
-  }
-
-  const seq = hareSequence(config.rules.direction);
-  const activeSeg = activePlayer ? hareCurrentSegment(state, activePlayer.id) : 20;
-  const hareSeg = state.harePlayerId ? hareCurrentSegment(state, state.harePlayerId) : 20;
-  const legTarget = config.seriesWins * 2 - 1;
-  const zoneLabel = config.rules.targetZone === "double" ? "DOUBLE" : config.rules.targetZone === "triple" ? "TRIPLE" : "S / D / T";
-  const hareProgress = Number(state.progressByPlayer[state.harePlayerId] || 0);
-
-  return <div style={{ minHeight: "calc(var(--vh, 1vh) * 100)", paddingBottom: 18, background: "radial-gradient(circle at 50% 0%,rgba(246,182,59,.10),transparent 35%)" }}>
-    <PageHeader tickerSrc={tickerHareHounds} tickerAlt="HARE & HOUNDS" left={<BackDot onClick={() => go?.("hare_hounds_config")} color={ACCENT} glow={`${ACCENT}88`} />} right={<InfoDot title="Règles HARE & HOUNDS" color={ACCENT} glow={`${ACCENT}77`} content={<Rules config={config} />} />} />
-    <div style={{ padding: "7px 8px 18px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 8 }}>
-      <div style={{ ...panelStyle(ACCENT + "50"), padding: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 9, alignItems: "center" }}>
-        <div>
-          <div style={{ color: ACCENT, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>MANCHE {state.legIndex + 1} · BO{legTarget}</div>
-          <div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Match terminé" : `${activePlayer?.name || "—"} · ${activePlayer?.id === state.harePlayerId ? "LIÈVRE" : "LIMIER"}`}</div>
-        </div>
-        <button type="button" onClick={doUndo} disabled={!undo.length} style={actionStyle(ACCENT, !undo.length)}>↶ UNDO</button>
-      </div>
-
-      {notice ? <div style={{ borderRadius: 12, padding: "7px 10px", background: notice.includes("🏆") ? "rgba(103,231,169,.12)" : "rgba(246,182,59,.10)", border: `1px solid ${notice.includes("🏆") ? "rgba(103,231,169,.35)" : "rgba(246,182,59,.24)"}`, color: notice.includes("🏆") ? "#baffdb" : "#ffe0a2", fontSize: 10.5, fontWeight: 900 }}>{notice}</div> : null}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>
-        {state.players.map((p: any, i: number) => {
-          const prof = profileById.get(String(p.id)) || p;
-          const isHare = p.id === state.harePlayerId;
-          const progress = Number(state.progressByPlayer[p.id] || 0);
-          const seg = hareCurrentSegment(state, p.id);
-          const gap = isHare ? Math.max(0, 20 - progress) : gapToHare(seq, seg, hareSeg);
-          return <PlayerCard key={p.id} profile={prof} active={state.phase !== "finished" && state.activePlayerIndex === i} accent={isHare ? HARE : HOUND} value={seg} subValue={isHare ? `🐇 ${progress}/20 · ${gap} étape${gap > 1 ? "s" : ""} avant fuite` : `🐕 ${progress} étape${progress > 1 ? "s" : ""} · écart ${gap}`} badge={isHare ? "LIÈVRE" : "LIMIER"} wins={state.legWins[p.id] || 0} />;
-        })}
-      </div>
-
-      {state.phase !== "finished" ? <>
-        <div style={{ ...panelStyle("rgba(255,255,255,.10)"), padding: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center" }}>
-            <div>
-              <div style={{ color: activePlayer?.id === state.harePlayerId ? HARE : HOUND, fontSize: 10, fontWeight: 1100 }}>CIBLE À TOUCHER · {zoneLabel}</div>
-              <div style={{ marginTop: 3, color: "#fff", fontSize: 32, fontWeight: 1100, lineHeight: 1 }}>{activeSeg}</div>
-              <div style={{ marginTop: 5, color: SOFT, fontSize: 9.5 }}>{config.rules.direction === "clockwise" ? "Sens horaire" : "Sens anti-horaire"} · Lièvre sur {hareSeg} · progression {hareProgress}/20.</div>
-            </div>
-            <div style={{ width: 88, height: 88, borderRadius: 999, border: `3px solid ${activePlayer?.id === state.harePlayerId ? HARE : HOUND}`, display: "grid", placeItems: "center", background: "radial-gradient(circle,rgba(255,255,255,.08),rgba(0,0,0,.6))", fontSize: 38 }}>{activePlayer?.id === state.harePlayerId ? "🐇" : "🐕"}</div>
-          </div>
-
-          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(10,minmax(0,1fr))", gap: 3 }}>
-            {seq.map((n: number, idx: number) => {
-              const occupants = state.players.filter((p: any) => hareCurrentSegment(state, p.id) === n);
-              const activeHere = n === activeSeg;
-              const hareHere = n === hareSeg;
-              return <div key={`${n}-${idx}`} style={{ minHeight: 34, borderRadius: 8, padding: "3px 2px", display: "grid", alignContent: "space-between", justifyItems: "center", fontSize: 8.5, fontWeight: 1000, color: activeHere ? "#071018" : "#d8deea", background: activeHere ? (activePlayer?.id === state.harePlayerId ? HARE : HOUND) : hareHere ? `${HARE}28` : "rgba(255,255,255,.05)", border: `1px solid ${activeHere ? (activePlayer?.id === state.harePlayerId ? HARE : HOUND) : hareHere ? HARE + "66" : "rgba(255,255,255,.07)"}` }}>
-                <span>{n}</span>
-                <span style={{ minHeight: 9, display: "flex", gap: 2, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
-                  {occupants.map((p: any) => {
-                    const isHare = p.id === state.harePlayerId;
-                    const isActive = p.id === activePlayer?.id;
-                    return <span key={p.id} title={`${p.name} · ${isHare ? "Lièvre" : "Limier"}`} style={{ width: isHare ? 8 : 6, height: isHare ? 8 : 6, borderRadius: 999, background: isHare ? HARE : HOUND, border: isActive ? "1px solid #fff" : "1px solid rgba(0,0,0,.35)", boxShadow: isActive ? "0 0 6px #fff" : "none" }} />;
-                  })}
-                </span>
-              </div>;
-            })}
-          </div>
-          <div style={{ marginTop: 7, display: "flex", gap: 10, flexWrap: "wrap", color: SOFT, fontSize: 9 }}><span><b style={{ color: HARE }}>●</b> Lièvre</span><span><b style={{ color: HOUND }}>●</b> Limier</span><span>Le contour clair indique le joueur actif.</span></div>
-        </div>
-
-        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={activePlayer?.id === state.harePlayerId ? HARE : HOUND} /> : <div style={{ ...panelStyle(ACCENT + "33"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: activePlayer?.id === state.harePlayerId ? HARE : HOUND }}>{activePlayer?.name}</b> poursuit sa route…</div>}
-      </> : <ModeEndPanel title="HARE & HOUNDS" winner={state.winnerId} profiles={profiles} legWins={state.legWins} accent={ACCENT} onReplay={replay} onConfig={() => go?.("hare_hounds_config")} onGames={() => go?.("games", { gamesView: "all" })} extra={<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>{profiles.map((p: any) => { const st = state.statsByPlayer[p.id] || {}; return <div key={p.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 9.5, color: SOFT }}><b style={{ color: "#fff" }}>{playerName(p)}</b><br />{st.steps || 0} étapes · {st.catches || 0} capture · {st.escapes || 0} fuite</div>; })}</div>} />}
-    </div>
-  </div>;
+export default function HareHoundsPlay(props:any){
+  useFullscreenPlay({enabled:true,lockBodyScroll: true});const awena=useAwenaOptional();const go=props?.go??props?.setTab;const store=props?.store;const onFinish=props?.onFinish;const resumeRecord=props?.params?.rec||props?.params?.record||props?.params?.match||null;
+  const config=React.useMemo(()=>normalizeHareConfig(props?.params?.config||resumeRecord?.resume?.config||resumeRecord?.payload?.config||{}),[]);const profiles=React.useMemo(()=>resolveModeProfiles(config,store),[config,store]);const players=React.useMemo(()=>profiles.map((p:any,i:number)=>({id:String(p.id||`p${i+1}`),name:playerName(p,i)})),[profiles]);const botIds=React.useMemo(()=>new Set((config.botIds||[]).map(String)),[config.botIds]);
+  const restored=resumeRecord?.resume?.state||resumeRecord?.payload?.stateSnapshot||resumeRecord?.payload?.state||null;const recoveredThrow=resumeRecord?.resume?.currentThrow??resumeRecord?.payload?.currentThrow;
+  const [state,setState]=React.useState<HareState>(()=>restored?.mode==="hare_hounds"?cloneHareState(restored):createHareState(players,config));const [currentThrow,setCurrentThrow]=React.useState<UIDart[]>(()=>Array.isArray(recoveredThrow)?recoveredThrow.slice(0,3):[]);const [multiplier,setMultiplier]=React.useState<1|2|3>(()=>{const v=resumeRecord?.resume?.multiplier??resumeRecord?.payload?.multiplier;return v===2||v===3?v:1;});const [undo,setUndo]=React.useState<HareState[]>([]);const [notice,setNotice]=React.useState("");
+  const [playersOpen,setPlayersOpen]=React.useState(false),[statsOpen,setStatsOpen]=React.useState(false),[logOpen,setLogOpen]=React.useState(false),[rankingOpen,setRankingOpen]=React.useState(false);const botBusy=React.useRef(false),finishedRef=React.useRef(false),introPlayedRef=React.useRef(false),initialCheckpointRef=React.useRef(false),historyHydratedRef=React.useRef(false);const matchIdRef=React.useRef(String(resumeRecord?.id||resumeRecord?.matchId||`hare-hounds-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
+  const profileById=React.useMemo(()=>new Map(profiles.map((p:any)=>[String(p.id),p])),[profiles]);const baseColors=React.useMemo(()=>modePlayerColors(state.players,ACCENT),[state.players]);const colorById=React.useMemo(()=>{const m=new Map(baseColors);state.players.forEach((p:any)=>m.set(String(p.id),p.id===state.harePlayerId?HARE:(baseColors.get(String(p.id))||HOUND)));return m;},[baseColors,state.harePlayerId,state.players]);const activePlayer=state.players[state.activePlayerIndex];const activeProfile=activePlayer?profileById.get(String(activePlayer.id))||activePlayer:null;const activeIsBot=!!activeProfile&&isBotProfile(activeProfile,botIds);const activeRole=activePlayer?.id===state.harePlayerId?"hare":"hound";const activeColor=activeRole==="hare"?HARE:(colorById.get(String(activePlayer?.id))||HOUND);
+  const sfxEnabled=(config as any).sfxEnabled!==false,awenaEnabled=(config as any).awenaEnabled!==false,coachEnabled=(config as any).coachEnabled!==false;const nameById=React.useCallback((id:any)=>state.players.find((p:any)=>String(p.id)===String(id))?.name||"Joueur",[state.players]);
+  const buildRecord=React.useCallback((s:HareState,status:"in_progress"|"finished",draft:UIDart[]=currentThrow,m:1|2|3=multiplier)=>{const rows=profiles.map((p:any)=>({id:String(p.id),name:playerName(p),avatarDataUrl:p.avatarDataUrl??null}));const perPlayer=Object.fromEntries(Object.entries(s.statsByPlayer).map(([id,st]:any)=>[id,{...st,role:String(id)===String(s.harePlayerId)?"hare":"hound",segment:hareCurrentSegment(s,id),currentSegment:hareCurrentSegment(s,id),progress:Number(s.progressByPlayer[id]||0),wins:Number(s.legWins[id]||0),accuracy:percent(st.validHits,st.darts)}]));const ranking=[...s.players].map((p:any,i:number)=>({id:p.id,name:p.name,wins:Number(s.legWins[p.id]||0),steps:Number(s.statsByPlayer[p.id]?.steps||0),catches:Number(s.statsByPlayer[p.id]?.catches||0),escapes:Number(s.statsByPlayer[p.id]?.escapes||0),order:i})).sort((a,b)=>b.wins-a.wins||(b.catches+b.escapes)-(a.catches+a.escapes)||b.steps-a.steps||a.order-b.order);return{id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:"hare_hounds",mode:"hare_hounds",sport:"darts",status,createdAt:s.startedAt,updatedAt:Date.now(),finishedAt:status==="finished"?(s.finishedAt||Date.now()):undefined,winnerId:s.winnerId,players:rows,game:{mode:"hare_hounds",seriesWins:s.config.seriesWins},summary:{mode:"hare_hounds",finished:status==="finished",winnerId:s.winnerId,legWins:s.legWins,config:s.config,perPlayer,ranking,durationMs:Math.max(0,Number((status==="finished"?(s.finishedAt||Date.now()):Date.now()))-Number(s.startedAt||Date.now())),totalDarts:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),totalSteps:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.steps||0),0),totalCatches:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.catches||0),0)},resume:{mode:"hare_hounds",config:s.config,state:cloneHareState(s),currentThrow:draft.slice(0,3),multiplier:m,updatedAt:Date.now()},payload:{kind:"hare_hounds",mode:"hare_hounds",sport:"darts",config:s.config,stateSnapshot:cloneHareState(s),currentThrow:draft.slice(0,3),multiplier:m,visits:s.visits,visitHistory:s.visits,stats:{mode:"hare_hounds",players:s.statsByPlayer,legWins:s.legWins}}};},[profiles,currentThrow,multiplier]);
+  const saveInProgress=React.useCallback(async(s:HareState,draft:UIDart[]=currentThrow,m:1|2|3=multiplier)=>{try{await History.upsert(buildRecord(s,"in_progress",draft,m));}catch(e){console.warn("[HARE] checkpoint failed",e);}},[buildRecord,currentThrow,multiplier]);const persist=React.useCallback((s:HareState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished",[],1);if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec).catch(()=>{});}else void saveInProgress(s,[],1);},[buildRecord,onFinish,saveInProgress]);
+  React.useEffect(()=>{if(initialCheckpointRef.current)return;initialCheckpointRef.current=true;if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier);},[saveInProgress,state,currentThrow,multiplier]);React.useEffect(()=>{if(state.phase==="finished")return;const t=window.setTimeout(()=>void saveInProgress(state,currentThrow,multiplier),190);return()=>window.clearTimeout(t);},[state,currentThrow,multiplier,saveInProgress]);React.useEffect(()=>{if(historyHydratedRef.current)return;const resumeId=String(props?.params?.resumeId||resumeRecord?.id||resumeRecord?.matchId||"").trim();if(!resumeId)return;let cancelled=false;void History.get(resumeId).then((full:any)=>{if(cancelled||!full)return;const r=full?.resume?.state||full?.payload?.stateSnapshot||full?.payload?.state;if(!r||r.mode!=="hare_hounds")return;historyHydratedRef.current=true;matchIdRef.current=String(full.id||full.matchId||resumeId);setState(cloneHareState(r));const d=full?.resume?.currentThrow??full?.payload?.currentThrow;setCurrentThrow(Array.isArray(d)?d.slice(0,3):[]);const m=full?.resume?.multiplier??full?.payload?.multiplier;setMultiplier(m===2||m===3?m:1);setUndo([]);setNotice("Partie HARE & HOUNDS reprise depuis l’historique");initialCheckpointRef.current=true;}).catch(()=>{});return()=>{cancelled=true};},[props?.params?.resumeId,resumeRecord]);React.useEffect(()=>{const flush=()=>{if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier)};const vis=()=>{if(document.visibilityState==="hidden")flush()};window.addEventListener("pagehide",flush);document.addEventListener("visibilitychange",vis);return()=>{window.removeEventListener("pagehide",flush);document.removeEventListener("visibilitychange",vis)};},[state,currentThrow,multiplier,saveInProgress]);
+  React.useEffect(()=>{if(restored?.mode==="hare_hounds"||resumeRecord)return;const start=()=>{if(!sfxEnabled||introPlayedRef.current)return;introPlayedRef.current=true;void unlockNewModeAudio();playNewModeSfx("intro",true)};try{if((navigator as any)?.userActivation?.hasBeenActive){start();return;}}catch{}window.addEventListener("pointerdown",start,{once:true,capture:true} as any);return()=>window.removeEventListener("pointerdown",start,true);},[sfxEnabled]);React.useEffect(()=>{awena?.setRuntime?.({route:"hare_hounds_play",sport:"darts",mode:"hare_hounds",phase:state.phase==="finished"?"summary":"play",inGame:state.phase!=="finished",screenLabel:"HARE & HOUNDS · Partie",playerName:activePlayer?.name,extra:{role:activeRole,targetSegment:activePlayer?hareCurrentSegment(state,activePlayer.id):null,harePlayerId:state.harePlayerId,hareSegment:hareCurrentSegment(state,state.harePlayerId),direction:state.config.rules.direction,targetZone:state.config.rules.targetZone,leg:Number(state.legIndex||0)+1,awenaRememberedMode:"hare_hounds",awenaKnowledgeTopic:"screen:hare_hounds_play"}});},[awena,state.phase,state.legIndex,state.turnIndex,state.progressByPlayer,state.harePlayerId,activePlayer?.id]);
+  const commit=React.useCallback((next:HareState,previous=state)=>{setUndo(u=>[...u.slice(-39),cloneHareState(previous)]);setState(next);setCurrentThrow([]);setMultiplier(1);let msg="";if(next.phase==="finished"&&next.winnerId){msg=`🏆 ${nameById(next.winnerId)} remporte HARE & HOUNDS !`;playNewModeSfx("victory",sfxEnabled);}else if(next.legIndex>previous.legIndex&&next.lastLegWinnerId)msg=`${String(next.lastLegWinnerId)===String(previous.harePlayerId)?"🐇":"🐕"} ${nameById(next.lastLegWinnerId)} remporte la manche ${previous.legIndex+1}`;else msg=lastEvents(next.visits).join(" · ");setNotice(msg);persist(next);},[state,nameById,persist,sfxEnabled]);
+  const validate=()=>{if(!currentThrow.length||state.phase==="finished"||activeIsBot)return;commit(playHareVisit(state,currentThrow.map(uiToGameDart)));};const doUndo=()=>setUndo(u=>{if(!u.length)return u;const prev=u[u.length-1];setState(cloneHareState(prev));setCurrentThrow([]);setMultiplier(1);setNotice("Dernière volée annulée");finishedRef.current=false;void saveInProgress(prev,[],1);return u.slice(0,-1)});const handleCancel=()=>{if(currentThrow.length){setCurrentThrow([]);setMultiplier(1);setNotice("Saisie annulée")}else doUndo();};const setThrowWithSfx=React.useCallback((update:any)=>setCurrentThrow((prev:UIDart[])=>{const next=(typeof update==="function"?update(prev):update)||prev;const out=Array.isArray(next)?next.slice(0,3):prev;if(out.length>prev.length)out.slice(prev.length).forEach((d:any,i:number)=>window.setTimeout(()=>playNewModeDartSfx(d,sfxEnabled),i*120));return out;}),[sfxEnabled]);
+  React.useEffect(()=>{if(!activeIsBot||state.phase==="finished"||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{try{const darts=pickHareBotDarts(state,config.botLevel);const span=playNewModeDartSequence(darts,sfxEnabled);window.setTimeout(()=>{try{commit(playHareVisit(state,darts));}finally{botBusy.current=false;}},span+100);}catch{botBusy.current=false;}},620);return()=>window.clearTimeout(t);},[state,activeIsBot,activePlayer?.id]);
+  function replay(){matchIdRef.current=`hare-hounds-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setCurrentThrow([]);setMultiplier(1);const next=createHareState(players,config);setState(next);initialCheckpointRef.current=true;void saveInProgress(next,[],1);if(sfxEnabled)playNewModeSfx("intro",true);}
+  const seq=hareSequence(config.rules.direction),activeSeg=activePlayer?hareCurrentSegment(state,activePlayer.id):20,hareSeg=hareCurrentSegment(state,state.harePlayerId),activeStats=activePlayer?state.statsByPlayer[activePlayer.id]||{}:{},legTarget=config.seriesWins*2-1,zoneLabel=config.rules.targetZone==="double"?"DOUBLE":config.rules.targetZone==="triple"?"TRIPLE":"S / D / T",activeProgress=activePlayer?Number(state.progressByPlayer[activePlayer.id]||0):0,hareProgress=Number(state.progressByPlayer[state.harePlayerId]||0),gap=activeRole==="hound"?gapToHare(seq,activeSeg,hareSeg):Math.max(0,20-activeProgress),coach=coachEnabled&&!activeIsBot?coachText(state,activePlayer):"";
+  const rankingRows=React.useMemo(()=>[...state.players].map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:String(p.id),name:p.name,profile:profileById.get(String(p.id))||p,color,wins:Number(state.legWins[p.id]||0),steps:Number(st.steps||0),trophies:Number(st.catches||0)+Number(st.escapes||0),subtitle:`${st.steps||0} étapes · ${st.catches||0} capture · ${st.escapes||0} fuite`,value:Number(state.legWins[p.id]||0),suffix:" M",order:i};}).sort((a,b)=>b.wins-a.wins||b.trophies-a.trophies||b.steps-a.steps||a.order-b.order),[state.players,state.legWins,state.statsByPlayer,profileById,colorById]);
+  const playersRows=state.players.map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{},isHare=p.id===state.harePlayerId,color=colorById.get(String(p.id))||ACCENT,seg=hareCurrentSegment(state,p.id),prog=Number(state.progressByPlayer[p.id]||0);return{id:p.id,name:p.name,profile:profileById.get(String(p.id))||p,color,active:i===state.activePlayerIndex,status:isHare?`LIÈVRE · CIBLE ${seg}`:`LIMIER · CIBLE ${seg}`,progress:prog,progressMax:20,metrics:[{label:"ÉTAPES",value:st.steps||0},{label:"CAPT.",value:st.catches||0},{label:"FUITES",value:st.escapes||0},{label:"M",value:state.legWins[p.id]||0}]};});
+  const statsItems=[{label:"RÔLE",value:activeRole==="hare"?"LIÈVRE":"LIMIER"},{label:"CIBLE",value:activeSeg},{label:"ÉTAPES",value:activeStats.steps||0},{label:"VOLÉE MAX",value:activeStats.bestVisitSteps||0},{label:"SÉRIE",value:activeStats.bestHitStreak||0},{label:"CAPTURES",value:activeStats.catches||0,color:HOUND},{label:"FUITES",value:activeStats.escapes||0,color:HARE},{label:"PRÉCISION",value:`${percent(activeStats.validHits,activeStats.darts)}%`},{label:"S / D / T",value:`${activeStats.singles||0}/${activeStats.doubles||0}/${activeStats.triples||0}`},{label:"BULL / DBULL",value:`${activeStats.bulls||0}/${activeStats.dbulls||0}`},{label:"MISS",value:activeStats.misses||0},{label:"DARTS",value:activeStats.darts||0}];
+  const awards=React.useMemo(()=>{const rows=rankingRows.map((r:any)=>({...r,st:state.statsByPlayer[r.id]||{}}));const runner=bestBy(rows,r=>Number(r.st.steps||0));const hunter=bestBy(rows,r=>Number(r.st.catches||0));const accurate=bestBy(rows,r=>percent(r.st.validHits,r.st.darts));return[{icon:"🏃",label:"MARATHON",name:runner?.name||"—",value:`${runner?.st?.steps||0} étapes`,color:runner?.color},{icon:"🐕",label:"CHASSEUR",name:hunter?.name||"—",value:`${hunter?.st?.catches||0} captures`,color:hunter?.color},{icon:"🎯",label:"PRÉCISION",name:accurate?.name||"—",value:`${percent(accurate?.st?.validHits,accurate?.st?.darts)}%`,color:accurate?.color}];},[rankingRows,state.statsByPlayer]);const totalDarts=Object.values(state.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs=Math.max(0,Number((state.finishedAt||Date.now()))-Number(state.startedAt||Date.now()));
+  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerHareHounds} tickerAlt="HARE & HOUNDS" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("hare_hounds_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="hare_hounds_play" mode="hare_hounds" screenLabel="HARE & HOUNDS · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="HARE & HOUNDS" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"hare_hounds",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"hare_hounds",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("hare_hounds_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
+  return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerHareHounds} tickerAlt="HARE & HOUNDS" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("hare_hounds_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="hare_hounds_play" mode="hare_hounds" screenLabel="HARE & HOUNDS · Partie" accent={ACCENT}/></div>:null}/>{coach?<FloatingAdvice text={coach} accent={activeColor} kicker={activeRole==="hare"?"PLAN DE FUITE":"PLAN DE CHASSE"}/>:null}<main className="party-mode__body"><div className="party-mode__stage"><div className="party-mode__left">
+    <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={state.legWins} primaryById={(id:string)=>hareCurrentSegment(state,id)} secondaryById={(id:string)=>`${id===state.harePlayerId?"🐇 LIÈVRE":"🐕 LIMIER"} · ${state.statsByPlayer[id]?.steps||0} étapes`} badgeById={(id:string)=>`${state.legWins[id]||0} M`}/>
+    <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget} · ${activeRole==="hare"?"LIÈVRE":"LIMIER"}`} primary={activeSeg} primarySuffix="" secondary={`CIBLE ${zoneLabel} · ${config.rules.direction==="clockwise"?"SENS HORAIRE":"SENS ANTI-HORAIRE"}`} tertiary={activeRole==="hare"?`${activeProgress}/20 étapes · ${gap} avant la fuite`:`${activeStats.steps||0} étapes · écart ${gap} avec le Lièvre (${hareSeg})`} progress={activeRole==="hare"?activeProgress:Math.max(0,20-gap)} progressMax={20} notice={notice} noticeTone={notice.includes("🏆")?"win":"normal"} aside={<TrackMini state={state} activeId={activePlayer?.id} color={activeColor}/>}/>
+    <KpiStrip accent={activeColor} onClick={()=>setStatsOpen(true)} items={[["ÉTAPES",activeStats.steps||0],["SÉRIE",activeStats.bestHitStreak||0],[activeRole==="hare"?"FUITES":"CAPT.",activeRole==="hare"?(activeStats.escapes||0):(activeStats.catches||0)],["PRÉC.",`${percent(activeStats.validHits,activeStats.darts)}%`]]}/><QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerHareHounds} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>
+  </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER" accent={activeColor} fitMinScale={0.16}/>:<BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={activeRole==="hare"?"cherche à s’échapper…":"poursuit le Lièvre…"} icon={activeRole==="hare"?"🐇":"🐕"}/>}</div></div></main>
+  {playersOpen?<PlayersModal rows={playersRows} onClose={()=>setPlayersOpen(false)}/>:null}{statsOpen?<StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={()=>setStatsOpen(false)}/>:null}{logOpen?<LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={hareDartLabel} title="JOURNAL HARE & HOUNDS" onClose={()=>setLogOpen(false)}/>:null}{rankingOpen?<RankingModal rows={rankingRows} title="CLASSEMENT HARE & HOUNDS" onClose={()=>setRankingOpen(false)}/>:null}</div>;
 }

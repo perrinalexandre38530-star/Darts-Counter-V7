@@ -18,6 +18,9 @@ export type CastleConfigPayload = {
   randomOrder?: boolean;
   scoreInputMethod?: "keypad" | "dartboard";
   seriesWins: 1 | 2 | 3;
+  sfxEnabled?: boolean;
+  awenaEnabled?: boolean;
+  coachEnabled?: boolean;
   rules: {
     targetBricks: number;
     numberAssignment: "random" | "offhand";
@@ -30,10 +33,21 @@ export type CastlePlayerStats = {
   darts: number;
   visits: number;
   usefulHits: number;
+  buildHits: number;
+  attackHits: number;
   builds: number;
   damage: number;
+  singles: number;
+  doubles: number;
+  triples: number;
   misses: number;
   bulls: number;
+  dbulls: number;
+  bestBuildVisit: number;
+  bestDamageVisit: number;
+  bestImpactVisit: number;
+  bestUsefulStreak: number;
+  currentUsefulStreak: number;
   legsWon: number;
 };
 
@@ -46,6 +60,9 @@ export type CastleVisit = {
   before: Record<string, number>;
   after: Record<string, number>;
   events: string[];
+  built: number;
+  damage: number;
+  usefulHits: number;
 };
 
 export type CastleState = {
@@ -77,7 +94,14 @@ function clampInt(v: any, min: number, max: number, fallback: number) {
 function id(prefix = "castle") { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; }
 function multOf(d: GameDart) { return d?.bed === "T" ? 3 : d?.bed === "D" ? 2 : 1; }
 function numberOf(d: GameDart) { return d?.bed === "S" || d?.bed === "D" || d?.bed === "T" ? Number(d.number || 0) : 0; }
-function blankStats(): CastlePlayerStats { return { darts: 0, visits: 0, usefulHits: 0, builds: 0, damage: 0, misses: 0, bulls: 0, legsWon: 0 }; }
+function blankStats(): CastlePlayerStats { return { darts: 0, visits: 0, usefulHits: 0, buildHits: 0, attackHits: 0, builds: 0, damage: 0, singles: 0, doubles: 0, triples: 0, misses: 0, bulls: 0, dbulls: 0, bestBuildVisit: 0, bestDamageVisit: 0, bestImpactVisit: 0, bestUsefulStreak: 0, currentUsefulStreak: 0, legsWon: 0 }; }
+function hydratedStats(raw:any):CastlePlayerStats { return { ...blankStats(), ...(raw || {}) }; }
+function hydrateState(state:CastleState):CastleState {
+  state.statsByPlayer = Object.fromEntries((state.players || []).map((p:any) => [p.id, hydratedStats(state.statsByPlayer?.[p.id])]));
+  state.bricks = Object.fromEntries((state.players || []).map((p:any) => [p.id, Number(state.bricks?.[p.id] || 0)]));
+  state.legWins = Object.fromEntries((state.players || []).map((p:any) => [p.id, Number(state.legWins?.[p.id] || 0)]));
+  return state;
+}
 
 export function normalizeCastleConfig(raw: any): CastleConfigPayload {
   const rules = raw?.rules || {};
@@ -93,6 +117,7 @@ export function normalizeCastleConfig(raw: any): CastleConfigPayload {
     randomOrder: raw?.randomOrder !== false,
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
     seriesWins: raw?.seriesWins === 2 || raw?.seriesWins === 3 ? raw.seriesWins : 1,
+    sfxEnabled: raw?.sfxEnabled !== false, awenaEnabled: raw?.awenaEnabled !== false, coachEnabled: raw?.coachEnabled !== false,
     rules: {
       targetBricks: [10, 15, 20].includes(Number(rules?.targetBricks)) ? Number(rules.targetBricks) : 15,
       numberAssignment: rules?.numberAssignment === "offhand" ? "offhand" : "random",
@@ -141,7 +166,7 @@ export function createCastleState(players: Player[], rawConfig: any): CastleStat
   };
 }
 
-export function cloneCastleState(state: CastleState): CastleState { return clone(state); }
+export function cloneCastleState(state: CastleState): CastleState { return hydrateState(clone(state)); }
 
 function firstFreeTarget(state: CastleState, desired: number): number {
   const used = new Set(Object.values(state.targets || {}).map(Number));
@@ -201,50 +226,71 @@ export function playCastleVisit(input: CastleState, dartsRaw: GameDart[]): Castl
   const before = clone(state.bricks);
   const events: string[] = [];
   const stats = state.statsByPlayer[player.id] || (state.statsByPlayer[player.id] = blankStats());
-  stats.visits += 1;
+  stats.visits = Number(stats.visits || 0) + 1;
   let legWinner: string | null = null;
+  let visitBuild = 0;
+  let visitDamage = 0;
+  let visitUsefulHits = 0;
 
   for (const dart of darts) {
-    stats.darts += 1;
-    if (!dart || dart.bed === "MISS") { stats.misses += 1; continue; }
-    if (dart.bed === "OB" || dart.bed === "IB") { stats.bulls += 1; continue; }
+    stats.darts = Number(stats.darts || 0) + 1;
+    if (!dart || dart.bed === "MISS") { stats.misses = Number(stats.misses || 0) + 1; stats.currentUsefulStreak = 0; continue; }
+    if (dart.bed === "OB" || dart.bed === "IB") {
+      stats.bulls = Number(stats.bulls || 0) + 1;
+      if (dart.bed === "IB") stats.dbulls = Number(stats.dbulls || 0) + 1;
+      stats.currentUsefulStreak = 0;
+      continue;
+    }
+    if (dart.bed === "T") stats.triples = Number(stats.triples || 0) + 1;
+    else if (dart.bed === "D") stats.doubles = Number(stats.doubles || 0) + 1;
+    else stats.singles = Number(stats.singles || 0) + 1;
     const n = numberOf(dart);
     const m = multOf(dart);
-    if (!n) { stats.misses += 1; continue; }
+    if (!n) { stats.misses = Number(stats.misses || 0) + 1; stats.currentUsefulStreak = 0; continue; }
 
+    let useful = false;
     if (n === Number(state.targets[player.id])) {
       const old = Number(state.bricks[player.id] || 0);
       const next = Math.min(state.config.rules.targetBricks, old + m);
       const built = Math.max(0, next - old);
       state.bricks[player.id] = next;
-      stats.usefulHits += 1;
-      stats.builds += built;
+      stats.usefulHits = Number(stats.usefulHits || 0) + 1;
+      stats.buildHits = Number(stats.buildHits || 0) + 1;
+      stats.builds = Number(stats.builds || 0) + built;
+      visitBuild += built; visitUsefulHits += 1; useful = true;
       events.push(`+${built} brique${built > 1 ? "s" : ""} pour ${player.name}`);
-      if (next >= state.config.rules.targetBricks) { legWinner = player.id; break; }
-      continue;
-    }
-
-    if (state.config.rules.attacksEnabled) {
+      if (next >= state.config.rules.targetBricks) { legWinner = player.id; }
+    } else if (state.config.rules.attacksEnabled) {
       const victim = state.players.find((p) => p.id !== player.id && Number(state.targets[p.id]) === n);
       if (victim) {
         const old = Number(state.bricks[victim.id] || 0);
         const next = Math.max(0, old - m);
         const damage = Math.max(0, old - next);
         state.bricks[victim.id] = next;
-        stats.usefulHits += 1;
-        stats.damage += damage;
+        stats.usefulHits = Number(stats.usefulHits || 0) + 1;
+        stats.attackHits = Number(stats.attackHits || 0) + 1;
+        stats.damage = Number(stats.damage || 0) + damage;
+        visitDamage += damage; visitUsefulHits += 1; useful = true;
         events.push(damage ? `−${damage} brique${damage > 1 ? "s" : ""} à ${victim.name}` : `${victim.name} est déjà à 0`);
       }
     }
+    if (useful) {
+      stats.currentUsefulStreak = Number(stats.currentUsefulStreak || 0) + 1;
+      stats.bestUsefulStreak = Math.max(Number(stats.bestUsefulStreak || 0), Number(stats.currentUsefulStreak || 0));
+    } else stats.currentUsefulStreak = 0;
+    if (legWinner) break;
   }
 
-  state.visits.push({ id: id("castle-visit"), playerId: player.id, leg: state.legIndex + 1, turn: state.turnIndex + 1, darts, before, after: clone(state.bricks), events });
+  stats.bestBuildVisit = Math.max(Number(stats.bestBuildVisit || 0), visitBuild);
+  stats.bestDamageVisit = Math.max(Number(stats.bestDamageVisit || 0), visitDamage);
+  stats.bestImpactVisit = Math.max(Number(stats.bestImpactVisit || 0), visitBuild + visitDamage);
+  state.visits.push({ id: id("castle-visit"), playerId: player.id, leg: state.legIndex + 1, turn: state.turnIndex + 1, darts, before, after: clone(state.bricks), events, built: visitBuild, damage: visitDamage, usefulHits: visitUsefulHits });
   state.turnIndex += 1;
 
   if (legWinner) {
     state.lastLegWinnerId = legWinner;
     state.legWins[legWinner] = Number(state.legWins[legWinner] || 0) + 1;
-    state.statsByPlayer[legWinner].legsWon += 1;
+    state.statsByPlayer[legWinner].legsWon = Number(state.statsByPlayer[legWinner].legsWon || 0) + 1;
     if (state.legWins[legWinner] >= state.config.seriesWins) {
       state.phase = "finished";
       state.winnerId = legWinner;
