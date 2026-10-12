@@ -3562,7 +3562,9 @@ React.useEffect(() => {
         }
       };
 
-      fillIfMissing("nickname", remote?.surname || remote?.nickname || remote?.displayName);
+      // Le pseudo public Supabase est `nickname/displayName`. `surname` est le
+      // nom de famille et ne doit jamais redevenir le surnom du profil actif.
+      fillIfMissing("nickname", remote?.nickname || remote?.displayName || remote?.display_name);
       fillIfMissing("country", remote?.country);
       fillIfMissing("firstName", remote?.firstName || remote?.first_name);
       fillIfMissing("lastName", remote?.lastName || remote?.last_name);

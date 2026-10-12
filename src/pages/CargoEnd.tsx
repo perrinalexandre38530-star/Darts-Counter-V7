@@ -1,7 +1,7 @@
 // @ts-nocheck
 // =============================================================
-// CARGO — écran de fin V5
-// Bilan premium, tableaux joueurs/équipes, télémétrie massive et graphiques.
+// CARGO — écran de fin V6
+// Podium premium, synthèse logistique, tableaux joueurs/équipes, télémétrie massive et graphiques.
 // =============================================================
 
 import React from "react";
@@ -64,6 +64,54 @@ function Ratio({ label, value, color = GREEN }: any) {
   return <div className="cargo-end-ratio"><div><span>{label}</span><b style={{ color }}>{Math.round(width)}%</b></div><div><i style={{ width: `${width}%`, background: color, boxShadow: `0 0 10px ${color}55` }} /></div></div>;
 }
 
+function Podium({ playerRows, teams, teamMode, parcel }: any) {
+  const source = teamMode
+    ? (teams || []).slice().sort((a: any, b: any) => n(a.rank || 999) - n(b.rank || 999)).slice(0, 3).map((team: any, index: number) => ({
+        id: team.id,
+        label: team.name,
+        rank: team.rank || index + 1,
+        score: n(team.score),
+        detail: `${n(team.completedContracts)} contrats · ${n(team.pallets)} palettes`,
+        color: PLAYER_COLORS[index % PLAYER_COLORS.length],
+        team,
+      }))
+    : (playerRows || []).slice(0, 3).map((row: any, index: number) => ({
+        id: row.player.id,
+        label: playerName(row.profile),
+        rank: n(row.standing.rank) || index + 1,
+        score: row.score,
+        detail: `${n(row.advanced.accuracy)}% précision · ${n(row.advanced.bestVisitScore)} best`,
+        color: row.color,
+        profile: row.profile,
+      }));
+  if (!source.length) return null;
+  const byRank = new Map(source.map((entry: any) => [entry.rank, entry]));
+  const ordered = [byRank.get(2), byRank.get(1), byRank.get(3)].filter(Boolean);
+  return <section className="cargo-end-card cargo-end-podium-card">
+    <SectionTitle title={teamMode ? "PODIUM DES ÉQUIPES" : "PODIUM FINAL"} subtitle={teamMode ? "classement collectif de la mission" : "les meilleures performances de la mission"} color={GOLD}/>
+    <div className={`cargo-end-podium ${ordered.length === 1 ? "is-solo" : ""}`}>
+      {ordered.map((entry: any) => <div key={entry.id} className={`cargo-end-podium-slot rank-${entry.rank}`} style={{ "--podium": entry.color } as React.CSSProperties}>
+        <div className="cargo-end-podium-medal">{entry.rank === 1 ? "★" : `#${entry.rank}`}</div>
+        <div className="cargo-end-podium-avatar">
+          {entry.profile ? <ProfileAvatar profile={entry.profile} size={entry.rank === 1 ? 62 : 50}/> : <div className="cargo-end-team-emblem">{entry.rank}</div>}
+        </div>
+        <strong>{entry.label}</strong>
+        <span>{entry.detail}</span>
+        <div className="cargo-end-podium-score"><b>{entry.score}</b><small>{parcel ? "COLIS" : "KG"}</small></div>
+      </div>)}
+    </div>
+  </section>;
+}
+
+function CargoFlowBar({ label, value, total, color, suffix = "" }: any) {
+  const safeTotal = Math.max(1, n(total));
+  const width = Math.max(0, Math.min(100, (n(value) / safeTotal) * 100));
+  return <div className="cargo-end-flow-row">
+    <div><span>{label}</span><b style={{ color }}>{n(value)}{suffix}</b></div>
+    <div><i style={{ width: `${width}%`, background: color, boxShadow: `0 0 10px ${color}55` }}/></div>
+  </div>;
+}
+
 export default function CargoEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: { state: CargoState; profilesById: Map<string, any>; onClose: () => void; onReplay: () => void; onStats: () => void; onHistory: () => void; }) {
   const [tab, setTab] = React.useState<EndTab>("summary");
   const parcel = state.config.variant === "parcel_delivery";
@@ -118,6 +166,17 @@ export default function CargoEnd({ state, profilesById, onClose, onReplay, onSta
   const logisticsArt = parcel ? cargoArtLibrary.colisCargo : cargoArtLibrary.paletteLogistique;
   const endContracts = parcel ? n(match.totalParcelDeliveries) : n(match.totalContracts);
   const endLosses = parcel ? n(match.misses) : lossTotal;
+  const handledTotal = parcel ? Math.max(1, n(match.totalDarts)) : Math.max(1, n(match.handledWeight));
+  const completedMissionUnits = parcel ? n(match.totalParcels) : n(match.totalWeight);
+  const riskMissionUnits = parcel ? n(match.misses) : n(match.lostWeight) + n(match.rejectedWeight);
+  const recordRows = [
+    { label: parcel ? "Meilleure volée" : "Meilleure palette", value: parcel ? `${n(match.bestVisitScore)} colis` : `${n(match.bestPalletWeight)} kg`, color: GOLD },
+    { label: "Meilleur tour", value: `${n(match.bestRoundScore)} ${scoreUnit.toLowerCase()}`, color: ORANGE },
+    { label: "Plus longue série", value: `${n(match.longestSeries)} hits`, color: PURPLE },
+    { label: "Meilleur streak", value: `${n(match.longestHitStreak)} hits`, color: GREEN },
+    { label: "Marge de victoire", value: `${n(match.winnerMargin)} ${scoreUnit.toLowerCase()}`, color: BLUE },
+    { label: "Volées sûres", value: `${n(match.safeVisitRate)}%`, color: GREEN },
+  ];
 
   const tabs: { id: EndTab; label: string; icon: string }[] = [
     { id: "summary", label: "BILAN", icon: "🚚" },
@@ -163,9 +222,36 @@ export default function CargoEnd({ state, profilesById, onClose, onReplay, onSta
             <Kpi icon="✦" label="MEILLEURE SÉRIE" value={match.longestSeries} detail={`streak ${match.longestHitStreak}`} color={PURPLE} />
             <Kpi icon="⏱" label="DURÉE" value={fmtDuration(duration)} detail={`${match.totalVisits} volées`} color="#d4d8e5" />
           </div>
+          <Podium playerRows={playerRows} teams={teams} teamMode={teamMode} parcel={parcel} />
           <div className="cargo-end-grid-2">
             <section className="cargo-end-card"><SectionTitle title="ÉVOLUTION DE LA MISSION" subtitle="score cumulé volée après volée" color={ORANGE} /><div className="cargo-end-chart is-medium"><ResponsiveContainer width="100%" height="100%"><AreaChart data={scoreSeries}><defs><linearGradient id="cargoEndScore" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={parcel ? BLUE : ORANGE} stopOpacity={.55}/><stop offset="1" stopColor={parcel ? BLUE : ORANGE} stopOpacity={.03}/></linearGradient></defs><CartesianGrid stroke="rgba(255,255,255,.05)" vertical={false}/><XAxis dataKey="visit" hide/><YAxis hide/><Tooltip contentStyle={TOOLTIP_STYLE}/><Area type="monotone" dataKey="score" stroke={parcel ? BLUE : ORANGE} strokeWidth={2.2} fill="url(#cargoEndScore)"/></AreaChart></ResponsiveContainer></div></section>
             <section className="cargo-end-card"><SectionTitle title="QUALITÉ LOGISTIQUE" subtitle={`${grade.label}`} color={GREEN} /><Ratio label="Précision" value={grade.precision} color={GREEN}/><Ratio label="Contrats" value={grade.completion} color={ORANGE}/><Ratio label="Sécurité" value={grade.safety} color={BLUE}/><Ratio label="Efficacité" value={grade.efficiency} color={GOLD}/></section>
+          </div>
+          <div className="cargo-end-grid-2">
+            <section className="cargo-end-card cargo-end-logistics-card">
+              <SectionTitle title={parcel ? "FLUX DE LIVRAISON" : "BILAN DE CHARGEMENT"} subtitle={parcel ? "production, précision et interruptions" : "poids utile, pertes et refus"} color={ORANGE}/>
+              {parcel ? <>
+                <CargoFlowBar label="Colis livrés" value={completedMissionUnits} total={handledTotal} color={BLUE}/>
+                <CargoFlowBar label="Touches utiles" value={match.totalHits} total={handledTotal} color={GREEN}/>
+                <CargoFlowBar label="MISS" value={match.misses} total={handledTotal} color={RED}/>
+                <CargoFlowBar label="Bonus colis" value={match.totalParcelBonuses} total={Math.max(1, completedMissionUnits)} color={GOLD}/>
+              </> : <>
+                <CargoFlowBar label="Poids conservé" value={match.totalWeight} total={handledTotal} color={GREEN} suffix=" kg"/>
+                <CargoFlowBar label="Poids perdu" value={match.lostWeight} total={handledTotal} color={RED} suffix=" kg"/>
+                <CargoFlowBar label="Poids refusé" value={match.rejectedWeight} total={handledTotal} color={GOLD} suffix=" kg"/>
+                <CargoFlowBar label="Rétention" value={match.retentionRate} total={100} color={BLUE} suffix="%"/>
+              </>}
+              <div className="cargo-end-logistics-mini-grid">
+                <div><span>{parcel ? "LIVRAISONS" : "CONTRATS"}</span><b>{parcel ? n(match.totalParcelDeliveries) : `${n(match.totalContracts)}/${n(match.contractAttempts)}`}</b></div>
+                <div><span>{parcel ? "BONUS" : "FRAGILE"}</span><b>{parcel ? n(match.totalParcelBonuses) : `${n(match.fragileCompleted)}/${n(match.fragileCompleted) + n(match.fragileBroken)}`}</b></div>
+                <div><span>{parcel ? "SANS MISS" : "URGENTS"}</span><b>{parcel ? `${n(match.noMissVisitRate)}%` : n(match.urgentCompleted)}</b></div>
+                <div><span>{parcel ? "RISQUE" : "SURCHARGES"}</span><b>{parcel ? n(match.riskEvents) : n(match.overloads)}</b></div>
+              </div>
+            </section>
+            <section className="cargo-end-card cargo-end-records-card">
+              <SectionTitle title="RECORDS DE LA MISSION" subtitle="les marqueurs forts de cette partie" color={GOLD}/>
+              <div className="cargo-end-record-wall">{recordRows.map((row) => <div key={row.label} style={{ "--record": row.color } as React.CSSProperties}><span>{row.label}</span><strong>{row.value}</strong></div>)}</div>
+            </section>
           </div>
           <div className="cargo-end-kpi-grid">
             <Kpi icon="✓" label="CONTRATS" value={parcel ? match.totalParcelDeliveries : match.totalContracts} detail={parcel ? `+${match.totalParcelBonuses} bonus` : `${match.contractCompletionRate}% réussite`} color={GREEN}/>

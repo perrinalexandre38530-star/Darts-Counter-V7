@@ -246,7 +246,7 @@ function getLinkedProfileNameCandidates(profile: any): string[] {
         p?.privateInfo?.onlineEmail,
       ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
       if (!refs.some((r) => ids.has(r))) continue;
-      const names = [p?.privateInfo?.nickname, p?.surname, p?.displayName, p?.name]
+      const names = [p?.name, p?.displayName, p?.privateInfo?.nickname, p?.surname]
         .map((v) => String(v || "").trim())
         .filter(Boolean);
       out.push(...names);
@@ -545,10 +545,10 @@ function ActiveProfileCard({
 
   const profileName = React.useMemo(() => {
     const candidates = [
-      (profile as any)?.privateInfo?.nickname,
       (profile as any)?.name,
-      (profile as any)?.surname,
       (profile as any)?.displayName,
+      (profile as any)?.privateInfo?.nickname,
+      (profile as any)?.surname,
       ...getLinkedProfileNameCandidates(profile),
     ]
       .map((v) => String(v || "").trim())

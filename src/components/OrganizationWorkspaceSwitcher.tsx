@@ -127,8 +127,9 @@ export default function OrganizationWorkspaceSwitcher({
     [store, userId],
   );
   const userLabel = String(
-    canonicalProfile?.privateInfo?.nickname ||
     canonicalProfile?.name ||
+    canonicalProfile?.displayName ||
+    canonicalProfile?.privateInfo?.nickname ||
     auth?.profile?.displayName ||
     auth?.profile?.nickname ||
     auth?.user?.user_metadata?.full_name ||

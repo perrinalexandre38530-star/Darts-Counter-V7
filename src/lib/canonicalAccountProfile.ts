@@ -196,8 +196,12 @@ export function withoutCanonicalProfileProjection(linkedProfiles: any[], canonic
 
 export function canonicalProfileAvatar(profile: any): string {
   const candidates = [
-    profile?.avatarDataUrl,
+    // Dès qu'une URL compte Supabase existe, elle est portable sur tous les
+    // appareils et doit gagner sur une ancienne vignette locale/cache. Lors d'un
+    // changement en cours `changeAvatar()` efface temporairement avatarUrl, donc
+    // la preview data: reste bien prioritaire jusqu'à la fin de l'upload.
     profile?.avatarUrl,
+    profile?.avatarDataUrl,
     profile?.avatar,
     profile?.photoDataUrl,
     profile?.photoUrl,

@@ -1055,6 +1055,32 @@ function mergeOnlineProfiles(primary: OnlineProfile | null, fallback: OnlineProf
   }
   merged.preferences = { ...((fallback as any)?.preferences || {}), ...((primary as any)?.preferences || {}) };
   merged.privateInfo = { ...((fallback as any)?.privateInfo || {}), ...((primary as any)?.privateInfo || {}) };
+
+  // IMPORTANT — Supabase `profiles` reste l'autorité du profil léger. Le fallback
+  // NAS ne peut compléter que les champs absents ; il ne doit pas conserver une
+  // ancienne identité parallèle dans `privateInfo.nickname` / `avatarDataUrl`, car
+  // plusieurs écrans legacy consultent encore ces alias avant les champs modernes.
+  const canonicalNickname = String((primary as any)?.nickname || (primary as any)?.displayName || "").trim();
+  const canonicalDisplayName = String((primary as any)?.displayName || (primary as any)?.nickname || "").trim();
+  const canonicalAvatarUrl = String((primary as any)?.avatarUrl || "").trim();
+
+  if (canonicalNickname) {
+    merged.nickname = canonicalNickname;
+    merged.displayName = canonicalDisplayName || canonicalNickname;
+    merged.privateInfo = { ...(merged.privateInfo || {}), nickname: canonicalNickname };
+  }
+
+  if (canonicalAvatarUrl) {
+    merged.avatarUrl = canonicalAvatarUrl;
+    // Neutralise les anciens champs NAS qui, sinon, peuvent masquer avatarUrl
+    // dans un composant encore écrit `avatarDataUrl || avatarUrl`.
+    delete merged.avatarDataUrl;
+    delete merged.avatar_data_url;
+    delete merged.avatar;
+    delete merged.photoUrl;
+    delete merged.photo_url;
+  }
+
   return merged as OnlineProfile;
 }
 

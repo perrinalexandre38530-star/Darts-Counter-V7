@@ -117,11 +117,17 @@ function profilesEquivalentForBridge(before: any[], after: any[]): boolean {
 }
 
 function getOnlineNickname(user: any, onlineProfile?: any): string {
+  // SOURCE CANONIQUE MULTI-APPAREILS : les colonnes publiques Supabase
+  // `profiles.nickname/display_name` gagnent sur tous les champs legacy.
+  // `surname` est le NOM DE FAMILLE (ex. Perrin), pas le pseudo public ; le
+  // traiter comme nickname provoquait exactement la divergence PC=Ninja /
+  // téléphone=Perrin lorsque le profil NAS/private_info était encore ancien.
   const raw = String(
-    onlineProfile?.privateInfo?.nickname ||
+    onlineProfile?.nickname ||
+      onlineProfile?.displayName ||
+      onlineProfile?.display_name ||
+      onlineProfile?.privateInfo?.nickname ||
       onlineProfile?.private_info?.nickname ||
-      onlineProfile?.surname ||
-      onlineProfile?.nickname ||
       user?.nickname ||
       ""
   ).trim();
@@ -132,11 +138,14 @@ function getOnlineNickname(user: any, onlineProfile?: any): string {
 }
 
 function getOnlineAvatar(onlineProfile?: any): string | undefined {
+  // Même règle pour l'image : `profiles.avatar_url` est l'autorité durable du
+  // compte. Les data URLs NAS/cache ne sont que des secours legacy. Un ancien
+  // avatarDataUrl fusionné depuis le NAS ne doit jamais masquer l'URL Supabase.
   const avatar =
-    onlineProfile?.avatarDataUrl ||
-    onlineProfile?.avatar_data_url ||
     onlineProfile?.avatarUrl ||
     onlineProfile?.avatar_url ||
+    onlineProfile?.avatarDataUrl ||
+    onlineProfile?.avatar_data_url ||
     onlineProfile?.avatar ||
     "";
   const out = String(avatar || "").trim();
@@ -162,7 +171,9 @@ function buildPrivateInfoPatch(user: any, onlineProfile?: any): PrivateInfoRaw {
     ...pi,
     onlineUserId: String(user?.id || ""),
     onlineEmail: email || String(pi?.onlineEmail || pi?.email || "").trim().toLowerCase(),
-    nickname: pi?.nickname ?? getOnlineNickname(user, onlineProfile),
+    // Le pseudo public Supabase gagne sur un private_info legacy éventuellement
+    // encore rempli avec un ancien surnom.
+    nickname: getOnlineNickname(user, onlineProfile) || pi?.nickname,
     firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? pi?.firstName,
     lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? pi?.lastName,
     birthDate: onlineProfile?.birthDate ?? onlineProfile?.birth_date ?? pi?.birthDate,
@@ -598,14 +609,26 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
   const localOrAccountAvatarSource = pickFreshestAvatarProfile(local, account);
   const onlineAvatarTs = onlineAvatar ? explicitAvatarTimestamp(onlineProfile) : 0;
   const localAvatarTs = avatarTimestamp(localOrAccountAvatarSource);
-  // Avatar compte multi-appareils : Supabase Storage + profiles.avatar_url est la
-  // source durable. Elle gagne seulement lorsqu'elle est plus récente que le
-  // changement local courant ; ainsi une preview choisie à l'instant T n'est
-  // jamais écrasée pendant son upload, mais un autre appareil récupère bien la
-  // dernière photo du compte.
-  const onlineAvatarIsFresher = !!onlineAvatar && (!hasAvatarMedia(localOrAccountAvatarSource) || (onlineAvatarTs > 0 && onlineAvatarTs > localAvatarTs));
+  const localAvatarUrl = String(localOrAccountAvatarSource?.avatarUrl || "").trim();
+  const localAvatarData = String(localOrAccountAvatarSource?.avatarDataUrl || "").trim();
+  const localPreviewPending =
+    localAvatarData.startsWith("data:image/") &&
+    !localAvatarUrl &&
+    localAvatarTs > 0 &&
+    Date.now() - localAvatarTs < 2 * 60 * 1000;
+  const onlineLooksCanonical = /^https?:\/\//i.test(String(onlineAvatar || ""));
+
+  // Avatar compte multi-appareils : `profiles.avatar_url` (Supabase Storage) est
+  // l'autorité durable. Elle gagne sur un ancien cache/NAS même si les vieux
+  // builds n'avaient pas encore `private_info.avatarUpdatedAt`. Seule exception :
+  // une preview locale choisie il y a moins de 2 minutes et pas encore uploadée.
+  const onlineAvatarIsFresher = !!onlineAvatar && !localPreviewPending && (
+    !hasAvatarMedia(localOrAccountAvatarSource) ||
+    (onlineAvatarTs > 0 && onlineAvatarTs > localAvatarTs) ||
+    (onlineLooksCanonical && String(onlineAvatar) !== localAvatarUrl)
+  );
   const avatarSource = onlineAvatarIsFresher
-    ? { avatarUrl: onlineAvatar, avatarUpdatedAt: onlineAvatarTs }
+    ? { avatarUrl: onlineAvatar, avatarUpdatedAt: onlineAvatarTs || Date.now() }
     : localOrAccountAvatarSource;
   const avatarSourceHasMedia = hasAvatarMedia(avatarSource);
   const avatarUpdatedAt = Math.max(avatarTimestamp(local), avatarTimestamp(account), onlineAvatarTs);
