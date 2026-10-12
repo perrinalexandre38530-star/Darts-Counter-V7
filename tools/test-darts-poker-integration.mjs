@@ -97,6 +97,13 @@ const pokerStats = read("src/components/stats/DartsPokerStatsTabFull.tsx");
 assert.ok(pokerStats.includes("Heatmap cible"), "heatmap Darts Poker absente du centre de stats");
 assert.ok(pokerStats.includes("Tendance · 12 dernières parties"), "tendances Darts Poker absentes du centre de stats");
 assert.ok(pokerStats.includes("Constance mains"), "indicateurs avancés Darts Poker absents du centre de stats");
+assert.ok(pokerStats.includes("Badges Darts Poker"), "badges / progression Darts Poker absents du centre de stats");
+assert.ok(pokerStats.includes("Leadership & clutch"), "bloc leadership Darts Poker absent du centre de stats");
+assert.ok(endPage.includes("LECTURE DU MATCH · RYTHME & PRESSION"), "lecture de match absente de l'écran final");
+assert.ok(summary.includes("Lecture du match · leadership & comeback"), "lecture de match absente de l'historique");
+assert.ok(summary.includes("Meilleures mains · deck MSS Signature"), "cartes MSS visuelles absentes de l'historique");
+assert.ok(summary.includes("Cartographie des secteurs · 1 à 20"), "heatmap historique Darts Poker absente");
+assert.ok(play.includes("OUTS MAIN"), "lecture des outs du marché absente du play");
 
 const home = read("src/lib/homeModeStats.ts");
 assert.ok(home.includes('darts_poker: "DARTS POKER"'), "résumé HOME absent");

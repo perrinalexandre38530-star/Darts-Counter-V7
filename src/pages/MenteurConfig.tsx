@@ -10,5 +10,5 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
 </div>;
 
 export default function MenteurConfig(props: any) {
-  return <NewDartsModeConfig {...props} mode="menteur" definition={{ id: "menteur", title: "MENTEUR", ticker: tickerMenteur, accent: "#ffbf37", accent2: "#ff4a3c", minPlayers: 2, maxPlayers: 12, playTab: "menteur_play", guidedSteps: ["Participants", "Bluff", "Format", "Saisie", "Résumé"], rulesContent: rules }} />;
+  return <NewDartsModeConfig {...props} mode="menteur" definition={{ id: "menteur", title: "MENTEUR", ticker: tickerMenteur, accent: "#ffbf37", accent2: "#ff4a3c", minPlayers: 2, maxPlayers: 12, playTab: "menteur_play", guidedSteps: ["Participants", "Bluff", "Format", "Saisie", "Aide", "Résumé"], rulesContent: rules }} />;
 }

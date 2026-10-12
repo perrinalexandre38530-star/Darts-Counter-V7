@@ -3,7 +3,7 @@ import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
 import type { DartsPokerState } from "../lib/gameEngines/dartsPokerEngine";
-import { deriveDartsPokerMatchMetrics, deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerRound1 } from "../lib/dartsPokerAnalytics";
+import { deriveDartsPokerMatchMetrics, deriveDartsPokerMatchStory, deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerRound1 } from "../lib/dartsPokerAnalytics";
 
 const GOLD = "#f6c256";
 const RED = "#e83a43";
@@ -32,6 +32,7 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
   }).sort((a,b) => Number(a.rank || 999) - Number(b.rank || 999));
   const durationMs = Math.max(0, Number(state.finishedAt || Date.now()) - Number(state.startedAt || Date.now()));
   const match = deriveDartsPokerMatchMetrics(analyticsRows, state.rounds, durationMs);
+  const story = deriveDartsPokerMatchStory(state.rounds);
   const best = analyticsRows[0];
   const winnerProfile = best ? profilesById.get(String(best.id)) || best : null;
   const awards = [
@@ -41,6 +42,8 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
     { label: "MAÎTRE DES POUVOIRS", icon: "✦", color: PINK, row: awardWinner(analyticsRows, (r) => Number(r.powerUseRate || 0)), value: (r: any) => pct(r?.powerUseRate) },
     { label: "LUCKY JOKER", icon: "★", color: BLUE, row: awardWinner(analyticsRows, (r) => Number(r.jokers || 0)), value: (r: any) => `${fmt(r?.jokers)} joker${Number(r?.jokers || 0) > 1 ? "s" : ""}` },
     { label: "SÉRIE DE FEU", icon: "↗", color: "#ff9b52", row: awardWinner(analyticsRows, (r) => Number(r.bestHitStreak || 0)), value: (r: any) => `${fmt(r?.bestHitStreak)} hits` },
+    { label: "MAÎTRE DE LA TABLE", icon: "♛", color: BLUE, row: awardWinner(analyticsRows, (r) => Number(r.leadRounds || 0)), value: (r: any) => `${fmt(r?.leadRounds)} manche${Number(r?.leadRounds || 0) > 1 ? "s" : ""}` },
+    { label: "CLOSER", icon: "◆", color: GREEN, row: awardWinner(analyticsRows, (r) => Number(Boolean(r.closingRoundWin)) * 1000 + Number(r.lastThreePoints || 0)), value: (r: any) => `${fmt(r?.lastThreePoints)} pts · fin` },
   ];
   const signatureHands = analyticsRows.map((row: any) => {
     const roundRows = (state.rounds || []).flatMap((round: any) => (round?.rows || []).filter((item: any) => String(item?.playerId) === String(row.id)));
@@ -82,6 +85,28 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
         <Kpi label="Mains premium" value={pct(match.premiumHandRate)} color={RED} />
         <Kpi label="Bonus contrats" value={pct(match.contractPointShare)} detail="part des points" color={PINK} />
         <Kpi label="Meilleure main" value={match.bestHandLabel || "—"} color={GOLD} />
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div style={{ color: BLUE, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>LECTURE DU MATCH · RYTHME & PRESSION</div>
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
+          <Kpi label="Changements leader" value={story.leadChanges} color={BLUE} />
+          <Kpi label="Leaders différents" value={story.uniqueLeaders} color={GOLD} />
+          <Kpi label="Plus grosse avance" value={`+${story.largestLead}`} color={GREEN} />
+          <Kpi label="Marge finale" value={`+${story.finalMargin}`} color={GOLD} />
+          <Kpi label="Comeback max" value={`${story.biggestComeback}`} detail="pts remontés" color={RED} />
+          <Kpi label="Manche décisive" value={story.decidingRound ? `M${story.decidingRound}` : "—"} color={PINK} />
+        </div>
+        {story.race?.length ? <div style={{ marginTop: 7, padding: 8, borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.02)", overflowX: "auto" }}>
+          <div style={{ minWidth: Math.max(420, story.race.length * 110), display: "grid", gridTemplateColumns: `repeat(${story.race.length},minmax(92px,1fr))`, gap: 5 }}>
+            {story.race.map((step: any, index: number) => <div key={`race-${step.round}-${index}`} style={{ padding: 7, borderRadius: 11, border: `1px solid ${step.leaders.some((id: string) => state.winnerIds.includes(id)) ? GOLD : "rgba(255,255,255,.08)"}`, background: step.leaders.some((id: string) => state.winnerIds.includes(id)) ? `${GOLD}09` : "rgba(255,255,255,.018)" }}>
+              <div style={{ color: SOFT, fontSize: 6.8, fontWeight: 1000 }}>M{step.round}</div>
+              <div style={{ color: "#fff", fontSize: 8.2, fontWeight: 1100, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{step.leaders.map((id: string) => playerName(profilesById.get(String(id)) || state.players.find((p: any) => String(p.id) === String(id)))).join(" / ")}</div>
+              <div style={{ color: GOLD, fontSize: 9.5, fontWeight: 1100, marginTop: 2 }}>{step.leaderPoints} pts</div>
+              <div style={{ color: BLUE, fontSize: 6.8, marginTop: 1 }}>écart +{step.margin}</div>
+            </div>)}
+          </div>
+        </div> : null}
       </div>
 
       {signatureHands.length ? <div style={{ marginTop: 12 }}>
@@ -140,7 +165,7 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
       <div style={{ marginTop: 6, overflowX: "auto", borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.02)" }}>
         <table style={{ width: "100%", minWidth: 3650, borderCollapse: "collapse" }}>
           <thead><tr style={{ color: GOLD, textAlign: "center" }}>
-            {["#","Joueur","Pts","Base","Mains","V","Égal.","Win %","Podiums","Rang moy.","Rang σ","Best/Worst","Série V","Contrats","Contrat %","Bonus","Bonus %","Série contrat","Contrat→V","Darts","Hits","Préc.","S","D","T","Bull","DBull","Miss","Hit série","Miss série","Zones","Couv. cible","Seg. fav.","Cartes","Marché","Capture %","Auto","Pouvoir","Jokers","Cartes/dart","Choix E/U","Choix %","Éch. E/U","Éch. %","Pouvoir %","Best main","Force moy.","Médiane","Pire main","Constance","Fortes","Premium","Rang carte","Couleur","Pts/main","Pts/dart"].map((label) => <th key={label} style={th}>{label}</th>)}
+            {["#","Joueur","Pts","Base","Mains","V","Égal.","Win %","Podiums","Rang moy.","Lead","Lead %","Dealer V/T","Forme 3M","Rang σ","Best/Worst","Série V","Contrats","Contrat %","Bonus","Bonus %","Série contrat","Contrat→V","Darts","Hits","Préc.","S","D","T","Bull","DBull","Miss","Hit série","Miss série","Zones","Couv. cible","Seg. fav.","Cartes","Marché","Capture %","Auto","Pouvoir","Jokers","Cartes/dart","Choix E/U","Choix %","Éch. E/U","Éch. %","Pouvoir %","Best main","Force moy.","Médiane","Pire main","Constance","Fortes","Premium","Rang carte","Couleur","Pts/main","Pts/dart"].map((label) => <th key={label} style={th}>{label}</th>)}
           </tr></thead>
           <tbody>{analyticsRows.map((row: any) => {
             const profile = profilesById.get(String(row.id)) || row;
@@ -148,7 +173,7 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
             return <tr key={row.id} style={{ background: winner ? `${GOLD}0d` : "transparent" }}>
               <td style={{ ...td, color: winner ? GOLD : "#fff", fontWeight: 1100, textAlign: "center" }}>#{row.rank || "—"}</td>
               <td style={{ ...td, position: "sticky", left: 0, zIndex: 1, background: winner ? "#211d12" : "#111116" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 135 }}><ProfileAvatar profile={profile} size={27} /><b style={{ color: winner ? GOLD : "#fff" }}>{playerName(profile)}</b></div></td>
-              <td style={{ ...td, color: GOLD, fontWeight: 1100 }}>{fmt(row.points)}</td><td style={td}>{fmt(row.basePoints)}</td><td style={td}>{fmt(row.handsPlayed)}</td><td style={td}>{fmt(row.handsWon)}</td><td style={td}>{fmt(row.handsTied)}</td><td style={td}>{pct(row.handWinRate)}</td><td style={td}>{fmt(row.podiums)}</td><td style={td}>{row.averageRoundRank ? fmt(row.averageRoundRank) : "—"}</td><td style={td}>{fmt(row.roundRankStdDev,2)}</td><td style={td}>{row.bestRoundRank || "—"}/{row.worstRoundRank || "—"}</td><td style={td}>{fmt(row.bestRoundWinStreak)}</td>
+              <td style={{ ...td, color: GOLD, fontWeight: 1100 }}>{fmt(row.points)}</td><td style={td}>{fmt(row.basePoints)}</td><td style={td}>{fmt(row.handsPlayed)}</td><td style={td}>{fmt(row.handsWon)}</td><td style={td}>{fmt(row.handsTied)}</td><td style={td}>{pct(row.handWinRate)}</td><td style={td}>{fmt(row.podiums)}</td><td style={td}>{row.averageRoundRank ? fmt(row.averageRoundRank) : "—"}</td><td style={td}>{fmt(row.leadRounds)}</td><td style={td}>{pct(row.leadRate)}</td><td style={td}>{fmt(row.dealerWins)}/{fmt(row.dealerRounds)}</td><td style={td}>{fmt(row.lastThreeWins)}V · {fmt(row.lastThreePoints)}pt</td><td style={td}>{fmt(row.roundRankStdDev,2)}</td><td style={td}>{row.bestRoundRank || "—"}/{row.worstRoundRank || "—"}</td><td style={td}>{fmt(row.bestRoundWinStreak)}</td>
               <td style={td}>{fmt(row.contractHits)}/{fmt(row.contractsAttempted)}</td><td style={td}>{pct(row.contractSuccessRate)}</td><td style={td}>+{fmt(row.contractBonusPoints)}</td><td style={td}>{pct(row.contractPointShare)}</td><td style={td}>{fmt(row.bestContractStreak)}</td><td style={td}>{fmt(row.contractWinRounds)} ({pct(row.contractWinRate)})</td>
               <td style={td}>{fmt(row.darts)}</td><td style={td}>{fmt(row.hits)}</td><td style={{ ...td, color: GREEN }}>{pct(row.accuracy)}</td><td style={td}>{fmt(row.singles)}</td><td style={td}>{fmt(row.doubles)}</td><td style={td}>{fmt(row.triples)}</td><td style={td}>{fmt(row.bulls)}</td><td style={td}>{fmt(row.dbulls)}</td><td style={{ ...td, color: row.misses ? RED : GREEN }}>{fmt(row.misses)}</td>
               <td style={td}>{fmt(row.bestHitStreak)}</td><td style={td}>{fmt(row.bestMissStreak)}</td><td style={td}>{fmt(row.physicalSectorsTouched)}/20</td><td style={td}>{pct(row.physicalSectorCoverageRate)}</td><td style={td}>{row.favoriteSegment} ×{fmt(row.favoriteSegmentHits)}</td>

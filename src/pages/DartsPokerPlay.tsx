@@ -289,7 +289,7 @@ export default function DartsPokerPlay(props: any) {
     const totalHits = playerRows.reduce((sum, row) => sum + Number(row.hits || 0), 0);
     const derivedMatchStats = deriveDartsPokerMatchMetrics(playerRows, state.rounds, Math.max(0, now - state.startedAt));
     const matchStats = {
-      ...derivedMatchStats, statisticsVersion: 2, telemetryVersion: 2, configuredRounds: config.rounds,
+      ...derivedMatchStats, statisticsVersion: 3, telemetryVersion: 3, configuredRounds: config.rounds,
       totalHands: playerRows.reduce((sum, row) => sum + Number(row.handsPlayed || 0), 0),
       totalHandsWon: playerRows.reduce((sum, row) => sum + Number(row.handsWon || 0), 0),
       totalDarts, totalHits, totalVisits: state.visits.length,
@@ -302,7 +302,7 @@ export default function DartsPokerPlay(props: any) {
       durationMs: Math.max(0, now - state.startedAt),
     };
     const summary = {
-      kind: "darts_poker", mode: "darts_poker", sport: "darts", finished, statisticsVersion: 2, telemetryVersion: 2,
+      kind: "darts_poker", mode: "darts_poker", sport: "darts", finished, statisticsVersion: 3, telemetryVersion: 3,
       winnerId: finished ? state.winnerIds[0] || null : null, winnerIds: finished ? state.winnerIds : [],
       winnerName: finished ? state.standings.filter((row) => row.rank === 1).map((row) => row.name).join(" / ") : null,
       roundsPlayed: state.rounds.length, configuredRounds: config.rounds, dartsPerHand: config.dartsPerHand,
@@ -314,11 +314,11 @@ export default function DartsPokerPlay(props: any) {
     };
     return {
       id: matchIdRef.current, matchId: matchIdRef.current, kind: "darts_poker", mode: "darts_poker", sport: "darts", status,
-      statisticsVersion: 2, telemetryVersion: 2, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now,
+      statisticsVersion: 3, telemetryVersion: 3, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now,
       ...(finished ? { finishedAt: now, endedAt: now } : {}), winnerId: summary.winnerId, winnerIds: summary.winnerIds, winnerName: summary.winnerName,
       players: playerRows, resumeId: matchIdRef.current, resume: { config, state: cloneDartsPokerState(state), updatedAt: now }, game: summary.game, summary,
       payload: {
-        kind: "darts_poker", mode: "darts_poker", sport: "darts", statisticsVersion: 2, telemetryVersion: 2,
+        kind: "darts_poker", mode: "darts_poker", sport: "darts", statisticsVersion: 3, telemetryVersion: 3,
         config, players: playerRows, summary, rounds: state.rounds, visits: state.visits, visitHistory: state.visits, stateSnapshot: cloneDartsPokerState(state),
         stats: { sport: "darts", mode: "darts_poker", players: playerRows, match: matchStats, global: matchStats },
       },
@@ -343,6 +343,7 @@ export default function DartsPokerPlay(props: any) {
   const keypadNotice = <div style={{ color: state.phase === "powers" ? GOLD : SOFT, fontSize: 9, fontWeight: 900, textAlign: "center", lineHeight: 1.3 }}>{botThinking ? "BOT EN RÉFLEXION…" : notice}</div>;
   const assistanceEnabled = config.assistanceEnabled !== false;
   const marketTargets = assistanceEnabled ? rankMarketSuggestions(state, String(activePlayer?.id || ""), 4) : [];
+  const marketIntel = assistanceEnabled ? analyzeDartsPokerMarket(state, String(activePlayer?.id || "")) : null;
   const bestTarget = marketTargets[0] || null;
   const objective = buildPokerObjectiveHint(state, String(activePlayer?.id || ""), liveEvaluation, remainingDarts);
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
@@ -388,7 +389,7 @@ export default function DartsPokerPlay(props: any) {
           </div>
           <div style={{ color: "#fff", fontSize: 10.5, fontWeight: 950, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.roundContract?.label || objective.title}</div>
           <div style={{ color: SOFT, fontSize: 8.2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.roundContract ? `${contractLive.done ? "✓ VALIDÉ" : `+${state.roundContract.bonusPoints} pt`} · ${state.roundContract.description}` : assistanceEnabled && bestTarget ? `Conseil : S${bestTarget.sector} · ${pokerCardLabel(bestTarget.card)}` : objective.description}</div>
-          {assistanceEnabled && bestTarget ? <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: GOLD, fontSize: 8, fontWeight: 1100 }}>CIBLE PRIORITAIRE</span><span style={{ color: "#fff", fontSize: 9, fontWeight: 1100 }}>S{bestTarget.sector}</span><span style={{ color: SOFT, fontSize: 8 }}>{pokerCardLabel(bestTarget.card)}</span><span style={{ color: bestTarget.contractMatch ? GREEN : BLUE, fontSize: 7.5 }}>{bestTarget.contractMatch ? "CONTRAT" : "MAIN"}</span></div> : null}
+          {assistanceEnabled && bestTarget ? <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ color: GOLD, fontSize: 8, fontWeight: 1100 }}>CIBLE PRIORITAIRE</span><span style={{ color: "#fff", fontSize: 9, fontWeight: 1100 }}>S{bestTarget.sector}</span><span style={{ color: SOFT, fontSize: 8 }}>{pokerCardLabel(bestTarget.card)}</span><span style={{ color: bestTarget.contractMatch ? GREEN : BLUE, fontSize: 7.5 }}>{bestTarget.contractMatch ? "CONTRAT" : "MAIN"}</span>{marketIntel ? <span style={{ marginLeft: "auto", color: marketIntel.color, fontSize: 7.5, fontWeight: 1000 }}>{marketIntel.improving} OUTS · {marketIntel.label}</span> : null}</div> : null}
         </button>
         <div style={{ ...panel(), padding: 6 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 4 }}>
@@ -416,11 +417,11 @@ export default function DartsPokerPlay(props: any) {
     {showRound && state.phase === "round_result" ? <RoundModal state={state} profilesById={profilesById} onNext={nextRound} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {quickPanel === "active" ? <ActivePlayerModal state={state} activeProfile={activeProfile} activePlayer={activePlayer} activeHand={activeHand} activeColor={activeColor} activeStats={activeStats} liveEvaluation={liveEvaluation} onClose={() => setQuickPanel(null)} onExchange={exchangeCard} onChoice={useChoice} onValidate={validateHand} /> : null}
-    {quickPanel === "market" ? <MarketModal state={state} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "market" ? <MarketModal state={state} suggestions={marketTargets} marketIntel={marketIntel} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "deck" ? <DeckModal state={state} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "table" ? <TableModal state={state} profilesById={profilesById} config={config} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "stats" ? <LiveStatsModal state={state} profilesById={profilesById} onClose={() => setQuickPanel(null)} /> : null}
-    {quickPanel === "objectives" ? <ObjectivesModal objective={objective} contract={state.roundContract} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "objectives" ? <ObjectivesModal objective={objective} contract={state.roundContract} suggestions={marketTargets} marketIntel={marketIntel} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 1 || remainingDarts <= 0 || Boolean(wonCardPopup)} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
     {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
@@ -497,9 +498,16 @@ function ActivePlayerModal({ state, activeProfile, activePlayer, activeHand, act
   return <FloatingPanel title="Bloc joueur actif" subtitle={playerName(activeProfile)} accent={activeColor} onClose={onClose} width="min(720px,100%)"><div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 10, alignItems: "center" }}><ProfileAvatar profile={activeProfile || activePlayer} size={52} /><div><div style={{ color: activeColor, fontWeight: 1100 }}>{playerName(activeProfile || activePlayer)}</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 10, marginTop: 3 }}>{liveEvaluation?.label || "Aucune combinaison encore verrouillée"}</div></div></div><div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>{(activeHand?.cards || []).map((card: PokerCard, index: number) => <CardView key={`${card.id}-${index}`} card={card} selected={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker} onClick={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? () => onExchange(index) : undefined} badge={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? "ÉCH." : undefined} />)}</div><div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}><MiniStat label="Points" value={`${activeStats?.roundPoints || 0}`} color={GOLD} /><MiniStat label="Précision" value={`${pct(activeStats?.hits || 0, activeStats?.darts || 0)}%`} color={GREEN} /><MiniStat label="Échanges" value={`${activeHand?.exchangeTokens || 0}`} color={BLUE} /><MiniStat label="Contrats" value={`${activeStats?.contractHits || 0}`} color={RED} /></div>{state.phase === "powers" ? <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><button disabled={!activeHand?.choiceTokens || !!state.pendingChoice} onClick={onChoice} style={{ ...action(GOLD), opacity: activeHand?.choiceTokens ? 1 : .4 }}>✦ UTILISER UN CHOIX</button><button onClick={onValidate} style={action(GREEN)}>✓ VALIDER LA MAIN</button></div> : null}</FloatingPanel>;
 }
 
-function MarketModal({ state, suggestions, assistanceEnabled, onClose }: any) {
+function MarketModal({ state, suggestions, marketIntel, assistanceEnabled, onClose }: any) {
   const bestSectors = new Set((suggestions || []).map((item: any) => Number(item.sector)));
   return <FloatingPanel title="Marché des 20 cartes" subtitle={assistanceEnabled ? "Lecture stratégique du marché en temps réel" : "20 cartes visibles · une carte remplacée après chaque prise"} accent={GOLD} onClose={onClose} width="min(880px,100%)">
+    {assistanceEnabled && marketIntel ? <div style={{ marginBottom: 10, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 6 }}>
+      <MiniStat label="OUTS MAIN" value={`${marketIntel.improving}`} color={marketIntel.color} />
+      <MiniStat label="OUTS CONTRAT" value={`${marketIntel.contractOuts}`} color={GREEN} />
+      <MiniStat label="PREMIUM" value={`${marketIntel.premiumOuts}`} color={RED} />
+      <MiniStat label="DOUBLONS" value={`${marketIntel.rankOuts}`} color={BLUE} />
+      <MiniStat label="MARCHÉ" value={marketIntel.label} color={marketIntel.color} />
+    </div> : null}
     {assistanceEnabled && suggestions?.length ? <div style={{ marginBottom: 11 }}><div style={{ color: SOFT, fontSize: 8, fontWeight: 1000, marginBottom: 6 }}>TOP CIBLES</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{suggestions.map((item: any, index: number) => <div key={item.sector} style={{ padding: 8, borderRadius: 13, border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.10)"}`, background: index === 0 ? `${GOLD}10` : "rgba(255,255,255,.025)", display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 7, alignItems: "center" }}><CardView card={item.card} small /><div style={{ minWidth: 0 }}><div style={{ color: index === 0 ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>S{item.sector} · {pokerCardLabel(item.card)}</div><div style={{ color: item.contractMatch ? GREEN : SOFT, fontSize: 7.5, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.contractMatch ? "Priorité contrat" : item.reason}</div></div></div>)}</div></div> : null}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>{Array.from({ length: 20 }, (_, i) => i + 1).map((sector) => { const hot = assistanceEnabled && bestSectors.has(sector); const rank = (suggestions || []).findIndex((item: any) => Number(item.sector) === sector); return <div key={sector} style={{ minWidth: 0, textAlign: "center", padding: "6px 2px", borderRadius: 12, background: hot ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${hot ? GOLD : "rgba(255,255,255,.08)"}`, position: "relative" }}>{hot ? <div style={{ position: "absolute", right: 4, top: 4, width: 17, height: 17, borderRadius: 999, display: "grid", placeItems: "center", background: GOLD, color: "#111", fontSize: 7.5, fontWeight: 1200 }}>{rank + 1}</div> : null}<div style={{ color: hot ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>{sector}</div><div style={{ display: "flex", justifyContent: "center", marginTop: 5 }}><CardView card={state.market[sector]} small /></div></div>; })}</div>
   </FloatingPanel>;
@@ -522,23 +530,91 @@ function DeckModal({ state, onClose }: any) {
 }
 
 function TableModal({ state, profilesById, config, onClose }: any) {
-  return <FloatingPanel title="Table & classement live" subtitle={`Manche ${state.roundIndex}/${config.rounds}`} accent={RED} onClose={onClose} width="min(760px,100%)"><div style={{ display: "grid", gap: 7 }}>{state.players.map((player: any, index: number) => { const hand = state.handsByPlayer[player.id]; const stats = state.statsByPlayer[player.id]; const profile = profilesById.get(player.id) || player; const active = index === state.activePlayerIndex; const hidden = !config.openHands && !active && state.phase !== "round_result" && state.phase !== "finished"; return <div key={player.id} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) repeat(3,minmax(56px,auto))", gap: 7, alignItems: "center", padding: 8, borderRadius: 14, border: `1px solid ${active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : "rgba(255,255,255,.09)"}`, background: active ? `${PLAYER_COLORS[index % PLAYER_COLORS.length]}0d` : "rgba(255,255,255,.025)" }}><ProfileAvatar profile={profile} size={38} /><div style={{ minWidth: 0 }}><div style={{ color: active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : "#fff", fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(profile)}{index === state.dealerIndex ? <span style={{ marginLeft: 5, color: GOLD, fontSize: 7 }}>● DEALER</span> : null}</div><div style={{ color: SOFT, fontSize: 8.2 }}>{hidden ? "Main cachée" : hand?.evaluation?.label || `${hand?.cards?.length || 0} cartes`}</div></div><MiniStat label="PTS" value={`${stats?.roundPoints || 0}`} color={GOLD} /><MiniStat label="PRÉC." value={`${pct(stats?.hits || 0, stats?.darts || 0)}%`} color={GREEN} /><MiniStat label="CARTES" value={`${hand?.cards?.length || 0}`} color={BLUE} /></div>; })}</div></FloatingPanel>;
+  const ordered = state.players.map((player: any, index: number) => ({ player, index, stats: state.statsByPlayer[player.id] || {}, hand: state.handsByPlayer[player.id] || {} })).sort((a: any, b: any) => Number(b.stats?.roundPoints || 0) - Number(a.stats?.roundPoints || 0) || Number(b.stats?.handsWon || 0) - Number(a.stats?.handsWon || 0));
+  const leaderPoints = Number(ordered[0]?.stats?.roundPoints || 0);
+  return <FloatingPanel title="Table & classement live" subtitle={`Manche ${state.roundIndex}/${config.rounds} · ${state.phase === "throwing" ? "LANCERS" : state.phase === "powers" ? "POUVOIRS" : "SHOWDOWN"}`} accent={RED} onClose={onClose} width="min(820px,100%)">
+    <div style={{ display: "grid", gap: 7 }}>{ordered.map(({ player, index, stats, hand }: any, orderIndex: number) => { const profile = profilesById.get(player.id) || player; const active = index === state.activePlayerIndex; const hidden = !config.openHands && !active && state.phase !== "round_result" && state.phase !== "finished"; const dartsUsed = Math.min(config.dartsPerHand, Number(hand?.dartsUsed || 0)); const gap = Math.max(0, leaderPoints - Number(stats?.roundPoints || 0)); return <div key={player.id} style={{ display: "grid", gridTemplateColumns: "34px 42px minmax(0,1fr) repeat(4,minmax(55px,auto))", gap: 7, alignItems: "center", padding: 8, borderRadius: 14, border: `1px solid ${active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : orderIndex === 0 ? GOLD : "rgba(255,255,255,.09)"}`, background: active ? `${PLAYER_COLORS[index % PLAYER_COLORS.length]}0d` : orderIndex === 0 ? `${GOLD}08` : "rgba(255,255,255,.025)" }}>
+      <div style={{ color: orderIndex === 0 ? GOLD : SOFT, fontSize: 12, fontWeight: 1100, textAlign: "center" }}>#{orderIndex + 1}</div>
+      <ProfileAvatar profile={profile} size={38} />
+      <div style={{ minWidth: 0 }}><div style={{ color: active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : "#fff", fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(profile)}{index === state.dealerIndex ? <span style={{ marginLeft: 5, color: GOLD, fontSize: 7 }}>● DEALER</span> : null}</div><div style={{ color: SOFT, fontSize: 8.2 }}>{hidden ? "Main cachée" : hand?.evaluation?.label || `${hand?.cards?.length || 0} cartes`} · {dartsUsed}/{config.dartsPerHand} darts{gap > 0 ? ` · -${gap} pt` : " · LEADER"}</div><div style={{ marginTop: 4, display: "grid", gridTemplateColumns: `repeat(${config.dartsPerHand},1fr)`, gap: 2 }}>{Array.from({ length: config.dartsPerHand }, (_, dartIndex) => <span key={dartIndex} style={{ height: 3, borderRadius: 999, background: dartIndex < dartsUsed ? (active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : GREEN) : "rgba(255,255,255,.08)" }} />)}</div></div>
+      <MiniStat label="PTS" value={`${stats?.roundPoints || 0}`} color={GOLD} />
+      <MiniStat label="V" value={`${stats?.handsWon || 0}`} color={RED} />
+      <MiniStat label="PRÉC." value={`${pct(stats?.hits || 0, stats?.darts || 0)}%`} color={GREEN} />
+      <MiniStat label="CONTR." value={`${stats?.contractHits || 0}`} color={BLUE} />
+    </div>; })}</div>
+  </FloatingPanel>;
 }
 
 function LiveStatsModal({ state, profilesById, onClose }: any) {
   return <FloatingPanel title="Statistiques live" subtitle="Résumé rapide de la partie en cours" accent={GREEN} onClose={onClose} width="min(760px,100%)"><div style={{ display: "grid", gap: 8 }}>{state.players.map((player: any) => { const stats = state.statsByPlayer[player.id] || {}; const profile = profilesById.get(player.id) || player; return <div key={player.id} style={{ padding: 9, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={profile} size={34} /><div style={{ color: "#fff", fontWeight: 1100 }}>{playerName(profile)}</div></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><MiniStat label="Points" value={`${stats.roundPoints || 0}`} color={GOLD} /><MiniStat label="Préc." value={`${pct(stats.hits || 0, stats.darts || 0)}%`} color={GREEN} /><MiniStat label="Contrats" value={`${stats.contractHits || 0}`} color={RED} /><MiniStat label="Lancers" value={`${stats.visits || 0}`} color={BLUE} /></div></div>; })}</div></FloatingPanel>;
 }
 
-function ObjectivesModal({ objective, contract, suggestions, assistanceEnabled, onClose }: any) {
-  return <FloatingPanel title="Contrat & stratégie" subtitle={assistanceEnabled ? "Objectif bonus + lecture du marché" : "Objectif de manche"} accent={GOLD} onClose={onClose} width="min(720px,100%)">
+function ObjectivesModal({ objective, contract, suggestions, marketIntel, assistanceEnabled, onClose }: any) {
+  return <FloatingPanel title="Contrat & stratégie" subtitle={assistanceEnabled ? "Objectif bonus + lecture du marché" : "Objectif de manche"} accent={GOLD} onClose={onClose} width="min(760px,100%)">
     {contract ? <div style={{ padding: 11, borderRadius: 14, background: `${GOLD}10`, border: `1px solid ${GOLD}55` }}><div style={{ color: GOLD, fontSize: 9, fontWeight: 1100 }}>CONTRAT · +{contract.bonusPoints} POINT</div><div style={{ color: "#fff", fontWeight: 1100, marginTop: 4 }}>{contract.label}</div><div style={{ color: SOFT, fontSize: 10, lineHeight: 1.45, marginTop: 5 }}>{contract.description}</div></div> : null}
     <div style={{ marginTop: contract ? 8 : 0, padding: 10, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: "#fff", fontWeight: 1100 }}>{objective.title}</div><div style={{ color: SOFT, fontSize: 10, lineHeight: 1.45, marginTop: 5 }}>{objective.description}</div></div>
+    {assistanceEnabled && marketIntel ? <div style={{ marginTop: 9, padding: 9, borderRadius: 14, border: `1px solid ${marketIntel.color}44`, background: `${marketIntel.color}0a` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={{ color: marketIntel.color, fontSize: 8.5, fontWeight: 1100 }}>LECTURE DU MARCHÉ · {marketIntel.label}</div><div style={{ color: SOFT, fontSize: 8, marginTop: 2 }}>{marketIntel.description}</div></div><div style={{ color: marketIntel.color, fontSize: 20, fontWeight: 1200 }}>{marketIntel.improving}<span style={{ color: SOFT, fontSize: 8 }}>/20</span></div></div>
+      <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}><MiniStat label="OUTS MAIN" value={`${marketIntel.improving}`} color={BLUE} /><MiniStat label="CONTRAT" value={`${marketIntel.contractOuts}`} color={GREEN} /><MiniStat label="PREMIUM" value={`${marketIntel.premiumOuts}`} color={RED} /><MiniStat label="RANG/SUIT" value={`${marketIntel.rankOuts}/${marketIntel.suitOuts}`} color={GOLD} /></div>
+    </div> : null}
     {assistanceEnabled ? <div style={{ marginTop: 12, display: "grid", gap: 7 }}>{suggestions.map((item: any, index: number) => <div key={`${item.sector}-${index}`} style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 8, borderRadius: 13, background: index === 0 ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.08)"}` }}><div style={{ textAlign: "center" }}><div style={{ color: index === 0 ? GOLD : SOFT, fontSize: 8.5, fontWeight: 1100 }}>SECTEUR {item.sector}</div><div style={{ marginTop: 5, display: "flex", justifyContent: "center" }}><CardView card={item.card} small /></div></div><div><div style={{ color: "#fff", fontWeight: 1000 }}>{index === 0 ? "Meilleur choix" : `Alternative ${index}`}</div><div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>{item.reason}</div></div><div style={{ color: item.contractMatch ? GREEN : BLUE, border: `1px solid ${item.contractMatch ? GREEN : BLUE}55`, borderRadius: 999, padding: "4px 6px", fontSize: 7, fontWeight: 1050 }}>{item.contractMatch ? "CONTRAT" : "MAIN"}</div></div>)}</div> : <div style={{ marginTop: 10, color: SOFT, fontSize: 9, textAlign: "center" }}>Conseils stratégiques désactivés dans la configuration.</div>}
   </FloatingPanel>;
 }
 
 function DartboardPanel({ multiplier, onSetMultiplier, disabled, onHit, onClose }: any) {
   return <FloatingPanel title="Cible interactive" subtitle="Touchez le secteur voulu" accent={BLUE} onClose={onClose} width="min(620px,100%)"><div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 10 }}><button onClick={() => onSetMultiplier(1)} style={{ ...action(multiplier === 1 ? GREEN : "#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>SIMPLE</button><button onClick={() => onSetMultiplier(2)} style={{ ...action(multiplier === 2 ? RED : "#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>DOUBLE</button><button onClick={() => onSetMultiplier(3)} style={{ ...action(multiplier === 3 ? GOLD : "#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>TRIPLE</button></div><DartboardClickable multiplier={multiplier} disabled={disabled} onHit={onHit} /></FloatingPanel>;
+}
+
+function analyzeDartsPokerMarket(state: DartsPokerState, playerId: string) {
+  const hand = state.handsByPlayer[playerId] || ({ cards: [] } as any);
+  const currentCards: PokerCard[] = hand.cards || [];
+  const currentEval = evaluateBestPokerHand(currentCards);
+  const currentScore = Number(currentEval?.score || 0);
+  const rankCounts = new Map<number, number>();
+  const suitCounts = new Map<string, number>();
+  currentCards.filter((card: any) => !card?.joker).forEach((card: any) => {
+    rankCounts.set(card.rank, (rankCounts.get(card.rank) || 0) + 1);
+    suitCounts.set(String(card.suit), (suitCounts.get(String(card.suit)) || 0) + 1);
+  });
+  let improving = 0;
+  let contractOuts = 0;
+  let premiumOuts = 0;
+  let rankOuts = 0;
+  let suitOuts = 0;
+  let visible = 0;
+  for (let sector = 1; sector <= 20; sector += 1) {
+    const card = state.market[sector];
+    if (!card) continue;
+    visible += 1;
+    const futureCards = [...currentCards, card];
+    const futureEval = evaluateBestPokerHand(futureCards);
+    const sameRank = !card.joker && (rankCounts.get(Number(card.rank)) || 0) > 0;
+    const sameSuit = !card.joker && (suitCounts.get(String(card.suit)) || 0) >= 2;
+    const scoreImproves = Boolean(futureEval && Number(futureEval.score || 0) > currentScore);
+    const structuralImprove = card.joker || sameRank || sameSuit || Number(card.rank || 0) >= 12;
+    if (scoreImproves || (!currentEval && structuralImprove)) improving += 1;
+    if (sameRank) rankOuts += 1;
+    if (sameSuit) suitOuts += 1;
+    if (futureEval && Number(futureEval.categoryRank || 0) >= 5) premiumOuts += 1;
+    const contract = state.roundContract;
+    if (contract) {
+      const done = contract.key === "joker"
+        ? futureCards.some((candidate: any) => Boolean(candidate?.joker))
+        : Boolean(futureEval && isDartsPokerContractCompleted(contract, futureEval, futureCards));
+      if (done) contractOuts += 1;
+    }
+  }
+  const ratio = visible ? improving / visible : 0;
+  const label = ratio >= .55 ? "TRÈS OUVERT" : ratio >= .35 ? "FAVORABLE" : ratio >= .18 ? "SERRÉ" : "FERMÉ";
+  const color = ratio >= .55 ? GREEN : ratio >= .35 ? BLUE : ratio >= .18 ? GOLD : RED;
+  const description = contractOuts > 0
+    ? `${contractOuts} secteur${contractOuts > 1 ? "s" : ""} peuvent valider le contrat immédiatement.`
+    : premiumOuts > 0
+      ? `${premiumOuts} secteur${premiumOuts > 1 ? "s" : ""} ouvrent une main premium.`
+      : improving > 0
+        ? `${improving} secteur${improving > 1 ? "s" : ""} renforcent directement la construction de main.`
+        : "Aucune amélioration évidente : privilégie la précision et les pouvoirs.";
+  return { total: visible, improving, contractOuts, premiumOuts, rankOuts, suitOuts, label, color, description };
 }
 
 function rankMarketSuggestions(state: DartsPokerState, playerId: string, count = 4) {

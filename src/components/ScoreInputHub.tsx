@@ -9,7 +9,7 @@
 
 import React from "react";
 import Keypad, { LightningMiniIcon, MicroMiniIcon } from "./Keypad";
-import DartboardClickable from "./DartboardClickable";
+import DartboardClickable, { type DartboardHitDetail } from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
 import type { Dart as UIDart } from "../lib/types";
 import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
@@ -88,6 +88,8 @@ type Props = {
 
   /** Injection directe d'une fléchette (cible / fallback presets) */
   onDirectDart?: (d: UIDart) => void;
+  /** Détail physique de la cible interactive. Le ring est aussi copié dans Dart.label. */
+  onDartboardDetailedHit?: (hit: DartboardHitDetail) => void;
   /** Remplace proprement la volée affichée (utilisé par PRESETS pour éviter le clignotement/auto-validation). */
   onSetVisitDarts?: (darts: UIDart[]) => void;
 
@@ -213,6 +215,7 @@ export default function ScoreInputHub({
   onBull,
   onValidate,
   onDirectDart,
+  onDartboardDetailedHit,
   onSetVisitDarts,
   onSubmitVisitScore,
   onCorrectVisitScore,
@@ -246,6 +249,7 @@ export default function ScoreInputHub({
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod) : null;
   const [method, setMethod] = React.useState<ScoreInputMethod>(() => configuredMethod || safeReadMethod());
   const [presetOpen, setPresetOpen] = React.useState(false);
+  const lastDartboardDetailRef = React.useRef<DartboardHitDetail | null>(null);
 
   React.useEffect(() => {
     if (!preferredMethod) return;
@@ -912,15 +916,22 @@ function DartboardInput({
             size={230}
             multiplier={multiplier}
             disabled={disabled}
+            onDetailedHit={(hit) => {
+              lastDartboardDetailRef.current = hit;
+              onDartboardDetailedHit?.(hit);
+            }}
             onHit={(seg, mul) => {
               if (disabled) return;
+              const detail = lastDartboardDetailRef.current;
+              lastDartboardDetailRef.current = null;
+              const label = detail?.ring || undefined;
               if (seg === 25) {
-                if (onDirectDart) onDirectDart({ v: 25, mult: mul === 2 ? 2 : 1 } as UIDart);
+                if (onDirectDart) onDirectDart({ v: 25, mult: mul === 2 ? 2 : 1, label } as UIDart);
                 else onBull();
                 return;
               }
               if (onDirectDart) {
-                onDirectDart({ v: seg, mult: mul as 1 | 2 | 3 });
+                onDirectDart({ v: seg, mult: mul as 1 | 2 | 3, label });
                 return;
               }
               if (mul === 3) onTriple();

@@ -928,17 +928,25 @@ function OriginalPartyModeSummaryTables({ mode, rec, rows, accent }: { mode: "pe
         ["Défis posés", sum("challengesSet")],
         ["Défis réussis", sum("challengesPassed")],
         ["Défis ratés", sum("challengesFailed")],
+        ["Défis du meneur réussis", sum("callerSuccesses")],
+        ["Copies réussies", sum("copySuccesses")],
         ["Erreurs prises", sum("errorsTaken")],
         ["Éliminations", sum("eliminations")],
+        ["Meilleure série", Math.max(0, ...rows.map((r) => num(r?.raw?.bestSuccessStreak)))],
         ["Best volée", Math.max(0, ...rows.map((r) => num(r?.raw?.bestVisit)))],
       ]
     : mode === "menteur"
       ? [
           ["Enchères", sum("raises")],
+          ["Ouvertures", sum("openingBids")],
           ["Appels MENTEUR", sum("liarCalls")],
+          ["Appels gagnés", sum("successfulCalls")],
+          ["Appels perdus", sum("failedCalls")],
           ["Contrats prouvés", sum("contractsProven")],
           ["Mensonges démasqués", sum("liesCaught")],
           ["Vies perdues", sum("livesLost")],
+          ["Plus haute enchère", Math.max(0, ...rows.map((r) => num(r?.raw?.maxBid)))],
+          ["Meilleure série preuve", Math.max(0, ...rows.map((r) => num(r?.raw?.bestProofStreak)))],
           ["Best volée", Math.max(0, ...rows.map((r) => num(r?.raw?.bestVisit)))],
         ]
       : mode === "crados"
@@ -1009,10 +1017,22 @@ function OriginalPartyModeSummaryTables({ mode, rec, rows, accent }: { mode: "pe
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Détail par joueur</div>
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Flèches</th><th style={th}>{MODE_META[mode].primary}</th><th style={th}>{MODE_META[mode].secondary}</th><th style={th}>{MODE_META[mode].tertiary}</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={`party-mode-${r.id}`}><td style={td}>{r.name}</td><td style={td}>{num(pick(r.raw?.darts, r.raw?.dartsThrown), 0)}</td><td style={td}>{r.primary}</td><td style={td}>{r.secondary}</td><td style={td}>{r.tertiary}</td></tr>)}</tbody>
-        </table>
+        {mode === "pendu" ? (
+          <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 11.5 }}>
+            <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Manches</th><th style={th}>Erreurs</th><th style={th}>Défis</th><th style={th}>Meneur</th><th style={th}>Copies</th><th style={th}>Série</th><th style={th}>S/D/T</th><th style={th}>BULL/DBULL</th><th style={th}>MISS</th><th style={th}>Best</th><th style={th}>Flèches</th><th style={th}>Réussite</th></tr></thead>
+            <tbody>{rows.map((r) => { const p = r.raw || {}; const attempts = num(p.callerAttempts) + num(p.copyAttempts); const successes = num(p.callerSuccesses) + num(p.copySuccesses); const rate = attempts > 0 ? Math.round((successes / attempts) * 1000) / 10 : 0; return <tr key={`party-mode-${r.id}`}><td style={td}>{r.name}</td><td style={td}>{num(p.legsWon ?? p.wins)}</td><td style={td}>{num(p.errorsTaken ?? p.errors)}</td><td style={td}>{num(p.challengesPassed)}/{num(p.challengesFailed)}</td><td style={td}>{num(p.callerSuccesses)}/{num(p.callerAttempts)}</td><td style={td}>{num(p.copySuccesses)}/{num(p.copyAttempts)}</td><td style={td}>{num(p.bestSuccessStreak)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bestVisit)}</td><td style={td}>{num(p.darts)}</td><td style={td}>{rate}%</td></tr>; })}</tbody>
+          </table>
+        ) : mode === "menteur" ? (
+          <table style={{ width: "100%", minWidth: 1080, borderCollapse: "collapse", fontSize: 11.5 }}>
+            <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Manches</th><th style={th}>Enchères</th><th style={th}>Max bid</th><th style={th}>MENTEUR</th><th style={th}>Appels gagnés</th><th style={th}>Preuves</th><th style={th}>Mensonges</th><th style={th}>Série</th><th style={th}>S/D/T</th><th style={th}>BULL/DBULL</th><th style={th}>MISS</th><th style={th}>Best</th><th style={th}>Flèches</th><th style={th}>Taux preuve</th></tr></thead>
+            <tbody>{rows.map((r) => { const p = r.raw || {}; const attempted = num(p.contractsAttempted); const proven = num(p.contractsProven); const rate = attempted > 0 ? Math.round((proven / attempted) * 1000) / 10 : 0; return <tr key={`party-mode-${r.id}`}><td style={td}>{r.name}</td><td style={td}>{num(p.legsWon ?? p.wins)}</td><td style={td}>{num(p.raises)}</td><td style={td}>{num(p.maxBid)}</td><td style={td}>{num(p.liarCalls)}</td><td style={td}>{num(p.successfulCalls)}</td><td style={td}>{proven}/{attempted}</td><td style={td}>{num(p.liesCaught)}</td><td style={td}>{num(p.bestProofStreak)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bestVisit)}</td><td style={td}>{num(p.darts)}</td><td style={td}>{rate}%</td></tr>; })}</tbody>
+          </table>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Flèches</th><th style={th}>{MODE_META[mode].primary}</th><th style={th}>{MODE_META[mode].secondary}</th><th style={th}>{MODE_META[mode].tertiary}</th></tr></thead>
+            <tbody>{rows.map((r) => <tr key={`party-mode-${r.id}`}><td style={td}>{r.name}</td><td style={td}>{num(pick(r.raw?.darts, r.raw?.dartsThrown), 0)}</td><td style={td}>{r.primary}</td><td style={td}>{r.secondary}</td><td style={td}>{r.tertiary}</td></tr>)}</tbody>
+          </table>
+        )}
       </div>
     </section>
   </>;

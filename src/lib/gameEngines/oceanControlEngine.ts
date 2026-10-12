@@ -40,6 +40,7 @@ export type OceanControlConfigPayload = {
   duplicateConsumesDart: boolean;
   randomOrder: boolean;
   scoreInputMethod: OceanControlScoreInputMethod;
+  sfxEnabled?: boolean;
 };
 
 export type OceanControlShip = {
@@ -257,6 +258,7 @@ export function normalizeOceanControlConfig(raw: Partial<OceanControlConfigPaylo
     duplicateConsumesDart: raw?.duplicateConsumesDart !== false,
     randomOrder: Boolean(raw?.randomOrder),
     scoreInputMethod,
+    sfxEnabled: raw?.sfxEnabled !== false,
   };
 }
 

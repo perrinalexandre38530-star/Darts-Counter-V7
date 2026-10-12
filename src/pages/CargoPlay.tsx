@@ -36,6 +36,8 @@ import tickerCargo from "../assets/tickers/ticker_cargo.png";
 import CargoLoadStatus from "../components/cargo/CargoLoadStatus";
 import CargoManifestStrip from "../components/cargo/CargoManifestStrip";
 import CargoTeamStrip from "../components/cargo/CargoTeamStrip";
+import { buildCargoVisualSnapshot } from "../lib/gameEngines/cargoVisuals";
+import { getCargoContractArt, getCargoHeroArt, getCargoStageBadge, getCargoSupportArt } from "../components/cargo/cargoArt";
 import CargoEnd from "./CargoEnd";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
@@ -154,91 +156,46 @@ function TruckVisual({ state, stats }: any) {
   const value = parcel ? Number(stats?.parcelsDelivered || 0) : Number(stats?.totalWeight || 0);
   const target = parcel ? Math.max(30, state.config.rounds * 5) : state.config.variant === "exact_load" ? Number(state.config.targetWeight || capacity) : capacity;
   const fill = Math.min(100, value / Math.max(1, target) * 100);
-  return <div style={{ position: "relative", height: 102, overflow: "hidden", borderRadius: 17, background: "radial-gradient(circle at 74% 15%,rgba(255,155,66,.15),transparent 33%),linear-gradient(180deg,#1b2026,#090c10)", border: "1px solid rgba(255,255,255,.09)" }}>
-    <div style={{ position: "absolute", left: 11, top: 9, zIndex: 2 }}>
+  const snapshot = buildCargoVisualSnapshot(state, stats);
+  const badgeArt = getCargoStageBadge(snapshot.stage);
+  const supportArt = getCargoSupportArt({ parcel, stage: snapshot.stage });
+  return <div style={{ position: "relative", height: 118, overflow: "hidden", borderRadius: 17, background: "radial-gradient(circle at 74% 15%,rgba(255,155,66,.15),transparent 33%),linear-gradient(180deg,#1b2026,#090c10)", border: "1px solid rgba(255,255,255,.09)" }}>
+    <div style={{ position: "absolute", left: 11, top: 9, zIndex: 3 }}>
       <div style={{ color: parcel ? BLUE : ORANGE, fontSize: 8.5, fontWeight: 1100, letterSpacing: .75 }}>{parcel ? "TOURNÉE DE LIVRAISON" : "QUAI DE CHARGEMENT"}</div>
-      <div style={{ marginTop: 2, color: "rgba(255,255,255,.52)", fontSize: 7.5 }}>{parcel ? "Colis sécurisés et bonus de série" : "Palettes chargées dans la remorque"}</div>
+      <div style={{ marginTop: 2, color: "rgba(255,255,255,.52)", fontSize: 7.5 }}>{snapshot.stageLabel}</div>
     </div>
-    <div style={{ position: "absolute", right: 12, top: 9, zIndex: 2, textAlign: "right" }}>
+    <div style={{ position: "absolute", right: 12, top: 9, zIndex: 3, textAlign: "right" }}>
       <div style={{ color: fill > 90 ? RED : GREEN, fontSize: 13, fontWeight: 1100 }}>{value} <span style={{ fontSize: 8 }}>{parcel ? "COLIS" : "KG"}</span></div>
       <div style={{ color: SOFT, fontSize: 7.5 }}>{Math.round(fill)}% de l’objectif visuel</div>
     </div>
-    <div style={{ position: "absolute", inset: "20px 4px -7px" }}><CargoTruckSvg parcel={parcel} pallets={parcel ? stats?.parcelDeliveries : stats?.pallets} fill={fill} /></div>
+    <div style={{ position: "absolute", inset: "26px 88px -8px 6px" }}><CargoTruckSvg parcel={parcel} pallets={parcel ? stats?.parcelDeliveries : stats?.pallets} fill={fill} /></div>
+    <div style={{ position: "absolute", right: 4, top: 28, width: 82, height: 82, display: "grid", placeItems: "center", opacity: .96 }}><img src={badgeArt} alt="Statut" style={{ width: 82, height: 82, objectFit: "contain", display: "block", filter: "drop-shadow(0 10px 18px rgba(0,0,0,.4))" }} /></div>
+    <div style={{ position: "absolute", left: 8, bottom: 0, width: 78, height: 58, display: "grid", placeItems: "center", opacity: .9 }}><img src={supportArt} alt="Support cargo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }} /></div>
   </div>;
 }
 
 function ContractCard({ contract, active, progress = 0, detailed = false }: any) {
   const pctProgress = Math.min(100, progress / Math.max(1, Number(contract.targetCount || 1)) * 100);
-  return <div style={{ minWidth: 0, borderRadius: detailed ? 16 : 13, padding: detailed ? 11 : 8, background: active ? "linear-gradient(135deg,rgba(255,155,66,.16),rgba(255,255,255,.025))" : "rgba(255,255,255,.025)", border: `1px solid ${active ? ORANGE : contract.fragile ? RED : contract.urgent ? GOLD : "rgba(255,255,255,.08)"}`, boxShadow: active ? `0 0 18px ${ORANGE}22` : "none" }}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 7, alignItems: "flex-start" }}>
-      <div style={{ minWidth: 0 }}><strong style={{ color: active ? ORANGE : "#fff", fontSize: detailed ? 11 : 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{contract.icon} {contract.label}</strong><div style={{ color: SOFT, fontSize: detailed ? 8.5 : 7, marginTop: 2 }}>{contract.cargoType}</div></div>
-      <div style={{ textAlign: "right", flex: "0 0 auto" }}><div style={{ color: GOLD, fontSize: detailed ? 16 : 10, fontWeight: 1100 }}>{contract.finalWeight}</div><div style={{ color: SOFT, fontSize: 7 }}>KG</div></div>
-    </div>
-    <div style={{ marginTop: detailed ? 9 : 5, display: "flex", justifyContent: "space-between", gap: 7, alignItems: "center" }}><span style={{ color: GREEN, fontWeight: 1100, fontSize: detailed ? 17 : 13 }}>{cargoContractTargetLabel(contract)}</span><span style={{ color: SOFT, fontSize: detailed ? 8 : 7 }}>{active ? `${progress}/${contract.targetCount}` : contract.bonusPercent ? `BONUS +${contract.bonusPercent}%` : "STANDARD"}</span></div>
-    {detailed ? <div style={{ marginTop: 8, height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ height: "100%", width: `${active ? pctProgress : 0}%`, background: `linear-gradient(90deg,${GREEN},${ORANGE})`, transition: "width .2s ease" }} /></div> : null}
-    <div style={{ marginTop: detailed ? 8 : 3, display: "flex", gap: 5, flexWrap: "wrap" }}>{contract.fragile ? <span style={{ color: RED, fontSize: 7, fontWeight: 1000 }}>FRAGILE</span> : null}{contract.urgent ? <span style={{ color: GOLD, fontSize: 7, fontWeight: 1000 }}>URGENT</span> : null}{contract.expiresAtRound ? <span style={{ color: BLUE, fontSize: 7, fontWeight: 1000 }}>EXPIRE T{contract.expiresAtRound}</span> : null}</div>
-  </div>;
-}
-
-function QuickButton({ icon, label, value, color, onClick, disabled = false }: any) {
-  return <button type="button" onClick={onClick} disabled={disabled} style={{ minWidth: 0, height: "100%", minHeight: 0, borderRadius: 15, border: `1px solid ${disabled ? "rgba(255,255,255,.055)" : `${color}42`}`, background: disabled ? "rgba(255,255,255,.012)" : `linear-gradient(180deg,${color}10,rgba(255,255,255,.018))`, color: disabled ? "rgba(255,255,255,.24)" : "#fff", padding: "6px 3px 5px", cursor: disabled ? "default" : "pointer", boxShadow: disabled ? "none" : `inset 0 1px rgba(255,255,255,.03),0 0 15px ${color}0d`, display: "grid", placeItems: "center", alignContent: "center" }}>
-    <div style={{ color: disabled ? "rgba(255,255,255,.20)" : color, fontSize: 16, lineHeight: 1, fontWeight: 950, textShadow: disabled ? "none" : `0 0 10px ${color}55` }}>{icon}</div>
-    <div style={{ marginTop: 4, fontSize: 8.1, fontWeight: 1050, letterSpacing: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{label}</div>
-    {value ? <div style={{ marginTop: 2, color: disabled ? "rgba(255,255,255,.18)" : "rgba(255,255,255,.48)", fontSize: 7.1, fontWeight: 850, lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{value}</div> : null}
-  </button>;
-}
-
-function cargoDartLabel(dart?: UiDart) {
-  if (!dart) return "—";
-  if (dart.v === 0) return "MISS";
-  if (dart.v === 25) return dart.mult === 2 ? "DBULL" : "BULL";
-  return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
-}
-
-function CargoAiryKeypad({
-  currentThrow, multiplier, onSimple, onDouble, onTriple, onBackspace, onCancel, onNumber, onBull, onValidate, centerSlot, noticeSlot, validateAttention = false, disabled = false,
-}: any) {
-  const rows = [[0,1,2,3,4,5,6],[7,8,9,10,11,12,13],[14,15,16,17,18,19,20]];
-  return <div className="cargo-airy-keypad" style={{ width: "100%", height: "100%", minHeight: 0, display: "grid", gridTemplateRows: "42px 52px minmax(16px,auto) minmax(205px,1fr) 58px", gap: 11, padding: "12px", boxSizing: "border-box", borderRadius: 20, background: "linear-gradient(180deg,rgba(22,22,23,.85),rgba(12,12,14,.95))", border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 10px 30px rgba(0,0,0,.35)", opacity: disabled ? .50 : 1, pointerEvents: disabled ? "none" : "auto", overflow: "hidden", userSelect: "none" }}>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, alignItems: "stretch" }}>
-      {[0,1,2].map((index) => <div key={index} style={{ minWidth: 0, display: "grid", placeItems: "center", borderRadius: 14, background: "rgba(0,0,0,.48)", border: "1px solid rgba(255,255,255,.08)", color: index === 0 ? "#eec7ff" : index === 1 ? "#cfe6ff" : "#ffe7c0", fontSize: 10.8, fontWeight: 950, letterSpacing: .5, boxShadow: "0 0 18px rgba(250,213,75,.08)" }}>{cargoDartLabel(currentThrow[index])}</div>)}
-    </div>
-
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-      <button type="button" aria-pressed={multiplier === 2} onClick={onDouble} style={{ minWidth: 0, borderRadius: 16, border: `1px solid ${multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)"}`, background: "rgba(46,150,193,.20)", color: "#bfeaff", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: multiplier === 2 ? "0 0 18px rgba(86,201,255,.18)" : "none" }}>DOUBLE</button>
-      <button type="button" aria-pressed={multiplier === 3} onClick={onTriple} style={{ minWidth: 0, borderRadius: 16, border: `1px solid ${multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)"}`, background: "rgba(179,68,151,.20)", color: "#ffccff", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: multiplier === 3 ? "0 0 18px rgba(217,140,255,.18)" : "none" }}>TRIPLE</button>
-      <button type="button" onClick={onCancel} onContextMenu={(event) => { event.preventDefault(); onBackspace?.(); }} aria-label="Annuler" title="Annuler" style={{ minWidth: 0, borderRadius: 16, border: "1px solid rgba(255,180,0,.30)", background: "linear-gradient(180deg,#ffc63a,#ffaf00)", color: "#1a1a1a", fontSize: 10.5, fontWeight: 1050, cursor: "pointer", boxShadow: "0 9px 20px rgba(255,170,0,.20)" }}>ANNULER</button>
-    </div>
-
-    <div style={{ minWidth: 0, display: "grid", placeItems: "center", overflow: "hidden" }}>{noticeSlot || <span style={{ color: "rgba(255,255,255,.28)", fontSize: 7.8, fontWeight: 850 }}>SIMPLE PAR DÉFAUT · D/T POUR LA PROCHAINE FLÉCHETTE</span>}</div>
-
-    <div style={{ minHeight: 0, display: "grid", gridTemplateRows: "repeat(3,minmax(0,1fr))", gap: 9 }}>
-      {rows.map((row, rowIndex) => <div key={rowIndex} style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 8 }}>
-        {row.map((number) => <button key={number} type="button" onClick={() => onNumber(number)} title={number === 0 ? "MISS" : String(number)} style={{ minWidth: 0, minHeight: 0, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: "clamp(15px,4.2vw,20px)", fontWeight: 900, cursor: "pointer", boxShadow: "inset 0 1px rgba(255,255,255,.025)", touchAction: "manipulation" }}>{number}</button>)}
-      </div>)}
-    </div>
-
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(88px,.8fr) minmax(64px,.44fr) minmax(120px,1fr)", gap: 10, alignItems: "stretch" }}>
-      <button type="button" onClick={onBull} style={{ minWidth: 0, borderRadius: 16, border: "1px solid rgba(139,224,184,.18)", background: "rgba(22,92,66,.35)", color: "#8be0b8", fontSize: 12.5, fontWeight: 1050, cursor: "pointer" }}>BULL</button>
-      <div style={{ display: "grid", placeItems: "center", minWidth: 0 }}>{centerSlot}</div>
-      <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{ minWidth: 0, borderRadius: 16, border: currentThrow.length ? "1px solid rgba(255,180,0,.30)" : "1px solid rgba(255,255,255,.06)", background: currentThrow.length ? (validateAttention ? "linear-gradient(180deg,#ffffff,#ffd666)" : "linear-gradient(180deg,#ffc63a,#ffaf00)") : "rgba(255,255,255,.035)", color: currentThrow.length ? "#1a1a1a" : "rgba(255,255,255,.24)", fontSize: 11.5, fontWeight: 1100, letterSpacing: .55, cursor: currentThrow.length ? "pointer" : "default", boxShadow: currentThrow.length ? (validateAttention ? "0 0 24px rgba(255,255,255,.46),0 10px 22px rgba(255,170,0,.24)" : "0 10px 22px rgba(255,170,0,.24)") : "none" }}>VALIDER</button>
+  const art = getCargoContractArt(contract);
+  const borderColor = active ? ORANGE : contract.fragile ? RED : contract.urgent ? GOLD : "rgba(255,255,255,.08)";
+  return <div style={{ minWidth: 0, borderRadius: detailed ? 16 : 13, padding: detailed ? 11 : 8, background: active ? "linear-gradient(135deg,rgba(255,155,66,.16),rgba(255,255,255,.025))" : "rgba(255,255,255,.025)", border: `1px solid ${borderColor}`, boxShadow: active ? `0 0 18px ${ORANGE}22` : "none" }}>
+    <div style={{ display: "grid", gridTemplateColumns: detailed ? "92px minmax(0,1fr)" : "62px minmax(0,1fr)", gap: detailed ? 10 : 8, alignItems: "center" }}>
+      <div style={{ position: "relative", height: detailed ? 104 : 62, borderRadius: detailed ? 14 : 10, overflow: "hidden", background: "radial-gradient(circle at 50% 0%,rgba(255,180,0,.14),transparent 45%),linear-gradient(180deg,rgba(0,0,0,.22),rgba(255,255,255,.02))", border: "1px solid rgba(255,255,255,.06)", display: "grid", placeItems: "center" }}>
+        <img src={art} alt={contract.label} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", filter: "drop-shadow(0 8px 16px rgba(0,0,0,.35))" }} />
+        <div style={{ position: "absolute", left: 6, top: 6, padding: "2px 5px", borderRadius: 999, background: "rgba(0,0,0,.52)", color: GOLD, fontSize: 6.2, fontWeight: 1100, letterSpacing: .45 }}>{contract.icon} {cargoContractTargetLabel(contract)}</div>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 7, alignItems: "flex-start" }}>
+          <div style={{ minWidth: 0 }}><strong style={{ color: active ? ORANGE : "#fff", fontSize: detailed ? 11 : 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{contract.label}</strong><div style={{ color: SOFT, fontSize: detailed ? 8.5 : 7, marginTop: 2 }}>{contract.cargoType}</div></div>
+          <div style={{ textAlign: "right", flex: "0 0 auto" }}><div style={{ color: GOLD, fontSize: detailed ? 16 : 10, fontWeight: 1100 }}>{contract.finalWeight}</div><div style={{ color: SOFT, fontSize: 7 }}>KG</div></div>
+        </div>
+        <div style={{ marginTop: detailed ? 9 : 5, display: "flex", justifyContent: "space-between", gap: 7, alignItems: "center" }}><span style={{ color: GREEN, fontWeight: 1100, fontSize: detailed ? 17 : 13 }}>{cargoContractTargetLabel(contract)}</span><span style={{ color: SOFT, fontSize: detailed ? 8 : 7 }}>{active ? `${progress}/${contract.targetCount}` : contract.bonusPercent ? `BONUS +${contract.bonusPercent}%` : "STANDARD"}</span></div>
+        {detailed ? <div style={{ marginTop: 8, height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ height: "100%", width: `${active ? pctProgress : 0}%`, background: `linear-gradient(90deg,${GREEN},${ORANGE})`, transition: "width .2s ease" }} /></div> : null}
+        <div style={{ marginTop: detailed ? 8 : 3, display: "flex", gap: 5, flexWrap: "wrap" }}>{contract.fragile ? <span style={{ color: RED, fontSize: 7, fontWeight: 1000 }}>FRAGILE</span> : null}{contract.urgent ? <span style={{ color: GOLD, fontSize: 7, fontWeight: 1000 }}>URGENT</span> : null}{contract.expiresAtRound ? <span style={{ color: BLUE, fontSize: 7, fontWeight: 1000 }}>EXPIRE T{contract.expiresAtRound}</span> : null}</div>
+      </div>
     </div>
   </div>;
 }
-
-
-function TruckMiniIcon({ size = 23 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M3 6h11v10H3V6Zm11 4h3.6l3.4 3.6V16h-7v-6Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    <circle cx="7" cy="17.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-    <circle cx="18" cy="17.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-  </svg>;
-}
-
-function Kpi({ label, value, detail, color = ORANGE }: any) {
-  return <div style={{ minWidth: 0, borderRadius: 14, padding: 10, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 7.5, fontWeight: 1000, letterSpacing: .55 }}>{label}</div><div style={{ marginTop: 3, color, fontSize: 20, fontWeight: 1100, lineHeight: 1 }}>{value}</div>{detail ? <div style={{ marginTop: 4, color: "rgba(255,255,255,.42)", fontSize: 7.5 }}>{detail}</div> : null}</div>;
-}
-
 
 function EventToast({ toast, onClose }: { toast: Exclude<CargoToast, null>; onClose: () => void }) {
   return <button type="button" onClick={onClose} aria-label="Fermer la notification CARGO" style={{ position: "fixed", zIndex: 9997, top: "calc(env(safe-area-inset-top) + 84px)", left: "50%", transform: "translateX(-50%)", width: "min(420px,calc(100% - 22px))", minHeight: 58, padding: "8px 10px", borderRadius: 16, border: `1px solid ${toast.color}77`, background: "linear-gradient(180deg,rgba(20,23,28,.98),rgba(7,9,12,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.58),0 0 22px ${toast.color}22`, display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 8, alignItems: "center", color: "#fff", textAlign: "left", cursor: "pointer", animation: "cargo-toast-in .24s ease-out" }}>
@@ -588,11 +545,19 @@ function TruckModal({ state, stats, activeContract, onClose }: any) {
   const target = parcel ? Math.max(30, state.config.rounds * 5) : state.config.variant === "exact_load" ? Number(state.config.targetWeight || capacity) : capacity;
   const fill = Math.min(100, value / Math.max(1, target) * 100);
   const activeSeries = stats?.currentSeries;
+  const snapshot = buildCargoVisualSnapshot(state, stats);
+  const badgeArt = getCargoStageBadge(snapshot.stage);
+  const supportArt = getCargoSupportArt({ parcel, stage: snapshot.stage });
+  const contractArt = getCargoHeroArt({ stage: snapshot.stage, parcel, activeContract });
   return <OverlayShell title={parcel ? "VÉHICULE DE LIVRAISON" : "CAMION & CHARGEMENT"} subtitle={`${Math.round(fill)}% de l’objectif · ${value} ${parcel ? "colis" : "kg"}`} color={ORANGE} onClose={onClose}>
     <div style={{ height: 190, overflow: "hidden", borderRadius: 18, background: "radial-gradient(circle at 76% 12%,rgba(255,155,66,.18),transparent 34%),linear-gradient(180deg,#1b2026,#090c10)", border: "1px solid rgba(255,255,255,.09)", position: "relative" }}>
-      <div style={{ position: "absolute", inset: "22px 4px -4px" }}><CargoTruckSvg parcel={parcel} pallets={parcel ? stats?.parcelDeliveries : stats?.pallets} fill={fill} /></div>
-      <div style={{ position: "absolute", left: 12, top: 10, color: parcel ? BLUE : ORANGE, fontSize: 9, fontWeight: 1100, letterSpacing: .7 }}>{parcel ? "TOURNÉE EN COURS" : "QUAI DE CHARGEMENT"}</div>
+      <div style={{ position: "absolute", inset: "22px 88px -4px 4px" }}><CargoTruckSvg parcel={parcel} pallets={parcel ? stats?.parcelDeliveries : stats?.pallets} fill={fill} /></div>
+      <div style={{ position: "absolute", left: 12, top: 10, color: parcel ? BLUE : ORANGE, fontSize: 9, fontWeight: 1100, letterSpacing: .7 }}>{snapshot.stageLabel}</div>
       <div style={{ position: "absolute", right: 12, top: 8, textAlign: "right" }}><div style={{ color: fill > 90 ? RED : GREEN, fontSize: 22, fontWeight: 1200 }}>{value}</div><div style={{ color: SOFT, fontSize: 8 }}>{parcel ? "COLIS" : `KG / ${target}`}</div></div>
+      <div style={{ position: "absolute", right: 6, bottom: 8, width: 92, height: 92, display: "grid", placeItems: "center" }}><img src={badgeArt} alt="Badge chargement" style={{ width: 92, height: 92, objectFit: "contain", display: "block", filter: "drop-shadow(0 12px 18px rgba(0,0,0,.4))" }} /></div>
+    </div>
+    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+      {[{ label: "STATUT", src: badgeArt }, { label: parcel ? "COLIS" : "PALETTE", src: supportArt }, { label: activeContract ? "CONTRAT ACTIF" : "CARGO", src: contractArt }].map((item) => <div key={item.label} style={{ ...panel("rgba(255,255,255,.08)"), padding: 8, display: "grid", placeItems: "center", minHeight: 106 }}><img src={item.src} alt={item.label} style={{ width: "100%", maxHeight: 78, objectFit: "contain", display: "block" }} /><div style={{ marginTop: 6, color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>{item.label}</div></div>)}
     </div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
       <Kpi label={parcel ? "LIVRAISONS" : "PALETTES"} value={parcel ? Number(stats?.parcelDeliveries || 0) : Number(stats?.pallets || 0)} detail={parcel ? `${Number(stats?.parcelBonuses || 0)} colis bonus` : `${Number(stats?.completedContracts || 0)} contrats terminés`} color={GOLD} />
@@ -603,8 +568,10 @@ function TruckModal({ state, stats, activeContract, onClose }: any) {
     {state.config.variant === "long_haul" ? <div style={{ ...panel(`${BLUE}44`), marginTop: 10, padding: 10 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}><strong style={{ color: BLUE, fontSize: 9 }}>ITINÉRAIRE LONG HAUL</strong><span style={{ color: SOFT, fontSize: 8 }}>Étape {state.routeStage + 1}/{state.routeStages.length}</span></div><div style={{ display: "grid", gridTemplateColumns: `repeat(${state.routeStages.length},minmax(0,1fr))`, gap: 4 }}>{state.routeStages.map((stage: string, index: number) => <div key={stage} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, textAlign: "center", background: index <= state.routeStage ? `${BLUE}14` : "rgba(255,255,255,.025)", border: `1px solid ${index === state.routeStage ? BLUE : index < state.routeStage ? GREEN + "55" : "rgba(255,255,255,.07)"}` }}><div style={{ color: index < state.routeStage ? GREEN : index === state.routeStage ? BLUE : SOFT, fontSize: 12 }}>{index < state.routeStage ? "✓" : index === state.routeStage ? "●" : "○"}</div><div style={{ marginTop: 3, color: index <= state.routeStage ? "#dfe5ed" : SOFT, fontSize: 6.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage}</div></div>)}</div></div> : null}
     <div style={{ ...panel(`${ORANGE}44`), marginTop: 10, padding: 11 }}>
       <div style={{ color: ORANGE, fontSize: 9, fontWeight: 1100 }}>CHARGEMENT ACTIF</div>
-      <div style={{ marginTop: 5, color: "#fff", fontSize: 15, fontWeight: 1100 }}>{activeContract?.label || (activeSeries ? activeSeries.labels?.[0] : null) || "Aucun chargement en cours"}</div>
-      <div style={{ marginTop: 4, color: SOFT, fontSize: 9 }}>{activeSeries ? `Progression ${activeSeries.count}/${activeContract?.targetCount || (parcel ? 5 : state.config.maxSeries)} · ${activeSeries.rawWeight || 0}${parcel ? " colis en série" : " kg provisoires"}` : "Sélectionne un contrat dans le manifeste puis commence la série correspondante."}</div>
+      <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+        <div style={{ width: 72, height: 72, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", display: "grid", placeItems: "center", overflow: "hidden" }}><img src={contractArt} alt="Contrat actif" style={{ width: 72, height: 72, objectFit: "contain", display: "block" }} /></div>
+        <div><div style={{ color: "#fff", fontSize: 15, fontWeight: 1100 }}>{activeContract?.label || (activeSeries ? activeSeries.labels?.[0] : null) || "Aucun chargement en cours"}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9 }}>{activeSeries ? `Progression ${activeSeries.count}/${activeContract?.targetCount || (parcel ? 5 : state.config.maxSeries)} · ${activeSeries.rawWeight || 0}${parcel ? " colis en série" : " kg provisoires"}` : "Sélectionne un contrat dans le manifeste puis commence la série correspondante."}</div></div>
+      </div>
     </div>
   </OverlayShell>;
 }

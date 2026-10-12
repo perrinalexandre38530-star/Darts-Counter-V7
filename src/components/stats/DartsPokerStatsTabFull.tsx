@@ -86,6 +86,14 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
   const cardsPerDart = darts > 0 ? cards / darts : 0;
   const avgRoundRank = rows.length ? rows.reduce((total: number, row: any) => total + n(row.averageRoundRank), 0) / rows.length : 0;
   const avgHandConsistency = rows.length ? rows.reduce((total: number, row: any) => total + n(row.handConsistencyIndex), 0) / rows.length : 0;
+  const leadRounds = sum("leadRounds");
+  const dealerRounds = sum("dealerRounds");
+  const dealerWins = sum("dealerWins");
+  const openingWins = rows.filter((row: any) => row?.openingRoundWin).length;
+  const closingWins = rows.filter((row: any) => row?.closingRoundWin).length;
+  const observedRounds = Math.max(1, handsPlayed);
+  const leadRate = leadRounds / observedRounds * 100;
+  const dealerWinRate = dealerRounds > 0 ? dealerWins / dealerRounds * 100 : 0;
   const recentTrend = matches.slice(0, 12).reverse();
   const bestRow = rows.slice().sort((a: any, b: any) => n(b?.bestHandScore) - n(a?.bestHandScore))[0] || null;
   const bestVisualHand = matches.flatMap((item: any) => (item.rounds || []).flatMap((round: any) => (round?.rows || []).filter((roundRow: any) => String(roundRow?.playerId) === String(playerId)).map((roundRow: any) => ({ round, roundRow, record: item.record }))))
@@ -94,6 +102,22 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
     ["Carte haute", sum("highCardHands"), "#aeb2c3"],["Paire", sum("pairs"), BLUE],["Double paire", sum("twoPairs"), GREEN],["Brelan", sum("threeOfAKinds"), GOLD],["Suite", sum("straights"), "#a78bfa"],["Couleur", sum("flushes"), PINK],["Full", sum("fullHouses"), RED],["Carré", sum("fourOfAKinds"), ORANGE],["Quinte flush", sum("straightFlushes"), "#fff"],["Royale", sum("royalFlushes"), GOLD],
   ];
   const categoryMax = Math.max(1, ...categories.map((item) => n(item[1])));
+  const achievements = [
+    { icon: "♠", label: "PREMIÈRE DONNE", detail: "Terminer une partie Darts Poker", value: games, target: 1, color: GOLD },
+    { icon: "♦", label: "HABITUÉ DE LA TABLE", detail: "Jouer 10 parties", value: games, target: 10, color: BLUE },
+    { icon: "♛", label: "SHARK", detail: "Remporter 10 parties", value: wins, target: 10, color: GREEN },
+    { icon: "◎", label: "SNIPER", detail: "Atteindre 75 % de précision sur 60 darts", value: darts >= 60 ? (hits / Math.max(1, darts)) * 100 : 0, target: 75, color: ORANGE, lockedReason: darts < 60 ? `${darts}/60 darts` : null },
+    { icon: "◆", label: "CONTRACT MASTER", detail: "Réussir 25 contrats", value: contracts, target: 25, color: RED },
+    { icon: "✦", label: "POWER PLAYER", detail: "Utiliser 25 pouvoirs", value: powersUsed, target: 25, color: PINK },
+    { icon: "★", label: "JOKER MASTER", detail: "Obtenir 10 Jokers", value: jokers, target: 10, color: GOLD },
+    { icon: "♥", label: "MAIN PREMIUM", detail: "Obtenir 10 mains Couleur+", value: premiumHands, target: 10, color: RED },
+    { icon: "♣", label: "LEADER DE TABLE", detail: "Être leader sur 50 % des manches", value: leadRate, target: 50, color: BLUE },
+    { icon: "●", label: "DEALER GAGNANT", detail: "Gagner 5 manches en tant que dealer", value: dealerWins, target: 5, color: GREEN },
+    { icon: "↗", label: "CLOSER", detail: "Gagner la dernière manche de 5 parties", value: closingWins, target: 5, color: ORANGE },
+    { icon: "♚", label: "ROYAL", detail: "Obtenir une quinte flush royale", value: sum("royalFlushes"), target: 1, color: GOLD },
+  ];
+  const unlockedAchievements = achievements.filter((badge: any) => n(badge.value) >= n(badge.target) && !badge.lockedReason).length;
+
   const recordsRows = [
     ["Meilleur score de partie", matches.slice().sort((a:any,b:any)=>n(b.row.points)-n(a.row.points))[0], (m:any)=>`${fmt(m?.row?.points)} pts`, GOLD],
     ["Meilleure précision", matches.slice().sort((a:any,b:any)=>n(b.row.accuracy)-n(a.row.accuracy))[0], (m:any)=>pct(m?.row?.accuracy), GREEN],
@@ -105,6 +129,8 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
     ["Meilleure capture marché", matches.slice().sort((a:any,b:any)=>n(b.row.marketCaptureRate)-n(a.row.marketCaptureRate))[0], (m:any)=>pct(m?.row?.marketCaptureRate), BLUE],
     ["Meilleure constance", matches.slice().sort((a:any,b:any)=>n(b.row.handConsistencyIndex)-n(a.row.handConsistencyIndex))[0], (m:any)=>pct(m?.row?.handConsistencyIndex), GREEN],
     ["Série contrats", matches.slice().sort((a:any,b:any)=>n(b.row.bestContractStreak)-n(a.row.bestContractStreak))[0], (m:any)=>`${fmt(m?.row?.bestContractStreak)} manches`, RED],
+    ["Leadership", matches.slice().sort((a:any,b:any)=>n(b.row.leadRate)-n(a.row.leadRate))[0], (m:any)=>pct(m?.row?.leadRate), BLUE],
+    ["Victoires dealer", matches.slice().sort((a:any,b:any)=>n(b.row.dealerWins)-n(a.row.dealerWins))[0], (m:any)=>`${fmt(m?.row?.dealerWins)}/${fmt(m?.row?.dealerRounds)}`, GOLD],
   ];
 
   return <div style={{ width: "100%", maxWidth: 1040, margin: "0 auto" }}>
@@ -152,6 +178,35 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
         <Kpi label="Premium rate" value={pct(premiumHands,handsPlayed)} detail="Couleur ou mieux" color={RED} />
       </div></Section>
 
+      <Section title="Leadership & clutch" accent={BLUE} subtitle="Qui contrôle la table et comment tu termines les matchs"><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+        <Kpi label="Manches en tête" value={leadRounds} detail={pct(leadRate)} color={BLUE} />
+        <Kpi label="Victoires dealer" value={`${dealerWins}/${dealerRounds}`} detail={pct(dealerWinRate)} color={GOLD} />
+        <Kpi label="Openers gagnés" value={openingWins} detail={`${pct(openingWins,games)} des parties`} color={GREEN} />
+        <Kpi label="Closers gagnés" value={closingWins} detail={`${pct(closingWins,games)} des parties`} color={ORANGE} />
+        <Kpi label="Forme 3 manches" value={`${sum("lastThreeWins")} V`} detail={`${sum("lastThreePoints")} pts cumulés`} color={GREEN} />
+        <Kpi label="Lead moyen" value={pct(leadRate)} detail={`${leadRounds}/${handsPlayed} manches`} color={BLUE} />
+        <Kpi label="Dealer rate" value={pct(dealerWinRate)} detail="victoires / manches dealer" color={GOLD} />
+        <Kpi label="Série victoire max" value={max("bestRoundWinStreak")} detail="manches consécutives" color={RED} />
+      </div></Section>
+
+      <Section title={`Badges Darts Poker · ${unlockedAchievements}/${achievements.length}`} accent={GOLD} subtitle="Progression permanente du joueur">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 7 }}>
+          {achievements.map((badge: any) => {
+            const unlocked = n(badge.value) >= n(badge.target) && !badge.lockedReason;
+            const progress = badge.lockedReason ? Math.min(100, darts / 60 * 100) : Math.min(100, n(badge.value) / Math.max(1, n(badge.target)) * 100);
+            return <div key={badge.label} style={{ padding: 10, borderRadius: 14, border: `1px solid ${unlocked ? badge.color : "rgba(255,255,255,.09)"}55`, background: unlocked ? `${badge.color}0d` : "rgba(255,255,255,.022)", opacity: unlocked ? 1 : .72 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "30px minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
+                <div style={{ width: 29, height: 29, borderRadius: 9, display: "grid", placeItems: "center", color: unlocked ? badge.color : SOFT, border: `1px solid ${unlocked ? badge.color : "rgba(255,255,255,.12)"}55`, fontSize: 15 }}>{badge.icon}</div>
+                <div style={{ minWidth: 0 }}><div style={{ color: unlocked ? badge.color : "#c2c7d3", fontSize: 8.3, fontWeight: 1100 }}>{badge.label}</div><div style={{ color: SOFT, fontSize: 7.3, marginTop: 2 }}>{badge.detail}</div></div>
+                <div style={{ color: unlocked ? GREEN : SOFT, fontSize: 8, fontWeight: 1100 }}>{unlocked ? "DÉBLOQUÉ" : "EN COURS"}</div>
+              </div>
+              <div style={{ marginTop: 7, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${progress}%`, height: "100%", background: unlocked ? badge.color : `${badge.color}99`, borderRadius: 999 }} /></div>
+              <div style={{ marginTop: 3, color: "#737b8e", fontSize: 6.8, textAlign: "right" }}>{badge.lockedReason || `${fmt(Math.min(n(badge.value), n(badge.target)), badge.target === 75 ? 1 : 0)} / ${badge.target}${badge.target === 75 ? "%" : ""}`}</div>
+            </div>;
+          })}
+        </div>
+      </Section>
+
       <Section title="Heatmap cible · secteurs 1 à 20" accent={BLUE} subtitle="S / D / T agrégés sur la période sélectionnée">
         <div style={{ display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))", gap:6 }}>
           {sectorHeatmap.map((sector:any) => {
@@ -195,7 +250,7 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
 
       <Section title="Records personnels" accent={ORANGE}><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 7 }}>{recordsRows.map(([label,item,value,color]: any) => { const date = item && playedAt(item.record) ? new Date(playedAt(item.record)).toLocaleDateString("fr-FR") : "—"; return <div key={label} style={{ padding: 9, borderRadius: 13, border: `1px solid ${color}35`, background: `${color}08` }}><div style={{ color: SOFT, fontSize: 7.5, textTransform: "uppercase", fontWeight: 1000 }}>{label}</div><div style={{ color, fontSize: 16, fontWeight: 1100, marginTop: 3 }}>{value(item)}</div><div style={{ color: "#707789", fontSize: 7.5, marginTop: 2 }}>{date}</div></div>; })}</div></Section>
 
-      <Section title="Parties récentes" accent={GOLD}><div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1580, borderCollapse: "collapse", fontSize: 9 }}><thead><tr style={{ color: GOLD, textAlign: "left" }}>{["Date","Rés.","Pts","Base","Mains","V","Contrats","Préc.","S/D/T","Bull/DB","Miss","Miss série","Zones","Capture","Cartes","Cartes/dart","Pouvoirs","Best","Constance","Streak"].map((x)=><th key={x} style={{ padding: "7px 8px", borderBottom: "1px solid rgba(255,255,255,.1)" }}>{x}</th>)}</tr></thead><tbody>{matches.slice(0,20).map(({record,row}:any,index:number)=>{ const won=didWin(record,row,String(playerId)); const date=playedAt(record)?new Date(playedAt(record)).toLocaleDateString("fr-FR"):"—"; return <tr key={record?.id||index}><td style={{padding:7,borderBottom:"1px solid rgba(255,255,255,.05)"}}>{date}</td><td style={{padding:7,color:won?GREEN:SOFT,fontWeight:1000}}>{won?"WIN":`#${n(row?.rank)||"—"}`}</td><td style={{padding:7,color:GOLD,fontWeight:1000}}>{fmt(row.points)}</td><td style={{padding:7}}>{fmt(row.basePoints)}</td><td style={{padding:7}}>{fmt(row.handsPlayed)}</td><td style={{padding:7}}>{fmt(row.handsWon)}</td><td style={{padding:7}}>{fmt(row.contractHits)}/{fmt(row.contractsAttempted)}</td><td style={{padding:7,color:BLUE}}>{pct(row.accuracy)}</td><td style={{padding:7}}>{row.singles}/{row.doubles}/{row.triples}</td><td style={{padding:7}}>{row.bulls}/{row.dbulls}</td><td style={{padding:7,color:row.misses?RED:GREEN}}>{row.misses}</td><td style={{padding:7}}>{row.bestMissStreak}</td><td style={{padding:7}}>{row.physicalSectorsTouched}/20</td><td style={{padding:7}}>{pct(row.marketCaptureRate)}</td><td style={{padding:7}}>{row.cardsCollected}</td><td style={{padding:7}}>{fmt(row.cardsPerDart,2)}</td><td style={{padding:7}}>{row.powersUsed}/{row.powersEarned}</td><td style={{padding:7,color:GOLD}}>{row.bestHandLabel||"—"}</td><td style={{padding:7}}>{pct(row.handConsistencyIndex)}</td><td style={{padding:7}}>{row.bestHitStreak}</td></tr>;})}</tbody></table></div></Section>
+      <Section title="Parties récentes" accent={GOLD}><div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1580, borderCollapse: "collapse", fontSize: 9 }}><thead><tr style={{ color: GOLD, textAlign: "left" }}>{["Date","Rés.","Pts","Base","Mains","V","Lead","Dealer","Closer","Contrats","Préc.","S/D/T","Bull/DB","Miss","Miss série","Zones","Capture","Cartes","Cartes/dart","Pouvoirs","Best","Constance","Streak"].map((x)=><th key={x} style={{ padding: "7px 8px", borderBottom: "1px solid rgba(255,255,255,.1)" }}>{x}</th>)}</tr></thead><tbody>{matches.slice(0,20).map(({record,row}:any,index:number)=>{ const won=didWin(record,row,String(playerId)); const date=playedAt(record)?new Date(playedAt(record)).toLocaleDateString("fr-FR"):"—"; return <tr key={record?.id||index}><td style={{padding:7,borderBottom:"1px solid rgba(255,255,255,.05)"}}>{date}</td><td style={{padding:7,color:won?GREEN:SOFT,fontWeight:1000}}>{won?"WIN":`#${n(row?.rank)||"—"}`}</td><td style={{padding:7,color:GOLD,fontWeight:1000}}>{fmt(row.points)}</td><td style={{padding:7}}>{fmt(row.basePoints)}</td><td style={{padding:7}}>{fmt(row.handsPlayed)}</td><td style={{padding:7}}>{fmt(row.handsWon)}</td><td style={{padding:7}}>{fmt(row.leadRounds)} ({pct(row.leadRate)})</td><td style={{padding:7}}>{fmt(row.dealerWins)}/{fmt(row.dealerRounds)}</td><td style={{padding:7,color:row.closingRoundWin?GREEN:SOFT}}>{row.closingRoundWin?"OUI":"—"}</td><td style={{padding:7}}>{fmt(row.contractHits)}/{fmt(row.contractsAttempted)}</td><td style={{padding:7,color:BLUE}}>{pct(row.accuracy)}</td><td style={{padding:7}}>{row.singles}/{row.doubles}/{row.triples}</td><td style={{padding:7}}>{row.bulls}/{row.dbulls}</td><td style={{padding:7,color:row.misses?RED:GREEN}}>{row.misses}</td><td style={{padding:7}}>{row.bestMissStreak}</td><td style={{padding:7}}>{row.physicalSectorsTouched}/20</td><td style={{padding:7}}>{pct(row.marketCaptureRate)}</td><td style={{padding:7}}>{row.cardsCollected}</td><td style={{padding:7}}>{fmt(row.cardsPerDart,2)}</td><td style={{padding:7}}>{row.powersUsed}/{row.powersEarned}</td><td style={{padding:7,color:GOLD}}>{row.bestHandLabel||"—"}</td><td style={{padding:7}}>{pct(row.handConsistencyIndex)}</td><td style={{padding:7}}>{row.bestHitStreak}</td></tr>;})}</tbody></table></div></Section>
     </>}
   </div>;
 }

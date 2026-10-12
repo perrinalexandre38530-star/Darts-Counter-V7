@@ -71,6 +71,76 @@ function getPlayerVisits(visits: any[], playerId: string) {
   return (Array.isArray(visits) ? visits : []).filter((visit: any) => String(visit?.playerId ?? visit?.id ?? "") === String(playerId));
 }
 
+function buildPokerCumulativeRace(rounds: any[]) {
+  const ordered = (Array.isArray(rounds) ? [...rounds] : []).sort((a, b) => pokerNum(a?.round) - pokerNum(b?.round));
+  const points: Record<string, number> = {};
+  return ordered.map((round: any, index: number) => {
+    (Array.isArray(round?.rows) ? round.rows : []).forEach((row: any) => {
+      const id = String(row?.playerId ?? row?.id ?? "");
+      if (!id) return;
+      points[id] = (points[id] || 0) + pokerNum(row?.pointsAwarded);
+    });
+    const entries = Object.entries(points).map(([id, value]) => ({ id, points: pokerNum(value) })).sort((a, b) => b.points - a.points || a.id.localeCompare(b.id));
+    const top = entries[0]?.points || 0;
+    const leaders = entries.filter((row) => row.points === top).map((row) => row.id);
+    const second = entries.find((row) => !leaders.includes(row.id))?.points ?? top;
+    return {
+      round: pokerNum(round?.round, index + 1),
+      dealerId: round?.dealerId ? String(round.dealerId) : null,
+      leaders,
+      leaderPoints: top,
+      margin: Math.max(0, top - second),
+      points: { ...points },
+    };
+  });
+}
+
+export function deriveDartsPokerMatchStory(rounds: any[] = []) {
+  const race = buildPokerCumulativeRace(rounds);
+  let leadChanges = 0;
+  let previous = "";
+  let largestLead = 0;
+  let lastLeaderChangeRound = race[0]?.round || 0;
+  const uniqueLeaders = new Set<string>();
+  race.forEach((step) => {
+    const key = [...step.leaders].sort().join("|");
+    step.leaders.forEach((id) => uniqueLeaders.add(id));
+    if (previous && key !== previous) {
+      leadChanges += 1;
+      lastLeaderChangeRound = step.round;
+    }
+    previous = key;
+    largestLead = Math.max(largestLead, pokerNum(step.margin));
+  });
+  const finalStep = race[race.length - 1] || null;
+  const finalLeaderIds = finalStep?.leaders || [];
+  let biggestComeback = 0;
+  finalLeaderIds.forEach((winnerId) => {
+    race.forEach((step) => {
+      const leaderPoints = pokerNum(step.leaderPoints);
+      const winnerPoints = pokerNum(step.points?.[winnerId]);
+      biggestComeback = Math.max(biggestComeback, Math.max(0, leaderPoints - winnerPoints));
+    });
+  });
+  const tiedRounds = (Array.isArray(rounds) ? rounds : []).filter((round: any) => (round?.winnerIds || []).length > 1).length;
+  const contractRounds = (Array.isArray(rounds) ? rounds : []).filter((round: any) => Boolean(round?.contract)).length;
+  const contractsCompleted = (Array.isArray(rounds) ? rounds : []).reduce((sum: number, round: any) => sum + (Array.isArray(round?.rows) ? round.rows.filter((row: any) => row?.contractCompleted).length : 0), 0);
+  return {
+    race,
+    leadChanges,
+    uniqueLeaders: uniqueLeaders.size,
+    largestLead,
+    lastLeaderChangeRound,
+    decidingRound: lastLeaderChangeRound || finalStep?.round || 0,
+    biggestComeback,
+    tiedRounds,
+    contractRounds,
+    contractsCompleted,
+    finalLeaderIds,
+    finalMargin: pokerNum(finalStep?.margin),
+  };
+}
+
 function dartIsHit(dart: any, label?: any): boolean {
   const bed = String(dart?.bed ?? "").toUpperCase();
   const text = String(label ?? "").toUpperCase();
@@ -201,6 +271,17 @@ export function deriveDartsPokerPlayerMetrics(input: {
   const basePoints = Math.max(0, points - contractBonusPoints);
   const roundsWithContractWin = roundRows.filter((row) => row?.contractCompleted && row?.win).length;
   const marketAttemptsSafe = Math.max(0, marketAttempts);
+  const race = buildPokerCumulativeRace(input.rounds || []);
+  const leadRounds = race.filter((step) => step.leaders.includes(playerId)).length;
+  const orderedRoundRows = [...roundRows].sort((a, b) => pokerNum(a?.round) - pokerNum(b?.round));
+  const lastThree = orderedRoundRows.slice(-3);
+  const dealerRounds = (Array.isArray(input.rounds) ? input.rounds : []).filter((round: any) => String(round?.dealerId || "") === playerId).length;
+  const dealerWins = (Array.isArray(input.rounds) ? input.rounds : []).filter((round: any) => String(round?.dealerId || "") === playerId && (round?.winnerIds || []).map(String).includes(playerId)).length;
+  const openingRoundWin = Boolean(orderedRoundRows[0]?.win);
+  const closingRoundWin = Boolean(orderedRoundRows[orderedRoundRows.length - 1]?.win);
+  const lastThreeWins = lastThree.filter((row) => row?.win).length;
+  const lastThreeContracts = lastThree.filter((row) => row?.contractCompleted).length;
+  const lastThreePoints = lastThree.reduce((sum, row) => sum + pokerNum(row?.pointsAwarded), 0);
 
   return {
     darts, visits: pokerNum(stats.visits, visits.length), hits, misses,
@@ -246,11 +327,16 @@ export function deriveDartsPokerPlayerMetrics(input: {
     roundRankConsistency: ranks.length ? Math.max(0, 100 - (rankStdDev / Math.max(1, input?.stats?.playersCount || 8)) * 100) : 0,
     bestRoundRank: ranks.length ? Math.min(...ranks) : 0, worstRoundRank: ranks.length ? Math.max(...ranks) : 0,
     secondPlaces, thirdPlaces, podiums, podiumRate: pokerPct(podiums, handsPlayed), bestRoundWinStreak: computeWinStreak(roundRows),
+    leadRounds, leadRate: pokerPct(leadRounds, race.length),
+    openingRoundWin, closingRoundWin,
+    lastThreeWins, lastThreeContracts, lastThreePoints,
+    dealerRounds, dealerWins, dealerWinRate: pokerPct(dealerWins, dealerRounds),
   };
 }
 
 export function deriveDartsPokerMatchMetrics(playerRows: any[], rounds: any[] = [], durationMs = 0) {
   const rows = Array.isArray(playerRows) ? playerRows : [];
+  const story = deriveDartsPokerMatchStory(rounds);
   const sum = (key: string) => rows.reduce((total, row) => total + pokerNum(row?.[key]), 0);
   const totalDarts = sum("darts");
   const totalHits = sum("hits");
@@ -282,5 +368,12 @@ export function deriveDartsPokerMatchMetrics(playerRows: any[], rounds: any[] = 
     premiumHandRate: pokerPct(sum("premiumHands"), totalHands),
     bestAccuracy, bestHitStreak, bestHandScore: pokerNum(bestHand?.bestHandScore), bestHandLabel: String(bestHand?.bestHandLabel || "—"),
     durationMs: Math.max(0, pokerNum(durationMs)),
+    leadChanges: story.leadChanges,
+    uniqueLeaders: story.uniqueLeaders,
+    largestLead: story.largestLead,
+    finalMargin: story.finalMargin,
+    decidingRound: story.decidingRound,
+    biggestComeback: story.biggestComeback,
+    tiedRounds: story.tiedRounds,
   };
 }

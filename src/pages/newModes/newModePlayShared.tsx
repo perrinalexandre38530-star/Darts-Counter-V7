@@ -33,22 +33,26 @@ export function resolveModeProfiles(config:any, store:any){
 }
 
 export function uiToGameDart(d: UIDart): GameDart {
-  if(!d||Number(d.v)===0)return{bed:"MISS"};
-  if(Number(d.v)===25)return{bed:Number(d.mult)===2?"IB":"OB"};
-  if(Number(d.v)===50)return{bed:"IB"};
-  return {bed:Number(d.mult)===3?"T":Number(d.mult)===2?"D":"S",number:Number(d.v)} as GameDart;
+  const ring = String((d as any)?.label || "");
+  const extra = ring ? { ring } : {};
+  if(!d||Number(d.v)===0)return{bed:"MISS",...extra} as any;
+  if(Number(d.v)===25)return{bed:Number(d.mult)===2?"IB":"OB",...extra} as any;
+  if(Number(d.v)===50)return{bed:"IB",...extra} as any;
+  return {bed:Number(d.mult)===3?"T":Number(d.mult)===2?"D":"S",number:Number(d.v),...extra} as GameDart;
 }
 export function gameToUiDart(d:GameDart):UIDart{
-  if(!d||d.bed==="MISS")return{v:0,mult:1};
-  if(d.bed==="IB")return{v:25,mult:2};
-  if(d.bed==="OB")return{v:25,mult:1};
-  return{v:Number(d.number||0),mult:d.bed==="T"?3:d.bed==="D"?2:1};
+  const label=String((d as any)?.ring||"")||undefined;
+  if(!d||d.bed==="MISS")return{v:0,mult:1,label};
+  if(d.bed==="IB")return{v:25,mult:2,label};
+  if(d.bed==="OB")return{v:25,mult:1,label};
+  return{v:Number(d.number||0),mult:d.bed==="T"?3:d.bed==="D"?2:1,label};
 }
 export function dartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.bed==="IB")return"DBULL";if(d.bed==="OB")return"BULL";return`${d.bed}${d.number||""}`;}
 
-export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, fitMinScale=0.42 }:any){
+export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, minDartsToValidate=1, fitMinScale=0.42, dartDecorator, onDartboardDetailedHit, keypadExtraMainButtons=null, keypadAuxActionOverride=null, keypadSecondaryAction=null, keypadFooterAction=null, keypadDisableSegmentNumbers=false, centerSlot, hidePreview=false, hideTotal=false }:any){
   const cap=Math.max(1,Math.min(3,Number(maxDarts)||3));
-  const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=cap?prev:[...prev,d]);
+  const decorate=(d:UIDart)=>typeof dartDecorator==="function"?(dartDecorator(d)||d):d;
+  const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=cap?prev:[...prev,decorate(d)]);
   return <div data-mss-play-input="1" style={{...panelStyle(accent+"35"),padding:8,height:"100%",minHeight:0,overflow:"hidden"}}>
     <ScoreInputHub
       currentThrow={currentThrow}
@@ -62,12 +66,21 @@ export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMul
       onBull={()=>append({v:25,mult:multiplier===2?2:1})}
       onMiss={()=>append({v:0,mult:1})}
       onDirectDart={append}
-      onSetVisitDarts={(darts:UIDart[])=>setCurrentThrow((darts||[]).slice(0,cap))}
+      onDartboardDetailedHit={onDartboardDetailedHit}
+      onSetVisitDarts={(darts:UIDart[])=>setCurrentThrow((darts||[]).slice(0,cap).map(decorate))}
       onValidate={onValidate}
       validateLabel={validateLabel}
-      validateDisabled={!currentThrow.length||disabled}
+      validateDisabled={currentThrow.length<Math.max(1,Math.min(cap,Number(minDartsToValidate)||1))||disabled}
       disabled={disabled}
       preferredMethod={preferredMethod}
+      keypadExtraMainButtons={keypadExtraMainButtons}
+      keypadAuxActionOverride={keypadAuxActionOverride}
+      keypadSecondaryAction={keypadSecondaryAction}
+      keypadFooterAction={keypadFooterAction}
+      keypadDisableSegmentNumbers={keypadDisableSegmentNumbers}
+      centerSlot={centerSlot}
+      hidePreview={hidePreview}
+      hideTotal={hideTotal}
       compact
       fitToParent
       fitMinScale={fitMinScale}
@@ -99,6 +112,21 @@ export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onCo
   </div>;
 }
 
+
+export function DartStrip({ darts, accent="#ffc04c", targetLabels=[] }: any) {
+  const rows = Array.from({length:3},(_,i)=>darts?.[i]||null);
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6}}>
+    {rows.map((d:any,i:number)=>{const g=d?uiToGameDart(d):null;const label=g?dartLabel(g):"—";const target=targetLabels?.[i];return <div key={i} style={{borderRadius:11,padding:"7px 6px",textAlign:"center",background:d?`${accent}12`:"rgba(255,255,255,.025)",border:`1px solid ${d?accent+"55":"rgba(255,255,255,.07)"}`}}><div style={{color:d?"#fff":"#6f7688",fontSize:13,fontWeight:1050}}>{label}</div>{target?<div style={{marginTop:2,color:accent,fontSize:7.5,fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{target}</div>:null}</div>})}
+  </div>;
+}
+
+export function LiveStatGrid({ items, accent="#ffc04c", columns=4 }: any) {
+  const safe=Array.isArray(items)?items:[];
+  if(!safe.length)return null;
+  return <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(2,Number(columns)||4)},minmax(0,1fr))`,gap:6}}>
+    {safe.map((it:any,idx:number)=><div key={it?.label||idx} style={{minWidth:0,borderRadius:11,padding:"8px 6px",textAlign:"center",background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.075)"}}><div style={{color:it?.color||accent,fontSize:15,fontWeight:1100,lineHeight:1}}>{it?.value??"—"}</div><div style={{marginTop:4,color:"#858da0",fontSize:7.5,fontWeight:950,letterSpacing:.35,textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{it?.label||"STAT"}</div></div>)}
+  </div>;
+}
 export function lastEvents(visits:any[]){const row=Array.isArray(visits)&&visits.length?visits[visits.length-1]:null;return Array.isArray(row?.events)?row.events:[];}
 
 export function VisitTimeline({ visits, profiles, accent = "#ffc04c", title = "DERNIÈRES ACTIONS", limit = 4 }: any) {

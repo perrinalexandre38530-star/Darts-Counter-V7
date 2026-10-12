@@ -12,7 +12,7 @@ import {
   type PokerCard,
 } from "../src/lib/gameEngines/dartsPokerEngine.ts";
 import { decodeCompactMatch, encodeCompactMatch } from "../src/lib/matchCompactCodec.ts";
-import { deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap } from "../src/lib/dartsPokerAnalytics.ts";
+import { deriveDartsPokerMatchStory, deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap } from "../src/lib/dartsPokerAnalytics.ts";
 
 const card = (rank: number, suit: "S" | "H" | "D" | "C"): PokerCard => ({ id: `${suit}${rank}`, rank, suit });
 const joker: PokerCard = { id: "JOKER", rank: 15, suit: null, joker: true };
@@ -108,8 +108,13 @@ assert.equal(state.phase, "round_result");
 assert.equal(state.rounds.length, 1);
 assert.equal(state.statsByPlayer.p2.autoDraws, 5);
 assert.equal(state.rounds[0].rows.length, 2);
+assert.equal(state.rounds[0].dealerId, "p1");
 assert.equal(state.rounds[0].contract?.key, "pair");
 assert.ok(state.rounds[0].rows.every((row) => typeof row.pointsAwarded === "number"));
+const firstStory = deriveDartsPokerMatchStory(state.rounds);
+assert.equal(firstStory.race.length, 1);
+assert.equal(firstStory.finalLeaderIds.length >= 1, true);
+assert.equal(firstStory.decidingRound, 1);
 assert.ok(state.rounds[0].rows.every((row) => typeof row.contractCompleted === "boolean"));
 assert.ok(state.rounds[0].rows.every((row) => Number(row.pointsAwarded) >= (row.win ? 1 : 0)));
 assert.ok(Object.values(state.statsByPlayer).every((stats) => stats.roundPoints >= stats.handsWon));
@@ -133,6 +138,8 @@ const p1Metrics = deriveDartsPokerPlayerMetrics({
 assert.ok(p1Metrics.cardsPerDart >= 0, "rendement cartes/dart invalide");
 assert.ok(p1Metrics.physicalSectorsTouched >= 1, "couverture cible non calculée");
 assert.ok(p1Metrics.bestMissStreak >= 0, "série de MISS non calculée");
+assert.ok(p1Metrics.leadRounds >= 0, "leadership non calculé");
+assert.equal(p1Metrics.dealerRounds, 1, "manche dealer non comptabilisée");
 const p1Heatmap = deriveDartsPokerSectorHeatmap(state.statsByPlayer.p1);
 assert.equal(p1Heatmap.length, 20, "heatmap cible incomplète");
 assert.ok(p1Heatmap.some((row) => row.total > 0), "heatmap cible vide");

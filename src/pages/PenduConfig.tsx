@@ -10,5 +10,5 @@ const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 
 </div>;
 
 export default function PenduConfig(props: any) {
-  return <NewDartsModeConfig {...props} mode="pendu" definition={{ id: "pendu", title: "PENDU", ticker: tickerPendu, accent: "#ffb33f", accent2: "#ff5a2d", minPlayers: 2, maxPlayers: 12, playTab: "pendu_play", guidedSteps: ["Participants", "Pendu", "Format", "Saisie", "Résumé"], rulesContent: rules }} />;
+  return <NewDartsModeConfig {...props} mode="pendu" definition={{ id: "pendu", title: "PENDU", ticker: tickerPendu, accent: "#ffb33f", accent2: "#ff5a2d", minPlayers: 2, maxPlayers: 12, playTab: "pendu_play", guidedSteps: ["Participants", "Pendu", "Format", "Saisie", "Aide", "Résumé"], rulesContent: rules }} />;
 }

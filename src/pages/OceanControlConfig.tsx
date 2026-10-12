@@ -100,6 +100,7 @@ export default function OceanControlConfig(props: any) {
   const [duplicateConsumesDart, setDuplicateConsumesDart] = React.useState(initial.duplicateConsumesDart);
   const [randomOrder, setRandomOrder] = React.useState(initial.randomOrder);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(initial.scoreInputMethod);
+  const [sfxEnabled, setSfx] = React.useState<boolean>(saved.sfxEnabled !== false && initial.sfxEnabled !== false);
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets || {});
   const teamsCatalog = React.useMemo(() => {
     try { return loadTeamsBySport("darts").filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0); }
@@ -145,7 +146,7 @@ export default function OceanControlConfig(props: any) {
       mode: "ocean_control", variant, difficulty, players: ids.length, selectedIds: ids, playersList, playerDartSets,
       botIds, botsEnabled: botIds.length > 0, botLevel, participantMode, teamByPlayer, placement, gridOrder,
       fleetPreset, winsNeeded, dartsPerTurn: 3, sonarEnabled, dbullStrikeEnabled, duplicateConsumesDart,
-      randomOrder, scoreInputMethod,
+      randomOrder, scoreInputMethod, sfxEnabled,
     });
     try { localStorage.setItem(LS_KEY, JSON.stringify({ ...payload, botsPanel, selectedTeamIds })); } catch {}
     try { recordProfileUsageForMode("ocean_control", ids); } catch {}
@@ -190,6 +191,7 @@ export default function OceanControlConfig(props: any) {
       <OptionRow label="Sonar au Bull" hint="Analyse la zone sélectionnée"><OptionToggle value={sonarEnabled} onChange={setSonarEnabled} /></OptionRow>
       <OptionRow label="Frappe DBULL" hint="Frappe de précision spéciale"><OptionToggle value={dbullStrikeEnabled} onChange={setDbullStrikeEnabled} /></OptionRow>
       <OptionRow label="Tir déjà effectué" hint="La fléchette est tout de même consommée"><OptionToggle value={duplicateConsumesDart} onChange={setDuplicateConsumesDart} /></OptionRow>
+      <OptionRow label="Bruitages de bataille" hint="Impacts, sonar et validations"><OptionToggle value={sfxEnabled} onChange={setSfx} /></OptionRow>
     </div>
   </section>;
 
@@ -212,7 +214,7 @@ export default function OceanControlConfig(props: any) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
       {[
         ["MODE", oceanControlVariantLabel(variant), CYAN], ["FLOTTE", oceanControlFleetLabel(fleetPreset), GOLD], ["CASES", `${totalCells}/20`, GREEN],
-        ["DIFFICULTÉ", oceanControlDifficultyLabel(difficulty), BLUE], ["MATCH", `Premier à ${winsNeeded}`, RED], [participantMode === "teams" ? "ÉQUIPES" : "JOUEURS", participantMode === "teams" ? selectedTeamIds.length : selectedIds.length, "#fff"],
+        ["DIFFICULTÉ", oceanControlDifficultyLabel(difficulty), BLUE], ["MATCH", `Premier à ${winsNeeded}`, RED], ["AUDIO", sfxEnabled ? "ACTIF" : "OFF", sfxEnabled ? GREEN : SOFT], [participantMode === "teams" ? "ÉQUIPES" : "JOUEURS", participantMode === "teams" ? selectedTeamIds.length : selectedIds.length, "#fff"],
       ].map(([label, value, color]: any) => <div key={label} style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 4, color, fontSize: 15, fontWeight: 1100 }}>{value}</div></div>)}
     </div>
     <div style={{ marginTop: 10, color: SOFT, fontSize: 9, lineHeight: 1.45 }}>{variant === "tactical" ? "Simple : 1 zone · Double : 2 zones · Triple : ligne de 3 · Bull : sonar · DBULL : frappe de précision." : "Chaque impact attaque uniquement la zone portant le numéro touché. Bull et DBULL conservent leurs capacités spéciales."}</div>
@@ -223,6 +225,20 @@ export default function OceanControlConfig(props: any) {
   return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 40%,#020507 100%)", paddingBottom: 18 }}>
     <PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" left={<BackDot onClick={back} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Règles OCEAN CONTROL" color={CYAN} glow={`${CYAN}88`} content={<Rules />} />} />
     <main style={{ width: "min(940px,100%)", margin: "0 auto", padding: "7px 9px 18px", boxSizing: "border-box" }}>
+      <div style={{ borderRadius: 18, padding: 12, marginBottom: 10, background: "linear-gradient(135deg,rgba(48,185,255,.16),rgba(0,0,0,.26))", border: `1px solid ${BLUE}35`, boxShadow: "0 16px 40px rgba(0,0,0,.25)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: CYAN, fontSize: 8.6, fontWeight: 1100, letterSpacing: 1 }}>CENTRE DE COMMANDEMENT NAVAL</div>
+            <div style={{ marginTop: 4, color: "#fff", fontSize: 14.5, fontWeight: 1100 }}>Prépare ta flotte avant d’entrer en bataille</div>
+            <div style={{ marginTop: 4, color: SOFT, fontSize: 8.6 }}>Choisis ton format, arme la flotte, règle le niveau tactique et lance un mode OCEAN CONTROL visuellement cohérent avec les autres expériences premium de l’application.</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: GREEN, fontSize: 8.4, fontWeight: 1000 }}>{oceanControlFleetLabel(fleetPreset)}</div>
+            <div style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: GOLD, fontSize: 8.4, fontWeight: 1000 }}>{oceanControlVariantLabel(variant)}</div>
+            <div style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: CYAN, fontSize: 8.4, fontWeight: 1000 }}>BO{winsNeeded * 2 - 1}</div>
+          </div>
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginBottom: 10 }}>
         <button type="button" onClick={() => chooseView("guided")} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${viewMode === "guided" ? BLUE : "rgba(255,255,255,.10)"}`, background: viewMode === "guided" ? `${BLUE}18` : "rgba(255,255,255,.025)", color: viewMode === "guided" ? BLUE : SOFT, fontWeight: 1050, cursor: "pointer" }}>CONFIGURATION GUIDÉE</button>
         <button type="button" onClick={() => chooseView("complete")} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${viewMode === "complete" ? GOLD : "rgba(255,255,255,.10)"}`, background: viewMode === "complete" ? `${GOLD}18` : "rgba(255,255,255,.025)", color: viewMode === "complete" ? GOLD : SOFT, fontWeight: 1050, cursor: "pointer" }}>CONFIGURATION COMPLÈTE</button>

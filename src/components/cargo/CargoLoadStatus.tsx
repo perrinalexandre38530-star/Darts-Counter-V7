@@ -1,5 +1,6 @@
 import React from 'react';
 import { buildCargoVisualSnapshot, cargoRecentEvents } from '../../lib/gameEngines/cargoVisuals';
+import { getCargoStageBadge, getCargoSupportArt } from './cargoArt';
 
 const ORANGE = '#ff9b42';
 const GOLD = '#f6c256';
@@ -25,6 +26,8 @@ function panelStyle(accent: string): React.CSSProperties {
     boxShadow: '0 12px 32px rgba(0,0,0,.22)',
     padding: 10,
     boxSizing: 'border-box',
+    overflow: 'hidden',
+    position: 'relative',
   };
 }
 
@@ -38,39 +41,63 @@ function progressFill(fillPercent: number, color: string): React.CSSProperties {
   };
 }
 
+function artTile(src: string, size = 92): React.CSSProperties {
+  return {
+    width: size,
+    height: size,
+    objectFit: 'contain',
+    display: 'block',
+    filter: 'drop-shadow(0 10px 18px rgba(0,0,0,.35))',
+  };
+}
+
 export default function CargoLoadStatus({ state, stats, playerId, onOpenTruck, onOpenManifest }: any) {
   const snapshot = buildCargoVisualSnapshot(state, stats);
   const accent = tone(snapshot.stage);
   const events = cargoRecentEvents(state, playerId, 3);
-  return <section style={{ minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,.85fr)', gap: 8 }}>
+  const badgeArt = getCargoStageBadge(snapshot.stage);
+  const supportArt = getCargoSupportArt({ parcel: snapshot.unit === 'COLIS', stage: snapshot.stage });
+
+  return <section style={{ minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1.25fr) minmax(0,.9fr)', gap: 8 }}>
     <button type="button" onClick={onOpenTruck} style={{ ...panelStyle(accent), cursor: 'pointer', textAlign: 'left' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div>
-          <div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: .7 }}>{snapshot.stageLabel}</div>
-          <div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{snapshot.stageHint}</div>
+      <div style={{ position: 'absolute', right: -16, top: -8, width: 110, height: 110, opacity: .09, pointerEvents: 'none' }}><img src={supportArt} alt="" style={artTile(supportArt, 110)} /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: '96px minmax(0,1fr)', gap: 10, alignItems: 'center', height: '100%' }}>
+        <div style={{ display: 'grid', placeItems: 'center', minHeight: 0 }}>
+          <img src={badgeArt} alt="Statut de chargement" style={artTile(badgeArt, 92)} />
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: accent, fontSize: 20, fontWeight: 1150 }}>{Math.round(snapshot.fillPercent)}%</div>
-          <div style={{ color: SOFT, fontSize: 7 }}>{snapshot.current} / {snapshot.target} {snapshot.unit}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div>
+              <div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: .7 }}>{snapshot.stageLabel}</div>
+              <div style={{ marginTop: 3, color: SOFT, fontSize: 8, lineHeight: 1.35 }}>{snapshot.stageHint}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ color: accent, fontSize: 20, fontWeight: 1150 }}>{Math.round(snapshot.fillPercent)}%</div>
+              <div style={{ color: SOFT, fontSize: 7 }}>{snapshot.current} / {snapshot.target} {snapshot.unit}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 10, height: 9, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,.08)' }}>
+            <div style={progressFill(snapshot.fillPercent, accent)} />
+          </div>
+          <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 6 }}>
+            {[
+              [snapshot.unit === 'COLIS' ? 'COLIS' : 'PALETTES', snapshot.unit === 'COLIS' ? snapshot.parcelsReady : snapshot.palletsReady, ORANGE],
+              ['CONTRATS', snapshot.contractsDone, GOLD],
+              ['CARTONS', snapshot.cartonsReady, BLUE],
+              ['CAISSES', snapshot.cratesReady, GREEN],
+            ].map(([label, value, color]: any) => <div key={label} style={{ borderRadius: 12, padding: '8px 7px', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
+              <div style={{ color: SOFT, fontSize: 6.8 }}>{label}</div>
+              <div style={{ marginTop: 4, color, fontSize: 15, fontWeight: 1100 }}>{value}</div>
+            </div>)}
+          </div>
         </div>
-      </div>
-      <div style={{ marginTop: 10, height: 9, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,.08)' }}>
-        <div style={progressFill(snapshot.fillPercent, accent)} />
-      </div>
-      <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 6 }}>
-        {[
-          [snapshot.unit === 'COLIS' ? 'COLIS' : 'PALETTES', snapshot.unit === 'COLIS' ? snapshot.parcelsReady : snapshot.palletsReady, ORANGE],
-          ['CONTRATS', snapshot.contractsDone, GOLD],
-          ['CARTONS', snapshot.cartonsReady, BLUE],
-          ['CAISSES', snapshot.cratesReady, GREEN],
-        ].map(([label, value, color]: any) => <div key={label} style={{ borderRadius: 12, padding: '8px 7px', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
-          <div style={{ color: SOFT, fontSize: 6.8 }}>{label}</div>
-          <div style={{ marginTop: 4, color, fontSize: 15, fontWeight: 1100 }}>{value}</div>
-        </div>)}
       </div>
     </button>
     <div style={{ ...panelStyle(BLUE), display: 'grid', gridTemplateRows: 'auto minmax(0,1fr)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '52px minmax(0,1fr) auto', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', borderRadius: 14, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
+          <img src={supportArt} alt="Élément logistique" style={artTile(supportArt, 46)} />
+        </div>
         <div>
           <div style={{ color: BLUE, fontSize: 10, fontWeight: 1100, letterSpacing: .7 }}>FEED OPÉRATIONNEL</div>
           <div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{snapshot.lastEventLabel || 'Les prochains chargements apparaîtront ici.'}</div>

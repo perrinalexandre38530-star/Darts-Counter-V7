@@ -162,6 +162,7 @@ export type DartsPokerVisit = {
 
 export type DartsPokerRoundResult = {
   round: number;
+  dealerId?: string | null;
   winnerIds: string[];
   rows: Array<{
     playerId: string;
@@ -770,7 +771,13 @@ function finalizeRound(state: DartsPokerState) {
       cards: row.cards, bestFive: row.bestFive, contractCompleted, contractBonus, pointsAwarded,
     };
   });
-  state.rounds.push({ round: state.roundIndex, winnerIds, rows: roundRows, contract: state.roundContract ? { ...state.roundContract } : null });
+  state.rounds.push({
+    round: state.roundIndex,
+    dealerId: state.players[state.dealerIndex]?.id || null,
+    winnerIds,
+    rows: roundRows,
+    contract: state.roundContract ? { ...state.roundContract } : null,
+  });
   state.phase = "round_result";
 }
 
