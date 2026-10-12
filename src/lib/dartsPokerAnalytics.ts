@@ -22,6 +22,43 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function standardDeviation(values: number[]): number {
+  if (!values.length) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function bestFlagStreak(rows: any[], key: string): number {
+  let current = 0;
+  let best = 0;
+  rows.forEach((row) => {
+    if (row?.[key]) {
+      current += 1;
+      best = Math.max(best, current);
+    } else current = 0;
+  });
+  return best;
+}
+
+export function deriveDartsPokerSectorHeatmap(statsOrMap: any): Array<{ sector: number; singles: number; doubles: number; triples: number; total: number }> {
+  const source = statsOrMap?.hitsBySegment && typeof statsOrMap.hitsBySegment === "object" ? statsOrMap.hitsBySegment : (statsOrMap || {});
+  const rows = Array.from({ length: 20 }, (_, index) => ({ sector: index + 1, singles: 0, doubles: 0, triples: 0, total: 0 }));
+  Object.entries(source || {}).forEach(([key, raw]) => {
+    const match = String(key).toUpperCase().match(/^([SDT])(\d{1,2})$/);
+    if (!match) return;
+    const sector = Number(match[2]);
+    if (sector < 1 || sector > 20) return;
+    const value = pokerNum(raw);
+    const row = rows[sector - 1];
+    if (match[1] === "S") row.singles += value;
+    else if (match[1] === "D") row.doubles += value;
+    else if (match[1] === "T") row.triples += value;
+    row.total += value;
+  });
+  return rows;
+}
+
 function getPlayerRoundRows(rounds: any[], playerId: string) {
   return (Array.isArray(rounds) ? rounds : []).flatMap((round: any) =>
     (Array.isArray(round?.rows) ? round.rows : [])
@@ -156,6 +193,14 @@ export function deriveDartsPokerPlayerMetrics(input: {
   const uniqueSegments = Object.entries(segmentMap).filter(([key, value]) => String(key).toUpperCase() !== "MISS" && pokerNum(value) > 0).length;
   const marketAttempts = singles + doubles + triples;
   const avgHandScore = handsPlayed ? pokerNum(stats.totalHandScore, handScores.reduce((a, b) => a + b, 0)) / handsPlayed : 0;
+  const sectorHeatmap = deriveDartsPokerSectorHeatmap(stats);
+  const touchedSectors = sectorHeatmap.filter((row) => row.total > 0);
+  const favoritePhysicalSector = sectorHeatmap.slice().sort((a, b) => b.total - a.total || a.sector - b.sector)[0];
+  const rankStdDev = standardDeviation(ranks);
+  const handScoreStdDev = standardDeviation(handScores);
+  const basePoints = Math.max(0, points - contractBonusPoints);
+  const roundsWithContractWin = roundRows.filter((row) => row?.contractCompleted && row?.win).length;
+  const marketAttemptsSafe = Math.max(0, marketAttempts);
 
   return {
     darts, visits: pokerNum(stats.visits, visits.length), hits, misses,
@@ -164,23 +209,41 @@ export function deriveDartsPokerPlayerMetrics(input: {
     bestHitStreak: Math.max(pokerNum(stats.bestHitStreak), streaks.bestHitStreak),
     bestMissStreak: Math.max(pokerNum(stats.bestMissStreak), streaks.bestMissStreak),
     uniqueSegments,
+    physicalSectorsTouched: touchedSectors.length,
+    physicalSectorCoverageRate: pokerPct(touchedSectors.length, 20),
+    favoritePhysicalSector: favoritePhysicalSector?.total ? favoritePhysicalSector.sector : 0,
+    favoritePhysicalSectorHits: favoritePhysicalSector?.total || 0,
     favoriteSegment: String(stats.favoriteSegment || favoriteSegment?.key || "—"), favoriteSegmentHits: pokerNum(stats.favoriteSegmentHits, favoriteSegment?.value || 0),
     cardsCollected, marketCards, autoDraws, powerCards, jokers,
-    cardsPerHit: hits ? cardsCollected / hits : 0, marketCaptureRate: pokerPct(marketCards, marketAttempts), autoDrawRate: pokerPct(autoDraws, cardsCollected),
+    cardsPerHit: hits ? cardsCollected / hits : 0,
+    cardsPerDart: darts ? cardsCollected / darts : 0,
+    cardsPerHand: handsPlayed ? cardsCollected / handsPlayed : 0,
+    marketCaptureRate: pokerPct(marketCards, marketAttemptsSafe),
+    autoDrawRate: pokerPct(autoDraws, cardsCollected),
+    scoringRingHitRate: pokerPct(doubles + triples, Math.max(1, hits)),
+    bullHitRate: pokerPct(bulls + dbulls, Math.max(1, darts)),
     favoriteCardRank: String(stats.favoriteCardRank || favoriteRank?.key || "—"), favoriteCardRankCount: pokerNum(stats.favoriteCardRankCount, favoriteRank?.value || 0),
     favoriteCardSuit: String(stats.favoriteCardSuit || favoriteSuit?.key || "—"), favoriteCardSuitCount: pokerNum(stats.favoriteCardSuitCount, favoriteSuit?.value || 0),
     choicesEarned, choicesUsed, choiceUseRate: pokerPct(choicesUsed, choicesEarned),
     exchangesEarned, exchangesUsed, exchangeUseRate: pokerPct(exchangesUsed, exchangesEarned),
     powersEarned, powersUsed, powerUseRate: pokerPct(powersUsed, powersEarned),
     handsPlayed, handsWon, handsTied, handWinRate: pokerPct(handsWon, handsPlayed), tieRate: pokerPct(handsTied, handsPlayed),
-    points, pointsPerHand: handsPlayed ? points / handsPlayed : 0, pointsPerDart: darts ? points / darts : 0,
+    points, basePoints, pointsPerHand: handsPlayed ? points / handsPlayed : 0, pointsPerDart: darts ? points / darts : 0,
     contractsAttempted, contractHits, contractSuccessRate: pokerPct(contractHits, contractsAttempted), contractBonusPoints,
     contractPointShare: pokerPct(contractBonusPoints, points),
-    averageHandScore: avgHandScore, medianHandScore: pokerNum(stats.medianHandScore, median(handScores)), worstHandScore: pokerNum(stats.worstHandScore, handScores.length ? Math.min(...handScores) : 0),
+    contractWinRounds: roundsWithContractWin,
+    contractWinRate: pokerPct(roundsWithContractWin, contractHits),
+    bestContractStreak: bestFlagStreak(roundRows, "contractCompleted"),
+    averageHandScore: avgHandScore,
+    handScoreStdDev,
+    handConsistencyIndex: avgHandScore > 0 ? Math.max(0, 100 - (handScoreStdDev / avgHandScore) * 100) : 0,
+    medianHandScore: pokerNum(stats.medianHandScore, median(handScores)), worstHandScore: pokerNum(stats.worstHandScore, handScores.length ? Math.min(...handScores) : 0),
     bestHandScore: pokerNum(stats.bestHandScore, handScores.length ? Math.max(...handScores) : 0), bestHandLabel: String(stats.bestHandLabel || roundRows.slice().sort((a,b)=>pokerNum(b?.evaluation?.score)-pokerNum(a?.evaluation?.score))[0]?.evaluation?.label || "—"),
     averageCategoryRank: categoryRanks.length ? categoryRanks.reduce((a, b) => a + b, 0) / categoryRanks.length : 0,
     strongHands, premiumHands, strongHandRate: pokerPct(strongHands, handsPlayed), premiumHandRate: pokerPct(premiumHands, handsPlayed),
     averageRoundRank: ranks.length ? ranks.reduce((a, b) => a + b, 0) / ranks.length : 0,
+    roundRankStdDev: rankStdDev,
+    roundRankConsistency: ranks.length ? Math.max(0, 100 - (rankStdDev / Math.max(1, input?.stats?.playersCount || 8)) * 100) : 0,
     bestRoundRank: ranks.length ? Math.min(...ranks) : 0, worstRoundRank: ranks.length ? Math.max(...ranks) : 0,
     secondPlaces, thirdPlaces, podiums, podiumRate: pokerPct(podiums, handsPlayed), bestRoundWinStreak: computeWinStreak(roundRows),
   };
@@ -204,12 +267,19 @@ export function deriveDartsPokerMatchMetrics(playerRows: any[], rounds: any[] = 
     totalDarts, totalHits, totalMisses: sum("misses"), accuracy: pokerPct(totalHits, totalDarts),
     singles: sum("singles"), doubles: sum("doubles"), triples: sum("triples"), bulls: sum("bulls"), dbulls: sum("dbulls"),
     totalHands, totalHandsWon: sum("handsWon"), totalHandsTied: sum("handsTied"), handWinRate: pokerPct(sum("handsWon"), totalHands),
-    totalPoints, pointsPerRound: rounds.length ? totalPoints / rounds.length : 0,
+    totalPoints,
+    pointsPerRound: rounds.length ? totalPoints / rounds.length : 0,
+    pointsPerDart: totalDarts ? totalPoints / totalDarts : 0,
     cardsCollected: sum("cardsCollected"), marketCards: sum("marketCards"), autoDraws: sum("autoDraws"), powerCards: sum("powerCards"), jokers: sum("jokers"),
+    cardsPerDart: totalDarts ? sum("cardsCollected") / totalDarts : 0,
+    marketCaptureRate: pokerPct(sum("marketCards"), sum("singles") + sum("doubles") + sum("triples")),
     choicesEarned: sum("choicesEarned"), choicesUsed: sum("choicesUsed"), exchangesEarned: sum("exchangesEarned"), exchangesUsed: sum("exchangesUsed"),
     totalPowerEarned, totalPowerUsed, powerUseRate: pokerPct(totalPowerUsed, totalPowerEarned),
     contractsAttempted: sum("contractsAttempted"), contractsCompleted: sum("contractHits"), contractSuccessRate: pokerPct(sum("contractHits"), sum("contractsAttempted")), contractBonusPoints: sum("contractBonusPoints"),
+    contractPointShare: pokerPct(sum("contractBonusPoints"), totalPoints),
     strongHands: sum("strongHands"), premiumHands: sum("premiumHands"), podiums: sum("podiums"),
+    strongHandRate: pokerPct(sum("strongHands"), totalHands),
+    premiumHandRate: pokerPct(sum("premiumHands"), totalHands),
     bestAccuracy, bestHitStreak, bestHandScore: pokerNum(bestHand?.bestHandScore), bestHandLabel: String(bestHand?.bestHandLabel || "—"),
     durationMs: Math.max(0, pokerNum(durationMs)),
   };

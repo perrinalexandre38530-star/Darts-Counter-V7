@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
-import { deriveDartsPokerPlayerMetrics, pokerNum as n, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../../lib/dartsPokerAnalytics";
+import DartsPokerCard from "../darts-poker/DartsPokerCard";
+import { deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerNum as n, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../../lib/dartsPokerAnalytics";
 
 const GOLD = "#f6c256";
 const RED = "#e83a43";
@@ -73,7 +74,22 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
   const [favoriteSegment, favoriteSegmentHits] = topMap(Object.fromEntries(Object.entries(segmentMap).filter(([key]) => key.toUpperCase() !== "MISS")));
   const [favoriteRank, favoriteRankCount] = topMap(rankMap);
   const [favoriteSuit, favoriteSuitCount] = topMap(suitMap);
+  const sectorHeatmap = deriveDartsPokerSectorHeatmap(segmentMap);
+  const maxSectorHits = Math.max(1, ...sectorHeatmap.map((row: any) => n(row.total)));
+  const sectorsTouched = sectorHeatmap.filter((row: any) => n(row.total) > 0).length;
+  const basePoints = sum("basePoints");
+  const contractWinRounds = sum("contractWinRounds");
+  const bestContractStreak = max("bestContractStreak");
+  const bestMissStreak = max("bestMissStreak");
+  const marketAttempts = singles + doubles + triples;
+  const marketCaptureRate = marketAttempts > 0 ? marketCards / marketAttempts * 100 : 0;
+  const cardsPerDart = darts > 0 ? cards / darts : 0;
+  const avgRoundRank = rows.length ? rows.reduce((total: number, row: any) => total + n(row.averageRoundRank), 0) / rows.length : 0;
+  const avgHandConsistency = rows.length ? rows.reduce((total: number, row: any) => total + n(row.handConsistencyIndex), 0) / rows.length : 0;
+  const recentTrend = matches.slice(0, 12).reverse();
   const bestRow = rows.slice().sort((a: any, b: any) => n(b?.bestHandScore) - n(a?.bestHandScore))[0] || null;
+  const bestVisualHand = matches.flatMap((item: any) => (item.rounds || []).flatMap((round: any) => (round?.rows || []).filter((roundRow: any) => String(roundRow?.playerId) === String(playerId)).map((roundRow: any) => ({ round, roundRow, record: item.record }))))
+    .sort((a: any, b: any) => n(b?.roundRow?.evaluation?.score) - n(a?.roundRow?.evaluation?.score))[0] || null;
   const categories = [
     ["Carte haute", sum("highCardHands"), "#aeb2c3"],["Paire", sum("pairs"), BLUE],["Double paire", sum("twoPairs"), GREEN],["Brelan", sum("threeOfAKinds"), GOLD],["Suite", sum("straights"), "#a78bfa"],["Couleur", sum("flushes"), PINK],["Full", sum("fullHouses"), RED],["Carré", sum("fourOfAKinds"), ORANGE],["Quinte flush", sum("straightFlushes"), "#fff"],["Royale", sum("royalFlushes"), GOLD],
   ];
@@ -85,6 +101,10 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
     ["Meilleure série de hits", matches.slice().sort((a:any,b:any)=>n(b.row.bestHitStreak)-n(a.row.bestHitStreak))[0], (m:any)=>`${fmt(m?.row?.bestHitStreak)} hits`, ORANGE],
     ["Meilleure main", matches.slice().sort((a:any,b:any)=>n(b.row.bestHandScore)-n(a.row.bestHandScore))[0], (m:any)=>m?.row?.bestHandLabel || "—", GOLD],
     ["Plus de jokers", matches.slice().sort((a:any,b:any)=>n(b.row.jokers)-n(a.row.jokers))[0], (m:any)=>`${fmt(m?.row?.jokers)} joker(s)`, PINK],
+    ["Meilleur rendement", matches.slice().sort((a:any,b:any)=>n(b.row.pointsPerDart)-n(a.row.pointsPerDart))[0], (m:any)=>`${fmt(m?.row?.pointsPerDart,3)} pt/dart`, GOLD],
+    ["Meilleure capture marché", matches.slice().sort((a:any,b:any)=>n(b.row.marketCaptureRate)-n(a.row.marketCaptureRate))[0], (m:any)=>pct(m?.row?.marketCaptureRate), BLUE],
+    ["Meilleure constance", matches.slice().sort((a:any,b:any)=>n(b.row.handConsistencyIndex)-n(a.row.handConsistencyIndex))[0], (m:any)=>pct(m?.row?.handConsistencyIndex), GREEN],
+    ["Série contrats", matches.slice().sort((a:any,b:any)=>n(b.row.bestContractStreak)-n(a.row.bestContractStreak))[0], (m:any)=>`${fmt(m?.row?.bestContractStreak)} manches`, RED],
   ];
 
   return <div style={{ width: "100%", maxWidth: 1040, margin: "0 auto" }}>
@@ -97,6 +117,16 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
         <Kpi label="Cartes collectées" value={cards} detail={`${pokerRound1(cards/games)} / partie`} color={BLUE} /><Kpi label="Podiums de manche" value={podiums} detail={pct(podiums,handsPlayed)} color={GOLD} /><Kpi label="Mains fortes" value={strongHands} detail={`Brelan+ · ${pct(strongHands,handsPlayed)}`} color={ORANGE} /><Kpi label="Mains premium" value={premiumHands} detail={`Couleur+ · ${pct(premiumHands,handsPlayed)}`} color={RED} />
       </div>
 
+      {bestVisualHand ? <Section title="Meilleure main enregistrée" accent={GOLD} subtitle={`${bestVisualHand.roundRow?.evaluation?.label || bestRow?.bestHandLabel || "—"} · manche ${bestVisualHand.round?.round || "—"}`}>
+        <div style={{ display:"flex",gap:5,justifyContent:"center",overflowX:"auto",padding:"4px 0 7px" }}>{(bestVisualHand.roundRow?.bestFive || []).map((card:any,index:number)=><DartsPokerCard key={`${card?.id||index}-${index}`} card={card} size="large" />)}</div>
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6 }}>
+          <Kpi label="Force" value={fmt(bestVisualHand.roundRow?.evaluation?.score)} color={GOLD} />
+          <Kpi label="Rang manche" value={`#${fmt(bestVisualHand.roundRow?.rank)}`} color={BLUE} />
+          <Kpi label="Points manche" value={`+${fmt(bestVisualHand.roundRow?.pointsAwarded)}`} color={GREEN} />
+          <Kpi label="Contrat" value={bestVisualHand.roundRow?.contractCompleted ? "RÉUSSI" : "NON"} color={bestVisualHand.roundRow?.contractCompleted ? GREEN : SOFT} />
+        </div>
+      </Section> : null}
+
       <Section title="Précision & bagues" accent={BLUE} subtitle={`${darts} fléchettes analysées`}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
         <Kpi label="Singles" value={singles} detail={pct(singles,darts)} color={BLUE} /><Kpi label="Doubles" value={doubles} detail={pct(doubles,darts)} color={GREEN} /><Kpi label="Triples" value={triples} detail={pct(triples,darts)} color={GOLD} /><Kpi label="Bull" value={bulls} detail={pct(bulls,darts)} color={PINK} />
         <Kpi label="Double Bull" value={dbulls} detail={pct(dbulls,darts)} color={RED} /><Kpi label="MISS" value={misses} detail={pct(misses,darts)} color={RED} /><Kpi label="Meilleure série" value={max("bestHitStreak")} detail="hits consécutifs" color={ORANGE} /><Kpi label="Segment favori" value={favoriteSegment || "—"} detail={`${favoriteSegmentHits || 0} hits`} color={GOLD} />
@@ -106,6 +136,48 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
         <Kpi label="Mains jouées" value={handsPlayed} color={GOLD} /><Kpi label="Mains gagnées" value={handsWon} detail={pct(handsWon,handsPlayed)} color={GREEN} /><Kpi label="Égalités" value={handsTied} detail={pct(handsTied,handsPlayed)} color={BLUE} /><Kpi label="Points / main" value={pokerRound1(points/Math.max(1,handsPlayed))} color={GOLD} />
         <Kpi label="Mains fortes" value={strongHands} detail="Brelan ou mieux" color={ORANGE} /><Kpi label="Premium" value={premiumHands} detail="Couleur ou mieux" color={RED} /><Kpi label="Podiums" value={podiums} detail={pct(podiums,handsPlayed)} color={GOLD} /><Kpi label="Série victoires" value={max("bestRoundWinStreak")} detail="manches consécutives" color={GREEN} />
       </div></Section>
+
+      <Section title="Qualité, constance & efficacité" accent={ORANGE}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+        <Kpi label="Points de base" value={basePoints} detail={`${contractBonus} pts bonus`} color={GOLD} />
+        <Kpi label="Part bonus contrats" value={pct(contractBonus,points)} detail="du score total" color={PINK} />
+        <Kpi label="Rang moyen" value={avgRoundRank ? fmt(avgRoundRank,2) : "—"} detail="par manche" color={GOLD} />
+        <Kpi label="Constance mains" value={pct(avgHandConsistency)} detail="indice moyen" color={GREEN} />
+        <Kpi label="Série MISS max" value={bestMissStreak} detail="miss consécutifs" color={RED} />
+        <Kpi label="Couverture cible" value={`${sectorsTouched}/20`} detail={pct(sectorsTouched,20)} color={BLUE} />
+        <Kpi label="Capture marché" value={pct(marketCaptureRate)} detail={`${marketCards}/${marketAttempts} hits S/D/T`} color={GREEN} />
+        <Kpi label="Cartes / dart" value={fmt(cardsPerDart,2)} detail={`${cards}/${darts}`} color={BLUE} />
+        <Kpi label="Contrat → victoire" value={pct(contractWinRounds,contracts)} detail={`${contractWinRounds}/${contracts}`} color={RED} />
+        <Kpi label="Série contrats" value={bestContractStreak} detail="manches consécutives" color={PINK} />
+        <Kpi label="Égalités" value={handsTied} detail={pct(handsTied,handsPlayed)} color={SOFT} />
+        <Kpi label="Premium rate" value={pct(premiumHands,handsPlayed)} detail="Couleur ou mieux" color={RED} />
+      </div></Section>
+
+      <Section title="Heatmap cible · secteurs 1 à 20" accent={BLUE} subtitle="S / D / T agrégés sur la période sélectionnée">
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))", gap:6 }}>
+          {sectorHeatmap.map((sector:any) => {
+            const intensity = Math.max(.04, n(sector.total) / maxSectorHits);
+            return <div key={sector.sector} style={{ padding:"7px 5px",borderRadius:11,textAlign:"center",border:`1px solid ${sector.total ? BLUE : "rgba(255,255,255,.08)"}55`,background:sector.total ? `rgba(85,199,255,${Math.min(.22,.04+intensity*.18)})` : "rgba(255,255,255,.02)" }}>
+              <div style={{ color:sector.total ? "#fff" : SOFT,fontSize:11,fontWeight:1100 }}>{sector.sector}</div>
+              <div style={{ color:BLUE,fontSize:10,fontWeight:1100,marginTop:1 }}>{sector.total}</div>
+              <div style={{ color:SOFT,fontSize:6.8,marginTop:2 }}>S{sector.singles} · D{sector.doubles} · T{sector.triples}</div>
+            </div>;
+          })}
+        </div>
+      </Section>
+
+      <Section title="Tendance · 12 dernières parties" accent={GREEN} subtitle="Évolution chronologique des indicateurs clés">
+        <div style={{ display:"grid",gap:6 }}>{recentTrend.map(({record,row}:any,index:number) => {
+          const date=playedAt(record)?new Date(playedAt(record)).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}):`#${index+1}`;
+          const maxPoints=Math.max(1,...recentTrend.map((item:any)=>n(item.row.points)));
+          return <div key={record?.id||index} style={{ display:"grid",gridTemplateColumns:"42px minmax(0,1fr) 58px 58px 58px",gap:6,alignItems:"center",padding:"6px 7px",borderRadius:11,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)" }}>
+            <div style={{ color:SOFT,fontSize:8,fontWeight:900 }}>{date}</div>
+            <div><div style={{ height:6,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.06)" }}><div style={{ width:`${Math.max(3,n(row.points)/maxPoints*100)}%`,height:"100%",background:`linear-gradient(90deg,${GOLD}88,${GOLD})` }} /></div><div style={{ color:GOLD,fontSize:7,marginTop:2 }}>{fmt(row.points)} pts</div></div>
+            <div style={{ textAlign:"right" }}><div style={{ color:GREEN,fontSize:9,fontWeight:1000 }}>{pct(row.accuracy)}</div><div style={{ color:SOFT,fontSize:6.5 }}>PRÉC.</div></div>
+            <div style={{ textAlign:"right" }}><div style={{ color:RED,fontSize:9,fontWeight:1000 }}>{fmt(row.contractHits)}/{fmt(row.contractsAttempted)}</div><div style={{ color:SOFT,fontSize:6.5 }}>CONTRAT</div></div>
+            <div style={{ textAlign:"right" }}><div style={{ color:PINK,fontSize:9,fontWeight:1000 }}>{pct(row.powerUseRate)}</div><div style={{ color:SOFT,fontSize:6.5 }}>POUVOIRS</div></div>
+          </div>;
+        })}</div>
+      </Section>
 
       <Section title="Cartes & acquisition" accent={BLUE}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
         <Kpi label="Marché" value={marketCards} detail={`${pct(marketCards,cards)} des cartes`} color={BLUE} /><Kpi label="Auto-draw" value={autoDraws} detail={pct(autoDraws,cards)} color={SOFT} /><Kpi label="Via pouvoirs" value={powerCards} detail={pct(powerCards,cards)} color={PINK} /><Kpi label="Jokers" value={jokers} color={RED} />
@@ -121,9 +193,9 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
 
       <Section title="Cartes collectées" accent={BLUE}><div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(150px,1fr)", gap: 12 }}><div><div style={{ color: SOFT, fontSize: 8, fontWeight: 1000, marginBottom: 6 }}>PAR RANG</div><div style={{ display: "grid", gridTemplateColumns: "repeat(13,minmax(0,1fr))", gap: 4 }}>{["2","3","4","5","6","7","8","9","10","J","Q","K","A"].map((rank) => <div key={rank} style={{ padding: "7px 2px", borderRadius: 9, textAlign: "center", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: GOLD, fontWeight: 1100, fontSize: 10 }}>{rank}</div><div style={{ color: "#fff", fontSize: 9 }}>{rankMap[rank] || 0}</div></div>)}</div></div><div><div style={{ color: SOFT, fontSize: 8, fontWeight: 1000, marginBottom: 6 }}>PAR COULEUR</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>{["♠","♥","♦","♣"].map((suit) => <div key={suit} style={{ padding: 9, borderRadius: 10, textAlign: "center", color: suit === "♥" || suit === "♦" ? RED : "#fff", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ fontSize: 18 }}>{suit}</div><b>{suitMap[suit] || 0}</b></div>)}</div></div></div></Section>
 
-      <Section title="Records personnels" accent={ORANGE}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>{recordsRows.map(([label,item,value,color]: any) => { const date = item && playedAt(item.record) ? new Date(playedAt(item.record)).toLocaleDateString("fr-FR") : "—"; return <div key={label} style={{ padding: 9, borderRadius: 13, border: `1px solid ${color}35`, background: `${color}08` }}><div style={{ color: SOFT, fontSize: 7.5, textTransform: "uppercase", fontWeight: 1000 }}>{label}</div><div style={{ color, fontSize: 16, fontWeight: 1100, marginTop: 3 }}>{value(item)}</div><div style={{ color: "#707789", fontSize: 7.5, marginTop: 2 }}>{date}</div></div>; })}</div></Section>
+      <Section title="Records personnels" accent={ORANGE}><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 7 }}>{recordsRows.map(([label,item,value,color]: any) => { const date = item && playedAt(item.record) ? new Date(playedAt(item.record)).toLocaleDateString("fr-FR") : "—"; return <div key={label} style={{ padding: 9, borderRadius: 13, border: `1px solid ${color}35`, background: `${color}08` }}><div style={{ color: SOFT, fontSize: 7.5, textTransform: "uppercase", fontWeight: 1000 }}>{label}</div><div style={{ color, fontSize: 16, fontWeight: 1100, marginTop: 3 }}>{value(item)}</div><div style={{ color: "#707789", fontSize: 7.5, marginTop: 2 }}>{date}</div></div>; })}</div></Section>
 
-      <Section title="Parties récentes" accent={GOLD}><div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1180, borderCollapse: "collapse", fontSize: 9 }}><thead><tr style={{ color: GOLD, textAlign: "left" }}>{["Date","Rés.","Pts","Mains","V","Contrats","Préc.","S/D/T","Bull/DB","Miss","Cartes","Pouvoirs","Best","Streak"].map((x)=><th key={x} style={{ padding: "7px 8px", borderBottom: "1px solid rgba(255,255,255,.1)" }}>{x}</th>)}</tr></thead><tbody>{matches.slice(0,20).map(({record,row}:any,index:number)=>{ const won=didWin(record,row,String(playerId)); const date=playedAt(record)?new Date(playedAt(record)).toLocaleDateString("fr-FR"):"—"; return <tr key={record?.id||index}><td style={{padding:7,borderBottom:"1px solid rgba(255,255,255,.05)"}}>{date}</td><td style={{padding:7,color:won?GREEN:SOFT,fontWeight:1000}}>{won?"WIN":`#${n(row?.rank)||"—"}`}</td><td style={{padding:7,color:GOLD,fontWeight:1000}}>{fmt(row.points)}</td><td style={{padding:7}}>{fmt(row.handsPlayed)}</td><td style={{padding:7}}>{fmt(row.handsWon)}</td><td style={{padding:7}}>{fmt(row.contractHits)}/{fmt(row.contractsAttempted)}</td><td style={{padding:7,color:BLUE}}>{pct(row.accuracy)}</td><td style={{padding:7}}>{row.singles}/{row.doubles}/{row.triples}</td><td style={{padding:7}}>{row.bulls}/{row.dbulls}</td><td style={{padding:7,color:row.misses?RED:GREEN}}>{row.misses}</td><td style={{padding:7}}>{row.cardsCollected}</td><td style={{padding:7}}>{row.powersUsed}/{row.powersEarned}</td><td style={{padding:7,color:GOLD}}>{row.bestHandLabel||"—"}</td><td style={{padding:7}}>{row.bestHitStreak}</td></tr>;})}</tbody></table></div></Section>
+      <Section title="Parties récentes" accent={GOLD}><div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1580, borderCollapse: "collapse", fontSize: 9 }}><thead><tr style={{ color: GOLD, textAlign: "left" }}>{["Date","Rés.","Pts","Base","Mains","V","Contrats","Préc.","S/D/T","Bull/DB","Miss","Miss série","Zones","Capture","Cartes","Cartes/dart","Pouvoirs","Best","Constance","Streak"].map((x)=><th key={x} style={{ padding: "7px 8px", borderBottom: "1px solid rgba(255,255,255,.1)" }}>{x}</th>)}</tr></thead><tbody>{matches.slice(0,20).map(({record,row}:any,index:number)=>{ const won=didWin(record,row,String(playerId)); const date=playedAt(record)?new Date(playedAt(record)).toLocaleDateString("fr-FR"):"—"; return <tr key={record?.id||index}><td style={{padding:7,borderBottom:"1px solid rgba(255,255,255,.05)"}}>{date}</td><td style={{padding:7,color:won?GREEN:SOFT,fontWeight:1000}}>{won?"WIN":`#${n(row?.rank)||"—"}`}</td><td style={{padding:7,color:GOLD,fontWeight:1000}}>{fmt(row.points)}</td><td style={{padding:7}}>{fmt(row.basePoints)}</td><td style={{padding:7}}>{fmt(row.handsPlayed)}</td><td style={{padding:7}}>{fmt(row.handsWon)}</td><td style={{padding:7}}>{fmt(row.contractHits)}/{fmt(row.contractsAttempted)}</td><td style={{padding:7,color:BLUE}}>{pct(row.accuracy)}</td><td style={{padding:7}}>{row.singles}/{row.doubles}/{row.triples}</td><td style={{padding:7}}>{row.bulls}/{row.dbulls}</td><td style={{padding:7,color:row.misses?RED:GREEN}}>{row.misses}</td><td style={{padding:7}}>{row.bestMissStreak}</td><td style={{padding:7}}>{row.physicalSectorsTouched}/20</td><td style={{padding:7}}>{pct(row.marketCaptureRate)}</td><td style={{padding:7}}>{row.cardsCollected}</td><td style={{padding:7}}>{fmt(row.cardsPerDart,2)}</td><td style={{padding:7}}>{row.powersUsed}/{row.powersEarned}</td><td style={{padding:7,color:GOLD}}>{row.bestHandLabel||"—"}</td><td style={{padding:7}}>{pct(row.handConsistencyIndex)}</td><td style={{padding:7}}>{row.bestHitStreak}</td></tr>;})}</tbody></table></div></Section>
     </>}
   </div>;
 }

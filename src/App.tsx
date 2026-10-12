@@ -728,6 +728,71 @@ type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "
 // - dédoublonnage par id
 // - préfère les champs "nouveaux" s’ils sont définis
 // =============================================================
+function profileAvatarRevision(profile: any): number {
+  const pi = ((profile as any)?.privateInfo || {}) as any;
+  const raw =
+    (profile as any)?.avatarUpdatedAt ??
+    (profile as any)?.avatar_updated_at ??
+    pi?.avatarUpdatedAt ??
+    pi?.avatar_updated_at ??
+    0;
+  const value = Number(raw || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function protectNewerProfileAvatars<T extends any>(previousStore: T, candidateStore: T): T {
+  if (!previousStore || !candidateStore || typeof previousStore !== "object" || typeof candidateStore !== "object") {
+    return candidateStore;
+  }
+
+  const previousProfiles: any[] = Array.isArray((previousStore as any)?.profiles) ? (previousStore as any).profiles : [];
+  const candidateProfiles: any[] = Array.isArray((candidateStore as any)?.profiles) ? (candidateStore as any).profiles : [];
+  if (!previousProfiles.length || !candidateProfiles.length) return candidateStore;
+
+  const previousById = new Map(previousProfiles.map((profile: any) => [String(profile?.id || ""), profile]));
+  const avatarKeys = [
+    "avatar",
+    "avatarUrl",
+    "avatar_url",
+    "avatarPath",
+    "avatarDataUrl",
+    "avatarThumbDataUrl",
+    "avatarFullDataUrl",
+    "avatarCastDataUrl",
+    "avatarAssetId",
+    "avatarThumbAssetId",
+    "avatarFullAssetId",
+    "avatarCastAssetId",
+  ];
+
+  let changed = false;
+  const protectedProfiles = candidateProfiles.map((incoming: any) => {
+    const id = String(incoming?.id || "");
+    const previous = previousById.get(id);
+    if (!previous) return incoming;
+
+    const previousRevision = profileAvatarRevision(previous);
+    const incomingRevision = profileAvatarRevision(incoming);
+    if (!(previousRevision > 0 && incomingRevision < previousRevision)) return incoming;
+
+    changed = true;
+    const next: any = { ...(incoming || {}) };
+    for (const key of avatarKeys) {
+      if (Object.prototype.hasOwnProperty.call(previous || {}, key)) next[key] = (previous as any)[key];
+      else delete next[key];
+    }
+    next.avatarUpdatedAt = previousRevision;
+    next.privateInfo = {
+      ...((incoming as any)?.privateInfo || {}),
+      ...((previous as any)?.privateInfo || {}),
+      avatarUpdatedAt: previousRevision,
+    };
+    return next;
+  });
+
+  return changed ? ({ ...(candidateStore as any), profiles: protectedProfiles } as T) : candidateStore;
+}
+
 function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
   const a = Array.isArray(base) ? base : [];
   const b = Array.isArray(incoming) ? incoming : [];
@@ -2343,7 +2408,7 @@ useEffect(() => {
     }
   }, []);
 
-  const [store, setStore] = React.useState<Store>(() => {
+  const [store, setStoreRaw] = React.useState<Store>(() => {
     if (!samsungTvNativeBoot) return initialStore;
     const tvProfiles = Array.isArray(samsungTvNativeBoot.profiles)
       ? samsungTvNativeBoot.profiles.map((profile: any) => ({
@@ -2363,6 +2428,19 @@ useEffect(() => {
       settings: { ...(initialStore.settings as any), ...(samsungTvNativeBoot.settings || {}) } as any,
     } as Store;
   });
+
+  // V19 — STORE MONOTONE POUR L'AVATAR DU PROFIL.
+  // Toute mutation asynchrone (auth, NAS, hydratation média, cache, route) passe
+  // par ce setter. Une révision d'avatar plus ancienne ne peut donc plus écraser
+  // la photo choisie plus récemment, quelle que soit la source du snapshot tardif.
+  const setStore = React.useCallback((action: React.SetStateAction<Store>) => {
+    setStoreRaw((previous) => {
+      const candidate = typeof action === "function"
+        ? (action as (value: Store) => Store)(previous)
+        : action;
+      return protectNewerProfileAvatars(previous, candidate);
+    });
+  }, []);
 
   // 🛡️ Garde-fou UI anti-disparition profils locaux.
   // Si un flux asynchrone injecte provisoirement profiles: [], on restaure
@@ -2616,6 +2694,55 @@ useEffect(() => {
     (store?.profiles?.length || 0),
     (store as any)?.activeProfileId,
     tab,
+  ]);
+
+  // V19 — IDENTITÉ COMPTE MULTI-APPAREILS.
+  // L'UID Supabase identifie le compte ; `canonicalLocalProfileId` identifie le
+  // joueur MON PROFIL à travers les appareils. On l'écrit une seule fois dans
+  // `profiles.private_info` puis les nouveaux appareils recréent exactement le
+  // même profile.id au lieu d'inventer un identifiant local différent.
+  const canonicalProfileRemoteSyncRef = React.useRef<string>("");
+  React.useEffect(() => {
+    if (loading || !cloudHydrated || !online?.ready || online?.status !== "signed_in") return;
+    const user = (online as any)?.user || null;
+    const uid = String(user?.user_metadata?.supabase_user_id || user?.id || "").trim();
+    if (!uid || String(getStorageUser() || "").trim() !== uid) return;
+
+    const canonical = getCanonicalAccountProfileFromStore(store as any, uid) as any;
+    const canonicalId = String(canonical?.id || "").trim();
+    if (!canonicalId) return;
+
+    const onlineProfile: any = (online as any)?.profile || null;
+    if (!onlineProfile) return;
+    const remotePrivate = { ...(onlineProfile?.privateInfo || onlineProfile?.private_info || {}) };
+    const remoteCanonicalId = String(remotePrivate?.canonicalLocalProfileId || remotePrivate?.canonicalProfileId || "").trim();
+    if (remoteCanonicalId === canonicalId) return;
+
+    const signature = `${uid}:${canonicalId}:${remoteCanonicalId}`;
+    if (canonicalProfileRemoteSyncRef.current === signature) return;
+    canonicalProfileRemoteSyncRef.current = signature;
+
+    void onlineApi.updateProfile({
+      privateInfo: {
+        ...remotePrivate,
+        canonicalLocalProfileId: canonicalId,
+        onlineUserId: uid,
+        accountUserId: uid,
+      },
+    }).catch((error: any) => {
+      canonicalProfileRemoteSyncRef.current = "";
+      console.warn("[account-profile] canonical profile id sync skipped", error);
+    });
+  }, [
+    loading,
+    cloudHydrated,
+    online?.ready,
+    online?.status,
+    (online as any)?.user?.id,
+    (online as any)?.profile?.privateInfo?.canonicalLocalProfileId,
+    (online as any)?.profile?.private_info?.canonicalLocalProfileId,
+    (store as any)?.activeProfileId,
+    (store?.profiles?.length || 0),
   ]);
 
   const currentTabRef = React.useRef<Tab | string>(tab as any);

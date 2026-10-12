@@ -12,6 +12,7 @@ import {
   type PokerCard,
 } from "../src/lib/gameEngines/dartsPokerEngine.ts";
 import { decodeCompactMatch, encodeCompactMatch } from "../src/lib/matchCompactCodec.ts";
+import { deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap } from "../src/lib/dartsPokerAnalytics.ts";
 
 const card = (rank: number, suit: "S" | "H" | "D" | "C"): PokerCard => ({ id: `${suit}${rank}`, rank, suit });
 const joker: PokerCard = { id: "JOKER", rank: 15, suit: null, joker: true };
@@ -121,6 +122,20 @@ assert.equal(state.activePlayerIndex, 1);
 assert.ok(state.roundContract);
 assert.equal(state.handsByPlayer.p1.cards.length, 0);
 assert.equal(Object.keys(state.market).length, 20);
+
+const p1Metrics = deriveDartsPokerPlayerMetrics({
+  playerId: "p1",
+  stats: state.statsByPlayer.p1,
+  rounds: state.rounds,
+  visits: state.visits,
+  contractsEnabled: true,
+});
+assert.ok(p1Metrics.cardsPerDart >= 0, "rendement cartes/dart invalide");
+assert.ok(p1Metrics.physicalSectorsTouched >= 1, "couverture cible non calculée");
+assert.ok(p1Metrics.bestMissStreak >= 0, "série de MISS non calculée");
+const p1Heatmap = deriveDartsPokerSectorHeatmap(state.statsByPlayer.p1);
+assert.equal(p1Heatmap.length, 20, "heatmap cible incomplète");
+assert.ok(p1Heatmap.some((row) => row.total > 0), "heatmap cible vide");
 
 const compact = encodeCompactMatch({
   id: "poker-regression",

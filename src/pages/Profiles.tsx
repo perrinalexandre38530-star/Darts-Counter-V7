@@ -2869,8 +2869,46 @@ export default function Profiles({
           avatarUpdatedAt: now,
         });
       } catch (e) {
-        logProfileStabilityAudit("avatar-online-upload-error", undefined, { source: "profiles.changeAvatar", profileId: id, error: String((e as any)?.message || e) });
+        const uploadError = String((e as any)?.message || e);
+        logProfileStabilityAudit("avatar-online-upload-error", undefined, { source: "profiles.changeAvatar", profileId: id, error: uploadError });
         console.warn("[avatars] upload active profile failed", e);
+
+        // V19 — secours multi-appareils : si l'infrastructure Storage n'est pas
+        // encore provisionnée (ex. bucket `avatars` absent), on ne laisse pas
+        // l'identité distante sur l'ancienne photo. La miniature légère est
+        // enregistrée dans profiles.avatar_url et sa révision dans private_info.
+        // Dès que le bucket existe, les prochains changements repasseront
+        // automatiquement sur une URL publique Storage classique.
+        try {
+          const api = await getOnlineApi();
+          const onlineProfile: any = (auth as any)?.profile || (auth as any)?.onlineProfile || null;
+          const remotePrivate = { ...(onlineProfile?.privateInfo || onlineProfile?.private_info || {}) };
+          await api.updateProfile({
+            avatarUrl: thumbDataUrl,
+            privateInfo: {
+              ...remotePrivate,
+              avatarUpdatedAt: now,
+              canonicalLocalProfileId: String(id || ""),
+              onlineUserId: String(auth.user?.id || ""),
+              accountUserId: String(auth.user?.id || ""),
+            },
+          });
+          finalAvatarUpdatedAt = Math.max(finalAvatarUpdatedAt, now);
+          logProfileStabilityAudit("avatar-online-inline-fallback-ok", undefined, {
+            source: "profiles.changeAvatar",
+            profileId: id,
+            avatarUpdatedAt: finalAvatarUpdatedAt,
+            uploadError,
+          });
+        } catch (fallbackError) {
+          logProfileStabilityAudit("avatar-online-inline-fallback-error", undefined, {
+            source: "profiles.changeAvatar",
+            profileId: id,
+            uploadError,
+            error: String((fallbackError as any)?.message || fallbackError),
+          });
+          console.warn("[avatars] inline account fallback failed", fallbackError);
+        }
       }
     }
 

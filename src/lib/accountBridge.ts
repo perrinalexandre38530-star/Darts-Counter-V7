@@ -136,6 +136,16 @@ function getOnlineAvatar(onlineProfile?: any): string | undefined {
   return out || undefined;
 }
 
+function getRemoteCanonicalLocalProfileId(onlineProfile?: any): string {
+  const pi = ((onlineProfile as any)?.privateInfo || (onlineProfile as any)?.private_info || {}) as Record<string, any>;
+  return String(
+    pi?.canonicalLocalProfileId ||
+    pi?.canonicalProfileId ||
+    (onlineProfile as any)?.canonicalLocalProfileId ||
+    ""
+  ).trim();
+}
+
 function buildPrivateInfoPatch(user: any, onlineProfile?: any): PrivateInfoRaw {
   const email = safeLower(user?.email);
   const prefs = (onlineProfile as any)?.preferences || {};
@@ -159,6 +169,7 @@ function buildPrivateInfoPatch(user: any, onlineProfile?: any): PrivateInfoRaw {
     favDoubleOut: prefs?.favDoubleOut ?? pi?.favDoubleOut,
     ttsVoice: prefs?.ttsVoice ?? pi?.ttsVoice,
     sfxVolume: prefs?.sfxVolume ?? pi?.sfxVolume,
+    canonicalLocalProfileId: getRemoteCanonicalLocalProfileId(onlineProfile) || pi?.canonicalLocalProfileId,
   }) as PrivateInfoRaw;
 
   return {
@@ -399,6 +410,15 @@ function pickCanonicalLocalAccountProfile(
   });
   if (!locals.length) return null;
 
+  // V19 : le mapping porté par le profil ONLINE est l'autorité multi-appareils.
+  // Contrairement au binding localStorage, il accompagne le compte sur un nouveau
+  // téléphone/PC et permet de conserver le même profile.id historique.
+  const remoteCanonicalId = getRemoteCanonicalLocalProfileId(onlineProfile);
+  if (remoteCanonicalId) {
+    const remoteBound = locals.find((profile) => String(profile?.id || "").trim() === remoteCanonicalId);
+    if (remoteBound) return remoteBound;
+  }
+
   // V16 : un mapping déjà validé COMPTE -> MON PROFIL est l'autorité absolue.
   // Il survit aux rechargements de scope et empêche un vieux profil doublon de
   // redevenir actif simplement parce qu'il apparaît plus tôt dans le tableau.
@@ -636,6 +656,7 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
     onlineUserId: uid,
     onlineEmail: safeLower(user?.email) || localPI?.onlineEmail || accountPI?.onlineEmail || "",
     accountUserId: uid,
+    canonicalLocalProfileId: String(merged?.id || local?.id || uid),
     linkedLocalProfileIds: aliasIds,
     linkedAccountIds: accountIds,
     password: "",
@@ -676,9 +697,20 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   // Aucun profil joueur sur cet appareil : le compte devient naturellement le
   // premier profil joueur. Il n'y a donc pas de doublon.
   if (!inputProfiles.length) {
-    const only = buildDedicatedAccountProfile(user, onlineProfile, undefined);
-    bindCanonicalAccountProfileId(uid, uid);
-    return { ...store, profiles: [only], activeProfileId: uid };
+    const remoteCanonicalId = getRemoteCanonicalLocalProfileId(onlineProfile);
+    const canonicalId = remoteCanonicalId || uid;
+    const built = buildDedicatedAccountProfile(user, onlineProfile, undefined);
+    const only = writePrivateInfo(
+      { ...built, id: canonicalId },
+      {
+        ...readPrivateInfo(built),
+        onlineUserId: uid,
+        accountUserId: uid,
+        canonicalLocalProfileId: canonicalId,
+      },
+    );
+    bindCanonicalAccountProfileId(uid, canonicalId);
+    return { ...store, profiles: [only], activeProfileId: canonicalId };
   }
 
   // SOURCE CANONIQUE V16 : ne plus décider avec un simple find() ni avec le
@@ -745,6 +777,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
       ...readPrivateInfo(next),
       onlineUserId: uid,
       accountUserId: uid,
+      canonicalLocalProfileId: uid,
       linkedLocalProfileIds: aliases,
       linkedAccountIds: accountIds,
       password: "",

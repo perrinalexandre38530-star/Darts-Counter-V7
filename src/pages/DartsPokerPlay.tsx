@@ -11,6 +11,7 @@ import InfoDot from "../components/InfoDot";
 import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
+import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
 import {
@@ -94,12 +95,7 @@ function Rules({ config }: { config: DartsPokerConfigPayload }) {
 }
 
 function CardView({ card, small = false, hidden = false, selected = false, onClick, badge }: any) {
-  if (hidden) return <div style={{ width: small ? 42 : 55, height: small ? 58 : 76, borderRadius: 9, background: "repeating-linear-gradient(45deg,#2b1115,#2b1115 5px,#6d1721 5px,#6d1721 10px)", border: `1px solid ${GOLD}88`, boxShadow: "0 5px 12px rgba(0,0,0,.35)" }} />;
-  const red = card?.suit === "H" || card?.suit === "D";
-  return <button type="button" onClick={onClick} disabled={!onClick} style={{ width: small ? 42 : 55, height: small ? 58 : 76, padding: 3, position: "relative", borderRadius: 9, background: card?.joker ? "linear-gradient(145deg,#16161d,#6d1721)" : "linear-gradient(145deg,#fff,#e9e9ec)", border: `2px solid ${selected ? GREEN : card?.joker ? GOLD : "rgba(255,255,255,.40)"}`, boxShadow: selected ? `0 0 14px ${GREEN}99` : "0 5px 12px rgba(0,0,0,.35)", color: card?.joker ? GOLD : red ? "#c3172b" : "#111", cursor: onClick ? "pointer" : "default" }}>
-    {card?.joker ? <div style={{ display: "grid", height: "100%", placeItems: "center", fontSize: small ? 8 : 10, fontWeight: 1200, transform: "rotate(-12deg)" }}>JOKER<br />★</div> : <><div style={{ position: "absolute", left: 4, top: 2, fontSize: small ? 10 : 13, fontWeight: 1200, lineHeight: 1 }}>{pokerRankLabel(card?.rank)}</div><div style={{ display: "grid", height: "100%", placeItems: "center", fontSize: small ? 23 : 31 }}>{pokerSuitSymbol(card?.suit)}</div></>}
-    {badge ? <div style={{ position: "absolute", right: -5, bottom: -5, borderRadius: 999, padding: "2px 5px", background: "#090a0e", border: `1px solid ${GOLD}`, color: GOLD, fontSize: 7, fontWeight: 1100 }}>{badge}</div> : null}
-  </button>;
+  return <DartsPokerCard card={card} size={small ? "small" : "medium"} hidden={hidden} selected={selected} onClick={onClick} badge={badge} />;
 }
 
 export default function DartsPokerPlay(props: any) {
@@ -433,9 +429,7 @@ function TinyIconButton({ accent, label, onClick, children }: any) {
 }
 
 function MiniHandCard({ card }: { card: PokerCard | null }) {
-  if (!card) return <span style={{ width: 28, height: 36, borderRadius: 7, border: "1px dashed rgba(255,255,255,.20)", background: "rgba(255,255,255,.02)", flex: "0 0 auto" }} />;
-  const red = card.suit === "H" || card.suit === "D";
-  return <span style={{ position: "relative", width: 28, height: 36, borderRadius: 7, border: `1px solid ${card.joker ? GOLD : "rgba(255,255,255,.35)"}`, background: card.joker ? "linear-gradient(145deg,#17161d,#6d1721)" : "linear-gradient(145deg,#fff,#e8e8eb)", color: card.joker ? GOLD : red ? "#c3172b" : "#111", boxShadow: "0 3px 8px rgba(0,0,0,.30)", flex: "0 0 auto" }}><b style={{ position: "absolute", left: 3, top: 2, fontSize: 8, lineHeight: 1 }}>{card.joker ? "J" : pokerRankLabel(card.rank)}</b><span style={{ display: "grid", height: "100%", placeItems: "center", fontSize: 16 }}>{card.joker ? "★" : pokerSuitSymbol(card.suit)}</span></span>;
+  return <DartsPokerCard card={card} size="mini" />;
 }
 
 function QuickLauncher({ label, value, accent, icon, onClick }: any) {

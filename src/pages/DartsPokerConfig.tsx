@@ -18,6 +18,7 @@ import type { DartsPokerConfigPayload, DartsPokerBotLevel } from "../lib/gameEng
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { PillButton, SelectedParticipantsCompactBlock, x01MostUsedDartSetIdForProfile } from "./X01ConfigV3";
 import tickerDartsPoker from "../assets/tickers/ticker_darts_poker.png";
+import { DartsPokerDeckPreview } from "../components/darts-poker/DartsPokerCard";
 
 const LS_KEY = "dc_modecfg_darts_poker_v1";
 const RED = "#e83a43";
@@ -40,7 +41,7 @@ function Rules() {
     <div><strong style={{ color: GREEN }}>POUVOIRS</strong><br />Simple = carte. Double = carte + Échange. Triple = carte + Choix de 2 cartes.</div>
     <div><strong style={{ color: GOLD }}>BULLS</strong><br />Bull = Choix de 2 cartes. Double Bull = Joker, limité à un Joker par main.</div>
     <div><strong style={{ color: "#fff" }}>CLASSEMENT</strong><br />Carte haute, paire, double paire, brelan, suite, couleur, full, carré, quinte flush et quinte flush royale.</div>
-    <div><strong style={{ color: GOLD }}>CONTRAT</strong><br />Chaque manche peut proposer un objectif bonus. Le réussir rapporte un point supplémentaire.</div><div><strong style={{ color: RED }}>VICTOIRE</strong><br />La meilleure main rapporte un point. Le classement final se joue au total de points, puis aux victoires.</div>
+    <div><strong style={{ color: GOLD }}>CONTRAT</strong><br />Chaque manche peut proposer un objectif bonus. Le réussir rapporte un point supplémentaire.</div><div><strong style={{ color: BLUE }}>DECK MSS</strong><br />Les figures sont incarnées par les personnages de MULTISPORTS SCORING : Awena, Firefighter, Killer et Loterie.</div><div><strong style={{ color: RED }}>VICTOIRE</strong><br />La meilleure main rapporte un point. Le classement final se joue au total de points, puis aux victoires.</div>
   </div>;
 }
 
@@ -151,7 +152,11 @@ export default function DartsPokerConfig(props: any) {
   const summaryBlock = <section style={{ ...block, borderColor: `${GOLD}70`, background: `linear-gradient(135deg,${RED}16,${GOLD}0e)` }}>
     <div style={{ textAlign: "center", color: "#fff", fontSize: 15, fontWeight: 1100 }}>TABLE PRÊTE</div>
     <div style={{ textAlign: "center", color: GOLD, fontSize: 11, fontWeight: 1000, marginTop: 4 }}>{rounds} manches · {dartsPerHand} fléchettes · {powersEnabled ? "Pouvoirs actifs" : "Poker pur"} · {contractsEnabled ? "Contrats ON" : "Contrats OFF"} · {assistanceEnabled ? "Conseils ON" : "Conseils OFF"}</div>
-    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+    <div style={{ marginTop: 8, padding: "7px 8px 5px", borderRadius: 14, border: "1px solid rgba(246,194,86,.26)", background: "radial-gradient(circle at 50% 0%,rgba(246,194,86,.08),rgba(255,255,255,.015) 70%)" }}>
+      <div style={{ textAlign: "center", color: GOLD, fontSize: 7.5, fontWeight: 1100, letterSpacing: .8 }}>DECK MSS SIGNATURE · FIGURES DE L'APPLICATION</div>
+      <DartsPokerDeckPreview />
+    </div>
+    <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
       {[["JOUEURS", selectedIds.length], ["MARCHÉ", "20 CARTES"], ["AIDE", assistanceEnabled ? "ON" : "OFF"]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: soft, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "MARCHÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
     </div>
   </section>;

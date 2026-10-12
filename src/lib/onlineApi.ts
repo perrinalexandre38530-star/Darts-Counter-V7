@@ -2203,7 +2203,10 @@ async function uploadAvatarImage(opts: {
   const { dataUrl } = opts;
   const { user } = await ensureAuthedUser();
 
-  const folder = (opts.folder && String(opts.folder).trim()) || user.id;
+  // Le premier dossier doit toujours être l'auth.uid() Supabase réel : les
+  // policies Storage autorisent uniquement `<auth.uid()>/...`. Un alias local,
+  // un canonical_user_id ou un profile.id ne doit jamais piloter ce chemin.
+  const folder = String(user.id || "").trim();
 
   const blob = dataUrlToBlob(dataUrl);
   const mime = (blob as any).type || "image/png";

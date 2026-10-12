@@ -71,9 +71,13 @@ type VisualOpts = {
 
 function isDeadRemoteAvatar(src: string) {
   const value = String(src || "").trim();
-  if (!value) return false;
-  if (!/^https?:\/\//i.test(value)) return false;
-  return /supabase\.(co|io)\/storage\/v1\/object\//i.test(value);
+  if (!value || !/^https?:\/\//i.test(value)) return false;
+  // Une URL publique Supabase Storage (`/object/public/<bucket>/...`) est une
+  // source distante valide et doit fonctionner sur tous les appareils. Seules
+  // les anciennes URLs d'endpoint d'upload non-public persistées par erreur sont
+  // rejetées ; les autres erreurs réseau passent par le fallback onError normal.
+  return /supabase\.(co|io)\/storage\/v1\/object\/avatars\//i.test(value) &&
+    !/\/storage\/v1\/object\/public\//i.test(value);
 }
 
 type Props =
