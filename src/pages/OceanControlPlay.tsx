@@ -67,8 +67,38 @@ function Rules({ config }: { config: OceanControlConfigPayload }) {
   </div>;
 }
 
-function ShipStrip({ owner, reveal = false }: any) {
-  return <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{(owner?.ships || []).map((ship: any) => <div key={ship.id} title={ship.name} style={{ minWidth: 44, borderRadius: 11, padding: "5px 7px", textAlign: "center", background: ship.sunk ? `${RED}18` : `${BLUE}10`, border: `1px solid ${ship.sunk ? RED : BLUE}55`, opacity: ship.sunk ? .6 : 1 }}><div style={{ fontSize: 15, filter: !reveal && !ship.sunk ? "brightness(.78)" : "none" }}>{ship.sunk ? "💥" : ship.icon}</div><div style={{ color: ship.sunk ? RED : SOFT, fontSize: 6.8, fontWeight: 1000 }}>{ship.hits.length}/{ship.length}</div></div>)}</div>;
+function shipVisualMeta(ship: any) {
+  const name = String(ship?.name || "").toLowerCase();
+  const length = Number(ship?.length || 0);
+  if (name.includes("porte") || name.includes("carrier") || length >= 5) return { kind: "carrier", label: "Porte-avions", emoji: "🛳️" };
+  if (name.includes("sous") || name.includes("sub")) return { kind: "submarine", label: "Sous-marin", emoji: "🫧" };
+  if (name.includes("destroy") || name.includes("torp")) return { kind: "destroyer", label: "Destroyer", emoji: "🚤" };
+  if (name.includes("crois") || name.includes("cruis")) return { kind: "cruiser", label: "Croiseur", emoji: "⛴️" };
+  if (length <= 2) return { kind: "patrol", label: "Patrouilleur", emoji: "🛥️" };
+  if (length === 3) return { kind: "destroyer", label: "Destroyer", emoji: "🚤" };
+  if (length === 4) return { kind: "cruiser", label: "Croiseur", emoji: "⛴️" };
+  return { kind: "carrier", label: "Porte-avions", emoji: "🛳️" };
+}
+
+function StatusLegend() {
+  return <div className="ocean-status-legend">
+    <span><i className="is-unknown" />Inconnue</span>
+    <span><i className="is-miss" />À l’eau</span>
+    <span><i className="is-hit" />Touchée</span>
+    <span><i className="is-sunk" />Coulée</span>
+  </div>;
+}
+
+function ShipStrip({ owner, reveal = false, color = BLUE }: any) {
+  return <div className="ocean-ship-strip">{(owner?.ships || []).map((ship: any) => {
+    const meta = shipVisualMeta(ship);
+    return <div key={ship.id} title={ship.name} className={`ocean-ship-card ${ship.sunk ? "is-sunk" : ""}`} style={{ ["--ship-accent" as any]: color }}>
+      <div className={`ocean-ship-card__art is-${meta.kind}`}>{ship.sunk ? "💥" : meta.emoji}</div>
+      <div className="ocean-ship-card__name">{ship.name || meta.label}</div>
+      <div className="ocean-ship-card__hp">{ship.hits.length}/{ship.length} zones</div>
+      {!reveal && !ship.sunk ? <div className="ocean-ship-card__fog">SECRET</div> : null}
+    </div>;
+  })}</div>;
 }
 
 function OceanGrid({ state, owner, own = false, onFocus, placement = false, placementShip, onPlace, sonarScan = null, recentCells = [], shipColor = BLUE, compact = false }: any) {
@@ -77,6 +107,7 @@ function OceanGrid({ state, owner, own = false, onFocus, placement = false, plac
     const number = state.gridNumbers[cell];
     const status = owner?.attackedCells?.[String(cell)] || null;
     const ship = own ? owner?.ships?.find((row: any) => row.cells.includes(cell)) : null;
+    const shipMeta = ship ? shipVisualMeta(ship) : null;
     const focused = Number(state.focusNumber) === Number(number);
     const scanned = Boolean(!own && sonarScan?.targetOwnerId === owner?.id && sonarScan?.cells?.includes(cell));
     const scanCenter = Boolean(scanned && sonarScan?.centerCell === cell);
@@ -86,7 +117,12 @@ function OceanGrid({ state, owner, own = false, onFocus, placement = false, plac
     return <button key={cell} type="button" className={className} onClick={() => placement ? onPlace?.(cell) : onFocus?.(number)} aria-label={`Zone ${number}${status ? ` · ${status}` : ""}`}>
       <span className="ocean-cell-water" aria-hidden="true" />
       <span className="ocean-cell-number">{showNumber ? number : "•"}</span>
-      {ship ? <span className={`ocean-cell-vessel vessel-${Math.min(4, Math.max(2, Number(ship.length || 2)))}`} style={{ ["--ship-color" as any]: shipColor }} aria-hidden="true" /> : null}
+      {focused ? <span className="ocean-cell-focus-ring" aria-hidden="true" /> : null}
+      {scanned ? <span className={`ocean-cell-sonar-ring ${scanCenter ? "is-center" : ""}`} aria-hidden="true" /> : null}
+      {ship ? <span className={`ocean-cell-vessel vessel-${Math.min(4, Math.max(2, Number(ship.length || 2)))} is-${shipMeta?.kind || "carrier"}`} style={{ ["--ship-color" as any]: shipColor }} aria-hidden="true" /> : null}
+      {status === "miss" ? <span className="ocean-cell-splash" aria-hidden="true" /> : null}
+      {status === "hit" ? <span className="ocean-cell-blast" aria-hidden="true" /> : null}
+      {status === "sunk" ? <span className="ocean-cell-blast is-sunk" aria-hidden="true" /> : null}
       <span className="ocean-cell-mark">{status === "miss" ? "≈" : status === "hit" ? "✹" : status === "sunk" ? "💥" : ""}</span>
       {scanCenter ? <span className="ocean-cell-sonar-badge">{sonarScan.contactCount}</span> : null}
       {placement && placementShip ? <span className="ocean-cell-coord">{String.fromCharCode(65 + Math.floor(cell / 5))}{(cell % 5) + 1}</span> : null}
@@ -359,6 +395,7 @@ export default function OceanControlPlay(props: any) {
           <div className="ocean-map-launcher__preview">
             <OceanGrid state={state} owner={targetOwner} onFocus={(number: number) => { chooseFocus(number); setOverlay("map"); }} sonarScan={latestSonar} recentCells={recentCells} shipColor={targetColor} compact />
           </div>
+          <StatusLegend />
         </div>
         <ImpactFeedback feedback={impactFeedback} />
         <div className="ocean-floating-dock" aria-label="Informations de partie">
@@ -372,6 +409,19 @@ export default function OceanControlPlay(props: any) {
       </section>
 
       <section className="ocean-fire-control-panel">
+        <div className="ocean-fire-control-head">
+          <div>
+            <strong>POSTE DE TIR</strong>
+            <span>Simple, double, triple, sonar Bull et frappe DBULL.</span>
+          </div>
+          <div className="ocean-weapon-pips">
+            <span className="is-simple">S</span>
+            <span className="is-double">D</span>
+            <span className="is-triple">T</span>
+            <span className="is-bull">B</span>
+            <span className="is-dbull">DB</span>
+          </div>
+        </div>
         {config.scoreInputMethod === "dartboard" ? <div className="ocean-dartboard-input">
           <div className="ocean-pad-statusline">
             <div className="ocean-pad-statusline__notice">{noticeSlot}</div>
@@ -393,8 +443,8 @@ export default function OceanControlPlay(props: any) {
       </section>
     </main>
 
-    {overlay === "map" ? <OverlayShell title="CARTE ENNEMIE" subtitle={`${targetOwner?.name || "Aucune cible"} · Focus ${state.focusNumber || "—"}`} color={targetColor} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 10 }}><Kpi label="NAVIRES RESTANTS" value={remainingShips} color={RED} /><Kpi label="ZONES INTACTES" value={remainingCells} color={CYAN} /><Kpi label="DÉGÂTS" value={`${targetDamagePercent}%`} color={GOLD} /></div><div className="ocean-map-overlay-toolbar"><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("intel")}>📡 Centre tactique</button><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("targets")}>🎯 Changer de cible</button><button type="button" className="ocean-map-overlay-tool" onClick={cancelOrUndo}>↶ Annuler</button></div><div className="ocean-map-overlay-grid"><OceanGrid state={state} owner={targetOwner} onFocus={chooseFocus} sonarScan={latestSonar} recentCells={recentCells} shipColor={targetColor} /></div><div className="ocean-map-overlay-footnote">Sélectionne une case pour définir le focus du sonar ou de la DBULL.</div></OverlayShell> : null}
-    {overlay === "fleet" ? <OverlayShell title="MA FLOTTE" subtitle={`${ownOwner?.name} · ${scoreLine}`} color={GREEN} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 10 }}><Kpi label="NAVIRES ACTIFS" value={oceanControlRemainingDecks(ownOwner)} color={GREEN} /><Kpi label="ZONES INTACTES" value={oceanControlRemainingCells(ownOwner)} color={CYAN} /><Kpi label="MANCHES" value={state.scoreByOwner[ownOwner?.id || ""] || 0} color={GOLD} /></div><ShipStrip owner={ownOwner} reveal /><div style={{ marginTop: 10 }}><OceanGrid state={state} owner={ownOwner} own onFocus={() => {}} shipColor={ownColor} /></div></OverlayShell> : null}
+    {overlay === "map" ? <OverlayShell title="CARTE ENNEMIE" subtitle={`${targetOwner?.name || "Aucune cible"} · Focus ${state.focusNumber || "—"}`} color={targetColor} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 10 }}><Kpi label="NAVIRES RESTANTS" value={remainingShips} color={RED} /><Kpi label="ZONES INTACTES" value={remainingCells} color={CYAN} /><Kpi label="DÉGÂTS" value={`${targetDamagePercent}%`} color={GOLD} /></div><div className="ocean-map-overlay-toolbar"><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("intel")}>📡 Centre tactique</button><button type="button" className="ocean-map-overlay-tool" onClick={() => setOverlay("targets")}>🎯 Changer de cible</button><button type="button" className="ocean-map-overlay-tool" onClick={cancelOrUndo}>↶ Annuler</button></div><div className="ocean-map-overlay-grid"><OceanGrid state={state} owner={targetOwner} onFocus={chooseFocus} sonarScan={latestSonar} recentCells={recentCells} shipColor={targetColor} /></div><StatusLegend /><div className="ocean-map-overlay-footnote">Sélectionne une case pour définir le focus du sonar ou de la DBULL. Les contacts sonar pulsés te guident vers les zones chaudes.</div></OverlayShell> : null}
+    {overlay === "fleet" ? <OverlayShell title="MA FLOTTE" subtitle={`${ownOwner?.name} · ${scoreLine}`} color={GREEN} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 10 }}><Kpi label="NAVIRES ACTIFS" value={oceanControlRemainingDecks(ownOwner)} color={GREEN} /><Kpi label="ZONES INTACTES" value={oceanControlRemainingCells(ownOwner)} color={CYAN} /><Kpi label="MANCHES" value={state.scoreByOwner[ownOwner?.id || ""] || 0} color={GOLD} /></div><ShipStrip owner={ownOwner} reveal color={ownColor} /><div style={{ marginTop: 10 }}><OceanGrid state={state} owner={ownOwner} own onFocus={() => {}} shipColor={ownColor} /></div></OverlayShell> : null}
     {overlay === "targets" ? <OverlayShell title="CHOISIR UNE FLOTTE ENNEMIE" subtitle="Change la cible de la prochaine volée" color={RED} onClose={() => setOverlay(null)}><div style={{ display: "grid", gap: 8 }}>{state.owners.filter((owner) => owner.id !== ownOwner?.id).map((owner) => { const total = owner.ships.reduce((sum, ship) => sum + ship.length, 0) || 1; const left = oceanControlRemainingCells(owner); const damage = Math.round(((total - left) / total) * 100); return <button key={owner.id} disabled={owner.eliminated} onClick={() => chooseTarget(owner.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 11, borderRadius: 15, border: `1px solid ${state.targetOwnerId === owner.id ? RED : "rgba(255,255,255,.09)"}`, background: state.targetOwnerId === owner.id ? `${RED}14` : "rgba(255,255,255,.03)", color: owner.eliminated ? "rgba(255,255,255,.3)" : "#fff", textAlign: "left" }}><div><div style={{ fontWeight: 1100 }}>{owner.name}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{oceanControlRemainingDecks(owner)} navires · {left} zones · {damage}% détruit</div><div style={{ marginTop: 6, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${damage}%`, height: "100%", background: `linear-gradient(90deg,${GOLD},${RED})` }} /></div></div><strong style={{ color: owner.eliminated ? RED : CYAN }}>{owner.eliminated ? "COULÉE" : state.targetOwnerId === owner.id ? "CIBLE" : "VISER"}</strong></button>; })}</div></OverlayShell> : null}
     {overlay === "intel" ? <OverlayShell title="CENTRE TACTIQUE" subtitle={`${targetOwner?.name || "Aucune cible"} · ${remainingCells} zones intactes`} color={CYAN} onClose={() => setOverlay(null)}>
       <div className="ocean-intel-mission"><span>🧭</span><div><strong>RECOMMANDATION DU COMMANDANT</strong><p>{oceanControlTacticalHint(state)}</p></div></div>
