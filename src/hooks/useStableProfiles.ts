@@ -20,12 +20,32 @@ function profileSig(p: any) {
     p?.avatarSha256 || p?.avatarAssetId || "",
     p?.country || "",
     p?.privateInfo?.country || "",
+    // MON PROFIL doit réagir aux changements d'identité et d'informations
+    // personnelles, pas seulement au nom racine. Avant V17, un profil dont
+    // `name` restait "Ninja" mais dont `privateInfo.nickname` repassait à
+    // "Perrin" pouvait réutiliser une ancienne référence et afficher un état
+    // différent de Home/Stats.
+    p?.privateInfo?.nickname || "",
+    p?.privateInfo?.firstName || "",
+    p?.privateInfo?.lastName || "",
+    p?.privateInfo?.birthDate || "",
+    p?.privateInfo?.city || "",
+    p?.privateInfo?.email || "",
+    p?.privateInfo?.onlineUserId || p?.privateInfo?.accountUserId || "",
     p?.privateInfo?.appLang || p?.preferences?.appLang || "",
     p?.privateInfo?.appTheme || p?.preferences?.appTheme || "",
     p?.privateInfo?.favX01 ?? p?.preferences?.favX01 ?? "",
     p?.privateInfo?.favDoubleOut ?? p?.preferences?.favDoubleOut ?? "",
     p?.privateInfo?.ttsVoice || p?.preferences?.ttsVoice || "",
     p?.privateInfo?.sfxVolume ?? p?.preferences?.sfxVolume ?? "",
+    // Le tableau Profiles est la seule surface qui utilise ce hook. Inclure les
+    // mini KPI évite de conserver un objet profil obsolète après une restauration
+    // ou une réconciliation de stats.
+    p?.stats?.avg3 ?? p?.stats?.avg3d ?? p?.stats?.avg3D ?? "",
+    p?.stats?.bestVisit ?? p?.stats?.best_visit ?? "",
+    p?.stats?.bestCheckout ?? p?.stats?.best_checkout ?? "",
+    p?.stats?.games ?? p?.stats?.sessions ?? "",
+    p?.stats?.wins ?? "",
   ].join(":");
 }
 

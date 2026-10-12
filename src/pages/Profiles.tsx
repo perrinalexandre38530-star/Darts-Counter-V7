@@ -3076,11 +3076,17 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
   
   const rawActive = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
   const active = React.useMemo(() => {
-    if (auth.status !== "signed_in") return rawActive;
+    // V17 — MON PROFIL doit afficher exactement le profil actif du Store, comme
+    // Home et les écrans de jeu. Le binding compte reste un filet de récupération
+    // uniquement si le Store n'a momentanément plus de profil actif.
+    // Avant, un ancien binding encore pointé vers "Perrin" pouvait remplacer
+    // `rawActive = Ninja` uniquement dans cette page, d'où les écrans contradictoires.
+    if (rawActive) return rawActive;
+    if (auth.status !== "signed_in") return null;
     return getCanonicalAccountProfileFromStore(
       { ...(store as any), profiles: stableProfiles },
       currentAuthUserId(),
-    ) as any || rawActive;
+    ) as any || null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawActive, stableProfiles, activeProfileId, auth.status, (auth.user as any)?.id]);
 
@@ -3098,10 +3104,16 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
     const boundId = getBoundAccountProfileId(authUid);
     const bound = boundId ? list.find((profile: any) => String(profile?.id || "").trim() === boundId) : null;
 
-    let target: any = bound || null;
-    let reason = bound ? "account_binding" : "";
+    // Le Store actif est désormais l'autorité d'affichage. Si V15/V16 a laissé
+    // un binding historique sur un autre profil, on répare le mapping vers le
+    // profil déjà actif au lieu de faire basculer l'UI vers l'ancien doublon.
+    let target: any = rawActive || bound || null;
+    let reason = rawActive ? "store_active" : (bound ? "account_binding" : "");
+    if (rawActive?.id && String(boundId || "") !== String(rawActive.id)) {
+      bindCanonicalAccountProfileId(authUid, rawActive.id);
+    }
 
-    if (!target && !rawActive) {
+    if (!target) {
       const exactLinked = list.filter((profile: any) => {
         const pi: any = profile?.privateInfo || {};
         return [
@@ -3487,7 +3499,10 @@ React.useEffect(() => {
   // de cache (~5/6), donc une seule demi-étoile.
   const activeMiniStats = useBasicStats(
     active?.id ? String(active.id) : null,
-    view === "me" && meHeavyReady && !!active?.id,
+    // MON PROFIL est une surface de premier niveau : on lance immédiatement la
+    // même agrégation History/StatsHub que Home au lieu d'attendre le defer de
+    // la section lourde. Le calcul profond reste lui-même planifié en idle.
+    view === "me" && !!active?.id,
     active?.name,
     sportResolved
   );
@@ -3534,6 +3549,19 @@ React.useEffect(() => {
     if (!active) return;
     patchProfilePrivateInfo(active.id, patch as any);
   }
+
+  // V17 — Répare une fois les anciens profils où `name` et
+  // `privateInfo.nickname` ont divergé à cause des projections compte/NAS.
+  // L'utilisateur continue d'éditer le surnom normalement : handlePrivateInfoSave
+  // aligne déjà `name` et `nickname` lors d'une modification volontaire.
+  React.useEffect(() => {
+    if (auth.status !== "signed_in" || !active?.id) return;
+    const canonicalName = String((active as any)?.name || "").trim();
+    const privateNickname = String((active as any)?.privateInfo?.nickname || "").trim();
+    if (!canonicalName || canonicalName === privateNickname) return;
+    patchProfilePrivateInfo(String(active.id), { nickname: canonicalName } as any);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.status, (auth.user as any)?.id, active?.id, (active as any)?.name, (active as any)?.privateInfo?.nickname]);
 
   function patchActivePrefs(patch: Record<string, any>) {
     if (!active) return;
@@ -5116,15 +5144,16 @@ function ActiveProfileBlock({
       ? "#9AA0AA"
       : "#1FB46A";
 
-  // ✅ IMPORTANT (multi-appareils):
-  // Le label sous l'avatar DOIT afficher le surnom (nickname) s'il existe.
-  // Sinon on retombe sur name.
+  // V17 — Le nom racine du profil actif est l'identité joueur canonique.
+  // `privateInfo.nickname` est un champ éditable/synchronisé qui a pu garder une
+  // ancienne valeur (ex. Perrin) après les anciens bridges. Il ne doit plus
+  // remplacer visuellement `active.name` (ex. Ninja).
   const displayName = React.useMemo(() => {
+    const n = String((active as any)?.name || "").trim();
+    if (n) return n;
     const pi = ((active as any)?.privateInfo || {}) as any;
     const nick = String(pi?.nickname || "").trim();
-    if (nick) return nick;
-    const n = String((active as any)?.name || "").trim();
-    return n || "—";
+    return nick || "—";
   }, [active]);
 
   // =========================
@@ -5551,7 +5580,10 @@ function PrivateInfoBlock({
     const pi = ((active as any)?.privateInfo || {}) as PrivateInfo;
     const prefs = (((active as any)?.preferences || {}) as Partial<PrivateInfo>);
     return {
-      nickname: String(pi.nickname || ""),
+      // Le nom du profil actif est la source de vérité du surnom affiché.
+      // Un ancien privateInfo.nickname ne doit plus faire apparaître une autre
+      // identité uniquement dans MON PROFIL.
+      nickname: String((active as any)?.name || pi.nickname || ""),
       lastName: String(pi.lastName || ""),
       firstName: String(pi.firstName || ""),
       birthDate: String(pi.birthDate || ""),
@@ -5572,6 +5604,7 @@ function PrivateInfoBlock({
     };
   }, [
     (active as any)?.id,
+    (active as any)?.name,
     (active as any)?.privateInfo?.nickname,
     (active as any)?.privateInfo?.lastName,
     (active as any)?.privateInfo?.firstName,
