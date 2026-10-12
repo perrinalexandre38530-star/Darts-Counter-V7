@@ -1,6 +1,6 @@
 import { createFiftyOneByFiveState, playFiftyOneByFiveVisit } from "../src/lib/gameEngines/fiftyOneByFiveEngine.ts";
 import { createLooperState, playLooperVisit } from "../src/lib/gameEngines/looperEngine.ts";
-import { createCallThreeState, playCallThreeVisit } from "../src/lib/gameEngines/callThreeEngine.ts";
+import { createCallThreeState, playCallThreeVisit, setCallThreeCalls } from "../src/lib/gameEngines/callThreeEngine.ts";
 import { createSteeplechaseState, playSteeplechaseVisit } from "../src/lib/gameEngines/steeplechaseEngine.ts";
 import { encodeCompactMatch, decodeCompactMatch } from "../src/lib/matchCompactCodec.ts";
 import { readFileSync } from "node:fs";
@@ -47,7 +47,7 @@ const two = [{ id: "a", name: "A" }, { id: "b", name: "B" }];
     seriesWins: 1,
     rules: { rounds: 5, callerMode: "next", orderedTargets: true, bullAllowed: true, multiplierScoring: true },
   });
-  s.currentCalls = [{ kind: "number", number: 20 }, { kind: "number", number: 1 }, { kind: "bull" }];
+  s = setCallThreeCalls(s, [{ kind: "number", number: 20 }, { kind: "number", number: 1 }, { kind: "bull" }]);
   s = playCallThreeVisit(s, [{ bed: "T", number: 20 }, { bed: "D", number: 1 }, { bed: "IB" }]);
   assert(s.scores.a === 8, "CALL THREE: T=3, D=2 et DBull=3 doivent donner 8 points sans bonus inventé");
   assert(s.statsByPlayer.a.perfectRounds === 1, "CALL THREE: trois appels réussis doivent enregistrer un Full Call");
@@ -61,9 +61,9 @@ const two = [{ id: "a", name: "A" }, { id: "b", name: "B" }];
   tie.activePlayerIndex = 1;
   tie.scores.a = 4;
   tie.scores.b = 4;
-  tie.currentCalls = [{ kind: "number", number: 20 }, { kind: "number", number: 1 }, { kind: "bull" }];
+  tie = setCallThreeCalls(tie, [{ kind: "number", number: 20 }, { kind: "number", number: 1 }, { kind: "bull" }]);
   tie = playCallThreeVisit(tie, [{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }]);
-  assert(tie.phase === "playing" && tie.roundIndex === 5 && tie.winnerId == null, "CALL THREE: une égalité après les rounds prévus doit ouvrir un round supplémentaire");
+  assert(tie.phase === "calling" && tie.overtime === true && tie.roundIndex === 5 && tie.winnerId == null, "CALL THREE: une égalité après les rounds prévus doit ouvrir un round supplémentaire et une nouvelle phase d’appel");
 }
 
 // STEEPLECHASE — progression normale et haie obligatoire en Triple.
@@ -127,6 +127,14 @@ for (const mode of ["fifty_one_by_five", "looper", "call_three", "steeplechase"]
     assert(ticker.includes(`"${mode}"`), `TICKER ${mode}: nouveauté absente`);
   }
   assert(ticker.includes('id === "fifty_one_by_five" ? "51_by_5" : id'), "TICKER 51 BY 5: alias asset ticker_51_by_5.png absent");
+
+  for (const file of ["FiftyOneByFivePlay.tsx", "LooperPlay.tsx", "CallThreePlay.tsx", "SteeplechasePlay.tsx"]) {
+    const play = readFileSync(resolve(process.cwd(), `src/pages/${file}`), "utf8");
+    assert(play.includes("PremiumEndPanel"), `${file}: écran de fin premium absent`);
+    assert(play.includes("QuickRow"), `${file}: barre joueurs/stats/journal/classement absente`);
+    assert(play.includes("PremiumAwenaButton"), `${file}: intégration Awena absente`);
+    assert(play.includes("currentThrow") && play.includes("resume:"), `${file}: reprise de volée incomplète`);
+  }
 }
 
 console.log("51 BY 5 / LOOPER / CALL THREE / STEEPLECHASE regression: OK");

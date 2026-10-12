@@ -1,92 +1,106 @@
 // @ts-nocheck
 import React from "react";
 import BackDot from "../components/BackDot";
-import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerSteeple from "../assets/tickers/ticker_steeplechase.webp";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
+import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
 import {
-  cloneSteeplechaseState,
-  createSteeplechaseState,
-  currentSteepleTarget,
-  normalizeSteeplechaseConfig,
-  pickSteeplechaseBotDarts,
-  playSteeplechaseVisit,
-  steepleDartHitsTarget,
-  steepleSequence,
-  type SteeplechaseState,
+  cloneSteeplechaseState, createSteeplechaseState, currentSteepleTarget, normalizeSteeplechaseConfig,
+  pickSteeplechaseBotDarts, playSteeplechaseVisit, steepleDartHitsTarget, steepleSequence, type SteeplechaseState,
 } from "../lib/gameEngines/steeplechaseEngine";
+import { NewModeInput, dartLabel, isBotProfile, lastEvents, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
 import {
-  DartStrip,
-  LiveStatGrid,
-  Meter,
-  ModeEndPanel,
-  NewModeInput,
-  PlayerCard,
-  VisitTimeline,
-  actionStyle,
-  isBotProfile,
-  lastEvents,
-  panelStyle,
-  playerName,
-  resolveModeProfiles,
-  SOFT,
-  uiToGameDart,
-} from "./newModes/newModePlayShared";
+  ActiveHero, BotTurn, FloatingAdvice, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton,
+  PremiumEndPanel, QuickRow, RankingModal, StatsModal, SummaryStrip, bestBy, modePlayerColors, percent,
+} from "./newModes/PremiumPartyModeUi";
+import "./newModes/PremiumPartyModeUi.css";
 
 const ACCENT="#7dffbd", FENCE="#ffb13b", FINISH="#ff6464", BLUE="#65caff";
-function Rules({config}:any){return <div style={{display:"grid",gap:10,fontSize:12.5,lineHeight:1.5}}><div><b style={{color:ACCENT}}>COURSE</b><br/>Pars du 20 et suis l'ordre physique des secteurs jusqu'au 5, puis termine au Bull.</div><div><b style={{color:FENCE}}>HAIES</b><br/>{config.rules.fencesEnabled?"T13, T17, T8 et T5 remplacent la zone normale.":"Haies désactivées."}</div><div><b style={{color:ACCENT}}>SIMPLES</b><br/>{config.rules.innerSingleOnly?"Le petit simple intérieur est requis. La cible interactive distingue réellement la zone.":"Tout simple valide le secteur."}</div><div><b style={{color:FINISH}}>ARRIVÉE</b><br/>{config.rules.finishBull==='double'?"DBULL obligatoire.":"Bull ou DBULL."}</div></div>}
+
+function coachText(state:SteeplechaseState,activePlayer:any){
+  if(!activePlayer)return "";
+  const target=currentSteepleTarget(state,activePlayer.id),step=Number(state.stepByPlayer?.[activePlayer.id]||0),seq=steepleSequence(state.config.rules.direction);
+  if(target.kind==="bull")return state.config.rules.finishBull==="double"?"Dernière haie franchie : ferme la course au DBULL.":"Ligne d'arrivée : Bull ou DBULL termine la course.";
+  if(target.fence)return `Haie ${target.label} : seul le triple compte. Priorité à la précision, pas à la vitesse.`;
+  if(seq.length-step<=3)return `Sprint final : ${target.label}, puis encore ${Math.max(0,seq.length-step-1)} secteur(s) avant le Bull.`;
+  return `Reste sur le parcours : ${target.label} est la prochaine étape. Une touche valide te fait avancer immédiatement.`;
+}
 
 export default function SteeplechasePlay(props:any){
-  useFullscreenPlay({enabled:true,lockBodyScroll:false});
+  useFullscreenPlay({enabled:true,lockBodyScroll:true});
+  const awena=useAwenaOptional();
   const go=props?.go??props?.setTab,store=props?.store,onFinish=props?.onFinish,resumeRecord=props?.params?.rec||props?.params?.record||props?.params?.match||null;
   const config=React.useMemo(()=>normalizeSteeplechaseConfig(props?.params?.config||resumeRecord?.resume?.config||resumeRecord?.payload?.config||{}),[]);
-  const profiles=React.useMemo(()=>resolveModeProfiles(config,store),[config,store]);const players=React.useMemo(()=>profiles.map((p:any,i:number)=>({id:String(p.id||`p${i+1}`),name:playerName(p,i)})),[profiles]);
+  const profiles=React.useMemo(()=>resolveModeProfiles(config,store),[config,store]);
+  const players=React.useMemo(()=>profiles.map((p:any,i:number)=>({id:String(p.id||`p${i+1}`),name:playerName(p,i)})),[profiles]);
   const botIds=React.useMemo(()=>new Set((config.botIds||[]).map(String)),[config.botIds]);
   const restored=resumeRecord?.resume?.state||resumeRecord?.payload?.stateSnapshot||resumeRecord?.payload?.state||null;
+  const recoveredThrow=resumeRecord?.resume?.currentThrow??resumeRecord?.payload?.currentThrow;
   const [state,setState]=React.useState<SteeplechaseState>(()=>restored?.mode==="steeplechase"?cloneSteeplechaseState(restored):createSteeplechaseState(players,config));
-  const [currentThrow,setCurrentThrow]=React.useState<UIDart[]>([]),[multiplier,setMultiplier]=React.useState<1|2|3>(1),[undo,setUndo]=React.useState<SteeplechaseState[]>([]),[notice,setNotice]=React.useState("");
-  const botBusy=React.useRef(false),finishedRef=React.useRef(false),matchIdRef=React.useRef(String(resumeRecord?.id||resumeRecord?.matchId||`steeple-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
+  const [currentThrow,setCurrentThrow]=React.useState<UIDart[]>(()=>Array.isArray(recoveredThrow)?recoveredThrow.slice(0,3):[]);
+  const [multiplier,setMultiplier]=React.useState<1|2|3>(()=>{const v=resumeRecord?.resume?.multiplier??resumeRecord?.payload?.multiplier;return v===2||v===3?v:1;});
+  const [undo,setUndo]=React.useState<SteeplechaseState[]>([]),[notice,setNotice]=React.useState("");
+  const [playersOpen,setPlayersOpen]=React.useState(false),[statsOpen,setStatsOpen]=React.useState(false),[logOpen,setLogOpen]=React.useState(false),[rankingOpen,setRankingOpen]=React.useState(false);
+  const botBusy=React.useRef(false),finishedRef=React.useRef(false),introPlayedRef=React.useRef(false),initialCheckpointRef=React.useRef(false);
+  const matchIdRef=React.useRef(String(resumeRecord?.id||resumeRecord?.matchId||`steeple-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
   const profileById=React.useMemo(()=>new Map(profiles.map((p:any)=>[String(p.id),p])),[profiles]);
-  const activePlayer=state.players[state.activePlayerIndex],activeProfile=activePlayer?profileById.get(String(activePlayer.id))||activePlayer:null,activeIsBot=!!activeProfile&&isBotProfile(activeProfile,botIds);
+  const colorById=React.useMemo(()=>modePlayerColors(state.players,ACCENT),[state.players]);
+  const activePlayer=state.players[state.activePlayerIndex],activeProfile=activePlayer?profileById.get(String(activePlayer.id))||activePlayer:null;
+  const activeColor=activePlayer?colorById.get(String(activePlayer.id))||ACCENT:ACCENT,activeIsBot=!!activeProfile&&isBotProfile(activeProfile,botIds);
+  const sfxEnabled=(config as any).sfxEnabled!==false,awenaEnabled=(config as any).awenaEnabled!==false,coachEnabled=(config as any).coachEnabled!==false;
+  const nameById=React.useCallback((id:any)=>state.players.find((p:any)=>String(p.id)===String(id))?.name||"Joueur",[state.players]);
 
-  const buildRecord=React.useCallback((s:SteeplechaseState,status:"in_progress"|"finished")=>{const rows=profiles.map((p:any)=>({id:String(p.id),name:playerName(p),avatarDataUrl:p.avatarDataUrl??null}));return{id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:"steeplechase",mode:"steeplechase",sport:"darts",status,createdAt:s.startedAt,updatedAt:Date.now(),finishedAt:status==="finished"?(s.finishedAt||Date.now()):undefined,winnerId:s.winnerId,players:rows,game:{mode:"steeplechase",seriesWins:s.config.seriesWins},summary:{mode:"steeplechase",finished:status==="finished",winnerId:s.winnerId,legWins:s.legWins,config:s.config,perPlayer:Object.fromEntries(Object.entries(s.statsByPlayer).map(([id,st]:any)=>[id,{...st,step:Number(s.stepByPlayer[id]||0),wins:Number(s.legWins[id]||0)}]))},resume:{mode:"steeplechase",config:s.config,state:cloneSteeplechaseState(s),updatedAt:Date.now()},payload:{kind:"steeplechase",mode:"steeplechase",sport:"darts",config:s.config,stateSnapshot:cloneSteeplechaseState(s),visits:s.visits,visitHistory:s.visits,stats:{mode:"steeplechase",players:s.statsByPlayer,legWins:s.legWins}}};},[profiles]);
-  const persist=React.useCallback((s:SteeplechaseState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished");if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec);}else void History.upsert(buildRecord(s,"in_progress")).catch(()=>{});},[buildRecord,onFinish]);
-  const commit=(next:SteeplechaseState,previous=state)=>{setUndo(u=>[...u.slice(-39),cloneSteeplechaseState(previous)]);setState(next);setCurrentThrow([]);setMultiplier(1);const ev=lastEvents(next.visits);let msg=ev.length?ev.join(" · "):"";if(next.phase==="finished"&&next.winnerId)msg=`🏆 ${next.players.find((p:any)=>p.id===next.winnerId)?.name||"Victoire"} remporte STEEPLECHASE`;else if(next.legIndex>previous.legIndex&&next.lastLegWinnerId)msg=`🏁 ${next.players.find((p:any)=>p.id===next.lastLegWinnerId)?.name||"Un joueur"} gagne la course`;setNotice(msg);persist(next);};
+  const buildRecord=React.useCallback((s:SteeplechaseState,status:"in_progress"|"finished",draft:UIDart[]=currentThrow,draftMultiplier:1|2|3=multiplier)=>{
+    const rows=profiles.map((p:any)=>({id:String(p.id),name:playerName(p),avatarDataUrl:p.avatarDataUrl??null}));
+    const perPlayer=Object.fromEntries(Object.entries(s.statsByPlayer).map(([id,st]:any)=>[id,{...st,step:Number(s.stepByPlayer[id]||0),wins:Number(s.legWins[id]||0),accuracy:percent(st.hits,st.darts)}]));
+    const ranking=[...s.players].map((p:any,i:number)=>({id:p.id,name:p.name,wins:Number(s.legWins[p.id]||0),step:Number(s.stepByPlayer[p.id]||0),hits:Number(s.statsByPlayer[p.id]?.hits||0),fences:Number(s.statsByPlayer[p.id]?.fencesCleared||0),order:i})).sort((a,b)=>b.wins-a.wins||b.step-a.step||b.fences-a.fences||b.hits-a.hits||a.order-b.order);
+    return {id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:"steeplechase",mode:"steeplechase",sport:"darts",status,createdAt:s.startedAt,updatedAt:Date.now(),finishedAt:status==="finished"?(s.finishedAt||Date.now()):undefined,winnerId:s.winnerId,players:rows,
+      game:{mode:"steeplechase",seriesWins:s.config.seriesWins},summary:{mode:"steeplechase",finished:status==="finished",winnerId:s.winnerId,legWins:s.legWins,config:s.config,perPlayer,ranking,durationMs:Math.max(0,Number((status==="finished"?(s.finishedAt||Date.now()):Date.now()))-Number(s.startedAt||Date.now())),totalDarts:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0)},
+      resume:{mode:"steeplechase",config:s.config,state:cloneSteeplechaseState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,updatedAt:Date.now()},payload:{kind:"steeplechase",mode:"steeplechase",sport:"darts",config:s.config,stateSnapshot:cloneSteeplechaseState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,visits:s.visits,visitHistory:s.visits,stats:{mode:"steeplechase",players:s.statsByPlayer,legWins:s.legWins}}};
+  },[profiles,currentThrow,multiplier]);
+  const saveInProgress=React.useCallback(async(s:SteeplechaseState,draft:UIDart[]=currentThrow,m:1|2|3=multiplier)=>{try{await History.upsert(buildRecord(s,"in_progress",draft,m));}catch(e){console.warn("[STEEPLECHASE] checkpoint failed",e);}},[buildRecord,currentThrow,multiplier]);
+  const persist=React.useCallback((s:SteeplechaseState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished",[],1);if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec).catch(()=>{});}else void saveInProgress(s,[],1);},[buildRecord,onFinish,saveInProgress]);
+
+  React.useEffect(()=>{if(initialCheckpointRef.current)return;initialCheckpointRef.current=true;if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier);},[saveInProgress,state,currentThrow,multiplier]);
+  React.useEffect(()=>{if(state.phase==="finished")return;const t=window.setTimeout(()=>void saveInProgress(state,currentThrow,multiplier),180);return()=>window.clearTimeout(t);},[currentThrow,multiplier,state.phase,state.activePlayerIndex,saveInProgress]);
+  React.useEffect(()=>{if(restored?.mode==="steeplechase"||resumeRecord)return;const start=()=>{if(!sfxEnabled||introPlayedRef.current)return;introPlayedRef.current=true;void unlockNewModeAudio();playNewModeSfx("intro",true)};try{if((navigator as any)?.userActivation?.hasBeenActive){start();return;}}catch{}window.addEventListener("pointerdown",start,{once:true,capture:true} as any);return()=>window.removeEventListener("pointerdown",start,true);},[sfxEnabled]);
+  React.useEffect(()=>{const t=activePlayer?currentSteepleTarget(state,activePlayer.id):null;awena?.setRuntime?.({route:"steeplechase_play",sport:"darts",mode:"steeplechase",phase:state.phase==="finished"?"summary":"play",inGame:state.phase!=="finished",screenLabel:"STEEPLECHASE · Partie",playerName:activePlayer?.name,extra:{target:t?.label,step:state.stepByPlayer?.[activePlayer?.id],direction:state.config.rules.direction,fencesEnabled:state.config.rules.fencesEnabled,leg:Number(state.legIndex||0)+1,visit:Number(state.turnIndex||0)+1,awenaRememberedMode:"steeplechase",awenaKnowledgeTopic:"screen:steeplechase_play"}});},[awena,state.phase,state.legIndex,state.turnIndex,state.stepByPlayer,activePlayer?.id]);
+
+  const commit=React.useCallback((next:SteeplechaseState,previous=state,forcedNotice?:string)=>{setUndo(u=>[...u.slice(-39),cloneSteeplechaseState(previous)]);setState(next);setCurrentThrow([]);setMultiplier(1);let msg=forcedNotice||"";if(!msg&&next.phase==="finished"&&next.winnerId){msg=`🏆 ${nameById(next.winnerId)} remporte STEEPLECHASE !`;playNewModeSfx("victory",sfxEnabled);}else if(!msg&&next.legIndex>previous.legIndex&&next.lastLegWinnerId)msg=`🏁 ${nameById(next.lastLegWinnerId)} gagne la course`;else if(!msg)msg=lastEvents(next.visits).join(" · ");setNotice(msg);persist(next);},[state,nameById,persist,sfxEnabled]);
   const validate=()=>{if(currentThrow.length<3||state.phase==="finished"||activeIsBot)return;commit(playSteeplechaseVisit(state,currentThrow.map(uiToGameDart)));};
-  const doUndo=()=>setUndo(u=>{if(!u.length)return u;const prev=u[u.length-1];setState(cloneSteeplechaseState(prev));setCurrentThrow([]);setMultiplier(1);setNotice("Dernière volée annulée");finishedRef.current=false;persist(prev);return u.slice(0,-1);});
-  React.useEffect(()=>{if(!activeIsBot||state.phase==="finished"||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{try{commit(playSteeplechaseVisit(state,pickSteeplechaseBotDarts(state,config.botLevel)));}finally{botBusy.current=false;}},650);return()=>window.clearTimeout(t);},[state,activeIsBot,activePlayer?.id]);
-  function replay(){matchIdRef.current=`steeple-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setCurrentThrow([]);setState(createSteeplechaseState(players,config));}
+  const doUndo=()=>setUndo(u=>{if(!u.length)return u;const prev=u[u.length-1];setState(cloneSteeplechaseState(prev));setCurrentThrow([]);setMultiplier(1);setNotice("Dernière volée annulée");finishedRef.current=false;void saveInProgress(prev,[],1);return u.slice(0,-1);});
+  const setThrowWithSfx=React.useCallback((update:any)=>setCurrentThrow((prev:UIDart[])=>{const next=(typeof update==="function"?update(prev):update)||prev;const out=Array.isArray(next)?next.slice(0,3):prev;if(out.length>prev.length)out.slice(prev.length).forEach((d:any,i:number)=>window.setTimeout(()=>playNewModeDartSfx(d,sfxEnabled),i*120));return out;}),[sfxEnabled]);
+  React.useEffect(()=>{if(!activeIsBot||state.phase==="finished"||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{try{const darts=pickSteeplechaseBotDarts(state,config.botLevel);const span=playNewModeDartSequence(darts,sfxEnabled);window.setTimeout(()=>{try{commit(playSteeplechaseVisit(state,darts));}finally{botBusy.current=false;}},span+100);}catch{botBusy.current=false;}},620);return()=>window.clearTimeout(t);},[state,activeIsBot,activePlayer?.id]);
+  function replay(){matchIdRef.current=`steeple-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setCurrentThrow([]);setMultiplier(1);const next=createSteeplechaseState(players,config);setState(next);initialCheckpointRef.current=true;void saveInProgress(next,[],1);if(sfxEnabled)playNewModeSfx("intro",true);}
 
   const legTarget=config.seriesWins*2-1,seq=steepleSequence(config.rules.direction),activeTarget=activePlayer?currentSteepleTarget(state,activePlayer.id):{label:"—"},activeStats=state.statsByPlayer[activePlayer?.id]||{};
-  const previewDarts=currentThrow.map(uiToGameDart);
-  let previewStep=Number(state.stepByPlayer[activePlayer?.id]||0),previewHits=0;const previewLabels:string[]=[];
-  for(const d of previewDarts){const fake={...state,stepByPlayer:{...state.stepByPlayer,[activePlayer?.id]:previewStep}} as any;const target=currentSteepleTarget(fake,activePlayer?.id);const ok=steepleDartHitsTarget(d,target,config);previewLabels.push(`${target.label} ${ok?"✓":"✕"}`);if(ok){previewStep++;previewHits++;}}
+  const previewDarts=currentThrow.map(uiToGameDart);let previewStep=Number(state.stepByPlayer[activePlayer?.id]||0),previewHits=0;
+  for(const d of previewDarts){const fake={...state,stepByPlayer:{...state.stepByPlayer,[activePlayer?.id]:previewStep}} as any;const target=currentSteepleTarget(fake,activePlayer?.id);if(steepleDartHitsTarget(d,target,config)){previewStep++;previewHits++;}}
   const previewFake={...state,stepByPlayer:{...state.stepByPlayer,[activePlayer?.id]:previewStep}} as any,previewTarget=currentSteepleTarget(previewFake,activePlayer?.id);
   const ringDecorator=(d:UIDart)=>{if((d as any)?.label)return d;if(config.rules.innerSingleOnly&&Number(d?.v)>=1&&Number(d?.v)<=20&&Number(d?.mult)===1)return{...d,label:"inner_single"};return d;};
-  const targetColor=activeTarget.kind==='bull'?FINISH:activeTarget.fence?FENCE:ACCENT;
+  const targetColor=activeTarget.kind==='bull'?FINISH:activeTarget.fence?FENCE:activeColor,activeStep=Number(state.stepByPlayer[activePlayer?.id]||0),coach=coachEnabled&&!activeIsBot?coachText(state,activePlayer):"";
+  const rankingRows=React.useMemo(()=>[...state.players].map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;const step=Number(state.stepByPlayer[p.id]||0);return{id:String(p.id),name:p.name,profile:profileById.get(String(p.id))||p,color,wins:Number(state.legWins[p.id]||0),step,hits:Number(st.hits||0),fences:Number(st.fencesCleared||0),subtitle:`étape ${step}/${seq.length+1} · ${st.fencesCleared||0} haies · ${percent(st.hits,st.darts)}%`,value:Number(state.legWins[p.id]||0),suffix:" M",order:i};}).sort((a,b)=>b.wins-a.wins||b.step-a.step||b.fences-a.fences||b.hits-a.hits||a.order-b.order),[state.players,state.legWins,state.stepByPlayer,state.statsByPlayer,seq.length,profileById,colorById]);
+  const playersRows=state.players.map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;const step=Number(state.stepByPlayer[p.id]||0),t=currentSteepleTarget(state,p.id);return{id:p.id,name:p.name,profile:profileById.get(String(p.id))||p,color,active:i===state.activePlayerIndex,status:`PROCHAINE ${t.label}`,progress:step,progressMax:seq.length+1,metrics:[{label:"ÉTAPE",value:`${step}/${seq.length+1}`},{label:"HAIES",value:st.fencesCleared||0},{label:"HITS",value:st.hits||0},{label:"M",value:state.legWins[p.id]||0}]};});
+  const statsItems=[{label:"ÉTAPES",value:activeStats.steps||0},{label:"POSITION",value:`${activeStep}/${seq.length+1}`},{label:"HAIES",value:activeStats.fencesCleared||0,color:FENCE},{label:"HAIES TENTÉES",value:activeStats.fenceAttempts||0},{label:"PRÉCISION",value:`${percent(activeStats.hits,activeStats.darts)}%`},{label:"BEST VOLÉE",value:activeStats.bestVisitSteps||0,color:BLUE},{label:"BEST SÉRIE",value:activeStats.bestStreak||0},{label:"BULL FINISH",value:activeStats.bullFinishes||0,color:FINISH},{label:"HITS",value:activeStats.hits||0},{label:"MISS",value:activeStats.misses||0},{label:"ROUND",value:state.legIndex+1},{label:"DARTS",value:activeStats.darts||0}];
+  const awards=React.useMemo(()=>{const rows=rankingRows.map((r:any)=>({...r,st:state.statsByPlayer[r.id]||{}}));const racer=bestBy(rows,r=>Number(r.st.steps||0));const hurdler=bestBy(rows,r=>Number(r.st.fencesCleared||0));const accurate=bestBy(rows,r=>percent(r.st.hits,r.st.darts));return[{icon:"🏁",label:"DISTANCE",name:racer?.name||"—",value:`${racer?.st?.steps||0} étapes`,color:racer?.color},{icon:"🚧",label:"HAIES",name:hurdler?.name||"—",value:`${hurdler?.st?.fencesCleared||0}`,color:hurdler?.color},{icon:"🎯",label:"PRÉCISION",name:accurate?.name||"—",value:`${percent(accurate?.st?.hits,accurate?.st?.darts)}%`,color:accurate?.color}];},[rankingRows,state.statsByPlayer]);
+  const totalDarts=Object.values(state.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs=Math.max(0,Number((state.finishedAt||Date.now()))-Number(state.startedAt||Date.now()));
+  const routeText=currentThrow.length?`${previewHits} étape${previewHits>1?"s":""} gagnée${previewHits>1?"s":""} · prochaine ${previewTarget.label}`:`${activeTarget.kind==='bull'?"ARRIVÉE":activeTarget.fence?"HAIE":"SECTEUR"} · ${activeTarget.label}`;
 
-  return <div style={{minHeight:"calc(var(--vh, 1vh) * 100)",paddingBottom:18,background:"radial-gradient(circle at 50% 0%,rgba(125,255,189,.10),transparent 35%)"}}>
-    <PageHeader tickerSrc={tickerSteeple} tickerAlt="STEEPLECHASE" left={<BackDot onClick={()=>go?.("steeplechase_config")} color={ACCENT} glow={`${ACCENT}88`}/>} right={<InfoDot title="Règles STEEPLECHASE" color={ACCENT} glow={`${ACCENT}77`} content={<Rules config={config}/>}/>} />
-    <div style={{padding:"7px 8px 18px",maxWidth:980,margin:"0 auto",display:"grid",gap:8}}>
-      <div style={{...panelStyle(ACCENT+"50"),padding:9,display:"grid",gridTemplateColumns:"1fr auto",gap:9,alignItems:"center"}}><div><div style={{color:ACCENT,fontSize:10,fontWeight:1100,letterSpacing:1}}>MANCHE {state.legIndex+1} · BO{legTarget}</div><div style={{marginTop:3,color:"#fff",fontSize:14,fontWeight:1000}}>{state.phase==="finished"?"Match terminé":`${activePlayer?.name||"—"} court vers ${activeTarget.label}`}</div></div><button type="button" onClick={doUndo} disabled={!undo.length} style={actionStyle(ACCENT,!undo.length)}>↶ UNDO</button></div>
-      {notice?<div style={{borderRadius:12,padding:"7px 10px",background:notice.includes("🏆")?"rgba(114,239,177,.12)":"rgba(125,255,189,.10)",border:`1px solid ${notice.includes("🏆")?"rgba(114,239,177,.32)":"rgba(125,255,189,.24)"}`,color:notice.includes("🏆")?"#baffd8":"#c6ffe0",fontSize:10.5,fontWeight:900}}>{notice}</div>:null}
+  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerSteeple} tickerAlt="STEEPLECHASE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("steeplechase_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="steeplechase_play" mode="steeplechase" screenLabel="STEEPLECHASE · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="STEEPLECHASE" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"active",initialStatsSubTab:"steeplechase",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"active",initialStatsSubTab:"history",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("steeplechase_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:7}}>{state.players.map((p:any,i:number)=>{const prof=profileById.get(String(p.id))||p,step=Number(state.stepByPlayer[p.id]||0),t=currentSteepleTarget(state,p.id);return <div key={p.id} style={{display:"grid",gap:5}}><PlayerCard profile={prof} active={state.phase!=="finished"&&state.activePlayerIndex===i} accent={ACCENT} value={t.label} subValue={`Étape ${step}/${seq.length+1} · ${state.statsByPlayer[p.id]?.fencesCleared||0} haies`} badge={`${Math.round((step/(seq.length+1))*100)}%`} wins={state.legWins[p.id]||0}/><Meter value={step} max={seq.length+1} accent={ACCENT} height={5}/></div>})}</div>
-
-      {state.phase!=="finished"?<>
-        <div style={{...panelStyle("rgba(255,255,255,.10)"),padding:10}}>
-          <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:12,alignItems:"center"}}><div><div style={{color:targetColor,fontSize:10,fontWeight:1100}}>{activeTarget.kind==='bull'?"LIGNE D'ARRIVÉE":activeTarget.fence?"HAIE À FRANCHIR":"SECTEUR DE COURSE"}</div><div style={{marginTop:3,color:"#fff",fontSize:30,fontWeight:1100,lineHeight:1}}>{activeTarget.label}</div><div style={{marginTop:5,color:SOFT,fontSize:9.5}}>{currentThrow.length?`${previewHits} étape${previewHits>1?"s":""} gagnée${previewHits>1?"s":""} · prochaine cible ${previewTarget.label}`:`Course ${config.rules.direction==='clockwise'?"horaire":"anti-horaire"} · ${config.rules.fencesEnabled?"4 haies actives":"sans haies"}.`}</div></div><div style={{width:92,height:92,borderRadius:999,border:`3px solid ${targetColor}`,display:"grid",placeItems:"center",background:"radial-gradient(circle,rgba(255,255,255,.08),rgba(0,0,0,.6))",boxShadow:`0 0 22px ${targetColor}22`,fontSize:36}}>{activeTarget.kind==='bull'?"🎯":activeTarget.fence?"🚧":"🏁"}</div></div>
-          <div style={{marginTop:9,display:"grid",gridTemplateColumns:"repeat(10,1fr)",gap:3}}>{seq.map((n:number,idx:number)=>{const isFence=config.rules.fencesEnabled&&config.rules.fences.includes(n),step=Number(state.stepByPlayer[activePlayer?.id]||0),passed=idx<step,isCurrent=idx===step&&activeTarget.kind==='number';return <div key={`${n}-${idx}`} style={{height:25,borderRadius:7,display:"grid",placeItems:"center",fontSize:8.5,fontWeight:1000,color:isCurrent?"#071018":passed?"#071018":"#d8deea",background:isCurrent?(isFence?FENCE:ACCENT):passed?`${ACCENT}aa`:isFence?`${FENCE}18`:"rgba(255,255,255,.05)",border:`1px solid ${isFence?FENCE+'55':passed?ACCENT+'55':'rgba(255,255,255,.07)'}`}}>{isFence?`T${n}`:n}</div>})}</div>
-          <div style={{marginTop:9}}><DartStrip darts={currentThrow} accent={previewHits?ACCENT:targetColor} targetLabels={previewLabels}/></div>
-          <div style={{marginTop:10}}><LiveStatGrid accent={ACCENT} items={[{label:"étapes",value:activeStats.steps||0},{label:"haies",value:activeStats.fencesCleared||0,color:FENCE},{label:"best volée",value:activeStats.bestVisitSteps||0,color:BLUE},{label:"série",value:activeStats.bestStreak||0,color:ACCENT}]}/></div>
-          {config.rules.innerSingleOnly&&config.scoreInputMethod==="keypad"?<div style={{marginTop:8,color:"#7f8998",fontSize:8.5}}>KEYPAD : les simples saisis sont interprétés comme <b style={{color:ACCENT}}>petit simple intérieur</b>. Utilise la cible interactive pour distinguer physiquement petit/grand simple.</div>:null}
-        </div>
-        {!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} minDartsToValidate={3} dartDecorator={ringDecorator} validateLabel="VALIDER LA VOLÉE" accent={targetColor}/>:<div style={{...panelStyle(ACCENT+"33"),textAlign:"center",color:SOFT,fontSize:11,padding:14}}><b style={{color:ACCENT}}>{activePlayer?.name}</b> s'élance sur la piste…</div>}
-        <VisitTimeline visits={state.visits} profiles={profiles} accent={ACCENT} title="HISTORIQUE STEEPLECHASE" limit={4}/>
-      </>:<ModeEndPanel title="STEEPLECHASE" winner={state.winnerId} profiles={profiles} legWins={state.legWins} accent={ACCENT} onReplay={replay} onStats={()=>go?.("darts_mode_summary",{rec:buildRecord(state,"finished"),mode:"steeplechase",from:"game_end"})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"steeplechase",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("steeplechase_config")} onGames={()=>go?.("games",{gamesView:"all"})} extra={<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:6}}>{profiles.map((p:any)=>{const st=state.statsByPlayer[p.id]||{};const rate=st.darts?Math.round((Number(st.hits||0)/st.darts)*100):0;return <div key={p.id} style={{padding:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",fontSize:9.5,color:SOFT}}><b style={{color:"#fff"}}>{playerName(p)}</b><br/>{st.steps||0} étapes · {st.fencesCleared||0} haies · {rate}% réussite</div>})}</div>}/>} 
-    </div>
+  return <div className="party-mode" style={{["--mode-accent" as any]:activeColor}} data-mss-native-play-layout="1">
+    <PageHeader tickerSrc={tickerSteeple} tickerAlt="STEEPLECHASE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("steeplechase_config")} color={activeColor} glow={`${activeColor}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="steeplechase_play" mode="steeplechase" screenLabel="STEEPLECHASE · Partie" accent={activeColor}/></div>:null}/>
+    {coach?<FloatingAdvice text={coach} accent={targetColor} kicker={activeTarget.fence?"CONSEIL HAIE":activeTarget.kind==='bull'?"SPRINT FINAL":"CONSEIL COURSE"}/>:null}
+    <main className="party-mode__body"><div className="party-mode__stage"><div className="party-mode__left">
+      <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={state.legWins} primaryById={(id:string)=>currentSteepleTarget(state,id).label} secondaryById={(id:string)=>`étape ${state.stepByPlayer[id]||0}/${seq.length+1} · ${state.statsByPlayer[id]?.fencesCleared||0} haies`}/>
+      <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={targetColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget} · VOLÉE ${state.turnIndex+1}`} primary={activeTarget.label} secondary={routeText} tertiary={`${activeStep}/${seq.length+1} étapes · ${activeStats.fencesCleared||0} haies · ${percent(activeStats.hits,activeStats.darts)}% précision`} progress={activeStep} progressMax={seq.length+1} notice={notice} noticeTone={notice.includes("🏆")?"win":"normal"} aside={<div style={{textAlign:"center",fontSize:38}}>{activeTarget.kind==='bull'?"🎯":activeTarget.fence?"🚧":"🏁"}<div style={{fontSize:8,color:targetColor,marginTop:4}}>{previewHits?`+${previewHits} étape${previewHits>1?"s":""}`:activeTarget.label}</div></div>}/>
+      <KpiStrip accent={targetColor} onClick={()=>setStatsOpen(true)} items={[["ÉTAPES",activeStats.steps||0],["HAIES",activeStats.fencesCleared||0],["PRÉC.",`${percent(activeStats.hits,activeStats.darts)}%`],["M",state.legWins[activePlayer?.id]||0]]}/>
+      <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerSteeple} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>
+    </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={()=>{setCurrentThrow([]);setMultiplier(1)}} preferredMethod={config.scoreInputMethod} minDartsToValidate={3} dartDecorator={ringDecorator} validateLabel="VALIDER" accent={targetColor} fitMinScale={0.16}/>:<BotTurn profile={activeProfile} name={activePlayer?.name} accent={targetColor} text={`court vers ${activeTarget.label}…`} icon={activeTarget.fence?"🚧":"🏁"}/>}</div></div></main>
+    {playersOpen?<PlayersModal rows={playersRows} onClose={()=>setPlayersOpen(false)}/>:null}{statsOpen?<StatsModal items={statsItems} accent={targetColor} subtitle={activePlayer?.name} onClose={()=>setStatsOpen(false)}/>:null}{logOpen?<LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={dartLabel} title="JOURNAL STEEPLECHASE" onClose={()=>setLogOpen(false)}/>:null}{rankingOpen?<RankingModal rows={rankingRows} title="CLASSEMENT STEEPLECHASE" onClose={()=>setRankingOpen(false)}/>:null}
   </div>;
 }

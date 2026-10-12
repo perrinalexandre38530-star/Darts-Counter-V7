@@ -35,7 +35,7 @@ const WHITE = "#eef2f7";
 const COLORS = [ORANGE, BLUE, PURPLE, GOLD, GREEN, RED, "#ff68b4", "#8dc5ff"];
 const TOOLTIP_STYLE: any = { background: "rgba(5,7,11,.97)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, color: "#fff", fontSize: 10, boxShadow: "0 10px 28px rgba(0,0,0,.38)" };
 
-type StatsTab = "overview" | "performance" | "darts" | "logistics" | "records";
+type StatsTab = "overview" | "performance" | "darts" | "logistics" | "teams" | "records";
 
 const n = (value: any) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const txt = (value: any) => String(value ?? "").trim();
@@ -66,6 +66,29 @@ function isCargo(record: any) {
 function pools(record: any) {
   return [record?.summary?.perPlayer, record?.payload?.summary?.perPlayer, record?.payload?.stats?.players, record?.summary?.rankings, record?.payload?.players, record?.summary?.players, record?.players, record?.summary?.detailedByPlayer]
     .filter(Boolean);
+}
+function rowId(row: any) { return txt(row?.id || row?.playerId || row?.profileId); }
+function rowName(row: any) { return txt(row?.name || row?.playerName || row?.displayName || row?.display_name || "Joueur"); }
+function allPlayerRows(record: any) {
+  for (const pool of pools(record)) {
+    if (Array.isArray(pool) && pool.length) return pool.filter(Boolean);
+    if (pool && typeof pool === "object") return Object.entries(pool).map(([id, value]: any) => ({ id, ...(value || {}) }));
+  }
+  return [];
+}
+function teamPools(record: any) {
+  return [record?.summary?.teams, record?.summary?.teamStandings, record?.payload?.summary?.teams, record?.payload?.summary?.teamStandings, record?.payload?.stats?.teams, record?.payload?.teams, record?.teams].filter(Boolean);
+}
+function allTeamRows(record: any) {
+  for (const pool of teamPools(record)) {
+    if (Array.isArray(pool) && pool.length) return pool.filter(Boolean);
+    if (pool && typeof pool === "object") return Object.entries(pool).map(([id, value]: any) => ({ id, ...(value || {}) }));
+  }
+  return [];
+}
+function formatOf(record: any) {
+  if (participantMode(record) === "teams") return "teams";
+  return allPlayerRows(record).length <= 1 ? "solo" : "multi";
 }
 function findRow(record: any, playerId: string, playerName?: string) {
   const found: any[] = [];
@@ -146,6 +169,80 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
   const soloMulti = matches.filter(({ record }: any) => participantMode(record) !== "teams");
   const ffaWins = soloMulti.filter(({ record, row }: any) => didWin(record, row, String(playerId))).length;
 
+  const formatRows = React.useMemo(() => {
+    const buckets: Record<string, any> = {
+      solo: { key: "solo", label: "SOLO", games: 0, wins: 0, darts: 0, hits: 0, visits: 0, productive: 0, safe: 0 },
+      multi: { key: "multi", label: "MULTI", games: 0, wins: 0, darts: 0, hits: 0, visits: 0, productive: 0, safe: 0 },
+      teams: { key: "teams", label: "ÉQUIPES", games: 0, wins: 0, darts: 0, hits: 0, visits: 0, productive: 0, safe: 0 },
+    };
+    matches.forEach(({ record, row }: any) => {
+      const key = formatOf(record);
+      const bucket = buckets[key];
+      bucket.games += 1;
+      bucket.wins += didWin(record, row, String(playerId)) ? 1 : 0;
+      bucket.darts += metric(row, "darts", "dartsThrown");
+      bucket.hits += metric(row, "hits");
+      bucket.visits += metric(row, "visits");
+      bucket.productive += metric(row, "productiveVisits");
+      bucket.safe += metric(row, "safeVisits");
+    });
+    return Object.values(buckets).map((bucket: any) => ({
+      ...bucket,
+      winRate: pct(bucket.wins, bucket.games),
+      accuracy: pct(bucket.hits, bucket.darts),
+      productiveRate: pct(bucket.productive, bucket.visits),
+      safeRate: pct(bucket.safe, bucket.visits),
+    }));
+  }, [matches, playerId]);
+
+  const peerRows = React.useMemo(() => {
+    const map = new Map<string, any>();
+    matches.forEach(({ record, row }: any) => {
+      const selectedId = String(playerId || "");
+      const selectedTeamId = txt(row?.teamId);
+      const teamMode = participantMode(record) === "teams";
+      allPlayerRows(record).forEach((peer: any) => {
+        const id = rowId(peer);
+        if (!id || id === selectedId) return;
+        const peerTeamId = txt(peer?.teamId);
+        const relation = teamMode && selectedTeamId && peerTeamId === selectedTeamId ? "teammate" : "opponent";
+        const current = map.get(id) || { id, name: rowName(peer), games: 0, together: 0, against: 0, wins: 0, darts: 0, hits: 0, podiums: 0 };
+        current.games += 1;
+        current[relation === "teammate" ? "together" : "against"] += 1;
+        current.wins += didWin(record, peer, id) ? 1 : 0;
+        current.darts += metric(peer, "darts", "dartsThrown");
+        current.hits += metric(peer, "hits");
+        current.podiums += n(peer?.rank || peer?.teamRank) > 0 && n(peer?.rank || peer?.teamRank) <= 3 ? 1 : 0;
+        if (!current.name || current.name === "Joueur") current.name = rowName(peer);
+        map.set(id, current);
+      });
+    });
+    return [...map.values()].map((row: any) => ({ ...row, winRate: pct(row.wins, row.games), accuracy: pct(row.hits, row.darts) })).sort((a, b) => b.games - a.games || b.against - a.against);
+  }, [matches, playerId]);
+
+  const teamRowsAgg = React.useMemo(() => {
+    const map = new Map<string, any>();
+    teamMatches.forEach(({ record, row }: any) => {
+      const selectedTeamId = txt(row?.teamId);
+      const teams = allTeamRows(record);
+      const selectedTeam = teams.find((team: any) => txt(team?.id || team?.teamId) === selectedTeamId || (Array.isArray(team?.playerIds) && team.playerIds.map(String).includes(String(playerId))));
+      if (!selectedTeam) return;
+      const key = txt(selectedTeam?.name || selectedTeam?.id || selectedTeamId || "Équipe");
+      const current = map.get(key) || { name: key || "Équipe", games: 0, wins: 0, score: 0, darts: 0, hits: 0, pallets: 0, contracts: 0, lost: 0, rejected: 0 };
+      current.games += 1;
+      current.wins += selectedTeam?.win === true || n(selectedTeam?.rank) === 1 ? 1 : 0;
+      current.score += n(selectedTeam?.score || selectedTeam?.totalWeight || selectedTeam?.parcelsDelivered);
+      current.darts += n(selectedTeam?.darts);
+      current.hits += n(selectedTeam?.hits);
+      current.pallets += n(selectedTeam?.pallets);
+      current.contracts += n(selectedTeam?.completedContracts);
+      current.lost += n(selectedTeam?.lostWeight);
+      current.rejected += n(selectedTeam?.rejectedWeight);
+      map.set(key, current);
+    });
+    return [...map.values()].map((row: any) => ({ ...row, winRate: pct(row.wins, row.games), accuracy: pct(row.hits, row.darts), avgScore: row.games ? row.score / row.games : 0 })).sort((a, b) => b.games - a.games || b.winRate - a.winRate);
+  }, [teamMatches, playerId]);
+
   const darts = sum(rows, "darts") || sum(rows, "dartsThrown");
   const hits = sum(rows, "hits");
   const visits = sum(rows, "visits");
@@ -196,6 +293,19 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
     return { index: index + 1, date: fmtDate(playedAt(record)), score, accuracy: metric(row, "accuracy") || pct(rowHits, rowDarts), efficiency: metric(row, "scorePerDart") || (rowDarts ? score / rowDarts : 0), consistency: metric(row, "consistency"), productive: metric(row, "productiveVisitRate") || pct(metric(row, "productiveVisits"), metric(row, "visits")), won: didWin(record, row, String(playerId)), parcel, variant };
   }), [matches, playerId]);
 
+  const logisticsTrend = React.useMemo(() => [...matches].reverse().slice(-24).map(({ record, row }: any, index: number) => ({
+    index: index + 1,
+    date: fmtDate(playedAt(record)),
+    retained: metric(row, "totalWeight"),
+    lost: metric(row, "lostWeight"),
+    rejected: metric(row, "rejectedWeight"),
+    contracts: metric(row, "completedContracts"),
+    failedContracts: metric(row, "failedContracts"),
+    pallets: metric(row, "pallets"),
+    parcels: metric(row, "parcelsDelivered"),
+    risk: metric(row, "riskEventRate"),
+  })), [matches]);
+
   const recent5 = matches.slice(0, 5), previous5 = matches.slice(5, 10);
   const sliceAvg = (items: any[], fn: (item: any) => number) => mean(items.map(fn).filter((v) => Number.isFinite(v)));
   const form = {
@@ -206,8 +316,28 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
     risk: change(sliceAvg(recent5, ({ row }) => metric(row, "riskEventRate")), sliceAvg(previous5, ({ row }) => metric(row, "riskEventRate"))),
   };
 
+  const cargoIndex = Math.round(mean([
+    pct(hits, darts),
+    pct(productiveVisits, visits),
+    pct(noMissVisits, visits),
+    pct(safeVisits || Math.max(0, visits - riskEvents), visits),
+    avgConsistency,
+    contractAttempts ? pct(completedContracts, contractAttempts) : 100,
+  ].filter((value) => Number.isFinite(value))) * 10) / 10;
+
+  const bestFormat = [...formatRows].filter((row: any) => row.games > 0).sort((a: any, b: any) => b.winRate - a.winRate || b.accuracy - a.accuracy)[0] || null;
+  const bestVariant = [...variantRows].filter((row: any) => row.games > 0).sort((a: any, b: any) => b.winRate - a.winRate || b.accuracy - a.accuracy)[0] || null;
+  const mostFrequentPeer = peerRows[0] || null;
+  const topRival = [...peerRows].filter((row: any) => row.against > 0).sort((a: any, b: any) => b.against - a.against || b.winRate - a.winRate)[0] || null;
+  const topTeammate = [...peerRows].filter((row: any) => row.together > 0).sort((a: any, b: any) => b.together - a.together || b.winRate - a.winRate)[0] || null;
+
   const recordsList = React.useMemo(() => {
     const choose = (fn: (item: any) => number) => matches.reduce((best: any, item: any) => !best || fn(item) > fn(best) ? item : best, null);
+    const chooseMin = (fn: (item: any) => number) => matches.reduce((best: any, item: any) => {
+      const value = fn(item); if (!Number.isFinite(value)) return best;
+      if (!best) return item;
+      return value < fn(best) ? item : best;
+    }, null);
     const cargoScore = choose((item) => variantOf(item.record) === "parcel_delivery" ? -1 : metric(item.row, "totalWeight"));
     const parcelScore = choose((item) => variantOf(item.record) === "parcel_delivery" ? metric(item.row, "parcelsDelivered") : -1);
     const acc = choose((item) => metric(item.row, "darts", "dartsThrown") >= 3 ? (metric(item.row, "accuracy") || pct(metric(item.row, "hits"), metric(item.row, "darts", "dartsThrown"))) : -1);
@@ -220,7 +350,18 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
     const p90 = choose((item) => metric(item.row, "p90VisitScore"));
     const first = choose((item) => metric(item.row, "firstDartAccuracy") || pct(metric(item.row, "firstDartHits"), metric(item.row, "firstDarts")));
     const last = choose((item) => metric(item.row, "lastDartAccuracy") || pct(metric(item.row, "lastDartHits"), metric(item.row, "lastDarts")));
-    return { cargoScore, parcelScore, acc, bestV, bestR, streak, consistency, contract, retention, p90, first, last };
+    const palletsRecord = choose((item) => metric(item.row, "pallets"));
+    const contractsRecord = choose((item) => metric(item.row, "completedContracts"));
+    const noMiss = choose((item) => metric(item.row, "noMissVisitRate") || pct(metric(item.row, "noMissVisits"), metric(item.row, "visits")));
+    const perfect = choose((item) => metric(item.row, "perfectAccuracyVisitRate") || pct(metric(item.row, "perfectAccuracyVisits"), metric(item.row, "visits")));
+    const safety = choose((item) => metric(item.row, "safeVisitRate") || metric(item.row, "retentionRate"));
+    const uniqueNumbers = choose((item) => metric(item.row, "uniqueNumbersHit"));
+    const uniqueSegments = choose((item) => metric(item.row, "uniqueSegmentsHit"));
+    const efficiency = choose((item) => metric(item.row, "scorePerDart"));
+    const power = choose((item) => metric(item.row, "highValueHitRate") || pct(metric(item.row, "triples") + metric(item.row, "dbulls"), metric(item.row, "hits")));
+    const bullRateRecord = choose((item) => metric(item.row, "bullRate") || pct(metric(item.row, "bulls") + metric(item.row, "dbulls"), metric(item.row, "darts", "dartsThrown")));
+    const riskMin = chooseMin((item) => metric(item.row, "visits") > 0 ? metric(item.row, "riskEventRate") : Number.POSITIVE_INFINITY);
+    return { cargoScore, parcelScore, acc, bestV, bestR, streak, consistency, contract, retention, p90, first, last, palletsRecord, contractsRecord, noMiss, perfect, safety, uniqueNumbers, uniqueSegments, efficiency, power, bullRateRecord, riskMin };
   }, [matches]);
 
   const scoreRecordValue = (item: any) => item ? (variantOf(item.record) === "parcel_delivery" ? metric(item.row, "parcelsDelivered") : metric(item.row, "totalWeight")) : 0;
@@ -238,17 +379,21 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
   if (!playerId) return <div style={{ padding: 16, color: "rgba(255,255,255,.65)" }}>Sélectionne un joueur pour afficher ses statistiques CARGO.</div>;
 
   const tabs: { id: StatsTab; label: string; icon: string; color: string }[] = [
-    { id: "overview", label: "GLOBAL", icon: "🚚", color: ORANGE }, { id: "performance", label: "PERF", icon: "📈", color: GREEN },
-    { id: "darts", label: "DARTS", icon: "🎯", color: BLUE }, { id: "logistics", label: "LOGISTIQUE", icon: "▣", color: GOLD }, { id: "records", label: "RECORDS", icon: "🏆", color: PURPLE },
+    { id: "overview", label: "GLOBAL", icon: "🚚", color: ORANGE },
+    { id: "performance", label: "PROGRESSION", icon: "📈", color: GREEN },
+    { id: "darts", label: "DARTS", icon: "🎯", color: BLUE },
+    { id: "logistics", label: "LOGISTIQUE", icon: "▣", color: GOLD },
+    { id: "teams", label: "JOUEURS / ÉQUIPES", icon: "👥", color: BLUE },
+    { id: "records", label: "RECORDS", icon: "🏆", color: PURPLE },
   ];
 
   return <div style={{ width: "100%", maxWidth: 1040, margin: "0 auto", padding: 4, boxSizing: "border-box" }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div><div style={{ color: ORANGE, fontWeight: 1150, letterSpacing: 1, textTransform: "uppercase" }}>CARGO — CENTRE DE PERFORMANCES V4</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9.5 }}>Rendement, précision, séries, contrats, sécurité, équipes, records et forme récente.</div></div>
+      <div><div style={{ color: ORANGE, fontWeight: 1150, letterSpacing: 1, textTransform: "uppercase" }}>CARGO — CENTRE DE PERFORMANCES V5</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9.5 }}>Dashboard longitudinal, tendances, cible, logistique, comparaisons joueurs/équipes et records massifs.</div></div>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{[["all", "TOUT"], ["day", "24 H"], ["week", "7 J"], ["month", "30 J"], ["year", "1 AN"]].map(([key, label]) => <button key={key} onClick={() => setRange(key as any)} style={pill(range === key, ORANGE)}>{label}</button>)}</div>
     </div>
 
-    <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>{tabs.map((item) => <button key={item.id} onClick={() => setTab(item.id)} style={{ minWidth: 0, minHeight: 47, borderRadius: 13, border: `1px solid ${tab === item.id ? item.color : "rgba(255,255,255,.08)"}`, background: tab === item.id ? `${item.color}15` : "rgba(255,255,255,.025)", color: tab === item.id ? item.color : SOFT, fontSize: 7.5, fontWeight: 1050, cursor: "pointer", overflow: "hidden" }}><span style={{ display: "block", fontSize: 13 }}>{item.icon}</span><span>{item.label}</span></button>)}</div>
+    <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(88px,1fr))", gap: 5 }}>{tabs.map((item) => <button key={item.id} onClick={() => setTab(item.id)} style={{ minWidth: 0, minHeight: 47, borderRadius: 13, border: `1px solid ${tab === item.id ? item.color : "rgba(255,255,255,.08)"}`, background: tab === item.id ? `${item.color}15` : "rgba(255,255,255,.025)", color: tab === item.id ? item.color : SOFT, fontSize: 7.5, fontWeight: 1050, cursor: "pointer", overflow: "hidden" }}><span style={{ display: "block", fontSize: 13 }}>{item.icon}</span><span>{item.label}</span></button>)}</div>
 
     {!games ? <div style={{ ...panel(), marginTop: 10, textAlign: "center", color: SOFT }}>Aucune partie CARGO terminée sur cette période.</div> : <>
       {tab === "overview" ? <>
@@ -259,6 +404,12 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
           <Kpi icon="⚙" label="Poids" value={`${Math.round(weight)} kg`} sub={`${cargoDarts ? (weight/cargoDarts).toFixed(2) : "0.00"} kg/dart`} color={ORANGE}/>
           <Kpi icon="⌂" label="Colis" value={parcels} sub={`${parcelDarts ? (parcels/parcelDarts).toFixed(2) : "0.00"} colis/dart`} color={BLUE}/>
           <Kpi icon="✦" label="Best volée" value={bestVisit} sub={`best tour ${bestRound}`} color={PURPLE}/>
+          <Kpi icon="★" label="Indice CARGO" value={`${cargoIndex}/100`} sub={cargoIndex >= 80 ? "maîtrise premium" : cargoIndex >= 65 ? "niveau solide" : cargoIndex >= 50 ? "en progression" : "axe de travail"} color={cargoIndex >= 80 ? GOLD : cargoIndex >= 65 ? GREEN : ORANGE}/>
+        </div>
+
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 7 }}>
+          <section style={panel()}><SectionTitle title="PROFIL CARGO" subtitle="les signaux les plus parlants sur la période" color={GOLD}/><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}><Mini label="Meilleur format" value={bestFormat?.label || "—"} note={bestFormat ? `${bestFormat.winRate}% win · ${bestFormat.games} parties` : "aucune donnée"} color={GREEN}/><Mini label="Meilleure variante" value={bestVariant ? cargoVariantLabel(bestVariant.variant) : "—"} note={bestVariant ? `${bestVariant.winRate}% win · ${bestVariant.accuracy}% préc.` : "aucune donnée"} color={ORANGE}/><Mini label="Partenaire principal" value={topTeammate?.name || "—"} note={topTeammate ? `${topTeammate.together} matchs ensemble` : "pas de match équipe"} color={BLUE}/><Mini label="Rival principal" value={topRival?.name || mostFrequentPeer?.name || "—"} note={topRival ? `${topRival.against} confrontations` : "pas de confrontation"} color={PURPLE}/></div></section>
+          <section style={panel()}><SectionTitle title="FORMATS DE JEU" subtitle="solo, multi et équipes consolidés" color={BLUE}/><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{formatRows.map((row: any, index: number) => <div key={row.key} style={{ display: "grid", gridTemplateColumns: "70px repeat(4,minmax(0,1fr))", gap: 5, alignItems: "center", padding: 7, borderRadius: 11, background: `${COLORS[index]}08`, border: `1px solid ${COLORS[index]}24`, textAlign: "center" }}><strong style={{ color: COLORS[index], fontSize: 8, textAlign: "left" }}>{row.label}</strong><SmallCell label="MATCHS" value={row.games}/><SmallCell label="WIN" value={`${row.winRate}%`}/><SmallCell label="PRÉC." value={`${row.accuracy}%`}/><SmallCell label="SÛR" value={`${row.safeRate}%`}/></div>)}</div></section>
         </div>
 
         <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 7 }}>
@@ -306,8 +457,33 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
           <section style={panel()}><SectionTitle title="SÉCURITÉ LOGISTIQUE" subtitle="charge conservée et volées sans incident" color={GREEN}/><RatioBar label="Rétention du poids" value={pct(weight,handledWeight)} color={GREEN} note={`${Math.round(weight)}/${Math.round(handledWeight)} kg`}/><RatioBar label="Volées sûres" value={pct(safeVisits || Math.max(0, visits-riskEvents),visits)} color={BLUE}/><RatioBar label="Fragile réussi" value={pct(fragileCompleted,fragileAttempts)} color={GOLD} note={`${fragileCompleted}/${fragileAttempts}`}/><RatioBar label="Contrats réussis" value={pct(completedContracts,contractAttempts)} color={ORANGE}/></section>
           <section style={panel()}><SectionTitle title="CYCLE DES SÉRIES" subtitle="démarrées, sécurisées, perdues" color={PURPLE}/><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><Mini label="Démarrées" value={seriesStarts} color={ORANGE}/><Mini label="Sécurisées" value={seriesSecured} color={GREEN}/><Mini label="Perdues" value={seriesLost} color={RED}/></div><div style={{ marginTop: 7 }}><RatioBar label="Conversion / sécurisation" value={pct(seriesSecured+completedContracts+pallets+deliveries,seriesStarts)} color={GREEN}/><RatioBar label="Pertes de série" value={pct(seriesLost,seriesStarts)} color={RED}/></div></section>
         </div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 7 }}>
+          <section style={panel()}><SectionTitle title="FLUX DE CHARGEMENT" subtitle="24 dernières missions · conservé / perdu / refusé" color={ORANGE}/><div style={{ height: 210, marginTop: 6 }}><ResponsiveContainer width="100%" height="100%"><BarChart data={logisticsTrend}><CartesianGrid stroke="rgba(255,255,255,.045)" vertical={false}/><XAxis dataKey="index" tick={{ fill: SOFT, fontSize: 7 }}/><YAxis hide/><Tooltip contentStyle={TOOLTIP_STYLE}/><Bar dataKey="retained" stackId="weight" fill={GREEN} radius={[2,2,0,0]}/><Bar dataKey="lost" stackId="weight" fill={RED}/><Bar dataKey="rejected" stackId="weight" fill={GOLD} radius={[0,0,2,2]}/></BarChart></ResponsiveContainer></div><div style={{ display: "flex", gap: 10, justifyContent: "center", color: SOFT, fontSize: 7, flexWrap: "wrap" }}><span><b style={{ color: GREEN }}>■</b> conservé</span><span><b style={{ color: RED }}>■</b> perdu</span><span><b style={{ color: GOLD }}>■</b> refusé</span></div></section>
+          <section style={panel()}><SectionTitle title="CONTRATS & RISQUES" subtitle="24 dernières missions · contrats, palettes, événements à risque" color={BLUE}/><div style={{ height: 210, marginTop: 6 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={logisticsTrend}><CartesianGrid stroke="rgba(255,255,255,.045)" vertical={false}/><XAxis dataKey="index" tick={{ fill: SOFT, fontSize: 7 }}/><YAxis hide/><Tooltip contentStyle={TOOLTIP_STYLE}/><Line type="monotone" dataKey="contracts" stroke={GREEN} dot={false} strokeWidth={2}/><Line type="monotone" dataKey="pallets" stroke={GOLD} dot={false} strokeWidth={2}/><Line type="monotone" dataKey="risk" stroke={RED} dot={false} strokeWidth={1.7}/></LineChart></ResponsiveContainer></div><div style={{ display: "flex", gap: 10, justifyContent: "center", color: SOFT, fontSize: 7, flexWrap: "wrap" }}><span><b style={{ color: GREEN }}>●</b> contrats</span><span><b style={{ color: GOLD }}>●</b> palettes</span><span><b style={{ color: RED }}>●</b> risque</span></div></section>
+        </div>
         <section style={{ ...panel(), marginTop: 7 }}><SectionTitle title="VARIANTES CARGO" subtitle="volume, victoire, précision, rendement et régularité" color={BLUE}/><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{variantRows.map((row: any, index: number) => <div key={row.variant} style={{ display: "grid", gridTemplateColumns: "minmax(105px,1.5fr) repeat(5,minmax(0,1fr))", gap: 5, alignItems: "center", padding: 8, borderRadius: 12, background: `${COLORS[index%COLORS.length]}09`, border: `1px solid ${COLORS[index%COLORS.length]}2a`, textAlign: "center" }}><div style={{ textAlign: "left", color: COLORS[index%COLORS.length], fontSize: 8.3, fontWeight: 1050, overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(row.variant)}</div><SmallCell label="MATCHS" value={row.games}/><SmallCell label="WIN" value={`${row.winRate}%`}/><SmallCell label="PRÉC." value={`${row.accuracy}%`}/><SmallCell label={row.variant === "parcel_delivery" ? "COLIS/M" : "KG/M"} value={Math.round(row.avgScore)}/><SmallCell label="R/D" value={row.avgScorePerDart ? row.avgScorePerDart.toFixed(2) : "—"}/></div>)}</div></section>
         <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(118px,1fr))", gap: 7 }}><Kpi icon="◆" label="Fragiles OK" value={fragileCompleted} sub={`${fragileBroken} cassés`} color={GREEN}/><Kpi icon="⚡" label="Urgents" value={urgentCompleted} color={GOLD}/><Kpi icon="⚠" label="Risque / volée" value={visits ? (riskEvents/visits).toFixed(2) : "0.00"} sub={`${riskEvents} événements`} color={RED}/><Kpi icon="✓" label="Sécurité" value={`${pct(safeVisits || Math.max(0, visits-riskEvents),visits)}%`} color={GREEN}/></div>
+      </> : null}
+
+      {tab === "teams" ? <>
+        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(118px,1fr))", gap: 7 }}>
+          <Kpi icon="👥" label="Matchs équipes" value={teamMatches.length} sub={`${teamWins} victoire${teamWins > 1 ? "s" : ""}`} color={BLUE}/>
+          <Kpi icon="🏆" label="Win équipes" value={`${pct(teamWins,teamMatches.length)}%`} sub={`${teamWins}/${teamMatches.length}`} color={GREEN}/>
+          <Kpi icon="🤝" label="Coéquipiers" value={peerRows.filter((row: any) => row.together > 0).length} sub={topTeammate ? `+ joué avec ${topTeammate.name}` : "aucun partenaire"} color={GOLD}/>
+          <Kpi icon="⚔" label="Adversaires" value={peerRows.filter((row: any) => row.against > 0).length} sub={topRival ? `${topRival.name} · ${topRival.against} duels` : "aucun rival"} color={PURPLE}/>
+          <Kpi icon="▦" label="Équipes utilisées" value={teamRowsAgg.length} sub={teamRowsAgg[0]?.name || "—"} color={ORANGE}/>
+          <Kpi icon="◎" label="Précision équipe" value={`${teamMatches.length ? fmt1(mean(teamRowsAgg.map((row: any) => row.accuracy).filter((v: number) => v > 0))) : "0.0"}%`} color={GREEN}/>
+        </div>
+
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 7 }}>
+          <section style={panel()}><SectionTitle title="COMPARAISON PAR FORMAT" subtitle="solo, multi et équipes" color={BLUE}/><div style={{ height: 220, marginTop: 6 }}><ResponsiveContainer width="100%" height="100%"><BarChart data={formatRows}><CartesianGrid stroke="rgba(255,255,255,.045)" vertical={false}/><XAxis dataKey="label" tick={{ fill: SOFT, fontSize: 7 }}/><YAxis hide/><Tooltip contentStyle={TOOLTIP_STYLE}/><Bar dataKey="winRate" fill={GREEN} radius={[5,5,0,0]}/><Bar dataKey="accuracy" fill={BLUE} radius={[5,5,0,0]}/><Bar dataKey="safeRate" fill={GOLD} radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div><div style={{ display: "flex", gap: 10, justifyContent: "center", color: SOFT, fontSize: 7, flexWrap: "wrap" }}><span><b style={{ color: GREEN }}>■</b> win</span><span><b style={{ color: BLUE }}>■</b> précision</span><span><b style={{ color: GOLD }}>■</b> sécurité</span></div></section>
+          <section style={panel()}><SectionTitle title="MES ÉQUIPES" subtitle="performance consolidée des équipes utilisées" color={GOLD}/>{teamRowsAgg.length ? <div style={{ marginTop: 8, display: "grid", gap: 6 }}>{teamRowsAgg.slice(0,8).map((row: any, index: number) => <div key={row.name} style={{ display: "grid", gridTemplateColumns: "minmax(100px,1.5fr) repeat(4,minmax(0,1fr))", gap: 5, alignItems: "center", padding: 8, borderRadius: 12, background: `${COLORS[index%COLORS.length]}09`, border: `1px solid ${COLORS[index%COLORS.length]}28`, textAlign: "center" }}><div style={{ textAlign: "left", color: COLORS[index%COLORS.length], fontSize: 8.3, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div><SmallCell label="MATCHS" value={row.games}/><SmallCell label="WIN" value={`${row.winRate}%`}/><SmallCell label="PRÉC." value={`${row.accuracy}%`}/><SmallCell label="CONTRATS" value={row.contracts}/></div>)}</div> : <div style={{ marginTop: 12, color: SOFT, fontSize: 9 }}>Aucune partie en équipe sur cette période.</div>}</section>
+        </div>
+
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 7 }}>
+          <section style={panel()}><SectionTitle title="COÉQUIPIERS" subtitle="fréquence de jeu et performance observée" color={GREEN}/><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{peerRows.filter((row: any) => row.together > 0).slice(0,10).map((row: any, index: number) => <PeerRow key={row.id} row={row} relation="ensemble" color={COLORS[index%COLORS.length]}/>)}</div>{!peerRows.some((row: any) => row.together > 0) ? <div style={{ marginTop: 10, color: SOFT, fontSize: 9 }}>Pas encore de coéquipier enregistré.</div> : null}</section>
+          <section style={panel()}><SectionTitle title="RIVAUX" subtitle="adversaires les plus rencontrés" color={PURPLE}/><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{peerRows.filter((row: any) => row.against > 0).slice(0,10).map((row: any, index: number) => <PeerRow key={row.id} row={row} relation="contre" color={COLORS[(index+2)%COLORS.length]}/>)}</div>{!peerRows.some((row: any) => row.against > 0) ? <div style={{ marginTop: 10, color: SOFT, fontSize: 9 }}>Pas encore d’adversaire consolidé.</div> : null}</section>
+        </div>
       </> : null}
 
       {tab === "records" ? <>
@@ -324,6 +500,17 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
           <RecordCard label="P90 volée" value={recordsList.p90 ? metric(recordsList.p90.row,"p90VisitScore") : 0} date={recordDate(recordsList.p90)} color={PURPLE}/>
           <RecordCard label="1re dart" value={`${recordsList.first ? (metric(recordsList.first.row,"firstDartAccuracy") || pct(metric(recordsList.first.row,"firstDartHits"),metric(recordsList.first.row,"firstDarts"))) : 0}%`} date={recordDate(recordsList.first)} color={ORANGE}/>
           <RecordCard label="Dernière dart" value={`${recordsList.last ? (metric(recordsList.last.row,"lastDartAccuracy") || pct(metric(recordsList.last.row,"lastDartHits"),metric(recordsList.last.row,"lastDarts"))) : 0}%`} date={recordDate(recordsList.last)} color={GOLD}/>
+          <RecordCard label="Palettes / match" value={recordsList.palletsRecord ? metric(recordsList.palletsRecord.row,"pallets") : 0} date={recordDate(recordsList.palletsRecord)} color={GOLD}/>
+          <RecordCard label="Contrats / match" value={recordsList.contractsRecord ? metric(recordsList.contractsRecord.row,"completedContracts") : 0} date={recordDate(recordsList.contractsRecord)} color={GREEN}/>
+          <RecordCard label="Volées sans miss" value={`${recordsList.noMiss ? (metric(recordsList.noMiss.row,"noMissVisitRate") || pct(metric(recordsList.noMiss.row,"noMissVisits"),metric(recordsList.noMiss.row,"visits"))) : 0}%`} date={recordDate(recordsList.noMiss)} color={BLUE}/>
+          <RecordCard label="Volées parfaites" value={`${recordsList.perfect ? (metric(recordsList.perfect.row,"perfectAccuracyVisitRate") || pct(metric(recordsList.perfect.row,"perfectAccuracyVisits"),metric(recordsList.perfect.row,"visits"))) : 0}%`} date={recordDate(recordsList.perfect)} color={GREEN}/>
+          <RecordCard label="Sécurité match" value={`${recordsList.safety ? (metric(recordsList.safety.row,"safeVisitRate") || metric(recordsList.safety.row,"retentionRate")) : 0}%`} date={recordDate(recordsList.safety)} color={GOLD}/>
+          <RecordCard label="Couverture numéros" value={`${recordsList.uniqueNumbers ? metric(recordsList.uniqueNumbers.row,"uniqueNumbersHit") : 0}/20`} date={recordDate(recordsList.uniqueNumbers)} color={ORANGE}/>
+          <RecordCard label="Segments uniques" value={recordsList.uniqueSegments ? metric(recordsList.uniqueSegments.row,"uniqueSegmentsHit") : 0} date={recordDate(recordsList.uniqueSegments)} color={BLUE}/>
+          <RecordCard label="Rendement / dart" value={recordsList.efficiency ? metric(recordsList.efficiency.row,"scorePerDart") : 0} date={recordDate(recordsList.efficiency)} color={ORANGE}/>
+          <RecordCard label="Hits haute valeur" value={`${recordsList.power ? (metric(recordsList.power.row,"highValueHitRate") || pct(metric(recordsList.power.row,"triples")+metric(recordsList.power.row,"dbulls"),metric(recordsList.power.row,"hits"))) : 0}%`} date={recordDate(recordsList.power)} color={PURPLE}/>
+          <RecordCard label="Bull rate" value={`${recordsList.bullRateRecord ? (metric(recordsList.bullRateRecord.row,"bullRate") || pct(metric(recordsList.bullRateRecord.row,"bulls")+metric(recordsList.bullRateRecord.row,"dbulls"),metric(recordsList.bullRateRecord.row,"darts","dartsThrown"))) : 0}%`} date={recordDate(recordsList.bullRateRecord)} color={GOLD}/>
+          <RecordCard label="Risque minimum" value={`${recordsList.riskMin ? metric(recordsList.riskMin.row,"riskEventRate") : 0}%`} date={recordDate(recordsList.riskMin)} color={GREEN}/>
         </div>
         <section style={{ ...panel(), marginTop: 7 }}><SectionTitle title="DERNIÈRES MISSIONS" subtitle="résultat détaillé, format, précision, rendement et sécurité" color={ORANGE}/><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{matches.slice(0, 18).map(({ record, row }: any, index: number) => <MatchRow key={record?.id || index} record={record} row={row} playerId={playerId}/>)}</div></section>
       </> : null}
@@ -332,6 +519,12 @@ export default function CargoStatsTabFull({ records = [], playerId, playerName }
 }
 
 function SmallCell({ label, value }: any) { return <div style={{ minWidth: 0 }}><b style={{ color: "#fff", fontSize: 8.2 }}>{value}</b><small style={{ display: "block", color: SOFT, fontSize: 5.8 }}>{label}</small></div>; }
+function PeerRow({ row, relation, color = BLUE }: any) {
+  return <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) repeat(4,minmax(0,1fr))", gap: 5, alignItems: "center", padding: 8, borderRadius: 12, background: `${color}08`, border: `1px solid ${color}26`, textAlign: "center" }}>
+    <div style={{ minWidth: 0, textAlign: "left" }}><div style={{ color, fontSize: 8.5, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div><div style={{ color: SOFT, fontSize: 6.5 }}>{relation}</div></div>
+    <SmallCell label="MATCHS" value={relation === "ensemble" ? row.together : row.against}/><SmallCell label="WIN" value={`${row.winRate}%`}/><SmallCell label="PRÉC." value={`${row.accuracy}%`}/><SmallCell label="PODIUMS" value={row.podiums}/>
+  </div>;
+}
 function MatchRow({ record, row, playerId }: any) {
   const variant = variantOf(record), parcel = variant === "parcel_delivery", won = didWin(record,row,String(playerId));
   const rowDarts = metric(row,"darts","dartsThrown"), rowHits = metric(row,"hits"), score = parcel ? metric(row,"parcelsDelivered") : metric(row,"totalWeight");

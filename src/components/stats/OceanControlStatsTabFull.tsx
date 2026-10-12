@@ -36,6 +36,13 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
  const impacts:any={Simple:rows.reduce((s:number,r:any)=>s+n(r?.singles),0),Double:rows.reduce((s:number,r:any)=>s+n(r?.doubles),0),Triple:rows.reduce((s:number,r:any)=>s+n(r?.triples),0),Bull:rows.reduce((s:number,r:any)=>s+n(r?.bulls),0),DBull:rows.reduce((s:number,r:any)=>s+n(r?.dbulls),0),Miss:rows.reduce((s:number,r:any)=>s+n(r?.misses),0)};
  const maxImpact=Math.max(1,...Object.values(impacts).map(n));
  const favWeapon=Object.entries(impacts).sort((a:any,b:any)=>n(b[1])-n(a[1]))[0]?.[0]||"—";
+ const shotMap:any={}; const hitMap:any={};
+ rows.forEach((row:any)=>{
+  Object.entries(row?.shotsBySegment||{}).forEach(([segment,value]:any)=>{shotMap[segment]=(shotMap[segment]||0)+n(value)});
+  Object.entries(row?.hitsBySegment||{}).forEach(([segment,value]:any)=>{hitMap[segment]=(hitMap[segment]||0)+n(value)});
+ });
+ const maxZoneShots=Math.max(1,...Array.from({length:20},(_,index)=>n(shotMap[String(index+1)])));
+ const hotZones=Array.from({length:20},(_,index)=>({segment:String(index+1),shots:n(shotMap[String(index+1)]),hits:n(hitMap[String(index+1)])})).sort((a:any,b:any)=>b.shots-a.shots||b.hits-a.hits||n(a.segment)-n(b.segment)).slice(0,5);
  const variants:any={};matches.forEach(({record}:any)=>{const v=record?.summary?.variant||record?.payload?.config?.variant||"tactical";variants[v]=(variants[v]||0)+1;});
  const recentAccuracy=matches.slice(0,8).map(({row}:any)=>n(row?.validShots)>0?Math.round(n(row?.shipHits)/n(row?.validShots)*100):0);
  const trendMax=Math.max(1,...recentAccuracy);
@@ -82,6 +89,10 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
    </Section>
    <Section title="Répartition des armes" accent={CYAN} subtitle="Volume d’utilisation cumulé">
      <div style={{display:"grid",gap:7}}>{Object.entries(impacts).map(([key,value]:any)=><Bar key={key} label={key} value={value} max={maxImpact} color={key==="DBull"?GOLD:key==="Bull"?CYAN:key==="Miss"?RED:BLUE} />)}</div>
+   </Section>
+   <Section title="Heatmap des secteurs" accent={RED} subtitle="Pression de tir cumulée sur les zones 1 à 20">
+     <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:6}}>{Array.from({length:20},(_,index)=>{const segment=String(index+1);const shots=n(shotMap[segment]);const zoneHits=n(hitMap[segment]);const heat=shots/maxZoneShots;return <div key={segment} style={{position:"relative",overflow:"hidden",minHeight:54,borderRadius:13,padding:8,background:`linear-gradient(180deg,rgba(255,101,115,${0.04+heat*.18}),rgba(48,185,255,.035))`,border:`1px solid rgba(255,101,115,${0.08+heat*.42})`}}><div style={{position:"absolute",inset:"auto 0 0",height:`${Math.max(6,heat*100)}%`,background:"linear-gradient(180deg,transparent,rgba(255,101,115,.11))",pointerEvents:"none"}}/><div style={{position:"relative",zIndex:1,display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}><strong style={{color:heat>.66?RED:heat>.33?GOLD:"#eef8ff",fontSize:14}}>{segment}</strong><span style={{color:SOFT,fontSize:6.8}}>{shots} tirs</span></div><div style={{position:"relative",zIndex:1,marginTop:8,height:5,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.06)"}}><div style={{height:"100%",width:`${Math.min(100,heat*100)}%`,background:`linear-gradient(90deg,${BLUE},${GOLD},${RED})`}}/></div><div style={{position:"relative",zIndex:1,marginTop:4,color:GREEN,fontSize:6.7,fontWeight:1000}}>{zoneHits} impacts</div></div>})}</div>
+     <div style={{marginTop:9,display:"flex",gap:6,flexWrap:"wrap"}}>{hotZones.filter((zone:any)=>zone.shots>0).map((zone:any,index:number)=><Chip key={zone.segment} label={index===0?`Zone favorite ${zone.segment}`:`Zone ${zone.segment}`} value={`${zone.shots} tirs · ${zone.hits} hits`} color={index===0?RED:GOLD} />)}</div>
    </Section>
    <Section title="Variantes jouées" accent={GOLD}>{Object.keys(variants).length ? <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(variants).map(([key,value]:any)=><Chip key={key} label={oceanControlVariantLabel(key)} value={`${value} partie${n(value)>1?"s":""}`} color={GOLD} />)}</div> : <div style={{color:SOFT,fontSize:9}}>Aucune variante exploitable.</div>}</Section>
    <Section title="Tendance récente" accent={BLUE} subtitle="Précision des 8 dernières parties">

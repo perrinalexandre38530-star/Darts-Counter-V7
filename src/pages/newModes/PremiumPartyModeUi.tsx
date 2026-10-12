@@ -156,10 +156,52 @@ export function QuickRow({ players, activeId, profileById, colorById, ticker, on
   </div>;
 }
 
-export function BotTurn({ profile, name, accent, text, icon = "🤖" }: any) {
+export type PremiumMoment = {
+  key?: string | number;
+  icon?: string;
+  kicker?: string;
+  title: string;
+  detail?: string;
+  tone?: "success" | "danger" | "info" | "gold";
+  durationMs?: number;
+};
+
+export function PremiumMomentOverlay({ moment, accent = "#4fe4ff", profile, playerName: momentPlayerName }: { moment?: PremiumMoment | null; accent?: string; profile?: any; playerName?: string }) {
+  const [visible, setVisible] = React.useState(false);
+  const [rendered, setRendered] = React.useState<PremiumMoment | null>(null);
+  React.useEffect(() => {
+    if (!moment?.title) return;
+    setRendered(moment);
+    setVisible(true);
+    const leave = window.setTimeout(() => setVisible(false), Math.max(900, Number(moment.durationMs || 2200)));
+    const clear = window.setTimeout(() => setRendered(null), Math.max(1200, Number(moment.durationMs || 2200)) + 360);
+    return () => { window.clearTimeout(leave); window.clearTimeout(clear); };
+  }, [moment?.key, moment?.title, moment?.detail]);
+  if (!rendered) return null;
+  return <div className={`party-mode-moment is-${rendered.tone || "info"}${visible ? " is-visible" : " is-leaving"}`} style={{ ["--mode-accent" as any]: accent }} aria-live="polite" aria-atomic="true">
+    <div className="party-mode-moment__flare" aria-hidden />
+    <div className="party-mode-moment__card">
+      {profile ? <div className="party-mode-moment__avatar"><ProfileAvatar profile={profile} size={54} showStars={false} ringColor={accent} /></div> : null}
+      <div className="party-mode-moment__icon" aria-hidden>{rendered.icon || "⚡"}</div>
+      <div className="party-mode-moment__copy">
+        <small>{rendered.kicker || momentPlayerName || "MOMENT FORT"}</small>
+        <b>{rendered.title}</b>
+        {rendered.detail ? <span>{rendered.detail}</span> : null}
+      </div>
+    </div>
+  </div>;
+}
+
+export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel }: any) {
+  const conf = Number.isFinite(Number(confidence)) ? Math.max(0, Math.min(100, Number(confidence))) : null;
   return <div className="party-mode__bot" style={{ borderColor: `${accent}55`, boxShadow: `inset 0 0 34px ${accent}0d` }}>
     <ProfileAvatar profile={profile} size={58} showStars={false} ringColor={accent} />
-    <div><b style={{ color: accent }}>{name || "BOT"}</b><span>{text || "prépare sa volée…"}</span></div><i>{icon}</i>
+    <div className="party-mode__bot-copy">
+      <div className="party-mode__bot-head"><b style={{ color: accent }}>{name || "BOT"}</b>{phaseLabel ? <em>{phaseLabel}</em> : null}</div>
+      <span>{text || "prépare sa volée…"}</span>
+      {intent ? <div className="party-mode__bot-intent"><small>INTENTION IA</small><strong style={{ color: accent }}>{intent}</strong></div> : null}
+      {conf != null ? <div className="party-mode__bot-confidence"><i style={{ width: `${conf}%`, background: accent }} /><small>{Math.round(conf)}% confiance</small></div> : null}
+    </div><i className="party-mode__bot-icon">{icon}</i>
   </div>;
 }
 

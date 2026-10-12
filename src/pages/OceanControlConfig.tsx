@@ -217,7 +217,21 @@ export default function OceanControlConfig(props: any) {
         ["DIFFICULTÉ", oceanControlDifficultyLabel(difficulty), BLUE], ["MATCH", `Premier à ${winsNeeded}`, RED], ["AUDIO", sfxEnabled ? "ACTIF" : "OFF", sfxEnabled ? GREEN : SOFT], [participantMode === "teams" ? "ÉQUIPES" : "JOUEURS", participantMode === "teams" ? selectedTeamIds.length : selectedIds.length, "#fff"],
       ].map(([label, value, color]: any) => <div key={label} style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 4, color, fontSize: 15, fontWeight: 1100 }}>{value}</div></div>)}
     </div>
-    <div style={{ marginTop: 10, color: SOFT, fontSize: 9, lineHeight: 1.45 }}>{variant === "tactical" ? "Simple : 1 zone · Double : 2 zones · Triple : ligne de 3 · Bull : sonar · DBULL : frappe de précision." : "Chaque impact attaque uniquement la zone portant le numéro touché. Bull et DBULL conservent leurs capacités spéciales."}</div>
+    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,.8fr)", gap: 8 }}>
+      <div style={{ borderRadius: 15, padding: 11, background: "linear-gradient(180deg,rgba(48,185,255,.11),rgba(255,255,255,.02))", border: `1px solid ${BLUE}33` }}>
+        <div style={{ color: CYAN, fontSize: 8.4, fontWeight: 1100, letterSpacing: .7 }}>BRIEFING DE MISSION</div>
+        <div style={{ marginTop: 6, color: "#edf8ff", fontSize: 9, lineHeight: 1.5 }}>{variant === "tactical" ? "La flotte entre en mode tactique : Simple = 1 zone, Double = 2 zones, Triple = ligne de 3. Le Bull devient sonar et la DBULL déclenche une frappe de précision. Joue la lecture de carte avant la puissance brute." : "Mode classique : chaque secteur touché attaque une seule zone. Le sonar Bull et la frappe DBULL restent disponibles pour conserver une vraie dimension stratégique."}</div>
+      </div>
+      <div style={{ borderRadius: 15, padding: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
+        <div style={{ color: GOLD, fontSize: 8.4, fontWeight: 1100, letterSpacing: .7 }}>ORDRE DE COMMANDE</div>
+        <div style={{ marginTop: 6, display: "grid", gap: 5, color: SOFT, fontSize: 8.2 }}>
+          <div>🎯 Saisie : <strong style={{ color: "#fff" }}>{scoreInputMethod === "dartboard" ? "Cible tactile" : "Keypad"}</strong></div>
+          <div>⚓ Placement : <strong style={{ color: "#fff" }}>{placement === "manual" ? "Secret manuel" : "Automatique"}</strong></div>
+          <div>🗺️ Grille : <strong style={{ color: "#fff" }}>{gridOrder === "random" ? "Numéros mélangés" : "Ordre 1–20"}</strong></div>
+          <div>🔊 Audio : <strong style={{ color: sfxEnabled ? GREEN : SOFT }}>{sfxEnabled ? "Bataille active" : "Silencieux"}</strong></div>
+        </div>
+      </div>
+    </div>
   </section>;
 
   const guidedBlocks = [fleetBlock, participantsBlock, weaponsBlock, battleBlock, summaryBlock];

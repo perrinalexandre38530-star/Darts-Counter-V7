@@ -31,6 +31,25 @@ function findBest(rows: any[], getValue: (row: any) => number) {
   return rows.reduce((best, row) => getValue(row) > getValue(best) ? row : best, rows[0]);
 }
 
+function aggregateMap(rows: any[], key: string) {
+  const out: Record<string, number> = {};
+  rows.forEach((row) => Object.entries(row?.stats?.[key] || {}).forEach(([segment, value]) => {
+    out[String(segment)] = (out[String(segment)] || 0) + Number(value || 0);
+  }));
+  return out;
+}
+
+function topSegments(map: Record<string, number>, limit = 5) {
+  return Object.entries(map).map(([segment, value]) => ({ segment, value: Number(value || 0) })).filter((row) => row.value > 0).sort((a, b) => b.value - a.value || Number(a.segment) - Number(b.segment)).slice(0, limit);
+}
+
+function formatDuration(ms: number) {
+  const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
 export default function OceanControlEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: any) {
   const winnerOwner = state.owners.find((owner: any) => state.winnerOwnerIds.includes(owner.id));
   const rows = state.players.map((player: any, index: number) => {
@@ -52,6 +71,14 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
   const sonarMaster = rows.length ? findBest(rows, (row) => Number(row.stats?.sonarContacts || 0)) : null;
   const finisher = rows.length ? findBest(rows, (row) => Number(row.stats?.shipsSunk || 0)) : null;
   const tactician = rows.length ? findBest(rows, (row) => Number(row.stats?.bestHitStreak || 0) + Number(row.stats?.multiHitVisits || 0)) : null;
+  const mvp = rows.length ? findBest(rows, (row) => Number(row.won ? 35 : 0) + Number(row.stats?.shipsSunk || 0) * 12 + Number(row.stats?.shipHits || 0) * 2 + Number(row.stats?.sonarContacts || 0) + Number(row.stats?.perfectVisits || 0) * 5) : null;
+  const shotMap = aggregateMap(rows, "shotsBySegment");
+  const hitMap = aggregateMap(rows, "hitsBySegment");
+  const hotZones = topSegments(shotMap, 5);
+  const bestZone = hotZones[0] || null;
+  const totalDbulls = rows.reduce((sum: number, row: any) => sum + Number(row.stats?.dbulls || 0), 0);
+  const totalStrikes = rows.reduce((sum: number, row: any) => sum + Number(row.stats?.precisionStrikes || 0), 0);
+  const dbullEfficiency = totalDbulls > 0 ? Math.round((totalStrikes / totalDbulls) * 100) : 0;
 
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10000, background: "radial-gradient(circle at 50% -5%,rgba(48,185,255,.30),rgba(0,7,13,.96) 42%,#000 100%)", overflowY: "auto", padding: "max(10px,env(safe-area-inset-top)) 9px max(12px,env(safe-area-inset-bottom))", boxSizing: "border-box" }}>
     <div style={{ width: "min(840px,100%)", margin: "0 auto" }}>
@@ -74,10 +101,23 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
       </div>
 
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+        {mvp ? <Award icon="🏅" title="MVP DE LA BATAILLE" value={playerName(mvp.profile)} detail={`${mvp.stats?.shipHits || 0} impacts · ${mvp.stats?.shipsSunk || 0} navires · ${oceanControlAccuracy(mvp.stats)}%`} color={GOLD} /> : null}
         {bestSniper ? <Award icon="🎯" title="MEILLEUR TIREUR" value={playerName(bestSniper.profile)} detail={`${oceanControlAccuracy(bestSniper.stats)}% de précision`} color={GREEN} /> : null}
         {finisher ? <Award icon="💥" title="FINISSEUR" value={playerName(finisher.profile)} detail={`${finisher.stats?.shipsSunk || 0} navires coulés`} color={RED} /> : null}
         {sonarMaster ? <Award icon="📡" title="MAÎTRE SONAR" value={playerName(sonarMaster.profile)} detail={`${sonarMaster.stats?.sonarContacts || 0} contacts détectés`} color={CYAN} /> : null}
         {tactician ? <Award icon="🧭" title="TACTICIEN" value={playerName(tactician.profile)} detail={`série ${tactician.stats?.bestHitStreak || 0} · ${tactician.stats?.multiHitVisits || 0} multi-impacts`} color={GOLD} /> : null}
+      </div>
+
+      <div style={{ marginTop: 10, borderRadius: 18, padding: 11, background: "linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.20))", border: "1px solid rgba(255,255,255,.08)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div><div style={{ color: RED, fontSize: 9, fontWeight: 1100, letterSpacing: .7 }}>ZONES SOUS PRESSION</div><div style={{ marginTop: 3, color: SOFT, fontSize: 7.4 }}>Secteurs les plus ciblés pendant la partie</div></div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{hotZones.map((zone, index) => <div key={zone.segment} style={{ minWidth: 56, borderRadius: 12, padding: "7px 8px", textAlign: "center", background: index === 0 ? `${RED}14` : "rgba(255,255,255,.03)", border: `1px solid ${index === 0 ? RED + "55" : "rgba(255,255,255,.08)"}` }}><div style={{ color: index === 0 ? RED : "#fff", fontSize: 14, fontWeight: 1150 }}>{zone.segment}</div><div style={{ color: SOFT, fontSize: 6.7 }}>{zone.value} tirs · {hitMap[zone.segment] || 0} hits</div></div>)}</div>
+        </div>
+        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+          <Kpi label="ZONE FAVORITE" value={bestZone?.segment || "—"} color={RED} detail={bestZone ? `${bestZone.value} pressions` : "aucune"} />
+          <Kpi label="EFFICACITÉ DBULL" value={`${dbullEfficiency}%`} color={GOLD} detail={`${totalStrikes}/${totalDbulls} frappes`} />
+          <Kpi label="DURÉE" value={formatDuration((state.finishedAt || Date.now()) - state.startedAt)} color={CYAN} detail={`${state.visits.length} volées`} />
+        </div>
       </div>
 
       <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{rows.map((row: any, rank: number) => {
@@ -102,13 +142,14 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
       })}</div>
 
       {(state.battleHistory || []).length ? <div style={{ marginTop: 10, borderRadius: 18, padding: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.08)" }}>
-        <div style={{ color: CYAN, fontSize: 9, fontWeight: 1100, letterSpacing: .7, marginBottom: 8 }}>RAPPORT DES MANCHES</div>
-        <div style={{ display: "grid", gap: 6 }}>{state.battleHistory.map((battle: any) => {
+        <div style={{ color: CYAN, fontSize: 9, fontWeight: 1100, letterSpacing: .7, marginBottom: 8 }}>TIMELINE DES MANCHES</div>
+        <div style={{ display: "grid", gap: 6 }}>{state.battleHistory.map((battle: any, index: number) => {
           const owner = state.owners.find((row: any) => row.id === battle.winnerOwnerId);
-          return <div key={`${battle.battle}-${battle.finishedAt}`} style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 8, borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)" }}>
+          return <div key={`${battle.battle}-${battle.finishedAt}`} style={{ position: "relative", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 8, borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)" }}>
+            {index < state.battleHistory.length - 1 ? <span style={{ position: "absolute", left: 24, top: "100%", width: 1, height: 7, background: "rgba(101,233,255,.28)" }} /> : null}
             <strong style={{ color: BLUE }}>B{battle.battle}</strong>
             <div style={{ minWidth: 0 }}><div style={{ fontSize: 9, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{owner?.name || "Flotte"}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 7.3 }}>{battle.visits} volées · {battle.darts} fléchettes · {battle.hits} impacts</div></div>
-            <strong style={{ color: GOLD, fontSize: 10 }}>{battle.shipsSunk} coulés</strong>
+            <div style={{ textAlign: "right" }}><strong style={{ display: "block", color: GOLD, fontSize: 10 }}>{battle.shipsSunk} coulés</strong><span style={{ color: SOFT, fontSize: 6.8 }}>{formatDuration(battle.durationMs)}</span></div>
           </div>;
         })}</div>
       </div> : null}

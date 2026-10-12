@@ -2745,6 +2745,15 @@ function isCargoEntry(e: any): boolean {
     .map((v) => String(v || "").toLowerCase()).join("|");
   return blob.includes("cargo");
 }
+type CargoParticipantFilter = "all" | "solo" | "multi" | "teams";
+function cargoParticipantKind(e: any): Exclude<CargoParticipantFilter, "all"> {
+  const config = e?.summary?.config || e?.payload?.config || e?.resume?.config || {};
+  const participantMode = String(e?.summary?.participantMode || config?.participantMode || "").toLowerCase();
+  if (participantMode === "teams") return "teams";
+  const rows = e?.summary?.perPlayer || e?.summary?.players || e?.payload?.stats?.players || e?.players || [];
+  const count = Array.isArray(rows) ? rows.length : Number(e?.summary?.playerCount || e?.payload?.stats?.match?.playersCount || 0);
+  return count > 1 ? "multi" : "solo";
+}
 function summarizeScore(e: SavedEntry): string {
   const explicitScoreLine = cleanName((e as any)?.summary?.scoreLine || (e as any)?.scoreLine || "");
   if (explicitScoreLine) return explicitScoreLine;
@@ -3599,6 +3608,7 @@ export default function HistoryPage({
   const [sub, setSub] = useState<RangeKey>("today");
   const [gameFilter, setGameFilter] = useState<GameFilterKey>("all");
   const [playerFilter, setPlayerFilter] = useState<PlayerFilterKey>("all");
+  const [cargoParticipantFilter, setCargoParticipantFilter] = useState<CargoParticipantFilter>("all");
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterMode, setFilterMode] = useState<"games" | "players">("games");
   const initialHistoryRowsRef = useRef<SavedEntry[] | null>(null);
@@ -4443,6 +4453,10 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
   }, [gameFilter, gameOptions]);
 
   useEffect(() => {
+    if (gameFilter !== "cargo" && cargoParticipantFilter !== "all") setCargoParticipantFilter("all");
+  }, [gameFilter, cargoParticipantFilter]);
+
+  useEffect(() => {
     if (playerFilter !== "all" && !playerOptions.some((p) => p.id === playerFilter)) setPlayerFilter("all");
   }, [playerFilter, playerOptions]);
 
@@ -4450,13 +4464,14 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     return sportSource
       .filter((e) => inRange(historyPlayedAt(e), sub))
       .filter((e) => gameFilter === "all" || inferGameFilterKey(e, sport) === gameFilter)
+      .filter((e) => cargoParticipantFilter === "all" || !isCargoEntry(e) ? true : cargoParticipantKind(e) === cargoParticipantFilter)
       .filter((e) => entryHasPlayer(e, playerFilter));
-  }, [sportSource, sub, gameFilter, playerFilter, sport]);
+  }, [sportSource, sub, gameFilter, cargoParticipantFilter, playerFilter, sport]);
 
   // Rendu progressif : évite de construire 200 à 400 cartes lourdes au premier paint.
   useEffect(() => {
     setVisibleCount(18);
-  }, [tab, sub, gameFilter, playerFilter, sport]);
+  }, [tab, sub, gameFilter, cargoParticipantFilter, playerFilter, sport]);
 
   const visibleFiltered = useMemo(
     () => filtered.slice(0, Math.max(18, visibleCount)),
@@ -4522,6 +4537,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     setItems([]);
     setGameFilter("all");
     setPlayerFilter("all");
+    setCargoParticipantFilter("all");
 
     try {
       await HistoryAPI.clear();
@@ -4674,15 +4690,24 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
-    // CARGO : reprise exacte du camion, des contrats, séries et volées.
+    // CARGO : reprise exacte du camion, des contrats, séries, équipes et volées.
     if (isCargoEntry(e)) {
-      const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null);
-      const config = payload?.config || (e as any)?.resume?.config || (e as any)?.summary?.config || null;
-      const ok = safeGo(["cargo_play"], {
-        rec: e, resumeId, config, mode: "cargo",
+      let recForResume: any = e;
+      try {
+        const hydrated = await hydrateSavedEntry(e);
+        if (hydrated) recForResume = hydrated;
+      } catch (error) {
+        console.warn("[HistoryPage] Cargo resume hydration failed", error);
+      }
+      const payload: any = (recForResume as any)?.decoded || ((recForResume as any)?.payload && typeof (recForResume as any).payload === "object" ? (recForResume as any).payload : null) || {};
+      const config = (recForResume as any)?.resume?.config || payload?.config || (recForResume as any)?.summary?.config || null;
+      const snapshot = (recForResume as any)?.resume?.state || payload?.stateSnapshot || payload?.state || payload?.snapshot || null;
+      const params = {
+        rec: recForResume, resumeId, config, snapshot, mode: "cargo",
         from: preview ? "history_preview" : "history", preview: !!preview,
-      });
-      if (!ok) go("cargo_play", { rec: e, resumeId, config, mode: "cargo", from: preview ? "history_preview" : "history", preview: !!preview });
+      };
+      const ok = safeGo(["cargo_play"], params);
+      if (!ok) go("cargo_play", params);
       return;
     }
 
@@ -5199,7 +5224,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
               type="button"
               aria-label="Filtrer l'historique"
               title="Filtrer"
-              style={S.toolIconBtn(false, filterOpen || gameFilter !== "all" || playerFilter !== "all")}
+              style={S.toolIconBtn(false, filterOpen || gameFilter !== "all" || cargoParticipantFilter !== "all" || playerFilter !== "all")}
               onClick={() => setFilterOpen((v) => !v)}
             >
               <Icon.Filter />
@@ -5253,6 +5278,22 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                           </button>
                         );
                       })}
+                      {gameFilter === "cargo" ? (
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.08)", display: "grid", gap: 6 }}>
+                          <div style={{ color: "rgba(255,255,255,.48)", fontSize: 8, fontWeight: 900, letterSpacing: .55 }}>FORMAT CARGO</div>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {([
+                              ["all", "Tous"],
+                              ["solo", "Solo"],
+                              ["multi", "Multi"],
+                              ["teams", "Équipes"],
+                            ] as [CargoParticipantFilter, string][]).map(([key, label]) => {
+                              const count = sportSource.filter((entry) => isCargoEntry(entry) && (key === "all" || cargoParticipantKind(entry) === key)).length;
+                              return <button key={key} type="button" style={S.filterChip(cargoParticipantFilter === key, "#ff9b42")} onClick={() => setCargoParticipantFilter(key)} title={`Filtrer CARGO : ${label}`}>{label} <span style={S.chipCount}>{count}</span></button>;
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
                     </>
                   ) : (
                     <>

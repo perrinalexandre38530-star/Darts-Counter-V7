@@ -3,6 +3,7 @@
 import React from "react";
 import { cargoArtLibrary } from "../cargo/cargoArt";
 import { cargoVariantLabel } from "../../lib/gameEngines/cargoEngine";
+import CargoHistoryDetail from "./CargoHistoryDetail";
 
 const ORANGE = "#ff9b42";
 const GOLD = "#f6c256";
@@ -19,6 +20,7 @@ function scoreRows(record: any) {
 }
 
 export default function CargoHistoryScoreBlock({ record }: any) {
+  const [detailOpen, setDetailOpen] = React.useState(false);
   const variant = record?.summary?.variant || record?.payload?.variant || record?.payload?.config?.variant || "cargo_classic";
   const rows = scoreRows(record);
   const teams = record?.summary?.teamStandings || record?.summary?.teams || record?.payload?.stats?.teams || record?.teams || [];
@@ -82,5 +84,7 @@ export default function CargoHistoryScoreBlock({ record }: any) {
     </div>; })}
 
     {(n(match?.lostWeight) > 0 || n(match?.rejectedWeight) > 0 || n(match?.overloads) > 0) ? <div style={{ padding: "6px 8px", borderRadius: 10, background: `${RED}09`, border: `1px solid ${RED}2f`, color: "#d9a6ad", fontSize: 7.5 }}>⚠ {n(match?.lostWeight)} kg perdus · {n(match?.rejectedWeight)} kg refusés · {n(match?.overloads)} surcharge(s)</div> : null}
+    <button type="button" onClick={(event) => { event.stopPropagation(); setDetailOpen(true); }} style={{ minHeight: 34, borderRadius: 11, border: `1px solid ${ORANGE}45`, background: `linear-gradient(180deg,${ORANGE}14,rgba(255,255,255,.02))`, color: ORANGE, fontSize: 8, fontWeight: 1100, letterSpacing: .45, cursor: "pointer" }}>VOIR LE DÉTAIL CARGO</button>
+    {detailOpen ? <CargoHistoryDetail record={record} onClose={() => setDetailOpen(false)} /> : null}
   </div>;
 }

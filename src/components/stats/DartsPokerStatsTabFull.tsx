@@ -2,6 +2,21 @@
 import React from "react";
 import DartsPokerCard from "../darts-poker/DartsPokerCard";
 import { deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerNum as n, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../../lib/dartsPokerAnalytics";
+import badgePremiereDonne from "../../assets/darts-poker/badges/premiere-donne.webp";
+import badgeHabitueDeLaTable from "../../assets/darts-poker/badges/habitue-de-la-table.webp";
+import badgeShark from "../../assets/darts-poker/badges/shark.webp";
+import badgeSniper from "../../assets/darts-poker/badges/sniper.webp";
+import badgeContractMaster from "../../assets/darts-poker/badges/contract-master.webp";
+import badgePowerPlayer from "../../assets/darts-poker/badges/power-player.webp";
+import badgeJokerMaster from "../../assets/darts-poker/badges/joker-master.webp";
+import badgeMainPremium from "../../assets/darts-poker/badges/main-premium.webp";
+import badgeLeaderDeTable from "../../assets/darts-poker/badges/leader-de-la-table.webp";
+import badgeDealerGagnant from "../../assets/darts-poker/badges/dealer-gagnant.webp";
+import badgeCloser from "../../assets/darts-poker/badges/closer.webp";
+import badgeRoyal from "../../assets/darts-poker/badges/royal.webp";
+import badgeTableRegular from "../../assets/darts-poker/badges/table-regular.webp";
+import badgeTableLeader from "../../assets/darts-poker/badges/table-leader.webp";
+import badgeWinningDealer from "../../assets/darts-poker/badges/winning-dealer.webp";
 
 const GOLD = "#f6c256";
 const RED = "#e83a43";
@@ -10,6 +25,25 @@ const BLUE = "#55c7ff";
 const SOFT = "#9aa1b2";
 const PINK = "#ff63b8";
 const ORANGE = "#ff9b52";
+
+
+const DARTS_POKER_BADGE_ART = {
+  "PREMIÈRE DONNE": badgePremiereDonne,
+  "HABITUÉ DE LA TABLE": badgeHabitueDeLaTable,
+  SHARK: badgeShark,
+  SNIPER: badgeSniper,
+  "CONTRACT MASTER": badgeContractMaster,
+  "POWER PLAYER": badgePowerPlayer,
+  "JOKER MASTER": badgeJokerMaster,
+  "MAIN PREMIUM": badgeMainPremium,
+  "LEADER DE TABLE": badgeLeaderDeTable,
+  "DEALER GAGNANT": badgeDealerGagnant,
+  CLOSER: badgeCloser,
+  ROYAL: badgeRoyal,
+  "TABLE REGULAR": badgeTableRegular,
+  "TABLE LEADER": badgeTableLeader,
+  "WINNING DEALER": badgeWinningDealer,
+} as const;
 
 const txt = (value: any) => String(value ?? "").trim();
 const pct = (a: number, b?: number) => b === undefined ? `${pokerRound1(n(a))}%` : b > 0 ? `${pokerRound1((n(a) / n(b)) * 100)}%` : "0%";
@@ -103,18 +137,18 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
   ];
   const categoryMax = Math.max(1, ...categories.map((item) => n(item[1])));
   const achievements = [
-    { icon: "♠", label: "PREMIÈRE DONNE", detail: "Terminer une partie Darts Poker", value: games, target: 1, color: GOLD },
-    { icon: "♦", label: "HABITUÉ DE LA TABLE", detail: "Jouer 10 parties", value: games, target: 10, color: BLUE },
-    { icon: "♛", label: "SHARK", detail: "Remporter 10 parties", value: wins, target: 10, color: GREEN },
-    { icon: "◎", label: "SNIPER", detail: "Atteindre 75 % de précision sur 60 darts", value: darts >= 60 ? (hits / Math.max(1, darts)) * 100 : 0, target: 75, color: ORANGE, lockedReason: darts < 60 ? `${darts}/60 darts` : null },
-    { icon: "◆", label: "CONTRACT MASTER", detail: "Réussir 25 contrats", value: contracts, target: 25, color: RED },
-    { icon: "✦", label: "POWER PLAYER", detail: "Utiliser 25 pouvoirs", value: powersUsed, target: 25, color: PINK },
-    { icon: "★", label: "JOKER MASTER", detail: "Obtenir 10 Jokers", value: jokers, target: 10, color: GOLD },
-    { icon: "♥", label: "MAIN PREMIUM", detail: "Obtenir 10 mains Couleur+", value: premiumHands, target: 10, color: RED },
-    { icon: "♣", label: "LEADER DE TABLE", detail: "Être leader sur 50 % des manches", value: leadRate, target: 50, color: BLUE },
-    { icon: "●", label: "DEALER GAGNANT", detail: "Gagner 5 manches en tant que dealer", value: dealerWins, target: 5, color: GREEN },
-    { icon: "↗", label: "CLOSER", detail: "Gagner la dernière manche de 5 parties", value: closingWins, target: 5, color: ORANGE },
-    { icon: "♚", label: "ROYAL", detail: "Obtenir une quinte flush royale", value: sum("royalFlushes"), target: 1, color: GOLD },
+    { icon: "♠", image: DARTS_POKER_BADGE_ART["PREMIÈRE DONNE"], label: "PREMIÈRE DONNE", detail: "Terminer une partie Darts Poker", value: games, target: 1, color: GOLD },
+    { icon: "♦", image: DARTS_POKER_BADGE_ART["HABITUÉ DE LA TABLE"], imageEn: DARTS_POKER_BADGE_ART["TABLE REGULAR"], label: "HABITUÉ DE LA TABLE", detail: "Jouer 10 parties", value: games, target: 10, color: BLUE },
+    { icon: "♛", image: DARTS_POKER_BADGE_ART.SHARK, label: "SHARK", detail: "Remporter 10 parties", value: wins, target: 10, color: GREEN },
+    { icon: "◎", image: DARTS_POKER_BADGE_ART.SNIPER, label: "SNIPER", detail: "Atteindre 75 % de précision sur 60 darts", value: darts >= 60 ? (hits / Math.max(1, darts)) * 100 : 0, target: 75, color: ORANGE, lockedReason: darts < 60 ? `${darts}/60 darts` : null },
+    { icon: "◆", image: DARTS_POKER_BADGE_ART["CONTRACT MASTER"], label: "CONTRACT MASTER", detail: "Réussir 25 contrats", value: contracts, target: 25, color: RED },
+    { icon: "✦", image: DARTS_POKER_BADGE_ART["POWER PLAYER"], label: "POWER PLAYER", detail: "Utiliser 25 pouvoirs", value: powersUsed, target: 25, color: PINK },
+    { icon: "★", image: DARTS_POKER_BADGE_ART["JOKER MASTER"], label: "JOKER MASTER", detail: "Obtenir 10 Jokers", value: jokers, target: 10, color: GOLD },
+    { icon: "♥", image: DARTS_POKER_BADGE_ART["MAIN PREMIUM"], label: "MAIN PREMIUM", detail: "Obtenir 10 mains Couleur+", value: premiumHands, target: 10, color: RED },
+    { icon: "♣", image: DARTS_POKER_BADGE_ART["LEADER DE TABLE"], imageEn: DARTS_POKER_BADGE_ART["TABLE LEADER"], label: "LEADER DE TABLE", detail: "Être leader sur 50 % des manches", value: leadRate, target: 50, color: BLUE },
+    { icon: "●", image: DARTS_POKER_BADGE_ART["DEALER GAGNANT"], imageEn: DARTS_POKER_BADGE_ART["WINNING DEALER"], label: "DEALER GAGNANT", detail: "Gagner 5 manches en tant que dealer", value: dealerWins, target: 5, color: GREEN },
+    { icon: "↗", image: DARTS_POKER_BADGE_ART.CLOSER, label: "CLOSER", detail: "Gagner la dernière manche de 5 parties", value: closingWins, target: 5, color: ORANGE },
+    { icon: "♚", image: DARTS_POKER_BADGE_ART.ROYAL, label: "ROYAL", detail: "Obtenir une quinte flush royale", value: sum("royalFlushes"), target: 1, color: GOLD },
   ];
   const unlockedAchievements = achievements.filter((badge: any) => n(badge.value) >= n(badge.target) && !badge.lockedReason).length;
 
@@ -195,9 +229,15 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
             const unlocked = n(badge.value) >= n(badge.target) && !badge.lockedReason;
             const progress = badge.lockedReason ? Math.min(100, darts / 60 * 100) : Math.min(100, n(badge.value) / Math.max(1, n(badge.target)) * 100);
             return <div key={badge.label} style={{ padding: 10, borderRadius: 14, border: `1px solid ${unlocked ? badge.color : "rgba(255,255,255,.09)"}55`, background: unlocked ? `${badge.color}0d` : "rgba(255,255,255,.022)", opacity: unlocked ? 1 : .72 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "30px minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
-                <div style={{ width: 29, height: 29, borderRadius: 9, display: "grid", placeItems: "center", color: unlocked ? badge.color : SOFT, border: `1px solid ${unlocked ? badge.color : "rgba(255,255,255,.12)"}55`, fontSize: 15 }}>{badge.icon}</div>
-                <div style={{ minWidth: 0 }}><div style={{ color: unlocked ? badge.color : "#c2c7d3", fontSize: 8.3, fontWeight: 1100 }}>{badge.label}</div><div style={{ color: SOFT, fontSize: 7.3, marginTop: 2 }}>{badge.detail}</div></div>
+              <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: 14, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${unlocked ? badge.color : "rgba(255,255,255,.12)"}55`, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015))", boxShadow: unlocked ? `0 0 16px ${badge.color}33` : "none" }}>
+                  {badge.image ? <img src={badge.image} alt={badge.label} style={{ width: "100%", height: "100%", objectFit: "contain", opacity: unlocked ? 1 : .78, filter: unlocked ? "none" : "grayscale(.2) saturate(.8)" }} /> : <div style={{ width: 29, height: 29, borderRadius: 9, display: "grid", placeItems: "center", color: unlocked ? badge.color : SOFT, border: `1px solid ${unlocked ? badge.color : "rgba(255,255,255,.12)"}55`, fontSize: 15 }}>{badge.icon}</div>}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: unlocked ? badge.color : "#c2c7d3", fontSize: 8.3, fontWeight: 1100 }}>{badge.label}</div>
+                  <div style={{ color: SOFT, fontSize: 7.3, marginTop: 2 }}>{badge.detail}</div>
+                  {badge.imageEn ? <div style={{ color: "#6f7788", fontSize: 6.8, marginTop: 3, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}><span>EN</span><img src={badge.imageEn} alt={`${badge.label} english`} style={{ width: 22, height: 22, objectFit: "contain", opacity: .92 }} /></div> : null}
+                </div>
                 <div style={{ color: unlocked ? GREEN : SOFT, fontSize: 8, fontWeight: 1100 }}>{unlocked ? "DÉBLOQUÉ" : "EN COURS"}</div>
               </div>
               <div style={{ marginTop: 7, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${progress}%`, height: "100%", background: unlocked ? badge.color : `${badge.color}99`, borderRadius: 999 }} /></div>
