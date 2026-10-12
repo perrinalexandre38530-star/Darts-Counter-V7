@@ -128,6 +128,7 @@ import { warmAggOnce } from "./boot/warmAgg";
 import { onlineApi } from "./lib/onlineApi";
 import { isNasProviderEnabled } from "./lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
+import { getCanonicalAccountProfileFromStore } from "./lib/canonicalAccountProfile";
 
 
 // ✅ Supabase client

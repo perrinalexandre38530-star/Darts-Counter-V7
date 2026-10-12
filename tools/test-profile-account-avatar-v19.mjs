@@ -11,6 +11,7 @@ const migration = read("supabase/migrations/20261012160000_account_avatars_bucke
 const checks = [
   ["global avatar monotonic guard", app.includes("protectNewerProfileAvatars") && app.includes("setStoreRaw")],
   ["remote canonical profile id sync", app.includes("canonicalLocalProfileId") && app.includes("canonicalProfileRemoteSyncRef")],
+  ["App imports canonical profile resolver", app.includes('import { getCanonicalAccountProfileFromStore } from "./lib/canonicalAccountProfile";')],
   ["new device reuses remote canonical id", bridge.includes("getRemoteCanonicalLocalProfileId") && bridge.includes("remoteCanonicalId || uid")],
   ["profile bridge writes canonical id", bridge.includes("canonicalLocalProfileId: String(merged?.id")],
   ["valid public Supabase avatar URL allowed", avatar.includes("/object/public") && avatar.includes("anciennes URLs d'endpoint d'upload")],
