@@ -443,7 +443,9 @@ function pickCanonicalLocalAccountProfile(
 }
 
 function avatarTimestamp(profile: any): number {
-  const direct = profile?.avatarUpdatedAt ?? profile?.avatar_updated_at ?? profile?.updatedAvatarAt ?? null;
+  const pi = readPrivateInfo(profile);
+  const direct = profile?.avatarUpdatedAt ?? profile?.avatar_updated_at ?? profile?.updatedAvatarAt
+    ?? (pi as any)?.avatarUpdatedAt ?? (pi as any)?.avatar_updated_at ?? null;
   const raw = Number(direct ?? 0);
   if (Number.isFinite(raw) && raw > 0) return raw;
   const iso = profile?.updatedAt ?? profile?.updated_at ?? null;
@@ -459,7 +461,11 @@ function explicitAvatarTimestamp(profile: any): number {
   // les préférences, etc. Il ne prouve PAS que l'avatar a changé. Utiliser ce
   // timestamp générique rendait une ancienne avatar_url artificiellement
   // "plus récente" et lui permettait d'écraser l'image choisie localement.
-  const direct = profile?.avatarUpdatedAt ?? profile?.avatar_updated_at ?? profile?.updatedAvatarAt ?? null;
+  // V18 : la révision avatar est aussi conservée dans private_info afin qu'un
+  // autre appareil puisse comparer deux photos sans détourner updated_at.
+  const pi = readPrivateInfo(profile);
+  const direct = profile?.avatarUpdatedAt ?? profile?.avatar_updated_at ?? profile?.updatedAvatarAt
+    ?? (pi as any)?.avatarUpdatedAt ?? (pi as any)?.avatar_updated_at ?? null;
   const raw = Number(direct ?? 0);
   return Number.isFinite(raw) && raw > 0 ? raw : 0;
 }

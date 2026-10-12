@@ -2575,6 +2575,12 @@ useEffect(() => {
         } else if (JSON.stringify(beforeFp) !== JSON.stringify(afterFp)) {
           logProfileStabilityAudit("profile-change-online-bridge", next, { source: "online-local-bridge", onlineUid: uid, before: beforeFp, after: afterFp });
         }
+        // Ce bridge est une mutation réelle du store (binding, avatar distant,
+        // suppression d'un alias technique). Il doit emprunter le même chemin
+        // de persistance que `update()` ; sinon la réparation disparaît au reboot.
+        if (next !== prev) {
+          try { scheduleStorePersist(next as Store); } catch {}
+        }
         return next;
       });
 
@@ -3418,6 +3424,21 @@ useEffect(() => {
 
         logProfileStabilityAudit("storage-scope-reload-loaded", next, { source: "auth-scope-reload", scope: nextScope });
         setStore(next);
+
+        // V18 — la réconciliation COMPTE -> MON PROFIL ne peut plus rester
+        // uniquement en RAM. L'audit a montré qu'après chaque redémarrage le
+        // boot relisait encore le snapshot pré-bridge (61 profils / ancien avatar),
+        // puis le bridge le réparait à 59 profils. On verrouille immédiatement
+        // le store canonique du scope courant afin que le prochain boot démarre
+        // directement sur le même profil/avatar, sans flash ni retour arrière.
+        if (next !== loaded) {
+          try {
+            await saveStore(next as Store);
+          } catch (persistError) {
+            console.warn("[auth-store] canonical reconciliation persist skipped", persistError);
+          }
+        }
+
         // MEDIA FAILOVER : réhydrate en arrière-plan les pixels depuis IndexedDB,
         // cache navigateur puis R2 direct, sans attendre le NAS.
         void hydrateStoreUserMedia(next).then(({ store: hydrated, changed }) => {
@@ -3552,6 +3573,41 @@ useEffect(() => {
           };
         } else {
           base = { ...initialStore };
+        }
+
+        // V18 — FAST CANONICAL BOOT. La session compte sauvegardée est disponible
+        // avant que useAuthOnline termine sa restauration asynchrone. On l'utilise
+        // uniquement pour réconcilier le store local déjà chargé : aucune requête
+        // réseau, aucun cloud restore. Cela évite le premier paint sur un vieux
+        // profil technique / ancien avatar avant que l'effet auth fasse la même
+        // réparation quelques centaines de ms plus tard.
+        try {
+          const cachedAuth: any = (onlineApi as any)?.loadAuthFromLS?.() || null;
+          const cachedRawUser: any = cachedAuth?.user || null;
+          const cachedUid = String(
+            cachedAuth?.supabaseUserId ||
+            cachedRawUser?.user_metadata?.supabase_user_id ||
+            cachedRawUser?.id ||
+            ""
+          ).trim();
+          const storageUid = String(getStorageUser() || "").trim();
+          if (cachedUid && cachedRawUser && (!storageUid || storageUid === cachedUid)) {
+            const cachedUser = {
+              ...cachedRawUser,
+              id: cachedUid,
+              user_metadata: {
+                ...(cachedRawUser?.user_metadata || {}),
+                supabase_user_id: cachedUid,
+              },
+            };
+            const beforeCanonicalBoot = base;
+            base = ensureLocalProfileForOnlineUser(base as any, cachedUser as any, cachedAuth?.profile ?? null) as Store;
+            if (base !== beforeCanonicalBoot) {
+              try { await saveStore(base); } catch {}
+            }
+          }
+        } catch (bootCanonicalError) {
+          console.warn("[boot-store] cached account reconciliation skipped", bootCanonicalError);
         }
 
         if (mounted) {

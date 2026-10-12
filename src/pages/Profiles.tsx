@@ -496,6 +496,39 @@ const profileMiniStatsCache = new Map<string, ProfileMiniStats>();
 // Elle ne sert pas de source de vérité : elle empêche seulement un refresh/cache
 // transitoirement vide de faire clignoter la fiche à 0 avant le rebuild profond.
 const stableProfileMiniStatsCache = new Map<string, ProfileMiniStats>();
+const PROFILE_MINI_STATS_SESSION_KEY = "dc_profile_mini_stats_session_v18";
+const PROFILE_MINI_STATS_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+function readSessionStableProfileMiniStats(cacheKey: string): ProfileMiniStats | null {
+  try {
+    if (!cacheKey || typeof sessionStorage === "undefined") return null;
+    const raw = sessionStorage.getItem(PROFILE_MINI_STATS_SESSION_KEY);
+    if (!raw) return null;
+    const all = JSON.parse(raw);
+    const row = all?.[cacheKey];
+    const at = Number(row?.at || 0) || 0;
+    if (!row?.stats || !at || Date.now() - at > PROFILE_MINI_STATS_SESSION_TTL_MS) return null;
+    const normalized = normalizeProfileMiniStats(row.stats);
+    if (!profileMiniStatsHasData(normalized)) return null;
+    stableProfileMiniStatsCache.set(cacheKey, normalized);
+    return normalized;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionStableProfileMiniStats(cacheKey: string, stats: ProfileMiniStats) {
+  try {
+    if (!cacheKey || typeof sessionStorage === "undefined" || !profileMiniStatsHasData(stats)) return;
+    const raw = sessionStorage.getItem(PROFILE_MINI_STATS_SESSION_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    all[cacheKey] = { at: Date.now(), stats };
+    const entries = Object.entries<any>(all)
+      .sort((a, b) => Number(b?.[1]?.at || 0) - Number(a?.[1]?.at || 0))
+      .slice(0, 48);
+    sessionStorage.setItem(PROFILE_MINI_STATS_SESSION_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {}
+}
 
 function profileMiniStatsHasData(stats: ProfileMiniStats | null | undefined): boolean {
   if (!stats) return false;
@@ -506,7 +539,10 @@ function profileMiniStatsHasData(stats: ProfileMiniStats | null | undefined): bo
 }
 
 function rememberStableProfileMiniStats(cacheKey: string, stats: ProfileMiniStats): ProfileMiniStats {
-  if (cacheKey && profileMiniStatsHasData(stats)) stableProfileMiniStatsCache.set(cacheKey, stats);
+  if (cacheKey && profileMiniStatsHasData(stats)) {
+    stableProfileMiniStatsCache.set(cacheKey, stats);
+    writeSessionStableProfileMiniStats(cacheKey, stats);
+  }
   return stats;
 }
 
@@ -900,7 +936,7 @@ function readProfileMiniStatsSync(playerId: string | undefined | null, sportKey?
   const cacheKey = profileMiniStatsCacheKey(key, sportKey);
   const cached = profileMiniStatsCache.get(cacheKey);
   if (cached) return cached;
-  const stable = stableProfileMiniStatsCache.get(cacheKey);
+  const stable = stableProfileMiniStatsCache.get(cacheKey) || readSessionStableProfileMiniStats(cacheKey) || undefined;
 
   if (isFitSportKey(sportKey)) {
     const fitStats = getFitProfileMiniStats(key);
@@ -932,11 +968,19 @@ function readProfileMiniStatsSync(playerId: string | undefined | null, sportKey?
   }
 }
 
-function useBasicStats(playerId: string | undefined | null, enabled: boolean = true, playerName?: string | null, sportKey?: string | null) {
+function useBasicStats(
+  playerId: string | undefined | null,
+  enabled: boolean = true,
+  playerName?: string | null,
+  sportKey?: string | null,
+  deepPriority: "idle" | "immediate" = "idle",
+) {
   const key = playerId ? String(playerId) : "";
   const cacheKey = profileMiniStatsCacheKey(key, sportKey);
   const [stats, setStats] = React.useState<ProfileMiniStats>(() =>
-    enabled && key ? readProfileMiniStatsSync(key, sportKey) : (stableProfileMiniStatsCache.get(cacheKey) || EMPTY_PROFILE_MINI_STATS)
+    enabled && key
+      ? readProfileMiniStatsSync(key, sportKey)
+      : (stableProfileMiniStatsCache.get(cacheKey) || readSessionStableProfileMiniStats(cacheKey) || EMPTY_PROFILE_MINI_STATS)
   );
   const renderedKeyRef = React.useRef(cacheKey);
 
@@ -979,9 +1023,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
       commit(syncStats);
 
       cancelDeepStats?.();
-      // La page et les photos peignent d'abord. Les statistiques exactes/hydratées
-      // arrivent ensuite pendant un temps mort, sans bloquer le clic de navigation.
-      cancelDeepStats = scheduleRuntimeIdle(() => {
+      const runDeepStats = () => {
         void queueProfileDeepStats(`${cacheKey}:${String(playerName || "")}`, () =>
           getStatsHubAlignedProfileMiniStats(key, playerName, sportKey)
         )
@@ -993,7 +1035,16 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
             commit(asyncStats);
           })
           .catch((err) => console.warn("[Profiles] stats profil centralisées indisponibles", err));
-      }, { timeoutMs: 5_000, fallbackDelayMs: 650 });
+      };
+
+      // MON PROFIL ne doit plus peindre 0 puis se corriger plusieurs secondes après.
+      // Seule la fiche active lance l'agrégation History/StatsHub immédiatement ;
+      // les grilles de profils locaux restent différées pour préserver la fluidité.
+      if (deepPriority === "immediate") {
+        runDeepStats();
+      } else {
+        cancelDeepStats = scheduleRuntimeIdle(runDeepStats, { timeoutMs: 5_000, fallbackDelayMs: 650 });
+      }
     };
 
     refresh();
@@ -1017,7 +1068,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
       window.removeEventListener("dc:fit-session-saved", onStatsUpdated as EventListener);
       window.removeEventListener("storage", onStatsUpdated as EventListener);
     };
-  }, [key, cacheKey, enabled, playerName, sportKey]);
+  }, [key, cacheKey, enabled, playerName, sportKey, deepPriority]);
 
   return stats;
 }
@@ -2679,6 +2730,7 @@ export default function Profiles({
     const castDataUrl = variants.castDataUrl;
     let finalAvatarUrl: string | undefined = undefined;
     let finalAvatarPath: string | undefined = undefined;
+    let finalAvatarUpdatedAt = now;
     const targetProfile = (stableProfiles as any[] || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
     const isOnlineLinked = isLinkedOnlineProfile(targetProfile);
     logProfileStabilityAudit("avatar-change-start", store, {
@@ -2750,6 +2802,16 @@ export default function Profiles({
       thumbChars: thumbDataUrl.length,
     });
 
+    // L'avatar est une donnée d'identité : on ne laisse plus son commit attendre
+    // le save idle de 1,8 s. Un reload/navigation juste après la sélection ne doit
+    // jamais pouvoir relire l'ancienne photo depuis IndexedDB.
+    try {
+      const flush = (window as any)?.__flushLocalStoreNow;
+      if (typeof flush === "function") await flush("profile-avatar-local-commit");
+    } catch (error) {
+      console.warn("[Profiles] avatar local flush skipped", error);
+    }
+
     if (isOnlineLinked && auth.status === "signed_in") {
       try {
         const uploaded = await (await getOnlineApi()).uploadAvatarImage({
@@ -2759,6 +2821,8 @@ export default function Profiles({
         });
 
         const publicUrl = String(uploaded?.publicUrl || "").trim();
+        const remoteAvatarUpdatedAt = Number((uploaded as any)?.avatarUpdatedAt || 0) || 0;
+        finalAvatarUpdatedAt = Math.max(finalAvatarUpdatedAt, remoteAvatarUpdatedAt);
         if (publicUrl) {
           finalAvatarUrl = publicUrl;
           finalAvatarPath = String(uploaded?.path || "") || undefined;
@@ -2770,7 +2834,7 @@ export default function Profiles({
                     avatarUrl: publicUrl,
                     avatarPath: String(uploaded?.path || "") || undefined,
                     avatarDataUrl: thumbDataUrl,
-                    avatarUpdatedAt: now,
+                    avatarUpdatedAt: finalAvatarUpdatedAt,
                   }
                 : p
             )
@@ -2783,12 +2847,12 @@ export default function Profiles({
             avatarFullDataUrl: fullDataUrl,
             avatarCastDataUrl: castDataUrl,
             avatarPath: String(uploaded?.path || "") || undefined,
-            avatarUpdatedAt: now,
+            avatarUpdatedAt: finalAvatarUpdatedAt,
           });
           logProfileStabilityAudit("avatar-online-upload-ok", undefined, {
             source: "profiles.changeAvatar",
             profileId: id,
-            avatarUpdatedAt: now,
+            avatarUpdatedAt: finalAvatarUpdatedAt,
             hasPublicUrl: true,
           });
         }
@@ -2836,7 +2900,7 @@ export default function Profiles({
               avatarUrl: finalAvatarUrl,
               avatarPath: finalAvatarPath,
               avatarDataUrl: thumbDataUrl,
-              avatarUpdatedAt: now,
+              avatarUpdatedAt: finalAvatarUpdatedAt,
             }
           : p
       );
@@ -2852,7 +2916,7 @@ export default function Profiles({
               avatarUrl: finalAvatarUrl,
               avatarPath: finalAvatarPath,
               avatarDataUrl: thumbDataUrl,
-              avatarUpdatedAt: now,
+              avatarUpdatedAt: finalAvatarUpdatedAt,
             }
           : p
       )
@@ -2862,12 +2926,18 @@ export default function Profiles({
       scheduleProfilesPersist("profiles_avatar", nextStoreSnapshot, { cloud: false, delayMs: 6000 });
     }
     try {
-      window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: now } }));
+      const flush = (window as any)?.__flushLocalStoreNow;
+      if (typeof flush === "function") await flush("profile-avatar-final-commit");
+    } catch (error) {
+      console.warn("[Profiles] avatar final flush skipped", error);
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: finalAvatarUpdatedAt } }));
     } catch {}
     logProfileStabilityAudit("avatar-change-finished", nextStoreSnapshot || store, {
       source: "profiles.changeAvatar",
       profileId: id,
-      avatarUpdatedAt: now,
+      avatarUpdatedAt: finalAvatarUpdatedAt,
       finalHasRemoteUrl: !!finalAvatarUrl,
     });
   }
@@ -3504,7 +3574,8 @@ React.useEffect(() => {
     // la section lourde. Le calcul profond reste lui-même planifié en idle.
     view === "me" && !!active?.id,
     active?.name,
-    sportResolved
+    sportResolved,
+    "immediate"
   );
 
   const activeAvg3D = React.useMemo<number | null>(() => {
@@ -5246,27 +5317,29 @@ function ActiveProfileBlock({
   const cachedAvatarIsAtLeastAsFresh = !!cachedAvatarDataUrl &&
     cachedAvatarRevision > 0 &&
     cachedAvatarRevision >= activeAvatarRevision;
-  const avatarSrc = buildAvatarSrc({
-    preview: editPreview || (cachedAvatarIsAtLeastAsFresh ? cachedAvatarDataUrl : null),
-    avatarUrl: cachedAvatarIsAtLeastAsFresh
-      ? String((activeAvatarCache as any)?.avatarUrl || activeAvatarUrl || "")
-      : activeAvatarUrl,
-    avatarDataUrl: cachedAvatarIsAtLeastAsFresh
-      ? cachedAvatarDataUrl
-      : String((active as any)?.avatarDataUrl || ""),
-    avatarFullDataUrl: cachedAvatarIsAtLeastAsFresh
-      ? cachedAvatarDataUrl
-      : (activeAvatarUrl ? "" : String((activeAvatarCache as any)?.avatarFullDataUrl || "")),
-    avatarUpdatedAt: Math.max(activeAvatarRevision, cachedAvatarRevision) || null,
-  });
-
-  // Logs debug avatar désactivés : les data URLs énormes faisaient exploser la console et la mémoire.
-  React.useEffect(() => {}, [
-    active?.id,
-    (active as any)?.avatarUrl,
-    (active as any)?.avatarDataUrl,
-    (active as any)?.avatarUpdatedAt,
-    avatarSrc,
+  const avatarRenderProfile = React.useMemo(() => {
+    const cacheWins = cachedAvatarIsAtLeastAsFresh;
+    return {
+      ...(active as any),
+      avatarDataUrl: editPreview || (cacheWins ? cachedAvatarDataUrl : (active as any)?.avatarDataUrl),
+      avatarUrl: cacheWins
+        ? String((activeAvatarCache as any)?.avatarUrl || activeAvatarUrl || "")
+        : activeAvatarUrl,
+      avatarPath: cacheWins
+        ? String((activeAvatarCache as any)?.avatarPath || (active as any)?.avatarPath || "") || undefined
+        : (active as any)?.avatarPath,
+      avatarUpdatedAt: Math.max(activeAvatarRevision, cachedAvatarRevision) || (active as any)?.avatarUpdatedAt,
+    };
+  }, [
+    active,
+    editPreview,
+    cachedAvatarIsAtLeastAsFresh,
+    cachedAvatarDataUrl,
+    activeAvatarUrl,
+    activeAvatarRevision,
+    cachedAvatarRevision,
+    (activeAvatarCache as any)?.avatarUrl,
+    (activeAvatarCache as any)?.avatarPath,
   ]);
 
   // =========================
@@ -5427,18 +5500,19 @@ function ActiveProfileBlock({
             overflow: "visible",
           }}
         >
-          <AvatarLite
-            key={`${active?.id || "profile"}-${avatarRefreshKey}-${(active as any)?.avatarUpdatedAt || ""}`}
+          <ProfileAvatar
+            key={`${active?.id || "profile"}-${avatarRefreshKey}-${(avatarRenderProfile as any)?.avatarUpdatedAt || ""}`}
             size={AVATAR}
+            profile={avatarRenderProfile as any}
             profileId={String((active as any)?.id || "")}
-            src={avatarSrc}
-            fallbackSrc={String(
+            fallbackDataUrl={String(
               (activeAvatarCache as any)?.avatarThumbDataUrl ||
               (activeAvatarCache as any)?.avatarDataUrl ||
               (activeAvatarCache as any)?.avatarFullDataUrl ||
               ""
             )}
-            label={displayName?.[0]?.toUpperCase() || "?"}
+            loading="eager"
+            showStars={false}
           />
         </div>
       </div>

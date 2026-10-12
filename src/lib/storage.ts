@@ -163,7 +163,15 @@ function shouldScanForRicherPersistedStore(store: any): boolean {
     const currentProfiles = validProfileList(store?.profiles);
     if (currentProfiles.length <= 1) return true;
     const cached = getCachedLocalProfilesForSafety();
-    if ((cached?.profiles?.length || 0) > currentProfiles.length) return true;
+    const cachedCount = cached?.profiles?.length || 0;
+    // Un ancien cache peut encore contenir 1-2 clones techniques du compte
+    // (UUID Supabase / usr_* / online:*). Le simple fait d'avoir "plus de profils"
+    // ne prouve donc plus qu'il est plus riche. Réouvrir ce cache à chaque boot
+    // réinjectait précisément les doublons que le bridge venait de supprimer.
+    // On ne lance le scan coûteux que si la perte est réellement significative.
+    const richerDelta = cachedCount - currentProfiles.length;
+    const meaningfulDelta = Math.max(2, Math.ceil(currentProfiles.length * 0.15));
+    if (richerDelta >= meaningfulDelta) return true;
     const active = String(store?.activeProfileId || "").trim();
     if (active && !currentProfiles.some((profile) => String(profile?.id || "") === active)) return true;
   } catch {}

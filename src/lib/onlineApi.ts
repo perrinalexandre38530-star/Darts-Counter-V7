@@ -711,12 +711,16 @@ type SupabaseProfileRow = {
 };
 
 function mapProfile(row: SupabaseProfileRow): OnlineProfile {
+  const privateInfo = (row.private_info && typeof row.private_info === "object") ? row.private_info : {};
+  const rawAvatarUpdatedAt = Number((privateInfo as any)?.avatarUpdatedAt ?? (privateInfo as any)?.avatar_updated_at ?? 0);
+  const avatarUpdatedAt = Number.isFinite(rawAvatarUpdatedAt) && rawAvatarUpdatedAt > 0 ? rawAvatarUpdatedAt : undefined;
   return {
     id: String(row.id),
     userId: String(row.id),
     displayName: (row.display_name ?? row.nickname ?? "") as any,
     nickname: (row.nickname ?? row.display_name ?? "") as any,
     avatarUrl: (row.avatar_url ?? undefined) as any,
+    avatarUpdatedAt,
     country: (row.country ?? undefined) as any,
 
     surname: row.surname ?? "",
@@ -727,7 +731,7 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
     email: row.email ?? "",
     phone: row.phone ?? "",
     preferences: row.preferences ?? {},
-    privateInfo: row.private_info ?? {},
+    privateInfo,
 
     bio: row.bio ?? "",
     stats:
@@ -2172,7 +2176,7 @@ async function uploadAvatarImage(opts: {
   dataUrl: string;
   folder?: string;
   updateProfile?: boolean;
-}): Promise<{ publicUrl: string; path: string }> {
+}): Promise<{ publicUrl: string; path: string; avatarUpdatedAt?: number }> {
   // AVATAR COMPTE = SUPABASE STORAGE dès qu'une session Supabase publique est
   // disponible. Le choix NAS/R2/Drive concerne les sauvegardes, pas l'identité
   // visuelle du compte. Mélanger ces deux responsabilités rendait l'avatar
@@ -2185,7 +2189,16 @@ async function uploadAvatarImage(opts: {
 
   if (!hasPublicSupabaseUser && shouldUseNasForCurrentSession()) {
     await ensureNasSession();
-    return await nasUploadAvatarImage(opts);
+    const uploaded = await nasUploadAvatarImage(opts);
+    const rawRevision = (uploaded as any)?.avatarUpdatedAt;
+    const parsedRevision = typeof rawRevision === "number"
+      ? rawRevision
+      : (rawRevision ? Date.parse(String(rawRevision)) : NaN);
+    return {
+      publicUrl: String(uploaded?.publicUrl || ""),
+      path: String(uploaded?.path || ""),
+      avatarUpdatedAt: Number.isFinite(parsedRevision) && parsedRevision > 0 ? parsedRevision : Date.now(),
+    };
   }
   const { dataUrl } = opts;
   const { user } = await ensureAuthedUser();
@@ -2196,7 +2209,8 @@ async function uploadAvatarImage(opts: {
   const mime = (blob as any).type || "image/png";
   const ext = extFromMime(mime);
 
-  const path = `${folder}/avatar-${Date.now()}.${ext}`;
+  const avatarUpdatedAt = Date.now();
+  const path = `${folder}/avatar-${avatarUpdatedAt}.${ext}`;
 
   const { error: upErr } = await supabase.storage.from("avatars").upload(path, blob, {
     upsert: true,
@@ -2211,10 +2225,36 @@ async function uploadAvatarImage(opts: {
   if (!publicUrl) throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
 
   if (opts.updateProfile !== false) {
-    await updateProfile({ avatarUrl: publicUrl });
+    // La révision de l'avatar doit être explicite. `profiles.updated_at` bouge
+    // aussi lors d'un changement de nom/pays/préférences et ne peut donc pas
+    // servir à départager une photo locale et une photo distante.
+    let currentPrivateInfo: Record<string, any> = {};
+    try {
+      const cachedProfile = (loadAuthFromLS() as any)?.profile;
+      if (cachedProfile?.privateInfo && typeof cachedProfile.privateInfo === "object") {
+        currentPrivateInfo = { ...cachedProfile.privateInfo };
+      }
+    } catch {}
+    try {
+      const profilesTable = await resolveProfilesTable();
+      const { data: currentRow } = await supabase
+        .from(profilesTable)
+        .select("private_info")
+        .eq("id", user.id)
+        .limit(1)
+        .maybeSingle();
+      if ((currentRow as any)?.private_info && typeof (currentRow as any).private_info === "object") {
+        currentPrivateInfo = { ...currentPrivateInfo, ...(currentRow as any).private_info };
+      }
+    } catch {}
+
+    await updateProfile({
+      avatarUrl: publicUrl,
+      privateInfo: { ...currentPrivateInfo, avatarUpdatedAt },
+    });
   }
 
-  return { publicUrl, path };
+  return { publicUrl, path, avatarUpdatedAt };
 }
 
 // ============================================================

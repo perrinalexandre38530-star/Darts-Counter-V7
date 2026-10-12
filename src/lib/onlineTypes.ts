@@ -18,6 +18,7 @@ export type OnlineProfile = {
   displayName: string; // nom public dans les parties
   nickname?: string;   // pseudo online / surnom public
   avatarUrl?: string;  // URL de ton médaillon stocké en ligne
+  avatarUpdatedAt?: number; // révision explicite de l'avatar (indépendante de updatedAt)
   country?: string;    // option : drapeau
   countryCode?: string | null; // pour compat avec onlineApi mock
 
@@ -29,6 +30,8 @@ export type OnlineProfile = {
   city?: string | null;
   email?: string | null;
   phone?: string | null;
+  preferences?: Record<string, any>;
+  privateInfo?: Record<string, any>;
 
   bio?: string;        // option : phrase courte
 
