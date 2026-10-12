@@ -155,6 +155,8 @@ export type AuthSession = {
   authProvider?: "nas" | "supabase" | "supabase_failover";
   degradedMode?: boolean;
   supabaseUserId?: string | null;
+  /** Alias technique NAS/legacy. Ne jamais utiliser comme identité UI/stockage quand supabaseUserId existe. */
+  canonicalUserId?: string | null;
 };
 
 export type PrivateNasCapability = {
@@ -315,6 +317,7 @@ const AUTH_LOCAL_KEYS_TO_PURGE = [
   LS_AUTH_KEY,
   NAS_TOKEN_KEY,
   NAS_REFRESH_KEY,
+  "dc_nas_auth_session_v1",
   "auth_token",
   "auth_session",
   "current_user",
@@ -459,12 +462,36 @@ function persistAuthSessionCritical(session: AuthSession | null): void {
   console.warn("[onlineApi] stockage local saturé : session existante conservée après purge des caches dérivés.");
 }
 
+function normalizeAuthSessionIdentity(session: AuthSession | null): AuthSession | null {
+  if (!session) return null;
+  const supabaseUserId = String(session.supabaseUserId || "").trim();
+  if (!supabaseUserId) return session;
+
+  const rawCanonical = String(
+    session.canonicalUserId ||
+    session.user?.id ||
+    session.userId ||
+    ""
+  ).trim();
+  const canonicalUserId = rawCanonical && rawCanonical !== supabaseUserId ? rawCanonical : null;
+
+  return {
+    ...session,
+    userId: supabaseUserId,
+    canonicalUserId,
+    user: {
+      ...(session.user || ({} as any)),
+      id: supabaseUserId,
+    },
+  };
+}
+
 function authIdentitySignature(session: AuthSession | null | undefined): string {
-  const userId = String(session?.user?.id || session?.userId || "").trim();
-  if (!userId) return "signed_out";
-  const supabaseUserId = String(session?.supabaseUserId || "").trim();
-  const provider = String(session?.authProvider || "unknown").trim().toLowerCase();
-  return `signed_in|${userId}|${supabaseUserId}|${provider}`;
+  // Un bridge NAS, un refresh token ou un changement de provider n'est PAS un
+  // changement de compte. Le signal d'identité ne varie que lorsque l'identité
+  // utilisateur stable varie réellement.
+  const stableUserId = String(session?.supabaseUserId || session?.user?.id || session?.userId || "").trim();
+  return stableUserId ? `signed_in|${stableUserId}` : "signed_out";
 }
 
 function saveAuthToLS(session: AuthSession | null) {
@@ -475,22 +502,24 @@ function saveAuthToLS(session: AuthSession | null) {
   // NAS ou mise à jour de profil redispatchait l'événement. AuthOnlineProvider
   // relançait alors getCurrentSession() -> restoreSession() -> bridge/profil, qui
   // réécrivait à son tour la session et pouvait créer une tempête de traitements.
-  const previous = loadAuthFromLS();
+  const previous = normalizeAuthSessionIdentity(loadAuthFromLS());
+  const normalized = normalizeAuthSessionIdentity(session);
   const previousSignature = authIdentitySignature(previous);
-  const nextSignature = authIdentitySignature(session);
+  const nextSignature = authIdentitySignature(normalized);
 
-  persistAuthSessionCritical(session);
+  persistAuthSessionCritical(normalized);
 
   if (previousSignature === nextSignature) return;
 
   try {
     window.dispatchEvent(new CustomEvent("dc-auth-changed", {
       detail: {
-        status: session?.user?.id ? "signed_in" : "signed_out",
+        status: normalized?.user?.id ? "signed_in" : "signed_out",
         reason: "auth_identity_changed",
-        userId: String(session?.user?.id || session?.userId || "") || null,
-        supabaseUserId: String(session?.supabaseUserId || "") || null,
-        provider: String(session?.authProvider || "") || null,
+        userId: String(normalized?.user?.id || normalized?.userId || "") || null,
+        supabaseUserId: String(normalized?.supabaseUserId || "") || null,
+        canonicalUserId: String(normalized?.canonicalUserId || "") || null,
+        provider: String(normalized?.authProvider || "") || null,
       },
     }));
   } catch {}
@@ -521,6 +550,7 @@ function cachedAuthAccountIds(session: AuthSession | null | undefined): Set<stri
     session?.user?.id,
     session?.userId,
     session?.supabaseUserId,
+    session?.canonicalUserId,
   ]);
 }
 
@@ -1158,14 +1188,17 @@ function buildSessionFromNasBridgeResponse(json: any, fallbackEmail?: string): A
       : null;
   const provider = String(json?.authProvider || json?.auth_provider || "nas");
   const degradedMode = json?.degradedMode === true || provider === "supabase_failover";
-  const userId = String(user?.id || json?.userId || json?.canonicalUserId || json?.supabaseUserId || "").trim();
+  const canonicalUserId = String(user?.id || json?.userId || json?.canonicalUserId || "").trim();
+  const supabaseUserId = String(json?.supabaseUserId || json?.bridge?.supabaseUserId || "").trim();
+  const stableUserId = supabaseUserId || canonicalUserId;
   const session: AuthSession = {
     token,
     refreshToken,
     expiresAt: Number.isFinite(Number(expiresAt)) ? Number(expiresAt) : null,
-    userId: userId || null,
+    userId: stableUserId || null,
+    canonicalUserId: canonicalUserId && canonicalUserId !== stableUserId ? canonicalUserId : null,
     user: {
-      id: userId,
+      id: stableUserId,
       email: user?.email || fallbackEmail || undefined,
       nickname: String(user?.nickname || profile?.displayName || profile?.nickname || (fallbackEmail ? String(fallbackEmail).split("@")[0] : "Player")),
       createdAt: Number(user?.createdAt || (user?.created_at ? Date.parse(user.created_at) : Date.now())),
@@ -1173,7 +1206,7 @@ function buildSessionFromNasBridgeResponse(json: any, fallbackEmail?: string): A
     profile,
     authProvider: degradedMode ? "supabase_failover" : provider === "supabase" ? "supabase" : "nas",
     degradedMode,
-    supabaseUserId: String(json?.supabaseUserId || json?.bridge?.supabaseUserId || "").trim() || null,
+    supabaseUserId: supabaseUserId || null,
   };
   if (!session.token || !session.user?.id) {
     throw new Error("Réponse de connexion invalide : session absente.");
@@ -1187,11 +1220,19 @@ function buildSessionFromNasBridgeResponse(json: any, fallbackEmail?: string): A
     } catch {}
     rememberCanonicalUserMapping({
       email: session.user.email,
-      canonicalUserId: session.user.id,
+      canonicalUserId: session.canonicalUserId || canonicalUserId || session.user.id,
       supabaseUserId: session.supabaseUserId,
     });
   } else {
-    saveNasTokens(session);
+    const nasTechnicalSession: AuthSession = session.supabaseUserId && canonicalUserId
+      ? {
+          ...session,
+          userId: canonicalUserId,
+          canonicalUserId,
+          user: { ...session.user, id: canonicalUserId },
+        }
+      : session;
+    saveNasTokens(nasTechnicalSession, { silent: !!session.supabaseUserId });
   }
 
   saveAuthToLS(session);
@@ -1311,35 +1352,47 @@ async function buildAuthSessionFromSupabaseUncoalesced(opts?: { allowNasFailure?
     console.warn("[onlineApi] private NAS capability probe ignored", capabilityError);
   }
 
+  let bridgedCanonicalUserId = "";
   try {
     const bridged = await bridgeSupabaseSessionToNas(session, supabaseUserAuth, profile);
     if (bridged?.token) {
-      bridged.authProvider = "nas";
-      bridged.degradedMode = false;
-      bridged.supabaseUserId = supabaseUserId;
+      // Le bridge NAS ne devient plus la session primaire de l'application.
+      // Il ne sert qu'à fournir le JWT technique utilisé par les routes privées.
+      bridgedCanonicalUserId = String((bridged as any)?.canonicalUserId || bridged.user?.id || bridged.userId || "").trim();
+      try {
+        // Session NAS = credential technique uniquement. Elle conserve l'alias
+        // canonique NAS mais porte aussi le Supabase UID afin que nasApi sache
+        // explicitement qu'elle ne doit jamais émettre dc-auth-changed.
+        saveNasTokens({
+          ...(bridged as any),
+          userId: bridgedCanonicalUserId || bridged.userId || null,
+          canonicalUserId: bridgedCanonicalUserId || null,
+          supabaseUserId,
+          user: { ...(bridged.user as any), id: bridgedCanonicalUserId || bridged.user?.id },
+        }, { silent: true });
+      } catch {}
       rememberCanonicalUserMapping({
         email: user.email,
-        canonicalUserId: bridged.user?.id || bridged.userId,
+        canonicalUserId: bridgedCanonicalUserId || supabaseUserId,
         supabaseUserId,
       });
-      saveAuthToLS(bridged);
-      return bridged;
     }
   } catch (bridgeError) {
     console.warn("[onlineApi] private NAS bridge unavailable; keeping Supabase session", bridgeError);
   }
 
-  const canonicalUserId = String(privateNasCapability?.canonicalUserId || resolveCanonicalUserId(user) || supabaseUserId);
+  const canonicalUserId = String(bridgedCanonicalUserId || privateNasCapability?.canonicalUserId || resolveCanonicalUserId(user) || supabaseUserId);
   rememberCanonicalUserMapping({ email: user.email, canonicalUserId, supabaseUserId });
 
   const authSession: AuthSession = {
     token: session?.access_token ?? "",
     refreshToken: (session as any)?.refresh_token ?? "",
     expiresAt: (session as any)?.expires_at ?? null,
-    userId: canonicalUserId,
+    userId: supabaseUserId,
+    canonicalUserId: canonicalUserId && canonicalUserId !== supabaseUserId ? canonicalUserId : null,
     user: {
       ...supabaseUserAuth,
-      id: canonicalUserId,
+      id: supabaseUserId,
     },
     profile,
     authProvider: "supabase",
@@ -1437,8 +1490,8 @@ function buildFastPublicAuthSession(session: any): AuthSession | null {
     "Player";
   const supabaseUserId = String(user.id || "");
   const canonicalUserId = String(
-    cachedForSameAccount?.user?.id ||
-    cachedForSameAccount?.userId ||
+    cachedForSameAccount?.canonicalUserId ||
+    (cachedForSameAccount?.user?.id && cachedForSameAccount?.user?.id !== supabaseUserId ? cachedForSameAccount.user.id : "") ||
     resolveCanonicalUserId(user) ||
     supabaseUserId,
   );
@@ -1447,9 +1500,10 @@ function buildFastPublicAuthSession(session: any): AuthSession | null {
     token: String(session?.access_token || ""),
     refreshToken: String(session?.refresh_token || ""),
     expiresAt: session?.expires_at ?? null,
-    userId: canonicalUserId,
+    userId: supabaseUserId,
+    canonicalUserId: canonicalUserId && canonicalUserId !== supabaseUserId ? canonicalUserId : null,
     user: {
-      id: canonicalUserId,
+      id: supabaseUserId,
       email: user.email ?? undefined,
       nickname,
       createdAt: user.created_at ? Date.parse(user.created_at) : now(),
@@ -1738,10 +1792,9 @@ async function restoreSession(): Promise<AuthSession | null> {
         clearStaleAccountCredentialsForSupabaseUser(liveSupabase.user);
         const cachedForSameAccount = loadAuthFromLS();
         if (isValidNasSession(cachedForSameAccount) && cachedAuthMatchesSupabaseUser(cachedForSameAccount, liveSupabase.user)) {
+          // Compatibilité NAS conservée uniquement comme jeton technique.
           __nasLastGoodSession = cachedForSameAccount;
           saveNasTokens(cachedForSameAccount, { silent: true });
-          markAuthReady(true);
-          return cachedForSameAccount;
         }
 
         const live = await buildAuthSessionFromSupabase({ allowNasFailure: true });
@@ -1870,7 +1923,10 @@ async function getCurrentSession(): Promise<AuthSession | null> {
     if (liveSupabase?.user) {
       clearStaleAccountCredentialsForSupabaseUser(liveSupabase.user);
       const cached = loadAuthFromLS();
-      if (isValidNasSession(cached) && cachedAuthMatchesSupabaseUser(cached, liveSupabase.user)) return cached;
+      if (isValidNasSession(cached) && cachedAuthMatchesSupabaseUser(cached, liveSupabase.user)) {
+        __nasLastGoodSession = cached;
+        try { saveNasTokens(cached, { silent: true }); } catch {}
+      }
       return await restoreSession();
     }
   }
@@ -2095,7 +2151,17 @@ async function uploadAvatarImage(opts: {
   folder?: string;
   updateProfile?: boolean;
 }): Promise<{ publicUrl: string; path: string }> {
-  if (shouldUseNasForCurrentSession()) {
+  // AVATAR COMPTE = SUPABASE STORAGE dès qu'une session Supabase publique est
+  // disponible. Le choix NAS/R2/Drive concerne les sauvegardes, pas l'identité
+  // visuelle du compte. Mélanger ces deux responsabilités rendait l'avatar
+  // dépendant de la destination de backup et produisait des affichages divergents.
+  let hasPublicSupabaseUser = false;
+  try {
+    const { data } = await supabase.auth.getSession();
+    hasPublicSupabaseUser = !!data?.session?.user?.id;
+  } catch {}
+
+  if (!hasPublicSupabaseUser && shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     return await nasUploadAvatarImage(opts);
   }

@@ -90,7 +90,7 @@ import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
    - évite “tout a disparu après clear site data”
 ========================= */
 import type { Store } from "./types";
-import { exportCloudSnapshot, getStorageUser, loadStore, scopedStorageKey } from "./storage";
+import { exportCloudSnapshot, getStorageUser, getStorageUserAliases, loadStore, scopedStorageKey } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
@@ -2041,6 +2041,195 @@ async function migrateLegacyIdbOnce() {
    Migration depuis localStorage (une seule fois)
 ========================= */
 const migrDoneScopes = new Set<string>();
+const accountAliasHistoryMigrDoneScopes = new Set<string>();
+
+function idbGetAllFromStore(db: IDBDatabase, storeName: string): Promise<any[]> {
+  return new Promise<any[]>((resolve) => {
+    try {
+      if (!db.objectStoreNames.contains(storeName)) return resolve([]);
+      const tx = db.transaction(storeName, "readonly");
+      const st = tx.objectStore(storeName);
+      if (typeof (st as any).getAll === "function") {
+        const req = (st as any).getAll();
+        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+        req.onerror = () => resolve([]);
+        return;
+      }
+      const rows: any[] = [];
+      const req = st.openCursor();
+      req.onsuccess = () => {
+        const cur = req.result as IDBCursorWithValue | null;
+        if (!cur) return resolve(rows);
+        rows.push(cur.value);
+        cur.continue();
+      };
+      req.onerror = () => resolve(rows);
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+async function openExistingHistoryDbByName(name: string): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined" || !name) return null;
+  try {
+    // Chromium/Android : évite de créer accidentellement une DB vide pour un alias.
+    const databasesFn = (indexedDB as any).databases;
+    if (typeof databasesFn === "function") {
+      const rows = await databasesFn.call(indexedDB).catch(() => []);
+      const exists = Array.isArray(rows) && rows.some((row: any) => String(row?.name || "") === name);
+      if (!exists) return null;
+    } else {
+      // Sans API de listing, la récupération d'alias est volontairement ignorée :
+      // mieux vaut ne rien créer que fabriquer de nouveaux scopes fantômes.
+      return null;
+    }
+
+    return await new Promise<IDBDatabase | null>((resolve) => {
+      const req = indexedDB.open(name);
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { req.result?.close?.(); } catch {}
+        resolve(null);
+      }, 1600);
+      req.onsuccess = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(req.result);
+      };
+      req.onerror = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(null);
+      };
+      req.onblocked = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(null);
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
+function historyRowUpdatedAt(row: any): number {
+  return Math.max(
+    Number(row?.updatedAt || 0) || 0,
+    Number(row?.finishedAt || 0) || 0,
+    Number(row?.createdAt || 0) || 0,
+  );
+}
+
+/**
+ * Consolide les anciennes DB History du MEME compte (UUID Supabase / usr_* NAS)
+ * vers le scope primaire courant. Opération additive : jamais de suppression,
+ * jamais d'écrasement par une copie plus vieille.
+ */
+async function migrateAccountAliasHistoryOnce(): Promise<void> {
+  const scope = historyDbName();
+  if (accountAliasHistoryMigrDoneScopes.has(scope)) return;
+  accountAliasHistoryMigrDoneScopes.add(scope);
+  if (typeof indexedDB === "undefined") return;
+
+  try {
+    const aliases = Array.from(new Set(getStorageUserAliases().map((id) => String(id || "").trim()).filter(Boolean)));
+    const sourceNames = aliases
+      .map((id) => `${HISTORY_DB_BASE}:${id}`)
+      .filter((name) => name !== scope);
+    if (!sourceNames.length) return;
+
+    const currentDb = await openDB();
+    const currentHeaders = await idbGetAllFromStore(currentDb, STORE_HEADERS);
+    const currentDetails = await idbGetAllFromStore(currentDb, STORE_DETAILS);
+    const headerById = new Map(currentHeaders.map((row: any) => [String(row?.id || row?.matchId || ""), row]));
+    const detailById = new Map(currentDetails.map((row: any) => [String(row?.id || row?.matchId || ""), row]));
+
+    const headersToPut = new Map<string, any>();
+    const detailsToPut = new Map<string, any>();
+    let importedFrom = 0;
+
+    for (const sourceName of sourceNames) {
+      const sourceDb = await openExistingHistoryDbByName(sourceName);
+      if (!sourceDb) continue;
+      try {
+        let headers = await idbGetAllFromStore(sourceDb, STORE_HEADERS);
+        let details = await idbGetAllFromStore(sourceDb, STORE_DETAILS);
+
+        // Anciennes DB v1/v2 : convertir le store monolithique sans perte.
+        if (!headers.length && sourceDb.objectStoreNames.contains(STORE_LEGACY)) {
+          const legacyRows = await idbGetAllFromStore(sourceDb, STORE_LEGACY);
+          headers = legacyRows.map((row: any) => {
+            const id = String(row?.id ?? row?.matchId ?? "").trim();
+            return id ? toHeaderRecord({ ...row, id, matchId: String(row?.matchId ?? id) }) : null;
+          }).filter(Boolean);
+          details = legacyRows.map((row: any) => {
+            const id = String(row?.id ?? row?.matchId ?? "").trim();
+            return id ? toDetailRecord(id, String(row?.payloadCompressed || ""), row) : null;
+          }).filter(Boolean);
+        }
+
+        if (headers.length || details.length) importedFrom += 1;
+
+        for (const row of headers) {
+          const id = String(row?.id || row?.matchId || "").trim();
+          if (!id) continue;
+          const current = headersToPut.get(id) || headerById.get(id);
+          if (!current || historyRowUpdatedAt(row) > historyRowUpdatedAt(current)) {
+            headersToPut.set(id, { ...row, id, matchId: String(row?.matchId || id) });
+          }
+        }
+        for (const row of details) {
+          const id = String(row?.id || row?.matchId || "").trim();
+          if (!id) continue;
+          const current = detailsToPut.get(id) || detailById.get(id);
+          const currentPayload = String(current?.payloadCompressed || "");
+          const sourcePayload = String(row?.payloadCompressed || "");
+          const sourceIsBetter = !current ||
+            (sourcePayload && !currentPayload) ||
+            historyRowUpdatedAt(row) > historyRowUpdatedAt(current);
+          if (sourceIsBetter) detailsToPut.set(id, { ...row, id, matchId: String(row?.matchId || id) });
+        }
+      } finally {
+        try { sourceDb.close(); } catch {}
+      }
+    }
+
+    if (!headersToPut.size && !detailsToPut.size) return;
+    await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", async (stores) => {
+      for (const row of headersToPut.values()) {
+        await new Promise<void>((resolve) => {
+          const req = stores[STORE_HEADERS].put(row);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+        });
+      }
+      for (const row of detailsToPut.values()) {
+        await new Promise<void>((resolve) => {
+          const req = stores[STORE_DETAILS].put(row);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+        });
+      }
+    });
+
+    invalidateHistoryListReadCache();
+    console.warn("[history] historique compte consolidé depuis anciens alias", {
+      scope,
+      sources: importedFrom,
+      headers: headersToPut.size,
+      details: detailsToPut.size,
+    });
+  } catch (error) {
+    // Best effort : une DB alias inaccessible ne doit jamais bloquer l'application.
+    console.warn("[history] consolidation alias compte ignorée", error);
+  }
+}
 
 async function migrateFromLocalStorageOnce() {
   const scope = historyDbName();
@@ -2048,6 +2237,7 @@ async function migrateFromLocalStorageOnce() {
   migrDoneScopes.add(scope);
 
   await migrateLegacyIdbOnce().catch(() => {});
+  await migrateAccountAliasHistoryOnce().catch(() => {});
 
   try {
     const rawLocal = _historyStorageGet(typeof localStorage !== "undefined" ? localStorage : null);

@@ -24,7 +24,11 @@ export function isNasSyncEnabled(): boolean {
 
 const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
 const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
-const NAS_AUTH_SESSION_KEY = "dc_online_auth_supabase_v1";
+// IMPORTANT : la session NAS technique ne partage plus JAMAIS la clé de la
+// session primaire Supabase. C'était la cause des bascules UUID <-> usr_* qui
+// rechargeaient un autre store et faisaient disparaître profil/avatar/stats.
+const NAS_AUTH_SESSION_KEY = "dc_nas_auth_session_v1";
+const PRIMARY_AUTH_SESSION_KEY = "dc_online_auth_supabase_v1";
 
 const NAS_RESTORE_TIMEOUT_MS = 5000;
 const NAS_RESTORE_ERROR_BACKOFF_MS = 60000;
@@ -132,31 +136,19 @@ function dispatchAuthChanged(detail?: any) {
 
 function purgeNasAuthLocalState() {
   if (typeof window === "undefined") return;
+  // Ne touche qu'aux identifiants NAS. La session Supabase publique appartient
+  // à onlineApi/AuthOnlineProvider et doit survivre à une panne/déconnexion NAS.
   try {
-    const explicitKeys = [
+    for (const key of [
       NAS_TOKEN_KEY,
       NAS_REFRESH_KEY,
       NAS_AUTH_SESSION_KEY,
-      "auth_token",
-      "auth_session",
-      "current_user",
-      "dc_session",
-      "dc_user",
-      "dc_user_id",
       "dc_nas_profile_onboarding_uid",
-      "supabase.auth.token",
-    ];
-    for (const key of explicitKeys) window.localStorage.removeItem(key);
-
-    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
-      const key = window.localStorage.key(i) || "";
-      if (/^(sb-|supabase\.)/i.test(key) || /auth.*token|token.*auth|refresh.*token/i.test(key)) {
-        window.localStorage.removeItem(key);
-      }
-    }
+    ]) window.localStorage.removeItem(key);
+    try { window.sessionStorage.removeItem(NAS_TOKEN_KEY); } catch {}
+    try { window.sessionStorage.removeItem(NAS_REFRESH_KEY); } catch {}
+    try { window.sessionStorage.removeItem(NAS_AUTH_SESSION_KEY); } catch {}
   } catch {}
-
-  try { window.sessionStorage.clear(); } catch {}
 }
 
 function authToken(): string {
@@ -165,7 +157,7 @@ function authToken(): string {
 
 function activePublicSupabaseSession(): boolean {
   try {
-    const raw = readLs(NAS_AUTH_SESSION_KEY);
+    const raw = readLs(PRIMARY_AUTH_SESSION_KEY);
     if (!raw) return false;
     const session: any = readJson<any>(raw, null);
     const provider = String(session?.authProvider || session?.auth_provider || "").trim().toLowerCase();
@@ -196,12 +188,18 @@ function isAuthFailureMessage(message: string): boolean {
 }
 
 function getCachedNasSession(): AuthSession | null {
-  const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
-  const provider = String((cached as any)?.authProvider || "").trim().toLowerCase();
-  if (provider === "supabase" || provider === "supabase_failover" || (cached as any)?.degradedMode === true) {
-    return null;
+  const direct = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
+  if (direct && String(direct?.token || "").trim()) return direct;
+
+  // Migration douce des builds où le NAS écrivait encore dans la clé Supabase.
+  // Lecture seulement : aucune nouvelle écriture n'est faite dans cette clé.
+  const legacy = readJson<AuthSession | null>(readLs(PRIMARY_AUTH_SESSION_KEY), null);
+  const provider = String((legacy as any)?.authProvider || "").trim().toLowerCase();
+  if (provider === "nas" && legacy && String(legacy?.token || "").trim()) {
+    try { writeLs(NAS_AUTH_SESSION_KEY, JSON.stringify(legacy)); } catch {}
+    return legacy;
   }
-  return cached && String(cached?.token || "").trim() ? cached : null;
+  return null;
 }
 
 const R2_DIRECT_BASE = "/api/storage/backups";
@@ -614,7 +612,9 @@ export function saveNasTokens(session: AuthSession | null, opts?: { silent?: boo
   writeLs(NAS_REFRESH_KEY, session?.refreshToken || null);
   writeLs(NAS_AUTH_SESSION_KEY, session ? nextRaw : null);
 
-  if (opts?.silent) return;
+  // Compte public Supabase + bridge NAS : le NAS est une capacité technique,
+  // pas une deuxième identité. Aucun dc-auth-changed ne doit être émis.
+  if (opts?.silent || session?.supabaseUserId || activePublicSupabaseSession()) return;
 
   const prevToken = String(prev?.token || "");
   const nextToken = String(session?.token || "");
@@ -778,9 +778,10 @@ export async function nasLogout(): Promise<void> {
   } catch {}
   nasLastRestoreErrorAt = 0;
   nasLastRestoreErrorKey = "logout";
+  const publicSessionStillActive = activePublicSupabaseSession();
   saveNasTokens(null, { silent: true });
   purgeNasAuthLocalState();
-  dispatchAuthChanged({ status: "signed_out" });
+  if (!publicSessionStillActive) dispatchAuthChanged({ status: "signed_out" });
 }
 
 export async function nasGetProfile(): Promise<OnlineProfile | null> {
@@ -874,9 +875,10 @@ export async function nasDeleteAccount(): Promise<void> {
   } finally {
     nasLastRestoreErrorAt = 0;
     nasLastRestoreErrorKey = "deleted";
+    const publicSessionStillActive = activePublicSupabaseSession();
     saveNasTokens(null, { silent: true });
     purgeNasAuthLocalState();
-    dispatchAuthChanged({ status: "signed_out", deleted: true });
+    if (!publicSessionStillActive) dispatchAuthChanged({ status: "signed_out", deleted: true });
   }
 }
 

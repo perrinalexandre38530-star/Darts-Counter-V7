@@ -625,7 +625,22 @@ function currentAccountStoreAliases(): Set<string> {
     add(session?.user?.id);
     add(session?.session?.user?.id);
     add(session?.canonicalUserId);
+    add(session?.user?.user_metadata?.canonical_user_id);
+    add(session?.user?.user_metadata?.nas_user_id);
     add(session?.supabaseUserId);
+    add(session?.user?.user_metadata?.supabase_user_id);
+  } catch {}
+
+  // Depuis V14 la session NAS technique possède sa propre clé. La lire ici
+  // permet de retrouver les anciens scopes store:usr_* sans jamais en faire
+  // l'identité primaire de l'application.
+  try {
+    const rawNas = localStorage.getItem("dc_nas_auth_session_v1") || "";
+    const nas = rawNas ? safeJsonParse<any>(rawNas, null) : null;
+    add(nas?.userId);
+    add(nas?.user?.id);
+    add(nas?.canonicalUserId);
+    add(nas?.supabaseUserId);
   } catch {}
 
   // Compatibilité du pont Supabase <-> identifiant canonique NAS.
@@ -647,29 +662,70 @@ function currentAccountStoreAliases(): Set<string> {
   return aliases;
 }
 
+/** Identifiants historiques appartenant au même compte courant. */
+export function getStorageUserAliases(): string[] {
+  return Array.from(currentAccountStoreAliases());
+}
+
+function currentAuthEmailForStoreRecovery(): string {
+  try {
+    const raw = localStorage.getItem(AUTH_SESSION_LS_KEY) || "";
+    const session = raw ? safeJsonParse<any>(raw, null) : null;
+    return String(session?.user?.email || session?.email || "").trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function profileBelongsToCurrentAccount(profile: any, aliases: Set<string>, authEmail: string): boolean {
+  if (!profile || typeof profile !== "object") return false;
+  const pi = (profile?.privateInfo && typeof profile.privateInfo === "object") ? profile.privateInfo : {};
+  const ids = [
+    profile?.id, profile?.onlineUserId, profile?.accountUserId,
+    pi?.onlineUserId, pi?.online_user_id, pi?.accountUserId,
+    ...(Array.isArray(pi?.linkedAccountIds) ? pi.linkedAccountIds : []),
+    ...(Array.isArray(pi?.linkedLocalProfileIds) ? pi.linkedLocalProfileIds : []),
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  if (ids.some((id) => aliases.has(id))) return true;
+
+  if (authEmail) {
+    const emails = [profile?.email, pi?.email, pi?.onlineEmail]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+    if (emails.includes(authEmail)) return true;
+  }
+  return false;
+}
+
 function storeBelongsToCurrentAliasFamily(store: any, aliases: Set<string>): boolean {
   if (!aliases.size) return true;
   const active = String(store?.activeProfileId || "").trim();
   if (active && aliases.has(active)) return true;
-  return validProfileList(store?.profiles).some((profile) => aliases.has(String(profile?.id || "").trim()));
+  const authEmail = currentAuthEmailForStoreRecovery();
+  return validProfileList(store?.profiles).some((profile) => profileBelongsToCurrentAccount(profile, aliases, authEmail));
 }
 
-async function findBestPersistedStoreAcrossKeys(): Promise<{ key: string; store: any; profiles: any[] } | null> {
+async function findBestPersistedStoreAcrossKeys(opts?: { excludeKey?: string | null }): Promise<{ key: string; store: any; profiles: any[] } | null> {
   try {
     const keys = await idbKeys();
     const aliases = currentAccountStoreAliases();
     const candidates: Array<{ key: string; store: any; profiles: any[]; score: number }> = [];
     for (const rawKey of keys) {
       const key = String(rawKey || "");
+      if (opts?.excludeKey && key === opts.excludeKey) continue;
       const simpleScope = key.match(/^store:([^:]+)$/)?.[1] || "";
       // Ignore les anciennes clés récursives store:a:b:c : elles appartiennent
       // au bug de re-scoping et ne doivent plus participer au choix canonique.
       if (key !== STORE_KEY && !simpleScope) continue;
-      if (simpleScope && aliases.size > 0 && !aliases.has(simpleScope)) continue;
       const raw = await idbGet<any>(rawKey);
       const store = await readStoreFromRawPayload(raw);
       const profiles = validProfileList(store?.profiles);
       if (!store || profiles.length <= 0) continue;
+      // Une ancienne clé store:usr_* peut ne plus être référencée dans la
+      // session courante après réparation de l'auth. On l'accepte uniquement si
+      // le CONTENU prouve l'appartenance au compte (binding/email), jamais juste
+      // parce qu'elle existe.
+      if (simpleScope && aliases.size > 0 && !aliases.has(simpleScope) && !storeBelongsToCurrentAliasFamily(store, aliases)) continue;
       if (key === STORE_KEY && !storeBelongsToCurrentAliasFamily(store, aliases)) continue;
       const active = String(store?.activeProfileId || "");
       const activeBonus = active && profiles.some((p) => String(p?.id || "") === active) ? 25 : 0;
@@ -777,6 +833,86 @@ function knownStoreScopeAliasesFromSnapshot(dump: any): string[] {
     }
   } catch {}
   return Array.from(aliases);
+}
+
+function recoveredProfileAvatarTimestamp(profile: any): number {
+  const value = Number(profile?.avatarUpdatedAt ?? profile?.avatar_updated_at ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function mergeRecoveredProfile(aliasProfile: any, currentProfile: any): any {
+  if (!aliasProfile) return currentProfile;
+  if (!currentProfile) return aliasProfile;
+  // Le scope courant gagne pour les champs métier, sauf si l'ancien scope porte
+  // explicitement un avatar plus récent (cas des bascules usr_* / UUID Supabase).
+  const merged = mergePortableProfile(aliasProfile, currentProfile);
+  const aliasAvatarTs = recoveredProfileAvatarTimestamp(aliasProfile);
+  const currentAvatarTs = recoveredProfileAvatarTimestamp(currentProfile);
+  if (aliasAvatarTs > currentAvatarTs) {
+    for (const key of ["avatarUrl", "avatarPath", "avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "avatarAssetId", "avatarThumbAssetId", "avatarUpdatedAt"]) {
+      if ((aliasProfile as any)?.[key] !== undefined) (merged as any)[key] = (aliasProfile as any)[key];
+    }
+  }
+  return merged;
+}
+
+function shouldRecoverStoreFromAlias(currentStore: any, aliasStore: any): boolean {
+  const currentProfiles = validProfileList(currentStore?.profiles);
+  const aliasProfiles = validProfileList(aliasStore?.profiles);
+  if (!aliasProfiles.length) return false;
+  if (!currentProfiles.length) return true;
+
+  const currentActiveId = String(currentStore?.activeProfileId || "").trim();
+  const aliasActiveId = String(aliasStore?.activeProfileId || "").trim();
+  const currentActive = currentProfiles.find((p) => String(p?.id || "") === currentActiveId) || null;
+  const aliasActive = aliasProfiles.find((p) => String(p?.id || "") === aliasActiveId) || null;
+  if (currentActiveId && !currentActive && aliasActive) return true;
+  if (aliasProfiles.length > currentProfiles.length) return true;
+
+  const aliases = currentAccountStoreAliases();
+  const currentIsTechnical = !!currentActiveId && aliases.has(currentActiveId);
+  const aliasIsTechnical = !!aliasActiveId && aliases.has(aliasActiveId);
+  if (currentIsTechnical && aliasActive && !aliasIsTechnical) return true;
+
+  if (currentActive && aliasActive) {
+    const currentScore = canonicalProfileCompleteness(currentActive);
+    const aliasScore = canonicalProfileCompleteness(aliasActive);
+    if (aliasScore >= currentScore + 3) return true;
+  }
+  return false;
+}
+
+function mergeRecoveredStoreFromAlias(currentStore: any, aliasStore: any): any {
+  const currentProfiles = validProfileList(currentStore?.profiles);
+  const aliasProfiles = validProfileList(aliasStore?.profiles);
+  const byId = new Map<string, any>();
+  for (const p of aliasProfiles) {
+    const id = String(p?.id || "").trim();
+    if (id) byId.set(id, p);
+  }
+  for (const p of currentProfiles) {
+    const id = String(p?.id || "").trim();
+    if (!id) continue;
+    byId.set(id, mergeRecoveredProfile(byId.get(id), p));
+  }
+  const profiles = Array.from(byId.values());
+
+  const currentActiveId = String(currentStore?.activeProfileId || "").trim();
+  const aliasActiveId = String(aliasStore?.activeProfileId || "").trim();
+  const aliases = currentAccountStoreAliases();
+  const currentActiveValid = !!currentActiveId && profiles.some((p) => String(p?.id || "") === currentActiveId);
+  const aliasActiveValid = !!aliasActiveId && profiles.some((p) => String(p?.id || "") === aliasActiveId);
+  const preferAliasActive = aliasActiveValid && (!currentActiveValid || (aliases.has(currentActiveId) && !aliases.has(aliasActiveId)));
+  const activeProfileId = preferAliasActive
+    ? aliasActiveId
+    : (currentActiveValid ? currentActiveId : (aliasActiveValid ? aliasActiveId : String(profiles[0]?.id || "") || null));
+
+  return guardStoreShape({
+    ...(aliasStore || {}),
+    ...(currentStore || {}),
+    profiles,
+    activeProfileId,
+  } as any);
 }
 
 function guardStoreShape<T extends Store>(store: T | null | undefined): T {
@@ -2175,6 +2311,30 @@ async function loadStoreInternal<T extends Store>(scopeKey: string, runId: numbe
       );
 
       if (!parsed) return null;
+
+      // RÉPARATION DE SCOPE COMPTE : les builds intermédiaires ont pu alterner
+      // entre l'UUID Supabase et l'alias NAS usr_*. Si le scope courant contient
+      // un profil actif absent/minimal alors qu'un scope alias du MÊME compte
+      // possède le vrai profil local, on fusionne une fois vers le scope stable.
+      try {
+        const alternate = await runLoadStoreStage(
+          "accountAliasRecoveryScan",
+          () => findBestPersistedStoreAcrossKeys({ excludeKey: scopeKey }),
+          { scope: scopeKey, runId },
+        );
+        if (alternate?.store && shouldRecoverStoreFromAlias(parsed, alternate.store)) {
+          const recovered = mergeRecoveredStoreFromAlias(parsed, alternate.store);
+          const recoveredJson = safeJsonStringify(recovered);
+          const recoveredPayload = await persistPayloadForKey(scopeKey, recoveredJson);
+          await idbSet(scopeKey, recoveredPayload);
+          lastSavedStoreJsonByScope.set(scopeKey, recoveredJson);
+          writeProfilesSafetyCache(recovered);
+          parsed = recovered as T;
+          console.warn("[storage] scope compte réparé depuis un alias", { from: alternate.key, to: scopeKey, profiles: validProfileList(recovered?.profiles).length, activeProfileId: recovered?.activeProfileId || null });
+        }
+      } catch (error) {
+        console.warn("[storage] account alias recovery skipped", error);
+      }
 
       // MIGRATION PERF/MEMORY : les anciennes versions ont pu conserver history,
       // stats/caches ou snapshots directement dans le store principal. On les

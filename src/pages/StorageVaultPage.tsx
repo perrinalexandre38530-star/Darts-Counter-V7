@@ -11,7 +11,7 @@ import tickerStorageBackupFr from "../assets/tickers/ticker_storage_backup_fr.we
 import tickerStorageBackupEn from "../assets/tickers/ticker_storage_backup_en.webp";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { apiPost, buildApiUrl, ensureAccountBackendAccessToken, readNasAccessToken } from "../lib/apiClient";
-import { exportCloudSnapshot, importCloudSnapshot, loadStore, setStorageUser } from "../lib/storage";
+import { exportCloudSnapshot, importCloudSnapshot, loadStore } from "../lib/storage";
 import {
   createLocalMemorySlot,
   createLocalMemorySlotFromSnapshot,
@@ -294,6 +294,9 @@ function StorageDestinationIcon({ id, size = 31 }: { id: StorageDestinationId; s
 const AUTH_KEYS = [
   "dc_nas_access_token_v1",
   "dc_nas_refresh_token_v1",
+  "dc_nas_auth_session_v1",
+  // La session primaire est sauvegardée/restaurée autour des opérations de vault
+  // mais n'est JAMAIS réécrite avec un JWT / userId NAS.
   "dc_online_auth_supabase_v1",
   "dc_api_url",
   "dc_api_timeout_ms",
@@ -397,11 +400,10 @@ function persistNasAuthForVault(authLike?: any): string {
     if (!publicSupabaseSession) token = token || readNasAccessToken();
   } catch {}
 
-  if (userId) {
-    try { window.localStorage.setItem("dc_user_id", userId); } catch {}
-    try { window.localStorage.setItem("dc_storage_user_id_v1", userId); } catch {}
-    try { setStorageUser(userId); } catch {}
-  }
+  // StorageVault ne doit JAMAIS décider du namespace profil/historique.
+  // dc_user_id / dc_storage_user_id_v1 appartiennent au compte primaire
+  // (Supabase) et sont pilotés par AuthOnlineProvider/App. Les modifier ici avec
+  // un alias NAS usr_* recréait exactement les disparitions de profil/avatar/stats.
 
   if (token) {
     try { window.localStorage.setItem("dc_nas_access_token_v1", token); } catch {}
@@ -409,21 +411,18 @@ function persistNasAuthForVault(authLike?: any): string {
       try { window.localStorage.setItem("dc_nas_refresh_token_v1", refreshToken); } catch {}
     }
     try {
-      const raw = window.localStorage.getItem("dc_online_auth_supabase_v1") || "{}";
-      const previous = JSON.parse(raw);
-      const next = {
-        ...(previous && typeof previous === "object" ? previous : {}),
+      const nasSession = {
         token,
         accessToken: token,
-        refreshToken: refreshToken || previous?.refreshToken || previous?.refresh_token || "",
-        userId: userId || previous?.userId || previous?.user?.id || null,
+        refreshToken: refreshToken || "",
+        userId: userId || null,
         user: {
-          ...(previous?.user || {}),
           ...(authLike?.user || {}),
-          id: userId || previous?.user?.id || authLike?.user?.id || null,
+          id: userId || authLike?.user?.id || null,
         },
+        authProvider: "nas",
       };
-      window.localStorage.setItem("dc_online_auth_supabase_v1", JSON.stringify(next));
+      window.localStorage.setItem("dc_nas_auth_session_v1", JSON.stringify(nasSession));
     } catch {}
   }
 

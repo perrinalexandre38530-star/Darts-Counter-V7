@@ -313,21 +313,26 @@ async function safeGetSession(): Promise<Session | null> {
     // Une session locale encore valide déverrouille donc immédiatement l'UI ;
     // Supabase continue ensuite sa restauration/refresh en arrière-plan.
     if (isCapacitorNativeRuntime() && isCachedSessionStillUsable(cached)) {
-      const cachedFastPath = authSessionToPseudoSupabaseSession(cached);
-      if (cachedFastPath?.user) return cachedFastPath;
+      const cachedProvider = String(cached?.authProvider || "").trim().toLowerCase();
+      const cachedHasStableSupabaseId = !!String(cached?.supabaseUserId || cached?.user?.user_metadata?.supabase_user_id || "").trim();
+      // Ne jamais démarrer Android sur un ancien alias NAS usr_* quand le client
+      // Supabase public est disponible : même un swap de scope de quelques ms
+      // suffit à afficher/persister le mauvais profil. Le fast-path reste permis
+      // pour une vraie session Supabase (ou un bridge déjà étiqueté Supabase).
+      if (cachedHasStableSupabaseId || cachedProvider === "supabase" || cachedProvider === "supabase_failover" || isSupabaseHardDisabledInNasMode()) {
+        const cachedFastPath = authSessionToPseudoSupabaseSession(cached);
+        if (cachedFastPath?.user) return cachedFastPath;
+      }
     }
 
     // PERF CRITIQUE : lecture LOCALE Supabase avant tout bridge NAS réseau.
+    // Quand une vraie session Supabase existe, ELLE est l'identité primaire.
+    // Le cache bridge NAS peut fournir un jeton technique, mais il n'a jamais le
+    // droit de remplacer user.id et de provoquer un changement de scope local.
     if (!isSupabaseHardDisabledInNasMode()) {
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
-      if (data?.session?.user) {
-        if (cachedSessionMatchesSupabaseUser(cached, data.session.user)) {
-          const cachedBridge = authSessionToPseudoSupabaseSession(cached);
-          if (cachedBridge?.user) return cachedBridge;
-        }
-        return data.session;
-      }
+      if (data?.session?.user) return data.session;
     }
 
     // Si Supabase est momentanément en train de restaurer son stockage, un cache
@@ -473,11 +478,12 @@ function hasRecoverableNasAuth(): boolean {
 
 function authSessionToPseudoSupabaseSession(s: any): Session | null {
   try {
-    const canonicalUid = String(s?.user?.id || s?.userId || "").trim();
+    const canonicalUid = String(s?.canonicalUserId || s?.user?.user_metadata?.canonical_user_id || s?.user?.id || s?.userId || "").trim();
     const supabaseUid = String(
       s?.supabaseUserId ||
       s?.user?.user_metadata?.supabase_user_id ||
       s?.session?.user?.id ||
+      (String(s?.authProvider || "").toLowerCase() === "supabase" ? s?.user?.id || s?.userId : "") ||
       ""
     ).trim();
     // IMPORTANT — identité UI / stockage STABLE :
@@ -732,16 +738,9 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           return { ...current, profile };
         });
 
-        // Si le travail profil a créé/rafraîchi un bridge canonique, applique-le
-        // depuis le cache LOCAL sans relancer getCurrentSession().
-        const cached = readCachedAuthSession();
-        if (cachedSessionMatchesSupabaseUser(cached, user)) {
-          const bridged = authSessionToPseudoSupabaseSession(cached);
-          if (bridged?.user) {
-            lastSignedInSessionRef.current = bridged;
-            applyAuthFromSession(setState, bridged);
-          }
-        }
+        // Le bridge NAS est désormais uniquement technique (sauvegardes privées).
+        // Il ne doit plus être réappliqué comme session React après hydratation du
+        // profil, sinon user.id pouvait basculer quelques secondes après le login.
       });
     }, isCapacitorNativeRuntime() ? 3600 : 120);
   }, []);

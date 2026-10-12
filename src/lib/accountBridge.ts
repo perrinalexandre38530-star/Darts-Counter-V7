@@ -326,13 +326,18 @@ function hasOnlineBindingToAny(profile: any, ids: string[]): boolean {
 }
 
 function avatarTimestamp(profile: any): number {
-  const raw = Number(
-    profile?.avatarUpdatedAt ??
-    profile?.avatar_updated_at ??
-    profile?.updatedAvatarAt ??
-    0
-  );
-  return Number.isFinite(raw) ? raw : 0;
+  const direct = profile?.avatarUpdatedAt ?? profile?.avatar_updated_at ?? profile?.updatedAvatarAt ?? null;
+  const raw = Number(direct ?? 0);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  // Le profil Supabase possède déjà updated_at. Pour l'avatar de compte c'est un
+  // fallback de fraîcheur utile sur un autre appareil, où le profil local peut
+  // encore porter une ancienne photo sans avatarUpdatedAt historique.
+  const iso = profile?.updatedAt ?? profile?.updated_at ?? null;
+  if (iso) {
+    const parsed = typeof iso === "number" ? Number(iso) : Date.parse(String(iso));
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
 }
 
 function hasAvatarMedia(profile: any): boolean {
@@ -423,9 +428,20 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
   const localPI = readPrivateInfo(local);
   const accountPI = readPrivateInfo(account);
   const onlineAvatar = getOnlineAvatar(onlineProfile);
-  const avatarSource = pickFreshestAvatarProfile(local, account);
+  const localOrAccountAvatarSource = pickFreshestAvatarProfile(local, account);
+  const onlineAvatarTs = onlineAvatar ? avatarTimestamp(onlineProfile) : 0;
+  const localAvatarTs = avatarTimestamp(localOrAccountAvatarSource);
+  // Avatar compte multi-appareils : Supabase Storage + profiles.avatar_url est la
+  // source durable. Elle gagne seulement lorsqu'elle est plus récente que le
+  // changement local courant ; ainsi une preview choisie à l'instant T n'est
+  // jamais écrasée pendant son upload, mais un autre appareil récupère bien la
+  // dernière photo du compte.
+  const onlineAvatarIsFresher = !!onlineAvatar && onlineAvatarTs > localAvatarTs;
+  const avatarSource = onlineAvatarIsFresher
+    ? { avatarUrl: onlineAvatar, avatarUpdatedAt: onlineAvatarTs }
+    : localOrAccountAvatarSource;
   const avatarSourceHasMedia = hasAvatarMedia(avatarSource);
-  const avatarUpdatedAt = Math.max(avatarTimestamp(local), avatarTimestamp(account));
+  const avatarUpdatedAt = Math.max(avatarTimestamp(local), avatarTimestamp(account), onlineAvatarTs);
 
   const aliasIds = Array.from(new Set([
     ...profileAliasIds(local),

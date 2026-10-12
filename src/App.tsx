@@ -2540,18 +2540,17 @@ useEffect(() => {
     if (String(getStorageUser() || "").trim() !== uid) return;
     if (!bootStoreLoadedRef.current || loadedStoreScopeRef.current !== uid) return;
 
-    const hasMeaningfulLocalData =
-      (store?.profiles?.length || 0) > 0 ||
-      !!(store as any)?.activeProfileId ||
-      ((store as any)?.dartSets?.length || 0) > 0 ||
-      (store?.friends?.length || 0) > 0 ||
-      (store?.history?.length || 0) > 0;
+    // IMPORTANT : une session connectée ne doit jamais rester bloquée sur
+    // « Récupération de ton profil connecté » simplement parce que le cloud NAS/R2
+    // est indisponible ou qu'un scope local fraîchement réparé est vide. Une fois
+    // le store du compte chargé, le bridge COMPTE -> MON PROFIL doit TOUJOURS
+    // garantir un profil joueur local. S'il existe un ancien profil lié il est
+    // conservé ; sinon le profil Supabase devient le premier profil de ce compte.
 
-    if (!cloudCanSync && !hasMeaningfulLocalData) return;
-
-    // ✅ V7 ACCOUNT CORE CLEAN:
-    // On applique TOUJOURS le bridge vers un profil local stable id==uid.
-    // Sinon, deux appareils peuvent chacun "lier" un profil local différent, ce qui casse la synchro.
+    // ✅ ACCOUNT CORE : le compte réseau n'est pas un deuxième joueur.
+    // ensureLocalProfileForOnlineUser conserve/rattache le profil local canonique
+    // et n'utilise l'UID Supabase comme id joueur que lorsqu'aucun profil local
+    // n'existe réellement sur cet appareil.
 
     try {
       setStore((prev) => {
