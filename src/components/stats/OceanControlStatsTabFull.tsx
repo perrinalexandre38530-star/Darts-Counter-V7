@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { oceanControlVariantLabel } from "../../lib/gameEngines/oceanControlEngine";
+import { oceanControlMissionSummary } from "../../lib/oceanControlMission";
 
 const BLUE="#30b9ff",CYAN="#65e9ff",GREEN="#65e5aa",GOLD="#f5ca68",RED="#ff6573",SOFT="#aab4c7";
 const n=(v:any)=>Number.isFinite(Number(v))?Number(v):0;
@@ -57,6 +58,14 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
   {label:"SÉRIE",value:Math.min(100,bestStreak*20),color:GOLD},
  ];
  const commandSpecialty=commandDna.slice().sort((a:any,b:any)=>b.value-a.value)[0]||commandDna[0];
+ const missionSamples=matches.map(({record,row}:any)=>oceanControlMissionSummary(row,record?.summary?.config||record?.payload?.config||{}));
+ const missionAverage=missionSamples.length?Math.round(missionSamples.reduce((sum:number,item:any)=>sum+n(item?.percent),0)/missionSamples.length):0;
+ const missionPerfect=missionSamples.filter((item:any)=>n(item?.percent)>=100).length;
+ const missionCompleted=missionSamples.reduce((sum:number,item:any)=>sum+n(item?.completed),0);
+ const missionPossible=missionSamples.reduce((sum:number,item:any)=>sum+n(item?.total),0);
+ const missionById:any={};
+ missionSamples.forEach((sample:any)=>sample.objectives.forEach((objective:any)=>{const current=missionById[objective.id]||{...objective,completed:0,attempts:0};current.completed+=objective.complete?1:0;current.attempts+=1;missionById[objective.id]=current;}));
+ const missionObjectiveStats=Object.values(missionById).map((objective:any)=>({...objective,rate:objective.attempts?Math.round(objective.completed/objective.attempts*100):0})).sort((a:any,b:any)=>b.rate-a.rate||a.label.localeCompare(b.label));
  return <div style={{width:"100%",maxWidth:980,margin:"0 auto"}}>
   <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{[["all","Tout"],["day","24 h"],["week","7 j"],["month","30 j"],["year","1 an"]].map(([key,label])=><button key={key} onClick={()=>setRange(key)} style={{borderRadius:999,padding:"6px 10px",border:`1px solid ${range===key?BLUE:"rgba(255,255,255,.10)"}`,background:range===key?`${BLUE}18`:"rgba(255,255,255,.03)",color:range===key?CYAN:SOFT,fontWeight:1000,fontSize:9}}>{label}</button>)}</div>
   {!games?<div style={{marginTop:16,borderRadius:18,padding:18,textAlign:"center",color:SOFT,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}>Aucune partie OCEAN CONTROL exploitable pour ce joueur.</div>:<>
@@ -84,6 +93,12 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 160px",gap:10,alignItems:"stretch"}}>
        <div style={{display:"grid",gap:8}}>{commandDna.map((metric:any)=><div key={metric.label} style={{display:"grid",gridTemplateColumns:"82px minmax(0,1fr) 34px",gap:8,alignItems:"center"}}><span style={{color:"#c7d4df",fontSize:7.4,fontWeight:1000}}>{metric.label}</span><div style={{height:8,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.06)"}}><div style={{height:"100%",width:`${metric.value}%`,background:`linear-gradient(90deg,${metric.color}88,${metric.color})`}}/></div><strong style={{textAlign:"right",color:metric.color,fontSize:8}}>{metric.value}</strong></div>)}</div>
        <div style={{borderRadius:15,padding:11,display:"grid",placeItems:"center",alignContent:"center",textAlign:"center",background:`linear-gradient(180deg,${commandSpecialty.color}12,rgba(255,255,255,.02))`,border:`1px solid ${commandSpecialty.color}40`}}><div style={{color:SOFT,fontSize:6.8,fontWeight:1000}}>SPÉCIALITÉ</div><div style={{marginTop:5,color:commandSpecialty.color,fontSize:13,fontWeight:1100}}>{commandSpecialty.label}</div><div style={{marginTop:4,color:"#eef8ff",fontSize:8.2}}>{commandSpecialty.value}/100</div><div style={{marginTop:5,color:SOFT,fontSize:7,lineHeight:1.35}}>Profil calculé sur la période sélectionnée.</div></div>
+     </div>
+   </Section>
+   <Section title="Maîtrise des objectifs" accent={missionAverage>=80?GREEN:missionAverage>=55?GOLD:BLUE} subtitle={`${missionPerfect} mission${missionPerfect>1?"s":""} parfaite${missionPerfect>1?"s":""}`}>
+     <div style={{display:"grid",gridTemplateColumns:"160px minmax(0,1fr)",gap:10,alignItems:"stretch"}}>
+       <div style={{borderRadius:16,padding:12,display:"grid",alignContent:"center",textAlign:"center",background:`linear-gradient(180deg,${missionAverage>=80?GREEN:GOLD}10,rgba(255,255,255,.02))`,border:`1px solid ${missionAverage>=80?GREEN:GOLD}38`}}><div style={{color:SOFT,fontSize:6.8,fontWeight:1000,letterSpacing:.45}}>MAÎTRISE MOYENNE</div><div style={{marginTop:4,color:missionAverage>=80?GREEN:GOLD,fontSize:28,fontWeight:1150}}>{missionAverage}%</div><div style={{marginTop:4,color:"#eef8ff",fontSize:7.5}}>{missionCompleted}/{missionPossible} objectifs validés</div><div style={{marginTop:5,color:SOFT,fontSize:6.8,lineHeight:1.35}}>Calculé partie par partie sur la période sélectionnée.</div></div>
+       <div style={{display:"grid",gap:7}}>{missionObjectiveStats.map((objective:any)=><div key={objective.id} style={{display:"grid",gridTemplateColumns:"minmax(110px,.7fr) minmax(0,1fr) 42px",gap:8,alignItems:"center"}}><div style={{minWidth:0}}><div style={{display:"flex",gap:5,alignItems:"center"}}><span>{objective.icon}</span><strong style={{minWidth:0,color:"#edf7ff",fontSize:7.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{objective.label}</strong></div><div style={{marginTop:2,color:SOFT,fontSize:6.4}}>{objective.completed}/{objective.attempts} parties</div></div><div style={{height:7,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.06)"}}><div style={{height:"100%",width:`${objective.rate}%`,background:`linear-gradient(90deg,${objective.color}88,${objective.color})`}}/></div><strong style={{textAlign:"right",color:objective.color,fontSize:7.5}}>{objective.rate}%</strong></div>)}</div>
      </div>
    </Section>
    <div style={{marginTop:10,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7}}>

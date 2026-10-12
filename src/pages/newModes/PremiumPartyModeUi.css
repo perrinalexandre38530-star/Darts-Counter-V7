@@ -51,3 +51,21 @@
   .party-mode__bot-intent p{font-size:5.5px}
   .party-mode__bot-meta strong,.party-mode__bot-meta span{font-size:5.2px!important}
 }
+
+
+/* V10 — mémoire intra-match / adaptation adversaire */
+.party-mode__bot-memory{display:grid;gap:3px;margin-top:3px;padding:5px 7px;border:1px solid rgba(255,255,255,.055);border-radius:9px;background:linear-gradient(180deg,rgba(255,255,255,.032),rgba(255,255,255,.018))}
+.party-mode__bot-memory>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0}
+.party-mode__bot-memory small{color:#687283;font-size:5.4px;font-weight:1000;letter-spacing:.48px;white-space:nowrap}
+.party-mode__bot-memory strong{font-size:6.6px;font-weight:1100;letter-spacing:.28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.party-mode__bot-memory>em{font-style:normal;color:#7f8998;font-size:5.5px;font-weight:900}
+.party-mode__bot-memory>p{margin:0;color:#9aa4b3;font-size:5.8px;line-height:1.3;font-weight:760}
+.party-mode__bot-learning{position:relative;height:11px;padding-top:6px}
+.party-mode__bot-learning:before{content:"";position:absolute;left:0;right:0;top:2px;height:3px;border-radius:99px;background:rgba(255,255,255,.065)}
+.party-mode__bot-learning>i{position:absolute;left:0;top:2px;height:3px;border-radius:99px;box-shadow:0 0 7px currentColor}
+.party-mode__bot-learning>small{position:absolute;right:0;bottom:-1px;color:#596273;font-size:5px}
+@media (orientation:landscape) and (max-height:620px){
+  .party-mode__bot-memory{padding:3px 5px;gap:1px}
+  .party-mode__bot-memory>p{display:none}
+  .party-mode__bot-learning{display:none}
+}

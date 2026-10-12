@@ -32,6 +32,7 @@ import {
 } from "../lib/gameEngines/oceanControlEngine";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
+import { buildOceanControlMissionObjectives } from "../lib/oceanControlMission";
 import { SelectedParticipantsCompactBlock, x01MostUsedDartSetIdForProfile } from "./X01ConfigV3";
 import tickerOcean from "../assets/tickers/ticker_ocean_control.png";
 
@@ -144,6 +145,7 @@ export default function OceanControlConfig(props: any) {
     : selectedIds.length >= minimum && selectedIds.length <= 8;
   const fleet = oceanControlFleetTemplate(fleetPreset);
   const totalCells = fleet.reduce((sum, ship) => sum + ship.length, 0);
+  const missionObjectives = React.useMemo(() => buildOceanControlMissionObjectives({}, { sonarEnabled, dbullStrikeEnabled }), [sonarEnabled, dbullStrikeEnabled]);
   const readinessItems = [
     { label: "COMMANDANTS", ready: valid, color: BLUE },
     { label: "FLOTTE", ready: totalCells > 0, color: CYAN },
@@ -249,6 +251,10 @@ export default function OceanControlConfig(props: any) {
           <div>🔊 Audio : <strong style={{ color: sfxEnabled ? GREEN : SOFT }}>{sfxEnabled ? "Bataille active" : "Silencieux"}</strong></div>
         </div>
       </div>
+    </div>
+    <div style={{ marginTop: 8, borderRadius: 15, padding: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.08)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}><div><div style={{ color: GREEN, fontSize: 8.3, fontWeight: 1100, letterSpacing: .65 }}>OBJECTIFS TACTIQUES SUIVIS</div><div style={{ marginTop: 2, color: SOFT, fontSize: 6.9 }}>Ils alimentent le débrief, l’historique et le Stats Center.</div></div><strong style={{ color: CYAN, fontSize: 8.4 }}>{missionObjectives.length} objectifs</strong></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{missionObjectives.map((objective) => <div key={objective.id} style={{ minWidth: 0, borderRadius: 11, padding: 7, background: `${objective.color}09`, border: `1px solid ${objective.color}2c` }}><div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 11 }}>{objective.icon}</span><strong style={{ minWidth: 0, color: objective.color, fontSize: 6.7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{objective.label}</strong></div><div style={{ marginTop: 4, color: SOFT, fontSize: 6.2, lineHeight: 1.35 }}>{objective.detail}</div></div>)}</div>
     </div>
   </section>;
 

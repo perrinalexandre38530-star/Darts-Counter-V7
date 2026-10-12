@@ -202,6 +202,163 @@ export function footballPerformanceRating(stats: any): number {
   return Math.round(Math.max(1, Math.min(10, raw)) * 10) / 10;
 }
 
+
+
+// -----------------------------------------------------------------------------
+// V7 — ADN tactique + carte de cible
+// -----------------------------------------------------------------------------
+
+const clamp100 = (value: any) => Math.max(0, Math.min(100, Math.round(n(value))));
+const ratio100 = (value: any, total: any) => n(total) > 0 ? clamp100((n(value) / n(total)) * 100) : 0;
+
+export function footballTacticalProfile(stats: any) {
+  const darts = n(stats?.darts);
+  const attackVisits = n(stats?.attackVisits);
+  const defenseVisits = n(stats?.defenseVisits);
+  const goalkeeperVisits = n(stats?.goalkeeperVisits);
+  const shots = n(stats?.shots);
+  const hits = n(stats?.hits);
+  const successful = n(stats?.successfulActions);
+
+  const accuracy = ratio100(successful, darts);
+  const boardControl = ratio100(hits, darts);
+  const progression = attackVisits > 0 ? clamp100((n(stats?.advances) / Math.max(1, attackVisits * 2)) * 100) : 0;
+  const creation = attackVisits > 0 ? clamp100(((n(stats?.passes) + n(stats?.counterAttacks) * 1.5) / Math.max(1, attackVisits * 1.6)) * 100) : 0;
+  const shotAccuracy = ratio100(n(stats?.shotsOnTarget), shots);
+  const conversion = ratio100(n(stats?.goals), shots);
+  const interceptionRate = ratio100(n(stats?.interceptions), defenseVisits);
+  const defensiveActivity = defenseVisits > 0 ? clamp100(((n(stats?.tackles) + n(stats?.clearances)) / Math.max(1, defenseVisits * 1.5)) * 100) : 0;
+  const saveRate = ratio100(n(stats?.saves), goalkeeperVisits);
+  const possession = defenseVisits > 0 ? ratio100(n(stats?.possessionWins), defenseVisits) : 0;
+
+  const scores = {
+    attaque: clamp100(accuracy * 0.34 + progression * 0.42 + creation * 0.24),
+    finition: clamp100(shotAccuracy * 0.45 + conversion * 0.55),
+    defense: clamp100(interceptionRate * 0.58 + defensiveActivity * 0.27 + possession * 0.15),
+    gardien: clamp100(saveRate),
+    controle: clamp100(boardControl * 0.58 + accuracy * 0.42),
+  };
+
+  const descriptors: Record<string, { label: string; icon: string; color: string }> = {
+    attaque: { label: "Meneur offensif", icon: "🚀", color: "#65e5aa" },
+    finition: { label: "Finisseur", icon: "⚽", color: "#ffd36b" },
+    defense: { label: "Mur défensif", icon: "🛡️", color: "#ff5b77" },
+    gardien: { label: "Gardien", icon: "🧤", color: "#35d0ff" },
+    controle: { label: "Maître de la cible", icon: "🎯", color: "#a78bfa" },
+  };
+  const ordered = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const top = ordered[0] || ["controle", 0];
+  const second = ordered[1] || ["controle", 0];
+  const balanced = n(top[1]) > 0 && n(top[1]) - n(second[1]) <= 6;
+  const descriptor = balanced
+    ? { label: "Joueur polyvalent", icon: "⭐", color: "#ffd36b" }
+    : descriptors[String(top[0])] || descriptors.controle;
+
+  return {
+    ...scores,
+    label: descriptor.label,
+    icon: descriptor.icon,
+    color: descriptor.color,
+    dominant: String(top[0]),
+    dominantScore: n(top[1]),
+  };
+}
+
+function footballRecordVisits(record: any): any[] {
+  const sources = [
+    record?.summary?.visits,
+    record?.payload?.summary?.visits,
+    record?.payload?.visits,
+    record?.payload?.visitHistory,
+    record?.resume?.state?.visits,
+    record?.payload?.stateSnapshot?.visits,
+  ];
+  return (sources.find(Array.isArray) || []) as any[];
+}
+
+function footballDartSegment(dart: any): number | null {
+  if (!dart || dart?.bed === "MISS" || dart?.bed === "OB" || dart?.bed === "IB") return null;
+  const segment = n(dart?.number);
+  return segment >= 1 && segment <= 20 ? segment : null;
+}
+
+function footballMissionHit(visit: any, dart: any): boolean {
+  const action = txt(visit?.action);
+  if (!dart || dart?.bed === "MISS") return false;
+  if (action === "classic_possession") return dart?.bed === "OB" || dart?.bed === "IB";
+  if (action === "classic_shot") return dart?.bed === "D" || dart?.bed === "IB";
+  if (dart?.bed === "OB" || dart?.bed === "IB") return action === "goalkeeper" || action === "penalty" || action === "attack";
+  const segment = footballDartSegment(dart);
+  const targets = [
+    ...(Array.isArray(visit?.targets) ? visit.targets : []),
+    ...(Array.isArray(visit?.saveTargets) ? visit.saveTargets : []),
+  ].map(n);
+  return segment != null && targets.includes(segment);
+}
+
+export function buildFootballSectorProfileFromVisits(visits: any[] = [], playerId?: string) {
+  const pid = txt(playerId);
+  const sectors = Array.from({ length: 20 }, (_, index) => ({
+    sector: index + 1,
+    darts: 0,
+    missionHits: 0,
+    singles: 0,
+    doubles: 0,
+    triples: 0,
+  }));
+  let bull = 0, dbull = 0, misses = 0, totalDarts = 0, missionHits = 0;
+
+  for (const visit of visits || []) {
+    if (pid && txt(visit?.playerId) !== pid) continue;
+    for (const dart of Array.isArray(visit?.darts) ? visit.darts : []) {
+      totalDarts += 1;
+      if (!dart || dart?.bed === "MISS") { misses += 1; continue; }
+      if (dart?.bed === "OB") { bull += 1; if (footballMissionHit(visit, dart)) missionHits += 1; continue; }
+      if (dart?.bed === "IB") { dbull += 1; if (footballMissionHit(visit, dart)) missionHits += 1; continue; }
+      const segment = footballDartSegment(dart);
+      if (segment == null) continue;
+      const row = sectors[segment - 1];
+      row.darts += 1;
+      if (dart?.bed === "S") row.singles += 1;
+      if (dart?.bed === "D") row.doubles += 1;
+      if (dart?.bed === "T") row.triples += 1;
+      if (footballMissionHit(visit, dart)) {
+        row.missionHits += 1;
+        missionHits += 1;
+      }
+    }
+  }
+
+  const ranked = [...sectors]
+    .filter((row) => row.darts > 0)
+    .sort((a, b) => b.missionHits - a.missionHits || b.darts - a.darts || a.sector - b.sector);
+
+  return {
+    sectors,
+    topSectors: ranked.slice(0, 5),
+    strongestSector: ranked[0] || null,
+    bull,
+    dbull,
+    misses,
+    totalDarts,
+    missionHits,
+    missionRate: ratio100(missionHits, totalDarts),
+  };
+}
+
+export function buildFootballSectorProfileFromState(state: any, playerId?: string) {
+  return buildFootballSectorProfileFromVisits(Array.isArray(state?.visits) ? state.visits : [], playerId);
+}
+
+export function buildFootballSectorProfileFromRecord(record: any, playerId?: string) {
+  return buildFootballSectorProfileFromVisits(footballRecordVisits(record), playerId);
+}
+
+export function buildFootballSectorProfileFromRecords(records: any[] = [], playerId?: string) {
+  const visits = (records || []).flatMap((record: any) => footballRecordVisits(record));
+  return buildFootballSectorProfileFromVisits(visits, playerId);
+}
+
 type FootballCareerSnapshot = {
   games: number; wins: number; draws: number; losses: number; goals: number; saves: number; interceptions: number;
 };

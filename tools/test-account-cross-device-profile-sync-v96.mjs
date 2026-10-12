@@ -14,6 +14,7 @@ const auth = read('src/hooks/useAuthOnline.tsx');
 const app = read('src/App.tsx');
 const api = read('src/lib/onlineApi.ts');
 const canonical = read('src/lib/canonicalAccountProfile.ts');
+const realtimeMigration = read('supabase/migrations/20261012203000_account_profiles_realtime.sql');
 
 check(
   'auth reads public.profiles directly before legacy onlineApi fallbacks',
@@ -39,6 +40,18 @@ check(
   auth.includes('document.addEventListener("visibilitychange", onVisible)') &&
   auth.includes('postgres_changes') &&
   auth.includes('30_000'),
+);
+
+check(
+  'profiles table is explicitly published to Supabase Realtime',
+  realtimeMigration.includes('alter publication supabase_realtime add table public.profiles'),
+);
+
+check(
+  'Auth context exposes updateProfile for Settings and other account editors',
+  auth.includes('updateProfile: (patch: UpdateProfilePayload)') &&
+  auth.includes('const updateProfile = React.useCallback') &&
+  auth.includes('updateProfile,\n      refresh'),
 );
 
 check(

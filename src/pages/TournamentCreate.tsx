@@ -82,7 +82,7 @@ type Props = {
   params?: any; // ✅ IMPORTANT: route params (ex: { forceMode: "petanque" })
 };
 
-type Mode = "x01" | "cricket" | "killer" | "shanghai" | "challenge" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis";
+type Mode = "x01" | "cricket" | "killer" | "shanghai" | "challenge" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis";
 type TourFormat = "single_ko" | "double_ko" | "round_robin" | "groups_ko";
 type BestOf = 1 | 3 | 5 | 7;
 
@@ -257,6 +257,10 @@ const COMPETITION_COVER_PRESETS_BY_MODE: Partial<Record<Mode, any[]>> = {
   cricket: DARTS_COVER_PRESETS,
   killer: DARTS_COVER_PRESETS,
   shanghai: DARTS_COVER_PRESETS,
+  fifty_one_by_five: DARTS_COVER_PRESETS,
+  looper: DARTS_COVER_PRESETS,
+  call_three: DARTS_COVER_PRESETS,
+  steeplechase: DARTS_COVER_PRESETS,
   petanque: PETANQUE_COVER_PRESETS,
   babyfoot: BABYFOOT_COVER_PRESETS,
   pingpong: PINGPONG_COVER_PRESETS,
@@ -278,6 +282,10 @@ const MODE_LABEL: Record<Mode, string> = {
   killer: "Killer",
   shanghai: "Shanghai",
   challenge: "Challenge",
+  fifty_one_by_five: "51 BY 5",
+  looper: "Looper",
+  call_three: "Call Three",
+  steeplechase: "Steeplechase",
   petanque: "Pétanque",
   babyfoot: "Baby-foot",
   pingpong: "Ping-Pong",
@@ -291,7 +299,7 @@ const MODE_LABEL: Record<Mode, string> = {
 };
 
 
-const DARTS_CREATE_MODES: Mode[] = ["x01", "cricket", "shanghai", "challenge"];
+const DARTS_CREATE_MODES: Mode[] = ["x01", "cricket", "shanghai", "challenge", "fifty_one_by_five", "looper", "call_three", "steeplechase"];
 const SPORT_CREATE_MODES: Record<string, Mode[]> = {
   darts: DARTS_CREATE_MODES,
   petanque: ["petanque"],
@@ -308,7 +316,7 @@ const SPORT_CREATE_MODES: Record<string, Mode[]> = {
 
 function normalizeCompetitionSport(value: any): string {
   const raw = String(value || "darts").toLowerCase().trim();
-  if (!raw || raw === "darts" || raw === "x01" || raw === "cricket" || raw === "killer" || raw === "shanghai") return "darts";
+  if (!raw || raw === "darts" || raw === "x01" || raw === "cricket" || raw === "killer" || raw === "shanghai" || raw === "fifty_one_by_five" || raw === "looper" || raw === "call_three" || raw === "steeplechase") return "darts";
   if (raw === "baby-foot" || raw === "baby_foot" || raw === "foosball") return "babyfoot";
   if (raw === "ping-pong" || raw === "tabletennis" || raw === "table_tennis") return "pingpong";
   if (raw === "dice" || raw === "dice_game") return "dicegame";
@@ -2000,6 +2008,12 @@ const petanqueTeamsReady = React.useMemo(() => {
   // ---- Format tournoi / ligue
   const [format, setFormat] = React.useState<TourFormat>(isLeague ? "round_robin" : "single_ko");
   const [bestOf, setBestOf] = React.useState<BestOf>(3);
+  const isNewFourDartsMode = mode === "fifty_one_by_five" || mode === "looper" || mode === "call_three" || mode === "steeplechase";
+  const tournamentBestOfOptions: BestOf[] = isNewFourDartsMode ? [1, 3, 5] : [1, 3, 5, 7];
+
+  React.useEffect(() => {
+    if (isNewFourDartsMode && bestOf === 7) setBestOf(5);
+  }, [isNewFourDartsMode, bestOf]);
 
   React.useEffect(() => {
     if (isLeague) setFormat("round_robin");
@@ -2898,6 +2912,26 @@ async function createTournament() {
           maxPlayers: capEnabled ? cap : 0,
           teamConfrontation,
         };
+
+  // Règles dédiées des quatre modes Darts récents. Elles restent dans le tournoi
+  // afin que TournamentMatchPlay puisse reconstruire exactement le moteur choisi.
+  if (mode === "fifty_one_by_five") {
+    Object.assign(rules as any, {
+      fiftyOneByFiveConfig: { target: 51, divisor: 5, requireThreeScoringDarts: true, bustRule: "hold", exactFinish: true },
+    });
+  } else if (mode === "looper") {
+    Object.assign(rules as any, {
+      looperConfig: { lives: 5, startTarget: "offhand", exactSegment: true, numberLoopsEnabled: true, setterShield: true },
+    });
+  } else if (mode === "call_three") {
+    Object.assign(rules as any, {
+      callThreeConfig: { rounds: 10, callerMode: "next", orderedTargets: true, bullAllowed: true, multiplierScoring: true },
+    });
+  } else if (mode === "steeplechase") {
+    Object.assign(rules as any, {
+      steeplechaseConfig: { direction: "clockwise", innerSingleOnly: true, fencesEnabled: true, fences: [13, 17, 8, 5], finishBull: "any" },
+    });
+  }
 
   const registrationOnly = competitionScope === "online" && enrollmentPolicy !== "fixed" && finalPlayers.length < 2;
   const challengeNoMatchMode = mode === "challenge" && challengeCompetitionFormat !== "duels";
@@ -5406,7 +5440,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                 <div>
                   <RowTitle label="Best-of" />
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {([1, 3, 5, 7] as BestOf[]).map((v) => <NeonPill key={v} active={bestOf === v} label={`BO${v}`} onClick={() => setBestOf(v)} primary={primary} />)}
+                    {tournamentBestOfOptions.map((v) => <NeonPill key={v} active={bestOf === v} label={`BO${v}`} onClick={() => setBestOf(v)} primary={primary} />)}
                   </div>
                 </div>
               ) : null}
@@ -6353,7 +6387,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             <RowTitle label="Match — Best-of" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {([1, 3, 5, 7] as BestOf[]).map((v) => (
+                {tournamentBestOfOptions.map((v) => (
                   <NeonPill key={v} active={bestOf === v} label={`BO${v}`} onClick={() => setBestOf(v)} primary={primary} />
                 ))}
               </div>

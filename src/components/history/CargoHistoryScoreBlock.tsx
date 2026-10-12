@@ -28,7 +28,7 @@ export default function CargoHistoryScoreBlock({ record }: any) {
   const config = record?.summary?.config || record?.payload?.config || {};
   const parcel = variant === "parcel_delivery";
   const teamMode = (record?.summary?.participantMode || config?.participantMode) === "teams";
-  const finished = record?.status === "finished" || record?.summary?.finished === true || Boolean(record?.finishedAt || record?.endedAt);
+  const finished = ["finished", "completed", "complete", "done"].includes(String(record?.status || "").toLowerCase()) || record?.summary?.finished === true || Boolean(record?.finishedAt || record?.endedAt);
   const sorted = (Array.isArray(rows) ? rows : []).slice().sort((a: any, b: any) => n(a?.rank || 999) - n(b?.rank || 999));
   const teamSorted = (Array.isArray(teams) ? teams : []).slice().sort((a: any, b: any) => n(a?.rank || 999) - n(b?.rank || 999));
   const totalScore = parcel ? n(match?.totalParcels) || sorted.reduce((sum: number, row: any) => sum + n(row?.parcelsDelivered), 0) : n(match?.totalWeight) || sorted.reduce((sum: number, row: any) => sum + n(row?.totalWeight), 0);

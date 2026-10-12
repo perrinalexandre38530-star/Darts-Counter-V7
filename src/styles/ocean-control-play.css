@@ -770,6 +770,109 @@
   text-align:right;
 }
 
+.ocean-mission-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+}
+
+.ocean-mission-header>div{min-width:0}
+.ocean-mission-header strong{display:block;color:#65e9ff;font-size:8px;letter-spacing:.55px}
+.ocean-mission-header small{display:block;margin-top:2px;color:#8193a5;font-size:6.5px}
+.ocean-mission-header>span{flex:0 0 auto;color:#f5ca68;font-size:7.3px;font-weight:1100}
+
+.ocean-mission-progress{
+  margin-top:7px;
+  height:6px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.06);
+}
+
+.ocean-mission-progress i{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#30b9ff,#65e9ff,#65e5aa);
+  box-shadow:0 0 14px rgba(101,233,255,.18);
+}
+
+.ocean-mission-grid{
+  margin-top:8px;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+}
+
+.ocean-mission-card{
+  --mission-color:#30b9ff;
+  min-width:0;
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) 28px;
+  gap:7px;
+  align-items:center;
+  padding:7px;
+  border-radius:12px;
+  background:rgba(255,255,255,.025);
+  border:1px solid rgba(255,255,255,.07);
+}
+
+.ocean-mission-card.is-complete{
+  background:color-mix(in srgb,var(--mission-color) 8%,rgba(255,255,255,.02));
+  border-color:color-mix(in srgb,var(--mission-color) 36%,transparent);
+}
+
+.ocean-mission-card__icon{
+  width:26px;
+  height:26px;
+  border-radius:9px;
+  display:grid;
+  place-items:center;
+  background:color-mix(in srgb,var(--mission-color) 10%,rgba(255,255,255,.02));
+  color:var(--mission-color);
+  font-size:11px;
+  font-weight:1100;
+}
+
+.ocean-mission-card>div{min-width:0}
+.ocean-mission-card>div>strong{display:block;color:#eef8ff;font-size:6.8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-mission-card>div>small{display:block;margin-top:2px;color:#8295a7;font-size:5.9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-mission-card>b{color:var(--mission-color);font-size:6.7px;text-align:right}
+
+.ocean-mission-card__bar{
+  margin-top:5px;
+  height:4px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.06);
+}
+
+.ocean-mission-card__bar i{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:var(--mission-color);
+}
+
+.ocean-mission-next{
+  margin-top:8px;
+  padding:8px 9px;
+  border-radius:12px;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:2px 8px;
+  align-items:center;
+  background:linear-gradient(135deg,rgba(245,202,104,.09),rgba(255,255,255,.02));
+  border:1px solid rgba(245,202,104,.24);
+}
+
+.ocean-mission-next>span{grid-row:1/3;color:#f5ca68;font-size:6.2px;font-weight:1100;letter-spacing:.4px}
+.ocean-mission-next>strong{min-width:0;color:#fff;font-size:7.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-mission-next>small{min-width:0;color:#8193a5;font-size:6.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocean-mission-next.is-complete{background:linear-gradient(135deg,rgba(101,229,170,.11),rgba(255,255,255,.02));border-color:rgba(101,229,170,.28)}
+.ocean-mission-next.is-complete>span{color:#65e5aa}
+
 .ocean-sonar-history{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));

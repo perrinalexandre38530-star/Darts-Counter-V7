@@ -116,7 +116,7 @@ function fmtDate(ts?: number) {
 }
 
 
-const DARTS_TOURNAMENT_MODES = new Set(["darts", "x01", "cricket", "killer", "shanghai", "golf", "clock", "scram", "warfare", "battle_royale", "territories", "capital", "batard", "five_lives"]);
+const DARTS_TOURNAMENT_MODES = new Set(["darts", "x01", "cricket", "killer", "shanghai", "golf", "clock", "scram", "warfare", "battle_royale", "territories", "capital", "batard", "five_lives", "fifty_one_by_five", "looper", "call_three", "steeplechase"]);
 
 function normalizeCompetitionSport(value: any): string {
   const raw = String(value?.sport || value?.game?.sport || value?.competitionSport || value?.sportId || value?.game?.mode || value?.mode || value?.gameMode || "").toLowerCase().trim();

@@ -4,7 +4,7 @@
 // TOURNOIS — MATCH PLAY (ROUTEUR ROBUSTE)
 // ✅ Recharge tournoi + matchs depuis storeLocal (cache async)
 // ✅ Évite écran noir (loading/fallbacks + refresh event)
-// ✅ Lance une vraie partie pour un match de tournoi (X01 V3 / CRICKET / KILLER)
+// ✅ Lance une vraie partie pour un match de tournoi (X01 / CRICKET / KILLER / CHALLENGE / NEW4)
 // ✅ NEW: PÉTANQUE (score manuel) — saisie score 0..13 + validation (13 obligatoire)
 // ✅ Auto-submit résultat => tournament engine + persistence locale
 // ✅ Bloque BYE/TBD (ne lance pas un "match fantôme")
@@ -32,6 +32,10 @@ import X01PlayV3 from "./X01PlayV3";
 import CricketPlay from "./CricketPlay";
 import KillerPlay from "./KillerPlay";
 import ChallengePlay from "./ChallengePlay";
+import FiftyOneByFivePlay from "./FiftyOneByFivePlay";
+import LooperPlay from "./LooperPlay";
+import CallThreePlay from "./CallThreePlay";
+import SteeplechasePlay from "./SteeplechasePlay";
 
 // ✅ Baby-Foot store (pour lancer un vrai match depuis un match de tournoi)
 import {
@@ -69,6 +73,24 @@ function nameOf(t: Tournament, pid: string) {
 function avatarOf(t: Tournament, pid: string) {
   const p = (t?.players || []).find((x: any) => String(x?.id) === String(pid));
   return p?.avatarDataUrl ?? p?.avatar ?? p?.avatarUrl ?? null;
+}
+
+function tournamentParticipant(t: Tournament, pid: string) {
+  const row: any = (t?.players || []).find((x: any) => String(x?.id) === String(pid)) || {};
+  return {
+    ...row,
+    id: String(pid),
+    name: row?.name || nameOf(t, pid),
+    avatarDataUrl: row?.avatarDataUrl ?? row?.avatar ?? row?.avatarUrl ?? null,
+    isBot: Boolean(row?.isBot || row?.bot || row?.source === "bot"),
+  };
+}
+
+function seriesWinsFromBestOf(bestOf: any): 1 | 2 | 3 {
+  const bo = Math.max(1, Math.floor(Number(bestOf) || 1));
+  if (bo >= 5) return 3;
+  if (bo >= 3) return 2;
+  return 1;
 }
 
 function extractWinnerId(m: any) {
@@ -158,7 +180,11 @@ function detectMode(tour: any) {
     tour?.format?.game ||
     tour?.config?.mode ||
     "";
-  return String(raw || "").toLowerCase();
+  const normalized = String(raw || "").toLowerCase().trim();
+  if (["51 by 5", "51_by_5", "51by5", "fifty-one-by-five"].includes(normalized)) return "fifty_one_by_five";
+  if (["call three", "callthree", "call-three"].includes(normalized)) return "call_three";
+  if (["steeple chase", "steeple-chase"].includes(normalized)) return "steeplechase";
+  return normalized;
 }
 
 function clampInt(n: any, min: number, max: number) {
@@ -218,10 +244,15 @@ function extractTournamentScore(source: any, aId: string, bId: string) {
   if (sets) return { ...sets, kind: "sets" };
 
   const legs =
+    readScoreMap(source?.legWins, aId, bId) ||
     readScoreMap(source?.legsWon, aId, bId) ||
+    readScoreMap(source?.summary?.legWins, aId, bId) ||
     readScoreMap(source?.summary?.legsWon, aId, bId) ||
+    readScoreMap(source?.payload?.legWins, aId, bId) ||
     readScoreMap(source?.payload?.legsWon, aId, bId) ||
+    readScoreMap(source?.payload?.summary?.legWins, aId, bId) ||
     readScoreMap(source?.payload?.summary?.legsWon, aId, bId) ||
+    readScoreMap(source?.payload?.state?.legWins, aId, bId) ||
     readScoreMap(source?.payload?.state?.legsWon, aId, bId) ||
     readPlayersScore(source?.players, aId, bId, "legsWon") ||
     readPlayersScore(source?.payload?.players, aId, bId, "legsWon");
@@ -935,6 +966,126 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
         }
       }catch(e){console.error("[tournament_match_play] Challenge submitResult error:",e)}finally{go("tournament_view",{id:tournamentId})}
     }}/>;
+  }
+
+  // ------------------------------------------------------------
+  // ✅ 51 BY 5 / LOOPER / CALL THREE / STEEPLECHASE
+  //    Mêmes moteurs que le jeu normal, câblés au résultat tournoi.
+  // ------------------------------------------------------------
+  if (["fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(mode)) {
+    const tournamentRules: any = (tour as any)?.game?.rules || {};
+    const participants = [tournamentParticipant(tour as any, aId), tournamentParticipant(tour as any, bId)];
+    const selectedIds = participants.map((p: any) => String(p.id));
+    const botIds = participants.filter((p: any) => p.isBot).map((p: any) => String(p.id));
+    const commonConfig: any = {
+      selectedIds,
+      players: 2,
+      playersList: participants,
+      botIds,
+      botsEnabled: botIds.length > 0,
+      botLevel: "normal",
+      randomOrder: false,
+      scoreInputMethod: "keypad",
+      seriesWins: seriesWinsFromBestOf(tournamentRules?.bestOf),
+    };
+    const tournamentContext = {
+      tournamentId,
+      matchId: String((tm as any)?.id || matchId || ""),
+      name: (tour as any)?.name || "Tournoi",
+      aId,
+      bId,
+    };
+    const tournamentGo = (tab: any, nextParams?: any) => {
+      // Dans un match de compétition, RETOUR / CONFIG / JEUX reviennent au tournoi
+      // au lieu de sortir silencieusement du contexte de compétition.
+      const blocked = new Set([
+        "fifty_one_by_five_config", "looper_config", "call_three_config", "steeplechase_config", "games",
+      ]);
+      if (blocked.has(String(tab))) {
+        go("tournament_view", { id: tournamentId });
+        return;
+      }
+      go(tab, nextParams);
+    };
+    const finishMode = async (payload: any, expectedKind: string) => {
+      const enriched = {
+        ...(payload || {}),
+        kind: payload?.kind || expectedKind,
+        mode: payload?.mode || expectedKind,
+        tournamentId,
+        tournamentMatchId: String((tm as any)?.id || matchId || ""),
+        competition: tournamentContext,
+        payload: {
+          ...(payload?.payload || {}),
+          tournamentId,
+          tournamentMatchId: String((tm as any)?.id || matchId || ""),
+          competition: tournamentContext,
+        },
+      };
+      await finishAndSubmit(enriched, payload?.id || payload?.matchId || null);
+    };
+
+    if (mode === "fifty_one_by_five") {
+      const r = tournamentRules?.fiftyOneByFiveConfig || {};
+      const config = {
+        ...commonConfig,
+        mode: "fifty_one_by_five",
+        rules: {
+          target: [31, 51, 71, 101].includes(Number(r?.target)) ? Number(r.target) : 51,
+          divisor: 5,
+          requireThreeScoringDarts: r?.requireThreeScoringDarts !== false,
+          bustRule: r?.bustRule === "zero" ? "zero" : "hold",
+          exactFinish: r?.exactFinish !== false,
+        },
+      };
+      return <FiftyOneByFivePlay store={store} go={tournamentGo} setTab={tournamentGo} params={{ config, tournamentContext }} onFinish={(m: any) => finishMode(m, "fifty_one_by_five")} />;
+    }
+
+    if (mode === "looper") {
+      const r = tournamentRules?.looperConfig || {};
+      const config = {
+        ...commonConfig,
+        mode: "looper",
+        rules: {
+          lives: [3, 4, 5].includes(Number(r?.lives)) ? Number(r.lives) : 5,
+          startTarget: r?.startTarget === "random" ? "random" : "offhand",
+          exactSegment: r?.exactSegment !== false,
+          numberLoopsEnabled: r?.numberLoopsEnabled !== false,
+          setterShield: r?.setterShield !== false,
+        },
+      };
+      return <LooperPlay store={store} go={tournamentGo} setTab={tournamentGo} params={{ config, tournamentContext }} onFinish={(m: any) => finishMode(m, "looper")} />;
+    }
+
+    if (mode === "call_three") {
+      const r = tournamentRules?.callThreeConfig || {};
+      const config = {
+        ...commonConfig,
+        mode: "call_three",
+        rules: {
+          rounds: [5, 10, 15].includes(Number(r?.rounds)) ? Number(r.rounds) : 10,
+          callerMode: r?.callerMode === "random" ? "random" : "next",
+          orderedTargets: r?.orderedTargets !== false,
+          bullAllowed: r?.bullAllowed !== false,
+          multiplierScoring: r?.multiplierScoring !== false,
+        },
+      };
+      return <CallThreePlay store={store} go={tournamentGo} setTab={tournamentGo} params={{ config, tournamentContext }} onFinish={(m: any) => finishMode(m, "call_three")} />;
+    }
+
+    const r = tournamentRules?.steeplechaseConfig || {};
+    const config = {
+      ...commonConfig,
+      mode: "steeplechase",
+      rules: {
+        direction: r?.direction === "counter" ? "counter" : "clockwise",
+        innerSingleOnly: r?.innerSingleOnly !== false,
+        fencesEnabled: r?.fencesEnabled !== false,
+        fences: Array.isArray(r?.fences) && r.fences.length ? r.fences.map(Number) : [13, 17, 8, 5],
+        finishBull: r?.finishBull === "double" ? "double" : "any",
+      },
+    };
+    return <SteeplechasePlay store={store} go={tournamentGo} setTab={tournamentGo} params={{ config, tournamentContext }} onFinish={(m: any) => finishMode(m, "steeplechase")} />;
   }
 
   // ------------------------------------------------------------

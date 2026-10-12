@@ -1100,7 +1100,7 @@ function getHistoryMode(rec: any) {
 function normalizeHistorySport(v: any) {
   const raw = linkedSafeLower(v);
   if (!raw) return "";
-  if (["darts", "x01", "cricket", "shanghai", "killer", "clock", "scram", "golf"].includes(raw)) return "darts";
+  if (["darts", "x01", "cricket", "shanghai", "killer", "clock", "scram", "golf", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(raw)) return "darts";
   if (["babyfoot", "baby-foot", "foosball", "baby_foot"].includes(raw)) return "babyfoot";
   if (["petanque", "pétanque", "boules"].includes(raw)) return "petanque";
   if (["pingpong", "ping-pong", "table_tennis", "table-tennis"].includes(raw)) return "pingpong";

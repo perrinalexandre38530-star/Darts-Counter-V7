@@ -17,7 +17,7 @@ import * as React from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
-import { onlineApi } from "../lib/onlineApi";
+import { onlineApi, type UpdateProfilePayload } from "../lib/onlineApi";
 import { isNasProviderEnabled, isSupabaseHardDisabledInNasMode } from "../lib/serverConfig";
 import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
@@ -259,6 +259,7 @@ type Ctx = AuthState & {
   login: (payload: { email?: string; nickname?: string; password?: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>;
+  updateProfile: (patch: UpdateProfilePayload) => Promise<OnlineProfile | null>;
   refresh: () => Promise<void>;
 };
 
@@ -1215,6 +1216,20 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     [bootstrapSignedInAccount, hydrateProfileAndBackups, refresh]
   );
 
+  const updateProfile = React.useCallback(async (patch: UpdateProfilePayload): Promise<OnlineProfile | null> => {
+    const expectedUserId = String(state.user?.id || "").trim();
+    if (state.status !== "signed_in" || !expectedUserId) {
+      throw new Error("Utilisateur non authentifié.");
+    }
+
+    const profile = await onlineApi.updateProfile(patch);
+    setState((current) => {
+      if (String(current.user?.id || "").trim() !== expectedUserId) return current;
+      return { ...current, profile };
+    });
+    return profile;
+  }, [state.status, state.user?.id]);
+
   const logout = React.useCallback(async () => {
     // LOGOUT LOCAL-FIRST : l'UI et le verrou de session basculent AVANT tout appel réseau.
     // Ainsi une API lente/hors-ligne ou un listener Supabase retardé ne peut plus
@@ -1295,9 +1310,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       login,
       logout,
       deleteAccount,
+      updateProfile,
       refresh,
     }),
-    [state, signup, login, logout, deleteAccount, refresh]
+    [state, signup, login, logout, deleteAccount, updateProfile, refresh]
   );
 
   return (
@@ -1318,6 +1334,7 @@ export function useAuthOnline() {
       login: async () => false,
       logout: async () => {},
       deleteAccount: async () => {},
+      updateProfile: async () => null,
       refresh: async () => {},
     } as Ctx;
   }

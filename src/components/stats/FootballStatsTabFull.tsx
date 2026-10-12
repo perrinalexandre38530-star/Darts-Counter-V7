@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
-import { buildFootballCareerProgress, buildFootballHeadToHead, footballPerformanceRating } from "../../lib/footballInsights";
+import { buildFootballCareerProgress, buildFootballHeadToHead, buildFootballSectorProfileFromRecords, footballPerformanceRating, footballTacticalProfile } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa", BLUE = "#35d0ff", RED = "#ff5b77", GOLD = "#ffd36b", SOFT = "#aeb8c9", WHITE = "#f7fbff";
 const n = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0;
@@ -59,7 +59,7 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const draws = matches.filter(({ record }: any) => drawMatch(record)).length;
   const losses = Math.max(0, games - wins - draws);
   const sum = (key: string) => rows.reduce((s: number, r: any) => s + n(r?.[key]), 0);
-  const darts = sum("darts"), actions = sum("successfulActions"), goals = sum("goals"), shots = sum("shots"), onTarget = sum("shotsOnTarget"), saves = sum("saves"), tackles = sum("tackles"), interceptions = sum("interceptions"), advances = sum("advances"), posWins = sum("possessionWins"), clearances = sum("clearances"), counters = sum("counterAttacks"), penaltiesScored = sum("penaltiesScored"), penaltiesMissed = sum("penaltiesMissed");
+  const darts = sum("darts"), hits = sum("hits"), actions = sum("successfulActions"), goals = sum("goals"), shots = sum("shots"), onTarget = sum("shotsOnTarget"), saves = sum("saves"), tackles = sum("tackles"), interceptions = sum("interceptions"), advances = sum("advances"), passes = sum("passes"), posWins = sum("possessionWins"), clearances = sum("clearances"), counters = sum("counterAttacks"), penaltiesScored = sum("penaltiesScored"), penaltiesMissed = sum("penaltiesMissed");
   const attackVisits = sum("attackVisits"), defenseVisits = sum("defenseVisits"), goalkeeperVisits = sum("goalkeeperVisits"), penaltyVisits = sum("penaltyVisits");
   const accuracy = pct(actions, darts);
   const conversion = pct(goals, shots);
@@ -93,6 +93,9 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const headToHead = buildFootballHeadToHead(footballRecords, playerId, playerName).slice(0, 6);
   const career = buildFootballCareerProgress(footballRecords, playerId, playerName);
   const averageRating = rows.length ? Math.round((rows.reduce((total: number, row: any) => total + footballPerformanceRating(row), 0) / rows.length) * 10) / 10 : 0;
+  const tactical = footballTacticalProfile({ darts, hits, successfulActions: actions, goals, shots, shotsOnTarget: onTarget, saves, tackles, interceptions, advances, passes, possessionWins: posWins, clearances, counterAttacks: counters, attackVisits, defenseVisits, goalkeeperVisits });
+  const sectorProfile = buildFootballSectorProfileFromRecords(matches.map((item: any) => item.record), playerId);
+  const sectorMax = Math.max(1, ...sectorProfile.sectors.map((sector: any) => n(sector.missionHits)));
 
   return <div style={{ width: "100%", maxWidth: 980, margin: "0 auto", overflowX: "hidden" }}>
     <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{[["all", "Tout"], ["day", "24 h"], ["week", "7 j"], ["month", "30 j"], ["year", "1 an"]].map(([key, label]) => <button key={key} onClick={() => setRange(key)} style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${range === key ? GREEN : "rgba(255,255,255,.10)"}`, background: range === key ? `${GREEN}18` : "rgba(255,255,255,.03)", color: range === key ? GREEN : SOFT, fontWeight: 1000, fontSize: 8 }}>{label}</button>)}</div>
@@ -124,6 +127,24 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
           <Kpi label="Volées défense" value={defenseVisits} color={RED} />
           <Kpi label="Volées gardien" value={goalkeeperVisits} color={BLUE} />
           <Kpi label="Volées penalty" value={penaltyVisits} color={GOLD} />
+        </div>
+      </Section>
+
+      <Section title="ADN tactique" accent="#a78bfa" right={<span style={{ color: tactical.color, fontSize: 7, fontWeight: 1050 }}>{tactical.icon} {tactical.label}</span>}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
+          {[["ATTAQUE", tactical.attaque, GREEN], ["FINITION", tactical.finition, GOLD], ["DÉFENSE", tactical.defense, RED], ["GARDIEN", tactical.gardien, BLUE], ["CONTRÔLE", tactical.controle, "#a78bfa"]].map(([label, value, color]: any) => <div key={label} style={{ minWidth: 0, borderRadius: 12, padding: "8px 5px", textAlign: "center", border: `1px solid ${color}35`, background: `${color}08` }}><strong style={{ display: "block", color, fontSize: 16 }}>{value}</strong><span style={{ color: SOFT, fontSize: 5.6, fontWeight: 950 }}>{label}</span><div style={{ marginTop: 5, height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><span style={{ display: "block", width: `${value}%`, height: "100%", background: color }} /></div></div>)}
+        </div>
+      </Section>
+
+      <Section title="Carte de cible Football" accent={GREEN} right={<span style={{ color: SOFT, fontSize: 7 }}>{sectorProfile.missionHits}/{sectorProfile.totalDarts} fléchettes utiles · {sectorProfile.missionRate}%</span>}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
+          {sectorProfile.sectors.map((sector: any) => { const intensity = sector.missionHits / sectorMax; const active = sector.darts > 0; return <div key={sector.sector} title={`${sector.darts} fléchettes · ${sector.missionHits} actions utiles · ${sector.doubles} doubles · ${sector.triples} triples`} style={{ minWidth: 0, minHeight: 42, borderRadius: 11, padding: "5px 4px", textAlign: "center", border: `1px solid ${active ? GREEN : "rgba(255,255,255,.07)"}${active ? "55" : ""}`, background: active ? `rgba(101,229,170,${0.035 + intensity * 0.14})` : "rgba(255,255,255,.018)" }}><strong style={{ display: "block", color: active ? (intensity >= .75 ? GOLD : GREEN) : "#657080", fontSize: 12 }}>{sector.sector}</strong><span style={{ color: SOFT, fontSize: 5.2 }}>{sector.missionHits} utile{sector.missionHits > 1 ? "s" : ""}</span><div style={{ color: "#7e8999", fontSize: 4.9 }}>{sector.doubles}D · {sector.triples}T</div></div>; })}
+        </div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+          <Kpi label="Zone forte" value={sectorProfile.strongestSector?.sector || "—"} detail={sectorProfile.strongestSector ? `${sectorProfile.strongestSector.missionHits} actions utiles` : "pas assez de données"} color={GOLD} />
+          <Kpi label="Bull" value={sectorProfile.bull} detail="bull extérieur" color={BLUE} />
+          <Kpi label="DBull" value={sectorProfile.dbull} detail="bull intérieur" color={GOLD} />
+          <Kpi label="Miss" value={sectorProfile.misses} detail={`${pct(sectorProfile.misses, sectorProfile.totalDarts)}% des fléchettes`} color={RED} />
         </div>
       </Section>
 

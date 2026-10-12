@@ -2,6 +2,7 @@
 import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { oceanControlAccuracy, oceanControlVariantLabel } from "../lib/gameEngines/oceanControlEngine";
+import { oceanControlMissionSummary } from "../lib/oceanControlMission";
 
 const BLUE = "#30b9ff", CYAN = "#65e9ff", GREEN = "#65e5aa", GOLD = "#f5ca68", RED = "#ff6573", SOFT = "#aab4c7";
 const playerName = (p: any) => p?.name || p?.displayName || p?.display_name || "Joueur";
@@ -102,6 +103,7 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
     { label: "TEMPO", value: Number(winnerRow.stats?.visits || 0) > 0 ? Math.min(100, Math.round((Number(winnerRow.stats?.successfulVisits || 0) / Math.max(1, Number(winnerRow.stats?.visits || 0))) * 100)) : 0, color: BLUE },
     { label: "SÉRIE", value: Math.min(100, Number(winnerRow.stats?.bestHitStreak || 0) * 20), color: GOLD },
   ] : [];
+  const winnerMission = winnerRow ? oceanControlMissionSummary(winnerRow.stats, state.config) : null;
 
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10000, background: "radial-gradient(circle at 50% -5%,rgba(48,185,255,.30),rgba(0,7,13,.96) 42%,#000 100%)", overflowY: "auto", padding: "max(10px,env(safe-area-inset-top)) 9px max(12px,env(safe-area-inset-bottom))", boxSizing: "border-box" }}>
     <div style={{ width: "min(840px,100%)", margin: "0 auto" }}>
@@ -138,6 +140,12 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
       {winnerRow ? <div style={{ marginTop: 8, borderRadius: 18, padding: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.08)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}><div><div style={{ color: CYAN, fontSize: 8.7, fontWeight: 1100, letterSpacing: .65 }}>ADN DE BATAILLE</div><div style={{ marginTop: 2, color: SOFT, fontSize: 7 }}>Profil synthétique du commandant vainqueur</div></div><strong style={{ color: commandGradeColor, fontSize: 10 }}>{battleSignature}</strong></div>
         <div style={{ display: "grid", gap: 7 }}>{winnerDNA.map((metric: any) => <div key={metric.label} style={{ display: "grid", gridTemplateColumns: "74px minmax(0,1fr) 32px", gap: 7, alignItems: "center" }}><span style={{ color: "#c5d2df", fontSize: 6.8, fontWeight: 1000 }}>{metric.label}</span><div style={{ height: 7, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ height: "100%", width: `${metric.value}%`, borderRadius: 999, background: `linear-gradient(90deg,${metric.color}88,${metric.color})` }} /></div><strong style={{ textAlign: "right", color: metric.color, fontSize: 7.3 }}>{metric.value}</strong></div>)}</div>
+      </div> : null}
+
+      {winnerMission ? <div style={{ marginTop: 8, borderRadius: 18, padding: 11, background: `linear-gradient(135deg,${winnerMission.percent === 100 ? GREEN : BLUE}0d,rgba(255,255,255,.02))`, border: `1px solid ${winnerMission.percent === 100 ? GREEN : BLUE}33` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}><div><div style={{ color: winnerMission.percent === 100 ? GREEN : CYAN, fontSize: 8.7, fontWeight: 1100, letterSpacing: .65 }}>OBJECTIFS DE MISSION</div><div style={{ marginTop: 2, color: SOFT, fontSize: 7 }}>{winnerMission.label}</div></div><strong style={{ color: winnerMission.percent === 100 ? GREEN : GOLD, fontSize: 11 }}>{winnerMission.completed}/{winnerMission.total} · {winnerMission.percent}%</strong></div>
+        <div style={{ height: 7, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)", marginBottom: 9 }}><div style={{ height: "100%", width: `${winnerMission.percent}%`, background: `linear-gradient(90deg,${BLUE},${winnerMission.percent === 100 ? GREEN : GOLD})` }} /></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{winnerMission.objectives.map((objective: any) => <div key={objective.id} style={{ minWidth: 0, borderRadius: 12, padding: 8, background: objective.complete ? `${objective.color}0d` : "rgba(255,255,255,.025)", border: `1px solid ${objective.complete ? objective.color + "44" : "rgba(255,255,255,.07)"}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 5, alignItems: "center" }}><span style={{ color: objective.complete ? objective.color : SOFT, fontSize: 11 }}>{objective.complete ? "✓" : objective.icon}</span><strong style={{ color: objective.complete ? objective.color : "#eef8ff", fontSize: 6.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{objective.label}</strong><span style={{ color: SOFT, fontSize: 6 }}>{Math.min(objective.value, objective.target)}/{objective.target}</span></div><div style={{ marginTop: 6, height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ height: "100%", width: `${objective.progress}%`, background: objective.color }} /></div></div>)}</div>
       </div> : null}
 
       <div style={{ marginTop: 10, borderRadius: 18, padding: 11, background: "linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.20))", border: "1px solid rgba(255,255,255,.08)" }}>

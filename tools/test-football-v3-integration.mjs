@@ -29,7 +29,7 @@ const play = read("src/pages/FootballPlay.tsx");
 for (const token of ["football-live-strip", "TABLEAU DU MATCH", "FEUILLE DE MATCH", "records", "buildMatchHighlights", "CompactFootballPad", "FootballEnd"]) assert.ok(play.includes(token), `jeu incomplet: ${token}`);
 
 const end = read("src/pages/FootballEnd.tsx");
-for (const token of ["JOUEUR DU MATCH", "STATS MATCH", "MEILLEUR BUTEUR", "MEILLEUR GARDIEN", "CHRONOLOGIE DES BUTS", "STATISTIQUES & RECORDS"]) assert.ok(end.includes(token), `écran de fin incomplet: ${token}`);
+for (const token of ["JOUEUR DU MATCH", "STATS MATCH", "MEILLEUR BUTEUR", "MEILLEUR GARDIEN", "MOMENTS CLÉS", "STATISTIQUES & RECORDS"]) assert.ok(end.includes(token), `écran de fin incomplet: ${token}`);
 
 const stats = read("src/components/stats/FootballStatsTabFull.tsx");
 for (const token of ["Records personnels Darts Football", "SÉRIE DE VICTOIRES", "Forme récente", "Variantes", "Parties récentes"]) assert.ok(stats.includes(token), `statistiques incomplètes: ${token}`);

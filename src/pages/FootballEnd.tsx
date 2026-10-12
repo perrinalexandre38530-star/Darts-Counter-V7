@@ -3,7 +3,7 @@ import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { footballAccuracy, footballVariantLabel } from "../lib/gameEngines/footballEngine";
 import { History } from "../lib/history";
-import { buildFootballEndInsights, footballKeyMomentsFromState, footballPerformanceRating } from "../lib/footballInsights";
+import { buildFootballEndInsights, buildFootballSectorProfileFromState, footballKeyMomentsFromState, footballPerformanceRating, footballTacticalProfile } from "../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#35d0ff";
@@ -93,7 +93,7 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
     const stats = state.statsByPlayer[player.id] || {};
     const sideIndex = state.sideByPlayer[player.id] ?? 0;
     const impact = n(stats.goals) * 12 + n(stats.saves) * 6 + n(stats.interceptions) * 4 + n(stats.successfulActions) + n(stats.counterAttacks) * 2;
-    return { player, profile, stats, side: state.sides[sideIndex], sideIndex, winner: state.winnerPlayerIds.includes(player.id), impact, accuracy: footballAccuracy(stats), rating: footballPerformanceRating(stats) };
+    return { player, profile, stats, side: state.sides[sideIndex], sideIndex, winner: state.winnerPlayerIds.includes(player.id), impact, accuracy: footballAccuracy(stats), rating: footballPerformanceRating(stats), tactical: footballTacticalProfile(stats), sectorProfile: buildFootballSectorProfileFromState(state, player.id) };
   }).sort((a: any, b: any) => Number(b.winner) - Number(a.winner) || b.impact - a.impact);
 
   const by = (fn: any) => [...playerRows].sort((a, b) => fn(b) - fn(a))[0] || null;
@@ -164,6 +164,24 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
         <ProfileAvatar profile={mvp.profile} size={37} />
         <div style={{ minWidth: 0 }}><div style={{ color: GOLD, fontSize: 6.5, fontWeight: 1100, letterSpacing: .8 }}>JOUEUR DU MATCH</div><div style={{ marginTop: 2, color: WHITE, fontSize: 11, fontWeight: 1150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(mvp.profile)}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 6.8 }}>{n(mvp.stats.goals)} but · {n(mvp.stats.saves)} arrêt · {n(mvp.stats.interceptions)} interception · {n(mvp.stats.counterAttacks)} contre</div></div>
         <div style={{ textAlign: "right" }}><div style={{ color: GOLD, fontSize: 17, fontWeight: 1200 }}>{mvp.rating.toFixed(1)}</div><div style={{ color: SOFT, fontSize: 5.7 }}>NOTE · {mvp.accuracy}% précis.</div></div>
+      </section> : null}
+
+      <section style={{ marginTop: 7, borderRadius: 16, padding: 9, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(135deg,rgba(167,139,250,.055),rgba(101,229,170,.035))" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: "#a78bfa", fontSize: 7.4, letterSpacing: .7 }}>🧬 ADN TACTIQUE DU MATCH</strong><span style={{ color: SOFT, fontSize: 6 }}>profil calculé sur les actions réelles</span></div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+          {playerRows.map((row: any) => <div key={`dna-${row.player.id}`} style={{ minWidth: 0, borderRadius: 12, padding: 7, border: `1px solid ${row.tactical.color}3d`, background: `${row.tactical.color}08` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}><strong style={{ minWidth: 0, color: WHITE, fontSize: 7.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(row.profile)}</strong><span style={{ color: row.tactical.color, fontSize: 6.2, fontWeight: 1050 }}>{row.tactical.icon} {row.tactical.label}</span></div>
+            <div style={{ marginTop: 5, display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 3 }}>
+              {[["ATT", row.tactical.attaque, GREEN], ["FIN", row.tactical.finition, GOLD], ["DEF", row.tactical.defense, RED], ["GK", row.tactical.gardien, BLUE], ["CTL", row.tactical.controle, "#a78bfa"]].map(([label, value, color]: any) => <div key={label} style={{ textAlign: "center" }}><strong style={{ display: "block", color, fontSize: 8 }}>{value}</strong><span style={{ color: SOFT, fontSize: 5.2 }}>{label}</span></div>)}
+            </div>
+            {row.sectorProfile?.strongestSector ? <div style={{ marginTop: 5, color: SOFT, fontSize: 5.8 }}>🎯 Zone forte : <strong style={{ color: GREEN }}>{row.sectorProfile.strongestSector.sector}</strong> · {row.sectorProfile.strongestSector.missionHits}/{row.sectorProfile.strongestSector.darts} actions utiles</div> : null}
+          </div>)}
+        </div>
+      </section>
+
+      {mvp?.sectorProfile?.topSectors?.length ? <section style={{ marginTop: 7, borderRadius: 15, padding: 8, border: `1px solid ${GREEN}38`, background: `${GREEN}06` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: GREEN, fontSize: 7 }}>🎯 ZONES CHAUDES · {playerName(mvp.profile).toUpperCase()}</strong><span style={{ color: SOFT, fontSize: 6 }}>{mvp.sectorProfile.missionRate}% missions touchées</span></div>
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 4 }}>{mvp.sectorProfile.topSectors.slice(0, 5).map((zone: any, index: number) => <div key={zone.sector} style={{ borderRadius: 10, padding: "6px 4px", textAlign: "center", border: `1px solid ${index === 0 ? GOLD : GREEN}35`, background: `${index === 0 ? GOLD : GREEN}08` }}><strong style={{ color: index === 0 ? GOLD : GREEN, fontSize: 12 }}>{zone.sector}</strong><div style={{ color: SOFT, fontSize: 5.3 }}>{zone.missionHits} utile{zone.missionHits > 1 ? "s" : ""}</div><div style={{ color: "#7f8998", fontSize: 5 }}>{zone.doubles}D · {zone.triples}T</div></div>)}</div>
       </section> : null}
 
       <section style={{ marginTop: 7, borderRadius: 16, padding: 9, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.025)", display: "grid", gap: 7 }}>

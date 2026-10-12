@@ -359,9 +359,11 @@ export function wave61MafiaPhase(state: Wave61State): "NIGHT" | "DAY" { return m
 function assignMafiaRoles(ids: string[], seedText: string, teamByPlayer: Record<string, string>, participantMode: Wave61ParticipantMode): Record<string, MafiaRole> {
   if (!ids.length) return {};
   if (participantMode === "teams") {
-    const town = ids.filter((id) => String(teamByPlayer[id] || "A") !== "B");
+    const orderedTeams = Array.from(new Set(ids.map((id) => String(teamByPlayer[id] || "")).filter(Boolean)));
+    const mafiaTeam = orderedTeams[1] || orderedTeams[0] || "B";
+    const town = ids.filter((id) => String(teamByPlayer[id] || orderedTeams[0] || "A") !== mafiaTeam);
     const roles: Record<string, MafiaRole> = {};
-    ids.forEach((id) => { roles[id] = String(teamByPlayer[id] || "A") === "B" ? "MAFIA" : "CITIZEN"; });
+    ids.forEach((id) => { roles[id] = String(teamByPlayer[id] || orderedTeams[0] || "A") === mafiaTeam ? "MAFIA" : "CITIZEN"; });
     if (town[0]) roles[town[0]] = "DETECTIVE";
     if (town[1]) roles[town[1]] = "MEDIC";
     return roles;
@@ -2700,13 +2702,14 @@ function processAscentMode(state: Wave61State, playerId: string, darts: GameDart
     fatigue = clamp(fatigue + wrong * 9 + weather.fatigue - bulls * 12, 0, 100);
     oxygen = clamp(oxygen - 3 - wrong * 3 - (weather.penalty > .25 ? 4 : 0) + bulls * 12, 0, 100);
     acclimation = clamp(acclimation + matching.length * 4 + bulls * 6, 0, 100);
-    if (fatigue >= 100 || oxygen <= 0) {
+    const forcedRetreat = fatigue >= 100 || oxygen <= 0;
+    if (forcedRetreat) {
       marks = Math.max(0, marks - 2);
       fatigue = 58;
       oxygen = Math.max(35, oxygen);
       events.push("⛺ Repli au camp · récupération obligatoire");
     }
-    if (marks >= threshold && peak < SUMMIT_14_PEAKS.length) {
+    if (!forcedRetreat && marks >= threshold && peak < SUMMIT_14_PEAKS.length) {
       events.push(`🏔️ ${SUMMIT_14_PEAKS[peak]} VALIDÉ !`);
       peak += 1;
       marks = 0;

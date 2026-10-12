@@ -105,14 +105,15 @@ export default function CargoHistoryDetail({ record, onClose }: any) {
   const bestVisit = Math.max(0, ...rows.map((r: any) => n(r?.bestVisitScore)));
   const bestPallet = Math.max(0, ...rows.map((r: any) => n(r?.bestPalletWeight)));
   const longestSeries = Math.max(n(match?.longestSeries), ...rows.map((r: any) => n(r?.longestSeries)));
-  const hero = full?.status === "finished" ? cargoArtLibrary.chargementComplet : cargoArtLibrary.chargementEnCours;
+  const finished = ["finished", "completed", "complete", "done"].includes(String(full?.status || "").toLowerCase()) || full?.summary?.finished === true || Boolean(full?.finishedAt || full?.endedAt);
+  const hero = finished ? cargoArtLibrary.chargementComplet : cargoArtLibrary.chargementEnCours;
   const support = parcel ? cargoArtLibrary.colisCargo : cargoArtLibrary.paletteLogistique;
 
   return <div className="cargo-history-detail" role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(0,0,0,.88)", backdropFilter: "blur(10px)", padding: "max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))", display: "grid", placeItems: "center" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
     <div className="cargo-history-detail-shell">
       <div className="cargo-history-detail-head">
         <div style={{ width: 70, height: 58, display: "grid", placeItems: "center" }}><img src={hero} alt="CARGO" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /></div>
-        <div style={{ minWidth: 0 }}><div style={{ color: ORANGE, fontSize: 11.5, fontWeight: 1150, letterSpacing: .7 }}>DÉTAIL DE LA MISSION · {cargoVariantLabel(variant).toUpperCase()}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{formatDate(full?.finishedAt || full?.endedAt || full?.updatedAt || full?.createdAt)} · {teamMode ? "ÉQUIPES" : rows.length > 1 ? "MULTI" : "SOLO"}{loading ? " · chargement…" : ""}</div></div>
+        <div style={{ minWidth: 0 }}><div style={{ color: ORANGE, fontSize: 11.5, fontWeight: 1150, letterSpacing: .7 }}>DÉTAIL DE LA MISSION · {cargoVariantLabel(variant).toUpperCase()}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{formatDate(full?.finishedAt || full?.endedAt || full?.updatedAt || full?.createdAt)} · {teamMode ? "ÉQUIPES" : rows.length > 1 ? "MULTI" : "SOLO"} · <span style={{ color: finished ? GREEN : GOLD, fontWeight: 1050 }}>{finished ? "TERMINÉE" : "EN COURS"}</span>{loading ? " · chargement…" : ""}</div></div>
         <button type="button" onClick={onClose} style={{ width: 38, height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18, cursor: "pointer" }}>×</button>
       </div>
 

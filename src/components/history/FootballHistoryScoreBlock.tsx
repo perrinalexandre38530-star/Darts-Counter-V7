@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
-import { footballKeyMomentsFromRecord, footballPerformanceRating } from "../../lib/footballInsights";
+import { buildFootballSectorProfileFromRecord, footballKeyMomentsFromRecord, footballPerformanceRating, footballTacticalProfile } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#53c9ff";
@@ -49,6 +49,9 @@ export default function FootballHistoryScoreBlock({ record }: any) {
   const statusColor = finished ? (draw ? GOLD : GREEN) : BLUE;
   const format = variant === "first_to" || variant === "classic" ? `1er à ${n(config?.goalTarget) || 3}` : variant === "penalties" ? `${n(config?.penaltyShots) || 5} tirs` : variant === "match" ? `2 × ${n(config?.halfRounds) || 5} tours` : footballVariantLabel(variant);
   const moments = footballKeyMomentsFromRecord(record, 5);
+  const mvpId = String(mvp?.id || mvp?.playerId || mvp?.profileId || "");
+  const mvpTactical = mvp ? footballTacticalProfile(mvp) : null;
+  const mvpSector = mvp ? buildFootballSectorProfileFromRecord(record, mvpId) : null;
 
   return <div style={{ marginTop: 8, display: "grid", gap: 6, minWidth: 0 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -73,6 +76,12 @@ export default function FootballHistoryScoreBlock({ record }: any) {
         ["⚽ BUTEUR", records?.topScorer?.name || records?.topScorer?.playerName, GREEN],
         ["🧤 GARDIEN", records?.topKeeper?.name || records?.topKeeper?.playerName, BLUE],
       ].filter((item: any) => item[1]).map(([label, value, color]: any) => <div key={label} style={{ minWidth: 0, padding: "5px 6px", borderRadius: 9, border: `1px solid ${color}30`, background: `${color}08` }}><div style={{ color, fontSize: 5.4, fontWeight: 1050 }}>{label}</div><div style={{ marginTop: 2, color: WHITE, fontSize: 6.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>)}
+    </div> : null}
+
+    {finished && mvpTactical ? <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 6, alignItems: "center", padding: "5px 6px", borderRadius: 10, border: `1px solid ${mvpTactical.color}30`, background: `${mvpTactical.color}07` }}>
+      <div style={{ minWidth: 0 }}><div style={{ color: SOFT, fontSize: 5.2, fontWeight: 950 }}>ADN DU MVP</div><strong style={{ display: "block", marginTop: 1, color: mvpTactical.color, fontSize: 6.6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{mvpTactical.icon} {mvpTactical.label}</strong></div>
+      <div style={{ textAlign: "center" }}><strong style={{ display: "block", color: GOLD, fontSize: 9 }}>{mvpSector?.strongestSector?.sector || "—"}</strong><span style={{ color: SOFT, fontSize: 4.9 }}>ZONE FORTE</span></div>
+      <div style={{ textAlign: "right" }}><strong style={{ display: "block", color: GREEN, fontSize: 9 }}>{mvpSector?.missionRate || 0}%</strong><span style={{ color: SOFT, fontSize: 4.9 }}>MISSIONS</span></div>
     </div> : null}
 
     {(penaltyA.length || penaltyB.length) ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 6, borderRadius: 10, border: `1px solid ${GOLD}33`, background: `${GOLD}08` }}>
