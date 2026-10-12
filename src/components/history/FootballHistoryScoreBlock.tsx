@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
+import { footballKeyMomentsFromRecord } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#53c9ff";
@@ -11,6 +12,16 @@ const WHITE = "#f7fbff";
 const n = (value: any) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 
 function sum(rows: any[], key: string) { return (rows || []).reduce((total, row) => total + n(row?.[key]), 0); }
+
+function momentIcon(moment: any) {
+  const value = `${String(moment?.type || "")} ${String(moment?.label || "")}`.toLowerCase();
+  if (value.includes("goal") || value.includes("but")) return "⚽";
+  if (value.includes("save") || value.includes("arrêt") || value.includes("arret")) return "🧤";
+  if (value.includes("intercept") || value.includes("tacle")) return "🛡️";
+  if (value.includes("counter") || value.includes("contre")) return "🚀";
+  if (value.includes("penalt")) return "🥅";
+  return "•";
+}
 
 export default function FootballHistoryScoreBlock({ record }: any) {
   const summary = record?.summary || record?.payload?.summary || {};
@@ -37,6 +48,7 @@ export default function FootballHistoryScoreBlock({ record }: any) {
   const penaltyB = state?.penaltyAttemptsBySide?.[sideB.id] || [];
   const statusColor = finished ? (draw ? GOLD : GREEN) : BLUE;
   const format = variant === "first_to" || variant === "classic" ? `1er à ${n(config?.goalTarget) || 3}` : variant === "penalties" ? `${n(config?.penaltyShots) || 5} tirs` : variant === "match" ? `2 × ${n(config?.halfRounds) || 5} tours` : footballVariantLabel(variant);
+  const moments = footballKeyMomentsFromRecord(record, 5);
 
   return <div style={{ marginTop: 8, display: "grid", gap: 6, minWidth: 0 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -64,6 +76,11 @@ export default function FootballHistoryScoreBlock({ record }: any) {
 
     {(penaltyA.length || penaltyB.length) ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 6, borderRadius: 10, border: `1px solid ${GOLD}33`, background: `${GOLD}08` }}>
       {[{ side: sideA, attempts: penaltyA }, { side: sideB, attempts: penaltyB }].map(({ side, attempts }: any) => <div key={side.id}><div style={{ color: side.color, fontSize: 5.8, fontWeight: 1000 }}>{side.name}</div><div style={{ marginTop: 3, display: "flex", gap: 3, flexWrap: "wrap" }}>{attempts.map((ok: boolean, index: number) => <span key={index} style={{ width: 14, height: 14, borderRadius: "50%", display: "grid", placeItems: "center", background: ok ? GREEN : RED, color: ok ? "#03110b" : "#fff", fontSize: 6.5, fontWeight: 1100 }}>{ok ? "✓" : "×"}</span>)}</div></div>)}
+    </div> : null}
+
+    {moments.length ? <div style={{ padding: 6, borderRadius: 11, border: "1px solid rgba(255,255,255,.075)", background: "rgba(255,255,255,.02)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}><strong style={{ color: GOLD, fontSize: 5.8 }}>MOMENTS CLÉS</strong><span style={{ color: SOFT, fontSize: 5.2 }}>dernières actions décisives</span></div>
+      <div style={{ marginTop: 4, display: "grid", gap: 3 }}>{moments.map((moment: any, index: number) => <div key={moment.id || index} style={{ display: "grid", gridTemplateColumns: "16px 38px minmax(0,1fr) auto", gap: 4, alignItems: "center", color: SOFT, fontSize: 5.8 }}><span style={{ textAlign: "center" }}>{momentIcon(moment)}</span><strong style={{ color: GREEN }}>P{moment.period}·T{moment.round}</strong><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{moment.label}</span>{moment.scoreLine ? <strong style={{ color: WHITE }}>{moment.scoreLine}</strong> : null}</div>)}</div>
     </div> : null}
 
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, color: SOFT, fontSize: 6.3 }}>
