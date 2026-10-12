@@ -1155,20 +1155,42 @@ async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, prof
     if (!token) throw new Error("Bridge Supabase/NAS invalide : token NAS absent.");
     const bridgedUser = json?.user || {};
     const bridgedProfile = json?.profile || profile || null;
+    const supabaseUserId = String(userAuth.id || session?.user?.id || "").trim();
+    const canonicalUserId = String(bridgedUser?.id || json?.userId || json?.canonicalUserId || "").trim();
+
+    // Le résultat du bridge garde DEUX identités explicites :
+    // - user.id / userId = UID Supabase stable pour React + IndexedDB
+    // - canonicalUserId = alias technique NAS pour les routes privées
+    // Avant V15, ce helper retournait user.id=usr_* ; certains appels
+    // saveAuthToLS() remplaçaient alors la session primaire quelques secondes
+    // après le login et l'application rechargeait un autre store.
     const bridged: AuthSession = {
       token,
       refreshToken: String(json?.refreshToken || session?.refresh_token || ""),
       expiresAt: json?.expiresAt ? Date.parse(json.expiresAt) : (Number(session?.expires_at || 0) || null),
-      userId: String(bridgedUser?.id || json?.userId || userAuth.id),
+      userId: supabaseUserId || canonicalUserId,
+      canonicalUserId: canonicalUserId && canonicalUserId !== supabaseUserId ? canonicalUserId : null,
+      supabaseUserId: supabaseUserId || null,
       user: {
-        id: String(bridgedUser?.id || json?.userId || userAuth.id),
+        id: supabaseUserId || canonicalUserId,
         email: bridgedUser?.email || userAuth.email,
         nickname: bridgedUser?.nickname || userAuth.nickname,
         createdAt: Number(bridgedUser?.createdAt || userAuth.createdAt || now()),
       },
       profile: bridgedProfile,
+      authProvider: "nas",
+      degradedMode: false,
     };
-    saveNasTokens(bridged);
+
+    // Les clés NAS reçoivent uniquement la variante technique canonique.
+    const nasTechnicalSession: AuthSession = canonicalUserId
+      ? {
+          ...bridged,
+          userId: canonicalUserId,
+          user: { ...(bridged.user as any), id: canonicalUserId },
+        }
+      : bridged;
+    saveNasTokens(nasTechnicalSession, { silent: true });
     return bridged;
   } finally {
     if (timer) window.clearTimeout(timer);

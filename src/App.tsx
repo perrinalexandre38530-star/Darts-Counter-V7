@@ -1423,7 +1423,11 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
       setDetail("Ouverture de ton espace MULTISPORTS…");
 
       clearPendingSocialAuth();
-      try { setStorageUser(uid); localStorage.setItem("dc_user_id", uid); } catch {}
+      try {
+        (window as any).__dc_primary_auth_user_id = uid;
+        setStorageUser(uid);
+        localStorage.setItem("dc_user_id", uid);
+      } catch {}
 
       // IMPORTANT : aucune restauration NAS/R2/sauvegarde ne bloque cette page.
       // L'utilisateur entre dans l'app dès que Supabase confirme sa session.
@@ -2531,7 +2535,12 @@ useEffect(() => {
     if (online.status !== "signed_in") return;
 
     const user = (online as any)?.user || (online as any)?.session?.user || null;
-    const uid = String(user?.id || "").trim();
+    const uid = String(
+      user?.user_metadata?.supabase_user_id ||
+      (online as any)?.session?.supabaseUserId ||
+      user?.id ||
+      ""
+    ).trim();
     if (!uid) return;
 
     // ISOLATION COMPTE : le bridge profil n'a le droit de toucher le store qu'APRÈS
@@ -2600,7 +2609,6 @@ useEffect(() => {
     JSON.stringify(((online as any)?.profile?.privateInfo || {})),
     (store?.profiles?.length || 0),
     (store as any)?.activeProfileId,
-    (((store as any)?.dartSets?.length) || 0),
     tab,
   ]);
 
@@ -3356,7 +3364,11 @@ useEffect(() => {
     if (loading) return;
     if (!online?.ready) return;
 
-    const uid = String((online as any)?.user?.id || "").trim();
+    const uid = String(
+      (online as any)?.user?.user_metadata?.supabase_user_id ||
+      (online as any)?.user?.id ||
+      ""
+    ).trim();
     if (cloudHydratedUserRef.current === uid) return;
 
     const nextScope = uid || null;
@@ -3385,7 +3397,7 @@ useEffect(() => {
         const saved = await loadStore<Store>();
         if (cancelled) return;
 
-        const next: Store = saved
+        const loaded: Store = saved
           ? {
               ...initialStore,
               ...saved,
@@ -3395,6 +3407,14 @@ useEffect(() => {
               dartSets: (saved as any).dartSets ?? getAllDartSets(),
             }
           : { ...initialStore };
+
+        // V16 : réconcilier COMPTE -> MON PROFIL AVANT le premier paint du
+        // nouveau scope. Cela supprime la fenêtre où Profiles/Home pouvaient
+        // voir deux activeProfileId différents et choisir chacun un ancien alias.
+        const liveAuthUser = (online as any)?.user || null;
+        const next: Store = uid && liveAuthUser
+          ? ensureLocalProfileForOnlineUser(loaded as any, liveAuthUser as any, (online as any)?.profile ?? null) as Store
+          : loaded;
 
         logProfileStabilityAudit("storage-scope-reload-loaded", next, { source: "auth-scope-reload", scope: nextScope });
         setStore(next);

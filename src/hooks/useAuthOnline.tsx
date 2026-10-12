@@ -408,14 +408,14 @@ function applyAuthFromSession(
   setApiAccessToken((session as any)?.access_token || "");
 
   if (user) {
-    // IMPORTANT: une session résiduelle ne doit jamais annuler un logout explicite.
-    // Le verrou est retiré uniquement par une action volontaire de connexion/signup/OAuth.
+    // IMPORTANT: la vraie session Supabase fixe l'identité primaire AVANT tout
+    // setStorageUser. Tous les appels secondaires (NAS/backup/legacy) sont ainsi
+    // forcés à rester dans ce namespace pendant toute la session React.
     try {
+      (window as any).__dc_primary_auth_user_id = String(user.id || "");
+      (window as any).__dc_last_signed_in_user_id = String(user.id || "");
       setStorageUser(String(user.id || ""));
       localStorage.setItem("dc_user_id", String(user.id || ""));
-    } catch {}
-    try {
-      (window as any).__dc_last_signed_in_user_id = String(user.id || "");
     } catch {}
     setState((s) => ({
       ...s,
@@ -428,6 +428,7 @@ function applyAuthFromSession(
     }));
   } else {
     try {
+      try { delete (window as any).__dc_primary_auth_user_id; } catch {}
       setStorageUser(null);
       localStorage.removeItem("dc_user_id");
     } catch {}

@@ -902,7 +902,23 @@ function mergeRecoveredStoreFromAlias(currentStore: any, aliasStore: any): any {
   const aliases = currentAccountStoreAliases();
   const currentActiveValid = !!currentActiveId && profiles.some((p) => String(p?.id || "") === currentActiveId);
   const aliasActiveValid = !!aliasActiveId && profiles.some((p) => String(p?.id || "") === aliasActiveId);
-  const preferAliasActive = aliasActiveValid && (!currentActiveValid || (aliases.has(currentActiveId) && !aliases.has(aliasActiveId)));
+  const currentActiveProfile = currentActiveValid ? profiles.find((p) => String(p?.id || "") === currentActiveId) : null;
+  const aliasActiveProfile = aliasActiveValid ? profiles.find((p) => String(p?.id || "") === aliasActiveId) : null;
+  const aliasClearlyRicher = !!aliasActiveProfile && !!currentActiveProfile
+    && canonicalProfileCompleteness(aliasActiveProfile) >= canonicalProfileCompleteness(currentActiveProfile) + 1;
+  // Cette fonction n'est désormais utilisée que pendant la migration one-way
+  // vers le scope Supabase. L'ancien scope stable porte souvent le dernier vrai
+  // activeProfileId (ex. Ninja), tandis que le scope récent a été créé par les
+  // correctifs et peut pointer vers un faux profil compte (ex. Perrin). Dans ce
+  // contexte de migration, un actif local non technique provenant de l'alias
+  // est une preuve plus forte que le profil fabriqué dans le scope récent.
+  const aliasIsHumanLocal = aliasActiveValid && !aliases.has(aliasActiveId) && !String(aliasActiveId).startsWith("online:");
+  const preferAliasActive = aliasActiveValid && (
+    !currentActiveValid ||
+    (aliases.has(currentActiveId) && !aliases.has(aliasActiveId)) ||
+    (aliasIsHumanLocal && aliasActiveId !== currentActiveId) ||
+    aliasClearlyRicher
+  );
   const activeProfileId = preferAliasActive
     ? aliasActiveId
     : (currentActiveValid ? currentActiveId : (aliasActiveValid ? aliasActiveId : String(profiles[0]?.id || "") || null));
@@ -1376,6 +1392,7 @@ const LEGACY_LS_KEY = "darts-counter-store-v3";
 
 const STORAGE_USER_LS_KEY = "dc_storage_user_id_v1";
 const AUTH_SESSION_LS_KEY = "dc_online_auth_supabase_v1";
+const ACCOUNT_SCOPE_MIGRATION_PREFIX = "dc_account_scope_migrated_v16:";
 // `var` sans initialiseur est intentionnel : en cas de cycle ESM, la liaison
 // existe déjà avec la valeur undefined au lieu d'être dans la TDZ. Elle n'est
 // jamais réinitialisée plus tard pendant l'évaluation du module.
@@ -1386,39 +1403,59 @@ function normalizeUserId(value: unknown): string | null {
   return s ? s : null;
 }
 
+function runtimePrimaryAuthUserId(): string | null {
+  try {
+    return normalizeUserId((window as any)?.__dc_primary_auth_user_id);
+  } catch {
+    return null;
+  }
+}
+
+function stableSupabaseUserIdFromAuthLS(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(AUTH_SESSION_LS_KEY) || "";
+    if (!raw) return null;
+    if (!(raw.startsWith("{") || raw.startsWith("["))) return null;
+    const parsed = safeJsonParse<any>(raw, null);
+    return normalizeUserId(
+      parsed?.supabaseUserId ||
+      parsed?.user?.user_metadata?.supabase_user_id ||
+      parsed?.session?.user?.id ||
+      (String(parsed?.authProvider || "").toLowerCase().startsWith("supabase") ? (parsed?.user?.id || parsed?.userId) : null)
+    );
+  } catch {
+    return null;
+  }
+}
+
 function detectUserIdFromAuthLS(): string | null {
   if (typeof localStorage === "undefined") return null;
   try {
-    const explicitScope = normalizeUserId(localStorage.getItem("dc_storage_user_id_v1"));
-    const raw = localStorage.getItem("dc_online_auth_supabase_v1") || "";
+    // Pendant toute la durée de vie React, l'identité fournie par la vraie
+    // session Supabase est l'autorité absolue. Aucun bridge NAS, restauration
+    // ou ancien alias n'a le droit de changer de namespace derrière elle.
+    const runtimePrimary = runtimePrimaryAuthUserId();
+    if (runtimePrimary) return runtimePrimary;
 
+    const explicitScope = normalizeUserId(localStorage.getItem(STORAGE_USER_LS_KEY));
+    const stableSupabase = stableSupabaseUserIdFromAuthLS();
+    if (stableSupabase) {
+      if (explicitScope !== stableSupabase) {
+        try { localStorage.setItem(STORAGE_USER_LS_KEY, stableSupabase); } catch {}
+      }
+      return stableSupabase;
+    }
+
+    const raw = localStorage.getItem(AUTH_SESSION_LS_KEY) || "";
     if (raw) {
       if (raw.startsWith("{") || raw.startsWith("[")) {
         const parsed = safeJsonParse<any>(raw, null);
-        // UNE identité de stockage : l'id canonique porté par la session compte.
-        // supabaseUserId reste un alias réseau et ne doit jamais créer un second
-        // namespace local de profil/historique.
-        const canonical = normalizeUserId(
-          // L'identité locale doit rester le Supabase UID dès qu'il existe.
-          // `userId` / `user.id` peuvent contenir l'alias NAS usr_* après le
-          // bridge différé ; les prioriser faisait basculer le namespace du
-          // store quelques secondes après le login.
-          parsed?.supabaseUserId ||
-          parsed?.user?.user_metadata?.supabase_user_id ||
-          parsed?.session?.user?.id ||
-          parsed?.userId ||
-          parsed?.user?.id ||
-          parsed?.canonicalUserId
-        );
-        if (canonical) {
-          if (explicitScope !== canonical) {
-            try { localStorage.setItem("dc_storage_user_id_v1", canonical); } catch {}
-          }
-          return canonical;
-        }
+        const fallback = normalizeUserId(parsed?.userId || parsed?.user?.id || parsed?.canonicalUserId);
+        if (fallback) return fallback;
       } else {
-        const canonical = normalizeUserId(raw);
-        if (canonical) return canonical;
+        const fallback = normalizeUserId(raw);
+        if (fallback) return fallback;
       }
     }
 
@@ -1436,11 +1473,23 @@ export function getStorageUser(): string | null {
 }
 
 export function setStorageUser(userId: string | null) {
-  CURRENT_USER_ID = normalizeUserId(userId);
+  const requested = normalizeUserId(userId);
+  if (!requested) {
+    CURRENT_USER_ID = null;
+    if (typeof localStorage !== "undefined") {
+      try { localStorage.removeItem(STORAGE_USER_LS_KEY); } catch {}
+    }
+    return;
+  }
+
+  // Un appel secondaire (NAS, restauration, ancien module) peut encore passer
+  // usr_* ou un id de profil local. Tant qu'une vraie session Supabase est
+  // active, ces ids ne doivent JAMAIS devenir le scope IndexedDB.
+  const primary = runtimePrimaryAuthUserId() || stableSupabaseUserIdFromAuthLS();
+  CURRENT_USER_ID = primary || requested;
   if (typeof localStorage === "undefined") return;
   try {
-    if (CURRENT_USER_ID) localStorage.setItem("dc_storage_user_id_v1", CURRENT_USER_ID);
-    else localStorage.removeItem("dc_storage_user_id_v1");
+    localStorage.setItem(STORAGE_USER_LS_KEY, CURRENT_USER_ID);
   } catch {}
 }
 
@@ -2312,25 +2361,37 @@ async function loadStoreInternal<T extends Store>(scopeKey: string, runId: numbe
 
       if (!parsed) return null;
 
-      // RÉPARATION DE SCOPE COMPTE : les builds intermédiaires ont pu alterner
-      // entre l'UUID Supabase et l'alias NAS usr_*. Si le scope courant contient
-      // un profil actif absent/minimal alors qu'un scope alias du MÊME compte
-      // possède le vrai profil local, on fusionne une fois vers le scope stable.
+      // MIGRATION ONE-WAY V15 : les anciens scopes usr_*/profil local sont lus
+      // uniquement pour réparer le scope Supabase canonique. Une fois la fusion
+      // réussie, ils ne participent plus au boot normal et ne peuvent donc plus
+      // remettre Perrin/Ninja/avatar/stats en alternance à chaque rechargement.
       try {
-        const alternate = await runLoadStoreStage(
-          "accountAliasRecoveryScan",
-          () => findBestPersistedStoreAcrossKeys({ excludeKey: scopeKey }),
-          { scope: scopeKey, runId },
-        );
-        if (alternate?.store && shouldRecoverStoreFromAlias(parsed, alternate.store)) {
-          const recovered = mergeRecoveredStoreFromAlias(parsed, alternate.store);
-          const recoveredJson = safeJsonStringify(recovered);
-          const recoveredPayload = await persistPayloadForKey(scopeKey, recoveredJson);
-          await idbSet(scopeKey, recoveredPayload);
-          lastSavedStoreJsonByScope.set(scopeKey, recoveredJson);
-          writeProfilesSafetyCache(recovered);
-          parsed = recovered as T;
-          console.warn("[storage] scope compte réparé depuis un alias", { from: alternate.key, to: scopeKey, profiles: validProfileList(recovered?.profiles).length, activeProfileId: recovered?.activeProfileId || null });
+        const canonicalUid = runtimePrimaryAuthUserId() || stableSupabaseUserIdFromAuthLS() || getStorageUser();
+        const canonicalScopeKey = canonicalUid ? `${STORE_KEY}:${canonicalUid}` : STORE_KEY;
+        const migrationKey = canonicalUid ? `${ACCOUNT_SCOPE_MIGRATION_PREFIX}${canonicalUid}` : "";
+        const profilesNow = validProfileList(parsed?.profiles);
+        const activeNow = String((parsed as any)?.activeProfileId || "").trim();
+        const activeMissing = !!activeNow && !profilesNow.some((p) => String(p?.id || "") === activeNow);
+        const forceRepair = profilesNow.length === 0 || activeMissing;
+        const alreadyMigrated = !!migrationKey && (() => { try { return localStorage.getItem(migrationKey) === "1"; } catch { return false; } })();
+
+        if (scopeKey === canonicalScopeKey && (!alreadyMigrated || forceRepair)) {
+          const alternate = await runLoadStoreStage(
+            "accountAliasRecoveryScan",
+            () => findBestPersistedStoreAcrossKeys({ excludeKey: scopeKey }),
+            { scope: scopeKey, runId },
+          );
+          if (alternate?.store && shouldRecoverStoreFromAlias(parsed, alternate.store)) {
+            const recovered = mergeRecoveredStoreFromAlias(parsed, alternate.store);
+            const recoveredJson = safeJsonStringify(recovered);
+            const recoveredPayload = await persistPayloadForKey(scopeKey, recoveredJson);
+            await idbSet(scopeKey, recoveredPayload);
+            lastSavedStoreJsonByScope.set(scopeKey, recoveredJson);
+            writeProfilesSafetyCache(recovered);
+            parsed = recovered as T;
+            if (migrationKey) { try { localStorage.setItem(migrationKey, "1"); } catch {} }
+            console.warn("[storage] scope compte migré une fois depuis un alias", { from: alternate.key, to: scopeKey, profiles: validProfileList(recovered?.profiles).length, activeProfileId: recovered?.activeProfileId || null });
+          }
         }
       } catch (error) {
         console.warn("[storage] account alias recovery skipped", error);

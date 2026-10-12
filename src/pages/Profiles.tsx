@@ -83,7 +83,12 @@ import {
 } from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, getAvatarCacheFast, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
-import { getCanonicalAccountProfileId } from "../lib/canonicalAccountProfile";
+import {
+  bindCanonicalAccountProfileId,
+  getBoundAccountProfileId,
+  getCanonicalAccountProfileFromStore,
+  getCanonicalAccountProfileId,
+} from "../lib/canonicalAccountProfile";
 import { mirrorAvatarFallbackToR2, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams } from "../lib/petanqueTeamsStore";
@@ -2636,8 +2641,17 @@ export default function Profiles({
   }
 
   function isLinkedOnlineProfile(profile: any): boolean {
+    if (!profile) return false;
+    const stableUid = currentAuthUserId();
+    const boundProfileId = getBoundAccountProfileId(stableUid);
+    // Dès que le mapping COMPTE -> MON PROFIL existe, aucun ancien doublon
+    // portant encore un onlineUserId historique ne peut uploader l'avatar du compte.
+    if (boundProfileId) {
+      return String(profile?.id || "").trim() === boundProfileId;
+    }
+
     const authIds = new Set(currentAuthIdentityIds());
-    if (!profile || authIds.size === 0) return false;
+    if (authIds.size === 0) return false;
     const pid = String(profile?.id || "").trim();
     const pi = ((profile as any)?.privateInfo || {}) as any;
     const candidates = [
@@ -3042,8 +3056,9 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
 
     if ((privateInfo as any)?.onlineUserId) {
       const linkedUid = String((privateInfo as any)?.onlineUserId || "").trim();
+      bindCanonicalAccountProfileId(currentAuthUserId() || linkedUid, p.id);
       clearNasProfileOnboardingFlag(linkedUid);
-      try { localStorage.setItem("dc_user_id", linkedUid); } catch {}
+      try { localStorage.setItem("dc_user_id", currentAuthUserId() || linkedUid); } catch {}
       try {
         window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { reason: "profile_onboarding_complete", userId: linkedUid } }));
       } catch {}
@@ -3059,55 +3074,66 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
     return p;
   }
   
-  const active = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
+  const rawActive = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
+  const active = React.useMemo(() => {
+    if (auth.status !== "signed_in") return rawActive;
+    return getCanonicalAccountProfileFromStore(
+      { ...(store as any), profiles: stableProfiles },
+      currentAuthUserId(),
+    ) as any || rawActive;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawActive, stableProfiles, activeProfileId, auth.status, (auth.user as any)?.id]);
 
-  // AUTO-RÉPARATION COMPTE -> PROFIL ACTIF.
-  // Le compte courant possède une identité canonique unique (auth.user.id).
-  // Si activeProfileId a été cassé par un ancien build, on rattache uniquement
-  // le profil explicitement lié à CET id, puis l'email en secours.
+  // AUTO-RÉPARATION V16 : une fois le mapping COMPTE -> MON PROFIL établi par
+  // App/accountBridge, Profiles l'applique strictement. Si aucun mapping n'existe
+  // encore, on ne choisit PLUS arbitrairement le premier profil portant le même
+  // email/ancien alias ; ce comportement était la source des bascules Ninja/Perrin.
   React.useEffect(() => {
-    if (active || auth.status !== "signed_in") return;
+    if (auth.status !== "signed_in") return;
     const list = (Array.isArray(stableProfiles) ? stableProfiles : []).filter((profile: any) => profile && !profile?.isBot);
     if (!list.length) return;
 
     const authUid = currentAuthUserId();
-    const cachedAuth = readCachedAuthUser();
-    const authEmail = String((auth.user as any)?.email || cachedAuth.email || "").trim().toLowerCase();
+    if (!authUid) return;
+    const boundId = getBoundAccountProfileId(authUid);
+    const bound = boundId ? list.find((profile: any) => String(profile?.id || "").trim() === boundId) : null;
 
-    const linked = authUid ? list.find((profile: any) => {
-      const pi: any = profile?.privateInfo || {};
-      return [
-        profile?.id,
-        profile?.onlineUserId,
-        profile?.accountUserId,
-        pi?.onlineUserId,
-        pi?.online_user_id,
-        pi?.accountUserId,
-      ].some((value) => String(value || "").trim() === authUid);
-    }) : null;
+    let target: any = bound || null;
+    let reason = bound ? "account_binding" : "";
 
-    const byEmail = !linked && authEmail
-      ? list.find((profile: any) => {
-          const pi: any = profile?.privateInfo || {};
-          const emails = [pi?.onlineEmail, pi?.email, profile?.email]
-            .map((value) => String(value || "").trim().toLowerCase())
-            .filter(Boolean);
-          return emails.includes(authEmail);
-        })
-      : null;
+    if (!target && !rawActive) {
+      const exactLinked = list.filter((profile: any) => {
+        const pi: any = profile?.privateInfo || {};
+        return [
+          profile?.onlineUserId,
+          profile?.accountUserId,
+          pi?.onlineUserId,
+          pi?.online_user_id,
+          pi?.accountUserId,
+        ].some((value) => String(value || "").trim() === authUid);
+      });
+      if (exactLinked.length === 1) {
+        target = exactLinked[0];
+        reason = "unique_supabase_binding";
+        bindCanonicalAccountProfileId(authUid, target?.id);
+      } else if (list.length === 1) {
+        target = list[0];
+        reason = "single_local_profile";
+        bindCanonicalAccountProfileId(authUid, target?.id);
+      }
+    }
 
-    const target = linked || byEmail || (list.length === 1 ? list[0] : null);
     const targetId = String(target?.id || "").trim();
-    if (!targetId) return;
+    if (!targetId || String(activeProfileId || "").trim() === targetId) return;
 
     setActiveProfile(targetId);
     try {
       window.dispatchEvent(new CustomEvent("dc-profile-active-repaired", {
-        detail: { profileId: targetId, reason: linked ? "auth_id" : byEmail ? "auth_email" : "single_local_profile" },
+        detail: { profileId: targetId, reason },
       }));
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, auth.status, (auth.user as any)?.id, (auth.user as any)?.email, activeProfileId, (stableProfiles as any[])?.length]);
+  }, [auth.status, (auth.user as any)?.id, activeProfileId, rawActive?.id, (stableProfiles as any[])?.length]);
 
   // Rattrapage onboarding : si le compte vient d'être créé et que le hook auth
   // n'était pas encore prêt au moment du clic, on lie quand même le profil local
@@ -3133,9 +3159,10 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
     }
 
     setActiveProfile(String(target.id));
+    bindCanonicalAccountProfileId(currentAuthUserId() || uid, target.id);
     clearNasProfileOnboardingFlag(uid);
     setView("me");
-    try { localStorage.setItem("dc_user_id", uid); } catch {}
+    try { localStorage.setItem("dc_user_id", currentAuthUserId() || uid); } catch {}
     try { window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { reason: "profile_onboarding_repaired", userId: uid } })); } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nasProfileOnboarding, active?.id, (stableProfiles as any[])?.length]);
@@ -3164,13 +3191,13 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
     // ✅ UNIQUE ACCOUNT: pas de profil "mirror" online:<uid>
     // On réutilise le profil local lié à ce user_id (ou à défaut le profil actif).
     const owner =
+      active ||
       ((stableProfiles as any[]) || []).find((p: any) => {
         const pi = (p as any)?.privateInfo || {};
         const legacyUserId = String((pi as any)?.userId || "");
         const onlineUserId = String((pi as any)?.onlineUserId || "");
         return (onlineUserId && onlineUserId === String(uid)) || (legacyUserId && legacyUserId === String(uid));
       }) ||
-      active ||
       null;
 
     if (!owner) return null;
