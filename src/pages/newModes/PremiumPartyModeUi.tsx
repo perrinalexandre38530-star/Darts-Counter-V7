@@ -192,7 +192,7 @@ export function PremiumMomentOverlay({ moment, accent = "#4fe4ff", profile, play
   </div>;
 }
 
-export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel, persona, personaIcon, objectiveDetail, reaction, adaptation, adaptationDetail, learningConfidence, learningTarget, scouting, scoutingDetail, scoutingMatches, scoutingConfidence, scoutingTarget }: any) {
+export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel, persona, personaIcon, objectiveDetail, reaction, adaptation, adaptationDetail, learningConfidence, learningTarget, scouting, scoutingDetail, scoutingMatches, scoutingConfidence, scoutingTarget, rivalry, rivalryDetail, rivalryRecord, rivalryMatches, rivalryConfidence, rivalryTension, rivalryTarget, rivalryQuote }: any) {
   const conf = Number.isFinite(Number(confidence)) ? Math.max(0, Math.min(100, Number(confidence))) : null;
   return <div className="party-mode__bot" style={{ borderColor: `${accent}55`, boxShadow: `inset 0 0 34px ${accent}0d` }}>
     <ProfileAvatar profile={profile} size={58} showStars={false} ringColor={accent} />
@@ -205,6 +205,16 @@ export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, co
       <span>{text || "prépare sa volée…"}</span>
       {intent ? <div className="party-mode__bot-intent"><small>OBJECTIF TACTIQUE</small><strong style={{ color: accent }}>{intent}</strong>{objectiveDetail ? <p>{objectiveDetail}</p> : null}</div> : null}
       {reaction ? <div className="party-mode__bot-reaction"><small>RÉACTION IA</small><b>{reaction}</b></div> : null}
+      {rivalry ? <div className="party-mode__bot-rivalry">
+        <div className="party-mode__bot-rivalry-head"><small>RIVALITÉ</small><strong style={{ color: accent }}>{rivalry}</strong></div>
+        <div className="party-mode__bot-rivalry-score"><b>{rivalryRecord || "0-0"}</b><span>{rivalryTarget ? `vs ${rivalryTarget}` : "duel"}{Number.isFinite(Number(rivalryMatches)) ? ` · ${Math.round(Number(rivalryMatches))} match(s)` : ""}</span></div>
+        {rivalryDetail ? <p>{rivalryDetail}</p> : null}
+        {rivalryQuote ? <blockquote>“{rivalryQuote}”</blockquote> : null}
+        <div className="party-mode__bot-rivalry-bars">
+          {Number.isFinite(Number(rivalryTension)) ? <span><em>TENSION</em><i><u style={{ width: `${Math.max(0,Math.min(100,Number(rivalryTension)))}%`, background: accent }} /></i><b>{Math.round(Number(rivalryTension))}%</b></span> : null}
+          {Number.isFinite(Number(rivalryConfidence)) ? <span><em>DOSSIER</em><i><u style={{ width: `${Math.max(0,Math.min(100,Number(rivalryConfidence)))}%`, background: accent }} /></i><b>{Math.round(Number(rivalryConfidence))}%</b></span> : null}
+        </div>
+      </div> : null}
       {scouting ? <div className="party-mode__bot-scouting">
         <div><small>DOSSIER LONG TERME</small><strong style={{ color: accent }}>{scouting}</strong></div>
         <em>{scoutingTarget ? `Cible : ${scoutingTarget}` : "Adversaire connu"}{Number.isFinite(Number(scoutingMatches)) ? ` · ${Math.round(Number(scoutingMatches))} match(s)` : ""}</em>

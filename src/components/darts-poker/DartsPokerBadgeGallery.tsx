@@ -6,6 +6,7 @@ import {
   getDartsPokerBadgeCareerValue,
   getDartsPokerBadgeLockedReason,
   readDartsPokerProgress,
+  reconcileDartsPokerProgressFromHistory,
 } from "../../lib/dartsPokerProgress";
 
 const GOLD = "#f6c256";
@@ -103,12 +104,32 @@ export default function DartsPokerBadgeGallery({
     return humans.some((profile: any) => profileId(profile) === requested) ? requested : profileId(humans[0]);
   });
   const [filter, setFilter] = React.useState<"all" | "unlocked" | "locked">("all");
+  const [historySyncState, setHistorySyncState] = React.useState<{ loading: boolean; recovered: number; inspected: number }>({ loading: false, recovered: 0, inspected: 0 });
+  const [historySyncRevision, setHistorySyncRevision] = React.useState(0);
 
   React.useEffect(() => {
     if (catalogOnly || !humans.length) return;
     if (!humans.some((profile: any) => profileId(profile) === selectedId)) setSelectedId(profileId(humans[0]));
   }, [catalogOnly, humans, selectedId]);
 
+  React.useEffect(() => {
+    if (catalogOnly || !humans.length) return;
+    let cancelled = false;
+    setHistorySyncState((state) => ({ ...state, loading: true }));
+    void import("../../lib/history").then(async ({ History }) => {
+      const records = await History.list().catch(() => [] as any[]);
+      if (cancelled) return;
+      const result = reconcileDartsPokerProgressFromHistory(records);
+      if (cancelled) return;
+      setHistorySyncState({ loading: false, recovered: result.processedMatches, inspected: result.inspectedMatches });
+      if (result.processedMatches > 0 || result.recoveredUnlocks.length > 0) setHistorySyncRevision((value) => value + 1);
+    }).catch(() => {
+      if (!cancelled) setHistorySyncState((state) => ({ ...state, loading: false }));
+    });
+    return () => { cancelled = true; };
+  }, [catalogOnly, humans.length]);
+
+  void historySyncRevision;
   const language = currentDartsPokerLanguage();
   const selectedProfile = humans.find((profile: any) => profileId(profile) === selectedId) || humans[0] || null;
   const career = !catalogOnly && selectedProfile ? readDartsPokerProgress(profileId(selectedProfile)) : null;
@@ -139,6 +160,8 @@ export default function DartsPokerBadgeGallery({
         return <button key={id} type="button" onClick={() => setSelectedId(id)} style={{ flex: "0 0 auto", minHeight: 34, borderRadius: 999, border: `1px solid ${active ? GOLD : "rgba(255,255,255,.10)"}`, background: active ? `${GOLD}16` : "rgba(255,255,255,.03)", color: active ? GOLD : "#d8dbe4", padding: "0 10px", fontSize: 8, fontWeight: 1050 }}>{profileName(profile)} · {count}/12</button>;
       })}
     </div> : null}
+
+    {!catalogOnly && humans.length ? <div style={{ marginBottom: 7, padding: "6px 8px", borderRadius: 11, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, color: SOFT, fontSize: 6.8 }}><span>{historySyncState.loading ? "VÉRIFICATION DE L’HISTORIQUE…" : historySyncState.recovered > 0 ? `PROGRESSION RÉCUPÉRÉE · ${historySyncState.recovered} partie${historySyncState.recovered > 1 ? "s" : ""}` : "PROGRESSION VÉRIFIÉE"}</span><span>{historySyncState.inspected > 0 ? `${historySyncState.inspected} partie${historySyncState.inspected > 1 ? "s" : ""} Darts Poker analysée${historySyncState.inspected > 1 ? "s" : ""}` : "CACHE + HISTORIQUE"}</span></div> : null}
 
     {catalogOnly ? <div style={{ padding: 9, borderRadius: 14, background: `${GOLD}0b`, border: `1px solid ${GOLD}33`, color: SOFT, fontSize: 8.5, lineHeight: 1.45 }}>Collection officielle Darts Poker · 12 trophées permanents. Les conditions restent identiques quelle que soit la durée de la partie.</div> : selectedProfile ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 8 }}>
       <Summary label="Badges" value={`${unlockedCount}/12`} color={GOLD} />

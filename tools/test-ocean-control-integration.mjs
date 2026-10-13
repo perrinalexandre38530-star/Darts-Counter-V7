@@ -20,7 +20,7 @@ for (const rel of required) assert.ok(exists(rel), `fichier OCEAN CONTROL manqua
 
 const png = fs.readFileSync(path.join(root, "src/assets/tickers/ticker_ocean_control.png"));
 assert.equal(png.readUInt32BE(16), 800, "ticker OCEAN CONTROL: largeur attendue 800");
-assert.equal(png.readUInt32BE(20), 230, "ticker OCEAN CONTROL: hauteur attendue 230");
+assert.equal(png.readUInt32BE(20), 200, "ticker OCEAN CONTROL: hauteur officielle attendue 200");
 
 const engine = read("src/lib/gameEngines/oceanControlEngine.ts");
 for (const token of ["classic", "tactical", "recruit", "captain", "admiral", "automatic", "manual", "teams", "playOceanControlVisit", "placeOceanControlShip", "pickOceanControlBotDarts", "buildOceanControlMatchStats", "resolveSonar", "resolvePrecisionStrike", "sonarScans", "battleHistory", "bestHitStreak", "perfectVisits", "oceanControlLatestSonarScan"]) {

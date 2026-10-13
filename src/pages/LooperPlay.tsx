@@ -8,6 +8,7 @@ import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
+import { commitPremiumPartyProgress } from "../lib/premiumPartyProgress";
 import {
   assignLooperTarget, cloneLooperState, createLooperState, looperDartMatchesTarget, looperTargetFromDart,
   looperTargetLabel, normalizeLooperConfig, pickLooperBotDarts, playLooperVisit, type LooperState,
@@ -46,6 +47,7 @@ export default function LooperPlay(props:any){
   const [multiplier,setMultiplier]=React.useState<1|2|3>(()=>{const v=resumeRecord?.resume?.multiplier??resumeRecord?.payload?.multiplier;return v===2||v===3?v:1;});
   const [singleRing,setSingleRing]=React.useState<"inner_single"|"outer_single">(recoveredSingleRing==="outer_single"?"outer_single":"inner_single");
   const [undo,setUndo]=React.useState<LooperState[]>([]),[notice,setNotice]=React.useState("");
+  const [progression,setProgression]=React.useState<any>(()=>resumeRecord?.summary?.progression||resumeRecord?.payload?.summary?.progression||null);
   const [playersOpen,setPlayersOpen]=React.useState(false),[statsOpen,setStatsOpen]=React.useState(false),[logOpen,setLogOpen]=React.useState(false),[rankingOpen,setRankingOpen]=React.useState(false);
   const botBusy=React.useRef(false),finishedRef=React.useRef(false),introPlayedRef=React.useRef(false),initialCheckpointRef=React.useRef(false);
   const matchIdRef=React.useRef(String(resumeRecord?.id||resumeRecord?.matchId||`looper-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
@@ -65,7 +67,29 @@ export default function LooperPlay(props:any){
       resume:{mode:"looper",config:s.config,state:cloneLooperState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,singleRing:ring,updatedAt:Date.now()},payload:{kind:"looper",mode:"looper",sport:"darts",config:s.config,stateSnapshot:cloneLooperState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,singleRing:ring,visits:s.visits,visitHistory:s.visits,stats:{mode:"looper",players:s.statsByPlayer,legWins:s.legWins}}};
   },[profiles,currentThrow,multiplier,singleRing]);
   const saveInProgress=React.useCallback(async(s:LooperState,draft:UIDart[]=currentThrow,m:1|2|3=multiplier,ring=singleRing)=>{try{await History.upsert(buildRecord(s,"in_progress",draft,m,ring));}catch(e){console.warn("[LOOPER] checkpoint failed",e);}},[buildRecord,currentThrow,multiplier,singleRing]);
-  const persist=React.useCallback((s:LooperState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished",[],1,singleRing);if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec).catch(()=>{});}else void saveInProgress(s,[],1,singleRing);},[buildRecord,onFinish,saveInProgress,singleRing]);
+  const persist=React.useCallback((s:LooperState)=>{
+    if(s.phase==="finished"){
+      if(finishedRef.current)return;
+      finishedRef.current=true;
+      const progress=commitPremiumPartyProgress({
+        mode:"looper",
+        matchId:matchIdRef.current,
+        winnerId:s.winnerId,
+        participants:(s.players||[]).map((p:any)=>({
+          id:String(p.id),
+          name:p.name,
+          stats:s.statsByPlayer?.[p.id]||{},
+          isBot:isBotProfile(profileById.get(String(p.id))||p,botIds),
+        })),
+      });
+      setProgression(progress);
+      const rec:any=buildRecord(s,"finished",[],1,singleRing);
+      rec.summary={...(rec.summary||{}),progression:progress};
+      rec.payload={...(rec.payload||{}),summary:{...(rec.payload?.summary||{}),progression:progress}};
+      if(typeof onFinish==="function")onFinish(rec,{navigate:false});
+      else void History.upsert(rec).catch(()=>{});
+    }else void saveInProgress(s,[],1,singleRing);
+  },[buildRecord,onFinish,saveInProgress,profileById,botIds,singleRing]);
 
   React.useEffect(()=>{if(initialCheckpointRef.current)return;initialCheckpointRef.current=true;if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier,singleRing);},[saveInProgress,state,currentThrow,multiplier,singleRing]);
   React.useEffect(()=>{if(state.phase==="finished")return;const t=window.setTimeout(()=>void saveInProgress(state,currentThrow,multiplier,singleRing),180);return()=>window.clearTimeout(t);},[currentThrow,multiplier,singleRing,state.phase,state.activePlayerIndex,saveInProgress]);
@@ -77,7 +101,7 @@ export default function LooperPlay(props:any){
   const doUndo=()=>setUndo(u=>{if(!u.length)return u;const prev=u[u.length-1];setState(cloneLooperState(prev));setCurrentThrow([]);setMultiplier(1);setNotice("Dernière action annulée");finishedRef.current=false;void saveInProgress(prev,[],1,singleRing);return u.slice(0,-1);});
   const setThrowWithSfx=React.useCallback((update:any)=>setCurrentThrow((prev:UIDart[])=>{const next=(typeof update==="function"?update(prev):update)||prev;const cap=state.phase==="assignment"?1:3;const out=Array.isArray(next)?next.slice(0,cap):prev;if(out.length>prev.length)out.slice(prev.length).forEach((d:any,i:number)=>window.setTimeout(()=>playNewModeDartSfx(d,sfxEnabled),i*120));return out;}),[state.phase,sfxEnabled]);
   React.useEffect(()=>{if(!activeIsBot||state.phase==="finished"||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{try{const darts=pickLooperBotDarts(state,config.botLevel);const span=playNewModeDartSequence(darts,sfxEnabled);window.setTimeout(()=>{try{if(state.phase==="assignment")commit(assignLooperTarget(state,darts[0]));else commit(playLooperVisit(state,darts));}finally{botBusy.current=false;}},span+100);}catch{botBusy.current=false;}},620);return()=>window.clearTimeout(t);},[state,activeIsBot,activePlayer?.id]);
-  function replay(){matchIdRef.current=`looper-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setCurrentThrow([]);setMultiplier(1);const next=createLooperState(players,config);setState(next);initialCheckpointRef.current=true;void saveInProgress(next,[],1,singleRing);if(sfxEnabled)playNewModeSfx("intro",true);}
+  function replay(){matchIdRef.current=`looper-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setProgression(null);setCurrentThrow([]);setMultiplier(1);const next=createLooperState(players,config);setState(next);initialCheckpointRef.current=true;void saveInProgress(next,[],1,singleRing);if(sfxEnabled)playNewModeSfx("intro",true);}
 
   const legTarget=config.seriesWins*2-1,targetLabel=looperTargetLabel(state.currentTarget),activeStats=state.statsByPlayer[activePlayer?.id]||{};
   const previewDarts=currentThrow.map(uiToGameDart),previewHitIndex=state.phase==="playing"?previewDarts.findIndex((d:any)=>looperDartMatchesTarget(d,state.currentTarget,config.rules.exactSegment)):-1;
@@ -91,7 +115,7 @@ export default function LooperPlay(props:any){
   const totalDarts=Object.values(state.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs=Math.max(0,Number((state.finishedAt||Date.now()))-Number(state.startedAt||Date.now()));
   const targetText=state.phase==="assignment"?"1 fléchette fixe la cible de départ":previewHitIndex>=0?`Touchée à la fléchette ${previewHitIndex+1} · prochaine : ${looperTargetLabel(previewNext)}`:`Tu as 3 fléchettes pour toucher ${targetLabel}`;
 
-  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerLooper} tickerAlt="LOOPER" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("looper_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="looper_play" mode="looper" screenLabel="LOOPER · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="LOOPER" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"active",initialStatsSubTab:"looper",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"active",initialStatsSubTab:"history",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("looper_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
+  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerLooper} tickerAlt="LOOPER" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("looper_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="looper_play" mode="looper" screenLabel="LOOPER · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="LOOPER" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} progression={progression ? {...progression, winnerCareer: progression.byPlayer?.[String(state.winnerId || "")] || null} : null} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"active",initialStatsSubTab:"looper",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"active",initialStatsSubTab:"history",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("looper_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
 
   return <div className="party-mode" style={{["--mode-accent" as any]:activeColor}} data-mss-native-play-layout="1">
     <PageHeader tickerSrc={tickerLooper} tickerAlt="LOOPER" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("looper_config")} color={activeColor} glow={`${activeColor}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="looper_play" mode="looper" screenLabel="LOOPER · Partie" accent={activeColor}/></div>:null}/>

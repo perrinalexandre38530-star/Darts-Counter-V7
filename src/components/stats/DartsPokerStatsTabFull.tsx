@@ -4,7 +4,7 @@ import DartsPokerCard from "../darts-poker/DartsPokerCard";
 import DartsPokerBadge from "../darts-poker/DartsPokerBadge";
 import type { DartsPokerBadgeId } from "../darts-poker/DartsPokerBadge";
 import { deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerNum as n, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../../lib/dartsPokerAnalytics";
-import { readDartsPokerProgress } from "../../lib/dartsPokerProgress";
+import { readDartsPokerProgress, reconcileDartsPokerProgressFromHistory } from "../../lib/dartsPokerProgress";
 
 const GOLD = "#f6c256";
 const RED = "#e83a43";
@@ -50,6 +50,17 @@ function topMap(map: Record<string, number>) { return Object.entries(map).sort((
 
 export default function DartsPokerStatsTabFull({ records = [], playerId, playerName }: any) {
   const [range, setRange] = React.useState("all");
+  const [progressRevision, setProgressRevision] = React.useState(0);
+  const historyProgressSignature = React.useMemo(() => {
+    const source = Array.isArray(records) ? records : [];
+    const tail = source.slice(-4).map((record: any) => `${record?.matchId || record?.id || ""}:${playedAt(record)}`).join("|");
+    return `${source.length}:${tail}`;
+  }, [records]);
+  React.useEffect(() => {
+    const result = reconcileDartsPokerProgressFromHistory(records);
+    if (result.processedMatches > 0 || result.recoveredUnlocks.length > 0) setProgressRevision((value) => value + 1);
+  }, [historyProgressSignature]);
+  void progressRevision;
   const now = Date.now();
   const ranges: Record<string, number> = { day: 86400000, week: 7 * 86400000, month: 31 * 86400000, year: 366 * 86400000 };
   const matches = (records || []).filter(isPoker).map((record: any) => {

@@ -8,6 +8,7 @@ import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
+import { commitPremiumPartyProgress } from "../lib/premiumPartyProgress";
 import {
   callThreeDartMatches, callThreeHitPoints, callThreeLabel, cloneCallThreeState, createCallThreeState,
   normalizeCallThreeConfig, pickCallThreeBotDarts, playCallThreeVisit, randomCallThreeCalls, setCallThreeCalls,
@@ -58,6 +59,7 @@ export default function CallThreePlay(props:any){
   const [currentThrow,setCurrentThrow]=React.useState<UIDart[]>(()=>Array.isArray(recoveredThrow)?recoveredThrow.slice(0,3):[]);
   const [multiplier,setMultiplier]=React.useState<1|2|3>(()=>{const v=resumeRecord?.resume?.multiplier??resumeRecord?.payload?.multiplier;return v===2||v===3?v:1;});
   const [undo,setUndo]=React.useState<CallThreeState[]>([]),[notice,setNotice]=React.useState("");
+  const [progression,setProgression]=React.useState<any>(()=>resumeRecord?.summary?.progression||resumeRecord?.payload?.summary?.progression||null);
   const [callDraft,setCallDraft]=React.useState<CallTarget[]>(()=>Array.isArray(recoveredCallDraft)&&recoveredCallDraft.length===3?recoveredCallDraft.map((c:any)=>({...c})):(state.currentCalls||[]).map((c:any)=>({...c})));
   const [callSlot,setCallSlot]=React.useState(Math.max(0,Math.min(2,recoveredCallSlot||0)));
   const [playersOpen,setPlayersOpen]=React.useState(false),[statsOpen,setStatsOpen]=React.useState(false),[logOpen,setLogOpen]=React.useState(false),[rankingOpen,setRankingOpen]=React.useState(false);
@@ -83,7 +85,29 @@ export default function CallThreePlay(props:any){
       resume:{mode:"call_three",config:s.config,state:cloneCallThreeState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,callDraft:(calls||[]).map((c:any)=>({...c})),callSlot:slot,updatedAt:Date.now()},payload:{kind:"call_three",mode:"call_three",sport:"darts",config:s.config,stateSnapshot:cloneCallThreeState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,callDraft:(calls||[]).map((c:any)=>({...c})),callSlot:slot,visits:s.visits,visitHistory:s.visits,stats:{mode:"call_three",players:s.statsByPlayer,legWins:s.legWins}}};
   },[profiles,currentThrow,multiplier,callDraft,callSlot]);
   const saveInProgress=React.useCallback(async(s:CallThreeState,draft:UIDart[]=currentThrow,m:1|2|3=multiplier,calls:CallTarget[]=callDraft,slot=callSlot)=>{try{await History.upsert(buildRecord(s,"in_progress",draft,m,calls,slot));}catch(e){console.warn("[CALL THREE] checkpoint failed",e);}},[buildRecord,currentThrow,multiplier,callDraft,callSlot]);
-  const persist=React.useCallback((s:CallThreeState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished",[],1,[],0);if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec).catch(()=>{});}else void saveInProgress(s,[],1,callDraft,callSlot);},[buildRecord,onFinish,saveInProgress,callDraft,callSlot]);
+  const persist=React.useCallback((s:CallThreeState)=>{
+    if(s.phase==="finished"){
+      if(finishedRef.current)return;
+      finishedRef.current=true;
+      const progress=commitPremiumPartyProgress({
+        mode:"call_three",
+        matchId:matchIdRef.current,
+        winnerId:s.winnerId,
+        participants:(s.players||[]).map((p:any)=>({
+          id:String(p.id),
+          name:p.name,
+          stats:s.statsByPlayer?.[p.id]||{},
+          isBot:isBotProfile(profileById.get(String(p.id))||p,botIds),
+        })),
+      });
+      setProgression(progress);
+      const rec:any=buildRecord(s,"finished",[],1,[],0);
+      rec.summary={...(rec.summary||{}),progression:progress};
+      rec.payload={...(rec.payload||{}),summary:{...(rec.payload?.summary||{}),progression:progress}};
+      if(typeof onFinish==="function")onFinish(rec,{navigate:false});
+      else void History.upsert(rec).catch(()=>{});
+    }else void saveInProgress(s,[],1,callDraft,callSlot);
+  },[buildRecord,onFinish,saveInProgress,profileById,botIds,callDraft,callSlot]);
 
   React.useEffect(()=>{if(initialCheckpointRef.current)return;initialCheckpointRef.current=true;if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier,callDraft,callSlot);},[saveInProgress,state,currentThrow,multiplier,callDraft,callSlot]);
   React.useEffect(()=>{if(state.phase==="finished")return;const t=window.setTimeout(()=>void saveInProgress(state,currentThrow,multiplier,callDraft,callSlot),180);return()=>window.clearTimeout(t);},[currentThrow,multiplier,callDraft,callSlot,state.phase,state.activePlayerIndex,state.currentCallerId,saveInProgress]);
@@ -97,7 +121,7 @@ export default function CallThreePlay(props:any){
   const setThrowWithSfx=React.useCallback((update:any)=>setCurrentThrow((prev:UIDart[])=>{const next=(typeof update==="function"?update(prev):update)||prev;const out=Array.isArray(next)?next.slice(0,3):prev;if(out.length>prev.length)out.slice(prev.length).forEach((d:any,i:number)=>window.setTimeout(()=>playNewModeDartSfx(d,sfxEnabled),i*120));return out;}),[sfxEnabled]);
   React.useEffect(()=>{if(state.phase!=="calling"||!callerIsBot||callerBusy.current)return;callerBusy.current=true;const t=window.setTimeout(()=>{try{const calls=randomCallThreeCalls(config.rules.bullAllowed,Date.now()+state.roundIndex*31+state.activePlayerIndex*7);confirmCall(calls,true);}finally{callerBusy.current=false;}},560);return()=>window.clearTimeout(t);},[state.phase,state.currentCallerId,callerIsBot,state.roundIndex,state.activePlayerIndex,confirmCall]);
   React.useEffect(()=>{if(state.phase!=="playing"||!activeIsBot||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{try{const darts=pickCallThreeBotDarts(state,config.botLevel);const span=playNewModeDartSequence(darts,sfxEnabled);window.setTimeout(()=>{try{commit(playCallThreeVisit(state,darts));}finally{botBusy.current=false;}},span+100);}catch{botBusy.current=false;}},620);return()=>window.clearTimeout(t);},[state.phase,state.activePlayerIndex,activeIsBot,state.currentCalls]);
-  function replay(){matchIdRef.current=`call-three-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setCurrentThrow([]);setMultiplier(1);const next=createCallThreeState(players,config);setState(next);setCallDraft((next.currentCalls||[]).map((c:any)=>({...c})));setCallSlot(0);initialCheckpointRef.current=true;void saveInProgress(next,[],1,next.currentCalls||[],0);if(sfxEnabled)playNewModeSfx("intro",true);}
+  function replay(){matchIdRef.current=`call-three-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setProgression(null);setCurrentThrow([]);setMultiplier(1);const next=createCallThreeState(players,config);setState(next);setCallDraft((next.currentCalls||[]).map((c:any)=>({...c})));setCallSlot(0);initialCheckpointRef.current=true;void saveInProgress(next,[],1,next.currentCalls||[],0);if(sfxEnabled)playNewModeSfx("intro",true);}
 
   const legTarget=config.seriesWins*2-1,activeStats=state.statsByPlayer[activePlayer?.id]||{},roundLabel=state.overtime?`OVERTIME ${Math.max(1,state.roundIndex-config.rules.rounds+2)}`:`ROUND ${state.roundIndex+1}/${config.rules.rounds}`;
   const previewDarts=currentThrow.map(uiToGameDart),callPreview=state.currentCalls.map(()=>({ok:false,pts:0,dartIndex:-1}));
@@ -111,7 +135,7 @@ export default function CallThreePlay(props:any){
   const totalDarts=Object.values(state.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs=Math.max(0,Number((state.finishedAt||Date.now()))-Number(state.startedAt||Date.now()));
   const callsText=(state.currentCalls||[]).map(callThreeLabel).join(" · ");
 
-  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerCallThree} tickerAlt="CALL THREE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("call_three_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="call_three_play" mode="call_three" screenLabel="CALL THREE · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="CALL THREE" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"active",initialStatsSubTab:"call_three",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"active",initialStatsSubTab:"history",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("call_three_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
+  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerCallThree} tickerAlt="CALL THREE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("call_three_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="call_three_play" mode="call_three" screenLabel="CALL THREE · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="CALL THREE" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} progression={progression ? {...progression, winnerCareer: progression.byPlayer?.[String(state.winnerId || "")] || null} : null} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"active",initialStatsSubTab:"call_three",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"active",initialStatsSubTab:"history",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("call_three_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
 
   return <div className="party-mode" style={{["--mode-accent" as any]:displayColor}} data-mss-native-play-layout="1">
     <PageHeader tickerSrc={tickerCallThree} tickerAlt="CALL THREE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("call_three_config")} color={displayColor} glow={`${displayColor}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="call_three_play" mode="call_three" screenLabel="CALL THREE · Partie" accent={displayColor}/></div>:null}/>

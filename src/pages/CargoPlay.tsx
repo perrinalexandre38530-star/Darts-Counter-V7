@@ -32,12 +32,12 @@ import {
   type CargoState,
 } from "../lib/gameEngines/cargoEngine";
 import { History } from "../lib/history";
-import { getTicker } from "../lib/tickers";
+import tickerCargo from "../assets/tickers/ticker_cargo.png";
 import CargoLoadStatus from "../components/cargo/CargoLoadStatus";
 import CargoManifestStrip from "../components/cargo/CargoManifestStrip";
 import CargoTeamStrip from "../components/cargo/CargoTeamStrip";
 import CargoParcelRoutePanel from "../components/cargo/CargoParcelRoutePanel";
-import { buildCargoVisualSnapshot } from "../lib/gameEngines/cargoVisuals";
+import { buildCargoMissionCue, buildCargoVisualSnapshot } from "../lib/gameEngines/cargoVisuals";
 import { getCargoContractArt, getCargoHeroArt, getCargoStageBadge, getCargoSupportArt } from "../components/cargo/cargoArt";
 import CargoEnd from "./CargoEnd";
 import "../styles/cargo-ui.css";
@@ -53,7 +53,6 @@ const BLUE = "#56c9ff";
 const RED = "#ef5261";
 const SOFT = "#aab1bf";
 const PLAYER_COLORS = [ORANGE, BLUE, GREEN, GOLD, RED, "#a78bfa", "#ff63b8", "#d4d8e5"];
-const tickerCargo = getTicker("cargo");
 
 function panel(accent = "rgba(255,255,255,.10)"): React.CSSProperties {
   return {
@@ -460,10 +459,18 @@ export default function CargoPlay(props: any) {
     try { onFinish?.(record, { navigate: false }); } catch {}
   }, [state.phase]);
 
+  const missionCue = buildCargoMissionCue(state, activeStats);
+  const missionCueColor = missionCue.tone === "good" ? GREEN : missionCue.tone === "warning" ? GOLD : missionCue.tone === "danger" ? RED : ORANGE;
   const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 21, lineHeight: 1, fontWeight: 1200 }}>{activeScore} <span style={{ fontSize: 11, opacity: .82 }}>{scoreUnit}</span></div><div style={{ marginTop: 4, color: activeSeries ? GREEN : SOFT, fontSize: 8.3, fontWeight: 1000 }}>{activeSeries ? `SÉRIE ${activeSeries.count}${isParcel ? "/5" : ""}` : `TOUR ${state.roundIndex}/${config.rounds}`}</div></div>;
   const objectiveNow = cargoCurrentObjective(state);
   const visibleNotice = botThinking ? "BOT EN CHARGEMENT…" : (notice && notice !== objectiveNow ? notice : "");
-  const keypadNotice = visibleNotice ? <div style={{ width: "100%", color: botThinking ? GOLD : "rgba(255,255,255,.60)", fontSize: 8.1, fontWeight: 900, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{visibleNotice}</div> : null;
+  const keypadMessage = visibleNotice || missionCue.detail;
+  const keypadNotice = keypadMessage ? <div title={missionCue.detail} style={{ width: "100%", color: botThinking ? GOLD : missionCue.tone === "danger" ? RED : missionCue.tone === "warning" ? GOLD : "rgba(255,255,255,.60)", fontSize: 8.1, fontWeight: 900, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{keypadMessage}</div> : null;
+  const manifestQuickValue = isParcel
+    ? activeSeries ? `Adresse ${activeSeries.number} · ${activeSeries.count}/5` : `${Number(activeStats?.parcelsDelivered || 0)} colis`
+    : config.variant === "free_load" || config.variant === "full_pallet"
+      ? activeSeries ? `Série ${activeSeries.count}/${config.maxSeries}` : "Série libre"
+      : `${state.contracts.length} contrat${state.contracts.length > 1 ? "s" : ""}`;
 
   const cargoTarget = isParcel
     ? Math.max(30, config.rounds * 5)
@@ -474,7 +481,7 @@ export default function CargoPlay(props: any) {
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
 
   return <div className="cargo-play-page" style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-    <PageHeader title="CARGO" subtitle={`${cargoVariantLabel(config.variant)} · ${config.participantMode === "teams" ? "Équipes" : config.players > 2 ? "Multi" : config.players === 2 ? "Duel" : "Solo"}`} tickerSrc={tickerCargo || undefined} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
+    <PageHeader title="CARGO" subtitle={`${cargoVariantLabel(config.variant)} · ${config.participantMode === "teams" ? "Équipes" : config.players > 2 ? "Multi" : config.players === 2 ? "Duel" : "Solo"}`} tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
 
     <main className="cargo-play-main" style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 980, margin: "0 auto", padding: "7px 8px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "132px 58px 132px minmax(0,1fr)", gap: 9, overflow: "hidden" }}>
       <section className="cargo-play-hero" style={{ minHeight: 0, borderRadius: 20, overflow: "hidden", border: `1px solid ${activeColor}78`, background: "linear-gradient(180deg,rgba(18,20,27,.93),rgba(6,8,12,.96))", boxShadow: `0 0 24px ${activeColor}1c,0 12px 30px rgba(0,0,0,.26)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 34px" }}>
@@ -486,7 +493,7 @@ export default function CargoPlay(props: any) {
             <div style={{ minWidth: 0, position: "relative", zIndex: 1 }}>
               <div style={{ color: activeColor, fontSize: 16, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${activeColor}44` }}>{playerName(activeProfile)}</div>
               <div style={{ marginTop: 6, color: "rgba(255,255,255,.58)", fontSize: 8.4, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds}{activeTeamName ? ` · ${activeTeamName}` : ""}</div>
-              <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 9px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: activeSeries ? GREEN : GOLD, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `Série ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`}` : "Nouvelle série disponible"}</span></div>
+              <div title={missionCue.detail} style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: missionCueColor, boxShadow: `0 0 9px ${missionCueColor}` }} /><span style={{ color: missionCueColor, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{missionCue.label}</span></div>
               <CargoTeamStrip activeTeam={activeTeam} activeTeamName={activeTeamName} profilesById={profilesById} scoreUnit={scoreUnit} activeColor={activeColor} activeScore={activeScore} activePlayerId={activePlayer?.id} />
             </div>
             <div style={{ minWidth: 58, textAlign: "center", position: "relative", zIndex: 1 }}>
@@ -510,7 +517,7 @@ export default function CargoPlay(props: any) {
       </section>
 
       <section className="cargo-play-quickbar" style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
-        <QuickButton icon="▦" label={isParcel ? "TOURNÉE" : "MANIFESTE"} value={`${state.contracts.length} contrat${state.contracts.length > 1 ? "s" : ""}`} color={GOLD} onClick={() => setOverlay("manifest")} />
+        <QuickButton icon="▦" label={isParcel ? "TOURNÉE" : config.variant === "free_load" || config.variant === "full_pallet" ? "CHARGEMENT" : "MANIFESTE"} value={manifestQuickValue} color={GOLD} onClick={() => setOverlay("manifest")} />
         <QuickButton icon="≡" label="CLASSEMENT" value={`#${activeStanding?.rank || 1}/${state.standings.length}`} color={ORANGE} onClick={() => setOverlay("standings")} />
         <QuickButton icon="⌁" label="STATS" value={`${activeAccuracy}% précision`} color={GREEN} onClick={() => setOverlay("stats")} />
         <QuickButton icon="↺" label="JOURNAL" value={`${state.visits.length} volée${state.visits.length > 1 ? "s" : ""}`} color={BLUE} onClick={() => setOverlay("timeline")} disabled={!state.visits.length} />

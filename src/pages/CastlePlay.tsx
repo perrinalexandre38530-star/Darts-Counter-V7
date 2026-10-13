@@ -23,6 +23,7 @@ import { resolvePremiumPartyMoment } from "./newModes/premiumPartyMoments";
 import { premiumBotTacticalPlan, resolvePremiumBotBrain } from "../lib/premiumPartyBotAI";
 import { adaptPremiumBotBrain } from "../lib/premiumPartyBotMemory";
 import { adaptPremiumBotBrainFromScouting, commitPremiumPartyScouting } from "../lib/premiumPartyBotScouting";
+import { adaptPremiumBotBrainFromRivalry, commitPremiumPartyRivalry } from "../lib/premiumPartyBotRivalry";
 import "./newModes/PremiumPartyModeUi.css";
 
 const ACCENT = "#ffb33f";
@@ -77,10 +78,12 @@ export default function CastlePlay(props: any) {
   const baseBotBrain = React.useMemo(() => resolvePremiumBotBrain(activeProfile, config.botLevel), [activeProfile?.id, activeProfile?.style, activeProfile?.botLevel, config.botLevel]);
   const careerBotAdaptation = React.useMemo(() => adaptPremiumBotBrainFromScouting("castle", state, activePlayer, baseBotBrain, botIds), [state, activePlayer?.id, baseBotBrain.key, baseBotBrain.confidence, botIds]);
   const activeBotScouting = careerBotAdaptation.model;
-  const activeBotAdaptation = React.useMemo(() => adaptPremiumBotBrain("castle", state, activePlayer, careerBotAdaptation.brain, botIds), [state, activePlayer?.id, careerBotAdaptation.brain.key, careerBotAdaptation.brain.confidence, botIds]);
+  const rivalryBotAdaptation = React.useMemo(() => adaptPremiumBotBrainFromRivalry("castle", state, activePlayer, careerBotAdaptation.brain, botIds), [state, activePlayer?.id, careerBotAdaptation.brain.key, careerBotAdaptation.brain.confidence, botIds]);
+  const activeBotRivalry = rivalryBotAdaptation.model;
+  const activeBotAdaptation = React.useMemo(() => adaptPremiumBotBrain("castle", state, activePlayer, rivalryBotAdaptation.brain, botIds), [state, activePlayer?.id, rivalryBotAdaptation.brain.key, rivalryBotAdaptation.brain.confidence, botIds]);
   const activeBotBrain = activeBotAdaptation.brain;
   const activeBotMemory = activeBotAdaptation.model;
-  const activeBotPlan = React.useMemo(() => premiumBotTacticalPlan("castle", state, activePlayer, activeBotBrain), [state, activePlayer?.id, activeBotBrain.key, activeBotBrain.confidence, activeBotMemory?.patternKey, activeBotScouting?.patternKey]);
+  const activeBotPlan = React.useMemo(() => premiumBotTacticalPlan("castle", state, activePlayer, activeBotBrain), [state, activePlayer?.id, activeBotBrain.key, activeBotBrain.confidence, activeBotMemory?.patternKey, activeBotScouting?.patternKey, activeBotRivalry?.state]);
   const sfxEnabled=(config as any).sfxEnabled!==false; const awenaEnabled=(config as any).awenaEnabled!==false; const coachEnabled=(config as any).coachEnabled!==false;
   const nameById=React.useCallback((id:any)=>state.players.find((p:any)=>String(p.id)===String(id))?.name||"Joueur",[state.players]);
 
@@ -97,6 +100,18 @@ export default function CastlePlay(props: any) {
     if (s.phase === "finished") {
       if (finishedRef.current) return;
       finishedRef.current = true;
+      commitPremiumPartyRivalry({
+        mode: "castle",
+        matchId: matchIdRef.current,
+        winnerId: s.winnerId,
+        state: s,
+        participants: (s.players || []).map((p: any) => ({
+          id: String(p.id),
+          name: p.name,
+          isBot: isBotProfile(profileById.get(String(p.id)) || p, botIds),
+        })),
+        botIds,
+      });
       commitPremiumPartyScouting({
         mode: "castle",
         matchId: matchIdRef.current,
@@ -164,7 +179,7 @@ export default function CastlePlay(props: any) {
       <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget} · ${state.phase==="assignment"?"ATTRIBUTION":"VOLÉE "+(state.turnIndex+1)}`} primary={state.phase==="assignment"?(state.assignmentIndex+1):activeBricks} primarySuffix={state.phase==="assignment"?`/${state.players.length}`:`/${target}`} secondary={state.phase==="assignment"?"1 fléchette main opposée · secteur 1–20":`SECTEUR ${state.targets[activePlayer?.id]||"—"} · ${state.config.rules.attacksEnabled?"ATTAQUE ACTIVE":"CONSTRUCTION SEULE"}`} tertiary={state.phase==="assignment"?"MISS / BULL = relance":`${activeStats.builds||0} briques posées · ${activeStats.damage||0} dégâts infligés`} progress={state.phase==="assignment"?state.assignmentIndex:activeBricks} progressMax={state.phase==="assignment"?state.players.length:target} notice={notice} noticeTone={notice.includes("🏆")?"win":notice.includes("MISS")?"danger":"normal"} aside={state.phase==="assignment"?<div style={{display:"grid",placeItems:"center",gap:4}}><ProfileAvatar profile={activeProfile} size={62} showStars={false} ringColor={activeColor}/><b style={{fontSize:9,color:activeColor}}>LANCE !</b></div>:<CastleMeter value={activeBricks} target={target} accent={activeColor}/>}/>
       <KpiStrip accent={activeColor} onClick={()=>setStatsOpen(true)} items={[["BUILD",activeStats.builds||0],["DÉGÂTS",activeStats.damage||0],["PRÉC.",`${percent(activeStats.usefulHits,activeStats.darts)}%`],["M",state.legWins[activePlayer?.id]||0]]}/>
       <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerCastle} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>
-    </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel={state.phase==="assignment"?"ATTRIBUER":"VALIDER"} accent={activeColor} maxDarts={state.phase === "assignment" ? 1 : 3} fitMinScale={0.16}/>:<BotTurn intent={activeBotPlan.intent} objectiveDetail={activeBotPlan.detail} reaction={activeBotPlan.reaction} persona={activeBotPlan.persona} personaIcon={activeBotPlan.personaIcon} confidence={activeBotPlan.confidence} adaptation={activeBotMemory ? `${activeBotMemory.icon} ${activeBotMemory.label}` : undefined} adaptationDetail={activeBotMemory?.detail} learningConfidence={activeBotMemory?.confidence} learningTarget={activeBotMemory?.targetName} scouting={activeBotScouting ? `${activeBotScouting.icon} ${activeBotScouting.label}` : undefined} scoutingDetail={activeBotScouting?.detail} scoutingMatches={activeBotScouting?.matches} scoutingConfidence={activeBotScouting?.confidence} scoutingTarget={activeBotScouting?.targetName} phaseLabel={state.phase==="assignment"?"ATTRIBUTION":"BATAILLE"} profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={state.phase==="assignment"?"choisit son secteur…":"construit ou attaque…"} icon="🏰"/>}</div></div></main>
+    </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel={state.phase==="assignment"?"ATTRIBUER":"VALIDER"} accent={activeColor} maxDarts={state.phase === "assignment" ? 1 : 3} fitMinScale={0.16}/>:<BotTurn intent={activeBotPlan.intent} objectiveDetail={activeBotPlan.detail} reaction={activeBotPlan.reaction} persona={activeBotPlan.persona} personaIcon={activeBotPlan.personaIcon} confidence={activeBotPlan.confidence} adaptation={activeBotMemory ? `${activeBotMemory.icon} ${activeBotMemory.label}` : undefined} adaptationDetail={activeBotMemory?.detail} learningConfidence={activeBotMemory?.confidence} learningTarget={activeBotMemory?.targetName} rivalry={activeBotRivalry ? `${activeBotRivalry.icon} ${activeBotRivalry.label}` : undefined} rivalryDetail={activeBotRivalry?.detail} rivalryRecord={activeBotRivalry?.record} rivalryMatches={activeBotRivalry?.matches} rivalryConfidence={activeBotRivalry?.confidence} rivalryTension={activeBotRivalry?.tension} rivalryTarget={activeBotRivalry?.targetName} rivalryQuote={activeBotRivalry?.quote} scouting={activeBotScouting ? `${activeBotScouting.icon} ${activeBotScouting.label}` : undefined} scoutingDetail={activeBotScouting?.detail} scoutingMatches={activeBotScouting?.matches} scoutingConfidence={activeBotScouting?.confidence} scoutingTarget={activeBotScouting?.targetName} phaseLabel={state.phase==="assignment"?"ATTRIBUTION":"BATAILLE"} profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={state.phase==="assignment"?"choisit son secteur…":"construit ou attaque…"} icon="🏰"/>}</div></div></main>
     {playersOpen?<PlayersModal rows={playersRows} onClose={()=>setPlayersOpen(false)}/>:null}{statsOpen?<StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={()=>setStatsOpen(false)}/>:null}{logOpen?<LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={castleDartLabel} title="JOURNAL CASTLE" onClose={()=>setLogOpen(false)}/>:null}{rankingOpen?<RankingModal rows={rankingRows} title="CLASSEMENT CASTLE" onClose={()=>setRankingOpen(false)}/>:null}
   </div>;
 }

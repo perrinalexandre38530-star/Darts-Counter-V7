@@ -8,6 +8,7 @@ import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
+import { commitPremiumPartyProgress } from "../lib/premiumPartyProgress";
 import {
   cloneSteeplechaseState, createSteeplechaseState, currentSteepleTarget, normalizeSteeplechaseConfig,
   pickSteeplechaseBotDarts, playSteeplechaseVisit, steepleDartHitsTarget, steepleSequence, type SteeplechaseState,
@@ -44,6 +45,7 @@ export default function SteeplechasePlay(props:any){
   const [currentThrow,setCurrentThrow]=React.useState<UIDart[]>(()=>Array.isArray(recoveredThrow)?recoveredThrow.slice(0,3):[]);
   const [multiplier,setMultiplier]=React.useState<1|2|3>(()=>{const v=resumeRecord?.resume?.multiplier??resumeRecord?.payload?.multiplier;return v===2||v===3?v:1;});
   const [undo,setUndo]=React.useState<SteeplechaseState[]>([]),[notice,setNotice]=React.useState("");
+  const [progression,setProgression]=React.useState<any>(()=>resumeRecord?.summary?.progression||resumeRecord?.payload?.summary?.progression||null);
   const [playersOpen,setPlayersOpen]=React.useState(false),[statsOpen,setStatsOpen]=React.useState(false),[logOpen,setLogOpen]=React.useState(false),[rankingOpen,setRankingOpen]=React.useState(false);
   const botBusy=React.useRef(false),finishedRef=React.useRef(false),introPlayedRef=React.useRef(false),initialCheckpointRef=React.useRef(false);
   const matchIdRef=React.useRef(String(resumeRecord?.id||resumeRecord?.matchId||`steeple-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
@@ -63,7 +65,29 @@ export default function SteeplechasePlay(props:any){
       resume:{mode:"steeplechase",config:s.config,state:cloneSteeplechaseState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,updatedAt:Date.now()},payload:{kind:"steeplechase",mode:"steeplechase",sport:"darts",config:s.config,stateSnapshot:cloneSteeplechaseState(s),currentThrow:draft.slice(0,3),multiplier:draftMultiplier,visits:s.visits,visitHistory:s.visits,stats:{mode:"steeplechase",players:s.statsByPlayer,legWins:s.legWins}}};
   },[profiles,currentThrow,multiplier]);
   const saveInProgress=React.useCallback(async(s:SteeplechaseState,draft:UIDart[]=currentThrow,m:1|2|3=multiplier)=>{try{await History.upsert(buildRecord(s,"in_progress",draft,m));}catch(e){console.warn("[STEEPLECHASE] checkpoint failed",e);}},[buildRecord,currentThrow,multiplier]);
-  const persist=React.useCallback((s:SteeplechaseState)=>{if(s.phase==="finished"){if(finishedRef.current)return;finishedRef.current=true;const rec=buildRecord(s,"finished",[],1);if(typeof onFinish==="function")onFinish(rec,{navigate:false});else void History.upsert(rec).catch(()=>{});}else void saveInProgress(s,[],1);},[buildRecord,onFinish,saveInProgress]);
+  const persist=React.useCallback((s:SteeplechaseState)=>{
+    if(s.phase==="finished"){
+      if(finishedRef.current)return;
+      finishedRef.current=true;
+      const progress=commitPremiumPartyProgress({
+        mode:"steeplechase",
+        matchId:matchIdRef.current,
+        winnerId:s.winnerId,
+        participants:(s.players||[]).map((p:any)=>({
+          id:String(p.id),
+          name:p.name,
+          stats:s.statsByPlayer?.[p.id]||{},
+          isBot:isBotProfile(profileById.get(String(p.id))||p,botIds),
+        })),
+      });
+      setProgression(progress);
+      const rec:any=buildRecord(s,"finished",[],1);
+      rec.summary={...(rec.summary||{}),progression:progress};
+      rec.payload={...(rec.payload||{}),summary:{...(rec.payload?.summary||{}),progression:progress}};
+      if(typeof onFinish==="function")onFinish(rec,{navigate:false});
+      else void History.upsert(rec).catch(()=>{});
+    }else void saveInProgress(s,[],1);
+  },[buildRecord,onFinish,saveInProgress,profileById,botIds]);
 
   React.useEffect(()=>{if(initialCheckpointRef.current)return;initialCheckpointRef.current=true;if(state.phase!=="finished")void saveInProgress(state,currentThrow,multiplier);},[saveInProgress,state,currentThrow,multiplier]);
   React.useEffect(()=>{if(state.phase==="finished")return;const t=window.setTimeout(()=>void saveInProgress(state,currentThrow,multiplier),180);return()=>window.clearTimeout(t);},[currentThrow,multiplier,state.phase,state.activePlayerIndex,saveInProgress]);
@@ -75,7 +99,7 @@ export default function SteeplechasePlay(props:any){
   const doUndo=()=>setUndo(u=>{if(!u.length)return u;const prev=u[u.length-1];setState(cloneSteeplechaseState(prev));setCurrentThrow([]);setMultiplier(1);setNotice("Dernière volée annulée");finishedRef.current=false;void saveInProgress(prev,[],1);return u.slice(0,-1);});
   const setThrowWithSfx=React.useCallback((update:any)=>setCurrentThrow((prev:UIDart[])=>{const next=(typeof update==="function"?update(prev):update)||prev;const out=Array.isArray(next)?next.slice(0,3):prev;if(out.length>prev.length)out.slice(prev.length).forEach((d:any,i:number)=>window.setTimeout(()=>playNewModeDartSfx(d,sfxEnabled),i*120));return out;}),[sfxEnabled]);
   React.useEffect(()=>{if(!activeIsBot||state.phase==="finished"||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{try{const darts=pickSteeplechaseBotDarts(state,config.botLevel);const span=playNewModeDartSequence(darts,sfxEnabled);window.setTimeout(()=>{try{commit(playSteeplechaseVisit(state,darts));}finally{botBusy.current=false;}},span+100);}catch{botBusy.current=false;}},620);return()=>window.clearTimeout(t);},[state,activeIsBot,activePlayer?.id]);
-  function replay(){matchIdRef.current=`steeple-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setCurrentThrow([]);setMultiplier(1);const next=createSteeplechaseState(players,config);setState(next);initialCheckpointRef.current=true;void saveInProgress(next,[],1);if(sfxEnabled)playNewModeSfx("intro",true);}
+  function replay(){matchIdRef.current=`steeple-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;finishedRef.current=false;setUndo([]);setNotice("");setProgression(null);setCurrentThrow([]);setMultiplier(1);const next=createSteeplechaseState(players,config);setState(next);initialCheckpointRef.current=true;void saveInProgress(next,[],1);if(sfxEnabled)playNewModeSfx("intro",true);}
 
   const legTarget=config.seriesWins*2-1,seq=steepleSequence(config.rules.direction),activeTarget=activePlayer?currentSteepleTarget(state,activePlayer.id):{label:"—"},activeStats=state.statsByPlayer[activePlayer?.id]||{};
   const previewDarts=currentThrow.map(uiToGameDart);let previewStep=Number(state.stepByPlayer[activePlayer?.id]||0),previewHits=0;
@@ -90,7 +114,7 @@ export default function SteeplechasePlay(props:any){
   const totalDarts=Object.values(state.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs=Math.max(0,Number((state.finishedAt||Date.now()))-Number(state.startedAt||Date.now()));
   const routeText=currentThrow.length?`${previewHits} étape${previewHits>1?"s":""} gagnée${previewHits>1?"s":""} · prochaine ${previewTarget.label}`:`${activeTarget.kind==='bull'?"ARRIVÉE":activeTarget.fence?"HAIE":"SECTEUR"} · ${activeTarget.label}`;
 
-  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerSteeple} tickerAlt="STEEPLECHASE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("steeplechase_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="steeplechase_play" mode="steeplechase" screenLabel="STEEPLECHASE · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="STEEPLECHASE" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"active",initialStatsSubTab:"steeplechase",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"active",initialStatsSubTab:"history",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("steeplechase_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
+  if(state.phase==="finished")return <div className="party-mode" style={{["--mode-accent" as any]:ACCENT}} data-mss-native-play-layout="1"><PageHeader tickerSrc={tickerSteeple} tickerAlt="STEEPLECHASE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("steeplechase_config")} color={ACCENT} glow={`${ACCENT}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="steeplechase_play" mode="steeplechase" screenLabel="STEEPLECHASE · Partie" accent={ACCENT}/></div>:null}/><div style={{flex:"1 1 auto",minHeight:0,overflow:"auto"}}><PremiumEndPanel title="STEEPLECHASE" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} progression={progression ? {...progression, winnerCareer: progression.byPlayer?.[String(state.winnerId || "")] || null} : null} onReplay={replay} onStats={()=>go?.("statsHub",{mode:"active",initialStatsSubTab:"steeplechase",playerId:state.winnerId||state.players[0]?.id,focusMatchId:matchIdRef.current})} onHistory={()=>go?.("statsHub",{tab:"history",mode:"active",initialStatsSubTab:"history",focusMatchId:matchIdRef.current})} onConfig={()=>go?.("steeplechase_config")} onGames={()=>go?.("games",{gamesView:"all"})}/></div></div>;
 
   return <div className="party-mode" style={{["--mode-accent" as any]:activeColor}} data-mss-native-play-layout="1">
     <PageHeader tickerSrc={tickerSteeple} tickerAlt="STEEPLECHASE" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("steeplechase_config")} color={activeColor} glow={`${activeColor}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="steeplechase_play" mode="steeplechase" screenLabel="STEEPLECHASE · Partie" accent={activeColor}/></div>:null}/>

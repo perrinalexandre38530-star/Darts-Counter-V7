@@ -136,8 +136,9 @@ export function commitDartsPokerProgress(input: {
   matchId: string;
   winnerIds?: string[];
   participants: Array<{ id: string; name?: string; stats?: any; isBot?: boolean }>;
+  occurredAt?: number;
 }): DartsPokerProgressResult {
-  const now = Date.now();
+  const now = n(input.occurredAt) || Date.now();
   const store = safeReadStore();
   store.players = store.players && typeof store.players === "object" ? store.players : {};
   const winnerIds = new Set((input.winnerIds || []).map(String));
@@ -173,7 +174,7 @@ export function commitDartsPokerProgress(input: {
       current.dealerWins += n(stats.dealerWins);
       current.closingWins += stats.closingRoundWin ? 1 : 0;
       current.royalFlushes += n(stats.royalFlushes);
-      current.processedMatchIds = [...current.processedMatchIds.slice(-79), String(input.matchId)];
+      current.processedMatchIds = [...current.processedMatchIds, String(input.matchId)];
     }
 
     for (const rule of DARTS_POKER_BADGE_RULES) {
@@ -250,4 +251,163 @@ export function getDartsPokerBadgeProgress(playerId: string, id: DartsPokerProgr
     lockedReason: getDartsPokerBadgeLockedReason(id, career),
     detail: rule?.detail || "",
   };
+}
+
+
+export type DartsPokerProgressReconcileResult = {
+  inspectedMatches: number;
+  processedMatches: number;
+  recoveredUnlocks: DartsPokerProgressUnlock[];
+  byPlayer: Record<string, DartsPokerProgressPlayer>;
+};
+
+function progressRecordMode(record: any): string {
+  return [record?.kind, record?.mode, record?.gameId, record?.summary?.kind, record?.summary?.mode, record?.payload?.kind, record?.payload?.mode, record?.payload?.stats?.mode]
+    .map((value) => String(value || "").toLowerCase())
+    .join("|");
+}
+
+function progressRecordFinished(record: any): boolean {
+  const status = String(record?.status || record?.summary?.status || record?.payload?.status || "").toLowerCase();
+  return status === "finished" || status === "completed" || record?.summary?.finished === true || Boolean(record?.finishedAt || record?.endedAt);
+}
+
+function progressRecordId(record: any): string {
+  return String(record?.matchId || record?.id || record?.resumeId || record?.summary?.matchId || record?.payload?.matchId || "");
+}
+
+function progressRecordAt(record: any): number {
+  return n(record?.finishedAt || record?.endedAt || record?.updatedAt || record?.createdAt || record?.startedAt) || Date.now();
+}
+
+function progressWinnerIds(record: any): string[] {
+  const values = [
+    record?.winnerIds,
+    record?.summary?.winnerIds,
+    record?.payload?.winnerIds,
+    record?.payload?.summary?.winnerIds,
+    record?.winnerId,
+    record?.summary?.winnerId,
+    record?.payload?.winnerId,
+  ];
+  return Array.from(new Set(values.flatMap((value: any) => Array.isArray(value) ? value : value ? [value] : []).map(String).filter(Boolean)));
+}
+
+function progressPlayerPools(record: any): any[][] {
+  return [
+    record?.summary?.perPlayer,
+    record?.payload?.summary?.perPlayer,
+    record?.payload?.stats?.players,
+    record?.summary?.rankings,
+    record?.payload?.players,
+    record?.summary?.players,
+    record?.players,
+  ].filter(Array.isArray);
+}
+
+function progressPlayerId(row: any): string {
+  return String(row?.id || row?.playerId || row?.profileId || "");
+}
+
+function progressPlayerName(row: any): string {
+  return String(row?.name || row?.playerName || row?.displayName || "Joueur");
+}
+
+function progressIsBot(row: any): boolean {
+  return Boolean(row?.isBot || row?.bot || row?.type === "bot" || row?.kind === "bot" || row?.botLevel || row?.cpu === true);
+}
+
+function progressParticipantsFromRecord(record: any): Array<{ id: string; name: string; stats: any; isBot: boolean }> {
+  const merged = new Map<string, any>();
+  for (const pool of progressPlayerPools(record)) {
+    for (const row of pool) {
+      const id = progressPlayerId(row);
+      if (!id) continue;
+      merged.set(id, { ...(merged.get(id) || {}), ...(row || {}) });
+    }
+  }
+  const rounds = [record?.summary?.rounds, record?.payload?.summary?.rounds, record?.payload?.rounds, record?.resume?.state?.rounds, record?.payload?.stateSnapshot?.rounds].find(Array.isArray) || [];
+  const configuredBotIds = new Set<string>([
+    ...(Array.isArray(record?.summary?.config?.botIds) ? record.summary.config.botIds : []),
+    ...(Array.isArray(record?.payload?.config?.botIds) ? record.payload.config.botIds : []),
+    ...(Array.isArray(record?.resume?.config?.botIds) ? record.resume.config.botIds : []),
+    ...(Array.isArray(record?.game?.botIds) ? record.game.botIds : []),
+  ].map(String));
+  const dealerByRound = new Map<number, string>();
+  for (const round of rounds) {
+    const roundNumber = n(round?.round);
+    const dealerId = String(round?.dealerId || round?.dealerPlayerId || "");
+    if (roundNumber > 0 && dealerId) dealerByRound.set(roundNumber, dealerId);
+  }
+  return Array.from(merged.entries()).map(([id, row]) => {
+    const playerRounds = rounds.flatMap((round: any, index: number) => (Array.isArray(round?.rows) ? round.rows : []).filter((item: any) => String(item?.playerId || item?.id || "") === id).map((item: any) => ({ round, index, item })));
+    const completedContracts = playerRounds.filter(({ item }: any) => item?.contractCompleted).length;
+    const premiumRoundHands = playerRounds.filter(({ item }: any) => {
+      const rank = item?.evaluation?.categoryRank == null ? -1 : n(item?.evaluation?.categoryRank);
+      const label = String(item?.evaluation?.label || "").toLowerCase();
+      return rank >= 5 || /flush|couleur|full|carr[eé]|four|royal|royale/.test(label);
+    }).length;
+    const royalRounds = playerRounds.filter(({ item }: any) => /royal|royale/.test(String(item?.evaluation?.label || "").toLowerCase()) || (item?.evaluation?.categoryRank == null ? -1 : n(item?.evaluation?.categoryRank)) >= 9).length;
+    const dealerWins = playerRounds.filter(({ round, item }: any) => {
+      const roundNumber = n(round?.round);
+      const dealerId = String(round?.dealerId || round?.dealerPlayerId || dealerByRound.get(roundNumber) || "");
+      return dealerId === id && (item?.win === true || n(item?.rank) === 1);
+    }).length;
+    const orderedPlayerRounds = playerRounds.slice().sort((a: any, b: any) => (a?.round?.round == null ? a.index + 1 : n(a?.round?.round)) - (b?.round?.round == null ? b.index + 1 : n(b?.round?.round)));
+    const closingRound = orderedPlayerRounds.length ? orderedPlayerRounds[orderedPlayerRounds.length - 1] : null;
+    return {
+      id,
+      name: progressPlayerName(row),
+      isBot: progressIsBot(row) || configuredBotIds.has(id),
+      stats: {
+        ...row,
+        contractHits: row?.contractHits == null ? completedContracts : n(row?.contractHits),
+        premiumHands: row?.premiumHands == null ? premiumRoundHands : n(row?.premiumHands),
+        handsPlayed: row?.handsPlayed == null ? playerRounds.length : n(row?.handsPlayed),
+        dealerWins: row?.dealerWins == null ? dealerWins : n(row?.dealerWins),
+        closingRoundWin: row?.closingRoundWin ?? Boolean(closingRound?.item?.win === true || n(closingRound?.item?.rank) === 1),
+        royalFlushes: row?.royalFlushes == null ? royalRounds : n(row?.royalFlushes),
+      },
+    };
+  });
+}
+
+/**
+ * Reconcile the small local badge cache against finished Darts Poker History rows.
+ * This is intentionally additive: it never erases local progress when a device only
+ * has a partial History window. Missing matches are replayed once via processedMatchIds.
+ * This makes badge progression survive cache clears/restores and lets a synced History
+ * rebuild the collection on another device without changing the global backup pipeline.
+ */
+export function reconcileDartsPokerProgressFromHistory(records: any[] = []): DartsPokerProgressReconcileResult {
+  const pokerRecords = (Array.isArray(records) ? records : [])
+    .filter((record) => {
+      const mode = progressRecordMode(record);
+      return (mode.includes("darts_poker") || mode.includes("darts poker") || mode.includes("dartspoker")) && progressRecordFinished(record);
+    })
+    .sort((a, b) => progressRecordAt(a) - progressRecordAt(b));
+
+  const recoveredUnlocks: DartsPokerProgressUnlock[] = [];
+  const byPlayer: Record<string, DartsPokerProgressPlayer> = {};
+  let processedMatches = 0;
+
+  for (const record of pokerRecords) {
+    const matchId = progressRecordId(record);
+    if (!matchId) continue;
+    const participants = progressParticipantsFromRecord(record);
+    const humanParticipants = participants.filter((participant) => !participant.isBot);
+    if (!humanParticipants.length) continue;
+    const alreadyProcessedForAll = humanParticipants.every((participant) => readDartsPokerProgress(participant.id)?.processedMatchIds?.includes(matchId));
+    const result = commitDartsPokerProgress({
+      matchId,
+      winnerIds: progressWinnerIds(record),
+      participants,
+      occurredAt: progressRecordAt(record),
+    });
+    if (!alreadyProcessedForAll) processedMatches += 1;
+    recoveredUnlocks.push(...(result.unlocks || []));
+    Object.assign(byPlayer, result.byPlayer || {});
+  }
+
+  return { inspectedMatches: pokerRecords.length, processedMatches, recoveredUnlocks, byPlayer };
 }

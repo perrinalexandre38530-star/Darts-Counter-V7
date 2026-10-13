@@ -4,6 +4,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
 import DartsPokerBadge from "../components/darts-poker/DartsPokerBadge";
 import DartsPokerBadgeGallery from "../components/darts-poker/DartsPokerBadgeGallery";
+import DartsPokerBadgeUnlockReveal from "../components/darts-poker/DartsPokerBadgeUnlockReveal";
 import type { DartsPokerBadgeId } from "../components/darts-poker/DartsPokerBadge";
 import type { DartsPokerState } from "../lib/gameEngines/dartsPokerEngine";
 import { deriveDartsPokerMatchMetrics, deriveDartsPokerMatchStory, deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerRound1 } from "../lib/dartsPokerAnalytics";
@@ -28,6 +29,14 @@ const td: React.CSSProperties = { padding: "7px 8px", borderBottom: "1px solid r
 
 export default function DartsPokerEnd({ state, profilesById, newBadgeUnlocks = [], progressByPlayer = {}, onClose, onReplay, onStats, onHistory }: { state: DartsPokerState; profilesById: Map<string, any>; newBadgeUnlocks?: any[]; progressByPlayer?: Record<string, any>; onClose: () => void; onReplay: () => void; onStats: () => void; onHistory: () => void; }) {
   const [showBadgeGallery, setShowBadgeGallery] = React.useState(false);
+  const [showUnlockReveal, setShowUnlockReveal] = React.useState(false);
+  const revealedUnlockSignatureRef = React.useRef("");
+  React.useEffect(() => {
+    const signature = (Array.isArray(newBadgeUnlocks) ? newBadgeUnlocks : []).map((item: any) => `${item?.playerId || ""}:${item?.badgeId || ""}`).filter(Boolean).join("|");
+    if (!signature || signature === revealedUnlockSignatureRef.current) return;
+    revealedUnlockSignatureRef.current = signature;
+    setShowUnlockReveal(true);
+  }, [newBadgeUnlocks]);
   const standings = state.standings || [];
   const analyticsRows = state.players.map((player: any) => {
     const standing = standings.find((row: any) => String(row.id) === String(player.id)) || {};
@@ -216,6 +225,7 @@ export default function DartsPokerEnd({ state, profilesById, newBadgeUnlocks = [
         <button onClick={onClose} style={button("#c9ced8")}>FERMER</button><button onClick={onReplay} style={button(RED)}>REJOUER</button><button onClick={onStats} style={button(GREEN)}>STATISTIQUES</button><button onClick={onHistory} style={button(GOLD)}>HISTORIQUE</button>
       </div>
     </div>
+    {showUnlockReveal && newBadgeUnlocks.length ? <DartsPokerBadgeUnlockReveal unlocks={newBadgeUnlocks} profilesById={profilesById} progressByPlayer={progressByPlayer} onClose={() => setShowUnlockReveal(false)} /> : null}
     {showBadgeGallery ? <div style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,.94)", backdropFilter: "blur(11px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ width: "min(980px,100%)", maxHeight: "95dvh", overflow: "auto", borderRadius: 22, padding: 12, background: "radial-gradient(circle at 50% 0%,rgba(85,199,255,.11),#08090d 50%)", border: `1px solid ${BLUE}66`, boxShadow: "0 24px 80px rgba(0,0,0,.72)" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}><div><div style={{ color: BLUE, fontSize: 11, fontWeight: 1150 }}>TROPHÉES DARTS POKER</div><div style={{ color: SOFT, fontSize: 8, marginTop: 2 }}>Collection permanente · progression après ce match</div></div><button type="button" onClick={() => setShowBadgeGallery(false)} style={{ minHeight: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.05)", color: "#fff", padding: "0 12px", fontWeight: 1000 }}>FERMER</button></div><DartsPokerBadgeGallery profiles={badgeProfiles} initialPlayerId={best?.id || badgeProfiles[0]?.id} catalogOnly={!badgeProfiles.length} /></div></div> : null}
   </div>;
 }

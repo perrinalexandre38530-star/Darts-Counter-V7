@@ -1,9 +1,9 @@
 // @ts-nocheck
-// Persistent progression for CASTLE / GOTCHA / HARE & HOUNDS / PENDU / MENTEUR.
+// Persistent progression for premium party modes, including the four completed classics.
 // Small local cache only: every finished match also receives the progression snapshot
 // in History so the data remains auditable from the match itself.
 
-export type PremiumPartyMode = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur";
+export type PremiumPartyMode = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase";
 
 type BadgeDef = {
   key: string;
@@ -50,6 +50,10 @@ const MODE_LABELS: Record<PremiumPartyMode, string> = {
   hare_hounds: "HARE & HOUNDS",
   pendu: "PENDU",
   menteur: "MENTEUR",
+  fifty_one_by_five: "51 BY 5",
+  looper: "LOOPER",
+  call_three: "CALL THREE",
+  steeplechase: "STEEPLECHASE",
 };
 
 function n(v: any) {
@@ -114,6 +118,30 @@ const MODE_BADGES: Record<PremiumPartyMode, BadgeDef[]> = {
     { key: "menteur_caught", title: "ANTI-BLUFF", detail: "2 mensonges démasqués", icon: "🚨", test: ({ stats }: any) => n(stats.liesCaught) >= 2 },
     { key: "menteur_streak", title: "SANG-FROID", detail: "3 preuves consécutives", icon: "🧊", test: ({ stats }: any) => n(stats.bestProofStreak) >= 3 },
   ],
+  fifty_one_by_five: [
+    { key: "51_divisible", title: "CALCULATEUR", detail: "5 volées valides sur une partie", icon: "➗", test: ({ stats }: any) => n(stats.validVisits) >= 5 },
+    { key: "51_streak", title: "MÉTRONOME ×5", detail: "4 volées valides consécutives", icon: "🔥", test: ({ stats }: any) => n(stats.bestValidStreak) >= 4 },
+    { key: "51_big_quotient", title: "GROS QUOTIENT", detail: "Un quotient de 20 ou plus sur une volée", icon: "⚡", test: ({ stats }: any) => n(stats.bestQuotient) >= 20 },
+    { key: "51_clean", title: "COMPTE JUSTE", detail: "Victoire sans aucun bust", icon: "🧮", test: ({ stats, won }: any) => won && n(stats.busts) === 0 },
+  ],
+  looper: [
+    { key: "looper_survivor", title: "BOUCLEUR", detail: "5 boucles survécues sur une partie", icon: "♾️", test: ({ stats }: any) => n(stats.loopsSurvived) >= 5 },
+    { key: "looper_shield", title: "SOUS PROTECTION", detail: "3 boucliers gagnés sur une partie", icon: "🛡️", test: ({ stats }: any) => n(stats.shieldsEarned) >= 3 },
+    { key: "looper_bull", title: "BOUCLE CENTRALE", detail: "Poser au moins une cible Bull / DBull", icon: "🎯", test: ({ stats }: any) => n(stats.bullTargets) >= 1 },
+    { key: "looper_streak", title: "SANS ROMPRE LA BOUCLE", detail: "3 touches exactes consécutives", icon: "🔁", test: ({ stats }: any) => n(stats.bestHitStreak) >= 3 },
+  ],
+  call_three: [
+    { key: "callthree_full", title: "FULL CALL", detail: "2 Full Calls sur une partie", icon: "📣", test: ({ stats }: any) => n(stats.perfectRounds) >= 2 },
+    { key: "callthree_visit", title: "TRIPLE RÉPONSE", detail: "7 points ou plus sur une volée", icon: "🎯", test: ({ stats }: any) => n(stats.bestVisit) >= 7 },
+    { key: "callthree_streak", title: "À L’ÉCOUTE", detail: "5 appels réussis consécutifs", icon: "🔥", test: ({ stats }: any) => n(stats.bestStreak) >= 5 },
+    { key: "callthree_triples", title: "RÉPONSE TRIPLE", detail: "3 triples réussis sur les appels", icon: "⚡", test: ({ stats }: any) => n(stats.tripleHits) >= 3 },
+  ],
+  steeplechase: [
+    { key: "steeple_hurdler", title: "ROI DES HAIES", detail: "Franchir 4 haies sur une partie", icon: "🚧", test: ({ stats }: any) => n(stats.fencesCleared) >= 4 },
+    { key: "steeple_finish", title: "PHOTO-FINISH", detail: "Terminer au Bull", icon: "🎯", test: ({ stats }: any) => n(stats.bullFinishes) >= 1 },
+    { key: "steeple_sprint", title: "SPRINT PARFAIT", detail: "3 étapes sur une seule volée", icon: "💨", test: ({ stats }: any) => n(stats.bestVisitSteps) >= 3 },
+    { key: "steeple_streak", title: "COURSE SANS FAUTE", detail: "5 obstacles consécutifs", icon: "🔥", test: ({ stats }: any) => n(stats.bestStreak) >= 5 },
+  ],
 };
 
 const MODE_RECORDS: Record<PremiumPartyMode, RecordDef[]> = {
@@ -154,6 +182,34 @@ const MODE_RECORDS: Record<PremiumPartyMode, RecordDef[]> = {
     { key: "matchCalls", label: "Calls gagnés", icon: "🕵️", value: (s) => n(s.successfulCalls) },
     { key: "matchProofs", label: "Contrats prouvés", icon: "✅", value: (s) => n(s.contractsProven) },
     { key: "matchCaught", label: "Mensonges démasqués", icon: "🚨", value: (s) => n(s.liesCaught) },
+  ],
+  fifty_one_by_five: [
+    { key: "highestRaw", label: "Meilleur total brut", icon: "🎯", value: (s) => n(s.highestRaw) },
+    { key: "bestQuotient", label: "Meilleur quotient", icon: "➗", value: (s) => n(s.bestQuotient) },
+    { key: "bestValidStreak", label: "Série valide", icon: "🔥", value: (s) => n(s.bestValidStreak) },
+    { key: "matchValidVisits", label: "Volées valides / match", icon: "✅", value: (s) => n(s.validVisits) },
+    { key: "matchQuotientPoints", label: "Points ÷5 / match", icon: "📈", value: (s) => n(s.quotientPoints) },
+  ],
+  looper: [
+    { key: "bestHitStreak", label: "Série de boucles", icon: "🔥", value: (s) => n(s.bestHitStreak) },
+    { key: "matchLoops", label: "Boucles survécues / match", icon: "♾️", value: (s) => n(s.loopsSurvived) },
+    { key: "matchTargets", label: "Cibles posées / match", icon: "🎯", value: (s) => n(s.targetsSet) },
+    { key: "matchShields", label: "Boucliers gagnés / match", icon: "🛡️", value: (s) => n(s.shieldsEarned) },
+    { key: "matchBullTargets", label: "Cibles Bull / match", icon: "🔴", value: (s) => n(s.bullTargets) },
+  ],
+  call_three: [
+    { key: "bestVisit", label: "Best réponse", icon: "🎯", value: (s) => n(s.bestVisit) },
+    { key: "bestStreak", label: "Série d’appels", icon: "🔥", value: (s) => n(s.bestStreak) },
+    { key: "matchPoints", label: "Points / match", icon: "📈", value: (s) => n(s.points) },
+    { key: "matchFullCalls", label: "Full Calls / match", icon: "📣", value: (s) => n(s.perfectRounds) },
+    { key: "matchTriples", label: "Triples réussis / match", icon: "⚡", value: (s) => n(s.tripleHits) },
+  ],
+  steeplechase: [
+    { key: "bestVisitSteps", label: "Étapes sur une volée", icon: "💨", value: (s) => n(s.bestVisitSteps) },
+    { key: "bestStreak", label: "Série d’obstacles", icon: "🔥", value: (s) => n(s.bestStreak) },
+    { key: "matchSteps", label: "Étapes / match", icon: "🏁", value: (s) => n(s.steps) },
+    { key: "matchFences", label: "Haies / match", icon: "🚧", value: (s) => n(s.fencesCleared) },
+    { key: "matchBullFinishes", label: "Bull finish / match", icon: "🎯", value: (s) => n(s.bullFinishes) },
   ],
 };
 

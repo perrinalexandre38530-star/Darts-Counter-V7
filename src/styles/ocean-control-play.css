@@ -1535,3 +1535,180 @@
   .ocean-command-standing-row{grid-template-columns:24px minmax(0,1fr) 24px 28px;gap:5px;padding:6px}
   .ocean-command-standing-row>div>small{font-size:5.9px}
 }
+
+
+/* ============================================================
+   OCEAN CONTROL V14 — Rivalité / duel de commandement
+============================================================ */
+
+.ocean-rank-delta{
+  display:inline-block;
+  margin-left:3px;
+  font-size:5.6px;
+  font-weight:1000;
+  vertical-align:1px;
+}
+
+.ocean-rivalry-section{
+  --rivalry-color:#f5ca68;
+  background:
+    radial-gradient(circle at 82% 0%,color-mix(in srgb,var(--rivalry-color) 11%,transparent),transparent 44%),
+    rgba(255,255,255,.022);
+  border-color:color-mix(in srgb,var(--rivalry-color) 25%,rgba(255,255,255,.06));
+}
+
+.ocean-rivalry-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:8px;
+}
+
+.ocean-rivalry-head>div{min-width:0}
+.ocean-rivalry-head strong{
+  display:block;
+  color:#eef8ff;
+  font-size:8.4px;
+  letter-spacing:.45px;
+}
+.ocean-rivalry-head small{
+  display:block;
+  margin-top:2px;
+  color:#8193a5;
+  font-size:6.5px;
+}
+.ocean-rivalry-head>span{
+  flex:0 0 auto;
+  border-radius:999px;
+  padding:5px 8px;
+  background:color-mix(in srgb,var(--rivalry-color) 9%,rgba(0,0,0,.18));
+  border:1px solid color-mix(in srgb,var(--rivalry-color) 32%,transparent);
+  font-size:7.2px;
+  font-weight:1100;
+}
+
+.ocean-rivalry-duel{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr);
+  gap:6px;
+  align-items:stretch;
+}
+
+.ocean-rivalry-player{
+  min-width:0;
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr);
+  gap:7px;
+  align-items:center;
+  padding:7px 8px;
+  border-radius:12px;
+  background:rgba(255,255,255,.025);
+  border:1px solid rgba(255,255,255,.07);
+}
+.ocean-rivalry-player.is-active{
+  background:color-mix(in srgb,var(--rivalry-color) 7%,rgba(255,255,255,.02));
+  border-color:color-mix(in srgb,var(--rivalry-color) 28%,transparent);
+}
+.ocean-rivalry-player>b{
+  width:26px;
+  height:26px;
+  display:grid;
+  place-items:center;
+  border-radius:8px;
+  color:var(--rivalry-color);
+  background:color-mix(in srgb,var(--rivalry-color) 10%,rgba(255,255,255,.02));
+  border:1px solid color-mix(in srgb,var(--rivalry-color) 25%,transparent);
+  font-size:10px;
+}
+.ocean-rivalry-player>div{min-width:0}
+.ocean-rivalry-player strong{
+  display:block;
+  color:#eef8ff;
+  font-size:7.8px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ocean-rivalry-player small{
+  display:block;
+  margin-top:2px;
+  color:#8193a5;
+  font-size:6.3px;
+}
+.ocean-rivalry-vs{
+  display:grid;
+  place-items:center;
+  color:#6f8092;
+  font-size:7.2px;
+  font-weight:1100;
+}
+
+.ocean-rivalry-metrics{
+  margin-top:8px;
+  display:grid;
+  gap:6px;
+}
+.ocean-rivalry-metric{
+  display:grid;
+  grid-template-columns:72px minmax(0,1fr) 35px;
+  gap:7px;
+  align-items:center;
+}
+.ocean-rivalry-metric>span{
+  color:#c8d5e2;
+  font-size:6.4px;
+  font-weight:1000;
+}
+.ocean-rivalry-metric>b{
+  text-align:right;
+  font-size:6.8px;
+}
+.ocean-rivalry-metric__track{
+  position:relative;
+  height:8px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.06);
+}
+.ocean-rivalry-metric__track i{
+  position:absolute;
+  left:0;
+  border-radius:999px;
+}
+.ocean-rivalry-metric__track .is-active{
+  top:0;
+  bottom:0;
+  opacity:.88;
+}
+.ocean-rivalry-metric__track .is-rival{
+  top:2px;
+  bottom:2px;
+  background:rgba(255,255,255,.22);
+  border-right:2px solid rgba(255,255,255,.92);
+}
+
+.ocean-rivalry-footer{
+  margin-top:8px;
+  padding-top:7px;
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  border-top:1px solid rgba(255,255,255,.06);
+}
+.ocean-rivalry-footer span{
+  min-width:0;
+  color:#8193a5;
+  font-size:6.2px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ocean-rivalry-footer strong{font-weight:1100}
+
+@media (max-width:520px){
+  .ocean-rivalry-metric{grid-template-columns:58px minmax(0,1fr) 31px}
+  .ocean-rivalry-player{grid-template-columns:24px minmax(0,1fr);padding:6px}
+  .ocean-rivalry-player>b{width:23px;height:23px;font-size:9px}
+  .ocean-rivalry-footer{display:grid;grid-template-columns:1fr}
+}

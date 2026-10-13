@@ -13,6 +13,7 @@ function isOcean(r:any){return [r?.kind,r?.mode,r?.summary?.kind,r?.summary?.mod
 function pools(r:any){return [r?.summary?.perPlayer,r?.payload?.summary?.perPlayer,r?.payload?.stats?.players,r?.summary?.rankings,r?.payload?.players,r?.summary?.players,r?.players].filter(Array.isArray);}
 function findRow(r:any,pid:string,pname?:string){const found:any[]=[];for(const pool of pools(r)){const x=pool.find((q:any)=>txt(q?.id||q?.playerId||q?.profileId)===txt(pid))||(pname?pool.find((q:any)=>txt(q?.name||q?.playerName).toLowerCase()===txt(pname).toLowerCase()):null);if(x)found.push(x);}return found.reduce((a,x)=>({...a,...x}),null);}
 function winnerIds(r:any){return [r?.winnerIds,r?.summary?.winnerIds,r?.payload?.winnerIds,r?.winnerId,r?.summary?.winnerId].flatMap((v:any)=>Array.isArray(v)?v:v?[v]:[]).map(String);}
+function primaryPool(r:any,pid:string,pname?:string){for(const pool of pools(r)){const found=pool.some((q:any)=>txt(q?.id||q?.playerId||q?.profileId)===txt(pid)||(pname&&txt(q?.name||q?.playerName).toLowerCase()===txt(pname).toLowerCase()));if(found)return pool;}return [];}
 
 function Kpi({label,value,detail,color=BLUE}:any){return <div style={{borderRadius:16,border:"1px solid rgba(255,255,255,.09)",background:"linear-gradient(180deg,rgba(255,255,255,.05),rgba(0,0,0,.24))",padding:10,minWidth:0}}><div style={{color:SOFT,fontSize:8,fontWeight:1000,textTransform:"uppercase"}}>{label}</div><div style={{marginTop:4,color,fontSize:20,fontWeight:1100}}>{value}</div>{detail?<div style={{marginTop:3,color:"#818b9c",fontSize:8.2}}>{detail}</div>:null}</div>}
 function Section({title,children,accent=BLUE,subtitle}:any){return <section style={{marginTop:12,borderRadius:18,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)",padding:12}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><div style={{color:accent,fontSize:9.5,fontWeight:1000,textTransform:"uppercase",letterSpacing:.65}}>{title}</div>{subtitle?<div style={{color:SOFT,fontSize:7.8}}>{subtitle}</div>:null}</div>{children}</section>}
@@ -80,6 +81,37 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
  const competitiveGrade=oceanControlCommandGrade(competitiveAverage);
  const gradeDistribution=["S","A","B","C","D"].map((grade)=>({grade,count:competitiveSamples.filter((item:any)=>item.grade===grade).length}));
  const recentCompetitive=competitiveSamples.slice(0,8);
+ const recordBestAccuracy=matches.reduce((best:any,item:any)=>{const value=n(item?.row?.validShots)>0?Math.round(n(item.row.shipHits)/n(item.row.validShots)*1000)/10:0;return value>n(best?.value)?{value,item}:best;},{value:0,item:null});
+ const recordBestShips=matches.reduce((best:any,item:any)=>n(item?.row?.shipsSunk)>n(best?.value)?{value:n(item.row.shipsSunk),item}:best,{value:0,item:null});
+ const recordBestSonar=matches.reduce((best:any,item:any)=>n(item?.row?.sonarContacts)>n(best?.value)?{value:n(item.row.sonarContacts),item}:best,{value:0,item:null});
+ const recordBestPerfect=matches.reduce((best:any,item:any)=>n(item?.row?.perfectVisits)>n(best?.value)?{value:n(item.row.perfectVisits),item}:best,{value:0,item:null});
+ const recordBestStreak=matches.reduce((best:any,item:any)=>n(item?.row?.bestHitStreak)>n(best?.value)?{value:n(item.row.bestHitStreak),item}:best,{value:0,item:null});
+ const recordBestMission=missionSamples.reduce((best:any,item:any,index:number)=>n(item?.percent)>n(best?.value)?{value:n(item.percent),item:matches[index]}:best,{value:0,item:null});
+ const rivalryMap:any={};
+ matches.forEach(({record,row}:any)=>{
+  const pool=primaryPool(record,playerId,playerName);
+  const config=record?.summary?.config||record?.payload?.config||{};
+  const winners=new Set(winnerIds(record));
+  const myWon=row?.win===true||row?.winner===true||winners.has(String(playerId));
+  const mySnapshot=oceanControlCompetitiveScore(row,config,{won:myWon});
+  const myScore=n(row?.commandScore)>0?n(row.commandScore):mySnapshot.score;
+  pool.forEach((opponent:any)=>{
+   const opponentId=txt(opponent?.id||opponent?.playerId||opponent?.profileId);
+   const opponentName=txt(opponent?.name||opponent?.playerName)||"Adversaire";
+   const isSelf=opponentId?opponentId===txt(playerId):(playerName&&opponentName.toLowerCase()===txt(playerName).toLowerCase());
+   if(isSelf)return;
+   const key=opponentId||`name:${opponentName.toLowerCase()}`;
+   const oppWon=opponent?.win===true||opponent?.winner===true||(opponentId&&winners.has(opponentId));
+   const oppSnapshot=oceanControlCompetitiveScore(opponent,config,{won:oppWon});
+   const oppScore=n(opponent?.commandScore)>0?n(opponent.commandScore):oppSnapshot.score;
+   const current=rivalryMap[key]||{id:key,name:opponentName,matches:0,wins:0,losses:0,draws:0,myScoreTotal:0,rivalScoreTotal:0,lastPlayed:0};
+   current.matches+=1;
+   if(myWon)current.wins+=1;else if(oppWon)current.losses+=1;else current.draws+=1;
+   current.myScoreTotal+=myScore;current.rivalScoreTotal+=oppScore;current.lastPlayed=Math.max(current.lastPlayed,playedAt(record));
+   rivalryMap[key]=current;
+  });
+ });
+ const rivalries=Object.values(rivalryMap).map((item:any)=>({...item,myAverage:item.matches?Math.round(item.myScoreTotal/item.matches):0,rivalAverage:item.matches?Math.round(item.rivalScoreTotal/item.matches):0,delta:item.matches?Math.round((item.myScoreTotal-item.rivalScoreTotal)/item.matches):0,winRate:item.matches?Math.round(item.wins/item.matches*100):0})).sort((a:any,b:any)=>b.matches-a.matches||Math.abs(a.delta)-Math.abs(b.delta)||b.lastPlayed-a.lastPlayed).slice(0,5);
  return <div style={{width:"100%",maxWidth:980,margin:"0 auto"}}>
   <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{[["all","Tout"],["day","24 h"],["week","7 j"],["month","30 j"],["year","1 an"]].map(([key,label])=><button key={key} onClick={()=>setRange(key)} style={{borderRadius:999,padding:"6px 10px",border:`1px solid ${range===key?BLUE:"rgba(255,255,255,.10)"}`,background:range===key?`${BLUE}18`:"rgba(255,255,255,.03)",color:range===key?CYAN:SOFT,fontWeight:1000,fontSize:9}}>{label}</button>)}</div>
   {!games?<div style={{marginTop:16,borderRadius:18,padding:18,textAlign:"center",color:SOFT,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}>Aucune partie OCEAN CONTROL exploitable pour ce joueur.</div>:<>
@@ -116,6 +148,19 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
          <div style={{minHeight:88,display:"grid",gridTemplateColumns:`repeat(${Math.max(1,recentCompetitive.length)},minmax(0,1fr))`,gap:5,alignItems:"end"}}>{recentCompetitive.length?recentCompetitive.map((item:any,index:number)=><div key={index} style={{display:"grid",gap:4,alignItems:"end"}}><div style={{height:Math.max(10,item.score*.68),maxHeight:68,borderRadius:9,background:`linear-gradient(180deg,${item.color},${BLUE})`}}/><div style={{textAlign:"center",color:item.color,fontSize:6.6,fontWeight:1000}}>{item.score}</div></div>):<div style={{color:SOFT,fontSize:8}}>Pas encore de tendance disponible.</div>}</div>
        </div>
      </div>
+   </Section>
+   <Section title="Records de commandement" accent={GOLD} subtitle="Meilleures performances sur la période">
+     <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>
+       <Kpi label="Meilleur indice" value={`${competitiveBest} pts`} detail={`grade ${oceanControlCommandGrade(competitiveBest).grade}`} color={oceanControlCommandGrade(competitiveBest).color}/>
+       <Kpi label="Meilleure précision" value={`${recordBestAccuracy.value}%`} detail={recordBestAccuracy.item?new Date(playedAt(recordBestAccuracy.item.record)||Date.now()).toLocaleDateString("fr-FR"):"—"} color={GREEN}/>
+       <Kpi label="Navires / partie" value={recordBestShips.value} detail={recordBestShips.item?new Date(playedAt(recordBestShips.item.record)||Date.now()).toLocaleDateString("fr-FR"):"—"} color={RED}/>
+       <Kpi label="Contacts sonar" value={recordBestSonar.value} detail="record sur une partie" color={CYAN}/>
+       <Kpi label="Meilleure série" value={recordBestStreak.value} detail={`${recordBestPerfect.value} volée(s) parfaite(s)`} color={GOLD}/>
+       <Kpi label="Mission record" value={`${recordBestMission.value}%`} detail={recordBestMission.value>=100?"mission parfaite":"objectifs tactiques"} color={recordBestMission.value>=100?GREEN:BLUE}/>
+     </div>
+   </Section>
+   <Section title="Rivalités" accent={RED} subtitle={rivalries.length?`${rivalries.length} adversaire${rivalries.length>1?"s":""} principal${rivalries.length>1?"ux":""}`:"Aucun duel historique exploitable"}>
+     {rivalries.length?<div style={{display:"grid",gap:7}}>{rivalries.map((rival:any,index:number)=><div key={rival.id} style={{display:"grid",gridTemplateColumns:"34px minmax(0,1fr) 72px 62px",gap:8,alignItems:"center",padding:9,borderRadius:14,background:index===0?"rgba(255,101,115,.07)":"rgba(255,255,255,.025)",border:`1px solid ${index===0?RED+"3d":"rgba(255,255,255,.08)"}`}}><div style={{width:32,height:32,borderRadius:10,display:"grid",placeItems:"center",color:index===0?RED:SOFT,background:index===0?`${RED}12`:"rgba(255,255,255,.04)",fontWeight:1100}}>VS</div><div style={{minWidth:0}}><div style={{color:"#eef8ff",fontSize:9,fontWeight:1050,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{rival.name}</div><div style={{marginTop:3,color:SOFT,fontSize:7.2}}>{rival.matches} duel{rival.matches>1?"s":""} · {rival.wins} V / {rival.losses} D{rival.draws?` / ${rival.draws} autre`:""} · winrate {rival.winRate}%</div></div><div style={{textAlign:"center"}}><strong style={{display:"block",color:rival.delta>=0?GREEN:RED,fontSize:10}}>{rival.delta>0?"+":""}{rival.delta}</strong><span style={{color:SOFT,fontSize:6.5}}>écart indice</span></div><div style={{textAlign:"right"}}><strong style={{display:"block",color:BLUE,fontSize:9}}>{rival.myAverage}</strong><span style={{color:SOFT,fontSize:6.4}}>vs {rival.rivalAverage}</span></div></div>)}</div>:<div style={{color:SOFT,fontSize:8.5}}>Les rivalités apparaîtront dès que plusieurs parties avec les mêmes adversaires seront présentes dans l’historique.</div>}
    </Section>
    <Section title="ADN de commandement" accent={commandSpecialty.color} subtitle={`Spécialité dominante · ${commandSpecialty.label}`}>
      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 160px",gap:10,alignItems:"stretch"}}>

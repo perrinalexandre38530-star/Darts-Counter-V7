@@ -279,6 +279,7 @@ export default function DartsPokerPlay(props: any) {
       const standing = state.standings.find((row) => String(row.id) === String(player.id));
       return {
         id: player.id, playerId: player.id, profileId: player.id, name: playerName(profile), avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null,
+        isBot: isBot(profile, botIds),
         dartSetId: config.playerDartSets?.[player.id] ?? profile?.dartSetId ?? null, color: PLAYER_COLORS[index % PLAYER_COLORS.length],
         rank: standing?.rank || null, win: finished && state.winnerIds.includes(player.id), winner: finished && state.winnerIds.includes(player.id),
         ...stats,

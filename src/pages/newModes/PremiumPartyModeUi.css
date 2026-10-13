@@ -82,3 +82,25 @@
   .party-mode__bot-scouting{padding:3px 5px;gap:1px}
   .party-mode__bot-scouting>p{display:none}
 }
+
+/* V12 — rivalité BOT ↔ humain */
+.party-mode__bot-rivalry{display:grid;gap:4px;margin-top:3px;padding:6px 7px;border:1px solid rgba(255,255,255,.065);border-radius:10px;background:linear-gradient(180deg,rgba(255,91,87,.045),rgba(255,255,255,.018));box-shadow:inset 0 0 18px rgba(255,255,255,.012)}
+.party-mode__bot-rivalry-head{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0}
+.party-mode__bot-rivalry-head small{color:#6e7785;font-size:5.4px;font-weight:1100;letter-spacing:.52px}
+.party-mode__bot-rivalry-head strong{font-size:6.7px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.party-mode__bot-rivalry-score{display:flex;align-items:baseline;gap:6px;min-width:0}
+.party-mode__bot-rivalry-score>b{font-size:13px;line-height:1;color:#fff;font-weight:1100;letter-spacing:.5px}
+.party-mode__bot-rivalry-score>span{color:#8993a0;font-size:5.8px;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.party-mode__bot-rivalry>p{margin:0;color:#a1aab7;font-size:5.8px;line-height:1.3;font-weight:760}
+.party-mode__bot-rivalry>blockquote{margin:0;padding:4px 6px;border-left:2px solid currentColor;border-radius:0 7px 7px 0;background:rgba(255,255,255,.025);color:#c1c8d1;font-size:5.8px;line-height:1.3;font-weight:800;font-style:italic}
+.party-mode__bot-rivalry-bars{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.party-mode__bot-rivalry-bars>span{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4px;min-width:0}
+.party-mode__bot-rivalry-bars em{font-style:normal;color:#667181;font-size:4.9px;font-weight:1000;letter-spacing:.35px}
+.party-mode__bot-rivalry-bars i{position:relative;display:block;height:3px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden}
+.party-mode__bot-rivalry-bars i>u{position:absolute;inset:0 auto 0 0;border-radius:99px;text-decoration:none;box-shadow:0 0 5px currentColor}
+.party-mode__bot-rivalry-bars b{color:#788393;font-size:5px;font-weight:1000}
+@media (orientation:landscape) and (max-height:620px){
+  .party-mode__bot-rivalry{padding:3px 5px;gap:2px}
+  .party-mode__bot-rivalry>p,.party-mode__bot-rivalry>blockquote,.party-mode__bot-rivalry-bars{display:none}
+  .party-mode__bot-rivalry-score>b{font-size:10px}
+}

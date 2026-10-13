@@ -26,6 +26,7 @@ import { resolvePremiumPartyMoment } from "./newModes/premiumPartyMoments";
 import { premiumBotTacticalPlan, resolvePremiumBotBrain } from "../lib/premiumPartyBotAI";
 import { adaptPremiumBotBrain } from "../lib/premiumPartyBotMemory";
 import { adaptPremiumBotBrainFromScouting, commitPremiumPartyScouting } from "../lib/premiumPartyBotScouting";
+import { adaptPremiumBotBrainFromRivalry, commitPremiumPartyRivalry } from "../lib/premiumPartyBotRivalry";
 import "./newModes/PremiumPartyModeUi.css";
 
 const ACCENT = "#ffb33f";
@@ -98,10 +99,12 @@ export default function PenduPlay(props: any) {
   const baseBotBrain = React.useMemo(() => resolvePremiumBotBrain(activeProfile, config.botLevel), [activeProfile?.id, activeProfile?.style, activeProfile?.botLevel, config.botLevel]);
   const careerBotAdaptation = React.useMemo(() => adaptPremiumBotBrainFromScouting("pendu", state, activePlayer, baseBotBrain, botIds), [state, activePlayer?.id, baseBotBrain.key, baseBotBrain.confidence, botIds]);
   const activeBotScouting = careerBotAdaptation.model;
-  const activeBotAdaptation = React.useMemo(() => adaptPremiumBotBrain("pendu", state, activePlayer, careerBotAdaptation.brain, botIds), [state, activePlayer?.id, careerBotAdaptation.brain.key, careerBotAdaptation.brain.confidence, botIds]);
+  const rivalryBotAdaptation = React.useMemo(() => adaptPremiumBotBrainFromRivalry("pendu", state, activePlayer, careerBotAdaptation.brain, botIds), [state, activePlayer?.id, careerBotAdaptation.brain.key, careerBotAdaptation.brain.confidence, botIds]);
+  const activeBotRivalry = rivalryBotAdaptation.model;
+  const activeBotAdaptation = React.useMemo(() => adaptPremiumBotBrain("pendu", state, activePlayer, rivalryBotAdaptation.brain, botIds), [state, activePlayer?.id, rivalryBotAdaptation.brain.key, rivalryBotAdaptation.brain.confidence, botIds]);
   const activeBotBrain = activeBotAdaptation.brain;
   const activeBotMemory = activeBotAdaptation.model;
-  const activeBotPlan = React.useMemo(() => premiumBotTacticalPlan("pendu", state, activePlayer, activeBotBrain), [state, activePlayer?.id, activeBotBrain.key, activeBotBrain.confidence, activeBotMemory?.patternKey, activeBotScouting?.patternKey]);
+  const activeBotPlan = React.useMemo(() => premiumBotTacticalPlan("pendu", state, activePlayer, activeBotBrain), [state, activePlayer?.id, activeBotBrain.key, activeBotBrain.confidence, activeBotMemory?.patternKey, activeBotScouting?.patternKey, activeBotRivalry?.state]);
   const sfxEnabled = config.sfxEnabled !== false, awenaEnabled = config.awenaEnabled !== false, coachEnabled = config.coachEnabled !== false;
   const nameById = React.useCallback((id: any) => state.players.find((p: any) => String(p.id) === String(id))?.name || "Joueur", [state.players]);
 
@@ -123,6 +126,18 @@ export default function PenduPlay(props: any) {
     if (s.phase === "finished") {
       if (finishedRef.current) return;
       finishedRef.current = true;
+      commitPremiumPartyRivalry({
+        mode: "pendu",
+        matchId: matchIdRef.current,
+        winnerId: s.winnerId,
+        state: s,
+        participants: (s.players || []).map((p: any) => ({
+          id: String(p.id),
+          name: p.name,
+          isBot: isBotProfile(profileById.get(String(p.id)) || p, botIds),
+        })),
+        botIds,
+      });
       commitPremiumPartyScouting({
         mode: "pendu",
         matchId: matchIdRef.current,
@@ -208,7 +223,7 @@ export default function PenduPlay(props: any) {
       {editable ? <section style={{ ...panelStyle(`${activeColor}44`), padding: 8, display: "grid", gap: 6 }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><b style={{ color: activeColor, fontSize: 10 }}>RÉGLER LE DÉFI</b><span style={{ color: SOFT, fontSize: 8.5 }}>avant la 1re fléchette</span></div><div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{config.rules.targetFamily === "mixed" ? <button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge(challenge.kind === "score" ? { kind: "segment", number: 20, bed: "S" } : { kind: "score", target: 50 })}>{challenge.kind === "score" ? "SEGMENT" : "SCORE"}</button> : null}{challenge.kind === "segment" ? <><button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, number: ((challenge.number + 18) % 20) + 1 })}>−</button>{(["S", "D", "T"] as const).map((b) => <button key={b} type="button" style={{ ...actionStyle(activeColor), background: challenge.bed === b ? `${activeColor}35` : `${activeColor}18` }} onClick={() => applyChallenge({ ...challenge, bed: b })}>{b}</button>)}<button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, number: (challenge.number % 20) + 1 })}>+</button></> : <><button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, target: Math.max(10, challenge.target - 10) })}>−10</button><button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, target: Math.min(170, challenge.target + 10) })}>+10</button></>}<button type="button" style={{ ...actionStyle(GOLD), marginLeft: "auto" }} onClick={() => applyChallenge(randomPenduChallenge(config))}>🎲</button></div></section> : null}
       <KpiStrip accent={activeColor} onClick={() => setStatsOpen(true)} items={[["RÉUSSIS", activeStats.challengesPassed || 0], ["ERREURS", activeErrors], ["TAUX", `${percent(activeStats.challengesPassed, activeStats.visits)}%`], ["SÉRIE", activeStats.bestSuccessStreak || 0]]} />
       <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerPendu} onPlayers={() => setPlayersOpen(true)} onStats={() => setStatsOpen(true)} onLog={() => setLogOpen(true)} onRanking={() => setRankingOpen(true)} />
-    </div><div className="party-mode__input">{!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel={previewOk ? "VALIDER LA RÉUSSITE" : state.phase === "caller" ? "TENTER LE DÉFI" : "REPRODUIRE"} accent={previewOk ? GREEN : activeErrors >= config.rules.partsToLose - 1 ? RED : activeColor} fitMinScale={0.16} /> : <BotTurn intent={activeBotPlan.intent} objectiveDetail={activeBotPlan.detail} reaction={activeBotPlan.reaction} persona={activeBotPlan.persona} personaIcon={activeBotPlan.personaIcon} confidence={activeBotPlan.confidence} adaptation={activeBotMemory ? `${activeBotMemory.icon} ${activeBotMemory.label}` : undefined} adaptationDetail={activeBotMemory?.detail} learningConfidence={activeBotMemory?.confidence} learningTarget={activeBotMemory?.targetName} scouting={activeBotScouting ? `${activeBotScouting.icon} ${activeBotScouting.label}` : undefined} scoutingDetail={activeBotScouting?.detail} scoutingMatches={activeBotScouting?.matches} scoutingConfidence={activeBotScouting?.confidence} scoutingTarget={activeBotScouting?.targetName} phaseLabel={state.phase==="caller"?"MENEUR":"COPIE"} profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={state.phase === "caller" ? "prépare et tente son défi…" : "tente de reproduire le défi…"} icon="🪢" />}</div></div></main>
+    </div><div className="party-mode__input">{!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel={previewOk ? "VALIDER LA RÉUSSITE" : state.phase === "caller" ? "TENTER LE DÉFI" : "REPRODUIRE"} accent={previewOk ? GREEN : activeErrors >= config.rules.partsToLose - 1 ? RED : activeColor} fitMinScale={0.16} /> : <BotTurn intent={activeBotPlan.intent} objectiveDetail={activeBotPlan.detail} reaction={activeBotPlan.reaction} persona={activeBotPlan.persona} personaIcon={activeBotPlan.personaIcon} confidence={activeBotPlan.confidence} adaptation={activeBotMemory ? `${activeBotMemory.icon} ${activeBotMemory.label}` : undefined} adaptationDetail={activeBotMemory?.detail} learningConfidence={activeBotMemory?.confidence} learningTarget={activeBotMemory?.targetName} rivalry={activeBotRivalry ? `${activeBotRivalry.icon} ${activeBotRivalry.label}` : undefined} rivalryDetail={activeBotRivalry?.detail} rivalryRecord={activeBotRivalry?.record} rivalryMatches={activeBotRivalry?.matches} rivalryConfidence={activeBotRivalry?.confidence} rivalryTension={activeBotRivalry?.tension} rivalryTarget={activeBotRivalry?.targetName} rivalryQuote={activeBotRivalry?.quote} scouting={activeBotScouting ? `${activeBotScouting.icon} ${activeBotScouting.label}` : undefined} scoutingDetail={activeBotScouting?.detail} scoutingMatches={activeBotScouting?.matches} scoutingConfidence={activeBotScouting?.confidence} scoutingTarget={activeBotScouting?.targetName} phaseLabel={state.phase==="caller"?"MENEUR":"COPIE"} profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={state.phase === "caller" ? "prépare et tente son défi…" : "tente de reproduire le défi…"} icon="🪢" />}</div></div></main>
     {playersOpen ? <PlayersModal rows={playersRows} onClose={() => setPlayersOpen(false)} /> : null}
     {statsOpen ? <StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={() => setStatsOpen(false)} /> : null}
     {logOpen ? <LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={dartLabel} title="JOURNAL PENDU" onClose={() => setLogOpen(false)} /> : null}

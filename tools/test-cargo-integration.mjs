@@ -34,7 +34,7 @@ for (const token of [
 const config = read("src/pages/CargoConfig.tsx");
 for (const token of [
   "CONFIGURATION GUIDÉE","CONFIGURATION COMPLÈTE","LANCER CARGO","CARGO_VARIANT_LABELS","parcel_delivery","participantMode",
-  "teamCount","teamAssignments","ÉQUILIBRER","COMPOSITION DES ÉQUIPES","truckCapacity","fragileRate","urgentRate","getTicker(\"cargo\")"
+  "teamCount","teamAssignments","ÉQUILIBRER","COMPOSITION DES ÉQUIPES","truckCapacity","fragileRate","urgentRate","ticker_cargo.png"
 ]) assert.ok(config.includes(token), `configuration incomplète: ${token}`);
 assert.ok(!config.includes("ticker_cargo.svg"), "CargoConfig ne doit plus référencer de SVG CARGO");
 
@@ -42,13 +42,13 @@ const play = read("src/pages/CargoPlay.tsx");
 for (const token of [
   "CargoEnd","History as any).upsert(buildHistoryRecord(\"in_progress\")","History as any).upsert(record)",
   "onFinish?.(record, { navigate: false })","buildCargoPlayerAdvancedStats","buildCargoTeamStats","Keypad",
-  "MANIFESTE DE CHARGEMENT","JOURNAL DES CHARGEMENTS","EventToast","cargoEventPresentation","getTicker(\"cargo\")"
+  "MANIFESTE DE CHARGEMENT","JOURNAL DES CHARGEMENTS","EventToast","cargoEventPresentation","ticker_cargo.png"
 ]) assert.ok(play.includes(token), `écran Play incomplet: ${token}`);
 assert.ok(!play.includes("ticker_cargo.svg"), "CargoPlay ne doit plus référencer de SVG CARGO");
-assert.ok(!play.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), "CargoPlay ne doit plus imposer un ticker statique absent");
-assert.ok(play.includes('title="CARGO"') && play.includes('tickerSrc={tickerCargo || undefined}'), "fallback header CARGO absent du Play");
-assert.ok(!config.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), "CargoConfig ne doit plus imposer un ticker statique absent");
-assert.ok(config.includes('title="CARGO"') && config.includes('tickerSrc={tickerCargo || undefined}'), "fallback header CARGO absent de la Config");
+assert.ok(play.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), "import direct ticker CARGO absent du Play");
+assert.ok(play.includes('title="CARGO"') && play.includes('tickerSrc={tickerCargo}'), "ticker officiel CARGO absent du Play");
+assert.ok(config.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), "import direct ticker CARGO absent de la Config");
+assert.ok(config.includes('title="CARGO"') && config.includes('tickerSrc={tickerCargo}'), "ticker officiel CARGO absent de la Config");
 
 const app = read("src/App.tsx");
 assert.ok(app.includes('case "cargo_config"'), "route config CARGO absente");

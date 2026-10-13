@@ -1,6 +1,7 @@
 // @ts-nocheck
 // =============================================================
 // DARTS FOOTBALL — configuration compacte, guidée et complète
+// V9 — profils de match + presets personnels + garde-fous équipes
 // =============================================================
 
 import React from "react";
@@ -29,6 +30,16 @@ import {
   type FootballTargetDifficulty,
   type FootballKickoffMode,
 } from "../lib/gameEngines/footballEngine";
+import {
+  FOOTBALL_BUILTIN_PRESETS,
+  FOOTBALL_CUSTOM_PRESET_LIMIT,
+  deleteFootballCustomPreset,
+  footballRulesMatchPreset,
+  loadFootballCustomPresets,
+  saveFootballCustomPreset,
+  snapshotFootballRules,
+  type FootballPresetSettings,
+} from "../lib/footballPresetStore";
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { x01MostUsedDartSetIdForProfile } from "./X01ConfigV3";
@@ -69,6 +80,13 @@ function teamLogo(team: any) {
   return team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
 }
 
+function presetColor(id: string) {
+  if (id === "express" || id === "arcade") return GOLD;
+  if (id === "tactical") return BLUE;
+  if (id === "cup") return RED;
+  return GREEN;
+}
+
 function RulesContent() {
   return <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.48 }}>
     <div><strong style={{ color: GREEN }}>PRINCIPE</strong><br />Chaque camp reçoit une mission claire selon la possession : attaquer, défendre, tirer ou arrêter.</div>
@@ -76,6 +94,7 @@ function RulesContent() {
     <div><strong style={{ color: RED }}>DÉFENSE</strong><br />Simple repousse le ballon, Double intercepte, Triple déclenche une contre-attaque.</div>
     <div><strong style={{ color: GOLD }}>TIR ET GARDIEN</strong><br />Dans la surface, Triple ou DBULL marque directement. Les autres tirs cadrés peuvent être arrêtés.</div>
     <div><strong style={{ color: GOLD }}>FORMATS</strong><br />Match, Golden Goal, Premier à X buts, Tirs au but et Classic. Chaque format conserve les mêmes commandes.</div>
+    <div><strong style={{ color: GREEN }}>PROFILS DE MATCH</strong><br />Express, Standard, Coupe, Tactique, Arcade et Simulation règlent automatiquement les options cohérentes. Trois profils personnels peuvent aussi être mémorisés.</div>
     <div><strong style={{ color: GREEN }}>CLASSIC</strong><br />BULL pour prendre la possession, puis n’importe quel DOUBLE pour marquer. Le premier à l’objectif choisi gagne.</div>
   </div>;
 }
@@ -180,6 +199,26 @@ export default function FootballConfig(props: any) {
   const [missLosesPossession, setMissLosesPossession] = React.useState(initial.missLosesPossession);
   const [randomOrder, setRandomOrder] = React.useState(initial.randomOrder);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(initial.scoreInputMethod || "keypad");
+  const [customPresets, setCustomPresets] = React.useState(() => loadFootballCustomPresets());
+  const [customPresetName, setCustomPresetName] = React.useState("");
+
+  const currentRuleSettings = snapshotFootballRules({
+    variant,
+    botLevel,
+    halfRounds,
+    extraRounds,
+    tieBreaker,
+    goalTarget,
+    penaltyShots,
+    mercyGoals,
+    targetDifficulty,
+    kickoffMode,
+    coachHints,
+    goalkeeperEnabled,
+    missLosesPossession,
+    randomOrder,
+    scoreInputMethod,
+  });
 
   function chooseView(next: "guided" | "complete") {
     setViewMode(next);
@@ -207,33 +246,40 @@ export default function FootballConfig(props: any) {
     else window.history.back();
   }
 
-  function applyPreset(id: "quick" | "standard" | "tactical") {
-    setVariant("match");
-    if (id === "quick") {
-      setHalfRounds(3);
-      setTieBreaker("penalties");
-      setGoalkeeperEnabled(false);
-      setMissLosesPossession(true);
-      setTargetDifficulty("accessible");
-      setMercyGoals(0);
-      return;
-    }
-    if (id === "tactical") {
-      setHalfRounds(8);
-      setTieBreaker("golden_goal");
-      setExtraRounds(3);
-      setGoalkeeperEnabled(true);
-      setMissLosesPossession(true);
-      setTargetDifficulty("expert");
-      setMercyGoals(0);
-      return;
-    }
-    setHalfRounds(5);
-    setTieBreaker("penalties");
-    setGoalkeeperEnabled(true);
-    setMissLosesPossession(true);
-    setTargetDifficulty("standard");
-    setMercyGoals(0);
+  function applyRuleSettings(settings: FootballPresetSettings) {
+    if (settings.variant !== undefined) setVariant(settings.variant as FootballVariant);
+    if (settings.botLevel !== undefined) setBotLevel(settings.botLevel as FootballBotLevel);
+    if (settings.halfRounds !== undefined) setHalfRounds(settings.halfRounds);
+    if (settings.extraRounds !== undefined) setExtraRounds(settings.extraRounds);
+    if (settings.tieBreaker !== undefined) setTieBreaker(settings.tieBreaker as FootballTieBreaker);
+    if (settings.goalTarget !== undefined) setGoalTarget(settings.goalTarget);
+    if (settings.penaltyShots !== undefined) setPenaltyShots(settings.penaltyShots);
+    if (settings.mercyGoals !== undefined) setMercyGoals(settings.mercyGoals);
+    if (settings.targetDifficulty !== undefined) setTargetDifficulty(settings.targetDifficulty as FootballTargetDifficulty);
+    if (settings.kickoffMode !== undefined) setKickoffMode(settings.kickoffMode as FootballKickoffMode);
+    if (settings.coachHints !== undefined) setCoachHints(settings.coachHints);
+    if (settings.goalkeeperEnabled !== undefined) setGoalkeeperEnabled(settings.goalkeeperEnabled);
+    if (settings.missLosesPossession !== undefined) setMissLosesPossession(settings.missLosesPossession);
+    if (settings.randomOrder !== undefined) setRandomOrder(settings.randomOrder);
+    if (settings.scoreInputMethod !== undefined) setScoreInputMethod(settings.scoreInputMethod);
+  }
+
+  function applyPreset(id: string) {
+    const preset = FOOTBALL_BUILTIN_PRESETS.find((item) => item.id === id);
+    if (preset) applyRuleSettings(preset.settings);
+  }
+
+  function saveCurrentPreset() {
+    const name = customPresetName.trim();
+    if (!name) return;
+    const existing = customPresets.find((preset) => preset.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (!existing && customPresets.length >= FOOTBALL_CUSTOM_PRESET_LIMIT) return;
+    setCustomPresets(saveFootballCustomPreset(name, currentRuleSettings));
+    setCustomPresetName("");
+  }
+
+  function removeCustomPreset(id: string) {
+    setCustomPresets(deleteFootballCustomPreset(id));
   }
 
   const selectedTeams = selectedTeamIds.map((id) => teams.find((team: any) => String(team.id) === id)).filter(Boolean);
@@ -241,13 +287,25 @@ export default function FootballConfig(props: any) {
     ? unique(selectedTeams.flatMap((team: any) => team.playerIds || []))
     : selectedIds;
   const selectedPlayers = effectivePlayerIds.map((id) => byId.get(id) || allProfiles.find((profile: any) => String(profile.id) === id) || { id, name: "Joueur" });
-  const valid = participantMode === "players" ? selectedIds.length === 2 : selectedTeams.length === 2 && selectedPlayers.length >= 2;
+  const teamOverlapIds = participantMode === "teams" && selectedTeams.length === 2
+    ? unique((selectedTeams[0]?.playerIds || []).filter((id: string) => (selectedTeams[1]?.playerIds || []).map(String).includes(String(id))))
+    : [];
+  const teamOverlapNames = teamOverlapIds.map((id) => playerName(byId.get(String(id)) || allProfiles.find((profile: any) => String(profile.id) === String(id)) || { name: id }));
+  const valid = participantMode === "players"
+    ? selectedIds.length === 2
+    : selectedTeams.length === 2 && selectedPlayers.length >= 2 && teamOverlapIds.length === 0;
   const hasSelectedBot = selectedPlayers.some(isBotLike);
-  const pace = variant !== "match" ? "custom" : halfRounds === 3 && !goalkeeperEnabled ? "quick" : halfRounds === 5 && goalkeeperEnabled && tieBreaker === "penalties" ? "standard" : halfRounds === 8 && tieBreaker === "golden_goal" ? "tactical" : "custom";
+  const activeBuiltin = FOOTBALL_BUILTIN_PRESETS.find((preset) => footballRulesMatchPreset(currentRuleSettings, preset.settings));
+  const activeCustom = customPresets.find((preset) => footballRulesMatchPreset(currentRuleSettings, preset.settings));
   const selectionLabel = participantMode === "players"
     ? (selectedPlayers.length ? selectedPlayers.map(playerName).join(" vs ") : "2 joueurs")
     : (selectedTeams.length ? selectedTeams.map((team: any) => team.name).join(" vs ") : "2 équipes");
   const durationLabel = variant === "penalties" ? `${penaltyShots} tirs + mort subite` : variant === "classic" ? `BULL → DOUBLE · 1er à ${goalTarget}` : variant === "first_to" ? `1er à ${goalTarget} buts` : variant === "golden_goal" ? `1er but · max ${halfRounds} tours` : `2 × ${halfRounds} tours`;
+  const readyLabel = valid
+    ? "PRÊT"
+    : participantMode === "teams" && teamOverlapIds.length
+      ? "MEMBRE PRÉSENT DANS LES 2 ÉQUIPES"
+      : participantMode === "players" ? "2 JOUEURS REQUIS" : "2 ÉQUIPES REQUISES";
 
   function buildPayload(): FootballConfigPayload {
     const playerDartSets = Object.fromEntries(selectedPlayers.map((profile: any) => [
@@ -306,11 +364,55 @@ export default function FootballConfig(props: any) {
       <ModeCard active={variant === "classic"} icon="🎯" title="CLASSIC" subtitle="BULL pour le ballon, DOUBLE pour marquer. Premier à X buts." rules={["SIMPLE", "IMMÉDIAT"]} color={BLUE} onClick={() => setVariant("classic")} />
     </div>
 
-    {variant === "match" ? <div className="football-preset-row">
-      <PresetButton active={pace === "quick"} title="⚡ RAPIDE" subtitle="2 × 3 tours · sans gardien" color={GOLD} onClick={() => applyPreset("quick")} />
-      <PresetButton active={pace === "standard"} title="⚽ STANDARD" subtitle="2 × 5 tours · complet" color={GREEN} onClick={() => applyPreset("standard")} />
-      <PresetButton active={pace === "tactical"} title="🧠 TACTIQUE" subtitle="2 × 8 tours · prolongation" color={BLUE} onClick={() => applyPreset("tactical")} />
-    </div> : null}
+    <div className="football-config-note" style={{ marginTop: 8, marginBottom: 2 }}>
+      <strong style={{ color: GOLD }}>PROFILS RAPIDES :</strong> un clic règle automatiquement le format, le gardien, la difficulté et l’issue du match.
+    </div>
+    <div className="football-preset-row">
+      {FOOTBALL_BUILTIN_PRESETS.map((preset) => <PresetButton
+        key={preset.id}
+        active={activeBuiltin?.id === preset.id}
+        title={`${preset.icon} ${preset.title}`}
+        subtitle={preset.subtitle}
+        color={presetColor(preset.id)}
+        onClick={() => applyPreset(preset.id)}
+      />)}
+    </div>
+
+    <div style={{ marginTop: 8, padding: 7, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.18)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <strong style={{ color: BLUE, fontSize: 8 }}>MES PROFILS</strong>
+        <span style={{ color: SOFT, fontSize: 6.4 }}>{customPresets.length}/{FOOTBALL_CUSTOM_PRESET_LIMIT}</span>
+      </div>
+      {customPresets.length ? <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
+        {customPresets.map((preset) => <div key={preset.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 34px", gap: 5 }}>
+          <button
+            type="button"
+            className="football-preset"
+            onClick={() => applyRuleSettings(preset.settings)}
+            style={{ border: `1px solid ${activeCustom?.id === preset.id ? BLUE : "rgba(255,255,255,.09)"}`, background: activeCustom?.id === preset.id ? `${BLUE}14` : "rgba(255,255,255,.025)", color: activeCustom?.id === preset.id ? BLUE : "#fff" }}
+          >
+            <div className="football-preset__title">★ {preset.name}</div>
+            <div className="football-preset__subtitle">{footballVariantLabel((preset.settings.variant || "match") as FootballVariant)} · {preset.settings.targetDifficulty || "standard"}</div>
+          </button>
+          <button type="button" aria-label={`Supprimer ${preset.name}`} onClick={() => removeCustomPreset(preset.id)} style={{ borderRadius: 10, border: "1px solid rgba(255,91,119,.28)", background: "rgba(255,91,119,.08)", color: RED, fontWeight: 1000 }}>×</button>
+        </div>)}
+      </div> : <div style={{ marginTop: 5, color: SOFT, fontSize: 6.3 }}>Enregistre jusqu’à 3 configurations personnelles sans mémoriser les joueurs.</div>}
+      <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 5 }}>
+        <input
+          value={customPresetName}
+          maxLength={24}
+          onChange={(event) => setCustomPresetName(event.target.value)}
+          placeholder="Nom du profil"
+          style={{ minWidth: 0, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,.11)", background: "rgba(255,255,255,.035)", color: "#fff", padding: "0 9px", outline: "none", fontSize: 8 }}
+        />
+        <button
+          type="button"
+          onClick={saveCurrentPreset}
+          disabled={!customPresetName.trim() || (customPresets.length >= FOOTBALL_CUSTOM_PRESET_LIMIT && !customPresets.some((preset) => preset.name.toLocaleLowerCase() === customPresetName.trim().toLocaleLowerCase()))}
+          style={{ minWidth: 92, borderRadius: 10, border: `1px solid ${GREEN}55`, background: `${GREEN}10`, color: GREEN, fontSize: 7, fontWeight: 1100 }}
+        >ENREGISTRER</button>
+      </div>
+    </div>
 
     <div style={{ marginTop: 7 }}>
       <OptionRow label="Participants" hint="Duel direct ou équipes complètes">
@@ -354,14 +456,16 @@ export default function FootballConfig(props: any) {
       </div> : null}
     </> : <>
       <TeamPagedSelector teams={teams} selectedIds={selectedTeamIds} onToggle={toggleTeam} accent={GREEN} pageSize={9} modalTitle="Choisir 2 équipes" chooseLabel="Choisir équipes" listLabel="Équipes sélectionnées" />
-      <div className="football-config-note">Les membres jouent à tour de rôle. Le score est collectif, mais chaque fléchette alimente les statistiques individuelles.</div>
+      {teamOverlapIds.length ? <div className="football-config-note" style={{ color: RED, borderLeftColor: `${RED}88` }}>
+        <strong>CONFLIT D’ÉQUIPES :</strong> {teamOverlapNames.join(", ")} {teamOverlapNames.length > 1 ? "sont présents" : "est présent"} dans les deux équipes. Corrige les compositions avant de lancer le match.
+      </div> : <div className="football-config-note">Les membres jouent à tour de rôle. Le score est collectif, mais chaque fléchette alimente les statistiques individuelles.</div>}
     </>}
   </ConfigBlock>;
 
   const rulesBlock = <ConfigBlock title="RÈGLES DU MATCH" color={GOLD}>
     <div style={{ display: "grid", gap: 6 }}>
       {variant === "match" || variant === "golden_goal" ? <OptionRow label={variant === "match" ? "Tours par mi-temps" : "Limite avant penalties"} hint={variant === "match" ? "Chaque camp joue une fois par tour" : "Sécurité si aucun but n’est marqué"}>
-        <OptionSelect value={halfRounds} options={[3, 5, 8, 10, 12, 15]} onChange={setHalfRounds} />
+        <OptionSelect value={halfRounds} options={[3, 5, 6, 8, 10, 12, 15]} onChange={setHalfRounds} />
       </OptionRow> : null}
 
       {variant === "first_to" || variant === "classic" ? <OptionRow label="Objectif de buts" hint="Le premier camp qui atteint ce total gagne">
@@ -416,7 +520,7 @@ export default function FootballConfig(props: any) {
       <div className="football-config-summary">
         <div className="football-config-summary__item"><div className="football-config-summary__label">MODE</div><div className="football-config-summary__value" style={{ color: GREEN }}>{footballVariantLabel(variant)}</div></div>
         <div className="football-config-summary__item"><div className="football-config-summary__label">FORMAT</div><div className="football-config-summary__value">{durationLabel}</div></div>
-        <div className="football-config-summary__item"><div className="football-config-summary__label">AFFICHE</div><div className="football-config-summary__value">{participantMode === "players" ? `${selectedIds.length}/2 joueurs` : `${selectedTeamIds.length}/2 équipes`}</div></div>
+        <div className="football-config-summary__item"><div className="football-config-summary__label">PROFIL</div><div className="football-config-summary__value" style={{ color: activeCustom ? BLUE : activeBuiltin ? presetColor(activeBuiltin.id) : "#fff" }}>{activeCustom?.name || activeBuiltin?.title || "Personnalisé"}</div></div>
         <div className="football-config-summary__item"><div className="football-config-summary__label">SAISIE</div><div className="football-config-summary__value">{scoreInputMethod === "keypad" ? "Clavier" : "Cible"}</div></div>
       </div>
 
@@ -428,7 +532,7 @@ export default function FootballConfig(props: any) {
       <div className="football-config-actions">
         <div className="football-config-ready">
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectionLabel}</span>
-          <strong style={{ color: valid ? GREEN : RED }}>{valid ? "PRÊT" : participantMode === "players" ? "2 JOUEURS REQUIS" : "2 ÉQUIPES REQUISES"}</strong>
+          <strong style={{ color: valid ? GREEN : RED }}>{readyLabel}</strong>
         </div>
         <button type="button" onClick={() => viewMode === "guided" ? setStep((value) => Math.max(0, value - 1)) : chooseView("guided")} disabled={viewMode === "guided" && step === 0} style={{ border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.035)", color: viewMode === "guided" && step === 0 ? "rgba(255,255,255,.25)" : "#fff" }}>{viewMode === "complete" ? "MODE GUIDÉ" : "← RETOUR"}</button>
         {viewMode === "guided" && step < steps.length - 1 ? <button type="button" onClick={() => setStep((value) => Math.min(steps.length - 1, value + 1))} style={{ border: `1px solid ${GREEN}88`, background: `${GREEN}18`, color: GREEN }}>SUIVANT →</button> : <button type="button" disabled={!valid} onClick={start} style={{ border: `1px solid ${valid ? GREEN : "rgba(255,255,255,.10)"}`, background: valid ? "linear-gradient(180deg,#72edb5,#2aaa78)" : "rgba(255,255,255,.025)", color: valid ? "#03130d" : SOFT }}>⚽ COUP D’ENVOI</button>}

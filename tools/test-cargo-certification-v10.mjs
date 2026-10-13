@@ -73,19 +73,16 @@ for (const variant of variants) assert.ok(engine.includes(variant), `variante CA
 assert.ok(engine.includes('convoy_handoff'), 'relais Convoy absent du moteur');
 
 const ticker = 'src/assets/tickers/ticker_cargo.png';
-const tickerPresent = exists(ticker);
+assert.ok(exists(ticker), 'ticker officiel CARGO manquant');
+const tickerPng = fs.readFileSync(ticker);
+assert.equal(tickerPng.readUInt32BE(16), 800, 'ticker CARGO: largeur attendue 800');
+assert.equal(tickerPng.readUInt32BE(20), 230, 'ticker CARGO: hauteur attendue 230');
 for (const page of [config, play]) {
-  assert.ok(page.includes('getTicker("cargo")'), 'résolution souple du ticker CARGO absente');
-  assert.ok(page.includes('tickerSrc={tickerCargo || undefined}'), 'fallback PageHeader CARGO absent');
+  assert.ok(page.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), 'import direct du ticker officiel CARGO absent');
+  assert.ok(page.includes('tickerSrc={tickerCargo}'), 'ticker officiel CARGO non branché au PageHeader');
+  assert.ok(!page.includes('getTicker("cargo")'), 'ancien resolver souple CARGO encore présent');
 }
-assert.ok(!config.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), 'CargoConfig conserve un import statique bloquant');
-assert.ok(!play.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), 'CargoPlay conserve un import statique bloquant');
-console.log('✅ CARGO CERTIFICATION V11 — chaîne Config → Play → End → Historique → Stats cohérente');
-console.log('✅ CARGO CERTIFICATION V11 — écran terminé réouvrable après fermeture du bilan');
-console.log('✅ CARGO CERTIFICATION V11 — statuts historique legacy normalisés');
-console.log('✅ CARGO CERTIFICATION V11 — assets métier PNG vérifiés');
-if (!tickerPresent) {
-  console.log('✅ CARGO MEDIA FALLBACK — ticker officiel absent, header texte CARGO utilisé sans bloquer la compilation');
-} else {
-  console.log('✅ CARGO MEDIA GATE — ticker officiel présent et utilisé automatiquement');
-}
+console.log('✅ CARGO CERTIFICATION V12 — chaîne Config → Play → End → Historique → Stats cohérente');
+console.log('✅ CARGO CERTIFICATION V12 — écran terminé réouvrable après fermeture du bilan');
+console.log('✅ CARGO CERTIFICATION V12 — statuts historique legacy normalisés');
+console.log('✅ CARGO CERTIFICATION V12 — ticker officiel 800×230 importé directement');

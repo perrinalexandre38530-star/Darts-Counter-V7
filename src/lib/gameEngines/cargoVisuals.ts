@@ -19,6 +19,100 @@ export type CargoVisualSnapshot = {
   activeSeriesTarget: number;
   lastEventLabel: string;
 };
+export type CargoMissionCue = {
+  label: string;
+  detail: string;
+  tone: 'neutral' | 'good' | 'warning' | 'danger';
+};
+
+function cargoActiveContract(state: CargoState, stats?: CargoPlayerStats | null) {
+  const contractId = stats?.currentSeries?.contractId;
+  return contractId ? state.contracts.find((contract) => String(contract.id) === String(contractId)) || null : null;
+}
+
+export function buildCargoMissionCue(state: CargoState, stats?: CargoPlayerStats | null): CargoMissionCue {
+  const config = state?.config;
+  const series = stats?.currentSeries;
+  const contract = cargoActiveContract(state, stats);
+  const round = Math.max(1, safeNumber(state?.roundIndex, 1));
+
+  if (!config) return { label: 'MISSION CARGO', detail: 'Prépare le prochain chargement.', tone: 'neutral' };
+
+  if (config.variant === 'parcel_delivery') {
+    if (!series) return { label: 'NOUVELLE ADRESSE', detail: 'Le premier numéro touché ouvre une adresse de livraison.', tone: 'neutral' };
+    const count = safeNumber(series.count, 0);
+    const next = Math.min(5, count + 1);
+    const bonus = safeNumber(config.parcelBonuses?.[next], 0);
+    return {
+      label: `ADRESSE ${series.number} · ${count}/5`,
+      detail: count >= 5 ? 'Livraison prête à être validée.' : `Prochain palier : ${next} touche${next > 1 ? 's' : ''}${bonus ? ` · +${bonus} colis bonus` : ''}.`,
+      tone: count >= 4 ? 'good' : 'neutral',
+    };
+  }
+
+  if (config.variant === 'exact_load') {
+    const target = Math.max(1, safeNumber(config.targetWeight || config.truckCapacity, 500));
+    const current = safeNumber(stats?.totalWeight, 0);
+    const remaining = Math.max(0, target - current);
+    if (remaining <= 0) return { label: 'CHARGE EXACTE ATTEINTE', detail: `${current}/${target} kg · évite toute surcharge.`, tone: 'good' };
+    if (remaining <= Math.max(25, target * 0.1)) return { label: `PLUS QUE ${remaining} KG`, detail: 'Zone critique : privilégie une charge précise pour éviter le dépassement.', tone: 'warning' };
+    return { label: `RESTE ${remaining} KG`, detail: `Objectif exact : ${target} kg.`, tone: 'neutral' };
+  }
+
+  if (config.variant === 'fragile_cargo') {
+    if (series?.protected) return { label: 'CHARGE FRAGILE PROTÉGÉE', detail: 'La série active bénéficie d’une protection.', tone: 'good' };
+    if (contract?.fragile) return { label: 'FRAGILE ACTIF', detail: 'Un MISS ou un mauvais segment peut casser la cargaison : reste sur la cible.', tone: 'danger' };
+    return { label: 'PRIORITÉ FRAGILE', detail: 'Repère les contrats FRAGILE et sécurise les séries avant de prendre des risques.', tone: 'warning' };
+  }
+
+  if (config.variant === 'cargo_rush') {
+    if (contract?.urgent) {
+      const expires = Math.max(round, safeNumber(contract.expiresAtRound, round));
+      const remainingRounds = Math.max(0, expires - round + 1);
+      return {
+        label: remainingRounds <= 1 ? 'EXPRESS · DERNIER TOUR' : `EXPRESS · ${remainingRounds} TOURS`,
+        detail: `${contract.label} expire au tour ${expires} · ${series?.count || 0}/${contract.targetCount}.`,
+        tone: remainingRounds <= 1 ? 'danger' : 'warning',
+      };
+    }
+    return { label: 'CHARGE EXPRESS', detail: 'Choisis en priorité un contrat urgent avant son expiration.', tone: 'warning' };
+  }
+
+  if (config.variant === 'full_pallet') {
+    const count = safeNumber(series?.count, 0);
+    const min = Math.max(1, safeNumber(config.minSeries, 2));
+    const max = Math.max(min, safeNumber(config.maxSeries, 5));
+    if (!series) return { label: 'PALETTE COMPLÈTE', detail: `Lance une série puis pousse-la jusqu’à ${max} touches pour maximiser la palette.`, tone: 'neutral' };
+    if (count < min) return { label: `PALETTE ${count}/${max}`, detail: `Encore ${min - count} touche${min - count > 1 ? 's' : ''} avant sécurisation.`, tone: 'warning' };
+    return { label: `PALETTE ${count}/${max}`, detail: count >= max ? 'Palette pleine : validation maximale.' : 'Palette sécurisable : tu peux encore augmenter sa valeur.', tone: count >= max ? 'good' : 'neutral' };
+  }
+
+  if (config.variant === 'free_load') {
+    if (!series) return { label: 'CHARGEMENT LIBRE', detail: `Crée une série jusqu’à ${config.maxSeries} touches sur le même objectif.`, tone: 'neutral' };
+    return { label: `SÉRIE LIBRE ${series.count}/${config.maxSeries}`, detail: `${series.rawWeight || 0} kg provisoires · continue ou sécurise la série.`, tone: series.count >= config.maxSeries ? 'good' : 'neutral' };
+  }
+
+  if (config.variant === 'convoy') {
+    if (config.participantMode !== 'teams') return { label: 'CONVOI', detail: 'Le mode Convoi prend tout son sens en équipes.', tone: 'warning' };
+    if (series) return { label: `RELAIS CONVOI · ${series.count}/${contract?.targetCount || config.maxSeries}`, detail: 'La série peut être transmise au prochain coéquipier au changement de tour.', tone: 'neutral' };
+    return { label: 'NOUVEAU RELAIS', detail: 'Démarre une série pour lancer la chaîne de chargement de l’équipe.', tone: 'neutral' };
+  }
+
+  if (config.variant === 'long_haul') {
+    const stages = Array.isArray(state.routeStages) ? state.routeStages : [];
+    const index = Math.max(0, Math.min(stages.length - 1, safeNumber(state.routeStage, 0)));
+    const current = stages[index] || 'Itinéraire';
+    const next = stages[index + 1];
+    return { label: `ÉTAPE ${index + 1}/${Math.max(1, stages.length)} · ${current}`, detail: next ? `Prochaine étape : ${next}.` : 'Centre de livraison atteint.', tone: next ? 'neutral' : 'good' };
+  }
+
+  if (contract) {
+    return { label: contract.urgent ? 'CONTRAT URGENT' : contract.fragile ? 'CONTRAT FRAGILE' : 'CONTRAT ACTIF', detail: `${contract.label} · ${series?.count || 0}/${contract.targetCount} · ${contract.finalWeight} kg.`, tone: contract.urgent ? 'warning' : contract.fragile ? 'danger' : 'neutral' };
+  }
+  if (state.contracts?.length) return { label: 'CHOISIS TON CONTRAT', detail: `${state.contracts.length} contrat${state.contracts.length > 1 ? 's' : ''} disponible${state.contracts.length > 1 ? 's' : ''} dans le manifeste.`, tone: 'neutral' };
+  return { label: 'NOUVELLE SÉRIE', detail: 'Construis une série de segments identiques pour charger une palette.', tone: 'neutral' };
+}
+
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Number.isFinite(value) ? value : 0));

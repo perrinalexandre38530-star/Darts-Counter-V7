@@ -10,7 +10,7 @@ const mem = new Map<string, string>();
   },
 };
 
-const { commitDartsPokerProgress, readDartsPokerProgress, DARTS_POKER_BADGE_RULES, getDartsPokerBadgeProgress } = await import("../src/lib/dartsPokerProgress.ts");
+const { commitDartsPokerProgress, readDartsPokerProgress, DARTS_POKER_BADGE_RULES, getDartsPokerBadgeProgress, reconcileDartsPokerProgressFromHistory } = await import("../src/lib/dartsPokerProgress.ts");
 
 const stats = {
   darts: 60,
@@ -75,11 +75,93 @@ assert.equal(regularProgress.unlocked, true, "TABLE REGULAR doit être persistan
 assert.equal(regularProgress.percent, 100);
 
 
+
+
+// Reconstruction depuis l'Historique : le cache local peut être vide après un nettoyage
+// ou sur un appareil où les parties ont été restaurées/synchronisées.
+mem.clear();
+const historyRecords = Array.from({ length: 10 }, (_, index) => ({
+  id: `history-${index + 1}`,
+  matchId: `history-${index + 1}`,
+  mode: "darts_poker",
+  kind: "darts_poker",
+  status: "finished",
+  finishedAt: 1_700_000_000_000 + index * 1000,
+  winnerId: "p-sync",
+  winnerIds: ["p-sync"],
+  summary: {
+    kind: "darts_poker",
+    mode: "darts_poker",
+    finished: true,
+    perPlayer: [{
+      id: "p-sync",
+      playerId: "p-sync",
+      name: "Synced",
+      darts: 6,
+      hits: 5,
+      contractHits: index < 5 ? 5 : 0,
+      choicesUsed: 2,
+      exchangesUsed: 1,
+      jokers: index < 5 ? 2 : 0,
+      premiumHands: index < 5 ? 2 : 0,
+      leadRounds: 3,
+      handsPlayed: 5,
+      dealerWins: index < 5 ? 1 : 0,
+      closingRoundWin: index < 5,
+      royalFlushes: index === 0 ? 1 : 0,
+    }],
+  },
+}));
+const recovered = reconcileDartsPokerProgressFromHistory(historyRecords);
+assert.equal(recovered.inspectedMatches, 10, "10 parties Darts Poker doivent être relues");
+assert.equal(recovered.processedMatches, 10, "les 10 parties absentes du cache doivent être récupérées");
+const recoveredCareer = readDartsPokerProgress("p-sync");
+assert.equal(recoveredCareer?.matches, 10, "la carrière doit être reconstruite depuis l'historique");
+assert.equal(recoveredCareer?.wins, 10, "les victoires doivent être reconstruites depuis l'historique");
+assert.ok(recoveredCareer?.badges?.table_regular, "TABLE REGULAR doit être récupéré depuis l'historique");
+assert.ok(recoveredCareer?.badges?.shark, "SHARK doit être récupéré depuis l'historique");
+assert.ok(recoveredCareer?.badges?.royal, "ROYAL doit être récupéré depuis l'historique");
+assert.equal(recoveredCareer?.badges?.first_deal?.unlockedAt, historyRecords[0].finishedAt, "la date du badge reconstruit doit suivre la partie d'origine");
+const secondRecovery = reconcileDartsPokerProgressFromHistory(historyRecords);
+assert.equal(secondRecovery.processedMatches, 0, "la réconciliation History doit rester idempotente");
+
+
+// Le ledger de matchs ne doit plus oublier les anciennes parties au-delà de 80 entrées.
+mem.clear();
+const longHistory = Array.from({ length: 100 }, (_, index) => ({
+  id: `long-${index + 1}`,
+  matchId: `long-${index + 1}`,
+  mode: "darts_poker",
+  status: "finished",
+  finishedAt: 1_710_000_000_000 + index * 1000,
+  winnerIds: ["p-long"],
+  summary: {
+    finished: true,
+    config: { botIds: ["bot-1"] },
+    perPlayer: [
+      { id: "p-long", name: "Long", darts: 6, hits: 4 },
+      { id: "bot-1", name: "CPU", darts: 6, hits: 6 },
+    ],
+  },
+}));
+const longRecovery = reconcileDartsPokerProgressFromHistory(longHistory);
+assert.equal(longRecovery.processedMatches, 100, "les 100 parties doivent être prises en compte une seule fois");
+assert.equal(readDartsPokerProgress("p-long")?.matches, 100, "la carrière longue doit conserver tous les matchs traités");
+assert.equal(readDartsPokerProgress("p-long")?.processedMatchIds.length, 100, "le ledger ne doit pas tronquer à 80 matchs");
+assert.equal(readDartsPokerProgress("bot-1"), null, "les bots restaurés depuis History ne doivent jamais recevoir de progression");
+const longSecondPass = reconcileDartsPokerProgressFromHistory(longHistory);
+assert.equal(longSecondPass.processedMatches, 0, "la seconde passe sur 100 matchs doit rester idempotente");
+assert.equal(readDartsPokerProgress("p-long")?.matches, 100, "aucun doublon ne doit apparaître après réconciliation");
+
 const gallerySource = fs.readFileSync(new URL("../src/components/darts-poker/DartsPokerBadgeGallery.tsx", import.meta.url), "utf8");
 const configSource = fs.readFileSync(new URL("../src/pages/DartsPokerConfig.tsx", import.meta.url), "utf8");
 const endSource = fs.readFileSync(new URL("../src/pages/DartsPokerEnd.tsx", import.meta.url), "utf8");
+const revealSource = fs.readFileSync(new URL("../src/components/darts-poker/DartsPokerBadgeUnlockReveal.tsx", import.meta.url), "utf8");
 assert.match(gallerySource, /DARTS_POKER_BADGE_RULES/, "la galerie doit utiliser le catalogue de règles centralisé");
+assert.match(gallerySource, /reconcileDartsPokerProgressFromHistory/, "la galerie doit pouvoir reconstruire la progression depuis History");
 assert.match(configSource, /12 BADGES · PROGRESSION/, "la configuration doit ouvrir la galerie de badges");
 assert.match(endSource, /COLLECTION & PROGRESSION DES BADGES/, "la fin de match doit exposer la collection de badges");
+assert.match(endSource, /DartsPokerBadgeUnlockReveal/, "la fin de match doit lancer la cérémonie de déblocage");
+assert.match(revealSource, /NOUVEAU BADGE DÉBLOQUÉ/, "la cérémonie de badge doit être explicite");
 
 console.log("Darts Poker progress: OK");
