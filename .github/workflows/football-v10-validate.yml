@@ -6,6 +6,7 @@ on:
       - artifact-football-v10-gameplay-config-v13
   workflow_dispatch:
 
+# Temporary validation workflow for the Football V10 patch branch only.
 jobs:
   validate:
     runs-on: ubuntu-latest
