@@ -105,7 +105,6 @@
 
 @media (max-width:430px){
   .cargo-gameplay-risk-grid{grid-template-columns:1fr!important;gap:3px!important}
-  .cargo-gameplay-risk-grid .cargo-gameplay-mini:last-child{display:none}
   .cargo-onboarding{gap:2px!important}
 }
 
