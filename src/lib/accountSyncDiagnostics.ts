@@ -17,8 +17,15 @@ import {
   uploadAccountR2Media,
 } from "./directR2BackupApi";
 import {
+  botAvatarMediaKey,
+  dartSetMainMediaKey,
+  dartSetThumbMediaKey,
+  galleryItemMediaKey,
   getUserMediaVaultDiagnostics,
   mirrorAllLocalUserMediaToAccountR2,
+  profileAvatarMediaKey,
+  teamCoverMediaKey,
+  teamLogoMediaKey,
 } from "./userMediaFallback";
 
 export type AccountSyncDiagnosticStatus = "ok" | "warn" | "fail" | "skip";
@@ -64,6 +71,18 @@ function bytesLabel(bytesInput: any): string {
 
 function add(checks: AccountSyncDiagnosticCheck[], check: AccountSyncDiagnosticCheck) {
   checks.push(check);
+}
+
+function isCanonicalAccountProfile(profile: any, userId: string): boolean {
+  const uid = String(userId || "").trim();
+  if (!uid || !profile) return false;
+  const pi = profile?.privateInfo || {};
+  const ids = [
+    profile?.id, profile?.onlineUserId, profile?.online_user_id, profile?.accountUserId, profile?.account_user_id,
+    profile?.supabaseUserId, profile?.userId, profile?.user_id,
+    pi?.onlineUserId, pi?.online_user_id, pi?.accountUserId, pi?.account_user_id, pi?.supabaseUserId, pi?.userId, pi?.user_id,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  return ids.includes(uid);
 }
 
 function isFinishedMatch(row: any): boolean {
@@ -289,7 +308,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     ]);
   } catch {}
 
-  const localProfiles = Array.isArray(store?.profiles) ? store.profiles.filter((p: any) => String(p?.id || "") !== userId) : [];
+  const localProfiles = Array.isArray(store?.profiles) ? store.profiles.filter((p: any) => !isCanonicalAccountProfile(p, userId)) : [];
   const userBots = Array.isArray(bots) ? bots.filter((b: any) => b && !isOfficialBotId(b.id) && !b?.systemBot) : [];
   const finishedHistory = Array.isArray(history) ? history.filter(isFinishedMatch) : [];
   const localCounts = {
@@ -309,6 +328,52 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     detail: `Profils ${localCounts.profiles} · Bots ${localCounts.bots} · Teams ${localCounts.teams} · Galerie ${localCounts.gallery} · DartSets ${localCounts.dartSets} · History ${localCounts.history}.`,
     data: localCounts,
   });
+
+  // Ne jamais comparer R2 avec TOUT IndexedDB : ce coffre contient aussi des
+  // miniatures obsolètes, avatars online, bots officiels et anciens essais. Le
+  // diagnostic doit exiger uniquement les médias encore référencés par le compte.
+  const referencedMediaKeys = new Set<string>();
+  for (const profile of localProfiles) {
+    const id = String(profile?.id || "").trim();
+    if (id) referencedMediaKeys.add(profileAvatarMediaKey(id));
+  }
+  for (const bot of userBots) {
+    const id = String(bot?.id || "").trim();
+    if (id) referencedMediaKeys.add(botAvatarMediaKey(id));
+  }
+  for (const team of (Array.isArray(teams) ? teams : [])) {
+    const id = String(team?.id || team?.teamId || "").trim();
+    if (!id) continue;
+    referencedMediaKeys.add(String(team?.logoMediaKey || teamLogoMediaKey(id)));
+    referencedMediaKeys.add(String(team?.coverMediaKey || teamCoverMediaKey(id)));
+  }
+  for (const item of (Array.isArray(gallery) ? gallery : [])) {
+    const id = String(item?.id || item?.hash || "").trim();
+    if (id) referencedMediaKeys.add(galleryItemMediaKey(id));
+  }
+  for (const set of (Array.isArray(dartSets) ? dartSets : [])) {
+    const id = String(set?.id || "").trim();
+    if (!id) continue;
+    referencedMediaKeys.add(String(set?.r2MainMediaKey || dartSetMainMediaKey(id)));
+    referencedMediaKeys.add(String(set?.r2ThumbMediaKey || dartSetThumbMediaKey(id)));
+  }
+  try {
+    const aiRows = JSON.parse(localStorage.getItem("msc_avatar_ia_gallery_v1") || "[]");
+    if (Array.isArray(aiRows)) {
+      for (const item of aiRows) {
+        const id = String(item?.id || item?.galleryId || "").trim();
+        if (id) referencedMediaKeys.add(`avatar_ai_gallery:${id}`);
+      }
+    }
+  } catch {}
+  // Les organisations ont leur modèle Supabase propre : leurs IDs ne sont pas
+  // tous présents dans Store. Les médias orga encore présents dans IndexedDB
+  // sont néanmoins des médias actifs du compte et doivent être couverts.
+  for (const key of (mediaLocal?.keys || [])) {
+    if (/^(club_logo|club_cover|group_avatar|group_cover|organization_logo|organization_cover):/i.test(String(key || ""))) {
+      referencedMediaKeys.add(String(key));
+    }
+  }
 
   let remoteMeta: any[] = [];
   let remoteSingletons: any[] = [];
@@ -358,8 +423,8 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
   add(checks, {
     id: "collection_parity",
     label: "Parité collections locales / compte",
-    status: mismatch.length ? "warn" : "ok",
-    detail: mismatch.length ? `Écart détecté : ${mismatch.join(" · ")}. Un test complet force la réconciliation.` : "Profils/Bots/Teams/Galerie/DartSets sont alignés en nombre.",
+    status: mismatch.length ? (activeProbe ? "fail" : "warn") : "ok",
+    detail: mismatch.length ? `Écart détecté : ${mismatch.join(" · ")}.${activeProbe ? " Le resync vient d'être exécuté : cet écart est réel." : " Un test complet force la réconciliation."}` : "Profils/Bots/Teams/Galerie/DartSets sont alignés en nombre.",
     data: { mismatch },
   });
 
@@ -384,7 +449,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
   add(checks, {
     id: "history_stats",
     label: "History / Stats du compte",
-    status: historyGap > 0 ? "warn" : "ok",
+    status: historyGap > 0 ? (activeProbe ? "fail" : "warn") : "ok",
     detail: `History terminée locale ${finishedHistory.length} · History serveur ${remoteHistoryCount} · stats_index ${singletonByType.has("stats_index") ? "présent" : "absent"}.`,
     data: { localFinished: finishedHistory.length, remoteHistory: remoteHistoryCount, statsIndexRemote: singletonByType.has("stats_index") },
   });
@@ -423,12 +488,19 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
 
   if (activeProbe) {
     try {
-      const mirrored = await mirrorAllLocalUserMediaToAccountR2({ maxEntries: 160 });
+      const mirrored = await mirrorAllLocalUserMediaToAccountR2({
+        keys: referencedMediaKeys,
+        kinds: ["club_logo", "club_cover", "group_avatar", "group_cover", "organization_logo", "organization_cover", "avatar_ai_gallery", "team_logo", "team_cover"],
+        maxEntries: 1200,
+        concurrency: 1,
+      });
       add(checks, {
         id: "r2_mirror",
-        label: "Miroir médias locaux → R2",
-        status: "ok",
-        detail: `${mirrored.attempted} média(s) inspecté(s), ${mirrored.uploaded} upload(s) réellement nécessaires.`,
+        label: "Miroir médias du compte → R2",
+        status: mirrored.failed ? "fail" : "ok",
+        detail: mirrored.failed
+          ? `${mirrored.failed} échec(s) sur ${mirrored.attempted} média(s) inspecté(s). ${mirrored.uploaded} upload(s), ${mirrored.fresh} déjà à jour.`
+          : `${mirrored.attempted} média(s) référencé(s) inspecté(s) · ${mirrored.uploaded} upload(s) · ${mirrored.fresh} déjà à jour.`,
         data: mirrored,
       });
       mediaRemote = await getAccountR2MediaDiagnosticSnapshot(true).catch(() => mediaRemote);
@@ -453,14 +525,20 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
 
   if (mediaLocal && mediaRemote) {
     const remoteKeys = new Set(Object.keys(mediaRemote.manifest?.media || {}).map(normalizeAccountR2MediaKey));
-    const expected = mediaLocal.keys.map(normalizeAccountR2MediaKey).filter(Boolean);
-    const missing = expected.filter((key) => !remoteKeys.has(key));
+    const localKeySet = new Set((mediaLocal.keys || []).map(normalizeAccountR2MediaKey).filter(Boolean));
+    const expected = Array.from(referencedMediaKeys)
+      .map(normalizeAccountR2MediaKey)
+      .filter((key) => !!key && localKeySet.has(key));
+    const uniqueExpected = Array.from(new Set(expected));
+    const missing = uniqueExpected.filter((key) => !remoteKeys.has(key));
     add(checks, {
       id: "media_coverage",
       label: "Couverture médias multi-appareils",
-      status: missing.length ? "warn" : "ok",
-      detail: missing.length ? `${missing.length}/${expected.length} média(s) locaux absents de R2. ${activeProbe ? "Ils devraient être très récents ou en erreur." : "Lance TEST COMPLET pour les pousser."}` : `${expected.length} média(s) locaux sont référencés dans R2.`,
-      data: { expected: expected.length, missing: missing.length, sampleMissing: missing.slice(0, 12) },
+      status: missing.length ? (activeProbe ? "fail" : "warn") : "ok",
+      detail: missing.length
+        ? `${missing.length}/${uniqueExpected.length} média(s) actuellement référencé(s) par le compte sont absents de R2.${activeProbe ? " Le resync vient d'être exécuté : il reste une anomalie réelle." : " Lance TEST COMPLET pour les pousser."}`
+        : `${uniqueExpected.length} média(s) actuellement référencé(s) sont présents dans R2. Les médias orphelins/anciens du cache sont volontairement ignorés.`,
+      data: { expected: uniqueExpected.length, missing: missing.length, sampleMissing: missing.slice(0, 12), localVaultTotal: mediaLocal.entries },
     });
 
     const rows = Object.values(mediaRemote.manifest?.media || {});

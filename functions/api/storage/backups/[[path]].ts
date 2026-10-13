@@ -262,25 +262,57 @@ function accountMediaMaxBytesForKind(kindInput: string): number {
 }
 
 async function readAccountMediaManifest(bucket: R2Bucket, userId: string, env: Env): Promise<AccountMediaManifest> {
+  // V120 : le listing R2 est l'autorité, plus un JSON global réécrit à chaque
+  // upload. Le manifeste unique était un hot-key : deux POST concurrents pouvaient
+  // écraser mutuellement leurs entrées et provoquer les écarts 132 -> 167 alors
+  // que 68 uploads avaient réellement réussi.
   const quotaBytes = accountMediaQuotaBytes(env);
-  const object = await bucket.get(accountMediaManifestKey(userId));
-  if (!object) return { version: 1, userId, updatedAt: new Date(0).toISOString(), quotaBytes, usedBytes: 0, media: {} };
-  try {
-    const parsed: any = JSON.parse(await object.text());
-    const media = parsed?.media && typeof parsed.media === "object" ? parsed.media : {};
-    const usedBytes = Object.values<any>(media).reduce((sum, row) => sum + Math.max(0, Number(row?.sizeBytes || 0)), 0);
-    return { version: 1, userId, updatedAt: String(parsed?.updatedAt || ""), quotaBytes, usedBytes, media };
-  } catch {
-    return { version: 1, userId, updatedAt: new Date(0).toISOString(), quotaBytes, usedBytes: 0, media: {} };
-  }
-}
+  const prefix = `users/${safeId(userId)}/account-media/`;
+  const media: AccountMediaManifest["media"] = {};
+  let cursor: string | undefined;
+  let newest = 0;
 
-async function writeAccountMediaManifest(bucket: R2Bucket, manifest: AccountMediaManifest): Promise<void> {
-  manifest.updatedAt = new Date().toISOString();
-  manifest.usedBytes = Object.values<any>(manifest.media || {}).reduce((sum, row) => sum + Math.max(0, Number(row?.sizeBytes || 0)), 0);
-  await bucket.put(accountMediaManifestKey(manifest.userId), JSON.stringify(manifest), {
-    httpMetadata: { contentType: "application/json" },
-  });
+  for (let page = 0; page < 24; page += 1) {
+    const listed: any = await (bucket as any).list({
+      prefix,
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+      include: ["httpMetadata", "customMetadata"],
+    });
+    const objects: any[] = Array.isArray(listed?.objects) ? listed.objects : [];
+    for (const object of objects) {
+      const objectKey = String(object?.key || "");
+      if (!objectKey || objectKey.endsWith("/manifest-v1.json") || !objectKey.endsWith(".bin")) continue;
+      const custom = object?.customMetadata || {};
+      const fileName = objectKey.slice(prefix.length).replace(/\.bin$/i, "");
+      const mediaKey = safeId(String(custom?.mediaKey || fileName));
+      if (!mediaKey) continue;
+      const uploadedAt = object?.uploaded ? Date.parse(String(object.uploaded)) : 0;
+      const updatedAtMs = Number(custom?.updatedAtMs || 0) || (Number.isFinite(uploadedAt) ? uploadedAt : 0);
+      newest = Math.max(newest, updatedAtMs);
+      media[mediaKey] = {
+        key: mediaKey,
+        kind: String(custom?.kind || "user_image"),
+        sizeBytes: Math.max(0, Number(object?.size || 0)),
+        checksum: String(custom?.checksum || object?.etag || ""),
+        updatedAtMs,
+        sourceUrl: null,
+        contentType: String(object?.httpMetadata?.contentType || "image/webp"),
+      };
+    }
+    if (!listed?.truncated || !listed?.cursor) break;
+    cursor = String(listed.cursor);
+  }
+
+  const usedBytes = Object.values<any>(media).reduce((sum, row) => sum + Math.max(0, Number(row?.sizeBytes || 0)), 0);
+  return {
+    version: 1,
+    userId,
+    updatedAt: newest ? new Date(newest).toISOString() : new Date(0).toISOString(),
+    quotaBytes,
+    usedBytes,
+    media,
+  };
 }
 
 function nasUserMirrorKey(userId: string): string {
@@ -745,23 +777,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       const mediaKey = safeId(parts[1]);
       if (!mediaKey) return json({ ok: false, code: "account_media_key_invalid", error: "Clé média invalide." }, 400);
       const objectKey = accountMediaObjectKey(identity.userId, mediaKey);
-      const manifest = await readAccountMediaManifest(bucket, identity.userId, env);
 
       if (method === "GET") {
         const object: any = await bucket.get(objectKey);
         if (!object) return json({ ok: false, code: "account_media_missing", error: "Média de compte introuvable." }, 404);
-        const row: any = manifest.media?.[mediaKey] || {};
+        const custom: any = object.customMetadata || {};
         const bytes = await object.arrayBuffer();
         const headers = new Headers({
-          "content-type": String(row.contentType || object.httpMetadata?.contentType || "image/webp"),
+          "content-type": String(object.httpMetadata?.contentType || "image/webp"),
           "content-length": String(bytes.byteLength),
           "cache-control": "private, max-age=86400",
           "x-mss-media-key": mediaKey,
-          "x-mss-media-kind": String(row.kind || "user_image"),
-          "x-mss-media-updated-at": String(Number(row.updatedAtMs || 0)),
-          "etag": String(row.checksum || ""),
+          "x-mss-media-kind": String(custom.kind || "user_image"),
+          "x-mss-media-updated-at": String(Number(custom.updatedAtMs || 0)),
+          "etag": String(custom.checksum || object.etag || ""),
         });
-        if (row.sourceUrl) headers.set("x-mss-media-source-url", String(row.sourceUrl).slice(0, 1000));
         return new Response(bytes, { status: 200, headers });
       }
 
@@ -769,7 +799,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         const url = new URL(request.url);
         const kind = String(url.searchParams.get("kind") || "user_image").slice(0, 80);
         const updatedAtMs = Number(url.searchParams.get("updatedAt") || Date.now()) || Date.now();
-        const sourceUrl = url.searchParams.get("sourceUrl") ? String(url.searchParams.get("sourceUrl")).slice(0, 1200) : null;
         const contentType = String(request.headers.get("content-type") || "").toLowerCase();
         if (!/^image\/(png|jpe?g|webp|gif|avif)(;|$)/i.test(contentType)) {
           return json({ ok: false, code: "account_media_type_invalid", error: "Format image non autorisé." }, 400);
@@ -786,6 +815,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           }, 413);
         }
 
+        // Le quota reste calculé depuis le listing R2 réel. Il n'existe donc plus
+        // de manifeste partagé à corrompre sous charge.
+        const manifest = await readAccountMediaManifest(bucket, identity.userId, env);
         const previous = manifest.media?.[mediaKey];
         const projectedUsed = Math.max(0, manifest.usedBytes - Number(previous?.sizeBytes || 0) + sizeBytes);
         if (projectedUsed > manifest.quotaBytes) {
@@ -816,17 +848,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           sizeBytes,
           checksum,
           updatedAtMs,
-          sourceUrl,
+          sourceUrl: null,
           contentType: contentType.split(";")[0] || "image/webp",
         };
-        manifest.media[mediaKey] = row;
-        await writeAccountMediaManifest(bucket, manifest);
         return json({
           ok: true,
           media: row,
           audit: {
-            total: Object.keys(manifest.media || {}).length,
-            usedBytes: manifest.usedBytes,
+            total: Object.keys(manifest.media || {}).length + (previous ? 0 : 1),
+            usedBytes: projectedUsed,
             quotaBytes: manifest.quotaBytes,
           },
           authMode: identity.authMode,
@@ -835,17 +865,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
       if (method === "DELETE") {
         await bucket.delete(objectKey);
-        delete manifest.media[mediaKey];
-        await writeAccountMediaManifest(bucket, manifest);
-        return json({
-          ok: true,
-          deleted: true,
-          audit: {
-            total: Object.keys(manifest.media || {}).length,
-            usedBytes: manifest.usedBytes,
-            quotaBytes: manifest.quotaBytes,
-          },
-        });
+        return json({ ok: true, deleted: true });
       }
     }
 

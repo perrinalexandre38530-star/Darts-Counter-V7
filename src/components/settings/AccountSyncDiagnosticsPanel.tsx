@@ -24,6 +24,14 @@ const STATUS_COLOR: Record<string, string> = {
 export default function AccountSyncDiagnosticsPanel({ theme }: { theme: any }) {
   const [busy, setBusy] = React.useState<"read" | "active" | null>(null);
   const [report, setReport] = React.useState<AccountSyncDiagnosticReport | null>(() => readLastAccountSyncDiagnosticReport());
+  const [elapsedSec, setElapsedSec] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!busy) { setElapsedSec(0); return; }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedSec(Math.max(0, Math.floor((Date.now() - startedAt) / 1000))), 500);
+    return () => window.clearInterval(timer);
+  }, [busy]);
 
   const run = async (activeProbe: boolean) => {
     if (busy) return;
@@ -95,7 +103,7 @@ export default function AccountSyncDiagnosticsPanel({ theme }: { theme: any }) {
           onClick={() => void run(true)}
           style={{ borderRadius: 12, border: "1px solid #4de6ff", padding: "9px 12px", background: "rgba(0,80,110,.18)", color: busy ? theme.textSoft : "#78efff", fontWeight: 950, cursor: busy ? "wait" : "pointer" }}
         >
-          {busy === "active" ? "Test complet en cours…" : "TEST COMPLET + RESYNC"}
+          {busy === "active" ? `Test complet en cours… ${elapsedSec}s` : "TEST COMPLET + RESYNC"}
         </button>
         <button
           type="button"
@@ -114,6 +122,14 @@ export default function AccountSyncDiagnosticsPanel({ theme }: { theme: any }) {
           Effacer
         </button>
       </div>
+
+      {busy ? (
+        <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.2)", color: theme.textSoft, fontSize: 11, lineHeight: 1.45 }}>
+          {busy === "active"
+            ? `Synchronisation et probes en cours (${elapsedSec}s). Le premier passage peut durer 1 à 3 minutes si beaucoup de médias/history doivent être rattachés au compte. Ne ferme pas la page.`
+            : `Analyse lecture seule en cours (${elapsedSec}s)…`}
+        </div>
+      ) : null}
 
       {report ? (
         <div style={{ marginTop: 12 }}>
@@ -156,11 +172,11 @@ export default function AccountSyncDiagnosticsPanel({ theme }: { theme: any }) {
             ))}
           </div>
         </div>
-      ) : (
+      ) : !busy ? (
         <div style={{ marginTop: 10, color: theme.textSoft, fontSize: 11 }}>
           Aucun diagnostic enregistré sur cet appareil.
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

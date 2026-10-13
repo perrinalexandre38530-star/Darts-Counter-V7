@@ -481,6 +481,18 @@ async function hydrateDartSets(input: any[]): Promise<DartSet[]> {
   return rows.filter((row: any) => cleanId(row?.id));
 }
 
+function isAccountSyncFinishedMatch(record: any): boolean {
+  const status = String(record?.status || "").trim().toLowerCase();
+  if (status === "in_progress" || status === "in-progress" || status === "running" || status === "active") return false;
+  if (["finished", "done", "ended", "match_end", "completed", "complete"].includes(status)) return true;
+  if (record?.winnerId || record?.winner?.id || record?.summary?.winnerId || record?.summary?.finished === true) return true;
+  // Une grande partie de l'historique legacy n'avait pas le littéral
+  // `finished` (champ vide ou ancien statut). Ces lignes vivent déjà dans
+  // History, pas dans le store de reprise : sauf statut explicitement actif,
+  // elles sont donc terminées afin de préserver toutes les Stats multi-appareils.
+  return status !== "in_progress";
+}
+
 function historyUpdatedAt(record: any): number {
   const ts = Math.max(
     toTimestamp(record?.updatedAt),
@@ -634,6 +646,23 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   const localTimers = new Map<string, number>();
   const revisions = readRevisions(userId);
   const signatures = new Map<string, string>();
+  // Empêche de retraiter en Realtime nos propres écritures. Sans ce garde, un
+  // upsert local peut être reçu par le websocket avant que la Promise Supabase
+  // ne rende la main, ce qui déclenchait parfois une réapplication concurrente
+  // du Store (et les erreurs `reading length` vues pendant le diagnostic).
+  const pendingOutbound = new Map<string, number>();
+  const outboundKey = (type: string, id = DEFAULT_DOCUMENT_ID) => revisionKey(type, id);
+  const markOutbound = (type: string, id: string, ts: number) => pendingOutbound.set(outboundKey(type, id), Number(ts || 0));
+  const clearOutbound = (type: string, id: string, ts?: number) => {
+    const key = outboundKey(type, id);
+    if (ts == null || pendingOutbound.get(key) === Number(ts || 0)) pendingOutbound.delete(key);
+  };
+  const isOwnRealtimeEcho = (row: SyncRow): boolean => {
+    const type = String(row?.document_type || "");
+    const id = cleanId(row?.document_id || DEFAULT_DOCUMENT_ID) || DEFAULT_DOCUMENT_ID;
+    const ts = Number(row?.client_updated_at || 0) || 0;
+    return !!type && !!ts && pendingOutbound.get(outboundKey(type, id)) === ts;
+  };
 
   const persistRevisions = () => writeRevisions(userId, revisions);
   const getRevision = (type: string, id = DEFAULT_DOCUMENT_ID) => Number(revisions[revisionKey(type, id)] || 0) || 0;
@@ -688,8 +717,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       client_updated_at: ts,
       deleted_at: null,
     };
+    markOutbound(type, id, ts);
     const { error } = await supabase.from(TABLE).upsert(row as any, { onConflict: "owner_user_id,document_type,document_id" });
     if (error) {
+      clearOutbound(type, id, ts);
       noteSupabaseError(error, `push:${type}`);
       return false;
     }
@@ -712,8 +743,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       client_updated_at: ts,
       deleted_at: new Date(ts).toISOString(),
     };
+    markOutbound(DOC.historyMatch, matchId, ts);
     const { error } = await supabase.from(TABLE).upsert(row as any, { onConflict: "owner_user_id,document_type,document_id" });
     if (error) {
+      clearOutbound(DOC.historyMatch, matchId, ts);
       noteSupabaseError(error, "history-delete");
       return false;
     }
@@ -975,6 +1008,42 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     return out;
   };
 
+  const upsertHistoryRowsResilient = async (rowsInput: any[], action: string): Promise<{ written: number; failedIds: string[] }> => {
+    const rows = Array.isArray(rowsInput) ? rowsInput.filter(Boolean) : [];
+    let written = 0;
+    const failedIds: string[] = [];
+    for (let i = 0; i < rows.length; i += HISTORY_BATCH_SIZE) {
+      if (stopped || tableUnavailable) break;
+      const batch = rows.slice(i, i + HISTORY_BATCH_SIZE);
+      for (const row of batch) markOutbound(DOC.historyMatch, cleanId(row?.document_id), Number(row?.client_updated_at || 0));
+      const { error } = await supabase.from(TABLE).upsert(batch as any, { onConflict: "owner_user_id,document_type,document_id" });
+      if (!error) {
+        written += batch.length;
+        for (const row of batch) setRevision(DOC.historyMatch, row.document_id, row.client_updated_at);
+      } else {
+        // Un seul match trop volumineux / invalide ne doit jamais bloquer les 23
+        // autres lignes du lot. On rejoue donc le lot ligne par ligne.
+        console.warn(`[account-sync] ${action} batch failed; retrying row by row`, error);
+        for (const row of batch) {
+          const id = cleanId(row?.document_id);
+          if (!id) continue;
+          const { error: rowError } = await supabase.from(TABLE).upsert(row as any, { onConflict: "owner_user_id,document_type,document_id" });
+          if (rowError) {
+            clearOutbound(DOC.historyMatch, id, Number(row?.client_updated_at || 0));
+            failedIds.push(id);
+            noteSupabaseError(rowError, `${action}:${id}`);
+            if (tableUnavailable) break;
+          } else {
+            written += 1;
+            setRevision(DOC.historyMatch, id, Number(row?.client_updated_at || Date.now()));
+          }
+        }
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    return { written, failedIds };
+  };
+
   const bootstrapHistory = async () => {
     if (stopped || tableUnavailable) return;
     const remoteRows = await fetchAllHistoryRows();
@@ -1006,7 +1075,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       if (!header?.payload) {
         try { full = (await History.get(id)) || header; } catch {}
       }
-      if (String(full?.status || header?.status || "").toLowerCase() !== "finished") continue;
+      if (!isAccountSyncFinishedMatch({ ...(header as any), ...(full as any) })) continue;
       pending.push({
         owner_user_id: userId,
         document_type: DOC.historyMatch,
@@ -1017,16 +1086,11 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       });
       if (pending.length >= HISTORY_BATCH_SIZE) {
         const batch = pending.splice(0, pending.length);
-        const { error } = await supabase.from(TABLE).upsert(batch as any, { onConflict: "owner_user_id,document_type,document_id" });
-        if (error) noteSupabaseError(error, "history-bootstrap-push");
-        else for (const row of batch) setRevision(DOC.historyMatch, row.document_id, row.client_updated_at);
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        await upsertHistoryRowsResilient(batch, "history-bootstrap-push");
       }
     }
     if (pending.length && !stopped) {
-      const { error } = await supabase.from(TABLE).upsert(pending as any, { onConflict: "owner_user_id,document_type,document_id" });
-      if (error) noteSupabaseError(error, "history-bootstrap-push-final");
-      else for (const row of pending) setRevision(DOC.historyMatch, row.document_id, row.client_updated_at);
+      await upsertHistoryRowsResilient(pending, "history-bootstrap-push-final");
     }
 
     void scheduleStatsIndexRefresh({ reason: "account-history-bootstrap", debounceMs: 500, includeNonFinished: false });
@@ -1101,7 +1165,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       if (!(header as any)?.payload) {
         try { full = (await History.get(id)) || header; } catch {}
       }
-      if (String((full as any)?.status || (header as any)?.status || "").toLowerCase() !== "finished") continue;
+      if (!isAccountSyncFinishedMatch({ ...(header as any), ...(full as any) })) continue;
       localById.set(id, full as SavedMatch);
     }
 
@@ -1131,16 +1195,51 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       });
     }
 
-    for (let i = 0; i < writes.length; i += HISTORY_BATCH_SIZE) {
-      const batch = writes.slice(i, i + HISTORY_BATCH_SIZE);
-      const { error } = await supabase.from(TABLE).upsert(batch as any, { onConflict: "owner_user_id,document_type,document_id" });
-      if (error) {
-        noteSupabaseError(error, "history-force-replace");
-        break;
-      }
-      for (const row of batch) setRevision(DOC.historyMatch, row.document_id, row.client_updated_at);
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const result = await upsertHistoryRowsResilient(writes, "history-force-replace");
+    if (result.failedIds.length) {
+      throw new Error(`History : ${result.failedIds.length} partie(s) n'ont pas pu être synchronisées (${result.failedIds.slice(0, 6).join(", ")}).`);
     }
+    return { expected: localById.size, writes: writes.length, written: result.written };
+  };
+
+  const collectReferencedAccountMediaKeys = (): Set<string> => {
+    const keys = new Set<string>();
+    for (const profile of (Array.isArray(options.getProfiles()) ? options.getProfiles() : [])) {
+      if (!profile || isCanonicalAccountProfile(profile, userId)) continue;
+      const id = cleanId(profile?.id);
+      if (id) keys.add(profileAvatarMediaKey(id));
+    }
+    for (const bot of loadBots()) {
+      if (!bot || isOfficialBotId(bot?.id) || bot?.systemBot) continue;
+      const id = cleanId(bot?.id);
+      if (id) keys.add(botAvatarMediaKey(id));
+    }
+    for (const team of loadTeams()) {
+      const id = cleanId(team?.id);
+      if (!id) continue;
+      keys.add(cleanId((team as any)?.logoMediaKey) || teamLogoMediaKey(id));
+      keys.add(cleanId((team as any)?.coverMediaKey) || teamCoverMediaKey(id));
+    }
+    for (const item of readAvatarGallery(userId)) {
+      const id = cleanId((item as any)?.id || (item as any)?.hash);
+      if (id) keys.add(galleryItemMediaKey(id));
+    }
+    try {
+      const rows = JSON.parse(localStorage.getItem("msc_avatar_ia_gallery_v1") || "[]");
+      if (Array.isArray(rows)) {
+        for (const item of rows) {
+          const id = cleanId(item?.id || item?.galleryId);
+          if (id) keys.add(`avatar_ai_gallery:${id}`);
+        }
+      }
+    } catch {}
+    for (const set of getAllDartSets()) {
+      const id = cleanId((set as any)?.id);
+      if (!id) continue;
+      keys.add(cleanId((set as any)?.r2MainMediaKey) || dartSetMainMediaKey(id));
+      keys.add(cleanId((set as any)?.r2ThumbMediaKey) || dartSetThumbMediaKey(id));
+    }
+    return new Set(Array.from(keys).filter(Boolean));
   };
 
   const forcePushAllLocalToAccount = async (reason = "manual") => {
@@ -1157,9 +1256,21 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         teams: loadTeams(),
       }, { mirrorR2: false });
       // Les snapshots Drive/NAS/SD peuvent contenir un média uniquement dans le
-      // coffre IndexedDB séparé. On le republie aussi, sans dépendre des champs UI.
-      await mirrorAllLocalUserMediaToAccountR2();
-    } catch {}
+      // coffre IndexedDB séparé. On republie uniquement les médias réellement
+      // rattachés au compte courant (plus les petits médias Organisation), jamais
+      // les centaines d'orphelins historiques du cache.
+      const referencedKeys = collectReferencedAccountMediaKeys();
+      const mirrored = await mirrorAllLocalUserMediaToAccountR2({
+        keys: referencedKeys,
+        kinds: ["club_logo", "club_cover", "group_avatar", "group_cover", "avatar_ai_gallery", "team_logo", "team_cover"],
+        concurrency: 1,
+      });
+      if (mirrored.failed) throw new Error(`R2 Account Media : ${mirrored.failed} média(s) non synchronisé(s).`);
+    } catch (mediaError) {
+      console.warn("[account-sync] account media mirror incomplete", mediaError);
+      // La synchro JSON/History continue : le prochain focus ou diagnostic pourra
+      // reprendre les médias sans bloquer une restauration locale valide.
+    }
 
     const ts = Date.now();
     await pushDocument(DOC.profiles, serializeProfiles(options.getProfiles(), userId), DEFAULT_DOCUMENT_ID, ts);
@@ -1279,7 +1390,18 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         (event: any) => {
           const row = (event?.new && Object.keys(event.new).length ? event.new : event?.old) as SyncRow;
           if (!row) return;
-          void applyRemoteRow(row, false).catch((error) => console.warn("[account-sync] realtime apply failed", error));
+          if (isOwnRealtimeEcho(row)) {
+            const type = String(row?.document_type || "");
+            const id = cleanId(row?.document_id || DEFAULT_DOCUMENT_ID) || DEFAULT_DOCUMENT_ID;
+            const ts = Number(row?.client_updated_at || 0) || toTimestamp(row?.updated_at) || Date.now();
+            setRevision(type, id, ts);
+            if (row?.payload !== undefined) signatures.set(revisionKey(type, id), fingerprint(row.payload));
+            emitStatus({ state: "realtime-echo", direction: "up", type, id, at: ts });
+            return;
+          }
+          void applyRemoteRow(row, false).catch((error) => console.warn("[account-sync] realtime apply failed", {
+            type: row?.document_type, id: row?.document_id, message: String((error as any)?.message || error), error,
+          }));
         },
       )
       .subscribe((status: string) => emitStatus({ state: "realtime", status, userId }));

@@ -1307,25 +1307,55 @@ export async function hydrateStoreUserMedia(
 
 
 export async function mirrorAllLocalUserMediaToAccountR2(
-  opts: { maxEntries?: number; onProgress?: (completed: number, total: number) => void } = {},
-): Promise<{ attempted: number; uploaded: number }> {
-  if (!canAttemptDirectR2FromStoredSession()) return { attempted: 0, uploaded: 0 };
+  opts: {
+    maxEntries?: number;
+    keys?: Iterable<string>;
+    kinds?: Iterable<string>;
+    concurrency?: number;
+    onProgress?: (completed: number, total: number) => void;
+  } = {},
+): Promise<{ attempted: number; uploaded: number; fresh: number; failed: number; failedKeys: string[] }> {
+  if (!canAttemptDirectR2FromStoredSession()) return { attempted: 0, uploaded: 0, fresh: 0, failed: 0, failedKeys: [] };
+
+  const wantedKeys = opts.keys
+    ? new Set(Array.from(opts.keys, (value) => cleanKey(value)).filter(Boolean))
+    : null;
+  const wantedKinds = opts.kinds
+    ? new Set(Array.from(opts.kinds, (value) => String(value || "").trim().toLowerCase()).filter(Boolean))
+    : null;
+  const limit = Math.max(1, Number(opts.maxEntries || MAX_LOCAL_ENTRIES));
   const rows = (await idbGetAll())
     .filter((row) => row?.key && isImageDataUrl(row?.dataUrl))
+    .filter((row) => !wantedKeys || wantedKeys.has(cleanKey(row.key)) || !!(wantedKinds?.has(String(row?.kind || "").trim().toLowerCase())))
     .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
-    .slice(0, Math.max(1, Number(opts.maxEntries || MAX_LOCAL_ENTRIES)));
+    .slice(0, limit);
 
   let uploaded = 0;
-  await mapWithConcurrency(rows, 2, async (row) => {
+  let fresh = 0;
+  let failed = 0;
+  let completed = 0;
+  const failedKeys: string[] = [];
+  // Un seul writer par navigateur : l'ancien manifeste R2 était un hot-key et
+  // pouvait perdre des entrées avec deux POST simultanés. Le serveur V120 ne
+  // dépend plus de ce manifeste mutable, mais garder la file séquentielle réduit
+  // aussi les pointes réseau sur Android et les vieux navigateurs.
+  await mapWithConcurrency(rows, Math.max(1, Math.min(2, Number(opts.concurrency || 1))), async (row) => {
     try {
-      if (!(await isAccountR2MediaFresh({ key: row.key, updatedAt: row.updatedAt }))) {
+      if (await isAccountR2MediaFresh({ key: row.key, updatedAt: row.updatedAt })) {
+        fresh += 1;
+      } else {
         await uploadAccountR2Media(row);
         uploaded += 1;
       }
-    } catch {}
-    opts.onProgress?.(Math.min(rows.length, uploaded), rows.length);
+    } catch {
+      failed += 1;
+      if (failedKeys.length < 24) failedKeys.push(cleanKey(row.key));
+    } finally {
+      completed += 1;
+      opts.onProgress?.(completed, rows.length);
+    }
   });
-  return { attempted: rows.length, uploaded };
+  return { attempted: rows.length, uploaded, fresh, failed, failedKeys };
 }
 
 export async function exportUserMediaFallbackSnapshot(): Promise<UserMediaFallbackSnapshot> {
