@@ -1495,6 +1495,20 @@ const ROUTES: RouteEntry[] = [
     aliases: ["looper_play", "Looper · Play", "Looper Play"],
   },
   {
+    id: "ptit_hun_config",
+    label: "P’TIT 1 · Config",
+    category: "Fléchettes / Configuration",
+    purpose: "Écran de configuration de **P’TIT 1** : participants, scoring, bonus, Jackpot Double/Triple, format et méthode de saisie.",
+    aliases: ["ptit_hun_config", "P’TIT 1 · Config", "Ptit 1 Config", "Le P’tit Hun · Config"],
+  },
+  {
+    id: "ptit_hun_play",
+    label: "P’TIT 1 · Play",
+    category: "Fléchettes / Partie",
+    purpose: "Écran de **partie active** de P’TIT 1 : anti-score, petits simples, Jackpot Double/Triple, DBULL, Triple Nul et Bouclier du Hun.",
+    aliases: ["ptit_hun_play", "P’TIT 1 · Play", "Ptit 1 Play", "Le P’tit Hun · Play"],
+  },
+  {
     id: "menteur_config",
     label: "Menteur · Config",
     category: "Fléchettes / Configuration",

@@ -385,6 +385,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "looper", label: "LOOPER", aliases: ["looper", "loops", "loopy"] },
     { key: "call_three", label: "CALL THREE", aliases: ["call_three", "call three", "callthree"] },
     { key: "steeplechase", label: "STEEPLECHASE", aliases: ["steeplechase", "steeple chase"] },
+    { key: "ptit_hun", label: "P’TIT 1", aliases: ["ptit_hun", "ptit hun", "p'tit hun", "petit hun", "ptit 1", "p'tit 1", "petit 1", "petit un"] },
     { key: "ocean_control", label: "OCEAN CONTROL", aliases: ["ocean_control", "ocean control", "oceancontrol"] },
     { key: "football", label: "DARTS FOOTBALL", aliases: ["football", "darts football", "football_darts"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
@@ -593,7 +594,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|castle|gotcha|hare_hounds|harehounds|pendu|menteur|crados|challenge|fifty_one_by_five|51_by_5|51by5|looper|call_three|callthree|steeplechase|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|castle|gotcha|hare_hounds|harehounds|pendu|menteur|crados|challenge|fifty_one_by_five|51_by_5|51by5|looper|call_three|callthree|steeplechase|ptit_hun|ptithun|ocean_control|oceancontrol|football|football_darts|prisoner|loterie|lottery|gros_6|gros6|big_6|big6|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -651,6 +652,8 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "callthree",
     "call_three",
     "steeplechase",
+    "ptithun",
+    "ptit_hun",
     "ocean_control",
     "oceancontrol",
     "football",
@@ -797,6 +800,7 @@ function modeLabel(e: SavedEntry) {
   if (m === "looper") return "LOOPER";
   if (m === "call_three" || m === "callthree") return "CALL THREE";
   if (m === "steeplechase") return "STEEPLECHASE";
+  if (m === "ptit_hun" || m === "ptithun") return "P’TIT 1";
   if (m === "ocean_control" || m === "oceancontrol") return "OCEAN CONTROL";
   if (m === "football" || m === "football_darts" || m === "footballdarts") return "DARTS FOOTBALL";
   if (m === "x01") {
@@ -4732,6 +4736,8 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         callthree: "call_three_play",
         call_three: "call_three_play",
         steeplechase: "steeplechase_play",
+        ptithun: "ptit_hun_play",
+        ptit_hun: "ptit_hun_play",
       };
       const canonicalByMode: Record<string, string> = {
         harehounds: "hare_hounds",
@@ -4739,6 +4745,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         "51by5": "fifty_one_by_five",
         "51_by_5": "fifty_one_by_five",
         callthree: "call_three",
+        ptithun: "ptit_hun",
       };
       const newModeRoute = routeByMode[rawMode] || null;
       if (newModeRoute && statusOf(e) === "in_progress") {

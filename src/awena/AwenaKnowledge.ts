@@ -59,6 +59,7 @@ const TICKER_KEYS: Record<string, string> = {
   looper: "looper",
   call_three: "call_three",
   steeplechase: "steeplechase",
+  ptit_hun: "ptit_hun",
   prisoner: "prisoner",
   tic_tac_toe: "tic_tac_toe",
   bastard: "batard_players",
@@ -117,6 +118,7 @@ const ALIAS_OVERRIDES: Record<string, string[]> = {
   looper: ["looper", "loop", "boucle", "boucles", "cible exacte", "segment exact", "simple interieur", "simple exterieur", "bouclier looper", "vies looper"],
   call_three: ["call three", "call 3", "appel trois", "appelle trois", "trois cibles", "full call", "caller", "phase d appel"],
   steeplechase: ["steeplechase", "steeple chase", "course obstacles", "course autour de la cible", "haies", "t13", "t17", "t8", "t5", "petit simple", "bull final"],
+  ptit_hun: ["p'tit 1", "ptit 1", "petit 1", "petit un", "le p'tit hun", "ptit hun", "petit hun", "anti score", "triple nul", "jackpot", "zone spéciale", "zero absolu", "zéro absolu", "bouclier du hun", "dbull", "gros simple"],
 };
 
 const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" | "tip" | "howToPlayInApp">>> = {
@@ -167,6 +169,11 @@ const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" 
     summary: "STEEPLECHASE est une course autour de la cible. Le parcours suit l’ordre physique des secteurs en partant du 20. Les étapes normales demandent un simple — le petit simple intérieur lorsque cette règle est activée. Les haies 13, 17, 8 et 5 doivent être franchies en Triple si les haies sont actives. Après le dernier secteur, l’arrivée se fait au Bull ou uniquement au DBull selon la configuration. Le premier à terminer le parcours gagne la manche.",
     tip: "Sur les étapes normales, cherche surtout la précision pour avancer vite. Garde ton agressivité pour les quatre haies : un T13/T17/T8/T5 réussi économise beaucoup de fléchettes. À l’approche de l’arrivée, adapte ton risque selon que le Bull simple suffit ou que le DBull est obligatoire.",
     howToPlayInApp: "Ouvre Jeux > Fléchettes > STEEPLECHASE. Choisis le sens horaire ou anti-horaire, petit simple intérieur ou simple libre, activation des haies, Bull ou DBull à l’arrivée, les participants/bots, le format et la méthode de saisie. En jeu, la piste affiche la progression, les haies, la cible active et les statistiques de course. Historique permet la reprise avec la volée courante.",
+  },
+  ptit_hun: {
+    summary: "P’TIT 1 inverse la logique habituelle : le plus petit score gagne. Le petit simple ajoute sa valeur tandis que le gros simple coûte beaucoup plus cher. Doubles, Triples, Bull25 et MISS sanctionnent le total ; le DBULL le réduit. Le Triple Nul annule une volée, le Bouclier récompense les séries de petits simples et le Zéro Absolu récompense plusieurs DBULL cumulés. Le Jackpot fait apparaître uniquement des Doubles ou Triples spéciaux : une touche met toute la volée à 0. Toutes ces mécaniques sont configurables.",
+    tip: "Le petit simple du 1 est la cible naturellement la moins coûteuse. Mais surveille le Jackpot : un Double ou Triple spécial peut offrir une volée à 0. Quand ton score devient élevé, le DBULL est une option de retour très puissante.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > P’TIT 1. La configuration guidée sépare participants, score & zones, bonus, Jackpot, format et saisie. Tu peux modifier les multiplicateurs, la pénalité MISS, le DBULL, le seuil du Zéro Absolu, le Triple Nul, le Bouclier et les zones Jackpot. En jeu, bascule PETIT/GROS au keypad et surveille la zone Jackpot affichée en permanence.",
   },
 };
 

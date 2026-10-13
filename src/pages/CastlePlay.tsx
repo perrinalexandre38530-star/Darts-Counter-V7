@@ -57,18 +57,30 @@ function coachText(state: CastleState, activePlayer: any) {
 }
 
 
-function CastleBattlefield({ state, activeId, colorById }: any) {
+function CastleBattlefield({ state, activeId, colorById, currentThrow }: any) {
   const target = Number(state.config?.rules?.targetBricks || 15);
   const activeSector = Number(state.targets?.[activeId] || 0);
+  const preview = { build: 0, damage: 0, byPlayer: {} as Record<string, number>, useful: 0 };
+  if (state.phase !== "assignment") for (const raw of (currentThrow || [])) {
+    const d:any = uiToGameDart(raw); if (!d || d.bed === "MISS" || d.bed === "OB" || d.bed === "IB") continue;
+    const value = d.bed === "T" ? 3 : d.bed === "D" ? 2 : 1, sector = Number(d.number || 0);
+    if (sector === activeSector) { preview.build += value; preview.useful += 1; continue; }
+    if (state.config.rules.attacksEnabled) {
+      const victim = state.players.find((p:any)=>p.id!==activeId && Number(state.targets[p.id]||0)===sector);
+      if (victim) { preview.damage += value; preview.useful += 1; preview.byPlayer[victim.id] = Number(preview.byPlayer[victim.id] || 0) + value; }
+    }
+  }
   return <section className="castle-battlefield">
-    <header><div><span>🏰</span><div><small>CHAMP DE BATAILLE</small><b>{state.phase === "assignment" ? "ATTRIBUTION DES FIEFS" : `TON FIEF · SECTEUR ${activeSector || "—"}`}</b></div></div><em>{target} BRIQUES</em></header>
+    <header><div><span>🏰</span><div><small>CHAMP DE BATAILLE</small><b>{state.phase === "assignment" ? "ATTRIBUTION DES FIEFS" : `TON FIEF · SECTEUR ${activeSector || "—"}`}</b></div></div><em>{currentThrow?.length && state.phase !== "assignment" ? `VOLÉE : +${preview.build} 🧱 · ${preview.damage} ⚔️` : `${target} BRIQUES`}</em></header>
     <div className="castle-battlefield__rows">{state.players.map((p:any)=>{
       const own = p.id === activeId, color = colorById.get(String(p.id)) || ACCENT, bricks = Number(state.bricks[p.id] || 0), sector = state.targets[p.id];
-      return <div key={p.id} className={own ? "is-active" : ""} style={{["--castle-color" as any]:color}}>
+      const delta = own ? preview.build : -Number(preview.byPlayer[p.id] || 0);
+      const projected = own ? Math.min(target, bricks + preview.build) : Math.max(0, bricks - Number(preview.byPlayer[p.id] || 0));
+      return <div key={p.id} className={`${own ? "is-active " : ""}${delta ? "has-preview" : ""}`} style={{["--castle-color" as any]:color}}>
         <div><strong>{own ? "👑" : "⚔️"} {p.name}</strong><span>{sector ? `SECTEUR ${sector}` : "À ATTRIBUER"}</span></div>
         <div className="castle-battlefield__meter"><i style={{width:`${Math.min(100,bricks/Math.max(1,target)*100)}%`}}/></div>
-        <b>{bricks}<small>/{target}</small></b>
-        {!own && state.config.rules.attacksEnabled && sector ? <em>vise {sector} pour détruire</em> : own && sector ? <em>S/D/T = +1/+2/+3</em> : null}
+        <b>{bricks}<small>/{target}</small>{delta ? <i>{` → ${projected}`}</i> : null}</b>
+        {!own && state.config.rules.attacksEnabled && sector ? <em>{delta < 0 ? `⚔️ ${Math.abs(delta)} dégât${Math.abs(delta)>1?"s":""} prévu${Math.abs(delta)>1?"s":""}` : `vise ${sector} pour détruire`}</em> : own && sector ? <em>{delta > 0 ? `🧱 +${delta} prévu${delta>1?"s":""}` : "S/D/T = +1/+2/+3"}</em> : null}
       </div>;
     })}</div>
   </section>;
@@ -196,7 +208,7 @@ export default function CastlePlay(props: any) {
       <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={state.legWins} primaryById={(id:string)=>state.targets[id]?`${state.bricks[id]||0}/${target}`:"—"} secondaryById={(id:string)=>state.targets[id]?`N° ${state.targets[id]} · ${(state.statsByPlayer[id]?.damage||0)} dégâts`:"Numéro à attribuer"}/>
       <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget} · ${state.phase==="assignment"?"ATTRIBUTION":"VOLÉE "+(state.turnIndex+1)}`} primary={state.phase==="assignment"?(state.assignmentIndex+1):activeBricks} primarySuffix={state.phase==="assignment"?`/${state.players.length}`:`/${target}`} secondary={state.phase==="assignment"?"1 fléchette main opposée · secteur 1–20":`SECTEUR ${state.targets[activePlayer?.id]||"—"} · ${state.config.rules.attacksEnabled?"ATTAQUE ACTIVE":"CONSTRUCTION SEULE"}`} tertiary={state.phase==="assignment"?"MISS / BULL = relance":`${activeStats.builds||0} briques posées · ${activeStats.damage||0} dégâts infligés`} progress={state.phase==="assignment"?state.assignmentIndex:activeBricks} progressMax={state.phase==="assignment"?state.players.length:target} notice={notice} noticeTone={notice.includes("🏆")?"win":notice.includes("MISS")?"danger":"normal"} aside={state.phase==="assignment"?<div style={{display:"grid",placeItems:"center",gap:4}}><ProfileAvatar profile={activeProfile} size={62} showStars={false} ringColor={activeColor}/><b style={{fontSize:9,color:activeColor}}>LANCE !</b></div>:<CastleMeter value={activeBricks} target={target} accent={activeColor}/>}/>
       <GameplayMission accent={activeColor} icon={state.phase === "assignment" ? "🎯" : "🏰"} title={state.phase === "assignment" ? "ATTRIBUE TON SECTEUR" : "CONSTRUIS TON CHÂTEAU OU ATTAQUE"} text={state.phase === "assignment" ? "Une seule fléchette, main opposée, sur un secteur 1–20. MISS ou BULL = relance." : `Ton secteur ${state.targets[activePlayer?.id] || "—"} construit. Les secteurs adverses détruisent leurs briques.`} chips={state.phase === "assignment" ? ["1 DART", "1–20", "MISS/BULL = RELANCE"] : ["S = 1", "D = 2", "T = 3", state.config.rules.attacksEnabled ? "ATTAQUE ACTIVE" : "PAS D’ATTAQUE"]} />
-      <CastleBattlefield state={state} activeId={activePlayer?.id} colorById={colorById} />
+      <CastleBattlefield state={state} activeId={activePlayer?.id} colorById={colorById} currentThrow={currentThrow} />
       <KpiStrip accent={activeColor} onClick={()=>setStatsOpen(true)} items={[["BUILD",activeStats.builds||0],["DÉGÂTS",activeStats.damage||0],["PRÉC.",`${percent(activeStats.usefulHits,activeStats.darts)}%`],["M",state.legWins[activePlayer?.id]||0]]}/>
       <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerCastle} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>
     </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel={state.phase==="assignment"?"ATTRIBUER":"VALIDER"} accent={activeColor} maxDarts={state.phase === "assignment" ? 1 : 3} fitMinScale={0.16}/>:<BotTurn intent={activeBotPlan.intent} objectiveDetail={activeBotPlan.detail} reaction={activeBotPlan.reaction} persona={activeBotPlan.persona} personaIcon={activeBotPlan.personaIcon} confidence={activeBotPlan.confidence} adaptation={activeBotMemory ? `${activeBotMemory.icon} ${activeBotMemory.label}` : undefined} adaptationDetail={activeBotMemory?.detail} learningConfidence={activeBotMemory?.confidence} learningTarget={activeBotMemory?.targetName} rivalry={activeBotRivalry ? `${activeBotRivalry.icon} ${activeBotRivalry.label}` : undefined} rivalryDetail={activeBotRivalry?.detail} rivalryRecord={activeBotRivalry?.record} rivalryMatches={activeBotRivalry?.matches} rivalryConfidence={activeBotRivalry?.confidence} rivalryTension={activeBotRivalry?.tension} rivalryTarget={activeBotRivalry?.targetName} rivalryQuote={activeBotRivalry?.quote} scouting={activeBotScouting ? `${activeBotScouting.icon} ${activeBotScouting.label}` : undefined} scoutingDetail={activeBotScouting?.detail} scoutingMatches={activeBotScouting?.matches} scoutingConfidence={activeBotScouting?.confidence} scoutingTarget={activeBotScouting?.targetName} phaseLabel={state.phase==="assignment"?"ATTRIBUTION":"BATAILLE"} profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={state.phase==="assignment"?"choisit son secteur…":"construit ou attaque…"} icon="🏰"/>}</div></div></main>

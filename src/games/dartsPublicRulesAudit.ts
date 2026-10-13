@@ -943,6 +943,28 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
       "anneau triple permet de franchir un secteur.</div> <div><b style={{ color:"
     ]
   },
+  "ptit_hun": {
+    "status": 'available',
+    "sources": [
+      "src/pages/PtitHunConfig.tsx",
+      "src/pages/PtitHunPlay.tsx",
+      "src/lib/gameEngines/ptitHunEngine.ts"
+    ],
+    "options": [
+      "P’TIT 1",
+      "PETIT SIMPLE",
+      "GROS SIMPLE",
+      "TRIPLE NUL",
+      "BOUCLIER DU HUN",
+      "ZÉRO ABSOLU",
+      "JACKPOT",
+      "Double",
+      "Triple",
+      "DBULL",
+      "MISS",
+      "score le plus bas"
+    ]
+  },
   "pendu": {
     "status": 'available',
     "sources": [

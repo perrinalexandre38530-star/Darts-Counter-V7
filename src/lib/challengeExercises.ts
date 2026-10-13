@@ -155,6 +155,23 @@ export type ChallengeEvaluation={
  cumulativeScores:number[];
 };
 
+export type ChallengeExerciseAnalytics={
+ type:ChallengeExerciseType;
+ visitsPlayed:number;
+ completedVisits:number;
+ validatedVisits:number;
+ failedVisits:number;
+ validationRate:number;
+ perfectVisits:number;
+ halfItCuts:number;
+ groupingDoublets:number;
+ groupingTriplets:number;
+ groupingPoints:number;
+ groupingSectorHits:Record<string,number>;
+ topGroupingSector:number|null;
+ topGroupingSectorHits:number;
+};
+
 export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:ChallengeExerciseConfigLike):ChallengeEvaluation{
  const type=challengeExerciseType(cfg);
  const entryPoints=Array(entries.length).fill(0) as number[];
@@ -216,6 +233,70 @@ export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:Challe
  }
 
  return {score,entryPoints,entrySuccessful,visitScores,cumulativeScores};
+}
+
+export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:ChallengeExerciseConfigLike):ChallengeExerciseAnalytics{
+ const type=challengeExerciseType(cfg);
+ const evaluation=evaluateChallengeEntries(entries,cfg);
+ const visitsPlayed=Math.ceil(entries.length/3);
+ let completedVisits=0;
+ let validatedVisits=0;
+ let failedVisits=0;
+ let perfectVisits=0;
+ let halfItCuts=0;
+ let groupingDoublets=0;
+ let groupingTriplets=0;
+ let groupingPoints=0;
+ const groupingSectorHits:Record<string,number>={};
+
+ for(let visitIndex=0;visitIndex<visitsPlayed;visitIndex++){
+  const start=visitIndex*3;
+  const visit=entries.slice(start,start+3);
+  const successFlags=evaluation.entrySuccessful.slice(start,start+visit.length);
+  const successfulHits=successFlags.filter(Boolean).length;
+  const complete=visit.length===3;
+  if(complete)completedVisits++;
+  if(successfulHits>0)validatedVisits++;
+  if(complete&&successfulHits===0){
+   failedVisits++;
+   if(type==='half-it')halfItCuts++;
+  }
+  if(successfulHits===3)perfectVisits++;
+
+  if(type==='grouping'&&successfulHits>0){
+   if(successfulHits===2)groupingDoublets++;
+   if(successfulHits===3)groupingTriplets++;
+   groupingPoints+=Math.max(0,Number(evaluation.visitScores[visitIndex]||0));
+   visit.forEach((entry,j)=>{
+    if(!successFlags[j])return;
+    const sector=Math.round(Number(entry.segment||0));
+    if(sector<1||sector>20)return;
+    const key=String(sector);
+    groupingSectorHits[key]=(groupingSectorHits[key]||0)+1;
+   });
+  }
+ }
+
+ const topGrouping=Object.entries(groupingSectorHits)
+  .map(([sector,hits])=>({sector:Number(sector),hits:Number(hits)||0}))
+  .sort((a,b)=>b.hits-a.hits||b.sector-a.sector)[0]||null;
+ const denominator=completedVisits||visitsPlayed;
+ return {
+  type,
+  visitsPlayed,
+  completedVisits,
+  validatedVisits,
+  failedVisits,
+  validationRate:denominator?Math.round((validatedVisits/denominator)*1000)/10:0,
+  perfectVisits,
+  halfItCuts,
+  groupingDoublets,
+  groupingTriplets,
+  groupingPoints,
+  groupingSectorHits,
+  topGroupingSector:topGrouping?.sector??null,
+  topGroupingSectorHits:topGrouping?.hits??0,
+ };
 }
 
 export function maxChallengePointsPerDart(cfg:ChallengeExerciseConfigLike):number{

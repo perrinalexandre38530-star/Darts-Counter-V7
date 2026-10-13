@@ -74,7 +74,7 @@ export function CallThreeGameplayVisual({accent,phase="playing",calls=[],draftCa
   const tone=hits===3?"success":darts.length>=3&&hits===0?"danger":"normal";
   return <Frame accent={accent} kicker={phase==="calling"?`${callerName} prépare l'appel`:ordered?"ORDRE STRICT":"ORDRE LIBRE"} title="LES 3 APPELS" status={status} statusTone={tone} className="gv-call3">
     <div className="gv-call3__calls">{[0,1,2].map(i=>{const pv=preview?.[i]||{},hasDart=ordered?!!darts[i]:darts.length>=3;const fail=phase!=="calling"&&hasDart&&!pv.ok;const state=phase==="calling"?(i===selectedSlot?"selected":"waiting"):pv.ok?"success":fail?"danger":"waiting";return <div key={i} className={`gv-call is-${state}`}><small>APPEL {i+1}</small><b>{labels[i]||"—"}</b>{phase==="calling"?<span>{i===selectedSlot?"EN ÉDITION":"PRÊT"}</span>:<><span>{pv.ok?`OK +${pv.pts}`:fail?"RATÉ":"À JOUER"}</span><em>{pv.dartIndex>=0?`F${pv.dartIndex+1}`:""}</em></>}</div>})}</div>
-    <div className="gv-call3__footer"><div className="gv-call3__darts">{[0,1,2].map(i=><span key={i} className={darts[i]?"is-filled":""}>{dartText(darts[i])}</span>)}</div><div><b>{phase==="calling"?"📣":`+${pts} PTS`}</b><span>{phase==="calling"?"Confirme les 3 cibles":hits===3?"BONUS FULL CALL +2":"S=1 · D=2 · T=3"}</span></div></div>
+    <div className="gv-call3__footer"><div className="gv-call3__darts">{[0,1,2].map(i=><span key={i} className={darts[i]?"is-filled":""}>{dartText(darts[i])}</span>)}</div><div><b>{phase==="calling"?"📣":`+${pts} PTS`}</b><span>{phase==="calling"?"Confirme les 3 cibles":hits===3?"FULL CALL : 3/3":"S=1 · D=2 · T=3"}</span></div></div>
   </Frame>;
 }
 

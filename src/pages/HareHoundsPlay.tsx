@@ -26,17 +26,37 @@ function coachText(state:HareState,active:any){if(!active)return"";const role=ac
 function TrackMini({state,activeId,color}:any){const seq=hareSequence(state.config.rules.direction);const activeSeg=hareCurrentSegment(state,activeId);const hareSeg=hareCurrentSegment(state,state.harePlayerId);return <div style={{width:"100%",height:"100%",padding:7,display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3,alignContent:"center"}}>{seq.map((n:number)=>{const isActive=n===activeSeg,isHare=n===hareSeg;return <span key={n} style={{height:18,borderRadius:6,display:"grid",placeItems:"center",fontSize:7,fontWeight:1000,border:`1px solid ${isActive?color:isHare?HARE+"99":"rgba(255,255,255,.08)"}`,background:isActive?`${color}28`:isHare?`${HARE}18`:"rgba(255,255,255,.025)",color:isActive?color:isHare?HARE:"#8e97a7"}}>{n}</span>;})}</div>}
 
 
-function HareCircuitBoard({ state, colorById }: any) {
+function HareCircuitBoard({ state, colorById, activeId, currentThrow }: any) {
   const seq = hareSequence(state.config.rules.direction);
-  return <section className="hare-circuit">
-    <header><div><span>🏃</span><div><small>PISTE PHYSIQUE DE LA CIBLE</small><b>{state.config.rules.direction==="clockwise"?"SENS HORAIRE":"SENS ANTI-HORAIRE"}</b></div></div><em>{state.config.rules.targetZone==="any"?"S / D / T":state.config.rules.targetZone==="double"?"DOUBLES":"TRIPLES"}</em></header>
+  const active = state.players.find((p:any)=>p.id===activeId);
+  const isHareActive = activeId === state.harePlayerId;
+  const baseSeg = activeId ? hareCurrentSegment(state, activeId) : null;
+  let previewSeg = baseSeg, previewSteps = 0;
+  const previewDarts = (currentThrow || []).map(uiToGameDart);
+  for (const d of previewDarts) {
+    if (!previewSeg || !d || d.bed === "MISS" || d.bed === "OB" || d.bed === "IB") continue;
+    const zoneOk = state.config.rules.targetZone === "any" || (state.config.rules.targetZone === "double" && d.bed === "D") || (state.config.rules.targetZone === "triple" && d.bed === "T");
+    if (zoneOk && Number(d.number || 0) === Number(previewSeg)) {
+      previewSteps += 1;
+      const idx = seq.indexOf(Number(previewSeg));
+      previewSeg = idx >= 0 ? seq[(idx + 1) % seq.length] : previewSeg;
+    }
+  }
+  const baseProgress = Number(state.progressByPlayer?.[activeId] || 0), projectedProgress = baseProgress + previewSteps;
+  const hareSeg = hareCurrentSegment(state, state.harePlayerId);
+  const captureProjected = !isHareActive && previewSteps > 0 && Number(previewSeg) === Number(hareSeg);
+  const escapeProjected = isHareActive && projectedProgress >= 20;
+  return <section className={`hare-circuit${captureProjected?" is-capture":""}${escapeProjected?" is-escape":""}`}>
+    <header><div><span>🏃</span><div><small>PISTE PHYSIQUE DE LA CIBLE</small><b>{state.config.rules.direction==="clockwise"?"SENS HORAIRE":"SENS ANTI-HORAIRE"}</b></div></div><em>{escapeProjected?"🐇 ÉVASION SI VALIDÉ":captureProjected?"🐕 CAPTURE SI VALIDÉ":previewSteps?`+${previewSteps} ÉTAPE${previewSteps>1?"S":""} → ${previewSeg}`:state.config.rules.targetZone==="any"?"S / D / T":state.config.rules.targetZone==="double"?"DOUBLES":"TRIPLES"}</em></header>
     <div className="hare-circuit__track">{seq.map((sector:number,idx:number)=>{
       const occupants=state.players.filter((p:any)=>hareCurrentSegment(state,p.id)===sector);
-      return <div key={`${sector}-${idx}`} className={occupants.length?"has-runner":""}><b>{sector}</b><span>{occupants.map((p:any)=>p.id===state.harePlayerId?"🐇":"🐕").join("")}</span></div>;
+      const ghost = previewSteps > 0 && Number(previewSeg) === sector && Number(baseSeg) !== sector;
+      return <div key={`${sector}-${idx}`} className={`${occupants.length?"has-runner ":""}${ghost?"has-preview":""}`}><b>{sector}</b><span>{occupants.map((p:any)=>p.id===state.harePlayerId?"🐇":"🐕").join("")}{ghost ? (isHareActive?"🐇›":"🐕›") : ""}</span></div>;
     })}</div>
     <div className="hare-circuit__legend">{state.players.map((p:any)=>{
       const seg=hareCurrentSegment(state,p.id),progress=Number(state.progressByPlayer[p.id]||0),isHare=p.id===state.harePlayerId,color=colorById.get(String(p.id))||(isHare?HARE:HOUND);
-      return <div key={p.id} style={{["--hare-color" as any]:color}}><strong>{isHare?"🐇":"🐕"} {p.name}</strong><span>cible {seg} · {progress}/20 étapes</span></div>;
+      const own = p.id===activeId;
+      return <div key={p.id} className={own&&previewSteps?"has-preview":""} style={{["--hare-color" as any]:color}}><strong>{isHare?"🐇":"🐕"} {p.name}</strong><span>{own&&previewSteps?`projection ${projectedProgress}/20 · prochaine ${previewSeg}`:`cible ${seg} · ${progress}/20 étapes`}</span></div>;
     })}</div>
   </section>;
 }
@@ -122,7 +142,7 @@ export default function HareHoundsPlay(props:any){
     <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={state.legWins} primaryById={(id:string)=>hareCurrentSegment(state,id)} secondaryById={(id:string)=>`${id===state.harePlayerId?"🐇 LIÈVRE":"🐕 LIMIER"} · ${state.statsByPlayer[id]?.steps||0} étapes`} badgeById={(id:string)=>`${state.legWins[id]||0} M`}/>
     <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget} · ${activeRole==="hare"?"LIÈVRE":"LIMIER"}`} primary={activeSeg} primarySuffix="" secondary={`CIBLE ${zoneLabel} · ${config.rules.direction==="clockwise"?"SENS HORAIRE":"SENS ANTI-HORAIRE"}`} tertiary={activeRole==="hare"?`${activeProgress}/20 étapes · ${gap} avant la fuite`:`${activeStats.steps||0} étapes · écart ${gap} avec le Lièvre (${hareSeg})`} progress={activeRole==="hare"?activeProgress:Math.max(0,20-gap)} progressMax={20} notice={notice} noticeTone={notice.includes("🏆")?"win":"normal"} aside={<TrackMini state={state} activeId={activePlayer?.id} color={activeColor}/>}/>
       <GameplayMission accent={activeColor} icon={activeRole === "hare" ? "🐇" : "🐕"} title={`${activeRole === "hare" ? "LIÈVRE" : "LIMIER"} · VISE ${zoneLabel} ${activeSeg}`} text={activeRole === "hare" ? `Avance secteur par secteur. Encore ${Math.max(0,20-activeProgress)} étape(s) pour t’échapper.` : `Le Lièvre est sur ${hareSeg}. Écart actuel : ${gap} étape(s).`} chips={[config.rules.direction === "clockwise" ? "SENS HORAIRE" : "SENS ANTI-HORAIRE", config.rules.targetZone === "any" ? "S / D / T VALIDES" : config.rules.targetZone === "double" ? "DOUBLES SEULEMENT" : "TRIPLES SEULEMENT", activeRole === "hare" ? `${activeProgress}/20` : `ÉCART ${gap}`]} />
-      <HareCircuitBoard state={state} colorById={colorById} />
+      <HareCircuitBoard state={state} colorById={colorById} activeId={activePlayer?.id} currentThrow={currentThrow} />
     <KpiStrip accent={activeColor} onClick={()=>setStatsOpen(true)} items={[["ÉTAPES",activeStats.steps||0],["SÉRIE",activeStats.bestHitStreak||0],[activeRole==="hare"?"FUITES":"CAPT.",activeRole==="hare"?(activeStats.escapes||0):(activeStats.catches||0)],["PRÉC.",`${percent(activeStats.validHits,activeStats.darts)}%`]]}/><QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerHareHounds} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>
   </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER" accent={activeColor} fitMinScale={0.16}/>:<BotTurn intent={activeBotPlan.intent} objectiveDetail={activeBotPlan.detail} reaction={activeBotPlan.reaction} persona={activeBotPlan.persona} personaIcon={activeBotPlan.personaIcon} confidence={activeBotPlan.confidence} adaptation={activeBotMemory ? `${activeBotMemory.icon} ${activeBotMemory.label}` : undefined} adaptationDetail={activeBotMemory?.detail} learningConfidence={activeBotMemory?.confidence} learningTarget={activeBotMemory?.targetName} rivalry={activeBotRivalry ? `${activeBotRivalry.icon} ${activeBotRivalry.label}` : undefined} rivalryDetail={activeBotRivalry?.detail} rivalryRecord={activeBotRivalry?.record} rivalryMatches={activeBotRivalry?.matches} rivalryConfidence={activeBotRivalry?.confidence} rivalryTension={activeBotRivalry?.tension} rivalryTarget={activeBotRivalry?.targetName} rivalryQuote={activeBotRivalry?.quote} scouting={activeBotScouting ? `${activeBotScouting.icon} ${activeBotScouting.label}` : undefined} scoutingDetail={activeBotScouting?.detail} scoutingMatches={activeBotScouting?.matches} scoutingConfidence={activeBotScouting?.confidence} scoutingTarget={activeBotScouting?.targetName} phaseLabel={activeRole==="hare"?"LIÈVRE":"LIMIER"} profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={activeRole==="hare"?"cherche à s’échapper…":"poursuit le Lièvre…"} icon={activeRole==="hare"?"🐇":"🐕"}/>}</div></div></main>
   {playersOpen?<PlayersModal rows={playersRows} onClose={()=>setPlayersOpen(false)}/>:null}{statsOpen?<StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={()=>setStatsOpen(false)}/>:null}{logOpen?<LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={hareDartLabel} title="JOURNAL HARE & HOUNDS" onClose={()=>setLogOpen(false)}/>:null}{rankingOpen?<RankingModal rows={rankingRows} title="CLASSEMENT HARE & HOUNDS" onClose={()=>setRankingOpen(false)}/>:null}</div>;

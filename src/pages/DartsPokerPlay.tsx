@@ -53,6 +53,18 @@ type WonCardPopup = {
   impactLabel?: string | null;
   contractLabel?: string | null;
 };
+type MarketRefreshFlash = {
+  sector: number;
+  previousCard: PokerCard;
+  nextCard: PokerCard | null;
+};
+type GameplayTransition = {
+  key: number;
+  title: string;
+  subtitle: string;
+  color: string;
+  playerName?: string | null;
+};
 
 const GOLD = "#f6c256";
 const RED = "#e83a43";
@@ -134,6 +146,9 @@ export default function DartsPokerPlay(props: any) {
   const [showEnd, setShowEnd] = React.useState(state.phase === "finished");
   const [showTimeline, setShowTimeline] = React.useState(false);
   const [wonCardPopup, setWonCardPopup] = React.useState<WonCardPopup | null>(null);
+  const [marketRefresh, setMarketRefresh] = React.useState<MarketRefreshFlash | null>(null);
+  const [turnTransition, setTurnTransition] = React.useState<GameplayTransition | null>(null);
+  const [phaseTransition, setPhaseTransition] = React.useState<GameplayTransition | null>(null);
   const [quickPanel, setQuickPanel] = React.useState<null | "active" | "market" | "deck" | "table" | "stats" | "objectives" | "dartboard">(null);
   const [botThinking, setBotThinking] = React.useState(false);
   const [newBadgeUnlocks, setNewBadgeUnlocks] = React.useState<DartsPokerProgressUnlock[]>([]);
@@ -143,6 +158,7 @@ export default function DartsPokerPlay(props: any) {
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
   const pokerProgressRef = React.useRef<DartsPokerProgressResult | null>(null);
+  const previousTurnRef = React.useRef({ playerId: String(getDartsPokerActivePlayer(initialState)?.id || ""), phase: initialState.phase, round: initialState.roundIndex });
 
   const activePlayer = getDartsPokerActivePlayer(state);
   const activeHand = getDartsPokerActiveHand(state);
@@ -151,6 +167,50 @@ export default function DartsPokerPlay(props: any) {
   const activeStats = state.statsByPlayer[String(activePlayer?.id)] || {};
   const liveEvaluation = evaluateBestPokerHand(activeHand?.cards || []);
   const remainingDarts = Math.max(0, config.dartsPerHand - Number(activeHand?.dartsUsed || 0));
+  const activeBestFiveIds = new Set((liveEvaluation?.bestFive || []).map((card: PokerCard) => String(card?.id || "")));
+  const hasBestFiveSelection = Boolean(liveEvaluation?.bestFive?.length === 5 && (activeHand?.cards?.length || 0) > 5);
+
+  React.useEffect(() => {
+    const previous = previousTurnRef.current;
+    const currentId = String(activePlayer?.id || "");
+    const phaseChanged = previous.phase !== state.phase;
+    const roundChanged = previous.round !== state.roundIndex;
+    const playerChanged = Boolean(previous.playerId && currentId && previous.playerId !== currentId);
+
+    if (phaseChanged) {
+      if (state.phase === "powers") {
+        setPhaseTransition({ key: Date.now(), title: "LANCERS TERMINÉS", subtitle: `PHASE POUVOIRS · ${playerName(activeProfile)}`, color: GOLD, playerName: playerName(activeProfile) });
+      } else if (state.phase === "throwing" && roundChanged) {
+        setPhaseTransition({ key: Date.now(), title: `MANCHE ${state.roundIndex}/${config.rounds}`, subtitle: "NOUVEAU MARCHÉ · 20 NOUVELLES CIBLES", color: GREEN, playerName: playerName(activeProfile) });
+      }
+    } else if (playerChanged && (state.phase === "throwing" || state.phase === "powers")) {
+      const hand = state.handsByPlayer[currentId];
+      setTurnTransition({
+        key: Date.now(),
+        title: state.phase === "throwing" ? "À TON TOUR" : "À TOI · POUVOIRS",
+        subtitle: state.phase === "throwing" ? `FLÉCHETTE ${Math.min(config.dartsPerHand, Number(hand?.dartsUsed || 0) + 1)}/${config.dartsPerHand}` : "AMÉLIORE PUIS VALIDE TA MAIN",
+        color: PLAYER_COLORS[state.activePlayerIndex % PLAYER_COLORS.length],
+        playerName: playerName(activeProfile),
+      });
+    }
+    previousTurnRef.current = { playerId: currentId, phase: state.phase, round: state.roundIndex };
+  }, [state.activePlayerIndex, state.phase, state.roundIndex]);
+
+  React.useEffect(() => {
+    if (!turnTransition || wonCardPopup) return;
+    const timer = window.setTimeout(() => setTurnTransition(null), 1250);
+    return () => window.clearTimeout(timer);
+  }, [turnTransition, wonCardPopup]);
+  React.useEffect(() => {
+    if (!phaseTransition || wonCardPopup) return;
+    const timer = window.setTimeout(() => setPhaseTransition(null), 1550);
+    return () => window.clearTimeout(timer);
+  }, [phaseTransition, wonCardPopup]);
+  React.useEffect(() => {
+    if (!marketRefresh || wonCardPopup) return;
+    const timer = window.setTimeout(() => setMarketRefresh(null), 1700);
+    return () => window.clearTimeout(timer);
+  }, [marketRefresh, wonCardPopup]);
 
   function backToConfig() { if (typeof go === "function") go("darts_poker_config", config); }
   function dismissGameplayGuide() {
@@ -176,6 +236,11 @@ export default function DartsPokerPlay(props: any) {
       .map((event) => event.label)
       .join(" · ");
     if (cardEvent?.card) {
+      const playedDart = uiToGameDart(hit);
+      if (playedDart?.number && ["S", "D", "T"].includes(String(playedDart.bed))) {
+        const sector = Number(playedDart.number);
+        setMarketRefresh({ sector, previousCard: cardEvent.card, nextCard: next.market?.[sector] || null });
+      }
       const beforeCards = visit?.cardsBefore || [];
       const afterCards = visit?.cardsAfter || [];
       const beforeStatus = describeHandSnapshot(beforeCards);
@@ -200,7 +265,7 @@ export default function DartsPokerPlay(props: any) {
     if (throwDarts.length) { setThrowDarts([]); setMultiplier(1); setNotice("Saisie effacée."); return; }
     const previous = undoStack[undoStack.length - 1];
     if (!previous) { setNotice("Aucune action à annuler."); return; }
-    setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowRound(false); setShowEnd(false); setWonCardPopup(null); autoSavedRef.current = ""; setNotice("Dernière action annulée.");
+    setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowRound(false); setShowEnd(false); setWonCardPopup(null); setMarketRefresh(null); setTurnTransition(null); setPhaseTransition(null); autoSavedRef.current = ""; setNotice("Dernière action annulée.");
   }
   function useChoice() {
     setUndoStack((prev) => [...prev.slice(-29), cloneDartsPokerState(state)]);
@@ -235,7 +300,7 @@ export default function DartsPokerPlay(props: any) {
   }
   function resetMatch() {
     matchIdRef.current = `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    autoSavedRef.current = ""; pokerProgressRef.current = null; setNewBadgeUnlocks([]); setState(createDartsPokerState(players, config)); setThrowDarts([]); setUndoStack([]); setShowRound(false); setShowEnd(false); setWonCardPopup(null); setNotice("Nouvelle table ouverte.");
+    autoSavedRef.current = ""; pokerProgressRef.current = null; setNewBadgeUnlocks([]); setState(createDartsPokerState(players, config)); setThrowDarts([]); setUndoStack([]); setShowRound(false); setShowEnd(false); setWonCardPopup(null); setMarketRefresh(null); setTurnTransition(null); setPhaseTransition(null); setNotice("Nouvelle table ouverte.");
   }
 
   React.useEffect(() => {
@@ -402,6 +467,8 @@ export default function DartsPokerPlay(props: any) {
   const phaseLabel = state.phase === "throwing" ? "LANCER" : state.phase === "powers" ? "POUVOIRS" : state.phase === "round_result" ? "SHOWDOWN" : "TERMINÉ";
 
   return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", overflowX: "hidden" }}>
+    <DartsPokerMotionStyles />
+    <GameplayTransitionToast transition={phaseTransition || turnTransition} />
     <PageHeader tickerSrc={tickerDartsPoker} tickerAlt="DARTS POKER" tickerHeight={84} tickerBottomGap={8} left={<BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`} />} right={<InfoDot title="Règles DARTS POKER" color={RED} glow={`${RED}88`} content={<Rules config={config} />} />} />
     <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "4px 8px 10px", boxSizing: "border-box", display: "grid", gap: 6 }}>
       <section style={{ ...panel(), borderColor: `${activeColor}66`, padding: 9, background: `linear-gradient(135deg,${activeColor}10,rgba(255,255,255,.035) 46%,rgba(0,0,0,.34))` }}>
@@ -432,9 +499,10 @@ export default function DartsPokerPlay(props: any) {
             <div style={{ color: liveEvaluation ? GREEN : GOLD, fontSize: 8, fontWeight: 1100 }}>{handSnapshot}</div>
           </div>
           <div style={{ marginTop: 5, display: "flex", gap: 4, alignItems: "center", minHeight: 39, overflowX: "auto", scrollbarWidth: "none" }}>
-            {(activeHand?.cards?.length ? activeHand.cards : Array.from({ length: 5 }, () => null)).map((card: PokerCard | null, index: number) => <MiniHandCard key={`${card?.id || "empty"}-${index}`} card={card} />)}
+            {(activeHand?.cards?.length ? activeHand.cards : Array.from({ length: 5 }, () => null)).map((card: PokerCard | null, index: number) => <MiniHandCard key={`${card?.id || "empty"}-${index}`} card={card} best={Boolean(card && activeBestFiveIds.has(String(card.id)))} excluded={Boolean(card && hasBestFiveSelection && !activeBestFiveIds.has(String(card.id)))} />)}
             {activeHand?.cards?.length && activeHand.cards.length < 5 ? Array.from({ length: 5 - activeHand.cards.length }, (_, index) => <MiniHandCard key={`empty-${index}`} card={null} />) : null}
           </div>
+          {hasBestFiveSelection ? <div style={{ marginTop: 5, display: "flex", justifyContent: "center", gap: 7, alignItems: "center", color: SOFT, fontSize: 6.6 }}><span style={{ color: GREEN, fontWeight: 1100 }}>● TOP 5</span><span>cartes retenues pour la combinaison</span><span style={{ color: "#707787" }}>● HORS MAIN</span></div> : null}
           <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4 }}>
             <div style={{ borderRadius: 10, padding: "5px 6px", background: `${BLUE}0d`, border: `1px solid ${BLUE}44`, textAlign: "center" }}><div style={{ color: BLUE, fontSize: 9.5, fontWeight: 1200 }}>↔ {activeHand?.exchangeTokens || 0}</div><div style={{ color: SOFT, fontSize: 6.2 }}>ÉCHANGE</div></div>
             <div style={{ borderRadius: 10, padding: "5px 6px", background: `${GOLD}0d`, border: `1px solid ${GOLD}44`, textAlign: "center" }}><div style={{ color: GOLD, fontSize: 9.5, fontWeight: 1200 }}>✦ {activeHand?.choiceTokens || 0}</div><div style={{ color: SOFT, fontSize: 6.2 }}>CHOIX 2→1</div></div>
@@ -468,7 +536,7 @@ export default function DartsPokerPlay(props: any) {
         </div>
       </section>
 
-      <GameplayMarketBoard state={state} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} multiplier={multiplier} disabled={botThinking || state.phase !== "throwing" || remainingDarts <= 0 || Boolean(wonCardPopup)} onSector={(sector: number) => addDart(sector)} onOpen={() => setQuickPanel("market")} />
+      <GameplayMarketBoard state={state} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} multiplier={multiplier} marketRefresh={marketRefresh} disabled={botThinking || state.phase !== "throwing" || remainingDarts <= 0 || Boolean(wonCardPopup)} onSector={(sector: number) => addDart(sector)} onOpen={() => setQuickPanel("market")} />
 
       <GameplayLegend onGuide={() => setShowGameplayGuide(true)} />
 
@@ -511,12 +579,39 @@ export default function DartsPokerPlay(props: any) {
   </div>;
 }
 
+function DartsPokerMotionStyles() {
+  return <style>{`
+    @keyframes dpTurnToast { 0%{opacity:0;transform:translate(-50%,-16px) scale(.94)} 16%{opacity:1;transform:translate(-50%,0) scale(1)} 82%{opacity:1;transform:translate(-50%,0) scale(1)} 100%{opacity:0;transform:translate(-50%,-8px) scale(.98)} }
+    @keyframes dpMarketRefresh { 0%{transform:scale(.84);filter:brightness(2)} 45%{transform:scale(1.10);filter:brightness(1.45)} 100%{transform:scale(1);filter:brightness(1)} }
+    @keyframes dpMarketBanner { 0%{opacity:0;transform:translateY(-6px)} 22%{opacity:1;transform:translateY(0)} 100%{opacity:1;transform:translateY(0)} }
+    @keyframes dpBestFive { 0%,100%{box-shadow:0 0 0 rgba(92,230,168,0)} 50%{box-shadow:0 0 14px rgba(92,230,168,.42)} }
+    .dp-market-refresh{animation:dpMarketRefresh .72s cubic-bezier(.2,.8,.2,1)}
+    .dp-market-replaced{animation:dpMarketBanner .32s ease-out}
+    .dp-best-five{border-radius:9px;animation:dpBestFive 1.45s ease-in-out infinite}
+  `}</style>;
+}
+
+function GameplayTransitionToast({ transition }: { transition: GameplayTransition | null }) {
+  if (!transition) return null;
+  return <div key={transition.key} style={{ position: "fixed", left: "50%", top: 96, zIndex: 9500, width: "min(420px,calc(100% - 24px))", pointerEvents: "none", animation: "dpTurnToast 1.25s ease both", transform: "translateX(-50%)" }}>
+    <div style={{ borderRadius: 18, border: `1px solid ${transition.color}88`, background: "linear-gradient(180deg,rgba(20,21,27,.97),rgba(5,6,9,.97))", boxShadow: `0 12px 38px rgba(0,0,0,.62),0 0 26px ${transition.color}33`, padding: "9px 12px", textAlign: "center", backdropFilter: "blur(12px)" }}>
+      <div style={{ color: transition.color, fontSize: 8, fontWeight: 1200, letterSpacing: 1.1 }}>{transition.title}</div>
+      {transition.playerName ? <div style={{ color: "#fff", fontSize: 15, fontWeight: 1200, marginTop: 2 }}>{transition.playerName}</div> : null}
+      <div style={{ color: "#d8dde7", fontSize: 8, fontWeight: 900, marginTop: transition.playerName ? 2 : 4 }}>{transition.subtitle}</div>
+    </div>
+  </div>;
+}
+
 function TinyIconButton({ accent, label, onClick, children }: any) {
   return <button type="button" title={label} aria-label={label} onClick={onClick} style={{ width: 38, height: 38, borderRadius: 12, border: `1px solid ${accent}66`, background: `${accent}14`, color: accent, display: "grid", placeItems: "center", padding: 0, cursor: "pointer" }}>{children}</button>;
 }
 
-function MiniHandCard({ card }: { card: PokerCard | null }) {
-  return <DartsPokerCard card={card} size="mini" />;
+function MiniHandCard({ card, best = false, excluded = false }: { card: PokerCard | null; best?: boolean; excluded?: boolean }) {
+  return <div className={best ? "dp-best-five" : excluded ? "dp-excluded-card" : ""} style={{ position: "relative", flex: "0 0 auto", opacity: excluded ? .34 : 1, filter: excluded ? "grayscale(.55) saturate(.55)" : "none", transition: "opacity .22s ease, filter .22s ease, transform .22s ease" }}>
+    <DartsPokerCard card={card} size="mini" />
+    {best && card ? <span style={{ position: "absolute", left: "50%", bottom: -2, transform: "translate(-50%,50%)", zIndex: 8, borderRadius: 999, padding: "1px 4px", background: GREEN, color: "#07110d", fontSize: 4.8, fontWeight: 1200, whiteSpace: "nowrap", boxShadow: `0 0 8px ${GREEN}77` }}>TOP 5</span> : null}
+    {excluded && card ? <span style={{ position: "absolute", left: "50%", bottom: -2, transform: "translate(-50%,50%)", zIndex: 8, borderRadius: 999, padding: "1px 4px", background: "#555b68", color: "#fff", fontSize: 4.5, fontWeight: 1100, whiteSpace: "nowrap" }}>HORS</span> : null}
+  </div>;
 }
 
 function QuickLauncher({ label, value, accent, icon, onClick }: any) {
@@ -541,7 +636,7 @@ function GameplayLegend({ onGuide }: { onGuide: () => void }) {
   </section>;
 }
 
-function GameplayMarketBoard({ state, suggestions, assistanceEnabled, multiplier, disabled, onSector, onOpen }: any) {
+function GameplayMarketBoard({ state, suggestions, assistanceEnabled, multiplier, marketRefresh, disabled, onSector, onOpen }: any) {
   const top = new Map<number, number>((suggestions || []).map((item: any, index: number) => [Number(item.sector), index + 1]));
   const multLabel = multiplier === 3 ? "T" : multiplier === 2 ? "D" : "S";
   return <section style={{ ...panel(), padding: 7, borderColor: `${GOLD}44`, background: "linear-gradient(180deg,rgba(246,194,86,.045),rgba(0,0,0,.28))" }}>
@@ -549,12 +644,15 @@ function GameplayMarketBoard({ state, suggestions, assistanceEnabled, multiplier
       <button type="button" onClick={onOpen} style={{ border: "none", background: "transparent", padding: 0, color: GOLD, fontSize: 8.5, fontWeight: 1200, letterSpacing: .7, cursor: "pointer" }}>MARCHÉ 1–20 · TOUCHE = CARTE</button>
       <div style={{ color: "#fff", fontSize: 7, fontWeight: 1050 }}><span style={{ color: GOLD }}>{multLabel}</span> sélectionné · touche une carte ou utilise le keypad</div>
     </div>
+    {marketRefresh ? <div className="dp-market-replaced" style={{ marginBottom: 5, padding: "5px 7px", borderRadius: 10, border: `1px solid ${GREEN}55`, background: `${GREEN}0b`, display: "flex", justifyContent: "center", alignItems: "center", gap: 6, color: "#fff", fontSize: 7.2, fontWeight: 950 }}><span style={{ color: GREEN }}>SECTEUR {marketRefresh.sector} RENOUVELÉ</span><span style={{ color: SOFT }}>{pokerCardLabel(marketRefresh.previousCard)}</span><span style={{ color: GOLD }}>→</span><span style={{ color: "#fff" }}>{marketRefresh.nextCard ? pokerCardLabel(marketRefresh.nextCard) : "—"}</span></div> : null}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(10,minmax(0,1fr))", gap: 2 }}>
       {Array.from({ length: 20 }, (_, i) => i + 1).map((sector) => {
         const card = state.market?.[sector] || null;
         const rank = top.get(sector) || 0;
         const hot = assistanceEnabled && rank > 0;
-        return <button key={sector} type="button" disabled={disabled || !card} onClick={() => onSector(sector)} title={`${multLabel}${sector} → ${card ? pokerCardLabel(card) : "—"}${hot ? ` · conseil #${rank}` : ""}`} style={{ minWidth: 0, borderRadius: 8, padding: "3px 1px 4px", border: `1px solid ${hot ? GOLD : "rgba(255,255,255,.075)"}`, background: hot ? `${GOLD}0c` : "rgba(255,255,255,.018)", color: "#fff", opacity: disabled ? .6 : 1, cursor: disabled ? "default" : "pointer", position: "relative" }}>
+        const refreshed = Number(marketRefresh?.sector) === sector;
+        return <button className={refreshed ? "dp-market-refresh" : ""} key={sector} type="button" disabled={disabled || !card} onClick={() => onSector(sector)} title={`${multLabel}${sector} → ${card ? pokerCardLabel(card) : "—"}${hot ? ` · conseil #${rank}` : ""}`} style={{ minWidth: 0, borderRadius: 8, padding: "3px 1px 4px", border: `1px solid ${refreshed ? GREEN : hot ? GOLD : "rgba(255,255,255,.075)"}`, background: refreshed ? `${GREEN}16` : hot ? `${GOLD}0c` : "rgba(255,255,255,.018)", color: "#fff", opacity: disabled ? .6 : 1, cursor: disabled ? "default" : "pointer", position: "relative", boxShadow: refreshed ? `0 0 15px ${GREEN}55` : "none" }}>
+          {refreshed ? <span style={{ position: "absolute", left: 1, top: 1, borderRadius: 999, padding: "1px 3px", background: GREEN, color: "#07110d", fontSize: 4.2, fontWeight: 1200, zIndex: 4 }}>NEW</span> : null}
           {hot ? <span style={{ position: "absolute", right: 1, top: 1, minWidth: 10, height: 10, borderRadius: 999, display: "grid", placeItems: "center", background: GOLD, color: "#090a0d", fontSize: 5, fontWeight: 1200, zIndex: 3 }}>{rank}</span> : null}
           <div style={{ color: hot ? GOLD : "#e8ebf2", fontSize: 7, fontWeight: 1200 }}>{sector}</div>
           <div style={{ display: "flex", justifyContent: "center", marginTop: 2 }}><DartsPokerCard card={card} size="mini" /></div>
@@ -575,15 +673,32 @@ function PowerPhasePanel({ hand, playerName: activeName, evaluation, onChoice, o
       <div style={{ color: "#fff", fontSize: 9, fontWeight: 1000, marginTop: 3 }}>Tes 6 fléchettes sont terminées. Améliore ta main puis valide.</div>
       <div style={{ color: SOFT, fontSize: 7.5, marginTop: 3 }}>{exchangeTokens ? "↔ Touchez une carte pour l'échanger." : choiceTokens ? "✦ Utilisez vos choix 2→1." : "Aucun pouvoir restant : la main peut être validée."}</div>
     </div>
-    <div style={{ marginTop: 9, display: "flex", justifyContent: "center", gap: 5, overflowX: "auto", padding: "2px 0" }}>
-      {cards.map((card: PokerCard, index: number) => <DartsPokerCard key={`${card.id}-${index}`} card={card} size="small" selected={exchangeTokens > 0 && !card.joker} onClick={exchangeTokens > 0 && !card.joker ? () => onExchange(index) : undefined} badge={exchangeTokens > 0 && !card.joker ? "ÉCH." : undefined} />)}
-    </div>
+    <PowerHandCards cards={cards} evaluation={evaluation} exchangeTokens={exchangeTokens} onExchange={onExchange} />
     <div style={{ marginTop: 7, textAlign: "center", color: evaluation ? GREEN : SOFT, fontSize: 9, fontWeight: 1100 }}>{evaluation?.label || describeHandSnapshot(cards)}</div>
     <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: choiceTokens > 0 ? "1fr 1fr" : "1fr", gap: 7 }}>
       {choiceTokens > 0 ? <button type="button" onClick={onChoice} style={{ ...action(GOLD), minHeight: 46 }}>✦ CHOIX 2 CARTES → GARDER 1 <span style={{ display: "block", color: SOFT, fontSize: 6.8, marginTop: 2 }}>{choiceTokens} jeton{choiceTokens > 1 ? "s" : ""}</span></button> : null}
       <button type="button" onClick={onValidate} style={{ ...action(GREEN), minHeight: 46 }}>✓ VALIDER MA MEILLEURE MAIN <span style={{ display: "block", color: SOFT, fontSize: 6.8, marginTop: 2 }}>les 5 meilleures cartes sont calculées automatiquement</span></button>
     </div>
   </section>;
+}
+
+function PowerHandCards({ cards, evaluation, exchangeTokens, onExchange }: any) {
+  const bestIds = new Set((evaluation?.bestFive || []).map((card: PokerCard) => String(card?.id || "")));
+  const choosingFive = Boolean(cards.length > 5 && bestIds.size === 5);
+  return <div>
+    <div style={{ marginTop: 9, display: "flex", justifyContent: "center", gap: 6, overflowX: "auto", padding: "4px 2px 10px" }}>
+      {cards.map((card: PokerCard, index: number) => {
+        const best = bestIds.has(String(card?.id || ""));
+        const excluded = choosingFive && !best;
+        return <div key={`${card.id}-${index}`} className={best ? "dp-best-five" : excluded ? "dp-excluded-card" : ""} style={{ position: "relative", flex: "0 0 auto", opacity: excluded ? .30 : 1, filter: excluded ? "grayscale(.7) saturate(.45)" : "none", transform: best ? "translateY(-2px)" : "none", transition: "all .22s ease" }}>
+          <DartsPokerCard card={card} size="small" selected={exchangeTokens > 0 && !card.joker} onClick={exchangeTokens > 0 && !card.joker ? () => onExchange(index) : undefined} badge={exchangeTokens > 0 && !card.joker ? "ÉCH." : undefined} />
+          {best && choosingFive ? <span style={{ position: "absolute", left: "50%", bottom: -7, transform: "translateX(-50%)", borderRadius: 999, padding: "2px 5px", background: GREEN, color: "#07110d", fontSize: 5.4, fontWeight: 1200, whiteSpace: "nowrap", boxShadow: `0 0 10px ${GREEN}77` }}>RETENUE</span> : null}
+          {excluded ? <span style={{ position: "absolute", inset: "auto 2px 4px 2px", borderRadius: 8, padding: "3px 2px", background: "rgba(5,6,8,.84)", color: "#8c93a1", fontSize: 5.2, fontWeight: 1100, textAlign: "center" }}>HORS TOP 5</span> : null}
+        </div>;
+      })}
+    </div>
+    {choosingFive ? <div style={{ textAlign: "center", color: SOFT, fontSize: 7.1 }}><strong style={{ color: GREEN }}>5 cartes retenues</strong> automatiquement · les cartes assombries ne comptent pas dans la combinaison actuelle</div> : null}
+  </div>;
 }
 
 function GameplayGuideModal({ onClose }: { onClose: () => void }) {

@@ -431,6 +431,8 @@ const CallThreeConfig = React.lazy(() => import("./pages/CallThreeConfig"));
 const CallThreePlay = React.lazy(() => import("./pages/CallThreePlay"));
 const SteeplechaseConfig = React.lazy(() => import("./pages/SteeplechaseConfig"));
 const SteeplechasePlay = React.lazy(() => import("./pages/SteeplechasePlay"));
+const PtitHunConfig = React.lazy(() => import("./pages/PtitHunConfig"));
+const PtitHunPlay = React.lazy(() => import("./pages/PtitHunPlay"));
 const EnculetteConfig = React.lazy(() => import("./pages/EnculetteConfig"));
 const EnculettePlay = React.lazy(() => import("./pages/EnculettePlay"));
 const CastJoinPage = React.lazy(() => import("./pages/cast/CastJoinPage"));
@@ -1360,6 +1362,8 @@ type Tab =
   | "call_three_play"
   | "steeplechase_config"
   | "steeplechase_play"
+  | "ptit_hun_config"
+  | "ptit_hun_play"
   | "enculette_config"
   | "enculette_play"
   | "auth_reset";
@@ -7209,6 +7213,23 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "ptit_hun_config":
+        page = <PtitHunConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "ptit_hun_play":
+        page = (
+          <PtitHunPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "ptit_hun", routeParams), options)
+            }
+          />
+        );
+        break;
+
       case "enculette_config":
         page = <EnculetteConfig setTab={go} params={routeParams} />;
         break;
@@ -7306,6 +7327,7 @@ case "babyfoot_team_edit":
     "looper_play",
     "call_three_play",
     "steeplechase_play",
+    "ptit_hun_play",
     "enculette_play",
     "wave61_play",
 
@@ -7385,7 +7407,7 @@ case "babyfoot_team_edit":
     "darts_firefighter_config", "darts_poker_config", "cargo_config",
     "ocean_control_config", "castle_config", "gotcha_config", "hare_hounds_config",
     "pendu_config", "menteur_config", "crados_config", "fifty_one_by_five_config",
-    "looper_config", "call_three_config", "steeplechase_config", "enculette_config",
+    "looper_config", "call_three_config", "steeplechase_config", "ptit_hun_config", "enculette_config",
     "darts_mode_config", "wave61_config",
     // Ces routes historiques sont elles aussi des écrans CONFIG.
     "shanghai", "battle_royale", "training_x01"
@@ -7405,7 +7427,7 @@ case "babyfoot_team_edit":
     "x01_config_v3", "gros_6_config", "darts_firefighter_config", "darts_poker_config",
     "cargo_config", "ocean_control_config", "castle_config", "gotcha_config",
     "hare_hounds_config", "pendu_config", "menteur_config", "crados_config",
-    "fifty_one_by_five_config", "looper_config", "call_three_config", "steeplechase_config",
+    "fifty_one_by_five_config", "looper_config", "call_three_config", "steeplechase_config", "ptit_hun_config",
     "halve_it_config", "prisoner_config", "shooter_config", "darts_racer_config",
     "bobs_27_config", "bowling_config", "baseball_config", "attrape_moi_config",
     "president_config", "capital_config", "loterie_config", "departements_config",

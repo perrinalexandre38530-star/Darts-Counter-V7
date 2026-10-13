@@ -58,6 +58,7 @@ export type DartsGameTab =
   | "looper_config"
   | "call_three_config"
   | "steeplechase_config"
+  | "ptit_hun_config"
   | "training"
   | "tournaments"
   | "darts_mode"
@@ -166,6 +167,24 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "Darts Poker",
     infoBody:
       "Un marché dynamique associe une carte visible à chacun des secteurs 1 à 20. Une touche récupère la carte et la remplace. En 6 fléchettes, construis la meilleure main de 5 cartes. Double = jeton Échange, Triple et Bull = jeton Choix, Double Bull = Joker. La meilleure combinaison de poker gagne la manche.",
+  },
+  {
+    id: "ptit_hun",
+    label: "P’TIT 1",
+    category: "fun",
+    subCategory: "precision",
+    entry: "games",
+    tab: "ptit_hun_config",
+    popularityRank: 3,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:ptit_hun",
+    infoTitle: "P’TIT 1",
+    infoBody:
+      "Le plus petit score gagne. Par défaut : petit simple = valeur normale ; gros simple = ×10 ; Double = total ×2 ; Triple = ×3 ; Bull25 = ×4 ; MISS = ×5 ; DBULL = ÷2. Triple Nul, Bouclier du Hun et Zéro Absolu peuvent être activés ou réglés. Le Jackpot ajoute une ou deux zones spéciales uniquement sur des Doubles/Triples : une touche annule toute la volée et lui donne 0 point. Tous les paramètres principaux sont configurables.",
   },
   {
     id: "cargo",

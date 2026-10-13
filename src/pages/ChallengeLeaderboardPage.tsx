@@ -46,11 +46,12 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
  const [detailLoading,setDetailLoading]=React.useState(false);
  const selectedTeam=teams.find(t=>t.key===teamKey)||null;
  const targetOptions=React.useMemo(()=>Array.from(new Set([target,...TARGETS])),[target]);
+ const visitOptions=React.useMemo(()=>Array.from(new Set([visits,...VISITS])).sort((a,b)=>a-b),[visits]);
  const objective=React.useMemo(()=>({target,rule,visits,setMode:params?.setMode||null,setTarget:params?.setTarget||null,legMode:params?.legMode||null,legTarget:params?.legTarget||null}),[target,rule,visits,params?.setMode,params?.setTarget,params?.legMode,params?.legTarget]);
 
  const cycleInList=React.useCallback((values:Array<string|number>,current:string|number)=>{if(!values.length)return current;const index=values.findIndex(value=>String(value)===String(current));return values[(index+1+values.length)%values.length]??values[0]},[]);
  const cycleTarget=React.useCallback(()=>setTarget(current=>String(cycleInList(TARGETS,current))),[cycleInList]);
- const cycleVisits=React.useCallback(()=>setVisits(current=>Number(cycleInList(VISITS,current))),[cycleInList]);
+ const cycleVisits=React.useCallback(()=>setVisits(current=>Number(cycleInList(visitOptions,current))),[cycleInList,visitOptions]);
  const cycleRule=React.useCallback(()=>setRule(current=>String(cycleInList(RULES,current))),[cycleInList]);
  const cycleScope=React.useCallback(()=>{
   if(!teams.length){setScope('public');return;}
@@ -249,7 +250,7 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    <section><h3>CLASSEMENT</h3><div className="filter-choice-grid scope"><button className={scope==='public'?'on':''} onClick={()=>setScope('public')}>🌍 PUBLIC</button><button className={scope==='team'?'on':''} disabled={!teams.length} onClick={()=>setScope('team')}>🛡️ ÉQUIPE OFFICIELLE</button></div></section>
    {scope==='team'&&<section><h3>ÉQUIPE OFFICIELLE</h3>{teams.length?<div className="filter-choice-grid teams">{teams.map(team=><button key={team.key} className={teamKey===team.key?'on':''} onClick={()=>setTeamKey(team.key)}><span>✓ OFFICIEL</span><b>{team.name}</b><small>{team.organizationName||'Organisation MSS'}</small></button>)}</div>:<p>Aucune équipe officielle : il faut être membre actif d’une Organisation MSS et être affecté à une de ses équipes Darts.</p>}</section>}
    <section><h3>🎯 CIBLE</h3><div className="filter-choice-grid compact">{targetOptions.map(v=><button className={target===v?'on':''} key={v} onClick={()=>setTarget(v)}>{targetLabel(v)}</button>)}</div></section>
-   <section><h3>🔁 TOURS</h3><div className="filter-choice-grid compact">{VISITS.map(v=><button className={visits===v?'on':''} key={v} onClick={()=>setVisits(v)}>{v}</button>)}</div></section>
+   <section><h3>🔁 TOURS</h3><div className="filter-choice-grid compact">{visitOptions.map(v=><button className={visits===v?'on':''} key={v} onClick={()=>setVisits(v)}>{v}</button>)}</div></section>
    <section><h3>✦ IMPACTS AUTORISÉS</h3><div className="filter-choice-grid compact">{RULES.map(v=><button className={rule===v?'on':''} key={v} onClick={()=>setRule(v)}>{ruleLabel(v)}</button>)}</div></section>
    <footer><button onClick={()=>{setFiltersOpen(false);void refresh()}}>APPLIQUER</button></footer>
   </div></div>}

@@ -36,6 +36,7 @@ type ModeKind =
   | "looper"
   | "call_three"
   | "steeplechase"
+  | "ptit_hun"
   | "castle"
   | "gotcha"
   | "hare_hounds"
@@ -221,6 +222,14 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     secondary: "Haies",
     tertiary: "Précision",
   },
+  ptit_hun: {
+    title: "P’TIT 1",
+    accent: "#f2c84b",
+    subtitle: "Anti-score de précision : petits simples, Triple Nul, Jackpot D/T, Bouclier du Hun et chasse au DBULL.",
+    primary: "Score final",
+    secondary: "Jackpots",
+    tertiary: "DBULL",
+  },
   castle: {
     title: "CASTLE",
     accent: "#ffb33f",
@@ -302,6 +311,7 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["looper", ["looper", "loops", "loopy"]],
   ["call_three", ["call_three", "call three", "callthree"]],
   ["steeplechase", ["steeplechase", "steeple chase"]],
+  ["ptit_hun", ["ptit_hun", "ptithun", "p'tit hun", "petit hun", "ptit 1", "p'tit 1", "petit 1", "petit un"]],
   ["castle", ["castle"]],
   ["gotcha", ["gotcha"]],
   ["hare_hounds", ["hare_hounds", "harehounds", "hare & hounds", "hare-hounds"]],
@@ -616,6 +626,11 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     const hits = num(row.hits, 0);
     return `${Math.round((darts > 0 ? (hits / darts) * 100 : 0) * 10) / 10}%`;
   }
+  if (mode === "ptit_hun") {
+    if (key === "primary") return num(pick(row.score, row.finalScore), 0);
+    if (key === "secondary") return num(pick(row.jackpotVisits, row.jackpotHits), 0);
+    return num(row.dbulls, 0);
+  }
   if (mode === "wave61") {
     if (key === "primary") return num(pick(row.score, row.points), 0);
     if (key === "secondary") return `${Math.round(num(pick(row.progress), 0))}%`;
@@ -779,6 +794,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
               ? rows.reduce((sum, r) => sum + num(r.raw?.hits, 0), 0)
             : mode === "steeplechase"
               ? rows.reduce((sum, r) => sum + num(r.raw?.steps, 0), 0)
+            : mode === "ptit_hun"
+              ? rows.reduce((sum, r) => sum + num(pick(r.raw?.zeroVisits, num(r.raw?.tripleNuls, 0) + num(r.raw?.jackpotVisits, 0)), 0), 0)
             : mode === "wave61"
               ? rows.reduce((sum, r) => sum + num(r.raw?.hits, 0), 0)
             : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
@@ -817,7 +834,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "fifty_one_by_five" ? "Volées valides" : mode === "looper" ? "Boucles sauvées" : mode === "call_three" ? "Cibles réussies" : mode === "steeplechase" ? "Étapes franchies" : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : mode === "wave61" ? "Touches moteur" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "fifty_one_by_five" ? "Volées valides" : mode === "looper" ? "Boucles sauvées" : mode === "call_three" ? "Cibles réussies" : mode === "steeplechase" ? "Étapes franchies" : mode === "ptit_hun" ? "Volées à 0" : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : mode === "wave61" ? "Touches moteur" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -858,6 +875,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         <DartsFirefighterSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "darts_poker" ? (
         <DartsPokerSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "ptit_hun" ? (
+        <PtitHunSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : ["pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(mode) ? (
         <OriginalPartyModeSummaryTables mode={mode as any} rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "castle" ? (
@@ -883,6 +902,67 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   );
 }
 
+
+function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const cfg = pick(rec?.summary?.config, rec?.payload?.config, rec?.game, {}) || {};
+  const rules = cfg?.rules || {};
+  const sum = (key: string) => rows.reduce((total, row) => total + num(row?.raw?.[key]), 0);
+  const totalInner = sum("innerSingles");
+  const totalDarts = sum("darts");
+  const totalPetitOne = sum("petitOneHits");
+  const totalTripleNuls = sum("tripleNuls");
+  const totalJackpots = sum("jackpotVisits");
+  const totalZeroVisits = rows.reduce((total, row) => total + num(pick(row?.raw?.zeroVisits, num(row?.raw?.tripleNuls) + num(row?.raw?.jackpotVisits)), 0), 0);
+  const totalDbulls = sum("dbulls");
+  const totalSaved = sum("shieldSaved");
+  const cleanVisits = sum("cleanVisits");
+  const totalVisits = sum("visits");
+  const innerPct = totalDarts > 0 ? Math.round((totalInner / totalDarts) * 1000) / 10 : 0;
+  const cleanPct = totalVisits > 0 ? Math.round((cleanVisits / totalVisits) * 1000) / 10 : 0;
+  const jackpotRing = rules?.jackpotRingMode === "double" ? "Doubles" : rules?.jackpotRingMode === "triple" ? "Triples" : "Doubles / Triples";
+  const missRule = rules?.missMode === "add" ? `+${num(rules?.missValue, 50)}` : `×${num(rules?.missValue, 5)}`;
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>ADN P’TIT 1</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
+        <Kpi label="P’tit 1 touchés" value={totalPetitOne} accent={accent} />
+        <Kpi label="Volées à 0" value={totalZeroVisits} accent={accent} />
+        <Kpi label="Triple Nul" value={totalTripleNuls} accent={accent} />
+        <Kpi label="Jackpots" value={totalJackpots} accent={accent} />
+        <Kpi label="DBULL" value={totalDbulls} accent={accent} />
+        <Kpi label="Points sauvés" value={totalSaved} accent={accent} />
+        <Kpi label="Petits simples" value={`${innerPct}%`} accent={accent} />
+        <Kpi label="Volées propres" value={`${cleanPct}%`} accent={accent} />
+      </div>
+    </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Règles jouées</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 8 }}>
+        <Kpi label="Gros simple" value={`×${num(rules?.outerSingleFactor, 10)}`} accent={accent} />
+        <Kpi label="Double / Triple" value={`×${num(rules?.doubleFactor, 2)} / ×${num(rules?.tripleFactor, 3)}`} accent={accent} />
+        <Kpi label="Bull25" value={`×${num(rules?.bull25Factor, 4)}`} accent={accent} />
+        <Kpi label="MISS" value={missRule} accent={accent} />
+        <Kpi label="DBULL" value={rules?.dbullEnabled === false ? "OFF" : `÷${num(rules?.dbullDivider, 2)}`} accent={accent} />
+        <Kpi label="Zéro Absolu" value={rules?.zeroAbsoluteEnabled === false ? "OFF" : `${num(rules?.dbullsForZero, 3)} DBULL`} accent={accent} />
+        <Kpi label="Bouclier" value={rules?.shieldEnabled === false ? "OFF" : `${num(rules?.cleanVisitsForShield, 3)} propres · ÷${num(rules?.shieldDivider, 2)}`} accent={accent} />
+        <Kpi label="Jackpot" value={rules?.jackpotEnabled === false ? "OFF" : `${jackpotRing} · ${num(rules?.jackpotZones, 1)} zone${num(rules?.jackpotZones, 1) > 1 ? "s" : ""}`} accent={accent} />
+      </div>
+    </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Détails joueurs</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980, fontSize: 11 }}>
+          <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Score</th><th style={th}>P’tit 1</th><th style={th}>P’tit 1 parfait</th><th style={th}>Petits</th><th style={th}>Volées 0</th><th style={th}>Triple Nul</th><th style={th}>Jackpot</th><th style={th}>DBULL</th><th style={th}>Propres</th><th style={th}>Bouclier sauvés</th><th style={th}>D / T / 25 / MISS</th></tr></thead>
+          <tbody>{rows.map((row) => {
+            const raw = row.raw || {};
+            const zeroVisits = num(pick(raw.zeroVisits, num(raw.tripleNuls) + num(raw.jackpotVisits)), 0);
+            return <tr key={`ptit1-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(pick(raw.score, row.primary))}</td><td style={td}>{num(raw.petitOneHits)}</td><td style={td}>{num(raw.petitOneTriples)}</td><td style={td}>{num(raw.innerSingles)}</td><td style={td}>{zeroVisits}</td><td style={td}>{num(raw.tripleNuls)}</td><td style={td}>{num(raw.jackpotVisits)}</td><td style={td}>{num(raw.dbulls)}</td><td style={td}>{num(raw.cleanVisits)}</td><td style={td}>{num(raw.shieldSaved)}</td><td style={td}>{num(raw.doubles)} / {num(raw.triples)} / {num(raw.bulls25)} / {num(raw.misses)}</td></tr>;
+          })}</tbody>
+        </table>
+      </div>
+    </section>
+  </>;
+}
 
 function Wave61SummaryTables({ rec, rows, accent, familyLabel }: { rec: any; rows: any[]; accent: string; familyLabel: string }) {
   const match = pick(rec?.summary?.matchStats, rec?.payload?.stats?.match, {}) || {};

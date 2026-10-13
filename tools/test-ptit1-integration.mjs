@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+const read=(p)=>fs.readFileSync(new URL(`../${p}`, import.meta.url),'utf8');
+const app=read('src/App.tsx');
+const reg=read('src/games/dartsGameRegistry.ts');
+const cfg=read('src/pages/PtitHunConfig.tsx');
+const play=read('src/pages/PtitHunPlay.tsx');
+const generic=read('src/pages/newModes/NewDartsModeConfig.tsx');
+for (const token of ['ptit_hun_config','ptit_hun_play','PtitHunConfig','PtitHunPlay']) if(!app.includes(token)) throw new Error(`App missing ${token}`);
+for (const token of ['id: "ptit_hun"','label: "P’TIT 1"','supportsBots: true']) if(!reg.includes(token)) throw new Error(`Registry missing ${token}`);
+for (const token of ['title: "P’TIT 1"','ticker_ptit_1.png','JACKPOT']) if(!cfg.includes(token)) throw new Error(`Config missing ${token}`);
+for (const token of ['JACKPOT · ZONE SPÉCIALE','JackpotMiniTarget','P’TIT 1 · CARTE DES RISQUES','PremiumMomentOverlay','P’TIT 1 PARFAIT','VOLÉES À 0']) if(!play.includes(token)) throw new Error(`Play missing ${token}`);
+for (const token of ['ptitHunOuterFactor','ptitHunMissMode','ptitHunZeroAbsolute','ptitHunTripleNul','ptitHunShield','ptitHunJackpotRing','ptitHunJackpotRefresh']) if(!generic.includes(token)) throw new Error(`Config options missing ${token}`);
+const summary=read('src/pages/DartsModeSummaryPage.tsx');
+for (const token of ['PtitHunSummaryTables','P’tit 1 touchés','Règles jouées','Bouclier sauvés']) if(!summary.includes(token)) throw new Error(`Summary missing ${token}`);
+for (const asset of ['src/assets/tickers/ticker_ptit_1.png','src/lib/gameEngines/ptitHunEngine.ts']) if(!fs.existsSync(new URL(`../${asset}`, import.meta.url))) throw new Error(`Missing ${asset}`);
+console.log('P’TIT 1 integration: OK');

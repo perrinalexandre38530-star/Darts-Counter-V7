@@ -134,6 +134,7 @@ function safeUpper(s: string) {
 // toucher ni aux ids ni au routing, mais l'UI suit la langue active. Pour toute
 // langue non FR sans traduction dédiée, on utilise l'anglais par défaut.
 const GAME_LABELS_I18N: Record<string, { en: string; es?: string }> = {
+  ptit_hun: { en: "LIL’ ONE", es: "PEQUEÑO 1" },
   five_lives: { en: "Five Lives", es: "Cinco vidas" },
   gros_6: { en: "Big 6", es: "Gran 6" },
   killer_progressive: { en: "Progressive Killer", es: "Killer progresivo" },

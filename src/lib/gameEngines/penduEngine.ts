@@ -536,12 +536,12 @@ function consumeCurrentCurse(state: PenduState, playerId: string) {
   return previous;
 }
 
-export function usePenduSabotage(input: PenduState, actorId: string, targetId: string): PenduState {
+export function usePenduSabotage(input: PenduState, actorId: string, targetId: string, forcedCard?: PenduPenaltyCard | null): PenduState {
   const state = clonePenduState(input);
   const actor = state.penaltiesByPlayer[actorId] || (state.penaltiesByPlayer[actorId] = blankPenduPenaltyState());
   if (actor.sabotageTokens <= 0 || actorId === targetId || state.eliminated[targetId]) return state;
   const target = state.penaltiesByPlayer[targetId] || (state.penaltiesByPlayer[targetId] = blankPenduPenaltyState());
-  const card = drawSabotagePenalty();
+  const card = forcedCard ? clone(forcedCard) : drawSabotagePenalty();
   actor.sabotageTokens -= 1;
   target.curse = clone(card);
   target.lastDraw = clone(card);

@@ -9,7 +9,7 @@ import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
 import { commitPremiumPartyProgress } from "../lib/premiumPartyProgress";
-import { penduPenaltyConstraintDetail, penduPenaltyConstraintLabel, penduPenaltyModeIcon, penduPenaltyModeLabel, penduPenaltyRarityLabel } from "../lib/penduPenaltySystem";
+import { drawSabotagePenalty, penduPenaltyConstraintDetail, penduPenaltyConstraintLabel, penduPenaltyModeIcon, penduPenaltyModeLabel, penduPenaltyRarityLabel, viciousBodyEffect, type PenduPenaltyCard } from "../lib/penduPenaltySystem";
 import {
   clonePenduState, createPenduState, getPenduMaxDarts, getPenduPenaltyState, isPenduAttemptSatisfied, normalizePenduConfig,
   penduChallengeDifficulty, penduChallengeIcon, penduChallengeInstruction, penduChallengeLabel,
@@ -78,7 +78,34 @@ function PenduObjectiveCard({ challenge, roundNumber, previewScore, previewOk, d
 }
 
 
-function PenduPenaltyPanel({ state, activePlayer, activeColor, onSabotage }: any) {
+
+function deterministicSabotageChoices(seedText: string): PenduPenaltyCard[] {
+  let seed = 2166136261;
+  for (const ch of String(seedText || "pendu")) { seed ^= ch.charCodeAt(0); seed = Math.imul(seed, 16777619); }
+  const rng = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const out: PenduPenaltyCard[] = [];
+  for (let guard = 0; guard < 18 && out.length < 3; guard += 1) {
+    const card = drawSabotagePenalty(rng);
+    if (!out.some((c) => c.id === card.id)) out.push(card);
+  }
+  return out;
+}
+
+function PenduViciousLadder({ errors, max, accent }: any) {
+  const count = Math.max(6, Number(max || 6));
+  const steps = Array.from({ length: count - 1 }, (_, i) => ({ index: i + 1, effect: viciousBodyEffect(i + 1, count) }));
+  return <section className="pendu-vicious-ladder" style={{ ["--pendu-accent" as any]: accent }}>
+    <div className="pendu-vicious-ladder__title"><span>😈</span><div><small>PENDU VICIEUX</small><b>CHAQUE MORCEAU A UNE CONSÉQUENCE</b></div></div>
+    <div className="pendu-vicious-ladder__steps">{steps.map(({ index, effect }: any) => {
+      const done = Number(errors || 0) >= index, next = Number(errors || 0) + 1 === index;
+      return <div key={index} className={`${done ? "is-done " : ""}${next ? "is-next" : ""}`}>
+        <strong>{index}</strong><span>{effect?.icon || "🪢"}</span><div><b>{effect?.label || "PENDU"}</b><small>{effect?.detail || "Nouvelle partie du pendu."}</small></div>
+      </div>;
+    })}</div>
+  </section>;
+}
+
+function PenduPenaltyPanel({ state, activePlayer, activeColor, onSabotage, sabotageChoices, selectedSabotageId, onSelectSabotage }: any) {
   if (!activePlayer) return null;
   const mode = state.config.rules.penaltyMode;
   const ps = getPenduPenaltyState(state, activePlayer.id);
@@ -93,7 +120,10 @@ function PenduPenaltyPanel({ state, activePlayer, activeColor, onSabotage }: any
       <div><small>RÉSERVES</small><strong>{ps.shield ? `🛡️ ${ps.shield} bouclier` : ps.joker ? `🎁 ${ps.joker} joker` : "—"}</strong><span>{ps.shield ? "Annule automatiquement la prochaine erreur." : ps.joker ? "Sauve automatiquement d'une erreur fatale." : "Aucun bonus en réserve."}</span></div>
       <div><small>DERNIER EFFET</small><strong>{lastEffect ? `${lastEffect.icon} ${lastEffect.label}` : "—"}</strong><span>{lastEffect ? lastEffect.detail : "Aucun tirage ou morceau spécial."}</span></div>
     </div>
-    {canSabotage ? <div className="pendu-sabotage"><div><b>💣 SABOTAGE DISPONIBLE</b><span>Choisis l’adversaire à maudire pour son prochain tour.</span></div><div>{targets.map((p:any)=><button key={p.id} type="button" onClick={()=>onSabotage?.(p.id)}>{p.name}</button>)}</div></div> : null}
+    {canSabotage ? <div className="pendu-sabotage"><div><b>💣 SABOTAGE DISPONIBLE</b><span>Choisis d’abord une malédiction, puis l’adversaire qui la recevra.</span></div>
+      <div className="pendu-sabotage__cards">{(sabotageChoices || []).map((card:any)=><button key={card.id} type="button" className={selectedSabotageId===card.id?"is-selected":""} onClick={()=>onSelectSabotage?.(card.id)}><span>{card.icon}</span><b>{card.label}</b><small>{card.detail}</small></button>)}</div>
+      {selectedSabotageId ? <div className="pendu-sabotage__targets"><small>CIBLE DU SABOTAGE</small><div>{targets.map((p:any)=><button key={p.id} type="button" onClick={()=>onSabotage?.(p.id, (sabotageChoices || []).find((c:any)=>c.id===selectedSabotageId))}>{p.name}</button>)}</div></div> : <em>Choisis une carte ci-dessus.</em>}
+    </div> : null}
   </section>;
 }
 
@@ -133,6 +163,7 @@ export default function PenduPlay(props: any) {
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => { const v = resumeRecord?.resume?.multiplier ?? resumeRecord?.payload?.multiplier; return v === 2 || v === 3 ? v : 1; });
   const [undo, setUndo] = React.useState<PenduState[]>([]); const [notice, setNotice] = React.useState(""); const [moment, setMoment] = React.useState<any>(null); const [progression, setProgression] = React.useState<any>(() => resumeRecord?.summary?.progression || resumeRecord?.payload?.summary?.progression || null);
   const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false);
+  const [selectedSabotageId, setSelectedSabotageId] = React.useState<string | null>(null);
   const botBusy = React.useRef(false), finishedRef = React.useRef(false), introPlayedRef = React.useRef(false), initialCheckpointRef = React.useRef(false), historyHydratedRef = React.useRef(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `pendu-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
@@ -236,10 +267,10 @@ export default function PenduPlay(props: any) {
   const doUndo = () => setUndo((u) => { if (!u.length) return u; const prev = u[u.length - 1]; setState(clonePenduState(prev)); setCurrentThrow([]); setMultiplier(1); setNotice("Dernière action annulée"); setMoment(null); finishedRef.current = false; void saveInProgress(prev, [], 1); return u.slice(0, -1); });
   const handleCancel = () => { if (currentThrow.length) { setCurrentThrow([]); setMultiplier(1); setNotice("Saisie annulée"); } else doUndo(); };
   const applyChallenge = (c: PenduChallenge) => { const next = setPenduChallenge(state, c); setState(next); setNotice(`Défi réglé sur ${penduChallengeLabel(c, config.rules.executionMode)}`); void saveInProgress(next, currentThrow, multiplier); };
-  const sabotage = (targetId: string) => {
+  const sabotage = (targetId: string, card?: PenduPenaltyCard | null) => {
     if (!activePlayer || currentThrow.length) return;
     const before = clonePenduState(state);
-    const next = usePenduSabotage(state, activePlayer.id, targetId);
+    const next = usePenduSabotage(state, activePlayer.id, targetId, card || null);
     if (JSON.stringify(next.penaltiesByPlayer) === JSON.stringify(state.penaltiesByPlayer)) return;
     setUndo((u) => [...u.slice(-39), before]);
     setState(next);
@@ -247,6 +278,7 @@ export default function PenduPlay(props: any) {
     const curse = getPenduPenaltyState(next, targetId)?.curse;
     setNotice(`💣 ${target?.name || "Adversaire"} : ${curse?.label || "SABOTÉ"}`);
     playNewModeSfx("hit", sfxEnabled);
+    setSelectedSabotageId(null);
     void saveInProgress(next, currentThrow, multiplier);
   };
   const setThrowWithSfx = React.useCallback((update: any) => setCurrentThrow((prev: UIDart[]) => { const next = (typeof update === "function" ? update(prev) : update) || prev; const out = Array.isArray(next) ? next.slice(0, activeMaxDarts) : prev; if (out.length > prev.length) out.slice(prev.length).forEach((d: any, i: number) => window.setTimeout(() => playNewModeDartSfx(d, sfxEnabled), i * 120)); return out; }), [sfxEnabled, activeMaxDarts]);
@@ -266,6 +298,8 @@ export default function PenduPlay(props: any) {
   const randomRounds = state.phase === "round" || config.rules.challengeMode !== "caller";
   const editable = state.phase === "caller" && !activeIsBot && !currentThrow.length && config.rules.challengeMode === "caller";
   const previewDarts = currentThrow.map(uiToGameDart), previewScore = scorePenduVisit(previewDarts), previewOk = currentThrow.length && activePlayer ? isPenduAttemptSatisfied(state, activePlayer.id, previewDarts) : false;
+  const sabotageChoices = React.useMemo(() => deterministicSabotageChoices(`${matchIdRef.current}:${state.legIndex}:${state.roundNumber}:${state.turnIndex}:${activePlayer?.id}:${activePenalty?.sabotageTokens || 0}`), [state.legIndex, state.roundNumber, state.turnIndex, activePlayer?.id, activePenalty?.sabotageTokens]);
+  React.useEffect(() => { if (!activePenalty?.sabotageTokens) setSelectedSabotageId(null); }, [activePlayer?.id, activePenalty?.sabotageTokens]);
   const activeStats = activePlayer ? state.statsByPlayer[activePlayer.id] || {} : {};
   const coach = coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
   const rankingRows = React.useMemo(() => [...state.players].map((p: any, i: number) => { const st = state.statsByPlayer[p.id] || {}, color = colorById.get(String(p.id)) || ACCENT, errors = Number(state.errors[p.id] || 0), dead = !!state.eliminated[p.id]; return { id: String(p.id), name: p.name, profile: profileById.get(String(p.id)) || p, color, wins: Number(state.legWins[p.id] || 0), errors, dead, passed: Number(st.challengesPassed || 0), subtitle: `${dead ? "PENDU" : `${errors}/${config.rules.partsToLose} erreurs`} · ${st.challengesPassed || 0} défis`, value: Number(state.legWins[p.id] || 0), suffix: " M", order: i }; }).sort((a, b) => b.wins - a.wins || Number(a.dead) - Number(b.dead) || a.errors - b.errors || b.passed - a.passed || a.order - b.order), [state.players, state.legWins, state.errors, state.eliminated, state.statsByPlayer, profileById, colorById]);
@@ -290,7 +324,8 @@ export default function PenduPlay(props: any) {
       <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeErrors >= config.rules.partsToLose - 1 ? RED : activeColor} eyebrow={`MANCHE ${state.legIndex + 1} · BO${legTarget} · ${state.phase === "round" ? `RONDE ${state.roundNumber} · ${Math.min(state.copyIndex + 1, Math.max(1, state.copyQueue.length))}/${Math.max(1, state.copyQueue.length)}` : state.phase === "caller" ? "BOURREAU" : `COPIE ${Math.min(state.copyIndex + 1, Math.max(1, state.copyQueue.length))}/${Math.max(1, state.copyQueue.length)}`}`} primary={state.phase === "round" ? activeErrors : penduChallengeLabel(challenge, config.rules.executionMode)} primarySuffix={state.phase === "round" ? `/${config.rules.partsToLose} ERREURS` : ""} secondary={state.phase === "round" ? (currentThrow.length ? `${previewOk ? "✓ OBJECTIF RÉUSSI" : "TENTATIVE EN COURS"} · ${currentThrow.length}/${activeMaxDarts} darts` : config.rules.penaltyMode === "classic" ? "Chaque échec dessine une nouvelle partie du pendu" : `${penduPenaltyModeIcon(config.rules.penaltyMode)} ${penduPenaltyModeLabel(config.rules.penaltyMode)} · les erreurs ont des conséquences`) : currentThrow.length ? `${previewOk ? "✓ DÉFI VALIDÉ" : "VOLÉE EN COURS"} · ${previewScore} pts · ${currentThrow.length}/3 darts` : (state.phase === "caller" ? "Réussis ton propre défi pour l'imposer aux autres" : "Reproduis exactement le défi du bourreau")} tertiary={`${activeStats.challengesPassed || 0} objectifs réussis · série ${activeStats.bestSuccessStreak || 0} · ${activeStats.roundsSurvived || 0} rondes survécues`} progress={activeErrors} progressMax={config.rules.partsToLose} notice={notice} noticeTone={notice.includes("🏆") ? "win" : notice.includes("PENDU") || notice.includes("rate") ? "danger" : "normal"} aside={<PenduFigure errors={activeErrors} max={config.rules.partsToLose} accent={activeColor} compact />} />
       <GameplayMission accent={previewOk ? GREEN : activeErrors >= config.rules.partsToLose - 1 ? RED : activeColor} icon="🎯" title={state.phase === "round" ? `RÉUSSIS L’OBJECTIF EN ${activeMaxDarts} DART${activeMaxDarts > 1 ? "S" : ""} MAX` : state.phase === "caller" ? "CRÉE ET RÉUSSIS TON DÉFI" : "REPRODUIS LE DÉFI DU BOURREAU"} text={state.phase === "round" ? (activePenalty?.curse ? `${penduPenaltyConstraintLabel(activePenalty)} · ${penduPenaltyConstraintDetail(activePenalty)}` : config.rules.penaltyMode === "classic" ? "Réussite : intact. Échec : +1 morceau." : "Réussis pour rester intact ; les pénalités peuvent modifier ton prochain tour.") : `Tu as jusqu’à ${activeMaxDarts} fléchette${activeMaxDarts > 1 ? "s" : ""} pour réussir.`} chips={state.phase === "round" ? [`RONDE ${state.roundNumber}`, `${activeErrors}/${config.rules.partsToLose} ERREURS`, previewOk ? "SAUVÉ ✓" : `${activeMaxDarts} DART${activeMaxDarts > 1 ? "S" : ""} MAX`, `${penduPenaltyModeIcon(config.rules.penaltyMode)} ${penduPenaltyModeLabel(config.rules.penaltyMode)}`] : [penduChallengeLabel(challenge, config.rules.executionMode), `${activeErrors}/${config.rules.partsToLose} ERREURS`]} tone={previewOk ? "success" : activeErrors >= config.rules.partsToLose - 1 ? "danger" : "normal"} />
       {state.phase === "round" ? <PenduObjectiveCard challenge={challenge} roundNumber={state.roundNumber} previewScore={previewScore} previewOk={previewOk} dartsCount={currentThrow.length} accent={activeColor} executionMode={config.rules.executionMode} maxDarts={activeMaxDarts} penalty={activePenalty} /> : null}
-      <PenduPenaltyPanel state={state} activePlayer={activePlayer} activeColor={activeColor} onSabotage={sabotage} />
+      {config.rules.penaltyMode === "vicious" ? <PenduViciousLadder errors={activeErrors} max={config.rules.partsToLose} accent={activeColor} /> : null}
+      <PenduPenaltyPanel state={state} activePlayer={activePlayer} activeColor={activeColor} onSabotage={sabotage} sabotageChoices={sabotageChoices} selectedSabotageId={selectedSabotageId} onSelectSabotage={setSelectedSabotageId} />
       {editable ? <section style={{ ...panelStyle(`${activeColor}44`), padding: 8, display: "grid", gap: 6 }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><b style={{ color: activeColor, fontSize: 10 }}>RÉGLER LE DÉFI</b><span style={{ color: SOFT, fontSize: 8.5 }}>avant la 1re fléchette</span></div><div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{config.rules.targetFamily === "mixed" ? <button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge(challenge.kind === "score" ? { kind: "segment", number: 20, bed: "S" } : { kind: "score", target: 50 })}>{challenge.kind === "score" ? "SEGMENT" : "SCORE"}</button> : null}{challenge.kind === "segment" ? <><button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, number: ((challenge.number + 18) % 20) + 1 })}>−</button>{(["S", "D", "T"] as const).map((b) => <button key={b} type="button" style={{ ...actionStyle(activeColor), background: challenge.bed === b ? `${activeColor}35` : `${activeColor}18` }} onClick={() => applyChallenge({ ...challenge, bed: b })}>{b}</button>)}<button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, number: (challenge.number % 20) + 1 })}>+</button></> : <><button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, target: Math.max(10, challenge.target - 10) })}>−10</button><button type="button" style={actionStyle(activeColor)} onClick={() => applyChallenge({ ...challenge, target: Math.min(170, challenge.target + 10) })}>+10</button></>}<button type="button" style={{ ...actionStyle(GOLD), marginLeft: "auto" }} onClick={() => applyChallenge(randomPenduChallenge(config))}>🎲</button></div></section> : null}
       <KpiStrip accent={activeColor} onClick={() => setStatsOpen(true)} items={[["RÉUSSIS", activeStats.challengesPassed || 0], ["ERREURS", activeErrors], ["TAUX", `${percent(activeStats.challengesPassed, activeStats.visits)}%`], ["SÉRIE", activeStats.bestSuccessStreak || 0]]} />
       <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerPendu} onPlayers={() => setPlayersOpen(true)} onStats={() => setStatsOpen(true)} onLog={() => setLogOpen(true)} onRanking={() => setRankingOpen(true)} />

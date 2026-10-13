@@ -13,7 +13,7 @@ for (const file of ["CastlePlay.tsx", "GotchaPlay.tsx", "HareHoundsPlay.tsx", "P
   assert(src.includes("GameplayMission"), `${file}: bandeau gameplay absent`);
 }
 const pendu = read("src/pages/PenduPlay.tsx");
-for (const marker of ["PenduObjectiveCard", "OBJECTIF ALÉATOIRE", "RÉUSSIS L’OBJECTIF AVANT LA 3E FLÉCHETTE", "Échec : +1 partie du dessin"]) {
+for (const marker of ["PenduObjectiveCard", "OBJECTIF ALÉATOIRE", "RÉUSSIS L’OBJECTIF", "PenduPenaltyPanel"]) {
   assert(pendu.includes(marker), `PenduPlay: ${marker} absent`);
 }
 const engine = read("src/lib/gameEngines/penduEngine.ts");

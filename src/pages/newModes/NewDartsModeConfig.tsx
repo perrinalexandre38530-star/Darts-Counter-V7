@@ -17,7 +17,7 @@ import { BotTeamsSection, PillButton, X01_PRO_BOTS, TeamsSection, SelectedPartic
 import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
 import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
 
-export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase";
+export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "ptit_hun";
 type BotLevel = "easy" | "normal" | "hard";
 type ConfigViewMode = "guided" | "complete";
 
@@ -192,9 +192,6 @@ export default function NewDartsModeConfig(props: Props) {
   const [penduChallengeMode, setPenduChallengeMode] = React.useState<"caller" | "random" | "mixed">(["caller", "mixed"].includes(saved.penduChallengeMode) ? saved.penduChallengeMode : "random");
   const [penduTargetFamily, setPenduTargetFamily] = React.useState<"segments" | "scores" | "mixed">(["segments", "scores"].includes(saved.penduTargetFamily) ? saved.penduTargetFamily : "mixed");
   const [penduExecution, setPenduExecution] = React.useState<"strict" | "flex">(saved.penduExecution === "strict" ? "strict" : "flex");
-  const [penduPenaltyMode, setPenduPenaltyMode] = React.useState<"classic" | "vicious" | "roulette" | "sabotage" | "chaos">(
-    ["vicious","roulette","sabotage","chaos"].includes(saved.penduPenaltyMode) ? saved.penduPenaltyMode : "vicious"
-  );
 
   // MENTEUR
   const [menteurLives, setMenteurLives] = React.useState<3 | 5 | 7>(saved.menteurLives === 3 || saved.menteurLives === 7 ? saved.menteurLives : 5);
@@ -248,6 +245,28 @@ export default function NewDartsModeConfig(props: Props) {
   const [steepleFences, setSteepleFences] = React.useState(saved.steepleFences !== false);
   const [steepleFinishBull, setSteepleFinishBull] = React.useState<"any" | "double">(saved.steepleFinishBull === "double" ? "double" : "any");
   const [steepleZone, setSteepleZone] = React.useState<"inner_single" | "any_single">(saved.steepleZone === "any_single" ? "any_single" : "inner_single");
+
+  // P'TIT 1 — mascotte : le P'tit Hun
+  const [ptitHunRounds, setPtitHunRounds] = React.useState<number>([3, 5, 7, 10, 15, 20, 30].includes(Number(saved.ptitHunRounds)) ? Number(saved.ptitHunRounds) : 10);
+  const [ptitHunStartScore, setPtitHunStartScore] = React.useState<number>([10, 20, 30, 50, 100].includes(Number(saved.ptitHunStartScore)) ? Number(saved.ptitHunStartScore) : 20);
+  const [ptitHunOuterFactor, setPtitHunOuterFactor] = React.useState<number>([5, 10, 15, 20].includes(Number(saved.ptitHunOuterFactor)) ? Number(saved.ptitHunOuterFactor) : 10);
+  const [ptitHunDoubleFactor, setPtitHunDoubleFactor] = React.useState<number>([2, 3, 4].includes(Number(saved.ptitHunDoubleFactor)) ? Number(saved.ptitHunDoubleFactor) : 2);
+  const [ptitHunTripleFactor, setPtitHunTripleFactor] = React.useState<number>([2, 3, 4, 5].includes(Number(saved.ptitHunTripleFactor)) ? Number(saved.ptitHunTripleFactor) : 3);
+  const [ptitHunBull25Factor, setPtitHunBull25Factor] = React.useState<number>([2, 3, 4, 5, 6].includes(Number(saved.ptitHunBull25Factor)) ? Number(saved.ptitHunBull25Factor) : 4);
+  const [ptitHunMissMode, setPtitHunMissMode] = React.useState<"multiply" | "add">(saved.ptitHunMissMode === "add" ? "add" : "multiply");
+  const [ptitHunMissValue, setPtitHunMissValue] = React.useState<number>(() => saved.ptitHunMissMode === "add" ? ([25, 50, 100, 200].includes(Number(saved.ptitHunMissValue)) ? Number(saved.ptitHunMissValue) : 50) : ([2, 3, 4, 5, 6].includes(Number(saved.ptitHunMissValue)) ? Number(saved.ptitHunMissValue) : 5));
+  const [ptitHunDbullEnabled, setPtitHunDbullEnabled] = React.useState(saved.ptitHunDbullEnabled !== false);
+  const [ptitHunDbullDivider, setPtitHunDbullDivider] = React.useState<number>([2, 3, 4].includes(Number(saved.ptitHunDbullDivider)) ? Number(saved.ptitHunDbullDivider) : 2);
+  const [ptitHunZeroAbsolute, setPtitHunZeroAbsolute] = React.useState(saved.ptitHunZeroAbsolute !== false);
+  const [ptitHunDbullsForZero, setPtitHunDbullsForZero] = React.useState<number>([2, 3, 4, 5].includes(Number(saved.ptitHunDbullsForZero)) ? Number(saved.ptitHunDbullsForZero) : 3);
+  const [ptitHunTripleNul, setPtitHunTripleNul] = React.useState(saved.ptitHunTripleNul !== false);
+  const [ptitHunShield, setPtitHunShield] = React.useState(saved.ptitHunShield !== false);
+  const [ptitHunCleanVisits, setPtitHunCleanVisits] = React.useState<number>([2, 3, 4, 5].includes(Number(saved.ptitHunCleanVisits)) ? Number(saved.ptitHunCleanVisits) : 3);
+  const [ptitHunShieldDivider, setPtitHunShieldDivider] = React.useState<number>([2, 3, 4].includes(Number(saved.ptitHunShieldDivider)) ? Number(saved.ptitHunShieldDivider) : 2);
+  const [ptitHunJackpot, setPtitHunJackpot] = React.useState(saved.ptitHunJackpot !== false);
+  const [ptitHunJackpotRing, setPtitHunJackpotRing] = React.useState<"random" | "double" | "triple">(saved.ptitHunJackpotRing === "double" || saved.ptitHunJackpotRing === "triple" ? saved.ptitHunJackpotRing : "random");
+  const [ptitHunJackpotZones, setPtitHunJackpotZones] = React.useState<1 | 2>(Number(saved.ptitHunJackpotZones) === 2 ? 2 : 1);
+  const [ptitHunJackpotRefresh, setPtitHunJackpotRefresh] = React.useState<"visit" | "round">(saved.ptitHunJackpotRefresh === "round" ? "round" : "visit");
 
   const humanProfiles = React.useMemo(() => {
     const raw = Array.isArray(store?.profiles) ? store.profiles : [];
@@ -517,7 +536,7 @@ export default function NewDartsModeConfig(props: Props) {
       castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg,
       gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust,
       houndStart, hareTargetZone, hareRoleMode, hareDirection,
-      penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, penduPenaltyMode,
+      penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution,
       menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed,
       cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt,
       cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled,
@@ -526,9 +545,12 @@ export default function NewDartsModeConfig(props: Props) {
       looperLives, looperStartTarget, looperNumberLoops, looperSetterShield,
       callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull,
       steepleDirection, steepleFences, steepleFinishBull, steepleZone,
+      ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor,
+      ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero,
+      ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, penduPenaltyMode, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone, ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor, ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero, ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -546,12 +568,20 @@ export default function NewDartsModeConfig(props: Props) {
     if (mode === "castle") return { targetBricks: castleBricks, numberAssignment: castleAssignment, attacksEnabled: castleAttacks, reassignEachLeg: castleReassignEachLeg };
     if (mode === "gotcha") return { targetScore: gotchaTarget, outMode: gotchaOut, maxRounds: gotchaMaxRounds, bustRule: gotchaBust, gotchaReset: "zero" };
     if (mode === "hare_hounds") return { houndStart, targetZone: hareTargetZone, roleMode: hareRoleMode, direction: hareDirection, hareStart: 20 };
-    if (mode === "pendu") return { partsToLose: penduPartsToLose, challengeMode: penduChallengeMode, targetFamily: penduTargetFamily, executionMode: penduExecution, penaltyMode: penduPenaltyMode };
+    if (mode === "pendu") return { partsToLose: penduPartsToLose, challengeMode: penduChallengeMode, targetFamily: penduTargetFamily, executionMode: penduExecution };
     if (mode === "menteur") return { lives: menteurLives, contractDeck: menteurContractDeck, raiseStep: menteurRaiseStep, bullAllowed: menteurBullAllowed };
     if (mode === "crados") return { dirtLimit: cradosDirtLimit, layersToOwn: cradosLayersToOwn, bullWash: cradosBullWash, stealMode: cradosStealMode, sectorRaceMode: cradosSectorRaceMode, cleanBullSplash: cradosCleanBullSplash, endOnFirstMaxDirt: cradosEndOnFirstMaxDirt };
     if (mode === "fifty_one_by_five") return { target: fiftyOneTarget, divisor: 5, requireThreeScoringDarts: fiftyOneRequireThreeScoringDarts, bustRule: fiftyOneBust, exactFinish: true };
     if (mode === "looper") return { lives: looperLives, startTarget: looperStartTarget, exactSegment: true, numberLoopsEnabled: looperNumberLoops, setterShield: looperSetterShield };
     if (mode === "call_three") return { rounds: callThreeRounds, callerMode: callThreeCaller, orderedTargets: callThreeOrderStrict, bullAllowed: callThreeBull, multiplierScoring: true };
+    if (mode === "ptit_hun") return {
+      rounds: ptitHunRounds, startScore: ptitHunStartScore, outerSingleFactor: ptitHunOuterFactor,
+      doubleFactor: ptitHunDoubleFactor, tripleFactor: ptitHunTripleFactor, bull25Factor: ptitHunBull25Factor,
+      missMode: ptitHunMissMode, missValue: ptitHunMissValue, dbullEnabled: ptitHunDbullEnabled, dbullDivider: ptitHunDbullDivider,
+      zeroAbsoluteEnabled: ptitHunZeroAbsolute, dbullsForZero: ptitHunDbullsForZero, tripleNulEnabled: ptitHunTripleNul,
+      shieldEnabled: ptitHunShield, cleanVisitsForShield: ptitHunCleanVisits, shieldDivider: ptitHunShieldDivider,
+      jackpotEnabled: ptitHunJackpot, jackpotRingMode: ptitHunJackpotRing, jackpotZones: ptitHunJackpotZones, jackpotRefresh: ptitHunJackpotRefresh,
+    };
     return { direction: steepleDirection, innerSingleOnly: steepleZone === "inner_single", fencesEnabled: steepleFences, fences: [13, 17, 8, 5], finishBull: steepleFinishBull };
   }
 
@@ -742,7 +772,7 @@ export default function NewDartsModeConfig(props: Props) {
   const matchBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Format de match</div>
     <div style={panel}>
-      <OptionRow compact={mode === "crados"} label="Série"><OptionSelect compact={mode === "crados"} value={seriesWins} options={[{ value: 1, label: "BO1 — 1 victoire" }, { value: 2, label: "BO3 — 2 victoires" }, { value: 3, label: "BO5 — 3 victoires" }]} onChange={(v: any) => setSeriesWins(Number(v) as any)} /></OptionRow>
+      {mode !== "ptit_hun" ? <OptionRow compact={mode === "crados"} label="Série"><OptionSelect compact={mode === "crados"} value={seriesWins} options={[{ value: 1, label: "BO1 — 1 victoire" }, { value: 2, label: "BO3 — 2 victoires" }, { value: 3, label: "BO5 — 3 victoires" }]} onChange={(v: any) => setSeriesWins(Number(v) as any)} /></OptionRow> : <div style={{ color: soft, fontSize: 11, lineHeight: 1.45, marginBottom: 8 }}>Une seule partie : tous les joueurs jouent le même nombre de volées. Le plus petit score final gagne.</div>}
       {mode !== "crados" ? <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
     </div>
   </section>;
@@ -786,19 +816,7 @@ export default function NewDartsModeConfig(props: Props) {
       <OptionRow label="Type de PENDU"><OptionSelect value={penduChallengeMode} options={[{ value: "random", label: "Rondes aléatoires — recommandé" }, { value: "caller", label: "Bourreau / copie — variante classique" }, { value: "mixed", label: "Rondes aléatoires — paquet étendu" }]} onChange={setPenduChallengeMode} /></OptionRow>
       <OptionRow label="Paquet d’objectifs"><OptionSelect value={penduTargetFamily} options={[{ value: "mixed", label: "Arcade complet — scores, zones, couleurs, D/T/Bull" }, { value: "scores", label: "Scores uniquement" }, { value: "segments", label: "Cible — secteurs, zones, couleurs et anneaux" }]} onChange={setPenduTargetFamily} /></OptionRow>
       <OptionRow label="Objectifs de score"><OptionSelect value={penduExecution} options={[{ value: "flex", label: "Atteindre ou dépasser — recommandé" }, { value: "strict", label: "Score exact — expert" }]} onChange={setPenduExecution} /></OptionRow>
-      <OptionRow label="Pénalités"><OptionSelect value={penduPenaltyMode} options={[
-        { value: "classic", label: "Classique — +1 morceau" },
-        { value: "vicious", label: "Pendu vicieux — recommandé" },
-        { value: "roulette", label: "Roulette — malédiction aléatoire" },
-        { value: "sabotage", label: "Sabotage — PERFECT = attaque" },
-        { value: "chaos", label: "Chaos — roulette + sabotage + bonus" },
-      ]} onChange={setPenduPenaltyMode} /></OptionRow>
-      <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: `1px solid ${accent}3d`, background: `${accent}0c`, color: "#aeb7c6", fontSize: 10, lineHeight: 1.5 }}>
-        <b style={{ color: accent }}>Rondes aléatoires :</b> score, couleur, pair/impair, gauche/droite, haut/bas, Double, Triple, Bull ou secteur.
-        <br/><b style={{ color: accent }}>Pendu vicieux :</b> chaque partie dessinée provoque une vraie conséquence au tour suivant.
-        <br/><b style={{ color: accent }}>Roulette / Chaos :</b> 1–2 darts, D/T obligatoire, secteur interdit, couleur imposée, mort subite, bouclier, rémission ou joker.
-        <br/><b style={{ color: accent }}>Sabotage :</b> un objectif réussi dès la 1re fléchette rapporte un jeton pour maudire un adversaire.
-      </div>
+      <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: `1px solid ${accent}3d`, background: `${accent}0c`, color: "#aeb7c6", fontSize: 10, lineHeight: 1.45 }}><b style={{ color: accent }}>Rondes aléatoires :</b> tous les joueurs tentent le même objectif. Score, couleur, pair/impair, zone gauche/droite/haut/bas, Double, Triple, Bull ou secteur. <b>Échec = +1 partie du pendu.</b></div>
     </div>
   </section>;
 
@@ -895,6 +913,48 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
+  const ptitHunCoreBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · SCORE & ZONES</div>
+    <div style={panel}>
+      <OptionRow label="Nombre de volées"><OptionSelect value={ptitHunRounds} options={[{ value: 3, label: "3 — éclair" }, { value: 5, label: "5 — rapide" }, { value: 7, label: "7 — court" }, { value: 10, label: "10 — classique" }, { value: 15, label: "15 — précision" }, { value: 20, label: "20 — endurance" }, { value: 30, label: "30 — marathon" }]} onChange={(v: any) => setPtitHunRounds(Number(v))} /></OptionRow>
+      <OptionRow label="Score de départ" hint="Évite qu’un multiplicateur sur 0 soit sans sanction"><OptionSelect value={ptitHunStartScore} options={[10,20,30,50,100].map((v) => ({ value: v, label: `${v} points` }))} onChange={(v: any) => setPtitHunStartScore(Number(v))} /></OptionRow>
+      <OptionRow label="Petit simple"><strong style={{ color: "#8fffb7" }}>valeur normale</strong></OptionRow>
+      <OptionRow label="Gros simple"><OptionSelect value={ptitHunOuterFactor} options={[5,10,15,20].map((v) => ({ value: v, label: `valeur ×${v}` }))} onChange={(v: any) => setPtitHunOuterFactor(Number(v))} /></OptionRow>
+      <OptionRow label="Double"><OptionSelect value={ptitHunDoubleFactor} options={[2,3,4].map((v) => ({ value: v, label: `score total ×${v}` }))} onChange={(v: any) => setPtitHunDoubleFactor(Number(v))} /></OptionRow>
+      <OptionRow label="Triple"><OptionSelect value={ptitHunTripleFactor} options={[2,3,4,5].map((v) => ({ value: v, label: `score total ×${v}` }))} onChange={(v: any) => setPtitHunTripleFactor(Number(v))} /></OptionRow>
+      <OptionRow label="Bull 25"><OptionSelect value={ptitHunBull25Factor} options={[2,3,4,5,6].map((v) => ({ value: v, label: `score total ×${v}` }))} onChange={(v: any) => setPtitHunBull25Factor(Number(v))} /></OptionRow>
+      <OptionRow label="MISS / hors cible"><OptionSelect value={ptitHunMissMode} options={[{ value: "multiply", label: "Multiplier le total" }, { value: "add", label: "Ajouter une pénalité fixe" }]} onChange={(v: any) => { setPtitHunMissMode(v); setPtitHunMissValue(v === "add" ? 50 : 5); }} /></OptionRow>
+      <OptionRow label={ptitHunMissMode === "add" ? "Pénalité MISS" : "Multiplicateur MISS"}><OptionSelect value={ptitHunMissValue} options={(ptitHunMissMode === "add" ? [25,50,100,200] : [2,3,4,5,6]).map((v) => ({ value: v, label: ptitHunMissMode === "add" ? `+${v} points` : `score ×${v}` }))} onChange={(v: any) => setPtitHunMissValue(Number(v))} /></OptionRow>
+    </div>
+  </section>;
+
+  const ptitHunBonusBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · BONUS DE PRÉCISION</div>
+    <div style={panel}>
+      <OptionRow label="TRIPLE NUL" hint="3 fléchettes dans le même petit simple = volée à 0"><OptionToggle value={ptitHunTripleNul} onChange={setPtitHunTripleNul} /></OptionRow>
+      <OptionRow label="DBULL récompensé"><OptionToggle value={ptitHunDbullEnabled} onChange={setPtitHunDbullEnabled} /></OptionRow>
+      {ptitHunDbullEnabled ? <OptionRow label="Effet DBULL"><OptionSelect value={ptitHunDbullDivider} options={[2,3,4].map((v) => ({ value: v, label: `score total ÷${v}` }))} onChange={(v: any) => setPtitHunDbullDivider(Number(v))} /></OptionRow> : null}
+      {ptitHunDbullEnabled ? <OptionRow label="ZÉRO ABSOLU" hint="Après plusieurs DBULL cumulés dans la partie"><OptionToggle value={ptitHunZeroAbsolute} onChange={setPtitHunZeroAbsolute} /></OptionRow> : null}
+      {ptitHunDbullEnabled && ptitHunZeroAbsolute ? <OptionRow label="DBULL pour Zéro Absolu"><OptionSelect value={ptitHunDbullsForZero} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} DBULL cumulés` }))} onChange={(v: any) => setPtitHunDbullsForZero(Number(v))} /></OptionRow> : null}
+      <OptionRow label="BOUCLIER DU HUN" hint="Récompense les volées 100 % petits simples"><OptionToggle value={ptitHunShield} onChange={setPtitHunShield} /></OptionRow>
+      {ptitHunShield ? <OptionRow label="Volées propres requises"><OptionSelect value={ptitHunCleanVisits} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} d’affilée` }))} onChange={(v: any) => setPtitHunCleanVisits(Number(v))} /></OptionRow> : null}
+      {ptitHunShield ? <OptionRow label="Protection du bouclier"><OptionSelect value={ptitHunShieldDivider} options={[2,3,4].map((v) => ({ value: v, label: `pénalités ÷${v}` }))} onChange={(v: any) => setPtitHunShieldDivider(Number(v))} /></OptionRow> : null}
+    </div>
+  </section>;
+
+  const ptitHunJackpotBlock = <section style={{ ...selectorCard, border: `1px solid ${ptitHunJackpot ? "#ffd84d66" : "rgba(255,255,255,.08)"}`, boxShadow: ptitHunJackpot ? "0 0 26px rgba(255,191,45,.10)" : "none" }}>
+    <div style={{ color: "#ffd84d", textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>🎯 ZONE SPÉCIALE JACKPOT</div>
+    <div style={{ ...panel, background: "linear-gradient(180deg,rgba(255,192,35,.07),rgba(255,255,255,.025))" }}>
+      <OptionRow label="Activer le Jackpot" hint="Toucher la zone annule toute la volée : 0 point"><OptionToggle value={ptitHunJackpot} onChange={setPtitHunJackpot} /></OptionRow>
+      {ptitHunJackpot ? <OptionRow label="Zones autorisées"><OptionSelect value={ptitHunJackpotRing} options={[{ value: "random", label: "Aléatoire — Double OU Triple" }, { value: "double", label: "Doubles uniquement" }, { value: "triple", label: "Triples uniquement" }]} onChange={setPtitHunJackpotRing} /></OptionRow> : null}
+      {ptitHunJackpot ? <OptionRow label="Nombre de zones"><OptionSelect value={ptitHunJackpotZones} options={[{ value: 1, label: "1 zone — classique" }, { value: 2, label: "2 zones — arcade" }]} onChange={(v: any) => setPtitHunJackpotZones(Number(v) === 2 ? 2 : 1)} /></OptionRow> : null}
+      {ptitHunJackpot ? <OptionRow label="Renouvellement"><OptionSelect value={ptitHunJackpotRefresh} options={[{ value: "visit", label: "À chaque volée — imprévisible" }, { value: "round", label: "À chaque tour — même chance pour tous" }]} onChange={setPtitHunJackpotRefresh} /></OptionRow> : null}
+      <div style={{ marginTop: 9, borderRadius: 13, padding: "9px 10px", background: "rgba(0,0,0,.22)", border: "1px solid rgba(255,216,77,.16)", color: soft, fontSize: 10.5, lineHeight: 1.45 }}><b style={{ color: "#ffd84d" }}>Jamais de simple.</b> Le Jackpot impose toujours un <b>DOUBLE</b> ou un <b>TRIPLE</b>. Une seule fléchette réussie suffit pour mettre la volée entière à <b>0</b>.</div>
+    </div>
+  </section>;
+
+  const ptitHunBlock = <>{ptitHunCoreBlock}{ptitHunBonusBlock}{ptitHunJackpotBlock}</>;
+
   const inputBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Saisie</div>
     <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: "CIBLE INTERACTIVE" }]} onChange={setScoreInputMethod} /></OptionRow>
@@ -906,18 +966,19 @@ export default function NewDartsModeConfig(props: Props) {
     <div style={{ ...panel, display: "grid", gap: 8 }}>
       <SummaryLine label="Mode" value={definition.title} />
       <SummaryLine label="Participants" value={mode === "crados" && cradosTeamMode ? `${activeCradosTeams.length} équipes · ${cradosTeamMemberIds.length} joueurs` : `${selectedIds.length} / ${definition.maxPlayers}${botCount ? ` · ${botCount} BOT${botCount > 1 ? "S" : ""}` : ""}`} />
-      <SummaryLine label="Format" value={boLabel} />
+      <SummaryLine label="Format" value={mode === "ptit_hun" ? `${ptitHunRounds} volées` : boLabel} />
       <SummaryLine label="Saisie" value={scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"} />
       {mode === "castle" ? <><SummaryLine label="Objectif" value={`${castleBricks} briques`} /><SummaryLine label="Combat" value={castleAttacks ? "Construction + attaque" : "Construction seule"} /></> : null}
       {mode === "gotcha" ? <><SummaryLine label="Cible" value={gotchaTarget} /><SummaryLine label="Sortie" value={gotchaOut === "straight" ? "Straight" : gotchaOut === "double" ? "Double" : "Master"} /></> : null}
       {mode === "hare_hounds" ? <><SummaryLine label="Départs" value={`Lièvre 20 · Limier ${houndStart}`} /><SummaryLine label="Zone" value={hareTargetZone === "any" ? "S/D/T" : hareTargetZone === "double" ? "Doubles" : "Triples"} /></> : null}
-      {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Gameplay" value={penduChallengeMode === "caller" ? "Bourreau / copie" : "Rondes aléatoires"} /><SummaryLine label="Objectifs" value={penduTargetFamily === "segments" ? "Cible & zones" : penduTargetFamily === "scores" ? "Scores" : "Arcade complet"} /><SummaryLine label="Pénalités" value={penduPenaltyMode === "vicious" ? "Pendu vicieux" : penduPenaltyMode === "roulette" ? "Roulette" : penduPenaltyMode === "sabotage" ? "Sabotage" : penduPenaltyMode === "chaos" ? "Chaos" : "Classique"} /></> : null}
+      {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Gameplay" value={penduChallengeMode === "caller" ? "Bourreau / copie" : "Rondes aléatoires"} /><SummaryLine label="Objectifs" value={penduTargetFamily === "segments" ? "Cible & zones" : penduTargetFamily === "scores" ? "Scores" : "Arcade complet"} /></> : null}
       {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
       {mode === "crados" ? <><SummaryLine label="Type de partie" value={cradosTeamMode ? "Équipes" : "Joueurs"} />{cradosTeamMode ? <SummaryLine label="Composition" value={cradosTeamsSourceMode === "saved" ? "Équipes créées / familles IA" : cradosTeamsSourceMode === "auto" ? "Brassage automatique" : "Manuelle"} /> : null}<SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /><SummaryLine label="Secteur vierge" value={cradosSectorRaceMode === "race" ? "Course — toutes les touches comptent" : "Prise en main — le dernier efface l’autre"} /><SummaryLine label="Bull spécial" value={cradosCleanBullSplash ? "Bull propre contagieux" : "Standard"} /><SummaryLine label="Fin de manche" value={cradosEndOnFirstMaxDirt ? "Première jauge pleine" : "Dernier camp encore propre"} /><SummaryLine label="Bruitages" value={cradosSfxEnabled ? "ON" : "OFF"} /><SummaryLine label="Awena" value={cradosAwenaEnabled ? "ON" : "OFF"} /><SummaryLine label="Conseil cible" value={cradosCoachEnabled ? "ON" : "OFF"} /></> : null}
       {mode === "fifty_one_by_five" ? <><SummaryLine label="Objectif" value={`${fiftyOneTarget}`} /><SummaryLine label="Calcul" value="Total ÷ 5 si divisible" /></> : null}
       {mode === "looper" ? <><SummaryLine label="Vies" value={`${looperLives}`} /><SummaryLine label="Cible" value="Segment exact" /></> : null}
       {mode === "call_three" ? <><SummaryLine label="Rounds" value={`${callThreeRounds}`} /><SummaryLine label="Appel" value={callThreeCaller === "next" ? "Joueur suivant" : "Aléatoire"} /></> : null}
       {mode === "steeplechase" ? <><SummaryLine label="Parcours" value={steepleDirection === "clockwise" ? "Horaire" : "Anti-horaire"} /><SummaryLine label="Haies" value={steepleFences ? "T13 · T17 · T8 · T5" : "Désactivées"} /></> : null}
+      {mode === "ptit_hun" ? <><SummaryLine label="Volées" value={`${ptitHunRounds}`} /><SummaryLine label="Objectif" value="Score le plus bas" /><SummaryLine label="Zone reine" value="Petit simple du 1" /><SummaryLine label="Gros simple" value={`×${ptitHunOuterFactor}`} /><SummaryLine label="DBULL" value={ptitHunDbullEnabled ? `÷${ptitHunDbullDivider}${ptitHunZeroAbsolute ? ` · ${ptitHunDbullsForZero} = Zéro Absolu` : ""}` : "désactivé"} /><SummaryLine label="Triple Nul" value={ptitHunTripleNul ? "ON" : "OFF"} /><SummaryLine label="Bouclier" value={ptitHunShield ? `${ptitHunCleanVisits} propres · ÷${ptitHunShieldDivider}` : "OFF"} /><SummaryLine label="Jackpot" value={ptitHunJackpot ? `${ptitHunJackpotRing === "random" ? "D/T" : ptitHunJackpotRing === "double" ? "Doubles" : "Triples"} · ${ptitHunJackpotZones} zone${ptitHunJackpotZones > 1 ? "s" : ""}` : "OFF"} /></> : null}
     </div>
     {!validSelection ? <div style={{ marginTop: 10, color: "#ff9baa", fontSize: 11.5, fontWeight: 900, textAlign: "center" }}>Sélectionne au moins {definition.minPlayers} participants pour continuer.</div> : null}
   </section>;
@@ -931,10 +992,13 @@ export default function NewDartsModeConfig(props: Props) {
     : mode === "fifty_one_by_five" ? fiftyOneBlock
     : mode === "looper" ? looperBlock
     : mode === "call_three" ? callThreeBlock
+    : mode === "ptit_hun" ? ptitHunBlock
     : steeplechaseBlock;
   const steps = mode === "crados"
     ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Zones", "Format", "Saisie", "Aide", "Résumé"]
-    : definition.guidedSteps;
+    : mode === "ptit_hun"
+      ? ["Participants", "Score & zones", "Bonus", "Jackpot", "Format", "Saisie", "Résumé"]
+      : definition.guidedSteps;
   const maxStep = steps.length - 1;
   React.useEffect(() => {
     setGuidedStep((step) => Math.max(0, Math.min(step, maxStep)));
@@ -991,6 +1055,14 @@ export default function NewDartsModeConfig(props: Props) {
           {guidedStep === 5 ? inputBlock : null}
           {guidedStep === 6 ? cradosAssistanceBlock : null}
           {guidedStep === 7 ? summaryBlock : null}
+        </> : mode === "ptit_hun" ? <>
+          {guidedStep === 0 ? participantsBlock : null}
+          {guidedStep === 1 ? ptitHunCoreBlock : null}
+          {guidedStep === 2 ? ptitHunBonusBlock : null}
+          {guidedStep === 3 ? ptitHunJackpotBlock : null}
+          {guidedStep === 4 ? matchBlock : null}
+          {guidedStep === 5 ? inputBlock : null}
+          {guidedStep === 6 ? summaryBlock : null}
         </> : <>
           {guidedStep === 0 ? participantsBlock : null}
           {guidedStep === 1 ? modeBlock : null}

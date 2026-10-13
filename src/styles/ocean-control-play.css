@@ -1712,3 +1712,390 @@
   .ocean-rivalry-player>b{width:23px;height:23px;font-size:9px}
   .ocean-rivalry-footer{display:grid;grid-template-columns:1fr}
 }
+
+
+/* ============================================================
+   OCEAN CONTROL V15 — GAMEPLAY FIRST
+   Priorité à la compréhension immédiate et à l'action.
+============================================================ */
+
+.ocean-control-main{
+  grid-template-rows:auto auto auto minmax(0,1fr) auto;
+}
+
+.ocean-next-action{
+  --action-color:#65e9ff;
+  min-width:0;
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  gap:9px;
+  align-items:center;
+  padding:8px 9px;
+  border-radius:15px;
+  border:1px solid color-mix(in srgb,var(--action-color) 46%,rgba(255,255,255,.08));
+  background:
+    linear-gradient(100deg,color-mix(in srgb,var(--action-color) 13%,rgba(6,15,24,.94)),rgba(4,9,15,.96)),
+    rgba(0,0,0,.25);
+  box-shadow:0 10px 25px rgba(0,0,0,.22),inset 3px 0 0 var(--action-color);
+}
+
+.ocean-next-action__step{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  border-radius:12px;
+  background:color-mix(in srgb,var(--action-color) 12%,rgba(255,255,255,.02));
+  border:1px solid color-mix(in srgb,var(--action-color) 36%,transparent);
+}
+.ocean-next-action__step span{
+  color:var(--action-color);
+  font-size:15px;
+  line-height:1;
+  font-weight:1200;
+}
+.ocean-next-action__step small{
+  margin-top:2px;
+  color:#8294a7;
+  font-size:5px;
+  font-weight:1000;
+  letter-spacing:.45px;
+}
+
+.ocean-next-action__copy{min-width:0}
+.ocean-next-action__copy>span{
+  display:block;
+  color:var(--action-color);
+  font-size:6.5px;
+  font-weight:1100;
+  letter-spacing:.75px;
+}
+.ocean-next-action__copy>strong{
+  display:block;
+  margin-top:2px;
+  color:#f4fbff;
+  font-size:10.5px;
+  line-height:1.08;
+  font-weight:1150;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ocean-next-action__copy>small{
+  display:block;
+  margin-top:3px;
+  color:#9aacbd;
+  font-size:7px;
+  line-height:1.32;
+}
+
+.ocean-next-action>button{
+  min-width:108px;
+  min-height:36px;
+  padding:0 10px;
+  border-radius:11px;
+  border:1px solid color-mix(in srgb,var(--action-color) 52%,transparent);
+  background:color-mix(in srgb,var(--action-color) 13%,rgba(0,0,0,.35));
+  color:var(--action-color);
+  font-size:7px;
+  font-weight:1150;
+  letter-spacing:.25px;
+}
+.ocean-next-action>button:disabled{opacity:.5}
+
+.ocean-last-result{
+  min-width:0;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:8px;
+  align-items:center;
+  padding:5px 8px;
+  border-radius:13px;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.025);
+}
+
+.ocean-last-result__head{
+  min-width:72px;
+  display:grid;
+  gap:2px;
+}
+.ocean-last-result__head span{
+  color:#8292a4;
+  font-size:5.6px;
+  font-weight:1000;
+  letter-spacing:.5px;
+}
+.ocean-last-result__head strong{
+  color:#dce8f3;
+  font-size:6.6px;
+  font-weight:1050;
+}
+.ocean-last-result__items{
+  min-width:0;
+  display:flex;
+  gap:5px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.ocean-last-result__items::-webkit-scrollbar{display:none}
+.ocean-last-result__items>span{
+  flex:0 0 auto;
+  min-height:25px;
+  display:flex;
+  align-items:center;
+  gap:5px;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.035);
+}
+.ocean-last-result__items i{font-style:normal;font-size:11px}
+.ocean-last-result__items strong{font-size:6.6px;font-weight:1050;white-space:nowrap}
+.ocean-last-result__items .is-hit{color:#65e5aa;border-color:rgba(101,229,170,.35);background:rgba(101,229,170,.07)}
+.ocean-last-result__items .is-sunk,.ocean-last-result__items .is-win{color:#ff857f;border-color:rgba(255,101,115,.42);background:rgba(255,101,115,.08)}
+.ocean-last-result__items .is-sonar{color:#65e9ff;border-color:rgba(101,233,255,.36);background:rgba(101,233,255,.07)}
+.ocean-last-result__items .is-strike{color:#f5ca68;border-color:rgba(245,202,104,.36);background:rgba(245,202,104,.07)}
+.ocean-last-result__items .is-water,.ocean-last-result__items .is-duplicate,.ocean-last-result__items .is-idle{color:#aeb9c7}
+
+.ocean-first-run-guide{
+  position:relative;
+  overflow:hidden;
+  padding:10px;
+  border-radius:16px;
+  border:1px solid rgba(101,233,255,.38);
+  background:
+    radial-gradient(circle at 90% 0%,rgba(101,233,255,.14),transparent 38%),
+    linear-gradient(160deg,rgba(18,50,70,.98),rgba(3,11,18,.98));
+  box-shadow:0 15px 35px rgba(0,0,0,.32);
+}
+.ocean-first-run-guide__head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:8px;
+}
+.ocean-first-run-guide__head>div span{
+  display:block;
+  color:#65e9ff;
+  font-size:6.4px;
+  font-weight:1100;
+  letter-spacing:.8px;
+}
+.ocean-first-run-guide__head>div strong{
+  display:block;
+  margin-top:3px;
+  color:#fff;
+  font-size:10.5px;
+  font-weight:1150;
+}
+.ocean-first-run-guide__head>button{
+  width:28px;height:28px;border-radius:9px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.04);color:#fff;font-size:16px;
+}
+.ocean-first-run-guide__steps{
+  margin-top:8px;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+.ocean-first-run-guide__steps>div{
+  min-width:0;
+  display:grid;
+  grid-template-columns:24px minmax(0,1fr);
+  gap:6px;
+  align-items:start;
+  padding:7px;
+  border-radius:11px;
+  background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.07);
+}
+.ocean-first-run-guide__steps b{
+  width:22px;height:22px;display:grid;place-items:center;
+  border-radius:8px;color:#03121b;background:#65e9ff;font-size:9px;
+}
+.ocean-first-run-guide__steps span{min-width:0}
+.ocean-first-run-guide__steps strong{display:block;color:#eef8ff;font-size:7px;font-weight:1100}
+.ocean-first-run-guide__steps small{display:block;margin-top:3px;color:#8fa4b8;font-size:6.1px;line-height:1.32}
+.ocean-first-run-guide__ok{
+  width:100%;
+  min-height:32px;
+  margin-top:7px;
+  border-radius:10px;
+  border:1px solid rgba(101,229,170,.55);
+  background:rgba(101,229,170,.12);
+  color:#65e5aa;
+  font-size:7.5px;
+  font-weight:1150;
+}
+
+.ocean-gameplay-weapons{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:5px;
+  margin:6px 0;
+}
+.ocean-gameplay-weapon{
+  --weapon-color:#30b9ff;
+  position:relative;
+  min-width:0;
+  min-height:46px;
+  display:grid;
+  grid-template-columns:25px minmax(0,1fr);
+  gap:5px;
+  align-items:center;
+  padding:5px 6px;
+  border-radius:11px;
+  border:1px solid color-mix(in srgb,var(--weapon-color) 24%,rgba(255,255,255,.07));
+  background:rgba(255,255,255,.025);
+  color:#fff;
+  text-align:left;
+}
+.ocean-gameplay-weapon.is-active{
+  border-color:color-mix(in srgb,var(--weapon-color) 65%,transparent);
+  background:color-mix(in srgb,var(--weapon-color) 12%,rgba(0,0,0,.18));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--weapon-color) 20%,transparent),0 0 16px color-mix(in srgb,var(--weapon-color) 9%,transparent);
+}
+.ocean-gameplay-weapon__icon{
+  width:24px;height:24px;display:grid;place-items:center;
+  border-radius:8px;
+  color:var(--weapon-color);
+  background:color-mix(in srgb,var(--weapon-color) 11%,rgba(255,255,255,.02));
+  border:1px solid color-mix(in srgb,var(--weapon-color) 26%,transparent);
+  font-size:8px;font-weight:1200;
+}
+.ocean-gameplay-weapon__copy{min-width:0}
+.ocean-gameplay-weapon__copy strong{
+  display:block;color:#edf8ff;font-size:6.5px;font-weight:1100;
+}
+.ocean-gameplay-weapon__copy small{
+  display:block;margin-top:2px;color:#8799aa;font-size:5.3px;line-height:1.23;
+}
+.ocean-gameplay-weapon em{
+  position:absolute;right:3px;top:3px;
+  padding:2px 4px;border-radius:999px;
+  color:#f5ca68;background:rgba(245,202,104,.08);
+  border:1px solid rgba(245,202,104,.2);
+  font-size:4px;font-style:normal;font-weight:1000;
+}
+
+.ocean-focus-readout{
+  min-width:0;
+  display:grid;
+  grid-template-columns:auto auto minmax(0,1fr) auto;
+  gap:7px;
+  align-items:center;
+  padding:5px 7px;
+  margin-bottom:5px;
+  border-radius:10px;
+  border:1px solid rgba(245,202,104,.16);
+  background:rgba(245,202,104,.035);
+}
+.ocean-focus-readout>span{color:#8d9cad;font-size:5.5px;font-weight:1000}
+.ocean-focus-readout>strong{font-size:8px;font-weight:1150}
+.ocean-focus-readout>small{
+  min-width:0;color:#8d9cad;font-size:5.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ocean-focus-readout>button{
+  min-height:25px;padding:0 8px;border-radius:8px;
+  border:1px solid rgba(245,202,104,.3);
+  background:rgba(245,202,104,.08);color:#f5ca68;font-size:5.7px;font-weight:1050;
+}
+
+.ocean-map-howto{
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr);
+  gap:8px;
+  align-items:center;
+  margin-bottom:9px;
+  padding:8px 9px;
+  border-radius:13px;
+  border:1px solid rgba(101,233,255,.28);
+  background:rgba(101,233,255,.055);
+}
+.ocean-map-howto>b{
+  width:27px;height:27px;display:grid;place-items:center;
+  border-radius:9px;background:#65e9ff;color:#04131c;font-size:11px;
+}
+.ocean-map-howto strong{display:block;color:#eafaff;font-size:8px;font-weight:1100}
+.ocean-map-howto small{display:block;margin-top:3px;color:#91a7ba;font-size:6.8px;line-height:1.35}
+
+/* Sur mobile le gameplay passe avant les données de commandement avancées. */
+@media (max-width:799px){
+  .ocean-live-command-strip,
+  .ocean-fleet-score-strip{display:none}
+}
+
+@media (max-width:520px){
+  .ocean-next-action{
+    grid-template-columns:34px minmax(0,1fr) 78px;
+    gap:6px;
+    padding:6px 7px;
+  }
+  .ocean-next-action__step{width:31px;height:31px;border-radius:9px}
+  .ocean-next-action__step span{font-size:12px}
+  .ocean-next-action__copy>span{font-size:5.5px}
+  .ocean-next-action__copy>strong{font-size:8.4px}
+  .ocean-next-action__copy>small{font-size:5.9px;max-height:16px;overflow:hidden}
+  .ocean-next-action>button{min-width:0;min-height:31px;padding:0 5px;font-size:5.5px}
+
+  .ocean-last-result{padding:4px 6px;grid-template-columns:59px minmax(0,1fr);gap:5px}
+  .ocean-last-result__head{min-width:0}
+  .ocean-last-result__head span{font-size:4.7px}
+  .ocean-last-result__head strong{font-size:5.5px}
+  .ocean-last-result__items>span{min-height:22px;padding:2px 6px}
+  .ocean-last-result__items i{font-size:9px}
+  .ocean-last-result__items strong{font-size:5.6px}
+
+  .ocean-first-run-guide__steps{grid-template-columns:1fr}
+  .ocean-first-run-guide__steps>div{grid-template-columns:22px minmax(0,1fr);padding:5px}
+  .ocean-first-run-guide__ok{min-height:28px}
+
+  .ocean-gameplay-weapons{gap:3px;margin:4px 0}
+  .ocean-gameplay-weapon{
+    min-height:39px;
+    grid-template-columns:1fr;
+    place-items:center;
+    padding:4px 2px;
+    text-align:center;
+  }
+  .ocean-gameplay-weapon__icon{width:22px;height:21px}
+  .ocean-gameplay-weapon__copy strong{font-size:5.6px}
+  .ocean-gameplay-weapon__copy small{display:none}
+  .ocean-gameplay-weapon em{display:none}
+
+  .ocean-focus-readout{
+    grid-template-columns:auto auto minmax(0,1fr) auto;
+    gap:4px;padding:4px 5px;
+  }
+  .ocean-focus-readout>small{font-size:4.9px}
+  .ocean-focus-readout>button{padding:0 5px;font-size:5px}
+}
+
+@media (max-height:760px){
+  .ocean-control-main{gap:2px}
+  .ocean-next-action{padding-top:4px;padding-bottom:4px}
+  .ocean-next-action__step{height:29px}
+  .ocean-next-action__copy>small{display:none}
+  .ocean-last-result{padding-top:3px;padding-bottom:3px}
+  .ocean-first-run-guide{padding:7px}
+  .ocean-first-run-guide__steps small{display:none}
+  .ocean-first-run-guide__steps>div{padding:4px}
+  .ocean-gameplay-weapon{min-height:34px}
+  .ocean-focus-readout{margin-bottom:3px}
+}
+
+@media (min-width:800px){
+  .ocean-control-main{
+    grid-template-columns:minmax(0,1fr) minmax(360px,.8fr);
+    grid-template-rows:auto auto auto minmax(0,1fr);
+  }
+  .ocean-commander-panel{grid-column:1/-1;grid-row:1}
+  .ocean-first-run-guide{grid-column:1/-1}
+  .ocean-next-action{grid-column:1/-1}
+  .ocean-last-result{grid-column:1/-1}
+  .ocean-grid-panel{grid-column:1;grid-row:auto}
+  .ocean-fire-control-panel{grid-column:2;grid-row:auto;align-self:stretch;display:grid;align-content:center}
+}

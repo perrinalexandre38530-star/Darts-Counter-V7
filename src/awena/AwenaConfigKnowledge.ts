@@ -65,6 +65,28 @@ const DETAILS: Record<string, AwenaModeConfigDetail> = {
     victory: "être le premier à parcourir tous les secteurs dans l’ordre, franchir les haies configurées et valider le Bull final",
     variants: ["horaire", "anti-horaire", "petit simple", "haies ON/OFF", "Bull", "DBull final"],
   },
+  ptit_hun: {
+    options: [
+      "1 à 12 participants, avec bots IA possibles",
+      "3 / 5 / 7 / 10 / 15 / 20 / 30 volées",
+      "score de départ 10 / 20 / 30 / 50 / 100",
+      "petit simple = valeur du secteur",
+      "gros simple configurable ×5 / ×10 / ×15 / ×20",
+      "Double, Triple et Bull25 configurables",
+      "MISS configurable en multiplicateur ou pénalité fixe",
+      "DBULL activable et division configurable",
+      "Zéro Absolu activable avec seuil DBULL configurable",
+      "Triple Nul activable : 3 mêmes petits simples = volée à 0",
+      "Bouclier du Hun activable : seuil de volées propres et puissance configurables",
+      "Jackpot activable : uniquement Doubles / Triples / aléatoire D-T",
+      "1 ou 2 zones Jackpot, renouvelées à chaque volée ou chaque tour",
+      "une zone Jackpot touchée = volée entière à 0",
+      "saisie keypad ou cible interactive",
+    ],
+    victory: "terminer le nombre de volées configuré avec le score le plus bas",
+    variants: ["anti-score classique", "Jackpot Doubles", "Jackpot Triples", "Jackpot aléatoire D/T", "Triple Nul", "Bouclier", "Zéro Absolu"],
+    notes: ["Le petit simple du 1 est la zone naturellement la plus rentable. La mascotte reste le P’tit Hun, mais le nom officiel du mode est P’TIT 1."],
+  },
   crados: {
     options: [
       "mode Joueurs ou Équipes, jusqu'à 10 participants au total",

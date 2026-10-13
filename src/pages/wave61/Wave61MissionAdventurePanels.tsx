@@ -127,8 +127,43 @@ export function MicroscopiaPanel({ state, accent }: any) {
   </div>;
 }
 export function DisjonctePanel({ state, accent }: any) {
-  return <div style={card(accent)}>{title(accent, "DISJONCTÉ · TABLEAU ÉLECTRIQUE")}
-    {playerGrid(state.players.map((p:any)=>{const step=Number(state.special?.circuitStepByPlayer?.[p.id]||0); const overload=Number(state.special?.circuitOverloadByPlayer?.[p.id]||0); return <div key={p.id} style={{display:"grid",gap:4}}><b>⚡ {p.name}</b>{stepStrip(CIRCUIT_NAMES,step,accent)}<span style={{color:SOFT,fontSize:9}}>Surcharge {overload}%</span><Meter value={overload} max={100} accent={overload>=75?"#ff6b68":accent}/></div>}))}
+  const circuitIcons=["🔋","⚙️","💡","📡","🔁","🔌"];
+  return <div style={card(accent)}>{title(accent, "DISJONCTÉ · TABLEAU ÉLECTRIQUE EN DIRECT")}
+    {playerGrid(state.players.map((p:any)=>{
+      const step=Math.max(0,Math.min(CIRCUIT_NAMES.length,Number(state.special?.circuitStepByPlayer?.[p.id]||0)));
+      const overload=Math.max(0,Math.min(110,Number(state.special?.circuitOverloadByPlayer?.[p.id]||0)));
+      const activeName=step<CIRCUIT_NAMES.length?CIRCUIT_NAMES[step]:"INSTALLATION STABLE";
+      const thermal=overload>=90?"COUPURE IMMINENTE":overload>=70?"SURCHARGE":overload>=40?"CHARGE ÉLEVÉE":"STABLE";
+      const thermalIcon=overload>=90?"🚨":overload>=70?"🔥":overload>=40?"⚠️":"🟢";
+      const thermalColor=overload>=90?"#ff5f5a":overload>=70?"#ff8a62":overload>=40?"#ffd166":"#74e7a8";
+      return <div key={p.id} style={{display:"grid",gap:7}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          <b>⚡ {p.name}</b>
+          <span style={{color:thermalColor,fontSize:8.4,fontWeight:1100,letterSpacing:.45}}>{thermalIcon} {thermal}</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${CIRCUIT_NAMES.length},minmax(0,1fr))`,gap:4}}>
+          {CIRCUIT_NAMES.map((name,i)=>{const on=i<step; const active=i===step&&step<CIRCUIT_NAMES.length; return <div key={name} style={{minHeight:47,borderRadius:9,padding:"5px 2px",display:"grid",placeItems:"center",gap:2,border:`1px solid ${on?accent+"aa":active?accent:"rgba(255,255,255,.09)"}`,background:on?accent+"24":active?accent+"10":"rgba(255,255,255,.025)",boxShadow:active?`0 0 15px ${accent}18`:"none"}}>
+            <span style={{fontSize:15}}>{on?"✅":circuitIcons[i]}</span>
+            <span style={{fontSize:6.8,fontWeight:1000,color:on||active?"#f4f7fb":SOFT,textAlign:"center",lineHeight:1.05}}>{name}</span>
+            <span style={{fontSize:6.6,fontWeight:1000,color:on?"#79e7b0":active?accent:SOFT}}>{on?"ON":active?"ACTIF":"OFF"}</span>
+          </div>})}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1.15fr .85fr",gap:6}}>
+          <div style={{borderRadius:9,padding:"6px 7px",border:`1px solid ${accent}33`,background:accent+"0d"}}>
+            <div style={{color:SOFT,fontSize:7.5,fontWeight:900}}>CIRCUIT À ALIMENTER</div>
+            <div style={{color:step>=CIRCUIT_NAMES.length?"#79e7b0":accent,fontSize:10.5,fontWeight:1100,marginTop:2}}>{step>=CIRCUIT_NAMES.length?"🏁 TABLEAU COMPLET":`${circuitIcons[step]||"🔌"} ${activeName}`}</div>
+          </div>
+          <div style={{borderRadius:9,padding:"6px 7px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}>
+            <div style={{color:SOFT,fontSize:7.5,fontWeight:900}}>CIRCUITS EN SERVICE</div>
+            <div style={{fontSize:13,fontWeight:1100,marginTop:1}}>{step}/{CIRCUIT_NAMES.length}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:8.5,color:SOFT}}><span>Charge thermique</span><b style={{color:thermalColor}}>{Math.round(overload)}%</b></div>
+        <Meter value={Math.min(overload,100)} max={100} accent={thermalColor}/>
+        <span style={{color:overload>=90?"#ff8b86":SOFT,fontSize:8.5,lineHeight:1.35}}>{overload>=90?"🚨 Coupure imminente : vise BULL pour refroidir avant la prochaine alimentation":"Cible active = alimenter le circuit · D/T = plus de puissance mais plus de chaleur · BULL = refroidissement"}</span>
+        {overload>=100?<div style={{borderRadius:9,padding:"6px 8px",border:"1px solid #ff5f5a66",background:"#ff5f5a12",color:"#ff918d",fontSize:8.3,fontWeight:1000}}>💥 SEUIL DE DISJONCTION ATTEINT · le moteur fera retomber un circuit puis ramènera la surcharge à 45%</div>:null}
+      </div>;
+    }))}
   </div>;
 }
 export function PetitBacPanel({ state, accent }: any) {
