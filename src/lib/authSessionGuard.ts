@@ -19,6 +19,12 @@ export function decodeJwtPayloadUnsafe(tokenInput: string): any {
   }
 }
 
+export function jwtExpiresAtMs(tokenInput: string): number {
+  const payload = decodeJwtPayloadUnsafe(tokenInput);
+  const expMs = Number(payload?.exp || 0) * 1000;
+  return Number.isFinite(expMs) && expMs > 0 ? expMs : 0;
+}
+
 export function isJwtFresh(tokenInput: string, skewMs = 30_000): boolean {
   const payload = decodeJwtPayloadUnsafe(tokenInput);
   if (!payload?.sub) return false;
@@ -33,6 +39,47 @@ export function isFreshSupabaseAccessToken(tokenInput: string, skewMs = 30_000):
   const payload = decodeJwtPayloadUnsafe(token);
   const issuer = String(payload?.iss || "").toLowerCase();
   return issuer.includes("supabase.co/auth/v1") || String(payload?.role || "") === "authenticated";
+}
+
+/**
+ * Retourne toujours le jeton Supabase de la session courante, avec une marge de
+ * validité suffisante pour les appels Cloudflare/R2. Si le jeton arrive à
+ * expiration, Supabase renouvelle d'abord la session. Cette fonction ne lit
+ * jamais les anciens JWT NAS/Google Drive.
+ */
+export async function ensureFreshSupabaseAccessToken(
+  client: any,
+  options: { minValidityMs?: number; forceRefresh?: boolean } = {},
+): Promise<string | null> {
+  const minValidityMs = Math.max(5_000, Number(options.minValidityMs ?? 90_000) || 90_000);
+
+  if (!options.forceRefresh) {
+    try {
+      const { data, error } = await client.auth.getSession();
+      if (!error) {
+        const token = String(data?.session?.access_token || "").trim();
+        if (token && isFreshSupabaseAccessToken(token, minValidityMs)) return token;
+      }
+    } catch {}
+  }
+
+  try {
+    const { data, error } = await client.auth.refreshSession();
+    if (!error) {
+      const token = String(data?.session?.access_token || "").trim();
+      if (token && isFreshSupabaseAccessToken(token, 5_000)) return token;
+    }
+  } catch {}
+
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (!error) {
+      const token = String(data?.session?.access_token || "").trim();
+      if (token && isFreshSupabaseAccessToken(token, 5_000)) return token;
+    }
+  } catch {}
+
+  return null;
 }
 
 export function isSensitiveAuthStorageKey(keyInput: string): boolean {
