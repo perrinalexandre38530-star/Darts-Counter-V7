@@ -6,7 +6,6 @@ on:
       - artifact-football-v10-gameplay-config-v13
   workflow_dispatch:
 
-# Temporary validation workflow for the Football V10 patch branch only.
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -25,3 +24,14 @@ jobs:
         run: node tools/test-football-ux-v10.mjs
       - name: Build
         run: npm run build
+      - name: Publish patch only
+        uses: actions/upload-artifact@v4
+        with:
+          name: PATCH_V13_DARTS_FOOTBALL_V10_GAMEPLAY_CONFIG
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            src/pages/FootballConfig.tsx
+            src/styles/football-config.css
+            src/styles/football-play.css
+            tools/test-football-ux-v10.mjs
