@@ -9,6 +9,7 @@ interface Env {
   FOUNDER_EMAILS?: string;
   FREE_CLOUD_QUOTA_BYTES?: string;
   CLOUD_OBJECT_MAX_UPLOAD_BYTES?: string;
+  ACCOUNT_MEDIA_QUOTA_BYTES?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET_STORAGE?: string;
   STRIPE_STORAGE_WEBHOOK_SECRET?: string;
@@ -63,6 +64,11 @@ type StorageEntitlement = {
 
 const R2_BACKUP_RETENTION_TOTAL = 2; // courante + précédente
 const DEFAULT_FREE_QUOTA_BYTES = 0;
+
+// Petit coffre média multi-appareils du compte.
+// Indépendant de la destination de sauvegarde et du plan R2 Backup.
+const DEFAULT_ACCOUNT_MEDIA_QUOTA_BYTES = 64 * 1024 * 1024;
+const ACCOUNT_MEDIA_MAX_OBJECT_BYTES = 900 * 1024;
 
 function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -213,6 +219,68 @@ function mediaFallbackKey(userId: string, mediaKey: string): string {
 
 function mediaFallbackManifestKey(userId: string): string {
   return `users/${safeId(userId)}/media-fallback/manifest-v2.json`;
+}
+
+function accountMediaObjectKey(userId: string, mediaKey: string): string {
+  return `users/${safeId(userId)}/account-media/${safeId(mediaKey)}.bin`;
+}
+
+function accountMediaManifestKey(userId: string): string {
+  return `users/${safeId(userId)}/account-media/manifest-v1.json`;
+}
+
+type AccountMediaManifest = {
+  version: 1;
+  userId: string;
+  updatedAt: string;
+  quotaBytes: number;
+  usedBytes: number;
+  media: Record<string, {
+    key: string;
+    kind: string;
+    sizeBytes: number;
+    checksum: string;
+    updatedAtMs: number;
+    sourceUrl?: string | null;
+    contentType: string;
+  }>;
+};
+
+function accountMediaQuotaBytes(env: Env): number {
+  const configured = Number(env.ACCOUNT_MEDIA_QUOTA_BYTES || 0);
+  return Number.isFinite(configured) && configured >= 8 * 1024 * 1024
+    ? Math.floor(configured)
+    : DEFAULT_ACCOUNT_MEDIA_QUOTA_BYTES;
+}
+
+function accountMediaMaxBytesForKind(kindInput: string): number {
+  const kind = String(kindInput || "").toLowerCase();
+  if (/(avatar|logo|gallery_item|dartset_thumb)/.test(kind)) return 260 * 1024;
+  if (/(cover)/.test(kind)) return 800 * 1024;
+  if (/(dartset_main)/.test(kind)) return 520 * 1024;
+  return ACCOUNT_MEDIA_MAX_OBJECT_BYTES;
+}
+
+async function readAccountMediaManifest(bucket: R2Bucket, userId: string, env: Env): Promise<AccountMediaManifest> {
+  const quotaBytes = accountMediaQuotaBytes(env);
+  const object = await bucket.get(accountMediaManifestKey(userId));
+  if (!object) return { version: 1, userId, updatedAt: new Date(0).toISOString(), quotaBytes, usedBytes: 0, media: {} };
+  try {
+    const parsed: any = JSON.parse(await object.text());
+    const media = parsed?.media && typeof parsed.media === "object" ? parsed.media : {};
+    const usedBytes = Object.values<any>(media).reduce((sum, row) => sum + Math.max(0, Number(row?.sizeBytes || 0)), 0);
+    return { version: 1, userId, updatedAt: String(parsed?.updatedAt || ""), quotaBytes, usedBytes, media };
+  } catch {
+    return { version: 1, userId, updatedAt: new Date(0).toISOString(), quotaBytes, usedBytes: 0, media: {} };
+  }
+}
+
+async function writeAccountMediaManifest(bucket: R2Bucket, manifest: AccountMediaManifest): Promise<void> {
+  manifest.updatedAt = new Date().toISOString();
+  manifest.usedBytes = Object.values<any>(manifest.media || {}).reduce((sum, row) => sum + Math.max(0, Number(row?.sizeBytes || 0)), 0);
+  await bucket.put(accountMediaManifestKey(manifest.userId), JSON.stringify(manifest), {
+    httpMetadata: { contentType: "application/json" },
+  });
 }
 
 function nasUserMirrorKey(userId: string): string {
@@ -568,6 +636,11 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+async function sha256BytesHex(bytes: ArrayBuffer): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function routeParts(params: any): string[] {
   const raw = Array.isArray(params?.path) ? params.path.join("/") : String(params?.path || "");
   return raw.split("/").map((v) => v.trim()).filter(Boolean);
@@ -647,6 +720,134 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
 
     const identity = await resolveIdentity(request, env);
+
+    // -----------------------------------------------------------------------
+    // ACCOUNT MEDIA SYNC
+    // Petit coffre R2 privé, compressé côté client, sans dépendance au plan
+    // R2 Backup ni à la destination choisie (Drive/NAS/SD/Local restent libres).
+    // -----------------------------------------------------------------------
+    if (method === "GET" && parts.length === 1 && parts[0] === "account-media-manifest") {
+      const manifest = await readAccountMediaManifest(bucket, identity.userId, env);
+      return json({
+        ok: true,
+        manifest,
+        audit: {
+          total: Object.keys(manifest.media || {}).length,
+          usedBytes: manifest.usedBytes,
+          quotaBytes: manifest.quotaBytes,
+          remainingBytes: Math.max(0, manifest.quotaBytes - manifest.usedBytes),
+        },
+        authMode: identity.authMode,
+      });
+    }
+
+    if (parts.length === 2 && parts[0] === "account-media") {
+      const mediaKey = safeId(parts[1]);
+      if (!mediaKey) return json({ ok: false, code: "account_media_key_invalid", error: "Clé média invalide." }, 400);
+      const objectKey = accountMediaObjectKey(identity.userId, mediaKey);
+      const manifest = await readAccountMediaManifest(bucket, identity.userId, env);
+
+      if (method === "GET") {
+        const object: any = await bucket.get(objectKey);
+        if (!object) return json({ ok: false, code: "account_media_missing", error: "Média de compte introuvable." }, 404);
+        const row: any = manifest.media?.[mediaKey] || {};
+        const bytes = await object.arrayBuffer();
+        const headers = new Headers({
+          "content-type": String(row.contentType || object.httpMetadata?.contentType || "image/webp"),
+          "content-length": String(bytes.byteLength),
+          "cache-control": "private, max-age=86400",
+          "x-mss-media-key": mediaKey,
+          "x-mss-media-kind": String(row.kind || "user_image"),
+          "x-mss-media-updated-at": String(Number(row.updatedAtMs || 0)),
+          "etag": String(row.checksum || ""),
+        });
+        if (row.sourceUrl) headers.set("x-mss-media-source-url", String(row.sourceUrl).slice(0, 1000));
+        return new Response(bytes, { status: 200, headers });
+      }
+
+      if (method === "POST") {
+        const url = new URL(request.url);
+        const kind = String(url.searchParams.get("kind") || "user_image").slice(0, 80);
+        const updatedAtMs = Number(url.searchParams.get("updatedAt") || Date.now()) || Date.now();
+        const sourceUrl = url.searchParams.get("sourceUrl") ? String(url.searchParams.get("sourceUrl")).slice(0, 1200) : null;
+        const contentType = String(request.headers.get("content-type") || "").toLowerCase();
+        if (!/^image\/(png|jpe?g|webp|gif|avif)(;|$)/i.test(contentType)) {
+          return json({ ok: false, code: "account_media_type_invalid", error: "Format image non autorisé." }, 400);
+        }
+
+        const bytes = await request.arrayBuffer();
+        const sizeBytes = bytes.byteLength;
+        const maxBytes = Math.min(ACCOUNT_MEDIA_MAX_OBJECT_BYTES, accountMediaMaxBytesForKind(kind));
+        if (!sizeBytes || sizeBytes > maxBytes) {
+          return json({
+            ok: false,
+            code: "account_media_object_too_large",
+            error: `Image synchronisée trop volumineuse (${sizeBytes} octets, max ${maxBytes}).`,
+          }, 413);
+        }
+
+        const previous = manifest.media?.[mediaKey];
+        const projectedUsed = Math.max(0, manifest.usedBytes - Number(previous?.sizeBytes || 0) + sizeBytes);
+        if (projectedUsed > manifest.quotaBytes) {
+          return json({
+            ok: false,
+            code: "account_media_quota_exceeded",
+            error: "Quota du coffre média du compte atteint. Supprime d'anciens médias avant d'en ajouter.",
+            usedBytes: manifest.usedBytes,
+            quotaBytes: manifest.quotaBytes,
+            projectedUsedBytes: projectedUsed,
+          }, 413);
+        }
+
+        const checksum = await sha256BytesHex(bytes);
+        await bucket.put(objectKey, bytes, {
+          httpMetadata: { contentType: contentType.split(";")[0] || "image/webp" },
+          customMetadata: {
+            userId: identity.userId,
+            mediaKey,
+            kind,
+            checksum,
+            updatedAtMs: String(updatedAtMs),
+          },
+        });
+        const row = {
+          key: mediaKey,
+          kind,
+          sizeBytes,
+          checksum,
+          updatedAtMs,
+          sourceUrl,
+          contentType: contentType.split(";")[0] || "image/webp",
+        };
+        manifest.media[mediaKey] = row;
+        await writeAccountMediaManifest(bucket, manifest);
+        return json({
+          ok: true,
+          media: row,
+          audit: {
+            total: Object.keys(manifest.media || {}).length,
+            usedBytes: manifest.usedBytes,
+            quotaBytes: manifest.quotaBytes,
+          },
+          authMode: identity.authMode,
+        }, 201);
+      }
+
+      if (method === "DELETE") {
+        await bucket.delete(objectKey);
+        delete manifest.media[mediaKey];
+        await writeAccountMediaManifest(bucket, manifest);
+        return json({
+          ok: true,
+          deleted: true,
+          audit: {
+            total: Object.keys(manifest.media || {}).length,
+            usedBytes: manifest.usedBytes,
+            quotaBytes: manifest.quotaBytes,
+          },
+        });
+      }
+    }
 
     if (parts.length === 2 && parts[0] === "billing" && parts[1] === "status" && method === "GET") {
       const allPriceEnv = Object.values(STORAGE_BILLING_PLANS).flatMap((plan) => [plan.monthlyEnv, plan.yearlyEnv]);

@@ -6,7 +6,7 @@
 
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
 import { captureUserMediaFallback, teamLogoMediaKey } from "./userMediaFallback";
-import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
+import { deleteAccountR2Media, deleteDirectR2MediaFallback } from "./directR2BackupApi";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
 import { accountScopedLocalStorageKey, adoptLegacyLocalStorageKey, getAccountScopeId } from "./accountScope";
 
@@ -160,7 +160,10 @@ export function updateTeam(
 export function deleteTeam(id: string) {
   const prev = loadTeams();
   saveTeams(prev.filter((t) => t.id !== id));
-  void deleteDirectR2MediaFallback(teamLogoMediaKey(id)).catch(() => undefined);
+  void Promise.allSettled([
+    deleteAccountR2Media(teamLogoMediaKey(id)),
+    deleteDirectR2MediaFallback(teamLogoMediaKey(id)),
+  ]);
 }
 
 // ---------------------------

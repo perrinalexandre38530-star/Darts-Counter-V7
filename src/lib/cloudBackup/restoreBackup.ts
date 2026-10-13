@@ -164,5 +164,21 @@ export async function restoreCloudBackupFromJson(args: {
     } catch {}
   }
 
+  // Compat CloudBackup V1 : même règle que les snapshots modernes.
+  // Une restauration devient le nouvel état du compte, quel que soit le
+  // transport qui a fourni le fichier (Drive/NAS/SD/fichier/R2).
+  try {
+    const forceSync = typeof window !== "undefined" ? (window as any).__forceAccountOwnedSyncNow : null;
+    if (typeof forceSync === "function") {
+      await forceSync({ reason: `cloud-backup-v1:${mode}` });
+    } else if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc:account-owned-force-sync", {
+        detail: { reason: `cloud-backup-v1:${mode}` },
+      }));
+    }
+  } catch (syncError) {
+    console.warn("[cloudBackup] account sync after restore deferred", syncError);
+  }
+
   return { ok: true, backup };
 }

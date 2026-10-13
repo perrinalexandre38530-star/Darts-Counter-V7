@@ -4281,7 +4281,27 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   portableReport = await revalidatePortableRestoreReport(portableReport);
   await yieldIfNeeded(true);
   runtimeRefreshed = await refreshRuntimeStoreAfterRestore("cloud-snapshot-import").catch(() => false);
-  report(100, "Import local terminé.");
+
+  // Une sauvegarde restaurée (Drive / NAS / SD / fichier / R2) devient le nouvel
+  // état du compte. On force donc la réplication légère Supabase + médias R2 du
+  // compte AVANT de rendre la main. Ce bridge est indépendant du transport backup.
+  report(99, "Synchronisation de la sauvegarde restaurée avec votre compte…");
+  try {
+    const forceSync = typeof window !== "undefined" ? (window as any).__forceAccountOwnedSyncNow : null;
+    if (typeof forceSync === "function") {
+      await forceSync({ reason: `restore:${mode}` });
+    } else if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc:account-owned-force-sync", {
+        detail: { reason: `restore:${mode}` },
+      }));
+    }
+  } catch (syncError) {
+    // La restauration locale reste valide même si le réseau est momentanément
+    // indisponible. Le polling/focus du compte reprendra la réplication ensuite.
+    console.warn("[storage] account sync after restore deferred", syncError);
+  }
+
+  report(100, "Import local terminé et raccordé au compte.");
   } finally {
     try { sessionStorage.removeItem("dc_cloud_restore_in_progress_v2"); } catch {}
     endFreezeOperation(__freezeOp);

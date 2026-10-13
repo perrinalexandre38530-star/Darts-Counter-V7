@@ -1,6 +1,10 @@
 import {
+  ACCOUNT_MEDIA_SYNCED_EVENT,
+  downloadAccountR2Media,
   downloadDirectR2MediaFallback,
+  uploadAccountR2Media,
   uploadDirectR2MediaFallback,
+  isAccountR2MediaFresh,
   isDirectR2MediaFresh,
   listDirectR2Backups,
   downloadDirectR2Backup,
@@ -8,6 +12,8 @@ import {
 } from "./directR2BackupApi";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { createCooperativeYielder } from "./mainThreadYield";
+
+export { ACCOUNT_MEDIA_SYNCED_EVENT };
 
 export type UserMediaKind =
   | "profile_avatar"
@@ -101,6 +107,43 @@ export function getUserMediaMemoryDiagnostics() {
   };
 }
 
+export async function getUserMediaVaultDiagnostics(): Promise<{
+  entries: number;
+  approxBytes: number;
+  byKind: Record<string, number>;
+  keys: string[];
+  newestUpdatedAt: number;
+  oldestUpdatedAt: number;
+  memory: ReturnType<typeof getUserMediaMemoryDiagnostics>;
+}> {
+  const rows = (await idbGetAll()).filter((row) => row?.key && isImageDataUrl(row?.dataUrl));
+  const byKind: Record<string, number> = {};
+  let chars = 0;
+  let newestUpdatedAt = 0;
+  let oldestUpdatedAt = Number.MAX_SAFE_INTEGER;
+  for (const row of rows) {
+    const kind = String(row?.kind || String(row?.key || "").split(":")[0] || "user_image");
+    byKind[kind] = (byKind[kind] || 0) + 1;
+    chars += String(row?.dataUrl || "").length;
+    const ts = Number(row?.updatedAt || 0) || 0;
+    if (ts) {
+      newestUpdatedAt = Math.max(newestUpdatedAt, ts);
+      oldestUpdatedAt = Math.min(oldestUpdatedAt, ts);
+    }
+  }
+  // Base64 ~= 4/3 du binaire ; approximation suffisante pour le diagnostic.
+  const approxBytes = Math.round(chars * 0.75);
+  return {
+    entries: rows.length,
+    approxBytes,
+    byKind,
+    keys: rows.map((row) => String(row.key)).sort(),
+    newestUpdatedAt,
+    oldestUpdatedAt: oldestUpdatedAt === Number.MAX_SAFE_INTEGER ? 0 : oldestUpdatedAt,
+    memory: getUserMediaMemoryDiagnostics(),
+  };
+}
+
 try {
   (globalThis as any).__dcUserMediaMemoryDiagnostics = getUserMediaMemoryDiagnostics;
 } catch {}
@@ -181,6 +224,14 @@ function isImageDataUrl(value: unknown): boolean {
   return typeof value === "string" && /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(value.trim());
 }
 
+function estimatedDataUrlBytes(value: string): number {
+  const raw = String(value || "");
+  const comma = raw.indexOf(",");
+  if (comma < 0) return raw.length;
+  const payloadLength = Math.max(0, raw.length - comma - 1);
+  return Math.floor(payloadLength * 0.75);
+}
+
 function sourceSignature(value: string): string {
   const s = String(value || "").trim();
   if (!s) return "";
@@ -189,13 +240,16 @@ function sourceSignature(value: string): string {
   return `${s.length}:${s.slice(0, 48)}:${s.slice(-48)}`;
 }
 
+const MAX_IMPORTED_IMAGE_BYTES = 12 * 1024 * 1024;
+
 function imagePolicy(kind: string) {
   if (kind === "profile_avatar" || kind === "local_profile_avatar" || kind === "bot_avatar" || kind === "online_avatar" || kind === "group_avatar" || kind === "team_logo" || kind === "club_logo" || kind === "gallery_item" || kind === "avatar_ai_gallery") {
-    return { maxEdge: 320, quality: 0.82, maxChars: 260_000 };
+    return { maxEdge: 320, quality: 0.80, maxChars: 240_000, preserveAlpha: true };
   }
-  if (kind === "dartset_thumb") return { maxEdge: 420, quality: 0.82, maxChars: 420_000 };
-  if (kind === "group_cover" || kind === "club_cover") return { maxEdge: 1280, quality: 0.80, maxChars: 1_350_000 };
-  return { maxEdge: 900, quality: 0.82, maxChars: 1_100_000 };
+  if (kind === "dartset_thumb") return { maxEdge: 420, quality: 0.80, maxChars: 340_000, preserveAlpha: false };
+  if (kind === "group_cover" || kind === "club_cover" || kind === "team_cover") return { maxEdge: 1280, quality: 0.78, maxChars: 800_000, preserveAlpha: false };
+  if (kind === "dartset_main") return { maxEdge: 768, quality: 0.80, maxChars: 520_000, preserveAlpha: false };
+  return { maxEdge: 900, quality: 0.80, maxChars: 700_000, preserveAlpha: false };
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -514,6 +568,7 @@ async function exactSourceDataUrl(source: string): Promise<string> {
 
 async function compactBlob(blob: Blob, kind: string): Promise<string> {
   if (typeof document === "undefined") return "";
+  if (Number(blob?.size || 0) > MAX_IMPORTED_IMAGE_BYTES) return "";
   const policy = imagePolicy(kind);
   let bitmap: ImageBitmap | null = null;
   let objectUrl = "";
@@ -545,15 +600,20 @@ async function compactBlob(blob: Blob, kind: string): Promise<string> {
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d", { alpha: policy.preserveAlpha });
     if (!ctx) return "";
     ctx.drawImage(source, 0, 0, w, h);
 
-    const candidates = [
-      canvas.toDataURL("image/webp", policy.quality),
-      canvas.toDataURL("image/jpeg", policy.quality),
-      canvas.toDataURL("image/jpeg", Math.max(0.58, policy.quality - 0.18)),
-    ];
+    const candidates = policy.preserveAlpha
+      ? [
+          canvas.toDataURL("image/webp", policy.quality),
+          canvas.toDataURL("image/webp", Math.max(0.58, policy.quality - 0.16)),
+        ]
+      : [
+          canvas.toDataURL("image/webp", policy.quality),
+          canvas.toDataURL("image/jpeg", policy.quality),
+          canvas.toDataURL("image/jpeg", Math.max(0.58, policy.quality - 0.18)),
+        ];
     for (const candidate of candidates) {
       if (isImageDataUrl(candidate) && candidate.length <= policy.maxChars) return candidate;
     }
@@ -569,7 +629,10 @@ async function compactBlob(blob: Blob, kind: string): Promise<string> {
 async function compactSource(source: string, kind: string): Promise<string> {
   const value = String(source || "").trim();
   const policy = imagePolicy(kind);
-  if (isImageDataUrl(value) && value.length <= policy.maxChars) return value;
+  if (isImageDataUrl(value)) {
+    if (estimatedDataUrlBytes(value) > MAX_IMPORTED_IMAGE_BYTES) return "";
+    if (value.length <= policy.maxChars) return value;
+  }
   const blob = await browserCachedBlob(value);
   if (!blob) return "";
   return compactBlob(blob, kind);
@@ -596,7 +659,7 @@ export async function readLocalUserMediaFallback(keyInput: string): Promise<stri
 export async function captureUserMediaFallback(
   keyInput: string,
   sourceInput: string,
-  opts: { kind?: UserMediaKind | string; updatedAt?: number; mirrorR2?: boolean; sourceUrl?: string | null } = {},
+  opts: { kind?: UserMediaKind | string; updatedAt?: number; mirrorR2?: boolean; mirrorAccount?: boolean; sourceUrl?: string | null } = {},
 ): Promise<string> {
   const key = cleanKey(keyInput);
   const source = String(sourceInput || "").trim();
@@ -608,7 +671,11 @@ export async function captureUserMediaFallback(
     const kind = String(opts.kind || key.split(":")[0] || "user_image");
     const explicitUpdatedAt = Number(opts.updatedAt || 0);
     const updatedAt = explicitUpdatedAt > 0 ? explicitUpdatedAt : Date.now();
-    const mirrorR2 = opts.mirrorR2 !== false && canAttemptDirectR2FromStoredSession();
+    const canRemote = canAttemptDirectR2FromStoredSession();
+    // Account media sync is NOT the premium R2 backup. It follows the signed-in
+    // account even when Drive/NAS/SD/Local is the selected backup destination.
+    const mirrorAccount = opts.mirrorAccount !== false && canRemote;
+    const mirrorR2 = opts.mirrorR2 !== false && canRemote;
     const sourceSig = sourceSignature(source);
 
     // Dédup locale AVANT FileReader/canvas/IDB. C'était le point chaud principal :
@@ -625,6 +692,13 @@ export async function captureUserMediaFallback(
 
     if (sameSource && localEntry) {
       rememberEntry(localEntry);
+      if (mirrorAccount) {
+        try {
+          if (!(await isAccountR2MediaFresh({ key, updatedAt: Number(localEntry.updatedAt || updatedAt) }))) {
+            await uploadAccountR2Media(localEntry);
+          }
+        } catch {}
+      }
       if (mirrorR2) {
         try {
           if (!(await isDirectR2MediaFresh({ key, updatedAt: Number(localEntry.updatedAt || updatedAt) }))) {
@@ -635,7 +709,18 @@ export async function captureUserMediaFallback(
       return localEntry.dataUrl;
     }
 
-    // Chemin ultra-rapide des sauvegardes suivantes : si R2 possède déjà cette
+    // Chemin ultra-rapide du coffre média du compte : indépendant de la
+    // destination de sauvegarde choisie et de l'abonnement R2 Backup.
+    if (mirrorAccount) {
+      try {
+        if (await isAccountR2MediaFresh({ key, updatedAt })) {
+          const local = await readLocalUserMediaFallback(key);
+          return local || (isImageDataUrl(source) ? source : "");
+        }
+      } catch {}
+    }
+
+    // Chemin ultra-rapide des sauvegardes premium suivantes : si R2 possède déjà cette
     // version, on ne relit PAS l'image, on ne crée PAS de canvas et on ne refait
     // aucun POST.
     if (mirrorR2) {
@@ -662,8 +747,11 @@ export async function captureUserMediaFallback(
       sourceSig: sourceSig || null,
     };
     await storeEntry(entry);
+    if (mirrorAccount) {
+      try { await uploadAccountR2Media(entry); } catch {}
+    }
     if (mirrorR2) {
-      await uploadDirectR2MediaFallback(entry);
+      try { await uploadDirectR2MediaFallback(entry); } catch {}
     }
     return mirrored;
   })().finally(() => pendingCapture.delete(key));
@@ -883,7 +971,24 @@ export async function resolveUserMediaFallback(
     if (found) return found;
 
     if (opts.allowR2 !== false && canAttemptDirectR2FromStoredSession()) {
-      // 3) Objet média R2 dédié : chemin normal à partir de ce patch.
+      // 3) Coffre média du compte : léger, compressé et indépendant du plan
+      // de sauvegarde (Drive / NAS / SD / Local / R2 Backup).
+      try {
+        const accountRemote = await downloadAccountR2Media(key);
+        const dataUrl = String(accountRemote?.dataUrl || "").trim();
+        if (isImageDataUrl(dataUrl)) {
+          await storeEntry({
+            key,
+            kind: String(accountRemote?.meta?.kind || kind),
+            dataUrl,
+            updatedAt: Number(accountRemote?.meta?.updatedAtMs || Date.now()) || Date.now(),
+            sourceUrl: accountRemote?.meta?.sourceUrl || null,
+          });
+          return dataUrl;
+        }
+      } catch {}
+
+      // 4) Ancien objet média R2 premium : reste un fallback de sauvegarde.
       try {
         const remote = await downloadDirectR2MediaFallback(key);
         const dataUrl = String(remote?.dataUrl || "").trim();
@@ -899,13 +1004,13 @@ export async function resolveUserMediaFallback(
         }
       } catch {}
 
-      // 4) Sauvegardes R2 courante + précédente, lues directement par Pages.
+      // 5) Sauvegardes R2 courante + précédente, lues directement par Pages.
       await hydrateFromR2BackupsOnce();
       found = await readLocalUserMediaFallback(key);
       if (found) return found;
     }
 
-    // 5) Dernier filet : cache HTTP/PWA de l'ancienne URL puis NAS si celui-ci
+    // 6) Dernier filet : cache HTTP/PWA de l'ancienne URL puis NAS si celui-ci
     // vient de revenir. Une image retrouvée ici est immédiatement scellée dans
     // IndexedDB + R2 pour que la panne suivante soit transparente.
     const primary = String(primarySourceInput || "").trim();
@@ -913,8 +1018,11 @@ export async function resolveUserMediaFallback(
       found = await compactSource(primary, kind);
       if (found) {
         await storeEntry({ key, kind, dataUrl: found, updatedAt: Date.now(), sourceUrl: primary });
-        if (opts.mirrorRecoveredToR2 !== false && canAttemptDirectR2FromStoredSession()) {
-          void uploadDirectR2MediaFallback({ key, kind, dataUrl: found, updatedAt: Date.now(), sourceUrl: primary }).catch(() => undefined);
+        if (canAttemptDirectR2FromStoredSession()) {
+          void uploadAccountR2Media({ key, kind, dataUrl: found, updatedAt: Date.now(), sourceUrl: primary }).catch(() => undefined);
+          if (opts.mirrorRecoveredToR2 !== false) {
+            void uploadDirectR2MediaFallback({ key, kind, dataUrl: found, updatedAt: Date.now(), sourceUrl: primary }).catch(() => undefined);
+          }
         }
         return found;
       }
@@ -1195,6 +1303,29 @@ export async function hydrateStoreUserMedia(
   if (teams.length) store.teams = teams;
 
   return { store, changed };
+}
+
+
+export async function mirrorAllLocalUserMediaToAccountR2(
+  opts: { maxEntries?: number; onProgress?: (completed: number, total: number) => void } = {},
+): Promise<{ attempted: number; uploaded: number }> {
+  if (!canAttemptDirectR2FromStoredSession()) return { attempted: 0, uploaded: 0 };
+  const rows = (await idbGetAll())
+    .filter((row) => row?.key && isImageDataUrl(row?.dataUrl))
+    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+    .slice(0, Math.max(1, Number(opts.maxEntries || MAX_LOCAL_ENTRIES)));
+
+  let uploaded = 0;
+  await mapWithConcurrency(rows, 2, async (row) => {
+    try {
+      if (!(await isAccountR2MediaFresh({ key: row.key, updatedAt: row.updatedAt }))) {
+        await uploadAccountR2Media(row);
+        uploaded += 1;
+      }
+    } catch {}
+    opts.onProgress?.(Math.min(rows.length, uploaded), rows.length);
+  });
+  return { attempted: rows.length, uploaded };
 }
 
 export async function exportUserMediaFallbackSnapshot(): Promise<UserMediaFallbackSnapshot> {

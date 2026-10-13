@@ -21,6 +21,7 @@ function corsHeaders(origin: string | null): HeadersInit {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Authorization,Content-Type,Accept",
+    "Access-Control-Expose-Headers": "Content-Length,ETag,X-MSS-Media-Key,X-MSS-Media-Kind,X-MSS-Media-Updated-At,X-MSS-Media-Source-Url,X-MSS-Media-Missing",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
@@ -51,6 +52,11 @@ export const onRequest: PagesFunction = async (context) => {
   // On renvoie donc un cache-miss 200 au lieu d'un 404 rouge dans DevTools.
   if (method === "GET" && response.status === 404) {
     const pathname = new URL(context.request.url).pathname;
+    if (pathname.includes("/api/storage/backups/account-media/")) {
+      const response = jsonWithCors({ ok: true, media: null, missing: true }, origin, 200);
+      response.headers.set("X-MSS-Media-Missing", "1");
+      return response;
+    }
     if (pathname.includes("/api/storage/backups/media/")) {
       return jsonWithCors({ ok: true, media: null, missing: true }, origin, 200);
     }

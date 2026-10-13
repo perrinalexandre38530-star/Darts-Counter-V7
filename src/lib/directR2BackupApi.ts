@@ -65,6 +65,28 @@ export type DirectR2MediaFallback = {
   sourceUrl?: string | null;
 };
 
+export type AccountR2MediaMeta = {
+  version?: number;
+  key: string;
+  kind?: string;
+  sizeBytes?: number;
+  checksum?: string | null;
+  updatedAtMs?: number | null;
+  sourceUrl?: string | null;
+  contentType?: string | null;
+};
+
+export type AccountR2MediaManifest = {
+  version?: number;
+  userId?: string;
+  updatedAt?: string | null;
+  quotaBytes?: number;
+  usedBytes?: number;
+  media?: Record<string, AccountR2MediaMeta>;
+};
+
+export const ACCOUNT_MEDIA_SYNCED_EVENT = "dc:account-media-synced";
+
 export type DirectR2AvatarFallback = {
   version?: number;
   profileId: string;
@@ -482,6 +504,225 @@ async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous =
   (error as any).status = response.status;
   (error as any).code = String(payload?.code || "");
   throw error;
+}
+
+
+function dataUrlToBlob(dataUrlInput: string): Blob | null {
+  const dataUrl = String(dataUrlInput || "").trim();
+  const match = /^data:(image\/(?:png|jpe?g|webp|gif|avif));base64,([\s\S]+)$/i.exec(dataUrl);
+  if (!match) return null;
+  try {
+    const raw = atob(match[2]);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+    return new Blob([bytes], { type: match[1].toLowerCase().replace("jpg", "jpeg") });
+  } catch {
+    return null;
+  }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    } catch {
+      resolve("");
+    }
+  });
+}
+
+async function requestDirectRaw(path: string, init: RequestInit = {}): Promise<Response> {
+  const auth = await readDirectStorageToken();
+  if (!auth.token) {
+    const error = new Error("Aucune session Cloud exploitable pour synchroniser les médias du compte.");
+    (error as any).code = "cloud_session_missing";
+    throw error;
+  }
+  if (isDirectAuthRejected(auth)) {
+    const error = new Error("Session Cloud temporairement suspendue après refus d'authentification.");
+    (error as any).status = 401;
+    (error as any).code = "cloud_session_rejected";
+    throw error;
+  }
+
+  const headers = new Headers(init.headers || {});
+  headers.set("Authorization", `Bearer ${auth.token}`);
+  if (!headers.has("Accept")) headers.set("Accept", "application/json,image/*");
+  let response: Response;
+  const timeoutMs = String(init.method || "GET").toUpperCase() === "POST"
+    ? REQUEST_TIMEOUT_MUTATION_MS
+    : REQUEST_TIMEOUT_READ_MS;
+  try {
+    response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers }, timeoutMs);
+  } catch (error: any) {
+    if (error?.name === "AbortError") throw new Error("Le coffre média du compte n'a pas répondu à temps.");
+    throw error;
+  }
+  if (response.ok) return response;
+
+  const rawText = await response.text().catch(() => "");
+  const payload = safeJson(rawText);
+  if (response.status === 401) markDirectAuthRejected(auth);
+  const error = conciseR2Error(response.status, payload, rawText, auth.kind);
+  (error as any).status = response.status;
+  (error as any).code = String(payload?.code || "");
+  throw error;
+}
+
+let accountMediaManifestCache: AccountR2MediaManifest | null = null;
+let accountMediaManifestCacheAt = 0;
+const ACCOUNT_MEDIA_MANIFEST_CACHE_MS = 15_000;
+
+/**
+ * Doit rester strictement aligné avec safeId() côté Cloudflare pour le coffre
+ * account-media. Les media keys locales gardent leurs ":" lisibles dans
+ * IndexedDB, mais la clé objet/manifest R2 est normalisée.
+ */
+export function normalizeAccountR2MediaKey(value: unknown): string {
+  return String(value || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 160);
+}
+
+async function readAccountMediaManifestCached(force = false): Promise<AccountR2MediaManifest | null> {
+  if (!force && accountMediaManifestCacheAt && Date.now() - accountMediaManifestCacheAt < ACCOUNT_MEDIA_MANIFEST_CACHE_MS) {
+    return accountMediaManifestCache;
+  }
+  try {
+    const payload = await requestDirect("/account-media-manifest", { method: "GET" });
+    accountMediaManifestCache = (payload?.manifest || { version: 1, media: {} }) as AccountR2MediaManifest;
+    accountMediaManifestCacheAt = Date.now();
+    return accountMediaManifestCache;
+  } catch {
+    accountMediaManifestCacheAt = Date.now();
+    return accountMediaManifestCache;
+  }
+}
+
+export async function getAccountR2MediaDiagnosticSnapshot(force = true): Promise<{
+  manifest: AccountR2MediaManifest;
+  audit: { total: number; usedBytes: number; quotaBytes: number; remainingBytes: number };
+  authMode?: string;
+}> {
+  const payload = await requestDirect("/account-media-manifest", { method: "GET" });
+  const manifest = (payload?.manifest || { version: 1, media: {} }) as AccountR2MediaManifest;
+  accountMediaManifestCache = manifest;
+  accountMediaManifestCacheAt = Date.now();
+  const usedBytes = Number(payload?.audit?.usedBytes ?? manifest.usedBytes ?? 0) || 0;
+  const quotaBytes = Number(payload?.audit?.quotaBytes ?? manifest.quotaBytes ?? 0) || 0;
+  const total = Number(payload?.audit?.total ?? Object.keys(manifest.media || {}).length) || 0;
+  return {
+    manifest,
+    audit: {
+      total,
+      usedBytes,
+      quotaBytes,
+      remainingBytes: Number(payload?.audit?.remainingBytes ?? Math.max(0, quotaBytes - usedBytes)) || 0,
+    },
+    authMode: payload?.authMode ? String(payload.authMode) : undefined,
+  };
+}
+
+function updateAccountMediaManifestCache(meta: AccountR2MediaMeta): void {
+  if (!meta?.key) return;
+  if (!accountMediaManifestCache) accountMediaManifestCache = { version: 1, media: {} };
+  if (!accountMediaManifestCache.media) accountMediaManifestCache.media = {};
+  accountMediaManifestCache.media[meta.key] = meta;
+  accountMediaManifestCacheAt = Date.now();
+}
+
+export async function isAccountR2MediaFresh(args: { key: string; updatedAt?: number | null }): Promise<boolean> {
+  const key = normalizeAccountR2MediaKey(args?.key);
+  if (!key) return false;
+  const manifest = await readAccountMediaManifestCached();
+  const row = manifest?.media?.[key];
+  if (!row) return false;
+  const expected = Number(args?.updatedAt || 0);
+  if (!expected) return true;
+  return Number(row.updatedAtMs || 0) >= expected;
+}
+
+export async function uploadAccountR2Media(args: {
+  key: string;
+  kind?: string;
+  dataUrl: string;
+  updatedAt?: number | null;
+  sourceUrl?: string | null;
+}): Promise<AccountR2MediaMeta> {
+  const key = normalizeAccountR2MediaKey(args?.key);
+  const kind = String(args?.kind || "user_image").trim() || "user_image";
+  const blob = dataUrlToBlob(args?.dataUrl || "");
+  if (!key || !blob) throw new Error("Média de compte invalide.");
+
+  if (await isAccountR2MediaFresh({ key, updatedAt: args.updatedAt })) {
+    const row = (await readAccountMediaManifestCached())?.media?.[key];
+    return row || { key, kind, sizeBytes: blob.size, updatedAtMs: args.updatedAt ?? Date.now(), contentType: blob.type };
+  }
+
+  const query = new URLSearchParams({
+    kind,
+    updatedAt: String(Number(args.updatedAt || Date.now()) || Date.now()),
+  });
+  if (args.sourceUrl) query.set("sourceUrl", String(args.sourceUrl).slice(0, 1200));
+  const response = await requestDirectRaw(`/account-media/${encodeURIComponent(key)}?${query.toString()}`, {
+    method: "POST",
+    headers: { "Content-Type": blob.type || "image/webp" },
+    body: blob,
+  });
+  const payload = safeJson(await response.text().catch(() => "")) || {};
+  const meta = (payload?.media || {
+    key,
+    kind,
+    sizeBytes: blob.size,
+    updatedAtMs: Number(args.updatedAt || Date.now()) || Date.now(),
+    contentType: blob.type,
+  }) as AccountR2MediaMeta;
+  updateAccountMediaManifestCache(meta);
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_MEDIA_SYNCED_EVENT, { detail: { ...meta, source: "account-r2" } }));
+    }
+  } catch {}
+  return meta;
+}
+
+export async function downloadAccountR2Media(keyInput: string): Promise<{ meta: AccountR2MediaMeta; dataUrl: string } | null> {
+  const key = normalizeAccountR2MediaKey(keyInput);
+  if (!key) return null;
+  try {
+    const response = await requestDirectRaw(`/account-media/${encodeURIComponent(key)}`, { method: "GET" });
+    const missing = response.headers.get("x-mss-media-missing") === "1";
+    if (missing || response.status === 204) return null;
+    const blob = await response.blob();
+    if (!blob.size || !String(blob.type || "").startsWith("image/")) return null;
+    const dataUrl = await blobToDataUrl(blob);
+    if (!dataUrl) return null;
+    const meta: AccountR2MediaMeta = {
+      key,
+      kind: response.headers.get("x-mss-media-kind") || undefined,
+      sizeBytes: Number(response.headers.get("content-length") || blob.size) || blob.size,
+      checksum: response.headers.get("etag") || undefined,
+      updatedAtMs: Number(response.headers.get("x-mss-media-updated-at") || 0) || undefined,
+      sourceUrl: response.headers.get("x-mss-media-source-url") || undefined,
+      contentType: blob.type,
+    };
+    updateAccountMediaManifestCache(meta);
+    return { meta, dataUrl };
+  } catch (error: any) {
+    if (Number(error?.status || 0) === 404) return null;
+    if (/introuvable|missing/i.test(String(error?.message || ""))) return null;
+    throw error;
+  }
+}
+
+export async function deleteAccountR2Media(keyInput: string): Promise<boolean> {
+  const key = normalizeAccountR2MediaKey(keyInput);
+  if (!key) return false;
+  await requestDirect(`/account-media/${encodeURIComponent(key)}`, { method: "DELETE" });
+  if (accountMediaManifestCache?.media) delete accountMediaManifestCache.media[key];
+  accountMediaManifestCacheAt = Date.now();
+  return true;
 }
 
 async function readCachedMediaManifest(): Promise<DirectR2MediaManifest | null> {

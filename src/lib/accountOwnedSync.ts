@@ -16,6 +16,7 @@ import { History, ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT, type SavedMatch } from "./
 import { loadBots, restoreBotsFromSnapshot } from "./bots";
 import { isOfficialBotId } from "./officialBots";
 import { loadTeams, saveTeams, type TeamEntity } from "./petanqueTeamsStore";
+import { getAllDartSets, setAllDartSets, type DartSet } from "./dartSetsStore";
 import { AVATAR_GALLERY_EVENT, readAvatarGallery, writeAvatarGallery, type AvatarGalleryItem } from "./avatarGallery";
 import {
   loadStatsIndex,
@@ -30,7 +31,12 @@ import {
   type OrganizationWorkspace,
 } from "../organizations/organizationWorkspace";
 import {
+  ACCOUNT_MEDIA_SYNCED_EVENT,
   botAvatarMediaKey,
+  captureStoreUserMedia,
+  mirrorAllLocalUserMediaToAccountR2,
+  dartSetMainMediaKey,
+  dartSetThumbMediaKey,
   galleryItemMediaKey,
   profileAvatarMediaKey,
   resolveUserMediaFallback,
@@ -42,6 +48,7 @@ import { accountScopedLocalStorageKey } from "./accountScope";
 
 export const ACCOUNT_OWNED_STORE_MUTATED_EVENT = "dc:account-owned-store-mutated";
 export const ACCOUNT_OWNED_SYNC_STATUS_EVENT = "dc:account-owned-sync-status";
+export const ACCOUNT_OWNED_FORCE_SYNC_EVENT = "dc:account-owned-force-sync";
 
 const TABLE = "account_sync_documents";
 const DEFAULT_DOCUMENT_ID = "default";
@@ -57,6 +64,7 @@ const DOC = {
   bots: "bots",
   teams: "teams",
   gallery: "avatar_gallery",
+  dartSets: "dart_sets",
   statsIndex: "stats_index",
   statsSources: "stats_sources",
   organizationWorkspace: "organization_workspace",
@@ -309,6 +317,35 @@ function serializeGallery(userId: string): any[] {
   });
 }
 
+function serializeDartSets(): any[] {
+  return getAllDartSets()
+    .map((set: any) => {
+      const id = cleanId(set?.id);
+      if (!id) return null;
+      const main = cleanId(
+        set?.photoDataUrl || set?.imageDataUrl || set?.mainImageDataUrl ||
+        set?.dartSetImageDataUrl || set?.mainImageUrl || set?.photoUrl || set?.imageUrl
+      );
+      const thumb = cleanId(
+        set?.photoThumbDataUrl || set?.thumbDataUrl || set?.thumbImageDataUrl ||
+        set?.thumbImageUrl || set?.photoThumbUrl
+      );
+      const row = cloudSafe(set) || {};
+      row.id = id;
+      row.__syncMainMedia = !!(set?.kind === "photo" || isInlineImage(main));
+      row.__syncThumbMedia = !!(set?.kind === "photo" || isInlineImage(thumb) || row.__syncMainMedia);
+      row.photoDataUrl = null;
+      row.imageDataUrl = null;
+      row.mainImageDataUrl = null;
+      row.dartSetImageDataUrl = null;
+      row.photoThumbDataUrl = null;
+      row.thumbDataUrl = null;
+      row.thumbImageDataUrl = null;
+      return row;
+    })
+    .filter(Boolean);
+}
+
 function mergeById(localInput: any[], remoteInput: any[]): any[] {
   const local = Array.isArray(localInput) ? localInput : [];
   const remote = Array.isArray(remoteInput) ? remoteInput : [];
@@ -413,6 +450,35 @@ async function hydrateGallery(input: any[]): Promise<AvatarGalleryItem[]> {
     return row;
   });
   return rows.filter((row: any) => cleanId(row?.id) && cleanId(row?.src)) as AvatarGalleryItem[];
+}
+
+async function hydrateDartSets(input: any[]): Promise<DartSet[]> {
+  const rows = await mapWithConcurrency(Array.isArray(input) ? input : [], 3, async (raw: any) => {
+    const row = { ...(raw || {}) };
+    const id = cleanId(row.id);
+    if (!id) return row as DartSet;
+
+    if (row.__syncMainMedia) {
+      const primary = cleanId(row.mainImageUrl || row.photoUrl || row.imageUrl);
+      const recovered = await resolveUserMediaFallback(dartSetMainMediaKey(id), primary, { kind: "dartset_main", allowR2: true }).catch(() => "");
+      if (recovered) {
+        row.photoDataUrl = recovered;
+        row.mainImageUrl = recovered;
+      }
+    }
+    if (row.__syncThumbMedia) {
+      const primary = cleanId(row.thumbImageUrl || row.photoThumbUrl);
+      const recovered = await resolveUserMediaFallback(dartSetThumbMediaKey(id), primary, { kind: "dartset_thumb", allowR2: true }).catch(() => "");
+      if (recovered) {
+        row.photoThumbDataUrl = recovered;
+        row.thumbImageUrl = recovered;
+      }
+    }
+    delete row.__syncMainMedia;
+    delete row.__syncThumbMedia;
+    return row as DartSet;
+  });
+  return rows.filter((row: any) => cleanId(row?.id));
 }
 
 function historyUpdatedAt(record: any): number {
@@ -675,6 +741,11 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     writeAvatarGallery(userId, hydrated);
   };
 
+  const applyDartSetsPayload = async (payload: any) => {
+    const hydrated = await hydrateDartSets(Array.isArray(payload) ? payload : payload?.items || []);
+    setAllDartSets(hydrated);
+  };
+
   const applyStatsIndexPayload = async (payload: any) => {
     const idx = payload && typeof payload === "object" ? payload as StatsIndex : null;
     if (idx && Number((idx as any)?.version || 0) > 0) {
@@ -737,6 +808,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       else if (type === DOC.bots) await applyBotsPayload(row.payload);
       else if (type === DOC.teams) await applyTeamsPayload(row.payload);
       else if (type === DOC.gallery) await applyGalleryPayload(row.payload);
+      else if (type === DOC.dartSets) await applyDartSetsPayload(row.payload);
       else if (type === DOC.statsIndex) await applyStatsIndexPayload(row.payload);
       else if (type === DOC.statsSources) await applyStatsSourcesPayload(row.payload);
       else if (type === DOC.organizationWorkspace) await applyOrganizationWorkspacePayload(row.payload);
@@ -831,6 +903,14 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     const sig = fingerprint(payload);
     if (signatures.get(sigKey) === sig) return;
     await pushDocument(DOC.gallery, payload);
+  };
+
+  const pushDartSets = async () => {
+    const payload = serializeDartSets();
+    const sigKey = revisionKey(DOC.dartSets);
+    const sig = fingerprint(payload);
+    if (signatures.get(sigKey) === sig) return;
+    await pushDocument(DOC.dartSets, payload);
   };
   const pushStatsIndex = async () => {
     const idx = await loadStatsIndex().catch(() => null);
@@ -979,6 +1059,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     await syncCollection(DOC.bots, () => serializeBots(), applyBotsPayload);
     await syncCollection(DOC.teams, () => serializeTeams(), applyTeamsPayload);
     await syncCollection(DOC.gallery, () => serializeGallery(userId), applyGalleryPayload);
+    await syncCollection(DOC.dartSets, () => serializeDartSets(), applyDartSetsPayload);
 
     const currentStats = await loadStatsIndex().catch(() => null);
     if (currentStats) {
@@ -1006,6 +1087,113 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     const accountId = cleanId((event as CustomEvent)?.detail?.accountId);
     if (accountId && accountId !== userId) return;
     scheduleLocalPush(DOC.gallery, pushGallery);
+  };
+
+  const onDartSetsChanged = () => scheduleLocalPush(DOC.dartSets, pushDartSets);
+
+  const forcePushHistoryReplacement = async () => {
+    const localRows = await ((History as any).listFinished?.() ?? History.list()).catch(() => [] as SavedMatch[]);
+    const localById = new Map<string, SavedMatch>();
+    for (const header of (Array.isArray(localRows) ? localRows : [])) {
+      const id = cleanId((header as any)?.id || (header as any)?.matchId);
+      if (!id) continue;
+      let full: any = header;
+      if (!(header as any)?.payload) {
+        try { full = (await History.get(id)) || header; } catch {}
+      }
+      if (String((full as any)?.status || (header as any)?.status || "").toLowerCase() !== "finished") continue;
+      localById.set(id, full as SavedMatch);
+    }
+
+    const remoteRows = await fetchAllHistoryRows();
+    const now = Date.now();
+    const writes: any[] = [];
+    for (const [id, record] of localById) {
+      writes.push({
+        owner_user_id: userId,
+        document_type: DOC.historyMatch,
+        document_id: id,
+        payload: serializeHistory(record),
+        client_updated_at: Math.max(historyUpdatedAt(record), now),
+        deleted_at: null,
+      });
+    }
+    for (const remote of remoteRows) {
+      const id = cleanId(remote?.document_id);
+      if (!id || localById.has(id) || remote?.deleted_at) continue;
+      writes.push({
+        owner_user_id: userId,
+        document_type: DOC.historyMatch,
+        document_id: id,
+        payload: {},
+        client_updated_at: now,
+        deleted_at: new Date(now).toISOString(),
+      });
+    }
+
+    for (let i = 0; i < writes.length; i += HISTORY_BATCH_SIZE) {
+      const batch = writes.slice(i, i + HISTORY_BATCH_SIZE);
+      const { error } = await supabase.from(TABLE).upsert(batch as any, { onConflict: "owner_user_id,document_type,document_id" });
+      if (error) {
+        noteSupabaseError(error, "history-force-replace");
+        break;
+      }
+      for (const row of batch) setRevision(DOC.historyMatch, row.document_id, row.client_updated_at);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  };
+
+  const forcePushAllLocalToAccount = async (reason = "manual") => {
+    if (stopped || tableUnavailable || remoteApplyDepth > 0) return;
+    emitStatus({ state: "force-sync", direction: "up", userId, reason });
+
+    // D'abord sceller toutes les images restaurées/créées dans le petit coffre
+    // média du compte. mirrorR2:false désactive uniquement le BACKUP R2 premium.
+    try {
+      await captureStoreUserMedia({
+        profiles: options.getProfiles(),
+        bots: loadBots(),
+        dartSets: getAllDartSets(),
+        teams: loadTeams(),
+      }, { mirrorR2: false });
+      // Les snapshots Drive/NAS/SD peuvent contenir un média uniquement dans le
+      // coffre IndexedDB séparé. On le republie aussi, sans dépendre des champs UI.
+      await mirrorAllLocalUserMediaToAccountR2();
+    } catch {}
+
+    const ts = Date.now();
+    await pushDocument(DOC.profiles, serializeProfiles(options.getProfiles(), userId), DEFAULT_DOCUMENT_ID, ts);
+    await pushDocument(DOC.bots, serializeBots(), DEFAULT_DOCUMENT_ID, ts + 1);
+    await pushDocument(DOC.teams, serializeTeams(), DEFAULT_DOCUMENT_ID, ts + 2);
+    await pushDocument(DOC.gallery, serializeGallery(userId), DEFAULT_DOCUMENT_ID, ts + 3);
+    await pushDocument(DOC.dartSets, serializeDartSets(), DEFAULT_DOCUMENT_ID, ts + 4);
+    const idx = await loadStatsIndex().catch(() => null);
+    if (idx) await pushDocument(DOC.statsIndex, idx, DEFAULT_DOCUMENT_ID, ts + 5);
+    const statsValues = sanitizeStatsSources(readStatsSources());
+    writeStatsMirror(userId, statsValues);
+    await pushDocument(DOC.statsSources, { values: statsValues }, DEFAULT_DOCUMENT_ID, ts + 6);
+    await pushDocument(DOC.organizationWorkspace, loadOrganizationWorkspace(userId), DEFAULT_DOCUMENT_ID, ts + 7);
+    await forcePushHistoryReplacement();
+    emitStatus({ state: "synced", direction: "up", userId, reason, forced: true, at: Date.now() });
+  };
+
+  const onAccountMediaSynced = (event: Event) => {
+    if (stopped || tableUnavailable || remoteApplyDepth > 0) return;
+    const kind = cleanId((event as CustomEvent)?.detail?.kind).toLowerCase();
+    // Un média arrive parfois quelques centaines de ms après la métadonnée.
+    // On repousse donc le document léger afin que l'autre appareil retente
+    // immédiatement l'hydratation au lieu d'attendre le polling.
+    if (kind.includes("dartset")) void pushDocument(DOC.dartSets, serializeDartSets());
+    else if (kind.includes("team_")) void pushDocument(DOC.teams, serializeTeams());
+    else if (kind.includes("bot_avatar")) void pushDocument(DOC.bots, serializeBots());
+    else if (kind.includes("gallery")) void pushDocument(DOC.gallery, serializeGallery(userId));
+    else if (kind.includes("profile_avatar") || kind.includes("local_profile")) void pushDocument(DOC.profiles, serializeProfiles(options.getProfiles(), userId));
+  };
+
+  const onForceSync = (event: Event) => {
+    const detail: any = (event as CustomEvent)?.detail || {};
+    if (detail?.userId && cleanId(detail.userId) !== userId) return;
+    void forcePushAllLocalToAccount(cleanId(detail?.reason) || "external").catch((error) => console.warn("[account-sync] forced sync failed", error));
   };
   const onStatsIndexUpdated = () => scheduleLocalPush(DOC.statsIndex, pushStatsIndex, 650);
   const onWorkspaceChanged = () => scheduleLocalPush(DOC.organizationWorkspace, pushOrganizationWorkspace);
@@ -1059,10 +1247,21 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     if (document.visibilityState === "visible") onFocusOrOnline();
   };
 
+  const globalForceSync = async (detail?: any) => {
+    const requestedUserId = cleanId(detail?.userId);
+    if (requestedUserId && requestedUserId !== userId) return false;
+    await forcePushAllLocalToAccount(cleanId(detail?.reason) || "global-bridge");
+    return true;
+  };
+  try { (window as any).__forceAccountOwnedSyncNow = globalForceSync; } catch {}
+
   window.addEventListener(ACCOUNT_OWNED_STORE_MUTATED_EVENT, onStoreMutated as EventListener);
   window.addEventListener("dc:bots-changed", onBotsChanged as EventListener);
   window.addEventListener("dc:teams-changed", onTeamsChanged as EventListener);
   window.addEventListener(AVATAR_GALLERY_EVENT, onGalleryChanged as EventListener);
+  window.addEventListener("dc-dartsets-updated", onDartSetsChanged as EventListener);
+  window.addEventListener(ACCOUNT_MEDIA_SYNCED_EVENT, onAccountMediaSynced as EventListener);
+  window.addEventListener(ACCOUNT_OWNED_FORCE_SYNC_EVENT, onForceSync as EventListener);
   window.addEventListener("dc-stats-index-updated", onStatsIndexUpdated as EventListener);
   window.addEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChanged as EventListener);
   window.addEventListener(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, onLocalStorageMutation as EventListener);
@@ -1105,6 +1304,9 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     window.removeEventListener("dc:bots-changed", onBotsChanged as EventListener);
     window.removeEventListener("dc:teams-changed", onTeamsChanged as EventListener);
     window.removeEventListener(AVATAR_GALLERY_EVENT, onGalleryChanged as EventListener);
+    window.removeEventListener("dc-dartsets-updated", onDartSetsChanged as EventListener);
+    window.removeEventListener(ACCOUNT_MEDIA_SYNCED_EVENT, onAccountMediaSynced as EventListener);
+    window.removeEventListener(ACCOUNT_OWNED_FORCE_SYNC_EVENT, onForceSync as EventListener);
     window.removeEventListener("dc-stats-index-updated", onStatsIndexUpdated as EventListener);
     window.removeEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChanged as EventListener);
     window.removeEventListener(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, onLocalStorageMutation as EventListener);
@@ -1112,6 +1314,11 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     window.removeEventListener("focus", onFocusOrOnline);
     window.removeEventListener("online", onFocusOrOnline);
     document.removeEventListener("visibilitychange", onVisibility);
+    try {
+      if ((window as any).__forceAccountOwnedSyncNow === globalForceSync) {
+        delete (window as any).__forceAccountOwnedSyncNow;
+      }
+    } catch {}
     if (channel) {
       try { void supabase.removeChannel(channel); } catch {}
       channel = null;

@@ -2,6 +2,7 @@ import { safeLocalStorageGetJson, safeLocalStorageSetJson, unpackJsonFromStorage
 import { dartPresets } from "./dartPresets";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey, readFirstLocalUserMediaFallback, resolveUserMediaFallback } from "./userMediaFallback";
+import { deleteAccountR2Media, deleteDirectR2MediaFallback } from "./directR2BackupApi";
 
 // =============================================================
 // src/lib/dartSetsStore.ts
@@ -2539,6 +2540,17 @@ export function deleteDartSet(id: DartSetId): boolean {
   });
 
   const ok = savePrimary(filtered, "delete");
+  if (ok) {
+    const ids = Array.from(targetAliases);
+    for (const mediaId of ids) {
+      void Promise.allSettled([
+        deleteAccountR2Media(dartSetMainMediaKey(mediaId)),
+        deleteAccountR2Media(dartSetThumbMediaKey(mediaId)),
+        deleteDirectR2MediaFallback(dartSetMainMediaKey(mediaId)),
+        deleteDirectR2MediaFallback(dartSetThumbMediaKey(mediaId)),
+      ]);
+    }
+  }
   diag("delete:result", { id, canonicalId: target.id, name: target.name, before: all.length, after: filtered.length, ok });
   return ok;
 }

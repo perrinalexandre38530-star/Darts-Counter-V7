@@ -6,7 +6,7 @@
 // =============================================================
 
 import { captureUserMediaFallback, galleryItemMediaKey } from "./userMediaFallback";
-import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
+import { deleteAccountR2Media, deleteDirectR2MediaFallback } from "./directR2BackupApi";
 import { emitCloudChange } from "./cloudEvents";
 
 export type AvatarGalleryCategory = "account" | "local" | "bot" | "team" | "ia";
@@ -225,7 +225,10 @@ export function deleteAvatarGalleryItem(accountId: string | null | undefined, it
   const id = String(itemId || "").trim();
   if (!id) return readAvatarGallery(accountId);
   const next = readAvatarGallery(accountId).filter((item) => String(item.id || "") !== id);
-  void deleteDirectR2MediaFallback(galleryItemMediaKey(id)).catch(() => undefined);
+  void Promise.allSettled([
+    deleteAccountR2Media(galleryItemMediaKey(id)),
+    deleteDirectR2MediaFallback(galleryItemMediaKey(id)),
+  ]);
   return writeAvatarGallery(accountId, next);
 }
 

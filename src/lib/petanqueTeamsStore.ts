@@ -13,7 +13,7 @@ import { getTeamLogoTemplateBySrc, resolveTeamLogoSrc } from "../assets/teamLogo
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
 import { captureUserMediaFallback, resolveUserMediaFallback, teamCoverMediaKey, teamLogoMediaKey } from "./userMediaFallback";
 import { recordIncrementalChange } from "./incrementalBackupJournal";
-import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
+import { deleteAccountR2Media, deleteDirectR2MediaFallback } from "./directR2BackupApi";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
 import { accountScopedLocalStorageKey, adoptLegacyLocalStorageKey, getAccountScopeId } from "./accountScope";
 
@@ -551,6 +551,8 @@ export function deleteTeam(teamId: string) {
   const list = loadTeams().filter((t) => t.id !== teamId);
   saveTeams(list);
   void Promise.allSettled([
+    deleteAccountR2Media(teamLogoMediaKey(teamId)),
+    deleteAccountR2Media(teamCoverMediaKey(teamId)),
     deleteDirectR2MediaFallback(teamLogoMediaKey(teamId)),
     deleteDirectR2MediaFallback(teamCoverMediaKey(teamId)),
   ]);

@@ -72,6 +72,7 @@ import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
 import AudioSettingsPanel from "../components/settings/AudioSettingsPanel";
 import ContentPacksSettingsPanel from "../components/settings/ContentPacksSettingsPanel";
 import ThemeRealPagePreview from "../components/settings/ThemeRealPagePreview";
+import AccountSyncDiagnosticsPanel from "../components/settings/AccountSyncDiagnosticsPanel";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { getAudioPreferences } from "../lib/audioPreferences";
 import { getKeepScreenAwakePreference, setKeepScreenAwakePreference, subscribeKeepScreenAwakePreference } from "../lib/keepAwake";
@@ -5616,6 +5617,8 @@ export function Settings({ go, params }: Props) {
             "Ces informations servent à identifier les crashs PWA / mémoire sur mobile et les erreurs de chargement."
           )}
         </div>
+
+        <AccountSyncDiagnosticsPanel theme={theme} />
 
         <div
           style={{
