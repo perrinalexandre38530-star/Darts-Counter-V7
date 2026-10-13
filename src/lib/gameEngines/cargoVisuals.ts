@@ -204,6 +204,88 @@ export function buildCargoVisualSnapshot(state: CargoState, stats?: CargoPlayerS
   };
 }
 
+
+export type CargoVisitFeedback = {
+  title: string;
+  detail: string;
+  value: string;
+  tone: 'neutral' | 'good' | 'warning' | 'danger';
+  icon: string;
+};
+
+export type CargoRiskCue = {
+  label: string;
+  detail: string;
+  level: 'safe' | 'watch' | 'danger';
+};
+
+export function buildCargoLastVisitFeedback(state: CargoState, playerId?: string | null): CargoVisitFeedback {
+  const visits = Array.isArray(state?.visits) ? state.visits : [];
+  const visit = [...visits].reverse().find((row) => !playerId || String(row.playerId) === String(playerId));
+  if (!visit) return { title: 'PRÊT À CHARGER', detail: 'Joue ta première volée : le résultat sera expliqué ici.', value: '—', tone: 'neutral', icon: '▶' };
+
+  const events = Array.isArray(visit.events) ? visit.events : [];
+  const priority = [...events].reverse().sort((a, b) => {
+    const pa = ['overload','perfect_load','contract_complete','free_load_complete','parcel_delivery','series_lost','contract_expired','route_stage','convoy_handoff','dbull_validate','dbull_protect','bull_secure','series_secure','series_progress','series_start','miss','hit'].indexOf(a.type);
+    const pb = ['overload','perfect_load','contract_complete','free_load_complete','parcel_delivery','series_lost','contract_expired','route_stage','convoy_handoff','dbull_validate','dbull_protect','bull_secure','series_secure','series_progress','series_start','miss','hit'].indexOf(b.type);
+    return pa - pb;
+  })[0] || null;
+
+  const parcel = state?.config?.variant === 'parcel_delivery';
+  const beforeScore = parcel ? safeNumber(visit.before?.parcelsDelivered, 0) : safeNumber(visit.before?.totalWeight, 0);
+  const afterScore = parcel ? safeNumber(visit.after?.parcelsDelivered, 0) : safeNumber(visit.after?.totalWeight, 0);
+  const delta = afterScore - beforeScore;
+  const label = (priority?.label || visit.labels?.join(' / ') || 'Volée enregistrée').trim();
+
+  if (priority?.type === 'overload') return { title: 'SURCHARGE', detail: label, value: priority.weight ? `+${priority.weight} kg refusés` : 'Charge refusée', tone: 'danger', icon: '⚠' };
+  if (priority?.type === 'series_lost' || priority?.type === 'contract_expired') return { title: 'CHARGE PERDUE', detail: label, value: priority.weight ? `${priority.weight} kg perdus` : 'Série interrompue', tone: 'danger', icon: '×' };
+  if (priority?.type === 'perfect_load') return { title: 'CHARGEMENT PARFAIT', detail: label, value: delta > 0 ? `+${delta} ${parcel ? 'colis' : 'kg'}` : 'Objectif atteint', tone: 'good', icon: '★' };
+  if (priority?.type === 'contract_complete') return { title: 'CONTRAT TERMINÉ', detail: label, value: `+${Math.max(0, delta)} kg`, tone: 'good', icon: '▣' };
+  if (priority?.type === 'parcel_delivery') return { title: 'LIVRAISON VALIDÉE', detail: label, value: `+${Math.max(0, delta)} colis`, tone: 'good', icon: '⌂' };
+  if (priority?.type === 'free_load_complete') return { title: 'PALETTE CHARGÉE', detail: label, value: `+${Math.max(0, delta)} kg`, tone: 'good', icon: '▤' };
+  if (priority?.type === 'convoy_handoff') return { title: 'RELAIS CONVOI', detail: label, value: 'Série transmise', tone: 'good', icon: '⇄' };
+  if (priority?.type === 'route_stage') return { title: 'ÉTAPE ATTEINTE', detail: label, value: 'Itinéraire avancé', tone: 'good', icon: '➜' };
+  if (priority?.type === 'dbull_protect' || priority?.type === 'bull_secure' || priority?.type === 'series_secure') return { title: 'CHARGE SÉCURISÉE', detail: label, value: delta > 0 ? `+${delta} ${parcel ? 'colis' : 'kg'}` : 'Protection active', tone: 'good', icon: '✓' };
+  if (delta > 0) return { title: 'VOLÉE PRODUCTIVE', detail: label, value: `+${delta} ${parcel ? 'colis' : 'kg'}`, tone: 'good', icon: '+' };
+  const misses = safeNumber(visit.after?.misses, 0) - safeNumber(visit.before?.misses, 0);
+  if (misses > 0) return { title: 'AUCUNE CHARGE', detail: label, value: `${misses} MISS`, tone: 'warning', icon: '–' };
+  return { title: 'VOLÉE ENREGISTRÉE', detail: label, value: '0 gain', tone: 'neutral', icon: '•' };
+}
+
+export function buildCargoRiskCue(state: CargoState, stats?: CargoPlayerStats | null): CargoRiskCue {
+  const variant = state?.config?.variant;
+  const series = stats?.currentSeries;
+  const contract = cargoActiveContract(state, stats);
+  if (variant === 'exact_load') {
+    const target = Math.max(1, safeNumber(state.config.targetWeight || state.config.truckCapacity, 1000));
+    const current = safeNumber(stats?.totalWeight, 0);
+    const remaining = target - current;
+    if (remaining <= 0) return { label: 'ZONE ROUGE', detail: 'Objectif atteint : tout poids supplémentaire peut provoquer une surcharge.', level: 'danger' };
+    if (remaining <= Math.max(25, target * .1)) return { label: `PRÉCISION · ${remaining} KG`, detail: 'Finis avec une petite charge. Les gros triples deviennent risqués.', level: 'watch' };
+    return { label: 'MARGE SÛRE', detail: `${remaining} kg restent disponibles avant la cible exacte.`, level: 'safe' };
+  }
+  if (variant === 'fragile_cargo') {
+    if (series?.protected) return { label: 'PROTECTION ACTIVE', detail: 'La charge fragile active est protégée.', level: 'safe' };
+    if (contract?.fragile && series) return { label: 'FRAGILE EXPOSÉ', detail: 'MISS ou mauvais segment = risque de casse de la série.', level: 'danger' };
+    return { label: 'SURVEILLE LES FRAGILES', detail: 'Sécurise les contrats fragiles avant de pousser la série.', level: 'watch' };
+  }
+  if (variant === 'cargo_rush') {
+    if (contract?.urgent) {
+      const left = Math.max(0, safeNumber(contract.expiresAtRound, state.roundIndex) - safeNumber(state.roundIndex, 1) + 1);
+      return { label: left <= 1 ? 'DERNIER TOUR' : `${left} TOURS RESTANTS`, detail: 'Le contrat EXPRESS expire rapidement.', level: left <= 1 ? 'danger' : 'watch' };
+    }
+    return { label: 'PRESSION TEMPS', detail: 'Prends d’abord les contrats URGENTS.', level: 'watch' };
+  }
+  if (variant === 'full_pallet') {
+    const count = safeNumber(series?.count, 0);
+    const min = Math.max(1, safeNumber(state.config.minSeries, 2));
+    return count >= min ? { label: 'PALETTE SÉCURISABLE', detail: 'Tu peux sécuriser maintenant ou continuer pour augmenter sa valeur.', level: 'safe' } : { label: 'PALETTE NON SÉCURISÉE', detail: `Encore ${Math.max(0,min-count)} touche${Math.max(0,min-count)>1?'s':''} avant sécurisation.`, level: 'watch' };
+  }
+  if (variant === 'convoy') return { label: 'RELAIS D’ÉQUIPE', detail: series ? 'La série active passera au prochain coéquipier.' : 'Démarre une série pour créer un relais.', level: 'safe' };
+  if (variant === 'parcel_delivery') return { label: 'CHAÎNE DE LIVRAISON', detail: series ? 'Reste sur la même adresse pour augmenter le bonus.' : 'Le premier numéro touché fixe l’adresse.', level: series ? 'safe' : 'watch' };
+  if (variant === 'long_haul') return { label: 'ITINÉRAIRE', detail: 'Chaque tour fait avancer le camion vers la prochaine étape.', level: 'safe' };
+  return series ? { label: 'SÉRIE ACTIVE', detail: 'Reste sur le même objectif pour construire une charge rentable.', level: 'safe' } : { label: 'AUCUNE SÉRIE', detail: 'Le premier bon impact démarre ton chargement.', level: 'watch' };
+}
 export function cargoRecentEvents(state: CargoState, playerId?: string | null, limit = 3): CargoVisitEvent[] {
   const visits = Array.isArray(state?.visits) ? [...state.visits] : [];
   const selected = playerId ? visits.filter((visit) => String(visit.playerId) === String(playerId)) : visits;

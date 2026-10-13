@@ -3,10 +3,11 @@ import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
 import tickerPendu from "../assets/tickers/ticker_pendu.webp";
 
 const rules = <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
-  <div><b style={{ color: "#ffc34f" }}>OBJECTIF</b><br/>Évite de compléter ton pendu. Chaque échec ajoute une partie du corps ; au total autorisé, le joueur est éliminé.</div>
-  <div><b style={{ color: "#ff8f35" }}>DÉFI</b><br/>Le joueur actif crée ou tire un défi puis doit lui-même le réussir. S'il valide, tous les autres doivent reproduire exactement le défi annoncé.</div>
-  <div><b style={{ color: "#ff5d4a" }}>ERREUR</b><br/>Tout joueur qui rate le défi prend une erreur : tête, corps, bras, jambes… jusqu'au pendu complet.</div>
-  <div><b style={{ color: "#ffc34f" }}>VICTOIRE</b><br/>Le dernier joueur encore vivant remporte la partie.</div>
+  <div><b style={{ color: "#ffc34f" }}>OBJECTIF</b><br/>Survis à des rondes d’objectifs darts : score, couleur, pair/impair, moitié de cible, Double, Triple, Bull ou secteur précis.</div>
+  <div><b style={{ color: "#ff8f35" }}>PENDU</b><br/>Chaque échec dessine une nouvelle partie du pendu. Quand il est complet, le joueur est éliminé.</div>
+  <div><b style={{ color: "#ff5d4a" }}>PÉNALITÉS</b><br/>Selon la variante choisie, les morceaux peuvent déclencher des malédictions, une roulette, des bonus, des jokers ou des sabotages entre joueurs.</div>
+  <div><b style={{ color: "#ffcf66" }}>PERFECT</b><br/>En SABOTAGE et CHAOS, réussir l’objectif dès la première fléchette rapporte un jeton pour handicaper un adversaire.</div>
+  <div><b style={{ color: "#ffc34f" }}>VICTOIRE</b><br/>Le dernier joueur encore vivant remporte la manche.</div>
 </div>;
 
 export default function PenduConfig(props: any) {

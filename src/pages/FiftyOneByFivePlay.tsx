@@ -24,6 +24,8 @@ import {
   PremiumEndPanel, QuickRow, RankingModal, StatsModal, SummaryStrip, bestBy, modePlayerColors, percent,
 } from "./newModes/PremiumPartyModeUi";
 import "./newModes/PremiumPartyModeUi.css";
+import { FiftyOneByFiveGameplayVisual } from "./newModes/ModeGameplayVisuals";
+import "./newModes/ModeGameplayVisuals.css";
 
 const ACCENT="#ffd34d", ACCENT2="#42e6c2", GREEN="#72efb1", RED="#ff6b67";
 
@@ -60,7 +62,7 @@ export default function FiftyOneByFivePlay(props:any){
   const activePlayer=state.players[state.activePlayerIndex],activeProfile=activePlayer?profileById.get(String(activePlayer.id))||activePlayer:null;
   const activeColor=activePlayer?colorById.get(String(activePlayer.id))||ACCENT:ACCENT;
   const activeIsBot=!!activeProfile&&isBotProfile(activeProfile,botIds);
-  const sfxEnabled=(config as any).sfxEnabled!==false,awenaEnabled=(config as any).awenaEnabled!==false,coachEnabled=(config as any).coachEnabled!==false;
+  const sfxEnabled=(config as any).sfxEnabled!==false,awenaEnabled=(config as any).awenaEnabled!==false,coachEnabled=(config as any).coachEnabled!==false,firstVisitGuideEnabled=(config as any).firstVisitGuide!==false;
   const nameById=React.useCallback((id:any)=>state.players.find((p:any)=>String(p.id)===String(id))?.name||"Joueur",[state.players]);
 
   const buildRecord=React.useCallback((s:FiftyOneByFiveState,status:"in_progress"|"finished",draft:UIDart[]=currentThrow,draftMultiplier:1|2|3=multiplier)=>{
@@ -110,7 +112,8 @@ export default function FiftyOneByFivePlay(props:any){
 
   const legTarget=config.seriesWins*2-1,activeScore=Number(state.scores[activePlayer?.id]||0),remaining=Math.max(0,config.rules.target-activeScore),activeStats=state.statsByPlayer[activePlayer?.id]||{};
   const previewDarts=currentThrow.map(uiToGameDart),preview=evaluateFiftyOneVisit(previewDarts,config),projected=activeScore+preview.dividedScore,previewBust=preview.valid&&projected>config.rules.target;
-  const coach=coachEnabled&&!activeIsBot?coachText(state,activePlayer):"";
+  const firstVisitGuide=firstVisitGuideEnabled&&!activeIsBot&&state.turnIndex===0&&(state.visits?.length||0)===0&&currentThrow.length===0;
+  const coach=firstVisitGuide?"1 · Saisis tes 3 fléchettes. 2 · Regarde TOTAL BRUT ÷ 5 dans le bloc central. 3 · Si VOLÉE VALIDE, valide pour ajouter le quotient à ton score.":coachEnabled&&!activeIsBot?coachText(state,activePlayer):"";
   const rankingRows=React.useMemo(()=>[...state.players].map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:String(p.id),name:p.name,profile:profileById.get(String(p.id))||p,color,wins:Number(state.legWins[p.id]||0),score:Number(state.scores[p.id]||0),valid:Number(st.validVisits||0),best:Number(st.bestQuotient||0),subtitle:`${state.scores[p.id]||0}/${config.rules.target} · ${percent(st.validVisits,st.visits)}% valides`,value:Number(state.legWins[p.id]||0),suffix:" M",order:i};}).sort((a,b)=>b.wins-a.wins||b.score-a.score||b.valid-a.valid||b.best-a.best||a.order-b.order),[state.players,state.legWins,state.scores,state.statsByPlayer,config.rules.target,profileById,colorById]);
   const playersRows=state.players.map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:p.id,name:p.name,profile:profileById.get(String(p.id))||p,color,active:i===state.activePlayerIndex,status:`RESTE ${Math.max(0,config.rules.target-Number(state.scores[p.id]||0))}`,progress:Number(state.scores[p.id]||0),progressMax:config.rules.target,metrics:[{label:"SCORE",value:state.scores[p.id]||0},{label:"VALIDES",value:st.validVisits||0},{label:"BEST ÷5",value:st.bestQuotient||0},{label:"M",value:state.legWins[p.id]||0}]};});
   const statsItems=[{label:"SCORE",value:activeScore},{label:"RESTE",value:remaining},{label:"VOLÉES VALIDES",value:activeStats.validVisits||0,color:GREEN},{label:"PRÉCISION",value:`${percent(activeStats.validVisits,activeStats.visits)}%`},{label:"BEST BRUT",value:activeStats.highestRaw||0},{label:"BEST ÷5",value:activeStats.bestQuotient||0,color:ACCENT2},{label:"BEST SÉRIE",value:activeStats.bestValidStreak||0},{label:"BUSTS",value:activeStats.busts||0,color:RED},{label:"INVALIDES",value:activeStats.invalidVisits||0},{label:"BULLS",value:activeStats.bulls||0},{label:"MISS",value:activeStats.misses||0},{label:"DARTS",value:activeStats.darts||0}];
@@ -122,10 +125,11 @@ export default function FiftyOneByFivePlay(props:any){
 
   return <div className="party-mode" style={{["--mode-accent" as any]:activeColor}} data-mss-native-play-layout="1">
     <PageHeader tickerSrc={ticker51} tickerAlt="51 BY 5" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("fifty_one_by_five_config")} color={activeColor} glow={`${activeColor}88`}/></div>} right={awenaEnabled?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="fifty_one_by_five_play" mode="fifty_one_by_five" screenLabel="51 BY 5 · Partie" accent={activeColor}/></div>:null}/>
-    {coach?<FloatingAdvice text={coach} accent={activeColor} kicker="CONSEIL ÷5"/>:null}
+    {coach?<FloatingAdvice text={coach} accent={activeColor} kicker={firstVisitGuide?"PREMIER TOUR · MODE D’EMPLOI":"CONSEIL ÷5"}/>:null}
     <main className="party-mode__body"><div className="party-mode__stage"><div className="party-mode__left">
       <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={state.legWins} primaryById={(id:string)=>state.scores[id]||0} secondaryById={(id:string)=>`reste ${Math.max(0,config.rules.target-Number(state.scores[id]||0))} · ${percent(state.statsByPlayer[id]?.validVisits,state.statsByPlayer[id]?.visits)}% valides`}/>
       <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget} · VOLÉE ${state.turnIndex+1}`} primary={activeScore} primarySuffix={`/${config.rules.target}`} secondary={previewText} tertiary={`${activeStats.validVisits||0} valides · best ÷5 ${activeStats.bestQuotient||0} · ${activeStats.busts||0} bust`} progress={activeScore} progressMax={config.rules.target} notice={notice} noticeTone={notice.includes("🏆")?"win":notice.includes("BUST")?"danger":"normal"} aside={<div style={{textAlign:"center"}}><div style={{fontSize:30,fontWeight:1100,color:previewBust?RED:preview.valid?GREEN:activeColor}}>{currentThrow.length?(previewBust?"BUST":preview.valid?`+${preview.dividedScore}`:"÷5"):remaining}</div><div style={{fontSize:7,color:"#8993a3",marginTop:4}}>{currentThrow.length?`${preview.rawTotal} BRUT`:"RESTANT"}</div></div>}/>
+      <FiftyOneByFiveGameplayVisual accent={activeColor} currentThrow={currentThrow} rawTotal={preview.rawTotal} dividedScore={preview.dividedScore} valid={preview.valid} bust={previewBust} activeScore={activeScore} projected={projected} target={config.rules.target} requireThreeScoringDarts={config.rules.requireThreeScoringDarts}/>
       <KpiStrip accent={activeColor} onClick={()=>setStatsOpen(true)} items={[["VALIDES",activeStats.validVisits||0],["PRÉC.",`${percent(activeStats.validVisits,activeStats.visits)}%`],["BEST ÷5",activeStats.bestQuotient||0],["M",state.legWins[activePlayer?.id]||0]]}/>
       <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={ticker51} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>
     </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={()=>{setCurrentThrow([]);setMultiplier(1)}} preferredMethod={config.scoreInputMethod} minDartsToValidate={config.rules.requireThreeScoringDarts?3:1} validateLabel="VALIDER" accent={activeColor} fitMinScale={0.16}/>:<BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text="calcule une volée divisible par 5…" icon="➗"/>}</div></div></main>

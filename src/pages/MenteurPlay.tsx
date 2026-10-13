@@ -19,7 +19,7 @@ import {
   resolveModeProfiles, SOFT, uiToGameDart,
 } from "./newModes/newModePlayShared";
 import {
-  ActiveHero, BotTurn, FloatingAdvice, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton,
+  ActiveHero, BotTurn, FloatingAdvice, GameplayMission, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton,
   PremiumEndPanel, PremiumMomentOverlay, QuickRow, RankingModal, StatsModal, SummaryStrip, bestBy, modePlayerColors, percent,
 } from "./newModes/PremiumPartyModeUi";
 import { resolvePremiumPartyMoment } from "./newModes/premiumPartyMoments";
@@ -56,6 +56,22 @@ function BluffBadge({ phase, bid, condition }: any) {
   return <div style={{ width: 96, height: 96, borderRadius: 999, border: `2px solid ${danger ? RED : ACCENT}88`, boxShadow: `0 0 24px ${danger ? RED : ACCENT}22`, background: "radial-gradient(circle,#40210c,#100b09 70%)", display: "grid", placeItems: "center", textAlign: "center" }}>
     <div style={{ fontSize: 31 }}>🤥</div><div style={{ marginTop: -15, color: danger ? RED : ACCENT, fontSize: 9, fontWeight: 1100 }}>{danger ? "PREUVE" : bid ? `${bid} PTS` : "BLUFF"}</div><small style={{ marginTop: -18, color: SOFT, fontSize: 7.5 }}>{menteurConditionLabel(condition)}</small>
   </div>;
+}
+
+
+function MenteurTableBoard({ state, colorById }: any) {
+  const last = state.players.find((p:any)=>p.id===state.lastBidderId);
+  return <section className={`menteur-table ${state.phase==="challenge"?"is-proof":""}`}>
+    <header><div><span>{state.phase==="challenge"?"🔥":"🤥"}</span><div><small>{state.phase==="challenge"?"PHASE DE PREUVE":"TABLE D’ENCHÈRE"}</small><b>{state.phase==="challenge"?`PROUVER ${state.bid} PTS`:(state.bid?`${state.bid} PTS · ${menteurConditionLabel(state.condition)}`:"OUVERTURE")}</b></div></div><em>{last ? `par ${last.name}` : "aucune annonce"}</em></header>
+    <div className="menteur-table__players">{state.players.map((p:any)=>{
+      const lives=Number(state.lives[p.id]||0), dead=!!state.eliminated[p.id], active=p.id===state.players[state.activePlayerIndex]?.id, bidder=p.id===state.lastBidderId, color=colorById.get(String(p.id))||ACCENT;
+      return <div key={p.id} className={`${active?"is-active ":""}${bidder?"is-bidder ":""}${dead?"is-dead":""}`} style={{["--liar-color" as any]:color}}>
+        <strong>{dead?"☠️":active?"🎯":bidder?"📣":"👤"} {p.name}</strong>
+        <span>{dead?"ÉLIMINÉ":`${"♥".repeat(Math.max(0,lives))}${"♡".repeat(Math.max(0,Number(state.config.rules.lives||5)-lives))}`}</span>
+        <em>{bidder?`BID ${state.bid}`:`max ${state.statsByPlayer[p.id]?.maxBid||0}`}</em>
+      </div>;
+    })}</div>
+  </section>;
 }
 
 export default function MenteurPlay(props: any) {
@@ -193,6 +209,8 @@ export default function MenteurPlay(props: any) {
     <main className="party-mode__body"><div className="party-mode__stage"><div className="party-mode__left">
       <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={state.legWins} primaryById={(pid: string) => state.eliminated[pid] ? "OUT" : `${state.lives[pid] || 0}♥`} secondaryById={(pid: string) => state.lastBidderId === pid ? `BID ${state.bid}` : `${state.statsByPlayer[pid]?.successfulCalls || 0} appels gagnés · ${state.statsByPlayer[pid]?.contractsProven || 0} preuves`} />
       <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={state.phase === "challenge" ? (previewContractOk ? GREEN : RED) : activeColor} eyebrow={`MANCHE ${state.legIndex + 1} · BO${legTarget} · ${state.phase === "auction" ? "ENCHÈRE" : "PREUVE"}`} primary={state.phase === "auction" ? (state.bid || "—") : previewScore} primarySuffix={state.phase === "auction" ? (state.bid ? " pts" : "") : `/${state.bid}`} secondary={state.phase === "auction" ? (state.bid ? `Dernier annonceur : ${lastBidderName} · ${menteurConditionLabel(state.condition)}` : `Ouvre à ${minBid} points · ${menteurConditionLabel(state.condition)}`) : `${previewContractOk ? "✓ CONTRAT PROUVÉ" : `Doit prouver ${state.bid} points`} · appelé par ${challengerName}`} tertiary={`${activeLives}/${config.rules.lives} vies · bid max ${activeStats.maxBid || 0} · ${activeStats.successfulCalls || 0} appels gagnés`} progress={state.phase === "auction" ? state.bid : previewScore} progressMax={180} notice={notice} noticeTone={notice.includes("🏆") ? "win" : notice.includes("mensonge") || notice.includes("perd 1 vie") ? "danger" : "normal"} aside={<BluffBadge phase={state.phase} bid={state.bid} condition={state.condition} />} />
+      <GameplayMission accent={state.phase === "challenge" ? (previewContractOk ? GREEN : RED) : activeColor} icon={state.phase === "challenge" ? "🎯" : "🤥"} title={state.phase === "challenge" ? "PROUVE L’ANNONCE" : "SURENCHÉRIS OU APPELLE MENTEUR"} text={state.phase === "challenge" ? `Tu dois prouver ${state.bid} points et respecter : ${menteurConditionLabel(state.condition)}.` : state.bid ? `Annonce actuelle : ${state.bid} par ${lastBidderName}. Monte l’enchère ou accuse le dernier annonceur.` : `Ouvre l’enchère à partir de ${minBid} points.`} chips={state.phase === "challenge" ? [`SCORE ${previewScore}/${state.bid}`, previewScoreOk ? "SCORE ✓" : "SCORE ○", previewConditionOk ? "CONDITION ✓" : "CONDITION ○"] : [`MIN ${minBid}`, `PAS ${step}`, `${activeLives}/${config.rules.lives} VIES`]} tone={state.phase === "challenge" ? (previewContractOk ? "success" : "danger") : "normal"} />
+      <MenteurTableBoard state={state} colorById={colorById} />
       {state.phase === "challenge" ? <section style={{ ...panelStyle(previewContractOk ? `${GREEN}55` : `${RED}33`), padding: 8, display: "grid", gap: 6 }}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}><div style={{ borderRadius: 10, padding: 7, border: `1px solid ${previewScoreOk ? GREEN + "55" : "rgba(255,255,255,.10)"}`, color: previewScoreOk ? GREEN : SOFT, fontSize: 9, fontWeight: 1000, textAlign: "center" }}>{previewScoreOk ? "✓" : "○"} SCORE ≥ {state.bid}</div><div style={{ borderRadius: 10, padding: 7, border: `1px solid ${previewConditionOk ? GREEN + "55" : "rgba(255,255,255,.10)"}`, color: previewConditionOk ? GREEN : SOFT, fontSize: 9, fontWeight: 1000, textAlign: "center" }}>{previewConditionOk ? "✓" : "○"} {menteurConditionLabel(state.condition)}</div></div></section> : null}
       <KpiStrip accent={activeColor} onClick={() => setStatsOpen(true)} items={[["VIES", activeLives], ["BID MAX", activeStats.maxBid || 0], ["APPELS", activeStats.successfulCalls || 0], ["PREUVES", activeStats.contractsProven || 0]]} />
       <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerMenteur} onPlayers={() => setPlayersOpen(true)} onStats={() => setStatsOpen(true)} onLog={() => setLogOpen(true)} onRanking={() => setRankingOpen(true)} />

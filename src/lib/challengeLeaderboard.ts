@@ -730,7 +730,7 @@ function historyConfig(record: any): ChallengeLeaderboardObjective {
   const firstPlayer = rawPlayers[0] || {};
   const special = firstPlayer?.special || firstPlayer?.stats?.special || {};
   return {
-    target: clean(config?.target || game?.target || summary?.target || firstPlayer?.target || special?.target, '20'),
+    target: clean(config?.leaderboardTarget || game?.leaderboardTarget || summary?.leaderboardTarget || config?.target || game?.target || summary?.target || firstPlayer?.target || special?.target, '20'),
     rule: clean(config?.rule || game?.rule || summary?.rule || firstPlayer?.rule || special?.rule, 'all'),
     visits: Math.max(1, explicitVisits || inferredVisits || 30),
     matchMode: clean(config?.matchMode || game?.matchMode || summary?.matchMode || (playerCount <= 1 ? 'solo' : playerCount === 2 ? 'duo' : 'multi'), 'solo'),
@@ -783,7 +783,7 @@ function historyStatsPayload(record: any, row: any) {
       const entryId = clean(entry?.pid || entry?.playerId || entry?.profileId || entry?.userId || entry?.user_id);
       return !!rowId && entryId === rowId;
     })
-    .map((entry: any) => ({ hit: clean(entry?.hit).toUpperCase(), pid: rowId || clean(entry?.pid || entry?.playerId || entry?.profileId) || 'player' }));
+    .map((entry: any) => ({ hit: clean(entry?.hit).toUpperCase(), pid: rowId || clean(entry?.pid || entry?.playerId || entry?.profileId) || 'player', ...(Number(entry?.segment)>0?{segment:Number(entry.segment)}:{}) }));
 
   const derivedHitCounts = { S: 0, D: 0, T: 0, '25': 0, '50': 0, MISS: 0 } as Record<string, number>;
   for (const entry of entries) derivedHitCounts[entry.hit] = (derivedHitCounts[entry.hit] || 0) + 1;
@@ -861,7 +861,10 @@ function historyStatsPayload(record: any, row: any) {
   }
   const hitPct = Object.fromEntries(Object.entries(hitCounts).map(([hit, count]) => [hit, darts ? Number(count || 0) / darts * 100 : 0]));
 
+  const exerciseConfig=(payload?.config&&typeof payload.config==='object')?payload.config:(record?.resume?.config&&typeof record.resume.config==='object'?record.resume.config:null);
+
   return {
+    ...(exerciseConfig?{exerciseConfig}:{}),
     bestVisit: bestVisitStored || (visitScoresDerived.length ? Math.max(...visitScoresDerived) : 0),
     avgVisit: avgVisitStored || (visitScoresDerived.length ? scoreDerived / visitScoresDerived.length : 0),
     hitCounts,

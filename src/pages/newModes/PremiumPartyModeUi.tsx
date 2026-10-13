@@ -192,6 +192,20 @@ export function PremiumMomentOverlay({ moment, accent = "#4fe4ff", profile, play
   </div>;
 }
 
+export function GameplayMission({ accent, icon = "🎯", kicker = "CE QUE TU DOIS FAIRE", title, text, chips = [], tone = "normal" }: any) {
+  if (!title && !text) return null;
+  const toneClass = tone === "danger" ? " is-danger" : tone === "success" ? " is-success" : "";
+  return <section className={`party-mode__mission${toneClass}`} style={{ borderColor: `${accent}55`, ["--mission-accent" as any]: accent }}>
+    <div className="party-mode__mission-icon" style={{ color: accent }}>{icon}</div>
+    <div className="party-mode__mission-copy">
+      <small style={{ color: accent }}>{kicker}</small>
+      <b>{title}</b>
+      {text ? <p>{text}</p> : null}
+      {chips?.length ? <div>{chips.filter(Boolean).slice(0, 5).map((chip: any, index: number) => <span key={`${chip}-${index}`}>{chip}</span>)}</div> : null}
+    </div>
+  </section>;
+}
+
 export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel, persona, personaIcon, objectiveDetail, reaction, adaptation, adaptationDetail, learningConfidence, learningTarget, scouting, scoutingDetail, scoutingMatches, scoutingConfidence, scoutingTarget, rivalry, rivalryDetail, rivalryRecord, rivalryMatches, rivalryConfidence, rivalryTension, rivalryTarget, rivalryQuote }: any) {
   const conf = Number.isFinite(Number(confidence)) ? Math.max(0, Math.min(100, Number(confidence))) : null;
   return <div className="party-mode__bot" style={{ borderColor: `${accent}55`, boxShadow: `inset 0 0 34px ${accent}0d` }}>

@@ -15,6 +15,10 @@ export type LooperConfigPayload = {
   randomOrder?: boolean;
   scoreInputMethod?: "keypad" | "dartboard";
   seriesWins: 1 | 2 | 3;
+  sfxEnabled?: boolean;
+  awenaEnabled?: boolean;
+  coachEnabled?: boolean;
+  firstVisitGuide?: boolean;
   rules: { lives: number; startTarget: "offhand" | "random"; exactSegment: boolean; numberLoopsEnabled: boolean; setterShield: boolean };
 };
 export type LooperStats = { darts:number;visits:number;hits:number;misses:number;lifeLosses:number;shieldsUsed:number;shieldsEarned:number;targetsSet:number;loopsSurvived:number;legsWon:number;bullTargets:number;bestHitStreak:number;currentHitStreak:number; };
@@ -88,7 +92,7 @@ function nextDifferentTarget(t:LooperTarget):LooperTarget {
 }
 export function normalizeLooperConfig(raw:any):LooperConfigPayload {
   const r=raw?.rules||{}; const ids=Array.isArray(raw?.selectedIds)?raw.selectedIds.map(String):[];
-  return {mode:"looper",selectedIds:ids,players:Math.max(2,Number(raw?.players||ids.length||2)),playersList:Array.isArray(raw?.playersList)?raw.playersList:[],botIds:Array.isArray(raw?.botIds)?raw.botIds.map(String):[],botsEnabled:Boolean(raw?.botsEnabled),botLevel:raw?.botLevel==="easy"||raw?.botLevel==="hard"?raw.botLevel:"normal",randomOrder:raw?.randomOrder!==false,scoreInputMethod:raw?.scoreInputMethod==="dartboard"?"dartboard":"keypad",seriesWins:raw?.seriesWins===2||raw?.seriesWins===3?raw.seriesWins:1,rules:{lives:[3,4,5].includes(Number(r?.lives))?Number(r.lives):5,startTarget:r?.startTarget==="random"?"random":"offhand",exactSegment:r?.exactSegment!==false,numberLoopsEnabled:r?.numberLoopsEnabled!==false,setterShield:r?.setterShield!==false}};
+  return {mode:"looper",selectedIds:ids,players:Math.max(2,Number(raw?.players||ids.length||2)),playersList:Array.isArray(raw?.playersList)?raw.playersList:[],botIds:Array.isArray(raw?.botIds)?raw.botIds.map(String):[],botsEnabled:Boolean(raw?.botsEnabled),botLevel:raw?.botLevel==="easy"||raw?.botLevel==="hard"?raw.botLevel:"normal",randomOrder:raw?.randomOrder!==false,scoreInputMethod:raw?.scoreInputMethod==="dartboard"?"dartboard":"keypad",seriesWins:raw?.seriesWins===2||raw?.seriesWins===3?raw.seriesWins:1,sfxEnabled:raw?.sfxEnabled!==false,awenaEnabled:raw?.awenaEnabled!==false,coachEnabled:raw?.coachEnabled!==false,firstVisitGuide:raw?.firstVisitGuide!==false,rules:{lives:[3,4,5].includes(Number(r?.lives))?Number(r.lives):5,startTarget:r?.startTarget==="random"?"random":"offhand",exactSegment:r?.exactSegment!==false,numberLoopsEnabled:r?.numberLoopsEnabled!==false,setterShield:r?.setterShield!==false}};
 }
 function aliveIds(s:LooperState){return s.players.filter(p=>Number(s.lives[p.id]||0)>0).map(p=>p.id);}
 function nextAliveIndex(s:LooperState,from:number){const total=s.players.length||1;for(let step=1;step<=total;step++){const idx=(from+step)%total;if(Number(s.lives[s.players[idx].id]||0)>0)return idx;}return from;}

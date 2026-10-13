@@ -1,0 +1,10 @@
+import fs from "node:fs";
+const engine = fs.readFileSync(new URL("../lib/gameEngines/wave61Engine.ts", import.meta.url), "utf8");
+const panel = fs.readFileSync(new URL("../pages/wave61/Wave61MissionAdventurePanels.tsx", import.meta.url), "utf8");
+const config = fs.readFileSync(new URL("../pages/wave61/modes/microscopiaConfig.tsx", import.meta.url), "utf8");
+const play = fs.readFileSync(new URL("../pages/wave61/modes/microscopiaPlay.tsx", import.meta.url), "utf8");
+for (const needle of ["function processMicroscopia", "microSamplesByPlayer", "microQualityByPlayer", "microContaminationByPlayer", "bullDecontam", "contaminationGain"]) if (!engine.includes(needle)) throw new Error(`V79 microscopia: contrat moteur absent: ${needle}`);
+for (const needle of ["MICROSCOPIA · LABORATOIRE EN DIRECT", "ÉCHANTILLON EN COURS", "QUALITÉ CUMULÉE", "Cible active = isoler l’échantillon", "Laboratoire critique"]) if (!panel.includes(needle)) throw new Error(`V79 microscopia: UI absente: ${needle}`);
+for (const needle of ["contaminationGain", "bullDecontam", "qualityPowerPct"]) if (!config.includes(needle)) throw new Error(`V79 microscopia: option dédiée absente: ${needle}`);
+if (!play.includes('forcedModeId={WAVE61_MODE_ID}')) throw new Error("V79 microscopia: écran Play dédié non routé");
+console.log("✅ Wave61 V79 — MICROSCOPIA finalisé · laboratoire visuel · qualité/contamination · BULL décontamination");

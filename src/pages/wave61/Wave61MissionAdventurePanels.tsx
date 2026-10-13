@@ -71,13 +71,59 @@ export function MythologiePanel({ state, accent }: any) {
 }
 export function JardinierPanel({ state, accent }: any) {
   const harvestGoal=Math.max(1,Number(state?.config?.modeOptions?.harvestGoal||5));
-  return <div style={card(accent)}>{title(accent, "LE JARDINIER · CULTURES")}
-    {playerGrid(state.players.map((p:any)=>{const harvest=Number(state.special?.gardenHarvestByPlayer?.[p.id]||0); return <div key={p.id} style={{display:"grid",gap:4}}><b>🌱 {p.name}</b><span style={{color:SOFT,fontSize:9}}>Récoltes {harvest}/{harvestGoal} · Eau {state.special?.gardenWaterByPlayer?.[p.id]||0}%</span><Meter value={state.special?.gardenGrowthByPlayer?.[p.id]||0} max={100} accent={accent}/><span style={{color:SOFT,fontSize:8.5}}>Croissance de la plante actuelle</span></div>}))}
+  const plantStages=["GRAINE","POUSSE","FEUILLES","FLEURS","RÉCOLTE"];
+  return <div style={card(accent)}>{title(accent, "LE JARDINIER · POTAGER EN DIRECT")}
+    {playerGrid(state.players.map((p:any)=>{
+      const harvest=Number(state.special?.gardenHarvestByPlayer?.[p.id]||0);
+      const growth=Math.max(0,Math.min(100,Number(state.special?.gardenGrowthByPlayer?.[p.id]||0)));
+      const water=Math.max(0,Math.min(100,Number(state.special?.gardenWaterByPlayer?.[p.id]||0)));
+      const stage=Math.min(plantStages.length-1,Math.floor(growth/25));
+      const plantIcon=growth>=75?"🌻":growth>=50?"🌿":growth>=25?"🌱":"🫘";
+      return <div key={p.id} style={{display:"grid",gap:6}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b>{plantIcon} {p.name}</b><span style={{color:water<=25?"#ff806f":accent,fontSize:9,fontWeight:1000}}>💧 {Math.round(water)}%</span></div>
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${harvestGoal},minmax(0,1fr))`,gap:4}}>{Array.from({length:harvestGoal},(_,i)=><div key={i} style={{height:18,borderRadius:7,display:"grid",placeItems:"center",border:`1px solid ${i<harvest?accent+"99":"rgba(255,255,255,.09)"}`,background:i<harvest?accent+"22":"rgba(255,255,255,.025)",fontSize:10}}>{i<harvest?"🥕":"·"}</div>)}</div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,color:SOFT,fontSize:8.5}}><span>Culture {Math.min(harvest+1,harvestGoal)}/{harvestGoal}</span><b style={{color:growth>=75?accent:"#dfe6ef"}}>{plantStages[stage]} · {Math.round(growth)}%</b></div>
+        <Meter value={growth} max={100} accent={accent}/>
+        <Meter value={water} max={100} accent={water<=25?"#ff806f":"#6bc7ff"}/>
+        <span style={{color:water<=25?"#ff9a8b":SOFT,fontSize:8.5}}>{water<=25?"⚠ Réserve critique : vise BULL pour arroser":"BULL = arrosage · cible = croissance · erreur = perte d’eau"}</span>
+      </div>;
+    }))}
   </div>;
 }
 export function MicroscopiaPanel({ state, accent }: any) {
-  return <div style={card(accent)}>{title(accent, "MICROSCOPIA · LABORATOIRE")}
-    {playerGrid(state.players.map((p:any)=>{const samples=Number(state.special?.microSamplesByPlayer?.[p.id]||0); const contam=Number(state.special?.microContaminationByPlayer?.[p.id]||0); return <div key={p.id} style={{display:"grid",gap:4}}><b>🔬 {p.name}</b>{stepStrip(MICRO_SAMPLES,samples,accent)}<span style={{color:SOFT,fontSize:9}}>Qualité {state.special?.microQualityByPlayer?.[p.id]||0} · Contamination {contam}%</span><Meter value={contam} max={100} accent="#ff6b68"/></div>}))}
+  const sampleIcons=["🧫","🦠","🌼","🍄","💎","🧬"];
+  return <div style={card(accent)}>{title(accent, "MICROSCOPIA · LABORATOIRE EN DIRECT")}
+    {playerGrid(state.players.map((p:any)=>{
+      const samples=Math.max(0,Math.min(MICRO_SAMPLES.length,Number(state.special?.microSamplesByPlayer?.[p.id]||0)));
+      const quality=Math.max(0,Number(state.special?.microQualityByPlayer?.[p.id]||0));
+      const contam=Math.max(0,Math.min(100,Number(state.special?.microContaminationByPlayer?.[p.id]||0)));
+      const currentSample=samples<MICRO_SAMPLES.length?MICRO_SAMPLES[samples]:"ANALYSE TERMINÉE";
+      const status=contam>=80?"DANGER":contam>=55?"INSTABLE":contam>=30?"SURVEILLANCE":"STÉRILE";
+      const statusIcon=contam>=80?"☣️":contam>=55?"⚠️":contam>=30?"🟠":"🧼";
+      const statusColor=contam>=80?"#ff6b68":contam>=55?"#ffb45f":contam>=30?"#ffd66b":"#79e7b0";
+      return <div key={p.id} style={{display:"grid",gap:7}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          <b>🔬 {p.name}</b>
+          <span style={{color:statusColor,fontSize:8.5,fontWeight:1100,letterSpacing:.5}}>{statusIcon} {status}</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${MICRO_SAMPLES.length},minmax(0,1fr))`,gap:4}}>
+          {MICRO_SAMPLES.map((sample,i)=>{const done=i<samples; const active=i===samples && samples<MICRO_SAMPLES.length; return <div key={sample} title={sample} style={{minHeight:39,borderRadius:9,padding:"4px 2px",display:"grid",placeItems:"center",gap:1,border:`1px solid ${done?accent+"99":active?accent:"rgba(255,255,255,.09)"}`,background:done?accent+"22":active?accent+"10":"rgba(255,255,255,.025)",boxShadow:active?`0 0 0 1px ${accent}22, 0 0 14px ${accent}18`:"none"}}><span style={{fontSize:15,filter:done?"none":"grayscale(.35)"}}>{done?"✅":sampleIcons[i]}</span><span style={{fontSize:6.8,fontWeight:900,color:done||active?"#f4f7fb":SOFT,textAlign:"center",lineHeight:1.05}}>{sample}</span></div>})}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1.15fr .85fr",gap:6}}>
+          <div style={{borderRadius:9,padding:"6px 7px",border:`1px solid ${accent}33`,background:accent+"0d"}}>
+            <div style={{color:SOFT,fontSize:7.5,fontWeight:900}}>ÉCHANTILLON EN COURS</div>
+            <div style={{color:accent,fontSize:10.5,fontWeight:1100,marginTop:2}}>{samples>=MICRO_SAMPLES.length?"🏁 COLLECTION COMPLÈTE":`${sampleIcons[samples]||"🧬"} ${currentSample}`}</div>
+          </div>
+          <div style={{borderRadius:9,padding:"6px 7px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}>
+            <div style={{color:SOFT,fontSize:7.5,fontWeight:900}}>QUALITÉ CUMULÉE</div>
+            <div style={{fontSize:13,fontWeight:1100,marginTop:1}}>⭐ {quality}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:8.5,color:SOFT}}><span>Prélèvements {samples}/{MICRO_SAMPLES.length}</span><b style={{color:statusColor}}>Contamination {Math.round(contam)}%</b></div>
+        <Meter value={contam} max={100} accent={statusColor}/>
+        <span style={{color:contam>=80?"#ff8d86":SOFT,fontSize:8.5}}>{contam>=80?"☣️ Laboratoire critique : vise BULL pour décontaminer immédiatement":"Cible active = isoler l’échantillon · BULL = décontamination · erreur = contamination"}</span>
+      </div>;
+    }))}
   </div>;
 }
 export function DisjonctePanel({ state, accent }: any) {

@@ -189,9 +189,12 @@ export default function NewDartsModeConfig(props: Props) {
 
   // PENDU
   const [penduPartsToLose, setPenduPartsToLose] = React.useState<6 | 8>(saved.penduPartsToLose === 8 ? 8 : 6);
-  const [penduChallengeMode, setPenduChallengeMode] = React.useState<"caller" | "random" | "mixed">(["random", "mixed"].includes(saved.penduChallengeMode) ? saved.penduChallengeMode : "caller");
-  const [penduTargetFamily, setPenduTargetFamily] = React.useState<"segments" | "scores" | "mixed">(["scores", "mixed"].includes(saved.penduTargetFamily) ? saved.penduTargetFamily : "segments");
-  const [penduExecution, setPenduExecution] = React.useState<"strict" | "flex">(saved.penduExecution === "flex" ? "flex" : "strict");
+  const [penduChallengeMode, setPenduChallengeMode] = React.useState<"caller" | "random" | "mixed">(["caller", "mixed"].includes(saved.penduChallengeMode) ? saved.penduChallengeMode : "random");
+  const [penduTargetFamily, setPenduTargetFamily] = React.useState<"segments" | "scores" | "mixed">(["segments", "scores"].includes(saved.penduTargetFamily) ? saved.penduTargetFamily : "mixed");
+  const [penduExecution, setPenduExecution] = React.useState<"strict" | "flex">(saved.penduExecution === "strict" ? "strict" : "flex");
+  const [penduPenaltyMode, setPenduPenaltyMode] = React.useState<"classic" | "vicious" | "roulette" | "sabotage" | "chaos">(
+    ["vicious","roulette","sabotage","chaos"].includes(saved.penduPenaltyMode) ? saved.penduPenaltyMode : "vicious"
+  );
 
   // MENTEUR
   const [menteurLives, setMenteurLives] = React.useState<3 | 5 | 7>(saved.menteurLives === 3 || saved.menteurLives === 7 ? saved.menteurLives : 5);
@@ -514,7 +517,7 @@ export default function NewDartsModeConfig(props: Props) {
       castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg,
       gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust,
       houndStart, hareTargetZone, hareRoleMode, hareDirection,
-      penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution,
+      penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, penduPenaltyMode,
       menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed,
       cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt,
       cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled,
@@ -525,7 +528,7 @@ export default function NewDartsModeConfig(props: Props) {
       steepleDirection, steepleFences, steepleFinishBull, steepleZone,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, penduPenaltyMode, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -543,7 +546,7 @@ export default function NewDartsModeConfig(props: Props) {
     if (mode === "castle") return { targetBricks: castleBricks, numberAssignment: castleAssignment, attacksEnabled: castleAttacks, reassignEachLeg: castleReassignEachLeg };
     if (mode === "gotcha") return { targetScore: gotchaTarget, outMode: gotchaOut, maxRounds: gotchaMaxRounds, bustRule: gotchaBust, gotchaReset: "zero" };
     if (mode === "hare_hounds") return { houndStart, targetZone: hareTargetZone, roleMode: hareRoleMode, direction: hareDirection, hareStart: 20 };
-    if (mode === "pendu") return { partsToLose: penduPartsToLose, challengeMode: penduChallengeMode, targetFamily: penduTargetFamily, executionMode: penduExecution };
+    if (mode === "pendu") return { partsToLose: penduPartsToLose, challengeMode: penduChallengeMode, targetFamily: penduTargetFamily, executionMode: penduExecution, penaltyMode: penduPenaltyMode };
     if (mode === "menteur") return { lives: menteurLives, contractDeck: menteurContractDeck, raiseStep: menteurRaiseStep, bullAllowed: menteurBullAllowed };
     if (mode === "crados") return { dirtLimit: cradosDirtLimit, layersToOwn: cradosLayersToOwn, bullWash: cradosBullWash, stealMode: cradosStealMode, sectorRaceMode: cradosSectorRaceMode, cleanBullSplash: cradosCleanBullSplash, endOnFirstMaxDirt: cradosEndOnFirstMaxDirt };
     if (mode === "fifty_one_by_five") return { target: fiftyOneTarget, divisor: 5, requireThreeScoringDarts: fiftyOneRequireThreeScoringDarts, bustRule: fiftyOneBust, exactFinish: true };
@@ -779,10 +782,23 @@ export default function NewDartsModeConfig(props: Props) {
   const penduBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles PENDU</div>
     <div style={panel}>
-      <OptionRow label="Erreurs avant élimination"><OptionSelect value={penduPartsToLose} options={[{ value: 6, label: "6 parties — pendu classique" }, { value: 8, label: "8 parties — version longue" }]} onChange={(v: any) => setPenduPartsToLose(Number(v) === 8 ? 8 : 6)} /></OptionRow>
-      <OptionRow label="Création des défis"><OptionSelect value={penduChallengeMode} options={[{ value: "caller", label: "Annonce libre par le joueur actif" }, { value: "random", label: "Défi tiré au hasard" }, { value: "mixed", label: "Mixte — libre + aléatoire" }]} onChange={setPenduChallengeMode} /></OptionRow>
-      <OptionRow label="Famille de défis"><OptionSelect value={penduTargetFamily} options={[{ value: "segments", label: "Segments exacts" }, { value: "scores", label: "Scores / objectifs" }, { value: "mixed", label: "Mixte" }]} onChange={setPenduTargetFamily} /></OptionRow>
-      <OptionRow label="Validation"><OptionSelect value={penduExecution} options={[{ value: "strict", label: "Stricte — défi exact" }, { value: "flex", label: "Souple — défi ou mieux" }]} onChange={setPenduExecution} /></OptionRow>
+      <OptionRow label="Erreurs avant élimination"><OptionSelect value={penduPartsToLose} options={[{ value: 6, label: "6 éléments — pendu classique" }, { value: 8, label: "8 éléments — version longue" }]} onChange={(v: any) => setPenduPartsToLose(Number(v) === 8 ? 8 : 6)} /></OptionRow>
+      <OptionRow label="Type de PENDU"><OptionSelect value={penduChallengeMode} options={[{ value: "random", label: "Rondes aléatoires — recommandé" }, { value: "caller", label: "Bourreau / copie — variante classique" }, { value: "mixed", label: "Rondes aléatoires — paquet étendu" }]} onChange={setPenduChallengeMode} /></OptionRow>
+      <OptionRow label="Paquet d’objectifs"><OptionSelect value={penduTargetFamily} options={[{ value: "mixed", label: "Arcade complet — scores, zones, couleurs, D/T/Bull" }, { value: "scores", label: "Scores uniquement" }, { value: "segments", label: "Cible — secteurs, zones, couleurs et anneaux" }]} onChange={setPenduTargetFamily} /></OptionRow>
+      <OptionRow label="Objectifs de score"><OptionSelect value={penduExecution} options={[{ value: "flex", label: "Atteindre ou dépasser — recommandé" }, { value: "strict", label: "Score exact — expert" }]} onChange={setPenduExecution} /></OptionRow>
+      <OptionRow label="Pénalités"><OptionSelect value={penduPenaltyMode} options={[
+        { value: "classic", label: "Classique — +1 morceau" },
+        { value: "vicious", label: "Pendu vicieux — recommandé" },
+        { value: "roulette", label: "Roulette — malédiction aléatoire" },
+        { value: "sabotage", label: "Sabotage — PERFECT = attaque" },
+        { value: "chaos", label: "Chaos — roulette + sabotage + bonus" },
+      ]} onChange={setPenduPenaltyMode} /></OptionRow>
+      <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: `1px solid ${accent}3d`, background: `${accent}0c`, color: "#aeb7c6", fontSize: 10, lineHeight: 1.5 }}>
+        <b style={{ color: accent }}>Rondes aléatoires :</b> score, couleur, pair/impair, gauche/droite, haut/bas, Double, Triple, Bull ou secteur.
+        <br/><b style={{ color: accent }}>Pendu vicieux :</b> chaque partie dessinée provoque une vraie conséquence au tour suivant.
+        <br/><b style={{ color: accent }}>Roulette / Chaos :</b> 1–2 darts, D/T obligatoire, secteur interdit, couleur imposée, mort subite, bouclier, rémission ou joker.
+        <br/><b style={{ color: accent }}>Sabotage :</b> un objectif réussi dès la 1re fléchette rapporte un jeton pour maudire un adversaire.
+      </div>
     </div>
   </section>;
 
@@ -895,7 +911,7 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "castle" ? <><SummaryLine label="Objectif" value={`${castleBricks} briques`} /><SummaryLine label="Combat" value={castleAttacks ? "Construction + attaque" : "Construction seule"} /></> : null}
       {mode === "gotcha" ? <><SummaryLine label="Cible" value={gotchaTarget} /><SummaryLine label="Sortie" value={gotchaOut === "straight" ? "Straight" : gotchaOut === "double" ? "Double" : "Master"} /></> : null}
       {mode === "hare_hounds" ? <><SummaryLine label="Départs" value={`Lièvre 20 · Limier ${houndStart}`} /><SummaryLine label="Zone" value={hareTargetZone === "any" ? "S/D/T" : hareTargetZone === "double" ? "Doubles" : "Triples"} /></> : null}
-      {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Défis" value={penduTargetFamily === "segments" ? "Segments" : penduTargetFamily === "scores" ? "Scores" : "Mixte"} /></> : null}
+      {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Gameplay" value={penduChallengeMode === "caller" ? "Bourreau / copie" : "Rondes aléatoires"} /><SummaryLine label="Objectifs" value={penduTargetFamily === "segments" ? "Cible & zones" : penduTargetFamily === "scores" ? "Scores" : "Arcade complet"} /><SummaryLine label="Pénalités" value={penduPenaltyMode === "vicious" ? "Pendu vicieux" : penduPenaltyMode === "roulette" ? "Roulette" : penduPenaltyMode === "sabotage" ? "Sabotage" : penduPenaltyMode === "chaos" ? "Chaos" : "Classique"} /></> : null}
       {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
       {mode === "crados" ? <><SummaryLine label="Type de partie" value={cradosTeamMode ? "Équipes" : "Joueurs"} />{cradosTeamMode ? <SummaryLine label="Composition" value={cradosTeamsSourceMode === "saved" ? "Équipes créées / familles IA" : cradosTeamsSourceMode === "auto" ? "Brassage automatique" : "Manuelle"} /> : null}<SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /><SummaryLine label="Secteur vierge" value={cradosSectorRaceMode === "race" ? "Course — toutes les touches comptent" : "Prise en main — le dernier efface l’autre"} /><SummaryLine label="Bull spécial" value={cradosCleanBullSplash ? "Bull propre contagieux" : "Standard"} /><SummaryLine label="Fin de manche" value={cradosEndOnFirstMaxDirt ? "Première jauge pleine" : "Dernier camp encore propre"} /><SummaryLine label="Bruitages" value={cradosSfxEnabled ? "ON" : "OFF"} /><SummaryLine label="Awena" value={cradosAwenaEnabled ? "ON" : "OFF"} /><SummaryLine label="Conseil cible" value={cradosCoachEnabled ? "ON" : "OFF"} /></> : null}
       {mode === "fifty_one_by_five" ? <><SummaryLine label="Objectif" value={`${fiftyOneTarget}`} /><SummaryLine label="Calcul" value="Total ÷ 5 si divisible" /></> : null}

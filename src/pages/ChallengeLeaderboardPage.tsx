@@ -12,11 +12,12 @@ import {
   type ChallengeLeaderboardRow,
   type ChallengeLeaderboardTeam,
 } from '../lib/challengeLeaderboard';
+import { challengeOnlineTargetLabel, exerciseTitle } from '../lib/challengeExercises';
 
 const TARGETS=[...Array.from({length:20},(_,i)=>String(i+1)),'bull'];
 const VISITS=[5,10,15,20,30,50,100];
 const RULES=['all','single','double','triple','bull'];
-const targetLabel=(v:string)=>v==='bull'?'BULL':v==='bull25'?'BULL 25':v==='bull50'?'BULL 50':v;
+const targetLabel=(v:string)=>challengeOnlineTargetLabel(v);
 const ruleLabel=(v:string)=>v==='single'?'S':v==='double'?'D':v==='triple'?'T':v==='bull'||v==='bull25'||v==='bull50'?'BULL':'TOUS';
 
 function FilterIcon(){return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/><circle cx="8" cy="6" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="12" cy="18" r="1.8"/></svg>}
@@ -44,6 +45,7 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
  const [detail,setDetail]=React.useState<ChallengeLeaderboardDetail|null>(null);
  const [detailLoading,setDetailLoading]=React.useState(false);
  const selectedTeam=teams.find(t=>t.key===teamKey)||null;
+ const targetOptions=React.useMemo(()=>Array.from(new Set([target,...TARGETS])),[target]);
  const objective=React.useMemo(()=>({target,rule,visits,setMode:params?.setMode||null,setTarget:params?.setTarget||null,legMode:params?.legMode||null,legTarget:params?.legTarget||null}),[target,rule,visits,params?.setMode,params?.setTarget,params?.legMode,params?.legTarget]);
 
  const cycleInList=React.useCallback((values:Array<string|number>,current:string|number)=>{if(!values.length)return current;const index=values.findIndex(value=>String(value)===String(current));return values[(index+1+values.length)%values.length]??values[0]},[]);
@@ -146,17 +148,19 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    visitScores:Array.isArray(stats?.visitScores)?stats.visitScores:[],
    cumulativeScores:Array.isArray(stats?.cumulativeScores)?stats.cumulativeScores:[],
   };
+  const exerciseConfig=(stats?.exerciseConfig&&typeof stats.exerciseConfig==='object')?stats.exerciseConfig:{};
   const config={
-   target:data.target as any,
-   visits:data.visits,
-   rule:data.rule as any,
+   ...exerciseConfig,
+   target:(exerciseConfig?.target||data.target) as any,
+   visits:Number(exerciseConfig?.visits||data.visits),
+   rule:(exerciseConfig?.rule||data.rule) as any,
    playerIds:[],teamIds:[],participantMode:'players',participantSource:'direct',configMode:'complete',matchMode:'solo',
   };
   const summary={
    title:'CHALLENGE',kind:'challenge',mode:'challenge',status:'finished',finished:true,winnerId:null,
    scoreLine:`${data.displayName} ${data.score}`,
    finalScores:{[pid]:data.score},rankings:[{...player,rank:1}],perPlayer:[{...player,rank:1}],
-   target:data.target,objective:targetLabel(data.target),rule:data.rule,visits:data.visits,
+   target:config.target,leaderboardTarget:data.target,objective:exerciseTitle(config as any),rule:config.rule,visits:config.visits,
   };
   const rec={
    id:data.matchId||`online-${pid}-${data.target}-${data.visits}`,
@@ -244,7 +248,7 @@ export default function ChallengeLeaderboardPage({go,params}:{go:(tab:any,p?:any
    <header><div className="filter-title-icon"><FilterIcon/></div><div><b>FILTRES DU CLASSEMENT</b><small>Seules les performances strictement comparables sont regroupées.</small></div><button onClick={()=>setFiltersOpen(false)}>×</button></header>
    <section><h3>CLASSEMENT</h3><div className="filter-choice-grid scope"><button className={scope==='public'?'on':''} onClick={()=>setScope('public')}>🌍 PUBLIC</button><button className={scope==='team'?'on':''} disabled={!teams.length} onClick={()=>setScope('team')}>🛡️ ÉQUIPE OFFICIELLE</button></div></section>
    {scope==='team'&&<section><h3>ÉQUIPE OFFICIELLE</h3>{teams.length?<div className="filter-choice-grid teams">{teams.map(team=><button key={team.key} className={teamKey===team.key?'on':''} onClick={()=>setTeamKey(team.key)}><span>✓ OFFICIEL</span><b>{team.name}</b><small>{team.organizationName||'Organisation MSS'}</small></button>)}</div>:<p>Aucune équipe officielle : il faut être membre actif d’une Organisation MSS et être affecté à une de ses équipes Darts.</p>}</section>}
-   <section><h3>🎯 CIBLE</h3><div className="filter-choice-grid compact">{TARGETS.map(v=><button className={target===v?'on':''} key={v} onClick={()=>setTarget(v)}>{targetLabel(v)}</button>)}</div></section>
+   <section><h3>🎯 CIBLE</h3><div className="filter-choice-grid compact">{targetOptions.map(v=><button className={target===v?'on':''} key={v} onClick={()=>setTarget(v)}>{targetLabel(v)}</button>)}</div></section>
    <section><h3>🔁 TOURS</h3><div className="filter-choice-grid compact">{VISITS.map(v=><button className={visits===v?'on':''} key={v} onClick={()=>setVisits(v)}>{v}</button>)}</div></section>
    <section><h3>✦ IMPACTS AUTORISÉS</h3><div className="filter-choice-grid compact">{RULES.map(v=><button className={rule===v?'on':''} key={v} onClick={()=>setRule(v)}>{ruleLabel(v)}</button>)}</div></section>
    <footer><button onClick={()=>{setFiltersOpen(false);void refresh()}}>APPLIQUER</button></footer>

@@ -554,7 +554,7 @@ export default function CargoPlay(props: any) {
       .cargo-load-badge{animation:cargo-status-pulse 2.6s ease-in-out infinite}
       @media (prefers-reduced-motion:reduce){.cargo-float-art,.cargo-route-step.is-reached,.cargo-load-badge{animation:none!important}}
       @media (max-height:720px) and (max-width:899px){
-        .cargo-play-main{grid-template-rows:112px 48px minmax(0,1fr)!important;gap:7px!important}
+        .cargo-play-main{grid-template-rows:112px 48px 88px minmax(0,1fr)!important;gap:7px!important}
         .cargo-airy-keypad{grid-template-rows:32px 44px minmax(12px,auto) minmax(132px,1fr) 48px!important;gap:7px!important;padding:9px!important}
       }
       @media (min-height:930px) and (max-width:899px){

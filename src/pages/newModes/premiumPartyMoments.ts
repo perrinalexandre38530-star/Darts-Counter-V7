@@ -120,7 +120,7 @@ export function premiumBotIntent(mode: PartyModeKey, state: any, activePlayer: a
   if (mode === "pendu") {
     const errors = Number(state?.errors?.[id] || 0), limit = Number(state?.config?.rules?.partsToLose || 6);
     if (errors >= limit - 1) return "SURVIE — ZÉRO ERREUR";
-    return state?.phase === "caller" ? "POSER LE DÉFI" : "REPRODUIRE LE DÉFI";
+    return state?.phase === "round" ? "SURVIVRE À L’OBJECTIF" : state?.phase === "caller" ? "POSER LE DÉFI" : "REPRODUIRE LE DÉFI";
   }
   if (mode === "menteur") {
     if (state?.phase === "challenge") return "PROUVER L'ANNONCE";

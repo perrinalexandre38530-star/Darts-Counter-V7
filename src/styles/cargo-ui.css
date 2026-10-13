@@ -92,8 +92,11 @@
 }
 
 @media (max-height:720px) and (max-width:899px){
-  .cargo-load-status{display:none!important}
-  .cargo-play-main{grid-template-rows:112px 48px minmax(0,1fr)!important}
+  .cargo-play-main{grid-template-rows:112px 48px 88px minmax(0,1fr)!important}
+  .cargo-gameplay-hud{display:grid!important;grid-template-columns:1fr 1fr!important;gap:5px!important;overflow:hidden}
+  .cargo-gameplay-hud>button,.cargo-gameplay-hud>div{padding:6px!important;border-radius:13px!important}
+  .cargo-gameplay-hud>button:last-child{display:none!important}
+  .cargo-gameplay-hud>button:first-child div:nth-child(2),.cargo-gameplay-hud>div:nth-child(2) div:nth-child(2){font-size:9.8px!important}
 }
 
 @media (prefers-reduced-motion:reduce){

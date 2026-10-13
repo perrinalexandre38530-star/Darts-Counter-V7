@@ -291,9 +291,13 @@ export function premiumBotTacticalPlan(mode: PremiumPartyModeKey, state: any, pl
   if (mode === "pendu") {
     const errors = Number(state?.errors?.[id] || 0), max = Number(state?.config?.rules?.partsToLose || 6);
     const caller = state?.phase === "caller";
+    const randomRound = state?.phase === "round";
     if (errors >= max - 1) {
       intent = "SURVIE — ZÉRO ERREUR";
       detail = "Une erreur supplémentaire peut provoquer l'élimination.";
+    } else if (randomRound) {
+      intent = brain.key === "sniper" ? "OBJECTIF PROPRE" : brain.risk > .70 ? "OBJECTIF À FOND" : "SURVIVRE À LA RONDE";
+      detail = `Ronde ${Number(state?.roundNumber || 1)} · ${errors}/${max} erreur(s) accumulée(s).`;
     } else if (caller) {
       intent = brain.risk > .70 ? "DÉFI AMBITIEUX" : "POSER LE DÉFI";
       detail = "Réussir la cible pour mettre tous les adversaires sous pression.";
