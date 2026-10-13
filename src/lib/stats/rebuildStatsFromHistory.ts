@@ -10,6 +10,7 @@ import { delKV, getKV, setKV } from "../storage";
 import { normalizeMatchForStats } from "../matchCompactCodec";
 import { computeBabyFootRichStats } from "../babyfootRichStats";
 import { beginFreezeOperation, endFreezeOperation } from "../freezeWatch";
+import { getAccountLocalStorageItem, setAccountLocalStorageItem, removeAccountLocalStorageItem } from "../accountScope";
 
 // ----------------------------
 // Types génériques (safe)
@@ -167,7 +168,7 @@ export type StatsQuickMirror = {
 export function loadStatsQuickMirrorSync(): StatsQuickMirror | null {
   try {
     if (typeof localStorage === "undefined") return null;
-    const raw = localStorage.getItem(STATS_QUICK_MIRROR_KEY);
+    const raw = getAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || parsed.version !== 1 || typeof parsed.byPlayer !== "object") return null;
@@ -197,7 +198,7 @@ function saveStatsQuickMirror(idx: StatsIndex): void {
       };
     }
     const mirror: StatsQuickMirror = { version: 1, updatedAt: Date.now(), byPlayer };
-    localStorage.setItem(STATS_QUICK_MIRROR_KEY, JSON.stringify(mirror));
+    setAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY, JSON.stringify(mirror));
   } catch {
     // Cache UX uniquement : ne doit jamais bloquer les stats.
   }
@@ -206,7 +207,7 @@ function saveStatsQuickMirror(idx: StatsIndex): void {
 export function markStatsIndexDirty(reason = "unknown"): void {
   try {
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(STATS_DIRTY_KEY, JSON.stringify({ dirty: true, reason, at: Date.now() }));
+      setAccountLocalStorageItem(STATS_DIRTY_KEY, JSON.stringify({ dirty: true, reason, at: Date.now() }));
     }
   } catch {}
   try {
@@ -218,14 +219,14 @@ export function markStatsIndexDirty(reason = "unknown"): void {
 
 export function clearStatsIndexDirty(): void {
   try {
-    if (typeof localStorage !== "undefined") localStorage.removeItem(STATS_DIRTY_KEY);
+    if (typeof localStorage !== "undefined") removeAccountLocalStorageItem(STATS_DIRTY_KEY);
   } catch {}
 }
 
 export function isStatsIndexDirty(): boolean {
   try {
     if (typeof localStorage === "undefined") return false;
-    return !!localStorage.getItem(STATS_DIRTY_KEY);
+    return !!getAccountLocalStorageItem(STATS_DIRTY_KEY);
   } catch {
     return false;
   }
@@ -340,7 +341,7 @@ function isValidStatsIndex(v: any): v is StatsIndex {
 
 function tryLoadLegacyStatsIndex(): StatsIndex | null {
   try {
-    const raw = localStorage.getItem(STATS_LEGACY_KEY);
+    const raw = getAccountLocalStorageItem(STATS_LEGACY_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
@@ -382,7 +383,7 @@ export async function loadStatsIndex(): Promise<StatsIndex | null> {
   if (legacy) {
     await saveStatsIndex(legacy).catch(() => {});
     try {
-      localStorage.removeItem(STATS_LEGACY_KEY);
+      removeAccountLocalStorageItem(STATS_LEGACY_KEY);
     } catch {}
     return legacy;
   }
@@ -411,15 +412,15 @@ export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
 
   // migration douce : on nettoie l'ancien stockage localStorage
   try {
-    localStorage.removeItem(STATS_LEGACY_KEY);
+    removeAccountLocalStorageItem(STATS_LEGACY_KEY);
   } catch {}
 }
 
 export async function clearStatsIndex(): Promise<void> {
   await delKV(STATS_KEY).catch(() => {});
   try {
-    localStorage.removeItem(STATS_LEGACY_KEY);
-    localStorage.removeItem(STATS_QUICK_MIRROR_KEY);
+    removeAccountLocalStorageItem(STATS_LEGACY_KEY);
+    removeAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY);
   } catch {}
 }
 

@@ -5338,6 +5338,16 @@ export async function getX01(id: string): Promise<SavedMatch | null> {
   return r && r.kind === "x01" ? r : null;
 }
 
+export const ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT = "dc:account-history-local-change";
+
+function dispatchAccountHistoryLocalChange(detail: any): void {
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT, { detail }));
+    }
+  } catch {}
+}
+
 /* =========================
    Export objet unique History
 ========================= */
@@ -5383,12 +5393,19 @@ export const History = {
 
     // V4 FIX : si l'upsert a été ignoré car il tentait de downgrader
     // un match finished en in_progress, on recharge la ligne réelle avant de toucher le cache UI.
+    let syncedRecord: SavedMatch = rec;
     try {
       const cid = getCanonicalMatchId(rec) ?? (rec as any)?.matchId ?? rec.id;
       const fresh = cid ? await get(String(cid)) : null;
-      _applyUpsertToCache((fresh || rec) as any);
+      syncedRecord = (fresh || rec) as SavedMatch;
+      _applyUpsertToCache(syncedRecord as any);
     } catch {
       _applyUpsertToCache(rec);
+    }
+    // Seulement les parties finalisées sont poussées dans la synchro privée du compte.
+    // Les checkpoints live restent locaux pour ne pas saturer Realtime pendant une partie.
+    if (String((syncedRecord as any)?.status || "").toLowerCase() === "finished") {
+      dispatchAccountHistoryLocalChange({ op: "upsert", record: syncedRecord });
     }
   },
   upsertInProgressCheckpoint,
@@ -5408,10 +5425,21 @@ export const History = {
   async remove(id: string) {
     await remove(id);
     _applyRemoveToCache(id);
+    dispatchAccountHistoryLocalChange({ op: "delete", id: String(id || "") });
+  },
+  // Import distant sans réémettre un événement local (anti-boucle Realtime).
+  async removeFromCloud(id: string) {
+    await remove(id);
+    _applyRemoveToCache(id);
   },
   async clear() {
+    const rows = await list().catch(() => [] as SavedMatch[]);
     await clear();
     _clearCache();
+    dispatchAccountHistoryLocalChange({
+      op: "clear",
+      ids: (Array.isArray(rows) ? rows : []).map((row: any) => String(row?.id || row?.matchId || "")).filter(Boolean),
+    });
   },
 
   // sélecteurs utilitaires

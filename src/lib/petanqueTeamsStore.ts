@@ -15,6 +15,7 @@ import { captureUserMediaFallback, resolveUserMediaFallback, teamCoverMediaKey, 
 import { recordIncrementalChange } from "./incrementalBackupJournal";
 import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
+import { accountScopedLocalStorageKey, adoptLegacyLocalStorageKey, getAccountScopeId } from "./accountScope";
 
 export type TeamSport = string;
 
@@ -114,6 +115,12 @@ export type PetanqueTeam = {
 // Store unique Teams partagé par Profiles > Teams ET PetanqueConfig.
 const STORAGE_KEY = "dc-teams-v1";
 const r2BackfilledSharedTeamIds = new Set<string>();
+
+function teamsStorageKey(): string {
+  const uid = getAccountScopeId();
+  if (uid) adoptLegacyLocalStorageKey(STORAGE_KEY, uid);
+  return accountScopedLocalStorageKey(STORAGE_KEY, uid);
+}
 
 // (Optionnel) Ancienne clé si tu avais un store Pétanque dédié auparavant.
 // Mets-la à une valeur réelle si tu veux activer la migration au premier load.
@@ -353,7 +360,7 @@ export async function resolveTeamLogo(team: TeamEntity | null | undefined, allow
 // ---------------------------
 export function loadTeams(): TeamEntity[] {
   // maybeMigrateLegacyPetanqueTeams(); // <- active si besoin
-  const data = safeParse<any[]>(localStorage.getItem(STORAGE_KEY));
+  const data = safeParse<any[]>(localStorage.getItem(teamsStorageKey()));
   if (!Array.isArray(data)) return [];
 
   const normalized = data
@@ -380,7 +387,7 @@ export function loadTeams(): TeamEntity[] {
 export function saveTeams(list: TeamEntity[]) {
   const previous = loadTeams();
   const clean = dedupeById((list ?? []).map((x) => normalizeTeamEntity(x)).filter(Boolean) as TeamEntity[]);
-  setJsonWithQuotaRecovery(STORAGE_KEY, clean, (teams: TeamEntity[]) =>
+  setJsonWithQuotaRecovery(teamsStorageKey(), clean, (teams: TeamEntity[]) =>
     (teams || []).map((t: any) => ({
       ...t,
       logoDataUrl: null,

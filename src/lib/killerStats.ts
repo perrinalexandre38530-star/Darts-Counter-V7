@@ -9,6 +9,7 @@
 
 import type { Profile } from "./types";
 import { computeKillerStatsAggForProfile } from "./statsKiller";
+import { loadBots } from "./bots";
 
 export type PeriodKey = "D" | "W" | "M" | "Y" | "ALL" | "TOUT";
 
@@ -120,14 +121,12 @@ function pickAvatarFromProfile(p: any): string | null {
 // ✅ (optionnel mais utile) : bots storage pour nom/avatar si profils incomplets
 function loadBotsMap(): Record<string, { avatarDataUrl?: string | null; name?: string }> {
   try {
-    const raw = localStorage.getItem("dc_bots_v1");
-    if (!raw) return {};
-    const bots = JSON.parse(raw);
+    const bots = loadBots();
     const map: Record<string, any> = {};
     for (const b of bots || []) {
       if (!b?.id) continue;
       map[b.id] = {
-        avatarDataUrl: b.avatarDataUrl ?? null,
+        avatarDataUrl: (b as any).avatarDataUrl ?? (b as any).avatarUrl ?? (b as any).avatar ?? null,
         name: b.name,
       };
     }

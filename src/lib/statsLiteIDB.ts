@@ -1,4 +1,5 @@
 import { loadStatsIndex, saveStatsIndex, scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
+import { getAccountLocalStorageItem, setAccountLocalStorageItem } from "./accountScope";
 
 // ============================================
 // src/lib/statsLiteIDB.ts
@@ -28,7 +29,7 @@ const KEY = "dc-lite-v1";
 /* ---------- Load / Save ---------- */
 function load(): LiteDB {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = getAccountLocalStorageItem(KEY);
     if (!raw) return {};
     const obj = JSON.parse(raw);
     return typeof obj === "object" && obj ? obj : {};
@@ -39,7 +40,7 @@ function load(): LiteDB {
 
 function save(db: LiteDB) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(db));
+    setAccountLocalStorageItem(KEY, JSON.stringify(db));
   } catch {
     // ignore quota / private mode errors
   }

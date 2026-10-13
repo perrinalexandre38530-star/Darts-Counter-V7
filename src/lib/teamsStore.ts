@@ -8,6 +8,7 @@ import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaReco
 import { captureUserMediaFallback, teamLogoMediaKey } from "./userMediaFallback";
 import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
+import { accountScopedLocalStorageKey, adoptLegacyLocalStorageKey, getAccountScopeId } from "./accountScope";
 
 export type TeamSport = "petanque" | "darts" | string;
 
@@ -22,6 +23,13 @@ export type Team = {
 };
 
 const KEY = "dc-teams-v1";
+
+function teamsStorageKey(): string {
+  const uid = getAccountScopeId();
+  if (uid) adoptLegacyLocalStorageKey(KEY, uid);
+  return accountScopedLocalStorageKey(KEY, uid);
+}
+
 const r2BackfilledTeamIds = new Set<string>();
 
 function safeParse<T>(raw: string | null, fallback: T): T {
@@ -47,7 +55,7 @@ function keepNonInlineImageRef(value: unknown): string | undefined {
 }
 
 export function loadTeams(): Team[] {
-  const arr = safeParse<any[]>(localStorage.getItem(KEY), []);
+  const arr = safeParse<any[]>(localStorage.getItem(teamsStorageKey()), []);
   if (!Array.isArray(arr)) return [];
   const teams = arr
     .filter(Boolean)
@@ -73,7 +81,7 @@ export function loadTeams(): Team[] {
 
 export function saveTeams(next: Team[]) {
   const clean = (next || []).map((t: any) => ({ ...t, logoDataUrl: sanitizeStoredImage(t?.logoDataUrl) || undefined }));
-  setJsonWithQuotaRecovery(KEY, clean, (list: any[]) =>
+  setJsonWithQuotaRecovery(teamsStorageKey(), clean, (list: any[]) =>
     (list || []).map((t: any) => ({
       ...t,
       logoDataUrl: undefined,

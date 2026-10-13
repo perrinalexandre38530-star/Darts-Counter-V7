@@ -526,53 +526,9 @@ function isBotProfile(p: any) {
 
 // ✅ localStorage bots : clés connues + scan "bot" (fallback)
 function readBotsFromLocalStorage(): any[] {
-  const keys = ["dc_bots_v1", "dc-bots-v1", "dcBotsV1", "darts-counter-bots", "bots"];
-
-  // 1) clés connues
-  for (const k of keys) {
-    try {
-      const raw = localStorage.getItem(k);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      const arr = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed?.bots)
-          ? parsed.bots
-          : Array.isArray(parsed?.items)
-            ? parsed.items
-            : Array.isArray(parsed?.list)
-              ? parsed.list
-              : [];
-      if (Array.isArray(arr) && arr.length) return arr;
-    } catch {}
-  }
-
-  // 2) scan localStorage: toute clé contenant "bot"
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k) continue;
-      if (!/bot/i.test(k)) continue;
-      const raw = localStorage.getItem(k);
-      if (!raw) continue;
-
-      try {
-        const parsed = JSON.parse(raw);
-        const arr = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed?.bots)
-            ? parsed.bots
-            : Array.isArray(parsed?.items)
-              ? parsed.items
-              : Array.isArray(parsed?.list)
-                ? parsed.list
-                : [];
-        if (Array.isArray(arr) && arr.length) return arr;
-      } catch {}
-    }
-  } catch {}
-
-  return [];
+  // Compat nom historique : la source réelle est désormais le store BOTS
+  // canonique, lui-même namespacé par auth.uid().
+  try { return loadStoredBots(); } catch { return []; }
 }
 
 function getBotsFromStore(store: any) {

@@ -129,6 +129,7 @@ import { onlineApi } from "./lib/onlineApi";
 import { isNasProviderEnabled } from "./lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 import { bindCanonicalAccountProfileId, getCanonicalAccountProfileFromStore } from "./lib/canonicalAccountProfile";
+import { ACCOUNT_OWNED_STORE_MUTATED_EVENT, prepareAccountOwnedLocalNamespaces, startAccountOwnedDataSync } from "./lib/accountOwnedSync";
 
 
 // ✅ Supabase client
@@ -2823,6 +2824,10 @@ useEffect(() => {
 
   const scheduleStorePersist = React.useCallback((snapshot: Store) => {
     if (!snapshot) return;
+    // Toujours signaler la mutation au synchroniseur privé : sa signature
+    // inclut l'intégralité des profils locaux, contrairement à la signature
+    // performance du store qui peut volontairement ignorer certains champs.
+    try { window.dispatchEvent(new Event(ACCOUNT_OWNED_STORE_MUTATED_EVENT)); } catch {}
     const nextSignature = buildStorePersistSignatureForPerf(snapshot as any);
     if (!pendingStorePersistRef.current && nextSignature === lastPersistSignatureRef.current) {
       return;
@@ -3531,6 +3536,9 @@ useEffect(() => {
     bootStoreLoadedRef.current = false;
 
     try { setStorageUser(nextScope); } catch {}
+    // Sépare immédiatement les sources statistiques legacy encore en localStorage
+    // avant que le nouveau compte puisse afficher un KPI de l'ancien compte.
+    try { if (uid) prepareAccountOwnedLocalNamespaces(uid); } catch {}
     logProfileStabilityAudit("storage-scope-reload-start", store, { source: "auth-scope-reload", previousScope, nextScope, accountChanged });
     setCloudHydrated(false);
     setCloudCanSync(false);
@@ -3610,6 +3618,82 @@ useEffect(() => {
       cancelled = true;
     };
   }, [loading, online?.ready, (online as any)?.user?.id]);
+
+  // ============================================================
+  // ACCOUNT OWNED DATA SYNC V118
+  // Profils locaux / Galerie / BOTS CPU / Teams / workspace orga / Stats.
+  // Le service démarre seulement APRÈS le chargement du namespace IndexedDB
+  // correspondant au vrai auth.uid(), afin de ne jamais pousser les données
+  // de l'ancien compte vers le nouveau.
+  // ============================================================
+  React.useEffect(() => {
+    if (isSamsungTvNativeApp || loading || !online?.ready) return;
+    const uid = String(
+      (online as any)?.user?.user_metadata?.supabase_user_id ||
+      (online as any)?.user?.id ||
+      ""
+    ).trim();
+    if (!uid) return;
+
+    let cancelled = false;
+    let cleanupSync: (() => void) | null = null;
+    let waitTimer: number | null = null;
+
+    const isAccountProfile = (profile: any) => {
+      const pi = profile?.privateInfo || {};
+      const ids = [
+        profile?.id, profile?.onlineUserId, profile?.online_user_id, profile?.accountUserId, profile?.account_user_id,
+        profile?.supabaseUserId, profile?.userId, profile?.user_id,
+        pi?.onlineUserId, pi?.online_user_id, pi?.accountUserId, pi?.account_user_id, pi?.supabaseUserId, pi?.userId, pi?.user_id,
+      ].map((value: any) => String(value || "").trim()).filter(Boolean);
+      return ids.includes(uid);
+    };
+
+    const startWhenScopeReady = () => {
+      if (cancelled) return;
+      if (!bootStoreLoadedRef.current || loadedStoreScopeRef.current !== uid) {
+        waitTimer = window.setTimeout(startWhenScopeReady, 180);
+        return;
+      }
+
+      cleanupSync = startAccountOwnedDataSync({
+        userId: uid,
+        getProfiles: () => {
+          const live = (window as any)?.__appStore?.store || store;
+          return Array.isArray((live as any)?.profiles) ? (live as any).profiles : [];
+        },
+        applyLocalProfiles: async (incoming) => {
+          const safeIncoming = Array.isArray(incoming) ? incoming.filter((profile: any) => !isAccountProfile(profile)) : [];
+          setStore((live) => {
+            const current = Array.isArray((live as any)?.profiles) ? (live as any).profiles : [];
+            // Le profil COMPTE reste exclusivement piloté par public.profiles.
+            // Seuls les profils LOCAUX du même propriétaire sont remplacés ici.
+            const accountProfiles = current.filter(isAccountProfile);
+            const seen = new Set<string>();
+            const profiles = [...accountProfiles, ...safeIncoming].filter((profile: any) => {
+              const id = String(profile?.id || "").trim();
+              if (!id || seen.has(id)) return false;
+              seen.add(id);
+              return true;
+            });
+            const next = { ...(live as any), profiles } as Store;
+            try { scheduleStorePersist(next); } catch {}
+            return next;
+          });
+        },
+      });
+    };
+
+    startWhenScopeReady();
+    return () => {
+      cancelled = true;
+      if (waitTimer != null) window.clearTimeout(waitTimer);
+      waitTimer = null;
+      try { cleanupSync?.(); } catch {}
+      cleanupSync = null;
+    };
+  }, [isSamsungTvNativeApp, loading, online?.ready, (online as any)?.user?.id, scheduleStorePersist]);
+
   React.useEffect(() => {
     try {
       (window as any).__appGo = go;

@@ -4,7 +4,7 @@
 
 import { TEAM_LOGO_LIBRARY, teamLogoMatchesCategory, type TeamLogoCategory, type TeamLogoTemplate } from "../assets/teamLogoLibrary";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
-import { setJsonWithQuotaRecovery } from "./teamImageStorage";
+import { loadTeams, saveTeams } from "./petanqueTeamsStore";
 
 export type TeamShuffleMode = "random" | "balanced";
 
@@ -64,7 +64,6 @@ type GenerateOptions = {
 };
 
 const GENERATED_TEAMS_KEY = "dc-generated-temp-teams-v1";
-const STORED_TEAMS_KEY = "dc-teams-v1";
 
 const ADJECTIVES = [
   "Foudroyants", "Dorés", "Sauvages", "Nocturnes", "Brûlants", "Aiguisés", "Royaux", "Cosmiques", "Furieux", "Légendaires",
@@ -493,29 +492,16 @@ export function saveGeneratedTeamsToTeamStore(teams: any[], sport = "darts") {
   }));
 
   try {
-    const previous = safeParseArray(window.localStorage.getItem(STORED_TEAMS_KEY));
+    const previous = loadTeams();
     const byId = new Map<string, any>();
     clean.forEach((team) => byId.set(String(team.id), team));
-    previous.forEach((team) => {
+    previous.forEach((team: any) => {
       const id = String(team?.id || "").trim();
       if (id && !byId.has(id)) byId.set(id, team);
     });
-    const merged = Array.from(byId.values());
-    setJsonWithQuotaRecovery(STORED_TEAMS_KEY, merged, (list: any[]) =>
-      (list || []).map((team: any) => ({
-        ...team,
-        logoDataUrl: typeof team?.logoDataUrl === "string" && team.logoDataUrl.startsWith("data:image/") ? null : team?.logoDataUrl ?? null,
-        logoUrl: typeof team?.logoUrl === "string" && team.logoUrl.startsWith("data:image/") ? null : team?.logoUrl ?? null,
-        avatarUrl: typeof team?.avatarUrl === "string" && team.avatarUrl.startsWith("data:image/") ? null : team?.avatarUrl ?? null,
-        imageUrl: typeof team?.imageUrl === "string" && team.imageUrl.startsWith("data:image/") ? null : team?.imageUrl ?? null,
-        regionLogoDataUrl: null,
-        regionLogoUrl: typeof team?.regionLogoUrl === "string" && team.regionLogoUrl.startsWith("data:image/") ? null : team?.regionLogoUrl ?? null,
-        coverDataUrl: null,
-        coverUrl: typeof team?.coverUrl === "string" && team.coverUrl.startsWith("data:image/") ? null : team?.coverUrl ?? null,
-      }))
-    );
-    try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
-    try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
+    // Passe obligatoirement par le store Teams canonique : namespace auth.uid(),
+    // R2 média et événement Realtime restent ainsi cohérents.
+    saveTeams(Array.from(byId.values()) as any);
   } catch {}
   return clean;
 }

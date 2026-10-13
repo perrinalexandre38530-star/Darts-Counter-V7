@@ -7,6 +7,8 @@ import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { botAvatarMediaKey, captureUserMediaFallback } from "./userMediaFallback";
 import { normalizeBotCountryCode, resolveProBotCountryCode } from "./botCountries";
 import { getOfficialBots, isOfficialBotId } from "./officialBots";
+import { accountScopedLocalStorageKey, adoptLegacyLocalStorageKey, getAccountScopeId } from "./accountScope";
+import { readAvatarGallery } from "./avatarGallery";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -14,6 +16,25 @@ const r2BackfilledBotIds = new Set<string>();
 const LS_BOT_AVATAR_ITEM_PREFIX = "dc_bot_avatar_v1:";
 const BOTS_STORAGE_VERSION = 2;
 const BOTS_CHANGED_EVENT = "dc:bots-changed";
+
+function botsMetaStorageKey(): string {
+  const uid = getAccountScopeId();
+  if (uid) adoptLegacyLocalStorageKey(LS_BOTS_KEY, uid);
+  return accountScopedLocalStorageKey(LS_BOTS_KEY, uid);
+}
+
+function botsAvatarsStorageKey(): string {
+  const uid = getAccountScopeId();
+  if (uid) adoptLegacyLocalStorageKey(LS_BOTS_AVATARS_KEY, uid);
+  return accountScopedLocalStorageKey(LS_BOTS_AVATARS_KEY, uid);
+}
+
+function botAvatarItemStorageKey(botId: string): string {
+  const base = `${LS_BOT_AVATAR_ITEM_PREFIX}${String(botId || "").trim()}`;
+  const uid = getAccountScopeId();
+  if (uid) adoptLegacyLocalStorageKey(base, uid);
+  return accountScopedLocalStorageKey(base, uid);
+}
 
 export type BotLevel = "easy" | "medium" | "strong" | "pro" | "legend";
 
@@ -207,7 +228,7 @@ function trySaveAvatarsPayload(candidates: Array<{ id: string; compressed: strin
     v: BOTS_STORAGE_VERSION,
     items: Object.fromEntries(candidates.map((x) => [x.id, x.compressed])),
   };
-  return safeLocalStorageSetJson(LS_BOTS_AVATARS_KEY, payload, {
+  return safeLocalStorageSetJson(botsAvatarsStorageKey(), payload, {
     compressAboveChars: 2000,
     imageMaxChars: 220000,
     sanitizeImages: false,
@@ -217,7 +238,7 @@ function trySaveAvatarsPayload(candidates: Array<{ id: string; compressed: strin
 function saveAvatarItemFallback(botId: string, compressed: string): boolean {
   const id = String(botId || "").trim();
   if (!id || !compressed) return false;
-  return safeLocalStorageSetJson(`${LS_BOT_AVATAR_ITEM_PREFIX}${id}`, {
+  return safeLocalStorageSetJson(botAvatarItemStorageKey(id), {
     v: BOTS_STORAGE_VERSION,
     id,
     compressed,
@@ -232,7 +253,7 @@ function readAvatarItemFallback(botId: string): string | null {
   if (typeof window === "undefined") return null;
   const id = String(botId || "").trim();
   if (!id) return null;
-  const parsed = safeLocalStorageGetJson<any>(`${LS_BOT_AVATAR_ITEM_PREFIX}${id}`, null as any);
+  const parsed = safeLocalStorageGetJson<any>(botAvatarItemStorageKey(id), null as any);
   if (!parsed || typeof parsed !== "object") return null;
   if (typeof parsed.dataUrl === "string") return sanitizeAvatarDataUrl(parsed.dataUrl);
   if (typeof parsed.avatarDataUrl === "string") return sanitizeAvatarDataUrl(parsed.avatarDataUrl);
@@ -245,11 +266,13 @@ function readAvatarItemFallback(botId: string): string | null {
 
 function cleanupRemovedAvatarItems(validIds: Set<string>) {
   if (typeof window === "undefined") return;
+  const uid = getAccountScopeId();
+  const prefix = accountScopedLocalStorageKey(LS_BOT_AVATAR_ITEM_PREFIX, uid);
   try {
     for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
       const key = window.localStorage.key(i) || "";
-      if (!key.startsWith(LS_BOT_AVATAR_ITEM_PREFIX)) continue;
-      const id = key.slice(LS_BOT_AVATAR_ITEM_PREFIX.length);
+      if (!key.startsWith(prefix)) continue;
+      const id = key.slice(prefix.length);
       if (!validIds.has(id)) window.localStorage.removeItem(key);
     }
   } catch {}
@@ -263,7 +286,7 @@ function saveAvatarsWithPruning(list: BotRecord[]) {
   cleanupRemovedAvatarItems(validIds);
 
   if (!candidates.length) {
-    safeRemoveItem(LS_BOTS_AVATARS_KEY);
+    safeRemoveItem(botsAvatarsStorageKey());
     return;
   }
 
@@ -285,7 +308,7 @@ function saveAvatarsWithPruning(list: BotRecord[]) {
   }
 
   console.warn("[bots] global avatar map disabled: quota still exceeded; using individual avatar fallbacks when available");
-  safeRemoveItem(LS_BOTS_AVATARS_KEY);
+  safeRemoveItem(botsAvatarsStorageKey());
 }
 
 
@@ -307,7 +330,6 @@ function scanAvatarGalleryForBot(botId: any): string | null {
   if (!id) return null;
 
   let best: { src: string; updatedAt: number } | null = null;
-
   const inspectList = (items: any[]) => {
     for (const item of Array.isArray(items) ? items : []) {
       if (!item || typeof item !== "object") continue;
@@ -322,17 +344,11 @@ function scanAvatarGalleryForBot(botId: any): string | null {
     }
   };
 
-  try {
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i) || "";
-      if (!key.startsWith("dc_avatar_gallery_v1:")) continue;
-      try {
-        const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
-        inspectList(parsed);
-      } catch {}
-    }
-  } catch {}
+  // IMPORTANT : ne jamais parcourir les galeries des autres comptes présents
+  // sur le même appareil. La galerie est maintenant strictement liée au UID.
+  try { inspectList(readAvatarGallery(getAccountScopeId())); } catch {}
 
+  // Ancienne galerie IA non scopée : uniquement comme migration de secours.
   try {
     const legacy = JSON.parse(window.localStorage.getItem("msc_avatar_ia_gallery_v1") || "[]");
     inspectList(legacy);
@@ -467,7 +483,7 @@ export function normalizeBotsList(list: any[]): BotRecord[] {
 }
 
 function readLegacyInlineBots(): BotRecord[] {
-  const raw = safeGetItem(LS_BOTS_KEY);
+  const raw = safeGetItem(botsMetaStorageKey());
   const parsed = safeParseJson<any>(raw, []);
   if (Array.isArray(parsed)) {
     return normalizeBotsList(parsed);
@@ -479,7 +495,7 @@ function readLegacyInlineBots(): BotRecord[] {
 }
 
 function readBotsMeta(): BotRecord[] {
-  const parsed = safeLocalStorageGetJson<any>(LS_BOTS_KEY, [] as any);
+  const parsed = safeLocalStorageGetJson<any>(botsMetaStorageKey(), [] as any);
   if (Array.isArray(parsed)) {
     return normalizeBotsList(parsed);
   }
@@ -490,7 +506,7 @@ function readBotsMeta(): BotRecord[] {
 }
 
 function readAvatarsMap(): Record<string, string | null> {
-  const parsed = safeLocalStorageGetJson<any>(LS_BOTS_AVATARS_KEY, null as any);
+  const parsed = safeLocalStorageGetJson<any>(botsAvatarsStorageKey(), null as any);
   if (!parsed || typeof parsed !== "object" || typeof parsed.items !== "object" || !parsed.items) {
     return {};
   }
@@ -560,14 +576,14 @@ function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStor
     items: normalized.map(packBotMeta),
   };
 
-  let metaSaved = safeLocalStorageSetJson(LS_BOTS_KEY, metaPayload, {
+  let metaSaved = safeLocalStorageSetJson(botsMetaStorageKey(), metaPayload, {
     compressAboveChars: 1500,
     imageMaxChars: 120000,
   });
   if (!metaSaved) {
     try {
-      safeRemoveItem(LS_BOTS_AVATARS_KEY);
-      metaSaved = safeLocalStorageSetJson(LS_BOTS_KEY, metaPayload, {
+      safeRemoveItem(botsAvatarsStorageKey());
+      metaSaved = safeLocalStorageSetJson(botsMetaStorageKey(), metaPayload, {
         compressAboveChars: 1500,
         imageMaxChars: 120000,
       });

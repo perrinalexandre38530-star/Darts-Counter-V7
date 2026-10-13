@@ -1536,6 +1536,7 @@ const LS_PREFIXES = ["dc_", "dc-", "dc:", "msc_organizations_v1", "msc_organizat
 const USER_CREATED_APP_KEYS = new Set<string>([
   // Clés historiques sans préfixe dc_* mais contenant des données créées par l'utilisateur.
   "babyfoot_league_store_v1",
+  "pingpong_history",
   "settings_x01",
   "cloudStatsEnabled",
 ]);
@@ -1618,6 +1619,8 @@ function maxLocalStorageExportLenForKey(key: string): number {
  * - Ignore LS_EXCLUDE
  * - Safe: no-op si déjà patché
  */
+export const ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT = "dc:local-storage-user-data-changed";
+
 let __dcLsHookInstalled = false;
 
 export function installLocalStorageDcHook() {
@@ -1644,6 +1647,9 @@ export function installLocalStorageDcHook() {
         if (key && isDcKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
           emitCloudChange(`ls:set:${key}`);
         }
+        if (key && isAppUserCreatedLocalStorageKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
+          window.dispatchEvent(new CustomEvent(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, { detail: { key, op: "set" } }));
+        }
       } catch {}
     };
 
@@ -1653,6 +1659,9 @@ export function installLocalStorageDcHook() {
         if (key && isDcKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
           emitCloudChange(`ls:del:${key}`);
         }
+        if (key && isAppUserCreatedLocalStorageKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
+          window.dispatchEvent(new CustomEvent(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, { detail: { key, op: "remove" } }));
+        }
       } catch {}
     };
 
@@ -1660,6 +1669,7 @@ export function installLocalStorageDcHook() {
       originalClear();
       try {
         emitCloudChange(`ls:clear`);
+        window.dispatchEvent(new CustomEvent(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, { detail: { key: "*", op: "clear" } }));
       } catch {}
     };
   } catch {

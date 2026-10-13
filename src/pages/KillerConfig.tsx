@@ -124,9 +124,6 @@ type BotLite = {
   isUserBot?: boolean;
 };
 
-// Clé LS bots
-const LS_BOTS_KEY = "dc_bots_v1";
-
 function isNonUserSystemBot(input: any): boolean {
   const id = String(input?.id || "").trim().toLowerCase();
   const source = String(input?.source || "").trim().toLowerCase();
@@ -460,33 +457,9 @@ export default function KillerConfigPage(props: Props) {
         }));
         setBotsFromLS(mapped);
       } catch {
-        try {
-          const raw = localStorage.getItem(LS_BOTS_KEY);
-          if (!raw) {
-            setBotsFromLS([]);
-            return;
-          }
-          const parsed = JSON.parse(raw) as any[];
-          const mapped: BotLite[] = (parsed || []).filter((b) => !isNonUserSystemBot(b)).map((b) => ({
-            id: b.id,
-            name: b.name || "BOT",
-            avatarDataUrl: b.avatarDataUrl ?? null,
-            botLevel:
-              b.botLevel ??
-              b.level ??
-              b.levelLabel ??
-              b.levelName ??
-              b.performanceLevel ??
-              b.difficulty ??
-              "",
-            groupLabel: "CPU Home",
-            source: "cpu",
-            isUserBot: true,
-          }));
-          setBotsFromLS(mapped);
-        } catch {
-          setBotsFromLS([]);
-        }
+        // Ne jamais relire l'ancienne clé globale dc_bots_v1 : sur un appareil
+        // multi-comptes elle pourrait appartenir à un autre utilisateur.
+        setBotsFromLS([]);
       }
     };
 
