@@ -169,24 +169,6 @@ const rawDartsGameRegistry: DartsGameDef[] = [
       "Un marché dynamique associe une carte visible à chacun des secteurs 1 à 20. Une touche récupère la carte et la remplace. En 6 fléchettes, construis la meilleure main de 5 cartes. Double = jeton Échange, Triple et Bull = jeton Choix, Double Bull = Joker. La meilleure combinaison de poker gagne la manche.",
   },
   {
-    id: "ptit_hun",
-    label: "P’TIT 1",
-    category: "fun",
-    subCategory: "precision",
-    entry: "games",
-    tab: "ptit_hun_config",
-    popularityRank: 3,
-    ready: true,
-    isNew: true,
-    maxPlayers: 12,
-    supportsTeams: false,
-    supportsBots: true,
-    statsKey: "game:ptit_hun",
-    infoTitle: "P’TIT 1",
-    infoBody:
-      "Le plus petit score gagne. Par défaut : petit simple = valeur normale ; gros simple = ×10 ; Double = total ×2 ; Triple = ×3 ; Bull25 = ×4 ; MISS = ×5 ; DBULL = ÷2. Triple Nul, Bouclier du Hun et Zéro Absolu peuvent être activés ou réglés. Le Jackpot ajoute une ou deux zones spéciales uniquement sur des Doubles/Triples : une touche annule toute la volée et lui donne 0 point. Tous les paramètres principaux sont configurables.",
-  },
-  {
     id: "cargo",
     label: "CARGO",
     category: "challenge",
@@ -340,6 +322,27 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   // ===========================================================
   // VARIANTES
   // ===========================================================
+  // P’TIT 1 — anti-score de précision. Classé en VARIANTES : le jeu détourne
+  // volontairement la valeur des zones et récompense la précision au centre.
+  {
+    id: "ptit_hun",
+    label: "P’TIT 1",
+    category: "variant",
+    subCategory: "other",
+    entry: "games",
+    tab: "ptit_hun_config",
+    popularityRank: 19,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:ptit_hun",
+    infoTitle: "P’TIT 1",
+    infoBody:
+      "Le plus petit score gagne. Par défaut : petit simple = valeur normale ; gros simple = ×10 ; Double = total ×2 ; Triple = ×3 ; Bull25 = ×4 ; MISS = ×5 ; DBULL = ÷2. Triple Nul, Bouclier du Hun et Zéro Absolu peuvent être activés ou réglés. Le Jackpot ajoute une ou deux zones spéciales uniquement sur des Doubles/Triples : une touche annule toute la volée et lui donne 0 point. Tous les paramètres principaux sont configurables.",
+  },
+
   {
     id: "enculette",
     label: "Enculette / Vache",
@@ -1518,6 +1521,7 @@ const READY_IDS = new Set<string>([
   "warfare",
   "five_lives",
   "gros_6", // GROS 6 / BIG 6 — mode disponible
+  "ptit_hun", // P’TIT 1 — mode disponible depuis Games > Variantes
   "scram",
   "baseball",
   "football",

@@ -512,7 +512,9 @@ export default function Games({ setTab, params }: Props) {
         ? "killer"
         : id === "fifty_one_by_five"
           ? "51_by_5"
-          : id;
+          : id === "ptit_hun"
+            ? "ptit_1"
+            : id;
 
     if (lang !== "fr") {
       const preferred = lang === "es" ? "es" : "en";
