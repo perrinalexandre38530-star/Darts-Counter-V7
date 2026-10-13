@@ -157,6 +157,21 @@ export type ChallengeEvaluation={
 
 export type ChallengeExerciseObjectiveStats={attempts:number;validated:number;perfect:number;points:number};
 
+export type ChallengeExerciseVisitStats={
+ index:number;
+ objective:string;
+ darts:number;
+ successfulHits:number;
+ validated:boolean;
+ perfect:boolean;
+ points:number;
+ scoreBefore:number;
+ scoreAfter:number;
+ delta:number;
+ halfItCut:boolean;
+ groupingSector:number|null;
+};
+
 export type ChallengeExerciseAnalytics={
  type:ChallengeExerciseType;
  visitsPlayed:number;
@@ -169,6 +184,7 @@ export type ChallengeExerciseAnalytics={
  bestPerfectVisitStreak:number;
  bestVisitPoints:number;
  objectiveStats:Record<string,ChallengeExerciseObjectiveStats>;
+ visitStats:ChallengeExerciseVisitStats[];
  halfItCuts:number;
  halfItLowestScore:number;
  halfItEndScore:number;
@@ -262,6 +278,7 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
  let groupingPoints=0;
  const groupingSectorHits:Record<string,number>={};
  const objectiveStats:Record<string,ChallengeExerciseObjectiveStats>={};
+ const visitStats:ChallengeExerciseVisitStats[]=[];
 
  for(let visitIndex=0;visitIndex<visitsPlayed;visitIndex++){
   const start=visitIndex*3;
@@ -286,6 +303,31 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
   if(validated)objectiveRow.validated++;
   if(perfect)objectiveRow.perfect++;
   objectiveRow.points+=visitPoints;
+
+  const scoreBefore=visitIndex>0?Number(evaluation.cumulativeScores[visitIndex-1]||0):(type==='half-it'?Math.max(0,Math.round(Number(cfg.halfItStartScore??40)||0)):0);
+  const scoreAfter=Number(evaluation.cumulativeScores[visitIndex]??scoreBefore);
+  const groupingSector=type==='grouping'?(()=>{
+   for(let j=0;j<visit.length;j++){
+    if(!successFlags[j])continue;
+    const sector=Math.round(Number(visit[j]?.segment||0));
+    if(sector>=1&&sector<=20)return sector;
+   }
+   return null;
+  })():null;
+  visitStats.push({
+   index:visitIndex,
+   objective,
+   darts:visit.length,
+   successfulHits,
+   validated,
+   perfect,
+   points:visitPoints,
+   scoreBefore,
+   scoreAfter,
+   delta:scoreAfter-scoreBefore,
+   halfItCut:type==='half-it'&&complete&&successfulHits===0,
+   groupingSector,
+  });
 
   if(type==='grouping'&&successfulHits>0){
    if(successfulHits===2)groupingDoublets++;
@@ -319,6 +361,7 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
   bestPerfectVisitStreak,
   bestVisitPoints,
   objectiveStats,
+  visitStats,
   halfItCuts,
   halfItLowestScore,
   halfItEndScore:type==='half-it'?evaluation.score:0,

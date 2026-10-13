@@ -45,8 +45,8 @@ const landingTickerAssets = import.meta.glob("../assets/tickers/*.{png,webp}", {
   import: "default",
 }) as Record<string, string>;
 
-const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo"]);
-const NEW_PUBLIC_DARTS = new Set(["mistigri", "corbeau_renard", "radin", "darts_impossible"]);
+const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
+const NEW_PUBLIC_DARTS = new Set(["ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible"]);
 const DARTS_CATEGORY_LABEL: Record<string,string> = {
   classic: "GRANDS CLASSIQUES",
   variant: "VARIANTES",
@@ -85,6 +85,7 @@ const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
   departements: "Choisissez la carte ou la variante territoriale proposée, puis les participants. Les touches permettent ensuite de conquérir ou défendre les zones correspondantes ; la configuration adapte la partie au territoire sélectionné.",
   darts_firefighter: "Choisissez les membres de la brigade, les éventuels bots IA et les options de mission proposées. Pendant la partie, les touches déclenchent les actions de lutte contre l’incendie sur la carte ; le Bull et le Double Bull peuvent produire des actions spéciales selon les règles du mode.",
   cargo: "Choisissez les participants et les paramètres de mission disponibles. Chaque joueur doit réussir les séries et contrats demandés pour charger sa cargaison ; le moteur suit automatiquement la progression des palettes et les objectifs accomplis.",
+  ptit_hun: "Choisissez la durée, le score de départ et la dureté du mode avant de lancer la partie. Vous pouvez régler le multiplicateur du gros simple, les effets Double/Triple/Bull25/MISS, le DBULL, le Triple Nul, le Bouclier du Hun et le Zéro Absolu. Le Jackpot est lui aussi configurable : Double uniquement, Triple uniquement ou aléatoire D/T, avec une ou deux zones et un renouvellement à chaque volée ou à chaque tour. Une zone Jackpot touchée annule toute la volée et la ramène à 0 point.",
   demineur: "Choisissez les participants et les paramètres de grille proposés. Les secteurs 1 à 20 correspondent aux cases du terrain : une touche révèle une case et les indices permettent de déduire où se trouvent les mines. L’objectif est de sécuriser la grille sans provoquer d’explosion.",
   heist_180: "Préparez les joueurs ou équipes et les paramètres du casse. La partie enchaîne préparation, ouverture du coffre, récupération du butin puis évasion ; les réussites aux fléchettes font progresser l’opération tandis que les erreurs augmentent la pression de l’alarme.",
   hot_potato: "Choisissez les participants et les réglages de la manche. La patate chaude circule entre les joueurs : réussir l’objectif demandé permet de la transmettre, tandis que le compte à rebours maintient la pression jusqu’à l’explosion et à la perte d’une vie.",
@@ -479,8 +480,26 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     <section className="mssDartsUniverse" id="darts-modes">
       <div className="mssDartsIntro">
         <div><div className="mssEyebrow">{tr("darts.eyebrow", "L’UNIVERS FLÉCHETTES MULTISPORTS SCORING")}</div><h2><em>{allDartsGames.length}</em> {tr("darts.referencedModes", "modes référencés.")}<br/><span>{readyDartsGames.length} {tr("darts.availableToday", "disponibles aujourd’hui.")}</span></h2><p>{tr("darts.intro", "Les grands classiques des fléchettes côtoient les variantes, défis, modes fun et créations exclusives MULTISPORTS SCORING. Les modes encore en préparation restent visibles et clairement marqués « EN DÉVELOPPEMENT ».")}</p></div>
-        <div className="mssDartsPromises"><span><strong>CLASSIQUES</strong><small>X01 • Cricket • Killer • Shanghai • Golf…</small></span><span><strong>EXCLUSIFS MSS</strong><small>DARTS FIREFIGHTER • CRADOS • ATTRAPE-MOI SI TU PEUX ! • LOTERIE • MENTEUR • PRÉSIDENT • LE PENDU • CARGO</small></span><span><strong>CATALOGUE COMPLET</strong><small>{readyDartsGames.length} disponibles • {developmentDartsGames.length} en développement</small></span><span><strong>RÈGLES DÉTAILLÉES</strong><small>Objectif • déroulement • configuration • fin de partie</small></span></div>
+        <div className="mssDartsPromises"><span><strong>CLASSIQUES</strong><small>X01 • Cricket • Killer • Shanghai • Golf…</small></span><span><strong>EXCLUSIFS MSS</strong><small>DARTS FIREFIGHTER • CRADOS • ATTRAPE-MOI SI TU PEUX ! • P’TIT 1 • LOTERIE • MENTEUR • PRÉSIDENT • LE PENDU • CARGO</small></span><span><strong>CATALOGUE COMPLET</strong><small>{readyDartsGames.length} disponibles • {developmentDartsGames.length} en développement</small></span><span><strong>RÈGLES DÉTAILLÉES</strong><small>Objectif • déroulement • configuration • fin de partie</small></span></div>
       </div>
+      <section className="mssPtit1Spotlight" aria-label="Présentation du mode P’TIT 1">
+        <a className="mssPtit1SpotlightArt" href={publicDartsUrl("ptit_hun")} onClick={(event) => openPublicDartsRule(event, "ptit_hun")}>
+          {landingTickerFor("ptit_hun", lang) ? <img src={landingTickerFor("ptit_hun", lang)!} alt="P’TIT 1, mode de fléchettes exclusif MULTISPORTS SCORING" loading="lazy" decoding="async"/> : null}
+          <span>{tr("status.new", "NOUVEAU")} • {tr("status.exclusive", "EXCLUSIF MSS")}</span>
+        </a>
+        <div className="mssPtit1SpotlightCopy">
+          <div className="mssEyebrow">{tr("ptit1.eyebrow", "NOUVEAU MODE • PRÉCISION INVERSÉE")}</div>
+          <h3>{tr("ptit1.title", "P’TIT 1 : pour gagner, marquez le moins possible.")}</h3>
+          <p>{tr("ptit1.body", "Le petit simple devient votre meilleur allié : sa valeur reste faible, tandis que le gros simple et les anneaux dangereux peuvent faire exploser votre total. Cherchez les volées parfaites, construisez votre Bouclier et osez le centre de la cible pour revenir vers zéro.")}</p>
+          <div className="mssPtit1Mechanics">
+            <span><b>1</b><small>{tr("ptit1.smallOne", "Petit 1 = +1")}</small></span>
+            <span><b>0</b><small>{tr("ptit1.tripleNul", "3 petits identiques = volée 0")}</small></span>
+            <span><b>÷2</b><small>{tr("ptit1.dbull", "DBULL réduit le score")}</small></span>
+            <span><b>✦</b><small>{tr("ptit1.jackpot", "Jackpot Double/Triple = volée 0")}</small></span>
+          </div>
+          <a className="mssPtit1SpotlightCta" href={publicDartsUrl("ptit_hun")} onClick={(event) => openPublicDartsRule(event, "ptit_hun")}>{tr("darts.fullSheet", "VOIR LA FICHE COMPLÈTE →")}</a>
+        </div>
+      </section>
       <div className="mssDartsCategoryGrid">
         {catalogueCards.map(([id,label,description]) => {
           const count = catalogueGroups[id].length;
