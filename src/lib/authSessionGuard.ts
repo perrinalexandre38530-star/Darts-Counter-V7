@@ -137,3 +137,121 @@ export function clearSupabaseBrowserAuthStorage(opts: { includeCompatSession?: b
     } catch {}
   }
 }
+
+// ---------------------------------------------------------------------------
+// V121 — Account Media doit être indépendant du mode de sauvegarde choisi.
+//
+// Le bug observé après V119/V120 venait d'un jeton Supabase arrivé à expiration
+// entre deux appels : la Pages Function répondait 401, puis directR2BackupApi
+// mettait CE jeton en quarantaine pendant 60 s. Le compte restait pourtant
+// connecté et Supabase savait renouveler sa session.
+//
+// Ce garde-fou est volontairement ultra ciblé sur /account-media :
+// - aucune modification du pipeline Google Drive / NAS / SD / R2 Backup ;
+// - un 401/403 déclenche UN refresh Supabase puis UN retry ;
+// - le retry transporte uniquement le JWT fraîchement émis pour le compte.
+// ---------------------------------------------------------------------------
+const ACCOUNT_MEDIA_PATH_FRAGMENT = "/api/storage/backups/account-media";
+let accountMediaRefreshInFlight: Promise<string | null> | null = null;
+let accountMediaFetchGuardInstalled = false;
+
+function accountMediaRequestUrl(input: RequestInfo | URL): string {
+  try {
+    if (typeof input === "string") return input;
+    if (typeof URL !== "undefined" && input instanceof URL) return input.toString();
+    if (typeof Request !== "undefined" && input instanceof Request) return input.url;
+  } catch {}
+  return "";
+}
+
+function isAccountMediaRequest(input: RequestInfo | URL): boolean {
+  return accountMediaRequestUrl(input).includes(ACCOUNT_MEDIA_PATH_FRAGMENT);
+}
+
+async function refreshAccountMediaJwt(): Promise<string | null> {
+  if (accountMediaRefreshInFlight) return accountMediaRefreshInFlight;
+  accountMediaRefreshInFlight = (async () => {
+    try {
+      // Import dynamique pour éviter toute dépendance circulaire au boot.
+      const mod = await import("./supabaseClient");
+      const token = await ensureFreshSupabaseAccessToken(mod.supabase, {
+        forceRefresh: true,
+        minValidityMs: 120_000,
+      });
+      try {
+        (window as any).__mscAccountMediaAuthDiag = {
+          ok: !!token,
+          refreshedAt: Date.now(),
+          expiresAt: token ? jwtExpiresAtMs(token) : 0,
+          source: "supabase-refresh",
+        };
+      } catch {}
+      return token;
+    } catch (error: any) {
+      try {
+        (window as any).__mscAccountMediaAuthDiag = {
+          ok: false,
+          refreshedAt: Date.now(),
+          error: String(error?.message || error || "refresh_failed"),
+          source: "supabase-refresh",
+        };
+      } catch {}
+      return null;
+    }
+  })();
+  try {
+    return await accountMediaRefreshInFlight;
+  } finally {
+    accountMediaRefreshInFlight = null;
+  }
+}
+
+function installAccountMediaFetchAuthGuard(): void {
+  if (typeof window === "undefined" || typeof window.fetch !== "function" || accountMediaFetchGuardInstalled) return;
+  accountMediaFetchGuardInstalled = true;
+  const nativeFetch = window.fetch.bind(window);
+
+  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (!isAccountMediaRequest(input)) return nativeFetch(input as any, init);
+
+    // directR2BackupApi appelle actuellement fetch avec URL + init. Le clone
+    // garde aussi la voie Request sûre si cela change plus tard.
+    let firstInput: any = input;
+    let retryInput: any = input;
+    try {
+      if (typeof Request !== "undefined" && input instanceof Request) {
+        firstInput = input.clone();
+        retryInput = input.clone();
+      }
+    } catch {}
+
+    const response = await nativeFetch(firstInput, init);
+    if (response.status !== 401 && response.status !== 403) return response;
+
+    const token = await refreshAccountMediaJwt();
+    if (!token) return response;
+
+    const retryHeaders = new Headers(
+      init?.headers || (typeof Request !== "undefined" && retryInput instanceof Request ? retryInput.headers : undefined),
+    );
+    retryHeaders.set("Authorization", `Bearer ${token}`);
+    retryHeaders.set("X-MSS-Auth-Retry", "supabase-refresh");
+
+    try {
+      const retryResponse = await nativeFetch(retryInput, { ...(init || {}), headers: retryHeaders });
+      try {
+        (window as any).__mscAccountMediaAuthDiag = {
+          ...((window as any).__mscAccountMediaAuthDiag || {}),
+          retryAt: Date.now(),
+          retryStatus: retryResponse.status,
+          ok: retryResponse.ok,
+        };
+      } catch {}
+      return retryResponse;
+    } catch {
+      return response;
+    }
+  }) as typeof window.fetch;
+}
+
+try { installAccountMediaFetchAuthGuard(); } catch {}
