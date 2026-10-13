@@ -1,4 +1,4 @@
-import type { CargoPlayerStats, CargoState, CargoVisitEvent } from './cargoEngine';
+import { cargoContractTargetLabel, type CargoPlayerStats, type CargoState, type CargoVisit, type CargoVisitEvent } from './cargoEngine';
 
 export type CargoLoadStage = 'EMPTY' | 'LOADING' | 'PALLET_READY' | 'LOADED' | 'FULL';
 
@@ -19,10 +19,25 @@ export type CargoVisualSnapshot = {
   activeSeriesTarget: number;
   lastEventLabel: string;
 };
+
 export type CargoMissionCue = {
   label: string;
   detail: string;
   tone: 'neutral' | 'good' | 'warning' | 'danger';
+};
+
+export type CargoGameplayBrief = {
+  actionLabel: string;
+  actionDetail: string;
+  rewardLabel: string;
+  rewardDetail: string;
+  riskLabel: string;
+  riskDetail: string;
+  resultLabel: string;
+  resultDetail: string;
+  resultTone: 'neutral' | 'good' | 'warning' | 'danger';
+  targetLabel: string;
+  onboarding: boolean;
 };
 
 function cargoActiveContract(state: CargoState, stats?: CargoPlayerStats | null) {
@@ -113,6 +128,143 @@ export function buildCargoMissionCue(state: CargoState, stats?: CargoPlayerStats
   return { label: 'NOUVELLE SÉRIE', detail: 'Construis une série de segments identiques pour charger une palette.', tone: 'neutral' };
 }
 
+function lastVisitForPlayer(state: CargoState, playerId?: string | null): CargoVisit | null {
+  const visits = Array.isArray(state?.visits) ? state.visits : [];
+  for (let index = visits.length - 1; index >= 0; index -= 1) {
+    const visit = visits[index];
+    if (!playerId || String(visit.playerId) === String(playerId)) return visit;
+  }
+  return null;
+}
+
+function scoreOf(state: CargoState, stats?: CargoPlayerStats | null) {
+  return state?.config?.variant === 'parcel_delivery' ? safeNumber(stats?.parcelsDelivered, 0) : safeNumber(stats?.totalWeight, 0);
+}
+
+function genericBreakRisk(state: CargoState) {
+  const miss = state?.config?.missRule;
+  const mismatch = state?.config?.mismatchRule;
+  if (miss === 'lose' || mismatch === 'lose') return 'Une erreur peut faire perdre toute la série active.';
+  if (miss === 'partial' || mismatch === 'partial') return 'Une erreur réduit la valeur de la série active.';
+  return 'Une erreur sécurise ou interrompt la série selon la règle active.';
+}
+
+export function buildCargoGameplayBrief(state: CargoState, stats?: CargoPlayerStats | null, playerId?: string | null): CargoGameplayBrief {
+  const cue = buildCargoMissionCue(state, stats);
+  const config = state?.config;
+  const series = stats?.currentSeries;
+  const contract = cargoActiveContract(state, stats);
+  const firstContract = state?.contracts?.[0] || null;
+  const visit = lastVisitForPlayer(state, playerId);
+  const onboarding = !visit;
+  let targetLabel = 'VISE UNE SÉRIE';
+  let rewardLabel = 'CHARGE À GAGNER';
+  let rewardDetail = series ? `${safeNumber(series.rawWeight, 0)} kg provisoires` : 'Construis une série utile.';
+  let riskLabel = 'RISQUE';
+  let riskDetail = genericBreakRisk(state);
+
+  if (config?.variant === 'parcel_delivery') {
+    targetLabel = series ? `VISE ENCORE LE ${series.number}` : 'VISE N’IMPORTE QUEL NUMÉRO';
+    const next = Math.min(5, safeNumber(series?.count, 0) + 1);
+    const bonus = safeNumber(config.parcelBonuses?.[next], 0);
+    rewardLabel = bonus ? `BONUS +${bonus} COLIS` : '1 COLIS MINIMUM';
+    rewardDetail = series ? `Palier ${next}/5 sur l’adresse ${series.number}.` : 'La première touche ouvre une adresse.';
+    riskLabel = 'CHAÎNE DE LIVRAISON';
+    riskDetail = 'Un MISS casse la dynamique : reste sur la même adresse pour monter les bonus.';
+  } else if (config?.variant === 'exact_load') {
+    const target = Math.max(1, safeNumber(config.targetWeight || config.truckCapacity, 500));
+    const current = safeNumber(stats?.totalWeight, 0);
+    const remaining = Math.max(0, target - current);
+    targetLabel = remaining > 0 ? `CHARGE AU PLUS ${remaining} KG` : 'NE CHARGE PLUS';
+    rewardLabel = 'OBJECTIF EXACT';
+    rewardDetail = `${current}/${target} kg · ${remaining} kg restants.`;
+    riskLabel = remaining <= Math.max(25, target * .1) ? 'SURCHARGE IMMINENTE' : 'SURCHARGE';
+    riskDetail = 'Tout dépassement peut être rejeté ou pénalisé selon la règle configurée.';
+  } else if (config?.variant === 'fragile_cargo') {
+    targetLabel = contract ? `VISE ${cargoContractTargetLabel(contract)}` : firstContract ? `VISE ${cargoContractTargetLabel(firstContract)}` : 'CHOISIS UN FRAGILE';
+    rewardLabel = series?.protected ? 'CHARGE PROTÉGÉE' : contract?.fragile ? `${contract.finalWeight} KG FRAGILE` : 'CONTRAT FRAGILE';
+    rewardDetail = series?.protected ? 'La série active possède une protection.' : 'Valide sans casser la chaîne.';
+    riskLabel = 'CASSE';
+    riskDetail = contract?.fragile ? 'Un mauvais segment ou un MISS peut casser la cargaison active.' : 'Repère les contrats FRAGILE dans le manifeste.';
+  } else if (config?.variant === 'cargo_rush') {
+    const urgent = contract?.urgent ? contract : state?.contracts?.find((item) => item.urgent) || firstContract;
+    targetLabel = urgent ? `VISE ${cargoContractTargetLabel(urgent)}` : 'CHOISIS UN EXPRESS';
+    rewardLabel = urgent ? `${urgent.finalWeight} KG EXPRESS` : 'BONUS URGENCE';
+    rewardDetail = urgent?.bonusPercent ? `Bonus +${urgent.bonusPercent}% si le contrat est livré.` : 'Termine avant expiration.';
+    riskLabel = 'EXPIRATION';
+    riskDetail = urgent?.expiresAtRound ? `Le contrat expire au tour ${urgent.expiresAtRound}.` : 'Les contrats urgents ne restent pas disponibles longtemps.';
+  } else if (config?.variant === 'full_pallet') {
+    const count = safeNumber(series?.count, 0);
+    targetLabel = series?.labels?.[0] ? `CONTINUE ${series.labels[0]}` : 'DÉMARRE UNE PALETTE';
+    rewardLabel = count >= safeNumber(config.minSeries, 2) ? 'PALETTE SÉCURISABLE' : `OBJECTIF ${config.maxSeries} TOUCHES`;
+    rewardDetail = `${count}/${config.maxSeries} touches · ${safeNumber(series?.rawWeight, 0)} kg provisoires.`;
+    riskLabel = 'POUSSER OU SÉCURISER';
+    riskDetail = count >= safeNumber(config.minSeries, 2) ? 'Tu as déjà une palette valable : continuer augmente la valeur mais augmente le risque.' : genericBreakRisk(state);
+  } else if (config?.variant === 'free_load') {
+    targetLabel = series?.labels?.[0] ? `CONTINUE ${series.labels[0]}` : 'CHOISIS TON SEGMENT';
+    rewardLabel = 'POIDS LIBRE';
+    rewardDetail = series ? `${safeNumber(series.rawWeight, 0)} kg provisoires dans la série.` : `Jusqu’à ${config.maxSeries} touches sur le même objectif.`;
+    riskLabel = 'SÉRIE ACTIVE';
+    riskDetail = genericBreakRisk(state);
+  } else if (config?.variant === 'convoy') {
+    targetLabel = series?.labels?.[0] ? `CONTINUE ${series.labels[0]}` : 'LANCE LE RELAIS';
+    rewardLabel = 'SCORE D’ÉQUIPE';
+    rewardDetail = series ? `${series.count}/${contract?.targetCount || config.maxSeries} touches avant le relais.` : 'Chaque coéquipier peut prolonger la chaîne.';
+    riskLabel = 'RELAIS';
+    riskDetail = 'Préserve la série pour la transmettre au prochain coéquipier.';
+  } else if (config?.variant === 'long_haul') {
+    const stages = Array.isArray(state.routeStages) ? state.routeStages : [];
+    const index = Math.max(0, Math.min(stages.length - 1, safeNumber(state.routeStage, 0)));
+    targetLabel = contract ? `VISE ${cargoContractTargetLabel(contract)}` : firstContract ? `VISE ${cargoContractTargetLabel(firstContract)}` : 'CHARGE POUR AVANCER';
+    rewardLabel = stages[index + 1] ? `PROCHAINE ÉTAPE · ${stages[index + 1]}` : 'CENTRE DE LIVRAISON';
+    rewardDetail = `Étape ${index + 1}/${Math.max(1, stages.length)} · ${stages[index] || 'Itinéraire'}.`;
+    riskLabel = 'RÉGULARITÉ';
+    riskDetail = 'Les séries perdues ralentissent la progression de la mission.';
+  } else {
+    const shownContract = contract || firstContract;
+    targetLabel = shownContract ? `VISE ${cargoContractTargetLabel(shownContract)}` : series?.labels?.[0] ? `CONTINUE ${series.labels[0]}` : 'DÉMARRE UNE SÉRIE';
+    rewardLabel = shownContract ? `${shownContract.finalWeight} KG À LIVRER` : 'PALETTE À CONSTRUIRE';
+    rewardDetail = shownContract ? `${shownContract.label}${shownContract.bonusPercent ? ` · bonus +${shownContract.bonusPercent}%` : ''}.` : 'Enchaîne les bonnes touches pour charger la palette.';
+  }
+
+  let resultLabel = onboarding ? 'PREMIÈRE VOLÉE' : 'AUCUN GAIN';
+  let resultDetail = onboarding ? '1. Vise l’objectif · 2. Lance 3 fléchettes · 3. Valide la volée.' : 'La dernière volée n’a pas augmenté la cargaison.';
+  let resultTone: CargoGameplayBrief['resultTone'] = onboarding ? 'neutral' : 'warning';
+
+  if (visit) {
+    const before = scoreOf(state, visit.before);
+    const after = scoreOf(state, visit.after);
+    const delta = after - before;
+    const severe = visit.events.some((event) => event.type === 'overload' || event.type === 'series_lost' || event.type === 'contract_expired');
+    const success = visit.events.some((event) => event.type === 'contract_complete' || event.type === 'parcel_delivery' || event.type === 'free_load_complete' || event.type === 'perfect_load');
+    if (delta > 0) {
+      resultLabel = `+${delta} ${config?.variant === 'parcel_delivery' ? 'COLIS' : 'KG'}`;
+      resultTone = success ? 'good' : 'neutral';
+    } else if (severe) {
+      resultLabel = 'CHARGE PERDUE / BLOQUÉE';
+      resultTone = 'danger';
+    } else if (visit.events.some((event) => event.type === 'miss')) {
+      resultLabel = 'MISS · PAS DE CHARGE';
+      resultTone = 'warning';
+    }
+    const eventText = visit.events.map((event) => event.label).filter(Boolean).slice(-2).join(' · ');
+    resultDetail = eventText || `Volée : ${visit.labels.join(' / ')}`;
+  }
+
+  return {
+    actionLabel: cue.label,
+    actionDetail: cue.detail,
+    rewardLabel,
+    rewardDetail,
+    riskLabel,
+    riskDetail,
+    resultLabel,
+    resultDetail,
+    resultTone,
+    targetLabel,
+    onboarding,
+  };
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Number.isFinite(value) ? value : 0));

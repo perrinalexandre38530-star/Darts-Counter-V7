@@ -31,6 +31,9 @@
 .cargo-load-status{isolation:isolate}
 .cargo-play-quickbar button{transition:transform .14s ease,border-color .14s ease,background-color .14s ease}
 .cargo-play-quickbar button:active{transform:scale(.975)}
+.cargo-live-panel,.cargo-gameplay-brief{min-width:0;min-height:0}
+.cargo-gameplay-mini{min-width:0}
+.cargo-manifest-strip{min-width:0}
 
 /* HISTORY DETAIL */
 .cargo-history-detail-shell{width:min(900px,100%);max-height:94dvh;overflow:hidden;border-radius:22px;background:linear-gradient(180deg,#171a20,#080a0e);border:1px solid rgba(255,155,66,.34);box-shadow:0 30px 100px rgba(0,0,0,.78)}
@@ -68,6 +71,7 @@
   .cargo-load-status{grid-area:load;grid-template-columns:1fr!important;overflow:auto;padding-right:2px}
   .cargo-play-input{grid-area:input}
   .cargo-play-input>.cargo-airy-keypad{height:100%!important}
+  .cargo-gameplay-brief{min-height:138px!important}
 }
 
 @media (max-width:640px){
@@ -75,9 +79,17 @@
   .cargo-config-mode-switch{gap:5px}
   .cargo-config-steps{gap:3px}
   .cargo-config-steps button{font-size:7px!important;min-height:34px!important}
-  .cargo-load-status{grid-template-columns:minmax(0,1.18fr) minmax(0,.82fr)!important;gap:6px!important}
+  .cargo-load-status{grid-template-columns:minmax(0,1.03fr) minmax(0,.97fr)!important;gap:6px!important}
   .cargo-load-status>button{padding:7px!important}
   .cargo-load-status>div{padding:7px!important}
+  .cargo-live-panel>div{grid-template-columns:64px minmax(0,1fr)!important;gap:6px!important}
+  .cargo-status-art img{width:62px!important;height:62px!important}
+  .cargo-gameplay-mini{padding:5px 6px!important}
+  .cargo-gameplay-mini-detail{display:none!important}
+  .cargo-manifest-strip{padding:5px 8px!important;gap:7px!important}
+  .cargo-manifest-art{width:36px!important;height:36px!important}
+  .cargo-manifest-art img{width:34px!important;height:34px!important}
+  .cargo-manifest-progress{min-width:52px!important}
   .cargo-history-detail{padding:4px!important}
   .cargo-history-detail-shell{border-radius:18px;max-height:97dvh}
   .cargo-history-detail-head{grid-template-columns:54px minmax(0,1fr) 34px;gap:7px;padding:8px}
@@ -91,9 +103,15 @@
   .cargo-stats-tabs>button{flex:0 0 104px;min-height:43px!important}
 }
 
+@media (max-width:430px){
+  .cargo-gameplay-risk-grid{grid-template-columns:1fr!important;gap:3px!important}
+  .cargo-onboarding{gap:2px!important}
+}
+
 @media (max-height:720px) and (max-width:899px){
   .cargo-load-status{display:none!important}
   .cargo-play-main{grid-template-rows:112px 48px minmax(0,1fr)!important}
+  .cargo-manifest-strip{padding-top:4px!important;padding-bottom:4px!important}
 }
 
 @media (prefers-reduced-motion:reduce){
