@@ -6,6 +6,7 @@ import {
   decodeJwtPayloadUnsafe,
   isFreshSupabaseAccessToken,
   isJwtFresh,
+  jwtExpiresInMs,
 } from "./authSessionGuard";
 
 /**
@@ -351,43 +352,79 @@ export function canAttemptDirectR2FromStoredSession(): boolean {
  * Le second mode permet au compte fondateur de sauvegarder sur R2 même si
  * PostgreSQL, l'API NAS ou le tunnel sont indisponibles.
  */
-async function readDirectStorageToken(): Promise<DirectStorageToken> {
+const DIRECT_SUPABASE_REFRESH_MARGIN_MS = 90_000;
+let directSupabaseRefreshInFlight: Promise<any> | null = null;
+
+function persistDirectSupabaseCompatToken(token: string, userId: string): void {
+  if (typeof window === "undefined" || !token) return;
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try {
+      const raw = storage.getItem("dc_online_auth_supabase_v1") || "";
+      if (!raw || !(raw.startsWith("{") || raw.startsWith("["))) continue;
+      const parsed = safeJson(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+      const provider = String(parsed?.authProvider || parsed?.auth_provider || "").toLowerCase();
+      const isPublic = provider === "supabase" || provider === "supabase_failover" || parsed?.degradedMode === true || !!parsed?.supabaseUserId;
+      if (!isPublic) continue;
+      parsed.token = token;
+      parsed.accessToken = token;
+      parsed.access_token = token;
+      if (userId) parsed.supabaseUserId = userId;
+      storage.setItem("dc_online_auth_supabase_v1", JSON.stringify(parsed));
+    } catch {}
+  }
+}
+
+async function readLiveSupabaseStorageToken(forceRefresh = false): Promise<string> {
+  let session: any = null;
+  try {
+    const result = await supabase.auth.getSession();
+    session = result?.data?.session || null;
+  } catch {}
+  let token = String(session?.access_token || "").trim();
+  if (forceRefresh || !isFreshSupabaseAccessToken(token, DIRECT_SUPABASE_REFRESH_MARGIN_MS)) {
+    if (!directSupabaseRefreshInFlight) {
+      directSupabaseRefreshInFlight = supabase.auth.refreshSession().finally(() => { directSupabaseRefreshInFlight = null; });
+    }
+    try {
+      const refreshed: any = await directSupabaseRefreshInFlight;
+      if (!refreshed?.error && refreshed?.data?.session) session = refreshed.data.session;
+    } catch {}
+    token = String(session?.access_token || "").trim();
+  }
+  if (!token || !isFreshSupabaseAccessToken(token, 15_000) || !tokenMatchesCurrentAccount(token)) return "";
+  persistDirectSupabaseCompatToken(token, String(session?.user?.id || "").trim());
+  return token;
+}
+
+async function readDirectStorageToken(options: { forceSupabaseRefresh?: boolean } = {}): Promise<DirectStorageToken> {
   const accountKey = currentStorageAccountId() || "__no_account__";
-  const existing = directTokenPromisesByAccount.get(accountKey);
+  const forceSupabaseRefresh = options.forceSupabaseRefresh === true;
+  if (forceSupabaseRefresh) directTokenPromisesByAccount.delete(accountKey);
+  const existing = !forceSupabaseRefresh ? directTokenPromisesByAccount.get(accountKey) : null;
   if (existing) return existing;
 
   const directTokenPromise = (async (): Promise<DirectStorageToken> => {
+    const liveSupabase = await readLiveSupabaseStorageToken(forceSupabaseRefresh).catch(() => "");
+    if (liveSupabase && currentStorageAccountId() === accountKey) {
+      const auth = { token: liveSupabase, kind: "supabase" as const };
+      clearDirectAuthRejectionForNewToken(auth);
+      if (!isDirectAuthRejected(auth)) return auth;
+    }
+
     const storedSupabase = tokenFromStoredSupabaseSession();
     if (storedSupabase && tokenMatchesCurrentAccount(storedSupabase)) {
       const auth = { token: storedSupabase, kind: "supabase" as const };
-      if (!isDirectAuthRejected(auth)) {
-        clearDirectAuthRejectionForNewToken(auth);
-        return auth;
-      }
+      clearDirectAuthRejectionForNewToken(auth);
+      if (!isDirectAuthRejected(auth)) return auth;
     }
-
-    try {
-      const result = await Promise.race([
-        supabase.auth.getSession(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_200)),
-      ]);
-      const token = String((result as any)?.data?.session?.access_token || "").trim();
-      if (token && isSupabaseAccessToken(token) && currentStorageAccountId() === accountKey && tokenMatchesCurrentAccount(token)) {
-        const auth = { token, kind: "supabase" as const };
-        clearDirectAuthRejectionForNewToken(auth);
-        return auth;
-      }
-    } catch {}
 
     const nasToken = String(readNasAccessToken() || "").trim();
     if (nasToken && isJwtLike(nasToken) && currentStorageAccountId() === accountKey && tokenMatchesCurrentAccount(nasToken)) {
       const auth = { token: nasToken, kind: "nas" as const };
-      if (!isDirectAuthRejected(auth)) {
-        clearDirectAuthRejectionForNewToken(auth);
-        return auth;
-      }
+      clearDirectAuthRejectionForNewToken(auth);
+      if (!isDirectAuthRejected(auth)) return auth;
     }
-
     return { token: "", kind: "none" as const };
   })();
 
@@ -395,10 +432,25 @@ async function readDirectStorageToken(): Promise<DirectStorageToken> {
   try {
     return await directTokenPromise;
   } finally {
-    if (directTokenPromisesByAccount.get(accountKey) === directTokenPromise) {
-      directTokenPromisesByAccount.delete(accountKey);
-    }
+    if (directTokenPromisesByAccount.get(accountKey) === directTokenPromise) directTokenPromisesByAccount.delete(accountKey);
   }
+}
+
+export async function getDirectR2AuthHealth(): Promise<{
+  kind: DirectStorageToken["kind"];
+  hasToken: boolean;
+  expiresInMs: number;
+  accountMatch: boolean;
+  rejected: boolean;
+}> {
+  const auth = await readDirectStorageToken();
+  return {
+    kind: auth.kind,
+    hasToken: !!auth.token,
+    expiresInMs: auth.token && auth.token.split(".").length >= 3 ? jwtExpiresInMs(auth.token) : 0,
+    accountMatch: !!auth.token && tokenMatchesCurrentAccount(auth.token),
+    rejected: isDirectAuthRejected(auth),
+  };
 }
 
 async function fetchWithTimeout(
@@ -466,11 +518,15 @@ function conciseR2Error(status: number, payload: any, rawText: string, tokenKind
 }
 
 async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous = false): Promise<any> {
-  const auth = allowAnonymous ? { token: "", kind: "none" as const } : await readDirectStorageToken();
+  let auth: DirectStorageToken = allowAnonymous ? { token: "", kind: "none" } : await readDirectStorageToken();
   if (!allowAnonymous && !auth.token) {
     const error = new Error("Aucune session Cloud ou NAS exploitable. Reconnecte le compte une fois. Les sauvegardes Local et Fichier restent disponibles hors ligne.");
     (error as any).code = "cloud_session_missing";
     throw error;
+  }
+  if (!allowAnonymous && isDirectAuthRejected(auth) && auth.kind === "supabase") {
+    const refreshed = await readDirectStorageToken({ forceSupabaseRefresh: true }).catch(() => ({ token: "", kind: "none" as const }));
+    if (refreshed.token) auth = refreshed;
   }
   if (!allowAnonymous && isDirectAuthRejected(auth)) {
     const error = new Error("Session Cloud temporairement suspendue après refus d'authentification. Reconnecte le compte.");
@@ -479,33 +535,44 @@ async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous =
     throw error;
   }
 
-  const headers = new Headers(init.headers || {});
-  if (auth.token) headers.set("Authorization", `Bearer ${auth.token}`);
-  headers.set("Accept", "application/json");
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-
-  let response: Response;
   const timeoutMs = timeoutForDirectRequest(path, init);
-  try {
-    response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers }, timeoutMs);
-  } catch (error: any) {
-    if (error?.name === "AbortError") {
-      const seconds = Math.max(1, Math.round(timeoutMs / 1000));
-      throw new Error(`Cloud R2 n'a pas répondu en moins de ${seconds} secondes.`);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const headers = new Headers(init.headers || {});
+    if (auth.token) headers.set("Authorization", `Bearer ${auth.token}`);
+    headers.set("Accept", "application/json");
+    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers }, timeoutMs);
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+        throw new Error(`Cloud R2 n'a pas répondu en moins de ${seconds} secondes.`);
+      }
+      throw new Error(`Route Cloudflare Pages R2 inaccessible : ${error?.message || String(error)}`);
     }
-    throw new Error(`Route Cloudflare Pages R2 inaccessible : ${error?.message || String(error)}`);
+
+    const text = await response.text().catch(() => "");
+    const payload = safeJson(text);
+    if (response.ok && payload?.ok === true) return payload;
+    const authRejected = (response.status === 401 || response.status === 403) && !allowAnonymous;
+    if (authRejected && auth.kind === "supabase" && attempt === 0) {
+      const refreshed = await readDirectStorageToken({ forceSupabaseRefresh: true }).catch(() => ({ token: "", kind: "none" as const }));
+      if (refreshed.token) {
+        clearDirectAuthRejectionForNewToken(refreshed);
+        auth = refreshed;
+        continue;
+      }
+    }
+    if (authRejected) markDirectAuthRejected(auth);
+    const error = conciseR2Error(response.status, payload, text, auth.kind);
+    (error as any).status = response.status;
+    (error as any).code = String(payload?.code || "");
+    throw error;
   }
-
-  const text = await response.text().catch(() => "");
-  const payload = safeJson(text);
-  if (response.ok && payload?.ok === true) return payload;
-  if (response.status === 401 && !allowAnonymous) markDirectAuthRejected(auth);
-  const error = conciseR2Error(response.status, payload, text, auth.kind);
-  (error as any).status = response.status;
-  (error as any).code = String(payload?.code || "");
-  throw error;
+  throw new Error("Cloud R2 : authentification impossible après renouvellement de session.");
 }
-
 
 function dataUrlToBlob(dataUrlInput: string): Blob | null {
   const dataUrl = String(dataUrlInput || "").trim();
@@ -535,11 +602,15 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 async function requestDirectRaw(path: string, init: RequestInit = {}): Promise<Response> {
-  const auth = await readDirectStorageToken();
+  let auth = await readDirectStorageToken();
   if (!auth.token) {
     const error = new Error("Aucune session Cloud exploitable pour synchroniser les médias du compte.");
     (error as any).code = "cloud_session_missing";
     throw error;
+  }
+  if (isDirectAuthRejected(auth) && auth.kind === "supabase") {
+    const refreshed = await readDirectStorageToken({ forceSupabaseRefresh: true }).catch(() => ({ token: "", kind: "none" as const }));
+    if (refreshed.token) auth = refreshed;
   }
   if (isDirectAuthRejected(auth)) {
     const error = new Error("Session Cloud temporairement suspendue après refus d'authentification.");
@@ -548,28 +619,37 @@ async function requestDirectRaw(path: string, init: RequestInit = {}): Promise<R
     throw error;
   }
 
-  const headers = new Headers(init.headers || {});
-  headers.set("Authorization", `Bearer ${auth.token}`);
-  if (!headers.has("Accept")) headers.set("Accept", "application/json,image/*");
-  let response: Response;
-  const timeoutMs = String(init.method || "GET").toUpperCase() === "POST"
-    ? REQUEST_TIMEOUT_MUTATION_MS
-    : REQUEST_TIMEOUT_READ_MS;
-  try {
-    response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers }, timeoutMs);
-  } catch (error: any) {
-    if (error?.name === "AbortError") throw new Error("Le coffre média du compte n'a pas répondu à temps.");
+  const timeoutMs = String(init.method || "GET").toUpperCase() === "POST" ? REQUEST_TIMEOUT_MUTATION_MS : REQUEST_TIMEOUT_READ_MS;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const headers = new Headers(init.headers || {});
+    headers.set("Authorization", `Bearer ${auth.token}`);
+    if (!headers.has("Accept")) headers.set("Accept", "application/json,image/*");
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers }, timeoutMs);
+    } catch (error: any) {
+      if (error?.name === "AbortError") throw new Error("Le coffre média du compte n'a pas répondu à temps.");
+      throw error;
+    }
+    if (response.ok) return response;
+    const rawText = await response.text().catch(() => "");
+    const payload = safeJson(rawText);
+    const authRejected = response.status === 401 || response.status === 403;
+    if (authRejected && auth.kind === "supabase" && attempt === 0) {
+      const refreshed = await readDirectStorageToken({ forceSupabaseRefresh: true }).catch(() => ({ token: "", kind: "none" as const }));
+      if (refreshed.token) {
+        clearDirectAuthRejectionForNewToken(refreshed);
+        auth = refreshed;
+        continue;
+      }
+    }
+    if (authRejected) markDirectAuthRejected(auth);
+    const error = conciseR2Error(response.status, payload, rawText, auth.kind);
+    (error as any).status = response.status;
+    (error as any).code = String(payload?.code || "");
     throw error;
   }
-  if (response.ok) return response;
-
-  const rawText = await response.text().catch(() => "");
-  const payload = safeJson(rawText);
-  if (response.status === 401) markDirectAuthRejected(auth);
-  const error = conciseR2Error(response.status, payload, rawText, auth.kind);
-  (error as any).status = response.status;
-  (error as any).code = String(payload?.code || "");
-  throw error;
+  throw new Error("Coffre média : authentification impossible après renouvellement de session.");
 }
 
 let accountMediaManifestCache: AccountR2MediaManifest | null = null;

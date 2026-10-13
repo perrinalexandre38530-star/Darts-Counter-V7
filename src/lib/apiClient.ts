@@ -1,5 +1,7 @@
 import { getNasApiUrl, isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
 import { nasRestoreSession } from "./nasApi";
+import { supabase } from "./supabaseClient";
+import { isFreshSupabaseAccessToken, isJwtFresh } from "./authSessionGuard";
 
 const LEGACY_BAD_HOSTS = [
   "sustainability-accordingly-steven-investments.trycloudflare.com",
@@ -78,6 +80,14 @@ function looksLikeBearerToken(raw: string): boolean {
   return value.split(".").length >= 3 || value.length >= 24;
 }
 
+function isUsableNasAccessToken(raw: string): boolean {
+  const value = String(raw || "").trim();
+  if (!looksLikeBearerToken(value)) return false;
+  // Un token opaque legacy ne permet pas de lire exp : on le conserve. En
+  // revanche un JWT NAS expiré ne doit jamais gagner sur la session Supabase.
+  return value.split(".").length >= 3 ? isJwtFresh(value, 15_000) : true;
+}
+
 let volatileAccessToken = "";
 let lastAnnouncedAccessToken = "";
 
@@ -136,7 +146,7 @@ function tokenFromStoredValue(raw: string): string {
 export function readNasAccessToken(): string {
   // Source canonique : seule la clé NAS dédiée est fiable.
   const directNas = (safeReadLocalStorage("dc_nas_access_token_v1") || safeReadSessionStorage("dc_nas_access_token_v1")).trim();
-  if (directNas && looksLikeBearerToken(directNas)) return directNas;
+  if (directNas && isUsableNasAccessToken(directNas)) return directNas;
 
   // Compatibilité avec les anciennes sessions NAS enregistrées dans la clé
   // historique dc_online_auth_supabase_v1. On refuse explicitement toute
@@ -156,12 +166,12 @@ export function readNasAccessToken(): string {
 
     if (!isPublicSupabase) {
       const legacyNasToken = String(parsed?.token || "").trim();
-      if (legacyNasToken && looksLikeBearerToken(legacyNasToken)) return legacyNasToken;
+      if (legacyNasToken && isUsableNasAccessToken(legacyNasToken)) return legacyNasToken;
     }
   }
 
   // Le token volatile n'est accepté que lorsque le provider est explicitement NAS.
-  if (isNasProviderEnabled() && volatileAccessToken && looksLikeBearerToken(volatileAccessToken)) {
+  if (isNasProviderEnabled() && volatileAccessToken && isUsableNasAccessToken(volatileAccessToken)) {
     return volatileAccessToken;
   }
 
@@ -426,65 +436,121 @@ function readPublicAccountSessionForNasBridge(): { accessToken: string; nickname
   return { accessToken, nickname: nickname || "Player" };
 }
 
+const SUPABASE_BRIDGE_REFRESH_MARGIN_MS = 90_000;
+let supabaseBridgeRefreshInFlight: Promise<any> | null = null;
+
+function persistFreshCompatSupabaseToken(accessToken: string, userId: string): void {
+  if (typeof window === "undefined" || !accessToken) return;
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try {
+      const raw = storage.getItem("dc_online_auth_supabase_v1") || "";
+      if (!raw || !(raw.startsWith("{") || raw.startsWith("["))) continue;
+      const parsed = safeParseJson<any>(raw, null);
+      if (!parsed || typeof parsed !== "object") continue;
+      const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
+      const isPublic = provider === "supabase" || provider === "supabase_failover" || parsed?.degradedMode === true || !!parsed?.supabaseUserId;
+      if (!isPublic) continue;
+      parsed.token = accessToken;
+      parsed.accessToken = accessToken;
+      parsed.access_token = accessToken;
+      if (userId) parsed.supabaseUserId = userId;
+      storage.setItem("dc_online_auth_supabase_v1", JSON.stringify(parsed));
+    } catch {}
+  }
+}
+
+async function readFreshPublicSupabaseSession(forceRefresh = false): Promise<{ accessToken: string; nickname: string } | null> {
+  const compat = readPublicAccountSessionForNasBridge();
+  let session: any = null;
+  try {
+    const result = await supabase.auth.getSession();
+    session = result?.data?.session || null;
+  } catch {}
+
+  let token = String(session?.access_token || "").trim();
+  if (forceRefresh || !isFreshSupabaseAccessToken(token, SUPABASE_BRIDGE_REFRESH_MARGIN_MS)) {
+    if (!supabaseBridgeRefreshInFlight) {
+      supabaseBridgeRefreshInFlight = supabase.auth.refreshSession().finally(() => { supabaseBridgeRefreshInFlight = null; });
+    }
+    try {
+      const refreshed: any = await supabaseBridgeRefreshInFlight;
+      if (!refreshed?.error && refreshed?.data?.session) session = refreshed.data.session;
+    } catch {}
+    token = String(session?.access_token || "").trim();
+  }
+
+  if (!token || !isFreshSupabaseAccessToken(token, 15_000)) return null;
+  const userId = String(session?.user?.id || "").trim();
+  persistFreshCompatSupabaseToken(token, userId);
+  const nickname = String(
+    compat?.nickname || session?.user?.user_metadata?.nickname || session?.user?.user_metadata?.display_name || session?.user?.email || "Player"
+  ).trim() || "Player";
+  return { accessToken: token, nickname };
+}
+
 async function exchangePublicAccountForNasToken(timeoutMs = 8_000): Promise<string> {
-  const publicSession = readPublicAccountSessionForNasBridge();
+  let publicSession = await readFreshPublicSupabaseSession(false);
   if (!publicSession) return "";
 
-  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctrl && typeof window !== "undefined"
-    ? window.setTimeout(() => {
-        try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
-      }, timeoutMs)
-    : null;
-
-  try {
-    const res = await fetch(`${currentApiUrl()}/auth/supabase/bridge`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accessToken: publicSession.accessToken,
-        nickname: publicSession.nickname,
-      }),
-      signal: ctrl?.signal,
-    });
-
-    const payload = await res.clone().json().catch(() => null);
-    if (!res.ok) {
-      const message = String(payload?.message || payload?.error || `HTTP ${res.status}`);
-      console.warn("[apiClient] Supabase→NAS service bridge refused", message);
-      return "";
-    }
-
-    const token = String(payload?.token || payload?.accessToken || payload?.access_token || "").trim();
-    if (!token || !looksLikeBearerToken(token)) {
-      console.warn("[apiClient] Supabase→NAS service bridge returned no usable token");
-      return "";
-    }
-
-    const refreshToken = String(payload?.refreshToken || payload?.refresh_token || "").trim();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl && typeof window !== "undefined"
+      ? window.setTimeout(() => {
+          try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
+        }, timeoutMs)
+      : null;
     try {
-      window.localStorage.setItem("dc_nas_access_token_v1", token);
-      if (refreshToken) window.localStorage.setItem("dc_nas_refresh_token_v1", refreshToken);
-      else window.localStorage.removeItem("dc_nas_refresh_token_v1");
-    } catch {}
+      const res = await fetch(`${currentApiUrl()}/auth/supabase/bridge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: publicSession.accessToken, nickname: publicSession.nickname }),
+        signal: ctrl?.signal,
+      });
+      const payload = await res.clone().json().catch(() => null);
+      if (!res.ok) {
+        if ((res.status === 401 || res.status === 403) && attempt === 0) {
+          const refreshed = await readFreshPublicSupabaseSession(true);
+          if (refreshed?.accessToken) {
+            publicSession = refreshed;
+            continue;
+          }
+        }
+        const message = String(payload?.message || payload?.error || `HTTP ${res.status}`);
+        console.warn("[apiClient] Supabase→NAS service bridge refused", message);
+        return "";
+      }
 
-    // IMPORTANT : le compte principal reste Supabase. Ce jeton NAS n'est qu'un
-    // credential de service pour Google Drive / sauvegardes NAS / sync legacy.
-    setApiAccessToken(token);
-    return token;
-  } catch (error) {
-    console.warn("[apiClient] Supabase→NAS service bridge unavailable", error);
-    return "";
-  } finally {
-    if (timer) window.clearTimeout(timer);
+      const token = String(payload?.token || payload?.accessToken || payload?.access_token || "").trim();
+      if (!token || !looksLikeBearerToken(token)) {
+        console.warn("[apiClient] Supabase→NAS service bridge returned no usable token");
+        return "";
+      }
+      const refreshToken = String(payload?.refreshToken || payload?.refresh_token || "").trim();
+      try {
+        window.localStorage.setItem("dc_nas_access_token_v1", token);
+        if (refreshToken) window.localStorage.setItem("dc_nas_refresh_token_v1", refreshToken);
+        else window.localStorage.removeItem("dc_nas_refresh_token_v1");
+      } catch {}
+      setApiAccessToken(token);
+      return token;
+    } catch (error) {
+      console.warn("[apiClient] Supabase→NAS service bridge unavailable", error);
+      return "";
+    } finally {
+      if (timer) window.clearTimeout(timer);
+    }
   }
+  return "";
 }
 
 async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<string> {
   // Les routes Google Drive / compte peuvent avoir besoin du JWT technique NAS
   // même dans une build publique où VITE_NAS_DATA_SYNC n'est pas activé.
   // La présence d'une session Supabase permet alors un échange serveur sécurisé.
-  if (!isNasDataSyncEnabled() && !readPublicAccountSessionForNasBridge()) return "";
+  if (!isNasDataSyncEnabled() && !readPublicAccountSessionForNasBridge()) {
+    const live = await readFreshPublicSupabaseSession(false).catch(() => null);
+    if (!live) return "";
+  }
 
   const existing = readNasAccessToken();
   if (existing && reason === "missing_token") return existing;
@@ -497,7 +563,7 @@ async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<str
         timeoutMs: reason === "401" ? 3500 : 2500,
       });
       const restored = String(session?.token || readNasAccessToken() || "").trim();
-      if (restored) {
+      if (restored && isUsableNasAccessToken(restored)) {
         setApiAccessToken(restored);
         return restored;
       }
@@ -643,7 +709,7 @@ export function readAccountAccessToken(): string {
 
     if (isPublicAccountSession) {
       const publicToken = extractAuthTokenFromObject(parsed);
-      if (publicToken && looksLikeBearerToken(publicToken)) return publicToken;
+      if (publicToken && isFreshSupabaseAccessToken(publicToken, 15_000)) return publicToken;
     }
   }
 

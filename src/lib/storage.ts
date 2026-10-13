@@ -3533,7 +3533,7 @@ function exportCriticalLocalStorageValues(): Record<string, string> {
 
 async function exportPortableAccountData(): Promise<any> {
   const currentStore: any = await loadCanonicalAccountStoreForSnapshot().catch(() => null);
-  const profiles = Array.isArray(currentStore?.profiles) ? currentStore.profiles.map(sanitizePortableProfile) : [];
+  const profiles = Array.isArray(currentStore?.profiles) ? effectivePortableProfiles(currentStore.profiles).map(sanitizePortableProfile) : [];
   const dartSets = getAllDartSets();
   const bots = loadStoredBots();
   const teams = loadStoredTeams();
@@ -3683,13 +3683,32 @@ function emptyPortableCounts(): PortableAccountRestoreCounts {
   return { profiles: 0, bots: 0, dartSets: 0, teams: 0, galleryItems: 0, tournaments: 0 };
 }
 
+function effectivePortableProfiles(input: any): any[] {
+  const rows = Array.isArray(input) ? input : [];
+  const byId = new Map<string, any>();
+  for (const raw of rows) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = normalizeRestoredLocalProfileMarkers(raw);
+    const id = String(row?.id || "").trim();
+    if (!id) continue;
+    const previous = byId.get(id);
+    byId.set(id, previous ? mergePortableProfile(previous, row) : row);
+  }
+  return Array.from(byId.values());
+}
+
 function expectedPortableCounts(portable: any): PortableAccountRestoreCounts {
   const counts = portable?.counts && typeof portable.counts === "object" ? portable.counts : {};
   const galleryObjects = portable?.avatarGalleries && typeof portable.avatarGalleries === "object"
     ? Object.values<any>(portable.avatarGalleries).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0)
     : 0;
+  const hasProfiles = Array.isArray(portable?.profiles);
+  const effectiveProfiles = hasProfiles ? effectivePortableProfiles(portable.profiles) : [];
   return {
-    profiles: Math.max(Number(counts.profiles || 0), Array.isArray(portable?.profiles) ? portable.profiles.length : 0),
+    // Les anciens snapshots peuvent annoncer 61 lignes brutes tout en ne
+    // contenant que 59 profils uniques exploitables. La sécurité compare les
+    // profils effectifs, pas les doublons/rows sans ID.
+    profiles: hasProfiles ? effectiveProfiles.length : Number(counts.profiles || 0),
     bots: Math.max(Number(counts.bots || 0), Array.isArray(portable?.bots) ? portable.bots.length : 0),
     dartSets: Math.max(Number(counts.dartSets || 0), Array.isArray(portable?.dartSets) ? portable.dartSets.length : 0),
     teams: Math.max(Number(counts.teams || 0), Array.isArray(portable?.teams) ? portable.teams.length : 0),
@@ -3727,7 +3746,7 @@ async function countRestoredPortableData(): Promise<PortableAccountRestoreCounts
   const gallery = exportAvatarGalleryMetadata();
   const tournaments = await exportLocalTournamentsSnapshot().catch(() => null);
   return {
-    profiles: Array.isArray(store?.profiles) ? store.profiles.filter((p: any) => p && String(p.id || "").trim()).length : 0,
+    profiles: effectivePortableProfiles(store?.profiles).length,
     bots: Array.isArray(loadStoredBots()) ? loadStoredBots().length : 0,
     dartSets: Array.isArray(getAllDartSets()) ? getAllDartSets().length : 0,
     teams: Array.isArray(loadStoredTeams()) ? loadStoredTeams().length : 0,
@@ -3769,9 +3788,7 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
 
   try {
     const current: any = (await loadStore().catch(() => null)) || {};
-    const remoteProfiles = Array.isArray(portable.profiles)
-      ? portable.profiles.map(normalizeRestoredLocalProfileMarkers)
-      : [];
+    const remoteProfiles = effectivePortableProfiles(portable?.profiles);
     const byId = new Map<string, any>();
     for (const profile of Array.isArray(current?.profiles) ? current.profiles : []) {
       const id = String(profile?.id || "").trim();

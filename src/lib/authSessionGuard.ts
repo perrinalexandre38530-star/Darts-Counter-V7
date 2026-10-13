@@ -27,6 +27,13 @@ export function isJwtFresh(tokenInput: string, skewMs = 30_000): boolean {
   return expMs > Date.now() + Math.max(0, Number(skewMs) || 0);
 }
 
+export function jwtExpiresInMs(tokenInput: string): number {
+  const payload = decodeJwtPayloadUnsafe(tokenInput);
+  const expMs = Number(payload?.exp || 0) * 1000;
+  if (!Number.isFinite(expMs) || expMs <= 0) return 0;
+  return Math.max(0, expMs - Date.now());
+}
+
 export function isFreshSupabaseAccessToken(tokenInput: string, skewMs = 30_000): boolean {
   const token = String(tokenInput || "").trim();
   if (!token || !isJwtFresh(token, skewMs)) return false;

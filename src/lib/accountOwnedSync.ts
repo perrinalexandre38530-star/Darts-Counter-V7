@@ -54,7 +54,7 @@ const TABLE = "account_sync_documents";
 const DEFAULT_DOCUMENT_ID = "default";
 const POLL_MS = 30_000;
 const LOCAL_DEBOUNCE_MS = 420;
-const HISTORY_BATCH_SIZE = 24;
+const HISTORY_BATCH_SIZE = 10;
 const REVISION_KEY = "mss_account_owned_sync_revisions_v1";
 const STATS_SOURCE_OWNER_KEY = "mss_account_stats_sources_owner_v1";
 const STATS_SOURCE_MIRROR_KEY = "mss_account_stats_sources_mirror_v1";
@@ -266,9 +266,36 @@ function isCanonicalAccountProfile(profile: any, userId: string): boolean {
   return ids.includes(uid);
 }
 
-function serializeProfiles(input: any[], userId: string): any[] {
+export function getAccountOwnedLocalProfiles(input: any[], userId: string): any[] {
   return (Array.isArray(input) ? input : [])
     .filter((profile) => profile && !isCanonicalAccountProfile(profile, userId))
+    .filter((profile) => !!cleanId(profile?.id));
+}
+
+function collectionPayloadItems(payload: any): any[] | null {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object" && Array.isArray(payload.items)) return payload.items;
+  return null;
+}
+
+function normalizeSyncRow(value: any, expectedUserId: string): SyncRow | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const owner = cleanId(value.owner_user_id);
+  const documentType = cleanId(value.document_type);
+  const documentId = cleanId(value.document_id || DEFAULT_DOCUMENT_ID) || DEFAULT_DOCUMENT_ID;
+  if (!owner || owner != cleanId(expectedUserId) || !documentType || !documentId) return null;
+  return {
+    ...value,
+    owner_user_id: owner,
+    document_type: documentType,
+    document_id: documentId,
+    payload: value.payload ?? {},
+    client_updated_at: Number(value.client_updated_at || 0) || 0,
+  } as SyncRow;
+}
+
+function serializeProfiles(input: any[], userId: string): any[] {
+  return getAccountOwnedLocalProfiles(input, userId)
     .map((profile) => {
       const primary = cleanId(profile?.avatarDataUrl || profile?.avatar || profile?.avatarUrl);
       const row = cloudSafe(profile) || {};
@@ -652,7 +679,14 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   // du Store (et les erreurs `reading length` vues pendant le diagnostic).
   const pendingOutbound = new Map<string, number>();
   const outboundKey = (type: string, id = DEFAULT_DOCUMENT_ID) => revisionKey(type, id);
-  const markOutbound = (type: string, id: string, ts: number) => pendingOutbound.set(outboundKey(type, id), Number(ts || 0));
+  const markOutbound = (type: string, id: string, ts: number) => {
+    const key = outboundKey(type, id);
+    const value = Number(ts || 0);
+    pendingOutbound.set(key, value);
+    window.setTimeout(() => {
+      if (pendingOutbound.get(key) === value) pendingOutbound.delete(key);
+    }, 30_000);
+  };
   const clearOutbound = (type: string, id: string, ts?: number) => {
     const key = outboundKey(type, id);
     if (ts == null || pendingOutbound.get(key) === Number(ts || 0)) pendingOutbound.delete(key);
@@ -755,27 +789,37 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const applyProfilesPayload = async (payload: any) => {
-    const hydrated = await hydrateProfiles(Array.isArray(payload) ? payload : payload?.items || []);
+    const rows = collectionPayloadItems(payload);
+    if (!rows) return;
+    const hydrated = await hydrateProfiles(rows);
     await options.applyLocalProfiles(hydrated);
   };
 
   const applyBotsPayload = async (payload: any) => {
-    const hydrated = await hydrateBots(Array.isArray(payload) ? payload : payload?.items || []);
+    const rows = collectionPayloadItems(payload);
+    if (!rows) return;
+    const hydrated = await hydrateBots(rows);
     restoreBotsFromSnapshot(hydrated);
   };
 
   const applyTeamsPayload = async (payload: any) => {
-    const hydrated = await hydrateTeams(Array.isArray(payload) ? payload : payload?.items || []);
+    const rows = collectionPayloadItems(payload);
+    if (!rows) return;
+    const hydrated = await hydrateTeams(rows);
     saveTeams(hydrated as TeamEntity[]);
   };
 
   const applyGalleryPayload = async (payload: any) => {
-    const hydrated = await hydrateGallery(Array.isArray(payload) ? payload : payload?.items || []);
+    const rows = collectionPayloadItems(payload);
+    if (!rows) return;
+    const hydrated = await hydrateGallery(rows);
     writeAvatarGallery(userId, hydrated);
   };
 
   const applyDartSetsPayload = async (payload: any) => {
-    const hydrated = await hydrateDartSets(Array.isArray(payload) ? payload : payload?.items || []);
+    const rows = collectionPayloadItems(payload);
+    if (!rows) return;
+    const hydrated = await hydrateDartSets(rows);
     setAllDartSets(hydrated);
   };
 
@@ -998,7 +1042,9 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         noteSupabaseError(error, "history-list");
         break;
       }
-      const rows = (data || []) as SyncRow[];
+      const rows = (Array.isArray(data) ? data : [])
+        .map((candidate: any) => normalizeSyncRow(candidate, userId))
+        .filter(Boolean) as SyncRow[];
       out.push(...rows);
       if (rows.length < pageSize) break;
       from += pageSize;
@@ -1107,7 +1153,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       noteSupabaseError(error, "refresh");
       return;
     }
-    for (const row of (data || []) as SyncRow[]) await applyRemoteRow(row, false);
+    for (const candidate of (Array.isArray(data) ? data : [])) {
+      const row = normalizeSyncRow(candidate, userId);
+      if (row) await applyRemoteRow(row, false);
+    }
   };
 
   const initialSync = async () => {
@@ -1204,8 +1253,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
 
   const collectReferencedAccountMediaKeys = (): Set<string> => {
     const keys = new Set<string>();
-    for (const profile of (Array.isArray(options.getProfiles()) ? options.getProfiles() : [])) {
-      if (!profile || isCanonicalAccountProfile(profile, userId)) continue;
+    for (const profile of getAccountOwnedLocalProfiles(options.getProfiles(), userId)) {
       const id = cleanId(profile?.id);
       if (id) keys.add(profileAvatarMediaKey(id));
     }
@@ -1388,8 +1436,13 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         "postgres_changes",
         { event: "*", schema: "public", table: TABLE, filter: `owner_user_id=eq.${userId}` },
         (event: any) => {
-          const row = (event?.new && Object.keys(event.new).length ? event.new : event?.old) as SyncRow;
+          // Les payloads DELETE / partiels de Realtime ne doivent jamais vider
+          // une collection locale. On valide propriétaire/type/id avant apply.
+          const eventType = String(event?.eventType || event?.event || "").toUpperCase();
+          const candidate = eventType === "DELETE" ? event?.old : (event?.new ?? event?.old);
+          const row = normalizeSyncRow(candidate, userId);
           if (!row) return;
+          if (eventType === "DELETE" && row.document_type !== DOC.historyMatch) return;
           if (isOwnRealtimeEcho(row)) {
             const type = String(row?.document_type || "");
             const id = cleanId(row?.document_id || DEFAULT_DOCUMENT_ID) || DEFAULT_DOCUMENT_ID;

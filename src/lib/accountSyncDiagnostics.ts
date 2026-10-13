@@ -9,10 +9,12 @@ import { History } from "./history";
 import { loadStatsIndex } from "./stats/rebuildStatsFromHistory";
 import { listLocalMemorySlots } from "./storageVault";
 import { loadStoragePrefs } from "./storagePlans";
+import { getAccountOwnedLocalProfiles } from "./accountOwnedSync";
 import {
   deleteAccountR2Media,
   downloadAccountR2Media,
   getAccountR2MediaDiagnosticSnapshot,
+  getDirectR2AuthHealth,
   normalizeAccountR2MediaKey,
   uploadAccountR2Media,
 } from "./directR2BackupApi";
@@ -39,7 +41,7 @@ export type AccountSyncDiagnosticCheck = {
 };
 
 export type AccountSyncDiagnosticReport = {
-  version: "v119";
+  version: "v121";
   generatedAt: string;
   activeProbe: boolean;
   userId: string | null;
@@ -49,7 +51,8 @@ export type AccountSyncDiagnosticReport = {
   remote?: any;
 };
 
-const LAST_REPORT_KEY = "dc_account_sync_diagnostic_v119";
+const LAST_REPORT_KEY = "dc_account_sync_diagnostic_v121";
+const LEGACY_REPORT_KEY = "dc_account_sync_diagnostic_v119";
 const TABLE = "account_sync_documents";
 const SINGLETON_TYPES = [
   "local_profiles",
@@ -237,7 +240,7 @@ async function testR2BinaryRoundTrip(userId: string): Promise<{ uploaded: boolea
 export function readLastAccountSyncDiagnosticReport(): AccountSyncDiagnosticReport | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(LAST_REPORT_KEY);
+    const raw = localStorage.getItem(LAST_REPORT_KEY) || localStorage.getItem(LEGACY_REPORT_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
@@ -256,7 +259,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
   if (!userId) {
     add(checks, { id: "auth", label: "Compte connecté", status: "fail", detail: sessionError?.message || "Aucune session Supabase active." });
     const report: AccountSyncDiagnosticReport = {
-      version: "v119", generatedAt, activeProbe, userId: null,
+      version: "v121", generatedAt, activeProbe, userId: null,
       summary: { ok: 0, warn: 0, fail: 1, skip: 0, total: 1 }, checks,
     };
     try { localStorage.setItem(LAST_REPORT_KEY, JSON.stringify(report)); } catch {}
@@ -274,8 +277,8 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
 
   if (activeProbe) {
     try {
-      if (typeof forceBridge === "function") await forceBridge({ reason: "internal-diagnostic-v119" });
-      else window.dispatchEvent(new CustomEvent("dc:account-owned-force-sync", { detail: { reason: "internal-diagnostic-v119" } }));
+      if (typeof forceBridge === "function") await forceBridge({ reason: "internal-diagnostic-v121" });
+      else window.dispatchEvent(new CustomEvent("dc:account-owned-force-sync", { detail: { reason: "internal-diagnostic-v121" } }));
       add(checks, { id: "force_sync", label: "Resynchronisation compte", status: "ok", detail: "Profils/Bots/Teams/Galerie/DartSets/Stats/History ont été repoussés vers le compte." });
     } catch (error: any) {
       add(checks, { id: "force_sync", label: "Resynchronisation compte", status: "fail", detail: String(error?.message || error || "Échec") });
@@ -308,7 +311,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     ]);
   } catch {}
 
-  const localProfiles = Array.isArray(store?.profiles) ? store.profiles.filter((p: any) => !isCanonicalAccountProfile(p, userId)) : [];
+  const localProfiles = getAccountOwnedLocalProfiles(Array.isArray(store?.profiles) ? store.profiles : [], userId);
   const userBots = Array.isArray(bots) ? bots.filter((b: any) => b && !isOfficialBotId(b.id) && !b?.systemBot) : [];
   const finishedHistory = Array.isArray(history) ? history.filter(isFinishedMatch) : [];
   const localCounts = {
@@ -321,6 +324,23 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     finishedHistory: finishedHistory.length,
     statsIndex: statsIndex ? 1 : 0,
   };
+  try {
+    const authHealth = await getDirectR2AuthHealth();
+    const expiresSeconds = Math.max(0, Math.floor(Number(authHealth.expiresInMs || 0) / 1000));
+    const authOk = authHealth.hasToken && authHealth.accountMatch && !authHealth.rejected;
+    add(checks, {
+      id: "jwt_bridge",
+      label: "JWT Supabase / bridge R2",
+      status: authOk ? "ok" : "fail",
+      detail: authOk
+        ? `Auth ${authHealth.kind} valide pour le compte${expiresSeconds ? ` · expire dans ${expiresSeconds}s` : ""}.`
+        : `Auth R2 invalide : kind=${authHealth.kind} · token=${authHealth.hasToken ? "oui" : "non"} · compte=${authHealth.accountMatch ? "ok" : "mismatch"} · rejet=${authHealth.rejected ? "oui" : "non"}.`,
+      data: authHealth,
+    });
+  } catch (error: any) {
+    add(checks, { id: "jwt_bridge", label: "JWT Supabase / bridge R2", status: "fail", detail: String(error?.message || error || "Auth R2 indisponible") });
+  }
+
   add(checks, {
     id: "local_data",
     label: "Données locales rattachées au compte",
@@ -580,7 +600,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
   const summary = { ok: 0, warn: 0, fail: 0, skip: 0, total: checks.length };
   for (const check of checks) summary[check.status] += 1;
   const report: AccountSyncDiagnosticReport = {
-    version: "v119",
+    version: "v121",
     generatedAt,
     activeProbe,
     userId,
