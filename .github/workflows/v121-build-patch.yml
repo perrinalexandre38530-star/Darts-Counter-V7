@@ -1,0 +1,60 @@
+name: V121 Patch Builder
+
+on:
+  push:
+    branches:
+      - fix/v121-account-sync-auth-restore
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply deterministic V121 transformations
+        run: python3 tools/apply_v121_sync_restore_patch.py
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build minimal patch tree
+        run: |
+          rm -rf /tmp/PATCH_SYNC_AUTH_RESTORE_V121
+          mkdir -p /tmp/PATCH_SYNC_AUTH_RESTORE_V121/src/lib
+          cp src/lib/authSessionGuard.ts /tmp/PATCH_SYNC_AUTH_RESTORE_V121/src/lib/
+          cp src/lib/storage.ts /tmp/PATCH_SYNC_AUTH_RESTORE_V121/src/lib/
+          cp src/lib/accountOwnedSync.ts /tmp/PATCH_SYNC_AUTH_RESTORE_V121/src/lib/
+          cp src/lib/accountSyncDiagnostics.ts /tmp/PATCH_SYNC_AUTH_RESTORE_V121/src/lib/
+          cat > /tmp/PATCH_SYNC_AUTH_RESTORE_V121/V121_README.txt <<'EOF'
+          V121 — Account sync/auth/restore stabilization
+          Base: current main / latest reference line
+          - Account Media: Supabase JWT auto-refresh + single 401/403 retry
+          - Restore: effective normalized profile count (legacy mirrors/duplicates ignored)
+          - History: smaller batches (8) to reduce statement timeouts
+          - Realtime: malformed/partial singleton payload guard
+          - Diagnostics: canonical profile count + JWT/R2 media auth state
+          No Supabase SQL migration required.
+          EOF
+
+      - name: Upload minimal patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: PATCH_SYNC_AUTH_RESTORE_V121
+          path: /tmp/PATCH_SYNC_AUTH_RESTORE_V121
+          if-no-files-found: error
+          retention-days: 7
